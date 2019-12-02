@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"sync"
 
 	imapclient "github.com/emersion/go-imap/client"
 )
@@ -21,7 +22,7 @@ var ErrSessionExpired = errors.New("session expired")
 
 // TODO: expiration timer
 type ConnPool struct {
-	// TODO: add synchronization
+	locker sync.Mutex
 	conns map[string]*imapclient.Client
 }
 
@@ -32,6 +33,9 @@ func NewConnPool() *ConnPool {
 }
 
 func (pool *ConnPool) Get(token string) (*imapclient.Client, error) {
+	pool.locker.Lock()
+	defer pool.locker.Unlock()
+
 	conn, ok := pool.conns[token]
 	if !ok {
 		return nil, ErrSessionExpired
@@ -40,6 +44,9 @@ func (pool *ConnPool) Get(token string) (*imapclient.Client, error) {
 }
 
 func (pool *ConnPool) Put(conn *imapclient.Client) (token string, err error) {
+	pool.locker.Lock()
+	defer pool.locker.Unlock()
+
 	for {
 		var err error
 		token, err = generateToken()
@@ -57,7 +64,10 @@ func (pool *ConnPool) Put(conn *imapclient.Client) (token string, err error) {
 
 	go func() {
 		<-conn.LoggedOut()
+
+		pool.locker.Lock()
 		delete(pool.conns, token)
+		pool.locker.Unlock()
 	}()
 
 	return token, nil
