@@ -1,0 +1,11 @@
+{{template "head"}}
+
+<h1>koushin</h1>
+
+<a href="/mailbox/{{.Mailbox.Name}}">Back</a>
+
+<h2>{{.Message.Envelope.Subject}}</h2>
+
+<pre>{{.Body}}</pre>
+
+{{template "foot"}}
