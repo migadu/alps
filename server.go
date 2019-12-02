@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/emersion/go-imap"
 	imapclient "github.com/emersion/go-imap/client"
 )
 
@@ -45,30 +44,6 @@ func NewServer(imapURL string) (*Server, error) {
 	s.imap.pool = NewConnPool()
 
 	return s, nil
-}
-
-func (s *Server) connectIMAP() (*imapclient.Client, error) {
-	var c *imapclient.Client
-	var err error
-	if s.imap.tls {
-		c, err = imapclient.DialTLS(s.imap.host, nil)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		c, err = imapclient.Dial(s.imap.host)
-		if err != nil {
-			return nil, err
-		}
-		if !s.imap.insecure {
-			if err := c.StartTLS(nil); err != nil {
-				c.Close()
-				return nil, err
-			}
-		}
-	}
-
-	return c, err
 }
 
 type context struct {
@@ -163,18 +138,8 @@ func New(imapURL string) *echo.Echo {
 	e.GET("/", func(ectx echo.Context) error {
 		ctx := ectx.(*context)
 
-		ch := make(chan *imap.MailboxInfo, 10)
-		done := make(chan error, 1)
-		go func () {
-			done <- ctx.conn.List("", "*", ch)
-		}()
-
-		var mailboxes []*imap.MailboxInfo
-		for mbox := range ch {
-			mailboxes = append(mailboxes, mbox)
-		}
-
-		if err := <-done; err != nil {
+		mailboxes, err := listMailboxes(ctx.conn)
+		if err != nil {
 			return err
 		}
 
