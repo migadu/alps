@@ -88,7 +88,7 @@ func handleLogin(ectx echo.Context) error {
 		}
 		ctx.setToken(token)
 
-		return ctx.Redirect(http.StatusFound, "/")
+		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}
 
 	return ctx.Render(http.StatusOK, "login.html", nil)
@@ -135,7 +135,7 @@ func New(imapURL string) *echo.Echo {
 		e.Logger.Fatal("Failed to load templates:", err)
 	}
 
-	e.GET("/", func(ectx echo.Context) error {
+	e.GET("/mailbox/:mbox", func(ectx echo.Context) error {
 		ctx := ectx.(*context)
 
 		mailboxes, err := listMailboxes(ctx.conn)
@@ -143,8 +143,14 @@ func New(imapURL string) *echo.Echo {
 			return err
 		}
 
-		return ctx.Render(http.StatusOK, "index.html", map[string]interface{}{
+		msgs, err := listMessages(ctx.conn, ctx.Param("mbox"))
+		if err != nil {
+			return err
+		}
+
+		return ctx.Render(http.StatusOK, "mailbox.html", map[string]interface{}{
 			"Mailboxes": mailboxes,
+			"Messages": msgs,
 		})
 	})
 

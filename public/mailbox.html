@@ -9,4 +9,11 @@
 	{{end}}
 </ul>
 
+<p>Messages:</p>
+<ul>
+	{{range .Messages}}
+		<li>{{.Envelope.Subject}}</li>
+	{{end}}
+</ul>
+
 {{template "foot"}}
