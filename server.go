@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/emersion/go-imap"
 	imapclient "github.com/emersion/go-imap/client"
 )
 
@@ -132,7 +133,12 @@ func New(imapURL string) *echo.Echo {
 
 			cookie, err := ctx.Cookie(cookieName)
 			if err == http.ErrNoCookie {
-				return next(ctx)
+				// Require auth for all pages except /login
+				if ctx.Path() == "/login" {
+					return next(ctx)
+				} else {
+					return ctx.Redirect(http.StatusFound, "/login")
+				}
 			} else if err != nil {
 				return err
 			}
@@ -156,11 +162,25 @@ func New(imapURL string) *echo.Echo {
 
 	e.GET("/", func(ectx echo.Context) error {
 		ctx := ectx.(*context)
-		if ctx.conn == nil {
-			return ctx.Redirect(http.StatusFound, "/login")
+
+		ch := make(chan *imap.MailboxInfo, 10)
+		done := make(chan error, 1)
+		go func () {
+			done <- ctx.conn.List("", "*", ch)
+		}()
+
+		var mailboxes []*imap.MailboxInfo
+		for mbox := range ch {
+			mailboxes = append(mailboxes, mbox)
 		}
 
-		return ctx.Render(http.StatusOK, "index.html", nil)
+		if err := <-done; err != nil {
+			return err
+		}
+
+		return ctx.Render(http.StatusOK, "index.html", map[string]interface{}{
+			"Mailboxes": mailboxes,
+		})
 	})
 
 	e.GET("/login", handleLogin)

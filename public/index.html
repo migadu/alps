@@ -2,4 +2,11 @@
 
 <h1>koushin</h1>
 
+<p>Mailboxes:</p>
+<ul>
+	{{range .Mailboxes}}
+		<li>{{.Name}}</li>
+	{{end}}
+</ul>
+
 {{template "foot"}}
