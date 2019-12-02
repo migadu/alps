@@ -54,5 +54,11 @@ func (pool *ConnPool) Put(conn *imapclient.Client) (token string, err error) {
 	}
 
 	pool.conns[token] = conn
+
+	go func() {
+		<-conn.LoggedOut()
+		delete(pool.conns, token)
+	}()
+
 	return token, nil
 }
