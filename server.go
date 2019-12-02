@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -94,6 +96,34 @@ func handleLogin(ectx echo.Context) error {
 	return ctx.Render(http.StatusOK, "login.html", nil)
 }
 
+func parseUid(s string) (uint32, error) {
+	uid, err := strconv.ParseUint(s, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	if uid == 0 {
+		return 0, fmt.Errorf("UID must be non-zero")
+	}
+	return uint32(uid), nil
+}
+
+func parsePartPath(s string) ([]int, error) {
+	l := strings.Split(s, ".")
+	path := make([]int, len(l))
+	for i, s := range l {
+		var err error
+		path[i], err = strconv.Atoi(s)
+		if err != nil {
+			return nil, err
+		}
+
+		if path[i] <= 0 {
+			return nil, fmt.Errorf("part num must be strictly positive")
+		}
+	}
+	return path, nil
+}
+
 func New(imapURL string) *echo.Echo {
 	e := echo.New()
 
@@ -149,8 +179,34 @@ func New(imapURL string) *echo.Echo {
 		}
 
 		return ctx.Render(http.StatusOK, "mailbox.html", map[string]interface{}{
+			"Mailbox": ctx.conn.Mailbox(),
 			"Mailboxes": mailboxes,
 			"Messages": msgs,
+		})
+	})
+
+	e.GET("/message/:mbox/:uid", func(ectx echo.Context) error {
+		ctx := ectx.(*context)
+
+		uid, err := parseUid(ctx.Param("uid"))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err)
+		}
+		// TODO: handle messages without a text part
+		part, err := parsePartPath(ctx.QueryParam("part"))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err)
+		}
+
+		msg, body, err := getMessage(ctx.conn, ctx.Param("mbox"), uid, part)
+		if err != nil {
+			return err
+		}
+
+		return ctx.Render(http.StatusOK, "message.html", map[string]interface{}{
+			"Mailbox": ctx.conn.Mailbox(),
+			"Message": msg,
+			"Body": body,
 		})
 	})
 

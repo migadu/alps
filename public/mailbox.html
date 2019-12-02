@@ -2,6 +2,8 @@
 
 <h1>koushin</h1>
 
+<h2>{{.Mailbox.Name}}</h2>
+
 <p>Mailboxes:</p>
 <ul>
 	{{range .Mailboxes}}
@@ -12,7 +14,9 @@
 <p>Messages:</p>
 <ul>
 	{{range .Messages}}
-		<li>{{.Envelope.Subject}}</li>
+		<li><a href="/message/{{$.Mailbox.Name}}/{{.Uid}}?part={{.TextPartName}}">
+			{{.Envelope.Subject}}
+		</a></li>
 	{{end}}
 </ul>
 

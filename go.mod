@@ -4,5 +4,6 @@ go 1.13
 
 require (
 	github.com/emersion/go-imap v1.0.1
+	github.com/emersion/go-message v0.10.4-0.20190609165112-592ace5bc1ca
 	github.com/labstack/echo/v4 v4.1.11
 )

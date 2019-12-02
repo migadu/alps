@@ -1,9 +1,16 @@
 package koushin
 
 import (
+	"bufio"
+	"fmt"
+	"io/ioutil"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/emersion/go-imap"
+	"github.com/emersion/go-message"
+	"github.com/emersion/go-message/textproto"
 	imapclient "github.com/emersion/go-imap/client"
 )
 
@@ -53,17 +60,91 @@ func listMailboxes(conn *imapclient.Client) ([]*imap.MailboxInfo, error) {
 	return mailboxes, nil
 }
 
-func listMessages(conn *imapclient.Client, mboxName string) ([]*imap.Message, error) {
+func ensureMailboxSelected(conn *imapclient.Client, mboxName string) error {
 	mbox := conn.Mailbox()
 	if mbox == nil || mbox.Name != mboxName {
-		var err error
-		mbox, err = conn.Select(mboxName, false)
-		if err != nil {
-			return nil, err
+		if _, err := conn.Select(mboxName, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type imapMessage struct {
+	*imap.Message
+}
+
+func textPartPath(bs *imap.BodyStructure) ([]int, bool) {
+	if bs.Disposition != "" && !strings.EqualFold(bs.Disposition, "inline") {
+		return nil, false
+	}
+
+	if strings.EqualFold(bs.MIMEType, "text") {
+		return []int{1}, true
+	}
+
+	if !strings.EqualFold(bs.MIMEType, "multipart") {
+		return nil, false
+	}
+
+	textPartNum := -1
+	for i, part := range bs.Parts {
+		num := i + 1
+
+		if strings.EqualFold(part.MIMEType, "multipart") {
+			if subpath, ok := textPartPath(part); ok {
+				return append([]int{num}, subpath...), true
+			}
+		}
+		if !strings.EqualFold(part.MIMEType, "text") {
+			continue
+		}
+
+		var pick bool
+		switch strings.ToLower(part.MIMESubType) {
+		case "plain":
+			pick = true
+		case "html":
+			pick = textPartNum < 0
+		}
+
+		if pick {
+			textPartNum = num
 		}
 	}
 
+	if textPartNum > 0 {
+		return []int{textPartNum}, true
+	}
+	return nil, false
+}
+
+func (msg *imapMessage) TextPartName() string {
+	if msg.BodyStructure == nil {
+		return ""
+	}
+
+	path, ok := textPartPath(msg.BodyStructure)
+	if !ok {
+		return ""
+	}
+
+	l := make([]string, len(path))
+	for i, partNum := range path {
+		l[i] = strconv.Itoa(partNum)
+	}
+
+	return strings.Join(l, ".")
+}
+
+func listMessages(conn *imapclient.Client, mboxName string) ([]imapMessage, error) {
+	if err := ensureMailboxSelected(conn, mboxName); err != nil {
+		return nil, err
+	}
+
 	n := uint32(10)
+
+	mbox := conn.Mailbox()
 	from := uint32(1)
 	to := mbox.Messages
 	if mbox.Messages > n {
@@ -72,15 +153,17 @@ func listMessages(conn *imapclient.Client, mboxName string) ([]*imap.Message, er
 	seqSet := new(imap.SeqSet)
 	seqSet.AddRange(from, to)
 
+	fetch := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid, imap.FetchBodyStructure}
+
 	ch := make(chan *imap.Message, 10)
 	done := make(chan error, 1)
 	go func() {
-		done <- conn.Fetch(seqSet, []imap.FetchItem{imap.FetchEnvelope}, ch)
+		done <- conn.Fetch(seqSet, fetch, ch)
 	}()
 
-	msgs := make([]*imap.Message, 0, n)
+	msgs := make([]imapMessage, 0, n)
 	for msg := range ch {
-		msgs = append(msgs, msg)
+		msgs = append(msgs, imapMessage{msg})
 	}
 
 	if err := <-done; err != nil {
@@ -94,4 +177,60 @@ func listMessages(conn *imapclient.Client, mboxName string) ([]*imap.Message, er
 	}
 
 	return msgs, nil
+}
+
+var _ = message.Read
+
+func getMessage(conn *imapclient.Client, mboxName string, uid uint32, partPath []int) (*imap.Message, string, error) {
+	if err := ensureMailboxSelected(conn, mboxName); err != nil {
+		return nil, "", err
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
+
+	var textHeaderSection imap.BodySectionName
+	textHeaderSection.Peek = true
+	textHeaderSection.Specifier = imap.HeaderSpecifier
+	textHeaderSection.Path = partPath
+
+	var textBodySection imap.BodySectionName
+	textBodySection.Peek = true
+	textBodySection.Path = partPath
+
+	fetch := []imap.FetchItem{
+		imap.FetchEnvelope,
+		imap.FetchUid,
+		imap.FetchBodyStructure,
+		textHeaderSection.FetchItem(),
+		textBodySection.FetchItem(),
+	}
+
+	ch := make(chan *imap.Message, 1)
+	if err := conn.UidFetch(seqSet, fetch, ch); err != nil {
+		return nil, "", err
+	}
+
+	msg := <-ch
+	if msg == nil {
+		return nil, "", fmt.Errorf("server didn't return message")
+	}
+
+	headerReader := bufio.NewReader(msg.GetBody(&textHeaderSection))
+	h, err := textproto.ReadHeader(headerReader)
+	if err != nil {
+		return nil, "", err
+	}
+
+	text, err := message.New(message.Header{h}, msg.GetBody(&textBodySection))
+	if err != nil {
+		return nil, "", err
+	}
+
+	b, err := ioutil.ReadAll(text.Body)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return msg, string(b), nil
 }

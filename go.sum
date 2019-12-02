@@ -3,9 +3,11 @@ github.com/dgrijalva/jwt-go v3.2.0+incompatible h1:7qlOGliEKZXTDg6OTjfoBKDXWrumC
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 github.com/emersion/go-imap v1.0.1 h1:J3duplefIrglQtE63hCGYdGLgMjYWqHvkUUEbimbXY8=
 github.com/emersion/go-imap v1.0.1/go.mod h1:MEiDDwwQFcZ+L45Pa68jNGv0qU9kbW+SJzwDpvSfX1s=
+github.com/emersion/go-message v0.10.4-0.20190609165112-592ace5bc1ca h1:OYhqtJI4eOLvGtRIsUfP87VMJ1J/o6ks1tah9DlYkn4=
 github.com/emersion/go-message v0.10.4-0.20190609165112-592ace5bc1ca/go.mod h1:3h+HsGTCFHmk4ngJ2IV/YPhdlaOcR6hcgqM3yca9v7c=
 github.com/emersion/go-sasl v0.0.0-20190520160400-47d427600317 h1:tYZxAY8nu3JJQKios9f27Sbvbkfm4XHXT476gVtszu0=
 github.com/emersion/go-sasl v0.0.0-20190520160400-47d427600317/go.mod h1:G/dpzLu16WtQpBfQ/z3LYiYJn3ZhKSGWn83fyoyQe/k=
+github.com/emersion/go-textwrapper v0.0.0-20160606182133-d0e65e56babe h1:40SWqY0zE3qCi6ZrtTf5OUdNm5lDnGnjRSq9GgmeTrg=
 github.com/emersion/go-textwrapper v0.0.0-20160606182133-d0e65e56babe/go.mod h1:aqO8z8wPrjkscevZJFVE1wXJrLpC5LtJG7fqLOsPb2U=
 github.com/labstack/echo v3.3.10+incompatible h1:pGRcYk231ExFAyoAjAfD85kQzRJCRI8bbnE7CX5OEgg=
 github.com/labstack/echo/v4 v4.1.11 h1:z0BZoArY4FqdpUEl+wlHp4hnr/oSR6MTmQmv8OHSoww=
