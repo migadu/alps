@@ -5,7 +5,7 @@
 <p>Mailboxes:</p>
 <ul>
 	{{range .Mailboxes}}
-		<li>{{.Name}}</li>
+		<li><a href="/mailbox/{{.Name}}">{{.Name}}</a></li>
 	{{end}}
 </ul>
 
