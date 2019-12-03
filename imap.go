@@ -10,9 +10,13 @@ import (
 	"github.com/emersion/go-imap"
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
-	_ "github.com/emersion/go-message/charset"
+	"github.com/emersion/go-message/charset"
 	"github.com/emersion/go-message/textproto"
 )
+
+func init() {
+	imap.CharsetReader = charset.Reader
+}
 
 func (s *Server) connectIMAP() (*imapclient.Client, error) {
 	var c *imapclient.Client
