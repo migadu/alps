@@ -253,12 +253,20 @@ func getMessagePart(conn *imapclient.Client, mboxName string, uid uint32, partPa
 
 	var partHeaderSection imap.BodySectionName
 	partHeaderSection.Peek = true
-	partHeaderSection.Specifier = imap.HeaderSpecifier
+	if len(partPath) > 0 {
+		partHeaderSection.Specifier = imap.MIMESpecifier
+	} else {
+		partHeaderSection.Specifier = imap.HeaderSpecifier
+	}
 	partHeaderSection.Path = partPath
 
 	var partBodySection imap.BodySectionName
 	partBodySection.Peek = true
-	partBodySection.Specifier = imap.TextSpecifier
+	if len(partPath) > 0 {
+		partBodySection.Specifier = imap.EntireSpecifier
+	} else {
+		partBodySection.Specifier = imap.TextSpecifier
+	}
 	partBodySection.Path = partPath
 
 	fetch := []imap.FetchItem{
