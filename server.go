@@ -2,8 +2,11 @@ package koushin
 
 import (
 	"fmt"
+	"io/ioutil"
+	"mime"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	imapclient "github.com/emersion/go-imap/client"
@@ -94,6 +97,63 @@ func handleLogin(ectx echo.Context) error {
 	return ctx.Render(http.StatusOK, "login.html", nil)
 }
 
+func handleGetPart(ctx *context, raw bool) error {
+	mboxName := ctx.Param("mbox")
+	uid, err := parseUid(ctx.Param("uid"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+	partPathString := ctx.QueryParam("part")
+	partPath, err := parsePartPath(partPathString)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+
+	msg, part, err := getMessagePart(ctx.conn, mboxName, uid, partPath)
+	if err != nil {
+		return err
+	}
+
+	mimeType, _, err := part.Header.ContentType()
+	if err != nil {
+		return err
+	}
+	if len(partPath) == 0 {
+		mimeType = "message/rfc822"
+	}
+
+	if raw {
+		disp, dispParams, _ := part.Header.ContentDisposition()
+		filename := dispParams["filename"]
+
+		if !strings.EqualFold(mimeType, "text/plain") || strings.EqualFold(disp, "attachment") {
+			dispParams := make(map[string]string)
+			if filename != "" {
+				dispParams["filename"] = filename
+			}
+			disp := mime.FormatMediaType("attachment", dispParams)
+			ctx.Response().Header().Set("Content-Disposition", disp)
+		}
+		return ctx.Stream(http.StatusOK, mimeType, part.Body)
+	}
+
+	var body string
+	if strings.HasPrefix(strings.ToLower(mimeType), "text/") {
+		b, err := ioutil.ReadAll(part.Body)
+		if err != nil {
+			return err
+		}
+		body = string(b)
+	}
+
+	return ctx.Render(http.StatusOK, "message.html", map[string]interface{}{
+		"Mailbox":  ctx.conn.Mailbox(),
+		"Message":  msg,
+		"Body":     body,
+		"PartPath": partPathString,
+	})
+}
+
 func New(imapURL string) *echo.Echo {
 	e := echo.New()
 
@@ -157,27 +217,11 @@ func New(imapURL string) *echo.Echo {
 
 	e.GET("/message/:mbox/:uid", func(ectx echo.Context) error {
 		ctx := ectx.(*context)
-
-		uid, err := parseUid(ctx.Param("uid"))
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err)
-		}
-		// TODO: handle messages without a text part
-		part, err := parsePartPath(ctx.QueryParam("part"))
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err)
-		}
-
-		msg, body, err := getMessage(ctx.conn, ctx.Param("mbox"), uid, part)
-		if err != nil {
-			return err
-		}
-
-		return ctx.Render(http.StatusOK, "message.html", map[string]interface{}{
-			"Mailbox": ctx.conn.Mailbox(),
-			"Message": msg,
-			"Body":    body,
-		})
+		return handleGetPart(ctx, false)
+	})
+	e.GET("/message/:mbox/:uid/raw", func(ectx echo.Context) error {
+		ctx := ectx.(*context)
+		return handleGetPart(ctx, true)
 	})
 
 	e.GET("/login", handleLogin)

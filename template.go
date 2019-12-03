@@ -16,6 +16,10 @@ func (t *tmpl) Render(w io.Writer, name string, data interface{}, c echo.Context
 }
 
 func loadTemplates() (*tmpl, error) {
-	t, err := template.New("drmdb").ParseGlob("public/*.html")
+	t, err := template.New("drmdb").Funcs(template.FuncMap{
+		"tuple": func(values ...interface{}) []interface{} {
+			return values
+		},
+	}).ParseGlob("public/*.html")
 	return &tmpl{t}, err
 }

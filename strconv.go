@@ -18,6 +18,10 @@ func parseUid(s string) (uint32, error) {
 }
 
 func parsePartPath(s string) ([]int, error) {
+	if s == "" {
+		return nil, nil
+	}
+
 	l := strings.Split(s, ".")
 	path := make([]int, len(l))
 	for i, s := range l {

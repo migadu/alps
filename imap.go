@@ -3,7 +3,6 @@ package koushin
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
 	"sort"
 	"strconv"
 	"strings"
@@ -140,10 +139,11 @@ func (msg *imapMessage) TextPartName() string {
 type IMAPPartNode struct {
 	Path     []int
 	MIMEType string
+	Filename string
 	Children []IMAPPartNode
 }
 
-func (node *IMAPPartNode) PathString() string {
+func (node IMAPPartNode) PathString() string {
 	l := make([]string, len(node.Path))
 	for i, partNum := range node.Path {
 		l[i] = strconv.Itoa(partNum)
@@ -152,14 +152,32 @@ func (node *IMAPPartNode) PathString() string {
 	return strings.Join(l, ".")
 }
 
+func (node IMAPPartNode) IsText() bool {
+	return strings.HasPrefix(strings.ToLower(node.MIMEType), "text/")
+}
+
+func (node IMAPPartNode) String() string {
+	if node.Filename != "" {
+		return fmt.Sprintf("%s (%s)", node.Filename, node.MIMEType)
+	} else {
+		return node.MIMEType
+	}
+}
+
 func imapPartTree(bs *imap.BodyStructure, path []int) *IMAPPartNode {
 	if !strings.EqualFold(bs.MIMEType, "multipart") && len(path) == 0 {
 		path = []int{1}
 	}
 
+	var filename string
+	if strings.EqualFold(bs.Disposition, "attachment") {
+		filename = bs.DispositionParams["filename"]
+	}
+
 	node := &IMAPPartNode{
 		Path:     path,
 		MIMEType: strings.ToLower(bs.MIMEType + "/" + bs.MIMESubType),
+		Filename: filename,
 		Children: make([]IMAPPartNode, len(bs.Parts)),
 	}
 
@@ -225,56 +243,52 @@ func listMessages(conn *imapclient.Client, mboxName string) ([]imapMessage, erro
 	return msgs, nil
 }
 
-func getMessage(conn *imapclient.Client, mboxName string, uid uint32, partPath []int) (*imapMessage, string, error) {
+func getMessagePart(conn *imapclient.Client, mboxName string, uid uint32, partPath []int) (*imapMessage, *message.Entity, error) {
 	if err := ensureMailboxSelected(conn, mboxName); err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 
 	seqSet := new(imap.SeqSet)
 	seqSet.AddNum(uid)
 
-	var textHeaderSection imap.BodySectionName
-	textHeaderSection.Peek = true
-	textHeaderSection.Specifier = imap.HeaderSpecifier
-	textHeaderSection.Path = partPath
+	var partHeaderSection imap.BodySectionName
+	partHeaderSection.Peek = true
+	partHeaderSection.Specifier = imap.HeaderSpecifier
+	partHeaderSection.Path = partPath
 
-	var textBodySection imap.BodySectionName
-	textBodySection.Peek = true
-	textBodySection.Path = partPath
+	var partBodySection imap.BodySectionName
+	partBodySection.Peek = true
+	partBodySection.Specifier = imap.TextSpecifier
+	partBodySection.Path = partPath
 
 	fetch := []imap.FetchItem{
 		imap.FetchEnvelope,
 		imap.FetchUid,
 		imap.FetchBodyStructure,
-		textHeaderSection.FetchItem(),
-		textBodySection.FetchItem(),
+		partHeaderSection.FetchItem(),
+		partBodySection.FetchItem(),
 	}
 
 	ch := make(chan *imap.Message, 1)
 	if err := conn.UidFetch(seqSet, fetch, ch); err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 
 	msg := <-ch
 	if msg == nil {
-		return nil, "", fmt.Errorf("server didn't return message")
+		return nil, nil, fmt.Errorf("server didn't return message")
 	}
 
-	headerReader := bufio.NewReader(msg.GetBody(&textHeaderSection))
+	headerReader := bufio.NewReader(msg.GetBody(&partHeaderSection))
 	h, err := textproto.ReadHeader(headerReader)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 
-	text, err := message.New(message.Header{h}, msg.GetBody(&textBodySection))
+	part, err := message.New(message.Header{h}, msg.GetBody(&partBodySection))
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 
-	b, err := ioutil.ReadAll(text.Body)
-	if err != nil {
-		return nil, "", err
-	}
-
-	return &imapMessage{msg}, string(b), nil
+	return &imapMessage{msg}, part, nil
 }
