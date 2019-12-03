@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/emersion/go-imap"
 	imapclient "github.com/emersion/go-imap/client"
+	"github.com/emersion/go-message"
 	"github.com/emersion/go-sasl"
 	"github.com/labstack/echo/v4"
 )
@@ -95,7 +97,6 @@ type context struct {
 	echo.Context
 	server  *Server
 	session *Session
-	conn    *imapclient.Client
 }
 
 var aLongTimeAgo = time.Unix(233431200, 0)
@@ -152,7 +153,15 @@ func handleGetPart(ctx *context, raw bool) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 
-	msg, part, err := getMessagePart(ctx.conn, mboxName, uid, partPath)
+	var msg *imapMessage
+	var part *message.Entity
+	var mbox *imap.MailboxStatus
+	err = ctx.session.Do(func(c *imapclient.Client) error {
+		var err error
+		msg, part, err = getMessagePart(c, mboxName, uid, partPath)
+		mbox = c.Mailbox()
+		return err
+	})
 	if err != nil {
 		return err
 	}
@@ -192,7 +201,7 @@ func handleGetPart(ctx *context, raw bool) error {
 	}
 
 	return ctx.Render(http.StatusOK, "message.html", map[string]interface{}{
-		"Mailbox":  ctx.conn.Mailbox(),
+		"Mailbox":  mbox,
 		"Message":  msg,
 		"Body":     body,
 		"PartPath": partPathString,
@@ -290,7 +299,6 @@ func New(imapURL, smtpURL string) *echo.Echo {
 			} else if err != nil {
 				return err
 			}
-			ctx.conn = ctx.session.imapConn
 
 			return next(ctx)
 		}
@@ -304,18 +312,26 @@ func New(imapURL, smtpURL string) *echo.Echo {
 	e.GET("/mailbox/:mbox", func(ectx echo.Context) error {
 		ctx := ectx.(*context)
 
-		mailboxes, err := listMailboxes(ctx.conn)
-		if err != nil {
-			return err
-		}
-
-		msgs, err := listMessages(ctx.conn, ctx.Param("mbox"))
+		var mailboxes []*imap.MailboxInfo
+		var msgs []imapMessage
+		var mbox *imap.MailboxStatus
+		err = ctx.session.Do(func(c *imapclient.Client) error {
+			var err error
+			if mailboxes, err = listMailboxes(c); err != nil {
+				return err
+			}
+			if msgs, err = listMessages(c, ctx.Param("mbox")); err != nil {
+				return err
+			}
+			mbox = c.Mailbox()
+			return nil
+		})
 		if err != nil {
 			return err
 		}
 
 		return ctx.Render(http.StatusOK, "mailbox.html", map[string]interface{}{
-			"Mailbox":   ctx.conn.Mailbox(),
+			"Mailbox":   mbox,
 			"Mailboxes": mailboxes,
 			"Messages":  msgs,
 		})
@@ -335,9 +351,14 @@ func New(imapURL, smtpURL string) *echo.Echo {
 
 	e.GET("/logout", func(ectx echo.Context) error {
 		ctx := ectx.(*context)
-		if err := ctx.conn.Logout(); err != nil {
+
+		err := ctx.session.Do(func(c *imapclient.Client) error {
+			return c.Logout()
+		})
+		if err != nil {
 			return fmt.Errorf("failed to logout: %v", err)
 		}
+
 		ctx.setToken("")
 		return ctx.Redirect(http.StatusFound, "/login")
 	})

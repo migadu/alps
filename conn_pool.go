@@ -21,8 +21,16 @@ func generateToken() (string, error) {
 var ErrSessionExpired = errors.New("session expired")
 
 type Session struct {
+	locker sync.Mutex
 	imapConn           *imapclient.Client
 	username, password string
+}
+
+func (s *Session) Do(f func(*imapclient.Client) error) error {
+	s.locker.Lock()
+	defer s.locker.Unlock()
+
+	return f(s.imapConn)
 }
 
 // TODO: expiration timer

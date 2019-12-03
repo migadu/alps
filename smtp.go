@@ -2,8 +2,8 @@ package koushin
 
 import (
 	"fmt"
-	"time"
 	"io"
+	"time"
 
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
@@ -34,10 +34,10 @@ func (s *Server) connectSMTP() (*smtp.Client, error) {
 }
 
 type OutgoingMessage struct {
-	From string
-	To []string
+	From    string
+	To      []string
 	Subject string
-	Text string
+	Text    string
 }
 
 func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
