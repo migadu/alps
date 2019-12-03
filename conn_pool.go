@@ -21,14 +21,14 @@ func generateToken() (string, error) {
 var ErrSessionExpired = errors.New("session expired")
 
 type Session struct {
-	imapConn *imapclient.Client
+	imapConn           *imapclient.Client
 	username, password string
 }
 
 // TODO: expiration timer
 type ConnPool struct {
-	locker sync.Mutex
-	sessions  map[string]*Session
+	locker   sync.Mutex
+	sessions map[string]*Session
 }
 
 func NewConnPool() *ConnPool {

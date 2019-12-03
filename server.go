@@ -10,6 +10,7 @@ import (
 	"time"
 
 	imapclient "github.com/emersion/go-imap/client"
+	"github.com/emersion/go-sasl"
 	"github.com/labstack/echo/v4"
 )
 
@@ -92,9 +93,9 @@ func NewServer(imapURL, smtpURL string) (*Server, error) {
 
 type context struct {
 	echo.Context
-	server *Server
+	server  *Server
 	session *Session
-	conn   *imapclient.Client
+	conn    *imapclient.Client
 }
 
 var aLongTimeAgo = time.Unix(233431200, 0)
@@ -200,6 +201,44 @@ func handleGetPart(ctx *context, raw bool) error {
 
 func handleCompose(ectx echo.Context) error {
 	ctx := ectx.(*context)
+
+	if ctx.Request().Method == http.MethodPost {
+		// TODO: parse address lists
+		from := ctx.FormValue("from")
+		to := ctx.FormValue("to")
+		subject := ctx.FormValue("subject")
+		text := ctx.FormValue("text")
+
+		c, err := ctx.server.connectSMTP()
+		if err != nil {
+			return err
+		}
+		defer c.Close()
+
+		auth := sasl.NewPlainClient("", ctx.session.username, ctx.session.password)
+		if err := c.Auth(auth); err != nil {
+			return echo.NewHTTPError(http.StatusForbidden, err)
+		}
+
+		msg := OutgoingMessage{
+			from: from,
+			to: []string{to},
+			subject: subject,
+			text: text,
+		}
+		if err := sendMessage(c, &msg); err != nil {
+			return err
+		}
+
+		if err := c.Quit(); err != nil {
+			return fmt.Errorf("QUIT failed: %v", err)
+		}
+
+		// TODO: append to IMAP Sent mailbox
+
+		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
+	}
+
 	return ctx.Render(http.StatusOK, "compose.html", nil)
 }
 
