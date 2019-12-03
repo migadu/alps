@@ -6,6 +6,21 @@
 
 <h2>{{.Message.Envelope.Subject}}</h2>
 
-<pre>{{.Body}}</pre>
+{{define "message-part"}}
+	{{.MIMEType}}/{{.MIMESubType}}
+	{{if gt (len .Parts) 0}}
+	<ul>
+		{{range .Parts}}
+			<li>{{template "message-part" .}}</li>
+		{{end}}
+	</ul>
+	{{end}}
+{{end}}
+
+{{template "message-part" .Message.BodyStructure}}
+
+{{if .Body}}
+	<pre>{{.Body}}</pre>
+{{end}}
 
 {{template "foot"}}
