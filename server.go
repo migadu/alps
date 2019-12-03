@@ -238,6 +238,15 @@ func New(imapURL string) *echo.Echo {
 	e.GET("/login", handleLogin)
 	e.POST("/login", handleLogin)
 
+	e.GET("/logout", func(ectx echo.Context) error {
+		ctx := ectx.(*context)
+		if err := ctx.conn.Logout(); err != nil {
+			return err
+		}
+		ctx.setToken("")
+		return ctx.Redirect(http.StatusFound, "/login")
+	})
+
 	e.Static("/assets", "public/assets")
 
 	return e
