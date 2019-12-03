@@ -206,7 +206,7 @@ func listMessages(conn *imapclient.Client, mboxName string) ([]imapMessage, erro
 		return nil, err
 	}
 
-	n := uint32(10)
+	n := uint32(50)
 
 	mbox := conn.Mailbox()
 	from := uint32(1)
