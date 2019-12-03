@@ -203,10 +203,11 @@ func handleGetPart(ctx *context, raw bool) error {
 	}
 
 	return ctx.Render(http.StatusOK, "message.html", map[string]interface{}{
-		"Mailbox":  mbox,
-		"Message":  msg,
-		"Body":     body,
-		"PartPath": partPathString,
+		"Mailbox":     mbox,
+		"Message":     msg,
+		"Body":        body,
+		"PartPath":    partPathString,
+		"MailboxPage": (mbox.Messages - msg.SeqNum) / messagesPerPage,
 	})
 }
 

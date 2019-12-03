@@ -3,7 +3,9 @@
 <h1>koushin</h1>
 
 <p>
-	<a href="/mailbox/{{.Mailbox.Name | pathescape}}">Back</a>
+	<a href="/mailbox/{{.Mailbox.Name | pathescape}}?page={{.MailboxPage}}">
+		Back
+	</a>
 </p>
 
 <h2>

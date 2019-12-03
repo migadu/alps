@@ -213,7 +213,7 @@ func listMessages(conn *imapclient.Client, mboxName string, page int) ([]imapMes
 
 	mbox := conn.Mailbox()
 	to := int(mbox.Messages) - page*messagesPerPage
-	from := to - messagesPerPage
+	from := to - messagesPerPage + 1
 	if from <= 0 {
 		from = 1
 	}
