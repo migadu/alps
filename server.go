@@ -162,6 +162,17 @@ func New(imapURL string) *echo.Echo {
 		e.Logger.Fatal(err)
 	}
 
+	e.HTTPErrorHandler = func(err error, c echo.Context) {
+		code := http.StatusInternalServerError
+		if he, ok := err.(*echo.HTTPError); ok {
+			code = he.Code
+		} else {
+			c.Logger().Error(err)
+		}
+		// TODO: hide internal errors
+		c.String(code, err.Error())
+	}
+
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(ectx echo.Context) error {
 			ctx := &context{Context: ectx, server: s}
