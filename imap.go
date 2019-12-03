@@ -138,7 +138,7 @@ func (msg *imapMessage) TextPartName() string {
 }
 
 type IMAPPartNode struct {
-	Path []int
+	Path     []int
 	MIMEType string
 	Children []IMAPPartNode
 }
@@ -158,7 +158,7 @@ func imapPartTree(bs *imap.BodyStructure, path []int) *IMAPPartNode {
 	}
 
 	node := &IMAPPartNode{
-		Path: path,
+		Path:     path,
 		MIMEType: strings.ToLower(bs.MIMEType + "/" + bs.MIMESubType),
 		Children: make([]IMAPPartNode, len(bs.Parts)),
 	}
