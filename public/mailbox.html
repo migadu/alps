@@ -33,6 +33,7 @@
 		{{if ge .PrevPage 0}}
 			<a href="?page={{.PrevPage}}">Prev</a>
 		{{end}}
+		{{if and (ge .PrevPage 0) (ge .NextPage 0)}}·{{end}}
 		{{if ge .NextPage 0}}
 			<a href="?page={{.NextPage}}">Next</a>
 		{{end}}
