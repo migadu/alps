@@ -2,9 +2,9 @@ package koushin
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
-	"net/url"
 )
 
 func parseUid(s string) (uint32, error) {

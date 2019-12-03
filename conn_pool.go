@@ -21,7 +21,7 @@ func generateToken() (string, error) {
 var ErrSessionExpired = errors.New("session expired")
 
 type Session struct {
-	locker sync.Mutex
+	locker             sync.Mutex
 	imapConn           *imapclient.Client
 	username, password string
 }

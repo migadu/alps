@@ -6,7 +6,13 @@
 	<a href="/mailbox/{{.Mailbox.Name | pathescape}}">Back</a>
 </p>
 
-<h2>{{.Message.Envelope.Subject}}</h2>
+<h2>
+	{{if .Message.Envelope.Subject}}
+		{{.Message.Envelope.Subject}}
+	{{else}}
+		(No subject)
+	{{end}}
+</h2>
 
 {{define "message-part-tree"}}
 	{{/* nested templates can't access the parent's context */}}

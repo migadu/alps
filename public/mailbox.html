@@ -20,10 +20,23 @@
 	<ul>
 		{{range .Messages}}
 			<li><a href="/message/{{$.Mailbox.Name | pathescape}}/{{.Uid}}?part={{.TextPartName}}">
-				{{.Envelope.Subject}}
+				{{if .Envelope.Subject}}
+					{{.Envelope.Subject}}
+				{{else}}
+					(No subject)
+				{{end}}
 			</a></li>
 		{{end}}
 	</ul>
+
+	<p>
+		{{if ge .PrevPage 0}}
+			<a href="?page={{.PrevPage}}">Prev</a>
+		{{end}}
+		{{if ge .NextPage 0}}
+			<a href="?page={{.NextPage}}">Next</a>
+		{{end}}
+	</p>
 {{else}}
 	<p>Mailbox is empty.</p>
 {{end}}

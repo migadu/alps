@@ -3,9 +3,9 @@ package koushin
 import (
 	"bufio"
 	"fmt"
-	"time"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
@@ -50,11 +50,11 @@ func (s *Server) connectSMTP() (*smtp.Client, error) {
 }
 
 type OutgoingMessage struct {
-	From string
-	To []string
-	Subject string
+	From      string
+	To        []string
+	Subject   string
 	InReplyTo string
-	Text string
+	Text      string
 }
 
 func (msg *OutgoingMessage) ToString() string {

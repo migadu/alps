@@ -6,6 +6,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,8 @@ import (
 )
 
 const cookieName = "koushin_session"
+
+const messagesPerPage = 50
 
 type Server struct {
 	imap struct {
@@ -366,6 +369,14 @@ func New(imapURL, smtpURL string) *echo.Echo {
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
 
+		page := 0
+		if pageStr := ctx.QueryParam("page"); pageStr != "" {
+			var err error
+			if page, err = strconv.Atoi(pageStr); err != nil || page < 0 {
+				return echo.NewHTTPError(http.StatusBadRequest, "invalid page index")
+			}
+		}
+
 		var mailboxes []*imap.MailboxInfo
 		var msgs []imapMessage
 		var mbox *imap.MailboxStatus
@@ -374,7 +385,7 @@ func New(imapURL, smtpURL string) *echo.Echo {
 			if mailboxes, err = listMailboxes(c); err != nil {
 				return err
 			}
-			if msgs, err = listMessages(c, mboxName); err != nil {
+			if msgs, err = listMessages(c, mboxName, page); err != nil {
 				return err
 			}
 			mbox = c.Mailbox()
@@ -384,10 +395,20 @@ func New(imapURL, smtpURL string) *echo.Echo {
 			return err
 		}
 
+		prevPage, nextPage := -1, -1
+		if page > 0 {
+			prevPage = page - 1
+		}
+		if (page+1)*messagesPerPage < int(mbox.Messages) {
+			nextPage = page + 1
+		}
+
 		return ctx.Render(http.StatusOK, "mailbox.html", map[string]interface{}{
 			"Mailbox":   mbox,
 			"Mailboxes": mailboxes,
 			"Messages":  msgs,
+			"PrevPage":  prevPage,
+			"NextPage":  nextPage,
 		})
 	})
 

@@ -206,23 +206,23 @@ func (msg *imapMessage) PartTree() *IMAPPartNode {
 	return imapPartTree(msg.BodyStructure, nil)
 }
 
-func listMessages(conn *imapclient.Client, mboxName string) ([]imapMessage, error) {
+func listMessages(conn *imapclient.Client, mboxName string, page int) ([]imapMessage, error) {
 	if err := ensureMailboxSelected(conn, mboxName); err != nil {
 		return nil, err
 	}
 
-	n := uint32(50)
-
 	mbox := conn.Mailbox()
-	from := uint32(1)
-	to := mbox.Messages
-	if mbox.Messages == 0 {
-		return nil, nil
-	} else if mbox.Messages > n {
-		from = mbox.Messages - n
+	to := int(mbox.Messages) - page*messagesPerPage
+	from := to - messagesPerPage
+	if from <= 0 {
+		from = 1
 	}
+	if to <= 0 {
+		return nil, nil
+	}
+
 	seqSet := new(imap.SeqSet)
-	seqSet.AddRange(from, to)
+	seqSet.AddRange(uint32(from), uint32(to))
 
 	fetch := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid, imap.FetchBodyStructure}
 
@@ -232,7 +232,7 @@ func listMessages(conn *imapclient.Client, mboxName string) ([]imapMessage, erro
 		done <- conn.Fetch(seqSet, fetch, ch)
 	}()
 
-	msgs := make([]imapMessage, 0, n)
+	msgs := make([]imapMessage, 0, to-from)
 	for msg := range ch {
 		msgs = append(msgs, imapMessage{msg})
 	}
