@@ -23,15 +23,20 @@ type Server struct {
 
 		pool *ConnPool
 	}
+
+	smtp struct {
+		host     string
+		tls      bool
+		insecure bool
+	}
 }
 
-func NewServer(imapURL string) (*Server, error) {
+func (s *Server) parseIMAPURL(imapURL string) error {
 	u, err := url.Parse(imapURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse IMAP server URL: %v", err)
+		return fmt.Errorf("failed to parse IMAP server URL: %v", err)
 	}
 
-	s := &Server{}
 	s.imap.host = u.Host
 	switch u.Scheme {
 	case "imap":
@@ -41,10 +46,46 @@ func NewServer(imapURL string) (*Server, error) {
 	case "imap+insecure":
 		s.imap.insecure = true
 	default:
-		return nil, fmt.Errorf("unrecognized IMAP URL scheme: %s", u.Scheme)
+		return fmt.Errorf("unrecognized IMAP URL scheme: %s", u.Scheme)
 	}
 
+	return nil
+}
+
+func (s *Server) parseSMTPURL(smtpURL string) error {
+	u, err := url.Parse(smtpURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse SMTP server URL: %v", err)
+	}
+
+	s.smtp.host = u.Host
+	switch u.Scheme {
+	case "smtp":
+		// This space is intentionally left blank
+	case "smtps":
+		s.smtp.tls = true
+	case "smtp+insecure":
+		s.smtp.insecure = true
+	default:
+		return fmt.Errorf("unrecognized SMTP URL scheme: %s", u.Scheme)
+	}
+
+	return nil
+}
+
+func NewServer(imapURL, smtpURL string) (*Server, error) {
+	s := &Server{}
+
+	if err := s.parseIMAPURL(imapURL); err != nil {
+		return nil, err
+	}
 	s.imap.pool = NewConnPool()
+
+	if smtpURL != "" {
+		if err := s.parseSMTPURL(smtpURL); err != nil {
+			return nil, err
+		}
+	}
 
 	return s, nil
 }
@@ -159,10 +200,10 @@ func handleCompose(ectx echo.Context) error {
 	return ctx.Render(http.StatusOK, "compose.html", nil)
 }
 
-func New(imapURL string) *echo.Echo {
+func New(imapURL, smtpURL string) *echo.Echo {
 	e := echo.New()
 
-	s, err := NewServer(imapURL)
+	s, err := NewServer(imapURL, smtpURL)
 	if err != nil {
 		e.Logger.Fatal(err)
 	}
