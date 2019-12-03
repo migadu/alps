@@ -7,17 +7,17 @@
 <h2>{{.Message.Envelope.Subject}}</h2>
 
 {{define "message-part"}}
-	{{.MIMEType}}/{{.MIMESubType}}
-	{{if gt (len .Parts) 0}}
+	<a href="?part={{.PathString}}">{{.MIMEType}}</a>
+	{{if gt (len .Children) 0}}
 	<ul>
-		{{range .Parts}}
+		{{range .Children}}
 			<li>{{template "message-part" .}}</li>
 		{{end}}
 	</ul>
 	{{end}}
 {{end}}
 
-{{template "message-part" .Message.BodyStructure}}
+{{template "message-part" .Message.PartTree}}
 
 {{if .Body}}
 	<pre>{{.Body}}</pre>

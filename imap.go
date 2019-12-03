@@ -137,6 +137,52 @@ func (msg *imapMessage) TextPartName() string {
 	return strings.Join(l, ".")
 }
 
+type IMAPPartNode struct {
+	Path []int
+	MIMEType string
+	Children []IMAPPartNode
+}
+
+func (node *IMAPPartNode) PathString() string {
+	l := make([]string, len(node.Path))
+	for i, partNum := range node.Path {
+		l[i] = strconv.Itoa(partNum)
+	}
+
+	return strings.Join(l, ".")
+}
+
+func imapPartTree(bs *imap.BodyStructure, path []int) *IMAPPartNode {
+	if !strings.EqualFold(bs.MIMEType, "multipart") && len(path) == 0 {
+		path = []int{1}
+	}
+
+	node := &IMAPPartNode{
+		Path: path,
+		MIMEType: strings.ToLower(bs.MIMEType + "/" + bs.MIMESubType),
+		Children: make([]IMAPPartNode, len(bs.Parts)),
+	}
+
+	for i, part := range bs.Parts {
+		num := i + 1
+
+		partPath := append([]int(nil), path...)
+		partPath = append(partPath, num)
+
+		node.Children[i] = *imapPartTree(part, partPath)
+	}
+
+	return node
+}
+
+func (msg *imapMessage) PartTree() *IMAPPartNode {
+	if msg.BodyStructure == nil {
+		return nil
+	}
+
+	return imapPartTree(msg.BodyStructure, nil)
+}
+
 func listMessages(conn *imapclient.Client, mboxName string) ([]imapMessage, error) {
 	if err := ensureMailboxSelected(conn, mboxName); err != nil {
 		return nil, err
@@ -179,9 +225,7 @@ func listMessages(conn *imapclient.Client, mboxName string) ([]imapMessage, erro
 	return msgs, nil
 }
 
-var _ = message.Read
-
-func getMessage(conn *imapclient.Client, mboxName string, uid uint32, partPath []int) (*imap.Message, string, error) {
+func getMessage(conn *imapclient.Client, mboxName string, uid uint32, partPath []int) (*imapMessage, string, error) {
 	if err := ensureMailboxSelected(conn, mboxName); err != nil {
 		return nil, "", err
 	}
@@ -232,5 +276,5 @@ func getMessage(conn *imapclient.Client, mboxName string, uid uint32, partPath [
 		return nil, "", err
 	}
 
-	return msg, string(b), nil
+	return &imapMessage{msg}, string(b), nil
 }
