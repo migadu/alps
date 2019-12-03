@@ -19,7 +19,7 @@ func (s *Server) connectIMAP() (*imapclient.Client, error) {
 	if s.imap.tls {
 		c, err = imapclient.DialTLS(s.imap.host, nil)
 		if err != nil {
-			return nil, fmt.Errorf("failed to connect to IMAPS server: ^v", err)
+			return nil, fmt.Errorf("failed to connect to IMAPS server: %v", err)
 		}
 	} else {
 		c, err = imapclient.Dial(s.imap.host)
