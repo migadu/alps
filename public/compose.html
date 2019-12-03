@@ -8,11 +8,13 @@
 
 <h2>Compose new message</h2>
 
-<form method="post" action="/compose">
+<form method="post" action="">
+	<input type="hidden" name="in_reply_to" value="{{.Message.InReplyTo}}">
+
 	<p>From:</p>
 	<input type="email" name="from" value="{{.Message.From}}">
 	<p>To:</p>
-	<input type="email" name="to" multiple>
+	<input type="email" name="to" multiple value="{{.Message.ToString}}">
 	<p>Subject:</p>
 	<input type="text" name="subject" value="{{.Message.Subject}}">
 	<p>Body:</p>

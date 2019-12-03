@@ -40,6 +40,7 @@
 <hr>
 
 {{if .Body}}
+	<p><a href="{{.Message.Uid}}/reply?part={{.PartPath}}">Reply</a></p>
 	<pre>{{.Body}}</pre>
 {{else}}
 	<p>Can't preview this message part.</p>

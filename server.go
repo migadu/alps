@@ -142,11 +142,7 @@ func handleLogin(ectx echo.Context) error {
 }
 
 func handleGetPart(ctx *context, raw bool) error {
-	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err)
-	}
-	uid, err := parseUid(ctx.Param("uid"))
+	mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
@@ -217,6 +213,61 @@ func handleCompose(ectx echo.Context) error {
 	var msg OutgoingMessage
 	if strings.ContainsRune(ctx.session.username, '@') {
 		msg.From = ctx.session.username
+	}
+
+	if ctx.Request().Method == http.MethodGet && ctx.Param("uid") != "" {
+		// This is a reply
+		mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err)
+		}
+		partPath, err := parsePartPath(ctx.QueryParam("part"))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err)
+		}
+
+		var inReplyTo *imapMessage
+		var part *message.Entity
+		err = ctx.session.Do(func(c *imapclient.Client) error {
+			var err error
+			inReplyTo, part, err = getMessagePart(c, mboxName, uid, partPath)
+			return err
+		})
+		if err != nil {
+			return err
+		}
+
+		mimeType, _, err := part.Header.ContentType()
+		if err != nil {
+			return fmt.Errorf("failed to parse part Content-Type: %v", err)
+		}
+
+		if !strings.HasPrefix(strings.ToLower(mimeType), "text/") {
+			err := fmt.Errorf("cannot reply to \"%v\" part", mimeType)
+			return echo.NewHTTPError(http.StatusBadRequest, err)
+		}
+
+		msg.Text, err = quote(part.Body)
+		if err != nil {
+			return err
+		}
+
+		msg.InReplyTo = inReplyTo.Envelope.MessageId
+		// TODO: populate From from known user addresses and inReplyTo.Envelope.To
+		replyTo := inReplyTo.Envelope.ReplyTo
+		if len(replyTo) == 0 {
+			replyTo = inReplyTo.Envelope.From
+		}
+		if len(replyTo) > 0 {
+			msg.To = make([]string, len(replyTo))
+			for i, to := range replyTo {
+				msg.To[i] = to.MailboxName + "@" + to.HostName
+			}
+		}
+		msg.Subject = inReplyTo.Envelope.Subject
+		if !strings.HasPrefix(strings.ToLower(msg.Subject), "re:") {
+			msg.Subject = "Re: " + msg.Subject
+		}
 	}
 
 	if ctx.Request().Method == http.MethodPost {
@@ -373,6 +424,9 @@ func New(imapURL, smtpURL string) *echo.Echo {
 
 	e.GET("/compose", handleCompose)
 	e.POST("/compose", handleCompose)
+
+	e.GET("/message/:mbox/:uid/reply", handleCompose)
+	e.POST("/message/:mbox/:uid/reply", handleCompose)
 
 	e.Static("/assets", "public/assets")
 

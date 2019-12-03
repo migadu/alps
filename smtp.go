@@ -1,13 +1,29 @@
 package koushin
 
 import (
+	"bufio"
 	"fmt"
-	"io"
 	"time"
+	"io"
+	"strings"
 
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
 )
+
+func quote(r io.Reader) (string, error) {
+	scanner := bufio.NewScanner(r)
+	var builder strings.Builder
+	for scanner.Scan() {
+		builder.WriteString("> ")
+		builder.Write(scanner.Bytes())
+		builder.WriteString("\n")
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("quote: failed to read original message: %s", err)
+	}
+	return builder.String(), nil
+}
 
 func (s *Server) connectSMTP() (*smtp.Client, error) {
 	var c *smtp.Client
@@ -34,10 +50,15 @@ func (s *Server) connectSMTP() (*smtp.Client, error) {
 }
 
 type OutgoingMessage struct {
-	From    string
-	To      []string
+	From string
+	To []string
 	Subject string
-	Text    string
+	InReplyTo string
+	Text string
+}
+
+func (msg *OutgoingMessage) ToString() string {
+	return strings.Join(msg.To, ", ")
 }
 
 func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
@@ -54,6 +75,9 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
 	h.SetAddressList("To", to)
 	if msg.Subject != "" {
 		h.SetText("Subject", msg.Subject)
+	}
+	if msg.InReplyTo != "" {
+		h.Set("In-Reply-To", msg.InReplyTo)
 	}
 
 	mw, err := mail.CreateWriter(w, h)
