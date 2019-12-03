@@ -34,17 +34,17 @@ func (s *Server) connectSMTP() (*smtp.Client, error) {
 }
 
 type OutgoingMessage struct {
-	from string
-	to []string
-	subject string
-	text string
+	From string
+	To []string
+	Subject string
+	Text string
 }
 
 func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
-	from := []*mail.Address{{"", msg.from}}
+	from := []*mail.Address{{"", msg.From}}
 
-	to := make([]*mail.Address, len(msg.to))
-	for i, addr := range msg.to {
+	to := make([]*mail.Address, len(msg.To))
+	for i, addr := range msg.To {
 		to[i] = &mail.Address{"", addr}
 	}
 
@@ -52,7 +52,9 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
 	h.SetDate(time.Now())
 	h.SetAddressList("From", from)
 	h.SetAddressList("To", to)
-	h.SetText("Subject", msg.subject)
+	if msg.Subject != "" {
+		h.SetText("Subject", msg.Subject)
+	}
 
 	mw, err := mail.CreateWriter(w, h)
 	if err != nil {
@@ -68,7 +70,7 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
 	}
 	defer tw.Close()
 
-	if _, err := io.WriteString(tw, msg.text); err != nil {
+	if _, err := io.WriteString(tw, msg.Text); err != nil {
 		return fmt.Errorf("failed to write text part: %v", err)
 	}
 
@@ -84,11 +86,11 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
 }
 
 func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
-	if err := c.Mail(msg.from, nil); err != nil {
+	if err := c.Mail(msg.From, nil); err != nil {
 		return fmt.Errorf("MAIL FROM failed: %v", err)
 	}
 
-	for _, to := range msg.to {
+	for _, to := range msg.To {
 		if err := c.Rcpt(to); err != nil {
 			return fmt.Errorf("RCPT TO failed: %v", err)
 		}

@@ -10,13 +10,13 @@
 
 <form method="post" action="/compose">
 	<p>From:</p>
-	<input type="text" name="from">
+	<input type="email" name="from" value="{{.Message.From}}">
 	<p>To:</p>
-	<input type="text" name="to">
+	<input type="email" name="to" multiple>
 	<p>Subject:</p>
-	<input type="text" name="subject">
+	<input type="text" name="subject" value="{{.Message.Subject}}">
 	<p>Body:</p>
-	<textarea name="text" cols="80" rows="20"></textarea>
+	<textarea name="text" cols="80" rows="20">{{.Message.Text}}</textarea>
 	<br><br>
 	<input type="submit" value="Send">
 </form>

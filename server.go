@@ -202,6 +202,11 @@ func handleGetPart(ctx *context, raw bool) error {
 func handleCompose(ectx echo.Context) error {
 	ctx := ectx.(*context)
 
+	var msg OutgoingMessage
+	if strings.ContainsRune(ctx.session.username, '@') {
+		msg.From = ctx.session.username
+	}
+
 	if ctx.Request().Method == http.MethodPost {
 		// TODO: parse address lists
 		from := ctx.FormValue("from")
@@ -220,12 +225,11 @@ func handleCompose(ectx echo.Context) error {
 			return echo.NewHTTPError(http.StatusForbidden, err)
 		}
 
-		msg := OutgoingMessage{
-			from: from,
-			to: []string{to},
-			subject: subject,
-			text: text,
-		}
+		msg.From = from
+		msg.To = []string{to}
+		msg.Subject = subject
+		msg.Text = text
+
 		if err := sendMessage(c, &msg); err != nil {
 			return err
 		}
@@ -239,7 +243,9 @@ func handleCompose(ectx echo.Context) error {
 		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}
 
-	return ctx.Render(http.StatusOK, "compose.html", nil)
+	return ctx.Render(http.StatusOK, "compose.html", map[string]interface{}{
+		"Message": &msg,
+	})
 }
 
 func New(imapURL, smtpURL string) *echo.Echo {
