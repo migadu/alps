@@ -20,30 +20,35 @@ func generateToken() (string, error) {
 
 var ErrSessionExpired = errors.New("session expired")
 
+type Session struct {
+	imapConn *imapclient.Client
+	username, password string
+}
+
 // TODO: expiration timer
 type ConnPool struct {
 	locker sync.Mutex
-	conns  map[string]*imapclient.Client
+	sessions  map[string]*Session
 }
 
 func NewConnPool() *ConnPool {
 	return &ConnPool{
-		conns: make(map[string]*imapclient.Client),
+		sessions: make(map[string]*Session),
 	}
 }
 
-func (pool *ConnPool) Get(token string) (*imapclient.Client, error) {
+func (pool *ConnPool) Get(token string) (*Session, error) {
 	pool.locker.Lock()
 	defer pool.locker.Unlock()
 
-	conn, ok := pool.conns[token]
+	session, ok := pool.sessions[token]
 	if !ok {
 		return nil, ErrSessionExpired
 	}
-	return conn, nil
+	return session, nil
 }
 
-func (pool *ConnPool) Put(conn *imapclient.Client) (token string, err error) {
+func (pool *ConnPool) Put(imapConn *imapclient.Client, username, password string) (token string, err error) {
 	pool.locker.Lock()
 	defer pool.locker.Unlock()
 
@@ -51,22 +56,26 @@ func (pool *ConnPool) Put(conn *imapclient.Client) (token string, err error) {
 		var err error
 		token, err = generateToken()
 		if err != nil {
-			conn.Logout()
+			imapConn.Logout()
 			return "", err
 		}
 
-		if _, ok := pool.conns[token]; !ok {
+		if _, ok := pool.sessions[token]; !ok {
 			break
 		}
 	}
 
-	pool.conns[token] = conn
+	pool.sessions[token] = &Session{
+		imapConn: imapConn,
+		username: username,
+		password: password,
+	}
 
 	go func() {
-		<-conn.LoggedOut()
+		<-imapConn.LoggedOut()
 
 		pool.locker.Lock()
-		delete(pool.conns, token)
+		delete(pool.sessions, token)
 		pool.locker.Unlock()
 	}()
 

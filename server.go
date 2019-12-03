@@ -93,6 +93,7 @@ func NewServer(imapURL, smtpURL string) (*Server, error) {
 type context struct {
 	echo.Context
 	server *Server
+	session *Session
 	conn   *imapclient.Client
 }
 
@@ -126,7 +127,7 @@ func handleLogin(ectx echo.Context) error {
 			return ctx.Render(http.StatusOK, "login.html", nil)
 		}
 
-		token, err := ctx.server.imap.pool.Put(conn)
+		token, err := ctx.server.imap.pool.Put(conn, username, password)
 		if err != nil {
 			return fmt.Errorf("failed to put connection in pool: %v", err)
 		}
@@ -166,6 +167,8 @@ func handleGetPart(ctx *context, raw bool) error {
 	if raw {
 		disp, dispParams, _ := part.Header.ContentDisposition()
 		filename := dispParams["filename"]
+
+		// TODO: set Content-Length if possible
 
 		if !strings.EqualFold(mimeType, "text/plain") || strings.EqualFold(disp, "attachment") {
 			dispParams := make(map[string]string)
@@ -235,13 +238,14 @@ func New(imapURL, smtpURL string) *echo.Echo {
 				return err
 			}
 
-			ctx.conn, err = ctx.server.imap.pool.Get(cookie.Value)
+			ctx.session, err = ctx.server.imap.pool.Get(cookie.Value)
 			if err == ErrSessionExpired {
 				ctx.setToken("")
 				return ctx.Redirect(http.StatusFound, "/login")
 			} else if err != nil {
 				return err
 			}
+			ctx.conn = ctx.session.imapConn
 
 			return next(ctx)
 		}
