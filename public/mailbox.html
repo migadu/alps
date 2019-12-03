@@ -11,14 +11,14 @@
 <p>Mailboxes:</p>
 <ul>
 	{{range .Mailboxes}}
-		<li><a href="/mailbox/{{.Name}}">{{.Name}}</a></li>
+		<li><a href="/mailbox/{{.Name | pathescape}}">{{.Name}}</a></li>
 	{{end}}
 </ul>
 
 <p>Messages:</p>
 <ul>
 	{{range .Messages}}
-		<li><a href="/message/{{$.Mailbox.Name}}/{{.Uid}}?part={{.TextPartName}}">
+		<li><a href="/message/{{$.Mailbox.Name | pathescape}}/{{.Uid}}?part={{.TextPartName}}">
 			{{.Envelope.Subject}}
 		</a></li>
 	{{end}}

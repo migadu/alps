@@ -3,6 +3,7 @@ package koushin
 import (
 	"html/template"
 	"io"
+	"net/url"
 
 	"github.com/labstack/echo/v4"
 )
@@ -19,6 +20,9 @@ func loadTemplates() (*tmpl, error) {
 	t, err := template.New("drmdb").Funcs(template.FuncMap{
 		"tuple": func(values ...interface{}) []interface{} {
 			return values
+		},
+		"pathescape": func(s string) string {
+			return url.PathEscape(s)
 		},
 	}).ParseGlob("public/*.html")
 	return &tmpl{t}, err

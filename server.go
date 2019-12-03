@@ -142,7 +142,10 @@ func handleLogin(ectx echo.Context) error {
 }
 
 func handleGetPart(ctx *context, raw bool) error {
-	mboxName := ctx.Param("mbox")
+	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
 	uid, err := parseUid(ctx.Param("uid"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -312,6 +315,11 @@ func New(imapURL, smtpURL string) *echo.Echo {
 	e.GET("/mailbox/:mbox", func(ectx echo.Context) error {
 		ctx := ectx.(*context)
 
+		mboxName, err := url.PathUnescape(ctx.Param("mbox"))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err)
+		}
+
 		var mailboxes []*imap.MailboxInfo
 		var msgs []imapMessage
 		var mbox *imap.MailboxStatus
@@ -320,7 +328,7 @@ func New(imapURL, smtpURL string) *echo.Echo {
 			if mailboxes, err = listMailboxes(c); err != nil {
 				return err
 			}
-			if msgs, err = listMessages(c, ctx.Param("mbox")); err != nil {
+			if msgs, err = listMessages(c, mboxName); err != nil {
 				return err
 			}
 			mbox = c.Mailbox()
