@@ -1,0 +1,24 @@
+{{template "head"}}
+
+<h1>koushin</h1>
+
+<p>
+	<a href="/mailbox/INBOX">Back</a>
+</p>
+
+<h2>Compose new message</h2>
+
+<form method="post" action="/compose">
+	<p>From:</p>
+	<input type="text" name="from">
+	<p>To:</p>
+	<input type="text" name="to">
+	<p>Subject:</p>
+	<input type="text" name="subject">
+	<p>Body:</p>
+	<textarea name="text" cols="80" rows="20"></textarea>
+	<br><br>
+	<input type="submit" value="Send">
+</form>
+
+{{template "foot"}}

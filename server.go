@@ -154,6 +154,11 @@ func handleGetPart(ctx *context, raw bool) error {
 	})
 }
 
+func handleCompose(ectx echo.Context) error {
+	ctx := ectx.(*context)
+	return ctx.Render(http.StatusOK, "compose.html", nil)
+}
+
 func New(imapURL string) *echo.Echo {
 	e := echo.New()
 
@@ -246,6 +251,9 @@ func New(imapURL string) *echo.Echo {
 		ctx.setToken("")
 		return ctx.Redirect(http.StatusFound, "/login")
 	})
+
+	e.GET("/compose", handleCompose)
+	e.POST("/compose", handleCompose)
 
 	e.Static("/assets", "public/assets")
 
