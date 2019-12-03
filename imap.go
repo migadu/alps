@@ -19,17 +19,17 @@ func (s *Server) connectIMAP() (*imapclient.Client, error) {
 	if s.imap.tls {
 		c, err = imapclient.DialTLS(s.imap.host, nil)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to connect to IMAPS server: ^v", err)
 		}
 	} else {
 		c, err = imapclient.Dial(s.imap.host)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to connect to IMAP server: %v", err)
 		}
 		if !s.imap.insecure {
 			if err := c.StartTLS(nil); err != nil {
 				c.Close()
-				return nil, err
+				return nil, fmt.Errorf("STARTTLS failed: %v", err)
 			}
 		}
 	}
@@ -50,7 +50,7 @@ func listMailboxes(conn *imapclient.Client) ([]*imap.MailboxInfo, error) {
 	}
 
 	if err := <-done; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list mailboxes: %v", err)
 	}
 
 	sort.Slice(mailboxes, func(i, j int) bool {
@@ -63,7 +63,7 @@ func ensureMailboxSelected(conn *imapclient.Client, mboxName string) error {
 	mbox := conn.Mailbox()
 	if mbox == nil || mbox.Name != mboxName {
 		if _, err := conn.Select(mboxName, false); err != nil {
-			return err
+			return fmt.Errorf("failed to select mailbox: %v", err)
 		}
 	}
 	return nil
@@ -231,7 +231,7 @@ func listMessages(conn *imapclient.Client, mboxName string) ([]imapMessage, erro
 	}
 
 	if err := <-done; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch message list: %v", err)
 	}
 
 	// Reverse list of messages
@@ -271,7 +271,7 @@ func getMessagePart(conn *imapclient.Client, mboxName string, uid uint32, partPa
 
 	ch := make(chan *imap.Message, 1)
 	if err := conn.UidFetch(seqSet, fetch, ch); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to fetch message: %v", err)
 	}
 
 	msg := <-ch
@@ -282,12 +282,12 @@ func getMessagePart(conn *imapclient.Client, mboxName string, uid uint32, partPa
 	headerReader := bufio.NewReader(msg.GetBody(&partHeaderSection))
 	h, err := textproto.ReadHeader(headerReader)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to read part header: %v", err)
 	}
 
 	part, err := message.New(message.Header{h}, msg.GetBody(&partBodySection))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to create message reader: %v", err)
 	}
 
 	return &imapMessage{msg}, part, nil

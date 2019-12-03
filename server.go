@@ -28,7 +28,7 @@ type Server struct {
 func NewServer(imapURL string) (*Server, error) {
 	u, err := url.Parse(imapURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse IMAP server URL: %v", err)
 	}
 
 	s := &Server{}
@@ -87,7 +87,7 @@ func handleLogin(ectx echo.Context) error {
 
 		token, err := ctx.server.imap.pool.Put(conn)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to put connection in pool: %v", err)
 		}
 		ctx.setToken(token)
 
@@ -116,7 +116,7 @@ func handleGetPart(ctx *context, raw bool) error {
 
 	mimeType, _, err := part.Header.ContentType()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse part Content-Type: %v", err)
 	}
 	if len(partPath) == 0 {
 		mimeType = "message/rfc822"
@@ -141,7 +141,7 @@ func handleGetPart(ctx *context, raw bool) error {
 	if strings.HasPrefix(strings.ToLower(mimeType), "text/") {
 		b, err := ioutil.ReadAll(part.Body)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to read part body: %v", err)
 		}
 		body = string(b)
 	}
@@ -246,7 +246,7 @@ func New(imapURL string) *echo.Echo {
 	e.GET("/logout", func(ectx echo.Context) error {
 		ctx := ectx.(*context)
 		if err := ctx.conn.Logout(); err != nil {
-			return err
+			return fmt.Errorf("failed to logout: %v", err)
 		}
 		ctx.setToken("")
 		return ctx.Redirect(http.StatusFound, "/login")
