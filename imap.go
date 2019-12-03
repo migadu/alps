@@ -216,7 +216,9 @@ func listMessages(conn *imapclient.Client, mboxName string) ([]imapMessage, erro
 	mbox := conn.Mailbox()
 	from := uint32(1)
 	to := mbox.Messages
-	if mbox.Messages > n {
+	if mbox.Messages == 0 {
+		return nil, nil
+	} else if mbox.Messages > n {
 		from = mbox.Messages - n
 	}
 	seqSet := new(imap.SeqSet)

@@ -15,13 +15,17 @@
 	{{end}}
 </ul>
 
-<p>Messages:</p>
-<ul>
-	{{range .Messages}}
-		<li><a href="/message/{{$.Mailbox.Name | pathescape}}/{{.Uid}}?part={{.TextPartName}}">
-			{{.Envelope.Subject}}
-		</a></li>
-	{{end}}
-</ul>
+{{if .Messages}}
+	<p>Messages:</p>
+	<ul>
+		{{range .Messages}}
+			<li><a href="/message/{{$.Mailbox.Name | pathescape}}/{{.Uid}}?part={{.TextPartName}}">
+				{{.Envelope.Subject}}
+			</a></li>
+		{{end}}
+	</ul>
+{{else}}
+	<p>Mailbox is empty.</p>
+{{end}}
 
 {{template "foot"}}
