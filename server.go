@@ -286,7 +286,7 @@ func New(imapURL, smtpURL string) *echo.Echo {
 			cookie, err := ctx.Cookie(cookieName)
 			if err == http.ErrNoCookie {
 				// Require auth for all pages except /login
-				if ctx.Path() == "/login" {
+				if ctx.Path() == "/login" || strings.HasPrefix(ctx.Path(), "/assets/") {
 					return next(ctx)
 				} else {
 					return ctx.Redirect(http.StatusFound, "/login")
