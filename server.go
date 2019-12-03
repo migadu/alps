@@ -271,10 +271,11 @@ func handleCompose(ectx echo.Context) error {
 	}
 
 	if ctx.Request().Method == http.MethodPost {
-		from := ctx.FormValue("from")
-		to := parseAddressList(ctx.FormValue("to"))
-		subject := ctx.FormValue("subject")
-		text := ctx.FormValue("text")
+		msg.From = ctx.FormValue("from")
+		msg.To = parseAddressList(ctx.FormValue("to"))
+		msg.Subject = ctx.FormValue("subject")
+		msg.Text = ctx.FormValue("text")
+		msg.InReplyTo = ctx.FormValue("in_reply_to")
 
 		c, err := ctx.server.connectSMTP()
 		if err != nil {
@@ -286,11 +287,6 @@ func handleCompose(ectx echo.Context) error {
 		if err := c.Auth(auth); err != nil {
 			return echo.NewHTTPError(http.StatusForbidden, err)
 		}
-
-		msg.From = from
-		msg.To = to
-		msg.Subject = subject
-		msg.Text = text
 
 		if err := sendMessage(c, &msg); err != nil {
 			return err
