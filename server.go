@@ -8,16 +8,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/labstack/echo/v4"
 	imapclient "github.com/emersion/go-imap/client"
+	"github.com/labstack/echo/v4"
 )
 
 const cookieName = "koushin_session"
 
 type Server struct {
 	imap struct {
-		host string
-		tls bool
+		host     string
+		tls      bool
 		insecure bool
 
 		pool *ConnPool
@@ -51,15 +51,15 @@ func NewServer(imapURL string) (*Server, error) {
 type context struct {
 	echo.Context
 	server *Server
-	conn *imapclient.Client
+	conn   *imapclient.Client
 }
 
 var aLongTimeAgo = time.Unix(233431200, 0)
 
 func (c *context) setToken(token string) {
 	cookie := http.Cookie{
-		Name: cookieName,
-		Value: token,
+		Name:     cookieName,
+		Value:    token,
 		HttpOnly: true,
 		// TODO: domain, secure
 	}
@@ -179,9 +179,9 @@ func New(imapURL string) *echo.Echo {
 		}
 
 		return ctx.Render(http.StatusOK, "mailbox.html", map[string]interface{}{
-			"Mailbox": ctx.conn.Mailbox(),
+			"Mailbox":   ctx.conn.Mailbox(),
 			"Mailboxes": mailboxes,
-			"Messages": msgs,
+			"Messages":  msgs,
 		})
 	})
 
@@ -206,7 +206,7 @@ func New(imapURL string) *echo.Echo {
 		return ctx.Render(http.StatusOK, "message.html", map[string]interface{}{
 			"Mailbox": ctx.conn.Mailbox(),
 			"Message": msg,
-			"Body": body,
+			"Body":    body,
 		})
 	})
 

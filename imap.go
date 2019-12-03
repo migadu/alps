@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/emersion/go-imap"
+	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/textproto"
-	imapclient "github.com/emersion/go-imap/client"
 )
 
 func (s *Server) connectIMAP() (*imapclient.Client, error) {
@@ -41,7 +41,7 @@ func (s *Server) connectIMAP() (*imapclient.Client, error) {
 func listMailboxes(conn *imapclient.Client) ([]*imap.MailboxInfo, error) {
 	ch := make(chan *imap.MailboxInfo, 10)
 	done := make(chan error, 1)
-	go func () {
+	go func() {
 		done <- conn.List("", "*", ch)
 	}()
 
@@ -171,8 +171,8 @@ func listMessages(conn *imapclient.Client, mboxName string) ([]imapMessage, erro
 	}
 
 	// Reverse list of messages
-	for i := len(msgs)/2-1; i >= 0; i-- {
-		opp := len(msgs)-1-i
+	for i := len(msgs)/2 - 1; i >= 0; i-- {
+		opp := len(msgs) - 1 - i
 		msgs[i], msgs[opp] = msgs[opp], msgs[i]
 	}
 

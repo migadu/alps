@@ -23,7 +23,7 @@ var ErrSessionExpired = errors.New("session expired")
 // TODO: expiration timer
 type ConnPool struct {
 	locker sync.Mutex
-	conns map[string]*imapclient.Client
+	conns  map[string]*imapclient.Client
 }
 
 func NewConnPool() *ConnPool {
