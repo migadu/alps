@@ -47,3 +47,11 @@ func parsePartPath(s string) ([]int, error) {
 	}
 	return path, nil
 }
+
+func parseAddressList(s string) []string {
+	l := strings.Split(s, ",")
+	for i, addr := range l {
+		l[i] = strings.TrimSpace(addr)
+	}
+	return l
+}

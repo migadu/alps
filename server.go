@@ -271,9 +271,8 @@ func handleCompose(ectx echo.Context) error {
 	}
 
 	if ctx.Request().Method == http.MethodPost {
-		// TODO: parse address lists
 		from := ctx.FormValue("from")
-		to := ctx.FormValue("to")
+		to := parseAddressList(ctx.FormValue("to"))
 		subject := ctx.FormValue("subject")
 		text := ctx.FormValue("text")
 
@@ -289,7 +288,7 @@ func handleCompose(ectx echo.Context) error {
 		}
 
 		msg.From = from
-		msg.To = []string{to}
+		msg.To = to
 		msg.Subject = subject
 		msg.Text = text
 
