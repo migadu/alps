@@ -1,28 +1,41 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"os"
 
 	"git.sr.ht/~emersion/koushin"
+	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/gommon/log"
 )
 
 func main() {
-	if len(os.Args) != 2 && len(os.Args) != 3 {
-		fmt.Println("usage: koushin <IMAP URL> [SMTP URL]")
+	var options koushin.Options
+	flag.StringVar(&options.Theme, "theme", "", "default theme")
+
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "usage: koushin [options...] <IMAP URL> [SMTP URL]\n")
+		flag.PrintDefaults()
+	}
+
+	flag.Parse()
+
+	if flag.NArg() < 1 || flag.NArg() > 2 {
+		flag.Usage()
 		return
 	}
 
-	imapURL := os.Args[1]
+	options.IMAPURL = flag.Arg(0)
+	options.SMTPURL = flag.Arg(1)
 
-	var smtpURL string
-	if len(os.Args) == 3 {
-		smtpURL = os.Args[2]
+	e := echo.New()
+	if l, ok := e.Logger.(*log.Logger); ok {
+		l.SetHeader("${time_rfc3339} ${level}")
 	}
-
-	e := koushin.New(imapURL, smtpURL)
-	e.Use(middleware.Logger())
+	if err := koushin.New(e, &options); err != nil {
+		e.Logger.Fatal(err)
+	}
 	e.Use(middleware.Recover())
 	e.Logger.Fatal(e.Start(":1323"))
 }

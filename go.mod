@@ -8,6 +8,7 @@ require (
 	github.com/emersion/go-sasl v0.0.0-20190817083125-240c8404624e
 	github.com/emersion/go-smtp v0.12.0
 	github.com/labstack/echo/v4 v4.1.11
+	github.com/labstack/gommon v0.3.0
 	github.com/mattn/go-colorable v0.1.4 // indirect
 	github.com/mattn/go-isatty v0.0.10 // indirect
 	github.com/valyala/fasttemplate v1.1.0 // indirect

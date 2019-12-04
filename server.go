@@ -79,7 +79,7 @@ func (s *Server) parseSMTPURL(smtpURL string) error {
 	return nil
 }
 
-func NewServer(imapURL, smtpURL string) (*Server, error) {
+func newServer(imapURL, smtpURL string) (*Server, error) {
 	s := &Server{}
 
 	if err := s.parseIMAPURL(imapURL); err != nil {
@@ -310,12 +310,25 @@ func handleCompose(ectx echo.Context) error {
 	})
 }
 
-func New(imapURL, smtpURL string) *echo.Echo {
-	e := echo.New()
+func isPublic(path string) bool {
+	return path == "/login" || strings.HasPrefix(path, "/assets/") ||
+		strings.HasPrefix(path, "/themes/")
+}
 
-	s, err := NewServer(imapURL, smtpURL)
+type Options struct {
+	IMAPURL, SMTPURL string
+	Theme            string
+}
+
+func New(e *echo.Echo, options *Options) error {
+	s, err := newServer(options.IMAPURL, options.SMTPURL)
 	if err != nil {
-		e.Logger.Fatal(err)
+		return err
+	}
+
+	e.Renderer, err = loadTemplates(e.Logger, options.Theme)
+	if err != nil {
+		return fmt.Errorf("failed to load templates: %v", err)
 	}
 
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
@@ -336,7 +349,7 @@ func New(imapURL, smtpURL string) *echo.Echo {
 			cookie, err := ctx.Cookie(cookieName)
 			if err == http.ErrNoCookie {
 				// Require auth for all pages except /login
-				if ctx.Path() == "/login" || strings.HasPrefix(ctx.Path(), "/assets/") {
+				if isPublic(ctx.Path()) {
 					return next(ctx)
 				} else {
 					return ctx.Redirect(http.StatusFound, "/login")
@@ -356,11 +369,6 @@ func New(imapURL, smtpURL string) *echo.Echo {
 			return next(ctx)
 		}
 	})
-
-	e.Renderer, err = loadTemplates()
-	if err != nil {
-		e.Logger.Fatal("Failed to load templates:", err)
-	}
 
 	e.GET("/mailbox/:mbox", func(ectx echo.Context) error {
 		ctx := ectx.(*context)
@@ -446,6 +454,7 @@ func New(imapURL, smtpURL string) *echo.Echo {
 	e.POST("/message/:mbox/:uid/reply", handleCompose)
 
 	e.Static("/assets", "public/assets")
+	e.Static("/themes", "public/themes")
 
-	return e
+	return nil
 }

@@ -9,6 +9,7 @@ import (
 )
 
 type tmpl struct {
+	// TODO: add support for multiple themes
 	t *template.Template
 }
 
@@ -16,8 +17,8 @@ func (t *tmpl) Render(w io.Writer, name string, data interface{}, c echo.Context
 	return t.t.ExecuteTemplate(w, name, data)
 }
 
-func loadTemplates() (*tmpl, error) {
-	t, err := template.New("drmdb").Funcs(template.FuncMap{
+func loadTemplates(logger echo.Logger, themeName string) (*tmpl, error) {
+	base, err := template.New("").Funcs(template.FuncMap{
 		"tuple": func(values ...interface{}) []interface{} {
 			return values
 		},
@@ -25,5 +26,21 @@ func loadTemplates() (*tmpl, error) {
 			return url.PathEscape(s)
 		},
 	}).ParseGlob("public/*.html")
-	return &tmpl{t}, err
+	if err != nil {
+		return nil, err
+	}
+
+	theme, err := base.Clone()
+	if err != nil {
+		return nil, err
+	}
+
+	if themeName != "" {
+		logger.Printf("Loading theme \"%s\"", themeName)
+		if _, err := theme.ParseGlob("public/themes/" + themeName + "/*.html"); err != nil {
+			return nil, err
+		}
+	}
+
+	return &tmpl{theme}, err
 }
