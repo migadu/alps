@@ -16,25 +16,33 @@ type Plugin interface {
 }
 
 type luaPlugin struct {
-	filename string
-	state    *lua.LState
+	filename        string
+	state           *lua.LState
+	renderCallbacks map[string]*lua.LFunction
 }
 
 func (p *luaPlugin) Name() string {
 	return p.filename
 }
 
+func (p *luaPlugin) onRender(l *lua.LState) int {
+	name := l.CheckString(1)
+	f := l.CheckFunction(2)
+	p.renderCallbacks[name] = f
+	return 0
+}
+
 func (p *luaPlugin) Render(name string, data interface{}) error {
-	global := p.state.GetGlobal("render")
-	if global == nil {
+	f, ok := p.renderCallbacks[name]
+	if !ok {
 		return nil
 	}
 
 	if err := p.state.CallByParam(lua.P{
-		Fn:      global,
+		Fn:      f,
 		NRet:    0,
 		Protect: true,
-	}, lua.LString(name), luar.New(p.state, data)); err != nil {
+	}, luar.New(p.state, data)); err != nil {
 		return err
 	}
 
@@ -48,11 +56,23 @@ func (p *luaPlugin) Close() error {
 
 func loadLuaPlugin(filename string) (*luaPlugin, error) {
 	l := lua.NewState()
+	p := &luaPlugin{
+		filename:        filename,
+		state:           l,
+		renderCallbacks: make(map[string]*lua.LFunction),
+	}
+
+	mt := l.NewTypeMetatable("koushin")
+	l.SetGlobal("koushin", mt)
+	l.SetField(mt, "on_render", l.NewFunction(p.onRender))
+	// TODO: set_filter
+
 	if err := l.DoFile(filename); err != nil {
+		l.Close()
 		return nil, err
 	}
 
-	return &luaPlugin{filename, l}, nil
+	return p, nil
 }
 
 func loadAllLuaPlugins(log echo.Logger) ([]Plugin, error) {
