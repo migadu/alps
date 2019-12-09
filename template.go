@@ -27,15 +27,20 @@ func (t *tmpl) Render(w io.Writer, name string, data interface{}, ectx echo.Cont
 	return t.t.ExecuteTemplate(w, name, data)
 }
 
-func loadTemplates(logger echo.Logger, themeName string) (*tmpl, error) {
-	base, err := template.New("").Funcs(template.FuncMap{
+func loadTemplates(logger echo.Logger, themeName string, plugins []Plugin) (*tmpl, error) {
+	base := template.New("").Funcs(template.FuncMap{
 		"tuple": func(values ...interface{}) []interface{} {
 			return values
 		},
 		"pathescape": func(s string) string {
 			return url.PathEscape(s)
 		},
-	}).ParseGlob("public/*.html")
+	})
+	for _, p := range plugins {
+		base = base.Funcs(p.Filters())
+	}
+
+	base, err := base.ParseGlob("public/*.html")
 	if err != nil {
 		return nil, err
 	}

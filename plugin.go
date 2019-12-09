@@ -2,6 +2,7 @@ package koushin
 
 import (
 	"fmt"
+	"html/template"
 	"path/filepath"
 
 	"github.com/labstack/echo/v4"
@@ -11,6 +12,7 @@ import (
 
 type Plugin interface {
 	Name() string
+	Filters() template.FuncMap
 	Render(name string, data interface{}) error
 	Close() error
 }
@@ -19,6 +21,7 @@ type luaPlugin struct {
 	filename        string
 	state           *lua.LState
 	renderCallbacks map[string]*lua.LFunction
+	filters         template.FuncMap
 }
 
 func (p *luaPlugin) Name() string {
@@ -32,21 +35,51 @@ func (p *luaPlugin) onRender(l *lua.LState) int {
 	return 0
 }
 
+func (p *luaPlugin) setFilter(l *lua.LState) int {
+	name := l.CheckString(1)
+	f := l.CheckFunction(2)
+	p.filters[name] = func(args... interface{}) string {
+		luaArgs := make([]lua.LValue, len(args))
+		for i, v := range args {
+			luaArgs[i] = luar.New(l, v)
+		}
+
+		err := l.CallByParam(lua.P{
+			Fn: f,
+			NRet: 1,
+			Protect: true,
+		}, luaArgs...)
+		if err != nil {
+			panic(err) // TODO: better error handling?
+		}
+
+		ret := l.CheckString(-1)
+		l.Pop(1)
+		return ret
+	}
+	return 0
+}
+
 func (p *luaPlugin) Render(name string, data interface{}) error {
 	f, ok := p.renderCallbacks[name]
 	if !ok {
 		return nil
 	}
 
-	if err := p.state.CallByParam(lua.P{
+	err := p.state.CallByParam(lua.P{
 		Fn:      f,
 		NRet:    0,
 		Protect: true,
-	}, luar.New(p.state, data)); err != nil {
+	}, luar.New(p.state, data))
+	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (p *luaPlugin) Filters() template.FuncMap {
+	return p.filters
 }
 
 func (p *luaPlugin) Close() error {
@@ -60,12 +93,13 @@ func loadLuaPlugin(filename string) (*luaPlugin, error) {
 		filename:        filename,
 		state:           l,
 		renderCallbacks: make(map[string]*lua.LFunction),
+		filters:         make(template.FuncMap),
 	}
 
 	mt := l.NewTypeMetatable("koushin")
 	l.SetGlobal("koushin", mt)
 	l.SetField(mt, "on_render", l.NewFunction(p.onRender))
-	// TODO: set_filter
+	l.SetField(mt, "set_filter", l.NewFunction(p.setFilter))
 
 	if err := l.DoFile(filename); err != nil {
 		l.Close()

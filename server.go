@@ -128,14 +128,14 @@ func New(e *echo.Echo, options *Options) error {
 		return err
 	}
 
-	e.Renderer, err = loadTemplates(e.Logger, options.Theme)
-	if err != nil {
-		return fmt.Errorf("failed to load templates: %v", err)
-	}
-
 	s.plugins, err = loadAllLuaPlugins(e.Logger)
 	if err != nil {
 		return fmt.Errorf("failed to load plugins: %v", err)
+	}
+
+	e.Renderer, err = loadTemplates(e.Logger, options.Theme, s.plugins)
+	if err != nil {
+		return fmt.Errorf("failed to load templates: %v", err)
 	}
 
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
