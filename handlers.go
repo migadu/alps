@@ -81,14 +81,14 @@ func handleLogin(ectx echo.Context) error {
 	username := ctx.FormValue("username")
 	password := ctx.FormValue("password")
 	if username != "" && password != "" {
-		token, err := ctx.server.sessions.Put(username, password)
+		s, err := ctx.server.sessions.Put(username, password)
 		if err != nil {
 			if _, ok := err.(AuthError); ok {
 				return ctx.Render(http.StatusOK, "login.html", nil)
 			}
 			return fmt.Errorf("failed to put connection in pool: %v", err)
 		}
-		ctx.setToken(token)
+		ctx.setToken(s.Token)
 
 		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}
@@ -99,13 +99,7 @@ func handleLogin(ectx echo.Context) error {
 func handleLogout(ectx echo.Context) error {
 	ctx := ectx.(*context)
 
-	err := ctx.session.Do(func(c *imapclient.Client) error {
-		return c.Logout()
-	})
-	if err != nil {
-		return fmt.Errorf("failed to logout: %v", err)
-	}
-
+	ctx.session.Close()
 	ctx.setToken("")
 	return ctx.Redirect(http.StatusFound, "/login")
 }

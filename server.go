@@ -173,6 +173,7 @@ func New(e *echo.Echo, options *Options) error {
 			} else if err != nil {
 				return err
 			}
+			ctx.session.Ping()
 
 			return next(ctx)
 		}
