@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"sync"
 
 	imapclient "github.com/emersion/go-imap/client"
@@ -20,6 +21,14 @@ func generateToken() (string, error) {
 
 var ErrSessionExpired = errors.New("session expired")
 
+type AuthError struct {
+	cause error
+}
+
+func (err AuthError) Error() string {
+	return fmt.Sprintf("authentication failed: %v", err.cause)
+}
+
 type Session struct {
 	locker             sync.Mutex
 	imapConn           *imapclient.Client
@@ -35,14 +44,30 @@ func (s *Session) Do(f func(*imapclient.Client) error) error {
 
 // TODO: expiration timer
 type SessionManager struct {
-	locker   sync.Mutex
-	sessions map[string]*Session
+	locker        sync.Mutex
+	sessions      map[string]*Session
+	newIMAPClient func() (*imapclient.Client, error)
 }
 
-func NewSessionManager() *SessionManager {
+func NewSessionManager(newIMAPClient func() (*imapclient.Client, error)) *SessionManager {
 	return &SessionManager{
-		sessions: make(map[string]*Session),
+		sessions:      make(map[string]*Session),
+		newIMAPClient: newIMAPClient,
 	}
+}
+
+func (sm *SessionManager) connect(username, password string) (*imapclient.Client, error) {
+	c, err := sm.newIMAPClient()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := c.Login(username, password); err != nil {
+		c.Logout()
+		return nil, AuthError{err}
+	}
+
+	return c, nil
 }
 
 func (sm *SessionManager) Get(token string) (*Session, error) {
@@ -56,7 +81,12 @@ func (sm *SessionManager) Get(token string) (*Session, error) {
 	return session, nil
 }
 
-func (sm *SessionManager) Put(imapConn *imapclient.Client, username, password string) (token string, err error) {
+func (sm *SessionManager) Put(username, password string) (token string, err error) {
+	c, err := sm.connect(username, password)
+	if err != nil {
+		return "", err
+	}
+
 	sm.locker.Lock()
 	defer sm.locker.Unlock()
 
@@ -64,7 +94,7 @@ func (sm *SessionManager) Put(imapConn *imapclient.Client, username, password st
 		var err error
 		token, err = generateToken()
 		if err != nil {
-			imapConn.Logout()
+			c.Logout()
 			return "", err
 		}
 
@@ -74,13 +104,13 @@ func (sm *SessionManager) Put(imapConn *imapclient.Client, username, password st
 	}
 
 	sm.sessions[token] = &Session{
-		imapConn: imapConn,
+		imapConn: c,
 		username: username,
 		password: password,
 	}
 
 	go func() {
-		<-imapConn.LoggedOut()
+		<-c.LoggedOut()
 
 		sm.locker.Lock()
 		delete(sm.sessions, token)

@@ -76,7 +76,7 @@ func (s *Server) parseSMTPURL(smtpURL string) error {
 
 func newServer(imapURL, smtpURL string) (*Server, error) {
 	s := &Server{}
-	s.sessions = NewSessionManager()
+	s.sessions = NewSessionManager(s.connectIMAP)
 
 	if err := s.parseIMAPURL(imapURL); err != nil {
 		return nil, err

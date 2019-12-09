@@ -38,15 +38,15 @@ func (p *luaPlugin) onRender(l *lua.LState) int {
 func (p *luaPlugin) setFilter(l *lua.LState) int {
 	name := l.CheckString(1)
 	f := l.CheckFunction(2)
-	p.filters[name] = func(args... interface{}) string {
+	p.filters[name] = func(args ...interface{}) string {
 		luaArgs := make([]lua.LValue, len(args))
 		for i, v := range args {
 			luaArgs[i] = luar.New(l, v)
 		}
 
 		err := l.CallByParam(lua.P{
-			Fn: f,
-			NRet: 1,
+			Fn:      f,
+			NRet:    1,
 			Protect: true,
 		}, luaArgs...)
 		if err != nil {

@@ -81,18 +81,11 @@ func handleLogin(ectx echo.Context) error {
 	username := ctx.FormValue("username")
 	password := ctx.FormValue("password")
 	if username != "" && password != "" {
-		conn, err := ctx.server.connectIMAP()
+		token, err := ctx.server.sessions.Put(username, password)
 		if err != nil {
-			return err
-		}
-
-		if err := conn.Login(username, password); err != nil {
-			conn.Logout()
-			return ctx.Render(http.StatusOK, "login.html", nil)
-		}
-
-		token, err := ctx.server.sessions.Put(conn, username, password)
-		if err != nil {
+			if _, ok := err.(AuthError); ok {
+				return ctx.Render(http.StatusOK, "login.html", nil)
+			}
 			return fmt.Errorf("failed to put connection in pool: %v", err)
 		}
 		ctx.setToken(token)
