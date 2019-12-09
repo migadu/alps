@@ -1,6 +1,7 @@
 package koushin
 
 import (
+	"fmt"
 	"html/template"
 	"io"
 	"net/url"
@@ -13,7 +14,16 @@ type tmpl struct {
 	t *template.Template
 }
 
-func (t *tmpl) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
+func (t *tmpl) Render(w io.Writer, name string, data interface{}, ectx echo.Context) error {
+	// ectx is the raw *echo.context, not our own *context
+	ctx := ectx.Get("context").(*context)
+
+	for _, plugin := range ctx.server.plugins {
+		if err := plugin.Render(name, data); err != nil {
+			return fmt.Errorf("failed to run plugin '%v': %v", plugin.Name(), err)
+		}
+	}
+
 	return t.t.ExecuteTemplate(w, name, data)
 }
 

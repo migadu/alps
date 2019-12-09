@@ -14,6 +14,13 @@ Templates in `public/themes/<name>/*.html` override default templates in
 `public/*.html`. Assets in `public/themes/<name>/assets/*` are served by the
 HTTP server at `themes/<name>/assets/*`.
 
+## Plugins
+
+Lua plugins are supported. They can be dropped in `plugins/*.lua`.
+
+For now only a single hook is supported: `render(name, data)`. If defined, this
+Lua function will be called prior to rendering a template.
+
 ## License
 
 MIT

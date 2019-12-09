@@ -28,6 +28,8 @@ type Server struct {
 		tls      bool
 		insecure bool
 	}
+
+	plugins []Plugin
 }
 
 func (s *Server) parseIMAPURL(imapURL string) error {
@@ -131,6 +133,11 @@ func New(e *echo.Echo, options *Options) error {
 		return fmt.Errorf("failed to load templates: %v", err)
 	}
 
+	s.plugins, err = loadAllLuaPlugins(e.Logger)
+	if err != nil {
+		return fmt.Errorf("failed to load plugins: %v", err)
+	}
+
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
 		code := http.StatusInternalServerError
 		if he, ok := err.(*echo.HTTPError); ok {
@@ -145,6 +152,7 @@ func New(e *echo.Echo, options *Options) error {
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(ectx echo.Context) error {
 			ctx := &context{Context: ectx, server: s}
+			ctx.Set("context", ctx)
 
 			cookie, err := ctx.Cookie(cookieName)
 			if err == http.ErrNoCookie {

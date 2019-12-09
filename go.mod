@@ -12,7 +12,9 @@ require (
 	github.com/mattn/go-colorable v0.1.4 // indirect
 	github.com/mattn/go-isatty v0.0.10 // indirect
 	github.com/valyala/fasttemplate v1.1.0 // indirect
+	github.com/yuin/gopher-lua v0.0.0-20191128022950-c6266f4fe8d7
 	golang.org/x/crypto v0.0.0-20191202143827-86a70503ff7e // indirect
 	golang.org/x/net v0.0.0-20191126235420-ef20fe5d7933 // indirect
 	golang.org/x/sys v0.0.0-20191128015809-6d18c012aee9 // indirect
+	layeh.com/gopher-luar v1.0.7
 )
