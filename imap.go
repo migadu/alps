@@ -174,10 +174,7 @@ func imapPartTree(bs *imap.BodyStructure, path []int) *IMAPPartNode {
 		path = []int{1}
 	}
 
-	var filename string
-	if strings.EqualFold(bs.Disposition, "attachment") {
-		filename = bs.DispositionParams["filename"]
-	}
+	filename, _ := bs.Filename()
 
 	node := &IMAPPartNode{
 		Path:     path,

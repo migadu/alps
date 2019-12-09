@@ -5,6 +5,8 @@ github.com/dgrijalva/jwt-go v3.2.0+incompatible h1:7qlOGliEKZXTDg6OTjfoBKDXWrumC
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 github.com/emersion/go-imap v1.0.1 h1:J3duplefIrglQtE63hCGYdGLgMjYWqHvkUUEbimbXY8=
 github.com/emersion/go-imap v1.0.1/go.mod h1:MEiDDwwQFcZ+L45Pa68jNGv0qU9kbW+SJzwDpvSfX1s=
+github.com/emersion/go-imap v1.0.3-0.20191208103636-6388a8c8bfdb h1:WSeLbrNhAgjH21BVHUqtfhwX4Rnr31rvMi0Us6m5iWg=
+github.com/emersion/go-imap v1.0.3-0.20191208103636-6388a8c8bfdb/go.mod h1:TjT+1ncDso8j/VXeUHcZeQknho5hjyQLqEIybJJjjDI=
 github.com/emersion/go-message v0.10.4-0.20190609165112-592ace5bc1ca h1:OYhqtJI4eOLvGtRIsUfP87VMJ1J/o6ks1tah9DlYkn4=
 github.com/emersion/go-message v0.10.4-0.20190609165112-592ace5bc1ca/go.mod h1:3h+HsGTCFHmk4ngJ2IV/YPhdlaOcR6hcgqM3yca9v7c=
 github.com/emersion/go-message v0.10.8 h1:1l1Vb+0By9U1ITTH3FgKfJQWQ9sTI3N1smPe6SS3QXY=

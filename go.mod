@@ -3,7 +3,7 @@ module git.sr.ht/~emersion/koushin
 go 1.13
 
 require (
-	github.com/emersion/go-imap v1.0.1
+	github.com/emersion/go-imap v1.0.3-0.20191208103636-6388a8c8bfdb
 	github.com/emersion/go-message v0.10.8
 	github.com/emersion/go-sasl v0.0.0-20190817083125-240c8404624e
 	github.com/emersion/go-smtp v0.12.0

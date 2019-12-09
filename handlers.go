@@ -229,7 +229,7 @@ func handleCompose(ectx echo.Context) error {
 		if len(replyTo) > 0 {
 			msg.To = make([]string, len(replyTo))
 			for i, to := range replyTo {
-				msg.To[i] = to.MailboxName + "@" + to.HostName
+				msg.To[i] = to.Address()
 			}
 		}
 		msg.Subject = inReplyTo.Envelope.Subject
