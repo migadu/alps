@@ -18,8 +18,11 @@ HTTP server at `themes/<name>/assets/*`.
 
 Lua plugins are supported. They can be dropped in `plugins/*.lua`.
 
-For now only a single hook is supported: `render(name, data)`. If defined, this
-Lua function will be called prior to rendering a template.
+API:
+
+* `koushin.on_render(name, f)`: prior to rendering the template `name`, call
+  `f` with the template data
+* `koushin.set_filter(name, f)`: set a template function
 
 ## License
 
