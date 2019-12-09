@@ -15,12 +15,12 @@ const cookieName = "koushin_session"
 const messagesPerPage = 50
 
 type Server struct {
+	sessions *SessionManager
+
 	imap struct {
 		host     string
 		tls      bool
 		insecure bool
-
-		pool *ConnPool
 	}
 
 	smtp struct {
@@ -76,11 +76,11 @@ func (s *Server) parseSMTPURL(smtpURL string) error {
 
 func newServer(imapURL, smtpURL string) (*Server, error) {
 	s := &Server{}
+	s.sessions = NewSessionManager()
 
 	if err := s.parseIMAPURL(imapURL); err != nil {
 		return nil, err
 	}
-	s.imap.pool = NewConnPool()
 
 	if smtpURL != "" {
 		if err := s.parseSMTPURL(smtpURL); err != nil {
@@ -166,7 +166,7 @@ func New(e *echo.Echo, options *Options) error {
 				return err
 			}
 
-			ctx.session, err = ctx.server.imap.pool.Get(cookie.Value)
+			ctx.session, err = ctx.server.sessions.Get(cookie.Value)
 			if err == ErrSessionExpired {
 				ctx.setToken("")
 				return ctx.Redirect(http.StatusFound, "/login")

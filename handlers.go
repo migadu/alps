@@ -91,7 +91,7 @@ func handleLogin(ectx echo.Context) error {
 			return ctx.Render(http.StatusOK, "login.html", nil)
 		}
 
-		token, err := ctx.server.imap.pool.Put(conn, username, password)
+		token, err := ctx.server.sessions.Put(conn, username, password)
 		if err != nil {
 			return fmt.Errorf("failed to put connection in pool: %v", err)
 		}
