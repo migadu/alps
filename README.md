@@ -26,6 +26,11 @@ API:
 * `koushin.set_route(method, path, f)`: register a new HTTP route, `f` will be
   called with the HTTP context
 
+## Contributing
+
+Send patches [on the mailing list](https://lists.sr.ht/~sircmpwn/koushin),
+report bugs [on the issue tracker](https://todo.sr.ht/~sircmpwn/koushin).
+
 ## License
 
 MIT
