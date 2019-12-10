@@ -204,5 +204,9 @@ func New(e *echo.Echo, options *Options) error {
 	e.Static("/assets", "public/assets")
 	e.Static("/themes", "public/themes")
 
+	for _, p := range s.plugins {
+		p.SetRoutes(e.Group(""))
+	}
+
 	return nil
 }

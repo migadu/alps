@@ -23,6 +23,8 @@ API:
 * `koushin.on_render(name, f)`: prior to rendering the template `name`, call
   `f` with the template data
 * `koushin.set_filter(name, f)`: set a template function
+* `koushin.set_route(method, path, f)`: register a new HTTP route, `f` will be
+  called with the HTTP context
 
 ## License
 

@@ -13,8 +13,15 @@ import (
 type Plugin interface {
 	Name() string
 	Filters() template.FuncMap
+	SetRoutes(group *echo.Group)
 	Render(name string, data interface{}) error
 	Close() error
+}
+
+type luaRoute struct {
+	method string
+	path string
+	f *lua.LFunction
 }
 
 type luaPlugin struct {
@@ -22,6 +29,7 @@ type luaPlugin struct {
 	state           *lua.LState
 	renderCallbacks map[string]*lua.LFunction
 	filters         template.FuncMap
+	routes          []luaRoute
 }
 
 func (p *luaPlugin) Name() string {
@@ -60,6 +68,14 @@ func (p *luaPlugin) setFilter(l *lua.LState) int {
 	return 0
 }
 
+func (p *luaPlugin) setRoute(l *lua.LState) int {
+	method := l.CheckString(1)
+	path := l.CheckString(2)
+	f := l.CheckFunction(3)
+	p.routes = append(p.routes, luaRoute{method, path, f})
+	return 0
+}
+
 func (p *luaPlugin) Render(name string, data interface{}) error {
 	f, ok := p.renderCallbacks[name]
 	if !ok {
@@ -82,6 +98,23 @@ func (p *luaPlugin) Filters() template.FuncMap {
 	return p.filters
 }
 
+func (p *luaPlugin) SetRoutes(group *echo.Group) {
+	for _, r := range p.routes {
+		group.Match([]string{r.method}, r.path, func(ctx echo.Context) error {
+			err := p.state.CallByParam(lua.P{
+				Fn: r.f,
+				NRet: 0,
+				Protect: true,
+			}, luar.New(p.state, ctx))
+			if err != nil {
+				return fmt.Errorf("Lua plugin error: %v", err)
+			}
+
+			return nil
+		})
+	}
+}
+
 func (p *luaPlugin) Close() error {
 	p.state.Close()
 	return nil
@@ -100,6 +133,7 @@ func loadLuaPlugin(filename string) (*luaPlugin, error) {
 	l.SetGlobal("koushin", mt)
 	l.SetField(mt, "on_render", l.NewFunction(p.onRender))
 	l.SetField(mt, "set_filter", l.NewFunction(p.setFilter))
+	l.SetField(mt, "set_route", l.NewFunction(p.setRoute))
 
 	if err := l.DoFile(filename); err != nil {
 		l.Close()
