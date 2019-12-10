@@ -10,6 +10,6 @@ type Plugin interface {
 	Name() string
 	Filters() template.FuncMap
 	SetRoutes(group *echo.Group)
-	Render(name string, data interface{}) error
+	Inject(name string, data interface{}) error
 	Close() error
 }

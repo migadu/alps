@@ -19,7 +19,7 @@ func (t *tmpl) Render(w io.Writer, name string, data interface{}, ectx echo.Cont
 	ctx := ectx.Get("context").(*context)
 
 	for _, plugin := range ctx.server.plugins {
-		if err := plugin.Render(name, data); err != nil {
+		if err := plugin.Inject(name, data); err != nil {
 			return fmt.Errorf("failed to run plugin '%v': %v", plugin.Name(), err)
 		}
 	}

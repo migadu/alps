@@ -68,7 +68,7 @@ func (p *luaPlugin) setRoute(l *lua.LState) int {
 	return 0
 }
 
-func (p *luaPlugin) Render(name string, data interface{}) error {
+func (p *luaPlugin) Inject(name string, data interface{}) error {
 	f, ok := p.renderCallbacks[name]
 	if !ok {
 		return nil
