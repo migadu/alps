@@ -13,6 +13,38 @@ import (
 
 const themesDir = "public/themes"
 
+// GlobalRenderData contains data available in all templates.
+type GlobalRenderData struct {
+	LoggedIn bool
+
+	// if logged in
+	Username string
+	// TODO: list of mailboxes
+
+	Extra map[string]interface{}
+}
+
+// RenderData is the base type for templates. It should be extended with new
+// template-specific fields.
+type RenderData struct {
+	Global GlobalRenderData
+	Extra map[string]interface{}
+}
+
+func NewRenderData(ctx *context) *RenderData {
+	global := GlobalRenderData{Extra: make(map[string]interface{})}
+
+	if ctx.session != nil {
+		global.LoggedIn = true
+		global.Username = ctx.session.username
+	}
+
+	return &RenderData{
+		Global: global,
+		Extra: make(map[string]interface{}),
+	}
+}
+
 type renderer struct {
 	base *template.Template
 	themes map[string]*template.Template

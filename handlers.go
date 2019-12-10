@@ -17,11 +17,11 @@ import (
 )
 
 type MailboxRenderData struct {
+	RenderData
 	Mailbox            *imap.MailboxStatus
 	Mailboxes          []*imap.MailboxInfo
 	Messages           []imapMessage
 	PrevPage, NextPage int
-	Extra              map[string]interface{}
 }
 
 func handleGetMailbox(ectx echo.Context) error {
@@ -67,17 +67,18 @@ func handleGetMailbox(ectx echo.Context) error {
 	}
 
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
+		RenderData: *NewRenderData(ctx),
 		Mailbox:   mbox,
 		Mailboxes: mailboxes,
 		Messages:  msgs,
 		PrevPage:  prevPage,
 		NextPage:  nextPage,
-		Extra:     make(map[string]interface{}),
 	})
 }
 
 func handleLogin(ectx echo.Context) error {
 	ctx := ectx.(*context)
+
 	username := ctx.FormValue("username")
 	password := ctx.FormValue("password")
 	if username != "" && password != "" {
@@ -93,7 +94,7 @@ func handleLogin(ectx echo.Context) error {
 		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}
 
-	return ctx.Render(http.StatusOK, "login.html", nil)
+	return ctx.Render(http.StatusOK, "login.html", NewRenderData(ctx))
 }
 
 func handleLogout(ectx echo.Context) error {
@@ -105,12 +106,12 @@ func handleLogout(ectx echo.Context) error {
 }
 
 type MessageRenderData struct {
+	RenderData
 	Mailbox     *imap.MailboxStatus
 	Message     *imapMessage
 	Body        string
 	PartPath    string
 	MailboxPage int
-	Extra       map[string]interface{}
 }
 
 func handleGetPart(ctx *context, raw bool) error {
@@ -172,18 +173,18 @@ func handleGetPart(ctx *context, raw bool) error {
 	}
 
 	return ctx.Render(http.StatusOK, "message.html", &MessageRenderData{
+		RenderData: *NewRenderData(ctx),
 		Mailbox:     mbox,
 		Message:     msg,
 		Body:        body,
 		PartPath:    partPathString,
 		MailboxPage: int(mbox.Messages-msg.SeqNum) / messagesPerPage,
-		Extra:       make(map[string]interface{}),
 	})
 }
 
 type ComposeRenderData struct {
+	RenderData
 	Message *OutgoingMessage
-	Extra   map[string]interface{}
 }
 
 func handleCompose(ectx echo.Context) error {
@@ -281,7 +282,7 @@ func handleCompose(ectx echo.Context) error {
 	}
 
 	return ctx.Render(http.StatusOK, "compose.html", &ComposeRenderData{
+		RenderData: *NewRenderData(ctx),
 		Message: &msg,
-		Extra:   make(map[string]interface{}),
 	})
 }
