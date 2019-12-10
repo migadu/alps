@@ -28,7 +28,7 @@ type GlobalRenderData struct {
 // template-specific fields.
 type RenderData struct {
 	Global GlobalRenderData
-	Extra map[string]interface{}
+	Extra  map[string]interface{}
 }
 
 func NewRenderData(ctx *context) *RenderData {
@@ -41,13 +41,13 @@ func NewRenderData(ctx *context) *RenderData {
 
 	return &RenderData{
 		Global: global,
-		Extra: make(map[string]interface{}),
+		Extra:  make(map[string]interface{}),
 	}
 }
 
 type renderer struct {
-	base *template.Template
-	themes map[string]*template.Template
+	base         *template.Template
+	themes       map[string]*template.Template
 	defaultTheme string
 }
 
@@ -127,8 +127,8 @@ func loadTemplates(logger echo.Logger, defaultTheme string, plugins []Plugin) (*
 	}
 
 	return &renderer{
-		base: base,
-		themes: themes,
+		base:         base,
+		themes:       themes,
 		defaultTheme: defaultTheme,
 	}, nil
 }

@@ -68,11 +68,11 @@ func handleGetMailbox(ectx echo.Context) error {
 
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
 		RenderData: *NewRenderData(ctx),
-		Mailbox:   mbox,
-		Mailboxes: mailboxes,
-		Messages:  msgs,
-		PrevPage:  prevPage,
-		NextPage:  nextPage,
+		Mailbox:    mbox,
+		Mailboxes:  mailboxes,
+		Messages:   msgs,
+		PrevPage:   prevPage,
+		NextPage:   nextPage,
 	})
 }
 
@@ -173,7 +173,7 @@ func handleGetPart(ctx *context, raw bool) error {
 	}
 
 	return ctx.Render(http.StatusOK, "message.html", &MessageRenderData{
-		RenderData: *NewRenderData(ctx),
+		RenderData:  *NewRenderData(ctx),
 		Mailbox:     mbox,
 		Message:     msg,
 		Body:        body,
@@ -283,6 +283,6 @@ func handleCompose(ectx echo.Context) error {
 
 	return ctx.Render(http.StatusOK, "compose.html", &ComposeRenderData{
 		RenderData: *NewRenderData(ctx),
-		Message: &msg,
+		Message:    &msg,
 	})
 }

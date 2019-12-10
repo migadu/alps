@@ -12,8 +12,8 @@ import (
 
 type luaRoute struct {
 	method string
-	path string
-	f *lua.LFunction
+	path   string
+	f      *lua.LFunction
 }
 
 type luaPlugin struct {
@@ -94,8 +94,8 @@ func (p *luaPlugin) SetRoutes(group *echo.Group) {
 	for _, r := range p.routes {
 		group.Match([]string{r.method}, r.path, func(ctx echo.Context) error {
 			err := p.state.CallByParam(lua.P{
-				Fn: r.f,
-				NRet: 0,
+				Fn:      r.f,
+				NRet:    0,
 				Protect: true,
 			}, luar.New(p.state, ctx))
 			if err != nil {
