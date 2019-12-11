@@ -25,7 +25,7 @@ type MailboxRenderData struct {
 }
 
 func handleGetMailbox(ectx echo.Context) error {
-	ctx := ectx.(*context)
+	ctx := ectx.(*Context)
 
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
@@ -43,7 +43,7 @@ func handleGetMailbox(ectx echo.Context) error {
 	var mailboxes []*imap.MailboxInfo
 	var msgs []imapMessage
 	var mbox *imap.MailboxStatus
-	err = ctx.session.Do(func(c *imapclient.Client) error {
+	err = ctx.Session.Do(func(c *imapclient.Client) error {
 		var err error
 		if mailboxes, err = listMailboxes(c); err != nil {
 			return err
@@ -77,12 +77,12 @@ func handleGetMailbox(ectx echo.Context) error {
 }
 
 func handleLogin(ectx echo.Context) error {
-	ctx := ectx.(*context)
+	ctx := ectx.(*Context)
 
 	username := ctx.FormValue("username")
 	password := ctx.FormValue("password")
 	if username != "" && password != "" {
-		s, err := ctx.server.sessions.Put(username, password)
+		s, err := ctx.Server.sessions.Put(username, password)
 		if err != nil {
 			if _, ok := err.(AuthError); ok {
 				return ctx.Render(http.StatusOK, "login.html", nil)
@@ -98,9 +98,9 @@ func handleLogin(ectx echo.Context) error {
 }
 
 func handleLogout(ectx echo.Context) error {
-	ctx := ectx.(*context)
+	ctx := ectx.(*Context)
 
-	ctx.session.Close()
+	ctx.Session.Close()
 	ctx.setToken("")
 	return ctx.Redirect(http.StatusFound, "/login")
 }
@@ -114,7 +114,7 @@ type MessageRenderData struct {
 	MailboxPage int
 }
 
-func handleGetPart(ctx *context, raw bool) error {
+func handleGetPart(ctx *Context, raw bool) error {
 	mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -128,7 +128,7 @@ func handleGetPart(ctx *context, raw bool) error {
 	var msg *imapMessage
 	var part *message.Entity
 	var mbox *imap.MailboxStatus
-	err = ctx.session.Do(func(c *imapclient.Client) error {
+	err = ctx.Session.Do(func(c *imapclient.Client) error {
 		var err error
 		msg, part, err = getMessagePart(c, mboxName, uid, partPath)
 		mbox = c.Mailbox()
@@ -188,11 +188,11 @@ type ComposeRenderData struct {
 }
 
 func handleCompose(ectx echo.Context) error {
-	ctx := ectx.(*context)
+	ctx := ectx.(*Context)
 
 	var msg OutgoingMessage
-	if strings.ContainsRune(ctx.session.username, '@') {
-		msg.From = ctx.session.username
+	if strings.ContainsRune(ctx.Session.username, '@') {
+		msg.From = ctx.Session.username
 	}
 
 	if ctx.Request().Method == http.MethodGet && ctx.Param("uid") != "" {
@@ -208,7 +208,7 @@ func handleCompose(ectx echo.Context) error {
 
 		var inReplyTo *imapMessage
 		var part *message.Entity
-		err = ctx.session.Do(func(c *imapclient.Client) error {
+		err = ctx.Session.Do(func(c *imapclient.Client) error {
 			var err error
 			inReplyTo, part, err = getMessagePart(c, mboxName, uid, partPath)
 			return err
@@ -257,13 +257,13 @@ func handleCompose(ectx echo.Context) error {
 		msg.Text = ctx.FormValue("text")
 		msg.InReplyTo = ctx.FormValue("in_reply_to")
 
-		c, err := ctx.server.connectSMTP()
+		c, err := ctx.Server.connectSMTP()
 		if err != nil {
 			return err
 		}
 		defer c.Close()
 
-		auth := sasl.NewPlainClient("", ctx.session.username, ctx.session.password)
+		auth := sasl.NewPlainClient("", ctx.Session.username, ctx.Session.password)
 		if err := c.Auth(auth); err != nil {
 			return echo.NewHTTPError(http.StatusForbidden, err)
 		}

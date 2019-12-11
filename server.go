@@ -91,15 +91,20 @@ func newServer(imapURL, smtpURL string) (*Server, error) {
 	return s, nil
 }
 
-type context struct {
+// Context is the context used by HTTP handlers.
+//
+// Use a type assertion to get it from a echo.Context:
+//
+//     ctx := ectx.(*koushin.Context)
+type Context struct {
 	echo.Context
-	server  *Server
-	session *Session
+	Server  *Server
+	Session *Session
 }
 
 var aLongTimeAgo = time.Unix(233431200, 0)
 
-func (c *context) setToken(token string) {
+func (c *Context) setToken(token string) {
 	cookie := http.Cookie{
 		Name:     cookieName,
 		Value:    token,
@@ -151,7 +156,7 @@ func New(e *echo.Echo, options *Options) error {
 
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(ectx echo.Context) error {
-			ctx := &context{Context: ectx, server: s}
+			ctx := &Context{Context: ectx, Server: s}
 			ctx.Set("context", ctx)
 
 			cookie, err := ctx.Cookie(cookieName)
@@ -166,14 +171,14 @@ func New(e *echo.Echo, options *Options) error {
 				return err
 			}
 
-			ctx.session, err = ctx.server.sessions.Get(cookie.Value)
+			ctx.Session, err = ctx.Server.sessions.Get(cookie.Value)
 			if err == ErrSessionExpired {
 				ctx.setToken("")
 				return ctx.Redirect(http.StatusFound, "/login")
 			} else if err != nil {
 				return err
 			}
-			ctx.session.Ping()
+			ctx.Session.Ping()
 
 			return next(ctx)
 		}
@@ -182,11 +187,11 @@ func New(e *echo.Echo, options *Options) error {
 	e.GET("/mailbox/:mbox", handleGetMailbox)
 
 	e.GET("/message/:mbox/:uid", func(ectx echo.Context) error {
-		ctx := ectx.(*context)
+		ctx := ectx.(*Context)
 		return handleGetPart(ctx, false)
 	})
 	e.GET("/message/:mbox/:uid/raw", func(ectx echo.Context) error {
-		ctx := ectx.(*context)
+		ctx := ectx.(*Context)
 		return handleGetPart(ctx, true)
 	})
 

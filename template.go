@@ -31,12 +31,12 @@ type RenderData struct {
 	Extra  map[string]interface{}
 }
 
-func NewRenderData(ctx *context) *RenderData {
+func NewRenderData(ctx *Context) *RenderData {
 	global := GlobalRenderData{Extra: make(map[string]interface{})}
 
-	if ctx.session != nil {
+	if ctx.Session != nil {
 		global.LoggedIn = true
-		global.Username = ctx.session.username
+		global.Username = ctx.Session.username
 	}
 
 	return &RenderData{
@@ -52,10 +52,10 @@ type renderer struct {
 }
 
 func (r *renderer) Render(w io.Writer, name string, data interface{}, ectx echo.Context) error {
-	// ectx is the raw *echo.context, not our own *context
-	ctx := ectx.Get("context").(*context)
+	// ectx is the raw *echo.context, not our own *Context
+	ctx := ectx.Get("context").(*Context)
 
-	for _, plugin := range ctx.server.plugins {
+	for _, plugin := range ctx.Server.plugins {
 		if err := plugin.Inject(name, data); err != nil {
 			return fmt.Errorf("failed to run plugin '%v': %v", plugin.Name(), err)
 		}
