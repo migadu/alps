@@ -86,8 +86,20 @@ func (p *luaPlugin) Inject(name string, data interface{}) error {
 	return nil
 }
 
-func (p *luaPlugin) Filters() template.FuncMap {
-	return p.filters
+func (p *luaPlugin) LoadTemplate(t *template.Template) error {
+	t.Funcs(p.filters)
+
+	paths, err := filepath.Glob(filepath.Dir(p.filename) + "/public/*.html")
+	if err != nil {
+		return err
+	}
+	if len(paths) > 0 {
+		if _, err := t.ParseFiles(paths...); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (p *luaPlugin) SetRoutes(group *echo.Group) {
@@ -136,7 +148,7 @@ func loadLuaPlugin(filename string) (*luaPlugin, error) {
 }
 
 func loadAllLuaPlugins(log echo.Logger) ([]Plugin, error) {
-	filenames, err := filepath.Glob("plugins/*.lua")
+	filenames, err := filepath.Glob(pluginDir + "/*/main.lua")
 	if err != nil {
 		return nil, fmt.Errorf("filepath.Glob failed: %v", err)
 	}

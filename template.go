@@ -92,13 +92,16 @@ func loadTemplates(logger echo.Logger, defaultTheme string, plugins []Plugin) (*
 			return url.PathEscape(s)
 		},
 	})
-	for _, p := range plugins {
-		base = base.Funcs(p.Filters())
-	}
 
 	base, err := base.ParseGlob("public/*.html")
 	if err != nil {
 		return nil, err
+	}
+
+	for _, p := range plugins {
+		if err := p.LoadTemplate(base); err != nil {
+			return nil, fmt.Errorf("failed to load template for plugin '%v': %v", p.Name(), err)
+		}
 	}
 
 	themes := make(map[string]*template.Template)

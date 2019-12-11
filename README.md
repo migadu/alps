@@ -18,7 +18,7 @@ HTTP server at `themes/<name>/assets/*`.
 
 ## Plugins
 
-Lua plugins are supported. They can be dropped in `plugins/*.lua`.
+Lua plugins are supported. They can be dropped in `plugins/<name>/main.lua`.
 
 API:
 
@@ -27,6 +27,8 @@ API:
 * `koushin.set_filter(name, f)`: set a template function
 * `koushin.set_route(method, path, f)`: register a new HTTP route, `f` will be
   called with the HTTP context
+
+Plugins can provide their own templates in `plugins/<name>/public/*.html`.
 
 ## Contributing
 
