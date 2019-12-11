@@ -21,6 +21,7 @@ type GlobalRenderData struct {
 	Username string
 	// TODO: list of mailboxes
 
+	// Additional plugin-specific data
 	Extra map[string]interface{}
 }
 
@@ -28,7 +29,8 @@ type GlobalRenderData struct {
 // template-specific fields.
 type RenderData struct {
 	Global GlobalRenderData
-	Extra  map[string]interface{}
+	// Additional plugin-specific data
+	Extra map[string]interface{}
 }
 
 func NewRenderData(ctx *Context) *RenderData {

@@ -23,8 +23,9 @@ func generateToken() (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-var ErrSessionExpired = errors.New("session expired")
+var errSessionExpired = errors.New("session expired")
 
+// AuthError wraps an authentication error.
 type AuthError struct {
 	cause error
 }
@@ -33,6 +34,7 @@ func (err AuthError) Error() string {
 	return fmt.Sprintf("authentication failed: %v", err.cause)
 }
 
+// Session is an active user session. It may also hold an IMAP connection.
 type Session struct {
 	manager            *SessionManager
 	username, password string
@@ -49,6 +51,8 @@ func (s *Session) ping() {
 	s.pings <- struct{}{}
 }
 
+// Do executes an IMAP operation on this session. The IMAP client can only be
+// used from inside f.
 func (s *Session) Do(f func(*imapclient.Client) error) error {
 	s.locker.Lock()
 	defer s.locker.Unlock()
@@ -65,6 +69,7 @@ func (s *Session) Do(f func(*imapclient.Client) error) error {
 	return f(s.imapConn)
 }
 
+// Close destroys the session. This can be used to log the user out.
 func (s *Session) Close() {
 	select {
 	case <-s.closed:
@@ -74,6 +79,8 @@ func (s *Session) Close() {
 	}
 }
 
+// SessionManager keeps track of active sessions. It connects and re-connects
+// to the upstream IMAP server as necessary. It prunes expired sessions.
 type SessionManager struct {
 	newIMAPClient func() (*imapclient.Client, error)
 
@@ -113,6 +120,8 @@ func (sm *SessionManager) get(token string) (*Session, error) {
 	return session, nil
 }
 
+// Put connects to the IMAP server and creates a new session. If authentication
+// fails, the error will be of type AuthError.
 func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	c, err := sm.connect(username, password)
 	if err != nil {

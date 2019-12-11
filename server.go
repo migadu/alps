@@ -14,9 +14,10 @@ const cookieName = "koushin_session"
 
 const messagesPerPage = 50
 
+// Server holds all the koushin server state.
 type Server struct {
 	Sessions *SessionManager
-	Plugins []Plugin
+	Plugins  []Plugin
 
 	imap struct {
 		host     string
@@ -98,11 +99,13 @@ func newServer(imapURL, smtpURL string) (*Server, error) {
 type Context struct {
 	echo.Context
 	Server  *Server
-	Session *Session
+	Session *Session // nil if user isn't logged in
 }
 
 var aLongTimeAgo = time.Unix(233431200, 0)
 
+// SetSession sets a cookie for the provided session. Passing a nil session
+// unsets the cookie.
 func (ctx *Context) SetSession(s *Session) {
 	cookie := http.Cookie{
 		Name:     cookieName,
@@ -127,6 +130,7 @@ type Options struct {
 	Theme            string
 }
 
+// New creates a new server.
 func New(e *echo.Echo, options *Options) error {
 	s, err := newServer(options.IMAPURL, options.SMTPURL)
 	if err != nil {
