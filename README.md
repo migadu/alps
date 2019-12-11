@@ -1,5 +1,7 @@
 # koushin
 
+[![GoDoc](https://godoc.org/git.sr.ht/~emersion/koushin?status.svg)](https://godoc.org/git.sr.ht/~emersion/koushin)
+
 ## Usage
 
     go run ./cmd/koushin imaps://mail.example.org:993 smtps://mail.example.org:465
