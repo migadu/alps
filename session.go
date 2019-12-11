@@ -45,7 +45,7 @@ type Session struct {
 	imapConn *imapclient.Client // protected by locker, can be nil
 }
 
-func (s *Session) Ping() {
+func (s *Session) ping() {
 	s.pings <- struct{}{}
 }
 
@@ -102,7 +102,7 @@ func (sm *SessionManager) connect(username, password string) (*imapclient.Client
 	return c, nil
 }
 
-func (sm *SessionManager) Get(token string) (*Session, error) {
+func (sm *SessionManager) get(token string) (*Session, error) {
 	sm.locker.Lock()
 	defer sm.locker.Unlock()
 

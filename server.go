@@ -15,7 +15,8 @@ const cookieName = "koushin_session"
 const messagesPerPage = 50
 
 type Server struct {
-	sessions *SessionManager
+	Sessions *SessionManager
+	Plugins []Plugin
 
 	imap struct {
 		host     string
@@ -28,8 +29,6 @@ type Server struct {
 		tls      bool
 		insecure bool
 	}
-
-	plugins []Plugin
 }
 
 func (s *Server) parseIMAPURL(imapURL string) error {
@@ -76,7 +75,7 @@ func (s *Server) parseSMTPURL(smtpURL string) error {
 
 func newServer(imapURL, smtpURL string) (*Server, error) {
 	s := &Server{}
-	s.sessions = newSessionManager(s.connectIMAP)
+	s.Sessions = newSessionManager(s.connectIMAP)
 
 	if err := s.parseIMAPURL(imapURL); err != nil {
 		return nil, err
@@ -134,12 +133,12 @@ func New(e *echo.Echo, options *Options) error {
 		return err
 	}
 
-	s.plugins, err = loadAllLuaPlugins(e.Logger)
+	s.Plugins, err = loadAllLuaPlugins(e.Logger)
 	if err != nil {
 		return fmt.Errorf("failed to load plugins: %v", err)
 	}
 
-	e.Renderer, err = loadTemplates(e.Logger, options.Theme, s.plugins)
+	e.Renderer, err = loadTemplates(e.Logger, options.Theme, s.Plugins)
 	if err != nil {
 		return fmt.Errorf("failed to load templates: %v", err)
 	}
@@ -172,14 +171,14 @@ func New(e *echo.Echo, options *Options) error {
 				return err
 			}
 
-			ctx.Session, err = ctx.Server.sessions.Get(cookie.Value)
+			ctx.Session, err = ctx.Server.Sessions.get(cookie.Value)
 			if err == ErrSessionExpired {
 				ctx.SetSession(nil)
 				return ctx.Redirect(http.StatusFound, "/login")
 			} else if err != nil {
 				return err
 			}
-			ctx.Session.Ping()
+			ctx.Session.ping()
 
 			return next(ctx)
 		}
@@ -210,7 +209,7 @@ func New(e *echo.Echo, options *Options) error {
 	e.Static("/assets", "public/assets")
 	e.Static("/themes", "public/themes")
 
-	for _, p := range s.plugins {
+	for _, p := range s.Plugins {
 		p.SetRoutes(e.Group(""))
 	}
 

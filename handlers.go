@@ -82,7 +82,7 @@ func handleLogin(ectx echo.Context) error {
 	username := ctx.FormValue("username")
 	password := ctx.FormValue("password")
 	if username != "" && password != "" {
-		s, err := ctx.Server.sessions.Put(username, password)
+		s, err := ctx.Server.Sessions.Put(username, password)
 		if err != nil {
 			if _, ok := err.(AuthError); ok {
 				return ctx.Render(http.StatusOK, "login.html", nil)

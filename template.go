@@ -55,7 +55,7 @@ func (r *renderer) Render(w io.Writer, name string, data interface{}, ectx echo.
 	// ectx is the raw *echo.context, not our own *Context
 	ctx := ectx.Get("context").(*Context)
 
-	for _, plugin := range ctx.Server.plugins {
+	for _, plugin := range ctx.Server.Plugins {
 		if err := plugin.Inject(name, data); err != nil {
 			return fmt.Errorf("failed to run plugin '%v': %v", plugin.Name(), err)
 		}
