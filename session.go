@@ -34,10 +34,9 @@ func (err AuthError) Error() string {
 }
 
 type Session struct {
-	Token string
-
 	manager            *SessionManager
 	username, password string
+	token              string
 	closed             chan struct{}
 	pings              chan struct{}
 	timer              *time.Timer
@@ -138,13 +137,13 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	}
 
 	s := &Session{
-		Token:    token,
 		manager:  sm,
 		closed:   make(chan struct{}),
 		pings:    make(chan struct{}, 5),
 		imapConn: c,
 		username: username,
 		password: password,
+		token:    token,
 	}
 	sm.sessions[token] = s
 

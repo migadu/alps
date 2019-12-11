@@ -89,7 +89,7 @@ func handleLogin(ectx echo.Context) error {
 			}
 			return fmt.Errorf("failed to put connection in pool: %v", err)
 		}
-		ctx.setToken(s.Token)
+		ctx.SetSession(s)
 
 		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}
@@ -101,7 +101,7 @@ func handleLogout(ectx echo.Context) error {
 	ctx := ectx.(*Context)
 
 	ctx.Session.Close()
-	ctx.setToken("")
+	ctx.SetSession(nil)
 	return ctx.Redirect(http.StatusFound, "/login")
 }
 

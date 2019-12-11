@@ -104,17 +104,18 @@ type Context struct {
 
 var aLongTimeAgo = time.Unix(233431200, 0)
 
-func (c *Context) setToken(token string) {
+func (ctx *Context) SetSession(s *Session) {
 	cookie := http.Cookie{
 		Name:     cookieName,
-		Value:    token,
 		HttpOnly: true,
 		// TODO: domain, secure
 	}
-	if token == "" {
+	if s != nil {
+		cookie.Value = s.token
+	} else {
 		cookie.Expires = aLongTimeAgo // unset the cookie
 	}
-	c.SetCookie(&cookie)
+	ctx.SetCookie(&cookie)
 }
 
 func isPublic(path string) bool {
@@ -173,7 +174,7 @@ func New(e *echo.Echo, options *Options) error {
 
 			ctx.Session, err = ctx.Server.sessions.Get(cookie.Value)
 			if err == ErrSessionExpired {
-				ctx.setToken("")
+				ctx.SetSession(nil)
 				return ctx.Redirect(http.StatusFound, "/login")
 			} else if err != nil {
 				return err
