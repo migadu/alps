@@ -81,7 +81,7 @@ type SessionManager struct {
 	sessions map[string]*Session // protected by locker
 }
 
-func NewSessionManager(newIMAPClient func() (*imapclient.Client, error)) *SessionManager {
+func newSessionManager(newIMAPClient func() (*imapclient.Client, error)) *SessionManager {
 	return &SessionManager{
 		sessions:      make(map[string]*Session),
 		newIMAPClient: newIMAPClient,
