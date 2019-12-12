@@ -176,7 +176,7 @@ func New(e *echo.Echo, options *Options) error {
 			}
 
 			ctx.Session, err = ctx.Server.Sessions.get(cookie.Value)
-			if err == ErrSessionExpired {
+			if err == errSessionExpired {
 				ctx.SetSession(nil)
 				return ctx.Redirect(http.StatusFound, "/login")
 			} else if err != nil {

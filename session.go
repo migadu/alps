@@ -115,7 +115,7 @@ func (sm *SessionManager) get(token string) (*Session, error) {
 
 	session, ok := sm.sessions[token]
 	if !ok {
-		return nil, ErrSessionExpired
+		return nil, errSessionExpired
 	}
 	return session, nil
 }
