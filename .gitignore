@@ -1,3 +1,4 @@
 /koushin
-/public/themes
-/plugins
+/public/themes/*
+!/public/themes/sourcehut
+/plugins/*
