@@ -1,0 +1,95 @@
+@import "base";
+
+html, body {
+  height: 100%;
+  min-height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.header-tabbed {
+  margin-bottom: 0;
+
+  h2 {
+    line-height: 1;
+  }
+}
+
+.nav.flex-column {
+  .nav-link {
+    padding: 0.1rem 15px 0.1rem 30px;
+
+    &:hover, &.active {
+      background: #ddd;
+    }
+  }
+
+  .nav.flex-column {
+    margin-left: 1rem;
+  }
+}
+
+.mailbox-container, .message-container {
+  padding: 0;
+  flex-grow: 1;
+  display: flex;
+
+  & > .row {
+    flex-grow: 1;
+  }
+}
+
+.mailboxes-column {
+  border-right: 3px #ddd solid;
+  padding: 0;
+}
+
+.messages-column {
+  padding: 0;
+
+  .nav.flex-column .nav-link {
+    padding: 0.1rem 15px 0.1rem 15px;
+  }
+
+  .date {
+    min-width: 11rem;
+    display: inline-block;
+    text-align: right;
+  }
+
+  .from {
+    min-width: 12rem;
+    display: inline-block;
+  }
+}
+
+.body-column {
+  border-right: 3px #ddd solid;
+
+  pre {
+    background: transparent;
+    max-width: 972px; // HACK
+    overflow-x: auto;
+    margin-bottom: 0;
+  }
+}
+
+.parts-column {
+  padding-left: 0;
+
+  .nav.flex-column .nav-link {
+    padding: 0.1rem 15px 0.1rem 15px;
+  }
+}
+
+.text-normal {
+  color: $black;
+}
+
+.message-tabs {
+  padding: 0;
+}

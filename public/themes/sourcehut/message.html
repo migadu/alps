@@ -1,0 +1,86 @@
+{{template "head.html"}}
+{{template "nav.html"}}
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-md-12 header-tabbed">
+      <h2 style="margin-bottom: 1rem;" class="d-block">
+        {{if .Message.Envelope.Subject}}
+          {{.Message.Envelope.Subject}}
+        {{else}}
+          (No subject)
+        {{end}}
+      </h2>
+      <div class="container message-tabs">
+        <ul class="nav nav-tabs">
+          <li class="nav-item">
+            <a class="nav-link active" href="#">View message</a>
+          </li>
+          <li class="nav-item">
+            <a
+              class="nav-link"
+              href="{{.Message.Uid}}/reply?part={{.PartPath}}"
+            >Reply</a>
+          </li>
+          <li class="mr-auto d-none d-sm-flex"></li>
+          <li class="nav-item">
+            <a
+              class="nav-link"
+              href="/mailbox/{{.Mailbox.Name | pathescape}}?page={{.MailboxPage}}"
+            >
+              <span class="icon icon-caret-left">
+                {{template "caret-left.html"}}
+              </span>
+              Back
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{define "message-part-tree"}}
+	{{/* nested templates can't access the parent's context */}}
+	{{$ = index . 0}}
+	{{with index . 1}}
+		<a
+      class="nav-link"
+			{{if .IsText}}
+				href="{{$.Message.Uid}}?part={{.PathString}}"
+			{{else}}
+				href="{{$.Message.Uid}}/raw?part={{.PathString}}"
+			{{end}}
+		>
+			{{if eq $.PartPath .PathString}}<strong>{{end}}
+			{{.String}}
+			{{if eq $.PartPath .PathString}}</strong>{{end}}
+		</a>
+		{{if gt (len .Children) 0}}
+		<ul class="nav flex-column">
+			{{range .Children}}
+				<li class="nav-item">{{template "message-part-tree" (tuple $ .)}}</li>
+			{{end}}
+		</ul>
+		{{end}}
+	{{end}}
+{{end}}
+
+<div class="container message-container">
+  <div class="row">
+    <div class="col-md-10 body-column">
+      {{if .Body}}
+        <pre>{{.Body}}</pre>
+      {{else}}
+        <p>Can't preview this message part.</p>
+        <a href="{{.Message.Uid}}/raw?part={{.PartPath}}">Download</a>
+      {{end}}
+    </div>
+    <div class="col-md-2 parts-column">
+      {{template "message-part-tree" (tuple $ .Message.PartTree)}}
+    </div>
+  </div>
+</div>
+
+{{template "foot.html"}}
+

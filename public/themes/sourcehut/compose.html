@@ -1,0 +1,79 @@
+{{template "head.html"}}
+{{template "nav.html"}}
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-md-12 header-tabbed">
+      <h2>INBOX</h2>
+      <ul class="nav nav-tabs">
+        <li class="nav-item">
+          <a class="nav-link" href="/mailbox/INBOX" >Mail</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link active" href="/compose">Compose</a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
+<div class="container">
+  <form method="post" class="col-md-12">
+    <input type="hidden" name="in_reply_to" value="{{.Message.InReplyTo}}">
+    <div class="row">
+      <div class="form-group col-md-6">
+        <label for="from">From</label>
+        <input
+          type="email"
+          name="from"
+          id="from"
+          class="form-control"
+          value="{{.Message.From}}" />
+      </div>
+      <div class="form-group col-md-6">
+        <label for="to">To</label>
+        <input
+          type="email"
+          name="to"
+          id="to"
+          class="form-control"
+          value="{{.Message.ToString}}"
+          multiple
+          {{ if not .Message.To }}
+          autofocus
+          {{ end }} />
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="subject">Subject</label>
+      <input
+        type="text"
+        name="subject"
+        id="subject"
+        class="form-control"
+        value="{{.Message.Subject}}"
+        {{ if .Message.To }}
+        autofocus
+        {{ end }} />
+    </div>
+    <div class="form-group">
+      <textarea
+        name="text"
+        class="form-control"
+        cols="80"
+        rows="20"
+      >{{.Message.Text}}</textarea>
+    </div>
+    <div class="pull-right">
+      <a
+        href="/mailbox/INBOX"
+        class="btn btn-default"
+      >Cancel</a>
+      <button
+        type="submit"
+        class="btn btn-primary"
+      >Send email</button>
+    </div>
+  </form>
+</div>
+
+{{template "foot.html"}}
