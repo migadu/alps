@@ -21,7 +21,7 @@ type MailboxRenderData struct {
 	koushin.RenderData
 	Mailbox            *imap.MailboxStatus
 	Mailboxes          []*imap.MailboxInfo
-	Messages           []imapMessage
+	Messages           []IMAPMessage
 	PrevPage, NextPage int
 	Query              string
 }
@@ -45,7 +45,7 @@ func handleGetMailbox(ectx echo.Context) error {
 	query := ctx.FormValue("query")
 
 	var mailboxes []*imap.MailboxInfo
-	var msgs []imapMessage
+	var msgs []IMAPMessage
 	var mbox *imap.MailboxStatus
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 		var err error
@@ -121,7 +121,7 @@ func handleLogout(ectx echo.Context) error {
 type MessageRenderData struct {
 	koushin.RenderData
 	Mailbox     *imap.MailboxStatus
-	Message     *imapMessage
+	Message     *IMAPMessage
 	Body        string
 	PartPath    string
 	MailboxPage int
@@ -138,7 +138,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 
-	var msg *imapMessage
+	var msg *IMAPMessage
 	var part *message.Entity
 	var mbox *imap.MailboxStatus
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
@@ -219,7 +219,7 @@ func handleCompose(ectx echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
 
-		var inReplyTo *imapMessage
+		var inReplyTo *IMAPMessage
 		var part *message.Entity
 		err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 			var err error

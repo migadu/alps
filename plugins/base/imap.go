@@ -45,7 +45,7 @@ func ensureMailboxSelected(conn *imapclient.Client, mboxName string) error {
 	return nil
 }
 
-type imapMessage struct {
+type IMAPMessage struct {
 	*imap.Message
 }
 
@@ -94,7 +94,7 @@ func textPartPath(bs *imap.BodyStructure) ([]int, bool) {
 	return nil, false
 }
 
-func (msg *imapMessage) TextPartName() string {
+func (msg *IMAPMessage) TextPartName() string {
 	if msg.BodyStructure == nil {
 		return ""
 	}
@@ -166,7 +166,7 @@ func imapPartTree(bs *imap.BodyStructure, path []int) *IMAPPartNode {
 	return node
 }
 
-func (msg *imapMessage) PartTree() *IMAPPartNode {
+func (msg *IMAPMessage) PartTree() *IMAPPartNode {
 	if msg.BodyStructure == nil {
 		return nil
 	}
@@ -174,7 +174,7 @@ func (msg *imapMessage) PartTree() *IMAPPartNode {
 	return imapPartTree(msg.BodyStructure, nil)
 }
 
-func listMessages(conn *imapclient.Client, mboxName string, page int) ([]imapMessage, error) {
+func listMessages(conn *imapclient.Client, mboxName string, page int) ([]IMAPMessage, error) {
 	if err := ensureMailboxSelected(conn, mboxName); err != nil {
 		return nil, err
 	}
@@ -200,9 +200,9 @@ func listMessages(conn *imapclient.Client, mboxName string, page int) ([]imapMes
 		done <- conn.Fetch(&seqSet, fetch, ch)
 	}()
 
-	msgs := make([]imapMessage, 0, to-from)
+	msgs := make([]IMAPMessage, 0, to-from)
 	for msg := range ch {
-		msgs = append(msgs, imapMessage{msg})
+		msgs = append(msgs, IMAPMessage{msg})
 	}
 
 	if err := <-done; err != nil {
@@ -218,7 +218,7 @@ func listMessages(conn *imapclient.Client, mboxName string, page int) ([]imapMes
 	return msgs, nil
 }
 
-func searchMessages(conn *imapclient.Client, mboxName, query string) ([]imapMessage, error) {
+func searchMessages(conn *imapclient.Client, mboxName, query string) ([]IMAPMessage, error) {
 	if err := ensureMailboxSelected(conn, mboxName); err != nil {
 		return nil, err
 	}
@@ -249,13 +249,13 @@ func searchMessages(conn *imapclient.Client, mboxName, query string) ([]imapMess
 		done <- conn.Fetch(&seqSet, fetch, ch)
 	}()
 
-	msgs := make([]imapMessage, len(nums))
+	msgs := make([]IMAPMessage, len(nums))
 	for msg := range ch {
 		i, ok := indexes[msg.SeqNum]
 		if !ok {
 			continue
 		}
-		msgs[i] = imapMessage{msg}
+		msgs[i] = IMAPMessage{msg}
 	}
 
 	if err := <-done; err != nil {
@@ -265,7 +265,7 @@ func searchMessages(conn *imapclient.Client, mboxName, query string) ([]imapMess
 	return msgs, nil
 }
 
-func getMessagePart(conn *imapclient.Client, mboxName string, uid uint32, partPath []int) (*imapMessage, *message.Entity, error) {
+func getMessagePart(conn *imapclient.Client, mboxName string, uid uint32, partPath []int) (*IMAPMessage, *message.Entity, error) {
 	if err := ensureMailboxSelected(conn, mboxName); err != nil {
 		return nil, nil, err
 	}
@@ -320,5 +320,5 @@ func getMessagePart(conn *imapclient.Client, mboxName string, uid uint32, partPa
 		return nil, nil, fmt.Errorf("failed to create message reader: %v", err)
 	}
 
-	return &imapMessage{msg}, part, nil
+	return &IMAPMessage{msg}, part, nil
 }
