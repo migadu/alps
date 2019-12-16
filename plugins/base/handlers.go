@@ -13,6 +13,7 @@ import (
 	"github.com/emersion/go-imap"
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
+	"github.com/emersion/go-smtp"
 	"github.com/labstack/echo/v4"
 )
 
@@ -257,20 +258,14 @@ func handleCompose(ectx echo.Context) error {
 		msg.Text = ctx.FormValue("text")
 		msg.InReplyTo = ctx.FormValue("in_reply_to")
 
-		c, err := ctx.Session.ConnectSMTP()
+		err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
+			return sendMessage(c, &msg)
+		})
 		if err != nil {
 			if _, ok := err.(koushin.AuthError); ok {
 				return echo.NewHTTPError(http.StatusForbidden, err)
 			}
 			return err
-		}
-
-		if err := sendMessage(c, &msg); err != nil {
-			return err
-		}
-
-		if err := c.Quit(); err != nil {
-			return fmt.Errorf("QUIT failed: %v", err)
 		}
 
 		// TODO: append to IMAP Sent mailbox

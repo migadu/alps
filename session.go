@@ -76,21 +76,29 @@ func (s *Session) DoIMAP(f func(*imapclient.Client) error) error {
 	return f(s.imapConn)
 }
 
-// ConnectSMTP connects to the upstream SMTP server and authenticates this
-// session.
-func (s *Session) ConnectSMTP() (*smtp.Client, error) {
+// DoSMTP executes an SMTP operation on this session. The SMTP client can only
+// be used from inside f.
+func (s *Session) DoSMTP(f func(*smtp.Client) error) error {
 	c, err := s.manager.dialSMTP()
 	if err != nil {
-		return nil, err
+		return err
 	}
+	defer c.Close()
 
 	auth := sasl.NewPlainClient("", s.username, s.password)
 	if err := c.Auth(auth); err != nil {
-		c.Close()
-		return nil, AuthError{err}
+		return AuthError{err}
 	}
 
-	return c, nil
+	if err := f(c); err != nil {
+		return err
+	}
+
+	if err := c.Quit(); err != nil {
+		return fmt.Errorf("QUIT failed: %v", err)
+	}
+
+	return nil
 }
 
 // Close destroys the session. This can be used to log the user out.
