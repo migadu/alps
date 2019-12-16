@@ -196,7 +196,7 @@ func New(e *echo.Echo, options *Options) error {
 		}
 	})
 
-	e.Static("/themes", "public/themes")
+	e.Static("/themes", "themes")
 
 	for _, p := range s.Plugins {
 		p.SetRoutes(e.Group(""))

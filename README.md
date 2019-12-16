@@ -10,11 +10,11 @@ See `-h` for more information.
 
 ## Themes
 
-They should be put in `public/themes/<name>/`.
+They should be put in `themes/<name>/`.
 
-Templates in `public/themes/<name>/*.html` override default templates in
-`public/*.html`. Assets in `public/themes/<name>/assets/*` are served by the
-HTTP server at `/themes/<name>/assets/*`.
+Templates in `themes/<name>/*.html` override default templates in plugins.
+Assets in `themes/<name>/assets/*` are served by the HTTP server at
+`/themes/<name>/assets/*`.
 
 ## Plugins
 

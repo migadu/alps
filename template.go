@@ -10,7 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-const themesDir = "public/themes"
+const themesDir = "themes"
 
 // GlobalRenderData contains data available in all templates.
 type GlobalRenderData struct {
@@ -76,7 +76,7 @@ func loadTheme(name string, base *template.Template) (*template.Template, error)
 		return nil, err
 	}
 
-	theme, err = theme.ParseGlob("public/themes/" + name + "/*.html")
+	theme, err = theme.ParseGlob(themesDir + "/" + name + "/*.html")
 	if err != nil {
 		return nil, err
 	}
