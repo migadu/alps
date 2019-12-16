@@ -58,9 +58,9 @@ func (s *Session) Username() string {
 	return s.username
 }
 
-// Do executes an IMAP operation on this session. The IMAP client can only be
-// used from inside f.
-func (s *Session) Do(f func(*imapclient.Client) error) error {
+// DoIMAP executes an IMAP operation on this session. The IMAP client can only
+// be used from inside f.
+func (s *Session) DoIMAP(f func(*imapclient.Client) error) error {
 	s.locker.Lock()
 	defer s.locker.Unlock()
 

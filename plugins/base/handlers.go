@@ -43,7 +43,7 @@ func handleGetMailbox(ectx echo.Context) error {
 	var mailboxes []*imap.MailboxInfo
 	var msgs []imapMessage
 	var mbox *imap.MailboxStatus
-	err = ctx.Session.Do(func(c *imapclient.Client) error {
+	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 		var err error
 		if mailboxes, err = listMailboxes(c); err != nil {
 			return err
@@ -128,7 +128,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 	var msg *imapMessage
 	var part *message.Entity
 	var mbox *imap.MailboxStatus
-	err = ctx.Session.Do(func(c *imapclient.Client) error {
+	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 		var err error
 		msg, part, err = getMessagePart(c, mboxName, uid, partPath)
 		mbox = c.Mailbox()
@@ -208,7 +208,7 @@ func handleCompose(ectx echo.Context) error {
 
 		var inReplyTo *imapMessage
 		var part *message.Entity
-		err = ctx.Session.Do(func(c *imapclient.Client) error {
+		err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 			var err error
 			inReplyTo, part, err = getMessagePart(c, mboxName, uid, partPath)
 			return err
