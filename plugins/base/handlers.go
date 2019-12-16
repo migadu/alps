@@ -23,6 +23,7 @@ type MailboxRenderData struct {
 	Mailboxes          []*imap.MailboxInfo
 	Messages           []imapMessage
 	PrevPage, NextPage int
+	Query              string
 }
 
 func handleGetMailbox(ectx echo.Context) error {
@@ -41,6 +42,8 @@ func handleGetMailbox(ectx echo.Context) error {
 		}
 	}
 
+	query := ctx.FormValue("query")
+
 	var mailboxes []*imap.MailboxInfo
 	var msgs []imapMessage
 	var mbox *imap.MailboxStatus
@@ -49,7 +52,12 @@ func handleGetMailbox(ectx echo.Context) error {
 		if mailboxes, err = listMailboxes(c); err != nil {
 			return err
 		}
-		if msgs, err = listMessages(c, mboxName, page); err != nil {
+		if query != "" {
+			msgs, err = searchMessages(c, mboxName, query)
+		} else {
+			msgs, err = listMessages(c, mboxName, page)
+		}
+		if err != nil {
 			return err
 		}
 		mbox = c.Mailbox()
@@ -60,11 +68,14 @@ func handleGetMailbox(ectx echo.Context) error {
 	}
 
 	prevPage, nextPage := -1, -1
-	if page > 0 {
-		prevPage = page - 1
-	}
-	if (page+1)*messagesPerPage < int(mbox.Messages) {
-		nextPage = page + 1
+	if query == "" {
+		// TODO: paging for search
+		if page > 0 {
+			prevPage = page - 1
+		}
+		if (page+1)*messagesPerPage < int(mbox.Messages) {
+			nextPage = page + 1
+		}
 	}
 
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
@@ -74,6 +85,7 @@ func handleGetMailbox(ectx echo.Context) error {
 		Messages:   msgs,
 		PrevPage:   prevPage,
 		NextPage:   nextPage,
+		Query:      query,
 	})
 }
 

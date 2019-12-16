@@ -189,7 +189,7 @@ func listMessages(conn *imapclient.Client, mboxName string, page int) ([]imapMes
 		return nil, nil
 	}
 
-	seqSet := new(imap.SeqSet)
+	var seqSet imap.SeqSet
 	seqSet.AddRange(uint32(from), uint32(to))
 
 	fetch := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid, imap.FetchBodyStructure}
@@ -197,7 +197,7 @@ func listMessages(conn *imapclient.Client, mboxName string, page int) ([]imapMes
 	ch := make(chan *imap.Message, 10)
 	done := make(chan error, 1)
 	go func() {
-		done <- conn.Fetch(seqSet, fetch, ch)
+		done <- conn.Fetch(&seqSet, fetch, ch)
 	}()
 
 	msgs := make([]imapMessage, 0, to-from)
@@ -213,6 +213,53 @@ func listMessages(conn *imapclient.Client, mboxName string, page int) ([]imapMes
 	for i := len(msgs)/2 - 1; i >= 0; i-- {
 		opp := len(msgs) - 1 - i
 		msgs[i], msgs[opp] = msgs[opp], msgs[i]
+	}
+
+	return msgs, nil
+}
+
+func searchMessages(conn *imapclient.Client, mboxName, query string) ([]imapMessage, error) {
+	if err := ensureMailboxSelected(conn, mboxName); err != nil {
+		return nil, err
+	}
+
+	criteria := imap.SearchCriteria{Text: []string{query}}
+	nums, err := conn.Search(&criteria)
+	if err != nil {
+		return nil, fmt.Errorf("UID SEARCH failed: %v", err)
+	}
+	if len(nums) == 0 {
+		return nil, nil
+	}
+
+	indexes := make(map[uint32]int)
+	for i, num := range nums {
+		indexes[num] = i
+	}
+
+	// TODO: paging
+	var seqSet imap.SeqSet
+	seqSet.AddNum(nums...)
+
+	fetch := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid, imap.FetchBodyStructure}
+
+	ch := make(chan *imap.Message, 10)
+	done := make(chan error, 1)
+	go func() {
+		done <- conn.Fetch(&seqSet, fetch, ch)
+	}()
+
+	msgs := make([]imapMessage, len(nums))
+	for msg := range ch {
+		i, ok := indexes[msg.SeqNum]
+		if !ok {
+			continue
+		}
+		msgs[i] = imapMessage{msg}
+	}
+
+	if err := <-done; err != nil {
+		return nil, fmt.Errorf("failed to fetch message list: %v", err)
 	}
 
 	return msgs, nil

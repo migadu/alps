@@ -23,6 +23,7 @@ func init() {
 	})
 
 	p.GET("/mailbox/:mbox", handleGetMailbox)
+	p.POST("/mailbox/:mbox", handleGetMailbox)
 
 	p.GET("/message/:mbox/:uid", func(ectx echo.Context) error {
 		ctx := ectx.(*koushin.Context)

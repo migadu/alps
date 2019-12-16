@@ -8,6 +8,11 @@
 
 <h2>{{.Mailbox.Name}}</h2>
 
+<form method="post" action="">
+	<input type="search" name="query" value="{{.Query}}">
+	<input type="submit" value="Search">
+</form>
+
 <p>Mailboxes:</p>
 <ul>
 	{{range .Mailboxes}}
