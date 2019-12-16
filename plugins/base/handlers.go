@@ -270,7 +270,13 @@ func handleCompose(ectx echo.Context) error {
 		msg.Text = ctx.FormValue("text")
 		msg.InReplyTo = ctx.FormValue("in_reply_to")
 
-		err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
+		form, err := ctx.MultipartForm()
+		if err != nil {
+			return fmt.Errorf("failed to get multipart form: %v", err)
+		}
+		msg.Attachments = form.File["attachments"]
+
+		err = ctx.Session.DoSMTP(func(c *smtp.Client) error {
 			return sendMessage(c, &msg)
 		})
 		if err != nil {

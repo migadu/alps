@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"strings"
 	"time"
 
@@ -26,15 +27,47 @@ func quote(r io.Reader) (string, error) {
 }
 
 type OutgoingMessage struct {
-	From      string
-	To        []string
-	Subject   string
-	InReplyTo string
-	Text      string
+	From        string
+	To          []string
+	Subject     string
+	InReplyTo   string
+	Text        string
+	Attachments []*multipart.FileHeader
 }
 
 func (msg *OutgoingMessage) ToString() string {
 	return strings.Join(msg.To, ", ")
+}
+
+func writeAttachment(mw *mail.Writer, att *multipart.FileHeader) error {
+	var h mail.AttachmentHeader
+	h.Set("Content-Type", att.Header.Get("Content-Type"))
+	h.SetFilename(att.Filename)
+
+	aw, err := mw.CreateAttachment(h)
+	if err != nil {
+		return fmt.Errorf("failed to create attachment: %v", err)
+	}
+	defer aw.Close()
+
+	f, err := att.Open()
+	if err != nil {
+		return fmt.Errorf("failed to open attachment: %v", err)
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(aw, f); err != nil {
+		return fmt.Errorf("failed to write attachment: %v", err)
+	}
+
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close attachment: %v", err)
+	}
+	if err := aw.Close(); err != nil {
+		return fmt.Errorf("failed to close attachment writer: %v", err)
+	}
+
+	return nil
 }
 
 func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
@@ -76,6 +109,12 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
 
 	if err := tw.Close(); err != nil {
 		return fmt.Errorf("failed to close text part: %v", err)
+	}
+
+	for _, att := range msg.Attachments {
+		if err := writeAttachment(mw, att); err != nil {
+			return err
+		}
 	}
 
 	if err := mw.Close(); err != nil {

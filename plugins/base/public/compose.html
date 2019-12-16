@@ -8,20 +8,23 @@
 
 <h2>Compose new message</h2>
 
-<form method="post" action="">
+<form method="post" action="" enctype="multipart/form-data">
 	<input type="hidden" name="in_reply_to" value="{{.Message.InReplyTo}}">
 
 	<label for="from">From:</label>
-	<input type="email" name="from" id="from" value="{{.Message.From}}">
+	<input type="email" name="from" id="from" required value="{{.Message.From}}">
 	<br><br>
 	<label for="to">To:</label>
-	<input type="email" name="to" id="to" multiple value="{{.Message.ToString}}">
+	<input type="email" name="to" id="to" multiple required value="{{.Message.ToString}}">
 	<br><br>
 	<label for="subject">Subject:</label>
 	<input type="text" name="subject" id="subject" value="{{.Message.Subject}}">
 	<br><br>
 	<label for="text">Body:</label><br>
 	<textarea name="text" id="text" cols="80" rows="20">{{.Message.Text}}</textarea>
+	<br><br>
+	<label for="attachments">Attachments:</label>
+	<input type="file" name="attachments" id="attachments" multiple>
 	<br><br>
 	<input type="submit" value="Send">
 </form>
