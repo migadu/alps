@@ -1,4 +1,4 @@
-package koushin
+package koushinbase
 
 import (
 	"fmt"

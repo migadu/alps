@@ -1,4 +1,4 @@
-package koushin
+package koushinbase
 
 import (
 	"fmt"
@@ -9,15 +9,15 @@ import (
 	"strconv"
 	"strings"
 
+	"git.sr.ht/~emersion/koushin"
 	"github.com/emersion/go-imap"
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
-	"github.com/emersion/go-sasl"
 	"github.com/labstack/echo/v4"
 )
 
 type MailboxRenderData struct {
-	RenderData
+	koushin.RenderData
 	Mailbox            *imap.MailboxStatus
 	Mailboxes          []*imap.MailboxInfo
 	Messages           []imapMessage
@@ -25,7 +25,7 @@ type MailboxRenderData struct {
 }
 
 func handleGetMailbox(ectx echo.Context) error {
-	ctx := ectx.(*Context)
+	ctx := ectx.(*koushin.Context)
 
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
@@ -67,7 +67,7 @@ func handleGetMailbox(ectx echo.Context) error {
 	}
 
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
-		RenderData: *NewRenderData(ctx),
+		RenderData: *koushin.NewRenderData(ctx),
 		Mailbox:    mbox,
 		Mailboxes:  mailboxes,
 		Messages:   msgs,
@@ -77,14 +77,14 @@ func handleGetMailbox(ectx echo.Context) error {
 }
 
 func handleLogin(ectx echo.Context) error {
-	ctx := ectx.(*Context)
+	ctx := ectx.(*koushin.Context)
 
 	username := ctx.FormValue("username")
 	password := ctx.FormValue("password")
 	if username != "" && password != "" {
 		s, err := ctx.Server.Sessions.Put(username, password)
 		if err != nil {
-			if _, ok := err.(AuthError); ok {
+			if _, ok := err.(koushin.AuthError); ok {
 				return ctx.Render(http.StatusOK, "login.html", nil)
 			}
 			return fmt.Errorf("failed to put connection in pool: %v", err)
@@ -94,11 +94,11 @@ func handleLogin(ectx echo.Context) error {
 		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}
 
-	return ctx.Render(http.StatusOK, "login.html", NewRenderData(ctx))
+	return ctx.Render(http.StatusOK, "login.html", koushin.NewRenderData(ctx))
 }
 
 func handleLogout(ectx echo.Context) error {
-	ctx := ectx.(*Context)
+	ctx := ectx.(*koushin.Context)
 
 	ctx.Session.Close()
 	ctx.SetSession(nil)
@@ -106,7 +106,7 @@ func handleLogout(ectx echo.Context) error {
 }
 
 type MessageRenderData struct {
-	RenderData
+	koushin.RenderData
 	Mailbox     *imap.MailboxStatus
 	Message     *imapMessage
 	Body        string
@@ -114,7 +114,7 @@ type MessageRenderData struct {
 	MailboxPage int
 }
 
-func handleGetPart(ctx *Context, raw bool) error {
+func handleGetPart(ctx *koushin.Context, raw bool) error {
 	mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -173,7 +173,7 @@ func handleGetPart(ctx *Context, raw bool) error {
 	}
 
 	return ctx.Render(http.StatusOK, "message.html", &MessageRenderData{
-		RenderData:  *NewRenderData(ctx),
+		RenderData:  *koushin.NewRenderData(ctx),
 		Mailbox:     mbox,
 		Message:     msg,
 		Body:        body,
@@ -183,16 +183,16 @@ func handleGetPart(ctx *Context, raw bool) error {
 }
 
 type ComposeRenderData struct {
-	RenderData
+	koushin.RenderData
 	Message *OutgoingMessage
 }
 
 func handleCompose(ectx echo.Context) error {
-	ctx := ectx.(*Context)
+	ctx := ectx.(*koushin.Context)
 
 	var msg OutgoingMessage
-	if strings.ContainsRune(ctx.Session.username, '@') {
-		msg.From = ctx.Session.username
+	if strings.ContainsRune(ctx.Session.Username(), '@') {
+		msg.From = ctx.Session.Username()
 	}
 
 	if ctx.Request().Method == http.MethodGet && ctx.Param("uid") != "" {
@@ -257,15 +257,12 @@ func handleCompose(ectx echo.Context) error {
 		msg.Text = ctx.FormValue("text")
 		msg.InReplyTo = ctx.FormValue("in_reply_to")
 
-		c, err := ctx.Server.connectSMTP()
+		c, err := ctx.Session.ConnectSMTP()
 		if err != nil {
+			if _, ok := err.(koushin.AuthError); ok {
+				return echo.NewHTTPError(http.StatusForbidden, err)
+			}
 			return err
-		}
-		defer c.Close()
-
-		auth := sasl.NewPlainClient("", ctx.Session.username, ctx.Session.password)
-		if err := c.Auth(auth); err != nil {
-			return echo.NewHTTPError(http.StatusForbidden, err)
 		}
 
 		if err := sendMessage(c, &msg); err != nil {
@@ -282,7 +279,7 @@ func handleCompose(ectx echo.Context) error {
 	}
 
 	return ctx.Render(http.StatusOK, "compose.html", &ComposeRenderData{
-		RenderData: *NewRenderData(ctx),
+		RenderData: *koushin.NewRenderData(ctx),
 		Message:    &msg,
 	})
 }

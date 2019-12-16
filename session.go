@@ -9,6 +9,8 @@ import (
 	"time"
 
 	imapclient "github.com/emersion/go-imap/client"
+	"github.com/emersion/go-smtp"
+	"github.com/emersion/go-sasl"
 )
 
 // TODO: make this configurable
@@ -51,6 +53,11 @@ func (s *Session) ping() {
 	s.pings <- struct{}{}
 }
 
+// Username returns the session's username.
+func (s *Session) Username() string {
+	return s.username
+}
+
 // Do executes an IMAP operation on this session. The IMAP client can only be
 // used from inside f.
 func (s *Session) Do(f func(*imapclient.Client) error) error {
@@ -69,6 +76,23 @@ func (s *Session) Do(f func(*imapclient.Client) error) error {
 	return f(s.imapConn)
 }
 
+// ConnectSMTP connects to the upstream SMTP server and authenticates this
+// session.
+func (s *Session) ConnectSMTP() (*smtp.Client, error) {
+	c, err := s.manager.dialSMTP()
+	if err != nil {
+		return nil, err
+	}
+
+	auth := sasl.NewPlainClient("", s.username, s.password)
+	if err := c.Auth(auth); err != nil {
+		c.Close()
+		return nil, AuthError{err}
+	}
+
+	return c, nil
+}
+
 // Close destroys the session. This can be used to log the user out.
 func (s *Session) Close() {
 	select {
@@ -79,24 +103,33 @@ func (s *Session) Close() {
 	}
 }
 
+type (
+	// DialIMAPFunc connects to the upstream IMAP server.
+	DialIMAPFunc func() (*imapclient.Client, error)
+	// DialSMTPFunc connects to the upstream SMTP server.
+	DialSMTPFunc func() (*smtp.Client, error)
+)
+
 // SessionManager keeps track of active sessions. It connects and re-connects
 // to the upstream IMAP server as necessary. It prunes expired sessions.
 type SessionManager struct {
-	newIMAPClient func() (*imapclient.Client, error)
+	dialIMAP DialIMAPFunc
+	dialSMTP DialSMTPFunc
 
 	locker   sync.Mutex
 	sessions map[string]*Session // protected by locker
 }
 
-func newSessionManager(newIMAPClient func() (*imapclient.Client, error)) *SessionManager {
+func newSessionManager(dialIMAP DialIMAPFunc, dialSMTP DialSMTPFunc) *SessionManager {
 	return &SessionManager{
 		sessions:      make(map[string]*Session),
-		newIMAPClient: newIMAPClient,
+		dialIMAP: dialIMAP,
+		dialSMTP: dialSMTP,
 	}
 }
 
 func (sm *SessionManager) connect(username, password string) (*imapclient.Client, error) {
-	c, err := sm.newIMAPClient()
+	c, err := sm.dialIMAP()
 	if err != nil {
 		return nil, err
 	}

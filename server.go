@@ -12,8 +12,6 @@ import (
 
 const cookieName = "koushin_session"
 
-const messagesPerPage = 50
-
 // Server holds all the koushin server state.
 type Server struct {
 	Sessions *SessionManager
@@ -76,7 +74,6 @@ func (s *Server) parseSMTPURL(smtpURL string) error {
 
 func newServer(imapURL, smtpURL string) (*Server, error) {
 	s := &Server{}
-	s.Sessions = newSessionManager(s.connectIMAP)
 
 	if err := s.parseIMAPURL(imapURL); err != nil {
 		return nil, err
@@ -87,6 +84,8 @@ func newServer(imapURL, smtpURL string) (*Server, error) {
 			return nil, err
 		}
 	}
+
+	s.Sessions = newSessionManager(s.dialIMAP, s.dialSMTP)
 
 	return s, nil
 }
@@ -121,8 +120,11 @@ func (ctx *Context) SetSession(s *Session) {
 }
 
 func isPublic(path string) bool {
-	return path == "/login" || strings.HasPrefix(path, "/assets/") ||
-		strings.HasPrefix(path, "/themes/")
+	if strings.HasPrefix(path, "/plugins/") {
+		parts := strings.Split(path, "/")
+		return len(parts) >= 4 && parts[3] == "assets"
+	}
+	return path == "/login" || strings.HasPrefix(path, "/themes/")
 }
 
 type Options struct {
@@ -194,29 +196,6 @@ func New(e *echo.Echo, options *Options) error {
 		}
 	})
 
-	e.GET("/mailbox/:mbox", handleGetMailbox)
-
-	e.GET("/message/:mbox/:uid", func(ectx echo.Context) error {
-		ctx := ectx.(*Context)
-		return handleGetPart(ctx, false)
-	})
-	e.GET("/message/:mbox/:uid/raw", func(ectx echo.Context) error {
-		ctx := ectx.(*Context)
-		return handleGetPart(ctx, true)
-	})
-
-	e.GET("/login", handleLogin)
-	e.POST("/login", handleLogin)
-
-	e.GET("/logout", handleLogout)
-
-	e.GET("/compose", handleCompose)
-	e.POST("/compose", handleCompose)
-
-	e.GET("/message/:mbox/:uid/reply", handleCompose)
-	e.POST("/message/:mbox/:uid/reply", handleCompose)
-
-	e.Static("/assets", "public/assets")
 	e.Static("/themes", "public/themes")
 
 	for _, p := range s.Plugins {

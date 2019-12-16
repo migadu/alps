@@ -2,3 +2,4 @@
 /public/themes/*
 !/public/themes/sourcehut
 /plugins/*
+!/plugins/base

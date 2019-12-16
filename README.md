@@ -14,7 +14,7 @@ They should be put in `public/themes/<name>/`.
 
 Templates in `public/themes/<name>/*.html` override default templates in
 `public/*.html`. Assets in `public/themes/<name>/assets/*` are served by the
-HTTP server at `themes/<name>/assets/*`.
+HTTP server at `/themes/<name>/assets/*`.
 
 ## Plugins
 
@@ -29,6 +29,8 @@ API:
   called with the HTTP context
 
 Plugins can provide their own templates in `plugins/<name>/public/*.html`.
+Assets in `plugins/<name>/public/assets/*` are served by the HTTP server at
+`/plugins/<name>/assets/*`.
 
 ## Contributing
 

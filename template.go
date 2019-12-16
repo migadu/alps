@@ -5,7 +5,6 @@ import (
 	"html/template"
 	"io"
 	"io/ioutil"
-	"net/url"
 	"os"
 
 	"github.com/labstack/echo/v4"
@@ -86,19 +85,7 @@ func loadTheme(name string, base *template.Template) (*template.Template, error)
 }
 
 func loadTemplates(logger echo.Logger, defaultTheme string, plugins []Plugin) (*renderer, error) {
-	base := template.New("").Funcs(template.FuncMap{
-		"tuple": func(values ...interface{}) []interface{} {
-			return values
-		},
-		"pathescape": func(s string) string {
-			return url.PathEscape(s)
-		},
-	})
-
-	base, err := base.ParseGlob("public/*.html")
-	if err != nil {
-		return nil, err
-	}
+	base := template.New("")
 
 	for _, p := range plugins {
 		if err := p.LoadTemplate(base); err != nil {
