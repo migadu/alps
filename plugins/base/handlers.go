@@ -338,3 +338,44 @@ func handleMove(ectx echo.Context) error {
 
 	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", to))
 }
+
+func handleDelete(ectx echo.Context) error {
+	ctx := ectx.(*koushin.Context)
+
+	mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+
+	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+		if err := ensureMailboxSelected(c, mboxName); err != nil {
+			return err
+		}
+
+		var seqSet imap.SeqSet
+		seqSet.AddNum(uid)
+
+		item := imap.FormatFlagsOp(imap.AddFlags, true)
+		flags := []interface{}{imap.DeletedFlag}
+		if err := c.UidStore(&seqSet, item, flags, nil); err != nil {
+			return fmt.Errorf("failed to add deleted flag: %v", err)
+		}
+
+		if err := c.Expunge(nil); err != nil {
+			return fmt.Errorf("failed to expunge mailbox: %v", err)
+		}
+
+		// Deleting a message invalidates our cached message count
+		// TODO: listen to async updates instead
+		if _, err := c.Select(mboxName, false); err != nil {
+			return fmt.Errorf("failed to select mailbox: %v", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", mboxName))
+}

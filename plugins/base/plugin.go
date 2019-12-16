@@ -47,5 +47,7 @@ func init() {
 
 	p.POST("/message/:mbox/:uid/move", handleMove)
 
+	p.POST("/message/:mbox/:uid/delete", handleDelete)
+
 	koushin.RegisterPlugin(p.Plugin())
 }

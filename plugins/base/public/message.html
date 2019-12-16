@@ -26,6 +26,10 @@
 	<input type="submit" value="Move">
 </form>
 
+<form method="post" action="{{.Message.Uid}}/delete">
+	<input type="submit" value="Delete">
+</form>
+
 {{define "message-part-tree"}}
 	{{/* nested templates can't access the parent's context */}}
 	{{$ = index . 0}}
