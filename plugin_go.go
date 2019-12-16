@@ -37,7 +37,7 @@ func (p *goPlugin) SetRoutes(group *echo.Group) {
 		group.Add(r.Method, r.Path, r.Handler)
 	}
 
-	group.Static("/plugins/" + p.p.Name + "/assets", pluginDir + "/" + p.p.Name + "/public/assets")
+	group.Static("/plugins/"+p.p.Name+"/assets", pluginDir+"/"+p.p.Name+"/public/assets")
 }
 
 func (p *goPlugin) Inject(name string, data interface{}) error {

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	imapclient "github.com/emersion/go-imap/client"
-	"github.com/emersion/go-smtp"
 	"github.com/emersion/go-sasl"
+	"github.com/emersion/go-smtp"
 )
 
 // TODO: make this configurable
@@ -130,7 +130,7 @@ type SessionManager struct {
 
 func newSessionManager(dialIMAP DialIMAPFunc, dialSMTP DialSMTPFunc) *SessionManager {
 	return &SessionManager{
-		sessions:      make(map[string]*Session),
+		sessions: make(map[string]*Session),
 		dialIMAP: dialIMAP,
 		dialSMTP: dialSMTP,
 	}

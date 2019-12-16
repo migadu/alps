@@ -119,7 +119,7 @@ func (p *luaPlugin) SetRoutes(group *echo.Group) {
 	}
 
 	_, name := filepath.Split(filepath.Dir(p.filename))
-	group.Static("/plugins/" + name + "/assets", filepath.Dir(p.filename) + "/public/assets")
+	group.Static("/plugins/"+name+"/assets", filepath.Dir(p.filename)+"/public/assets")
 }
 
 func (p *luaPlugin) Close() error {
