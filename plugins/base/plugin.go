@@ -45,5 +45,7 @@ func init() {
 	p.GET("/message/:mbox/:uid/reply", handleCompose)
 	p.POST("/message/:mbox/:uid/reply", handleCompose)
 
+	p.POST("/message/:mbox/:uid/move", handleMove)
+
 	koushin.RegisterPlugin(p.Plugin())
 }

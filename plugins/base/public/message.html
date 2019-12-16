@@ -16,6 +16,16 @@
 	{{end}}
 </h2>
 
+<form method="post" action="{{.Message.Uid}}/move">
+	<label for="move-to">Move to:</label>
+	<select name="to" id="move-to">
+		{{range .Mailboxes}}
+			<option {{if eq .Name $.Mailbox.Name}}selected{{end}}>{{.Name}}</option>
+		{{end}}
+	</select>
+	<input type="submit" value="Move">
+</form>
+
 {{define "message-part-tree"}}
 	{{/* nested templates can't access the parent's context */}}
 	{{$ = index . 0}}

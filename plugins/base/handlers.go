@@ -12,6 +12,7 @@ import (
 	"git.sr.ht/~emersion/koushin"
 	"github.com/emersion/go-imap"
 	imapclient "github.com/emersion/go-imap/client"
+	imapmove "github.com/emersion/go-imap-move"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-smtp"
 	"github.com/labstack/echo/v4"
@@ -120,6 +121,7 @@ func handleLogout(ectx echo.Context) error {
 
 type MessageRenderData struct {
 	koushin.RenderData
+	Mailboxes   []*imap.MailboxInfo
 	Mailbox     *imap.MailboxStatus
 	Message     *IMAPMessage
 	Body        string
@@ -138,14 +140,20 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 
+	var mailboxes []*imap.MailboxInfo
 	var msg *IMAPMessage
 	var part *message.Entity
 	var mbox *imap.MailboxStatus
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 		var err error
-		msg, part, err = getMessagePart(c, mboxName, uid, partPath)
+		if mailboxes, err = listMailboxes(c); err != nil {
+			return err
+		}
+		if msg, part, err = getMessagePart(c, mboxName, uid, partPath); err != nil {
+			return err
+		}
 		mbox = c.Mailbox()
-		return err
+		return nil
 	})
 	if err != nil {
 		return err
@@ -187,6 +195,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 
 	return ctx.Render(http.StatusOK, "message.html", &MessageRenderData{
 		RenderData:  *koushin.NewRenderData(ctx),
+		Mailboxes:   mailboxes,
 		Mailbox:     mbox,
 		Message:     msg,
 		Body:        body,
@@ -295,4 +304,37 @@ func handleCompose(ectx echo.Context) error {
 		RenderData: *koushin.NewRenderData(ctx),
 		Message:    &msg,
 	})
+}
+
+func handleMove(ectx echo.Context) error {
+	ctx := ectx.(*koushin.Context)
+
+	mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+
+	to := ctx.FormValue("to")
+
+	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+		mc := imapmove.NewClient(c)
+
+		if err := ensureMailboxSelected(c, mboxName); err != nil {
+			return err
+		}
+
+		var seqSet imap.SeqSet
+		seqSet.AddNum(uid)
+		if err := mc.UidMoveWithFallback(&seqSet, to); err != nil {
+			return fmt.Errorf("failed to move message: %v", err)
+		}
+
+		// TODO: get the UID of the message in the destination mailbox with UIDPLUS
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", to))
 }

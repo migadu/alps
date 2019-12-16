@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/emersion/go-imap v1.0.3-0.20191213134403-f1c945935a36
+	github.com/emersion/go-imap-move v0.0.0-20190710073258-6e5a51a5b342
 	github.com/emersion/go-message v0.10.8
 	github.com/emersion/go-sasl v0.0.0-20191210011802-430746ea8b9b
 	github.com/emersion/go-smtp v0.12.1
