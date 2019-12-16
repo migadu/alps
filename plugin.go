@@ -22,3 +22,10 @@ type Plugin interface {
 	// Close is called when the plugin is unloaded.
 	Close() error
 }
+
+var plugins []Plugin
+
+// RegisterPlugin registers a plugin to be loaded on server startup.
+func RegisterPlugin(p Plugin) {
+	plugins = append(plugins, p)
+}

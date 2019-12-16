@@ -137,10 +137,16 @@ func New(e *echo.Echo, options *Options) error {
 		return err
 	}
 
-	s.Plugins, err = loadAllLuaPlugins(e.Logger)
+	s.Plugins = append([]Plugin(nil), plugins...)
+	for _, p := range s.Plugins {
+		e.Logger.Printf("Registered plugin '%v'", p.Name())
+	}
+
+	luaPlugins, err := loadAllLuaPlugins(e.Logger)
 	if err != nil {
 		return fmt.Errorf("failed to load plugins: %v", err)
 	}
+	s.Plugins = append(s.Plugins, luaPlugins...)
 
 	e.Renderer, err = loadTemplates(e.Logger, options.Theme, s.Plugins)
 	if err != nil {
