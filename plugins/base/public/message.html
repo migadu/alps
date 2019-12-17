@@ -30,6 +30,25 @@
 	<input type="submit" value="Delete">
 </form>
 
+{{if .Flags}}
+	<form method="post" action="{{.Message.Uid}}/flag">
+		<p>Flags:</p>
+		{{range $name, $has := .Flags}}
+			{{if ismutableflag $name}}
+				<input type="checkbox" name="flags" id="flag-{{$name}}"
+					value="{{$name}}" {{if $has}}checked{{end}}>
+				<label for="flag-{{$name}}">{{$name | formatflag}}</label>
+				<br>
+			{{else}}
+				{{if $has}}
+					<input type="hidden" name="flags" value="{{$name}}">
+				{{end}}
+			{{end}}
+		{{end}}
+		<input type="submit" value="Set flags">
+	</form>
+{{end}}
+
 <ul>
 	<li>
 		<strong>Date</strong>: {{.Message.Envelope.Date | formatdate}}
@@ -67,7 +86,7 @@
 			{{.String}}
 			{{if eq $.PartPath .PathString}}</strong>{{end}}
 		</a>
-		{{if gt (len .Children) 0}}
+		{{if .Children}}
 		<ul>
 			{{range .Children}}
 				<li>{{template "message-part-tree" (tuple $ .)}}</li>

@@ -18,6 +18,37 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+func registerRoutes(p *koushin.GoPlugin) {
+	p.GET("/mailbox/:mbox", handleGetMailbox)
+	p.POST("/mailbox/:mbox", handleGetMailbox)
+
+	p.GET("/message/:mbox/:uid", func(ectx echo.Context) error {
+		ctx := ectx.(*koushin.Context)
+		return handleGetPart(ctx, false)
+	})
+	p.GET("/message/:mbox/:uid/raw", func(ectx echo.Context) error {
+		ctx := ectx.(*koushin.Context)
+		return handleGetPart(ctx, true)
+	})
+
+	p.GET("/login", handleLogin)
+	p.POST("/login", handleLogin)
+
+	p.GET("/logout", handleLogout)
+
+	p.GET("/compose", handleCompose)
+	p.POST("/compose", handleCompose)
+
+	p.GET("/message/:mbox/:uid/reply", handleCompose)
+	p.POST("/message/:mbox/:uid/reply", handleCompose)
+
+	p.POST("/message/:mbox/:uid/move", handleMove)
+
+	p.POST("/message/:mbox/:uid/delete", handleDelete)
+
+	p.POST("/message/:mbox/:uid/flag", handleSetFlags)
+}
+
 type MailboxRenderData struct {
 	koushin.RenderData
 	Mailbox            *imap.MailboxStatus
@@ -127,6 +158,7 @@ type MessageRenderData struct {
 	Body        string
 	PartPath    string
 	MailboxPage int
+	Flags       map[string]bool
 }
 
 func handleGetPart(ctx *koushin.Context, raw bool) error {
@@ -193,6 +225,15 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 		body = string(b)
 	}
 
+	flags := make(map[string]bool)
+	for _, f := range mbox.PermanentFlags {
+		f = imap.CanonicalFlag(f)
+		if f == imap.TryCreateFlag {
+			continue
+		}
+		flags[f] = msg.HasFlag(f)
+	}
+
 	return ctx.Render(http.StatusOK, "message.html", &MessageRenderData{
 		RenderData:  *koushin.NewRenderData(ctx),
 		Mailboxes:   mailboxes,
@@ -201,6 +242,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 		Body:        body,
 		PartPath:    partPathString,
 		MailboxPage: int(mbox.Messages-msg.SeqNum) / messagesPerPage,
+		Flags:       flags,
 	})
 }
 
@@ -336,7 +378,7 @@ func handleMove(ectx echo.Context) error {
 		return err
 	}
 
-	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", to))
+	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(to)))
 }
 
 func handleDelete(ectx echo.Context) error {
@@ -377,34 +419,48 @@ func handleDelete(ectx echo.Context) error {
 		return err
 	}
 
-	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", mboxName))
+	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(mboxName)))
 }
 
-func registerRoutes(p *koushin.GoPlugin) {
-	p.GET("/mailbox/:mbox", handleGetMailbox)
-	p.POST("/mailbox/:mbox", handleGetMailbox)
+func handleSetFlags(ectx echo.Context) error {
+	ctx := ectx.(*koushin.Context)
 
-	p.GET("/message/:mbox/:uid", func(ectx echo.Context) error {
-		ctx := ectx.(*koushin.Context)
-		return handleGetPart(ctx, false)
+	mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+
+	if err := ctx.Request().ParseForm(); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+	flags, ok := ctx.Request().Form["flags"]
+	if !ok {
+		return echo.NewHTTPError(http.StatusBadRequest, "missing 'flags' form values")
+	}
+
+	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+		if err := ensureMailboxSelected(c, mboxName); err != nil {
+			return err
+		}
+
+		var seqSet imap.SeqSet
+		seqSet.AddNum(uid)
+
+		storeItems := make([]interface{}, len(flags))
+		for i, f := range flags {
+			storeItems[i] = f
+		}
+
+		item := imap.FormatFlagsOp(imap.SetFlags, true)
+		if err := c.UidStore(&seqSet, item, storeItems, nil); err != nil {
+			return fmt.Errorf("failed to add deleted flag: %v", err)
+		}
+
+		return nil
 	})
-	p.GET("/message/:mbox/:uid/raw", func(ectx echo.Context) error {
-		ctx := ectx.(*koushin.Context)
-		return handleGetPart(ctx, true)
-	})
+	if err != nil {
+		return err
+	}
 
-	p.GET("/login", handleLogin)
-	p.POST("/login", handleLogin)
-
-	p.GET("/logout", handleLogout)
-
-	p.GET("/compose", handleCompose)
-	p.POST("/compose", handleCompose)
-
-	p.GET("/message/:mbox/:uid/reply", handleCompose)
-	p.POST("/message/:mbox/:uid/reply", handleCompose)
-
-	p.POST("/message/:mbox/:uid/move", handleMove)
-
-	p.POST("/message/:mbox/:uid/delete", handleDelete)
+	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/message/%v/%v", url.PathEscape(mboxName), uid))
 }

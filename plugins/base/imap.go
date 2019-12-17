@@ -174,6 +174,15 @@ func (msg *IMAPMessage) PartTree() *IMAPPartNode {
 	return imapPartTree(msg.BodyStructure, nil)
 }
 
+func (msg *IMAPMessage) HasFlag(flag string) bool {
+	for _, f := range msg.Flags {
+		if imap.CanonicalFlag(f) == flag {
+			return true
+		}
+	}
+	return false
+}
+
 func listMessages(conn *imapclient.Client, mboxName string, page int) ([]IMAPMessage, error) {
 	if err := ensureMailboxSelected(conn, mboxName); err != nil {
 		return nil, err
@@ -295,6 +304,7 @@ func getMessagePart(conn *imapclient.Client, mboxName string, uid uint32, partPa
 		imap.FetchEnvelope,
 		imap.FetchUid,
 		imap.FetchBodyStructure,
+		imap.FetchFlags,
 		partHeaderSection.FetchItem(),
 		partBodySection.FetchItem(),
 	}

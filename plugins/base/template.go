@@ -26,4 +26,26 @@ var templateFuncs = template.FuncMap{
 	"formatdate": func(t time.Time) string {
 		return t.Format("Mon Jan 02 15:04")
 	},
+	"formatflag": func(flag string) string {
+		switch flag {
+		case imap.SeenFlag:
+			return "Seen"
+		case imap.AnsweredFlag:
+			return "Answered"
+		case imap.FlaggedFlag:
+			return "Starred"
+		case imap.DraftFlag:
+			return "Draft"
+		default:
+			return flag
+		}
+	},
+	"ismutableflag": func(flag string) bool {
+		switch flag {
+		case imap.AnsweredFlag, imap.DeletedFlag, imap.DraftFlag:
+			return false
+		default:
+			return true
+		}
+	},
 }
