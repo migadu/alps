@@ -347,6 +347,7 @@ func handleCompose(ectx echo.Context) error {
 		}
 
 		// TODO: append to IMAP Sent mailbox
+		// TODO: add \Answered flag to original IMAP message
 
 		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}
@@ -439,10 +440,11 @@ func handleSetFlags(ectx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 
-	if err := ctx.Request().ParseForm(); err != nil {
+	form, err := ctx.FormParams()
+	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
-	flags, ok := ctx.Request().Form["flags"]
+	flags, ok := form["flags"]
 	if !ok {
 		return echo.NewHTTPError(http.StatusBadRequest, "missing 'flags' form values")
 	}
