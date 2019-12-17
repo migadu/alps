@@ -49,7 +49,7 @@
               href="/message/{{$.Mailbox.Name | pathescape}}/{{.Uid}}?part={{.TextPartName}}"
             >
             <span class="text-muted date">
-              {{ .Envelope.Date.Format "Mon Jan 02 15:04" }}
+              {{ .Envelope.Date | formatdate }}
             </span>
             <span class="text-normal from">
               {{ range .Envelope.From }}
@@ -75,7 +75,7 @@
         {{end}}
       </p>
       {{else}}
-        <p>Mailbox is empty.</p>
+        <p>No message.</p>
       {{end}}
     </div>
   </div>
