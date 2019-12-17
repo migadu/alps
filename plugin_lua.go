@@ -68,7 +68,7 @@ func (p *luaPlugin) setRoute(l *lua.LState) int {
 	return 0
 }
 
-func (p *luaPlugin) Inject(name string, data interface{}) error {
+func (p *luaPlugin) inject(name string, data interface{}) error {
 	f, ok := p.renderCallbacks[name]
 	if !ok {
 		return nil
@@ -84,6 +84,13 @@ func (p *luaPlugin) Inject(name string, data interface{}) error {
 	}
 
 	return nil
+}
+
+func (p *luaPlugin) Inject(name string, data interface{}) error {
+	if err := p.inject("*", data); err != nil {
+		return err
+	}
+	return p.inject(name, data)
 }
 
 func (p *luaPlugin) LoadTemplate(t *template.Template) error {
