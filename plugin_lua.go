@@ -86,7 +86,7 @@ func (p *luaPlugin) inject(name string, data RenderData) error {
 	return nil
 }
 
-func (p *luaPlugin) Inject(name string, data RenderData) error {
+func (p *luaPlugin) Inject(ctx *Context, name string, data RenderData) error {
 	if err := p.inject("*", data); err != nil {
 		return err
 	}

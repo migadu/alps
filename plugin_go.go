@@ -40,14 +40,14 @@ func (p *goPlugin) SetRoutes(group *echo.Group) {
 	group.Static("/plugins/"+p.p.Name+"/assets", pluginDir+"/"+p.p.Name+"/public/assets")
 }
 
-func (p *goPlugin) Inject(name string, data RenderData) error {
+func (p *goPlugin) Inject(ctx *Context, name string, data RenderData) error {
 	if f, ok := p.p.injectFuncs["*"]; ok {
-		if err := f(data); err != nil {
+		if err := f(ctx, data); err != nil {
 			return err
 		}
 	}
 	if f, ok := p.p.injectFuncs[name]; ok {
-		return f(data)
+		return f(ctx, data)
 	}
 	return nil
 }
@@ -114,7 +114,7 @@ func (p *GoPlugin) TemplateFuncs(funcs template.FuncMap) {
 }
 
 // InjectFunc is a function that injects data prior to rendering a template.
-type InjectFunc func(data RenderData) error
+type InjectFunc func(ctx *Context, data RenderData) error
 
 // Inject registers a function to execute prior to rendering a template. The
 // special name "*" matches any template.

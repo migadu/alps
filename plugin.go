@@ -18,7 +18,7 @@ type Plugin interface {
 	SetRoutes(group *echo.Group)
 	// Inject is called prior to rendering a template. It can extend the
 	// template data by setting new items in the Extra map.
-	Inject(name string, data RenderData) error
+	Inject(ctx *Context, name string, data RenderData) error
 	// Close is called when the plugin is unloaded.
 	Close() error
 }
