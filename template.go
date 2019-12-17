@@ -20,18 +20,48 @@ type GlobalRenderData struct {
 	Username string
 	// TODO: list of mailboxes
 
-	// Additional plugin-specific data
+	// additional plugin-specific data
 	Extra map[string]interface{}
 }
 
 // BaseRenderData is the base type for templates. It should be extended with
-// new template-specific fields.
+// additional template-specific fields:
+//
+//     type MyRenderData struct {
+//         BaseRenderData
+//         // add additional fields here
+//     }
 type BaseRenderData struct {
-	Global GlobalRenderData
-	// Additional plugin-specific data
+	GlobalData GlobalRenderData
+	// additional plugin-specific data
 	Extra map[string]interface{}
 }
 
+// Global implements RenderData.
+func (brd *BaseRenderData) Global() *GlobalRenderData {
+	return &brd.GlobalData
+}
+
+// RenderData is implemented by template data structs. It can be used to inject
+// additional data to all templates.
+type RenderData interface {
+	// GlobalData returns a pointer to the global render data.
+	Global() *GlobalRenderData
+}
+
+// NewBaseRenderData initializes a new BaseRenderData.
+//
+// It can be used by routes to pre-fill the base data:
+//
+//     type MyRenderData struct {
+//         BaseRenderData
+//         // add additional fields here
+//     }
+//
+//     data := &MyRenderData{
+//         BaseRenderData: *koushin.NewBaseRenderData(ctx),
+//         // other fields...
+//     }
 func NewBaseRenderData(ctx *Context) *BaseRenderData {
 	global := GlobalRenderData{Extra: make(map[string]interface{})}
 
@@ -41,8 +71,8 @@ func NewBaseRenderData(ctx *Context) *BaseRenderData {
 	}
 
 	return &BaseRenderData{
-		Global: global,
-		Extra:  make(map[string]interface{}),
+		GlobalData: global,
+		Extra:      make(map[string]interface{}),
 	}
 }
 
@@ -57,7 +87,7 @@ func (r *renderer) Render(w io.Writer, name string, data interface{}, ectx echo.
 	ctx := ectx.Get("context").(*Context)
 
 	for _, plugin := range ctx.Server.Plugins {
-		if err := plugin.Inject(name, data); err != nil {
+		if err := plugin.Inject(name, data.(RenderData)); err != nil {
 			return fmt.Errorf("failed to run plugin '%v': %v", plugin.Name(), err)
 		}
 	}

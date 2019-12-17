@@ -116,12 +116,12 @@ func handleGetMailbox(ectx echo.Context) error {
 
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
 		BaseRenderData: *koushin.NewBaseRenderData(ctx),
-		Mailbox:    mbox,
-		Mailboxes:  mailboxes,
-		Messages:   msgs,
-		PrevPage:   prevPage,
-		NextPage:   nextPage,
-		Query:      query,
+		Mailbox:        mbox,
+		Mailboxes:      mailboxes,
+		Messages:       msgs,
+		PrevPage:       prevPage,
+		NextPage:       nextPage,
+		Query:          query,
 	})
 }
 
@@ -239,14 +239,14 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 	}
 
 	return ctx.Render(http.StatusOK, "message.html", &MessageRenderData{
-		BaseRenderData:  *koushin.NewBaseRenderData(ctx),
-		Mailboxes:   mailboxes,
-		Mailbox:     mbox,
-		Message:     msg,
-		Body:        body,
-		PartPath:    partPathString,
-		MailboxPage: int(mbox.Messages-msg.SeqNum) / messagesPerPage,
-		Flags:       flags,
+		BaseRenderData: *koushin.NewBaseRenderData(ctx),
+		Mailboxes:      mailboxes,
+		Mailbox:        mbox,
+		Message:        msg,
+		Body:           body,
+		PartPath:       partPathString,
+		MailboxPage:    int(mbox.Messages-msg.SeqNum) / messagesPerPage,
+		Flags:          flags,
 	})
 }
 
@@ -354,7 +354,7 @@ func handleCompose(ectx echo.Context) error {
 
 	return ctx.Render(http.StatusOK, "compose.html", &ComposeRenderData{
 		BaseRenderData: *koushin.NewBaseRenderData(ctx),
-		Message:    &msg,
+		Message:        &msg,
 	})
 }
 
