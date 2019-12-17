@@ -41,6 +41,14 @@ func (p *goPlugin) SetRoutes(group *echo.Group) {
 }
 
 func (p *goPlugin) Inject(name string, data interface{}) error {
+	if f, ok := p.p.injectFuncs["*"]; ok {
+		if err := f(data); err != nil {
+			return err
+		}
+	}
+	if f, ok := p.p.injectFuncs[name]; ok {
+		return f(data)
+	}
 	return nil
 }
 
@@ -67,6 +75,7 @@ type GoPlugin struct {
 	routes []goPluginRoute
 
 	templateFuncs template.FuncMap
+	injectFuncs map[string]InjectFunc
 }
 
 // AddRoute registers a new HTTP route.
@@ -102,6 +111,18 @@ func (p *GoPlugin) TemplateFuncs(funcs template.FuncMap) {
 	for k, f := range funcs {
 		p.templateFuncs[k] = f
 	}
+}
+
+// InjectFunc is a function that injects data prior to rendering a template.
+type InjectFunc func(data interface{}) error
+
+// Inject registers a function to execute prior to rendering a template. The
+// special name "*" matches any template.
+func (p *GoPlugin) Inject(name string, f InjectFunc) {
+	if p.injectFuncs == nil {
+		p.injectFuncs = make(map[string]InjectFunc)
+	}
+	p.injectFuncs[name] = f
 }
 
 // Plugin returns an object implementing Plugin.
