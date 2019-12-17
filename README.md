@@ -18,7 +18,20 @@ Assets in `themes/<name>/assets/*` are served by the HTTP server at
 
 ## Plugins
 
-Lua plugins are supported. They can be dropped in `plugins/<name>/main.lua`.
+Plugins can be written in Go or in Lua and live in `plugins/<name>/`.
+
+Plugins can provide their own templates in `plugins/<name>/public/*.html`.
+Assets in `plugins/<name>/public/assets/*` are served by the HTTP server at
+`/plugins/<name>/assets/*`.
+
+### Go plugins
+
+They can use the [Go plugin helpers] and need to be included at compile-time in
+`cmd/koushin/main.go`.
+
+### Lua plugins
+
+The entry point is at `plugins/<name>/main.lua`.
 
 API:
 
@@ -28,15 +41,14 @@ API:
 * `koushin.set_route(method, path, f)`: register a new HTTP route, `f` will be
   called with the HTTP context
 
-Plugins can provide their own templates in `plugins/<name>/public/*.html`.
-Assets in `plugins/<name>/public/assets/*` are served by the HTTP server at
-`/plugins/<name>/assets/*`.
-
 ## Contributing
 
-Send patches [on the mailing list](https://lists.sr.ht/~sircmpwn/koushin),
-report bugs [on the issue tracker](https://todo.sr.ht/~sircmpwn/koushin).
+Send patches on the [mailing list], report bugs on the [issue tracker].
 
 ## License
 
 MIT
+
+[Go plugin helpers]: https://godoc.org/git.sr.ht/~emersion/koushin#GoPlugin
+[mailing list]: https://lists.sr.ht/~sircmpwn/koushin
+[issue tracker]: https://todo.sr.ht/~sircmpwn/koushin

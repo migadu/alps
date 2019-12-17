@@ -11,8 +11,8 @@ import (
 
 	"git.sr.ht/~emersion/koushin"
 	"github.com/emersion/go-imap"
-	imapclient "github.com/emersion/go-imap/client"
 	imapmove "github.com/emersion/go-imap-move"
+	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-smtp"
 	"github.com/labstack/echo/v4"

@@ -54,6 +54,13 @@ type goPluginRoute struct {
 	Handler echo.HandlerFunc
 }
 
+// GoPlugin is a helper to create Go plugins.
+//
+// Use this struct to define your plugin, then call RegisterPlugin:
+//
+//     p := GoPlugin{Name: "my-plugin"}
+//     // Define routes, template functions, etc
+//     koushin.RegisterPlugin(p.Plugin())
 type GoPlugin struct {
 	Name string
 
@@ -62,6 +69,10 @@ type GoPlugin struct {
 	templateFuncs template.FuncMap
 }
 
+// AddRoute registers a new HTTP route.
+//
+// The echo.Context passed to the HTTP handler can be type-asserted to
+// *koushin.Context.
 func (p *GoPlugin) AddRoute(method, path string, handler echo.HandlerFunc) {
 	p.routes = append(p.routes, goPluginRoute{method, path, handler})
 }
@@ -82,6 +93,7 @@ func (p *GoPlugin) PUT(path string, handler echo.HandlerFunc) {
 	p.AddRoute(http.MethodPut, path, handler)
 }
 
+// TemplateFuncs registers new template functions.
 func (p *GoPlugin) TemplateFuncs(funcs template.FuncMap) {
 	if p.templateFuncs == nil {
 		p.templateFuncs = make(template.FuncMap, len(funcs))
@@ -92,6 +104,7 @@ func (p *GoPlugin) TemplateFuncs(funcs template.FuncMap) {
 	}
 }
 
+// Plugin returns an object implementing Plugin.
 func (p *GoPlugin) Plugin() Plugin {
 	return &goPlugin{p}
 }
