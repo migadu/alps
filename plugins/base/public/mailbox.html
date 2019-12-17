@@ -8,7 +8,7 @@
 
 <h2>{{.Mailbox.Name}}</h2>
 
-<form method="post" action="">
+<form method="get" action="">
 	<input type="search" name="query" value="{{.Query}}">
 	<input type="submit" value="Search">
 </form>
@@ -36,11 +36,11 @@
 
 	<p>
 		{{if ge .PrevPage 0}}
-			<a href="?page={{.PrevPage}}">Prev</a>
+			<a href="?page={{.PrevPage}}&query={{.Query}}">Prev</a>
 		{{end}}
 		{{if and (ge .PrevPage 0) (ge .NextPage 0)}}·{{end}}
 		{{if ge .NextPage 0}}
-			<a href="?page={{.NextPage}}">Next</a>
+			<a href="?page={{.NextPage}}&query={{.Query}}">Next</a>
 		{{end}}
 	</p>
 {{else}}

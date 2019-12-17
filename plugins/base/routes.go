@@ -74,18 +74,19 @@ func handleGetMailbox(ctx *koushin.Context) error {
 		}
 	}
 
-	query := ctx.FormValue("query")
+	query := ctx.QueryParam("query")
 
 	var mailboxes []*imap.MailboxInfo
 	var msgs []IMAPMessage
 	var mbox *imap.MailboxStatus
+	var total int
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 		var err error
 		if mailboxes, err = listMailboxes(c); err != nil {
 			return err
 		}
 		if query != "" {
-			msgs, err = searchMessages(c, mboxName, query)
+			msgs, total, err = searchMessages(c, mboxName, query, page)
 		} else {
 			msgs, err = listMessages(c, mboxName, page)
 		}
@@ -100,8 +101,14 @@ func handleGetMailbox(ctx *koushin.Context) error {
 	}
 
 	prevPage, nextPage := -1, -1
-	if query == "" {
-		// TODO: paging for search
+	if query != "" {
+		if page > 0 {
+			prevPage = page - 1
+		}
+		if (page+1)*messagesPerPage <= total {
+			nextPage = page + 1
+		}
+	} else {
 		if page > 0 {
 			prevPage = page - 1
 		}
