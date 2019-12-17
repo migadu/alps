@@ -54,7 +54,7 @@ func registerRoutes(p *koushin.GoPlugin) {
 }
 
 type MailboxRenderData struct {
-	koushin.RenderData
+	koushin.BaseRenderData
 	Mailbox            *imap.MailboxStatus
 	Mailboxes          []*imap.MailboxInfo
 	Messages           []IMAPMessage
@@ -115,7 +115,7 @@ func handleGetMailbox(ectx echo.Context) error {
 	}
 
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
-		RenderData: *koushin.NewRenderData(ctx),
+		BaseRenderData: *koushin.NewBaseRenderData(ctx),
 		Mailbox:    mbox,
 		Mailboxes:  mailboxes,
 		Messages:   msgs,
@@ -143,7 +143,7 @@ func handleLogin(ectx echo.Context) error {
 		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}
 
-	return ctx.Render(http.StatusOK, "login.html", koushin.NewRenderData(ctx))
+	return ctx.Render(http.StatusOK, "login.html", koushin.NewBaseRenderData(ctx))
 }
 
 func handleLogout(ectx echo.Context) error {
@@ -155,7 +155,7 @@ func handleLogout(ectx echo.Context) error {
 }
 
 type MessageRenderData struct {
-	koushin.RenderData
+	koushin.BaseRenderData
 	Mailboxes   []*imap.MailboxInfo
 	Mailbox     *imap.MailboxStatus
 	Message     *IMAPMessage
@@ -239,7 +239,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 	}
 
 	return ctx.Render(http.StatusOK, "message.html", &MessageRenderData{
-		RenderData:  *koushin.NewRenderData(ctx),
+		BaseRenderData:  *koushin.NewBaseRenderData(ctx),
 		Mailboxes:   mailboxes,
 		Mailbox:     mbox,
 		Message:     msg,
@@ -251,7 +251,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 }
 
 type ComposeRenderData struct {
-	koushin.RenderData
+	koushin.BaseRenderData
 	Message *OutgoingMessage
 }
 
@@ -353,7 +353,7 @@ func handleCompose(ectx echo.Context) error {
 	}
 
 	return ctx.Render(http.StatusOK, "compose.html", &ComposeRenderData{
-		RenderData: *koushin.NewRenderData(ctx),
+		BaseRenderData: *koushin.NewBaseRenderData(ctx),
 		Message:    &msg,
 	})
 }

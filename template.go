@@ -24,15 +24,15 @@ type GlobalRenderData struct {
 	Extra map[string]interface{}
 }
 
-// RenderData is the base type for templates. It should be extended with new
-// template-specific fields.
-type RenderData struct {
+// BaseRenderData is the base type for templates. It should be extended with
+// new template-specific fields.
+type BaseRenderData struct {
 	Global GlobalRenderData
 	// Additional plugin-specific data
 	Extra map[string]interface{}
 }
 
-func NewRenderData(ctx *Context) *RenderData {
+func NewBaseRenderData(ctx *Context) *BaseRenderData {
 	global := GlobalRenderData{Extra: make(map[string]interface{})}
 
 	if ctx.Session != nil {
@@ -40,7 +40,7 @@ func NewRenderData(ctx *Context) *RenderData {
 		global.Username = ctx.Session.username
 	}
 
-	return &RenderData{
+	return &BaseRenderData{
 		Global: global,
 		Extra:  make(map[string]interface{}),
 	}
