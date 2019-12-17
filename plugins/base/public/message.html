@@ -30,6 +30,28 @@
 	<input type="submit" value="Delete">
 </form>
 
+<ul>
+	<li>
+		<strong>Date</strong>: {{.Message.Envelope.Date | formatdate}}
+	</li>
+	<li>
+		<strong>From</strong>: {{.Message.Envelope.From | formataddrlist}}
+	</li>
+	<li>
+		<strong>To</strong>: {{.Message.Envelope.To | formataddrlist}}
+	</li>
+	{{if .Message.Envelope.Cc}}
+		<li>
+			<strong>Cc</strong>: {{.Message.Envelope.Cc | formataddrlist}}
+		</li>
+	{{end}}
+	{{if .Message.Envelope.Bcc}}
+		<li>
+			<strong>Bcc</strong>: {{.Message.Envelope.Bcc | formataddrlist}}
+		</li>
+	{{end}}
+</ul>
+
 {{define "message-part-tree"}}
 	{{/* nested templates can't access the parent's context */}}
 	{{$ = index . 0}}

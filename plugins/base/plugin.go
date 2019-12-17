@@ -1,9 +1,6 @@
 package koushinbase
 
 import (
-	"html/template"
-	"net/url"
-
 	"git.sr.ht/~emersion/koushin"
 	"github.com/labstack/echo/v4"
 )
@@ -13,14 +10,7 @@ const messagesPerPage = 50
 func init() {
 	p := koushin.GoPlugin{Name: "base"}
 
-	p.TemplateFuncs(template.FuncMap{
-		"tuple": func(values ...interface{}) []interface{} {
-			return values
-		},
-		"pathescape": func(s string) string {
-			return url.PathEscape(s)
-		},
-	})
+	p.TemplateFuncs(templateFuncs)
 
 	p.GET("/mailbox/:mbox", handleGetMailbox)
 	p.POST("/mailbox/:mbox", handleGetMailbox)
