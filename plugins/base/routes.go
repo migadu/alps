@@ -19,19 +19,17 @@ import (
 )
 
 func registerRoutes(p *koushin.GoPlugin) {
-	p.GET("/", func(ectx echo.Context) error {
-		return ectx.Redirect(http.StatusFound, "/mailbox/INBOX")
+	p.GET("/", func(ctx *koushin.Context) error {
+		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	})
 
 	p.GET("/mailbox/:mbox", handleGetMailbox)
 	p.POST("/mailbox/:mbox", handleGetMailbox)
 
-	p.GET("/message/:mbox/:uid", func(ectx echo.Context) error {
-		ctx := ectx.(*koushin.Context)
+	p.GET("/message/:mbox/:uid", func(ctx *koushin.Context) error {
 		return handleGetPart(ctx, false)
 	})
-	p.GET("/message/:mbox/:uid/raw", func(ectx echo.Context) error {
-		ctx := ectx.(*koushin.Context)
+	p.GET("/message/:mbox/:uid/raw", func(ctx *koushin.Context) error {
 		return handleGetPart(ctx, true)
 	})
 
@@ -62,9 +60,7 @@ type MailboxRenderData struct {
 	Query              string
 }
 
-func handleGetMailbox(ectx echo.Context) error {
-	ctx := ectx.(*koushin.Context)
-
+func handleGetMailbox(ctx *koushin.Context) error {
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -125,9 +121,7 @@ func handleGetMailbox(ectx echo.Context) error {
 	})
 }
 
-func handleLogin(ectx echo.Context) error {
-	ctx := ectx.(*koushin.Context)
-
+func handleLogin(ctx *koushin.Context) error {
 	username := ctx.FormValue("username")
 	password := ctx.FormValue("password")
 	if username != "" && password != "" {
@@ -146,9 +140,7 @@ func handleLogin(ectx echo.Context) error {
 	return ctx.Render(http.StatusOK, "login.html", koushin.NewBaseRenderData(ctx))
 }
 
-func handleLogout(ectx echo.Context) error {
-	ctx := ectx.(*koushin.Context)
-
+func handleLogout(ctx *koushin.Context) error {
 	ctx.Session.Close()
 	ctx.SetSession(nil)
 	return ctx.Redirect(http.StatusFound, "/login")
@@ -255,9 +247,7 @@ type ComposeRenderData struct {
 	Message *OutgoingMessage
 }
 
-func handleCompose(ectx echo.Context) error {
-	ctx := ectx.(*koushin.Context)
-
+func handleCompose(ctx *koushin.Context) error {
 	var msg OutgoingMessage
 	if strings.ContainsRune(ctx.Session.Username(), '@') {
 		msg.From = ctx.Session.Username()
@@ -358,9 +348,7 @@ func handleCompose(ectx echo.Context) error {
 	})
 }
 
-func handleMove(ectx echo.Context) error {
-	ctx := ectx.(*koushin.Context)
-
+func handleMove(ctx *koushin.Context) error {
 	mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -391,9 +379,7 @@ func handleMove(ectx echo.Context) error {
 	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(to)))
 }
 
-func handleDelete(ectx echo.Context) error {
-	ctx := ectx.(*koushin.Context)
-
+func handleDelete(ctx *koushin.Context) error {
 	mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -432,9 +418,7 @@ func handleDelete(ectx echo.Context) error {
 	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(mboxName)))
 }
 
-func handleSetFlags(ectx echo.Context) error {
-	ctx := ectx.(*koushin.Context)
-
+func handleSetFlags(ctx *koushin.Context) error {
 	mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)

@@ -34,7 +34,10 @@ func (p *goPlugin) LoadTemplate(t *template.Template) error {
 
 func (p *goPlugin) SetRoutes(group *echo.Group) {
 	for _, r := range p.p.routes {
-		group.Add(r.Method, r.Path, r.Handler)
+		h := r.Handler
+		group.Add(r.Method, r.Path, func(ectx echo.Context) error {
+			return h(ectx.(*Context))
+		})
 	}
 
 	group.Static("/plugins/"+p.p.Name+"/assets", pluginDir+"/"+p.p.Name+"/public/assets")
@@ -59,7 +62,7 @@ func (p *goPlugin) Close() error {
 type goPluginRoute struct {
 	Method  string
 	Path    string
-	Handler echo.HandlerFunc
+	Handler HandlerFunc
 }
 
 // GoPlugin is a helper to create Go plugins.
@@ -75,30 +78,30 @@ type GoPlugin struct {
 	routes []goPluginRoute
 
 	templateFuncs template.FuncMap
-	injectFuncs map[string]InjectFunc
+	injectFuncs   map[string]InjectFunc
 }
 
+// HandlerFunc is a function serving HTTP requests.
+type HandlerFunc func(*Context) error
+
 // AddRoute registers a new HTTP route.
-//
-// The echo.Context passed to the HTTP handler can be type-asserted to
-// *koushin.Context.
-func (p *GoPlugin) AddRoute(method, path string, handler echo.HandlerFunc) {
+func (p *GoPlugin) AddRoute(method, path string, handler HandlerFunc) {
 	p.routes = append(p.routes, goPluginRoute{method, path, handler})
 }
 
-func (p *GoPlugin) DELETE(path string, handler echo.HandlerFunc) {
+func (p *GoPlugin) DELETE(path string, handler HandlerFunc) {
 	p.AddRoute(http.MethodDelete, path, handler)
 }
 
-func (p *GoPlugin) GET(path string, handler echo.HandlerFunc) {
+func (p *GoPlugin) GET(path string, handler HandlerFunc) {
 	p.AddRoute(http.MethodGet, path, handler)
 }
 
-func (p *GoPlugin) POST(path string, handler echo.HandlerFunc) {
+func (p *GoPlugin) POST(path string, handler HandlerFunc) {
 	p.AddRoute(http.MethodPost, path, handler)
 }
 
-func (p *GoPlugin) PUT(path string, handler echo.HandlerFunc) {
+func (p *GoPlugin) PUT(path string, handler HandlerFunc) {
 	p.AddRoute(http.MethodPut, path, handler)
 }
 
