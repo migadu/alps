@@ -263,6 +263,11 @@ func handleCompose(ectx echo.Context) error {
 		msg.From = ctx.Session.Username()
 	}
 
+	msg.To = strings.Split(ctx.QueryParam("to"), ",")
+	msg.Subject = ctx.QueryParam("subject")
+	msg.Text = ctx.QueryParam("body")
+	msg.InReplyTo = ctx.QueryParam("in-reply-to")
+
 	if ctx.Request().Method == http.MethodGet && ctx.Param("uid") != "" {
 		// This is a reply
 		mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))

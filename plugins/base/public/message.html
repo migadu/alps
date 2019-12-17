@@ -49,24 +49,32 @@
 	</form>
 {{end}}
 
+{{define "addr-list"}}
+	{{range $i := .}}
+		{{if $i}},{{end}}
+		{{.PersonalName}}
+		&lt;<a href="/compose?to={{.Address}}">{{.Address}}</a>&gt;
+	{{end}}
+{{end}}
+
 <ul>
 	<li>
 		<strong>Date</strong>: {{.Message.Envelope.Date | formatdate}}
 	</li>
 	<li>
-		<strong>From</strong>: {{.Message.Envelope.From | formataddrlist}}
+		<strong>From</strong>: {{template "addr-list" .Message.Envelope.From}}
 	</li>
 	<li>
-		<strong>To</strong>: {{.Message.Envelope.To | formataddrlist}}
+		<strong>To</strong>: {{template "addr-list" .Message.Envelope.To}}
 	</li>
 	{{if .Message.Envelope.Cc}}
 		<li>
-			<strong>Cc</strong>: {{.Message.Envelope.Cc | formataddrlist}}
+			<strong>Cc</strong>: {{template "addr-list" .Message.Envelope.Cc}}
 		</li>
 	{{end}}
 	{{if .Message.Envelope.Bcc}}
 		<li>
-			<strong>Bcc</strong>: {{.Message.Envelope.Bcc | formataddrlist}}
+			<strong>Bcc</strong>: {{template "addr-list" .Message.Envelope.Bcc}}
 		</li>
 	{{end}}
 </ul>
