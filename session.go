@@ -37,6 +37,9 @@ func (err AuthError) Error() string {
 }
 
 // Session is an active user session. It may also hold an IMAP connection.
+//
+// The session's password is not available to plugins. Plugins should use the
+// session helpers to authenticate outgoing connections, for instance DoSMTP.
 type Session struct {
 	manager            *SessionManager
 	username, password string
