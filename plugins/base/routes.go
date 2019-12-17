@@ -379,3 +379,32 @@ func handleDelete(ectx echo.Context) error {
 
 	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", mboxName))
 }
+
+func registerRoutes(p *koushin.GoPlugin) {
+	p.GET("/mailbox/:mbox", handleGetMailbox)
+	p.POST("/mailbox/:mbox", handleGetMailbox)
+
+	p.GET("/message/:mbox/:uid", func(ectx echo.Context) error {
+		ctx := ectx.(*koushin.Context)
+		return handleGetPart(ctx, false)
+	})
+	p.GET("/message/:mbox/:uid/raw", func(ectx echo.Context) error {
+		ctx := ectx.(*koushin.Context)
+		return handleGetPart(ctx, true)
+	})
+
+	p.GET("/login", handleLogin)
+	p.POST("/login", handleLogin)
+
+	p.GET("/logout", handleLogout)
+
+	p.GET("/compose", handleCompose)
+	p.POST("/compose", handleCompose)
+
+	p.GET("/message/:mbox/:uid/reply", handleCompose)
+	p.POST("/message/:mbox/:uid/reply", handleCompose)
+
+	p.POST("/message/:mbox/:uid/move", handleMove)
+
+	p.POST("/message/:mbox/:uid/delete", handleDelete)
+}
