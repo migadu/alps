@@ -19,6 +19,10 @@ import (
 )
 
 func registerRoutes(p *koushin.GoPlugin) {
+	p.GET("/", func(ectx echo.Context) error {
+		return ectx.Redirect(http.StatusFound, "/mailbox/INBOX")
+	})
+
 	p.GET("/mailbox/:mbox", handleGetMailbox)
 	p.POST("/mailbox/:mbox", handleGetMailbox)
 
