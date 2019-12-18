@@ -50,7 +50,7 @@
 {{end}}
 
 {{define "addr-list"}}
-	{{range $i := .}}
+	{{range $i, $addr := .}}
 		{{if $i}},{{end}}
 		{{.PersonalName}}
 		&lt;<a href="/compose?to={{.Address}}">{{.Address}}</a>&gt;
