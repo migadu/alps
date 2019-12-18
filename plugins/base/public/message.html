@@ -115,7 +115,8 @@
 	{{if .IsHTML}}
 		<!-- TODO: add a src fallback -->
 		<!-- allow-same-origin is required to resize the frame with its content -->
-		<iframe id="email-frame" srcdoc="{{.Body}}" sandbox="allow-same-origin"></iframe>
+		<!-- allow-popups is required for target="_blank" links -->
+		<iframe id="email-frame" srcdoc="{{.Body}}" sandbox="allow-same-origin allow-popups"></iframe>
 	{{else}}
 		<pre>{{.Body}}</pre>
 	{{end}}

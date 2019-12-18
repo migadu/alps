@@ -250,6 +250,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 		// TODO: be more strict
 		p.AllowElements("style")
 		p.AllowAttrs("style")
+		p.AddTargetBlankToFullyQualifiedLinks(true)
 		body = p.Sanitize(body)
 		isHTML = true
 	}
