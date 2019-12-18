@@ -168,6 +168,13 @@ func New(e *echo.Echo, options *Options) error {
 
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(ectx echo.Context) error {
+			ectx.Response().Header().Set("Content-Security-Policy", "default-src 'self'")
+			return next(ectx)
+		}
+	})
+
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(ectx echo.Context) error {
 			ctx := &Context{Context: ectx, Server: s}
 			ctx.Set("context", ctx)
 
