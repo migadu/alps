@@ -114,7 +114,8 @@
 	<p><a href="{{.Message.Uid}}/reply?part={{.PartPath}}">Reply</a></p>
 	{{if .IsHTML}}
 		<!-- TODO: add a src fallback -->
-		<iframe srcdoc="{{.Body}}" sandbox></iframe>
+		<!-- allow-same-origin is required to resize the frame with its content -->
+		<iframe id="email-frame" srcdoc="{{.Body}}" sandbox="allow-same-origin"></iframe>
 	{{else}}
 		<pre>{{.Body}}</pre>
 	{{end}}

@@ -247,6 +247,9 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 	isHTML := false
 	if strings.EqualFold(mimeType, "text/html") {
 		p := bluemonday.UGCPolicy()
+		// TODO: be more strict
+		p.AllowElements("style")
+		p.AllowAttrs("style")
 		body = p.Sanitize(body)
 		isHTML = true
 	}
