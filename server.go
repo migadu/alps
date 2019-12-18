@@ -302,7 +302,9 @@ func New(e *echo.Echo, options *Options) (*Server, error) {
 
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(ectx echo.Context) error {
-			ectx.Response().Header().Set("Content-Security-Policy", "default-src 'self'")
+			// `style-src 'unsafe-inline'` is required for e-mails with
+			// embedded stylesheets
+			ectx.Response().Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'")
 			return next(ectx)
 		}
 	})

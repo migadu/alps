@@ -16,6 +16,7 @@ import (
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-smtp"
 	"github.com/labstack/echo/v4"
+	"github.com/microcosm-cc/bluemonday"
 )
 
 func registerRoutes(p *koushin.GoPlugin) {
@@ -162,6 +163,7 @@ type MessageRenderData struct {
 	Mailbox     *imap.MailboxStatus
 	Message     *IMAPMessage
 	Body        string
+	IsHTML      bool
 	PartPath    string
 	MailboxPage int
 	Flags       map[string]bool
@@ -216,6 +218,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 
 		// TODO: set Content-Length if possible
 
+		// Be careful not to serve types like text/html as inline
 		if !strings.EqualFold(mimeType, "text/plain") || strings.EqualFold(disp, "attachment") {
 			dispParams := make(map[string]string)
 			if filename != "" {
@@ -241,6 +244,13 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 		body = string(b)
 	}
 
+	isHTML := false
+	if strings.EqualFold(mimeType, "text/html") {
+		p := bluemonday.UGCPolicy()
+		body = p.Sanitize(body)
+		isHTML = true
+	}
+
 	flags := make(map[string]bool)
 	for _, f := range mbox.PermanentFlags {
 		f = imap.CanonicalFlag(f)
@@ -256,6 +266,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 		Mailbox:        mbox,
 		Message:        msg,
 		Body:           body,
+		IsHTML:         isHTML,
 		PartPath:       partPathString,
 		MailboxPage:    int(mbox.Messages-msg.SeqNum) / messagesPerPage,
 		Flags:          flags,

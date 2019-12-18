@@ -112,7 +112,12 @@
 
 {{if .Body}}
 	<p><a href="{{.Message.Uid}}/reply?part={{.PartPath}}">Reply</a></p>
-	<pre>{{.Body}}</pre>
+	{{if .IsHTML}}
+		<!-- TODO: add a src fallback -->
+		<iframe srcdoc="{{.Body}}" sandbox></iframe>
+	{{else}}
+		<pre>{{.Body}}</pre>
+	{{end}}
 {{else}}
 	<p>Can't preview this message part.</p>
 	<a href="{{.Message.Uid}}/raw?part={{.PartPath}}">Download</a>
