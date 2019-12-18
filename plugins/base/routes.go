@@ -203,8 +203,13 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 	}
 
 	if raw {
+		ctx.Response().Header().Set("Content-Type", mimeType)
+
 		disp, dispParams, _ := part.Header.ContentDisposition()
 		filename := dispParams["filename"]
+		if len(partPath) == 0 {
+			filename = msg.Envelope.Subject + ".eml"
+		}
 
 		// TODO: set Content-Length if possible
 
@@ -216,7 +221,12 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 			disp := mime.FormatMediaType("attachment", dispParams)
 			ctx.Response().Header().Set("Content-Disposition", disp)
 		}
-		return ctx.Stream(http.StatusOK, mimeType, part.Body)
+
+		if len(partPath) == 0 {
+			return part.WriteTo(ctx.Response())
+		} else {
+			return ctx.Stream(http.StatusOK, mimeType, part.Body)
+		}
 	}
 
 	var body string
