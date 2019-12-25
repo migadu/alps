@@ -40,6 +40,13 @@
       </ul>
     </div>
     <div class="col-md-10 messages-column">
+      <div class="nav flex-column">
+        <form method="get" action="">
+          <input type="text" name="query" value="{{.Query}}"
+            class="form-control" placeholder="Search">
+        </form>
+      </div>
+
       {{if .Messages}}
       <ul class="nav flex-column">
         {{range .Messages}}
