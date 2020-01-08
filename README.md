@@ -41,6 +41,12 @@ API:
 * `koushin.set_route(method, path, f)`: register a new HTTP route, `f` will be
   called with the HTTP context
 
+## Hot reload
+
+Lua plugins and templates can be reloaded by sending `SIGUSR1` to koushin.
+
+    killall -USR1 koushin
+
 ## Contributing
 
 Send patches on the [mailing list], report bugs on the [issue tracker].
