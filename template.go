@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"sync"
 
 	"github.com/labstack/echo/v4"
 )
@@ -77,12 +78,18 @@ func NewBaseRenderData(ctx *Context) *BaseRenderData {
 }
 
 type renderer struct {
-	base         *template.Template
-	themes       map[string]*template.Template
+	logger       echo.Logger
 	defaultTheme string
+
+	mutex  sync.RWMutex
+	base   *template.Template
+	themes map[string]*template.Template
 }
 
 func (r *renderer) Render(w io.Writer, name string, data interface{}, ectx echo.Context) error {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
 	// ectx is the raw *echo.context, not our own *Context
 	ctx := ectx.Get("context").(*Context)
 
@@ -114,12 +121,12 @@ func loadTheme(name string, base *template.Template) (*template.Template, error)
 	return theme, nil
 }
 
-func loadTemplates(logger echo.Logger, defaultTheme string, plugins []Plugin) (*renderer, error) {
+func (r *renderer) reload(plugins []Plugin) error {
 	base := template.New("")
 
 	for _, p := range plugins {
 		if err := p.LoadTemplate(base); err != nil {
-			return nil, fmt.Errorf("failed to load template for plugin '%v': %v", p.Name(), err)
+			return fmt.Errorf("failed to load template for plugin '%v': %v", p.Name(), err)
 		}
 	}
 
@@ -127,7 +134,7 @@ func loadTemplates(logger echo.Logger, defaultTheme string, plugins []Plugin) (*
 
 	files, err := ioutil.ReadDir(themesDir)
 	if err != nil && !os.IsNotExist(err) {
-		return nil, err
+		return err
 	}
 
 	for _, fi := range files {
@@ -135,22 +142,29 @@ func loadTemplates(logger echo.Logger, defaultTheme string, plugins []Plugin) (*
 			continue
 		}
 
-		logger.Printf("Loading theme '%v'", fi.Name())
+		r.logger.Printf("Loading theme '%v'", fi.Name())
 		var err error
 		if themes[fi.Name()], err = loadTheme(fi.Name(), base); err != nil {
-			return nil, fmt.Errorf("failed to load theme '%v': %v", fi.Name(), err)
+			return fmt.Errorf("failed to load theme '%v': %v", fi.Name(), err)
 		}
 	}
 
-	if defaultTheme != "" {
-		if _, ok := themes[defaultTheme]; !ok {
-			return nil, fmt.Errorf("failed to find default theme '%v'", defaultTheme)
+	if r.defaultTheme != "" {
+		if _, ok := themes[r.defaultTheme]; !ok {
+			return fmt.Errorf("failed to find default theme '%v'", r.defaultTheme)
 		}
 	}
 
+	r.mutex.Lock()
+	r.base = base
+	r.themes = themes
+	r.mutex.Unlock()
+	return nil
+}
+
+func newRenderer(logger echo.Logger, defaultTheme string) *renderer {
 	return &renderer{
-		base:         base,
-		themes:       themes,
+		logger:       logger,
 		defaultTheme: defaultTheme,
-	}, nil
+	}
 }

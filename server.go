@@ -14,6 +14,7 @@ const cookieName = "koushin_session"
 
 // Server holds all the koushin server state.
 type Server struct {
+	renderer *renderer
 	Sessions *SessionManager
 	Plugins  []Plugin
 
@@ -70,6 +71,10 @@ func (s *Server) parseSMTPURL(smtpURL string) error {
 	}
 
 	return nil
+}
+
+func (s *Server) Reload() error {
+	return s.renderer.reload(s.Plugins)
 }
 
 func newServer(imapURL, smtpURL string) (*Server, error) {
@@ -150,8 +155,9 @@ func New(e *echo.Echo, options *Options) (*Server, error) {
 	}
 	s.Plugins = append(s.Plugins, luaPlugins...)
 
-	e.Renderer, err = loadTemplates(e.Logger, options.Theme, s.Plugins)
-	if err != nil {
+	s.renderer = newRenderer(e.Logger, options.Theme)
+	e.Renderer = s.renderer
+	if err := s.renderer.reload(s.Plugins); err != nil {
 		return nil, fmt.Errorf("failed to load templates: %v", err)
 	}
 

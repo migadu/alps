@@ -239,7 +239,7 @@ func searchMessages(conn *imapclient.Client, mboxName, query string, page int) (
 	}
 	total = len(nums)
 
-	from := page*messagesPerPage
+	from := page * messagesPerPage
 	to := from + messagesPerPage
 	if from >= len(nums) {
 		return nil, total, nil
