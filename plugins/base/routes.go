@@ -16,7 +16,6 @@ import (
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-smtp"
 	"github.com/labstack/echo/v4"
-	"github.com/microcosm-cc/bluemonday"
 )
 
 func registerRoutes(p *koushin.GoPlugin) {
@@ -246,12 +245,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 
 	isHTML := false
 	if strings.EqualFold(mimeType, "text/html") {
-		p := bluemonday.UGCPolicy()
-		// TODO: be more strict
-		p.AllowElements("style")
-		p.AllowAttrs("style")
-		p.AddTargetBlankToFullyQualifiedLinks(true)
-		body = p.Sanitize(body)
+		body = sanitizeHTML(body)
 		isHTML = true
 	}
 
