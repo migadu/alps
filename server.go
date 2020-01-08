@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -14,21 +15,23 @@ const cookieName = "koushin_session"
 
 // Server holds all the koushin server state.
 type Server struct {
-	renderer *renderer
+	e        *echo.Echo
 	Sessions *SessionManager
-	Plugins  []Plugin
+
+	mutex   sync.RWMutex // used for server reload
+	plugins []Plugin
 
 	imap struct {
 		host     string
 		tls      bool
 		insecure bool
 	}
-
 	smtp struct {
 		host     string
 		tls      bool
 		insecure bool
 	}
+	defaultTheme string
 }
 
 func (s *Server) parseIMAPURL(imapURL string) error {
@@ -73,19 +76,53 @@ func (s *Server) parseSMTPURL(smtpURL string) error {
 	return nil
 }
 
-func (s *Server) Reload() error {
-	return s.renderer.reload(s.Plugins)
+func (s *Server) load() error {
+	plugins := append([]Plugin(nil), plugins...)
+	for _, p := range plugins {
+		s.e.Logger.Printf("Registered plugin '%v'", p.Name())
+	}
+
+	luaPlugins, err := loadAllLuaPlugins(s.e.Logger)
+	if err != nil {
+		return fmt.Errorf("failed to load plugins: %v", err)
+	}
+	plugins = append(plugins, luaPlugins...)
+
+	renderer := newRenderer(s.e.Logger, s.defaultTheme)
+	if err := renderer.Load(plugins); err != nil {
+		return fmt.Errorf("failed to load templates: %v", err)
+	}
+
+	// Once we've loaded plugins and templates from disk (which can take time),
+	// swap them in the Server struct
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	s.plugins = plugins
+	s.e.Renderer = renderer
+
+	for _, p := range plugins {
+		p.SetRoutes(s.e.Group(""))
+	}
+
+	return nil
 }
 
-func newServer(imapURL, smtpURL string) (*Server, error) {
-	s := &Server{}
+// Reload loads Lua plugins and templates from disk.
+func (s *Server) Reload() error {
+	s.e.Logger.Printf("Reloading server")
+	return s.load()
+}
 
-	if err := s.parseIMAPURL(imapURL); err != nil {
+func newServer(e *echo.Echo, options *Options) (*Server, error) {
+	s := &Server{e: e, defaultTheme: options.Theme}
+
+	if err := s.parseIMAPURL(options.IMAPURL); err != nil {
 		return nil, err
 	}
 
-	if smtpURL != "" {
-		if err := s.parseSMTPURL(smtpURL); err != nil {
+	if options.SMTPURL != "" {
+		if err := s.parseSMTPURL(options.SMTPURL); err != nil {
 			return nil, err
 		}
 	}
@@ -139,26 +176,13 @@ type Options struct {
 
 // New creates a new server.
 func New(e *echo.Echo, options *Options) (*Server, error) {
-	s, err := newServer(options.IMAPURL, options.SMTPURL)
+	s, err := newServer(e, options)
 	if err != nil {
 		return nil, err
 	}
 
-	s.Plugins = append([]Plugin(nil), plugins...)
-	for _, p := range s.Plugins {
-		e.Logger.Printf("Registered plugin '%v'", p.Name())
-	}
-
-	luaPlugins, err := loadAllLuaPlugins(e.Logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load plugins: %v", err)
-	}
-	s.Plugins = append(s.Plugins, luaPlugins...)
-
-	s.renderer = newRenderer(e.Logger, options.Theme)
-	e.Renderer = s.renderer
-	if err := s.renderer.reload(s.Plugins); err != nil {
-		return nil, fmt.Errorf("failed to load templates: %v", err)
+	if err := s.load(); err != nil {
+		return nil, err
 	}
 
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
@@ -171,6 +195,15 @@ func New(e *echo.Echo, options *Options) (*Server, error) {
 		// TODO: hide internal errors
 		c.String(code, err.Error())
 	}
+
+	e.Pre(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(ectx echo.Context) error {
+			s.mutex.RLock()
+			err := next(ectx)
+			s.mutex.RUnlock()
+			return err
+		}
+	})
 
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(ectx echo.Context) error {
@@ -210,10 +243,6 @@ func New(e *echo.Echo, options *Options) (*Server, error) {
 	})
 
 	e.Static("/themes", "themes")
-
-	for _, p := range s.Plugins {
-		p.SetRoutes(e.Group(""))
-	}
 
 	return s, nil
 }

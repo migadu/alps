@@ -6,7 +6,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"sync"
 
 	"github.com/labstack/echo/v4"
 )
@@ -81,19 +80,15 @@ type renderer struct {
 	logger       echo.Logger
 	defaultTheme string
 
-	mutex  sync.RWMutex
 	base   *template.Template
 	themes map[string]*template.Template
 }
 
 func (r *renderer) Render(w io.Writer, name string, data interface{}, ectx echo.Context) error {
-	r.mutex.RLock()
-	defer r.mutex.RUnlock()
-
 	// ectx is the raw *echo.context, not our own *Context
 	ctx := ectx.Get("context").(*Context)
 
-	for _, plugin := range ctx.Server.Plugins {
+	for _, plugin := range ctx.Server.plugins {
 		if err := plugin.Inject(ctx, name, data.(RenderData)); err != nil {
 			return fmt.Errorf("failed to run plugin '%v': %v", plugin.Name(), err)
 		}
@@ -121,7 +116,7 @@ func loadTheme(name string, base *template.Template) (*template.Template, error)
 	return theme, nil
 }
 
-func (r *renderer) reload(plugins []Plugin) error {
+func (r *renderer) Load(plugins []Plugin) error {
 	base := template.New("")
 
 	for _, p := range plugins {
@@ -155,10 +150,8 @@ func (r *renderer) reload(plugins []Plugin) error {
 		}
 	}
 
-	r.mutex.Lock()
 	r.base = base
 	r.themes = themes
-	r.mutex.Unlock()
 	return nil
 }
 

@@ -48,7 +48,6 @@ func main() {
 	signal.Notify(sigs, syscall.SIGUSR1)
 	go func() {
 		for range sigs {
-			e.Logger.Printf("Reloading server")
 			if err := s.Reload(); err != nil {
 				e.Logger.Errorf("Failed to reload server: %v", err)
 			}
