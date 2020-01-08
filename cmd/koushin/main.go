@@ -17,7 +17,9 @@ import (
 
 func main() {
 	var options koushin.Options
+	var addr string
 	flag.StringVar(&options.Theme, "theme", "", "default theme")
+	flag.StringVar(&addr, "addr", ":1323", "listening address")
 
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "usage: koushin [options...] <IMAP URL> [SMTP URL]\n")
@@ -54,5 +56,5 @@ func main() {
 		}
 	}()
 
-	e.Logger.Fatal(e.Start(":1323"))
+	e.Logger.Fatal(e.Start(addr))
 }
