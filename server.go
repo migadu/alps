@@ -133,10 +133,10 @@ type Options struct {
 }
 
 // New creates a new server.
-func New(e *echo.Echo, options *Options) error {
+func New(e *echo.Echo, options *Options) (*Server, error) {
 	s, err := newServer(options.IMAPURL, options.SMTPURL)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	s.Plugins = append([]Plugin(nil), plugins...)
@@ -146,13 +146,13 @@ func New(e *echo.Echo, options *Options) error {
 
 	luaPlugins, err := loadAllLuaPlugins(e.Logger)
 	if err != nil {
-		return fmt.Errorf("failed to load plugins: %v", err)
+		return nil, fmt.Errorf("failed to load plugins: %v", err)
 	}
 	s.Plugins = append(s.Plugins, luaPlugins...)
 
 	e.Renderer, err = loadTemplates(e.Logger, options.Theme, s.Plugins)
 	if err != nil {
-		return fmt.Errorf("failed to load templates: %v", err)
+		return nil, fmt.Errorf("failed to load templates: %v", err)
 	}
 
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
@@ -209,5 +209,5 @@ func New(e *echo.Echo, options *Options) error {
 		p.SetRoutes(e.Group(""))
 	}
 
-	return nil
+	return s, nil
 }

@@ -35,7 +35,8 @@ func main() {
 	if l, ok := e.Logger.(*log.Logger); ok {
 		l.SetHeader("${time_rfc3339} ${level}")
 	}
-	if err := koushin.New(e, &options); err != nil {
+	_, err := koushin.New(e, &options)
+	if err != nil {
 		e.Logger.Fatal(err)
 	}
 	e.Use(middleware.Recover())
