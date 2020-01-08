@@ -234,13 +234,12 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 		}
 	}
 
-	var body string
+	var body []byte
 	if strings.HasPrefix(strings.ToLower(mimeType), "text/") {
-		b, err := ioutil.ReadAll(part.Body)
+		body, err = ioutil.ReadAll(part.Body)
 		if err != nil {
 			return fmt.Errorf("failed to read part body: %v", err)
 		}
-		body = string(b)
 	}
 
 	isHTML := false
@@ -263,7 +262,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 		Mailboxes:      mailboxes,
 		Mailbox:        mbox,
 		Message:        msg,
-		Body:           body,
+		Body:           string(body),
 		IsHTML:         isHTML,
 		PartPath:       partPathString,
 		MailboxPage:    int(mbox.Messages-msg.SeqNum) / messagesPerPage,

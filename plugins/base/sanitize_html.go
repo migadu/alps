@@ -4,7 +4,7 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 )
 
-func sanitizeHTML(b string) string {
+func sanitizeHTML(b []byte) []byte {
 	p := bluemonday.UGCPolicy()
 
 	// TODO: be more strict
@@ -14,5 +14,5 @@ func sanitizeHTML(b string) string {
 	p.AddTargetBlankToFullyQualifiedLinks(true)
 	p.RequireNoFollowOnLinks(true)
 
-	return p.Sanitize(b)
+	return p.SanitizeBytes(b)
 }
