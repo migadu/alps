@@ -3,6 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"git.sr.ht/~emersion/koushin"
 	"github.com/labstack/echo/v4"
@@ -35,10 +38,22 @@ func main() {
 	if l, ok := e.Logger.(*log.Logger); ok {
 		l.SetHeader("${time_rfc3339} ${level}")
 	}
-	_, err := koushin.New(e, &options)
+	s, err := koushin.New(e, &options)
 	if err != nil {
 		e.Logger.Fatal(err)
 	}
 	e.Use(middleware.Recover())
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGUSR1)
+	go func() {
+		for range sigs {
+			e.Logger.Printf("Reloading server")
+			if err := s.Reload(); err != nil {
+				e.Logger.Errorf("Failed to reload server: %v", err)
+			}
+		}
+	}()
+
 	e.Logger.Fatal(e.Start(":1323"))
 }
