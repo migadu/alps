@@ -88,8 +88,19 @@ func (r *renderer) Render(w io.Writer, name string, data interface{}, ectx echo.
 	// ectx is the raw *echo.context, not our own *Context
 	ctx := ectx.Get("context").(*Context)
 
+	var renderData RenderData
+	if data == nil {
+		renderData = &struct { BaseRenderData }{ *NewBaseRenderData(ctx) }
+	} else {
+		var ok bool
+		renderData, ok = data.(RenderData)
+		if !ok {
+			return fmt.Errorf("data passed to template '%v' doesn't implement RenderData", name)
+		}
+	}
+
 	for _, plugin := range ctx.Server.plugins {
-		if err := plugin.Inject(ctx, name, data.(RenderData)); err != nil {
+		if err := plugin.Inject(ctx, name, renderData); err != nil {
 			return fmt.Errorf("failed to run plugin '%v': %v", plugin.Name(), err)
 		}
 	}
