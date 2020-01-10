@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
+	"net/http"
 
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-sasl"
@@ -102,6 +103,13 @@ func (s *Session) DoSMTP(f func(*smtp.Client) error) error {
 	}
 
 	return nil
+}
+
+// SetHTTPBasicAuth adds an Authorization header field to the request with
+// this session's credentials.
+func (s *Session) SetHTTPBasicAuth(req *http.Request) {
+	// TODO: find a way to make it harder for plugins to steal credentials
+	req.SetBasicAuth(s.username, s.password)
 }
 
 // Close destroys the session. This can be used to log the user out.
