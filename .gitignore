@@ -3,4 +3,5 @@
 !/public/themes/sourcehut
 /plugins/*
 !/plugins/base
+!/plugins/carddav
 !/plugins/lua

@@ -37,6 +37,7 @@
           id="to"
           class="form-control"
           value="{{.Message.ToString}}"
+          list="emails"
           multiple
           {{ if not .Message.To }}
           autofocus
@@ -73,6 +74,12 @@
         class="btn btn-primary"
       >Send email</button>
     </div>
+
+    <datalist id="emails">
+      {{range .Extra.EmailSuggestions}}
+        <option value="{{.}}">
+      {{end}}
+    </datalist>
   </form>
 </div>
 
