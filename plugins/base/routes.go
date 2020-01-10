@@ -141,6 +141,9 @@ func handleLogin(ctx *koushin.Context) error {
 		}
 		ctx.SetSession(s)
 
+		if path := ctx.QueryParam("next"); path != "" && path[0] == '/' && path != "/login" {
+			return ctx.Redirect(http.StatusFound, path)
+		}
 		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}
 

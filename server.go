@@ -178,6 +178,24 @@ func isPublic(path string) bool {
 	return path == "/login" || strings.HasPrefix(path, "/themes/")
 }
 
+func redirectToLogin(ctx *Context) error {
+	path := ctx.Request().URL.Path
+	to := "/login"
+	if path != "/" && path != "/login" {
+		to += "?next=" + url.QueryEscape(ctx.Request().URL.String())
+	}
+	return ctx.Redirect(http.StatusFound, to)
+}
+
+func handleUnauthenticated(next echo.HandlerFunc, ctx *Context) error {
+	// Require auth for all requests except /login and assets
+	if isPublic(ctx.Request().URL.Path) {
+		return next(ctx)
+	} else {
+		return redirectToLogin(ctx)
+	}
+}
+
 type Options struct {
 	IMAPURL, SMTPURL string
 	Theme            string
@@ -228,12 +246,7 @@ func New(e *echo.Echo, options *Options) (*Server, error) {
 
 			cookie, err := ctx.Cookie(cookieName)
 			if err == http.ErrNoCookie {
-				// Require auth for all pages except /login
-				if isPublic(ctx.Path()) {
-					return next(ctx)
-				} else {
-					return ctx.Redirect(http.StatusFound, "/login")
-				}
+				return handleUnauthenticated(next, ctx)
 			} else if err != nil {
 				return err
 			}
@@ -241,7 +254,7 @@ func New(e *echo.Echo, options *Options) (*Server, error) {
 			ctx.Session, err = ctx.Server.Sessions.get(cookie.Value)
 			if err == errSessionExpired {
 				ctx.SetSession(nil)
-				return ctx.Redirect(http.StatusFound, "/login")
+				return handleUnauthenticated(next, ctx)
 			} else if err != nil {
 				return err
 			}
