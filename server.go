@@ -18,8 +18,9 @@ type Server struct {
 	e        *echo.Echo
 	Sessions *SessionManager
 
-	mutex   sync.RWMutex // used for server reload
-	plugins []Plugin
+	mutex      sync.RWMutex // used for server reload
+	plugins    []Plugin
+	luaPlugins []Plugin
 
 	imap struct {
 		host     string
@@ -98,7 +99,15 @@ func (s *Server) load() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
+	// Close previous Lua plugins
+	for _, p := range s.luaPlugins {
+		if err := p.Close(); err != nil {
+			s.e.Logger.Printf("Failed to unload plugin '%v': %v", p.Name(), err)
+		}
+	}
+
 	s.plugins = plugins
+	s.luaPlugins = luaPlugins
 	s.e.Renderer = renderer
 
 	for _, p := range plugins {
