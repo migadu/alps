@@ -201,7 +201,7 @@ func listMessages(conn *imapclient.Client, mboxName string, page int) ([]IMAPMes
 	var seqSet imap.SeqSet
 	seqSet.AddRange(uint32(from), uint32(to))
 
-	fetch := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid, imap.FetchBodyStructure}
+	fetch := []imap.FetchItem{imap.FetchFlags, imap.FetchEnvelope, imap.FetchUid, imap.FetchBodyStructure}
 
 	ch := make(chan *imap.Message, 10)
 	done := make(chan error, 1)
