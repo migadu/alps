@@ -14,6 +14,8 @@ const themesDir = "themes"
 
 // GlobalRenderData contains data available in all templates.
 type GlobalRenderData struct {
+	Path string
+
 	LoggedIn bool
 
 	// if logged in
@@ -69,6 +71,8 @@ func NewBaseRenderData(ctx *Context) *BaseRenderData {
 		global.LoggedIn = true
 		global.Username = ctx.Session.username
 	}
+
+	global.Path = ctx.Request().URL.String()
 
 	return &BaseRenderData{
 		GlobalData: global,
