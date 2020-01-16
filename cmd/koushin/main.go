@@ -37,6 +37,7 @@ func main() {
 	options.SMTPURL = flag.Arg(1)
 
 	e := echo.New()
+	e.HideBanner = true
 	if l, ok := e.Logger.(*log.Logger); ok {
 		l.SetHeader("${time_rfc3339} ${level}")
 	}
