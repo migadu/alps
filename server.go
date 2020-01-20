@@ -228,6 +228,11 @@ func (s *Server) Reload() error {
 	return s.load()
 }
 
+// Logger returns this server's logger.
+func (s *Server) Logger() echo.Logger {
+	return s.e.Logger
+}
+
 // Context is the context used by HTTP handlers.
 //
 // Use a type assertion to get it from a echo.Context:
