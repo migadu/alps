@@ -19,7 +19,7 @@ func (p *goPlugin) Name() string {
 func (p *goPlugin) LoadTemplate(t *template.Template) error {
 	t.Funcs(p.p.templateFuncs)
 
-	paths, err := filepath.Glob(pluginDir + "/" + p.p.Name + "/public/*.html")
+	paths, err := filepath.Glob(PluginDir + "/" + p.p.Name + "/public/*.html")
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func (p *goPlugin) SetRoutes(group *echo.Group) {
 		})
 	}
 
-	group.Static("/plugins/"+p.p.Name+"/assets", pluginDir+"/"+p.p.Name+"/public/assets")
+	group.Static("/plugins/"+p.p.Name+"/assets", PluginDir+"/"+p.p.Name+"/public/assets")
 }
 
 func (p *goPlugin) Inject(ctx *Context, name string, data RenderData) error {

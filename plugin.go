@@ -6,7 +6,8 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-const pluginDir = "plugins"
+// PluginDir is the path to the plugins directory.
+const PluginDir = "plugins"
 
 // Plugin extends koushin with additional functionality.
 type Plugin interface {

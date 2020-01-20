@@ -1,4 +1,4 @@
-package koushin
+package koushinlua
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/yuin/gopher-lua"
 	"layeh.com/gopher-luar"
+	"git.sr.ht/~emersion/koushin"
 )
 
 type luaRoute struct {
@@ -68,7 +69,7 @@ func (p *luaPlugin) setRoute(l *lua.LState) int {
 	return 0
 }
 
-func (p *luaPlugin) inject(name string, data RenderData) error {
+func (p *luaPlugin) inject(name string, data koushin.RenderData) error {
 	f, ok := p.renderCallbacks[name]
 	if !ok {
 		return nil
@@ -86,7 +87,7 @@ func (p *luaPlugin) inject(name string, data RenderData) error {
 	return nil
 }
 
-func (p *luaPlugin) Inject(ctx *Context, name string, data RenderData) error {
+func (p *luaPlugin) Inject(ctx *koushin.Context, name string, data koushin.RenderData) error {
 	if err := p.inject("*", data); err != nil {
 		return err
 	}
@@ -157,21 +158,24 @@ func loadLuaPlugin(filename string) (*luaPlugin, error) {
 	return p, nil
 }
 
-func loadAllLuaPlugins(log echo.Logger) ([]Plugin, error) {
-	filenames, err := filepath.Glob(pluginDir + "/*/main.lua")
+func loadAllLuaPlugins(s *koushin.Server) ([]koushin.Plugin, error) {
+	log := s.Logger()
+
+	filenames, err := filepath.Glob(koushin.PluginDir + "/*/main.lua")
 	if err != nil {
 		return nil, fmt.Errorf("filepath.Glob failed: %v", err)
 	}
 
-	plugins := make([]Plugin, 0, len(filenames))
+	plugins := make([]koushin.Plugin, 0, len(filenames))
 	for _, filename := range filenames {
-		log.Printf("Loading Lua plugin '%v'", filename)
+		log.Printf("Loading Lua plugin %q", filename)
+
 		p, err := loadLuaPlugin(filename)
 		if err != nil {
 			for _, p := range plugins {
 				p.Close()
 			}
-			return nil, fmt.Errorf("failed to load Lua plugin '%v': %v", filename, err)
+			return nil, fmt.Errorf("failed to load Lua plugin %q: %v", filename, err)
 		}
 		plugins = append(plugins, p)
 	}

@@ -3,3 +3,4 @@
 !/public/themes/sourcehut
 /plugins/*
 !/plugins/base
+!/plugins/lua

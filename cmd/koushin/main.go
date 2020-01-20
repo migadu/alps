@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/gommon/log"
 
 	_ "git.sr.ht/~emersion/koushin/plugins/base"
+	_ "git.sr.ht/~emersion/koushin/plugins/lua"
 )
 
 func main() {

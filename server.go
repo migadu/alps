@@ -18,9 +18,8 @@ type Server struct {
 	e        *echo.Echo
 	Sessions *SessionManager
 
-	mutex      sync.RWMutex // used for server reload
-	plugins    []Plugin
-	luaPlugins []Plugin
+	mutex   sync.RWMutex // used for server reload
+	plugins []Plugin
 
 	// maps protocols to URLs (protocol can be empty for auto-discovery)
 	upstreams map[string]*url.URL
@@ -188,12 +187,6 @@ func (s *Server) load() error {
 		plugins = append(plugins, l...)
 	}
 
-	luaPlugins, err := loadAllLuaPlugins(s.e.Logger)
-	if err != nil {
-		return fmt.Errorf("failed to load plugins: %v", err)
-	}
-	plugins = append(plugins, luaPlugins...)
-
 	renderer := newRenderer(s.e.Logger, s.defaultTheme)
 	if err := renderer.Load(plugins); err != nil {
 		return fmt.Errorf("failed to load templates: %v", err)
@@ -204,15 +197,14 @@ func (s *Server) load() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// Close previous Lua plugins
-	for _, p := range s.luaPlugins {
+	// Close previous plugins
+	for _, p := range s.plugins {
 		if err := p.Close(); err != nil {
-			s.e.Logger.Printf("Failed to unload plugin '%v': %v", p.Name(), err)
+			s.e.Logger.Printf("Failed to unload plugin %q: %v", p.Name(), err)
 		}
 	}
 
 	s.plugins = plugins
-	s.luaPlugins = luaPlugins
 	s.e.Renderer = renderer
 
 	for _, p := range plugins {
