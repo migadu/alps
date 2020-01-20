@@ -99,13 +99,13 @@ func (r *renderer) Render(w io.Writer, name string, data interface{}, ectx echo.
 		var ok bool
 		renderData, ok = data.(RenderData)
 		if !ok {
-			return fmt.Errorf("data passed to template '%v' doesn't implement RenderData", name)
+			return fmt.Errorf("data passed to template %q doesn't implement RenderData", name)
 		}
 	}
 
 	for _, plugin := range ctx.Server.plugins {
 		if err := plugin.Inject(ctx, name, renderData); err != nil {
-			return fmt.Errorf("failed to run plugin '%v': %v", plugin.Name(), err)
+			return fmt.Errorf("failed to run plugin %q: %v", plugin.Name(), err)
 		}
 	}
 
@@ -136,7 +136,7 @@ func (r *renderer) Load(plugins []Plugin) error {
 
 	for _, p := range plugins {
 		if err := p.LoadTemplate(base); err != nil {
-			return fmt.Errorf("failed to load template for plugin '%v': %v", p.Name(), err)
+			return fmt.Errorf("failed to load template for plugin %q: %v", p.Name(), err)
 		}
 	}
 
@@ -152,16 +152,16 @@ func (r *renderer) Load(plugins []Plugin) error {
 			continue
 		}
 
-		r.logger.Printf("Loading theme '%v'", fi.Name())
+		r.logger.Printf("Loading theme %q", fi.Name())
 		var err error
 		if themes[fi.Name()], err = loadTheme(fi.Name(), base); err != nil {
-			return fmt.Errorf("failed to load theme '%v': %v", fi.Name(), err)
+			return fmt.Errorf("failed to load theme %q: %v", fi.Name(), err)
 		}
 	}
 
 	if r.defaultTheme != "" {
 		if _, ok := themes[r.defaultTheme]; !ok {
-			return fmt.Errorf("failed to find default theme '%v'", r.defaultTheme)
+			return fmt.Errorf("failed to find default theme %q", r.defaultTheme)
 		}
 	}
 
