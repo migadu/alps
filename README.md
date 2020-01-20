@@ -4,6 +4,12 @@
 
 ## Usage
 
+Assuming SRV DNS records are properly set up (see [RFC 6186]):
+
+    go run example.org
+
+To manually specify upstream servers:
+
     go run ./cmd/koushin imaps://mail.example.org:993 smtps://mail.example.org:465
 
 See `-h` for more information.
@@ -55,6 +61,7 @@ Send patches on the [mailing list], report bugs on the [issue tracker].
 
 MIT
 
+[RFC 6186]: https://tools.ietf.org/html/rfc6186
 [Go plugin helpers]: https://godoc.org/git.sr.ht/~emersion/koushin#GoPlugin
 [mailing list]: https://lists.sr.ht/~sircmpwn/koushin
 [issue tracker]: https://todo.sr.ht/~sircmpwn/koushin

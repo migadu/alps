@@ -108,12 +108,18 @@ func (s *Server) parseIMAPUpstream() error {
 		return fmt.Errorf("failed to parse upstream IMAP server: %v", err)
 	}
 
+	if u.Scheme == "" {
+		u, err = discoverIMAP(u.Host)
+		if err != nil {
+			return fmt.Errorf("failed to discover IMAP server: %v", err)
+		}
+	}
+
 	s.imap.host = u.Host
 	switch u.Scheme {
 	case "imap":
 		// This space is intentionally left blank
-	case "imaps", "":
-		// TODO: auto-discovery for empty scheme
+	case "imaps":
 		s.imap.tls = true
 	case "imap+insecure":
 		s.imap.insecure = true
@@ -133,12 +139,19 @@ func (s *Server) parseSMTPUpstream() error {
 		return fmt.Errorf("failed to parse upstream SMTP server: %v", err)
 	}
 
+	if u.Scheme == "" {
+		u, err = discoverSMTP(u.Host)
+		if err != nil {
+			s.e.Logger.Printf("Failed to discover SMTP server: %v", err)
+			return nil
+		}
+	}
+
 	s.smtp.host = u.Host
 	switch u.Scheme {
 	case "smtp":
 		// This space is intentionally left blank
-	case "smtps", "":
-		// TODO: auto-discovery for empty scheme
+	case "smtps":
 		s.smtp.tls = true
 	case "smtp+insecure":
 		s.smtp.insecure = true
