@@ -6,65 +6,65 @@ import (
 	"regexp"
 	"strings"
 
-	"golang.org/x/net/html"
-	"github.com/microcosm-cc/bluemonday"
 	"github.com/aymerick/douceur/css"
 	cssparser "github.com/chris-ramon/douceur/parser"
+	"github.com/microcosm-cc/bluemonday"
+	"golang.org/x/net/html"
 )
 
 // TODO: this doesn't accomodate for quoting
 var (
-	cssURLRegexp = regexp.MustCompile(`url\([^)]*\)`)
+	cssURLRegexp  = regexp.MustCompile(`url\([^)]*\)`)
 	cssExprRegexp = regexp.MustCompile(`expression\([^)]*\)`)
 )
 
 var allowedStyles = map[string]bool{
-	"direction": true,
-	"font": true,
-	"font-family": true,
-	"font-style": true,
-	"font-variant": true,
-	"font-size": true,
-	"font-weight": true,
-	"letter-spacing": true,
-	"line-height": true,
-	"text-align": true,
+	"direction":       true,
+	"font":            true,
+	"font-family":     true,
+	"font-style":      true,
+	"font-variant":    true,
+	"font-size":       true,
+	"font-weight":     true,
+	"letter-spacing":  true,
+	"line-height":     true,
+	"text-align":      true,
 	"text-decoration": true,
-	"text-indent": true,
-	"text-overflow": true,
-	"text-shadow": true,
-	"text-transform": true,
-	"white-space": true,
-	"word-spacing": true,
-	"word-wrap": true,
-	"vertical-align": true,
+	"text-indent":     true,
+	"text-overflow":   true,
+	"text-shadow":     true,
+	"text-transform":  true,
+	"white-space":     true,
+	"word-spacing":    true,
+	"word-wrap":       true,
+	"vertical-align":  true,
 
-	"color": true,
-	"background": true,
-	"background-color": true,
-	"background-image": true,
+	"color":             true,
+	"background":        true,
+	"background-color":  true,
+	"background-image":  true,
 	"background-repeat": true,
 
-	"border": true,
-	"border-color": true,
+	"border":        true,
+	"border-color":  true,
 	"border-radius": true,
-	"height": true,
-	"margin": true,
-	"padding": true,
-	"width": true,
-	"max-width": true,
-	"min-width": true,
+	"height":        true,
+	"margin":        true,
+	"padding":       true,
+	"width":         true,
+	"max-width":     true,
+	"min-width":     true,
 
 	"clear": true,
 	"float": true,
 
 	"border-collapse": true,
-	"border-spacing": true,
-	"caption-side": true,
-	"empty-cells": true,
-	"table-layout": true,
+	"border-spacing":  true,
+	"caption-side":    true,
+	"empty-cells":     true,
+	"table-layout":    true,
 
-	"list-style-type": true,
+	"list-style-type":     true,
 	"list-style-position": true,
 }
 
