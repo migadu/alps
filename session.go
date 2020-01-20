@@ -237,9 +237,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 			}
 		}
 
-		if !timer.Stop() {
-			<-timer.C
-		}
+		timer.Stop()
 
 		s.locker.Lock()
 		if s.imapConn != nil {
