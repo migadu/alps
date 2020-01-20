@@ -5,9 +5,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
-	"net/http"
 
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-sasl"

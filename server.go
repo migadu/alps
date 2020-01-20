@@ -85,7 +85,7 @@ func (err *NoUpstreamError) Error() string {
 // schemes. If no configured upstream server matches, a *NoUpstreamError is
 // returned. An empty URL.Scheme means that the caller needs to perform
 // auto-discovery with URL.Host.
-func (s *Server) Upstream(schemes... string) (*url.URL, error) {
+func (s *Server) Upstream(schemes ...string) (*url.URL, error) {
 	var urls []*url.URL
 	for _, scheme := range append(schemes, "") {
 		u, ok := s.upstreams[scheme]

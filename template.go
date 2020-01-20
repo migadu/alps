@@ -94,7 +94,7 @@ func (r *renderer) Render(w io.Writer, name string, data interface{}, ectx echo.
 
 	var renderData RenderData
 	if data == nil {
-		renderData = &struct { BaseRenderData }{ *NewBaseRenderData(ctx) }
+		renderData = &struct{ BaseRenderData }{*NewBaseRenderData(ctx)}
 	} else {
 		var ok bool
 		renderData, ok = data.(RenderData)
