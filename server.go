@@ -127,6 +127,12 @@ func (s *Server) parseIMAPUpstream() error {
 		panic("unreachable")
 	}
 
+	c, err := s.dialIMAP()
+	if err != nil {
+		return fmt.Errorf("failed to connect to IMAP server: %v", err)
+	}
+	c.Close()
+
 	s.e.Logger.Printf("Configured upstream IMAP server: %v", u)
 	return nil
 }
@@ -158,6 +164,12 @@ func (s *Server) parseSMTPUpstream() error {
 	default:
 		panic("unreachable")
 	}
+
+	c, err := s.dialSMTP()
+	if err != nil {
+		return fmt.Errorf("failed to connect to SMTP server: %v", err)
+	}
+	c.Close()
 
 	s.e.Logger.Printf("Configured upstream SMTP server: %v", u)
 	return nil
