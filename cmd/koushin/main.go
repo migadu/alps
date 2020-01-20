@@ -22,19 +22,17 @@ func main() {
 	flag.StringVar(&addr, "addr", ":1323", "listening address")
 
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "usage: koushin [options...] <IMAP URL> [SMTP URL]\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "usage: koushin [options...] <upstream server...>\n")
 		flag.PrintDefaults()
 	}
 
 	flag.Parse()
 
-	if flag.NArg() < 1 || flag.NArg() > 2 {
+	options.Upstreams = flag.Args()
+	if len(options.Upstreams) == 0 {
 		flag.Usage()
 		return
 	}
-
-	options.IMAPURL = flag.Arg(0)
-	options.SMTPURL = flag.Arg(1)
 
 	e := echo.New()
 	e.HideBanner = true

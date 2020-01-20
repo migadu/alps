@@ -22,6 +22,9 @@ type Server struct {
 	plugins    []Plugin
 	luaPlugins []Plugin
 
+	// maps protocols to URLs (protocol can be empty for auto-discovery)
+	upstreams map[string]*url.URL
+
 	imap struct {
 		host     string
 		tls      bool
@@ -35,45 +38,115 @@ type Server struct {
 	defaultTheme string
 }
 
-func (s *Server) parseIMAPURL(imapURL string) error {
-	u, err := url.Parse(imapURL)
+func newServer(e *echo.Echo, options *Options) (*Server, error) {
+	s := &Server{e: e, defaultTheme: options.Theme}
+
+	s.upstreams = make(map[string]*url.URL, len(options.Upstreams))
+	for _, upstream := range options.Upstreams {
+		u, err := parseUpstream(upstream)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse upstream %q: %v", upstream, err)
+		}
+		if _, ok := s.upstreams[u.Scheme]; ok {
+			return nil, fmt.Errorf("found two upstream servers for scheme %q", u.Scheme)
+		}
+		s.upstreams[u.Scheme] = u
+	}
+
+	if err := s.parseIMAPUpstream(); err != nil {
+		return nil, err
+	}
+	if err := s.parseSMTPUpstream(); err != nil {
+		return nil, err
+	}
+
+	s.Sessions = newSessionManager(s.dialIMAP, s.dialSMTP)
+
+	return s, nil
+}
+
+func parseUpstream(s string) (*url.URL, error) {
+	if !strings.ContainsAny(s, ":/") {
+		// This is a raw domain name, make it an URL with an empty scheme
+		s = "//" + s
+	}
+	return url.Parse(s)
+}
+
+type NoUpstreamError struct {
+	schemes []string
+}
+
+func (err *NoUpstreamError) Error() string {
+	return fmt.Sprintf("no upstream server configured for schemes %v", err.schemes)
+}
+
+// Upstream retrieves the configured upstream server URL for the provided
+// schemes. If no configured upstream server matches, a *NoUpstreamError is
+// returned. An empty URL.Scheme means that the caller needs to perform
+// auto-discovery with URL.Host.
+func (s *Server) Upstream(schemes... string) (*url.URL, error) {
+	var urls []*url.URL
+	for _, scheme := range append(schemes, "") {
+		u, ok := s.upstreams[scheme]
+		if ok {
+			urls = append(urls, u)
+		}
+	}
+	if len(urls) == 0 {
+		return nil, &NoUpstreamError{schemes}
+	}
+	if len(urls) > 1 {
+		return nil, fmt.Errorf("multiple upstream servers are configured for schemes %v", schemes)
+	}
+	return urls[0], nil
+}
+
+func (s *Server) parseIMAPUpstream() error {
+	u, err := s.Upstream("imap", "imaps", "imap+insecure")
 	if err != nil {
-		return fmt.Errorf("failed to parse IMAP server URL: %v", err)
+		return fmt.Errorf("failed to parse upstream IMAP server: %v", err)
 	}
 
 	s.imap.host = u.Host
 	switch u.Scheme {
 	case "imap":
 		// This space is intentionally left blank
-	case "imaps":
+	case "imaps", "":
+		// TODO: auto-discovery for empty scheme
 		s.imap.tls = true
 	case "imap+insecure":
 		s.imap.insecure = true
 	default:
-		return fmt.Errorf("unrecognized IMAP URL scheme: %s", u.Scheme)
+		panic("unreachable")
 	}
 
+	s.e.Logger.Printf("Configured upstream IMAP server: %v", u)
 	return nil
 }
 
-func (s *Server) parseSMTPURL(smtpURL string) error {
-	u, err := url.Parse(smtpURL)
-	if err != nil {
-		return fmt.Errorf("failed to parse SMTP server URL: %v", err)
+func (s *Server) parseSMTPUpstream() error {
+	u, err := s.Upstream("smtp", "smtps", "smtp+insecure")
+	if _, ok := err.(*NoUpstreamError); ok {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("failed to parse upstream SMTP server: %v", err)
 	}
 
 	s.smtp.host = u.Host
 	switch u.Scheme {
 	case "smtp":
 		// This space is intentionally left blank
-	case "smtps":
+	case "smtps", "":
+		// TODO: auto-discovery for empty scheme
 		s.smtp.tls = true
 	case "smtp+insecure":
 		s.smtp.insecure = true
 	default:
-		return fmt.Errorf("unrecognized SMTP URL scheme: %s", u.Scheme)
+		panic("unreachable")
 	}
 
+	s.e.Logger.Printf("Configured upstream SMTP server: %v", u)
 	return nil
 }
 
@@ -121,24 +194,6 @@ func (s *Server) load() error {
 func (s *Server) Reload() error {
 	s.e.Logger.Printf("Reloading server")
 	return s.load()
-}
-
-func newServer(e *echo.Echo, options *Options) (*Server, error) {
-	s := &Server{e: e, defaultTheme: options.Theme}
-
-	if err := s.parseIMAPURL(options.IMAPURL); err != nil {
-		return nil, err
-	}
-
-	if options.SMTPURL != "" {
-		if err := s.parseSMTPURL(options.SMTPURL); err != nil {
-			return nil, err
-		}
-	}
-
-	s.Sessions = newSessionManager(s.dialIMAP, s.dialSMTP)
-
-	return s, nil
 }
 
 // Context is the context used by HTTP handlers.
@@ -197,8 +252,8 @@ func handleUnauthenticated(next echo.HandlerFunc, ctx *Context) error {
 }
 
 type Options struct {
-	IMAPURL, SMTPURL string
-	Theme            string
+	Upstreams []string
+	Theme     string
 }
 
 // New creates a new server.
