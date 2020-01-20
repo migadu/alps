@@ -1,6 +1,7 @@
 package koushinbase
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"mime"
@@ -8,10 +9,12 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"git.sr.ht/~emersion/koushin"
 	"github.com/emersion/go-imap"
 	imapmove "github.com/emersion/go-imap-move"
+	imapspecialuse "github.com/emersion/go-imap-specialuse"
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-smtp"
@@ -289,12 +292,19 @@ func handleCompose(ctx *koushin.Context) error {
 	msg.Text = ctx.QueryParam("body")
 	msg.InReplyTo = ctx.QueryParam("in-reply-to")
 
-	if ctx.Request().Method == http.MethodGet && ctx.Param("uid") != "" {
+	var inReplyToMboxName string
+	var inReplyToUid uint32
+	if ctx.Param("uid") != "" {
 		// This is a reply
-		mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+		var err error
+		inReplyToMboxName, inReplyToUid, err = parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
+	}
+
+	if ctx.Request().Method == http.MethodGet && inReplyToUid != 0 {
+		// Populate fields from original message
 		partPath, err := parsePartPath(ctx.QueryParam("part"))
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -304,7 +314,7 @@ func handleCompose(ctx *koushin.Context) error {
 		var part *message.Entity
 		err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 			var err error
-			inReplyTo, part, err = getMessagePart(c, mboxName, uid, partPath)
+			inReplyTo, part, err = getMessagePart(c, inReplyToMboxName, inReplyToUid, partPath)
 			return err
 		})
 		if err != nil {
@@ -364,7 +374,39 @@ func handleCompose(ctx *koushin.Context) error {
 			if _, ok := err.(koushin.AuthError); ok {
 				return echo.NewHTTPError(http.StatusForbidden, err)
 			}
-			return err
+			return fmt.Errorf("failed to send message: %v", err)
+		}
+
+		if inReplyToUid != 0 {
+			err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+				return markMessageAnswered(c, inReplyToMboxName, inReplyToUid)
+			})
+			if err != nil {
+				return fmt.Errorf("failed to mark original message as answered: %v", err)
+			}
+		}
+
+		err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+			mbox, err := getMailboxByAttribute(c, imapspecialuse.Sent)
+			if err != nil {
+				return err
+			}
+			if mbox == nil {
+				return nil
+			}
+
+			// IMAP needs to know in advance the final size of the message, so
+			// there's no way around storing it in a buffer here.
+			var buf bytes.Buffer
+			if err := msg.WriteTo(&buf); err != nil {
+				return err
+			}
+
+			flags := []string{imap.SeenFlag}
+			return c.Append(mbox.Name, flags, time.Now(), &buf)
+		})
+		if err != nil {
+			return fmt.Errorf("failed to save message to Sent mailbox: %v", err)
 		}
 
 		// TODO: append to IMAP Sent mailbox

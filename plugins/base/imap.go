@@ -35,6 +35,30 @@ func listMailboxes(conn *imapclient.Client) ([]*imap.MailboxInfo, error) {
 	return mailboxes, nil
 }
 
+func getMailboxByAttribute(conn *imapclient.Client, attr string) (*imap.MailboxInfo, error) {
+	ch := make(chan *imap.MailboxInfo, 10)
+	done := make(chan error, 1)
+	go func() {
+		done <- conn.List("", "%", ch)
+	}()
+
+	var mailbox *imap.MailboxInfo
+	for mbox := range ch {
+		for _, a := range mbox.Attributes {
+			if attr == a {
+				mailbox = mbox
+				break
+			}
+		}
+	}
+
+	if err := <-done; err != nil {
+		return nil, fmt.Errorf("failed to get mailbox with attribute %q: %v", attr, err)
+	}
+
+	return mailbox, nil
+}
+
 func ensureMailboxSelected(conn *imapclient.Client, mboxName string) error {
 	mbox := conn.Mailbox()
 	if mbox == nil || mbox.Name != mboxName {
@@ -338,4 +362,16 @@ func getMessagePart(conn *imapclient.Client, mboxName string, uid uint32, partPa
 	}
 
 	return &IMAPMessage{msg}, part, nil
+}
+
+func markMessageAnswered(conn *imapclient.Client, mboxName string, uid uint32) error {
+	if err := ensureMailboxSelected(conn, mboxName); err != nil {
+		return err
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
+	item := imap.FormatFlagsOp(imap.AddFlags, true)
+	flags := []interface{}{imap.AnsweredFlag}
+	return conn.UidStore(seqSet, item, flags, nil)
 }
