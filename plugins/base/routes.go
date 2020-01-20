@@ -244,7 +244,10 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 
 	isHTML := false
 	if strings.EqualFold(mimeType, "text/html") {
-		body = sanitizeHTML(body)
+		body, err = sanitizeHTML(body)
+		if err != nil {
+			return fmt.Errorf("failed to sanitize HTML part: %v", err)
+		}
 		isHTML = true
 	}
 
