@@ -12,5 +12,5 @@ func init() {
 	p.TemplateFuncs(templateFuncs)
 	registerRoutes(&p)
 
-	koushin.RegisterPlugin(p.Plugin())
+	koushin.RegisterPluginLoader(p.Loader())
 }

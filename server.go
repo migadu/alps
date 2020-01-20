@@ -176,9 +176,16 @@ func (s *Server) parseSMTPUpstream() error {
 }
 
 func (s *Server) load() error {
-	plugins := append([]Plugin(nil), plugins...)
-	for _, p := range plugins {
-		s.e.Logger.Printf("Registered plugin '%v'", p.Name())
+	var plugins []Plugin
+	for _, load := range pluginLoaders {
+		l, err := load(s)
+		if err != nil {
+			return fmt.Errorf("failed to load plugins: %v", err)
+		}
+		for _, p := range l {
+			s.e.Logger.Printf("Loaded plugin %q", p.Name())
+		}
+		plugins = append(plugins, l...)
 	}
 
 	luaPlugins, err := loadAllLuaPlugins(s.e.Logger)

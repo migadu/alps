@@ -23,9 +23,13 @@ type Plugin interface {
 	Close() error
 }
 
-var plugins []Plugin
+// PluginLoaderFunc loads plugins for the provided server.
+type PluginLoaderFunc func(*Server) ([]Plugin, error)
 
-// RegisterPlugin registers a plugin to be loaded on server startup.
-func RegisterPlugin(p Plugin) {
-	plugins = append(plugins, p)
+var pluginLoaders []PluginLoaderFunc
+
+// RegisterPluginLoader registers a plugin loader. The loader will be called on
+// server start-up and reload.
+func RegisterPluginLoader(f PluginLoaderFunc) {
+	pluginLoaders = append(pluginLoaders, f)
 }

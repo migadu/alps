@@ -132,3 +132,10 @@ func (p *GoPlugin) Inject(name string, f InjectFunc) {
 func (p *GoPlugin) Plugin() Plugin {
 	return &goPlugin{p}
 }
+
+// Loader returns a loader function for this plugin.
+func (p *GoPlugin) Loader() PluginLoaderFunc {
+	return func(*Server) ([]Plugin, error) {
+		return []Plugin{p.Plugin()}, nil
+	}
+}
