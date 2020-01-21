@@ -67,11 +67,11 @@ type goPluginRoute struct {
 
 // GoPlugin is a helper to create Go plugins.
 //
-// Use this struct to define your plugin, then call RegisterPlugin:
+// Use this struct to define your plugin, then call RegisterPluginLoader:
 //
 //     p := GoPlugin{Name: "my-plugin"}
 //     // Define routes, template functions, etc
-//     koushin.RegisterPlugin(p.Plugin())
+//     koushin.RegisterPluginLoader(p.Loader())
 type GoPlugin struct {
 	Name string
 
