@@ -6,7 +6,7 @@
 
 Assuming SRV DNS records are properly set up (see [RFC 6186]):
 
-    go run example.org
+    go run ./cmd/koushin example.org
 
 To manually specify upstream servers:
 
