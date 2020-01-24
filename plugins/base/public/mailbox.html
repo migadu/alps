@@ -3,48 +3,48 @@
 <h1>koushin</h1>
 
 <p>
-	<a href="/logout">Logout</a> · <a href="/compose">Compose</a>
+  <a href="/logout">Logout</a> · <a href="/compose">Compose</a>
 </p>
 
 <h2>{{.Mailbox.Name}}</h2>
 
 <form method="get" action="">
-	<input type="search" name="query" value="{{.Query}}">
-	<input type="submit" value="Search">
+  <input type="search" name="query" value="{{.Query}}">
+  <input type="submit" value="Search">
 </form>
 
 <p>Mailboxes:</p>
 <ul>
-	{{range .Mailboxes}}
-		<li><a href="/mailbox/{{.Name | pathescape}}">{{.Name}}</a></li>
-	{{end}}
+  {{range .Mailboxes}}
+    <li><a href="/mailbox/{{.Name | pathescape}}">{{.Name}}</a></li>
+  {{end}}
 </ul>
 
 {{if .Messages}}
-	<p>Messages:</p>
-	<ul>
-		{{range .Messages}}
-			<li><a href="/message/{{$.Mailbox.Name | pathescape}}/{{.Uid}}?part={{.TextPartName}}">
-				{{if .Envelope.Subject}}
-					{{.Envelope.Subject}}
-				{{else}}
-					(No subject)
-				{{end}}
-			</a></li>
-		{{end}}
-	</ul>
+  <p>Messages:</p>
+  <ul>
+    {{range .Messages}}
+      <li><a href="/message/{{$.Mailbox.Name | pathescape}}/{{.Uid}}?part={{.TextPartName}}">
+        {{if .Envelope.Subject}}
+          {{.Envelope.Subject}}
+        {{else}}
+          (No subject)
+        {{end}}
+      </a></li>
+    {{end}}
+  </ul>
 
-	<p>
-		{{if ge .PrevPage 0}}
-			<a href="?page={{.PrevPage}}&query={{.Query}}">Prev</a>
-		{{end}}
-		{{if and (ge .PrevPage 0) (ge .NextPage 0)}}·{{end}}
-		{{if ge .NextPage 0}}
-			<a href="?page={{.NextPage}}&query={{.Query}}">Next</a>
-		{{end}}
-	</p>
+  <p>
+    {{if ge .PrevPage 0}}
+      <a href="?page={{.PrevPage}}&query={{.Query}}">Prev</a>
+    {{end}}
+    {{if and (ge .PrevPage 0) (ge .NextPage 0)}}·{{end}}
+    {{if ge .NextPage 0}}
+      <a href="?page={{.NextPage}}&query={{.Query}}">Next</a>
+    {{end}}
+  </p>
 {{else}}
-	<p>No message.</p>
+  <p>No message.</p>
 {{end}}
 
 {{template "foot.html"}}
