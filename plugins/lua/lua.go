@@ -5,10 +5,10 @@ import (
 	"html/template"
 	"path/filepath"
 
+	"git.sr.ht/~emersion/koushin"
 	"github.com/labstack/echo/v4"
 	"github.com/yuin/gopher-lua"
 	"layeh.com/gopher-luar"
-	"git.sr.ht/~emersion/koushin"
 )
 
 type luaRoute struct {

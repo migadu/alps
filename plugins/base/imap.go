@@ -2,12 +2,15 @@ package koushinbase
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/emersion/go-imap"
+	imapspecialuse "github.com/emersion/go-imap-specialuse"
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/textproto"
@@ -374,4 +377,46 @@ func markMessageAnswered(conn *imapclient.Client, mboxName string, uid uint32) e
 	item := imap.FormatFlagsOp(imap.AddFlags, true)
 	flags := []interface{}{imap.AnsweredFlag}
 	return conn.UidStore(seqSet, item, flags, nil)
+}
+
+type mailboxType int
+
+const (
+	mailboxSent mailboxType = iota
+	mailboxDrafts
+)
+
+func appendMessage(c *imapclient.Client, msg *OutgoingMessage, mboxType mailboxType) (saved bool, err error) {
+	var mboxAttr string
+	switch mboxType {
+	case mailboxSent:
+		mboxAttr = imapspecialuse.Sent
+	case mailboxDrafts:
+		mboxAttr = imapspecialuse.Drafts
+	}
+
+	mbox, err := getMailboxByAttribute(c, mboxAttr)
+	if err != nil {
+		return false, err
+	}
+	if mbox == nil {
+		return false, nil
+	}
+
+	// IMAP needs to know in advance the final size of the message, so
+	// there's no way around storing it in a buffer here.
+	var buf bytes.Buffer
+	if err := msg.WriteTo(&buf); err != nil {
+		return false, err
+	}
+
+	flags := []string{imap.SeenFlag}
+	if mboxType == mailboxDrafts {
+		flags = append(flags, imap.DraftFlag)
+	}
+	if err := c.Append(mbox.Name, flags, time.Now(), &buf); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }

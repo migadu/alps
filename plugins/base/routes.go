@@ -1,7 +1,6 @@
 package koushinbase
 
 import (
-	"bytes"
 	"fmt"
 	"io/ioutil"
 	"mime"
@@ -9,12 +8,10 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"git.sr.ht/~emersion/koushin"
 	"github.com/emersion/go-imap"
 	imapmove "github.com/emersion/go-imap-move"
-	imapspecialuse "github.com/emersion/go-imap-specialuse"
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-smtp"
@@ -281,6 +278,39 @@ type ComposeRenderData struct {
 	Message *OutgoingMessage
 }
 
+// Send message, append it to the Sent mailbox, mark the original message as
+// answered
+func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, inReplyToMboxName string, inReplyToUid uint32) error {
+	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
+		return sendMessage(c, msg)
+	})
+	if err != nil {
+		if _, ok := err.(koushin.AuthError); ok {
+			return echo.NewHTTPError(http.StatusForbidden, err)
+		}
+		return fmt.Errorf("failed to send message: %v", err)
+	}
+
+	if inReplyToUid != 0 {
+		err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+			return markMessageAnswered(c, inReplyToMboxName, inReplyToUid)
+		})
+		if err != nil {
+			return fmt.Errorf("failed to mark original message as answered: %v", err)
+		}
+	}
+
+	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+		_, err := appendMessage(c, msg, mailboxSent)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("failed to save message to Sent mailbox: %v", err)
+	}
+
+	return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
+}
+
 func handleCompose(ctx *koushin.Context) error {
 	var msg OutgoingMessage
 	if strings.ContainsRune(ctx.Session.Username(), '@') {
@@ -355,6 +385,12 @@ func handleCompose(ctx *koushin.Context) error {
 	}
 
 	if ctx.Request().Method == http.MethodPost {
+		formParams, err := ctx.FormParams()
+		if err != nil {
+			return fmt.Errorf("failed to parse form: %v", err)
+		}
+		_, saveAsDraft := formParams["save_as_draft"]
+
 		msg.From = ctx.FormValue("from")
 		msg.To = parseAddressList(ctx.FormValue("to"))
 		msg.Subject = ctx.FormValue("subject")
@@ -367,52 +403,23 @@ func handleCompose(ctx *koushin.Context) error {
 		}
 		msg.Attachments = form.File["attachments"]
 
-		err = ctx.Session.DoSMTP(func(c *smtp.Client) error {
-			return sendMessage(c, &msg)
-		})
-		if err != nil {
-			if _, ok := err.(koushin.AuthError); ok {
-				return echo.NewHTTPError(http.StatusForbidden, err)
-			}
-			return fmt.Errorf("failed to send message: %v", err)
-		}
-
-		if inReplyToUid != 0 {
+		if saveAsDraft {
 			err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-				return markMessageAnswered(c, inReplyToMboxName, inReplyToUid)
+				copied, err := appendMessage(c, &msg, mailboxDrafts)
+				if err != nil {
+					return err
+				}
+				if !copied {
+					return fmt.Errorf("no Draft mailbox found")
+				}
+				return nil
 			})
 			if err != nil {
-				return fmt.Errorf("failed to mark original message as answered: %v", err)
+				return fmt.Errorf("failed to save message to Draft mailbox: %v", err)
 			}
+		} else {
+			return submitCompose(ctx, &msg, inReplyToMboxName, inReplyToUid)
 		}
-
-		err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-			mbox, err := getMailboxByAttribute(c, imapspecialuse.Sent)
-			if err != nil {
-				return err
-			}
-			if mbox == nil {
-				return nil
-			}
-
-			// IMAP needs to know in advance the final size of the message, so
-			// there's no way around storing it in a buffer here.
-			var buf bytes.Buffer
-			if err := msg.WriteTo(&buf); err != nil {
-				return err
-			}
-
-			flags := []string{imap.SeenFlag}
-			return c.Append(mbox.Name, flags, time.Now(), &buf)
-		})
-		if err != nil {
-			return fmt.Errorf("failed to save message to Sent mailbox: %v", err)
-		}
-
-		// TODO: append to IMAP Sent mailbox
-		// TODO: add \Answered flag to original IMAP message
-
-		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}
 
 	return ctx.Render(http.StatusOK, "compose.html", &ComposeRenderData{
