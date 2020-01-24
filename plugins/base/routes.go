@@ -288,7 +288,7 @@ type messagePath struct {
 
 // Send message, append it to the Sent mailbox, mark the original message as
 // answered
-func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, inReplyTo *messagePath) error {
+func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, draft *messagePath, inReplyTo *messagePath) error {
 	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
 		return sendMessage(c, msg)
 	})
@@ -309,8 +309,15 @@ func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, inReplyTo *messag
 	}
 
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-		_, err := appendMessage(c, msg, mailboxSent)
-		return err
+		if _, err := appendMessage(c, msg, mailboxSent); err != nil {
+			return err
+		}
+		if draft != nil {
+			if err := deleteMessage(c, draft.Mailbox, draft.Uid); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save message to Sent mailbox: %v", err)
@@ -319,7 +326,7 @@ func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, inReplyTo *messag
 	return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 }
 
-func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, source *messagePath, inReplyTo *messagePath) error {
+func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, draft *messagePath, inReplyTo *messagePath) error {
 	if msg.From == "" && strings.ContainsRune(ctx.Session.Username(), '@') {
 		msg.From = ctx.Session.Username()
 	}
@@ -352,13 +359,19 @@ func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, source *messagePa
 				if !copied {
 					return fmt.Errorf("no Draft mailbox found")
 				}
+				if draft != nil {
+					if err := deleteMessage(c, draft.Mailbox, draft.Uid); err != nil {
+						return err
+					}
+				}
 				return nil
 			})
 			if err != nil {
 				return fmt.Errorf("failed to save message to Draft mailbox: %v", err)
 			}
+			return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 		} else {
-			return submitCompose(ctx, msg, inReplyTo)
+			return submitCompose(ctx, msg, draft, inReplyTo)
 		}
 	}
 

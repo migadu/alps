@@ -436,3 +436,19 @@ func appendMessage(c *imapclient.Client, msg *OutgoingMessage, mboxType mailboxT
 
 	return true, nil
 }
+
+func deleteMessage(c *imapclient.Client, mboxName string, uid uint32) error {
+	if err := ensureMailboxSelected(c, mboxName); err != nil {
+		return err
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
+	item := imap.FormatFlagsOp(imap.AddFlags, true)
+	flags := []interface{}{imap.DeletedFlag}
+	if err := c.UidStore(seqSet, item, flags, nil); err != nil {
+		return err
+	}
+
+	return c.Expunge(nil)
+}
