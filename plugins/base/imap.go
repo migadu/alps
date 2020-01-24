@@ -38,18 +38,49 @@ func listMailboxes(conn *imapclient.Client) ([]*imap.MailboxInfo, error) {
 	return mailboxes, nil
 }
 
-func getMailboxByAttribute(conn *imapclient.Client, attr string) (*imap.MailboxInfo, error) {
+type mailboxType int
+
+const (
+	mailboxSent mailboxType = iota
+	mailboxDrafts
+)
+
+func getMailboxByType(conn *imapclient.Client, mboxType mailboxType) (*imap.MailboxInfo, error) {
 	ch := make(chan *imap.MailboxInfo, 10)
 	done := make(chan error, 1)
 	go func() {
 		done <- conn.List("", "%", ch)
 	}()
 
-	var mailbox *imap.MailboxInfo
+	// TODO: configurable fallback names?
+	var attr string
+	var fallbackNames []string
+	switch mboxType {
+	case mailboxSent:
+		attr = imapspecialuse.Sent
+		fallbackNames = []string{"Sent"}
+	case mailboxDrafts:
+		attr = imapspecialuse.Drafts
+		fallbackNames = []string{"Draft", "Drafts"}
+	}
+
+	var attrMatched bool
+	var best *imap.MailboxInfo
 	for mbox := range ch {
 		for _, a := range mbox.Attributes {
 			if attr == a {
-				mailbox = mbox
+				best = mbox
+				attrMatched = true
+				break
+			}
+		}
+		if attrMatched {
+			break
+		}
+
+		for _, fallback := range fallbackNames {
+			if strings.EqualFold(fallback, mbox.Name) {
+				best = mbox
 				break
 			}
 		}
@@ -59,7 +90,7 @@ func getMailboxByAttribute(conn *imapclient.Client, attr string) (*imap.MailboxI
 		return nil, fmt.Errorf("failed to get mailbox with attribute %q: %v", attr, err)
 	}
 
-	return mailbox, nil
+	return best, nil
 }
 
 func ensureMailboxSelected(conn *imapclient.Client, mboxName string) error {
@@ -379,23 +410,8 @@ func markMessageAnswered(conn *imapclient.Client, mboxName string, uid uint32) e
 	return conn.UidStore(seqSet, item, flags, nil)
 }
 
-type mailboxType int
-
-const (
-	mailboxSent mailboxType = iota
-	mailboxDrafts
-)
-
 func appendMessage(c *imapclient.Client, msg *OutgoingMessage, mboxType mailboxType) (saved bool, err error) {
-	var mboxAttr string
-	switch mboxType {
-	case mailboxSent:
-		mboxAttr = imapspecialuse.Sent
-	case mailboxDrafts:
-		mboxAttr = imapspecialuse.Drafts
-	}
-
-	mbox, err := getMailboxByAttribute(c, mboxAttr)
+	mbox, err := getMailboxByType(c, mboxType)
 	if err != nil {
 		return false, err
 	}
