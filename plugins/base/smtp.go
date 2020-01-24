@@ -88,6 +88,7 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
 	if msg.InReplyTo != "" {
 		h.Set("In-Reply-To", msg.InReplyTo)
 	}
+	// TODO: set Message-ID
 
 	mw, err := mail.CreateWriter(w, h)
 	if err != nil {

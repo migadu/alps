@@ -38,11 +38,14 @@ func registerRoutes(p *koushin.GoPlugin) {
 
 	p.GET("/logout", handleLogout)
 
-	p.GET("/compose", handleCompose)
-	p.POST("/compose", handleCompose)
+	p.GET("/compose", handleComposeNew)
+	p.POST("/compose", handleComposeNew)
 
-	p.GET("/message/:mbox/:uid/reply", handleCompose)
-	p.POST("/message/:mbox/:uid/reply", handleCompose)
+	p.GET("/message/:mbox/:uid/reply", handleReply)
+	p.POST("/message/:mbox/:uid/reply", handleReply)
+
+	p.GET("/message/:mbox/:uid/edit", handleEdit)
+	p.POST("/message/:mbox/:uid/edit", handleEdit)
 
 	p.POST("/message/:mbox/:uid/move", handleMove)
 
@@ -278,9 +281,14 @@ type ComposeRenderData struct {
 	Message *OutgoingMessage
 }
 
+type messagePath struct {
+	Mailbox string
+	Uid     uint32
+}
+
 // Send message, append it to the Sent mailbox, mark the original message as
 // answered
-func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, inReplyToMboxName string, inReplyToUid uint32) error {
+func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, inReplyTo *messagePath) error {
 	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
 		return sendMessage(c, msg)
 	})
@@ -291,9 +299,9 @@ func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, inReplyToMboxName
 		return fmt.Errorf("failed to send message: %v", err)
 	}
 
-	if inReplyToUid != 0 {
+	if inReplyTo != nil {
 		err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-			return markMessageAnswered(c, inReplyToMboxName, inReplyToUid)
+			return markMessageAnswered(c, inReplyTo.Mailbox, inReplyTo.Uid)
 		})
 		if err != nil {
 			return fmt.Errorf("failed to mark original message as answered: %v", err)
@@ -311,77 +319,9 @@ func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, inReplyToMboxName
 	return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 }
 
-func handleCompose(ctx *koushin.Context) error {
-	var msg OutgoingMessage
-	if strings.ContainsRune(ctx.Session.Username(), '@') {
+func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, source *messagePath, inReplyTo *messagePath) error {
+	if msg.From == "" && strings.ContainsRune(ctx.Session.Username(), '@') {
 		msg.From = ctx.Session.Username()
-	}
-
-	msg.To = strings.Split(ctx.QueryParam("to"), ",")
-	msg.Subject = ctx.QueryParam("subject")
-	msg.Text = ctx.QueryParam("body")
-	msg.InReplyTo = ctx.QueryParam("in-reply-to")
-
-	var inReplyToMboxName string
-	var inReplyToUid uint32
-	if ctx.Param("uid") != "" {
-		// This is a reply
-		var err error
-		inReplyToMboxName, inReplyToUid, err = parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err)
-		}
-	}
-
-	if ctx.Request().Method == http.MethodGet && inReplyToUid != 0 {
-		// Populate fields from original message
-		partPath, err := parsePartPath(ctx.QueryParam("part"))
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err)
-		}
-
-		var inReplyTo *IMAPMessage
-		var part *message.Entity
-		err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-			var err error
-			inReplyTo, part, err = getMessagePart(c, inReplyToMboxName, inReplyToUid, partPath)
-			return err
-		})
-		if err != nil {
-			return err
-		}
-
-		mimeType, _, err := part.Header.ContentType()
-		if err != nil {
-			return fmt.Errorf("failed to parse part Content-Type: %v", err)
-		}
-
-		if !strings.HasPrefix(strings.ToLower(mimeType), "text/") {
-			err := fmt.Errorf("cannot reply to \"%v\" part", mimeType)
-			return echo.NewHTTPError(http.StatusBadRequest, err)
-		}
-
-		msg.Text, err = quote(part.Body)
-		if err != nil {
-			return err
-		}
-
-		msg.InReplyTo = inReplyTo.Envelope.MessageId
-		// TODO: populate From from known user addresses and inReplyTo.Envelope.To
-		replyTo := inReplyTo.Envelope.ReplyTo
-		if len(replyTo) == 0 {
-			replyTo = inReplyTo.Envelope.From
-		}
-		if len(replyTo) > 0 {
-			msg.To = make([]string, len(replyTo))
-			for i, to := range replyTo {
-				msg.To[i] = to.Address()
-			}
-		}
-		msg.Subject = inReplyTo.Envelope.Subject
-		if !strings.HasPrefix(strings.ToLower(msg.Subject), "re:") {
-			msg.Subject = "Re: " + msg.Subject
-		}
 	}
 
 	if ctx.Request().Method == http.MethodPost {
@@ -405,7 +345,7 @@ func handleCompose(ctx *koushin.Context) error {
 
 		if saveAsDraft {
 			err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-				copied, err := appendMessage(c, &msg, mailboxDrafts)
+				copied, err := appendMessage(c, msg, mailboxDrafts)
 				if err != nil {
 					return err
 				}
@@ -418,14 +358,149 @@ func handleCompose(ctx *koushin.Context) error {
 				return fmt.Errorf("failed to save message to Draft mailbox: %v", err)
 			}
 		} else {
-			return submitCompose(ctx, &msg, inReplyToMboxName, inReplyToUid)
+			return submitCompose(ctx, msg, inReplyTo)
 		}
 	}
 
 	return ctx.Render(http.StatusOK, "compose.html", &ComposeRenderData{
 		BaseRenderData: *koushin.NewBaseRenderData(ctx),
-		Message:        &msg,
+		Message:        msg,
 	})
+}
+
+func handleComposeNew(ctx *koushin.Context) error {
+	// These are common mailto URL query parameters
+	return handleCompose(ctx, &OutgoingMessage{
+		To:        strings.Split(ctx.QueryParam("to"), ","),
+		Subject:   ctx.QueryParam("subject"),
+		Text:      ctx.QueryParam("body"),
+		InReplyTo: ctx.QueryParam("in-reply-to"),
+	}, nil, nil)
+}
+
+func unwrapIMAPAddressList(addrs []*imap.Address) []string {
+	l := make([]string, len(addrs))
+	for i, addr := range addrs {
+		l[i] = addr.Address()
+	}
+	return l
+}
+
+func handleReply(ctx *koushin.Context) error {
+	var inReplyToPath messagePath
+	var err error
+	inReplyToPath.Mailbox, inReplyToPath.Uid, err = parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+
+	var msg OutgoingMessage
+	if ctx.Request().Method == http.MethodGet {
+		// Populate fields from original message
+		partPath, err := parsePartPath(ctx.QueryParam("part"))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err)
+		}
+
+		var inReplyTo *IMAPMessage
+		var part *message.Entity
+		err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+			var err error
+			inReplyTo, part, err = getMessagePart(c, inReplyToPath.Mailbox, inReplyToPath.Uid, partPath)
+			return err
+		})
+		if err != nil {
+			return err
+		}
+
+		mimeType, _, err := part.Header.ContentType()
+		if err != nil {
+			return fmt.Errorf("failed to parse part Content-Type: %v", err)
+		}
+
+		if !strings.HasPrefix(strings.ToLower(mimeType), "text/") {
+			err := fmt.Errorf("cannot reply to %q part", mimeType)
+			return echo.NewHTTPError(http.StatusBadRequest, err)
+		}
+
+		// TODO: strip HTML tags if text/html
+		msg.Text, err = quote(part.Body)
+		if err != nil {
+			return err
+		}
+
+		msg.InReplyTo = inReplyTo.Envelope.MessageId
+		// TODO: populate From from known user addresses and inReplyTo.Envelope.To
+		replyTo := inReplyTo.Envelope.ReplyTo
+		if len(replyTo) == 0 {
+			replyTo = inReplyTo.Envelope.From
+		}
+		msg.To = unwrapIMAPAddressList(replyTo)
+		msg.Subject = inReplyTo.Envelope.Subject
+		if !strings.HasPrefix(strings.ToLower(msg.Subject), "re:") {
+			msg.Subject = "Re: " + msg.Subject
+		}
+	}
+
+	return handleCompose(ctx, &msg, nil, &inReplyToPath)
+}
+
+func handleEdit(ctx *koushin.Context) error {
+	var sourcePath messagePath
+	var err error
+	sourcePath.Mailbox, sourcePath.Uid, err = parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+
+	// TODO: somehow get the path to the In-Reply-To message (with a search?)
+
+	var msg OutgoingMessage
+	if ctx.Request().Method == http.MethodGet {
+		// Populate fields from source message
+		partPath, err := parsePartPath(ctx.QueryParam("part"))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err)
+		}
+
+		var source *IMAPMessage
+		var part *message.Entity
+		err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+			var err error
+			source, part, err = getMessagePart(c, sourcePath.Mailbox, sourcePath.Uid, partPath)
+			return err
+		})
+		if err != nil {
+			return err
+		}
+
+		mimeType, _, err := part.Header.ContentType()
+		if err != nil {
+			return fmt.Errorf("failed to parse part Content-Type: %v", err)
+		}
+
+		if !strings.EqualFold(mimeType, "text/plain") {
+			err := fmt.Errorf("cannot edit %q part", mimeType)
+			return echo.NewHTTPError(http.StatusBadRequest, err)
+		}
+
+		b, err := ioutil.ReadAll(part.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read part body: %v", err)
+		}
+		msg.Text = string(b)
+
+		if len(source.Envelope.From) > 0 {
+			msg.From = source.Envelope.From[0].Address()
+		}
+		msg.To = unwrapIMAPAddressList(source.Envelope.To)
+		msg.Subject = source.Envelope.Subject
+		msg.InReplyTo = source.Envelope.InReplyTo
+		// TODO: preserve Message-Id
+		// TODO: preserve attachments
+	}
+
+	return handleCompose(ctx, &msg, &sourcePath, nil)
 }
 
 func handleMove(ctx *koushin.Context) error {
