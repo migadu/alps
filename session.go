@@ -49,8 +49,8 @@ type Session struct {
 	pings              chan struct{}
 	timer              *time.Timer
 
-	locker   sync.Mutex
-	imapConn *imapclient.Client // protected by locker, can be nil
+	imapLocker sync.Mutex
+	imapConn   *imapclient.Client // protected by locker, can be nil
 }
 
 func (s *Session) ping() {
@@ -65,8 +65,8 @@ func (s *Session) Username() string {
 // DoIMAP executes an IMAP operation on this session. The IMAP client can only
 // be used from inside f.
 func (s *Session) DoIMAP(f func(*imapclient.Client) error) error {
-	s.locker.Lock()
-	defer s.locker.Unlock()
+	s.imapLocker.Lock()
+	defer s.imapLocker.Unlock()
 
 	if s.imapConn == nil {
 		var err error
@@ -214,17 +214,17 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 		alive := true
 		for alive {
 			var loggedOut <-chan struct{}
-			s.locker.Lock()
+			s.imapLocker.Lock()
 			if s.imapConn != nil {
 				loggedOut = s.imapConn.LoggedOut()
 			}
-			s.locker.Unlock()
+			s.imapLocker.Unlock()
 
 			select {
 			case <-loggedOut:
-				s.locker.Lock()
+				s.imapLocker.Lock()
 				s.imapConn = nil
-				s.locker.Unlock()
+				s.imapLocker.Unlock()
 			case <-s.pings:
 				if !timer.Stop() {
 					<-timer.C
@@ -239,11 +239,11 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 
 		timer.Stop()
 
-		s.locker.Lock()
+		s.imapLocker.Lock()
 		if s.imapConn != nil {
 			s.imapConn.Logout()
 		}
-		s.locker.Unlock()
+		s.imapLocker.Unlock()
 
 		sm.locker.Lock()
 		delete(sm.sessions, token)
