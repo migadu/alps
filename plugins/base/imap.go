@@ -107,66 +107,40 @@ type IMAPMessage struct {
 	*imap.Message
 }
 
-func textPartPath(bs *imap.BodyStructure) ([]int, bool) {
-	if bs.Disposition != "" && !strings.EqualFold(bs.Disposition, "inline") {
-		return nil, false
-	}
-
-	if strings.EqualFold(bs.MIMEType, "text") {
-		return []int{1}, true
-	}
-
-	if !strings.EqualFold(bs.MIMEType, "multipart") {
-		return nil, false
-	}
-
-	textPartNum := -1
-	for i, part := range bs.Parts {
-		num := i + 1
-
-		if strings.EqualFold(part.MIMEType, "multipart") {
-			if subpath, ok := textPartPath(part); ok {
-				return append([]int{num}, subpath...), true
-			}
-		}
-		if !strings.EqualFold(part.MIMEType, "text") {
-			continue
-		}
-
-		var pick bool
-		switch strings.ToLower(part.MIMESubType) {
-		case "plain":
-			pick = true
-		case "html":
-			pick = textPartNum < 0
-		}
-
-		if pick {
-			textPartNum = num
-		}
-	}
-
-	if textPartNum > 0 {
-		return []int{textPartNum}, true
-	}
-	return nil, false
-}
-
 func (msg *IMAPMessage) TextPartName() string {
 	if msg.BodyStructure == nil {
 		return ""
 	}
 
-	path, ok := textPartPath(msg.BodyStructure)
-	if !ok {
+	var best []int
+	isTextPlain := false
+	msg.BodyStructure.Walk(func(path []int, part *imap.BodyStructure) bool {
+		if !strings.EqualFold(part.MIMEType, "text") {
+			return true
+		}
+		if part.Disposition != "" && !strings.EqualFold(part.Disposition, "inline") {
+			return true
+		}
+
+		switch strings.ToLower(part.MIMESubType) {
+		case "plain":
+			isTextPlain = true
+			best = path
+		case "html":
+			if !isTextPlain {
+				best = path
+			}
+		}
+		return true
+	})
+	if best == nil {
 		return ""
 	}
 
-	l := make([]string, len(path))
-	for i, partNum := range path {
+	l := make([]string, len(best))
+	for i, partNum := range best {
 		l[i] = strconv.Itoa(partNum)
 	}
-
 	return strings.Join(l, ".")
 }
 
