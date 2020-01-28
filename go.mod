@@ -6,6 +6,7 @@ require (
 	github.com/aymerick/douceur v0.2.0
 	github.com/chris-ramon/douceur v0.2.0
 	github.com/emersion/go-imap v1.0.3
+	github.com/emersion/go-imap-metadata v0.0.0-20200128185110-9d939d2a0915
 	github.com/emersion/go-imap-move v0.0.0-20190710073258-6e5a51a5b342
 	github.com/emersion/go-imap-specialuse v0.0.0-20161227184202-ba031ced6a62
 	github.com/emersion/go-message v0.11.1

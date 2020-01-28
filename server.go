@@ -59,7 +59,7 @@ func newServer(e *echo.Echo, options *Options) (*Server, error) {
 		return nil, err
 	}
 
-	s.Sessions = newSessionManager(s.dialIMAP, s.dialSMTP)
+	s.Sessions = newSessionManager(s.dialIMAP, s.dialSMTP, e.Logger)
 
 	return s, nil
 }

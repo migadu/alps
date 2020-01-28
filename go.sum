@@ -12,6 +12,8 @@ github.com/dgrijalva/jwt-go v3.2.0+incompatible h1:7qlOGliEKZXTDg6OTjfoBKDXWrumC
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 github.com/emersion/go-imap v1.0.3 h1:5eEee8/DTSIPfliiWqwfvjPGkU8bBtvOy/Wx+eeXzO4=
 github.com/emersion/go-imap v1.0.3/go.mod h1:yKASt+C3ZiDAiCSssxg9caIckWF/JG7ZQTO7GAmvicU=
+github.com/emersion/go-imap-metadata v0.0.0-20200128185110-9d939d2a0915 h1:8xzODjLqrfAJo+CNhX0Fp47vdVN0ZvmGV3CPt/Ex1nU=
+github.com/emersion/go-imap-metadata v0.0.0-20200128185110-9d939d2a0915/go.mod h1:6mXMzbK9Ts0mrrBibqy56SqZpuFMry5AedTgu6qY5zM=
 github.com/emersion/go-imap-move v0.0.0-20190710073258-6e5a51a5b342 h1:5p1t3e1PomYgLWwEwhwEU5kVBwcyAcVrOpexv8AeZx0=
 github.com/emersion/go-imap-move v0.0.0-20190710073258-6e5a51a5b342/go.mod h1:QuMaZcKFDVI0yCrnAbPLfbwllz1wtOrZH8/vZ5yzp4w=
 github.com/emersion/go-imap-specialuse v0.0.0-20161227184202-ba031ced6a62 h1:4ZAfwfc8aDlj26kkEap1UDSwwDnJp9Ie8Uj1MSXAkPk=

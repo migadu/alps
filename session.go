@@ -12,6 +12,7 @@ import (
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
+	"github.com/labstack/echo/v4"
 )
 
 // TODO: make this configurable
@@ -48,6 +49,7 @@ type Session struct {
 	closed             chan struct{}
 	pings              chan struct{}
 	timer              *time.Timer
+	store              Store
 
 	imapLocker sync.Mutex
 	imapConn   *imapclient.Client // protected by locker, can be nil
@@ -122,6 +124,11 @@ func (s *Session) Close() {
 	}
 }
 
+// Store returns a store suitable for storing persistent user data.
+func (s *Session) Store() Store {
+	return s.store
+}
+
 type (
 	// DialIMAPFunc connects to the upstream IMAP server.
 	DialIMAPFunc func() (*imapclient.Client, error)
@@ -134,16 +141,18 @@ type (
 type SessionManager struct {
 	dialIMAP DialIMAPFunc
 	dialSMTP DialSMTPFunc
+	logger   echo.Logger
 
 	locker   sync.Mutex
 	sessions map[string]*Session // protected by locker
 }
 
-func newSessionManager(dialIMAP DialIMAPFunc, dialSMTP DialSMTPFunc) *SessionManager {
+func newSessionManager(dialIMAP DialIMAPFunc, dialSMTP DialSMTPFunc, logger echo.Logger) *SessionManager {
 	return &SessionManager{
 		sessions: make(map[string]*Session),
 		dialIMAP: dialIMAP,
 		dialSMTP: dialSMTP,
+		logger:   logger,
 	}
 }
 
@@ -185,7 +194,6 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 
 	var token string
 	for {
-		var err error
 		token, err = generateToken()
 		if err != nil {
 			c.Logout()
@@ -206,6 +214,12 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 		password: password,
 		token:    token,
 	}
+
+	s.store, err = newStore(s, sm.logger)
+	if err != nil {
+		return nil, err
+	}
+
 	sm.sessions[token] = s
 
 	go func() {
