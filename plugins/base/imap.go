@@ -237,7 +237,7 @@ func (msg *IMAPMessage) HasFlag(flag string) bool {
 	return false
 }
 
-func listMessages(conn *imapclient.Client, mboxName string, page int) ([]IMAPMessage, error) {
+func listMessages(conn *imapclient.Client, mboxName string, page, messagesPerPage int) ([]IMAPMessage, error) {
 	if err := ensureMailboxSelected(conn, mboxName); err != nil {
 		return nil, err
 	}
@@ -281,7 +281,7 @@ func listMessages(conn *imapclient.Client, mboxName string, page int) ([]IMAPMes
 	return msgs, nil
 }
 
-func searchMessages(conn *imapclient.Client, mboxName, query string, page int) (msgs []IMAPMessage, total int, err error) {
+func searchMessages(conn *imapclient.Client, mboxName, query string, page, messagesPerPage int) (msgs []IMAPMessage, total int, err error) {
 	if err := ensureMailboxSelected(conn, mboxName); err != nil {
 		return nil, 0, err
 	}

@@ -55,6 +55,9 @@ func registerRoutes(p *koushin.GoPlugin) {
 	p.POST("/message/:mbox/:uid/delete", handleDelete)
 
 	p.POST("/message/:mbox/:uid/flag", handleSetFlags)
+
+	p.GET("/settings", handleSettings)
+	p.POST("/settings", handleSettings)
 }
 
 type MailboxRenderData struct {
@@ -80,6 +83,12 @@ func handleGetMailbox(ctx *koushin.Context) error {
 		}
 	}
 
+	settings, err := loadSettings(ctx.Session.Store())
+	if err != nil {
+		return err
+	}
+	messagesPerPage := settings.MessagesPerPage
+
 	query := ctx.QueryParam("query")
 
 	var mailboxes []*imap.MailboxInfo
@@ -92,9 +101,9 @@ func handleGetMailbox(ctx *koushin.Context) error {
 			return err
 		}
 		if query != "" {
-			msgs, total, err = searchMessages(c, mboxName, query, page)
+			msgs, total, err = searchMessages(c, mboxName, query, page, messagesPerPage)
 		} else {
-			msgs, err = listMessages(c, mboxName, page)
+			msgs, err = listMessages(c, mboxName, page, messagesPerPage)
 		}
 		if err != nil {
 			return err
@@ -184,6 +193,12 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
+
+	settings, err := loadSettings(ctx.Session.Store())
+	if err != nil {
+		return err
+	}
+	messagesPerPage := settings.MessagesPerPage
 
 	var mailboxes []*imap.MailboxInfo
 	var msg *IMAPMessage
@@ -684,4 +699,64 @@ func handleSetFlags(ctx *koushin.Context) error {
 	}
 
 	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/message/%v/%v", url.PathEscape(mboxName), uid))
+}
+
+const settingsKey = "base.settings"
+const maxMessagesPerPage = 100
+
+type Settings struct {
+	MessagesPerPage int
+}
+
+func loadSettings(s koushin.Store) (*Settings, error) {
+	settings := &Settings{
+		MessagesPerPage: 50,
+	}
+	if err := s.Get(settingsKey, settings); err != nil && err != koushin.ErrNoStoreEntry {
+		return nil, err
+	}
+	if err := settings.check(); err != nil {
+		return nil, err
+	}
+	return settings, nil
+}
+
+func (s *Settings) check() error {
+	if s.MessagesPerPage <= 0 || s.MessagesPerPage > maxMessagesPerPage {
+		return fmt.Errorf("messages per page out of bounds: %v", s.MessagesPerPage)
+	}
+	return nil
+}
+
+type SettingsRenderData struct {
+	koushin.BaseRenderData
+	Settings *Settings
+}
+
+func handleSettings(ctx *koushin.Context) error {
+	settings, err := loadSettings(ctx.Session.Store())
+	if err != nil {
+		return fmt.Errorf("failed to load settings: %v", err)
+	}
+
+	if ctx.Request().Method == http.MethodPost {
+		settings.MessagesPerPage, err = strconv.Atoi(ctx.FormValue("messages_per_page"))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid messages per page: %v", err)
+		}
+
+		if err := settings.check(); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err)
+		}
+		if err := ctx.Session.Store().Put(settingsKey, settings); err != nil {
+			return fmt.Errorf("failed to save settings: %v", err)
+		}
+
+		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
+	}
+
+	return ctx.Render(http.StatusOK, "settings.html", &SettingsRenderData{
+		BaseRenderData: *koushin.NewBaseRenderData(ctx),
+		Settings:       settings,
+	})
 }
