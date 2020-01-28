@@ -144,6 +144,28 @@ func (msg *IMAPMessage) TextPartName() string {
 	return strings.Join(l, ".")
 }
 
+func (msg *IMAPMessage) Attachments() []IMAPPartNode {
+	if msg.BodyStructure == nil {
+		return nil
+	}
+
+	var attachments []IMAPPartNode
+	msg.BodyStructure.Walk(func(path []int, part *imap.BodyStructure) bool {
+		if !strings.EqualFold(part.Disposition, "attachment") {
+			return true
+		}
+
+		filename, _ := part.Filename()
+		attachments = append(attachments, IMAPPartNode{
+			Path:     path,
+			MIMEType: strings.ToLower(part.MIMEType + "/" + part.MIMESubType),
+			Filename: filename,
+		})
+		return true
+	})
+	return attachments
+}
+
 type IMAPPartNode struct {
 	Path     []int
 	MIMEType string

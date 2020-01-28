@@ -2,8 +2,11 @@ package koushinbase
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"mime"
 	"mime/multipart"
 	"strings"
 	"time"
@@ -26,23 +29,70 @@ func quote(r io.Reader) (string, error) {
 	return builder.String(), nil
 }
 
+type Attachment interface {
+	MIMEType() string
+	Filename() string
+	Open() (io.ReadCloser, error)
+}
+
+type formAttachment struct {
+	*multipart.FileHeader
+}
+
+func (att *formAttachment) Open() (io.ReadCloser, error) {
+	return att.FileHeader.Open()
+}
+
+func (att *formAttachment) MIMEType() string {
+	// TODO: retain params, e.g. "charset"?
+	t, _, _ := mime.ParseMediaType(att.FileHeader.Header.Get("Content-Type"))
+	return t
+}
+
+func (att *formAttachment) Filename() string {
+	return att.FileHeader.Filename
+}
+
+type imapAttachment struct {
+	Mailbox string
+	Uid     uint32
+	Node    *IMAPPartNode
+
+	Body []byte
+}
+
+func (att *imapAttachment) Open() (io.ReadCloser, error) {
+	if att.Body == nil {
+		return nil, fmt.Errorf("IMAP attachment has not been pre-fetched")
+	}
+	return ioutil.NopCloser(bytes.NewReader(att.Body)), nil
+}
+
+func (att *imapAttachment) MIMEType() string {
+	return att.Node.MIMEType
+}
+
+func (att *imapAttachment) Filename() string {
+	return att.Node.Filename
+}
+
 type OutgoingMessage struct {
 	From        string
 	To          []string
 	Subject     string
 	InReplyTo   string
 	Text        string
-	Attachments []*multipart.FileHeader
+	Attachments []Attachment
 }
 
 func (msg *OutgoingMessage) ToString() string {
 	return strings.Join(msg.To, ", ")
 }
 
-func writeAttachment(mw *mail.Writer, att *multipart.FileHeader) error {
+func writeAttachment(mw *mail.Writer, att Attachment) error {
 	var h mail.AttachmentHeader
-	h.Set("Content-Type", att.Header.Get("Content-Type"))
-	h.SetFilename(att.Filename)
+	h.SetContentType(att.MIMEType(), nil)
+	h.SetFilename(att.Filename())
 
 	aw, err := mw.CreateAttachment(h)
 	if err != nil {

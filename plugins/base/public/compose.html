@@ -25,6 +25,13 @@
   <br><br>
   <label for="attachments">Attachments:</label>
   <input type="file" name="attachments" id="attachments" multiple>
+  {{range .Message.Attachments}}
+    <br>
+    <label>
+      <input type="checkbox" name="prev_attachments" value="{{.Node.PathString}}" checked>
+      {{.Node}}
+    </label>
+  {{end}}
   <br><br>
   <input type="submit" name="save_as_draft" value="Save as draft">
   <input type="submit" value="Send">

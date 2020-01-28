@@ -1,7 +1,9 @@
 package koushinbase
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"mime"
 	"net/http"
@@ -14,6 +16,7 @@ import (
 	imapmove "github.com/emersion/go-imap-move"
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
+	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
 	"github.com/labstack/echo/v4"
 )
@@ -348,7 +351,51 @@ func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, draft *messagePat
 		if err != nil {
 			return fmt.Errorf("failed to get multipart form: %v", err)
 		}
-		msg.Attachments = form.File["attachments"]
+
+		// Fetch previous attachments from draft
+		if draft != nil {
+			for _, s := range form.Value["prev_attachments"] {
+				path, err := parsePartPath(s)
+				if err != nil {
+					return fmt.Errorf("failed to parse draft attachment path: %v", err)
+				}
+
+				var part *message.Entity
+				err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+					var err error
+					_, part, err = getMessagePart(c, draft.Mailbox, draft.Uid, path)
+					return err
+				})
+				if err != nil {
+					return fmt.Errorf("failed to fetch attachment from draft: %v", err)
+				}
+
+				var buf bytes.Buffer
+				if _, err := io.Copy(&buf, part.Body); err != nil {
+					return fmt.Errorf("failed to copy attachment from draft: %v", err)
+				}
+
+				h := mail.AttachmentHeader{part.Header}
+				mimeType, _, _ := h.ContentType()
+				filename, _ := h.Filename()
+				msg.Attachments = append(msg.Attachments, &imapAttachment{
+					Mailbox: draft.Mailbox,
+					Uid:     draft.Uid,
+					Node: &IMAPPartNode{
+						Path:     path,
+						MIMEType: mimeType,
+						Filename: filename,
+					},
+					Body: buf.Bytes(),
+				})
+			}
+		} else if len(form.Value["prev_attachments"]) > 0 {
+			return fmt.Errorf("previous attachments specified but no draft available")
+		}
+
+		for _, fh := range form.File["attachments"] {
+			msg.Attachments = append(msg.Attachments, &formAttachment{fh})
+		}
 
 		if saveAsDraft {
 			err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
@@ -510,7 +557,18 @@ func handleEdit(ctx *koushin.Context) error {
 		msg.Subject = source.Envelope.Subject
 		msg.InReplyTo = source.Envelope.InReplyTo
 		// TODO: preserve Message-Id
-		// TODO: preserve attachments
+
+		attachments := source.Attachments()
+		for i := range attachments {
+			att := &attachments[i]
+			// No need to populate attachment body here, we just need the
+			// metadata
+			msg.Attachments = append(msg.Attachments, &imapAttachment{
+				Mailbox: sourcePath.Mailbox,
+				Uid:     sourcePath.Uid,
+				Node:    att,
+			})
+		}
 	}
 
 	return handleCompose(ctx, &msg, &sourcePath, nil)
