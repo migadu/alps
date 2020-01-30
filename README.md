@@ -2,6 +2,8 @@
 
 [![GoDoc](https://godoc.org/git.sr.ht/~emersion/koushin?status.svg)](https://godoc.org/git.sr.ht/~emersion/koushin)
 
+A simple and extensible webmail.
+
 ## Usage
 
 Assuming SRV DNS records are properly set up (see [RFC 6186]):
