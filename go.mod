@@ -13,7 +13,7 @@ require (
 	github.com/emersion/go-sasl v0.0.0-20191210011802-430746ea8b9b
 	github.com/emersion/go-smtp v0.12.1
 	github.com/emersion/go-vcard v0.0.0-20191221110513-5f81fa0d3cc7
-	github.com/emersion/go-webdav v0.2.0
+	github.com/emersion/go-webdav v0.2.1-0.20200205170548-baf63fb1b759
 	github.com/gorilla/css v1.0.0 // indirect
 	github.com/labstack/echo/v4 v4.1.15-0.20200203180927-504f39abaf32
 	github.com/labstack/gommon v0.3.0

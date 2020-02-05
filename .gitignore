@@ -3,5 +3,6 @@
 !/public/themes/sourcehut
 /plugins/*
 !/plugins/base
+!/plugins/caldav
 !/plugins/carddav
 !/plugins/lua

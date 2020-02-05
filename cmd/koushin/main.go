@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/gommon/log"
 
 	_ "git.sr.ht/~emersion/koushin/plugins/base"
+	_ "git.sr.ht/~emersion/koushin/plugins/caldav"
 	_ "git.sr.ht/~emersion/koushin/plugins/carddav"
 	_ "git.sr.ht/~emersion/koushin/plugins/lua"
 )

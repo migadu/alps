@@ -1,0 +1,25 @@
+{{template "head.html"}}
+
+<h1>koushin</h1>
+
+<p>
+  <a href="/">Back</a>
+</p>
+
+<h2>Calendar: {{.Calendar.Name}}</h2>
+
+{{if .Events}}
+  <ul>
+    {{range .Events}}
+      {{$event := index .Data.Events 0}}
+      <li>
+        <a href="/calendar/{{$event.UID | pathescape}}">{{$event.Summary}}</a>
+        ({{$event.StartDate | formatdate}} — {{$event.EndDate | formatdate}})
+      </li>
+    {{end}}
+  </ul>
+{{else}}
+  <p>No events.</p>
+{{end}}
+
+{{template "foot.html"}}
