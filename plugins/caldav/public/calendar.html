@@ -7,6 +7,7 @@
 </p>
 
 <h2>Calendar: {{.Calendar.Name}}</h2>
+<h3>{{.Time.Format "January 2006"}}</h3>
 
 {{if .Events}}
   <ul>
@@ -21,5 +22,10 @@
 {{else}}
   <p>No events.</p>
 {{end}}
+
+<p>
+  <a href="/calendar?month={{.PrevPage}}">Previous</a>
+  · <a href="/calendar?month={{.NextPage}}">Next</a>
+</p>
 
 {{template "foot.html"}}

@@ -12,8 +12,10 @@ import (
 
 type CalendarRenderData struct {
 	koushin.BaseRenderData
-	Calendar *caldav.Calendar
-	Events   []caldav.CalendarObject
+	Time               time.Time
+	Calendar           *caldav.Calendar
+	Events             []caldav.CalendarObject
+	PrevPage, NextPage string
 }
 
 type EventRenderData struct {
@@ -22,17 +24,28 @@ type EventRenderData struct {
 	Event    *caldav.CalendarObject
 }
 
+var monthPageLayout = "2006-01"
+
 func registerRoutes(p *koushin.GoPlugin, u *url.URL) {
 	p.GET("/calendar", func(ctx *koushin.Context) error {
+		var start time.Time
+		if s := ctx.QueryParam("month"); s != "" {
+			var err error
+			start, err = time.Parse(monthPageLayout, s)
+			if err != nil {
+				return fmt.Errorf("failed to parse month: %v", err)
+			}
+		} else {
+			now := time.Now()
+			start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		}
+		end := start.AddDate(0, 1, 0)
+
 		// TODO: multi-calendar support
 		c, calendar, err := getCalendar(u, ctx.Session)
 		if err != nil {
 			return err
 		}
-
-		now := time.Now()
-		start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-		end := start.AddDate(0, 1, 0)
 
 		query := caldav.CalendarQuery{
 			CompRequest: caldav.CalendarCompRequest{
@@ -65,8 +78,11 @@ func registerRoutes(p *koushin.GoPlugin, u *url.URL) {
 
 		return ctx.Render(http.StatusOK, "calendar.html", &CalendarRenderData{
 			BaseRenderData: *koushin.NewBaseRenderData(ctx),
+			Time:           start,
 			Calendar:       calendar,
 			Events:         events,
+			PrevPage:       start.AddDate(0, -1, 0).Format(monthPageLayout),
+			NextPage:       start.AddDate(0, 1, 0).Format(monthPageLayout),
 		})
 	})
 
