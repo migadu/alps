@@ -41,14 +41,17 @@ func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 }
 
 func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
-	u, err := srv.Upstream("https", "http+insecure")
+	u, err := srv.Upstream("carddavs", "carddav+insecure", "https", "http+insecure")
 	if _, ok := err.(*koushin.NoUpstreamError); ok {
 		srv.Logger().Print("carddav: no upstream server provided")
 		return nil, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("carddav: failed to parse upstream CardDAV server: %v", err)
 	}
-	if u.Scheme == "http+insecure" {
+	switch u.Scheme {
+	case "carddavs":
+		u.Scheme = "https"
+	case "carddav+insecure", "http+insecure":
 		u.Scheme = "http"
 	}
 	if u.Scheme == "" {
