@@ -26,13 +26,19 @@
   <p>Messages:</p>
   <ul>
     {{range .Messages}}
-      <li><a href="/message/{{$.Mailbox.Name | pathescape}}/{{.Uid}}?part={{.TextPartName}}">
-        {{if .Envelope.Subject}}
-          {{.Envelope.Subject}}
-        {{else}}
-          (No subject)
-        {{end}}
-      </a></li>
+      <li>
+        <a href="/message/{{$.Mailbox.Name | pathescape}}/{{.Uid}}?part={{.TextPartName}}">
+          {{if .Envelope.Subject}}
+            {{.Envelope.Subject}}
+          {{else}}
+            (No subject)
+          {{end}}
+        </a>
+        {{if .Attachments}}📎{{end}}
+        {{if .HasFlag "\\Answered"}}↩{{end}}
+        {{if .HasFlag "$Forwarded"}}↪{{end}}
+        {{if .HasFlag "\\Flagged"}}⭐{{end}}
+      </li>
     {{end}}
   </ul>
 
