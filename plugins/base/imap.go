@@ -281,13 +281,38 @@ func listMessages(conn *imapclient.Client, mboxName string, page, messagesPerPag
 	return msgs, nil
 }
 
+func searchCriteriaHeader(k, v string) *imap.SearchCriteria {
+	return &imap.SearchCriteria{
+		Header: map[string][]string{
+			k: []string{v},
+		},
+	}
+}
+
+func searchCriteriaOr(criteria... *imap.SearchCriteria) *imap.SearchCriteria {
+	or := criteria[0]
+	for _, c := range criteria[1:] {
+		or = &imap.SearchCriteria{
+			Or: [][2]*imap.SearchCriteria{{or, c}},
+		}
+	}
+	return or
+}
+
 func searchMessages(conn *imapclient.Client, mboxName, query string, page, messagesPerPage int) (msgs []IMAPMessage, total int, err error) {
 	if err := ensureMailboxSelected(conn, mboxName); err != nil {
 		return nil, 0, err
 	}
 
-	criteria := imap.SearchCriteria{Text: []string{query}}
-	nums, err := conn.Search(&criteria)
+	// TODO: full-text search on demand (can be slow)
+	//criteria := &imap.SearchCriteria{Text: []string{query}}
+	criteria := searchCriteriaOr(
+		searchCriteriaHeader("From", query),
+		searchCriteriaHeader("To", query),
+		searchCriteriaHeader("Cc", query),
+		searchCriteriaHeader("Subject", query),
+	)
+	nums, err := conn.Search(criteria)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UID SEARCH failed: %v", err)
 	}
