@@ -1,0 +1,22 @@
+{{template "head.html"}}
+
+<h1>koushin</h1>
+
+<p>
+  <a href="/contacts">Back</a>
+</p>
+
+{{$fn := .AddressObject.Card.Value "FN"}}
+
+<h2>Contact: {{$fn}}</h2>
+
+<ul>
+  <li><strong>Name</strong>: {{$fn}}</li>
+  {{range .AddressObject.Card.Values "EMAIL"}}
+    <li><strong>E-mail</strong>:
+      <a href="/compose?to={{.}}">{{.}}</a>
+    </li>
+  {{end}}
+</ul>
+
+{{template "foot.html"}}

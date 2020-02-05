@@ -1,0 +1,34 @@
+{{template "head.html"}}
+
+<h1>koushin</h1>
+
+<p>
+  <a href="/">Back</a>
+</p>
+
+<h2>Contacts: {{.AddressBook.Name}}</h2>
+
+<form method="get" action="">
+  <input type="search" name="query" value="{{.Query}}">
+  <input type="submit" value="Search">
+</form>
+
+{{if .AddressObjects}}
+  <ul>
+    {{range .AddressObjects}}
+      <li>
+        <a href="/contacts/{{.Card.Value "UID" | pathescape}}">
+          {{.Card.Value "FN"}}
+        </a>
+        {{$email := .Card.PreferredValue "EMAIL"}}
+        {{if $email}}
+          &lt;<a href="/compose?to={{$email}}">{{$email}}</a>&gt;
+        {{end}}
+      </li>
+    {{end}}
+  </ul>
+{{else}}
+  <p>No contact.</p>
+{{end}}
+
+{{template "foot.html"}}

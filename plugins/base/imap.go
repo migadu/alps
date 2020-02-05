@@ -289,7 +289,7 @@ func searchCriteriaHeader(k, v string) *imap.SearchCriteria {
 	}
 }
 
-func searchCriteriaOr(criteria... *imap.SearchCriteria) *imap.SearchCriteria {
+func searchCriteriaOr(criteria ...*imap.SearchCriteria) *imap.SearchCriteria {
 	or := criteria[0]
 	for _, c := range criteria[1:] {
 		or = &imap.SearchCriteria{

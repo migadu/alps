@@ -30,20 +30,9 @@ func sanityCheckURL(u *url.URL) error {
 	return nil
 }
 
-type authRoundTripper struct {
-	upstream http.RoundTripper
-	session  *koushin.Session
-}
-
-func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	rt.session.SetHTTPBasicAuth(req)
-	return rt.upstream.RoundTrip(req)
-}
-
 func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
 	u, err := srv.Upstream("carddavs", "carddav+insecure", "https", "http+insecure")
 	if _, ok := err.(*koushin.NoUpstreamError); ok {
-		srv.Logger().Print("carddav: no upstream server provided")
 		return nil, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("carddav: failed to parse upstream CardDAV server: %v", err)
@@ -74,36 +63,17 @@ func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
 
 	p := koushin.GoPlugin{Name: "carddav"}
 
+	registerRoutes(&p, u)
+
 	p.Inject("compose.html", func(ctx *koushin.Context, _data koushin.RenderData) error {
 		data := _data.(*koushinbase.ComposeRenderData)
 
-		rt := authRoundTripper{
-			upstream: http.DefaultTransport,
-			session:  ctx.Session,
-		}
-		c, err := carddav.NewClient(&http.Client{Transport: &rt}, u.String())
-		if err != nil {
-			return fmt.Errorf("failed to create CardDAV client: %v", err)
-		}
-
-		principal, err := c.FindCurrentUserPrincipal()
-		if err != nil {
-			return fmt.Errorf("failed to query CardDAV principal: %v", err)
-		}
-
-		addressBookHomeSet, err := c.FindAddressBookHomeSet(principal)
-		if err != nil {
-			return fmt.Errorf("failed to query CardDAV address book home set: %v", err)
-		}
-
-		addressBooks, err := c.FindAddressBooks(addressBookHomeSet)
-		if err != nil {
-			return fmt.Errorf("failed to query CardDAV address books: %v", err)
-		}
-		if len(addressBooks) == 0 {
+		c, addressBook, err := getAddressBook(u, ctx.Session)
+		if err == errNoAddressBook {
 			return nil
+		} else if err != nil {
+			return err
 		}
-		addressBook := addressBooks[0]
 
 		query := carddav.AddressBookQuery{
 			DataRequest: carddav.AddressDataRequest{
