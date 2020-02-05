@@ -11,6 +11,25 @@ import (
 	"github.com/emersion/go-webdav/carddav"
 )
 
+func sanityCheckURL(u *url.URL) error {
+	req, err := http.NewRequest(http.MethodOptions, u.String(), nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+
+	// Servers might require authentication to perform an OPTIONS request
+	if resp.StatusCode/100 != 2 && resp.StatusCode != http.StatusUnauthorized {
+		return fmt.Errorf("HTTP request failed: %v %v", resp.StatusCode, resp.Status)
+	}
+	return nil
+}
+
 type authRoundTripper struct {
 	upstream http.RoundTripper
 	session  *koushin.Session
@@ -43,6 +62,11 @@ func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
 			return nil, fmt.Errorf("carddav: Discover returned an invalid URL: %v", err)
 		}
 	}
+
+	if err := sanityCheckURL(u); err != nil {
+		return nil, fmt.Errorf("carddav: failed to connect to CardDAV server %q: %v", u, err)
+	}
+
 	srv.Logger().Printf("Configured upstream CardDAV server: %v", u)
 
 	p := koushin.GoPlugin{Name: "carddav"}
