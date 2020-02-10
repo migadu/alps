@@ -72,7 +72,7 @@ func (s *Session) DoIMAP(f func(*imapclient.Client) error) error {
 
 	if s.imapConn == nil {
 		var err error
-		s.imapConn, err = s.manager.connect(s.username, s.password)
+		s.imapConn, err = s.manager.connectIMAP(s.username, s.password)
 		if err != nil {
 			s.Close()
 			return fmt.Errorf("failed to re-connect to IMAP server: %v", err)
@@ -156,7 +156,7 @@ func newSessionManager(dialIMAP DialIMAPFunc, dialSMTP DialSMTPFunc, logger echo
 	}
 }
 
-func (sm *SessionManager) connect(username, password string) (*imapclient.Client, error) {
+func (sm *SessionManager) connectIMAP(username, password string) (*imapclient.Client, error) {
 	c, err := sm.dialIMAP()
 	if err != nil {
 		return nil, err
@@ -184,7 +184,7 @@ func (sm *SessionManager) get(token string) (*Session, error) {
 // Put connects to the IMAP server and creates a new session. If authentication
 // fails, the error will be of type AuthError.
 func (sm *SessionManager) Put(username, password string) (*Session, error) {
-	c, err := sm.connect(username, password)
+	c, err := sm.connectIMAP(username, password)
 	if err != nil {
 		return nil, err
 	}
