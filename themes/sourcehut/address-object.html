@@ -1,0 +1,39 @@
+{{template "head.html"}}
+{{template "nav.html"}}
+
+{{$fn := .AddressObject.Card.Value "FN"}}
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-md-12 header-tabbed">
+      <h2>{{$fn}}</h2>
+      <ul class="nav nav-tabs">
+        <li class="nav-item">
+          <a class="nav-link active" href="#">View contact</a>
+        </li>
+        <li class="mr-auto d-none d-sm-flex"></li>
+        <li class="nav-item">
+          <a class="nav-link" href="/contacts">
+            <span class="icon icon-caret-left">
+              {{template "caret-left.html"}}
+            </span>
+            Back
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <ul>
+    <li><strong>Name</strong>: {{$fn}}</li>
+    {{range .AddressObject.Card.Values "EMAIL"}}
+      <li><strong>E-mail</strong>:
+        <a href="/compose?to={{.}}">{{.}}</a>
+      </li>
+    {{end}}
+  </ul>
+</div>
+
+{{template "foot.html"}}

@@ -11,13 +11,10 @@
           <a
             class="nav-link active"
             href="/mailbox/{{.Mailbox.Name | pathescape }}"
-          >Mail</a>
+          >Messages</a>
         </li>
         <li class="nav-item">
           <a class="nav-link" href="/compose">Compose</a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link" href="/settings">Settings</a>
         </li>
       </ul>
     </div>
@@ -46,7 +43,7 @@
       <div class="nav flex-column">
         <form method="get" action="">
           <input type="text" name="query" value="{{.Query}}"
-            class="form-control" placeholder="Search">
+            class="form-control" placeholder="Search" autofocus>
         </form>
       </div>
 

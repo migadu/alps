@@ -1,0 +1,46 @@
+{{template "head.html"}}
+{{template "nav.html"}}
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-md-12 header-tabbed">
+      <h2>Contacts</h2>
+    </div>
+  </div>
+</div>
+<div class="container-fluid mailbox-container">
+  <div class="row">
+    <div class="col-md-2 mailboxes-column">
+      <ul class="nav flex-column">
+        <li class="nav-item">
+          <a class="nav-link active" href="/contacts">{{.AddressBook.Name}}</a>
+        </li>
+      </ul>
+    </div>
+    <div class="col-md-10 messages-column">
+      <div class="nav flex-column">
+        <form method="get" action="">
+          <input type="text" name="query" value="{{.Query}}"
+            class="form-control" placeholder="Search" autofocus>
+        </form>
+      </div>
+
+      {{if .AddressObjects}}
+        <ul class="nav flex-column">
+          {{range .AddressObjects}}
+            <li class="nav-item">
+              <a
+                class="nav-link"
+                href="/contacts/{{.Card.Value "UID" | pathescape}}"
+              >{{.Card.Value "FN"}}</a>
+            </li>
+          {{end}}
+        </ul>
+      {{else}}
+        <p>No contact.</p>
+      {{end}}
+    </div>
+  </div>
+</div>
+
+{{template "foot.html"}}
