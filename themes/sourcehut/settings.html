@@ -1,0 +1,49 @@
+{{template "head.html"}}
+{{template "nav.html"}}
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-md-12 header-tabbed">
+      <h2>Settings</h2>
+      <ul class="nav nav-tabs">
+        <li class="nav-item">
+          <a class="nav-link" href="/mailbox/INBOX" >Mail</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/compose">Compose</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link active" href="/settings">Settings</a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <form method="post" class="col-md-12">
+    <div class="form-group">
+      <label for="messages_per_page">Messages per page:</label>
+      <input
+        type="number"
+        name="messages_per_page"
+        id="messages_per_page"
+        required
+        class="form-control"
+        value="{{.Settings.MessagesPerPage}}" />
+    </div>
+    <div class="pull-right">
+      <a
+        href="/mailbox/INBOX"
+        class="btn btn-default"
+      >Cancel</a>
+      <button
+        type="submit"
+        class="btn btn-primary"
+      >Save</button>
+    </div>
+  </form>
+</div>
+
+
+{{template "foot.html"}}

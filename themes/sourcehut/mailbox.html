@@ -11,10 +11,13 @@
           <a
             class="nav-link active"
             href="/mailbox/{{.Mailbox.Name | pathescape }}"
-          >Mailbox</a>
+          >Mail</a>
         </li>
         <li class="nav-item">
           <a class="nav-link" href="/compose">Compose</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="/settings">Settings</a>
         </li>
       </ul>
     </div>
@@ -63,11 +66,13 @@
                 {{ .PersonalName }}
               {{ end }}
             </span>
-            {{if .Envelope.Subject}}
-              {{.Envelope.Subject}}
-            {{else}}
-              (No subject)
-            {{end}}
+            <span class="{{if not (.HasFlag "\\Seen")}}font-weight-bold{{end}}">
+              {{if .Envelope.Subject}}
+                {{.Envelope.Subject}}
+              {{else}}
+                (No subject)
+              {{end}}
+            </span>
           </a></li>
         {{end}}
       </ul>

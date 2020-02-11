@@ -68,16 +68,105 @@
 
 <div class="container message-container">
   <div class="row">
-    <div class="col-md-10 body-column">
+    <div class="col-md-9 body-column">
+      {{define "addr-list"}}
+        {{range $i, $addr := .}}
+          {{- if $i}},{{end}}
+          {{.PersonalName}}
+          &lt;<a href="/compose?to={{.Address}}">{{.Address}}</a>&gt;
+        {{- end}}
+      {{end}}
+
+      <ul>
+        <li>
+          <strong>Date</strong>: {{.Message.Envelope.Date | formatdate}}
+        </li>
+        <li>
+          <strong>From</strong>: {{template "addr-list" .Message.Envelope.From}}
+        </li>
+        <li>
+          <strong>To</strong>: {{template "addr-list" .Message.Envelope.To}}
+        </li>
+        {{if .Message.Envelope.Cc}}
+          <li>
+            <strong>Cc</strong>: {{template "addr-list" .Message.Envelope.Cc}}
+          </li>
+        {{end}}
+        {{if .Message.Envelope.Bcc}}
+          <li>
+            <strong>Bcc</strong>: {{template "addr-list" .Message.Envelope.Bcc}}
+          </li>
+        {{end}}
+      </ul>
+
       {{if .Body}}
-        <pre>{{.Body}}</pre>
+        {{if .IsHTML}}
+          <!-- allow-same-origin is required to resize the frame with its content -->
+          <!-- allow-popups is required for target="_blank" links -->
+          <iframe id="email-frame"
+            srcdoc="{{.Body}}"
+            sandbox="allow-same-origin allow-popups"></iframe>
+        {{else}}
+          <pre>{{.Body}}</pre>
+        {{end}}
       {{else}}
         <p>Can't preview this message part.</p>
         <a href="{{.Message.Uid}}/raw?part={{.PartPath}}">Download</a>
       {{end}}
     </div>
-    <div class="col-md-2 parts-column">
+    <div class="col-md-3 parts-column">
       {{template "message-part-tree" (tuple $ .Message.PartTree)}}
+
+      <details>
+        <summary>Move to another mailbox</summary>
+        <form method="post" action="{{.Message.Uid}}/move">
+          <div class="form-group">
+            <select class="form-control" name="to" id="move-to">
+              {{range .Mailboxes}}
+                <option {{if eq .Name $.Mailbox.Name}}selected{{end}}>{{.Name}}</option>
+              {{end}}
+            </select>
+          </div>
+          <div class="pull-right">
+            <button class="btn btn-primary">Move</button>
+          </div>
+        </form>
+      </details>
+
+      <details>
+        <summary>Delete</summary>
+        <form method="post" action="{{.Message.Uid}}/delete">
+          <p>Are you sure?</p>
+          <div class="pull-right">
+            <button class="btn btn-danger">Delete</button>
+          </div>
+        </form>
+      </details>
+
+      {{if .Flags}}
+        <details>
+          <summary>Edit flags</summary>
+          <form method="post" action="{{.Message.Uid}}/flag">
+            <div class="form-group">
+              {{range $name, $has := .Flags}}
+                {{if ismutableflag $name}}
+                  <input type="checkbox" name="flags" id="flag-{{$name}}"
+                    value="{{$name}}" {{if $has}}checked{{end}}>
+                  <label for="flag-{{$name}}">{{$name | formatflag}}</label>
+                  <br>
+                {{else}}
+                  {{if $has}}
+                    <input type="hidden" name="flags" value="{{$name}}">
+                  {{end}}
+                {{end}}
+              {{end}}
+            </div>
+            <div class="pull-right">
+              <button class="btn btn-primary">Save</button>
+            </div>
+          </form>
+        </details>
+      {{end}}
     </div>
   </div>
 </div>
