@@ -21,32 +21,10 @@ func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 	return rt.upstream.RoundTrip(req)
 }
 
-func getAddressBook(u *url.URL, session *koushin.Session) (*carddav.Client, *carddav.AddressBook, error) {
+func newClient(u *url.URL, session *koushin.Session) (*carddav.Client, error) {
 	rt := authRoundTripper{
 		upstream: http.DefaultTransport,
 		session:  session,
 	}
-	c, err := carddav.NewClient(&http.Client{Transport: &rt}, u.String())
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create CardDAV client: %v", err)
-	}
-
-	principal, err := c.FindCurrentUserPrincipal()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to query CardDAV principal: %v", err)
-	}
-
-	addressBookHomeSet, err := c.FindAddressBookHomeSet(principal)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to query CardDAV address book home set: %v", err)
-	}
-
-	addressBooks, err := c.FindAddressBooks(addressBookHomeSet)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to query CardDAV address books: %v", err)
-	}
-	if len(addressBooks) == 0 {
-		return nil, nil, errNoAddressBook
-	}
-	return c, &addressBooks[0], nil
+	return carddav.NewClient(&http.Client{Transport: &rt}, u.String())
 }

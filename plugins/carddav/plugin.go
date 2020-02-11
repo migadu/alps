@@ -30,6 +30,44 @@ func sanityCheckURL(u *url.URL) error {
 	return nil
 }
 
+type plugin struct {
+	koushin.GoPlugin
+	url          *url.URL
+	homeSetCache map[string]string
+}
+
+func (p *plugin) clientWithAddressBook(session *koushin.Session) (*carddav.Client, *carddav.AddressBook, error) {
+	c, err := newClient(p.url, session)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create CardDAV client: %v", err)
+	}
+
+	homeSet, ok := p.homeSetCache[session.Username()]
+	if !ok {
+		principal, err := c.FindCurrentUserPrincipal()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to query CardDAV principal: %v", err)
+		}
+
+		homeSet, err = c.FindAddressBookHomeSet(principal)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to query CardDAV address book home set: %v", err)
+		}
+
+		p.homeSetCache[session.Username()] = homeSet
+		// TODO: evict entries from the cache if it's getting too big
+	}
+
+	addressBooks, err := c.FindAddressBooks(homeSet)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to query CardDAV address books: %v", err)
+	}
+	if len(addressBooks) == 0 {
+		return nil, nil, errNoAddressBook
+	}
+	return c, &addressBooks[0], nil
+}
+
 func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
 	u, err := srv.Upstream("carddavs", "carddav+insecure", "https", "http+insecure")
 	if _, ok := err.(*koushin.NoUpstreamError); ok {
@@ -61,14 +99,18 @@ func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
 
 	srv.Logger().Printf("Configured upstream CardDAV server: %v", u)
 
-	p := koushin.GoPlugin{Name: "carddav"}
+	p := &plugin{
+		GoPlugin:     koushin.GoPlugin{Name: "carddav"},
+		url:          u,
+		homeSetCache: make(map[string]string),
+	}
 
-	registerRoutes(&p, u)
+	registerRoutes(p)
 
 	p.Inject("compose.html", func(ctx *koushin.Context, _data koushin.RenderData) error {
 		data := _data.(*koushinbase.ComposeRenderData)
 
-		c, addressBook, err := getAddressBook(u, ctx.Session)
+		c, addressBook, err := p.clientWithAddressBook(ctx.Session)
 		if err == errNoAddressBook {
 			return nil
 		} else if err != nil {

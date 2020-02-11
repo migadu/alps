@@ -3,7 +3,6 @@ package koushincarddav
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 
 	"git.sr.ht/~emersion/koushin"
 	"github.com/emersion/go-vcard"
@@ -22,11 +21,11 @@ type AddressObjectRenderData struct {
 	AddressObject *carddav.AddressObject
 }
 
-func registerRoutes(p *koushin.GoPlugin, u *url.URL) {
+func registerRoutes(p *plugin) {
 	p.GET("/contacts", func(ctx *koushin.Context) error {
 		queryText := ctx.QueryParam("query")
 
-		c, addressBook, err := getAddressBook(u, ctx.Session)
+		c, addressBook, err := p.clientWithAddressBook(ctx.Session)
 		if err != nil {
 			return err
 		}
@@ -70,7 +69,7 @@ func registerRoutes(p *koushin.GoPlugin, u *url.URL) {
 	p.GET("/contacts/:uid", func(ctx *koushin.Context) error {
 		uid := ctx.Param("uid")
 
-		c, addressBook, err := getAddressBook(u, ctx.Session)
+		c, addressBook, err := p.clientWithAddressBook(ctx.Session)
 		if err != nil {
 			return err
 		}
