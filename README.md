@@ -14,7 +14,7 @@ To manually specify upstream servers:
 
     go run ./cmd/koushin imaps://mail.example.org:993 smtps://mail.example.org:465
 
-See `-h` for more information.
+See `docs/cli.md` for more information.
 
 ## Themes
 
