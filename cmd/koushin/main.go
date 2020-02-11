@@ -23,9 +23,10 @@ func main() {
 	var addr string
 	flag.StringVar(&options.Theme, "theme", "", "default theme")
 	flag.StringVar(&addr, "addr", ":1323", "listening address")
+	flag.BoolVar(&options.Debug, "debug", false, "enable debug logs")
 
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "usage: koushin [options...] <upstream server...>\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "usage: koushin [options...] <upstream servers...>\n")
 		flag.PrintDefaults()
 	}
 
@@ -47,6 +48,10 @@ func main() {
 		e.Logger.Fatal(err)
 	}
 	e.Use(middleware.Recover())
+
+	if options.Debug {
+		e.Logger.SetLevel(log.DEBUG)
+	}
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGUSR1)

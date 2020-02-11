@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -142,17 +143,19 @@ type SessionManager struct {
 	dialIMAP DialIMAPFunc
 	dialSMTP DialSMTPFunc
 	logger   echo.Logger
+	debug    bool
 
 	locker   sync.Mutex
 	sessions map[string]*Session // protected by locker
 }
 
-func newSessionManager(dialIMAP DialIMAPFunc, dialSMTP DialSMTPFunc, logger echo.Logger) *SessionManager {
+func newSessionManager(dialIMAP DialIMAPFunc, dialSMTP DialSMTPFunc, logger echo.Logger, debug bool) *SessionManager {
 	return &SessionManager{
 		sessions: make(map[string]*Session),
 		dialIMAP: dialIMAP,
 		dialSMTP: dialSMTP,
 		logger:   logger,
+		debug:    debug,
 	}
 }
 
@@ -165,6 +168,10 @@ func (sm *SessionManager) connectIMAP(username, password string) (*imapclient.Cl
 	if err := c.Login(username, password); err != nil {
 		c.Logout()
 		return nil, AuthError{err}
+	}
+
+	if sm.debug {
+		c.SetDebug(os.Stderr)
 	}
 
 	return c, nil

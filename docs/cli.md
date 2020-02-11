@@ -33,6 +33,8 @@ The following URL schemes are supported:
 
 **-addr**: listening address (default: ":1323")
 
+**-debug**: enable debug logs and print IMAP network activity
+
 **-h**, **--help**: show help message and exit
 
 # SIGNALS

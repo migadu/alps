@@ -59,7 +59,7 @@ func newServer(e *echo.Echo, options *Options) (*Server, error) {
 		return nil, err
 	}
 
-	s.Sessions = newSessionManager(s.dialIMAP, s.dialSMTP, e.Logger)
+	s.Sessions = newSessionManager(s.dialIMAP, s.dialSMTP, e.Logger, options.Debug)
 
 	return s, nil
 }
@@ -283,6 +283,7 @@ func handleUnauthenticated(next echo.HandlerFunc, ctx *Context) error {
 type Options struct {
 	Upstreams []string
 	Theme     string
+	Debug     bool
 }
 
 // New creates a new server.
