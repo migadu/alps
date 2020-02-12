@@ -10,6 +10,12 @@
 
 <h2>Contact: {{$fn}}</h2>
 
+<p>
+  <a href="/contacts/{{.AddressObject.Card.Value "UID" | pathescape}}/edit">
+    Edit
+  </a>
+</p>
+
 <ul>
   <li><strong>Name</strong>: {{$fn}}</li>
   {{range .AddressObject.Card.Values "EMAIL"}}

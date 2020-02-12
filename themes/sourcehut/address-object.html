@@ -9,7 +9,12 @@
       <h2>{{$fn}}</h2>
       <ul class="nav nav-tabs">
         <li class="nav-item">
-          <a class="nav-link active" href="#">View contact</a>
+          <a class="nav-link active" href="#">View</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link"
+            href="/contacts/{{.AddressObject.Card.Value "UID" | pathescape}}/edit"
+            >Edit</a>
         </li>
         <li class="mr-auto d-none d-sm-flex"></li>
         <li class="nav-item">

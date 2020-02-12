@@ -27,7 +27,7 @@ type AddressObjectRenderData struct {
 type UpdateAddressObjectRenderData struct {
 	koushin.BaseRenderData
 	AddressObject *carddav.AddressObject // nil if creating a new contact
-	Card vcard.Card
+	Card          vcard.Card
 }
 
 func registerRoutes(p *plugin) {
@@ -117,8 +117,39 @@ func registerRoutes(p *plugin) {
 		})
 	})
 
-	createContact := func(ctx *koushin.Context) error {
-		card := make(vcard.Card)
+	updateContact := func(ctx *koushin.Context) error {
+		uid := ctx.Param("uid")
+
+		c, addressBook, err := p.clientWithAddressBook(ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		var ao *carddav.AddressObject
+		var card vcard.Card
+		if uid != "" {
+			query := carddav.AddressBookQuery{
+				DataRequest: carddav.AddressDataRequest{AllProp: true},
+				PropFilters: []carddav.PropFilter{{
+					Name: vcard.FieldUID,
+					TextMatches: []carddav.TextMatch{{
+						Text:      uid,
+						MatchType: carddav.MatchEquals,
+					}},
+				}},
+			}
+			aos, err := c.QueryAddressBook(addressBook.Path, &query)
+			if err != nil {
+				return fmt.Errorf("failed to query CardDAV address: %v", err)
+			}
+			if len(aos) != 1 {
+				return fmt.Errorf("expected exactly one address object with UID %q, got %v", uid, len(aos))
+			}
+			ao = &aos[0]
+			card = ao.Card
+		} else {
+			card = make(vcard.Card)
+		}
 
 		if ctx.Request().Method == "POST" {
 			fn := ctx.FormValue("fn")
@@ -152,12 +183,12 @@ func registerRoutes(p *plugin) {
 				card.SetValue(vcard.FieldUID, id.URN())
 			}
 
-			c, addressBook, err := p.clientWithAddressBook(ctx.Session)
-			if err != nil {
-				return err
+			var p string
+			if ao != nil {
+				p = ao.Path
+			} else {
+				p = path.Join(addressBook.Path, id.String()+".vcf")
 			}
-
-			p := path.Join(addressBook.Path, id.String() + ".vcf")
 			_, err = c.PutAddressObject(p, card)
 			if err != nil {
 				return fmt.Errorf("failed to put address object: %v", err)
@@ -165,13 +196,19 @@ func registerRoutes(p *plugin) {
 			// TODO: check if the returned AddressObject's path matches, if not
 			// fetch the new UID (the server may mutate it)
 
-			return ctx.Redirect(http.StatusFound, "/contacts/" + card.Value(vcard.FieldUID))
+			return ctx.Redirect(http.StatusFound, "/contacts/"+card.Value(vcard.FieldUID))
 		}
 
 		return ctx.Render(http.StatusOK, "update-address-object.html", &UpdateAddressObjectRenderData{
 			BaseRenderData: *koushin.NewBaseRenderData(ctx),
+			AddressObject:  ao,
+			Card:           card,
 		})
 	}
-	p.GET("/contacts/create", createContact)
-	p.POST("/contacts/create", createContact)
+
+	p.GET("/contacts/create", updateContact)
+	p.POST("/contacts/create", updateContact)
+
+	p.GET("/contacts/:uid/edit", updateContact)
+	p.POST("/contacts/:uid/edit", updateContact)
 }
