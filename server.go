@@ -114,16 +114,20 @@ func (s *Server) parseIMAPUpstream() error {
 		}
 	}
 
-	s.imap.host = u.Host
 	switch u.Scheme {
-	case "imap":
-		// This space is intentionally left blank
 	case "imaps":
 		s.imap.tls = true
 	case "imap+insecure":
 		s.imap.insecure = true
-	default:
-		panic("unreachable")
+	}
+
+	s.imap.host = u.Host
+	if !strings.ContainsRune(s.imap.host, ':') {
+		if u.Scheme == "imaps" {
+			s.imap.host += ":993"
+		} else {
+			s.imap.host += ":143"
+		}
 	}
 
 	c, err := s.dialIMAP()
@@ -152,16 +156,20 @@ func (s *Server) parseSMTPUpstream() error {
 		}
 	}
 
-	s.smtp.host = u.Host
 	switch u.Scheme {
-	case "smtp":
-		// This space is intentionally left blank
 	case "smtps":
 		s.smtp.tls = true
 	case "smtp+insecure":
 		s.smtp.insecure = true
-	default:
-		panic("unreachable")
+	}
+
+	s.smtp.host = u.Host
+	if !strings.ContainsRune(s.smtp.host, ':') {
+		if u.Scheme == "smtps" {
+			s.smtp.host += ":465"
+		} else {
+			s.smtp.host += ":587"
+		}
 	}
 
 	c, err := s.dialSMTP()
