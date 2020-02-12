@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"git.sr.ht/~emersion/koushin"
 	koushinbase "git.sr.ht/~emersion/koushin/plugins/base"
@@ -106,6 +107,12 @@ func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
 	}
 
 	registerRoutes(p)
+
+	p.TemplateFuncs(map[string]interface{}{
+		"join": func(l []string, sep string) string {
+			return strings.Join(l, sep)
+		},
+	})
 
 	p.Inject("compose.html", func(ctx *koushin.Context, _data koushin.RenderData) error {
 		data := _data.(*koushinbase.ComposeRenderData)

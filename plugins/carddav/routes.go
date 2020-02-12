@@ -3,10 +3,13 @@ package koushincarddav
 import (
 	"fmt"
 	"net/http"
+	"path"
+	"strings"
 
 	"git.sr.ht/~emersion/koushin"
 	"github.com/emersion/go-vcard"
 	"github.com/emersion/go-webdav/carddav"
+	"github.com/google/uuid"
 )
 
 type AddressBookRenderData struct {
@@ -19,6 +22,12 @@ type AddressBookRenderData struct {
 type AddressObjectRenderData struct {
 	koushin.BaseRenderData
 	AddressObject *carddav.AddressObject
+}
+
+type UpdateAddressObjectRenderData struct {
+	koushin.BaseRenderData
+	AddressObject *carddav.AddressObject // nil if creating a new contact
+	Card vcard.Card
 }
 
 func registerRoutes(p *plugin) {
@@ -107,4 +116,62 @@ func registerRoutes(p *plugin) {
 			AddressObject:  addr,
 		})
 	})
+
+	createContact := func(ctx *koushin.Context) error {
+		card := make(vcard.Card)
+
+		if ctx.Request().Method == "POST" {
+			fn := ctx.FormValue("fn")
+			emails := strings.Split(ctx.FormValue("emails"), ",")
+
+			// Some CardDAV servers (e.g. Google) don't support vCard 4.0
+			// TODO: get supported formats from server, use highest version
+			if _, ok := card[vcard.FieldVersion]; !ok {
+				card.SetValue(vcard.FieldVersion, "3.0")
+			}
+
+			if field := card.Preferred(vcard.FieldFormattedName); field != nil {
+				field.Value = fn
+			} else {
+				card.Add(vcard.FieldFormattedName, &vcard.Field{Value: fn})
+			}
+
+			// TODO: Google wants a "N" field, fails with a 400 otherwise
+
+			// TODO: params are lost here
+			var emailFields []*vcard.Field
+			for _, email := range emails {
+				emailFields = append(emailFields, &vcard.Field{
+					Value: strings.TrimSpace(email),
+				})
+			}
+			card[vcard.FieldEmail] = emailFields
+
+			id := uuid.New()
+			if _, ok := card[vcard.FieldUID]; !ok {
+				card.SetValue(vcard.FieldUID, id.URN())
+			}
+
+			c, addressBook, err := p.clientWithAddressBook(ctx.Session)
+			if err != nil {
+				return err
+			}
+
+			p := path.Join(addressBook.Path, id.String() + ".vcf")
+			_, err = c.PutAddressObject(p, card)
+			if err != nil {
+				return fmt.Errorf("failed to put address object: %v", err)
+			}
+			// TODO: check if the returned AddressObject's path matches, if not
+			// fetch the new UID (the server may mutate it)
+
+			return ctx.Redirect(http.StatusFound, "/contacts/" + card.Value(vcard.FieldUID))
+		}
+
+		return ctx.Render(http.StatusOK, "update-address-object.html", &UpdateAddressObjectRenderData{
+			BaseRenderData: *koushin.NewBaseRenderData(ctx),
+		})
+	}
+	p.GET("/contacts/create", createContact)
+	p.POST("/contacts/create", createContact)
 }

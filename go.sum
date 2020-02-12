@@ -29,8 +29,10 @@ github.com/emersion/go-textwrapper v0.0.0-20160606182133-d0e65e56babe h1:40SWqY0
 github.com/emersion/go-textwrapper v0.0.0-20160606182133-d0e65e56babe/go.mod h1:aqO8z8wPrjkscevZJFVE1wXJrLpC5LtJG7fqLOsPb2U=
 github.com/emersion/go-vcard v0.0.0-20191221110513-5f81fa0d3cc7 h1:SE+tcd+0kn0cT4MqTo66gmkjqWHF1Z+Yha5/rhLs/H8=
 github.com/emersion/go-vcard v0.0.0-20191221110513-5f81fa0d3cc7/go.mod h1:HMJKR5wlh/ziNp+sHEDV2ltblO4JD2+IdDOWtGcQBTM=
-github.com/emersion/go-webdav v0.2.1-0.20200212161312-a892cc58df3f h1:xTDJnX1CigheBULqYTvDR+8SiwtSRdqWxdnS92Pc0Dc=
-github.com/emersion/go-webdav v0.2.1-0.20200212161312-a892cc58df3f/go.mod h1:dfzmdPRkPLLUQU00fDfwPJomgFmdblZpMoh3CaUsGCc=
+github.com/emersion/go-webdav v0.2.1-0.20200212201052-236dc078374e h1:VPvgfZ37O60LoVIU0Vb2qUVzReiKUQ7MV0mmoBqs4Ww=
+github.com/emersion/go-webdav v0.2.1-0.20200212201052-236dc078374e/go.mod h1:dfzmdPRkPLLUQU00fDfwPJomgFmdblZpMoh3CaUsGCc=
+github.com/google/uuid v1.1.1 h1:Gkbcsh/GbpXz7lPftLA3P6TYMwjCLYm83jiFQZF/3gY=
+github.com/google/uuid v1.1.1/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/gorilla/css v1.0.0 h1:BQqNyPTi50JCFMTw/b67hByjMVXZRwGha6wxVGkeihY=
 github.com/gorilla/css v1.0.0/go.mod h1:Dn721qIggHpt4+EFCcTLTU/vk5ySda2ReITrtgBl60c=
 github.com/labstack/echo/v4 v4.1.15-0.20200203180927-504f39abaf32 h1:UiIEDYxPPmjl6mMIY4QPDguD/QAtK+gR4IRMSrjWmeA=

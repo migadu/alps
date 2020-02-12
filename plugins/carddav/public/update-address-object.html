@@ -1,0 +1,23 @@
+{{template "head.html"}}
+
+<h1>koushin</h1>
+
+<p>
+  <a href="/contacts">Back</a>
+</p>
+
+<h2>Edit contact</h2>
+
+<form method="post">
+  <label for="fn">Name:</label>
+  <input type="text" name="fn" id="fn" value="{{.Card.PreferredValue "FN"}}">
+  <br>
+
+  <label for="emails">E-mails:</label>
+  <input type="email" name="emails" id="emails" multiple value="{{join (.Card.Values "EMAIL") ", "}}">
+  <br>
+
+  <input type="submit" value="Save">
+</form>
+
+{{template "foot.html"}}
