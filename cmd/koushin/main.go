@@ -16,6 +16,8 @@ import (
 	_ "git.sr.ht/~emersion/koushin/plugins/caldav"
 	_ "git.sr.ht/~emersion/koushin/plugins/carddav"
 	_ "git.sr.ht/~emersion/koushin/plugins/lua"
+	_ "git.sr.ht/~emersion/koushin/plugins/viewhtml"
+	_ "git.sr.ht/~emersion/koushin/plugins/viewtext"
 )
 
 func main() {

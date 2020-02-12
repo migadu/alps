@@ -99,16 +99,8 @@
         {{end}}
       </ul>
 
-      {{if .Body}}
-        {{if .IsHTML}}
-          <!-- allow-same-origin is required to resize the frame with its content -->
-          <!-- allow-popups is required for target="_blank" links -->
-          <iframe id="email-frame"
-            srcdoc="{{.Body}}"
-            sandbox="allow-same-origin allow-popups"></iframe>
-        {{else}}
-          <pre>{{.Body}}</pre>
-        {{end}}
+      {{if .View}}
+        {{.View}}
       {{else}}
         <p>Can't preview this message part.</p>
         <a href="{{.Message.Uid}}/raw?part={{.PartPath}}">Download</a>

@@ -176,8 +176,7 @@ type MessageRenderData struct {
 	Mailboxes   []*imap.MailboxInfo
 	Mailbox     *imap.MailboxStatus
 	Message     *IMAPMessage
-	Body        string
-	IsHTML      bool
+	View        interface{}
 	PartPath    string
 	MailboxPage int
 	Flags       map[string]bool
@@ -255,21 +254,9 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 		}
 	}
 
-	var body []byte
-	if strings.HasPrefix(strings.ToLower(mimeType), "text/") {
-		body, err = ioutil.ReadAll(part.Body)
-		if err != nil {
-			return fmt.Errorf("failed to read part body: %v", err)
-		}
-	}
-
-	isHTML := false
-	if strings.EqualFold(mimeType, "text/html") {
-		body, err = sanitizeHTML(body)
-		if err != nil {
-			return fmt.Errorf("failed to sanitize HTML part: %v", err)
-		}
-		isHTML = true
+	view, err := viewMessagePart(ctx, msg, part)
+	if err == ErrViewUnsupported {
+		view = nil
 	}
 
 	flags := make(map[string]bool)
@@ -286,8 +273,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 		Mailboxes:      mailboxes,
 		Mailbox:        mbox,
 		Message:        msg,
-		Body:           string(body),
-		IsHTML:         isHTML,
+		View:           view,
 		PartPath:       partPathString,
 		MailboxPage:    int(mbox.Messages-msg.SeqNum) / messagesPerPage,
 		Flags:          flags,

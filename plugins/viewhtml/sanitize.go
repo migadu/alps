@@ -1,4 +1,4 @@
-package koushinbase
+package koushinviewhtml
 
 import (
 	"bytes"
