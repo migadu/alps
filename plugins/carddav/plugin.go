@@ -121,6 +121,9 @@ func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
 			DataRequest: carddav.AddressDataRequest{
 				Props: []string{vcard.FieldFormattedName, vcard.FieldEmail},
 			},
+			PropFilters: []carddav.PropFilter{{
+				Name: vcard.FieldEmail,
+			}},
 		}
 		addrs, err := c.QueryAddressBook(addressBook.Path, &query)
 		if err != nil {

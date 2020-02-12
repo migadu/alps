@@ -38,6 +38,9 @@ func registerRoutes(p *plugin) {
 					vcard.FieldUID,
 				},
 			},
+			PropFilters: []carddav.PropFilter{{
+				Name: vcard.FieldFormattedName,
+			}},
 		}
 
 		if queryText != "" {
