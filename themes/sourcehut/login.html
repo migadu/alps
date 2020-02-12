@@ -1,12 +1,5 @@
 {{template "head.html"}}
-<nav class="container navbar navbar-light navbar-expand-sm">
-  <div class="col-md-12">
-    <a class="navbar-brand" href="/">
-      koushin
-      <span class="text-danger">webmail</span>
-    </a>
-  </div>
-</nav>
+{{template "nav.html" .Global}}
 
 <div class="container">
   <form method="post" action="/login" class="col-md-6">

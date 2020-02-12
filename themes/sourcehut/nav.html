@@ -4,23 +4,26 @@
     koushin
     <span class="text-danger">mail</span>
   </a>
-  <ul class="navbar-nav mr-auto d-none d-sm-flex">
-    <li class="nav-item active">
-      <a href="/" class="nav-link">mail</a>
-    </li>
-    <!-- TODO: only show these links if plugins are loaded -->
-    <li class="nav-item">
-      <a href="/contacts" class="nav-link">contacts</a>
-    </li>
-    <li class="nav-item">
-      <a href="/calendar" class="nav-link">calendar</a>
-    </li>
-  </ul>
-  <div class="login">
-    <span class="navbar-text">
-      <a href="/settings">Settings</a>
-      —
-      <a href="/logout">Log out</a>
-    </span>
-  </div>
+  {{if .LoggedIn}}
+    <ul class="navbar-nav mr-auto d-none d-sm-flex">
+      <li class="nav-item active">
+        <a href="/" class="nav-link">mail</a>
+      </li>
+      <!-- TODO: only show these links if plugins are loaded -->
+      <li class="nav-item">
+        <a href="/contacts" class="nav-link">contacts</a>
+      </li>
+      <li class="nav-item">
+        <a href="/calendar" class="nav-link">calendar</a>
+      </li>
+    </ul>
+    <div class="login">
+      <span class="navbar-text">
+        Logged in as {{.Username}} —
+        <a href="/settings">Settings</a>
+        —
+        <a href="/logout">Log out</a>
+      </span>
+    </div>
+  {{end}}
 </nav>
