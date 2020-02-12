@@ -20,7 +20,6 @@ type GlobalRenderData struct {
 
 	// if logged in
 	Username string
-	// TODO: list of mailboxes
 
 	// additional plugin-specific data
 	Extra map[string]interface{}
