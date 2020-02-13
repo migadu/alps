@@ -26,5 +26,3 @@ require (
 	golang.org/x/sys v0.0.0-20200212091648-12a6c2dcc1e4 // indirect
 	layeh.com/gopher-luar v1.0.7
 )
-
-replace github.com/emersion/go-webdav => ../go-webdav
