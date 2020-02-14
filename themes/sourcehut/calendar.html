@@ -1,0 +1,53 @@
+{{template "head.html"}}
+{{template "nav.html" .Global}}
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-md-12 header-tabbed">
+      <h2>{{.Time.Format "January 2006"}}</h2>
+      <ul class="nav nav-tabs">
+        <li class="nav-item">
+          <a class="nav-link active" href="/calendar">Calendar</a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
+<div class="container-fluid mailbox-container">
+  <div class="row">
+    <div class="col-md-2 mailboxes-column">
+      <ul class="nav flex-column">
+        <li class="nav-item">
+          <a class="nav-link active" href="/calendar">{{.Calendar.Name}}</a>
+        </li>
+      </ul>
+    </div>
+    <div class="col-md-10 messages-column">
+      {{if .Events}}
+        <ul class="nav flex-column">
+          {{range .Events}}
+            {{$event := index .Data.Events 0}}
+            <li class="nav-item">
+              <a
+                class="nav-link"
+                href="/calendar/{{$event.UID | pathescape}}"
+              >
+                {{$event.Summary}}
+                ({{$event.StartDate | formatdate}} — {{$event.EndDate | formatdate}})
+              </a>
+            </li>
+          {{end}}
+        </ul>
+      {{else}}
+        <p>No events.</p>
+      {{end}}
+
+      <p>
+        <a href="/calendar?month={{.PrevPage}}">Previous month</a>
+        · <a href="/calendar?month={{.NextPage}}">Next month</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+{{template "foot.html"}}

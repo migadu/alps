@@ -1,0 +1,37 @@
+{{template "head.html"}}
+{{template "nav.html" .Global}}
+
+{{$event := index .Event.Data.Events 0}}
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-md-12 header-tabbed">
+      <h2>{{$event.Summary}}</h2>
+      <ul class="nav nav-tabs">
+        <li class="nav-item">
+          <a class="nav-link active" href="#">View</a>
+        </li>
+        <li class="mr-auto d-none d-sm-flex"></li>
+        <li class="nav-item">
+          <a class="nav-link" href="/calendar">
+            <span class="icon icon-caret-left">
+              {{template "caret-left.html"}}
+            </span>
+            Back
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <ul>
+    <li><strong>Start date</strong>: {{$event.StartDate | formatdate}}</li>
+    <li><strong>End date</strong>: {{$event.EndDate | formatdate}}</li>
+  </ul>
+
+  <pre>{{$event.Description}}</pre>
+</div>
+
+{{template "foot.html"}}
