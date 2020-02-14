@@ -16,6 +16,9 @@ To manually specify upstream servers:
 
 See `docs/cli.md` for more information.
 
+When developing themes and plugins, the script `contrib/hotreload.sh` can be
+used to automatically reload koushin on file changes.
+
 ## Contributing
 
 Send patches on the [mailing list], report bugs on the [issue tracker].
