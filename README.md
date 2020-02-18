@@ -14,7 +14,7 @@ To manually specify upstream servers:
 
     go run ./cmd/koushin imaps://mail.example.org:993 smtps://mail.example.org:465
 
-Add `-theme sourcehut` to use the SourceHut them. See `docs/cli.md` for more
+Add `-theme sourcehut` to use the SourceHut theme. See `docs/cli.md` for more
 information.
 
 When developing themes and plugins, the script `contrib/hotreload.sh` can be
