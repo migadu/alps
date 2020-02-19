@@ -41,7 +41,10 @@ func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
 		u.Scheme = "http"
 	}
 	if u.Scheme == "" {
-		return nil, fmt.Errorf("caldav: discovery not yet implemented") // TODO
+		// TODO
+		err := fmt.Errorf("discovery not yet implemented")
+		srv.Logger().Printf("caldav: failed to discover CalDAV server: %v", err)
+		return nil, nil
 	}
 
 	if err := sanityCheckURL(u); err != nil {
