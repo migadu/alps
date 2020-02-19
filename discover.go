@@ -53,14 +53,24 @@ func discoverIMAP(domain string) (*url.URL, error) {
 }
 
 // discoverSMTP performs a DNS-based SMTP submission service discovery, as
-// defined in RFC 6186 section 3.1.
+// defined in RFC 6186 section 3.1. RFC 8314 section 5.1 adds a new service for
+// SMTP submission with implicit TLS.
 func discoverSMTP(domain string) (*url.URL, error) {
-	host, err := discoverTCP("submission", domain)
+	smtpsHost, err := discoverTCP("submissions", domain)
 	if err != nil {
 		return nil, err
 	}
-	if host == "" {
-		return nil, fmt.Errorf("SMTP service discovery not configured for domain %q", domain)
+	if smtpsHost != "" {
+		return &url.URL{Scheme: "smtps", Host: smtpsHost}, nil
 	}
-	return &url.URL{Scheme: "smtp", Host: host}, nil
+
+	smtpHost, err := discoverTCP("submission", domain)
+	if err != nil {
+		return nil, err
+	}
+	if smtpHost != "" {
+		return &url.URL{Scheme: "smtp", Host: smtpHost}, nil
+	}
+
+	return nil, fmt.Errorf("SMTP service discovery not configured for domain %q", domain)
 }
