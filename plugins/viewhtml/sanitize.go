@@ -3,6 +3,7 @@ package koushinviewhtml
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -73,8 +74,23 @@ type sanitizer struct {
 	msg *koushinbase.IMAPMessage
 }
 
-func (san *sanitizer) sanitizeResourceURL(src string) string {
-	return "about:blank"
+func (san *sanitizer) sanitizeImageURL(src string) string {
+	u, err := url.Parse(src)
+	if err != nil {
+		return "about:blank"
+	}
+
+	// TODO: mid support?
+	if !strings.EqualFold(u.Scheme, "cid") || san.msg == nil {
+		return "about:blank"
+	}
+
+	part := san.msg.PartByID(u.Opaque)
+	if part == nil || !strings.HasPrefix(part.MIMEType, "image/") {
+		return "about:blank"
+	}
+
+	return part.URL(true).String()
 }
 
 func (san *sanitizer) sanitizeCSSDecls(decls []*css.Declaration) []*css.Declaration {
@@ -114,7 +130,7 @@ func (san *sanitizer) sanitizeNode(n *html.Node) {
 			for i := range n.Attr {
 				attr := &n.Attr[i]
 				if strings.EqualFold(attr.Key, "src") {
-					attr.Val = san.sanitizeResourceURL(attr.Val)
+					attr.Val = san.sanitizeImageURL(attr.Val)
 				}
 			}
 		} else if strings.EqualFold(n.Data, "style") {
