@@ -5,6 +5,7 @@ go 1.13
 require (
 	github.com/aymerick/douceur v0.2.0
 	github.com/chris-ramon/douceur v0.2.0
+	github.com/emersion/go-ical v0.0.0-20200225182515-5cc64a0054ad // indirect
 	github.com/emersion/go-imap v1.0.3
 	github.com/emersion/go-imap-metadata v0.0.0-20200128185110-9d939d2a0915
 	github.com/emersion/go-imap-move v0.0.0-20190710073258-6e5a51a5b342
@@ -21,9 +22,9 @@ require (
 	github.com/mattn/go-isatty v0.0.12 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.2
 	github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
-	gitlab.com/golang-commonmark/linkify v0.0.0-20191026162114-a0c2df6c8f82
+	gitlab.com/golang-commonmark/linkify v0.0.0-20200225224916-64bca66f6ad3
 	golang.org/x/crypto v0.0.0-20200221231518-2aa609cf4a9d // indirect
-	golang.org/x/net v0.0.0-20200222125558-5a598a2470a0
+	golang.org/x/net v0.0.0-20200225223329-5d076fcf07a8
 	golang.org/x/sys v0.0.0-20200223170610-d5e6a3e2c0ae // indirect
 	layeh.com/gopher-luar v1.0.7
 )
