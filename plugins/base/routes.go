@@ -431,6 +431,7 @@ func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, draft *messagePat
 
 func handleComposeNew(ctx *koushin.Context) error {
 	// These are common mailto URL query parameters
+	// TODO: cc, bcc
 	return handleCompose(ctx, &OutgoingMessage{
 		To:        strings.Split(ctx.QueryParam("to"), ","),
 		Subject:   ctx.QueryParam("subject"),

@@ -70,6 +70,14 @@ var allowedStyles = map[string]bool{
 	"list-style-position": true,
 }
 
+var mailtoParams = []string{
+	"subject",
+	"cc",
+	"bcc",
+	"body",
+	"in-reply-to",
+}
+
 type sanitizer struct {
 	msg *koushinbase.IMAPMessage
 }
@@ -80,17 +88,31 @@ func (san *sanitizer) sanitizeImageURL(src string) string {
 		return "about:blank"
 	}
 
-	// TODO: mid support?
-	if !strings.EqualFold(u.Scheme, "cid") || san.msg == nil {
+	switch strings.ToLower(u.Scheme) {
+	case "mailto":
+		mailtoQuery := u.Query()
+
+		composeURL := url.URL{Path: "/compose"}
+		composeQuery := make(url.Values)
+		composeQuery.Set("to", u.Opaque)
+		for _, k := range mailtoParams {
+			if v := mailtoQuery.Get(k); v != "" {
+				composeQuery.Set(k, v)
+			}
+		}
+		composeURL.RawQuery = composeQuery.Encode()
+		return composeURL.String()
+	case "cid":
+		// TODO: mid support?
+		part := san.msg.PartByID(u.Opaque)
+		if part == nil || !strings.HasPrefix(part.MIMEType, "image/") {
+			return "about:blank"
+		}
+
+		return part.URL(true).String()
+	default:
 		return "about:blank"
 	}
-
-	part := san.msg.PartByID(u.Opaque)
-	if part == nil || !strings.HasPrefix(part.MIMEType, "image/") {
-		return "about:blank"
-	}
-
-	return part.URL(true).String()
 }
 
 func (san *sanitizer) sanitizeCSSDecls(decls []*css.Declaration) []*css.Declaration {
