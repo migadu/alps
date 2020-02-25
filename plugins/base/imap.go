@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -105,6 +106,14 @@ func ensureMailboxSelected(conn *imapclient.Client, mboxName string) error {
 
 type IMAPMessage struct {
 	*imap.Message
+
+	Mailbox string
+}
+
+func (msg *IMAPMessage) URL() *url.URL {
+	return &url.URL{
+		Path: fmt.Sprintf("/message/%v/%v", url.PathEscape(msg.Mailbox), msg.Uid),
+	}
 }
 
 func (msg *IMAPMessage) TextPartName() string {
@@ -144,6 +153,16 @@ func (msg *IMAPMessage) TextPartName() string {
 	return strings.Join(l, ".")
 }
 
+func newIMAPPartNode(msg *IMAPMessage, path []int, part *imap.BodyStructure) *IMAPPartNode {
+	filename, _ := part.Filename()
+	return &IMAPPartNode{
+		Path:     path,
+		MIMEType: strings.ToLower(part.MIMEType + "/" + part.MIMESubType),
+		Filename: filename,
+		Message:  msg,
+	}
+}
+
 func (msg *IMAPMessage) Attachments() []IMAPPartNode {
 	if msg.BodyStructure == nil {
 		return nil
@@ -155,15 +174,25 @@ func (msg *IMAPMessage) Attachments() []IMAPPartNode {
 			return true
 		}
 
-		filename, _ := part.Filename()
-		attachments = append(attachments, IMAPPartNode{
-			Path:     path,
-			MIMEType: strings.ToLower(part.MIMEType + "/" + part.MIMESubType),
-			Filename: filename,
-		})
+		attachments = append(attachments, *newIMAPPartNode(msg, path, part))
 		return true
 	})
 	return attachments
+}
+
+func (msg *IMAPMessage) PartByID(id string) *IMAPPartNode {
+	if msg.BodyStructure == nil || id == "" {
+		return nil
+	}
+
+	var result *IMAPPartNode
+	msg.BodyStructure.Walk(func(path []int, part *imap.BodyStructure) bool {
+		if result == nil && part.Id == "<"+id+">" {
+			result = newIMAPPartNode(msg, path, part)
+		}
+		return result == nil
+	})
+	return result
 }
 
 type IMAPPartNode struct {
@@ -171,6 +200,7 @@ type IMAPPartNode struct {
 	MIMEType string
 	Filename string
 	Children []IMAPPartNode
+	Message  *IMAPMessage
 }
 
 func (node IMAPPartNode) PathString() string {
@@ -180,6 +210,17 @@ func (node IMAPPartNode) PathString() string {
 	}
 
 	return strings.Join(l, ".")
+}
+
+func (node IMAPPartNode) URL(raw bool) *url.URL {
+	u := node.Message.URL()
+	if raw {
+		u.Path += "/raw"
+	}
+	q := u.Query()
+	q.Set("part", node.PathString())
+	u.RawQuery = q.Encode()
+	return u
 }
 
 func (node IMAPPartNode) IsText() bool {
@@ -194,7 +235,7 @@ func (node IMAPPartNode) String() string {
 	}
 }
 
-func imapPartTree(bs *imap.BodyStructure, path []int) *IMAPPartNode {
+func imapPartTree(msg *IMAPMessage, bs *imap.BodyStructure, path []int) *IMAPPartNode {
 	if !strings.EqualFold(bs.MIMEType, "multipart") && len(path) == 0 {
 		path = []int{1}
 	}
@@ -206,6 +247,7 @@ func imapPartTree(bs *imap.BodyStructure, path []int) *IMAPPartNode {
 		MIMEType: strings.ToLower(bs.MIMEType + "/" + bs.MIMESubType),
 		Filename: filename,
 		Children: make([]IMAPPartNode, len(bs.Parts)),
+		Message:  msg,
 	}
 
 	for i, part := range bs.Parts {
@@ -214,7 +256,7 @@ func imapPartTree(bs *imap.BodyStructure, path []int) *IMAPPartNode {
 		partPath := append([]int(nil), path...)
 		partPath = append(partPath, num)
 
-		node.Children[i] = *imapPartTree(part, partPath)
+		node.Children[i] = *imapPartTree(msg, part, partPath)
 	}
 
 	return node
@@ -225,7 +267,7 @@ func (msg *IMAPMessage) PartTree() *IMAPPartNode {
 		return nil
 	}
 
-	return imapPartTree(msg.BodyStructure, nil)
+	return imapPartTree(msg, msg.BodyStructure, nil)
 }
 
 func (msg *IMAPMessage) HasFlag(flag string) bool {
@@ -265,7 +307,7 @@ func listMessages(conn *imapclient.Client, mboxName string, page, messagesPerPag
 
 	msgs := make([]IMAPMessage, 0, to-from)
 	for msg := range ch {
-		msgs = append(msgs, IMAPMessage{msg})
+		msgs = append(msgs, IMAPMessage{msg, mboxName})
 	}
 
 	if err := <-done; err != nil {
@@ -350,7 +392,7 @@ func searchMessages(conn *imapclient.Client, mboxName, query string, page, messa
 		if !ok {
 			continue
 		}
-		msgs[i] = IMAPMessage{msg}
+		msgs[i] = IMAPMessage{msg, mboxName}
 	}
 
 	if err := <-done; err != nil {
@@ -416,7 +458,7 @@ func getMessagePart(conn *imapclient.Client, mboxName string, uid uint32, partPa
 		return nil, nil, fmt.Errorf("failed to create message reader: %v", err)
 	}
 
-	return &IMAPMessage{msg}, part, nil
+	return &IMAPMessage{msg, mboxName}, part, nil
 }
 
 func markMessageAnswered(conn *imapclient.Client, mboxName string, uid uint32) error {
