@@ -21,6 +21,7 @@ require (
 	github.com/mattn/go-isatty v0.0.12 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.2
 	github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
+	gitlab.com/golang-commonmark/linkify v0.0.0-20191026162114-a0c2df6c8f82
 	golang.org/x/crypto v0.0.0-20200210222208-86ce3cb69678 // indirect
 	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
 	golang.org/x/sys v0.0.0-20200212091648-12a6c2dcc1e4 // indirect
