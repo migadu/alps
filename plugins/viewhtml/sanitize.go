@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	koushinbase "git.sr.ht/~emersion/koushin/plugins/base"
 	"github.com/aymerick/douceur/css"
 	cssparser "github.com/chris-ramon/douceur/parser"
 	"github.com/microcosm-cc/bluemonday"
@@ -68,7 +69,15 @@ var allowedStyles = map[string]bool{
 	"list-style-position": true,
 }
 
-func sanitizeCSSDecls(decls []*css.Declaration) []*css.Declaration {
+type sanitizer struct {
+	msg *koushinbase.IMAPMessage
+}
+
+func (san *sanitizer) sanitizeResourceURL(src string) string {
+	return "about:blank"
+}
+
+func (san *sanitizer) sanitizeCSSDecls(decls []*css.Declaration) []*css.Declaration {
 	sanitized := make([]*css.Declaration, 0, len(decls))
 	for _, decl := range decls {
 		if !allowedStyles[decl.Property] {
@@ -86,26 +95,26 @@ func sanitizeCSSDecls(decls []*css.Declaration) []*css.Declaration {
 	return sanitized
 }
 
-func sanitizeCSSRule(rule *css.Rule) {
+func (san *sanitizer) sanitizeCSSRule(rule *css.Rule) {
 	// Disallow @import
 	if rule.Kind == css.AtRule && strings.EqualFold(rule.Name, "@import") {
 		rule.Prelude = "url(about:blank)"
 	}
 
-	rule.Declarations = sanitizeCSSDecls(rule.Declarations)
+	rule.Declarations = san.sanitizeCSSDecls(rule.Declarations)
 
 	for _, child := range rule.Rules {
-		sanitizeCSSRule(child)
+		san.sanitizeCSSRule(child)
 	}
 }
 
-func sanitizeNode(n *html.Node) {
+func (san *sanitizer) sanitizeNode(n *html.Node) {
 	if n.Type == html.ElementNode {
 		if strings.EqualFold(n.Data, "img") {
 			for i := range n.Attr {
 				attr := &n.Attr[i]
 				if strings.EqualFold(attr.Key, "src") {
-					attr.Val = "about:blank"
+					attr.Val = san.sanitizeResourceURL(attr.Val)
 				}
 			}
 		} else if strings.EqualFold(n.Data, "style") {
@@ -126,7 +135,7 @@ func sanitizeNode(n *html.Node) {
 				s = ""
 			} else {
 				for _, rule := range stylesheet.Rules {
-					sanitizeCSSRule(rule)
+					san.sanitizeCSSRule(rule)
 				}
 
 				s = stylesheet.String()
@@ -149,7 +158,7 @@ func sanitizeNode(n *html.Node) {
 					continue
 				}
 
-				decls = sanitizeCSSDecls(decls)
+				decls = san.sanitizeCSSDecls(decls)
 
 				attr.Val = ""
 				for _, d := range decls {
@@ -160,17 +169,17 @@ func sanitizeNode(n *html.Node) {
 	}
 
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		sanitizeNode(c)
+		san.sanitizeNode(c)
 	}
 }
 
-func sanitizeHTML(b []byte) ([]byte, error) {
+func (san *sanitizer) sanitizeHTML(b []byte) ([]byte, error) {
 	doc, err := html.Parse(bytes.NewReader(b))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse HTML: %v", err)
 	}
 
-	sanitizeNode(doc)
+	san.sanitizeNode(doc)
 
 	var buf bytes.Buffer
 	if err := html.Render(&buf, doc); err != nil {
