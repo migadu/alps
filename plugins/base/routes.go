@@ -176,8 +176,8 @@ type MessageRenderData struct {
 	Mailboxes   []*imap.MailboxInfo
 	Mailbox     *imap.MailboxStatus
 	Message     *IMAPMessage
+	Part        *IMAPPartNode
 	View        interface{}
-	PartPath    string
 	MailboxPage int
 	Flags       map[string]bool
 }
@@ -187,8 +187,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
-	partPathString := ctx.QueryParam("part")
-	partPath, err := parsePartPath(partPathString)
+	partPath, err := parsePartPath(ctx.QueryParam("part"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
@@ -273,8 +272,8 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 		Mailboxes:      mailboxes,
 		Mailbox:        mbox,
 		Message:        msg,
+		Part:           msg.PartByPath(partPath),
 		View:           view,
-		PartPath:       partPathString,
 		MailboxPage:    int(mbox.Messages-msg.SeqNum) / messagesPerPage,
 		Flags:          flags,
 	})
@@ -431,6 +430,7 @@ func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, draft *messagePat
 
 func handleComposeNew(ctx *koushin.Context) error {
 	// These are common mailto URL query parameters
+	// TODO: cc, bcc
 	return handleCompose(ctx, &OutgoingMessage{
 		To:        strings.Split(ctx.QueryParam("to"), ","),
 		Subject:   ctx.QueryParam("subject"),

@@ -180,6 +180,33 @@ func (msg *IMAPMessage) Attachments() []IMAPPartNode {
 	return attachments
 }
 
+func pathsEqual(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (msg *IMAPMessage) PartByPath(path []int) *IMAPPartNode {
+	if msg.BodyStructure == nil {
+		return nil
+	}
+
+	var result *IMAPPartNode
+	msg.BodyStructure.Walk(func(p []int, part *imap.BodyStructure) bool {
+		if result == nil && pathsEqual(path, p) {
+			result = newIMAPPartNode(msg, p, part)
+		}
+		return result == nil
+	})
+	return result
+}
+
 func (msg *IMAPMessage) PartByID(id string) *IMAPPartNode {
 	if msg.BodyStructure == nil || id == "" {
 		return nil

@@ -19,7 +19,7 @@
           <li class="nav-item">
             <a
               class="nav-link"
-              href="{{.Message.Uid}}/reply?part={{.PartPath}}"
+              href="{{.Message.URL}}/reply?part={{.Part.PathString}}"
             >Reply</a>
           </li>
           <li class="mr-auto d-none d-sm-flex"></li>
@@ -47,14 +47,14 @@
 		<a
       class="nav-link"
 			{{if .IsText}}
-				href="{{$.Message.Uid}}?part={{.PathString}}"
+				href="{{$.Message.URL}}?part={{.PathString}}"
 			{{else}}
-				href="{{$.Message.Uid}}/raw?part={{.PathString}}"
+				href="{{$.Message.URL}}/raw?part={{.PathString}}"
 			{{end}}
 		>
-			{{if eq $.PartPath .PathString}}<strong>{{end}}
+			{{if eq $.Part.PathString .PathString}}<strong>{{end}}
 			{{.String}}
-			{{if eq $.PartPath .PathString}}</strong>{{end}}
+			{{if eq $.Part.PathString .PathString}}</strong>{{end}}
 		</a>
 		{{if gt (len .Children) 0}}
 		<ul class="nav flex-column">
@@ -102,7 +102,7 @@
       {{if and .Extra.HasRemoteResources (not .Extra.RemoteResourcesAllowed)}}
         <p class="alert alert-info">
           This message contains remote content.
-          <a href="?part={{.PartPath}}&allow-remote-resources=1" class="alert-link">Load</a>
+          <a href="?part={{.Part.PathString}}&allow-remote-resources=1" class="alert-link">Load</a>
         </p>
       {{end}}
 
@@ -110,7 +110,7 @@
         {{.View}}
       {{else}}
         <p>Can't preview this message part.</p>
-        <a href="{{.Message.Uid}}/raw?part={{.PartPath}}">Download</a>
+        <a href="{{.Message.URL}}/raw?part={{.Part.PathString}}">Download</a>
       {{end}}
     </div>
     <div class="col-md-3 parts-column">
@@ -118,7 +118,7 @@
 
       <details>
         <summary>Move to another mailbox</summary>
-        <form method="post" action="{{.Message.Uid}}/move">
+        <form method="post" action="{{.Message.URL}}/move">
           <div class="form-group">
             <select class="form-control" name="to" id="move-to">
               {{range .Mailboxes}}
@@ -134,7 +134,7 @@
 
       <details>
         <summary>Delete</summary>
-        <form method="post" action="{{.Message.Uid}}/delete">
+        <form method="post" action="{{.Message.URL}}/delete">
           <p>Are you sure?</p>
           <div class="pull-right">
             <button class="btn btn-danger">Delete</button>
@@ -145,7 +145,7 @@
       {{if .Flags}}
         <details>
           <summary>Edit flags</summary>
-          <form method="post" action="{{.Message.Uid}}/flag">
+          <form method="post" action="{{.Message.URL}}/flag">
             <div class="form-group">
               {{range $name, $has := .Flags}}
                 {{if ismutableflag $name}}

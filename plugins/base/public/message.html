@@ -16,7 +16,7 @@
   {{end}}
 </h2>
 
-<form method="post" action="{{.Message.Uid}}/move">
+<form method="post" action="{{.Message.URL}}/move">
   <label for="move-to">Move to:</label>
   <select name="to" id="move-to">
     {{range .Mailboxes}}
@@ -26,12 +26,12 @@
   <input type="submit" value="Move">
 </form>
 
-<form method="post" action="{{.Message.Uid}}/delete">
+<form method="post" action="{{.Message.URL}}/delete">
   <input type="submit" value="Delete">
 </form>
 
 {{if .Flags}}
-  <form method="post" action="{{.Message.Uid}}/flag">
+  <form method="post" action="{{.Message.URL}}/flag">
     <p>Flags:</p>
     {{range $name, $has := .Flags}}
       {{if ismutableflag $name}}
@@ -85,14 +85,14 @@
   {{with index . 1}}
     <a
       {{if .IsText}}
-        href="{{$.Message.Uid}}?part={{.PathString}}"
+        href="{{$.Message.URL}}?part={{.PathString}}"
       {{else}}
-        href="{{$.Message.Uid}}/raw?part={{.PathString}}"
+        href="{{$.Message.URL}}/raw?part={{.PathString}}"
       {{end}}
     >
-      {{if eq $.PartPath .PathString}}<strong>{{end}}
+      {{if eq $.Part.PathString .PathString}}<strong>{{end}}
       {{.String}}
-      {{if eq $.PartPath .PathString}}</strong>{{end}}
+      {{if eq $.Part.PathString .PathString}}</strong>{{end}}
     </a>
     {{if .Children}}
     <ul>
@@ -113,15 +113,15 @@
 {{if .View}}
   <p>
     {{if .Message.HasFlag "\\Draft"}}
-      <a href="{{.Message.Uid}}/edit?part={{.PartPath}}">Edit draft</a>
+      <a href="{{.Message.URL}}/edit?part={{.Part.PathString}}">Edit draft</a>
     {{else}}
-      <a href="{{.Message.Uid}}/reply?part={{.PartPath}}">Reply</a>
+      <a href="{{.Message.URL}}/reply?part={{.Part.PathString}}">Reply</a>
     {{end}}
   </p>
   {{.View}}
 {{else}}
   <p>Can't preview this message part.</p>
-  <a href="{{.Message.Uid}}/raw?part={{.PartPath}}">Download</a>
+  <a href="{{.Message.URL}}/raw?part={{.Part.PathString}}">Download</a>
 {{end}}
 
 {{template "foot.html"}}
