@@ -80,17 +80,32 @@ func (san *sanitizer) sanitizeImageURL(src string) string {
 		return "about:blank"
 	}
 
+	switch strings.ToLower(u.Scheme) {
 	// TODO: mid support?
-	if !strings.EqualFold(u.Scheme, "cid") || san.msg == nil {
+	case "cid":
+		if san.msg == nil {
+			return "about:blank"
+		}
+
+		part := san.msg.PartByID(u.Opaque)
+		if part == nil || !strings.HasPrefix(part.MIMEType, "image/") {
+			return "about:blank"
+		}
+
+		return part.URL(true).String()
+	case "https":
+		if !proxyEnabled {
+			return "about:blank"
+		}
+
+		proxyURL := url.URL{Path: "/proxy"}
+		proxyQuery := make(url.Values)
+		proxyQuery.Set("src", u.String())
+		proxyURL.RawQuery = proxyQuery.Encode()
+		return proxyURL.String()
+	default:
 		return "about:blank"
 	}
-
-	part := san.msg.PartByID(u.Opaque)
-	if part == nil || !strings.HasPrefix(part.MIMEType, "image/") {
-		return "about:blank"
-	}
-
-	return part.URL(true).String()
 }
 
 func (san *sanitizer) sanitizeCSSDecls(decls []*css.Declaration) []*css.Declaration {
