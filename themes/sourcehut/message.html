@@ -99,6 +99,13 @@
         {{end}}
       </ul>
 
+      {{if and .Extra.HasRemoteResources (not .Extra.RemoteResourcesAllowed)}}
+        <p class="alert alert-info">
+          This message contains remote content.
+          <a href="?part={{.PartPath}}&allow-remote-resources=1" class="alert-link">Load</a>
+        </p>
+      {{end}}
+
       {{if .View}}
         {{.View}}
       {{else}}

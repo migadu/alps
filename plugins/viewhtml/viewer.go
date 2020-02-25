@@ -25,6 +25,8 @@ var tpl = template.Must(template.New("view-html.html").Parse(tplSrc))
 type viewer struct{}
 
 func (viewer) ViewMessagePart(ctx *koushin.Context, msg *koushinbase.IMAPMessage, part *message.Entity) (interface{}, error) {
+	allowRemoteResources := ctx.QueryParam("allow-remote-resources") == "1"
+
 	mimeType, _, err := part.Header.ContentType()
 	if err != nil {
 		return nil, err
@@ -38,11 +40,16 @@ func (viewer) ViewMessagePart(ctx *koushin.Context, msg *koushinbase.IMAPMessage
 		return nil, fmt.Errorf("failed to read part body: %v", err)
 	}
 
-	san := sanitizer{msg}
+	san := sanitizer{
+		msg:                  msg,
+		allowRemoteResources: allowRemoteResources,
+	}
 	body, err = san.sanitizeHTML(body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sanitize HTML part: %v", err)
 	}
+
+	ctx.Set("viewhtml.hasRemoteResources", san.hasRemoteResources)
 
 	var buf bytes.Buffer
 	err = tpl.Execute(&buf, string(body))

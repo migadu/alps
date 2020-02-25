@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"git.sr.ht/~emersion/koushin"
+	koushinbase "git.sr.ht/~emersion/koushin/plugins/base"
 	"github.com/labstack/echo/v4"
 )
 
@@ -19,6 +20,17 @@ var (
 
 func init() {
 	p := koushin.GoPlugin{Name: "viewhtml"}
+
+	p.Inject("message.html", func(ctx *koushin.Context, _data koushin.RenderData) error {
+		data := _data.(*koushinbase.MessageRenderData)
+		data.Extra["RemoteResourcesAllowed"] = ctx.QueryParam("allow-remote-resources") == "1"
+		hasRemoteResources := false
+		if v := ctx.Get("viewhtml.hasRemoteResources"); v != nil {
+			hasRemoteResources = v.(bool)
+		}
+		data.Extra["HasRemoteResources"] = hasRemoteResources
+		return nil
+	})
 
 	p.GET("/proxy", func(ctx *koushin.Context) error {
 		if !proxyEnabled {

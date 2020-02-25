@@ -71,7 +71,9 @@ var allowedStyles = map[string]bool{
 }
 
 type sanitizer struct {
-	msg *koushinbase.IMAPMessage
+	msg                  *koushinbase.IMAPMessage
+	allowRemoteResources bool
+	hasRemoteResources   bool
 }
 
 func (san *sanitizer) sanitizeImageURL(src string) string {
@@ -94,7 +96,9 @@ func (san *sanitizer) sanitizeImageURL(src string) string {
 
 		return part.URL(true).String()
 	case "https":
-		if !proxyEnabled {
+		san.hasRemoteResources = true
+
+		if !proxyEnabled || !san.allowRemoteResources {
 			return "about:blank"
 		}
 
