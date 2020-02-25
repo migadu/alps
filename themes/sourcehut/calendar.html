@@ -30,10 +30,10 @@
             <li class="nav-item">
               <a
                 class="nav-link"
-                href="/calendar/{{$event.UID | pathescape}}"
+                href="/calendar/{{$event.Props.Text "UID" | pathescape}}"
               >
-                {{$event.Summary}}
-                ({{$event.StartDate | formatdate}} — {{$event.EndDate | formatdate}})
+                {{$event.Props.Text "SUMMARY"}}
+                ({{$event.DateTimeStart nil | formatdate}} — {{$event.DateTimeEnd nil | formatdate}})
               </a>
             </li>
           {{end}}

@@ -8,13 +8,13 @@
 
 {{$event := index .Event.Data.Events 0}}
 
-<h2>Event: {{$event.Summary}}</h2>
+<h2>Event: {{$event.Props.Text "SUMMARY"}}</h2>
 
 <ul>
-  <li><strong>Start date</strong>: {{$event.StartDate | formatdate}}</li>
-  <li><strong>End date</strong>: {{$event.EndDate | formatdate}}</li>
+  <li><strong>Start date</strong>: {{$event.DateTimeStart nil | formatdate}}</li>
+  <li><strong>End date</strong>: {{$event.DateTimeEnd nil | formatdate}}</li>
 </ul>
 
-<pre>{{$event.Description}}</pre>
+<pre>{{$event.Props.Text "DESCRIPTION"}}</pre>
 
 {{template "foot.html"}}

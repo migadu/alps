@@ -13,7 +13,7 @@ require (
 	github.com/emersion/go-sasl v0.0.0-20191210011802-430746ea8b9b
 	github.com/emersion/go-smtp v0.12.1
 	github.com/emersion/go-vcard v0.0.0-20191221110513-5f81fa0d3cc7
-	github.com/emersion/go-webdav v0.2.1-0.20200212201052-236dc078374e
+	github.com/emersion/go-webdav v0.2.1-0.20200224201645-514296664cee
 	github.com/google/uuid v1.1.1
 	github.com/gorilla/css v1.0.0 // indirect
 	github.com/labstack/echo/v4 v4.1.15-0.20200203180927-504f39abaf32
@@ -22,8 +22,8 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.2
 	github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
 	gitlab.com/golang-commonmark/linkify v0.0.0-20191026162114-a0c2df6c8f82
-	golang.org/x/crypto v0.0.0-20200210222208-86ce3cb69678 // indirect
-	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
-	golang.org/x/sys v0.0.0-20200212091648-12a6c2dcc1e4 // indirect
+	golang.org/x/crypto v0.0.0-20200221231518-2aa609cf4a9d // indirect
+	golang.org/x/net v0.0.0-20200222125558-5a598a2470a0
+	golang.org/x/sys v0.0.0-20200223170610-d5e6a3e2c0ae // indirect
 	layeh.com/gopher-luar v1.0.7
 )

@@ -6,7 +6,7 @@
 <div class="container-fluid">
   <div class="row">
     <div class="col-md-12 header-tabbed">
-      <h2>{{$event.Summary}}</h2>
+      <h2>{{$event.Props.Text "SUMMARY"}}</h2>
       <ul class="nav nav-tabs">
         <li class="nav-item">
           <a class="nav-link active" href="#">View</a>
@@ -27,11 +27,11 @@
 
 <div class="container">
   <ul>
-    <li><strong>Start date</strong>: {{$event.StartDate | formatdate}}</li>
-    <li><strong>End date</strong>: {{$event.EndDate | formatdate}}</li>
+    <li><strong>Start date</strong>: {{$event.DateTimeStart nil | formatdate}}</li>
+    <li><strong>End date</strong>: {{$event.DateTimeEnd nil | formatdate}}</li>
   </ul>
 
-  <pre>{{$event.Description}}</pre>
+  <pre>{{$event.Props.Text "DESCRIPTION"}}</pre>
 </div>
 
 {{template "foot.html"}}
