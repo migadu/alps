@@ -3,6 +3,7 @@ package koushincarddav
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 
@@ -10,24 +11,34 @@ import (
 	"github.com/emersion/go-vcard"
 	"github.com/emersion/go-webdav/carddav"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 )
 
 type AddressBookRenderData struct {
 	koushin.BaseRenderData
 	AddressBook    *carddav.AddressBook
-	AddressObjects []carddav.AddressObject
+	AddressObjects []AddressObject
 	Query          string
 }
 
 type AddressObjectRenderData struct {
 	koushin.BaseRenderData
-	AddressObject *carddav.AddressObject
+	AddressObject AddressObject
 }
 
 type UpdateAddressObjectRenderData struct {
 	koushin.BaseRenderData
 	AddressObject *carddav.AddressObject // nil if creating a new contact
 	Card          vcard.Card
+}
+
+func parseObjectPath(s string) (string, error) {
+	p, err := url.PathUnescape(s)
+	if err != nil {
+		err = fmt.Errorf("failed to parse path: %v", err)
+		return "", echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+	return string(p), nil
 }
 
 func registerRoutes(p *plugin) {
@@ -65,7 +76,7 @@ func registerRoutes(p *plugin) {
 			}
 		}
 
-		addrs, err := c.QueryAddressBook(addressBook.Path, &query)
+		aos, err := c.QueryAddressBook(addressBook.Path, &query)
 		if err != nil {
 			return fmt.Errorf("failed to query CardDAV addresses: %v", err)
 		}
@@ -73,20 +84,23 @@ func registerRoutes(p *plugin) {
 		return ctx.Render(http.StatusOK, "address-book.html", &AddressBookRenderData{
 			BaseRenderData: *koushin.NewBaseRenderData(ctx),
 			AddressBook:    addressBook,
-			AddressObjects: addrs,
+			AddressObjects: newAddressObjectList(aos),
 			Query:          queryText,
 		})
 	})
 
-	p.GET("/contacts/:uid", func(ctx *koushin.Context) error {
-		uid := ctx.Param("uid")
-
-		c, addressBook, err := p.clientWithAddressBook(ctx.Session)
+	p.GET("/contacts/:path", func(ctx *koushin.Context) error {
+		path, err := parseObjectPath(ctx.Param("path"))
 		if err != nil {
 			return err
 		}
 
-		query := carddav.AddressBookQuery{
+		c, err := p.client(ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		multiGet := carddav.AddressBookMultiGet{
 			DataRequest: carddav.AddressDataRequest{
 				Props: []string{
 					vcard.FieldFormattedName,
@@ -94,31 +108,27 @@ func registerRoutes(p *plugin) {
 					vcard.FieldUID,
 				},
 			},
-			PropFilters: []carddav.PropFilter{{
-				Name: vcard.FieldUID,
-				TextMatches: []carddav.TextMatch{{
-					Text:      uid,
-					MatchType: carddav.MatchEquals,
-				}},
-			}},
 		}
-		addrs, err := c.QueryAddressBook(addressBook.Path, &query)
+		aos, err := c.MultiGetAddressBook(path, &multiGet)
 		if err != nil {
 			return fmt.Errorf("failed to query CardDAV address: %v", err)
 		}
-		if len(addrs) != 1 {
-			return fmt.Errorf("expected exactly one address object with UID %q, got %v", uid, len(addrs))
+		if len(aos) != 1 {
+			return fmt.Errorf("expected exactly one address object with path %q, got %v", path, len(aos))
 		}
-		addr := &addrs[0]
+		ao := &aos[0]
 
 		return ctx.Render(http.StatusOK, "address-object.html", &AddressObjectRenderData{
 			BaseRenderData: *koushin.NewBaseRenderData(ctx),
-			AddressObject:  addr,
+			AddressObject:  AddressObject{ao},
 		})
 	})
 
 	updateContact := func(ctx *koushin.Context) error {
-		uid := ctx.Param("uid")
+		addressObjectPath, err := parseObjectPath(ctx.Param("path"))
+		if err != nil {
+			return err
+		}
 
 		c, addressBook, err := p.clientWithAddressBook(ctx.Session)
 		if err != nil {
@@ -127,25 +137,11 @@ func registerRoutes(p *plugin) {
 
 		var ao *carddav.AddressObject
 		var card vcard.Card
-		if uid != "" {
-			query := carddav.AddressBookQuery{
-				DataRequest: carddav.AddressDataRequest{AllProp: true},
-				PropFilters: []carddav.PropFilter{{
-					Name: vcard.FieldUID,
-					TextMatches: []carddav.TextMatch{{
-						Text:      uid,
-						MatchType: carddav.MatchEquals,
-					}},
-				}},
-			}
-			aos, err := c.QueryAddressBook(addressBook.Path, &query)
+		if addressObjectPath != "" {
+			ao, err := c.GetAddressObject(addressObjectPath)
 			if err != nil {
 				return fmt.Errorf("failed to query CardDAV address: %v", err)
 			}
-			if len(aos) != 1 {
-				return fmt.Errorf("expected exactly one address object with UID %q, got %v", uid, len(aos))
-			}
-			ao = &aos[0]
 			card = ao.Card
 		} else {
 			card = make(vcard.Card)
@@ -189,14 +185,12 @@ func registerRoutes(p *plugin) {
 			} else {
 				p = path.Join(addressBook.Path, id.String()+".vcf")
 			}
-			_, err = c.PutAddressObject(p, card)
+			ao, err = c.PutAddressObject(p, card)
 			if err != nil {
 				return fmt.Errorf("failed to put address object: %v", err)
 			}
-			// TODO: check if the returned AddressObject's path matches, if not
-			// fetch the new UID (the server may mutate it)
 
-			return ctx.Redirect(http.StatusFound, "/contacts/"+card.Value(vcard.FieldUID))
+			return ctx.Redirect(http.StatusFound, AddressObject{ao}.URL())
 		}
 
 		return ctx.Render(http.StatusOK, "update-address-object.html", &UpdateAddressObjectRenderData{
@@ -209,6 +203,6 @@ func registerRoutes(p *plugin) {
 	p.GET("/contacts/create", updateContact)
 	p.POST("/contacts/create", updateContact)
 
-	p.GET("/contacts/:uid/edit", updateContact)
-	p.POST("/contacts/:uid/edit", updateContact)
+	p.GET("/contacts/:path/edit", updateContact)
+	p.POST("/contacts/:path/edit", updateContact)
 }

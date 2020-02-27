@@ -28,3 +28,19 @@ func newClient(u *url.URL, session *koushin.Session) (*carddav.Client, error) {
 	}
 	return carddav.NewClient(&http.Client{Transport: &rt}, u.String())
 }
+
+type AddressObject struct {
+	*carddav.AddressObject
+}
+
+func newAddressObjectList(aos []carddav.AddressObject) []AddressObject {
+	l := make([]AddressObject, len(aos))
+	for i := range aos {
+		l[i] = AddressObject{&aos[i]}
+	}
+	return l
+}
+
+func (ao AddressObject) URL() string {
+	return "/contacts/" + url.PathEscape(ao.Path)
+}

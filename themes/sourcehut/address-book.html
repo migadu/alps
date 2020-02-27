@@ -37,10 +37,7 @@
         <ul class="nav flex-column">
           {{range .AddressObjects}}
             <li class="nav-item">
-              <a
-                class="nav-link"
-                href="/contacts/{{.Card.Value "UID" | pathescape}}"
-              >{{.Card.Value "FN"}}</a>
+              <a class="nav-link" href="{{.URL}}">{{.Card.Value "FN"}}</a>
             </li>
           {{end}}
         </ul>

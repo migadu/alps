@@ -37,6 +37,10 @@ type plugin struct {
 	homeSetCache map[string]string
 }
 
+func (p *plugin) client(session *koushin.Session) (*carddav.Client, error) {
+	return newClient(p.url, session)
+}
+
 func (p *plugin) clientWithAddressBook(session *koushin.Session) (*carddav.Client, *carddav.AddressBook, error) {
 	c, err := newClient(p.url, session)
 	if err != nil {

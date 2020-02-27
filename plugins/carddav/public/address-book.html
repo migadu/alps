@@ -17,7 +17,7 @@
   <ul>
     {{range .AddressObjects}}
       <li>
-        <a href="/contacts/{{.Card.Value "UID" | pathescape}}">
+        <a href="{{.URL}}">
           {{.Card.Value "FN"}}
         </a>
         {{$email := .Card.PreferredValue "EMAIL"}}

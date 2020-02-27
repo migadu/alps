@@ -6,7 +6,9 @@
   <a href="/contacts">Back</a>
 </p>
 
-<h2>Edit contact</h2>
+<h2>
+  {{if .Card}}Edit{{else}}Create{{end}} contact
+</h2>
 
 <form method="post">
   <label for="fn">Name:</label>
