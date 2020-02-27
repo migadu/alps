@@ -151,10 +151,16 @@ func registerRoutes(p *plugin) {
 			fn := ctx.FormValue("fn")
 			emails := strings.Split(ctx.FormValue("emails"), ",")
 
-			// Some CardDAV servers (e.g. Google) don't support vCard 4.0
-			// TODO: get supported formats from server, use highest version
 			if _, ok := card[vcard.FieldVersion]; !ok {
-				card.SetValue(vcard.FieldVersion, "3.0")
+				// Some CardDAV servers (e.g. Google) don't support vCard 4.0
+				var version = "4.0"
+				if !addressBook.SupportsAddressData(vcard.MIMEType, version) {
+					version = "3.0"
+				}
+				if !addressBook.SupportsAddressData(vcard.MIMEType, version) {
+					return fmt.Errorf("upstream CardDAV server doesn't support vCard %v", version)
+				}
+				card.SetValue(vcard.FieldVersion, version)
 			}
 
 			if field := card.Preferred(vcard.FieldFormattedName); field != nil {
