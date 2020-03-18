@@ -494,7 +494,7 @@ func handleReply(ctx *koushin.Context) error {
 			return fmt.Errorf("failed to parse part Content-Type: %v", err)
 		}
 
-		if !strings.HasPrefix(strings.ToLower(mimeType), "text/") {
+		if !strings.EqualFold(mimeType, "text/plain") {
 			err := fmt.Errorf("cannot reply to %q part", mimeType)
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
