@@ -1,6 +1,6 @@
 /koushin
-/public/themes/*
-!/public/themes/sourcehut
+/themes/*
+!/themes/sourcehut
 /plugins/*
 !/plugins/base
 !/plugins/caldav
