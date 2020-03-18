@@ -738,6 +738,18 @@ func handleSetFlags(ctx *koushin.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "missing 'flags' form values")
 	}
 
+	var op imap.FlagsOp
+	switch ctx.FormValue("action") {
+	case "", "set":
+		op = imap.SetFlags
+	case "add":
+		op = imap.AddFlags
+	case "remove":
+		op = imap.RemoveFlags
+	default:
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid 'action' value")
+	}
+
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 		if err := ensureMailboxSelected(c, mboxName); err != nil {
 			return err
@@ -751,7 +763,7 @@ func handleSetFlags(ctx *koushin.Context) error {
 			storeItems[i] = f
 		}
 
-		item := imap.FormatFlagsOp(imap.SetFlags, true)
+		item := imap.FormatFlagsOp(op, true)
 		if err := c.UidStore(&seqSet, item, storeItems, nil); err != nil {
 			return fmt.Errorf("failed to add deleted flag: %v", err)
 		}
@@ -762,6 +774,10 @@ func handleSetFlags(ctx *koushin.Context) error {
 		return err
 	}
 
+	if op == imap.RemoveFlags && len(flags) == 1 && flags[0] == "\\Seen" {
+		// Redirecting to the message view would mark the message as read again
+		return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(mboxName)))
+	}
 	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/message/%v/%v", url.PathEscape(mboxName), uid))
 }
 

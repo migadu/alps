@@ -450,7 +450,6 @@ func getMessagePart(conn *imapclient.Client, mboxName string, uid uint32, partPa
 	partHeaderSection.Path = partPath
 
 	var partBodySection imap.BodySectionName
-	partBodySection.Peek = true
 	if len(partPath) > 0 {
 		partBodySection.Specifier = imap.EntireSpecifier
 	} else {
