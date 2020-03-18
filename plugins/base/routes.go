@@ -47,6 +47,9 @@ func registerRoutes(p *koushin.GoPlugin) {
 	p.GET("/message/:mbox/:uid/reply", handleReply)
 	p.POST("/message/:mbox/:uid/reply", handleReply)
 
+	p.GET("/message/:mbox/:uid/forward", handleForward)
+	p.POST("/message/:mbox/:uid/forward", handleForward)
+
 	p.GET("/message/:mbox/:uid/edit", handleEdit)
 	p.POST("/message/:mbox/:uid/edit", handleEdit)
 
@@ -289,9 +292,15 @@ type messagePath struct {
 	Uid     uint32
 }
 
+type composeOptions struct {
+	Draft     *messagePath
+	Forward   *messagePath
+	InReplyTo *messagePath
+}
+
 // Send message, append it to the Sent mailbox, mark the original message as
 // answered
-func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, draft *messagePath, inReplyTo *messagePath) error {
+func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, options *composeOptions) error {
 	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
 		return sendMessage(c, msg)
 	})
@@ -302,7 +311,7 @@ func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, draft *messagePat
 		return fmt.Errorf("failed to send message: %v", err)
 	}
 
-	if inReplyTo != nil {
+	if inReplyTo := options.InReplyTo; inReplyTo != nil {
 		err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 			return markMessageAnswered(c, inReplyTo.Mailbox, inReplyTo.Uid)
 		})
@@ -315,7 +324,7 @@ func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, draft *messagePat
 		if _, err := appendMessage(c, msg, mailboxSent); err != nil {
 			return err
 		}
-		if draft != nil {
+		if draft := options.Draft; draft != nil {
 			if err := deleteMessage(c, draft.Mailbox, draft.Uid); err != nil {
 				return err
 			}
@@ -329,7 +338,7 @@ func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, draft *messagePat
 	return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 }
 
-func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, draft *messagePath, inReplyTo *messagePath) error {
+func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, options *composeOptions) error {
 	if msg.From == "" && strings.ContainsRune(ctx.Session.Username(), '@') {
 		msg.From = ctx.Session.Username()
 	}
@@ -352,35 +361,41 @@ func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, draft *messagePat
 			return fmt.Errorf("failed to get multipart form: %v", err)
 		}
 
-		// Fetch previous attachments from draft
-		if draft != nil {
+		// Fetch previous attachments from original message
+		var original *messagePath
+		if options.Draft != nil {
+			original = options.Draft
+		} else if options.Forward != nil {
+			original = options.Forward
+		}
+		if original != nil {
 			for _, s := range form.Value["prev_attachments"] {
 				path, err := parsePartPath(s)
 				if err != nil {
-					return fmt.Errorf("failed to parse draft attachment path: %v", err)
+					return fmt.Errorf("failed to parse original attachment path: %v", err)
 				}
 
 				var part *message.Entity
 				err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 					var err error
-					_, part, err = getMessagePart(c, draft.Mailbox, draft.Uid, path)
+					_, part, err = getMessagePart(c, original.Mailbox, original.Uid, path)
 					return err
 				})
 				if err != nil {
-					return fmt.Errorf("failed to fetch attachment from draft: %v", err)
+					return fmt.Errorf("failed to fetch attachment from original message: %v", err)
 				}
 
 				var buf bytes.Buffer
 				if _, err := io.Copy(&buf, part.Body); err != nil {
-					return fmt.Errorf("failed to copy attachment from draft: %v", err)
+					return fmt.Errorf("failed to copy attachment from original message: %v", err)
 				}
 
 				h := mail.AttachmentHeader{part.Header}
 				mimeType, _, _ := h.ContentType()
 				filename, _ := h.Filename()
 				msg.Attachments = append(msg.Attachments, &imapAttachment{
-					Mailbox: draft.Mailbox,
-					Uid:     draft.Uid,
+					Mailbox: original.Mailbox,
+					Uid:     original.Uid,
 					Node: &IMAPPartNode{
 						Path:     path,
 						MIMEType: mimeType,
@@ -390,7 +405,7 @@ func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, draft *messagePat
 				})
 			}
 		} else if len(form.Value["prev_attachments"]) > 0 {
-			return fmt.Errorf("previous attachments specified but no draft available")
+			return fmt.Errorf("previous attachments specified but no original message available")
 		}
 
 		for _, fh := range form.File["attachments"] {
@@ -406,7 +421,7 @@ func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, draft *messagePat
 				if !copied {
 					return fmt.Errorf("no Draft mailbox found")
 				}
-				if draft != nil {
+				if draft := options.Draft; draft != nil {
 					if err := deleteMessage(c, draft.Mailbox, draft.Uid); err != nil {
 						return err
 					}
@@ -418,7 +433,7 @@ func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, draft *messagePat
 			}
 			return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 		} else {
-			return submitCompose(ctx, msg, draft, inReplyTo)
+			return submitCompose(ctx, msg, options)
 		}
 	}
 
@@ -436,7 +451,7 @@ func handleComposeNew(ctx *koushin.Context) error {
 		Subject:   ctx.QueryParam("subject"),
 		Text:      ctx.QueryParam("body"),
 		InReplyTo: ctx.QueryParam("in-reply-to"),
-	}, nil, nil)
+	}, &composeOptions{})
 }
 
 func unwrapIMAPAddressList(addrs []*imap.Address) []string {
@@ -503,7 +518,71 @@ func handleReply(ctx *koushin.Context) error {
 		}
 	}
 
-	return handleCompose(ctx, &msg, nil, &inReplyToPath)
+	return handleCompose(ctx, &msg, &composeOptions{InReplyTo: &inReplyToPath})
+}
+
+func handleForward(ctx *koushin.Context) error {
+	var sourcePath messagePath
+	var err error
+	sourcePath.Mailbox, sourcePath.Uid, err = parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+
+	var msg OutgoingMessage
+	if ctx.Request().Method == http.MethodGet {
+		// Populate fields from original message
+		partPath, err := parsePartPath(ctx.QueryParam("part"))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err)
+		}
+
+		var source *IMAPMessage
+		var part *message.Entity
+		err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+			var err error
+			source, part, err = getMessagePart(c, sourcePath.Mailbox, sourcePath.Uid, partPath)
+			return err
+		})
+		if err != nil {
+			return err
+		}
+
+		mimeType, _, err := part.Header.ContentType()
+		if err != nil {
+			return fmt.Errorf("failed to parse part Content-Type: %v", err)
+		}
+
+		if !strings.EqualFold(mimeType, "text/plain") {
+			err := fmt.Errorf("cannot forward %q part", mimeType)
+			return echo.NewHTTPError(http.StatusBadRequest, err)
+		}
+
+		msg.Text, err = quote(part.Body)
+		if err != nil {
+			return err
+		}
+
+		msg.Subject = source.Envelope.Subject
+		if !strings.HasPrefix(strings.ToLower(msg.Subject), "fwd:") &&
+			!strings.HasPrefix(strings.ToLower(msg.Subject), "fw:") {
+			msg.Subject = "Fwd: " + msg.Subject
+		}
+		msg.InReplyTo = source.Envelope.InReplyTo
+
+		attachments := source.Attachments()
+		for i := range attachments {
+			// No need to populate attachment body here, we just need the
+			// metadata
+			msg.Attachments = append(msg.Attachments, &imapAttachment{
+				Mailbox: sourcePath.Mailbox,
+				Uid:     sourcePath.Uid,
+				Node:    &attachments[i],
+			})
+		}
+	}
+
+	return handleCompose(ctx, &msg, &composeOptions{Forward: &sourcePath})
 }
 
 func handleEdit(ctx *koushin.Context) error {
@@ -561,18 +640,17 @@ func handleEdit(ctx *koushin.Context) error {
 
 		attachments := source.Attachments()
 		for i := range attachments {
-			att := &attachments[i]
 			// No need to populate attachment body here, we just need the
 			// metadata
 			msg.Attachments = append(msg.Attachments, &imapAttachment{
 				Mailbox: sourcePath.Mailbox,
 				Uid:     sourcePath.Uid,
-				Node:    att,
+				Node:    &attachments[i],
 			})
 		}
 	}
 
-	return handleCompose(ctx, &msg, &sourcePath, nil)
+	return handleCompose(ctx, &msg, &composeOptions{Draft: &sourcePath})
 }
 
 func handleMove(ctx *koushin.Context) error {

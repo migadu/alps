@@ -115,7 +115,8 @@
     {{if .Message.HasFlag "\\Draft"}}
       <a href="{{.Message.URL}}/edit?part={{.Part.PathString}}">Edit draft</a>
     {{else}}
-      <a href="{{.Message.URL}}/reply?part={{.Part.PathString}}">Reply</a>
+      <a href="{{.Message.URL}}/reply?part={{.Part.PathString}}">Reply</a> &middot;
+      <a href="{{.Message.URL}}/forward?part={{.Part.PathString}}">Forward</a>
     {{end}}
   </p>
   {{.View}}
