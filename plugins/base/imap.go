@@ -196,6 +196,9 @@ func (msg *IMAPMessage) PartByPath(path []int) *IMAPPartNode {
 	if msg.BodyStructure == nil {
 		return nil
 	}
+	if len(path) == 0 {
+		return newIMAPPartNode(msg, nil, msg.BodyStructure)
+	}
 
 	var result *IMAPPartNode
 	msg.BodyStructure.Walk(func(p []int, part *imap.BodyStructure) bool {
