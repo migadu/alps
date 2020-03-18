@@ -1,0 +1,9 @@
+image: alpine/edge
+packages:
+  - go
+sources:
+  - https://git.sr.ht/~emersion/koushin
+tasks:
+  - build: |
+      cd koushin
+      go test -v ./...
