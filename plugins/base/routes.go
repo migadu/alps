@@ -669,6 +669,12 @@ func handleMove(ctx *koushin.Context) error {
 	}
 
 	to := ctx.FormValue("to")
+	if to == "" {
+		to = ctx.QueryParam("to")
+	}
+	if to == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "missing 'to' form parameter")
+	}
 
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 		mc := imapmove.NewClient(c)
@@ -751,17 +757,28 @@ func handleSetFlags(ctx *koushin.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
+
 	uids, err := parseUidList(formParams["uids"])
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
+
 	flags, ok := formParams["flags"]
 	if !ok {
-		return echo.NewHTTPError(http.StatusBadRequest, "missing 'flags' form values")
+		flagsStr := ctx.QueryParam("to")
+		if flagsStr == "" {
+			return echo.NewHTTPError(http.StatusBadRequest, "missing 'flags' form parameter")
+		}
+		flags = strings.Fields(flagsStr)
+	}
+
+	actionStr := ctx.FormValue("action")
+	if actionStr == "" {
+		actionStr = ctx.QueryParam("action")
 	}
 
 	var op imap.FlagsOp
-	switch ctx.FormValue("action") {
+	switch actionStr {
 	case "", "set":
 		op = imap.SetFlags
 	case "add":
