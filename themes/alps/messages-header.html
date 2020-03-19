@@ -1,0 +1,45 @@
+<tr>
+  <th width="1%" class="message-list-checkbox">
+    <input type="checkbox" id="action-checkbox-all"/>
+  </th>
+  <th colspan="3">
+    <div class="actions-wrap">
+      <div class="actions-message">
+        {{ if and (eq .Mailbox.Name "INBOX") (not (eq .Mailbox.Name "Archive")) }}
+        <button form="messages-form" formaction="/message/{{.Mailbox.Name | pathescape}}/move?to=Archive">Archive</button>
+        &nbsp;&nbsp;
+        {{ end }}
+
+        {{ if or (eq .Mailbox.Name "INBOX") (eq .Mailbox.Name "Trash") }}
+        <button form="messages-form" formaction="/message/{{.Mailbox.Name | pathescape}}/move?to=Junk">Report Spam</button>
+        {{ end }}
+
+        {{ if ne .Mailbox.Name "Trash"}}
+        <button form="messages-form" formaction="/message/{{.Mailbox.Name | pathescape}}/move?to=Trash">Delete</button>
+        {{ else }}
+        <button form="messages-form" formaction="/message/{{.Mailbox.Name | pathescape}}/delete">Delete Permanently</button>
+        {{ end }}
+
+        &nbsp;&nbsp;
+        <a href="{{ .GlobalData.Path }}" class="button-link">Refresh</a>
+      </div>
+
+      <form action="" method="post" class="actions-search">
+        <input type="text" name="query" value="{{.Query}}" placeholder="Search messages...">
+        <button>Search</button>
+      </form>
+
+      {{if or (ge .PrevPage 0) (ge .NextPage 0) }}
+      <div class="actions-pagination">
+        {{if ge .PrevPage 0}}
+          {{if ge .PrevPage 1}}<a href="?page=0" class="button-link">«</a>{{ end }}
+          <a href="?page={{.PrevPage}}" class="button-link">‹</a>
+        {{end}}
+        {{if ge .NextPage 0}}
+          <a href="?page={{.NextPage}}" class="button-link">›</a>
+        {{end}}
+      </div>
+      {{ end }}
+    </div>
+  </th>
+</tr>

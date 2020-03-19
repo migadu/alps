@@ -1,0 +1,269 @@
+/* Box sizing rules */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Remove default padding */
+ul[class],
+ol[class] {
+  padding: 0;
+}
+
+/* Remove default margin */
+body,
+h1,
+h2,
+h3,
+h4,
+p,
+ul[class],
+ol[class],
+li,
+figure,
+figcaption,
+blockquote,
+dl,
+dd {
+  margin: 0;
+}
+
+/* Set core body defaults */
+body {
+  min-height: 100vh;
+  scroll-behavior: smooth;
+  text-rendering: optimizeSpeed;
+  line-height: 1.5;
+}
+
+/* Remove list styles on ul, ol elements with a class attribute */
+ul[class],
+ol[class] {
+  list-style: none;
+}
+
+/* A elements that don't have a class get default styles */
+a:not([class]) {
+  text-decoration-skip-ink: auto;
+}
+
+/* Make images easier to work with */
+img {
+  max-width: 100%;
+  display: block;
+}
+
+/* Natural flow and rhythm in articles by default */
+article > * + * {
+  margin-top: 1em;
+}
+
+/* Inherit fonts for inputs and buttons */
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+/* Remove all animations and transitions for people that prefer not to see them */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+/** { box-sizing: content-box; }*/
+body { font-family: arial,sans-serif; font-size: 13px; padding: 0; margin: 0;
+  min-width: 1024px; min-height: 100vh; display: flex; flex-direction: column;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="file"],
+textarea {
+  margin: 0;
+  border: none;
+  border: 1px solid #e0e0e0;
+  box-shadow: inset 1px 1px 0 #f8f8f8;
+  border-radius: 2px;
+  font-size: 13px;
+  padding: 0.3rem 0.5rem 0.3rem 0.5rem;
+  background-color: white;
+}
+
+.page-wrap {
+  display: flex;
+  flex: 1 100%;
+  flex-direction: row;
+}
+
+a { color: #15c; }
+button { font-size: 1rem; }
+header { border-bottom: 1px solid #e0e0e0;}
+header nav,
+footer { padding: 0.5rem 1rem 0.5rem 0.5rem; }
+header nav { min-height: 1rem; }
+/*header nav strong { color: #555; }*/
+header nav > a { margin-right: 1rem; }
+header nav span { color: #757373; }
+header nav div { float: right; }
+header nav div > a{  margin-left: 1rem; }
+header a.active { font-weight: bold; color: black; text-decoration: none; }
+
+
+footer { text-align: right; }
+
+.actions { padding: 0.5rem; }
+
+.container { flex: 1 auto; display: flex; flex-direction: column; flex-wrap: nowrap; min-width: 0; }
+
+
+aside { flex: 0 0 180px; }
+aside a { width: 100%; display: block; padding: 0.4rem 0 0.4rem 0.5rem; }
+aside a.active { font-weight: bold; color: black; text-decoration: none; }
+aside img { display: block; }
+main { flex: 1 100%; display: flex; flex-direction: column; padding: 0.5rem 1rem 0.5rem 0.5rem; min-width: 0; }
+
+aside a.active,
+main { background-color: #f6f6f6; }
+aside a.compose-mail.active { color: #008d47; }
+aside a.compose-mail.active,
+main.compose { background-color: #f6fff6; }
+main.compose { flex: 1 auto; padding: 1rem; }
+main.compose form { flex: 1 auto; display: flex; flex-direction: column; }
+main.compose form label { margin-top: 5px; }
+main.compose form label span { display: inline-block; font-weight: bold; min-width: 100px; }
+main.compose form input { width: 80%; }
+main.compose form textarea { flex: 1 auto; resize: none; margin-top: 1rem; }
+main.compose button[type="submit"] { padding: 0.4rem 1rem 0.35rem; font-weight: bold; }
+main.compose .actions { text-align: right; }
+main table { border-collapse: collapse; width: 100%; border: 1px solid #eee; }
+main table td { white-space: nowrap; padding: 0.3rem; color: #757373;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+main table tbody tr { border-bottom: 1px solid #eee; }
+main table td a { text-decoration: none; }
+
+
+main table td a:hover { text-decoration: underline; }
+
+main.message pre { flex: 1 auto; padding: 1rem; white-space: pre-wrap; word-break: break-all; background-color: white; border: 1px solid #eee; max-width: 100% }
+main.message table { background-color: white; }
+main.message th { width: 5%;}
+main.message h1 { font-size: 1.2rem; padding: 0.5rem;}
+
+.message-list-subject a { color: #77c; }
+
+
+.message-list-unread .message-list-sender,
+.message-list-unread .message-list-subject,
+.message-list-unread .message-list-date { font-weight: bold; }
+
+.message-list-unread .message-list-sender,
+.message-list-unread .message-list-date { color: black;}
+
+.message-list-date {
+  text-align: right;
+  padding-right: 0.5rem;
+}
+
+.message-list-unread .message-list-subject a { color: #00c; }
+
+.message-list-unread {
+  background-color: white;
+  border-left: 1px solid #f2f2f2;
+  border-right: 1px solid #f2f2f2;
+}
+.message-list-unread td { opacity: 1; }
+
+aside .compose-mail {
+  color: #008d47;
+  font-weight: bold;
+  /*background-color: #f5fcf2;*/
+  text-decoration: none;
+}
+
+main table th {
+  text-align: left;
+  padding: 0.3rem; font-weight: normal;
+}
+
+main table thead {
+  border-bottom: 1px solid #e0e0e0;
+  background-color: white;
+}
+main table tfoot {
+  border-top: 1px solid #e0e0e0;
+  background-color: white;
+}
+
+th form { display: inline; }
+th input[type="text"] {
+  flex: 1;
+  margin: 0;
+}
+th input[type="text"] + button {
+  margin-left: -4rem;
+  width: 4rem;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.actions-wrap { display: flex; flex-direction: row; }
+.actions-message { margin-right: 1rem; }
+.actions-pagination { margin-left: 1rem; display: flex; flex-direction: row; }
+.actions-search { flex: 1 auto; display: flex; flex-direction: row; }
+
+
+input[type="submit"],
+.button,
+button,
+.button-link {
+  margin: 0;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+  display: inline-block;
+  /*padding: 0.4rem 0.4rem 0.35rem;*/
+  padding: 0.3rem 0.3rem 0.25rem;
+  min-width: 1rem;
+  font-size: 12px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+.button-link {
+  border: 1px solid transparent;
+  text-decoration: none;
+}
+.button-link:hover {
+  text-decoration: underline;
+}
+
+input[type="submit"],
+.button,
+button {
+  background-color: #f5f5f5;
+  border: 1px solid #ddd;
+  color: black;
+}
+
+.button:hover,
+button:hover {
+  background-color: white;
+}
+
+.button:active,
+button:active {
+  color: #ccc;
+  background-color: #f8f8f8;
+}
+
+.message-list-checkbox { display: none; }

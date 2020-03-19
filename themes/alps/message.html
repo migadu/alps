@@ -1,0 +1,154 @@
+{{template "head.html"}}
+{{template "nav.html" .}}
+
+<div class="page-wrap">
+  {{$current := .Mailbox}}
+  <aside>
+    <!-- the logo image, dimensions 200x32 may be present or not -->
+    <a href="/compose" class="compose-mail">Compose&nbsp;Mail</a>
+    <!-- TODO: get mailbox list from render data -->
+    <a href="/mailbox/INBOX" {{ if eq $current.Name "INBOX" }}class="active"{{ end }}>Inbox {{ if $current.Unseen }}({{ $current.Unseen }}){{ end }}</a>
+    <a href="/mailbox/Drafts" {{ if eq $current.Name "Drafts" }}class="active"{{ end }}>Drafts</a>
+    <a href="/mailbox/Sent" {{ if eq $current.Name "Sent" }}class="active"{{ end }}>Sent</a>
+    <a href="/mailbox/Archive" {{ if eq $current.Name "Archive" }}class="active"{{ end }}>Archive {{ if $current.Unseen }}({{ $current.Unseen }}){{ end }}</a>
+    <a href="/mailbox/Junk" {{ if eq $current.Name "Junk" }}class="active"{{ end }}>Junk {{ if $current.Unseen }}({{ $current.Unseen }}){{ end }}</a>
+    <a href="/mailbox/Trash" {{ if eq $current.Name "Trash" }}class="active"{{ end }}>Trash</a>
+  </aside>
+
+  <div class="container">
+    <main class="message">
+
+
+<table>
+  <tr>
+    <tr>
+  <th colspan="2">
+    <div class="actions-wrap">
+      <div class="actions-message">
+        <a href="/mailbox/{{.Mailbox.Name | pathescape}}?page={{.MailboxPage}}" class="button-link">« Back</a>
+        &nbsp;&nbsp;
+
+        {{ if and (ne .Mailbox.Name "Archive") (ne .Mailbox.Name "Drafts") (ne .Mailbox.Name "Sent") }}
+        <form method="post" action="/message/{{.Mailbox.Name | pathescape}}/move">
+          <input type="hidden" name="uids" value="{{.Message.Uid}}">
+          <input type="hidden" name="to" value="Archive">
+          <button>Archive</button>
+        </form>
+        {{ end }}
+
+        {{ if and (ne .Mailbox.Name "INBOX") (ne .Mailbox.Name "Sent") (ne .Mailbox.Name "Drafts") }}
+        <form method="post" action="/message/{{.Mailbox.Name | pathescape}}/move">
+          <input type="hidden" name="uids" value="{{.Message.Uid}}">
+          <input type="hidden" name="to" value="INBOX">
+          <button>
+          {{ if (eq .Mailbox.Name "Junk") }}
+          Not Spam
+          {{ else }}
+          Move to Inbox
+          {{ end }}
+          </button>
+        </form>
+        {{ end }}
+
+        {{ if or (eq .Mailbox.Name "INBOX") (eq .Mailbox.Name "Trash") }}
+        <form method="post" action="/message/{{.Mailbox.Name | pathescape}}/move">
+          <input type="hidden" name="uids" value="{{.Message.Uid}}">
+          &nbsp;&nbsp;
+          <input type="hidden" name="to" value="Junk">
+          <button>Report Spam</button>
+        </form>
+        {{ end }}
+
+        {{ if or (eq .Mailbox.Name "Trash") (eq .Mailbox.Name "Junk") }}
+        <form method="post" action="/message/{{.Mailbox.Name | pathescape}}/delete">
+          <input type="hidden" name="uids" value="{{.Message.Uid}}">
+          <button>Delete Permanently</button>
+        </form>
+        {{ else }}
+        <form method="post" action="/message/{{.Mailbox.Name | pathescape}}/move">
+          <input type="hidden" name="uids" value="{{.Message.Uid}}">
+          &nbsp;&nbsp;
+          <input type="hidden" name="to" value="Trash">
+          <button>Delete</button>
+        </form>
+        {{ end }}
+
+        <form method="post" action="/message/{{.Mailbox.Name | pathescape}}/flag">
+          <input type="hidden" name="uids" value="{{.Message.Uid}}">
+          <input type="hidden" name="flags" value="\Seen">
+          <input type="hidden" name="action" value="remove">
+          <button>Mark&nbsp;Unread</button>
+        </form>
+
+        <form method="post" action="/message/{{.Mailbox.Name | pathescape}}/move">
+          <input type="hidden" name="uids" value="{{.Message.Uid}}">
+          <select name="to">
+            {{range .Mailboxes}}
+              <option value="{{.Name}}" {{if eq .Name $.Mailbox.Name}}selected>Move to...{{else}}>{{.Name}}{{ end }}</option>
+            {{end}}
+          </select>
+          <input type="submit" value="Move">
+        </form>
+        &nbsp;&nbsp;
+
+        <a href="{{.Message.Uid}}/reply?part={{.Part.PathString}}">Reply</a>
+        &nbsp;&nbsp;
+        <a href="{{.Message.Uid}}/forward?part={{.Part.PathString}}">Forward</a>
+      </div>
+    </div>
+  </th>
+</tr>
+
+  </tr>
+  <tr>
+    <th colspan="2">
+      <h1>
+       {{if .Message.Envelope.Subject}}
+          {{.Message.Envelope.Subject}}
+        {{else}}
+          (No subject)
+        {{end}}
+      </h1>
+      </th>
+    </tr>
+
+  <tr>
+    <th>From:</th>
+    <td>{{template "addr-list" .Message.Envelope.From}}</td>
+  </tr>
+  <tr>
+    <th>Date:</th>
+    <td>{{.Message.Envelope.Date | formatdate}}</td>
+  </tr>
+  <tr>
+    <th>To:</th><td>{{template "addr-list" .Message.Envelope.To}}</td>
+  </tr>
+  {{if .Message.Envelope.Cc}}
+    <tr>
+      <th>Cc:</th><td>{{template "addr-list" .Message.Envelope.Cc}}</td>
+    </tr>
+  {{end}}
+  {{if .Message.Envelope.Bcc}}
+    <tr>
+      <th>Bcc:</th>
+      <td>{{template "addr-list" .Message.Envelope.Bcc}}</td>
+    </tr>
+  {{ end }}
+</table>
+
+{{define "addr-list"}}
+  {{range $i, $addr := .}}
+    {{if $i}},{{end}}
+    <strong>{{.PersonalName}}</strong>
+    &lt;<a href="/compose?to={{.Address}}">{{.Address}}</a>&gt;
+  {{end}}
+{{end}}
+
+{{if .View}}
+  {{.View}}
+{{else}}
+  <p>Can't preview this message part.</p>
+  <a href="{{.Message.Uid}}/raw?part={{.Part.PathString}}">Download</a>
+{{end}}
+
+{{template "foot.html"}}

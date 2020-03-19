@@ -1,0 +1,66 @@
+{{template "head.html"}}
+{{template "nav.html" . }}
+
+<div class="page-wrap">
+  <aside>
+    <!-- the logo image, dimensions 200x32 may be present or not -->
+    <a href="/compose" class="compose-mail">Compose&nbsp;Mail</a>
+    {{$current := .Mailbox}}
+    {{range .Mailboxes}}
+      <a href="/mailbox/{{.Name | pathescape}}"
+          {{ if eq $current.Name .Name }}class="active"{{ end }}>
+        {{ if eq .Name "INBOX" }}
+          Inbox
+        {{else}}
+          {{.Name}}
+        {{end}}
+        {{ if eq $current.Name .Name }}
+          {{ if $current.Unseen }}({{ $current.Unseen }}){{ end }}
+        {{ end }}
+      </a>
+    {{end}}
+  </aside>
+
+  <div class="container">
+    <form id="messages-form" method="post"></form>
+    <main>
+      <table>
+        <thead>
+          {{ template "messages-header.html" . }}
+        </thead>
+        <tbody>
+          {{range .Messages}}
+          <tr data="{{.Flags}}" class="message-list-item {{ if not (.HasFlag "\\Seen") }}message-list-unread{{ end }}">
+            <td width="1%" class="message-list-checkbox">
+              <input type="checkbox" name="uids" value="{{.Uid}}" form="messages-form">
+            </td>
+            <td width="10%" class="message-list-sender">
+               {{ range .Envelope.From }}
+                {{ if .PersonalName }}
+                  {{.PersonalName}}
+                {{ else }}
+                  {{.MailboxName}}@{{.HostName}}
+                {{ end }}
+              {{ end }}
+            </td>
+            <td width="80%" class="message-list-subject">
+              <a href="/message/{{$.Mailbox.Name | pathescape}}/{{.Uid}}?part={{.TextPartName}}">
+                {{if .Envelope.Subject}}
+                  {{.Envelope.Subject}}
+                {{else}}
+                  (No subject)
+                {{end}}
+              </a>
+            </td>
+            <td width="9%" nowrap="" class="message-list-date">{{ .Envelope.Date | formatdate }}</td>
+          </tr>
+          {{ end }}
+        </tbody>
+        <tfoot>
+          {{ template "messages-header.html" .}}
+        </tfoot>
+      </table>
+    </main>
+  </div>
+</div>
+{{template "foot.html"}}

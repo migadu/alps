@@ -1,0 +1,26 @@
+{{template "head.html"}}
+  <h1>koushin webmail</h1>
+
+  <form method="post" action="/login">
+    <p>
+      <label>
+        <strong>Username</strong>
+        <br/>
+        <input type="text" name="username" id="username" autofocus />
+      </label>
+    </p>
+    <br/>
+    <p>
+      <label>
+        <strong>Password</strong>
+        <br/>
+        <input type="password" name="password" id="password" />
+      </label>
+    </p>
+    <br/>
+    <p>
+      <button>Sign in</button>
+    </p>
+</form>
+
+{{template "foot.html"}}
