@@ -27,6 +27,18 @@ func parseMboxAndUid(mboxString, uidString string) (string, uint32, error) {
 	return mboxName, uid, err
 }
 
+func parseUidList(values []string) ([]uint32, error) {
+	var uids []uint32
+	for _, v := range values {
+		uid, err := parseUid(v)
+		if err != nil {
+			return nil, err
+		}
+		uids = append(uids, uid)
+	}
+	return uids, nil
+}
+
 func parsePartPath(s string) ([]int, error) {
 	if s == "" {
 		return nil, nil

@@ -53,11 +53,11 @@ func registerRoutes(p *koushin.GoPlugin) {
 	p.GET("/message/:mbox/:uid/edit", handleEdit)
 	p.POST("/message/:mbox/:uid/edit", handleEdit)
 
-	p.POST("/message/:mbox/:uid/move", handleMove)
+	p.POST("/message/:mbox/move", handleMove)
 
-	p.POST("/message/:mbox/:uid/delete", handleDelete)
+	p.POST("/message/:mbox/delete", handleDelete)
 
-	p.POST("/message/:mbox/:uid/flag", handleSetFlags)
+	p.POST("/message/:mbox/flag", handleSetFlags)
 
 	p.GET("/settings", handleSettings)
 	p.POST("/settings", handleSettings)
@@ -654,7 +654,16 @@ func handleEdit(ctx *koushin.Context) error {
 }
 
 func handleMove(ctx *koushin.Context) error {
-	mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+
+	formParams, err := ctx.FormParams()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+	uids, err := parseUidList(formParams["uids"])
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
@@ -669,7 +678,7 @@ func handleMove(ctx *koushin.Context) error {
 		}
 
 		var seqSet imap.SeqSet
-		seqSet.AddNum(uid)
+		seqSet.AddNum(uids...)
 		if err := mc.UidMoveWithFallback(&seqSet, to); err != nil {
 			return fmt.Errorf("failed to move message: %v", err)
 		}
@@ -685,7 +694,16 @@ func handleMove(ctx *koushin.Context) error {
 }
 
 func handleDelete(ctx *koushin.Context) error {
-	mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+
+	formParams, err := ctx.FormParams()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+	uids, err := parseUidList(formParams["uids"])
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
@@ -696,7 +714,7 @@ func handleDelete(ctx *koushin.Context) error {
 		}
 
 		var seqSet imap.SeqSet
-		seqSet.AddNum(uid)
+		seqSet.AddNum(uids...)
 
 		item := imap.FormatFlagsOp(imap.AddFlags, true)
 		flags := []interface{}{imap.DeletedFlag}
@@ -724,16 +742,20 @@ func handleDelete(ctx *koushin.Context) error {
 }
 
 func handleSetFlags(ctx *koushin.Context) error {
-	mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 
-	form, err := ctx.FormParams()
+	formParams, err := ctx.FormParams()
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
-	flags, ok := form["flags"]
+	uids, err := parseUidList(formParams["uids"])
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+	flags, ok := formParams["flags"]
 	if !ok {
 		return echo.NewHTTPError(http.StatusBadRequest, "missing 'flags' form values")
 	}
@@ -756,7 +778,7 @@ func handleSetFlags(ctx *koushin.Context) error {
 		}
 
 		var seqSet imap.SeqSet
-		seqSet.AddNum(uid)
+		seqSet.AddNum(uids...)
 
 		storeItems := make([]interface{}, len(flags))
 		for i, f := range flags {
@@ -774,11 +796,11 @@ func handleSetFlags(ctx *koushin.Context) error {
 		return err
 	}
 
-	if op == imap.RemoveFlags && len(flags) == 1 && flags[0] == "\\Seen" {
+	if len(uids) != 1 || (op == imap.RemoveFlags && len(flags) == 1 && flags[0] == "\\Seen") {
 		// Redirecting to the message view would mark the message as read again
 		return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(mboxName)))
 	}
-	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/message/%v/%v", url.PathEscape(mboxName), uid))
+	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/message/%v/%v", url.PathEscape(mboxName), uids[0]))
 }
 
 const settingsKey = "base.settings"

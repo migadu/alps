@@ -16,7 +16,8 @@
   {{end}}
 </h2>
 
-<form method="post" action="{{.Message.URL}}/move">
+<form method="post" action="/message/{{.Mailbox.Name | pathescape}}/move">
+  <input type="hidden" name="uids" value="{{.Message.Uid}}">
   <label for="move-to">Move to:</label>
   <select name="to" id="move-to">
     {{range .Mailboxes}}
@@ -26,12 +27,14 @@
   <input type="submit" value="Move">
 </form>
 
-<form method="post" action="{{.Message.URL}}/delete">
+<form method="post" action="/message/{{.Mailbox.Name | pathescape}}/delete">
+  <input type="hidden" name="uids" value="{{.Message.Uid}}">
   <input type="submit" value="Delete">
 </form>
 
 {{if .Flags}}
-  <form method="post" action="{{.Message.URL}}/flag">
+  <form method="post" action="/message/{{.Mailbox.Name | pathescape}}/flag">
+    <input type="hidden" name="uids" value="{{.Message.Uid}}">
     <p>Flags:</p>
     {{range $name, $has := .Flags}}
       {{if ismutableflag $name}}
