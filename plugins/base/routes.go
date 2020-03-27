@@ -696,6 +696,9 @@ func handleMove(ctx *koushin.Context) error {
 		return err
 	}
 
+	if path := ctx.QueryParam("next"); path != "" {
+		return ctx.Redirect(http.StatusFound, path)
+	}
 	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(to)))
 }
 
@@ -744,6 +747,9 @@ func handleDelete(ctx *koushin.Context) error {
 		return err
 	}
 
+	if path := ctx.QueryParam("next"); path != "" {
+		return ctx.Redirect(http.StatusFound, path)
+	}
 	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(mboxName)))
 }
 
@@ -813,7 +819,10 @@ func handleSetFlags(ctx *koushin.Context) error {
 		return err
 	}
 
-	if len(uids) != 1 || (op == imap.RemoveFlags && len(flags) == 1 && flags[0] == "\\Seen") {
+	if path := ctx.QueryParam("next"); path != "" {
+		return ctx.Redirect(http.StatusFound, path)
+	}
+	if len(uids) != 1 || (op == imap.RemoveFlags && len(flags) == 1 && flags[0] == imap.SeenFlag) {
 		// Redirecting to the message view would mark the message as read again
 		return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(mboxName)))
 	}
