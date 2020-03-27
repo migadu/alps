@@ -104,9 +104,13 @@
         </form>
         &nbsp;&nbsp;
 
-        <a href="{{.Message.Uid}}/reply?part={{.Part.PathString}}">Reply</a>
-        &nbsp;&nbsp;
-        <a href="{{.Message.Uid}}/forward?part={{.Part.PathString}}">Forward</a>
+        {{if .Message.HasFlag "\\Draft"}}
+          <a href="{{.Message.URL}}/edit?part={{.Part.PathString}}">Edit draft</a>
+        {{else}}
+          <a href="{{.Message.URL}}/reply?part={{.Part.PathString}}">Reply</a>
+          &nbsp;&nbsp;
+          <a href="{{.Message.URL}}/forward?part={{.Part.PathString}}">Forward</a>
+        {{end}}
       </div>
     </div>
   </th>
