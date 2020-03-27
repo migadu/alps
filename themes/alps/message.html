@@ -25,13 +25,15 @@
   <th colspan="2">
     <div class="actions-wrap">
       <div class="actions-message">
-        <a href="/mailbox/{{.Mailbox.Name | pathescape}}?page={{.MailboxPage}}" class="button-link">« Back</a>
+        {{$back := printf "%v?page=%v" .Mailbox.URL .MailboxPage}}
+        <a href="{{$back}}" class="button-link">« Back</a>
         &nbsp;&nbsp;
 
         {{ if and (ne .Mailbox.Name "Archive") (ne .Mailbox.Name "Drafts") (ne .Mailbox.Name "Sent") }}
         <form method="post" action="/message/{{.Mailbox.Name | pathescape}}/move">
           <input type="hidden" name="uids" value="{{.Message.Uid}}">
           <input type="hidden" name="to" value="Archive">
+          <input type="hidden" name="next" value="{{$back}}">
           <button>Archive</button>
         </form>
         {{ end }}
@@ -53,6 +55,7 @@
         {{ if or (eq .Mailbox.Name "INBOX") (eq .Mailbox.Name "Trash") }}
         <form method="post" action="/message/{{.Mailbox.Name | pathescape}}/move">
           <input type="hidden" name="uids" value="{{.Message.Uid}}">
+          <input type="hidden" name="next" value="{{$back}}">
           &nbsp;&nbsp;
           <input type="hidden" name="to" value="Junk">
           <button>Report Spam</button>
@@ -62,11 +65,13 @@
         {{ if or (eq .Mailbox.Name "Trash") (eq .Mailbox.Name "Junk") }}
         <form method="post" action="/message/{{.Mailbox.Name | pathescape}}/delete">
           <input type="hidden" name="uids" value="{{.Message.Uid}}">
+          <input type="hidden" name="next" value="{{$back}}">
           <button>Delete Permanently</button>
         </form>
         {{ else }}
         <form method="post" action="/message/{{.Mailbox.Name | pathescape}}/move">
           <input type="hidden" name="uids" value="{{.Message.Uid}}">
+          <input type="hidden" name="next" value="{{$back}}">
           &nbsp;&nbsp;
           <input type="hidden" name="to" value="Trash">
           <button>Delete</button>
@@ -75,8 +80,9 @@
 
         <form method="post" action="/message/{{.Mailbox.Name | pathescape}}/flag">
           <input type="hidden" name="uids" value="{{.Message.Uid}}">
-          <input type="hidden" name="flags" value="\Seen">
           <input type="hidden" name="action" value="remove">
+          <input type="hidden" name="flags" value="\Seen">
+          <input type="hidden" name="next" value="{{$back}}">
           <button>Mark&nbsp;Unread</button>
         </form>
 

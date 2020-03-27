@@ -7,7 +7,7 @@
     <a href="/compose" class="compose-mail">Compose&nbsp;Mail</a>
     {{$current := .Mailbox}}
     {{range .Mailboxes}}
-      <a href="/mailbox/{{.Name | pathescape}}"
+      <a href="{{.URL}}"
           {{ if eq $current.Name .Name }}class="active"{{ end }}>
         {{ if eq .Name "INBOX" }}
           Inbox
@@ -44,7 +44,7 @@
               {{ end }}
             </td>
             <td width="80%" class="message-list-subject">
-              <a href="/message/{{$.Mailbox.Name | pathescape}}/{{.Uid}}?part={{.TextPartName}}">
+              <a href="{{.URL}}?part={{.TextPartName}}">
                 {{if .Envelope.Subject}}
                   {{.Envelope.Subject}}
                 {{else}}
