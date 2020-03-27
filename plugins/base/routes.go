@@ -65,8 +65,8 @@ func registerRoutes(p *koushin.GoPlugin) {
 
 type MailboxRenderData struct {
 	koushin.BaseRenderData
-	Mailbox            *imap.MailboxStatus
-	Mailboxes          []*imap.MailboxInfo
+	Mailbox            *MailboxStatus
+	Mailboxes          []MailboxInfo
 	Messages           []IMAPMessage
 	PrevPage, NextPage int
 	Query              string
@@ -94,9 +94,9 @@ func handleGetMailbox(ctx *koushin.Context) error {
 
 	query := ctx.QueryParam("query")
 
-	var mailboxes []*imap.MailboxInfo
+	var mailboxes []MailboxInfo
 	var msgs []IMAPMessage
-	var mbox *imap.MailboxStatus
+	var mbox *MailboxStatus
 	var total int
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 		var err error
@@ -111,7 +111,7 @@ func handleGetMailbox(ctx *koushin.Context) error {
 		if err != nil {
 			return err
 		}
-		mbox = c.Mailbox()
+		mbox = &MailboxStatus{c.Mailbox()}
 		return nil
 	})
 	if err != nil {
@@ -176,8 +176,8 @@ func handleLogout(ctx *koushin.Context) error {
 
 type MessageRenderData struct {
 	koushin.BaseRenderData
-	Mailboxes   []*imap.MailboxInfo
-	Mailbox     *imap.MailboxStatus
+	Mailboxes   []MailboxInfo
+	Mailbox     *MailboxStatus
 	Message     *IMAPMessage
 	Part        *IMAPPartNode
 	View        interface{}
@@ -201,10 +201,10 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 	}
 	messagesPerPage := settings.MessagesPerPage
 
-	var mailboxes []*imap.MailboxInfo
+	var mailboxes []MailboxInfo
 	var msg *IMAPMessage
 	var part *message.Entity
-	var mbox *imap.MailboxStatus
+	var mbox *MailboxStatus
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 		var err error
 		if mailboxes, err = listMailboxes(c); err != nil {
@@ -213,7 +213,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 		if msg, part, err = getMessagePart(c, mboxName, uid, partPath); err != nil {
 			return err
 		}
-		mbox = c.Mailbox()
+		mbox = &MailboxStatus{c.Mailbox()}
 		return nil
 	})
 	if err != nil {

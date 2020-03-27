@@ -17,16 +17,36 @@ import (
 	"github.com/emersion/go-message/textproto"
 )
 
-func listMailboxes(conn *imapclient.Client) ([]*imap.MailboxInfo, error) {
+type MailboxInfo struct {
+	*imap.MailboxInfo
+}
+
+func (mbox *MailboxInfo) URL() *url.URL {
+	return &url.URL{
+		Path: fmt.Sprintf("/mailbox/%v", url.PathEscape(mbox.Name)),
+	}
+}
+
+type MailboxStatus struct {
+	*imap.MailboxStatus
+}
+
+func (mbox *MailboxStatus) URL() *url.URL {
+	return &url.URL{
+		Path: fmt.Sprintf("/mailbox/%v", url.PathEscape(mbox.Name)),
+	}
+}
+
+func listMailboxes(conn *imapclient.Client) ([]MailboxInfo, error) {
 	ch := make(chan *imap.MailboxInfo, 10)
 	done := make(chan error, 1)
 	go func() {
 		done <- conn.List("", "*", ch)
 	}()
 
-	var mailboxes []*imap.MailboxInfo
+	var mailboxes []MailboxInfo
 	for mbox := range ch {
-		mailboxes = append(mailboxes, mbox)
+		mailboxes = append(mailboxes, MailboxInfo{mbox})
 	}
 
 	if err := <-done; err != nil {
@@ -46,7 +66,7 @@ const (
 	mailboxDrafts
 )
 
-func getMailboxByType(conn *imapclient.Client, mboxType mailboxType) (*imap.MailboxInfo, error) {
+func getMailboxByType(conn *imapclient.Client, mboxType mailboxType) (*MailboxInfo, error) {
 	ch := make(chan *imap.MailboxInfo, 10)
 	done := make(chan error, 1)
 	go func() {
@@ -91,7 +111,7 @@ func getMailboxByType(conn *imapclient.Client, mboxType mailboxType) (*imap.Mail
 		return nil, fmt.Errorf("failed to get mailbox with attribute %q: %v", attr, err)
 	}
 
-	return best, nil
+	return &MailboxInfo{best}, nil
 }
 
 func ensureMailboxSelected(conn *imapclient.Client, mboxName string) error {
