@@ -54,6 +54,12 @@ func listMailboxes(conn *imapclient.Client) ([]MailboxInfo, error) {
 	}
 
 	sort.Slice(mailboxes, func(i, j int) bool {
+		if mailboxes[i].Name == "INBOX" {
+			return true
+		}
+		if mailboxes[j].Name == "INBOX" {
+			return false
+		}
 		return mailboxes[i].Name < mailboxes[j].Name
 	})
 	return mailboxes, nil
