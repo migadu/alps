@@ -653,6 +653,13 @@ func handleEdit(ctx *koushin.Context) error {
 	return handleCompose(ctx, &msg, &composeOptions{Draft: &sourcePath})
 }
 
+func formOrQueryParam(ctx *koushin.Context, k string) string {
+	if v := ctx.FormValue(k); v != "" {
+		return v
+	}
+	return ctx.QueryParam(k)
+}
+
 func handleMove(ctx *koushin.Context) error {
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
@@ -668,10 +675,7 @@ func handleMove(ctx *koushin.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 
-	to := ctx.FormValue("to")
-	if to == "" {
-		to = ctx.QueryParam("to")
-	}
+	to := formOrQueryParam(ctx, "to")
 	if to == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "missing 'to' form parameter")
 	}
@@ -696,7 +700,7 @@ func handleMove(ctx *koushin.Context) error {
 		return err
 	}
 
-	if path := ctx.QueryParam("next"); path != "" {
+	if path := formOrQueryParam(ctx, "next"); path != "" {
 		return ctx.Redirect(http.StatusFound, path)
 	}
 	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(to)))
@@ -747,7 +751,7 @@ func handleDelete(ctx *koushin.Context) error {
 		return err
 	}
 
-	if path := ctx.QueryParam("next"); path != "" {
+	if path := formOrQueryParam(ctx, "next"); path != "" {
 		return ctx.Redirect(http.StatusFound, path)
 	}
 	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(mboxName)))
@@ -819,7 +823,7 @@ func handleSetFlags(ctx *koushin.Context) error {
 		return err
 	}
 
-	if path := ctx.QueryParam("next"); path != "" {
+	if path := formOrQueryParam(ctx, "next"); path != "" {
 		return ctx.Redirect(http.StatusFound, path)
 	}
 	if len(uids) != 1 || (op == imap.RemoveFlags && len(flags) == 1 && flags[0] == imap.SeenFlag) {
