@@ -6,13 +6,20 @@
   <aside>
     <!-- the logo image, dimensions 200x32 may be present or not -->
     <a href="/compose" class="compose-mail">Compose&nbsp;Mail</a>
-    <!-- TODO: get mailbox list from render data -->
-    <a href="/mailbox/INBOX" {{ if eq $current.Name "INBOX" }}class="active"{{ end }}>Inbox {{ if $current.Unseen }}({{ $current.Unseen }}){{ end }}</a>
-    <a href="/mailbox/Drafts" {{ if eq $current.Name "Drafts" }}class="active"{{ end }}>Drafts</a>
-    <a href="/mailbox/Sent" {{ if eq $current.Name "Sent" }}class="active"{{ end }}>Sent</a>
-    <a href="/mailbox/Archive" {{ if eq $current.Name "Archive" }}class="active"{{ end }}>Archive {{ if $current.Unseen }}({{ $current.Unseen }}){{ end }}</a>
-    <a href="/mailbox/Junk" {{ if eq $current.Name "Junk" }}class="active"{{ end }}>Junk {{ if $current.Unseen }}({{ $current.Unseen }}){{ end }}</a>
-    <a href="/mailbox/Trash" {{ if eq $current.Name "Trash" }}class="active"{{ end }}>Trash</a>
+    {{$current := .Mailbox}}
+    {{range .Mailboxes}}
+      <a href="{{.URL}}"
+          {{ if eq $current.Name .Name }}class="active"{{ end }}>
+        {{ if eq .Name "INBOX" }}
+          Inbox
+        {{else}}
+          {{.Name}}
+        {{end}}
+        {{ if eq $current.Name .Name }}
+          {{ if $current.Unseen }}({{ $current.Unseen }}){{ end }}
+        {{ end }}
+      </a>
+    {{end}}
   </aside>
 
   <div class="container">
