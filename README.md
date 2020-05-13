@@ -30,5 +30,5 @@ MIT
 
 [RFC 6186]: https://tools.ietf.org/html/rfc6186
 [Go plugin helpers]: https://godoc.org/git.sr.ht/~emersion/alps#GoPlugin
-[mailing list]: https://lists.sr.ht/~sircmpwn/alps
-[issue tracker]: https://todo.sr.ht/~sircmpwn/alps
+[mailing list]: https://lists.sr.ht/~sircmpwn/koushin
+[issue tracker]: https://todo.sr.ht/~sircmpwn/koushin
