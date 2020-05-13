@@ -1,6 +1,32 @@
 {{template "head.html" .}}
 {{template "nav.html" .}}
 
+{{define "message-part-tree"}}
+	{{/* nested templates can't access the parent's context */}}
+	{{$ = index . 0}}
+	{{with index . 1}}
+		<a
+      class="nav-link"
+			{{if .IsText}}
+				href="{{$.Message.URL}}?part={{.PathString}}"
+			{{else}}
+				href="{{$.Message.URL}}/raw?part={{.PathString}}"
+			{{end}}
+		>
+			{{if eq $.Part.PathString .PathString}}<strong>{{end}}
+			{{.String}}
+			{{if eq $.Part.PathString .PathString}}</strong>{{end}}
+		</a>
+		{{if gt (len .Children) 0}}
+		<ul class="nav flex-column">
+			{{range .Children}}
+				<li class="nav-item">{{template "message-part-tree" (tuple $ .)}}</li>
+			{{end}}
+		</ul>
+		{{end}}
+	{{end}}
+{{end}}
+
 <div class="page-wrap">
   {{$current := .Mailbox}}
   <aside>
@@ -107,41 +133,46 @@
         </div>
       </section>
 
-      <table>
-        <tr>
-          <th colspan="2">
-            <h1>
-             {{if .Message.Envelope.Subject}}
-                {{.Message.Envelope.Subject}}
-              {{else}}
-                (No subject)
-              {{end}}
-            </h1>
-          </th>
-        </tr>
-        <tr>
-          <th>From:</th>
-          <td>{{template "addr-list" .Message.Envelope.From}}</td>
-        </tr>
-        <tr>
-          <th>Date:</th>
-          <td>{{.Message.Envelope.Date | formatdate}}</td>
-        </tr>
-        <tr>
-          <th>To:</th><td>{{template "addr-list" .Message.Envelope.To}}</td>
-        </tr>
-        {{if .Message.Envelope.Cc}}
-        <tr>
-          <th>Cc:</th><td>{{template "addr-list" .Message.Envelope.Cc}}</td>
-        </tr>
-        {{end}}
-        {{if .Message.Envelope.Bcc}}
-        <tr>
-          <th>Bcc:</th>
-          <td>{{template "addr-list" .Message.Envelope.Bcc}}</td>
-        </tr>
-        {{ end }}
-      </table>
+      <div class="message-header">
+        <table>
+          <tr>
+            <th colspan="2">
+              <h1>
+               {{if .Message.Envelope.Subject}}
+                  {{.Message.Envelope.Subject}}
+                {{else}}
+                  (No subject)
+                {{end}}
+              </h1>
+            </th>
+          </tr>
+          <tr>
+            <th>From:</th>
+            <td>{{template "addr-list" .Message.Envelope.From}}</td>
+          </tr>
+          <tr>
+            <th>Date:</th>
+            <td>{{.Message.Envelope.Date | formatdate}}</td>
+          </tr>
+          <tr>
+            <th>To:</th><td>{{template "addr-list" .Message.Envelope.To}}</td>
+          </tr>
+          {{if .Message.Envelope.Cc}}
+          <tr>
+            <th>Cc:</th><td>{{template "addr-list" .Message.Envelope.Cc}}</td>
+          </tr>
+          {{end}}
+          {{if .Message.Envelope.Bcc}}
+          <tr>
+            <th>Bcc:</th>
+            <td>{{template "addr-list" .Message.Envelope.Bcc}}</td>
+          </tr>
+          {{ end }}
+        </table>
+        <section class="parts">
+          {{template "message-part-tree" (tuple $ .Message.PartTree)}}
+        </section>
+      </div>
 
       {{define "addr-list"}}
         {{range $i, $addr := .}}

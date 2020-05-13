@@ -152,10 +152,40 @@ main table td a { text-decoration: none; }
 
 main table td a:hover { text-decoration: underline; }
 
-main.message pre { flex: 1 auto; padding: 1rem; white-space: pre-wrap; word-break: break-all; background-color: white; border: 1px solid #eee; max-width: 100% }
 main.message table { background-color: white; }
 main.message th { width: 5%;}
 main.message h1 { font-size: 1.2rem; padding: 0.5rem;}
+
+main.message pre,
+main.message iframe {
+  flex: 1 auto;
+  padding: 1rem;
+  margin: 1rem 0;
+  background-color: white;
+  border: 1px solid #eee;
+  max-width: 100%;
+}
+
+main.message pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+main.message .message-header {
+  display: flex;
+  flex-direction: row;
+}
+
+main.message .message-header .parts {
+  margin-left: 0.3rem;
+  padding: 0.3rem 1rem;
+  background: white;
+  border-top: 1px solid #f2f2f2;
+}
+
+main.message .message-header .parts ul {
+  margin-left: 1rem;
+}
 
 main.compose .actions {
   display: flex;
