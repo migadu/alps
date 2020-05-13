@@ -14,7 +14,7 @@
     {{range .Events}}
       {{$event := index .Data.Events 0}}
       <li>
-        <a href="/calendar/{{$event.Path | pathescape}}">{{$event.Props.Text "SUMMARY"}}</a>
+        <a href="{{$event.URL}}">{{$event.Props.Text "SUMMARY"}}</a>
         ({{$event.DateTimeStart nil | formatdate}} — {{$event.DateTimeEnd nil | formatdate}})
       </li>
     {{end}}

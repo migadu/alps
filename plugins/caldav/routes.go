@@ -15,14 +15,14 @@ type CalendarRenderData struct {
 	alps.BaseRenderData
 	Time               time.Time
 	Calendar           *caldav.Calendar
-	Events             []caldav.CalendarObject
+	Events             []CalendarObject
 	PrevPage, NextPage string
 }
 
 type EventRenderData struct {
 	alps.BaseRenderData
 	Calendar *caldav.Calendar
-	Event    *caldav.CalendarObject
+	Event    CalendarObject
 }
 
 var monthPageLayout = "2006-01"
@@ -90,7 +90,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			BaseRenderData: *alps.NewBaseRenderData(ctx),
 			Time:           start,
 			Calendar:       calendar,
-			Events:         events,
+			Events:         newCalendarObjectList(events),
 			PrevPage:       start.AddDate(0, -1, 0).Format(monthPageLayout),
 			NextPage:       start.AddDate(0, 1, 0).Format(monthPageLayout),
 		})
@@ -142,7 +142,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 		return ctx.Render(http.StatusOK, "event.html", &EventRenderData{
 			BaseRenderData: *alps.NewBaseRenderData(ctx),
 			Calendar:       calendar,
-			Event:          event,
+			Event:          CalendarObject{event},
 		})
 	})
 }

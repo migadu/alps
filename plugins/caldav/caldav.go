@@ -59,3 +59,19 @@ func getCalendar(u *url.URL, session *alps.Session) (*caldav.Client, *caldav.Cal
 	}
 	return c, &calendars[0], nil
 }
+
+type CalendarObject struct {
+	*caldav.CalendarObject
+}
+
+func newCalendarObjectList(cos []caldav.CalendarObject) []CalendarObject {
+	l := make([]CalendarObject, len(cos))
+	for i := range cos {
+		l[i] = CalendarObject{&cos[i]}
+	}
+	return l
+}
+
+func (ao CalendarObject) URL() string {
+	return "/calendar/" + url.PathEscape(ao.Path)
+}
