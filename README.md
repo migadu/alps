@@ -1,4 +1,4 @@
-# alps
+# [alps]
 
 [![GoDoc](https://godoc.org/git.sr.ht/~emersion/alps?status.svg)](https://godoc.org/git.sr.ht/~emersion/alps)
 
@@ -28,7 +28,8 @@ Send patches on the [mailing list], report bugs on the [issue tracker].
 
 MIT
 
+[alps]: https://sr.ht/~emersion/alps
 [RFC 6186]: https://tools.ietf.org/html/rfc6186
 [Go plugin helpers]: https://godoc.org/git.sr.ht/~emersion/alps#GoPlugin
-[mailing list]: https://lists.sr.ht/~sircmpwn/koushin
-[issue tracker]: https://todo.sr.ht/~sircmpwn/koushin
+[mailing list]: https://lists.sr.ht/~emersion/alps-dev
+[issue tracker]: https://todo.sr.ht/~emersion/alps
