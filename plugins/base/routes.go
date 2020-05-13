@@ -142,6 +142,10 @@ func handleGetMailbox(ctx *alps.Context) error {
 		title = "Inbox"
 	}
 
+	if mbox.Unseen > 0 {
+		title = fmt.Sprintf("(%d) %s", mbox.Unseen, title)
+	}
+
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
 		BaseRenderData: *alps.NewBaseRenderData(ctx).WithTitle(title),
 		Mailbox:        mbox,
