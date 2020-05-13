@@ -1,0 +1,33 @@
+<div class="message-list-checkbox">
+  <input type="checkbox" id="action-checkbox-all"/>
+</div>
+<div class="actions-wrap">
+  <div class="actions-contacts">
+    <div class="action-group">
+      <button form="address-book-form" formaction="TODO">Delete</button>
+    </div>
+  </div>
+
+  <form method="get" class="actions-search action-group">
+    <input
+      type="text"
+      name="query"
+      value="{{.Query}}"
+      placeholder="Search {{.AddressBook.Name}} contacts...">
+    <button>Search</button>
+  </form>
+
+  {{/*
+  {{if or (ge .PrevPage 0) (ge .NextPage 0) }}
+  <div class="actions-pagination">
+    {{if ge .PrevPage 0}}
+      {{if ge .PrevPage 1}}<a href="?page=0" class="button-link">«</a>{{ end }}
+      <a href="?page={{.PrevPage}}" class="button-link">«</a>
+    {{end}}
+    {{if ge .NextPage 0}}
+      <a href="?page={{.NextPage}}" class="button-link">»</a>
+    {{end}}
+  </div>
+  {{ end }}
+  */}}
+</div>

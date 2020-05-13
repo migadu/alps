@@ -1,8 +1,23 @@
 <header>
   <nav>
-    <a href="/" class="active">Email</a>
-    <a href="/calendar">Calendar</a>
-    <a href="/contacts">Contacts</a>
+    {{$page := (index .GlobalData.Path 0)}}
+    <a href="/"
+      {{ if or (eq $page "mailbox") (eq $page "message") }}
+      class="active"
+      {{ end }}
+    >Email</a>
+    <a
+      href="/calendar"
+      {{ if eq $page "calendar" }}
+      class="active"
+      {{ end }}
+    >Calendar</a>
+    <a
+      href="/contacts"
+      {{ if eq $page "contacts" }}
+      class="active"
+      {{ end }}
+    >Contacts</a>
     <div>
       <span>{{ .GlobalData.Username }}</span>
       <a href="/settings">Settings</a>

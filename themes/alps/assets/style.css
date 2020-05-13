@@ -131,8 +131,8 @@ main { flex: 1 100%; display: flex; flex-direction: column; padding: 0.5rem 1rem
 
 aside a.active,
 main { background-color: #f6f6f6; }
-aside a.compose-mail.active { color: #008d47; }
-aside a.compose-mail.active,
+aside a.new.active { color: #008d47; }
+aside a.new.active,
 main.compose { background-color: #f6fff6; }
 main.compose { flex: 1 auto; padding: 1rem; }
 main.compose form { flex: 1 auto; display: flex; flex-direction: column; }
@@ -231,7 +231,7 @@ main.compose .actions > *:not(:last-child) {
   border-right: 1px solid #f2f2f2;
 }
 
-aside .compose-mail {
+aside .new {
   color: #008d47;
   font-weight: bold;
   /*background-color: #f5fcf2;*/
@@ -252,7 +252,8 @@ main table tfoot {
   background-color: white;
 }
 
-.message-list {
+.message-list,
+.contact-list {
   display: flex;
 }
 
@@ -267,11 +268,13 @@ main table tfoot {
   padding: 0.3rem;
 }
 
-.message-list .actions:first-child {
+.message-list .actions:first-child,
+.contact-list .actions:first-child {
   border-bottom: 1px solid #e0e0e0;
 }
 
-.message-list .actions:last-child {
+.message-list .actions:last-child,
+.contact-list .actions:last-child {
   border-top: 1px solid #e0e0e0;
 }
 
@@ -287,12 +290,17 @@ main table tfoot {
   border-bottom-left-radius: 0;
 }
 
-.message-list .actions-wrap {
+.actions-wrap {
+  display: flex;
   flex-grow: 1;
+  flex-direction: row;
 }
 
-.actions-wrap { display: flex; flex-direction: row; }
-.actions-search { display: flex; flex-direction: row; flex-grow: 1; }
+.actions-search {
+  display: flex;
+  flex-direction: row;
+  flex-grow: 1;
+}
 
 .actions-pagination {
   margin-left: 1rem;
@@ -316,19 +324,21 @@ main table tfoot {
   flex-grow: 1;
 }
 
-.actions-message {
+.actions-message,
+.actions-contacts {
   display: flex;
   flex-direction: row;
   flex-grow: 1;
   align-items: center;
 }
 
-.message-list-checkbox {
-  display: none;
+.message-list-checkbox,
+.contact-list-checkbox {
   align-self: center;
 }
 
-.message-list .messages {
+.message-list .messages,
+.contact-list .contacts {
   flex-grow: 1;
 }
 
@@ -338,7 +348,14 @@ main table tfoot {
   grid-template-rows: auto;
 }
 
-.message-list .messages .message-grid > * {
+.contact-grid {
+  display: grid;
+  grid-template-columns: auto 1fr 3fr;
+  grid-template-rows: auto;
+}
+
+.message-list .messages .message-grid > *,
+.contact-list .contacts .contact-grid > * {
   white-space: nowrap;
   padding: 0.3rem;
   overflow: hidden;
