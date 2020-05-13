@@ -36,11 +36,10 @@
   {{if or (ge .PrevPage 0) (ge .NextPage 0) }}
   <div class="actions-pagination">
     {{if ge .PrevPage 0}}
-      {{if ge .PrevPage 1}}<a href="?page=0" class="button-link">«</a>{{ end }}
-      <a href="?page={{.PrevPage}}" class="button-link">‹</a>
+      <a href="?page={{.PrevPage}}" class="button-link">«</a>
     {{end}}
     {{if ge .NextPage 0}}
-      <a href="?page={{.NextPage}}" class="button-link">›</a>
+      <a href="?page={{.NextPage}}" class="button-link">»</a>
     {{end}}
   </div>
   {{ end }}

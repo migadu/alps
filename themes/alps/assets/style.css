@@ -292,8 +292,21 @@ main table tfoot {
 }
 
 .actions-wrap { display: flex; flex-direction: row; }
-.actions-pagination { margin-left: 1rem; display: flex; flex-direction: row; }
 .actions-search { display: flex; flex-direction: row; flex-grow: 1; }
+
+.actions-pagination {
+  margin-left: 1rem;
+  display: flex;
+  flex-direction: row;
+}
+
+.actions-pagination .button-link {
+  padding: 0.3rem 0.5rem;
+}
+
+.actions-pagination .button-link:first-child:not(:last-child) {
+  margin-right: 0.3rem;
+}
 
 .actions-wrap .action-group {
   margin-left: 0.3rem;
