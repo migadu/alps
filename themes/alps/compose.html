@@ -29,10 +29,9 @@
         <textarea name="text" class="body">{{.Message.Text}}</textarea>
 
         <div class="actions">
-          <a href="/mailbox/INBOX">Cancel</a>
-          &nbsp;&nbsp;
-          <button type="submit" name="save_as_draft">Save as draft</button>
           <button type="submit">Send Message</button>
+          <button type="submit" name="save_as_draft">Save as draft</button>
+          <a class="button-link" href="/mailbox/INBOX">Cancel</a>
         </div>
       </form>
 
