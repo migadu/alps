@@ -137,8 +137,13 @@ func handleGetMailbox(ctx *alps.Context) error {
 		}
 	}
 
+	title := mbox.Name
+	if title == "INBOX" {
+		title = "Inbox"
+	}
+
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
-		BaseRenderData: *alps.NewBaseRenderData(ctx).WithTitle(mbox.Name),
+		BaseRenderData: *alps.NewBaseRenderData(ctx).WithTitle(title),
 		Mailbox:        mbox,
 		Mailboxes:      mailboxes,
 		Messages:       msgs,
