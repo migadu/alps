@@ -5,7 +5,7 @@ go 1.13
 require (
 	github.com/aymerick/douceur v0.2.0
 	github.com/chris-ramon/douceur v0.2.0
-	github.com/emersion/go-ical v0.0.0-20200225233454-26ef720b8bf1 // indirect
+	github.com/emersion/go-ical v0.0.0-20200225233454-26ef720b8bf1
 	github.com/emersion/go-imap v1.0.4
 	github.com/emersion/go-imap-metadata v0.0.0-20200128185110-9d939d2a0915
 	github.com/emersion/go-imap-move v0.0.0-20190710073258-6e5a51a5b342

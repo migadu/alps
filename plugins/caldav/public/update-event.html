@@ -1,0 +1,30 @@
+{{template "head.html" .}}
+
+<h1>alps</h1>
+
+<p>
+  <a href="/calendar">Back</a>
+</p>
+
+<h2>
+  {{if .CalendarObject}}Edit{{else}}Create{{end}} event
+</h2>
+
+<form method="post">
+  <label for="summary">Name:</label>
+  <input type="text" name="summary" id="summary" value="{{.Event.Props.Text "SUMMARY"}}">
+  <br>
+
+  <!-- TODO: inputs with time -->
+  <label for="start">Start date:</label>
+  <input type="date" name="start" id="start" value="{{.Event.DateTimeStart nil | ornow | formatinputdate}}"/>
+  <br>
+
+  <label for="end">End date:</label>
+  <input type="date" name="end" id="end" value="{{.Event.DateTimeEnd nil | ornow | formatinputdate}}"/>
+  <br>
+
+  <input type="submit" value="Save">
+</form>
+
+{{template "foot.html"}}
