@@ -14,7 +14,7 @@
     {{range .Events}}
       {{$event := index .Data.Events 0}}
       <li>
-        <a href="{{$event.URL}}">{{$event.Props.Text "SUMMARY"}}</a>
+        <a href="{{.URL}}">{{$event.Props.Text "SUMMARY"}}</a>
         ({{$event.DateTimeStart nil | formatdate}} — {{$event.DateTimeEnd nil | formatdate}})
       </li>
     {{end}}
