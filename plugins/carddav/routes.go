@@ -211,4 +211,22 @@ func registerRoutes(p *plugin) {
 
 	p.GET("/contacts/:path/edit", updateContact)
 	p.POST("/contacts/:path/edit", updateContact)
+
+	p.POST("/contacts/:path/delete", func(ctx *alps.Context) error {
+		path, err := parseObjectPath(ctx.Param("path"))
+		if err != nil {
+			return err
+		}
+
+		c, err := p.client(ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		if err := c.RemoveAll(path); err != nil {
+			return fmt.Errorf("failed to delete address object: %v", err)
+		}
+
+		return ctx.Redirect(http.StatusFound, "/contacts")
+	})
 }
