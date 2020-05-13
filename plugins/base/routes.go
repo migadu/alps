@@ -111,7 +111,9 @@ func handleGetMailbox(ctx *alps.Context) error {
 		if err != nil {
 			return err
 		}
-		mbox = &MailboxStatus{c.Mailbox()}
+		if mbox, err = getMailboxStatus(c, mboxName); err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
@@ -213,7 +215,9 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		if msg, part, err = getMessagePart(c, mboxName, uid, partPath); err != nil {
 			return err
 		}
-		mbox = &MailboxStatus{c.Mailbox()}
+		if mbox, err = getMailboxStatus(c, mboxName); err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {

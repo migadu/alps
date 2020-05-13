@@ -27,16 +27,6 @@ func (mbox *MailboxInfo) URL() *url.URL {
 	}
 }
 
-type MailboxStatus struct {
-	*imap.MailboxStatus
-}
-
-func (mbox *MailboxStatus) URL() *url.URL {
-	return &url.URL{
-		Path: fmt.Sprintf("/mailbox/%v", url.PathEscape(mbox.Name)),
-	}
-}
-
 func listMailboxes(conn *imapclient.Client) ([]MailboxInfo, error) {
 	ch := make(chan *imap.MailboxInfo, 10)
 	done := make(chan error, 1)
@@ -63,6 +53,29 @@ func listMailboxes(conn *imapclient.Client) ([]MailboxInfo, error) {
 		return mailboxes[i].Name < mailboxes[j].Name
 	})
 	return mailboxes, nil
+}
+
+type MailboxStatus struct {
+	*imap.MailboxStatus
+}
+
+func (mbox *MailboxStatus) URL() *url.URL {
+	return &url.URL{
+		Path: fmt.Sprintf("/mailbox/%v", url.PathEscape(mbox.Name)),
+	}
+}
+
+func getMailboxStatus(conn *imapclient.Client, name string) (*MailboxStatus, error) {
+	items := []imap.StatusItem{
+		imap.StatusMessages,
+		imap.StatusUidValidity,
+		imap.StatusUnseen,
+	}
+	status, err := conn.Status(name, items)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get mailbox status: %v", err)
+	}
+	return &MailboxStatus{status}, nil
 }
 
 type mailboxType int
