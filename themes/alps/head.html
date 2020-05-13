@@ -4,6 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#ffffff">
+    {{- if eq (index .GlobalData.Path 0) "mailbox"}}
+    <meta id="refresh" http-equiv="refresh" content="60">
+    {{end -}}
     <title>Webmail</title>
     <link rel="stylesheet" href="/themes/alps/assets/style.css">
   </head>

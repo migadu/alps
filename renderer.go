@@ -5,7 +5,9 @@ import (
 	"html/template"
 	"io"
 	"io/ioutil"
+	"net/url"
 	"os"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 )
@@ -14,7 +16,8 @@ const themesDir = "themes"
 
 // GlobalRenderData contains data available in all templates.
 type GlobalRenderData struct {
-	Path string
+	Path []string
+	URL *url.URL
 
 	LoggedIn bool
 
@@ -71,7 +74,8 @@ func NewBaseRenderData(ctx *Context) *BaseRenderData {
 		global.Username = ctx.Session.username
 	}
 
-	global.Path = ctx.Request().URL.String()
+	global.URL = ctx.Request().URL
+	global.Path = strings.Split(global.URL.Path, "/")[1:]
 
 	return &BaseRenderData{
 		GlobalData: global,
