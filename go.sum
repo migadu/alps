@@ -40,8 +40,8 @@ github.com/emersion/go-vcard v0.0.0-20191221110513-5f81fa0d3cc7 h1:SE+tcd+0kn0cT
 github.com/emersion/go-vcard v0.0.0-20191221110513-5f81fa0d3cc7/go.mod h1:HMJKR5wlh/ziNp+sHEDV2ltblO4JD2+IdDOWtGcQBTM=
 github.com/emersion/go-vcard v0.0.0-20200508080525-dd3110a24ec2 h1:g1RgqggIPPkEBubnOxAbIglxjMsP0aHPO2ryigBHu2s=
 github.com/emersion/go-vcard v0.0.0-20200508080525-dd3110a24ec2/go.mod h1:HMJKR5wlh/ziNp+sHEDV2ltblO4JD2+IdDOWtGcQBTM=
-github.com/emersion/go-webdav v0.2.1-0.20200227113614-abadf534f49a h1:2AEvZeJdBiMRbcoI4hAtkoymn/7MypOQSKRZV7K0VgE=
-github.com/emersion/go-webdav v0.2.1-0.20200227113614-abadf534f49a/go.mod h1:uSM1VveeKtogBVWaYccTksToczooJ0rrVGNsgnDsr4Q=
+github.com/emersion/go-webdav v0.3.0 h1:I1J9xf7fa1NxXFWCKyN5Ju3Sa3jJeNMI3uJQKHYg0SY=
+github.com/emersion/go-webdav v0.3.0/go.mod h1:uSM1VveeKtogBVWaYccTksToczooJ0rrVGNsgnDsr4Q=
 github.com/google/uuid v1.1.1 h1:Gkbcsh/GbpXz7lPftLA3P6TYMwjCLYm83jiFQZF/3gY=
 github.com/google/uuid v1.1.1/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/gorilla/css v1.0.0 h1:BQqNyPTi50JCFMTw/b67hByjMVXZRwGha6wxVGkeihY=
