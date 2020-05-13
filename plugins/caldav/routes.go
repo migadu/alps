@@ -8,6 +8,7 @@ import (
 
 	"git.sr.ht/~emersion/alps"
 	"github.com/emersion/go-webdav/caldav"
+	"github.com/labstack/echo/v4"
 )
 
 type CalendarRenderData struct {
@@ -25,6 +26,15 @@ type EventRenderData struct {
 }
 
 var monthPageLayout = "2006-01"
+
+func parseObjectPath(s string) (string, error) {
+	p, err := url.PathUnescape(s)
+	if err != nil {
+		err = fmt.Errorf("failed to parse path: %v", err)
+		return "", echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+	return string(p), nil
+}
 
 func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 	p.GET("/calendar", func(ctx *alps.Context) error {
@@ -86,15 +96,23 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 		})
 	})
 
-	p.GET("/calendar/:uid", func(ctx *alps.Context) error {
-		uid := ctx.Param("uid")
+	p.GET("/calendar/:path", func(ctx *alps.Context) error {
+		path, err := parseObjectPath(ctx.Param("path"))
+		if err != nil {
+			return err
+		}
+
+		c, err := newClient(u, ctx.Session)
+		if err != nil {
+			return err
+		}
 
 		c, calendar, err := getCalendar(u, ctx.Session)
 		if err != nil {
 			return err
 		}
 
-		query := caldav.CalendarQuery{
+		multiGet := caldav.CalendarMultiGet{
 			CompRequest: caldav.CalendarCompRequest{
 				Name:  "VCALENDAR",
 				Props: []string{"VERSION"},
@@ -110,23 +128,14 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 					},
 				}},
 			},
-			CompFilter: caldav.CompFilter{
-				Name: "VCALENDAR",
-				Comps: []caldav.CompFilter{{
-					Name: "VEVENT",
-					Props: []caldav.PropFilter{{
-						Name:      "UID",
-						TextMatch: &caldav.TextMatch{Text: uid},
-					}},
-				}},
-			},
 		}
-		events, err := c.QueryCalendar(calendar.Path, &query)
+
+		events, err := c.MultiGetCalendar(path, &multiGet)
 		if err != nil {
-			return fmt.Errorf("failed to query calendar: %v", err)
+			return fmt.Errorf("failed to multi-get calendar: %v", err)
 		}
 		if len(events) != 1 {
-			return fmt.Errorf("expected exactly one calendar object with UID %q, got %v", uid, len(events))
+			return fmt.Errorf("expected exactly one calendar object with path %q, got %v", path, len(events))
 		}
 		event := &events[0]
 
