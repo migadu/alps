@@ -127,13 +127,40 @@ aside { flex: 0 0 180px; }
 aside a { width: 100%; display: block; padding: 0.4rem 0 0.4rem 0.5rem; }
 aside a.active { font-weight: bold; color: black; text-decoration: none; }
 aside img { display: block; }
-main { flex: 1 100%; display: flex; flex-direction: column; padding: 0.5rem 1rem 0.5rem 0.5rem; min-width: 0; }
+main {
+  flex: 1 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 1rem 0.5rem 0.5rem;
+  min-width: 0;
+  background-color: #f6f6f6;
+}
+
+main.login {
+  justify-content: center;
+}
+
+main.login > section {
+  align-self: center;
+  background: white;
+  min-width: 20rem;
+  padding: 1rem;
+}
 
 aside a.active,
-main { background-color: #f6f6f6; }
-aside a.new.active { color: #008d47; }
+aside a.new.active {
+  background-color: #f6f6f6;
+}
+
+aside a.new.active {
+  color: #008d47;
+}
+
 aside a.new.active,
-main.compose { background-color: #f6fff6; }
+main.compose {
+  background-color: #f6fff6;
+}
+
 main.compose { flex: 1 auto; padding: 1rem; }
 main.compose form { flex: 1 auto; display: flex; flex-direction: column; }
 main.compose form label { margin-top: 5px; }
@@ -316,12 +343,23 @@ main table tfoot {
   margin-right: 0.3rem;
 }
 
+.action-group:not(:last-child) {
+  margin-bottom: 1rem;
+}
+
 .actions-wrap .action-group {
   margin-left: 0.3rem;
+  margin-bottom: 0;
 }
 
 .action-group.grow {
   flex-grow: 1;
+}
+
+.action-group label,
+.action-group input {
+  display: block;
+  width: 100%;
 }
 
 .actions-message,

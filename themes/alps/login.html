@@ -1,26 +1,29 @@
 {{template "head.html" .}}
-  <h1>alps webmail</h1>
 
-  <form method="post" action="/login">
-    <p>
-      <label>
-        <strong>Username</strong>
-        <br/>
+<main class="login">
+  <section>
+    <h1>Webmail Login</h1>
+
+    <form method="post" action="/login">
+      <div class="action-group">
+        <label for="username">
+          <strong>Username</strong>
+        </label>
         <input type="text" name="username" id="username" autofocus />
-      </label>
-    </p>
-    <br/>
-    <p>
-      <label>
-        <strong>Password</strong>
-        <br/>
+      </div>
+
+      <div class="action-group">
+        <label for="password">
+          <strong>Password</strong>
+        </label>
         <input type="password" name="password" id="password" />
-      </label>
-    </p>
-    <br/>
-    <p>
-      <button>Sign in</button>
-    </p>
-</form>
+      </div>
+
+      <div class="action-group">
+        <button type="submit">Sign in</button>
+      </div>
+    </form>
+  </section>
+</main>
 
 {{template "foot.html"}}

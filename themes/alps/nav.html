@@ -2,7 +2,7 @@
   <nav>
     {{$page := (index .GlobalData.Path 0)}}
     <a href="/"
-      {{ if or (eq $page "mailbox") (eq $page "message") }}
+      {{ if or (eq $page "mailbox") (eq $page "message") (eq $page "compose") }}
       class="active"
       {{ end }}
     >Email</a>
