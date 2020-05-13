@@ -17,12 +17,14 @@ const themesDir = "themes"
 // GlobalRenderData contains data available in all templates.
 type GlobalRenderData struct {
 	Path []string
-	URL *url.URL
+	URL  *url.URL
 
 	LoggedIn bool
 
 	// if logged in
 	Username string
+
+	Title string
 
 	// additional plugin-specific data
 	Extra map[string]interface{}
@@ -67,20 +69,27 @@ type RenderData interface {
 //         // other fields...
 //     }
 func NewBaseRenderData(ctx *Context) *BaseRenderData {
-	global := GlobalRenderData{Extra: make(map[string]interface{})}
+	global := GlobalRenderData{
+		Extra: make(map[string]interface{}),
+		Path:  strings.Split(ctx.Request().URL.Path, "/")[1:],
+		Title: "Webmail",
+		URL:   ctx.Request().URL,
+	}
 
 	if ctx.Session != nil {
 		global.LoggedIn = true
 		global.Username = ctx.Session.username
 	}
 
-	global.URL = ctx.Request().URL
-	global.Path = strings.Split(global.URL.Path, "/")[1:]
-
 	return &BaseRenderData{
 		GlobalData: global,
 		Extra:      make(map[string]interface{}),
 	}
+}
+
+func (brd *BaseRenderData) WithTitle(title string) *BaseRenderData {
+	brd.GlobalData.Title = title
+	return brd
 }
 
 type renderer struct {

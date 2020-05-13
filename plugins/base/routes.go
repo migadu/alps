@@ -136,7 +136,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 	}
 
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
-		BaseRenderData: *alps.NewBaseRenderData(ctx),
+		BaseRenderData: *alps.NewBaseRenderData(ctx).WithTitle(mbox.Name),
 		Mailbox:        mbox,
 		Mailboxes:      mailboxes,
 		Messages:       msgs,
@@ -271,14 +271,15 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	}
 
 	return ctx.Render(http.StatusOK, "message.html", &MessageRenderData{
-		BaseRenderData: *alps.NewBaseRenderData(ctx),
-		Mailboxes:      mailboxes,
-		Mailbox:        mbox,
-		Message:        msg,
-		Part:           msg.PartByPath(partPath),
-		View:           view,
-		MailboxPage:    int(mbox.Messages-msg.SeqNum) / messagesPerPage,
-		Flags:          flags,
+		BaseRenderData: *alps.NewBaseRenderData(ctx).
+			WithTitle(msg.Envelope.Subject),
+		Mailboxes:   mailboxes,
+		Mailbox:     mbox,
+		Message:     msg,
+		Part:        msg.PartByPath(partPath),
+		View:        view,
+		MailboxPage: int(mbox.Messages-msg.SeqNum) / messagesPerPage,
+		Flags:       flags,
 	})
 }
 
