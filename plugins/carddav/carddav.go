@@ -1,11 +1,11 @@
-package koushincarddav
+package alpscarddav
 
 import (
 	"fmt"
 	"net/http"
 	"net/url"
 
-	"git.sr.ht/~emersion/koushin"
+	"git.sr.ht/~emersion/alps"
 	"github.com/emersion/go-webdav/carddav"
 )
 
@@ -13,7 +13,7 @@ var errNoAddressBook = fmt.Errorf("carddav: no address book found")
 
 type authRoundTripper struct {
 	upstream http.RoundTripper
-	session  *koushin.Session
+	session  *alps.Session
 }
 
 func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -21,7 +21,7 @@ func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 	return rt.upstream.RoundTrip(req)
 }
 
-func newClient(u *url.URL, session *koushin.Session) (*carddav.Client, error) {
+func newClient(u *url.URL, session *alps.Session) (*carddav.Client, error) {
 	rt := authRoundTripper{
 		upstream: http.DefaultTransport,
 		session:  session,

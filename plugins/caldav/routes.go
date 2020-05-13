@@ -1,4 +1,4 @@
-package koushincaldav
+package alpscaldav
 
 import (
 	"fmt"
@@ -6,12 +6,12 @@ import (
 	"net/url"
 	"time"
 
-	"git.sr.ht/~emersion/koushin"
+	"git.sr.ht/~emersion/alps"
 	"github.com/emersion/go-webdav/caldav"
 )
 
 type CalendarRenderData struct {
-	koushin.BaseRenderData
+	alps.BaseRenderData
 	Time               time.Time
 	Calendar           *caldav.Calendar
 	Events             []caldav.CalendarObject
@@ -19,15 +19,15 @@ type CalendarRenderData struct {
 }
 
 type EventRenderData struct {
-	koushin.BaseRenderData
+	alps.BaseRenderData
 	Calendar *caldav.Calendar
 	Event    *caldav.CalendarObject
 }
 
 var monthPageLayout = "2006-01"
 
-func registerRoutes(p *koushin.GoPlugin, u *url.URL) {
-	p.GET("/calendar", func(ctx *koushin.Context) error {
+func registerRoutes(p *alps.GoPlugin, u *url.URL) {
+	p.GET("/calendar", func(ctx *alps.Context) error {
 		var start time.Time
 		if s := ctx.QueryParam("month"); s != "" {
 			var err error
@@ -77,7 +77,7 @@ func registerRoutes(p *koushin.GoPlugin, u *url.URL) {
 		}
 
 		return ctx.Render(http.StatusOK, "calendar.html", &CalendarRenderData{
-			BaseRenderData: *koushin.NewBaseRenderData(ctx),
+			BaseRenderData: *alps.NewBaseRenderData(ctx),
 			Time:           start,
 			Calendar:       calendar,
 			Events:         events,
@@ -86,7 +86,7 @@ func registerRoutes(p *koushin.GoPlugin, u *url.URL) {
 		})
 	})
 
-	p.GET("/calendar/:uid", func(ctx *koushin.Context) error {
+	p.GET("/calendar/:uid", func(ctx *alps.Context) error {
 		uid := ctx.Param("uid")
 
 		c, calendar, err := getCalendar(u, ctx.Session)
@@ -131,7 +131,7 @@ func registerRoutes(p *koushin.GoPlugin, u *url.URL) {
 		event := &events[0]
 
 		return ctx.Render(http.StatusOK, "event.html", &EventRenderData{
-			BaseRenderData: *koushin.NewBaseRenderData(ctx),
+			BaseRenderData: *alps.NewBaseRenderData(ctx),
 			Calendar:       calendar,
 			Event:          event,
 		})

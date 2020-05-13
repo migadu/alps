@@ -1,4 +1,4 @@
-package koushin
+package alps
 
 import (
 	"fmt"
@@ -60,7 +60,7 @@ type RenderData interface {
 //     }
 //
 //     data := &MyRenderData{
-//         BaseRenderData: *koushin.NewBaseRenderData(ctx),
+//         BaseRenderData: *alps.NewBaseRenderData(ctx),
 //         // other fields...
 //     }
 func NewBaseRenderData(ctx *Context) *BaseRenderData {

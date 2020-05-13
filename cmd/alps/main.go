@@ -7,28 +7,28 @@ import (
 	"os/signal"
 	"syscall"
 
-	"git.sr.ht/~emersion/koushin"
+	"git.sr.ht/~emersion/alps"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
 
-	_ "git.sr.ht/~emersion/koushin/plugins/base"
-	_ "git.sr.ht/~emersion/koushin/plugins/caldav"
-	_ "git.sr.ht/~emersion/koushin/plugins/carddav"
-	_ "git.sr.ht/~emersion/koushin/plugins/lua"
-	_ "git.sr.ht/~emersion/koushin/plugins/viewhtml"
-	_ "git.sr.ht/~emersion/koushin/plugins/viewtext"
+	_ "git.sr.ht/~emersion/alps/plugins/base"
+	_ "git.sr.ht/~emersion/alps/plugins/caldav"
+	_ "git.sr.ht/~emersion/alps/plugins/carddav"
+	_ "git.sr.ht/~emersion/alps/plugins/lua"
+	_ "git.sr.ht/~emersion/alps/plugins/viewhtml"
+	_ "git.sr.ht/~emersion/alps/plugins/viewtext"
 )
 
 func main() {
-	var options koushin.Options
+	var options alps.Options
 	var addr string
 	flag.StringVar(&options.Theme, "theme", "", "default theme")
 	flag.StringVar(&addr, "addr", ":1323", "listening address")
 	flag.BoolVar(&options.Debug, "debug", false, "enable debug logs")
 
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "usage: koushin [options...] <upstream servers...>\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "usage: alps [options...] <upstream servers...>\n")
 		flag.PrintDefaults()
 	}
 
@@ -45,7 +45,7 @@ func main() {
 	if l, ok := e.Logger.(*log.Logger); ok {
 		l.SetHeader("${time_rfc3339} ${level}")
 	}
-	s, err := koushin.New(e, &options)
+	s, err := alps.New(e, &options)
 	if err != nil {
 		e.Logger.Fatal(err)
 	}

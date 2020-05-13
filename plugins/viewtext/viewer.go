@@ -1,4 +1,4 @@
-package koushinviewtext
+package alpsviewtext
 
 import (
 	"bufio"
@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"strings"
 
-	"git.sr.ht/~emersion/koushin"
-	koushinbase "git.sr.ht/~emersion/koushin/plugins/base"
+	"git.sr.ht/~emersion/alps"
+	alpsbase "git.sr.ht/~emersion/alps/plugins/base"
 	"github.com/emersion/go-message"
 	"gitlab.com/golang-commonmark/linkify"
 )
@@ -53,13 +53,13 @@ func executeTemplate(name string, data interface{}) (template.HTML, error) {
 
 type viewer struct{}
 
-func (viewer) ViewMessagePart(ctx *koushin.Context, msg *koushinbase.IMAPMessage, part *message.Entity) (interface{}, error) {
+func (viewer) ViewMessagePart(ctx *alps.Context, msg *alpsbase.IMAPMessage, part *message.Entity) (interface{}, error) {
 	mimeType, _, err := part.Header.ContentType()
 	if err != nil {
 		return nil, err
 	}
 	if !strings.EqualFold(mimeType, "text/plain") {
-		return nil, koushinbase.ErrViewUnsupported
+		return nil, alpsbase.ErrViewUnsupported
 	}
 
 	var tokens []interface{}
@@ -114,5 +114,5 @@ func (viewer) ViewMessagePart(ctx *koushin.Context, msg *koushinbase.IMAPMessage
 }
 
 func init() {
-	koushinbase.RegisterViewer(viewer{})
+	alpsbase.RegisterViewer(viewer{})
 }

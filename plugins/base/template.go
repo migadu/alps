@@ -1,4 +1,4 @@
-package koushinbase
+package alpsbase
 
 import (
 	"html/template"

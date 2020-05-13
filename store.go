@@ -1,4 +1,4 @@
-package koushin
+package alps
 
 import (
 	"encoding/json"
@@ -12,7 +12,7 @@ import (
 )
 
 // ErrNoStoreEntry is returned by Store.Get when the entry doesn't exist.
-var ErrNoStoreEntry = fmt.Errorf("koushin: no such entry in store")
+var ErrNoStoreEntry = fmt.Errorf("alps: no such entry in store")
 
 // Store allows storing per-user persistent data.
 //
@@ -72,14 +72,14 @@ type imapStore struct {
 	cache   *memoryStore
 }
 
-var errIMAPMetadataUnsupported = fmt.Errorf("koushin: IMAP server doesn't support METADATA extension")
+var errIMAPMetadataUnsupported = fmt.Errorf("alps: IMAP server doesn't support METADATA extension")
 
 func newIMAPStore(session *Session) (*imapStore, error) {
 	err := session.DoIMAP(func(c *imapclient.Client) error {
 		mc := imapmetadata.NewClient(c)
 		ok, err := mc.SupportMetadata()
 		if err != nil {
-			return fmt.Errorf("koushin: failed to check for IMAP METADATA support: %v", err)
+			return fmt.Errorf("alps: failed to check for IMAP METADATA support: %v", err)
 		}
 		if !ok {
 			return errIMAPMetadataUnsupported
@@ -93,7 +93,7 @@ func newIMAPStore(session *Session) (*imapStore, error) {
 }
 
 func (s *imapStore) key(key string) string {
-	return "/private/vendor/koushin/" + key
+	return "/private/vendor/alps/" + key
 }
 
 func (s *imapStore) Get(key string, out interface{}) error {
@@ -109,14 +109,14 @@ func (s *imapStore) Get(key string, out interface{}) error {
 		return err
 	})
 	if err != nil {
-		return fmt.Errorf("koushin: failed to fetch IMAP store entry %q: %v", key, err)
+		return fmt.Errorf("alps: failed to fetch IMAP store entry %q: %v", key, err)
 	}
 	v, ok := entries[s.key(key)]
 	if !ok {
 		return ErrNoStoreEntry
 	}
 	if err := json.Unmarshal([]byte(v), out); err != nil {
-		return fmt.Errorf("koushin: failed to unmarshal IMAP store entry %q: %v", key, err)
+		return fmt.Errorf("alps: failed to unmarshal IMAP store entry %q: %v", key, err)
 	}
 	return s.cache.Put(key, out)
 }
@@ -124,7 +124,7 @@ func (s *imapStore) Get(key string, out interface{}) error {
 func (s *imapStore) Put(key string, v interface{}) error {
 	b, err := json.Marshal(v)
 	if err != nil {
-		return fmt.Errorf("koushin: failed to marshal IMAP store entry %q: %v", key, err)
+		return fmt.Errorf("alps: failed to marshal IMAP store entry %q: %v", key, err)
 	}
 	entries := map[string]string{
 		s.key(key): string(b),
@@ -134,7 +134,7 @@ func (s *imapStore) Put(key string, v interface{}) error {
 		return mc.SetMetadata("", entries)
 	})
 	if err != nil {
-		return fmt.Errorf("koushin: failed to put IMAP store entry %q: %v", key, err)
+		return fmt.Errorf("alps: failed to put IMAP store entry %q: %v", key, err)
 	}
 
 	return s.cache.Put(key, v)

@@ -1,4 +1,4 @@
-package koushincarddav
+package alpscarddav
 
 import (
 	"fmt"
@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"strings"
 
-	"git.sr.ht/~emersion/koushin"
-	koushinbase "git.sr.ht/~emersion/koushin/plugins/base"
+	"git.sr.ht/~emersion/alps"
+	alpsbase "git.sr.ht/~emersion/alps/plugins/base"
 	"github.com/emersion/go-vcard"
 	"github.com/emersion/go-webdav/carddav"
 )
@@ -32,16 +32,16 @@ func sanityCheckURL(u *url.URL) error {
 }
 
 type plugin struct {
-	koushin.GoPlugin
+	alps.GoPlugin
 	url          *url.URL
 	homeSetCache map[string]string
 }
 
-func (p *plugin) client(session *koushin.Session) (*carddav.Client, error) {
+func (p *plugin) client(session *alps.Session) (*carddav.Client, error) {
 	return newClient(p.url, session)
 }
 
-func (p *plugin) clientWithAddressBook(session *koushin.Session) (*carddav.Client, *carddav.AddressBook, error) {
+func (p *plugin) clientWithAddressBook(session *alps.Session) (*carddav.Client, *carddav.AddressBook, error) {
 	c, err := newClient(p.url, session)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create CardDAV client: %v", err)
@@ -73,9 +73,9 @@ func (p *plugin) clientWithAddressBook(session *koushin.Session) (*carddav.Clien
 	return c, &addressBooks[0], nil
 }
 
-func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
+func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	u, err := srv.Upstream("carddavs", "carddav+insecure", "https", "http+insecure")
-	if _, ok := err.(*koushin.NoUpstreamError); ok {
+	if _, ok := err.(*alps.NoUpstreamError); ok {
 		return nil, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("carddav: failed to parse upstream CardDAV server: %v", err)
@@ -105,7 +105,7 @@ func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
 	srv.Logger().Printf("Configured upstream CardDAV server: %v", u)
 
 	p := &plugin{
-		GoPlugin:     koushin.GoPlugin{Name: "carddav"},
+		GoPlugin:     alps.GoPlugin{Name: "carddav"},
 		url:          u,
 		homeSetCache: make(map[string]string),
 	}
@@ -118,8 +118,8 @@ func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
 		},
 	})
 
-	p.Inject("compose.html", func(ctx *koushin.Context, _data koushin.RenderData) error {
-		data := _data.(*koushinbase.ComposeRenderData)
+	p.Inject("compose.html", func(ctx *alps.Context, _data alps.RenderData) error {
+		data := _data.(*alpsbase.ComposeRenderData)
 
 		c, addressBook, err := p.clientWithAddressBook(ctx.Session)
 		if err == errNoAddressBook {
@@ -156,7 +156,7 @@ func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
 }
 
 func init() {
-	koushin.RegisterPluginLoader(func(s *koushin.Server) ([]koushin.Plugin, error) {
+	alps.RegisterPluginLoader(func(s *alps.Server) ([]alps.Plugin, error) {
 		p, err := newPlugin(s)
 		if err != nil {
 			return nil, err
@@ -164,6 +164,6 @@ func init() {
 		if p == nil {
 			return nil, nil
 		}
-		return []koushin.Plugin{p}, err
+		return []alps.Plugin{p}, err
 	})
 }

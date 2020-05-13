@@ -1,4 +1,4 @@
-package koushin
+package alps
 
 import (
 	"fmt"
@@ -11,9 +11,9 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-const cookieName = "koushin_session"
+const cookieName = "alps_session"
 
-// Server holds all the koushin server state.
+// Server holds all the alps server state.
 type Server struct {
 	e        *echo.Echo
 	Sessions *SessionManager
@@ -237,7 +237,7 @@ func (s *Server) Logger() echo.Logger {
 //
 // Use a type assertion to get it from a echo.Context:
 //
-//     ctx := ectx.(*koushin.Context)
+//     ctx := ectx.(*alps.Context)
 type Context struct {
 	echo.Context
 	Server  *Server

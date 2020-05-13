@@ -1,4 +1,4 @@
-package koushinviewhtml
+package alpsviewhtml
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	koushinbase "git.sr.ht/~emersion/koushin/plugins/base"
+	alpsbase "git.sr.ht/~emersion/alps/plugins/base"
 	"github.com/aymerick/douceur/css"
 	cssparser "github.com/chris-ramon/douceur/parser"
 	"github.com/microcosm-cc/bluemonday"
@@ -71,7 +71,7 @@ var allowedStyles = map[string]bool{
 }
 
 type sanitizer struct {
-	msg                  *koushinbase.IMAPMessage
+	msg                  *alpsbase.IMAPMessage
 	allowRemoteResources bool
 	hasRemoteResources   bool
 }

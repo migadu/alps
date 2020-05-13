@@ -1,11 +1,11 @@
-package koushinlua
+package alpslua
 
 import (
 	"fmt"
 	"html/template"
 	"path/filepath"
 
-	"git.sr.ht/~emersion/koushin"
+	"git.sr.ht/~emersion/alps"
 	"github.com/labstack/echo/v4"
 	"github.com/yuin/gopher-lua"
 	"layeh.com/gopher-luar"
@@ -69,7 +69,7 @@ func (p *luaPlugin) setRoute(l *lua.LState) int {
 	return 0
 }
 
-func (p *luaPlugin) inject(name string, data koushin.RenderData) error {
+func (p *luaPlugin) inject(name string, data alps.RenderData) error {
 	f, ok := p.renderCallbacks[name]
 	if !ok {
 		return nil
@@ -87,7 +87,7 @@ func (p *luaPlugin) inject(name string, data koushin.RenderData) error {
 	return nil
 }
 
-func (p *luaPlugin) Inject(ctx *koushin.Context, name string, data koushin.RenderData) error {
+func (p *luaPlugin) Inject(ctx *alps.Context, name string, data alps.RenderData) error {
 	if err := p.inject("*", data); err != nil {
 		return err
 	}
@@ -144,8 +144,8 @@ func loadLuaPlugin(filename string) (*luaPlugin, error) {
 		filters:         make(template.FuncMap),
 	}
 
-	mt := l.NewTypeMetatable("koushin")
-	l.SetGlobal("koushin", mt)
+	mt := l.NewTypeMetatable("alps")
+	l.SetGlobal("alps", mt)
 	l.SetField(mt, "on_render", l.NewFunction(p.onRender))
 	l.SetField(mt, "set_filter", l.NewFunction(p.setFilter))
 	l.SetField(mt, "set_route", l.NewFunction(p.setRoute))
@@ -158,15 +158,15 @@ func loadLuaPlugin(filename string) (*luaPlugin, error) {
 	return p, nil
 }
 
-func loadAllLuaPlugins(s *koushin.Server) ([]koushin.Plugin, error) {
+func loadAllLuaPlugins(s *alps.Server) ([]alps.Plugin, error) {
 	log := s.Logger()
 
-	filenames, err := filepath.Glob(koushin.PluginDir + "/*/main.lua")
+	filenames, err := filepath.Glob(alps.PluginDir + "/*/main.lua")
 	if err != nil {
 		return nil, fmt.Errorf("filepath.Glob failed: %v", err)
 	}
 
-	plugins := make([]koushin.Plugin, 0, len(filenames))
+	plugins := make([]alps.Plugin, 0, len(filenames))
 	for _, filename := range filenames {
 		log.Printf("Loading Lua plugin %q", filename)
 

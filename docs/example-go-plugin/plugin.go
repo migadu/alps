@@ -1,22 +1,22 @@
-// Package exampleplugin is an example Go plugin for koushin.
+// Package exampleplugin is an example Go plugin for alps.
 //
-// To enable it, import this package from cmd/koushin/main.go.
+// To enable it, import this package from cmd/alps/main.go.
 package exampleplugin
 
 import (
 	"fmt"
 	"net/http"
 
-	"git.sr.ht/~emersion/koushin"
-	koushinbase "git.sr.ht/~emersion/koushin/plugins/base"
+	"git.sr.ht/~emersion/alps"
+	alpsbase "git.sr.ht/~emersion/alps/plugins/base"
 )
 
 func init() {
-	p := koushin.GoPlugin{Name: "example"}
+	p := alps.GoPlugin{Name: "example"}
 
 	// Setup a function called when the mailbox view is rendered
-	p.Inject("mailbox.html", func(ctx *koushin.Context, kdata koushin.RenderData) error {
-		data := kdata.(*koushinbase.MailboxRenderData)
+	p.Inject("mailbox.html", func(ctx *alps.Context, kdata alps.RenderData) error {
+		data := kdata.(*alpsbase.MailboxRenderData)
 		fmt.Println("The mailbox view for " + data.Mailbox.Name + " is being rendered")
 		// Set extra data that can be accessed from the mailbox.html template
 		data.Extra["Example"] = "Hi from Go"
@@ -24,7 +24,7 @@ func init() {
 	})
 
 	// Wire up a new route
-	p.GET("/example", func(ctx *koushin.Context) error {
+	p.GET("/example", func(ctx *alps.Context) error {
 		return ctx.String(http.StatusOK, "This is an example page.")
 	})
 
@@ -35,5 +35,5 @@ func init() {
 		},
 	})
 
-	koushin.RegisterPluginLoader(p.Loader())
+	alps.RegisterPluginLoader(p.Loader())
 }

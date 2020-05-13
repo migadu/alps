@@ -1,4 +1,4 @@
-package koushinviewhtml
+package alpsviewhtml
 
 import (
 	"bytes"
@@ -7,8 +7,8 @@ import (
 	"io/ioutil"
 	"strings"
 
-	"git.sr.ht/~emersion/koushin"
-	koushinbase "git.sr.ht/~emersion/koushin/plugins/base"
+	"git.sr.ht/~emersion/alps"
+	alpsbase "git.sr.ht/~emersion/alps/plugins/base"
 	"github.com/emersion/go-message"
 )
 
@@ -24,7 +24,7 @@ var tpl = template.Must(template.New("view-html.html").Parse(tplSrc))
 
 type viewer struct{}
 
-func (viewer) ViewMessagePart(ctx *koushin.Context, msg *koushinbase.IMAPMessage, part *message.Entity) (interface{}, error) {
+func (viewer) ViewMessagePart(ctx *alps.Context, msg *alpsbase.IMAPMessage, part *message.Entity) (interface{}, error) {
 	allowRemoteResources := ctx.QueryParam("allow-remote-resources") == "1"
 
 	mimeType, _, err := part.Header.ContentType()
@@ -32,7 +32,7 @@ func (viewer) ViewMessagePart(ctx *koushin.Context, msg *koushinbase.IMAPMessage
 		return nil, err
 	}
 	if !strings.EqualFold(mimeType, "text/html") {
-		return nil, koushinbase.ErrViewUnsupported
+		return nil, alpsbase.ErrViewUnsupported
 	}
 
 	body, err := ioutil.ReadAll(part.Body)
@@ -61,5 +61,5 @@ func (viewer) ViewMessagePart(ctx *koushin.Context, msg *koushinbase.IMAPMessage
 }
 
 func init() {
-	koushinbase.RegisterViewer(viewer{})
+	alpsbase.RegisterViewer(viewer{})
 }

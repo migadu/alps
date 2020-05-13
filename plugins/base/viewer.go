@@ -1,9 +1,9 @@
-package koushinbase
+package alpsbase
 
 import (
 	"fmt"
 
-	"git.sr.ht/~emersion/koushin"
+	"git.sr.ht/~emersion/alps"
 	"github.com/emersion/go-message"
 )
 
@@ -16,7 +16,7 @@ type Viewer interface {
 	// ViewMessagePart renders a message part. The returned value is displayed
 	// in a template. ErrViewUnsupported is returned if the message part isn't
 	// supported.
-	ViewMessagePart(*koushin.Context, *IMAPMessage, *message.Entity) (interface{}, error)
+	ViewMessagePart(*alps.Context, *IMAPMessage, *message.Entity) (interface{}, error)
 }
 
 var viewers []Viewer
@@ -26,7 +26,7 @@ func RegisterViewer(viewer Viewer) {
 	viewers = append(viewers, viewer)
 }
 
-func viewMessagePart(ctx *koushin.Context, msg *IMAPMessage, part *message.Entity) (interface{}, error) {
+func viewMessagePart(ctx *alps.Context, msg *IMAPMessage, part *message.Entity) (interface{}, error) {
 	for _, viewer := range viewers {
 		v, err := viewer.ViewMessagePart(ctx, msg, part)
 		if err == ErrViewUnsupported {

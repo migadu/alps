@@ -1,11 +1,11 @@
-package koushincaldav
+package alpscaldav
 
 import (
 	"fmt"
 	"net/http"
 	"net/url"
 
-	"git.sr.ht/~emersion/koushin"
+	"git.sr.ht/~emersion/alps"
 	"github.com/emersion/go-webdav/caldav"
 )
 
@@ -13,7 +13,7 @@ var errNoCalendar = fmt.Errorf("caldav: no calendar found")
 
 type authRoundTripper struct {
 	upstream http.RoundTripper
-	session  *koushin.Session
+	session  *alps.Session
 }
 
 func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -21,7 +21,7 @@ func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 	return rt.upstream.RoundTrip(req)
 }
 
-func newClient(u *url.URL, session *koushin.Session) (*caldav.Client, error) {
+func newClient(u *url.URL, session *alps.Session) (*caldav.Client, error) {
 	rt := authRoundTripper{
 		upstream: http.DefaultTransport,
 		session:  session,
@@ -34,7 +34,7 @@ func newClient(u *url.URL, session *koushin.Session) (*caldav.Client, error) {
 	return c, nil
 }
 
-func getCalendar(u *url.URL, session *koushin.Session) (*caldav.Client, *caldav.Calendar, error) {
+func getCalendar(u *url.URL, session *alps.Session) (*caldav.Client, *caldav.Calendar, error) {
 	c, err := newClient(u, session)
 	if err != nil {
 		return nil, nil, err

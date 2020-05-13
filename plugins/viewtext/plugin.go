@@ -1,10 +1,10 @@
-package koushinviewtext
+package alpsviewtext
 
 import (
-	"git.sr.ht/~emersion/koushin"
+	"git.sr.ht/~emersion/alps"
 )
 
 func init() {
-	p := koushin.GoPlugin{Name: "viewtext"}
-	koushin.RegisterPluginLoader(p.Loader())
+	p := alps.GoPlugin{Name: "viewtext"}
+	alps.RegisterPluginLoader(p.Loader())
 }

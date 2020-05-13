@@ -1,4 +1,4 @@
-package koushin
+package alps
 
 import (
 	"html/template"
@@ -71,7 +71,7 @@ type goPluginRoute struct {
 //
 //     p := GoPlugin{Name: "my-plugin"}
 //     // Define routes, template functions, etc
-//     koushin.RegisterPluginLoader(p.Loader())
+//     alps.RegisterPluginLoader(p.Loader())
 type GoPlugin struct {
 	Name string
 

@@ -1,22 +1,22 @@
 # SYNOPSIS
 
-    koushin [options...] <upstream servers...>
+    alps [options...] <upstream servers...>
 
 # DESCRIPTION
 
-koushin is a simple and extensible webmail. It offers a web interface for IMAP,
+alps is a simple and extensible webmail. It offers a web interface for IMAP,
 SMTP and other upstream servers.
 
 At least one upstream IMAP server needs to be specified. The easiest way to do
 so is to just specify a domain name:
 
-    koushin example.org
+    alps example.org
 
 This assumes SRV DNS records are properly set up (see [RFC 6186]).
 
 Alternatively, one or more upstream server URLs can be specified:
 
-    koushin imaps://mail.example.org:993 smtps://mail.example.org:465
+    alps imaps://mail.example.org:993 smtps://mail.example.org:465
 
 The following URL schemes are supported:
 

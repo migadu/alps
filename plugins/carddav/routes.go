@@ -1,4 +1,4 @@
-package koushincarddav
+package alpscarddav
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"path"
 	"strings"
 
-	"git.sr.ht/~emersion/koushin"
+	"git.sr.ht/~emersion/alps"
 	"github.com/emersion/go-vcard"
 	"github.com/emersion/go-webdav/carddav"
 	"github.com/google/uuid"
@@ -15,19 +15,19 @@ import (
 )
 
 type AddressBookRenderData struct {
-	koushin.BaseRenderData
+	alps.BaseRenderData
 	AddressBook    *carddav.AddressBook
 	AddressObjects []AddressObject
 	Query          string
 }
 
 type AddressObjectRenderData struct {
-	koushin.BaseRenderData
+	alps.BaseRenderData
 	AddressObject AddressObject
 }
 
 type UpdateAddressObjectRenderData struct {
-	koushin.BaseRenderData
+	alps.BaseRenderData
 	AddressObject *carddav.AddressObject // nil if creating a new contact
 	Card          vcard.Card
 }
@@ -42,7 +42,7 @@ func parseObjectPath(s string) (string, error) {
 }
 
 func registerRoutes(p *plugin) {
-	p.GET("/contacts", func(ctx *koushin.Context) error {
+	p.GET("/contacts", func(ctx *alps.Context) error {
 		queryText := ctx.QueryParam("query")
 
 		c, addressBook, err := p.clientWithAddressBook(ctx.Session)
@@ -82,14 +82,14 @@ func registerRoutes(p *plugin) {
 		}
 
 		return ctx.Render(http.StatusOK, "address-book.html", &AddressBookRenderData{
-			BaseRenderData: *koushin.NewBaseRenderData(ctx),
+			BaseRenderData: *alps.NewBaseRenderData(ctx),
 			AddressBook:    addressBook,
 			AddressObjects: newAddressObjectList(aos),
 			Query:          queryText,
 		})
 	})
 
-	p.GET("/contacts/:path", func(ctx *koushin.Context) error {
+	p.GET("/contacts/:path", func(ctx *alps.Context) error {
 		path, err := parseObjectPath(ctx.Param("path"))
 		if err != nil {
 			return err
@@ -119,12 +119,12 @@ func registerRoutes(p *plugin) {
 		ao := &aos[0]
 
 		return ctx.Render(http.StatusOK, "address-object.html", &AddressObjectRenderData{
-			BaseRenderData: *koushin.NewBaseRenderData(ctx),
+			BaseRenderData: *alps.NewBaseRenderData(ctx),
 			AddressObject:  AddressObject{ao},
 		})
 	})
 
-	updateContact := func(ctx *koushin.Context) error {
+	updateContact := func(ctx *alps.Context) error {
 		addressObjectPath, err := parseObjectPath(ctx.Param("path"))
 		if err != nil {
 			return err
@@ -200,7 +200,7 @@ func registerRoutes(p *plugin) {
 		}
 
 		return ctx.Render(http.StatusOK, "update-address-object.html", &UpdateAddressObjectRenderData{
-			BaseRenderData: *koushin.NewBaseRenderData(ctx),
+			BaseRenderData: *alps.NewBaseRenderData(ctx),
 			AddressObject:  ao,
 			Card:           card,
 		})

@@ -1,4 +1,4 @@
-package koushin
+package alps
 
 import (
 	"html/template"
@@ -9,7 +9,7 @@ import (
 // PluginDir is the path to the plugins directory.
 const PluginDir = "plugins"
 
-// Plugin extends koushin with additional functionality.
+// Plugin extends alps with additional functionality.
 type Plugin interface {
 	// Name should return the plugin name.
 	Name() string

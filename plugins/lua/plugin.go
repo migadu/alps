@@ -1,9 +1,9 @@
-package koushinlua
+package alpslua
 
 import (
-	"git.sr.ht/~emersion/koushin"
+	"git.sr.ht/~emersion/alps"
 )
 
 func init() {
-	koushin.RegisterPluginLoader(loadAllLuaPlugins)
+	alps.RegisterPluginLoader(loadAllLuaPlugins)
 }

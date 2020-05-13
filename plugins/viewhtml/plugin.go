@@ -1,4 +1,4 @@
-package koushinviewhtml
+package alpsviewhtml
 
 import (
 	"io"
@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"git.sr.ht/~emersion/koushin"
-	koushinbase "git.sr.ht/~emersion/koushin/plugins/base"
+	"git.sr.ht/~emersion/alps"
+	alpsbase "git.sr.ht/~emersion/alps/plugins/base"
 	"github.com/labstack/echo/v4"
 )
 
@@ -19,10 +19,10 @@ var (
 )
 
 func init() {
-	p := koushin.GoPlugin{Name: "viewhtml"}
+	p := alps.GoPlugin{Name: "viewhtml"}
 
-	p.Inject("message.html", func(ctx *koushin.Context, _data koushin.RenderData) error {
-		data := _data.(*koushinbase.MessageRenderData)
+	p.Inject("message.html", func(ctx *alps.Context, _data alps.RenderData) error {
+		data := _data.(*alpsbase.MessageRenderData)
 		data.Extra["RemoteResourcesAllowed"] = ctx.QueryParam("allow-remote-resources") == "1"
 		hasRemoteResources := false
 		if v := ctx.Get("viewhtml.hasRemoteResources"); v != nil {
@@ -32,7 +32,7 @@ func init() {
 		return nil
 	})
 
-	p.GET("/proxy", func(ctx *koushin.Context) error {
+	p.GET("/proxy", func(ctx *alps.Context) error {
 		if !proxyEnabled {
 			return echo.NewHTTPError(http.StatusForbidden, "proxy disabled")
 		}
@@ -67,5 +67,5 @@ func init() {
 		return ctx.Stream(http.StatusOK, mediaType, &lr)
 	})
 
-	koushin.RegisterPluginLoader(p.Loader())
+	alps.RegisterPluginLoader(p.Loader())
 }

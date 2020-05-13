@@ -1,4 +1,4 @@
-package koushin
+package alps
 
 import (
 	"crypto/rand"

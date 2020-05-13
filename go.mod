@@ -1,4 +1,4 @@
-module git.sr.ht/~emersion/koushin
+module git.sr.ht/~emersion/alps
 
 go 1.13
 

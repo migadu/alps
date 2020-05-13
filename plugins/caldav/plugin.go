@@ -1,11 +1,11 @@
-package koushincaldav
+package alpscaldav
 
 import (
 	"fmt"
 	"net/http"
 	"net/url"
 
-	"git.sr.ht/~emersion/koushin"
+	"git.sr.ht/~emersion/alps"
 )
 
 func sanityCheckURL(u *url.URL) error {
@@ -27,9 +27,9 @@ func sanityCheckURL(u *url.URL) error {
 	return nil
 }
 
-func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
+func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	u, err := srv.Upstream("caldavs", "caldav+insecure", "https", "http+insecure")
-	if _, ok := err.(*koushin.NoUpstreamError); ok {
+	if _, ok := err.(*alps.NoUpstreamError); ok {
 		return nil, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("caldav: failed to parse upstream caldav server: %v", err)
@@ -53,7 +53,7 @@ func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
 
 	srv.Logger().Printf("Configured upstream CalDAV server: %v", u)
 
-	p := koushin.GoPlugin{Name: "caldav"}
+	p := alps.GoPlugin{Name: "caldav"}
 
 	registerRoutes(&p, u)
 
@@ -61,7 +61,7 @@ func newPlugin(srv *koushin.Server) (koushin.Plugin, error) {
 }
 
 func init() {
-	koushin.RegisterPluginLoader(func(s *koushin.Server) ([]koushin.Plugin, error) {
+	alps.RegisterPluginLoader(func(s *alps.Server) ([]alps.Plugin, error) {
 		p, err := newPlugin(s)
 		if err != nil {
 			return nil, err
@@ -69,6 +69,6 @@ func init() {
 		if p == nil {
 			return nil, nil
 		}
-		return []koushin.Plugin{p}, err
+		return []alps.Plugin{p}, err
 	})
 }

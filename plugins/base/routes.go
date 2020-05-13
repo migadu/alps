@@ -1,4 +1,4 @@
-package koushinbase
+package alpsbase
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"git.sr.ht/~emersion/koushin"
+	"git.sr.ht/~emersion/alps"
 	"github.com/emersion/go-imap"
 	imapmove "github.com/emersion/go-imap-move"
 	imapclient "github.com/emersion/go-imap/client"
@@ -21,18 +21,18 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func registerRoutes(p *koushin.GoPlugin) {
-	p.GET("/", func(ctx *koushin.Context) error {
+func registerRoutes(p *alps.GoPlugin) {
+	p.GET("/", func(ctx *alps.Context) error {
 		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	})
 
 	p.GET("/mailbox/:mbox", handleGetMailbox)
 	p.POST("/mailbox/:mbox", handleGetMailbox)
 
-	p.GET("/message/:mbox/:uid", func(ctx *koushin.Context) error {
+	p.GET("/message/:mbox/:uid", func(ctx *alps.Context) error {
 		return handleGetPart(ctx, false)
 	})
-	p.GET("/message/:mbox/:uid/raw", func(ctx *koushin.Context) error {
+	p.GET("/message/:mbox/:uid/raw", func(ctx *alps.Context) error {
 		return handleGetPart(ctx, true)
 	})
 
@@ -64,7 +64,7 @@ func registerRoutes(p *koushin.GoPlugin) {
 }
 
 type MailboxRenderData struct {
-	koushin.BaseRenderData
+	alps.BaseRenderData
 	Mailbox            *MailboxStatus
 	Mailboxes          []MailboxInfo
 	Messages           []IMAPMessage
@@ -72,7 +72,7 @@ type MailboxRenderData struct {
 	Query              string
 }
 
-func handleGetMailbox(ctx *koushin.Context) error {
+func handleGetMailbox(ctx *alps.Context) error {
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -136,7 +136,7 @@ func handleGetMailbox(ctx *koushin.Context) error {
 	}
 
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
-		BaseRenderData: *koushin.NewBaseRenderData(ctx),
+		BaseRenderData: *alps.NewBaseRenderData(ctx),
 		Mailbox:        mbox,
 		Mailboxes:      mailboxes,
 		Messages:       msgs,
@@ -146,13 +146,13 @@ func handleGetMailbox(ctx *koushin.Context) error {
 	})
 }
 
-func handleLogin(ctx *koushin.Context) error {
+func handleLogin(ctx *alps.Context) error {
 	username := ctx.FormValue("username")
 	password := ctx.FormValue("password")
 	if username != "" && password != "" {
 		s, err := ctx.Server.Sessions.Put(username, password)
 		if err != nil {
-			if _, ok := err.(koushin.AuthError); ok {
+			if _, ok := err.(alps.AuthError); ok {
 				return ctx.Render(http.StatusOK, "login.html", nil)
 			}
 			return fmt.Errorf("failed to put connection in pool: %v", err)
@@ -165,17 +165,17 @@ func handleLogin(ctx *koushin.Context) error {
 		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}
 
-	return ctx.Render(http.StatusOK, "login.html", koushin.NewBaseRenderData(ctx))
+	return ctx.Render(http.StatusOK, "login.html", alps.NewBaseRenderData(ctx))
 }
 
-func handleLogout(ctx *koushin.Context) error {
+func handleLogout(ctx *alps.Context) error {
 	ctx.Session.Close()
 	ctx.SetSession(nil)
 	return ctx.Redirect(http.StatusFound, "/login")
 }
 
 type MessageRenderData struct {
-	koushin.BaseRenderData
+	alps.BaseRenderData
 	Mailboxes   []MailboxInfo
 	Mailbox     *MailboxStatus
 	Message     *IMAPMessage
@@ -185,7 +185,7 @@ type MessageRenderData struct {
 	Flags       map[string]bool
 }
 
-func handleGetPart(ctx *koushin.Context, raw bool) error {
+func handleGetPart(ctx *alps.Context, raw bool) error {
 	mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -271,7 +271,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 	}
 
 	return ctx.Render(http.StatusOK, "message.html", &MessageRenderData{
-		BaseRenderData: *koushin.NewBaseRenderData(ctx),
+		BaseRenderData: *alps.NewBaseRenderData(ctx),
 		Mailboxes:      mailboxes,
 		Mailbox:        mbox,
 		Message:        msg,
@@ -283,7 +283,7 @@ func handleGetPart(ctx *koushin.Context, raw bool) error {
 }
 
 type ComposeRenderData struct {
-	koushin.BaseRenderData
+	alps.BaseRenderData
 	Message *OutgoingMessage
 }
 
@@ -300,12 +300,12 @@ type composeOptions struct {
 
 // Send message, append it to the Sent mailbox, mark the original message as
 // answered
-func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, options *composeOptions) error {
+func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOptions) error {
 	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
 		return sendMessage(c, msg)
 	})
 	if err != nil {
-		if _, ok := err.(koushin.AuthError); ok {
+		if _, ok := err.(alps.AuthError); ok {
 			return echo.NewHTTPError(http.StatusForbidden, err)
 		}
 		return fmt.Errorf("failed to send message: %v", err)
@@ -338,7 +338,7 @@ func submitCompose(ctx *koushin.Context, msg *OutgoingMessage, options *composeO
 	return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 }
 
-func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, options *composeOptions) error {
+func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOptions) error {
 	if msg.From == "" && strings.ContainsRune(ctx.Session.Username(), '@') {
 		msg.From = ctx.Session.Username()
 	}
@@ -438,12 +438,12 @@ func handleCompose(ctx *koushin.Context, msg *OutgoingMessage, options *composeO
 	}
 
 	return ctx.Render(http.StatusOK, "compose.html", &ComposeRenderData{
-		BaseRenderData: *koushin.NewBaseRenderData(ctx),
+		BaseRenderData: *alps.NewBaseRenderData(ctx),
 		Message:        msg,
 	})
 }
 
-func handleComposeNew(ctx *koushin.Context) error {
+func handleComposeNew(ctx *alps.Context) error {
 	// These are common mailto URL query parameters
 	// TODO: cc, bcc
 	return handleCompose(ctx, &OutgoingMessage{
@@ -462,7 +462,7 @@ func unwrapIMAPAddressList(addrs []*imap.Address) []string {
 	return l
 }
 
-func handleReply(ctx *koushin.Context) error {
+func handleReply(ctx *alps.Context) error {
 	var inReplyToPath messagePath
 	var err error
 	inReplyToPath.Mailbox, inReplyToPath.Uid, err = parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
@@ -521,7 +521,7 @@ func handleReply(ctx *koushin.Context) error {
 	return handleCompose(ctx, &msg, &composeOptions{InReplyTo: &inReplyToPath})
 }
 
-func handleForward(ctx *koushin.Context) error {
+func handleForward(ctx *alps.Context) error {
 	var sourcePath messagePath
 	var err error
 	sourcePath.Mailbox, sourcePath.Uid, err = parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
@@ -585,7 +585,7 @@ func handleForward(ctx *koushin.Context) error {
 	return handleCompose(ctx, &msg, &composeOptions{Forward: &sourcePath})
 }
 
-func handleEdit(ctx *koushin.Context) error {
+func handleEdit(ctx *alps.Context) error {
 	var sourcePath messagePath
 	var err error
 	sourcePath.Mailbox, sourcePath.Uid, err = parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
@@ -653,14 +653,14 @@ func handleEdit(ctx *koushin.Context) error {
 	return handleCompose(ctx, &msg, &composeOptions{Draft: &sourcePath})
 }
 
-func formOrQueryParam(ctx *koushin.Context, k string) string {
+func formOrQueryParam(ctx *alps.Context, k string) string {
 	if v := ctx.FormValue(k); v != "" {
 		return v
 	}
 	return ctx.QueryParam(k)
 }
 
-func handleMove(ctx *koushin.Context) error {
+func handleMove(ctx *alps.Context) error {
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -706,7 +706,7 @@ func handleMove(ctx *koushin.Context) error {
 	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(to)))
 }
 
-func handleDelete(ctx *koushin.Context) error {
+func handleDelete(ctx *alps.Context) error {
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -757,7 +757,7 @@ func handleDelete(ctx *koushin.Context) error {
 	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(mboxName)))
 }
 
-func handleSetFlags(ctx *koushin.Context) error {
+func handleSetFlags(ctx *alps.Context) error {
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -840,11 +840,11 @@ type Settings struct {
 	MessagesPerPage int
 }
 
-func loadSettings(s koushin.Store) (*Settings, error) {
+func loadSettings(s alps.Store) (*Settings, error) {
 	settings := &Settings{
 		MessagesPerPage: 50,
 	}
-	if err := s.Get(settingsKey, settings); err != nil && err != koushin.ErrNoStoreEntry {
+	if err := s.Get(settingsKey, settings); err != nil && err != alps.ErrNoStoreEntry {
 		return nil, err
 	}
 	if err := settings.check(); err != nil {
@@ -861,11 +861,11 @@ func (s *Settings) check() error {
 }
 
 type SettingsRenderData struct {
-	koushin.BaseRenderData
+	alps.BaseRenderData
 	Settings *Settings
 }
 
-func handleSettings(ctx *koushin.Context) error {
+func handleSettings(ctx *alps.Context) error {
 	settings, err := loadSettings(ctx.Session.Store())
 	if err != nil {
 		return fmt.Errorf("failed to load settings: %v", err)
@@ -888,7 +888,7 @@ func handleSettings(ctx *koushin.Context) error {
 	}
 
 	return ctx.Render(http.StatusOK, "settings.html", &SettingsRenderData{
-		BaseRenderData: *koushin.NewBaseRenderData(ctx),
+		BaseRenderData: *alps.NewBaseRenderData(ctx),
 		Settings:       settings,
 	})
 }
