@@ -187,7 +187,7 @@ main.message pre,
 main.message iframe {
   flex: 1 auto;
   padding: 1rem;
-  margin: 1rem 0;
+  margin: 0.3rem 0 0 0;
   background-color: white;
   border: 1px solid #eee;
   max-width: 100%;
