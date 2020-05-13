@@ -366,6 +366,15 @@ main table tfoot {
   margin-left: 0.3rem;
 }
 
+.empty-list {
+  text-align: center;
+  grid-column-start: 1;
+  grid-column-end: 10;
+  font-size: 1.1rem;
+  color: #333;
+  margin-top: 1rem;
+}
+
 input[type="submit"],
 .button,
 button,

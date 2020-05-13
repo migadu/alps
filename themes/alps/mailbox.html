@@ -55,6 +55,9 @@
             {{ .Envelope.Date | formatdate }}
           </div>
           {{ end }}
+          {{if not .Messages}}
+          <p class="empty-list">Nothing here yet.</p>
+          {{end}}
         </div>
       </section>
       <section class="actions">
