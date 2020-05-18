@@ -130,6 +130,9 @@ func getMailboxByType(conn *imapclient.Client, mboxType mailboxType) (*MailboxIn
 		return nil, fmt.Errorf("failed to get mailbox with attribute %q: %v", attr, err)
 	}
 
+	if best == nil {
+		return nil, nil
+	}
 	return &MailboxInfo{best}, nil
 }
 
