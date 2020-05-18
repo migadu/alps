@@ -111,11 +111,6 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			return err
 		}
 
-		c, err := newClient(u, ctx.Session)
-		if err != nil {
-			return err
-		}
-
 		c, calendar, err := getCalendar(u, ctx.Session)
 		if err != nil {
 			return err
@@ -157,11 +152,6 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 
 	updateEvent := func(ctx *alps.Context) error {
 		calendarObjectPath, err := parseObjectPath(ctx.Param("path"))
-		if err != nil {
-			return err
-		}
-
-		c, err := newClient(u, ctx.Session)
 		if err != nil {
 			return err
 		}
