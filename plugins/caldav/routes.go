@@ -139,7 +139,8 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 		}
 
 		return ctx.Render(http.StatusOK, "calendar.html", &CalendarRenderData{
-			BaseRenderData: *alps.NewBaseRenderData(ctx),
+			BaseRenderData: *alps.NewBaseRenderData(ctx).
+				WithTitle(calendar.Name + " Calendar: " + start.Format("January 2006")),
 			Time:           start,
 			Now:            time.Now(), // TODO: Use client time zone
 			Calendar:       calendar,
@@ -219,9 +220,10 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			return fmt.Errorf("expected exactly one calendar object with path %q, got %v", path, len(events))
 		}
 		event := &events[0]
+		summary, _ := event.Data.Events()[0].Props.Text("SUMMARY")
 
 		return ctx.Render(http.StatusOK, "event.html", &EventRenderData{
-			BaseRenderData: *alps.NewBaseRenderData(ctx),
+			BaseRenderData: *alps.NewBaseRenderData(ctx).WithTitle(summary),
 			Calendar:       calendar,
 			Event:          CalendarObject{event},
 		})
@@ -312,8 +314,10 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			return ctx.Redirect(http.StatusFound, CalendarObject{co}.URL())
 		}
 
+		summary, _ := event.Props.Text("SUMMARY")
+
 		return ctx.Render(http.StatusOK, "update-event.html", &UpdateEventRenderData{
-			BaseRenderData: *alps.NewBaseRenderData(ctx),
+			BaseRenderData: *alps.NewBaseRenderData(ctx).WithTitle("Update " + summary),
 			Calendar:       calendar,
 			CalendarObject: co,
 			Event:          event,
