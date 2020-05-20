@@ -38,6 +38,7 @@ type EventRenderData struct {
 
 type UpdateEventRenderData struct {
 	alps.BaseRenderData
+	Calendar       *caldav.Calendar
 	CalendarObject *caldav.CalendarObject // nil if creating a new contact
 	Event          *ical.Event
 }
@@ -313,6 +314,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 
 		return ctx.Render(http.StatusOK, "update-event.html", &UpdateEventRenderData{
 			BaseRenderData: *alps.NewBaseRenderData(ctx),
+			Calendar:       calendar,
 			CalendarObject: co,
 			Event:          event,
 		})
