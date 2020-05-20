@@ -165,7 +165,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 		var co *caldav.CalendarObject
 		var event *ical.Event
 		if calendarObjectPath != "" {
-			co, err := c.GetCalendarObject(calendarObjectPath)
+			co, err = c.GetCalendarObject(calendarObjectPath)
 			if err != nil {
 				return fmt.Errorf("failed to get CalDAV event: %v", err)
 			}
