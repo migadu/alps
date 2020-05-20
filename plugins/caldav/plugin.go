@@ -10,6 +10,11 @@ import (
 	"git.sr.ht/~emersion/alps"
 )
 
+const (
+	inputDateLayout = "2006-01-02"
+	inputTimeLayout = "15:04"
+)
+
 func sanityCheckURL(u *url.URL) error {
 	req, err := http.NewRequest(http.MethodOptions, u.String(), nil)
 	if err != nil {
@@ -61,13 +66,16 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 
 	p.TemplateFuncs(template.FuncMap{
 		"formatinputdate": func(t time.Time) string {
-			return t.Format("2006-01-02")
-		},
-		"ornow": func(t time.Time) time.Time {
 			if t.IsZero() {
-				return time.Now()
+				return ""
 			}
-			return t
+			return t.Format(inputDateLayout)
+		},
+		"formatinputtime": func(t time.Time) string {
+			if t.IsZero() {
+				return ""
+			}
+			return t.Format(inputTimeLayout)
 		},
 	})
 

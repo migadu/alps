@@ -53,6 +53,21 @@ func parseObjectPath(s string) (string, error) {
 	return string(p), nil
 }
 
+func parseTime(dateStr, timeStr string) (time.Time, error) {
+	layout := inputDateLayout
+	s := dateStr
+	if timeStr != "" {
+		layout = inputDateLayout + "T" + inputTimeLayout
+		s = dateStr + "T" + timeStr
+	}
+	t, err := time.Parse(layout, s)
+	if err != nil {
+		err = fmt.Errorf("malformed date: %v", err)
+		return time.Time{}, echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+	return t, nil
+}
+
 func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 	p.GET("/calendar", func(ctx *alps.Context) error {
 		var start time.Time
@@ -242,15 +257,14 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			summary := ctx.FormValue("summary")
 			description := ctx.FormValue("description")
 
-			start, err := time.Parse("2006-01-02", ctx.FormValue("start"))
+			// TODO: whole-day events
+			start, err := parseTime(ctx.FormValue("start-date"), ctx.FormValue("start-time"))
 			if err != nil {
-				err = fmt.Errorf("malformed start date: %v", err)
-				return echo.NewHTTPError(http.StatusBadRequest, err)
+				return err
 			}
-			end, err := time.Parse("2006-01-02", ctx.FormValue("end"))
+			end, err := parseTime(ctx.FormValue("end-date"), ctx.FormValue("end-time"))
 			if err != nil {
-				err = fmt.Errorf("malformed end date: %v", err)
-				return echo.NewHTTPError(http.StatusBadRequest, err)
+				return err
 			}
 			if start.After(end) {
 				return echo.NewHTTPError(http.StatusBadRequest, "event start is after its end")
