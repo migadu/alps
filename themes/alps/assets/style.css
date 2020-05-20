@@ -157,39 +157,24 @@ aside a.new.active {
 }
 
 aside a.new.active,
-main.compose,
-main.new-contact,
-main.new-event {
+main.create-update {
   background-color: #f6fff6;
 }
 
-main.compose,
-main.new-contact,
-main.new-event{ flex: 1 auto; padding: 1rem; }
+main.create-update { flex: 1 auto; padding: 1rem; }
+main.create-update form { flex: 1 auto; display: flex; flex-direction: column; }
+main.create-update form label { margin-top: 5px; }
 
-main.compose form,
-main.new-contact form,
-main.new-event form{ flex: 1 auto; display: flex; flex-direction: column; }
-
-main.compose form label,
-main.new-contact form label,
-main.new-event form label{ margin-top: 5px; }
-
-main.compose form label span,
 /* TODO: CSS grid this */
-main.new-contact form label span,
-main.new-event form label span { display: inline-block; font-weight: bold; min-width: 150px; }
+main.create-update form label span {
+  display: inline-block;
+  font-weight: bold;
+  min-width: 150px;
+}
 
-main.compose form input,
-main.new-contact form input,
-main.new-event form input { width: 80%; }
-
-main.compose form textarea,
-main.new-contact form textarea,
-main.new-event form textarea { flex: 1 auto; resize: none; margin-top: 1rem; }
-
-main.compose h1,
-main.new-event h1 { margin: 0; }
+main.create-update form input { width: 80%; }
+main.create-update form textarea { flex: 1 auto; resize: none; margin-top: 1rem; }
+main.create-update h1 { margin: 0; }
 
 main table { border-collapse: collapse; width: 100%; border: 1px solid #eee; }
 main table td { white-space: nowrap; padding: 0.3rem; color: #757373;
@@ -246,9 +231,7 @@ main.contact dl {
   grid-gap: 1rem;
 }
 
-main.compose .actions,
-main.new-contact .actions
-main.new-event .actions {
+main.create-update .actions {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -257,19 +240,13 @@ main.new-event .actions {
   margin-top: 0.3rem;
 }
 
-main.compose .actions button,
-main.compose .actions .button-link,
-main.new-contact .actions button,
-main.new-contact .actions .button-link,
-main.new-event .actions button,
-main.new-event .actions .button-link {
+main.create-update .actions button,
+main.create-update .actions .button-link {
   padding: 0.4rem 1rem 0.35rem;
   font-weight: bold;
 }
 
-main.compose .actions > *:not(:last-child),
-main.new-contact .actions > *:not(:last-child),
-main.new-event .actions > *:not(:last-child) {
+main.create-update .actions > *:not(:last-child) {
   margin-right: 1rem;
 }
 

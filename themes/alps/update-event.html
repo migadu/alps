@@ -10,7 +10,11 @@
   </aside>
 
   <div class="container">
-    <main class="new-event">
+    <main class="create-update">
+      <h2>
+        {{if .CalendarObject}}Edit{{else}}Create{{end}} event
+      </h2>
+
       <form method="post">
         <label>
           <span>Event name</span>
