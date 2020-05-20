@@ -157,16 +157,32 @@ aside a.new.active {
 }
 
 aside a.new.active,
-main.compose {
+main.compose,
+main.new-contact {
   background-color: #f6fff6;
 }
 
-main.compose { flex: 1 auto; padding: 1rem; }
-main.compose form { flex: 1 auto; display: flex; flex-direction: column; }
-main.compose form label { margin-top: 5px; }
-main.compose form label span { display: inline-block; font-weight: bold; min-width: 100px; }
-main.compose form input { width: 80%; }
-main.compose form textarea { flex: 1 auto; resize: none; margin-top: 1rem; }
+main.compose,
+main.new-contact { flex: 1 auto; padding: 1rem; }
+
+main.compose form,
+main.new-contact form { flex: 1 auto; display: flex; flex-direction: column; }
+
+main.compose form label,
+main.new-contact form label { margin-top: 5px; }
+
+main.compose form label span,
+/* TODO: CSS grid this */
+main.new-contact form label span { display: inline-block; font-weight: bold; min-width: 150px; }
+
+main.compose form input,
+main.new-contact form input { width: 80%; }
+
+main.compose form textarea,
+main.new-contact form textarea { flex: 1 auto; resize: none; margin-top: 1rem; }
+
+main.compose h1 { margin: 0; }
+
 main table { border-collapse: collapse; width: 100%; border: 1px solid #eee; }
 main table td { white-space: nowrap; padding: 0.3rem; color: #757373;
   overflow: hidden;
@@ -222,19 +238,26 @@ main.contact dl {
   grid-gap: 1rem;
 }
 
-main.compose .actions {
+main.compose .actions,
+main.new-contact .actions {
   display: flex;
   flex-direction: row;
   align-items: center;
+  background: transparent;
+  padding-left: 0;
+  margin-top: 0.3rem;
 }
 
 main.compose .actions button,
-main.compose .actions .button-link {
+main.compose .actions .button-link,
+main.new-contact .actions button,
+main.new-contact .actions .button-link {
   padding: 0.4rem 1rem 0.35rem;
   font-weight: bold;
 }
 
-main.compose .actions > *:not(:last-child) {
+main.compose .actions > *:not(:last-child),
+main.new-contact .actions > *:not(:last-child) {
   margin-right: 1rem;
 }
 

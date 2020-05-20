@@ -29,6 +29,7 @@ type AddressObjectRenderData struct {
 
 type UpdateAddressObjectRenderData struct {
 	alps.BaseRenderData
+	AddressBook   *carddav.AddressBook
 	AddressObject *carddav.AddressObject // nil if creating a new contact
 	Card          vcard.Card
 }
@@ -203,6 +204,7 @@ func registerRoutes(p *plugin) {
 
 		return ctx.Render(http.StatusOK, "update-address-object.html", &UpdateAddressObjectRenderData{
 			BaseRenderData: *alps.NewBaseRenderData(ctx),
+			AddressBook:    addressBook,
 			AddressObject:  ao,
 			Card:           card,
 		})

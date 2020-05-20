@@ -1,0 +1,42 @@
+{{template "head.html" .}}
+{{template "nav.html" .}}
+
+<div class="page-wrap">
+  <aside>
+    <a href="/contacts/create" class="new active">New contact</a>
+    <!-- TODO: fetch list of address books -->
+    <a href="#">{{.AddressBook.Name}}</a>
+    <a href="#">Personal</a>
+  </aside>
+
+  <div class="container">
+    <main class="new-contact">
+      <form method="post">
+        <h2>
+          {{if .Card}}Edit{{else}}Create{{end}} contact
+        </h2>
+
+        <label>
+          <span>Name</span>
+          <input type="text" name="fn" id="fn" value="{{.Card.PreferredValue "FN"}}" />
+        </label>
+        <label>
+          <span>Email addresses</span>
+          <input
+            type="email"
+            name="emails"
+            id="emails"
+            value="{{join (.Card.Values "EMAIL") ", "}}"
+            multiple />
+        </label>
+
+        <div class="actions">
+          <button type="submit">Save</button>
+          <a class="button-link" href="/contacts">Cancel</a>
+        </div>
+      </form>
+    </main>
+  </div>
+</div>
+
+{{template "foot.html"}}
