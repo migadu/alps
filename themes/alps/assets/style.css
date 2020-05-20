@@ -197,6 +197,13 @@ main.message th,
 main.event th { width: 5%;}
 main.message h1,
 main.event h1 { font-size: 1.2rem; padding: 0.5rem;}
+main.message .remote-content {
+  background: #eeffee;
+}
+
+main.message .remote-content td {
+  color: black;
+}
 
 main.message pre,
 main.message iframe,

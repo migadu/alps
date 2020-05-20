@@ -168,6 +168,16 @@
             <td>{{template "addr-list" .Message.Envelope.Bcc}}</td>
           </tr>
           {{ end }}
+          {{if and .Extra.HasRemoteResources (not .Extra.RemoteResourcesAllowed)}}
+          <tr class="remote-content">
+            <td colspan="2">
+              This message contains remote content, such as external images.
+              <a href="?part={{.Part.PathString}}&allow-remote-resources=1">
+                Load remote content »
+              </a>
+            </td>
+          </tr>
+          {{end}}
         </table>
         <section class="parts">
           {{template "message-part-tree" (tuple $ .Message.PartTree)}}
