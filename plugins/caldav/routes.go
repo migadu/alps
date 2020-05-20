@@ -239,4 +239,22 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 
 	p.GET("/calendar/:path/update", updateEvent)
 	p.POST("/calendar/:path/update", updateEvent)
+
+	p.POST("/calendar/:path/delete", func(ctx *alps.Context) error {
+		path, err := parseObjectPath(ctx.Param("path"))
+		if err != nil {
+			return err
+		}
+
+		c, _, err := getCalendar(u, ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		if err := c.RemoveAll(path); err != nil {
+			return fmt.Errorf("failed to delete calendar object: %v", err)
+		}
+
+		return ctx.Redirect(http.StatusFound, "/calendar")
+	})
 }
