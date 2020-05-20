@@ -53,7 +53,7 @@
           <li class="nav-item">
             <a
               class="nav-link"
-              href="/message/{{$.Mailbox.Name | pathescape}}/{{.Uid}}?part={{.TextPartName}}"
+              href="{{.TextPart.URL false}}"
             >
             <span class="text-muted date">
               {{ .Envelope.Date | formatdate }}

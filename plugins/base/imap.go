@@ -158,12 +158,22 @@ func (msg *IMAPMessage) URL() *url.URL {
 	}
 }
 
-func (msg *IMAPMessage) TextPartName() string {
+func newIMAPPartNode(msg *IMAPMessage, path []int, part *imap.BodyStructure) *IMAPPartNode {
+	filename, _ := part.Filename()
+	return &IMAPPartNode{
+		Path:     path,
+		MIMEType: strings.ToLower(part.MIMEType + "/" + part.MIMESubType),
+		Filename: filename,
+		Message:  msg,
+	}
+}
+
+func (msg *IMAPMessage) TextPart() *IMAPPartNode {
 	if msg.BodyStructure == nil {
-		return ""
+		return nil
 	}
 
-	var best []int
+	var best *IMAPPartNode
 	isTextPlain := false
 	msg.BodyStructure.Walk(func(path []int, part *imap.BodyStructure) bool {
 		if !strings.EqualFold(part.MIMEType, "text") {
@@ -176,33 +186,16 @@ func (msg *IMAPMessage) TextPartName() string {
 		switch strings.ToLower(part.MIMESubType) {
 		case "plain":
 			isTextPlain = true
-			best = path
+			best = newIMAPPartNode(msg, path, part)
 		case "html":
 			if !isTextPlain {
-				best = path
+				best = newIMAPPartNode(msg, path, part)
 			}
 		}
 		return true
 	})
-	if best == nil {
-		return ""
-	}
 
-	l := make([]string, len(best))
-	for i, partNum := range best {
-		l[i] = strconv.Itoa(partNum)
-	}
-	return strings.Join(l, ".")
-}
-
-func newIMAPPartNode(msg *IMAPMessage, path []int, part *imap.BodyStructure) *IMAPPartNode {
-	filename, _ := part.Filename()
-	return &IMAPPartNode{
-		Path:     path,
-		MIMEType: strings.ToLower(part.MIMEType + "/" + part.MIMESubType),
-		Filename: filename,
-		Message:  msg,
-	}
+	return best
 }
 
 func (msg *IMAPMessage) Attachments() []IMAPPartNode {

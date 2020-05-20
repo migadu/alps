@@ -27,7 +27,7 @@
   <ul>
     {{range .Messages}}
       <li>
-        <a href="/message/{{$.Mailbox.Name | pathescape}}/{{.Uid}}?part={{.TextPartName}}">
+        <a href="{{.TextPart.URL false}}">
           {{if .Envelope.Subject}}
             {{.Envelope.Subject}}
           {{else}}
