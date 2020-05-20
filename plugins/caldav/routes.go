@@ -2,7 +2,6 @@ package alpscaldav
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"path"
