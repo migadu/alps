@@ -20,13 +20,33 @@
       <form method="post" action="" enctype="multipart/form-data">
         <input type="hidden" name="in_reply_to" value="{{.Message.InReplyTo}}">
 
-        <label><span>From</span><input type="email" name="from" id="from" value="{{.Message.From}}" /></label>
-        <label><span>To</span><input type="email" name="to" id="to" value="{{.Message.ToString}}" multiple {{ if not .Message.To }} autofocus{{ end }}/></label>
+        <label>
+          <span>From</span>
+          <input type="email" name="from" id="from" value="{{.Message.From}}" />
+        </label>
+        <label>
+          <span>To</span>
+          <input
+            type="email"
+            name="to"
+            id="to"
+            value="{{.Message.ToString}}"
+            multiple
+            list="emails"
+            {{ if not .Message.To }} autofocus{{ end }}
+          />
+        </label>
         <label><span>Subject</span><input type="text" name="subject" id="subject" value="{{.Message.Subject}}" {{ if .Message.To }} autofocus{{ end }}/></label>
         <label><span>Attachments</span><input type="file" name="attachments" id="attachments" multiple></label>
         <!-- TODO: list of previous attachments (needs design) -->
 
         <textarea name="text" class="body">{{.Message.Text}}</textarea>
+
+        <datalist id="emails">
+          {{range .Extra.EmailSuggestions}}
+            <option value="{{.}}">
+          {{end}}
+        </datalist>
 
         <div class="actions">
           <button type="submit">Send Message</button>
