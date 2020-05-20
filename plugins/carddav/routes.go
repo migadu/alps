@@ -23,6 +23,7 @@ type AddressBookRenderData struct {
 
 type AddressObjectRenderData struct {
 	alps.BaseRenderData
+	AddressBook   *carddav.AddressBook
 	AddressObject AddressObject
 }
 
@@ -95,7 +96,7 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		c, err := p.client(ctx.Session)
+		c, addressBook, err := p.clientWithAddressBook(ctx.Session)
 		if err != nil {
 			return err
 		}
@@ -120,6 +121,7 @@ func registerRoutes(p *plugin) {
 
 		return ctx.Render(http.StatusOK, "address-object.html", &AddressObjectRenderData{
 			BaseRenderData: *alps.NewBaseRenderData(ctx),
+			AddressBook:    addressBook,
 			AddressObject:  AddressObject{ao},
 		})
 	})

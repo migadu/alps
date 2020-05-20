@@ -184,7 +184,8 @@ main.message th { width: 5%;}
 main.message h1 { font-size: 1.2rem; padding: 0.5rem;}
 
 main.message pre,
-main.message iframe {
+main.message iframe,
+main.contact .details {
   flex: 1 auto;
   padding: 1rem;
   margin: 0.3rem 0 0 0;
@@ -212,6 +213,13 @@ main.message .message-header .parts {
 
 main.message .message-header .parts ul {
   margin-left: 1rem;
+}
+
+main.contact dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: 1fr;
+  grid-gap: 1rem;
 }
 
 main.compose .actions {

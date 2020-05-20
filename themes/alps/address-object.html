@@ -1,0 +1,50 @@
+{{template "head.html" .}}
+{{template "nav.html" .}}
+
+<div class="page-wrap">
+  <aside>
+    <a href="/contacts/create" class="new">New contact</a>
+    <!-- TODO: fetch list of address books -->
+    <a href="#" class="active">{{.AddressBook.Name}}</a>
+    <a href="#">Personal</a>
+  </aside>
+
+  <div class="container">
+    <main class="contact">
+      <section class="actions">
+        <div class="actions-wrap">
+          <div class="actions-message">
+            <div class="action-group">
+              <a href="/contacts" class="button-link">« Back</a>
+            </div>
+            <div class="action-group">
+              <a href="{{.AddressObject.URL}}/edit" class="button-link">
+                Edit
+              </a>
+            </div>
+            <form
+              class="action-group"
+              action="{{.AddressObject.URL}}/delete"
+              method="post"
+            >
+              <button type="submit">Delete</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section class="details">
+        {{$fn := .AddressObject.Card.Value "FN"}}
+        <h1>{{$fn}}</h1>
+        <dl>
+          {{range .AddressObject.Card.Values "EMAIL"}}
+          <dt>Email address</dt>
+          <dd><a href="/compose?to={{.}}">{{.}}</a></dd>
+          {{end}}
+        </dl>
+      </section>
+    </main>
+  </div>
+</div>
+
+{{template "foot.html"}}
