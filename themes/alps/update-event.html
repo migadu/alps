@@ -21,15 +21,16 @@
           <input type="text" name="summary" id="summary" value="{{.Event.Props.Text "SUMMARY"}}">
         </label>
 
-        <label>
-          <!-- TODO: inputs with time -->
-          <span>Start date</span>
-          <input type="date" name="start" id="start" value="{{.Event.DateTimeStart nil | ornow | formatinputdate}}"/>
+        <label class="event-date">
+          <span>Starts at</span>
+          <input type="date" name="start" id="start" value="{{.Event.DateTimeStart nil | formatinputdate}}"/>
+          <input type="time" name="start-time" id="start-time" value="{{.Event.DateTimeStart nil | formatinputtime}}"/>
         </label>
 
-        <label>
-          <span>End date</span>
-          <input type="date" name="end" id="end" value="{{.Event.DateTimeEnd nil | ornow | formatinputdate}}"/>
+        <label class="event-date">
+          <span>Ends at</span>
+          <input type="date" name="end" id="end" value="{{.Event.DateTimeEnd nil | formatinputdate}}"/>
+          <input type="time" name="end-time" id="end-time" value="{{.Event.DateTimeEnd nil | formatinputtime}}"/>
         </label>
 
         <textarea name="description" id="description">{{.Event.Props.Text "DESCRIPTION"}}</textarea>

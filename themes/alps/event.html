@@ -1,0 +1,59 @@
+{{template "head.html" .}}
+{{template "nav.html" .}}
+
+<div class="page-wrap">
+  <aside>
+    <a href="/calendar/create" class="new">New event</a>
+    <!-- TODO: fetch list of address books -->
+    <a href="#" class="active">{{.Calendar.Name}}</a>
+    <a href="#">Personal</a>
+  </aside>
+
+  <div class="container">
+    <main class="event">
+      <section class="actions">
+        <div class="actions-wrap">
+          <div class="actions-message">
+            <div class="action-group">
+              <a href="/calendar" class="button-link">« Back</a>
+            </div>
+            <div class="action-group">
+              <a href="{{.Event.URL}}/update" class="button-link">Edit</a>
+            </div>
+            <form
+              class="action-group"
+              action="{{.Event.URL}}/delete"
+              method="post"
+            >
+              <input type="submit" value="Delete">
+            </form>
+            <!-- TODO: Invite attendees -->
+          </div>
+        </div>
+      </section>
+
+      <section class="details">
+        {{$event := index .Event.Data.Events 0}}
+        <table>
+          <tr>
+            <th colspan="2">
+              <h1>{{$event.Props.Text "SUMMARY"}}</h1>
+            </th>
+          </tr>
+          <tr>
+            <th>Start date:</th>
+            <td>{{$event.DateTimeStart nil | formatdate}}</td>
+          </tr>
+          <tr>
+            <th>End date:</th>
+            <td>{{$event.DateTimeEnd nil | formatdate}}</td>
+          </tr>
+          <!-- TODO: List of attendees, room -->
+        </table>
+        <pre>{{$event.Props.Text "DESCRIPTION"}}</pre>
+      </section>
+    </main>
+  </div>
+</div>
+
+{{template "foot.html"}}
