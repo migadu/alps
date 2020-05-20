@@ -135,14 +135,14 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			NextTime:       start.AddDate(0, 1, 0),
 
 			EventsForDate: func(when time.Time) []CalendarObject {
-				if events, ok := eventMap[when.Truncate(time.Hour * 24)]; ok {
+				if events, ok := eventMap[when.Truncate(time.Hour*24)]; ok {
 					return events
 				}
 				return nil
 			},
 
 			DaySuffix: func(n int) string {
-				if n % 100 >= 11 && n % 100 <= 13 {
+				if n%100 >= 11 && n%100 <= 13 {
 					return "th"
 				}
 				return map[int]string{
@@ -156,10 +156,10 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 					7: "th",
 					8: "th",
 					9: "th",
-				}[n % 10]
+				}[n%10]
 			},
 
-			Sub: func (a, b int) int {
+			Sub: func(a, b int) int {
 				// Why isn't this built-in, come on Go
 				return a - b
 			},

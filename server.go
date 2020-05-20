@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/labstack/echo/v4"
 	"github.com/fernet/fernet-go"
+	"github.com/labstack/echo/v4"
 )
 
 const (
@@ -318,7 +318,7 @@ func (ctx *Context) GetLoginToken() (string, string) {
 	}
 
 	bytes := fernet.VerifyAndDecrypt([]byte(cookie.Value),
-		24 * time.Hour * 30, []*fernet.Key{fkey})
+		24*time.Hour*30, []*fernet.Key{fkey})
 	if bytes == nil {
 		return "", ""
 	}
