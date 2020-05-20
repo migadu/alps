@@ -2,9 +2,11 @@ package alpscaldav
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
 	"time"
 
 	"git.sr.ht/~emersion/alps"
@@ -179,6 +181,8 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 
 		if ctx.Request().Method == "POST" {
 			summary := ctx.FormValue("summary")
+			description := ctx.FormValue("description")
+
 			start, err := time.Parse("2006-01-02", ctx.FormValue("start"))
 			if err != nil {
 				err = fmt.Errorf("malformed start date: %v", err)
@@ -202,6 +206,13 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			event.Props.SetDateTime(ical.PropDateTimeStart, start)
 			event.Props.SetDateTime(ical.PropDateTimeEnd, end)
 			event.Props.Del(ical.PropDuration)
+
+			if description != "" {
+				description = strings.ReplaceAll(description, "\r", "")
+				event.Props.SetText(ical.PropDescription, description)
+			} else {
+				event.Props.Del(ical.PropDescription)
+			}
 
 			newID := uuid.New()
 			if prop := event.Props.Get(ical.PropUID); prop == nil {

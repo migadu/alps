@@ -24,6 +24,10 @@
   <input type="date" name="end" id="end" value="{{.Event.DateTimeEnd nil | ornow | formatinputdate}}"/>
   <br>
 
+  <label for="description">Description:</label><br>
+  <textarea name="description" id="description" cols="80" rows="15">{{.Event.Props.Text "DESCRIPTION"}}</textarea>
+  <br><br>
+
   <input type="submit" value="Save">
 </form>
 
