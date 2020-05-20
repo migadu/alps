@@ -543,6 +543,18 @@ main.calendar .date h4 {
 
 main.calendar .date h4 .da { font-size: 1.2rem; }
 
+main.settings form {
+  max-width: 600px;
+}
+
+main.settings button {
+  background-color: white;
+}
+
+main.settings button:hover {
+  background-color: #f8f8f8;
+}
+
 input[type="submit"],
 .button,
 button,

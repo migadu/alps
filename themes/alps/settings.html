@@ -1,0 +1,28 @@
+{{template "head.html" .}}
+{{template "nav.html" .}}
+
+<div class="page-wrap">
+  <aside>
+    <a href="/mailbox/INBOX">Back to inbox</a>
+  </aside>
+
+  <div class="container">
+    <main class="settings">
+      <form method="post">
+        <div class="action-group">
+          <label for="messages_per_page">Messages per page</label>
+          <input
+            type="number"
+            name="messages_per_page"
+            id="messages_per_page"
+            value="{{.Settings.MessagesPerPage}}"
+            required />
+        </div>
+
+        <button type="submit">Save settings</button>
+      </form>
+    </main>
+  </div>
+</div>
+
+{{template "foot.html"}}
