@@ -398,6 +398,12 @@ main table tfoot {
   width: 100%;
 }
 
+.action-group .checkbox input {
+  display: inline;
+  width: 1rem;
+  float: left;
+}
+
 .actions-message,
 .actions-contacts {
   display: flex;

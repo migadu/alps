@@ -160,6 +160,12 @@ func handleGetMailbox(ctx *alps.Context) error {
 func handleLogin(ctx *alps.Context) error {
 	username := ctx.FormValue("username")
 	password := ctx.FormValue("password")
+	remember := ctx.FormValue("remember-me")
+
+	if username == "" && password == "" {
+		username, password = ctx.GetLoginToken()
+	}
+
 	if username != "" && password != "" {
 		s, err := ctx.Server.Sessions.Put(username, password)
 		if err != nil {
@@ -170,18 +176,30 @@ func handleLogin(ctx *alps.Context) error {
 		}
 		ctx.SetSession(s)
 
+		if remember == "on" {
+			ctx.SetLoginToken(username, password)
+		}
+
 		if path := ctx.QueryParam("next"); path != "" && path[0] == '/' && path != "/login" {
 			return ctx.Redirect(http.StatusFound, path)
 		}
 		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}
 
-	return ctx.Render(http.StatusOK, "login.html", alps.NewBaseRenderData(ctx))
+	return ctx.Render(http.StatusOK, "login.html",
+		&struct {
+			alps.BaseRenderData
+			CanRememberMe bool
+		}{
+			BaseRenderData: *alps.NewBaseRenderData(ctx),
+			CanRememberMe:  ctx.Server.Options.LoginKey != nil,
+		})
 }
 
 func handleLogout(ctx *alps.Context) error {
 	ctx.Session.Close()
 	ctx.SetSession(nil)
+	ctx.SetLoginToken("", "")
 	return ctx.Redirect(http.StatusFound, "/login")
 }
 

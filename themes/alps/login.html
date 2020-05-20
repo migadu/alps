@@ -6,18 +6,23 @@
 
     <form method="post" action="/login">
       <div class="action-group">
-        <label for="username">
-          <strong>Username</strong>
-        </label>
+        <label for="username">Username</label>
         <input type="text" name="username" id="username" autofocus />
       </div>
 
       <div class="action-group">
-        <label for="password">
-          <strong>Password</strong>
-        </label>
+        <label for="password">Password</label>
         <input type="password" name="password" id="password" />
       </div>
+
+      {{if .CanRememberMe}}
+      <div class="action-group">
+        <label for="remember-me" class="checkbox">
+          <input type="checkbox" name="remember-me" id="remember-me" />
+          Remember me
+        </label>
+      </div>
+      {{end}}
 
       <div class="action-group">
         <button type="submit">Sign in</button>

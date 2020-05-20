@@ -1,7 +1,9 @@
 package alps
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -9,14 +11,19 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/fernet/fernet-go"
 )
 
-const cookieName = "alps_session"
+const (
+	cookieName           = "alps_session"
+	loginTokenCookieName = "alps_login_token"
+)
 
 // Server holds all the alps server state.
 type Server struct {
 	e        *echo.Echo
 	Sessions *SessionManager
+	Options  *Options
 
 	mutex   sync.RWMutex // used for server reload
 	plugins []Plugin
@@ -34,11 +41,10 @@ type Server struct {
 		tls      bool
 		insecure bool
 	}
-	defaultTheme string
 }
 
 func newServer(e *echo.Echo, options *Options) (*Server, error) {
-	s := &Server{e: e, defaultTheme: options.Theme}
+	s := &Server{e: e, Options: options}
 
 	s.upstreams = make(map[string]*url.URL, len(options.Upstreams))
 	for _, upstream := range options.Upstreams {
@@ -195,7 +201,7 @@ func (s *Server) load() error {
 		plugins = append(plugins, l...)
 	}
 
-	renderer := newRenderer(s.e.Logger, s.defaultTheme)
+	renderer := newRenderer(s.e.Logger, s.Options.Theme)
 	if err := renderer.Load(plugins); err != nil {
 		return fmt.Errorf("failed to load templates: %v", err)
 	}
@@ -262,6 +268,70 @@ func (ctx *Context) SetSession(s *Session) {
 	ctx.SetCookie(&cookie)
 }
 
+type loginToken struct {
+	Username string
+	Password string
+}
+
+func (ctx *Context) SetLoginToken(username, password string) {
+	cookie := http.Cookie{
+		Expires:  time.Now().Add(30 * 24 * time.Hour),
+		Name:     loginTokenCookieName,
+		HttpOnly: true,
+		Path:     "/login",
+	}
+	if username == "" {
+		cookie.Expires = aLongTimeAgo // unset the cookie
+		ctx.SetCookie(&cookie)
+		return
+	}
+
+	loginToken := loginToken{username, password}
+	payload, err := json.Marshal(loginToken)
+	if err != nil {
+		panic(err) // Should never happen
+	}
+	fkey := ctx.Server.Options.LoginKey
+	if fkey == nil {
+		return
+	}
+
+	bytes, err := fernet.EncryptAndSign(payload, fkey)
+	if err != nil {
+		log.Printf("Warning: login token encryption failed: %v", err)
+		return
+	}
+
+	cookie.Value = string(bytes)
+	ctx.SetCookie(&cookie)
+}
+
+func (ctx *Context) GetLoginToken() (string, string) {
+	cookie, err := ctx.Cookie(loginTokenCookieName)
+	if err != nil || cookie == nil {
+		return "", ""
+	}
+
+	fkey := ctx.Server.Options.LoginKey
+	if fkey == nil {
+		return "", ""
+	}
+
+	bytes := fernet.VerifyAndDecrypt([]byte(cookie.Value),
+		24 * time.Hour * 30, []*fernet.Key{fkey})
+	if bytes == nil {
+		return "", ""
+	}
+
+	var token loginToken
+	err = json.Unmarshal(bytes, &token)
+	if err != nil {
+		panic(err) // Should never happen
+	}
+
+	return token.Username, token.Password
+}
+
 func isPublic(path string) bool {
 	if strings.HasPrefix(path, "/plugins/") {
 		parts := strings.Split(path, "/")
@@ -292,6 +362,7 @@ type Options struct {
 	Upstreams []string
 	Theme     string
 	Debug     bool
+	LoginKey  *fernet.Key
 }
 
 // New creates a new server.

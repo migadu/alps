@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"git.sr.ht/~emersion/alps"
+	"github.com/fernet/fernet-go"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
@@ -21,11 +22,15 @@ import (
 )
 
 func main() {
-	var options alps.Options
-	var addr string
+	var (
+		addr     string
+		loginKey string
+		options  alps.Options
+	)
 	flag.StringVar(&options.Theme, "theme", "", "default theme")
 	flag.StringVar(&addr, "addr", ":1323", "listening address")
 	flag.BoolVar(&options.Debug, "debug", false, "enable debug logs")
+	flag.StringVar(&loginKey, "login-key", "", "Fernet key for login persistence")
 
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "usage: alps [options...] <upstream servers...>\n")
@@ -38,6 +43,15 @@ func main() {
 	if len(options.Upstreams) == 0 {
 		flag.Usage()
 		return
+	}
+
+	if loginKey != "" {
+		fernetKey, err := fernet.DecodeKey(loginKey)
+		if err != nil {
+			flag.Usage()
+			return
+		}
+		options.LoginKey = fernetKey
 	}
 
 	e := echo.New()
