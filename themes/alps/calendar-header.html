@@ -1,0 +1,18 @@
+<div class="actions-wrap">
+  <div class="actions-pagination" style="margin-left: 0;">
+    <a href="?month={{.PrevPage}}" class="button-link">« {{.PrevTime.Format "January"}}</a>
+    <h3>{{.Time.Format "January 2006"}}</h3>
+    <a href="?month={{.NextPage}}" class="button-link">{{.NextTime.Format "January"}} »</a>
+    {{if ne .Time.Month .Now.Month}}
+    <a href="/calendar" class="button-link">Today »</a>
+    {{end}}
+  </div>
+
+  <form method="get" class="actions-search action-group">
+    <input
+      type="text"
+      name="query"
+      placeholder="Search {{.Calendar.Name}} events...">
+    <button>Search</button>
+  </form>
+</div>

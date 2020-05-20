@@ -18,9 +18,16 @@ import (
 type CalendarRenderData struct {
 	alps.BaseRenderData
 	Time               time.Time
+	Now                time.Time
+	Dates              [7 * 6]time.Time
 	Calendar           *caldav.Calendar
 	Events             []CalendarObject
 	PrevPage, NextPage string
+	PrevTime, NextTime time.Time
+
+	EventsForDate func(time.Time) []CalendarObject
+	DaySuffix     func(n int) string
+	Sub           func(a, b int) int
 }
 
 type EventRenderData struct {
@@ -96,13 +103,66 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			return fmt.Errorf("failed to query calendar: %v", err)
 		}
 
+		// TODO: Time zones are hard
+		var dates [7 * 6]time.Time
+		initialDate := start.UTC()
+		initialDate = initialDate.AddDate(0, 0, -int(initialDate.Weekday()))
+		for i := 0; i < len(dates); i += 1 {
+			dates[i] = initialDate
+			initialDate = initialDate.AddDate(0, 0, 1)
+		}
+
+		eventMap := make(map[time.Time][]CalendarObject)
+		for _, ev := range events {
+			ev := ev // make a copy
+			// TODO: include event on each date for which it is active
+			co := ev.Data.Events()[0]
+			startTime, _ := co.DateTimeStart(nil)
+			startTime = startTime.UTC().Truncate(time.Hour * 24)
+			eventMap[startTime] = append(eventMap[startTime], CalendarObject{&ev})
+		}
+
 		return ctx.Render(http.StatusOK, "calendar.html", &CalendarRenderData{
 			BaseRenderData: *alps.NewBaseRenderData(ctx),
 			Time:           start,
+			Now:            time.Now(), // TODO: Use client time zone
 			Calendar:       calendar,
+			Dates:          dates,
 			Events:         newCalendarObjectList(events),
 			PrevPage:       start.AddDate(0, -1, 0).Format(monthPageLayout),
 			NextPage:       start.AddDate(0, 1, 0).Format(monthPageLayout),
+			PrevTime:       start.AddDate(0, -1, 0),
+			NextTime:       start.AddDate(0, 1, 0),
+
+			EventsForDate: func(when time.Time) []CalendarObject {
+				if events, ok := eventMap[when.Truncate(time.Hour * 24)]; ok {
+					return events
+				}
+				return nil
+			},
+
+			DaySuffix: func(n int) string {
+				if n % 100 >= 11 && n % 100 <= 13 {
+					return "th"
+				}
+				return map[int]string{
+					0: "th",
+					1: "st",
+					2: "nd",
+					3: "rd",
+					4: "th",
+					5: "th",
+					6: "th",
+					7: "th",
+					8: "th",
+					9: "th",
+				}[n % 10]
+			},
+
+			Sub: func (a, b int) int {
+				// Why isn't this built-in, come on Go
+				return a - b
+			},
 		})
 	})
 

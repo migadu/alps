@@ -1,0 +1,84 @@
+{{template "head.html" .}}
+{{template "nav.html" .}}
+
+<div class="page-wrap">
+  <aside>
+    <a href="/calendar/create" class="new">New event</a>
+    <!-- TODO: fetch list of address books -->
+    <a href="#" class="active">{{.Calendar.Name}}</a>
+    <a href="#">Personal</a>
+  </aside>
+
+  <div class="container">
+    <main class="calendar">
+      <section class="actions">
+        {{ template "calendar-header.html" . }}
+      </section>
+
+      <section class="dates">
+        <h4 class="weekday sunday-top">Sunday</h4>
+        <h4 class="weekday monday-top">Monday</h4>
+        <h4 class="weekday tuesday-top">Tuesday</h4>
+        <h4 class="weekday wednesday-top">Wednesday</h4>
+        <h4 class="weekday thursday-top">Thursday</h4>
+        <h4 class="weekday friday-top">Friday</h4>
+        <h4 class="weekday saturday-top">Saturday</h4>
+
+        {{$base := .}}
+        {{range .Dates}}
+        <div class="date
+          {{if ne $base.Time.Month .Month}}extra{{end}}
+          {{if and (eq $base.Now.Month .Month) (eq $base.Now.Day .Day)}}active{{end}}
+          ">
+          {{if eq $base.Time.Month .Month}}
+            <a href="#" class="date-link"></a>
+          {{end}}
+          <div class="events">
+            {{$events := (call $base.EventsForDate .)}}
+            {{if $events}}
+            <ul>
+              {{$overflow := 0}}
+              {{if gt (len $events) 3}}
+              {{$overflow = call $base.Sub (len $events) 3}}
+              {{$events = slice $events 0 3}}
+              {{end}}
+
+              {{range $events}}
+              {{$event := index .Data.Events 0}}
+              <li>
+                <span class="start-time">
+                  {{($event.DateTimeStart nil).Format "15:04"}}
+                </span>
+                {{$event.Props.Text "SUMMARY"}}
+              </li>
+              {{end}}
+              {{if ne $overflow 0}}
+              <li class="overflow">...and {{$overflow}} more</li>
+              {{end}}
+            </ul>
+            {{end}}
+          </div>
+          <h4>
+            <span class="mo">{{.Format "Jan"}}</span>
+            <span class="da">{{.Format "2"}}{{call $base.DaySuffix .Day}}</span>
+          </h4>
+        </div>
+        {{end}}
+
+        <h4 class="weekday sunday-bottom">Sunday</h4>
+        <h4 class="weekday monday-bottom">Monday</h4>
+        <h4 class="weekday tuesday-bottom">Tuesday</h4>
+        <h4 class="weekday wednesday-bottom">Wednesday</h4>
+        <h4 class="weekday thursday-bottom">Thursday</h4>
+        <h4 class="weekday friday-bottom">Friday</h4>
+        <h4 class="weekday saturday-bottom">Saturday</h4>
+      </section>
+
+      <section class="actions">
+        {{ template "calendar-header.html" . }}
+      </section>
+    </main>
+  </div>
+</div>
+
+{{template "foot.html"}}

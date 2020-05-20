@@ -261,6 +261,11 @@ main.new-contact .actions > *:not(:last-child) {
   margin-right: 1rem;
 }
 
+.actions h3 {
+  align-self: center;
+  margin: 0 1.3rem 0 1rem;
+}
+
 .message-list-subject a { color: #77c; }
 
 .message-list-unread.message-list-sender,
@@ -370,7 +375,7 @@ main table tfoot {
   padding: 0.3rem 0.5rem;
 }
 
-.actions-pagination .button-link:first-child:not(:last-child) {
+.actions-pagination .button-link:not(:last-child) {
   margin-right: 0.3rem;
 }
 
@@ -443,6 +448,100 @@ main table tfoot {
   color: #333;
   margin-top: 1rem;
 }
+
+main.calendar .dates {
+  flex-grow: 1;
+  padding: 0.3rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr;
+  grid-template-rows: auto 1fr 1fr 1fr 1fr 1fr 1fr auto;
+  grid-template-areas:
+    "sunday-top monday-top wednesday-top tuesday-top thursday-top friday-top saturday-top"
+    "dates dates dates dates dates dates dates"
+    "dates dates dates dates dates dates dates"
+    "dates dates dates dates dates dates dates"
+    "dates dates dates dates dates dates dates"
+    "dates dates dates dates dates dates dates"
+    "dates dates dates dates dates dates dates"
+    "sunday-bottom monday-bottom wednesday-bottom tuesday-bottom thursday-bottom friday-bottom saturday-bottom";
+  grid-gap: 0.3rem;
+}
+
+main.calendar .dates .weekday {
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: normal;
+}
+
+main.calendar .dates .sunday-top { grid-area: sunday-top; }
+main.calendar .dates .monday-top { grid-area: monday-top; }
+main.calendar .dates .tuesday-top { grid-area: tuesday-top; }
+main.calendar .dates .wednesday-top { grid-area: wednesday-top; }
+main.calendar .dates .thursday-top { grid-area: thursday-top; }
+main.calendar .dates .friday-top { grid-area: friday-top; }
+main.calendar .dates .saturday-top { grid-area: saturday-top; }
+main.calendar .dates .sunday-bottom { grid-area: sunday-bottom; }
+main.calendar .dates .monday-bottom { grid-area: monday-bottom; }
+main.calendar .dates .tuesday-bottom { grid-area: tuesday-bottom; }
+main.calendar .dates .wednesday-bottom { grid-area: wednesday-bottom; }
+main.calendar .dates .thursday-bottom { grid-area: thursday-bottom; }
+main.calendar .dates .friday-bottom { grid-area: friday-bottom; }
+main.calendar .dates .saturday-bottom { grid-area: saturday-bottom; }
+
+main.calendar .date {
+  border: 1px solid #eee;
+  padding: 0.3rem;
+  background: white;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+main.calendar .date.active {
+  background-color: #f6fff6;
+  border: 1px solid #afa;
+}
+
+main.calendar .date .date-link {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+}
+
+main.calendar .date.extra {
+  background: transparent;
+  border: none;
+}
+
+main.calendar .date ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 0.3rem;
+}
+
+main.calendar .date .events {
+  flex-grow: 1;
+}
+
+main.calendar .date.extra .events {
+  visibility: hidden;
+}
+
+main.calendar .events .start-time {
+  color: #444;
+}
+
+main.calendar .events .overflow {
+  color: #444;
+  text-align: right;
+}
+
+main.calendar .date h4 {
+  font-weight: normal;
+  text-align: right;
+  color: #666;
+}
+
+main.calendar .date h4 .da { font-size: 1.2rem; }
 
 input[type="submit"],
 .button,
