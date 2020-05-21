@@ -66,6 +66,7 @@ func registerRoutes(p *alps.GoPlugin) {
 type MailboxRenderData struct {
 	alps.BaseRenderData
 	Mailbox            *MailboxStatus
+	Inbox              *MailboxStatus
 	Mailboxes          []MailboxInfo
 	Messages           []IMAPMessage
 	PrevPage, NextPage int
@@ -96,7 +97,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 
 	var mailboxes []MailboxInfo
 	var msgs []IMAPMessage
-	var mbox *MailboxStatus
+	var mbox, inbox *MailboxStatus
 	var total int
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 		var err error
@@ -113,6 +114,13 @@ func handleGetMailbox(ctx *alps.Context) error {
 		}
 		if mbox, err = getMailboxStatus(c, mboxName); err != nil {
 			return err
+		}
+		if mboxName == "INBOX" {
+			inbox = mbox
+		} else {
+			if inbox, err = getMailboxStatus(c, "INBOX"); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -149,6 +157,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
 		BaseRenderData: *alps.NewBaseRenderData(ctx).WithTitle(title),
 		Mailbox:        mbox,
+		Inbox:          inbox,
 		Mailboxes:      mailboxes,
 		Messages:       msgs,
 		PrevPage:       prevPage,
@@ -207,6 +216,7 @@ type MessageRenderData struct {
 	alps.BaseRenderData
 	Mailboxes   []MailboxInfo
 	Mailbox     *MailboxStatus
+	Inbox       *MailboxStatus
 	Message     *IMAPMessage
 	Part        *IMAPPartNode
 	View        interface{}
@@ -233,7 +243,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	var mailboxes []MailboxInfo
 	var msg *IMAPMessage
 	var part *message.Entity
-	var mbox *MailboxStatus
+	var mbox, inbox *MailboxStatus
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 		var err error
 		if mailboxes, err = listMailboxes(c); err != nil {
@@ -244,6 +254,13 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		}
 		if mbox, err = getMailboxStatus(c, mboxName); err != nil {
 			return err
+		}
+		if mboxName == "INBOX" {
+			inbox = mbox
+		} else {
+			if inbox, err = getMailboxStatus(c, "INBOX"); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -306,6 +323,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			WithTitle(msg.Envelope.Subject),
 		Mailboxes:   mailboxes,
 		Mailbox:     mbox,
+		Inbox:       inbox,
 		Message:     msg,
 		Part:        msg.PartByPath(partPath),
 		View:        view,

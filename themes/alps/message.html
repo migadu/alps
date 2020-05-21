@@ -32,7 +32,6 @@
   <aside>
     <!-- the logo image, dimensions 200x32 may be present or not -->
     <a href="/compose" class="new">Compose&nbsp;Mail</a>
-    {{$current := .Mailbox}}
     {{range .Mailboxes}}
       <a href="{{.URL}}"
           {{ if eq $current.Name .Name }}class="active"{{ end }}>
@@ -41,9 +40,15 @@
         {{else}}
           {{.Name}}
         {{end}}
-        {{ if eq $current.Name .Name }}
-          {{ if $current.Unseen }}({{ $current.Unseen }}){{ end }}
+
+        {{ $unseen := 0 }}
+        {{ if eq .Name "INBOX" }}
+          {{ $unseen = $.Inbox.Unseen }}
         {{ end }}
+        {{ if eq .Name $.Mailbox.Name }}
+          {{ $unseen = $.Mailbox.Unseen }}
+        {{ end }}
+        {{ if $unseen }}({{ $unseen }}){{ end }}
       </a>
     {{end}}
   </aside>
