@@ -31,7 +31,7 @@
           {{if and (eq $base.Now.Month .Month) (eq $base.Now.Day .Day)}}active{{end}}
           ">
           {{if eq $base.Time.Month .Month}}
-            <a href="#" class="date-link"></a>
+            <a href="/calendar/date?date={{.Format "2006-01-02"}}" class="date-link"></a>
           {{end}}
           <div class="events">
             {{$events := (call $base.EventsForDate .)}}

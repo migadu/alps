@@ -30,6 +30,14 @@ type CalendarRenderData struct {
 	Sub           func(a, b int) int
 }
 
+type CalendarDateRenderData struct {
+	alps.BaseRenderData
+	Time               time.Time
+	Calendar           *caldav.Calendar
+	Events             []CalendarObject
+	PrevPage, NextPage string
+}
+
 type EventRenderData struct {
 	alps.BaseRenderData
 	Calendar *caldav.Calendar
@@ -43,7 +51,10 @@ type UpdateEventRenderData struct {
 	Event          *ical.Event
 }
 
-var monthPageLayout = "2006-01"
+const (
+	monthPageLayout = "2006-01"
+	datePageLayout  = "2006-01-02"
+)
 
 func parseObjectPath(s string) (string, error) {
 	p, err := url.PathUnescape(s)
@@ -141,15 +152,15 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 		return ctx.Render(http.StatusOK, "calendar.html", &CalendarRenderData{
 			BaseRenderData: *alps.NewBaseRenderData(ctx).
 				WithTitle(calendar.Name + " Calendar: " + start.Format("January 2006")),
-			Time:           start,
-			Now:            time.Now(), // TODO: Use client time zone
-			Calendar:       calendar,
-			Dates:          dates,
-			Events:         newCalendarObjectList(events),
-			PrevPage:       start.AddDate(0, -1, 0).Format(monthPageLayout),
-			NextPage:       start.AddDate(0, 1, 0).Format(monthPageLayout),
-			PrevTime:       start.AddDate(0, -1, 0),
-			NextTime:       start.AddDate(0, 1, 0),
+			Time:     start,
+			Now:      time.Now(), // TODO: Use client time zone
+			Calendar: calendar,
+			Dates:    dates,
+			Events:   newCalendarObjectList(events),
+			PrevPage: start.AddDate(0, -1, 0).Format(monthPageLayout),
+			NextPage: start.AddDate(0, 1, 0).Format(monthPageLayout),
+			PrevTime: start.AddDate(0, -1, 0),
+			NextTime: start.AddDate(0, 1, 0),
 
 			EventsForDate: func(when time.Time) []CalendarObject {
 				if events, ok := eventMap[when.Truncate(time.Hour*24)]; ok {
@@ -180,6 +191,66 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 				// Why isn't this built-in, come on Go
 				return a - b
 			},
+		})
+	})
+
+	p.GET("/calendar/date", func(ctx *alps.Context) error {
+		var start time.Time
+		if s := ctx.QueryParam("date"); s != "" {
+			var err error
+			start, err = time.Parse(datePageLayout, s)
+			if err != nil {
+				return fmt.Errorf("failed to parse date: %v", err)
+			}
+		} else {
+			now := time.Now()
+			start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		}
+		end := start.AddDate(0, 0, 1)
+
+		// TODO: multi-calendar support
+		c, calendar, err := getCalendar(u, ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		query := caldav.CalendarQuery{
+			CompRequest: caldav.CalendarCompRequest{
+				Name:  "VCALENDAR",
+				Props: []string{"VERSION"},
+				Comps: []caldav.CalendarCompRequest{{
+					Name: "VEVENT",
+					Props: []string{
+						"SUMMARY",
+						"UID",
+						"DTSTART",
+						"DTEND",
+						"DURATION",
+					},
+				}},
+			},
+			CompFilter: caldav.CompFilter{
+				Name: "VCALENDAR",
+				Comps: []caldav.CompFilter{{
+					Name:  "VEVENT",
+					Start: start,
+					End:   end,
+				}},
+			},
+		}
+		events, err := c.QueryCalendar(calendar.Path, &query)
+		if err != nil {
+			return fmt.Errorf("failed to query calendar: %v", err)
+		}
+
+		return ctx.Render(http.StatusOK, "calendar-date.html", &CalendarDateRenderData{
+			BaseRenderData: *alps.NewBaseRenderData(ctx).
+				WithTitle(calendar.Name + " Calendar: " + start.Format("January 02, 2006")),
+			Time:     start,
+			Events:   newCalendarObjectList(events),
+			Calendar: calendar,
+			PrevPage: start.AddDate(0, 0, -1).Format(datePageLayout),
+			NextPage: start.AddDate(0, 0, 1).Format(datePageLayout),
 		})
 	})
 
