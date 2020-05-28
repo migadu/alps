@@ -344,12 +344,11 @@ func (msg *IMAPMessage) HasFlag(flag string) bool {
 	return false
 }
 
-func listMessages(conn *imapclient.Client, mboxName string, page, messagesPerPage int) ([]IMAPMessage, error) {
-	if err := ensureMailboxSelected(conn, mboxName); err != nil {
+func listMessages(conn *imapclient.Client, mbox *MailboxStatus, page, messagesPerPage int) ([]IMAPMessage, error) {
+	if err := ensureMailboxSelected(conn, mbox.Name); err != nil {
 		return nil, err
 	}
 
-	mbox := conn.Mailbox()
 	to := int(mbox.Messages) - page*messagesPerPage
 	from := to - messagesPerPage + 1
 	if from <= 0 {
@@ -372,7 +371,7 @@ func listMessages(conn *imapclient.Client, mboxName string, page, messagesPerPag
 
 	msgs := make([]IMAPMessage, 0, to-from)
 	for msg := range ch {
-		msgs = append(msgs, IMAPMessage{msg, mboxName})
+		msgs = append(msgs, IMAPMessage{msg, mbox.Name})
 	}
 
 	if err := <-done; err != nil {

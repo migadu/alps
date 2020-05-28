@@ -104,15 +104,15 @@ func handleGetMailbox(ctx *alps.Context) error {
 		if mailboxes, err = listMailboxes(c); err != nil {
 			return err
 		}
+		if mbox, err = getMailboxStatus(c, mboxName); err != nil {
+			return err
+		}
 		if query != "" {
 			msgs, total, err = searchMessages(c, mboxName, query, page, messagesPerPage)
 		} else {
-			msgs, err = listMessages(c, mboxName, page, messagesPerPage)
+			msgs, err = listMessages(c, mbox, page, messagesPerPage)
 		}
 		if err != nil {
-			return err
-		}
-		if mbox, err = getMailboxStatus(c, mboxName); err != nil {
 			return err
 		}
 		if mboxName == "INBOX" {
