@@ -3,9 +3,15 @@ package alpsbase
 import (
 	"html/template"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-imap"
+)
+
+const (
+	inputDateLayout = "2006-01-02"
+	inputTimeLayout = "15:04"
 )
 
 var templateFuncs = template.FuncMap{
@@ -39,5 +45,20 @@ var templateFuncs = template.FuncMap{
 		default:
 			return true
 		}
+	},
+	"join": func(l []string, sep string) string {
+		return strings.Join(l, sep)
+	},
+	"formatinputdate": func(t time.Time) string {
+		if t.IsZero() {
+			return ""
+		}
+		return t.Format(inputDateLayout)
+	},
+	"formatinputtime": func(t time.Time) string {
+		if t.IsZero() {
+			return ""
+		}
+		return t.Format(inputTimeLayout)
 	},
 }

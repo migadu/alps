@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"git.sr.ht/~emersion/alps"
 	alpsbase "git.sr.ht/~emersion/alps/plugins/base"
@@ -111,12 +110,6 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	}
 
 	registerRoutes(p)
-
-	p.TemplateFuncs(map[string]interface{}{
-		"join": func(l []string, sep string) string {
-			return strings.Join(l, sep)
-		},
-	})
 
 	p.Inject("compose.html", func(ctx *alps.Context, _data alps.RenderData) error {
 		data := _data.(*alpsbase.ComposeRenderData)

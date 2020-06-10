@@ -2,10 +2,8 @@ package alpscaldav
 
 import (
 	"fmt"
-	"html/template"
 	"net/http"
 	"net/url"
-	"time"
 
 	"git.sr.ht/~emersion/alps"
 )
@@ -63,21 +61,6 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	p := alps.GoPlugin{Name: "caldav"}
 
 	registerRoutes(&p, u)
-
-	p.TemplateFuncs(template.FuncMap{
-		"formatinputdate": func(t time.Time) string {
-			if t.IsZero() {
-				return ""
-			}
-			return t.Format(inputDateLayout)
-		},
-		"formatinputtime": func(t time.Time) string {
-			if t.IsZero() {
-				return ""
-			}
-			return t.Format(inputTimeLayout)
-		},
-	})
 
 	return p.Plugin(), nil
 }
