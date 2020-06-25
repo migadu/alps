@@ -753,7 +753,7 @@ func handleMove(ctx *alps.Context) error {
 	if path := formOrQueryParam(ctx, "next"); path != "" {
 		return ctx.Redirect(http.StatusFound, path)
 	}
-	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(to)))
+	return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(mboxName)))
 }
 
 func handleDelete(ctx *alps.Context) error {
