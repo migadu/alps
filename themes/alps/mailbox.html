@@ -47,7 +47,7 @@
           {{ end }}
           </div>
           <div class="message-list-subject  message-list-item {{ if not (.HasFlag "\\Seen") }}message-list-unread{{ end }}">
-            <a href="{{.TextPart.URL false}}">
+            <a href="{{if .TextPart}}{{.TextPart.URL false}}{{else}}{{.URL}}{{end}}">
               {{if .Envelope.Subject}}
                 {{.Envelope.Subject}}
               {{else}}

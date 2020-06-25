@@ -128,10 +128,10 @@
 
             <span class="followups">
               {{if .Message.HasFlag "\\Draft"}}
-                <a class="action-group button-link" href="{{.Message.URL}}/edit?part={{.Message.TextPart.PathString}}">Edit draft</a>
+                <a class="action-group button-link" href="{{.Message.URL}}/edit{{if .Message.TextPart}}?part={{.Message.TextPart.PathString}}{{end}}">Edit draft</a>
               {{else}}
-                <a class="action-group button-link" href="{{.Message.URL}}/reply?part={{.Message.TextPart.PathString}}">Reply</a>
-                <a class="action-group button-link" href="{{.Message.URL}}/forward?part={{.Message.TextPart.PathString}}">Forward</a>
+                <a class="action-group button-link" href="{{.Message.URL}}/reply{{if .Message.TextPart}}?part={{.Message.TextPart.PathString}}{{end}}">Reply</a>
+                <a class="action-group button-link" href="{{.Message.URL}}/forward{{if .Message.TextPart}}?part={{.Message.TextPart.PathString}}{{end}}">Forward</a>
               {{end}}
             </span>
           </div>
