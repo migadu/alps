@@ -171,6 +171,14 @@ func handleLogin(ctx *alps.Context) error {
 	password := ctx.FormValue("password")
 	remember := ctx.FormValue("remember-me")
 
+	renderData := struct {
+		alps.BaseRenderData
+		CanRememberMe bool
+	}{
+		BaseRenderData: *alps.NewBaseRenderData(ctx),
+		CanRememberMe:  ctx.Server.Options.LoginKey != nil,
+	}
+
 	if username == "" && password == "" {
 		username, password = ctx.GetLoginToken()
 	}
@@ -179,7 +187,7 @@ func handleLogin(ctx *alps.Context) error {
 		s, err := ctx.Server.Sessions.Put(username, password)
 		if err != nil {
 			if _, ok := err.(alps.AuthError); ok {
-				return ctx.Render(http.StatusOK, "login.html", nil)
+				return ctx.Render(http.StatusOK, "login.html", &renderData)
 			}
 			return fmt.Errorf("failed to put connection in pool: %v", err)
 		}
@@ -195,14 +203,7 @@ func handleLogin(ctx *alps.Context) error {
 		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}
 
-	return ctx.Render(http.StatusOK, "login.html",
-		&struct {
-			alps.BaseRenderData
-			CanRememberMe bool
-		}{
-			BaseRenderData: *alps.NewBaseRenderData(ctx),
-			CanRememberMe:  ctx.Server.Options.LoginKey != nil,
-		})
+	return ctx.Render(http.StatusOK, "login.html", &renderData)
 }
 
 func handleLogout(ctx *alps.Context) error {
