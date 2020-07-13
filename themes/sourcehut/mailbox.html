@@ -53,7 +53,7 @@
           <li class="nav-item">
             <a
               class="nav-link"
-              href="{{.TextPart.URL false}}"
+              href="{{if .TextPart}}{{.TextPart.URL false}}{{else}}{{.URL}}{{end}}"
             >
             <span class="text-muted date">
               {{ .Envelope.Date | formatdate }}
