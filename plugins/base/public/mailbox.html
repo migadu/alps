@@ -27,7 +27,7 @@
   <ul>
     {{range .Messages}}
       <li>
-        <a href="{{.TextPart.URL false}}">
+        <a href="{{if .TextPart}}{{.TextPart.URL false}}{{else}}{{.URL}}{{end}}">
           {{if .Envelope.Subject}}
             {{.Envelope.Subject}}
           {{else}}
