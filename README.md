@@ -1,6 +1,7 @@
 # [alps]
 
 [![GoDoc](https://godoc.org/git.sr.ht/~emersion/alps?status.svg)](https://godoc.org/git.sr.ht/~emersion/alps)
+[![builds.sr.ht status](https://builds.sr.ht/~emersion/alps/commits.svg)](https://builds.sr.ht/~emersion/alps/commits?)
 
 A simple and extensible webmail.
 
