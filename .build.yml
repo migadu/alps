@@ -2,8 +2,8 @@ image: alpine/edge
 packages:
   - go
 sources:
-  - https://git.sr.ht/~emersion/koushin
+  - https://git.sr.ht/~emersion/alps
 tasks:
   - build: |
-      cd koushin
+      cd alps
       go test -v ./...
