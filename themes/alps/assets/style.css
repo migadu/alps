@@ -291,6 +291,11 @@ main.create-update .event-date input {
 .message-list-unread.message-list-sender,
 .message-list-unread.message-list-date { color: black;}
 
+.message-list-unread.message-list-subject {
+  font-weight: normal;
+  color: #555;
+}
+
 .message-list-date {
   text-align: right;
 }

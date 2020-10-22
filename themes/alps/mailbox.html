@@ -34,19 +34,28 @@
       <section class="messages">
         <div class="message-grid">
           {{range .Messages}}
-          <div class="message-list-checkbox message-list-item {{ if not (.HasFlag "\\Seen") }}message-list-unread{{ end }}">
+          {{ $classes := "message-list-item" }}
+          {{ if not (.HasFlag "\\Seen") }}
+          {{ $classes = printf "%s %s" $classes "message-list-unread" }}
+          {{ end }}
+          {{ if (.HasFlag "\\Deleted") }}
+          {{ $classes = printf "%s %s" $classes "message-list-deleted" }}
+          {{ end }}
+
+          {{ if not (.HasFlag "\\Deleted") }}
+          <div class="message-list-checkbox {{$classes}}">
             <input type="checkbox" name="uids" value="{{.Uid}}" form="messages-form">
           </div>
-          <div class="message-list-sender message-list-item {{ if not (.HasFlag "\\Seen") }}message-list-unread{{ end }}">
-           {{ range .Envelope.From }}
+          <div class="message-list-sender {{$classes}}">
+            {{ range .Envelope.From }}
             {{ if .PersonalName }}
               {{.PersonalName}}
             {{ else }}
               {{.MailboxName}}@{{.HostName}}
             {{ end }}
-          {{ end }}
+            {{ end }}
           </div>
-          <div class="message-list-subject  message-list-item {{ if not (.HasFlag "\\Seen") }}message-list-unread{{ end }}">
+          <div class="message-list-subject {{$classes}}">
             <a href="{{if .TextPart}}{{.TextPart.URL false}}{{else}}{{.URL}}{{end}}">
               {{if .Envelope.Subject}}
                 {{.Envelope.Subject}}
@@ -55,9 +64,20 @@
               {{end}}
             </a>
           </div>
-          <div class="message-list-date  message-list-item {{ if not (.HasFlag "\\Seen") }}message-list-unread{{ end }}">
+          <div class="message-list-date {{$classes}}">
             {{ .Envelope.Date | formatdate }}
           </div>
+          {{ else }}
+          <div class="message-list-checkbox {{$classes}}">
+            <input type="checkbox" form="messages-form" disabled readonly>
+          </div>
+          <div class="message-list-sender {{$classes}}"></div>
+          <div class="message-list-subject {{$classes}}">
+            <em>(this email was deleted by another client)</em>
+          </div>
+          <div class="message-list-date {{$classes}}"></div>
+          {{ end }}
+
           {{ end }}
           {{if not .Messages}}
           <p class="empty-list">Nothing here yet.</p>
