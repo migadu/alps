@@ -510,7 +510,12 @@ func getMessagePart(conn *imapclient.Client, mboxName string, uid uint32, partPa
 		return nil, nil, fmt.Errorf("server didn't return message")
 	}
 
-	headerReader := bufio.NewReader(msg.GetBody(&partHeaderSection))
+	body := msg.GetBody(&partHeaderSection)
+	if body == nil {
+		return nil, nil, fmt.Errorf("server didn't return message")
+	}
+
+	headerReader := bufio.NewReader(body)
 	h, err := textproto.ReadHeader(headerReader)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read part header: %v", err)
