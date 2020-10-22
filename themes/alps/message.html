@@ -1,5 +1,6 @@
 {{template "head.html" .}}
 {{template "nav.html" .}}
+{{template "util.html" .}}
 
 {{define "message-part-tree"}}
 	{{/* nested templates can't access the parent's context */}}
@@ -28,31 +29,8 @@
 {{end}}
 
 <div class="page-wrap">
-  {{$current := .Mailbox}}
-  <aside>
-    <!-- the logo image, dimensions 200x32 may be present or not -->
-    <a href="/compose" class="new">Compose&nbsp;Mail</a>
-    {{range .Mailboxes}}
-      <a href="{{.URL}}"
-          {{ if eq $current.Name .Name }}class="active"{{ end }}>
-        {{ if eq .Name "INBOX" }}
-          Inbox
-        {{else}}
-          {{.Name}}
-        {{end}}
-
-        {{ $unseen := 0 }}
-        {{ if eq .Name "INBOX" }}
-          {{ $unseen = $.Inbox.Unseen }}
-        {{ end }}
-        {{ if eq .Name $.Mailbox.Name }}
-          {{ $unseen = $.Mailbox.Unseen }}
-        {{ end }}
-        {{ if $unseen }}({{ $unseen }}){{ end }}
-      </a>
-    {{end}}
-  </aside>
-
+  {{ $current := .Mailbox }}
+  {{ template "aside" . }}
   <div class="container">
     <main class="message">
       <section class="actions">

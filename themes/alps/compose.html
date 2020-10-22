@@ -1,18 +1,9 @@
 {{template "head.html" .}}
 {{template "nav.html" .}}
-
+{{template "util.html" .}}
 
 <div class="page-wrap">
-  <aside>
-    <a href="/compose" class="new active">Compose&nbsp;Mail</a>
-    <!-- TODO: use mailbox list from template data -->
-    <a href="/mailbox/INBOX">Inbox</a>
-    <a href="/mailbox/Drafts">Drafts</a>
-    <a href="/mailbox/Sent">Sent</a>
-    <a href="/mailbox/Archive">Archive</a>
-    <a href="/mailbox/Junk">Junk</a>
-    <a href="/mailbox/Trash">Trash</a>
-  </aside>
+  {{ template "aside" . }}
 
   <div class="container">
     <main class="create-update">

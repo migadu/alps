@@ -63,12 +63,16 @@ func registerRoutes(p *alps.GoPlugin) {
 	p.POST("/settings", handleSettings)
 }
 
-type MailboxRenderData struct {
+type IMAPBaseRenderData struct {
 	alps.BaseRenderData
-	Mailbox              *MailboxStatus
-	Inbox                *MailboxStatus
 	CategorizedMailboxes CategorizedMailboxes
 	Mailboxes            []MailboxInfo
+	Mailbox              *MailboxStatus
+	Inbox                *MailboxStatus
+}
+
+type MailboxRenderData struct {
+	IMAPBaseRenderData
 	Messages             []IMAPMessage
 	PrevPage, NextPage   int
 	Query                string
@@ -87,21 +91,52 @@ type CategorizedMailboxes struct {
 	Additional []*MailboxInfo
 }
 
-func categorizeMailboxes(mailboxes []MailboxInfo,
-	inbox *MailboxStatus, active *MailboxStatus) CategorizedMailboxes {
+func newIMAPBaseRenderData(ctx *alps.Context,
+	base *alps.BaseRenderData) (*IMAPBaseRenderData, error) {
 
-	var out CategorizedMailboxes
-	mmap := map[string]**MailboxInfo{
-		"INBOX": &out.Common.Inbox,
-		"Drafts": &out.Common.Drafts,
-		"Sent": &out.Common.Sent,
-		"Junk": &out.Common.Junk,
-		"Trash": &out.Common.Trash,
-		"Archive": &out.Common.Archive,
+	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
+	if err != nil {
+		return nil, echo.NewHTTPError(http.StatusBadRequest, err)
 	}
+
+	var mailboxes []MailboxInfo
+	var active, inbox *MailboxStatus
+	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+		var err error
+		if mailboxes, err = listMailboxes(c); err != nil {
+			return err
+		}
+		if mboxName != "" {
+			if active, err = getMailboxStatus(c, mboxName); err != nil {
+				return err
+			}
+		}
+		if mboxName == "INBOX" {
+			inbox = active
+		} else {
+			if inbox, err = getMailboxStatus(c, "INBOX"); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var categorized CategorizedMailboxes
+	mmap := map[string]**MailboxInfo{
+		"INBOX": &categorized.Common.Inbox,
+		"Drafts": &categorized.Common.Drafts,
+		"Sent": &categorized.Common.Sent,
+		"Junk": &categorized.Common.Junk,
+		"Trash": &categorized.Common.Trash,
+		"Archive": &categorized.Common.Archive,
+	}
+
 	for i, _ := range mailboxes {
 		// Populate unseen & active states
-		if mailboxes[i].Name == active.Name {
+		if active != nil && mailboxes[i].Name == active.Name {
 			mailboxes[i].Unseen = int(active.Unseen)
 			mailboxes[i].Active = true
 		}
@@ -112,17 +147,35 @@ func categorizeMailboxes(mailboxes []MailboxInfo,
 		if ptr, ok := mmap[mailboxes[i].Name]; ok {
 			*ptr = &mailboxes[i]
 		} else {
-			out.Additional = append(out.Additional, &mailboxes[i])
+			categorized.Additional = append(
+				categorized.Additional, &mailboxes[i])
 		}
 	}
-	return out
+
+	return &IMAPBaseRenderData{
+		BaseRenderData:       *base,
+		CategorizedMailboxes: categorized,
+		Mailboxes:            mailboxes,
+		Inbox:                inbox,
+		Mailbox:              active,
+	}, nil
 }
 
 func handleGetMailbox(ctx *alps.Context) error {
-	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
+	ibase, err := newIMAPBaseRenderData(ctx, alps.NewBaseRenderData(ctx))
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err)
+		return err
 	}
+
+	mbox := ibase.Mailbox
+	title := mbox.Name
+	if title == "INBOX" {
+		title = "Inbox"
+	}
+	if mbox.Unseen > 0 {
+		title = fmt.Sprintf("(%d) %s", mbox.Unseen, title)
+	}
+	ibase.BaseRenderData.WithTitle(title)
 
 	page := 0
 	if pageStr := ctx.QueryParam("page"); pageStr != "" {
@@ -140,32 +193,19 @@ func handleGetMailbox(ctx *alps.Context) error {
 
 	query := ctx.QueryParam("query")
 
-	var mailboxes []MailboxInfo
-	var msgs []IMAPMessage
-	var mbox, inbox *MailboxStatus
-	var total int
+	var (
+		msgs  []IMAPMessage
+		total int
+	)
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-		var err error
-		if mailboxes, err = listMailboxes(c); err != nil {
-			return err
-		}
-		if mbox, err = getMailboxStatus(c, mboxName); err != nil {
-			return err
-		}
+		var err  error
 		if query != "" {
-			msgs, total, err = searchMessages(c, mboxName, query, page, messagesPerPage)
+			msgs, total, err = searchMessages(c, mbox.Name, query, page, messagesPerPage)
 		} else {
 			msgs, err = listMessages(c, mbox, page, messagesPerPage)
 		}
 		if err != nil {
 			return err
-		}
-		if mboxName == "INBOX" {
-			inbox = mbox
-		} else {
-			if inbox, err = getMailboxStatus(c, "INBOX"); err != nil {
-				return err
-			}
 		}
 		return nil
 	})
@@ -190,23 +230,8 @@ func handleGetMailbox(ctx *alps.Context) error {
 		}
 	}
 
-	title := mbox.Name
-	if title == "INBOX" {
-		title = "Inbox"
-	}
-
-	if mbox.Unseen > 0 {
-		title = fmt.Sprintf("(%d) %s", mbox.Unseen, title)
-	}
-
-	categorized := categorizeMailboxes(mailboxes, inbox, mbox)
-
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
-		BaseRenderData: *alps.NewBaseRenderData(ctx).WithTitle(title),
-		Mailbox:              mbox,
-		Inbox:                inbox,
-		CategorizedMailboxes: categorized,
-		Mailboxes:            mailboxes,
+		IMAPBaseRenderData:  *ibase,
 		Messages:             msgs,
 		PrevPage:             prevPage,
 		NextPage:             nextPage,
@@ -262,10 +287,7 @@ func handleLogout(ctx *alps.Context) error {
 }
 
 type MessageRenderData struct {
-	alps.BaseRenderData
-	Mailboxes   []MailboxInfo
-	Mailbox     *MailboxStatus
-	Inbox       *MailboxStatus
+	IMAPBaseRenderData
 	Message     *IMAPMessage
 	Part        *IMAPPartNode
 	View        interface{}
@@ -274,10 +296,13 @@ type MessageRenderData struct {
 }
 
 func handleGetPart(ctx *alps.Context, raw bool) error {
-	mboxName, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+	_, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+	ibase, err := newIMAPBaseRenderData(ctx, alps.NewBaseRenderData(ctx))
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err)
+		return err
 	}
+	mbox := ibase.Mailbox
+
 	partPath, err := parsePartPath(ctx.QueryParam("part"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -289,27 +314,12 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	}
 	messagesPerPage := settings.MessagesPerPage
 
-	var mailboxes []MailboxInfo
 	var msg *IMAPMessage
 	var part *message.Entity
-	var mbox, inbox *MailboxStatus
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 		var err error
-		if mailboxes, err = listMailboxes(c); err != nil {
+		if msg, part, err = getMessagePart(c, mbox.Name, uid, partPath); err != nil {
 			return err
-		}
-		if msg, part, err = getMessagePart(c, mboxName, uid, partPath); err != nil {
-			return err
-		}
-		if mbox, err = getMailboxStatus(c, mboxName); err != nil {
-			return err
-		}
-		if mboxName == "INBOX" {
-			inbox = mbox
-		} else {
-			if inbox, err = getMailboxStatus(c, "INBOX"); err != nil {
-				return err
-			}
 		}
 		return nil
 	})
@@ -367,22 +377,20 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		flags[f] = msg.HasFlag(f)
 	}
 
+	ibase.BaseRenderData.WithTitle(msg.Envelope.Subject)
+
 	return ctx.Render(http.StatusOK, "message.html", &MessageRenderData{
-		BaseRenderData: *alps.NewBaseRenderData(ctx).
-			WithTitle(msg.Envelope.Subject),
-		Mailboxes:   mailboxes,
-		Mailbox:     mbox,
-		Inbox:       inbox,
-		Message:     msg,
-		Part:        msg.PartByPath(partPath),
-		View:        view,
-		MailboxPage: int(mbox.Messages-msg.SeqNum) / messagesPerPage,
-		Flags:       flags,
+		IMAPBaseRenderData: *ibase,
+		Message:            msg,
+		Part:               msg.PartByPath(partPath),
+		View:               view,
+		MailboxPage:        int(mbox.Messages-msg.SeqNum) / messagesPerPage,
+		Flags:              flags,
 	})
 }
 
 type ComposeRenderData struct {
-	alps.BaseRenderData
+	IMAPBaseRenderData
 	Message *OutgoingMessage
 }
 
@@ -438,6 +446,11 @@ func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 }
 
 func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOptions) error {
+	ibase, err := newIMAPBaseRenderData(ctx, alps.NewBaseRenderData(ctx))
+	if err != nil {
+		return err
+	}
+
 	if msg.From == "" && strings.ContainsRune(ctx.Session.Username(), '@') {
 		msg.From = ctx.Session.Username()
 	}
@@ -537,8 +550,8 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 	}
 
 	return ctx.Render(http.StatusOK, "compose.html", &ComposeRenderData{
-		BaseRenderData: *alps.NewBaseRenderData(ctx),
-		Message:        msg,
+		IMAPBaseRenderData: *ibase,
+		Message:            msg,
 	})
 }
 

@@ -1,5 +1,6 @@
 {{template "head.html" .}}
 {{template "nav.html" .}}
+{{template "util.html" .}}
 
 {{ define "mbox-link" }}
 {{ if not (.HasAttr "\\Noselect") }}
@@ -21,25 +22,7 @@
 {{ end }}
 
 <div class="page-wrap">
-  <aside>
-    <!-- the logo image, dimensions 200x32 may be present or not -->
-    <a href="/compose" class="new">Compose&nbsp;Mail</a>
-    {{ with .CategorizedMailboxes }}
-    {{ with .Common.Inbox }}{{ template "mbox-link" . }}{{ end}}
-    {{ with .Common.Drafts }}{{ template "mbox-link" . }}{{ end}}
-    {{ with .Common.Sent }}{{ template "mbox-link" . }}{{ end}}
-    {{ with .Common.Junk }}{{ template "mbox-link" . }}{{ end}}
-    {{ with .Common.Trash }}{{ template "mbox-link" . }}{{ end}}
-    {{ with .Common.Archive }}{{ template "mbox-link" . }}{{ end}}
-    {{ if .Additional }}
-    <hr />
-    {{ range .Additional }}
-    {{ template "mbox-link" . }}
-    {{ end }}
-    {{ end }}
-    {{ end }}
-  </aside>
-
+  {{ template "aside" . }}
   <div class="container">
     <form id="messages-form" method="post"></form>
     <main class="message-list">

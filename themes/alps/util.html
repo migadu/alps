@@ -1,0 +1,41 @@
+{{ define "mbox-link" }}
+{{ if not (.HasAttr "\\Noselect") }}
+<a href="{{.URL}}" {{ if .Active }}class="active"{{ end }}>
+  {{- if eq .Name "INBOX" -}}
+    Inbox
+  {{- else -}}
+    {{ .Name }}
+  {{- end -}}
+  {{- if .HasAttr "\\HasChildren" }}/{{ end }}
+
+  {{ if and (ne .Unseen -1) (ne .Unseen 0) }}({{ .Unseen }}){{ end }}
+</a>
+{{ else }}
+<span class="noselect">
+  {{.Name}}{{- if .HasAttr "\\HasChildren" }}/{{ end }}
+</span>
+{{ end }}
+{{ end }}
+
+{{ define "aside" }}
+<aside>
+  <!-- the logo image, dimensions 200x32 may be present or not -->
+  <a href="/compose" class="new
+    {{ if eq $.GlobalData.URL.Path "/compose" }}active{{ end }}
+  ">Compose&nbsp;Mail</a>
+  {{ with .CategorizedMailboxes }}
+  {{ with .Common.Inbox }}{{ template "mbox-link" . }}{{ end}}
+  {{ with .Common.Drafts }}{{ template "mbox-link" . }}{{ end}}
+  {{ with .Common.Sent }}{{ template "mbox-link" . }}{{ end}}
+  {{ with .Common.Junk }}{{ template "mbox-link" . }}{{ end}}
+  {{ with .Common.Trash }}{{ template "mbox-link" . }}{{ end}}
+  {{ with .Common.Archive }}{{ template "mbox-link" . }}{{ end}}
+  {{ if .Additional }}
+  <hr />
+  {{ range .Additional }}
+  {{ template "mbox-link" . }}
+  {{ end }}
+  {{ end }}
+  {{ end }}
+</aside>
+{{ end }}
