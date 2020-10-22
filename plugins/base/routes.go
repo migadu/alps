@@ -65,12 +65,57 @@ func registerRoutes(p *alps.GoPlugin) {
 
 type MailboxRenderData struct {
 	alps.BaseRenderData
-	Mailbox            *MailboxStatus
-	Inbox              *MailboxStatus
-	Mailboxes          []MailboxInfo
-	Messages           []IMAPMessage
-	PrevPage, NextPage int
-	Query              string
+	Mailbox              *MailboxStatus
+	Inbox                *MailboxStatus
+	CategorizedMailboxes CategorizedMailboxes
+	Mailboxes            []MailboxInfo
+	Messages             []IMAPMessage
+	PrevPage, NextPage   int
+	Query                string
+}
+
+// Organizes mailboxes into common/uncommon categories
+type CategorizedMailboxes struct {
+	Common struct {
+		Inbox   *MailboxInfo
+		Drafts  *MailboxInfo
+		Sent    *MailboxInfo
+		Junk    *MailboxInfo
+		Trash   *MailboxInfo
+		Archive *MailboxInfo
+	}
+	Additional []*MailboxInfo
+}
+
+func categorizeMailboxes(mailboxes []MailboxInfo,
+	inbox *MailboxStatus, active *MailboxStatus) CategorizedMailboxes {
+
+	var out CategorizedMailboxes
+	mmap := map[string]**MailboxInfo{
+		"INBOX": &out.Common.Inbox,
+		"Drafts": &out.Common.Drafts,
+		"Sent": &out.Common.Sent,
+		"Junk": &out.Common.Junk,
+		"Trash": &out.Common.Trash,
+		"Archive": &out.Common.Archive,
+	}
+	for i, _ := range mailboxes {
+		// Populate unseen & active states
+		if mailboxes[i].Name == active.Name {
+			mailboxes[i].Unseen = int(active.Unseen)
+			mailboxes[i].Active = true
+		}
+		if mailboxes[i].Name == inbox.Name {
+			mailboxes[i].Unseen = int(inbox.Unseen)
+		}
+
+		if ptr, ok := mmap[mailboxes[i].Name]; ok {
+			*ptr = &mailboxes[i]
+		} else {
+			out.Additional = append(out.Additional, &mailboxes[i])
+		}
+	}
+	return out
 }
 
 func handleGetMailbox(ctx *alps.Context) error {
@@ -154,15 +199,18 @@ func handleGetMailbox(ctx *alps.Context) error {
 		title = fmt.Sprintf("(%d) %s", mbox.Unseen, title)
 	}
 
+	categorized := categorizeMailboxes(mailboxes, inbox, mbox)
+
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
 		BaseRenderData: *alps.NewBaseRenderData(ctx).WithTitle(title),
-		Mailbox:        mbox,
-		Inbox:          inbox,
-		Mailboxes:      mailboxes,
-		Messages:       msgs,
-		PrevPage:       prevPage,
-		NextPage:       nextPage,
-		Query:          query,
+		Mailbox:              mbox,
+		Inbox:                inbox,
+		CategorizedMailboxes: categorized,
+		Mailboxes:            mailboxes,
+		Messages:             msgs,
+		PrevPage:             prevPage,
+		NextPage:             nextPage,
+		Query:                query,
 	})
 }
 

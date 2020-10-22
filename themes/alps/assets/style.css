@@ -127,7 +127,8 @@ footer { text-align: right; }
 
 
 aside { flex: 0 0 180px; }
-aside a { width: 100%; display: block; padding: 0.4rem 0 0.4rem 0.5rem; }
+aside a,
+aside .noselect { width: 100%; display: block; padding: 0.4rem 0 0.4rem 0.5rem; }
 aside a.active { font-weight: bold; color: black; text-decoration: none; }
 aside img { display: block; }
 main {

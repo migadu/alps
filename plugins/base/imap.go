@@ -19,12 +19,24 @@ import (
 
 type MailboxInfo struct {
 	*imap.MailboxInfo
+
+	Active bool
+	Unseen int
 }
 
 func (mbox *MailboxInfo) URL() *url.URL {
 	return &url.URL{
 		Path: fmt.Sprintf("/mailbox/%v", url.PathEscape(mbox.Name)),
 	}
+}
+
+func (mbox *MailboxInfo) HasAttr(flag string) bool {
+	for _, attr := range mbox.Attributes {
+		if attr == flag {
+			return true
+		}
+	}
+	return false
 }
 
 func listMailboxes(conn *imapclient.Client) ([]MailboxInfo, error) {
@@ -36,7 +48,7 @@ func listMailboxes(conn *imapclient.Client) ([]MailboxInfo, error) {
 
 	var mailboxes []MailboxInfo
 	for mbox := range ch {
-		mailboxes = append(mailboxes, MailboxInfo{mbox})
+		mailboxes = append(mailboxes, MailboxInfo{mbox, false, -1})
 	}
 
 	if err := <-done; err != nil {
@@ -133,7 +145,7 @@ func getMailboxByType(conn *imapclient.Client, mboxType mailboxType) (*MailboxIn
 	if best == nil {
 		return nil, nil
 	}
-	return &MailboxInfo{best}, nil
+	return &MailboxInfo{best, false, -1}, nil
 }
 
 func ensureMailboxSelected(conn *imapclient.Client, mboxName string) error {
