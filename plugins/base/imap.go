@@ -454,7 +454,7 @@ func searchMessages(conn *imapclient.Client, mboxName, query string, page, messa
 	var seqSet imap.SeqSet
 	seqSet.AddNum(nums...)
 
-	fetch := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid, imap.FetchBodyStructure}
+	fetch := []imap.FetchItem{imap.FetchEnvelope, imap.FetchFlags, imap.FetchUid, imap.FetchBodyStructure}
 
 	ch := make(chan *imap.Message, 10)
 	done := make(chan error, 1)
