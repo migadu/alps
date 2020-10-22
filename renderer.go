@@ -26,6 +26,8 @@ type GlobalRenderData struct {
 
 	Title string
 
+	HavePlugin func(name string) bool
+
 	// additional plugin-specific data
 	Extra map[string]interface{}
 }
@@ -74,6 +76,15 @@ func NewBaseRenderData(ctx *Context) *BaseRenderData {
 		Path:  strings.Split(ctx.Request().URL.Path, "/")[1:],
 		Title: "Webmail",
 		URL:   ctx.Request().URL,
+
+		HavePlugin: func(name string) bool {
+			for _, plugin := range ctx.Server.plugins {
+				if plugin.Name() == name {
+					return true
+				}
+			}
+			return false
+		},
 	}
 
 	if ctx.Session != nil {

@@ -6,18 +6,22 @@
       class="active"
       {{ end }}
     >Email</a>
+    {{ if call .GlobalData.HavePlugin "caldav" }}
     <a
       href="/calendar"
       {{ if eq $page "calendar" }}
       class="active"
       {{ end }}
     >Calendar</a>
+    {{ end }}
+    {{ if call .GlobalData.HavePlugin "carddav" }}
     <a
       href="/contacts"
       {{ if eq $page "contacts" }}
       class="active"
       {{ end }}
     >Contacts</a>
+    {{ end }}
     <div>
       <span>{{ .GlobalData.Username }}</span>
       <a href="/settings">Settings</a>
