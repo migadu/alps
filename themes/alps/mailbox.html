@@ -53,6 +53,28 @@
             {{ end }}
             {{ end }}
           </div>
+          <div class="message-list-flags {{$classes}}">
+            {{if .Attachments}}<span class="Has attachments">📎</span>{{end}}
+            {{if .HasFlag "\\Answered"}}<span class="Replied">↩</span>{{end}}
+            {{if .HasFlag "$Forwarded"}}<span class="Forwarded">↪</span>{{end}}
+            <form method="POST" action="/message/{{.Mailbox}}/flag">
+              <input type="hidden" name="uids" value="{{.Message.Uid}}">
+              {{ if .HasFlag "\\Flagged" -}}
+              <input type="hidden" name="action" value="remove">
+              {{ else }}
+              <input type="hidden" name="action" value="add">
+              {{ end }}
+              <input type="hidden" name="flags" value="\Flagged">
+              <input type="hidden" name="next" value="{{$.GlobalData.URL.Path}}">
+              <button class="flag-button button-link" type="submit">
+                {{- if .HasFlag "\\Flagged" -}}
+                ★
+                {{- else -}}
+                ☆
+                {{- end -}}
+              </button>
+            </form>
+          </div>
           <div class="message-list-subject {{$classes}}">
             <a href="{{if .TextPart}}{{.TextPart.URL false}}{{else}}{{.URL}}{{end}}">
               {{if .Envelope.Subject}}
@@ -70,6 +92,7 @@
             <input type="checkbox" form="messages-form" disabled readonly>
           </div>
           <div class="message-list-sender {{$classes}}"></div>
+          <div class="message-list-flags {{$classes}}"></div>
           <div class="message-list-subject {{$classes}}">
             <em>(this email was deleted by another client)</em>
           </div>
