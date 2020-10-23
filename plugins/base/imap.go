@@ -210,6 +210,29 @@ func (msg *IMAPMessage) TextPart() *IMAPPartNode {
 	return best
 }
 
+func (msg *IMAPMessage) HTMLPart() *IMAPPartNode {
+	if msg.BodyStructure == nil {
+		return nil
+	}
+
+	var best *IMAPPartNode
+	msg.BodyStructure.Walk(func(path []int, part *imap.BodyStructure) bool {
+		if !strings.EqualFold(part.MIMEType, "text") {
+			return true
+		}
+		if part.Disposition != "" && !strings.EqualFold(part.Disposition, "inline") {
+			return true
+		}
+
+		if part.MIMESubType == "html" {
+			best = newIMAPPartNode(msg, path, part)
+		}
+		return true
+	})
+
+	return best
+}
+
 func (msg *IMAPMessage) Attachments() []IMAPPartNode {
 	if msg.BodyStructure == nil {
 		return nil

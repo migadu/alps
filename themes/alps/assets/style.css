@@ -181,7 +181,9 @@ main.create-update form textarea { flex: 1 auto; resize: none; margin-top: 1rem;
 main.create-update h1 { margin: 0; }
 
 main table { border-collapse: collapse; width: 100%; border: 1px solid #eee; }
-main table td { white-space: nowrap; padding: 0.3rem; color: #757373;
+main table td {
+  white-space: nowrap;
+  padding: 0.3rem;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 200px;
@@ -206,15 +208,48 @@ main.message .remote-content td {
   color: black;
 }
 
+main.message .tabs {
+  margin: 0.3rem 0 0 0;
+  padding: 0;
+  border-bottom: 1px solid #eee;
+  overflow: visible;
+}
+
+main.message .tabs a {
+  padding: 0.2rem 0.5rem;
+  margin: 0;
+  display: inline-block;
+  height: calc(100% + 1px);
+  margin-bottom: -1px;
+  border-style: solid;
+  border-color: transparent;
+  border-width: 1px;
+  text-decoration: none;
+  color: #555;
+}
+
+main.message .tabs a.active {
+  background-color: white;
+  border-color: #eee #eee white #eee;
+  color: black;
+}
+
+main.message .tabs a:hover {
+  background-color: white;
+  color: black;
+}
+
 main.message pre,
 main.message iframe,
 main.contact .details,
 main.event pre {
   flex: 1 auto;
   padding: 1rem;
-  margin: 0.3rem 0 0 0;
+  margin: 0;
   background-color: white;
-  border: 1px solid #eee;
+  border-style: solid;
+  border-color: #eee;
+  border-width: 0 1px 1px 1px;
   max-width: 100%;
 }
 

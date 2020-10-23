@@ -9,9 +9,9 @@
 		<a
       class="nav-link"
 			{{if .IsText}}
-				href="{{$.Message.URL}}?part={{.PathString}}"
+				href="?part={{.PathString}}"
 			{{else}}
-				href="{{$.Message.URL}}/raw?part={{.PathString}}"
+				href="/raw?part={{.PathString}}"
 			{{end}}
 		>
 			{{if eq $.Part.PathString .PathString}}<strong>{{end}}
@@ -175,6 +175,24 @@
         {{end}}
       {{end}}
 
+      {{ $html := .Message.HTMLPart }}
+      {{ $text := .Message.TextPart }}
+      <div class="tabs">
+        {{ if and $html (ne $html.PathString $text.PathString) }}
+        <a
+          href="?part={{.Message.TextPart.PathString}}"
+          {{ if eq $text.PathString .Part.PathString }}
+          class="active"
+          {{ end }}
+        >Plain text</a>
+        <a
+          href="?part={{$html.PathString}}"
+          {{ if eq $html.PathString .Part.PathString }}
+          class="active"
+          {{ end }}
+        >HTML</a>
+        {{ end }}
+      </div>
       {{if .View}}
         {{.View}}
       {{else}}
