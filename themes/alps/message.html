@@ -178,7 +178,9 @@
       {{ $html := .Message.HTMLPart }}
       {{ $text := .Message.TextPart }}
       <div class="tabs">
-        {{ if and $html (ne $html.PathString $text.PathString) }}
+        {{ if and $html $text }}
+        {{ if ne $html.PathString $text.PathString }}
+        {{/* https://github.com/golang/go/issues/31103 */}}
         <a
           href="?part={{.Message.TextPart.PathString}}"
           {{ if eq $text.PathString .Part.PathString }}
@@ -191,6 +193,7 @@
           class="active"
           {{ end }}
         >HTML</a>
+        {{ end }}
         {{ end }}
       </div>
       {{if .View}}
