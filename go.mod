@@ -3,6 +3,7 @@ module git.sr.ht/~emersion/alps
 go 1.13
 
 require (
+	git.sr.ht/~sircmpwn/dowork v0.0.0-20201013174036-53a05612a082
 	github.com/aymerick/douceur v0.2.0
 	github.com/chris-ramon/douceur v0.2.0
 	github.com/emersion/go-ical v0.0.0-20200225233454-26ef720b8bf1
@@ -25,6 +26,5 @@ require (
 	gitlab.com/golang-commonmark/linkify v0.0.0-20200225224916-64bca66f6ad3
 	golang.org/x/crypto v0.0.0-20200510223506-06a226fb4e37 // indirect
 	golang.org/x/net v0.0.0-20200506145744-7e3656a0809f
-	golang.org/x/sys v0.0.0-20200513112337-417ce2331b5c // indirect
 	layeh.com/gopher-luar v1.0.7
 )

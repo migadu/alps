@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"git.sr.ht/~emersion/alps"
 	"github.com/fernet/fernet-go"
@@ -74,15 +76,29 @@ func main() {
 		e.Logger.SetLevel(log.DEBUG)
 	}
 
+	go e.Start(addr)
+
+	s.Queue.Start(context.Background())
+
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGUSR1)
-	go func() {
-		for range sigs {
+	signal.Notify(sigs, syscall.SIGUSR1, syscall.SIGINT)
+
+	for sig := range sigs {
+		if sig == syscall.SIGUSR1 {
 			if err := s.Reload(); err != nil {
 				e.Logger.Errorf("Failed to reload server: %v", err)
 			}
+		} else if sig == syscall.SIGINT {
+			break
 		}
-	}()
+	}
 
-	e.Logger.Fatal(e.Start(addr))
+	ctx, cancel := context.WithDeadline(context.Background(),
+		time.Now().Add(30*time.Second))
+	e.Shutdown(ctx)
+	cancel()
+
+	e.Logger.Print("Waiting for work queues to finish...")
+	s.Queue.Shutdown()
+	e.Logger.Print("Shut down.")
 }
