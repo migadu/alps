@@ -46,11 +46,13 @@
           </div>
           <div class="message-list-sender {{$classes}}">
             {{ range .Envelope.From }}
+            <a href='?query=from:"{{.MailboxName}}@{{.HostName}}"'>
             {{ if .PersonalName }}
               {{.PersonalName}}
             {{ else }}
               {{.MailboxName}}@{{.HostName}}
             {{ end }}
+            </a>
             {{ end }}
           </div>
           <div class="message-list-flags {{$classes}}">
