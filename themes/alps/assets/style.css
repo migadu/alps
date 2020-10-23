@@ -261,14 +261,21 @@ main.message .message-header {
 }
 
 main.message .message-header .parts {
+  width: 30%;
   margin-left: 0.3rem;
-  padding: 0.3rem 1rem;
+  padding: 0.3rem 0.5rem;
   background: white;
   border-top: 1px solid #f2f2f2;
 }
 
 main.message .message-header .parts ul {
-  margin-left: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+main.message .message-header .parts li {
+  margin-left: 0;
 }
 
 main.contact dl {

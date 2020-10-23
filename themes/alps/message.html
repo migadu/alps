@@ -2,32 +2,6 @@
 {{template "nav.html" .}}
 {{template "util.html" .}}
 
-{{define "message-part-tree"}}
-	{{/* nested templates can't access the parent's context */}}
-	{{$ = index . 0}}
-	{{with index . 1}}
-		<a
-      class="nav-link"
-			{{if .IsText}}
-				href="?part={{.PathString}}"
-			{{else}}
-        href="{{$.Message.URL}}raw?part={{.PathString}}"
-			{{end}}
-		>
-			{{if eq $.Part.PathString .PathString}}<strong>{{end}}
-			{{.String}}
-			{{if eq $.Part.PathString .PathString}}</strong>{{end}}
-		</a>
-		{{if gt (len .Children) 0}}
-		<ul class="nav flex-column">
-			{{range .Children}}
-				<li class="nav-item">{{template "message-part-tree" (tuple $ .)}}</li>
-			{{end}}
-		</ul>
-		{{end}}
-	{{end}}
-{{end}}
-
 <div class="page-wrap">
   {{ $current := .Mailbox }}
   {{ template "aside" . }}
@@ -162,9 +136,32 @@
           </tr>
           {{end}}
         </table>
+        {{ $attachments := .Message.Attachments }}
+        {{ if $attachments }}
         <section class="parts">
-          {{template "message-part-tree" (tuple $ .Message.PartTree)}}
+          <h3>Attachments</h3>
+          <ul>
+            {{ range .Message.Attachments }}
+            <li>
+              <a
+                class="nav-link"
+                {{if .IsText}}
+                  href="?part={{.PathString}}"
+                {{else}}
+                  href="{{$.Message.URL}}/raw?part={{.PathString}}"
+                {{end}}
+              >
+              {{- if .Filename -}}
+                {{.Filename}}
+              {{- else -}}
+                (no filename)
+              {{- end -}}
+              </a> ({{.MIMEType}}, {{.SizeString}})
+            </li>
+            {{ end }}
+          </ul>
         </section>
+        {{ end }}
       </div>
 
       {{define "addr-list"}}
@@ -197,6 +194,7 @@
         {{ end }}
         <a href="{{.Message.URL}}/raw?plain=1">Raw email</a>
       </div>
+
       {{if .View}}
         {{.View}}
       {{else}}

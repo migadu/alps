@@ -6,6 +6,7 @@ require (
 	git.sr.ht/~sircmpwn/dowork v0.0.0-20201013174036-53a05612a082
 	github.com/aymerick/douceur v0.2.0
 	github.com/chris-ramon/douceur v0.2.0
+	github.com/dustin/go-humanize v1.0.0
 	github.com/emersion/go-ical v0.0.0-20200225233454-26ef720b8bf1
 	github.com/emersion/go-imap v1.0.4
 	github.com/emersion/go-imap-metadata v0.0.0-20200128185110-9d939d2a0915

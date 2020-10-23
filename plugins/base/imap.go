@@ -10,11 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/emersion/go-imap"
-	imapspecialuse "github.com/emersion/go-imap-specialuse"
-	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/textproto"
+	imapclient "github.com/emersion/go-imap/client"
+	imapspecialuse "github.com/emersion/go-imap-specialuse"
 )
 
 type MailboxInfo struct {
@@ -177,6 +178,7 @@ func newIMAPPartNode(msg *IMAPMessage, path []int, part *imap.BodyStructure) *IM
 		MIMEType: strings.ToLower(part.MIMEType + "/" + part.MIMESubType),
 		Filename: filename,
 		Message:  msg,
+		Size:     part.Size,
 	}
 }
 
@@ -301,6 +303,7 @@ type IMAPPartNode struct {
 	Filename string
 	Children []IMAPPartNode
 	Message  *IMAPMessage
+	Size     uint32
 }
 
 func (node IMAPPartNode) PathString() string {
@@ -308,8 +311,11 @@ func (node IMAPPartNode) PathString() string {
 	for i, partNum := range node.Path {
 		l[i] = strconv.Itoa(partNum)
 	}
-
 	return strings.Join(l, ".")
+}
+
+func (node IMAPPartNode) SizeString() string {
+	return humanize.IBytes(uint64(node.Size))
 }
 
 func (node IMAPPartNode) URL(raw bool) *url.URL {
@@ -348,6 +354,7 @@ func imapPartTree(msg *IMAPMessage, bs *imap.BodyStructure, path []int) *IMAPPar
 		Filename: filename,
 		Children: make([]IMAPPartNode, len(bs.Parts)),
 		Message:  msg,
+		Size:     bs.Size,
 	}
 
 	for i, part := range bs.Parts {
@@ -396,7 +403,12 @@ func listMessages(conn *imapclient.Client, mbox *MailboxStatus, page, messagesPe
 	var seqSet imap.SeqSet
 	seqSet.AddRange(uint32(from), uint32(to))
 
-	fetch := []imap.FetchItem{imap.FetchFlags, imap.FetchEnvelope, imap.FetchUid, imap.FetchBodyStructure}
+	fetch := []imap.FetchItem{
+		imap.FetchFlags,
+		imap.FetchEnvelope,
+		imap.FetchUid,
+		imap.FetchBodyStructure,
+	}
 
 	ch := make(chan *imap.Message, 10)
 	done := make(chan error, 1)
@@ -452,7 +464,12 @@ func searchMessages(conn *imapclient.Client, mboxName, query string, page, messa
 	var seqSet imap.SeqSet
 	seqSet.AddNum(nums...)
 
-	fetch := []imap.FetchItem{imap.FetchEnvelope, imap.FetchFlags, imap.FetchUid, imap.FetchBodyStructure}
+	fetch := []imap.FetchItem{
+		imap.FetchEnvelope,
+		imap.FetchFlags,
+		imap.FetchUid,
+		imap.FetchBodyStructure,
+	}
 
 	ch := make(chan *imap.Message, 10)
 	done := make(chan error, 1)
@@ -506,6 +523,7 @@ func getMessagePart(conn *imapclient.Client, mboxName string, uid uint32, partPa
 		imap.FetchUid,
 		imap.FetchBodyStructure,
 		imap.FetchFlags,
+		imap.FetchRFC822Size,
 		partHeaderSection.FetchItem(),
 		partBodySection.FetchItem(),
 	}
