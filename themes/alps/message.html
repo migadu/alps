@@ -11,7 +11,7 @@
 			{{if .IsText}}
 				href="?part={{.PathString}}"
 			{{else}}
-				href="/raw?part={{.PathString}}"
+        href="{{$.Message.URL}}raw?part={{.PathString}}"
 			{{end}}
 		>
 			{{if eq $.Part.PathString .PathString}}<strong>{{end}}
@@ -178,15 +178,15 @@
       {{ $html := .Message.HTMLPart }}
       {{ $text := .Message.TextPart }}
       <div class="tabs">
-        {{ if and $html $text }}
-        {{ if ne $html.PathString $text.PathString }}
         {{/* https://github.com/golang/go/issues/31103 */}}
         <a
-          href="?part={{.Message.TextPart.PathString}}"
+          href="?part={{$text.PathString}}"
           {{ if eq $text.PathString .Part.PathString }}
           class="active"
           {{ end }}
         >Plain text</a>
+        {{ if and $html $text }}
+        {{ if ne $html.PathString $text.PathString }}
         <a
           href="?part={{$html.PathString}}"
           {{ if eq $html.PathString .Part.PathString }}
@@ -195,12 +195,13 @@
         >HTML</a>
         {{ end }}
         {{ end }}
+        <a href="{{.Message.URL}}/raw?plain=1">Raw email</a>
       </div>
       {{if .View}}
         {{.View}}
       {{else}}
         <p>Can't preview this message part.</p>
-        <a href="{{.Message.Uid}}/raw?part={{.Part.PathString}}">Download</a>
+        <a href="{{.Message.URL}}/raw?part={{.Part.PathString}}">Download</a>
       {{end}}
     </main>
   </div>

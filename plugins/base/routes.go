@@ -334,7 +334,11 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		return fmt.Errorf("failed to parse part Content-Type: %v", err)
 	}
 	if len(partPath) == 0 {
-		mimeType = "message/rfc822"
+		if ctx.QueryParam("plain") == "1" {
+			mimeType = "text/plain"
+		} else {
+			mimeType = "message/rfc822"
+		}
 	}
 
 	if raw {
