@@ -228,14 +228,10 @@ main.message .tabs a {
   color: #555;
 }
 
-main.message .tabs a.active {
-  background-color: white;
-  border-color: #eee #eee white #eee;
-  color: black;
-}
-
+main.message .tabs a.active,
 main.message .tabs a:hover {
   background-color: white;
+  border-color: #eee #eee white #eee;
   color: black;
 }
 
