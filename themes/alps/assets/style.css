@@ -326,11 +326,11 @@ main.create-update .event-date input {
   opacity: 1;
 }
 
-.message-list-unread:nth-child(4n+1) {
+.message-list-unread:nth-child(5n+1) {
   border-left: 1px solid #f2f2f2;
 }
 
-.message-list-unread:nth-child(4n+4) {
+.message-list-unread:nth-child(5n+5) {
   border-right: 1px solid #f2f2f2;
 }
 
