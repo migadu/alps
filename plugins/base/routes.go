@@ -2,6 +2,7 @@ package alpsbase
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"git.sr.ht/~emersion/alps"
+	"git.sr.ht/~sircmpwn/dowork"
 	"github.com/emersion/go-imap"
 	imapmove "github.com/emersion/go-imap-move"
 	imapclient "github.com/emersion/go-imap/client"
@@ -408,9 +410,12 @@ type composeOptions struct {
 // Send message, append it to the Sent mailbox, mark the original message as
 // answered
 func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOptions) error {
-	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
-		return sendMessage(c, msg)
-	})
+	task := work.NewTask(func(_ context.Context) error {
+		return ctx.Session.DoSMTP(func (c *smtp.Client) error {
+			return sendMessage(c, msg)
+		})
+	}).Retries(5)
+	err := ctx.Server.Queue.Enqueue(task)
 	if err != nil {
 		if _, ok := err.(alps.AuthError); ok {
 			return echo.NewHTTPError(http.StatusForbidden, err)
