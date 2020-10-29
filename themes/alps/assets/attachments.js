@@ -16,6 +16,10 @@ attachmentsInput.addEventListener("input", ev => {
 	}
 });
 
+window.addEventListener("dragenter", dragNOP);
+window.addEventListener("dragleave", dragNOP);
+window.addEventListener("dragover", dragNOP);
+
 window.addEventListener("drop", ev => {
 	ev.preventDefault();
 	const files = ev.dataTransfer.files;
@@ -23,6 +27,11 @@ window.addEventListener("drop", ev => {
 		attachFile(files[i]);
 	}
 });
+
+function dragNOP(e) {
+    e.stopPropagation();
+    e.preventDefault();
+}
 
 const sendButton = document.getElementById("send-button"),
 	saveButton = document.getElementById("save-button");
