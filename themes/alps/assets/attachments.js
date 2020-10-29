@@ -16,7 +16,7 @@ attachmentsInput.addEventListener("input", ev => {
 	}
 });
 
-document.body.addEventListener("drop", ev => {
+window.addEventListener("drop", ev => {
 	ev.preventDefault();
 	const files = ev.dataTransfer.files;
 	for (let i = 0; i < files.length; i++) {
@@ -26,12 +26,6 @@ document.body.addEventListener("drop", ev => {
 
 const sendButton = document.getElementById("send-button"),
 	saveButton = document.getElementById("save-button");
-
-const XHR_UNSENT = 0,
-	XHR_OPENED = 1,
-	XHR_HEADERS_RECEIVED = 2,
-	XHR_LOADING = 3,
-	XHR_DONE = 4;
 
 const attachmentUUIDsNode = document.getElementById("attachment-uuids");
 function updateState() {
