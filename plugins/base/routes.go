@@ -46,6 +46,8 @@ func registerRoutes(p *alps.GoPlugin) {
 	p.GET("/compose", handleComposeNew)
 	p.POST("/compose", handleComposeNew)
 
+	p.POST("/compose/attachment", handleComposeAttachment)
+
 	p.GET("/message/:mbox/:uid/reply", handleReply)
 	p.POST("/message/:mbox/:uid/reply", handleReply)
 
@@ -414,11 +416,19 @@ type composeOptions struct {
 // Send message, append it to the Sent mailbox, mark the original message as
 // answered
 func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOptions) error {
+	msg.Ref()
+	msg.Ref()
 	task := work.NewTask(func(_ context.Context) error {
-		return ctx.Session.DoSMTP(func (c *smtp.Client) error {
+		err := ctx.Session.DoSMTP(func (c *smtp.Client) error {
 			return sendMessage(c, msg)
 		})
-	}).Retries(5)
+		if err != nil {
+			ctx.Logger().Printf("Error sending email: %v\n", err)
+		}
+		return err
+	}).Retries(5).After(func(_ context.Context, task *work.Task) {
+		msg.Unref()
+	})
 	err := ctx.Server.Queue.Enqueue(task)
 	if err != nil {
 		if _, ok := err.(alps.AuthError); ok {
@@ -440,6 +450,7 @@ func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 		if _, err := appendMessage(c, msg, mailboxSent); err != nil {
 			return err
 		}
+		msg.Unref()
 		if draft := options.Draft; draft != nil {
 			if err := deleteMessage(c, draft.Mailbox, draft.Uid); err != nil {
 				return err
@@ -533,6 +544,19 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 			msg.Attachments = append(msg.Attachments, &formAttachment{fh})
 		}
 
+		uuids := ctx.FormValue("attachment-uuids")
+		for _, uuid := range strings.Split(uuids, ",") {
+			attachment := ctx.Session.PopAttachment(uuid)
+			if attachment == nil {
+				return fmt.Errorf("Unable to retrieve message attachments from session")
+			}
+			msg.Attachments = append(msg.Attachments, &refcountedAttachment{
+				attachment.File,
+				attachment.Form,
+				0,
+			})
+		}
+
 		if saveAsDraft {
 			err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 				copied, err := appendMessage(c, msg, mailboxDrafts)
@@ -573,6 +597,28 @@ func handleComposeNew(ctx *alps.Context) error {
 		Text:      ctx.QueryParam("body"),
 		InReplyTo: ctx.QueryParam("in-reply-to"),
 	}, &composeOptions{})
+}
+
+func handleComposeAttachment(ctx *alps.Context) error {
+	reader, err := ctx.Request().MultipartReader()
+	if err != nil {
+		return fmt.Errorf("failed to get multipart form: %v", err)
+	}
+	form, err := reader.ReadForm(32 << 20) // 32 MB
+	if err != nil {
+		return fmt.Errorf("failed to decode multipart form: %v", err)
+	}
+
+	var uuids []string
+	for _, fh := range form.File["attachments"] {
+		uuid, err := ctx.Session.PutAttachment(fh, form)
+		if err != nil {
+			return err
+		}
+		uuids = append(uuids, uuid)
+	}
+
+	return ctx.JSON(http.StatusOK, &uuids)
 }
 
 func unwrapIMAPAddressList(addrs []*imap.Address) []string {

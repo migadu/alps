@@ -73,6 +73,10 @@ func newServer(e *echo.Echo, options *Options) (*Server, error) {
 	return s, nil
 }
 
+func (s *Server) Close() {
+	s.Sessions.Close()
+}
+
 func parseUpstream(s string) (*url.URL, error) {
 	if !strings.ContainsAny(s, ":/") {
 		// This is a raw domain name, make it an URL with an empty scheme

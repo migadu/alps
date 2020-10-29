@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -54,6 +56,14 @@ type Session struct {
 
 	imapLocker sync.Mutex
 	imapConn   *imapclient.Client // protected by locker, can be nil
+
+	attachmentsLocker sync.Mutex
+	attachments       map[string]*Attachment // protected by attachmentsLocker
+}
+
+type Attachment struct {
+	File     *multipart.FileHeader
+	Form     *multipart.Form
 }
 
 func (s *Session) ping() {
@@ -117,12 +127,54 @@ func (s *Session) SetHTTPBasicAuth(req *http.Request) {
 
 // Close destroys the session. This can be used to log the user out.
 func (s *Session) Close() {
+	s.attachmentsLocker.Lock()
+	defer s.attachmentsLocker.Unlock()
+
+	for _, f := range s.attachments {
+		f.Form.RemoveAll()
+	}
+
 	select {
 	case <-s.closed:
 		// This space is intentionally left blank
 	default:
 		close(s.closed)
 	}
+}
+
+// Puts an attachment and returns a generated UUID
+func (s *Session) PutAttachment(in *multipart.FileHeader,
+	form *multipart.Form) (string, error) {
+	// TODO: Prevent users from uploading too many attachments, or too large
+	//
+	// Probably just set a cap on the maximum combined size of all files in the
+	// user's session
+	//
+	// TODO: Figure out what to do if the user abandons the compose window
+	// after adding some attachments
+	id := uuid.New()
+	s.attachmentsLocker.Lock()
+	s.attachments[id.String()] = &Attachment{
+		File:     in,
+		Form:     form,
+	}
+	s.attachmentsLocker.Unlock()
+	return id.String(), nil
+}
+
+// Removes an attachment from the session. Returns nil if there was no such
+// attachment.
+func (s *Session) PopAttachment(uuid string) *Attachment {
+	s.attachmentsLocker.Lock()
+	defer s.attachmentsLocker.Unlock()
+
+	a, ok := s.attachments[uuid]
+	if !ok {
+		return nil
+	}
+	delete(s.attachments, uuid)
+
+	return a
 }
 
 // Store returns a store suitable for storing persistent user data.
@@ -156,6 +208,12 @@ func newSessionManager(dialIMAP DialIMAPFunc, dialSMTP DialSMTPFunc, logger echo
 		dialSMTP: dialSMTP,
 		logger:   logger,
 		debug:    debug,
+	}
+}
+
+func (sm *SessionManager) Close() {
+	for _, s := range sm.sessions {
+		s.Close()
 	}
 }
 
@@ -213,13 +271,14 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	}
 
 	s := &Session{
-		manager:  sm,
-		closed:   make(chan struct{}),
-		pings:    make(chan struct{}, 5),
-		imapConn: c,
-		username: username,
-		password: password,
-		token:    token,
+		manager:     sm,
+		closed:      make(chan struct{}),
+		pings:       make(chan struct{}, 5),
+		imapConn:    c,
+		username:    username,
+		password:    password,
+		token:       token,
+		attachments: make(map[string]*Attachment),
 	}
 
 	s.store, err = newStore(s, sm.logger)

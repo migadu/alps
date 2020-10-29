@@ -101,4 +101,6 @@ func main() {
 	e.Logger.Print("Waiting for work queues to finish...")
 	s.Queue.Shutdown()
 	e.Logger.Print("Shut down.")
+
+	s.Close()
 }

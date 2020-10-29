@@ -53,6 +53,37 @@ func (att *formAttachment) Filename() string {
 	return att.FileHeader.Filename
 }
 
+type refcountedAttachment struct {
+	*multipart.FileHeader
+	*multipart.Form
+	refs int
+}
+
+func (att *refcountedAttachment) Open() (io.ReadCloser, error) {
+	return att.FileHeader.Open()
+}
+
+func (att *refcountedAttachment) MIMEType() string {
+	// TODO: retain params, e.g. "charset"?
+	t, _, _ := mime.ParseMediaType(att.FileHeader.Header.Get("Content-Type"))
+	return t
+}
+
+func (att *refcountedAttachment) Filename() string {
+	return att.FileHeader.Filename
+}
+
+func (att *refcountedAttachment) Ref() {
+	att.refs += 1
+}
+
+func (att *refcountedAttachment) Unref() {
+	att.refs -= 1
+	if att.refs == 0 {
+		att.Form.RemoveAll()
+	}
+}
+
 type imapAttachment struct {
 	Mailbox string
 	Uid     uint32
@@ -174,6 +205,22 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
 	}
 
 	return nil
+}
+
+func (msg *OutgoingMessage) Ref() {
+	for _, a := range msg.Attachments {
+		if a, ok := a.(*refcountedAttachment); ok {
+			a.Ref()
+		}
+	}
+}
+
+func (msg *OutgoingMessage) Unref() {
+	for _, a := range msg.Attachments {
+		if a, ok := a.(*refcountedAttachment); ok {
+			a.Unref()
+		}
+	}
 }
 
 func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {

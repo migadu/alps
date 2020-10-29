@@ -166,19 +166,89 @@ main.create-update {
 }
 
 main.create-update { flex: 1 auto; padding: 1rem; }
-main.create-update form { flex: 1 auto; display: flex; flex-direction: column; }
-main.create-update form label { margin-top: 5px; }
-
-/* TODO: CSS grid this */
-main.create-update form label span {
-  display: inline-block;
-  font-weight: bold;
-  min-width: 150px;
+main.create-update form {
+  flex: 1 auto;
+  display: flex;
+  flex-direction: column;
 }
 
-main.create-update form input { width: 80%; }
-main.create-update form textarea { flex: 1 auto; resize: none; margin-top: 1rem; }
-main.create-update h1 { margin: 0; }
+main.create-update .headers {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto auto auto;
+  grid-gap: 0.5rem;
+  align-items: center;
+}
+
+main.create-update .headers.no-js {
+  grid-template-columns: auto 1fr;
+}
+
+main.create-update .headers label {
+  grid-column-start: 1;
+}
+
+main.create-update .headers input {
+  grid-column-start: 2;
+  grid-column-end: 3;
+}
+
+main.create-update #attachment-list {
+  grid-column-start: 3;
+  grid-row-start: 1;
+  grid-row-end: 5;
+
+  width: 25rem;
+  height: 100%;
+  background: #eee;
+  overflow-y: scroll;
+  border: 1px solid #eee;
+
+  display: flex;
+  flex-direction: column;
+}
+
+main.create-update #attachment-list .help {
+  text-align: center;
+  color: #555;
+  margin-top: 1rem;
+}
+
+main.create-update #attachment-list .upload {
+  width: calc(100% - 1rem);
+  position: relative;
+  display: flex;
+  margin: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: white;
+  align-items: center;
+}
+
+main.create-update #attachment-list *:not(:last-child) {
+  margin-right: 0.25rem;
+}
+
+main.create-update #attachment-list .upload .filename {
+  flex-grow: 1;
+}
+
+main.create-update #attachment-list .upload button {
+  padding: inherit;
+}
+
+main.create-update #attachment-list .upload .progress {
+  position: absolute;
+  height: 5px;
+  background: #50C878;
+  bottom: 0;
+  left: 0;
+}
+
+main.create-update textarea {
+  flex: 1 auto;
+  resize: none;
+  margin-top: 1rem;
+}
 
 main table { border-collapse: collapse; width: 100%; border: 1px solid #eee; }
 main table td {
@@ -681,6 +751,12 @@ button:hover,
 .button-link:hover {
   background-color: white;
   text-decoration: none;
+}
+
+button[disabled], button[disabled]:hover {
+  color: #555;
+  background-color: #c5c5c5;
+  cursor: default;
 }
 
 .button:active,

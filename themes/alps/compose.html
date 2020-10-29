@@ -8,15 +8,14 @@
   <div class="container">
     <main class="create-update">
 
-      <form method="post" action="" enctype="multipart/form-data">
+      <form method="post" enctype="multipart/form-data">
         <input type="hidden" name="in_reply_to" value="{{.Message.InReplyTo}}">
 
-        <label>
-          <span>From</span>
+        <div class="headers no-js">
+          <label>From</label>
           <input type="email" name="from" id="from" value="{{.Message.From}}" />
-        </label>
-        <label>
-          <span>To</span>
+
+          <label>To</label>
           <input
             type="email"
             name="to"
@@ -26,9 +25,27 @@
             list="emails"
             {{ if not .Message.To }} autofocus{{ end }}
           />
-        </label>
-        <label><span>Subject</span><input type="text" name="subject" id="subject" value="{{.Message.Subject}}" {{ if .Message.To }} autofocus{{ end }}/></label>
-        <label><span>Attachments</span><input type="file" name="attachments" id="attachments" multiple></label>
+
+          <label>Subject</label>
+          <input type="text" name="subject" id="subject" value="{{.Message.Subject}}" {{ if .Message.To }} autofocus{{ end }}/>
+
+          <label>Attachments</label>
+          <input type="file" name="attachments" id="attachments" multiple>
+
+          <div id="attachment-list" style="display: none;">
+            <div class="help">Drag and drop attachments here</div>
+            <!--
+            <div class="upload">
+              <span class="progress"></span>
+              <span class="filename">foobar.pdf</span>
+              <span class="size">1234 KiB</span>
+              <button>&times;</button>
+            </div>
+            -->
+          </div>
+
+          <input type="hidden" id="attachment-uuids" name="attachment-uuids" value="" />
+        </div>
         <!-- TODO: list of previous attachments (needs design) -->
 
         <textarea name="text" class="body">{{.Message.Text}}</textarea>
@@ -40,8 +57,8 @@
         </datalist>
 
         <div class="actions">
-          <button type="submit">Send Message</button>
-          <button type="submit" name="save_as_draft">Save as draft</button>
+          <button id="send-button" type="submit">Send Message</button>
+          <button id="save-button" type="submit" name="save_as_draft">Save as draft</button>
           <a class="button-link" href="/mailbox/INBOX">Cancel</a>
         </div>
       </form>
@@ -49,6 +66,6 @@
     </main>
   </div>
 </div>
-
+<script src="/themes/alps/assets/attachments.js"></script>
 
 {{template "foot.html"}}
