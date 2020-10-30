@@ -1,0 +1,23 @@
+{{template "head.html" .}}
+{{template "nav.html" .}}
+{{template "util.html" .}}
+
+<div class="page-wrap">
+  {{ template "aside" . }}
+  <div class="container">
+    <main class="create-update">
+      <form method="POST">
+        <h2>Create new folder</h2>
+        <label for="name">Name</label>
+        <input type="text" name="name" id="name" autofocus />
+        {{ if .Error }}<p>{{ .Error }}</p>{{ end }}
+        <div class="actions">
+          <button type="submit">Save</button>
+          <a class="button-link" href="/">Cancel</a>
+        </div>
+      </form>
+    </main>
+  </div>
+</div>
+
+{{template "foot.html"}}

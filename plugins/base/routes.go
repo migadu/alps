@@ -31,6 +31,9 @@ func registerRoutes(p *alps.GoPlugin) {
 	p.GET("/mailbox/:mbox", handleGetMailbox)
 	p.POST("/mailbox/:mbox", handleGetMailbox)
 
+	p.GET("/new-mailbox", handleNewMailbox)
+	p.POST("/new-mailbox", handleNewMailbox)
+
 	p.GET("/message/:mbox/:uid", func(ctx *alps.Context) error {
 		return handleGetPart(ctx, false)
 	})
@@ -256,6 +259,47 @@ func handleGetMailbox(ctx *alps.Context) error {
 		PrevPage:             prevPage,
 		NextPage:             nextPage,
 		Query:                query,
+	})
+}
+
+type NewMailboxRenderData struct {
+	IMAPBaseRenderData
+	Error string
+}
+
+func handleNewMailbox(ctx *alps.Context) error {
+	ibase, err := newIMAPBaseRenderData(ctx, alps.NewBaseRenderData(ctx))
+	if err != nil {
+		return err
+	}
+	ibase.BaseRenderData.WithTitle("Create new folder")
+
+	if ctx.Request().Method == http.MethodPost {
+		name := ctx.FormValue("name")
+		if name == "" {
+			return ctx.Render(http.StatusOK, "new-mailbox.html", &NewMailboxRenderData{
+				IMAPBaseRenderData: *ibase,
+				Error: "Name is required",
+			})
+		}
+
+		err := ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+			return c.Create(name)
+		})
+
+		if err != nil {
+			return ctx.Render(http.StatusOK, "new-mailbox.html", &NewMailboxRenderData{
+				IMAPBaseRenderData: *ibase,
+				Error: err.Error(),
+			})
+		}
+
+		return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%s", url.PathEscape(name)))
+	}
+
+	return ctx.Render(http.StatusOK, "new-mailbox.html", &NewMailboxRenderData{
+		IMAPBaseRenderData: *ibase,
+		Error: "",
 	})
 }
 

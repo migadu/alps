@@ -26,7 +26,7 @@
   <!-- the logo image, dimensions 200x32 may be present or not -->
   <a href="/compose" class="new
     {{ if eq $.GlobalData.URL.Path "/compose" }}active{{ end }}
-  ">Compose&nbsp;Mail</a>
+  ">Compose&nbsp;mail</a>
   {{ with .CategorizedMailboxes }}
   {{ with .Common.Inbox }}{{ template "mbox-link" . }}{{ end}}
   {{ with .Common.Drafts }}{{ template "mbox-link" . }}{{ end}}
@@ -42,5 +42,8 @@
   {{ end }}
   {{ end }}
   {{ end }}
+  <a href="/new-mailbox" class="new
+    {{ if eq $.GlobalData.URL.Path "/new-mailbox" }}active{{ end }}
+  ">Create&nbsp;new&nbsp;folder</a>
 </aside>
 {{ end }}
