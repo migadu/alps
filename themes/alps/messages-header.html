@@ -26,6 +26,12 @@
     <div class="action-group">
       <a href="{{ .GlobalData.URL.String }}" class="button-link">Refresh</a>
     </div>
+
+    <div class="action-group">
+      {{ if not (eq .Mailbox.Name "INBOX") }}
+      <a class="button-link" href="/delete-mailbox/{{.Mailbox.Name | pathescape}}">Delete folder</a>
+      {{ end }}
+    </div>
   </div>
 
   <form method="get" class="actions-search">

@@ -34,6 +34,9 @@ func registerRoutes(p *alps.GoPlugin) {
 	p.GET("/new-mailbox", handleNewMailbox)
 	p.POST("/new-mailbox", handleNewMailbox)
 
+	p.GET("/delete-mailbox/:mbox", handleDeleteMailbox)
+	p.POST("/delete-mailbox/:mbox", handleDeleteMailbox)
+
 	p.GET("/message/:mbox/:uid", func(ctx *alps.Context) error {
 		return handleGetPart(ctx, false)
 	})
@@ -301,6 +304,25 @@ func handleNewMailbox(ctx *alps.Context) error {
 		IMAPBaseRenderData: *ibase,
 		Error: "",
 	})
+}
+
+func handleDeleteMailbox(ctx *alps.Context) error {
+	ibase, err := newIMAPBaseRenderData(ctx, alps.NewBaseRenderData(ctx))
+	if err != nil {
+		return err
+	}
+
+	mbox := ibase.Mailbox
+	ibase.BaseRenderData.WithTitle("Delete folder '" + mbox.Name + "'")
+
+	if ctx.Request().Method == http.MethodPost {
+		ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+			return c.Delete(mbox.Name)
+		})
+		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
+	}
+
+	return ctx.Render(http.StatusOK, "delete-mailbox.html", ibase)
 }
 
 func handleLogin(ctx *alps.Context) error {
