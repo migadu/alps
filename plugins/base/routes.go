@@ -73,6 +73,7 @@ type IMAPBaseRenderData struct {
 	Mailboxes            []MailboxInfo
 	Mailbox              *MailboxStatus
 	Inbox                *MailboxStatus
+	Outbox               *MailboxStatus
 }
 
 type MailboxRenderData struct {
@@ -87,6 +88,7 @@ type CategorizedMailboxes struct {
 	Common struct {
 		Inbox   *MailboxInfo
 		Drafts  *MailboxInfo
+		Outbox  *MailboxInfo
 		Sent    *MailboxInfo
 		Junk    *MailboxInfo
 		Trash   *MailboxInfo
@@ -104,7 +106,7 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 	}
 
 	var mailboxes []MailboxInfo
-	var active, inbox *MailboxStatus
+	var active, inbox, outbox *MailboxStatus
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 		var err error
 		if mailboxes, err = listMailboxes(c); err != nil {
@@ -122,6 +124,13 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 				return err
 			}
 		}
+		if mboxName == "Outbox" {
+			outbox = active
+		} else {
+			if outbox, err = getMailboxStatus(c, "Outbox"); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -132,6 +141,7 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 	mmap := map[string]**MailboxInfo{
 		"INBOX": &categorized.Common.Inbox,
 		"Drafts": &categorized.Common.Drafts,
+		"Outbox": &categorized.Common.Outbox,
 		"Sent": &categorized.Common.Sent,
 		"Junk": &categorized.Common.Junk,
 		"Trash": &categorized.Common.Trash,
@@ -142,10 +152,16 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 		// Populate unseen & active states
 		if active != nil && mailboxes[i].Name == active.Name {
 			mailboxes[i].Unseen = int(active.Unseen)
+			mailboxes[i].Total = int(active.Messages)
 			mailboxes[i].Active = true
 		}
 		if mailboxes[i].Name == inbox.Name {
 			mailboxes[i].Unseen = int(inbox.Unseen)
+			mailboxes[i].Total = int(inbox.Messages)
+		}
+		if mailboxes[i].Name == outbox.Name {
+			mailboxes[i].Unseen = int(outbox.Unseen)
+			mailboxes[i].Total = int(outbox.Messages)
 		}
 
 		if ptr, ok := mmap[mailboxes[i].Name]; ok {
@@ -416,8 +432,23 @@ type composeOptions struct {
 // Send message, append it to the Sent mailbox, mark the original message as
 // answered
 func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOptions) error {
-	msg.Ref()
-	msg.Ref()
+	msg.Ref(3)
+
+	err := ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+		// (disregard error, we don't care if Outbox already existed)
+		c.Create("Outbox")
+
+		if _, err := appendMessage(c, msg, mailboxOutbox); err != nil {
+			return err
+		}
+
+		msg.Unref()
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to save message to outbox: %v", err)
+	}
+
 	task := work.NewTask(func(_ context.Context) error {
 		err := ctx.Session.DoSMTP(func (c *smtp.Client) error {
 			return sendMessage(c, msg)
@@ -427,9 +458,43 @@ func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 		}
 		return err
 	}).Retries(5).After(func(_ context.Context, task *work.Task) {
+		ctx.Logger().Printf("email sent: %v", task.Result())
+		if task.Result() == nil {
+			// Remove from outbox
+			err := ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+				ctx.Logger().Printf("DoIMAP")
+				if err := ensureMailboxSelected(c, "Outbox"); err != nil {
+					return err
+				}
+				uids, err := c.UidSearch(&imap.SearchCriteria{
+					Header: map[string][]string{
+						"Message-Id": []string{msg.MessageID},
+					},
+				})
+				if err != nil {
+					return fmt.Errorf("UID SEARCH failed: %v", err)
+				}
+				if len(uids) == 1 {
+					if err = deleteMessage(c, "Outbox", uids[0]); err != nil {
+						return err
+					}
+				} else {
+					ctx.Logger().Errorf(
+						"Unexpectedly found multiple results in outbox for message ID %s",
+						msg.MessageID)
+				}
+				return nil
+			})
+			if err != nil {
+				ctx.Logger().Errorf("Error removing message from outbox: %v", err)
+			}
+		} else {
+			ctx.Logger().Errorf("Message delivery failed with error %v", err)
+		}
+
 		msg.Unref()
 	})
-	err := ctx.Server.Queue.Enqueue(task)
+	err = ctx.Server.Queue.Enqueue(task)
 	if err != nil {
 		if _, ok := err.(alps.AuthError); ok {
 			return echo.NewHTTPError(http.StatusForbidden, err)
@@ -451,6 +516,7 @@ func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 			return err
 		}
 		msg.Unref()
+
 		if draft := options.Draft; draft != nil {
 			if err := deleteMessage(c, draft.Mailbox, draft.Uid); err != nil {
 				return err
@@ -599,6 +665,7 @@ func handleComposeNew(ctx *alps.Context) error {
 		To:        strings.Split(ctx.QueryParam("to"), ","),
 		Subject:   ctx.QueryParam("subject"),
 		Text:      ctx.QueryParam("body"),
+		MessageID: mail.GenerateMessageID(),
 		InReplyTo: ctx.QueryParam("in-reply-to"),
 	}, &composeOptions{})
 }
@@ -676,6 +743,7 @@ func handleReply(ctx *alps.Context) error {
 			return err
 		}
 
+		msg.MessageID = mail.GenerateMessageID()
 		msg.InReplyTo = inReplyTo.Envelope.MessageId
 		// TODO: populate From from known user addresses and inReplyTo.Envelope.To
 		replyTo := inReplyTo.Envelope.ReplyTo
@@ -734,6 +802,7 @@ func handleForward(ctx *alps.Context) error {
 			return err
 		}
 
+		msg.MessageID = mail.GenerateMessageID()
 		msg.Subject = source.Envelope.Subject
 		if !strings.HasPrefix(strings.ToLower(msg.Subject), "fwd:") &&
 			!strings.HasPrefix(strings.ToLower(msg.Subject), "fw:") {
@@ -807,7 +876,7 @@ func handleEdit(ctx *alps.Context) error {
 		msg.To = unwrapIMAPAddressList(source.Envelope.To)
 		msg.Subject = source.Envelope.Subject
 		msg.InReplyTo = source.Envelope.InReplyTo
-		// TODO: preserve Message-Id
+		msg.MessageID = source.Envelope.MessageId
 
 		attachments := source.Attachments()
 		for i := range attachments {

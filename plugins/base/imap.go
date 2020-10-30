@@ -22,6 +22,7 @@ type MailboxInfo struct {
 	*imap.MailboxInfo
 
 	Active bool
+	Total  int
 	Unseen int
 }
 
@@ -49,7 +50,7 @@ func listMailboxes(conn *imapclient.Client) ([]MailboxInfo, error) {
 
 	var mailboxes []MailboxInfo
 	for mbox := range ch {
-		mailboxes = append(mailboxes, MailboxInfo{mbox, false, -1})
+		mailboxes = append(mailboxes, MailboxInfo{mbox, false, -1, -1})
 	}
 
 	if err := <-done; err != nil {
@@ -95,6 +96,7 @@ type mailboxType int
 
 const (
 	mailboxSent mailboxType = iota
+	mailboxOutbox mailboxType = iota
 	mailboxDrafts
 )
 
@@ -115,6 +117,9 @@ func getMailboxByType(conn *imapclient.Client, mboxType mailboxType) (*MailboxIn
 	case mailboxDrafts:
 		attr = imapspecialuse.Drafts
 		fallbackNames = []string{"Draft", "Drafts"}
+	case mailboxOutbox:
+		attr = ""
+		fallbackNames = []string{"Outbox"}
 	}
 
 	var attrMatched bool
@@ -146,7 +151,7 @@ func getMailboxByType(conn *imapclient.Client, mboxType mailboxType) (*MailboxIn
 	if best == nil {
 		return nil, nil
 	}
-	return &MailboxInfo{best, false, -1}, nil
+	return &MailboxInfo{best, false, -1, -1}, nil
 }
 
 func ensureMailboxSelected(conn *imapclient.Client, mboxName string) error {

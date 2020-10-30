@@ -73,8 +73,8 @@ func (att *refcountedAttachment) Filename() string {
 	return att.FileHeader.Filename
 }
 
-func (att *refcountedAttachment) Ref() {
-	att.refs += 1
+func (att *refcountedAttachment) Ref(n int) {
+	att.refs += n
 }
 
 func (att *refcountedAttachment) Unref() {
@@ -111,6 +111,7 @@ type OutgoingMessage struct {
 	From        string
 	To          []string
 	Subject     string
+	MessageID   string
 	InReplyTo   string
 	Text        string
 	Attachments []Attachment
@@ -170,7 +171,7 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
 		h.Set("In-Reply-To", msg.InReplyTo)
 	}
 
-	h.Set("Message-Id", mail.GenerateMessageID())
+	h.Set("Message-Id", msg.MessageID)
 
 	mw, err := mail.CreateWriter(w, h)
 	if err != nil {
@@ -207,10 +208,10 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
 	return nil
 }
 
-func (msg *OutgoingMessage) Ref() {
+func (msg *OutgoingMessage) Ref(n int) {
 	for _, a := range msg.Attachments {
 		if a, ok := a.(*refcountedAttachment); ok {
-			a.Ref()
+			a.Ref(n)
 		}
 	}
 }
