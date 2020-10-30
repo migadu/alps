@@ -1,24 +1,10 @@
-(function() {
-	var sheet = document.styleSheets[0];
-	var addCSSRule = function(selector, rules, index) {
-		if ("insertRule" in sheet) {
-			sheet.insertRule(selector + "{" + rules + "}", index);
-			return;
+const check_all = document.getElementById("action-checkbox-all");
+if (check_all) {
+	check_all.style.display = "inherit";
+	check_all.addEventListener("click", ev => {
+		const inputs = document.querySelectorAll(".message-list-checkbox input");
+		for (let i = 0; i < inputs.length; i++) {
+			inputs[i].checked = ev.target.checked;
 		}
-		if ("addRule" in sheet) {
-			sheet.addRule(selector, rules, index);
-		}
-	};
-
-	var checkboxAll = document.getElementById("action-checkbox-all");
-	if (checkboxAll) {
-		addCSSRule(".message-list-checkbox", "display: table-cell !important;");
-		checkboxAll.addEventListener("click", function(ev) {
-			var allChecked = this.checked;
-			var inputs = document.querySelectorAll("tr .message-list-checkbox input");
-			Array.prototype.slice.apply().forEach(function(cb) {
-				cb.checked = allChecked;
-			});
-		});
-	}
-})();
+	});
+}

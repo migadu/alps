@@ -2,25 +2,6 @@
 {{template "nav.html" .}}
 {{template "util.html" .}}
 
-{{ define "mbox-link" }}
-{{ if not (.HasAttr "\\Noselect") }}
-<a href="{{.URL}}" {{ if .Active }}class="active"{{ end }}>
-  {{- if eq .Name "INBOX" -}}
-    Inbox
-  {{- else -}}
-    {{ .Name }}
-  {{- end -}}
-  {{- if .HasAttr "\\HasChildren" }}/{{ end }}
-
-  {{ if and (ne .Unseen -1) (ne .Unseen 0) }}({{ .Unseen }}){{ end }}
-</a>
-{{ else }}
-<span class="noselect">
-  {{.Name}}{{- if .HasAttr "\\HasChildren" }}/{{ end }}
-</span>
-{{ end }}
-{{ end }}
-
 <div class="page-wrap">
   {{ template "aside" . }}
   <div class="container">
