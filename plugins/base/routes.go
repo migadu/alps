@@ -546,9 +546,13 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 
 		uuids := ctx.FormValue("attachment-uuids")
 		for _, uuid := range strings.Split(uuids, ",") {
+			if uuid == "" {
+				continue
+			}
+
 			attachment := ctx.Session.PopAttachment(uuid)
 			if attachment == nil {
-				return fmt.Errorf("Unable to retrieve message attachments from session")
+				return fmt.Errorf("Unable to retrieve message attachment %s from session", uuid)
 			}
 			msg.Attachments = append(msg.Attachments, &refcountedAttachment{
 				attachment.File,
