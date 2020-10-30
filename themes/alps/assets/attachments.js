@@ -75,6 +75,12 @@ function attachFile(file) {
 	};
 	attachments.push(attachment);
 	attachmentsNode.appendChild(node);
+	node.querySelector("button").addEventListener("click", ev => {
+		attachment.xhr.abort();
+		attachments = attachments.filter(a => a !== attachment);
+		node.remove();
+		updateState();
+	});
 
 	let formData = new FormData();
 	formData.append("attachments", file);
