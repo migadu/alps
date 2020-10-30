@@ -78,13 +78,22 @@
               <button class="action-group" type="submit">Move</button>
             </form>
 
-            <span class="followups">
+            <span class="followups action-group">
               {{if .Message.HasFlag "\\Draft"}}
                 <a class="action-group button-link" href="{{.Message.URL}}/edit{{if .Message.TextPart}}?part={{.Message.TextPart.PathString}}{{end}}">Edit draft</a>
               {{else}}
                 <a class="action-group button-link" href="{{.Message.URL}}/reply{{if .Message.TextPart}}?part={{.Message.TextPart.PathString}}{{end}}">Reply</a>
                 <a class="action-group button-link" href="{{.Message.URL}}/forward{{if .Message.TextPart}}?part={{.Message.TextPart.PathString}}{{end}}">Forward</a>
               {{end}}
+            </span>
+
+            <span class="action-group">
+              <a
+                class="action-group button-link"
+                id="print"
+                href="#"
+                style="display: none"
+              >Print</a>
             </span>
           </div>
         </div>
@@ -204,5 +213,6 @@
     </main>
   </div>
 </div>
+<script src="/themes/alps/assets/print.js"></script>
 
 {{template "foot.html"}}

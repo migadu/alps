@@ -1,0 +1,10 @@
+header,
+aside,
+.actions,
+.tabs {
+  display: none;
+}
+
+.message {
+  padding: 0;
+}
