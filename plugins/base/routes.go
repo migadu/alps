@@ -133,9 +133,7 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 		if mboxName == "Outbox" {
 			outbox = active
 		} else {
-			if outbox, err = getMailboxStatus(c, "Outbox"); err != nil {
-				return err
-			}
+			outbox, _ = getMailboxStatus(c, "Outbox")
 		}
 		return nil
 	})
@@ -165,7 +163,7 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 			mailboxes[i].Unseen = int(inbox.Unseen)
 			mailboxes[i].Total = int(inbox.Messages)
 		}
-		if mailboxes[i].Name == outbox.Name {
+		if outbox != nil && mailboxes[i].Name == outbox.Name {
 			mailboxes[i].Unseen = int(outbox.Unseen)
 			mailboxes[i].Total = int(outbox.Messages)
 		}
