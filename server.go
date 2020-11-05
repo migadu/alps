@@ -265,7 +265,8 @@ func (ctx *Context) SetSession(s *Session) {
 	cookie := http.Cookie{
 		Name:     cookieName,
 		HttpOnly: true,
-		// TODO: domain, secure
+		SameSite: http.SameSiteStrictMode,
+		Secure:   ctx.IsTLS(),
 	}
 	if s != nil {
 		cookie.Value = s.token
@@ -285,6 +286,8 @@ func (ctx *Context) SetLoginToken(username, password string) {
 		Expires:  time.Now().Add(30 * 24 * time.Hour),
 		Name:     loginTokenCookieName,
 		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   ctx.IsTLS(),
 		Path:     "/login",
 	}
 	if username == "" {
