@@ -245,6 +245,15 @@ main.create-update #attachment-list .upload .progress {
   left: 0;
 }
 
+main.create-update #attachment-list .upload .error {
+  display: none;
+}
+
+main.create-update #attachment-list .upload.error .error {
+  display: block;
+  color: red;
+}
+
 main.create-update textarea {
   flex: 1 auto;
   resize: none;

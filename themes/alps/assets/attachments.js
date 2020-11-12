@@ -85,16 +85,39 @@ function attachFile(file) {
 	let formData = new FormData();
 	formData.append("attachments", file);
 
+	const handleError = msg => {
+		attachments = attachments.filter(a => a !== attachment);
+		node.classList.add("error");
+		node.querySelector(".progress").remove();
+		node.querySelector(".size").remove();
+		node.querySelector("button").remove();
+		node.querySelector(".error").innerText = "Error: " + msg;
+		updateState();
+	};
+
 	xhr.open("POST", "/compose/attachment");
 	xhr.upload.addEventListener("progress", ev => {
 		attachment.progress = ev.loaded / ev.total;
 		updateState();
 	});
 	xhr.addEventListener("load", () => {
-		// TODO: Handle errors
-		const resp = JSON.parse(xhr.responseText);
+		let resp;
+		try {
+			resp = JSON.parse(xhr.responseText);
+		} catch {
+			resp = { "error": "Error: invalid response" };
+		}
+
+		if (xhr.status !== 200) {
+			handleError(resp["error"]);
+			return;
+		}
+
 		attachment.uuid = resp[0];
 		updateState();
+	});
+	xhr.addEventListener("error", () => {
+		handleError("an unexpected problem occured");
 	});
 	xhr.send(formData);
 
@@ -105,6 +128,7 @@ function attachmentNodeFor(file) {
 	const node = document.createElement("div"),
 		progress = document.createElement("span"),
 		filename = document.createElement("span"),
+		error = document.createElement("span"),
 		size = document.createElement("span"),
 		button = document.createElement("button");
 	node.classList.add("upload");
@@ -115,6 +139,9 @@ function attachmentNodeFor(file) {
 	filename.classList.add("filename");
 	filename.innerText = file.name;
 	node.appendChild(filename);
+
+	error.classList.add("error");
+	node.appendChild(error);
 
 	size.classList.add("size");
 	size.innerText = formatSI(file.size) + "B";

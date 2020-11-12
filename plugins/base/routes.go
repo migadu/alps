@@ -737,18 +737,25 @@ func handleComposeNew(ctx *alps.Context) error {
 func handleComposeAttachment(ctx *alps.Context) error {
 	reader, err := ctx.Request().MultipartReader()
 	if err != nil {
-		return fmt.Errorf("failed to get multipart form: %v", err)
+		return ctx.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Invalid request",
+		})
 	}
 	form, err := reader.ReadForm(32 << 20) // 32 MB
 	if err != nil {
-		return fmt.Errorf("failed to decode multipart form: %v", err)
+		return ctx.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Invalid request",
+		})
 	}
 
 	var uuids []string
 	for _, fh := range form.File["attachments"] {
 		uuid, err := ctx.Session.PutAttachment(fh, form)
 		if err != nil {
-			return err
+			ctx.Logger().Printf("PutAttachment: %v\n", err)
+			return ctx.JSON(http.StatusBadRequest, map[string]string{
+				"error": "failed to store attachment",
+			})
 		}
 		uuids = append(uuids, uuid)
 	}
