@@ -80,6 +80,12 @@ function attachFile(file) {
 		attachments = attachments.filter(a => a !== attachment);
 		node.remove();
 		updateState();
+
+		if (typeof attachment.uuid !== "undefined") {
+			const cancel = new XMLHttpRequest();
+			cancel.open("POST", `/compose/attachment/${attachment.uuid}/remove`);
+			cancel.send();
+		}
 	});
 
 	let formData = new FormData();

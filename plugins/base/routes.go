@@ -53,6 +53,7 @@ func registerRoutes(p *alps.GoPlugin) {
 	p.POST("/compose", handleComposeNew)
 
 	p.POST("/compose/attachment", handleComposeAttachment)
+	p.POST("/compose/attachment/:uuid/remove", handleCancelAttachment)
 
 	p.GET("/message/:mbox/:uid/reply", handleReply)
 	p.POST("/message/:mbox/:uid/reply", handleReply)
@@ -761,6 +762,15 @@ func handleComposeAttachment(ctx *alps.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, &uuids)
+}
+
+func handleCancelAttachment(ctx *alps.Context) error {
+	uuid := ctx.Param("uuid")
+	a := ctx.Session.PopAttachment(uuid)
+	if a != nil {
+		a.Form.RemoveAll()
+	}
+	return ctx.JSON(http.StatusOK, nil)
 }
 
 func unwrapIMAPAddressList(addrs []*imap.Address) []string {
