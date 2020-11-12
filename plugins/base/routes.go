@@ -526,7 +526,6 @@ func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 		if task.Result() == nil {
 			// Remove from outbox
 			err := ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-				ctx.Logger().Printf("DoIMAP")
 				if err := ensureMailboxSelected(c, "Outbox"); err != nil {
 					return err
 				}
@@ -617,6 +616,7 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 		msg.Subject = ctx.FormValue("subject")
 		msg.Text = ctx.FormValue("text")
 		msg.InReplyTo = ctx.FormValue("in_reply_to")
+		msg.MessageID = ctx.FormValue("message_id")
 
 		form, err := ctx.MultipartForm()
 		if err != nil {
