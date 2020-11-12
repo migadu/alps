@@ -33,8 +33,21 @@
           <label>Attachments</label>
           <input type="file" name="attachments" id="attachments" multiple>
 
-          <div id="attachment-list" style="display: none;">
+          <div
+            id="attachment-list"
+            {{ if .Message.Attachments }}
+            style="display: none;"
+            {{ end }}
+          >
             <div class="help">Drag and drop attachments here</div>
+            {{range .Message.Attachments}}
+            <div class="upload">
+              <label class="filename">
+                <input type="checkbox" name="prev_attachments" value="{{.Node.PathString}}" checked>
+                {{.Filename}}
+              </label>
+            </div>
+            {{end}}
             <!--
             <div class="upload">
               <span class="progress"></span>
@@ -47,7 +60,6 @@
 
           <input type="hidden" id="attachment-uuids" name="attachment-uuids" value="" />
         </div>
-        <!-- TODO: list of previous attachments (needs design) -->
 
         <textarea name="text" class="body">{{.Message.Text}}</textarea>
 
