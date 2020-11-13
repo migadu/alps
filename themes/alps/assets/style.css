@@ -254,10 +254,48 @@ main.create-update #attachment-list .upload.error .error {
   color: red;
 }
 
-main.create-update textarea {
+main.create-update .text {
   flex: 1 auto;
   resize: none;
   margin-top: 1rem;
+  position: relative;
+}
+
+main.create-update textarea {
+  width: 100%;
+  height: 100%;
+}
+
+#send-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  font-size: 1.2rem;
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#send-progress svg {
+  height: 1.2rem;
+  margin-right: 0.3rem;
+  animation: fa-spin 2s infinite linear;
+}
+
+#send-progress svg path {
+  fill: currentColor;
+}
+
+@keyframes fa-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(1turn);
+  }
 }
 
 main table { border-collapse: collapse; width: 100%; border: 1px solid #eee; }

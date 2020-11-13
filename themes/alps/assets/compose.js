@@ -1,3 +1,11 @@
+const composeForm = document.getElementById("compose-form");
+const sendProgress = document.getElementById("send-progress");
+composeForm.addEventListener("submit", ev => {
+	[...document.querySelectorAll("input, textarea")].map(
+		i => i.setAttribute("readonly", "readonly"));
+	sendProgress.style.display = 'flex';
+});
+
 let attachments = [];
 
 const headers = document.querySelector(".create-update .headers");
