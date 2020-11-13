@@ -24,11 +24,17 @@
             value="{{.Message.ToString}}"
             multiple
             list="emails"
-            {{ if not .Message.To }} autofocus{{ end }}
+            {{ if not .Message.ToString }} autofocus{{ end }}
           />
 
           <label>Subject</label>
-          <input type="text" name="subject" id="subject" value="{{.Message.Subject}}" {{ if .Message.To }} autofocus{{ end }}/>
+          <input
+            type="text"
+            name="subject"
+            id="subject"
+            value="{{.Message.Subject}}"
+            {{ if .Message.ToString }} autofocus{{ end }}
+          />
 
           <label>Attachments</label>
           <input type="file" name="attachments" id="attachments" multiple>
