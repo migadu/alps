@@ -110,7 +110,7 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 	}
 
 	var mailboxes []MailboxInfo
-	var active, inbox, outbox *MailboxStatus
+	var active, inbox *MailboxStatus
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 		var err error
 		if mailboxes, err = listMailboxes(c); err != nil {
@@ -154,10 +154,6 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 		if mailboxes[i].Name == inbox.Name {
 			mailboxes[i].Unseen = int(inbox.Unseen)
 			mailboxes[i].Total = int(inbox.Messages)
-		}
-		if outbox != nil && mailboxes[i].Name == outbox.Name {
-			mailboxes[i].Unseen = int(outbox.Unseen)
-			mailboxes[i].Total = int(outbox.Messages)
 		}
 
 		if ptr, ok := mmap[mailboxes[i].Name]; ok {
