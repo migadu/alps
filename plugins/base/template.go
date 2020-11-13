@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/emersion/go-imap"
 )
 
@@ -61,4 +62,5 @@ var templateFuncs = template.FuncMap{
 		}
 		return t.Format(inputTimeLayout)
 	},
+	"humantime": humanize.Time,
 }

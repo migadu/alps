@@ -68,7 +68,7 @@
             </a>
           </div>
           <div class="message-list-date {{$classes}}">
-            {{ .Envelope.Date | formatdate }}
+            {{ .Envelope.Date | humantime }}
           </div>
           {{ else }}
           <div class="message-list-checkbox {{$classes}}">
