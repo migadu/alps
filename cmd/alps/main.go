@@ -78,8 +78,6 @@ func main() {
 
 	go e.Start(addr)
 
-	s.Queue.Start(context.Background())
-
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGUSR1, syscall.SIGINT)
 
@@ -97,10 +95,6 @@ func main() {
 		time.Now().Add(30*time.Second))
 	e.Shutdown(ctx)
 	cancel()
-
-	e.Logger.Print("Waiting for work queues to finish...")
-	s.Queue.Shutdown()
-	e.Logger.Print("Shut down.")
 
 	s.Close()
 }

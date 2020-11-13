@@ -96,7 +96,6 @@ type mailboxType int
 
 const (
 	mailboxSent mailboxType = iota
-	mailboxOutbox mailboxType = iota
 	mailboxDrafts
 )
 
@@ -117,9 +116,6 @@ func getMailboxByType(conn *imapclient.Client, mboxType mailboxType) (*MailboxIn
 	case mailboxDrafts:
 		attr = imapspecialuse.Drafts
 		fallbackNames = []string{"Draft", "Drafts"}
-	case mailboxOutbox:
-		attr = ""
-		fallbackNames = []string{"Outbox"}
 	}
 
 	var attrMatched bool

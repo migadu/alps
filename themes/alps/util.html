@@ -7,12 +7,6 @@
     {{ .Name }}
   {{- end -}}
   {{- if .HasAttr "\\HasChildren" }}/{{ end }}
-
-  {{ if eq .Name "Outbox" }}
-  {{ if and (ne .Total -1) (ne .Total 0) }}({{ .Total }} unsent){{ end }}
-  {{ else }}
-  {{ if and (ne .Unseen -1) (ne .Unseen 0) }}({{ .Unseen }}){{ end }}
-  {{ end }}
 </a>
 {{ else }}
 <span class="noselect">
@@ -30,7 +24,6 @@
   {{ with .CategorizedMailboxes }}
   {{ with .Common.Inbox }}{{ template "mbox-link" . }}{{ end }}
   {{ with .Common.Drafts }}{{ template "mbox-link" . }}{{ end }}
-  {{ with .Common.Outbox }}{{ template "mbox-link" . }}{{ end }}
   {{ with .Common.Sent }}{{ template "mbox-link" . }}{{ end }}
   {{ with .Common.Junk }}{{ template "mbox-link" . }}{{ end }}
   {{ with .Common.Trash }}{{ template "mbox-link" . }}{{ end }}

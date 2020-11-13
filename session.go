@@ -62,8 +62,8 @@ type Session struct {
 }
 
 type Attachment struct {
-	File     *multipart.FileHeader
-	Form     *multipart.Form
+	File *multipart.FileHeader
+	Form *multipart.Form
 }
 
 func (s *Session) ping() {

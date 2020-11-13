@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"git.sr.ht/~sircmpwn/dowork"
 	"github.com/fernet/fernet-go"
 	"github.com/labstack/echo/v4"
 )
@@ -25,7 +24,6 @@ type Server struct {
 	e        *echo.Echo
 	Sessions *SessionManager
 	Options  *Options
-	Queue    *work.Queue
 
 	mutex   sync.RWMutex // used for server reload
 	plugins []Plugin
@@ -68,8 +66,6 @@ func newServer(e *echo.Echo, options *Options) (*Server, error) {
 	}
 
 	s.Sessions = newSessionManager(s.dialIMAP, s.dialSMTP, e.Logger, options.Debug)
-	s.Queue = work.NewQueue("alps")
-
 	return s, nil
 }
 

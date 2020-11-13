@@ -2,7 +2,6 @@ package alpsbase
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,7 +12,6 @@ import (
 	"strings"
 
 	"git.sr.ht/~emersion/alps"
-	"git.sr.ht/~sircmpwn/dowork"
 	"github.com/emersion/go-imap"
 	imapmove "github.com/emersion/go-imap-move"
 	imapclient "github.com/emersion/go-imap/client"
@@ -80,7 +78,6 @@ type IMAPBaseRenderData struct {
 	Mailboxes            []MailboxInfo
 	Mailbox              *MailboxStatus
 	Inbox                *MailboxStatus
-	Outbox               *MailboxStatus
 }
 
 type MailboxRenderData struct {
@@ -95,7 +92,6 @@ type CategorizedMailboxes struct {
 	Common struct {
 		Inbox   *MailboxInfo
 		Drafts  *MailboxInfo
-		Outbox  *MailboxInfo
 		Sent    *MailboxInfo
 		Junk    *MailboxInfo
 		Trash   *MailboxInfo
@@ -131,11 +127,6 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 				return err
 			}
 		}
-		if mboxName == "Outbox" {
-			outbox = active
-		} else {
-			outbox, _ = getMailboxStatus(c, "Outbox")
-		}
 		return nil
 	})
 	if err != nil {
@@ -146,7 +137,6 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 	mmap := map[string]**MailboxInfo{
 		"INBOX": &categorized.Common.Inbox,
 		"Drafts": &categorized.Common.Drafts,
-		"Outbox": &categorized.Common.Outbox,
 		"Sent": &categorized.Common.Sent,
 		"Junk": &categorized.Common.Junk,
 		"Trash": &categorized.Common.Trash,
@@ -497,68 +487,9 @@ type composeOptions struct {
 // Send message, append it to the Sent mailbox, mark the original message as
 // answered
 func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOptions) error {
-	msg.Ref(3)
-
-	err := ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-		// (disregard error, we don't care if Outbox already existed)
-		c.Create("Outbox")
-
-		if _, err := appendMessage(c, msg, mailboxOutbox); err != nil {
-			return err
-		}
-
-		msg.Unref()
-		return nil
+	err := ctx.Session.DoSMTP(func (c *smtp.Client) error {
+		return sendMessage(c, msg)
 	})
-	if err != nil {
-		return fmt.Errorf("failed to save message to outbox: %v", err)
-	}
-
-	task := work.NewTask(func(_ context.Context) error {
-		err := ctx.Session.DoSMTP(func (c *smtp.Client) error {
-			return sendMessage(c, msg)
-		})
-		if err != nil {
-			ctx.Logger().Printf("Error sending email: %v\n", err)
-		}
-		return err
-	}).Retries(5).After(func(_ context.Context, task *work.Task) {
-		ctx.Logger().Printf("email sent: %v", task.Result())
-		if task.Result() == nil {
-			// Remove from outbox
-			err := ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-				if err := ensureMailboxSelected(c, "Outbox"); err != nil {
-					return err
-				}
-				uids, err := c.UidSearch(&imap.SearchCriteria{
-					Header: map[string][]string{
-						"Message-Id": []string{msg.MessageID},
-					},
-				})
-				if err != nil {
-					return fmt.Errorf("UID SEARCH failed: %v", err)
-				}
-				if len(uids) == 1 {
-					if err = deleteMessage(c, "Outbox", uids[0]); err != nil {
-						return err
-					}
-				} else {
-					ctx.Logger().Errorf(
-						"Unexpectedly found multiple results in outbox for message ID %s",
-						msg.MessageID)
-				}
-				return nil
-			})
-			if err != nil {
-				ctx.Logger().Errorf("Error removing message from outbox: %v", err)
-			}
-		} else {
-			ctx.Logger().Errorf("Message delivery failed with error %v", err)
-		}
-
-		msg.Unref()
-	})
-	err = ctx.Server.Queue.Enqueue(task)
 	if err != nil {
 		if _, ok := err.(alps.AuthError); ok {
 			return echo.NewHTTPError(http.StatusForbidden, err)
@@ -579,8 +510,6 @@ func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 		if _, err := appendMessage(c, msg, mailboxSent); err != nil {
 			return err
 		}
-		msg.Unref()
-
 		if draft := options.Draft; draft != nil {
 			if err := deleteMessage(c, draft.Mailbox, draft.Uid); err != nil {
 				return err
@@ -685,11 +614,9 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 			if attachment == nil {
 				return fmt.Errorf("Unable to retrieve message attachment %s from session", uuid)
 			}
-			msg.Attachments = append(msg.Attachments, &refcountedAttachment{
-				attachment.File,
-				attachment.Form,
-				0,
-			})
+			msg.Attachments = append(msg.Attachments,
+				&formAttachment{attachment.File})
+			defer attachment.Form.RemoveAll()
 		}
 
 		if saveAsDraft {
