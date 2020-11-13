@@ -127,10 +127,60 @@ footer { text-align: right; }
 
 
 aside { flex: 0 0 180px; }
-aside a,
-aside .noselect { width: 100%; display: block; padding: 0.4rem 0 0.4rem 0.5rem; }
-aside a.active { font-weight: bold; color: black; text-decoration: none; }
+
 aside img { display: block; }
+
+aside ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+aside li {
+  width: 100%;
+  display: flex;
+  padding: 0.4rem 0 0.4rem 0.5rem;
+}
+
+aside li a {
+  flex-grow: 1;
+}
+
+aside .active {
+  font-weight: bold;
+  color: black;
+  text-decoration: none;
+}
+
+aside .active,
+aside .new.active {
+  background-color: #f6f6f6;
+}
+
+aside .new.active {
+  color: #008d47;
+}
+
+aside button {
+  margin: 0;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+  display: inline-block;
+  padding: 0 0.3rem;
+  margin-right: 0.3rem;
+  border: none;
+  background: transparent;
+}
+
+aside .active button:hover {
+  background: white;
+}
+
+aside button:hover {
+  background: #f6f6f6;
+}
+
 main {
   flex: 1 100%;
   display: flex;
@@ -149,15 +199,6 @@ main.login > section {
   background: white;
   min-width: 20rem;
   padding: 1rem;
-}
-
-aside a.active,
-aside a.new.active {
-  background-color: #f6f6f6;
-}
-
-aside a.new.active {
-  color: #008d47;
 }
 
 aside a.new.active,
@@ -455,6 +496,11 @@ main.create-update .event-date input {
   border: none;
   color: #BFA300;
   font-size: 13pt;
+  background: transparent;
+}
+
+.message-list-unread.message-list-flags .flag-button:hover {
+  background: #f8f8f8;
 }
 
 .message-list-subject a { color: #77c; }

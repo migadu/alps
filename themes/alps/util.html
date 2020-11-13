@@ -1,42 +1,69 @@
 {{ define "mbox-link" }}
 {{ if not (.HasAttr "\\Noselect") }}
-<a href="{{.URL}}" {{ if .Active }}class="active"{{ end }}>
-  {{- if eq .Name "INBOX" -}}
-    Inbox
-  {{- else -}}
-    {{ .Name }}
-  {{- end -}}
-  {{- if .HasAttr "\\HasChildren" }}/{{ end }}
-</a>
+<li {{ if .Active }}class="active"{{ end }}>
+  <a href="{{.URL}}">
+    {{- if eq .Name "INBOX" -}}
+      Inbox
+    {{- else -}}
+      {{ .Name }}
+    {{- end -}}
+    {{- if .HasAttr "\\HasChildren" }}/{{ end }}
+  </a>
+  <!-- TODO: Rig up this form -->
+  <button
+    type="submit"
+    name="subscribe"
+    value="{{.Name}}"
+    form="subscribe-form"
+    {{ if eq .Name "INBOX" }}
+    title="Unsubscribe"
+    {{ else }}
+    title="Subscribe"
+    {{ end }}
+  >
+  {{ if eq .Name "INBOX" }}
+  ◉
+  {{ else }}
+  ○
+  {{ end }}
+  </button>
+</li>
 {{ else }}
-<span class="noselect">
+<li class="noselect">
   {{.Name}}{{- if .HasAttr "\\HasChildren" }}/{{ end }}
-</span>
+</li>
 {{ end }}
 {{ end }}
 
 {{ define "aside" }}
+<form id="subscribe-form" method="POST"></form>
 <aside>
-  <!-- the logo image, dimensions 200x32 may be present or not -->
-  <a href="/compose" class="new
-    {{ if eq $.GlobalData.URL.Path "/compose" }}active{{ end }}
-  ">Compose&nbsp;mail</a>
-  {{ with .CategorizedMailboxes }}
-  {{ with .Common.Inbox }}{{ template "mbox-link" . }}{{ end }}
-  {{ with .Common.Drafts }}{{ template "mbox-link" . }}{{ end }}
-  {{ with .Common.Sent }}{{ template "mbox-link" . }}{{ end }}
-  {{ with .Common.Junk }}{{ template "mbox-link" . }}{{ end }}
-  {{ with .Common.Trash }}{{ template "mbox-link" . }}{{ end }}
-  {{ with .Common.Archive }}{{ template "mbox-link" . }}{{ end }}
-  {{ if .Additional }}
-  <hr />
-  {{ range .Additional }}
-  {{ template "mbox-link" . }}
-  {{ end }}
-  {{ end }}
-  {{ end }}
-  <a href="/new-mailbox" class="new
-    {{ if eq $.GlobalData.URL.Path "/new-mailbox" }}active{{ end }}
-  ">Create&nbsp;new&nbsp;folder</a>
+  <ul>
+    <!-- the logo image, dimensions 200x32 may be present or not -->
+    <li>
+      <a href="/compose" class="new
+        {{ if eq $.GlobalData.URL.Path "/compose" }}active{{ end }}
+      ">Compose&nbsp;mail</a>
+    </li>
+    {{ with .CategorizedMailboxes }}
+    {{ with .Common.Inbox }}{{ template "mbox-link" . }}{{ end }}
+    {{ with .Common.Drafts }}{{ template "mbox-link" . }}{{ end }}
+    {{ with .Common.Sent }}{{ template "mbox-link" . }}{{ end }}
+    {{ with .Common.Junk }}{{ template "mbox-link" . }}{{ end }}
+    {{ with .Common.Trash }}{{ template "mbox-link" . }}{{ end }}
+    {{ with .Common.Archive }}{{ template "mbox-link" . }}{{ end }}
+    {{ if .Additional }}
+    <hr />
+    {{ range .Additional }}
+    {{ template "mbox-link" . }}
+    {{ end }}
+    {{ end }}
+    {{ end }}
+    <li>
+      <a href="/new-mailbox" class="new
+        {{ if eq $.GlobalData.URL.Path "/new-mailbox" }}active{{ end }}
+      ">Create&nbsp;new&nbsp;folder</a>
+    </li>
+  </ul>
 </aside>
 {{ end }}
