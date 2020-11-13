@@ -1,9 +1,16 @@
+const sendButton = document.getElementById("send-button"),
+	saveButton = document.getElementById("save-button");
+
 const composeForm = document.getElementById("compose-form");
 const sendProgress = document.getElementById("send-progress");
 composeForm.addEventListener("submit", ev => {
 	[...document.querySelectorAll("input, textarea")].map(
 		i => i.setAttribute("readonly", "readonly"));
 	sendProgress.style.display = 'flex';
+});
+
+saveButton.addEventListener("click", ev => {
+	sendProgress.querySelector(".info").innerText = "Saving draft...";
 });
 
 let attachments = [];
@@ -40,9 +47,6 @@ function dragNOP(e) {
     e.stopPropagation();
     e.preventDefault();
 }
-
-const sendButton = document.getElementById("send-button"),
-	saveButton = document.getElementById("save-button");
 
 const attachmentUUIDsNode = document.getElementById("attachment-uuids");
 function updateState() {

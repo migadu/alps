@@ -507,7 +507,7 @@ func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 	}
 
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-		if _, err := appendMessage(c, msg, mailboxSent); err != nil {
+		if _, _, err := appendMessage(c, msg, mailboxSent); err != nil {
 			return err
 		}
 		if draft := options.Draft; draft != nil {
@@ -620,13 +620,14 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 		}
 
 		if saveAsDraft {
+			var (
+				drafts *MailboxInfo
+				uid    uint32
+			)
 			err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-				copied, err := appendMessage(c, msg, mailboxDrafts)
+				drafts, uid, err = appendMessage(c, msg, mailboxDrafts)
 				if err != nil {
 					return err
-				}
-				if !copied {
-					return fmt.Errorf("no Draft mailbox found")
 				}
 				if draft := options.Draft; draft != nil {
 					if err := deleteMessage(c, draft.Mailbox, draft.Uid); err != nil {
@@ -638,7 +639,8 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 			if err != nil {
 				return fmt.Errorf("failed to save message to Draft mailbox: %v", err)
 			}
-			return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
+			return ctx.Redirect(http.StatusFound, fmt.Sprintf(
+				"/message/%s/%d/edit?part=1", drafts.Name, uid))
 		} else {
 			return submitCompose(ctx, msg, options)
 		}

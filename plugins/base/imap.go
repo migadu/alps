@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	nettextproto "net/textproto"
 
 	"github.com/dustin/go-humanize"
 	"github.com/emersion/go-imap"
@@ -570,20 +571,20 @@ func markMessageAnswered(conn *imapclient.Client, mboxName string, uid uint32) e
 	return conn.UidStore(seqSet, item, flags, nil)
 }
 
-func appendMessage(c *imapclient.Client, msg *OutgoingMessage, mboxType mailboxType) (saved bool, err error) {
+func appendMessage(c *imapclient.Client, msg *OutgoingMessage, mboxType mailboxType) (*MailboxInfo, uint32, error) {
 	mbox, err := getMailboxByType(c, mboxType)
 	if err != nil {
-		return false, err
+		return nil, 0, err
 	}
 	if mbox == nil {
-		return false, nil
+		return nil, 0, fmt.Errorf("Unable to resolve mailbox")
 	}
 
 	// IMAP needs to know in advance the final size of the message, so
 	// there's no way around storing it in a buffer here.
 	var buf bytes.Buffer
 	if err := msg.WriteTo(&buf); err != nil {
-		return false, err
+		return nil, 0, err
 	}
 
 	flags := []string{imap.SeenFlag}
@@ -591,10 +592,20 @@ func appendMessage(c *imapclient.Client, msg *OutgoingMessage, mboxType mailboxT
 		flags = append(flags, imap.DraftFlag)
 	}
 	if err := c.Append(mbox.Name, flags, time.Now(), &buf); err != nil {
-		return false, err
+		return nil, 0, err
 	}
-
-	return true, nil
+	criteria := &imap.SearchCriteria{
+		Header: make(nettextproto.MIMEHeader),
+	}
+	criteria.Header.Add("Message-Id", msg.MessageID)
+	if uids, err := c.UidSearch(criteria); err != nil {
+		return nil, 0, err
+	} else {
+		if len(uids) != 1 {
+			panic(fmt.Errorf("Duplicate message ID"))
+		}
+		return mbox, uids[0], nil
+	}
 }
 
 func deleteMessage(c *imapclient.Client, mboxName string, uid uint32) error {
