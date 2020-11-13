@@ -58,11 +58,13 @@ func init() {
 		}
 
 		size, err := strconv.Atoi(resp.Header.Get("Content-Length"))
-		if err != nil || size > proxyMaxSize {
-			return echo.NewHTTPError(http.StatusBadRequest, "invalid resource length")
+		if err == nil {
+			if size > proxyMaxSize {
+				return echo.NewHTTPError(http.StatusBadRequest, "invalid resource length")
+			}
+			ctx.Response().Header().Set("Content-Length", strconv.Itoa(size))
 		}
 
-		ctx.Response().Header().Set("Content-Length", strconv.Itoa(size))
 		lr := io.LimitedReader{resp.Body, int64(proxyMaxSize)}
 		return ctx.Stream(http.StatusOK, mediaType, &lr)
 	})
