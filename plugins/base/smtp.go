@@ -172,6 +172,9 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
 	}
 
 	h.Set("Message-Id", msg.MessageID)
+	if msg.MessageID == "" {
+		panic(fmt.Errorf("Attempting to send message without message ID"))
+	}
 
 	mw, err := mail.CreateWriter(w, h)
 	if err != nil {
