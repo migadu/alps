@@ -17,14 +17,18 @@
           <input type="email" name="from" id="from" value="{{.Message.From}}" />
 
           <label>To</label>
+          {{ $to := .Message.ToString }}
+          {{ if eq $to "MISSING_MAILBOX@MISSING_DOMAIN" }}
+          {{ $to = "" }}
+          {{ end }}
           <input
             type="email"
             name="to"
             id="to"
-            value="{{.Message.ToString}}"
+            value="{{$to}}"
             multiple
             list="emails"
-            {{ if not .Message.ToString }} autofocus{{ end }}
+            {{ if not $to }} autofocus{{ end }}
           />
 
           <label>Subject</label>
@@ -33,7 +37,7 @@
             name="subject"
             id="subject"
             value="{{.Message.Subject}}"
-            {{ if .Message.ToString }} autofocus{{ end }}
+            {{ if $to }} autofocus{{ end }}
           />
 
           <label>Attachments</label>
