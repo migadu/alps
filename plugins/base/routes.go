@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"mime"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"strconv"
 	"strings"
@@ -507,7 +508,7 @@ func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 	}
 
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-		if _, _, err := appendMessage(c, msg, mailboxSent); err != nil {
+		if _, err := appendMessage(c, msg, mailboxSent); err != nil {
 			return err
 		}
 		if draft := options.Draft; draft != nil {
@@ -625,14 +626,28 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 				uid    uint32
 			)
 			err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-				drafts, uid, err = appendMessage(c, msg, mailboxDrafts)
+				drafts, err = appendMessage(c, msg, mailboxDrafts)
 				if err != nil {
 					return err
 				}
+
 				if draft := options.Draft; draft != nil {
 					if err := deleteMessage(c, draft.Mailbox, draft.Uid); err != nil {
 						return err
 					}
+				}
+
+				criteria := &imap.SearchCriteria{
+					Header: make(textproto.MIMEHeader),
+				}
+				criteria.Header.Add("Message-Id", msg.MessageID)
+				if uids, err := c.UidSearch(criteria); err != nil {
+					return err
+				} else {
+					if len(uids) != 1 {
+						panic(fmt.Errorf("Duplicate message ID"))
+					}
+					uid = uids[0]
 				}
 				return nil
 			})
