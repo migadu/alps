@@ -7,7 +7,7 @@ import (
 	"path"
 	"strings"
 
-	"git.sr.ht/~emersion/alps"
+	"git.sr.ht/~migadu/alps"
 	"github.com/emersion/go-vcard"
 	"github.com/emersion/go-webdav/carddav"
 	"github.com/google/uuid"

@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	alpsbase "git.sr.ht/~emersion/alps/plugins/base"
+	alpsbase "git.sr.ht/~migadu/alps/plugins/base"
 	"github.com/aymerick/douceur/css"
 	cssparser "github.com/chris-ramon/douceur/parser"
 	"github.com/microcosm-cc/bluemonday"

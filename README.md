@@ -1,7 +1,7 @@
 # [alps]
 
-[![GoDoc](https://godoc.org/git.sr.ht/~emersion/alps?status.svg)](https://godoc.org/git.sr.ht/~emersion/alps)
-[![builds.sr.ht status](https://builds.sr.ht/~emersion/alps/commits.svg)](https://builds.sr.ht/~emersion/alps/commits?)
+[![GoDoc](https://godoc.org/git.sr.ht/~migadu/alps?status.svg)](https://godoc.org/git.sr.ht/~migadu/alps)
+[![builds.sr.ht status](https://builds.sr.ht/~migadu/alps/commits.svg)](https://builds.sr.ht/~migadu/alps/commits?)
 
 A simple and extensible webmail.
 
@@ -29,8 +29,8 @@ Send patches on the [mailing list], report bugs on the [issue tracker].
 
 MIT
 
-[alps]: https://sr.ht/~emersion/alps
+[alps]: https://sr.ht/~migadu/alps
 [RFC 6186]: https://tools.ietf.org/html/rfc6186
-[Go plugin helpers]: https://godoc.org/git.sr.ht/~emersion/alps#GoPlugin
-[mailing list]: https://lists.sr.ht/~emersion/alps-dev
-[issue tracker]: https://todo.sr.ht/~emersion/alps
+[Go plugin helpers]: https://godoc.org/git.sr.ht/~migadu/alps#GoPlugin
+[mailing list]: https://lists.sr.ht/~migadu/alps-dev
+[issue tracker]: https://todo.sr.ht/~migadu/alps

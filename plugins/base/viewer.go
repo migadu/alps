@@ -3,7 +3,7 @@ package alpsbase
 import (
 	"fmt"
 
-	"git.sr.ht/~emersion/alps"
+	"git.sr.ht/~migadu/alps"
 	"github.com/emersion/go-message"
 )
 

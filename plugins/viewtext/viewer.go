@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"strings"
 
-	"git.sr.ht/~emersion/alps"
-	alpsbase "git.sr.ht/~emersion/alps/plugins/base"
+	"git.sr.ht/~migadu/alps"
+	alpsbase "git.sr.ht/~migadu/alps/plugins/base"
 	"github.com/emersion/go-message"
 	"gitlab.com/golang-commonmark/linkify"
 )

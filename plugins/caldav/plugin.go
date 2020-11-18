@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"git.sr.ht/~emersion/alps"
+	"git.sr.ht/~migadu/alps"
 )
 
 const (

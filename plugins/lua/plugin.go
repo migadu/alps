@@ -1,7 +1,7 @@
 package alpslua
 
 import (
-	"git.sr.ht/~emersion/alps"
+	"git.sr.ht/~migadu/alps"
 )
 
 func init() {

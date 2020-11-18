@@ -5,7 +5,7 @@ import (
 	"html/template"
 	"path/filepath"
 
-	"git.sr.ht/~emersion/alps"
+	"git.sr.ht/~migadu/alps"
 	"github.com/labstack/echo/v4"
 	"github.com/yuin/gopher-lua"
 	"layeh.com/gopher-luar"

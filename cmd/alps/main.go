@@ -9,18 +9,18 @@ import (
 	"syscall"
 	"time"
 
-	"git.sr.ht/~emersion/alps"
+	"git.sr.ht/~migadu/alps"
 	"github.com/fernet/fernet-go"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
 
-	_ "git.sr.ht/~emersion/alps/plugins/base"
-	_ "git.sr.ht/~emersion/alps/plugins/caldav"
-	_ "git.sr.ht/~emersion/alps/plugins/carddav"
-	_ "git.sr.ht/~emersion/alps/plugins/lua"
-	_ "git.sr.ht/~emersion/alps/plugins/viewhtml"
-	_ "git.sr.ht/~emersion/alps/plugins/viewtext"
+	_ "git.sr.ht/~migadu/alps/plugins/base"
+	_ "git.sr.ht/~migadu/alps/plugins/caldav"
+	_ "git.sr.ht/~migadu/alps/plugins/carddav"
+	_ "git.sr.ht/~migadu/alps/plugins/lua"
+	_ "git.sr.ht/~migadu/alps/plugins/viewhtml"
+	_ "git.sr.ht/~migadu/alps/plugins/viewtext"
 )
 
 func main() {

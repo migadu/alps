@@ -1,4 +1,4 @@
-module git.sr.ht/~emersion/alps
+module git.sr.ht/~migadu/alps
 
 go 1.13
 

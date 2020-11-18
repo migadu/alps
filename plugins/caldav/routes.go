@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"git.sr.ht/~emersion/alps"
+	"git.sr.ht/~migadu/alps"
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/google/uuid"

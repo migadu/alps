@@ -2,7 +2,7 @@ image: alpine/edge
 packages:
   - go
 sources:
-  - https://git.sr.ht/~emersion/alps
+  - https://git.sr.ht/~migadu/alps
 tasks:
   - build: |
       cd alps
