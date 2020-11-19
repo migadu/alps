@@ -80,6 +80,7 @@ type IMAPBaseRenderData struct {
 	Mailboxes            []MailboxInfo
 	Mailbox              *MailboxStatus
 	Inbox                *MailboxStatus
+	Subscriptions        map[string]*MailboxStatus
 }
 
 type MailboxRenderData struct {
@@ -89,17 +90,22 @@ type MailboxRenderData struct {
 	Query                string
 }
 
+type MailboxDetails struct {
+	Info   *MailboxInfo
+	Status *MailboxStatus
+}
+
 // Organizes mailboxes into common/uncommon categories
 type CategorizedMailboxes struct {
 	Common struct {
-		Inbox   *MailboxInfo
-		Drafts  *MailboxInfo
-		Sent    *MailboxInfo
-		Junk    *MailboxInfo
-		Trash   *MailboxInfo
-		Archive *MailboxInfo
+		Inbox   MailboxDetails
+		Drafts  MailboxDetails
+		Sent    MailboxDetails
+		Junk    MailboxDetails
+		Trash   MailboxDetails
+		Archive MailboxDetails
 	}
-	Additional []*MailboxInfo
+	Additional []MailboxDetails
 }
 
 func newIMAPBaseRenderData(ctx *alps.Context,
@@ -110,6 +116,12 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 		return nil, echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 
+	settings, err := loadSettings(ctx.Session.Store())
+	if err != nil {
+		return nil, fmt.Errorf("failed to load settings: %v", err)
+	}
+
+	subscriptions := make(map[string]*MailboxStatus)
 	var mailboxes []MailboxInfo
 	var active, inbox *MailboxStatus
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
@@ -117,16 +129,26 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 		if mailboxes, err = listMailboxes(c); err != nil {
 			return err
 		}
+
 		if mboxName != "" {
 			if active, err = getMailboxStatus(c, mboxName); err != nil {
 				return echo.NewHTTPError(http.StatusNotFound, err)
 			}
 		}
+
 		if mboxName == "INBOX" {
 			inbox = active
 		} else {
 			if inbox, err = getMailboxStatus(c, "INBOX"); err != nil {
 				return err
+			}
+		}
+
+		for _, sub := range settings.Subscriptions {
+			if status, err := getMailboxStatus(c, sub); err != nil {
+				return err
+			} else {
+				subscriptions[sub] = status
 			}
 		}
 		return nil
@@ -136,7 +158,7 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 	}
 
 	var categorized CategorizedMailboxes
-	mmap := map[string]**MailboxInfo{
+	mmap := map[string]*MailboxDetails{
 		"INBOX": &categorized.Common.Inbox,
 		"Drafts": &categorized.Common.Drafts,
 		"Sent": &categorized.Common.Sent,
@@ -157,11 +179,16 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 			mailboxes[i].Total = int(inbox.Messages)
 		}
 
+		status, _ := subscriptions[mailboxes[i].Name]
 		if ptr, ok := mmap[mailboxes[i].Name]; ok {
-			*ptr = &mailboxes[i]
+			ptr.Info = &mailboxes[i]
+			ptr.Status = status
 		} else {
-			categorized.Additional = append(
-				categorized.Additional, &mailboxes[i])
+			categorized.Additional = append(categorized.Additional,
+				MailboxDetails{
+					Info:   &mailboxes[i],
+					Status: status,
+				})
 		}
 	}
 
@@ -171,6 +198,7 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 		Mailboxes:            mailboxes,
 		Inbox:                inbox,
 		Mailbox:              active,
+		Subscriptions:        subscriptions,
 	}, nil
 }
 
@@ -1156,6 +1184,7 @@ type Settings struct {
 	MessagesPerPage int
 	Signature       string
 	From            string
+	Subscriptions   []string
 }
 
 func loadSettings(s alps.Store) (*Settings, error) {
@@ -1186,13 +1215,35 @@ func (s *Settings) check() error {
 
 type SettingsRenderData struct {
 	alps.BaseRenderData
-	Settings *Settings
+	Mailboxes     []MailboxInfo
+	Settings      *Settings
+	Subscriptions Subscriptions
+}
+
+type Subscriptions []string
+
+func (s Subscriptions) Has(sub string) bool {
+	for _, cand := range s {
+		if cand == sub {
+			return true
+		}
+	}
+	return false
 }
 
 func handleSettings(ctx *alps.Context) error {
 	settings, err := loadSettings(ctx.Session.Store())
 	if err != nil {
 		return fmt.Errorf("failed to load settings: %v", err)
+	}
+
+	var mailboxes []MailboxInfo
+	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+		mailboxes, err = listMailboxes(c)
+		return err
+	})
+	if err != nil {
+		return err
 	}
 
 	if ctx.Request().Method == http.MethodPost {
@@ -1202,6 +1253,12 @@ func handleSettings(ctx *alps.Context) error {
 		}
 		settings.Signature = ctx.FormValue("signature")
 		settings.From = ctx.FormValue("from")
+
+		params, err := ctx.FormParams()
+		if err != nil {
+			return err
+		}
+		settings.Subscriptions = params["subscriptions"]
 
 		if err := settings.check(); err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -1216,5 +1273,7 @@ func handleSettings(ctx *alps.Context) error {
 	return ctx.Render(http.StatusOK, "settings.html", &SettingsRenderData{
 		BaseRenderData: *alps.NewBaseRenderData(ctx),
 		Settings:       settings,
+		Mailboxes:      mailboxes,
+		Subscriptions:  Subscriptions(settings.Subscriptions),
 	})
 }

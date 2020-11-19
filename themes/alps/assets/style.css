@@ -88,7 +88,8 @@ input[type="file"],
 input[type="number"],
 input[type="date"],
 input[type="time"],
-textarea {
+textarea,
+select {
   margin: 0;
   border: none;
   border: 1px solid #e0e0e0;
@@ -157,7 +158,7 @@ aside ul {
 aside li {
   width: 100%;
   display: flex;
-  padding: 0.4rem 0 0.4rem 0.5rem;
+  padding: 0.4rem 0.5rem;
 }
 
 aside li a {
@@ -654,7 +655,8 @@ main table tfoot {
 
 .action-group label,
 .action-group input,
-.action-group textarea {
+.action-group textarea,
+.action-group select {
   display: block;
   width: 100%;
 }
@@ -663,6 +665,10 @@ main table tfoot {
   display: inline;
   width: 1rem;
   float: left;
+}
+
+.action-group select {
+  height: 10rem;
 }
 
 .actions-message,

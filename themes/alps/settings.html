@@ -33,6 +33,23 @@
         </div>
 
         <div class="action-group">
+          <label for="subscriptions">Subscribed folders</label>
+          <select name="subscriptions" id="subscriptions" multiple>
+            {{ $subs := .Subscriptions }}
+            {{ range .Mailboxes }}
+            {{ if and (ne .Name "INBOX") (not (.HasAttr "\\Noselect")) }}
+            <option
+              value="{{.Name}}"
+              {{ if $subs.Has .Name }}
+              selected
+              {{ end }}
+            >{{.Name}}</option>
+            {{ end }}
+            {{ end }}
+          </select>
+        </div>
+
+        <div class="action-group">
           <label for="messages_per_page">Messages per page</label>
           <input
             type="number"

@@ -1,43 +1,28 @@
 {{ define "mbox-link" }}
-{{ if not (.HasAttr "\\Noselect") }}
-<li {{ if .Active }}class="active"{{ end }}>
-  <a href="{{.URL}}">
-    {{- if eq .Name "INBOX" -}}
+{{ if not (.Info.HasAttr "\\Noselect") }}
+<li {{ if .Info.Active }}class="active"{{ end }}>
+  <a href="{{.Info.URL}}">
+    {{- if eq .Info.Name "INBOX" -}}
       Inbox
     {{- else -}}
-      {{ .Name }}
+      {{ .Info.Name }}
     {{- end -}}
-    {{- if .HasAttr "\\HasChildren" }}/{{ end }}
+    {{- if .Info.HasAttr "\\HasChildren" }}/{{ end }}
   </a>
-  <!-- TODO
-  <button
-    type="submit"
-    name="subscribe"
-    value="{{.Name}}"
-    form="subscribe-form"
-    {{ if eq .Name "INBOX" }}
-    title="Unsubscribe"
-    {{ else }}
-    title="Subscribe"
-    {{ end }}
-  >
-  {{ if eq .Name "INBOX" }}
-  ◉
-  {{ else }}
-  ○
+  {{ if .Status }}
+  {{ if .Status.Unseen }}
+  <span class="unseen">({{.Status.Unseen}})</span>
   {{ end }}
-  </button>
-  -->
+  {{ end }}
 </li>
 {{ else }}
 <li class="noselect">
-  {{.Name}}{{- if .HasAttr "\\HasChildren" }}/{{ end }}
+  {{.Info.Name}}{{- if .Info.HasAttr "\\HasChildren" }}/{{ end }}
 </li>
 {{ end }}
 {{ end }}
 
 {{ define "aside" }}
-<form id="subscribe-form" method="POST"></form>
 <aside>
   <ul>
     <!-- the logo image, dimensions 200x32 may be present or not -->
