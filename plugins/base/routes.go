@@ -14,12 +14,13 @@ import (
 
 	"git.sr.ht/~emersion/alps"
 	"github.com/emersion/go-imap"
-	imapmove "github.com/emersion/go-imap-move"
-	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
 	"github.com/labstack/echo/v4"
+	"jaytaylor.com/html2text"
+	imapclient "github.com/emersion/go-imap/client"
+	imapmove "github.com/emersion/go-imap-move"
 )
 
 func registerRoutes(p *alps.GoPlugin) {
@@ -759,15 +760,23 @@ func handleReply(ctx *alps.Context) error {
 			return fmt.Errorf("failed to parse part Content-Type: %v", err)
 		}
 
-		if !strings.EqualFold(mimeType, "text/plain") {
-			err := fmt.Errorf("cannot reply to %q part", mimeType)
+		if mimeType == "text/plain" {
+			msg.Text, err = quote(part.Body)
+			if err != nil {
+				return err
+			}
+		} else if mimeType == "text/html" {
+			text, err := html2text.FromReader(part.Body, html2text.Options{})
+			if err != nil {
+				return err
+			}
+			msg.Text, err = quote(strings.NewReader(text))
+			if err != nil {
+				return nil
+			}
+		} else {
+			err := fmt.Errorf("cannot forward %q part", mimeType)
 			return echo.NewHTTPError(http.StatusBadRequest, err)
-		}
-
-		// TODO: strip HTML tags if text/html
-		msg.Text, err = quote(part.Body)
-		if err != nil {
-			return err
 		}
 
 		msg.MessageID = mail.GenerateMessageID()
@@ -819,14 +828,19 @@ func handleForward(ctx *alps.Context) error {
 			return fmt.Errorf("failed to parse part Content-Type: %v", err)
 		}
 
-		if !strings.EqualFold(mimeType, "text/plain") {
+		if mimeType == "text/plain" {
+			msg.Text, err = quote(part.Body)
+			if err != nil {
+				return err
+			}
+		} else if mimeType == "text/html" {
+			msg.Text, err = html2text.FromReader(part.Body, html2text.Options{})
+			if err != nil {
+				return err
+			}
+		} else {
 			err := fmt.Errorf("cannot forward %q part", mimeType)
 			return echo.NewHTTPError(http.StatusBadRequest, err)
-		}
-
-		msg.Text, err = quote(part.Body)
-		if err != nil {
-			return err
 		}
 
 		msg.MessageID = mail.GenerateMessageID()

@@ -23,9 +23,12 @@ require (
 	github.com/labstack/echo/v4 v4.1.16
 	github.com/labstack/gommon v0.3.0
 	github.com/microcosm-cc/bluemonday v1.0.2
+	github.com/olekukonko/tablewriter v0.0.4 // indirect
+	github.com/ssor/bom v0.0.0-20170718123548-6386211fdfcf // indirect
 	github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb
 	gitlab.com/golang-commonmark/linkify v0.0.0-20200225224916-64bca66f6ad3
 	golang.org/x/crypto v0.0.0-20200510223506-06a226fb4e37 // indirect
 	golang.org/x/net v0.0.0-20200506145744-7e3656a0809f
+	jaytaylor.com/html2text v0.0.0-20200412013138-3577fbdbcff7
 	layeh.com/gopher-luar v1.0.7
 )
