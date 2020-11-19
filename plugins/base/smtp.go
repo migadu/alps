@@ -123,11 +123,19 @@ func writeAttachment(mw *mail.Writer, att Attachment) error {
 }
 
 func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
-	from := []*mail.Address{{"", msg.From}}
+	fromAddr, err := mail.ParseAddress(msg.From)
+	if err != nil {
+		return err
+	}
+	from := []*mail.Address{fromAddr}
 
 	to := make([]*mail.Address, len(msg.To))
-	for i, addr := range msg.To {
-		to[i] = &mail.Address{"", addr}
+	for i, rcpt := range msg.To {
+		addr, err := mail.ParseAddress(rcpt)
+		if err != nil {
+			return err
+		}
+		to[i] = addr
 	}
 
 	var h mail.Header
@@ -182,13 +190,15 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
 }
 
 func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
-	if err := c.Mail(msg.From, nil); err != nil {
+	addr, _ := mail.ParseAddress(msg.From)
+	if err := c.Mail(addr.Address, nil); err != nil {
 		return fmt.Errorf("MAIL FROM failed: %v", err)
 	}
 
 	for _, to := range msg.To {
-		if err := c.Rcpt(to); err != nil {
-			return fmt.Errorf("RCPT TO failed: %v", err)
+		addr, _ := mail.ParseAddress(to)
+		if err := c.Rcpt(addr.Address); err != nil {
+			return fmt.Errorf("RCPT TO failed: %v (%s)", err, addr.Address)
 		}
 	}
 

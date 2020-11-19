@@ -22,12 +22,10 @@
           {{ $to = "" }}
           {{ end }}
           <input
-            type="email"
+            type="text"
             name="to"
             id="to"
             value="{{$to}}"
-            multiple
-            list="emails"
             {{ if not $to }} autofocus{{ end }}
           />
 

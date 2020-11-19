@@ -691,10 +691,13 @@ func handleComposeNew(ctx *alps.Context) error {
 
 	// These are common mailto URL query parameters
 	// TODO: cc, bcc
+	var hdr mail.Header
+	hdr.GenerateMessageID()
+	mid, _ := hdr.MessageID()
 	return handleCompose(ctx, &OutgoingMessage{
 		To:        strings.Split(ctx.QueryParam("to"), ","),
 		Subject:   ctx.QueryParam("subject"),
-		MessageID: mail.GenerateMessageID(),
+		MessageID: "<" + mid + ">",
 		InReplyTo: ctx.QueryParam("in-reply-to"),
 		Text:      text,
 	}, &composeOptions{})
@@ -803,7 +806,10 @@ func handleReply(ctx *alps.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
 
-		msg.MessageID = mail.GenerateMessageID()
+		var hdr mail.Header
+		hdr.GenerateMessageID()
+		mid, _ := hdr.MessageID()
+		msg.MessageID = "<" + mid + ">"
 		msg.InReplyTo = inReplyTo.Envelope.MessageId
 		// TODO: populate From from known user addresses and inReplyTo.Envelope.To
 		replyTo := inReplyTo.Envelope.ReplyTo
@@ -867,7 +873,10 @@ func handleForward(ctx *alps.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
 
-		msg.MessageID = mail.GenerateMessageID()
+		var hdr mail.Header
+		hdr.GenerateMessageID()
+		mid, _ := hdr.MessageID()
+		msg.MessageID = "<" + mid + ">"
 		msg.Subject = source.Envelope.Subject
 		if !strings.HasPrefix(strings.ToLower(msg.Subject), "fwd:") &&
 			!strings.HasPrefix(strings.ToLower(msg.Subject), "fw:") {
