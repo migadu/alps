@@ -695,7 +695,7 @@ func handleComposeAttachment(ctx *alps.Context) error {
 		if err == alps.ErrAttachmentCacheSize {
 			form.RemoveAll()
 			return ctx.JSON(http.StatusBadRequest, map[string]string{
-				"error": "The total size of unset attachments on your session exceeds the maximum file size. Remove some attachments and try again.",
+				"error": "Your attachments exceed the maximum file size. Remove some and try again.",
 			})
 		} else if err != nil {
 			form.RemoveAll()
