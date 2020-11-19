@@ -70,16 +70,6 @@
           <div class="message-list-date {{$classes}}">
             {{ .Envelope.Date | humantime }}
           </div>
-          {{ else }}
-          <div class="message-list-checkbox {{$classes}}">
-            <input type="checkbox" form="messages-form" disabled readonly>
-          </div>
-          <div class="message-list-sender {{$classes}}"></div>
-          <div class="message-list-flags {{$classes}}"></div>
-          <div class="message-list-subject {{$classes}}">
-            <em>(this email was deleted by another client)</em>
-          </div>
-          <div class="message-list-date {{$classes}}"></div>
           {{ end }}
 
           {{ end }}
