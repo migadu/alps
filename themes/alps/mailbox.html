@@ -21,7 +21,7 @@
           {{ $classes = printf "%s %s" $classes "message-list-deleted" }}
           {{ end }}
 
-          {{ if not (.HasFlag "\\Deleted") }}
+          {{ if and (not (.HasFlag "\\Deleted")) .Envelope }}
           <div class="message-list-checkbox {{$classes}}">
             <input type="checkbox" name="uids" value="{{.Uid}}" form="messages-form">
           </div>

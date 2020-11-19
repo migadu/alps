@@ -118,6 +118,13 @@ header nav div { float: right; }
 header nav div > a{  margin-left: 1rem; }
 header a.active { font-weight: bold; color: black; text-decoration: none; }
 
+header .notice {
+    color: #0c5460;
+    background-color: #d1ecf1;
+    border: 1px solid #bee5eb;
+    padding: 0.5rem;
+    text-align: center;
+}
 
 footer { text-align: right; }
 

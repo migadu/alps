@@ -306,6 +306,7 @@ func handleDeleteMailbox(ctx *alps.Context) error {
 		ctx.Session.DoIMAP(func(c *imapclient.Client) error {
 			return c.Delete(mbox.Name)
 		})
+		ctx.Session.PutNotice("Mailbox deleted.")
 		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}
 
@@ -519,6 +520,7 @@ func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 		return fmt.Errorf("failed to save message to Sent mailbox: %v", err)
 	}
 
+	ctx.Session.PutNotice("Message sent.")
 	return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 }
 
@@ -651,6 +653,7 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 			if err != nil {
 				return fmt.Errorf("failed to save message to Draft mailbox: %v", err)
 			}
+			ctx.Session.PutNotice("Message saved as draft.")
 			return ctx.Redirect(http.StatusFound, fmt.Sprintf(
 				"/message/%s/%d/edit?part=1", drafts.Name, uid))
 		} else {
@@ -981,6 +984,7 @@ func handleMove(ctx *alps.Context) error {
 		return err
 	}
 
+	ctx.Session.PutNotice("Message(s) moved.")
 	if path := formOrQueryParam(ctx, "next"); path != "" {
 		return ctx.Redirect(http.StatusFound, path)
 	}
@@ -1032,6 +1036,7 @@ func handleDelete(ctx *alps.Context) error {
 		return err
 	}
 
+	ctx.Session.PutNotice("Message(s) deleted.")
 	if path := formOrQueryParam(ctx, "next"); path != "" {
 		return ctx.Redirect(http.StatusFound, path)
 	}

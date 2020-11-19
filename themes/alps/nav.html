@@ -30,4 +30,10 @@
     </div>
     {{ end }}
   </nav>
+  {{ if .GlobalData.Notice }}
+  <div class="notice">
+    {{ .GlobalData.Notice }}
+    <a href="{{.GlobalData.URL.String}}">Dismiss</a>
+  </div>
+  {{ end }}
 </header>

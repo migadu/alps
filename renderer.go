@@ -28,6 +28,8 @@ type GlobalRenderData struct {
 
 	HavePlugin func(name string) bool
 
+	Notice string
+
 	// additional plugin-specific data
 	Extra map[string]interface{}
 }
@@ -95,6 +97,7 @@ func NewBaseRenderData(ectx echo.Context) *BaseRenderData {
 	if isactx && ctx.Session != nil {
 		global.LoggedIn = true
 		global.Username = ctx.Session.username
+		global.Notice = ctx.Session.PopNotice()
 	}
 
 	return &BaseRenderData{

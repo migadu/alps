@@ -57,6 +57,7 @@ type Session struct {
 	pings              chan struct{}
 	timer              *time.Timer
 	store              Store
+	notice             string
 
 	imapLocker sync.Mutex
 	imapConn   *imapclient.Client // protected by locker, can be nil
@@ -181,6 +182,16 @@ func (s *Session) PopAttachment(uuid string) *Attachment {
 	delete(s.attachments, uuid)
 
 	return a
+}
+
+func (s *Session) PutNotice(n string) {
+	s.notice = n
+}
+
+func (s *Session) PopNotice() string {
+	n := s.notice
+	s.notice = ""
+	return n
 }
 
 // Store returns a store suitable for storing persistent user data.
