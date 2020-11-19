@@ -1,3 +1,11 @@
+const textarea = document.querySelector("textarea.body");
+if (window.location.pathname.endsWith("/reply")) {
+	// Auto-focus body and scroll to bottom
+	textarea.focus();
+	textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+	textarea.scrollTop = textarea.scrollHeight;
+}
+
 const sendButton = document.getElementById("send-button"),
 	saveButton = document.getElementById("save-button");
 

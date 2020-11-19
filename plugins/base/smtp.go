@@ -26,6 +26,7 @@ func quote(r io.Reader) (string, error) {
 	if err := scanner.Err(); err != nil {
 		return "", fmt.Errorf("quote: failed to read original message: %s", err)
 	}
+	builder.WriteString("\n")
 	return builder.String(), nil
 }
 
