@@ -531,7 +531,19 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 	}
 
 	if msg.From == "" && strings.ContainsRune(ctx.Session.Username(), '@') {
-		msg.From = ctx.Session.Username()
+		settings, err := loadSettings(ctx.Session.Store())
+		if err != nil {
+			return err
+		}
+		if settings.From != "" {
+			addr := mail.Address{
+				Name: settings.From,
+				Address: ctx.Session.Username(),
+			}
+			msg.From = addr.String()
+		} else {
+			msg.From = ctx.Session.Username()
+		}
 	}
 
 	if ctx.Request().Method == http.MethodPost {
@@ -1134,6 +1146,7 @@ const maxMessagesPerPage = 100
 type Settings struct {
 	MessagesPerPage int
 	Signature       string
+	From            string
 }
 
 func loadSettings(s alps.Store) (*Settings, error) {
@@ -1156,6 +1169,9 @@ func (s *Settings) check() error {
 	if len(s.Signature) > 2048 {
 		return fmt.Errorf("Signature must be 2048 characters or fewer")
 	}
+	if len(s.From) > 512 {
+		return fmt.Errorf("Full name must be 512 characters or fewer")
+	}
 	return nil
 }
 
@@ -1176,6 +1192,7 @@ func handleSettings(ctx *alps.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "invalid messages per page: %v", err)
 		}
 		settings.Signature = ctx.FormValue("signature")
+		settings.From = ctx.FormValue("from")
 
 		if err := settings.check(); err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err)

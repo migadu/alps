@@ -14,9 +14,18 @@
     <main class="settings">
       <form method="post">
         <div class="action-group">
+          <label for="from">Full name</label>
+          <input
+            type="text"
+            name="from"
+            id="from"
+            value="{{.Settings.From}}"
+          />
+        </div>
+
+        <div class="action-group">
           <label for="signature">Message signature</label>
           <textarea
-            type="number"
             name="signature"
             id="signature"
             rows="5"
