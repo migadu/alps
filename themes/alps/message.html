@@ -190,7 +190,13 @@
           {{ if eq $text.PathString .Part.PathString }}
           class="active"
           {{ end }}
-        >Plain text</a>
+        >
+        {{ if eq $text.MIMEType "text/html" }}
+        HTML
+        {{ else }}
+        Plain text
+        {{ end }}
+        </a>
         {{ if and $html $text }}
         {{ if ne $html.PathString $text.PathString }}
         <a
