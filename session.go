@@ -20,6 +20,7 @@ import (
 
 // TODO: make this configurable
 const sessionDuration = 30 * time.Minute
+const maxAttachmentSize = 32 << 20 // 32 MiB
 
 func generateToken() (string, error) {
 	b := make([]byte, 32)
@@ -30,7 +31,10 @@ func generateToken() (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-var errSessionExpired = errors.New("session expired")
+var (
+	ErrSessionExpired = errors.New("session expired")
+	ErrAttachmentCacheSize = errors.New("Attachments on session exceed maximum file size")
+)
 
 // AuthError wraps an authentication error.
 type AuthError struct {
@@ -145,15 +149,17 @@ func (s *Session) Close() {
 // Puts an attachment and returns a generated UUID
 func (s *Session) PutAttachment(in *multipart.FileHeader,
 	form *multipart.Form) (string, error) {
-	// TODO: Prevent users from uploading too many attachments, or too large
-	//
-	// Probably just set a cap on the maximum combined size of all files in the
-	// user's session
-	//
-	// TODO: Figure out what to do if the user abandons the compose window
-	// after adding some attachments
 	id := uuid.New()
 	s.attachmentsLocker.Lock()
+
+	var size int64
+	for _, a := range s.attachments {
+		size += a.File.Size
+	}
+	if size + in.Size > maxAttachmentSize {
+		return "", ErrAttachmentCacheSize
+	}
+
 	s.attachments[id.String()] = &Attachment{
 		File:     in,
 		Form:     form,
@@ -241,7 +247,7 @@ func (sm *SessionManager) get(token string) (*Session, error) {
 
 	session, ok := sm.sessions[token]
 	if !ok {
-		return nil, errSessionExpired
+		return nil, ErrSessionExpired
 	}
 	return session, nil
 }

@@ -426,7 +426,7 @@ func New(e *echo.Echo, options *Options) (*Server, error) {
 			}
 
 			ctx.Session, err = ctx.Server.Sessions.get(cookie.Value)
-			if err == errSessionExpired {
+			if err == ErrSessionExpired {
 				ctx.SetSession(nil)
 				return handleUnauthenticated(next, ctx)
 			} else if err != nil {

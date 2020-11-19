@@ -692,7 +692,13 @@ func handleComposeAttachment(ctx *alps.Context) error {
 	var uuids []string
 	for _, fh := range form.File["attachments"] {
 		uuid, err := ctx.Session.PutAttachment(fh, form)
-		if err != nil {
+		if err == alps.ErrAttachmentCacheSize {
+			form.RemoveAll()
+			return ctx.JSON(http.StatusBadRequest, map[string]string{
+				"error": "The total size of unset attachments on your session exceeds the maximum file size. Remove some attachments and try again.",
+			})
+		} else if err != nil {
+			form.RemoveAll()
 			ctx.Logger().Printf("PutAttachment: %v\n", err)
 			return ctx.JSON(http.StatusBadRequest, map[string]string{
 				"error": "failed to store attachment",
