@@ -22,10 +22,12 @@
       {{ end }}
     >Contacts</a>
     {{ end }}
+    {{ if .GlobalData.LoggedIn }}
     <div>
       <span>{{ .GlobalData.Username }}</span>
       <a href="/settings">Settings</a>
       <a href="/logout">Sign Out</a>
     </div>
+    {{ end }}
   </nav>
 </header>

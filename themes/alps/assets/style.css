@@ -123,8 +123,19 @@ footer { text-align: right; }
 
 .actions { padding: 0.5rem; }
 
-.container { flex: 1 auto; display: flex; flex-direction: column; flex-wrap: nowrap; min-width: 0; }
+.container {
+  flex: 1 auto;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
 
+.container.error {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 1rem 0;
+}
 
 aside { flex: 0 0 180px; }
 

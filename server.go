@@ -382,15 +382,31 @@ func New(e *echo.Echo, options *Options) (*Server, error) {
 		return nil, err
 	}
 
-	e.HTTPErrorHandler = func(err error, c echo.Context) {
+	e.HTTPErrorHandler = func(err error, ctx echo.Context) {
 		code := http.StatusInternalServerError
 		if he, ok := err.(*echo.HTTPError); ok {
 			code = he.Code
-		} else {
-			c.Logger().Error(err)
 		}
-		// TODO: hide internal errors
-		c.String(code, err.Error())
+
+		type ErrorRenderData struct {
+			BaseRenderData
+			Code   int
+			Err    error
+			Status string
+		}
+		rdata := ErrorRenderData{
+			BaseRenderData: *NewBaseRenderData(ctx),
+			Err:    err,
+			Code:   code,
+			Status: http.StatusText(code),
+		}
+
+		if err := ctx.Render(code, "error.html", &rdata); err != nil {
+			ctx.Logger().Error(fmt.Errorf(
+				"Error occured rendering error page: %w. How meta.", err))
+		}
+
+		ctx.Logger().Error(err)
 	}
 
 	e.Pre(func(next echo.HandlerFunc) echo.HandlerFunc {

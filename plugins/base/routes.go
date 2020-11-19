@@ -118,7 +118,7 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 		}
 		if mboxName != "" {
 			if active, err = getMailboxStatus(c, mboxName); err != nil {
-				return err
+				return echo.NewHTTPError(http.StatusNotFound, err)
 			}
 		}
 		if mboxName == "INBOX" {

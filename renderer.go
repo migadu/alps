@@ -70,14 +70,19 @@ type RenderData interface {
 //         BaseRenderData: *alps.NewBaseRenderData(ctx),
 //         // other fields...
 //     }
-func NewBaseRenderData(ctx *Context) *BaseRenderData {
+func NewBaseRenderData(ectx echo.Context) *BaseRenderData {
+	ctx, isactx := ectx.(*Context)
+
 	global := GlobalRenderData{
 		Extra: make(map[string]interface{}),
-		Path:  strings.Split(ctx.Request().URL.Path, "/")[1:],
+		Path:  strings.Split(ectx.Request().URL.Path, "/")[1:],
 		Title: "Webmail",
-		URL:   ctx.Request().URL,
+		URL:   ectx.Request().URL,
 
 		HavePlugin: func(name string) bool {
+			if !isactx {
+				return false
+			}
 			for _, plugin := range ctx.Server.plugins {
 				if plugin.Name() == name {
 					return true
@@ -87,7 +92,7 @@ func NewBaseRenderData(ctx *Context) *BaseRenderData {
 		},
 	}
 
-	if ctx.Session != nil {
+	if isactx && ctx.Session != nil {
 		global.LoggedIn = true
 		global.Username = ctx.Session.username
 	}
