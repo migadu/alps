@@ -668,14 +668,23 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 }
 
 func handleComposeNew(ctx *alps.Context) error {
+	text := ctx.QueryParam("body")
+	settings, err := loadSettings(ctx.Session.Store())
+	if err != nil {
+		return nil
+	}
+	if text == "" && settings.Signature != "" {
+		text = "\n\n\n-- \n" + settings.Signature
+	}
+
 	// These are common mailto URL query parameters
 	// TODO: cc, bcc
 	return handleCompose(ctx, &OutgoingMessage{
 		To:        strings.Split(ctx.QueryParam("to"), ","),
 		Subject:   ctx.QueryParam("subject"),
-		Text:      ctx.QueryParam("body"),
 		MessageID: mail.GenerateMessageID(),
 		InReplyTo: ctx.QueryParam("in-reply-to"),
+		Text:      text,
 	}, &composeOptions{})
 }
 
@@ -1124,6 +1133,7 @@ const maxMessagesPerPage = 100
 
 type Settings struct {
 	MessagesPerPage int
+	Signature       string
 }
 
 func loadSettings(s alps.Store) (*Settings, error) {
@@ -1142,6 +1152,9 @@ func loadSettings(s alps.Store) (*Settings, error) {
 func (s *Settings) check() error {
 	if s.MessagesPerPage <= 0 || s.MessagesPerPage > maxMessagesPerPage {
 		return fmt.Errorf("messages per page out of bounds: %v", s.MessagesPerPage)
+	}
+	if len(s.Signature) > 2048 {
+		return fmt.Errorf("Signature must be 2048 characters or fewer")
 	}
 	return nil
 }
@@ -1162,6 +1175,7 @@ func handleSettings(ctx *alps.Context) error {
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, "invalid messages per page: %v", err)
 		}
+		settings.Signature = ctx.FormValue("signature")
 
 		if err := settings.check(); err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err)

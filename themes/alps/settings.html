@@ -3,12 +3,26 @@
 
 <div class="page-wrap">
   <aside>
-    <a href="/mailbox/INBOX">Back to inbox</a>
+    <ul>
+      <li>
+        <a href="/mailbox/INBOX">« Back to inbox</a>
+      </li>
+    </ul>
   </aside>
 
   <div class="container">
     <main class="settings">
       <form method="post">
+        <div class="action-group">
+          <label for="signature">Message signature</label>
+          <textarea
+            type="number"
+            name="signature"
+            id="signature"
+            rows="5"
+          >{{.Settings.Signature}}</textarea>
+        </div>
+
         <div class="action-group">
           <label for="messages_per_page">Messages per page</label>
           <input

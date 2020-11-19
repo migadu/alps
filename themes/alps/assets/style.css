@@ -653,7 +653,8 @@ main table tfoot {
 }
 
 .action-group label,
-.action-group input {
+.action-group input,
+.action-group textarea {
   display: block;
   width: 100%;
 }
