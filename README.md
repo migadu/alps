@@ -32,5 +32,5 @@ MIT
 [alps]: https://sr.ht/~migadu/alps
 [RFC 6186]: https://tools.ietf.org/html/rfc6186
 [Go plugin helpers]: https://godoc.org/git.sr.ht/~migadu/alps#GoPlugin
-[mailing list]: https://lists.sr.ht/~migadu/alps-dev
+[mailing list]: https://lists.sr.ht/~migadu/alps-devel
 [issue tracker]: https://todo.sr.ht/~migadu/alps
