@@ -1,3 +1,5 @@
+// @license magnet:?xt=urn:btih:d3d9a9a6595521f9666a5e94cc830dab83b65699&dn=expat.txt Expat
+
 const textarea = document.querySelector("textarea.body");
 if (window.location.pathname.endsWith("/reply")) {
 	// Auto-focus body and scroll to bottom
@@ -206,3 +208,5 @@ function formatSI(num) {
   }
   return signPrefix + parseFloat(sig.toPrecision(3)) + PREFIXES[exponent];
 }
+
+// @license-end
