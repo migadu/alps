@@ -20,6 +20,19 @@
         name="password"
         id="password" />
     </div>
+
+    {{if .CanRememberMe}}
+    <div class="form-group">
+      <label for="remember-me" class="checkbox">
+      <input 
+	type="checkbox" 
+	name="remember-me" 
+	id="remember-me" />
+        Remember me
+      </label>
+    </div>
+    {{end}}
+    
     <button
       type="submit"
       class="btn btn-primary"
