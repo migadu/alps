@@ -35,10 +35,18 @@ The following URL schemes are supported:
 
 **-debug**: enable debug logs and print IMAP network activity
 
+**-login-key**: supply a secret key to preserve logins over application restart.
+
 **-h**, **--help**: show help message and exit
 
 # SIGNALS
 
 **SIGUSR1**: reloads templates and Lua plugins
+
+# LOGIN-KEY
+
+A login key can be used to preserve user sessions over application restarts if
+the user has selected 'remember me' on the login page. A key can be generated 
+by running `go run github.com/fernet/fernet-go/cmd/fernet-keygen`
 
 [RFC 6186]: https://tools.ietf.org/html/rfc6186
