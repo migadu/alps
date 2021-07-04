@@ -98,14 +98,37 @@ type MailboxDetails struct {
 // Organizes mailboxes into common/uncommon categories
 type CategorizedMailboxes struct {
 	Common struct {
-		Inbox   MailboxDetails
-		Drafts  MailboxDetails
-		Sent    MailboxDetails
-		Junk    MailboxDetails
-		Trash   MailboxDetails
-		Archive MailboxDetails
+		Inbox   *MailboxDetails
+		Drafts  *MailboxDetails
+		Sent    *MailboxDetails
+		Junk    *MailboxDetails
+		Trash   *MailboxDetails
+		Archive *MailboxDetails
 	}
 	Additional []MailboxDetails
+}
+
+func (cc *CategorizedMailboxes) Append(mi MailboxInfo, status *MailboxStatus) {
+	name := mi.Name
+	details := &MailboxDetails{
+		Info: &mi,
+		Status: status,
+	}
+	if name == "INBOX" {
+		cc.Common.Inbox = details
+	} else if name == "Drafts" {
+		cc.Common.Drafts = details
+	} else if name == "Sent" {
+		cc.Common.Sent = details
+	} else if name == "Junk" {
+		cc.Common.Junk = details
+	} else if name == "Trash" {
+		cc.Common.Trash = details
+	} else if name == "Archive" {
+		cc.Common.Archive = details
+	} else {
+		cc.Additional = append(cc.Additional, *details)
+	}
 }
 
 func newIMAPBaseRenderData(ctx *alps.Context,
@@ -158,14 +181,6 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 	}
 
 	var categorized CategorizedMailboxes
-	mmap := map[string]*MailboxDetails{
-		"INBOX": &categorized.Common.Inbox,
-		"Drafts": &categorized.Common.Drafts,
-		"Sent": &categorized.Common.Sent,
-		"Junk": &categorized.Common.Junk,
-		"Trash": &categorized.Common.Trash,
-		"Archive": &categorized.Common.Archive,
-	}
 
 	for i, _ := range mailboxes {
 		// Populate unseen & active states
@@ -180,16 +195,7 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 		}
 
 		status, _ := subscriptions[mailboxes[i].Name]
-		if ptr, ok := mmap[mailboxes[i].Name]; ok {
-			ptr.Info = &mailboxes[i]
-			ptr.Status = status
-		} else {
-			categorized.Additional = append(categorized.Additional,
-				MailboxDetails{
-					Info:   &mailboxes[i],
-					Status: status,
-				})
-		}
+		categorized.Append(mailboxes[i], status)
 	}
 
 	return &IMAPBaseRenderData{
