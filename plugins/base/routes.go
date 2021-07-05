@@ -14,13 +14,13 @@ import (
 
 	"git.sr.ht/~migadu/alps"
 	"github.com/emersion/go-imap"
+	imapmove "github.com/emersion/go-imap-move"
+	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
 	"github.com/labstack/echo/v4"
 	"jaytaylor.com/html2text"
-	imapclient "github.com/emersion/go-imap/client"
-	imapmove "github.com/emersion/go-imap-move"
 )
 
 func registerRoutes(p *alps.GoPlugin) {
@@ -85,9 +85,9 @@ type IMAPBaseRenderData struct {
 
 type MailboxRenderData struct {
 	IMAPBaseRenderData
-	Messages             []IMAPMessage
-	PrevPage, NextPage   int
-	Query                string
+	Messages           []IMAPMessage
+	PrevPage, NextPage int
+	Query              string
 }
 
 type MailboxDetails struct {
@@ -111,7 +111,7 @@ type CategorizedMailboxes struct {
 func (cc *CategorizedMailboxes) Append(mi MailboxInfo, status *MailboxStatus) {
 	name := mi.Name
 	details := &MailboxDetails{
-		Info: &mi,
+		Info:   &mi,
 		Status: status,
 	}
 	if name == "INBOX" {
@@ -245,7 +245,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 		total int
 	)
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-		var err  error
+		var err error
 		if query != "" {
 			msgs, total, err = searchMessages(c, mbox.Name, query, page, messagesPerPage)
 		} else {
@@ -278,11 +278,11 @@ func handleGetMailbox(ctx *alps.Context) error {
 	}
 
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
-		IMAPBaseRenderData:  *ibase,
-		Messages:             msgs,
-		PrevPage:             prevPage,
-		NextPage:             nextPage,
-		Query:                query,
+		IMAPBaseRenderData: *ibase,
+		Messages:           msgs,
+		PrevPage:           prevPage,
+		NextPage:           nextPage,
+		Query:              query,
 	})
 }
 
@@ -303,7 +303,7 @@ func handleNewMailbox(ctx *alps.Context) error {
 		if name == "" {
 			return ctx.Render(http.StatusOK, "new-mailbox.html", &NewMailboxRenderData{
 				IMAPBaseRenderData: *ibase,
-				Error: "Name is required",
+				Error:              "Name is required",
 			})
 		}
 
@@ -314,7 +314,7 @@ func handleNewMailbox(ctx *alps.Context) error {
 		if err != nil {
 			return ctx.Render(http.StatusOK, "new-mailbox.html", &NewMailboxRenderData{
 				IMAPBaseRenderData: *ibase,
-				Error: err.Error(),
+				Error:              err.Error(),
 			})
 		}
 
@@ -323,7 +323,7 @@ func handleNewMailbox(ctx *alps.Context) error {
 
 	return ctx.Render(http.StatusOK, "new-mailbox.html", &NewMailboxRenderData{
 		IMAPBaseRenderData: *ibase,
-		Error: "",
+		Error:              "",
 	})
 }
 
@@ -520,7 +520,7 @@ type composeOptions struct {
 // Send message, append it to the Sent mailbox, mark the original message as
 // answered
 func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOptions) error {
-	err := ctx.Session.DoSMTP(func (c *smtp.Client) error {
+	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
 		return sendMessage(c, msg)
 	})
 	if err != nil {
@@ -571,7 +571,7 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 		}
 		if settings.From != "" {
 			addr := mail.Address{
-				Name: settings.From,
+				Name:    settings.From,
 				Address: ctx.Session.Username(),
 			}
 			msg.From = addr.String()

@@ -87,7 +87,7 @@ func splitSearchTokens(buf []byte, eof bool) (int, []byte, error) {
 			terminator int
 			quoted     bool
 		)
-		if colon + 1 < len(buf) && buf[colon+1] == byte('"') {
+		if colon+1 < len(buf) && buf[colon+1] == byte('"') {
 			terminator = bytes.IndexByte(buf[colon+2:], byte('"'))
 			terminator += colon + 3
 			quoted = true

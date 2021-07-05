@@ -396,9 +396,9 @@ func New(e *echo.Echo, options *Options) (*Server, error) {
 		}
 		rdata := ErrorRenderData{
 			BaseRenderData: *NewBaseRenderData(ctx),
-			Err:    err,
-			Code:   code,
-			Status: http.StatusText(code),
+			Err:            err,
+			Code:           code,
+			Status:         http.StatusText(code),
 		}
 
 		if err := ctx.Render(code, "error.html", &rdata); err != nil {

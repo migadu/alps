@@ -12,10 +12,10 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/emersion/go-imap"
+	imapspecialuse "github.com/emersion/go-imap-specialuse"
+	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/textproto"
-	imapclient "github.com/emersion/go-imap/client"
-	imapspecialuse "github.com/emersion/go-imap-specialuse"
 )
 
 type MailboxInfo struct {

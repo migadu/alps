@@ -32,7 +32,7 @@ func generateToken() (string, error) {
 }
 
 var (
-	ErrSessionExpired = errors.New("session expired")
+	ErrSessionExpired      = errors.New("session expired")
 	ErrAttachmentCacheSize = errors.New("Attachments on session exceed maximum file size")
 )
 
@@ -157,13 +157,13 @@ func (s *Session) PutAttachment(in *multipart.FileHeader,
 	for _, a := range s.attachments {
 		size += a.File.Size
 	}
-	if size + in.Size > maxAttachmentSize {
+	if size+in.Size > maxAttachmentSize {
 		return "", ErrAttachmentCacheSize
 	}
 
 	s.attachments[id.String()] = &Attachment{
-		File:     in,
-		Form:     form,
+		File: in,
+		Form: form,
 	}
 	s.attachmentsLocker.Unlock()
 	return id.String(), nil
