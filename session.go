@@ -24,8 +24,7 @@ const maxAttachmentSize = 32 << 20 // 32 MiB
 
 func generateToken() (string, error) {
 	b := make([]byte, 32)
-	_, err := rand.Read(b)
-	if err != nil {
+	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(b), nil

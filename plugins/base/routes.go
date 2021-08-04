@@ -109,12 +109,11 @@ type CategorizedMailboxes struct {
 }
 
 func (cc *CategorizedMailboxes) Append(mi MailboxInfo, status *MailboxStatus) {
-	name := mi.Name
 	details := &MailboxDetails{
 		Info:   &mi,
 		Status: status,
 	}
-	if name == "INBOX" {
+	if name := mi.Name; name == "INBOX" {
 		cc.Common.Inbox = details
 	} else if name == "Drafts" {
 		cc.Common.Drafts = details
@@ -194,8 +193,7 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 			mailboxes[i].Total = int(inbox.Messages)
 		}
 
-		status, _ := subscriptions[mailboxes[i].Name]
-		categorized.Append(mailboxes[i], status)
+		categorized.Append(mailboxes[i], subscriptions[mailboxes[i].Name])
 	}
 
 	return &IMAPBaseRenderData{
