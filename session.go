@@ -55,7 +55,6 @@ type Session struct {
 	token              string
 	closed             chan struct{}
 	pings              chan struct{}
-	timer              *time.Timer
 	store              Store
 	notice             string
 
