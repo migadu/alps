@@ -19,9 +19,7 @@ var templateFuncs = template.FuncMap{
 	"tuple": func(values ...interface{}) []interface{} {
 		return values
 	},
-	"pathescape": func(s string) string {
-		return url.PathEscape(s)
-	},
+	"pathescape": url.PathEscape,
 	"formatdate": func(t time.Time) string {
 		return t.Format("Mon Jan 02 15:04")
 	},
@@ -47,9 +45,7 @@ var templateFuncs = template.FuncMap{
 			return true
 		}
 	},
-	"join": func(l []string, sep string) string {
-		return strings.Join(l, sep)
-	},
+	"join": strings.Join,
 	"formatinputdate": func(t time.Time) string {
 		if t.IsZero() {
 			return ""

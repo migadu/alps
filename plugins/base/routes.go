@@ -181,7 +181,7 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 
 	var categorized CategorizedMailboxes
 
-	for i, _ := range mailboxes {
+	for i := range mailboxes {
 		// Populate unseen & active states
 		if active != nil && mailboxes[i].Name == active.Name {
 			mailboxes[i].Unseen = int(active.Unseen)
@@ -403,6 +403,9 @@ type MessageRenderData struct {
 
 func handleGetPart(ctx *alps.Context, raw bool) error {
 	_, uid, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+	if err != nil {
+		return err
+	}
 	ibase, err := newIMAPBaseRenderData(ctx, alps.NewBaseRenderData(ctx))
 	if err != nil {
 		return err
@@ -468,9 +471,8 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 		if len(partPath) == 0 {
 			return part.WriteTo(ctx.Response())
-		} else {
-			return ctx.Stream(http.StatusOK, mimeType, part.Body)
 		}
+		return ctx.Stream(http.StatusOK, mimeType, part.Body)
 	}
 
 	view, err := viewMessagePart(ctx, msg, part)

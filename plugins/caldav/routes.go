@@ -134,7 +134,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 		var dates [7 * 6]time.Time
 		initialDate := start.UTC()
 		initialDate = initialDate.AddDate(0, 0, -int(initialDate.Weekday()))
-		for i := 0; i < len(dates); i += 1 {
+		for i := 0; i < len(dates); i++ {
 			dates[i] = initialDate
 			initialDate = initialDate.AddDate(0, 0, 1)
 		}
