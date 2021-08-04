@@ -40,7 +40,7 @@ func parseObjectPath(s string) (string, error) {
 		err = fmt.Errorf("failed to parse path: %v", err)
 		return "", echo.NewHTTPError(http.StatusBadRequest, err)
 	}
-	return string(p), nil
+	return p, nil
 }
 
 func registerRoutes(p *plugin) {
