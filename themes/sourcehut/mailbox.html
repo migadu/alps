@@ -60,7 +60,11 @@
             </span>
             <span class="text-normal from">
               {{ range .Envelope.From }}
-                {{ .PersonalName }}
+                {{ if .PersonalName }}
+                  {{ .PersonalName }}
+                {{ else }}
+                  {{ .MailboxName }}@{{ .HostName }}
+                {{ end }}
               {{ end }}
             </span>
             <span class="{{if not (.HasFlag "\\Seen")}}font-weight-bold{{end}}">
