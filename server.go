@@ -204,7 +204,7 @@ func (s *Server) load() error {
 		plugins = append(plugins, l...)
 	}
 
-	renderer := newRenderer(s.e.Logger, s.Options.Theme)
+	renderer := newRenderer(s.e.Logger, s.Options.ThemesPath, s.Options.Theme)
 	if err := renderer.Load(plugins); err != nil {
 		return fmt.Errorf("failed to load templates: %v", err)
 	}
@@ -365,10 +365,11 @@ func handleUnauthenticated(next echo.HandlerFunc, ctx *Context) error {
 }
 
 type Options struct {
-	Upstreams []string
-	Theme     string
-	Debug     bool
-	LoginKey  *fernet.Key
+	Upstreams  []string
+	Theme      string
+	ThemesPath string
+	Debug      bool
+	LoginKey   *fernet.Key
 }
 
 // New creates a new server.
@@ -454,7 +455,7 @@ func New(e *echo.Echo, options *Options) (*Server, error) {
 		}
 	})
 
-	e.Static("/themes", "themes")
+	e.Static("/themes", options.ThemesPath)
 
 	return s, nil
 }

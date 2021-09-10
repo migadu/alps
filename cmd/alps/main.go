@@ -23,6 +23,8 @@ import (
 	_ "git.sr.ht/~migadu/alps/plugins/viewtext"
 )
 
+var themesPath = "./themes"
+
 func main() {
 	var (
 		addr     string
@@ -46,6 +48,7 @@ func main() {
 		flag.Usage()
 		return
 	}
+	options.ThemesPath = themesPath
 
 	if loginKey != "" {
 		fernetKey, err := fernet.DecodeKey(loginKey)

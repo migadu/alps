@@ -12,8 +12,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-const themesDir = "themes"
-
 // GlobalRenderData contains data available in all templates.
 type GlobalRenderData struct {
 	Path []string
@@ -113,6 +111,7 @@ func (brd *BaseRenderData) WithTitle(title string) *BaseRenderData {
 
 type renderer struct {
 	logger       echo.Logger
+	themesPath   string
 	defaultTheme string
 
 	base   *template.Template
@@ -148,13 +147,13 @@ func (r *renderer) Render(w io.Writer, name string, data interface{}, ectx echo.
 	return t.ExecuteTemplate(w, name, data)
 }
 
-func loadTheme(name string, base *template.Template) (*template.Template, error) {
+func loadTheme(themesPath string, name string, base *template.Template) (*template.Template, error) {
 	theme, err := base.Clone()
 	if err != nil {
 		return nil, err
 	}
 
-	theme, err = theme.ParseGlob(themesDir + "/" + name + "/*.html")
+	theme, err = theme.ParseGlob(themesPath + "/" + name + "/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +172,7 @@ func (r *renderer) Load(plugins []Plugin) error {
 
 	themes := make(map[string]*template.Template)
 
-	files, err := ioutil.ReadDir(themesDir)
+	files, err := ioutil.ReadDir(r.themesPath)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -185,7 +184,7 @@ func (r *renderer) Load(plugins []Plugin) error {
 
 		r.logger.Printf("Loading theme %q", fi.Name())
 		var err error
-		if themes[fi.Name()], err = loadTheme(fi.Name(), base); err != nil {
+		if themes[fi.Name()], err = loadTheme(r.themesPath, fi.Name(), base); err != nil {
 			return fmt.Errorf("failed to load theme %q: %v", fi.Name(), err)
 		}
 	}
@@ -201,9 +200,10 @@ func (r *renderer) Load(plugins []Plugin) error {
 	return nil
 }
 
-func newRenderer(logger echo.Logger, defaultTheme string) *renderer {
+func newRenderer(logger echo.Logger, themesPath string, defaultTheme string) *renderer {
 	return &renderer{
 		logger:       logger,
 		defaultTheme: defaultTheme,
+		themesPath:   themesPath,
 	}
 }
