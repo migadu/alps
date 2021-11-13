@@ -128,6 +128,24 @@ func (s *Session) SetHTTPBasicAuth(req *http.Request) {
 	req.SetBasicAuth(s.username, s.password)
 }
 
+// AuthProtoClient is implemented by clients of protocols that support SASL
+// authentication. It can be used by session helpers to perform authentication
+// via a specific mechanism for any protocol supporting it.
+type AuthProtoClient interface {
+	Auth(a sasl.Client) error
+}
+
+// PlainAuth authenticates a protocol client using the PLAIN mechanism.
+// It can be used by plugins to authenticate a client after connection.
+func (s *Session) PlainAuth(c AuthProtoClient) error {
+	auth := sasl.NewPlainClient("", s.username, s.password)
+	if err := c.Auth(auth); err != nil {
+		return AuthError{err}
+	}
+
+	return nil
+}
+
 // Close destroys the session. This can be used to log the user out.
 func (s *Session) Close() {
 	s.attachmentsLocker.Lock()
