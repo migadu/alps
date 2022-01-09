@@ -28,6 +28,22 @@
             {{ if not $to }} autofocus{{ end }}
           />
 
+          <label>Cc</label>
+          <input
+              type="text"
+              name="cc"
+              id="cc"
+              value="{{.Message.CcString}}"
+          />
+
+          <label>Bcc</label>
+          <input
+              type="text"
+              name="bcc"
+              id="bcc"
+              value="{{.Message.BccString}}"
+          />
+
           <label>Subject</label>
           <input
             type="text"

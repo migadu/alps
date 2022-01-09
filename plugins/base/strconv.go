@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/emersion/go-message/mail"
 )
 
 func parseUid(s string) (uint32, error) {
@@ -60,14 +62,26 @@ func parsePartPath(s string) ([]int, error) {
 	return path, nil
 }
 
-func parseAddressList(s string) []string {
+func parseStringList(s string) []string {
 	if s == "" {
 		return nil
 	}
 
 	l := strings.Split(s, ",")
-	for i, addr := range l {
-		l[i] = strings.TrimSpace(addr)
+	for i, s := range l {
+		l[i] = strings.TrimSpace(s)
 	}
 	return l
+}
+
+func parseAddressList(values []string) ([]*mail.Address, error) {
+	var addrs []*mail.Address
+	for _, v := range values {
+		addr, err := mail.ParseAddress(v)
+		if err != nil {
+			return nil, err
+		}
+		addrs = append(addrs, addr)
+	}
+	return addrs, nil
 }

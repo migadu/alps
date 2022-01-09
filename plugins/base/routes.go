@@ -609,7 +609,9 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 		_, saveAsDraft := formParams["save_as_draft"]
 
 		msg.From = ctx.FormValue("from")
-		msg.To = parseAddressList(ctx.FormValue("to"))
+		msg.To = parseStringList(ctx.FormValue("to"))
+		msg.Cc = parseStringList(ctx.FormValue("cc"))
+		msg.Bcc = parseStringList(ctx.FormValue("bcc"))
 		msg.Subject = ctx.FormValue("subject")
 		msg.Text = ctx.FormValue("text")
 		msg.InReplyTo = ctx.FormValue("in_reply_to")
@@ -750,12 +752,13 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	// These are common mailto URL query parameters
-	// TODO: cc, bcc
 	var hdr mail.Header
 	hdr.GenerateMessageID()
 	mid, _ := hdr.MessageID()
 	return handleCompose(ctx, &OutgoingMessage{
 		To:        strings.Split(ctx.QueryParam("to"), ","),
+		Cc:        strings.Split(ctx.QueryParam("cc"), ","),
+		Bcc:       strings.Split(ctx.QueryParam("bcc"), ","),
 		Subject:   ctx.QueryParam("subject"),
 		MessageID: "<" + mid + ">",
 		InReplyTo: ctx.QueryParam("in-reply-to"),
@@ -1008,6 +1011,8 @@ func handleEdit(ctx *alps.Context) error {
 			msg.From = source.Envelope.From[0].Address()
 		}
 		msg.To = unwrapIMAPAddressList(source.Envelope.To)
+		msg.Cc = unwrapIMAPAddressList(source.Envelope.Cc)
+		msg.Bcc = unwrapIMAPAddressList(source.Envelope.Bcc)
 		msg.Subject = source.Envelope.Subject
 		msg.InReplyTo = source.Envelope.InReplyTo
 		msg.MessageID = source.Envelope.MessageId

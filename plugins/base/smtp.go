@@ -80,6 +80,8 @@ func (att *imapAttachment) Filename() string {
 type OutgoingMessage struct {
 	From        string
 	To          []string
+	Cc          []string
+	Bcc         []string
 	Subject     string
 	MessageID   string
 	InReplyTo   string
@@ -89,6 +91,14 @@ type OutgoingMessage struct {
 
 func (msg *OutgoingMessage) ToString() string {
 	return strings.Join(msg.To, ", ")
+}
+
+func (msg *OutgoingMessage) CcString() string {
+	return strings.Join(msg.Cc, ", ")
+}
+
+func (msg *OutgoingMessage) BccString() string {
+	return strings.Join(msg.Bcc, ", ")
 }
 
 func writeAttachment(mw *mail.Writer, att Attachment) error {
@@ -129,19 +139,28 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) error {
 	}
 	from := []*mail.Address{fromAddr}
 
-	to := make([]*mail.Address, len(msg.To))
-	for i, rcpt := range msg.To {
-		addr, err := mail.ParseAddress(rcpt)
-		if err != nil {
-			return err
-		}
-		to[i] = addr
+	to, err := parseAddressList(msg.To)
+	if err != nil {
+		return err
 	}
-
+	cc, err := parseAddressList(msg.Cc)
+	if err != nil {
+		return err
+	}
+	bcc, err := parseAddressList(msg.Bcc)
+	if err != nil {
+		return err
+	}
 	var h mail.Header
 	h.SetDate(time.Now())
 	h.SetAddressList("From", from)
 	h.SetAddressList("To", to)
+	if len(cc) > 0 {
+		h.SetAddressList("Cc", cc)
+	}
+	if len(bcc) > 0 {
+		h.SetAddressList("Bcc", bcc)
+	}
 	if msg.Subject != "" {
 		h.SetText("Subject", msg.Subject)
 	}
@@ -195,19 +214,27 @@ func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
 		return fmt.Errorf("MAIL FROM failed: %v", err)
 	}
 
-	for _, to := range msg.To {
-		addr, _ := mail.ParseAddress(to)
+	var rcpts []string
+	for _, field := range [][]string{msg.To, msg.Cc, msg.Bcc} {
+		rcpts = append(rcpts, field...)
+	}
+
+	for _, rcpt := range rcpts {
+		addr, _ := mail.ParseAddress(rcpt)
 		if err := c.Rcpt(addr.Address); err != nil {
 			return fmt.Errorf("RCPT TO failed: %v (%s)", err, addr.Address)
 		}
 	}
+
+	stripped := *msg
+	stripped.Bcc = nil
 
 	w, err := c.Data()
 	if err != nil {
 		return fmt.Errorf("DATA failed: %v", err)
 	}
 
-	if err := msg.WriteTo(w); err != nil {
+	if err := stripped.WriteTo(w); err != nil {
 		return fmt.Errorf("failed to write outgoing message: %v", err)
 	}
 

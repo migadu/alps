@@ -235,7 +235,7 @@ main.create-update form {
 main.create-update .headers {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  grid-template-rows: auto auto auto auto;
+  grid-template-rows: auto auto auto auto auto;
   grid-gap: 0.5rem;
   align-items: center;
 }
