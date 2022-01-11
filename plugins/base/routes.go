@@ -683,6 +683,10 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 					}
 				}
 
+				if err := ensureMailboxSelected(c, drafts.Name); err != nil {
+					return err
+				}
+
 				criteria := &imap.SearchCriteria{
 					Header: make(textproto.MIMEHeader),
 				}
