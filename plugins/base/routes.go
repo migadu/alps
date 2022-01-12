@@ -248,6 +248,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 			msgs, total, err = searchMessages(c, mbox.Name, query, page, messagesPerPage)
 		} else {
 			msgs, err = listMessages(c, mbox, page, messagesPerPage)
+			total = int(mbox.Messages)
 		}
 		if err != nil {
 			return err
@@ -259,20 +260,11 @@ func handleGetMailbox(ctx *alps.Context) error {
 	}
 
 	prevPage, nextPage := -1, -1
-	if query != "" {
-		if page > 0 {
-			prevPage = page - 1
-		}
-		if (page+1)*messagesPerPage <= total {
-			nextPage = page + 1
-		}
-	} else {
-		if page > 0 {
-			prevPage = page - 1
-		}
-		if (page+1)*messagesPerPage < int(mbox.Messages) {
-			nextPage = page + 1
-		}
+	if page > 0 {
+		prevPage = page - 1
+	}
+	if (page+1)*messagesPerPage < total {
+		nextPage = page + 1
 	}
 
 	return ctx.Render(http.StatusOK, "mailbox.html", &MailboxRenderData{
