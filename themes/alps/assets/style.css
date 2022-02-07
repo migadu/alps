@@ -431,7 +431,8 @@ main.event pre {
 main.message pre,
 main.event pre {
   white-space: pre-wrap;
-  word-break: break-all;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 main.message .message-header {
