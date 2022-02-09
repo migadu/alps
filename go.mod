@@ -10,7 +10,6 @@ require (
 	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-imap-metadata v0.0.0-20200128185110-9d939d2a0915
 	github.com/emersion/go-imap-move v0.0.0-20210907172020-fe4558f9c872
-	github.com/emersion/go-imap-specialuse v0.0.0-20201101201809-1ab93d3d150e
 	github.com/emersion/go-message v0.15.0
 	github.com/emersion/go-sasl v0.0.0-20211008083017-0b9dcfb154ac
 	github.com/emersion/go-smtp v0.15.0

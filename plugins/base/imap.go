@@ -12,7 +12,6 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/emersion/go-imap"
-	imapspecialuse "github.com/emersion/go-imap-specialuse"
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/textproto"
@@ -111,10 +110,10 @@ func getMailboxByType(conn *imapclient.Client, mboxType mailboxType) (*MailboxIn
 	var fallbackNames []string
 	switch mboxType {
 	case mailboxSent:
-		attr = imapspecialuse.Sent
+		attr = imap.SentAttr
 		fallbackNames = []string{"Sent"}
 	case mailboxDrafts:
-		attr = imapspecialuse.Drafts
+		attr = imap.DraftsAttr
 		fallbackNames = []string{"Draft", "Drafts"}
 	}
 
