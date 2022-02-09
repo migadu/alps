@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/fernet/fernet-go"
 	"gopkg.in/ini.v1"
@@ -25,7 +26,15 @@ type LogConfig struct {
 }
 
 type SecurityConfig struct {
-	LoginKey *fernet.Key `ini:"-"`
+	LoginKey             *fernet.Key   `ini:"-"`
+	CookieName           string        `ini:"cookie-name"`
+	CookieLoginTokenName string        `ini:"cookie-login-token-name"`
+	LoginTokenLifetime   time.Duration `ini:"login-token-lifetime"`
+}
+
+type SessionConfig struct {
+	IdleTimeout         time.Duration `ini:"idle-timeout"`
+	AttachmentCacheSize int64         `ini:"-"`
 }
 
 type AlpsConfig struct {
@@ -34,6 +43,7 @@ type AlpsConfig struct {
 	UI       UIConfig       `ini:"ui"`
 	Log      LogConfig      `ini:"log"`
 	Security SecurityConfig `ini:"security"`
+	Session  SessionConfig  `ini:"session"`
 }
 
 func LoadConfig(filename string, themesPath string) (*AlpsConfig, error) {
@@ -47,6 +57,14 @@ func LoadConfig(filename string, themesPath string) (*AlpsConfig, error) {
 		},
 		Log: LogConfig{
 			Debug: false,
+		},
+		Security: SecurityConfig{
+			CookieName:           "alps_session",
+			CookieLoginTokenName: "alps_login_token",
+			LoginTokenLifetime:   30 * 24 * time.Hour,
+		},
+		Session: SessionConfig{
+			IdleTimeout: 30 * time.Minute,
 		},
 	}
 
@@ -63,6 +81,9 @@ func LoadConfig(filename string, themesPath string) (*AlpsConfig, error) {
 		}
 		config.Security.LoginKey = fernetKey
 	}
+
+	attachmentCacheMebi := file.Section("session").Key("attachment-cache-size").MustInt(32)
+	config.Session.AttachmentCacheSize = int64(attachmentCacheMebi) << 20
 
 	if err := file.MapTo(config); err != nil {
 		return nil, err

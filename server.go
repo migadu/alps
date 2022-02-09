@@ -15,11 +15,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-const (
-	cookieName           = "alps_session"
-	loginTokenCookieName = "alps_login_token"
-)
-
 // Server holds all the alps server state.
 type Server struct {
 	e        *echo.Echo
@@ -66,7 +61,7 @@ func newServer(e *echo.Echo, config *config.AlpsConfig) (*Server, error) {
 		return nil, err
 	}
 
-	s.Sessions = newSessionManager(s.dialIMAP, s.dialSMTP, e.Logger, config.Log.Debug)
+	s.Sessions = newSessionManager(s.dialIMAP, s.dialSMTP, e.Logger, config)
 	return s, nil
 }
 
@@ -260,7 +255,7 @@ var aLongTimeAgo = time.Unix(233431200, 0)
 // unsets the cookie.
 func (ctx *Context) SetSession(s *Session) {
 	cookie := http.Cookie{
-		Name:     cookieName,
+		Name:     ctx.Server.Config.Security.CookieName,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
 		Secure:   ctx.IsTLS(),
@@ -279,9 +274,10 @@ type loginToken struct {
 }
 
 func (ctx *Context) SetLoginToken(username, password string) {
+	config := ctx.Server.Config
 	cookie := http.Cookie{
-		Expires:  time.Now().Add(30 * 24 * time.Hour),
-		Name:     loginTokenCookieName,
+		Expires:  time.Now().Add(config.Security.LoginTokenLifetime),
+		Name:     config.Security.CookieLoginTokenName,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
 		Secure:   ctx.IsTLS(),
@@ -314,18 +310,19 @@ func (ctx *Context) SetLoginToken(username, password string) {
 }
 
 func (ctx *Context) GetLoginToken() (string, string) {
-	cookie, err := ctx.Cookie(loginTokenCookieName)
+	config := ctx.Server.Config
+	cookie, err := ctx.Cookie(config.Security.CookieLoginTokenName)
 	if err != nil || cookie == nil {
 		return "", ""
 	}
 
-	fkey := ctx.Server.Config.Security.LoginKey
+	fkey := config.Security.LoginKey
 	if fkey == nil {
 		return "", ""
 	}
 
 	bytes := fernet.VerifyAndDecrypt([]byte(cookie.Value),
-		24*time.Hour*30, []*fernet.Key{fkey})
+		config.Security.LoginTokenLifetime, []*fernet.Key{fkey})
 	if bytes == nil {
 		return "", ""
 	}
@@ -428,7 +425,7 @@ func New(e *echo.Echo, config *config.AlpsConfig) (*Server, error) {
 			ctx := &Context{Context: ectx, Server: s}
 			ctx.Set("context", ctx)
 
-			cookie, err := ctx.Cookie(cookieName)
+			cookie, err := ctx.Cookie(ctx.Server.Config.Security.CookieName)
 			if err == http.ErrNoCookie {
 				return handleUnauthenticated(next, ctx)
 			} else if err != nil {

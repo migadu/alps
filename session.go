@@ -11,16 +11,13 @@ import (
 	"sync"
 	"time"
 
+	"git.sr.ht/~migadu/alps/config"
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
-
-// TODO: make this configurable
-const sessionDuration = 30 * time.Minute
-const maxAttachmentSize = 32 << 20 // 32 MiB
 
 func generateToken() (string, error) {
 	b := make([]byte, 32)
@@ -173,7 +170,7 @@ func (s *Session) PutAttachment(in *multipart.FileHeader,
 	for _, a := range s.attachments {
 		size += a.File.Size
 	}
-	if size+in.Size > maxAttachmentSize {
+	if size+in.Size > s.manager.config.AttachmentCacheSize {
 		return "", ErrAttachmentCacheSize
 	}
 
@@ -229,18 +226,20 @@ type SessionManager struct {
 	dialSMTP DialSMTPFunc
 	logger   echo.Logger
 	debug    bool
+	config   *config.SessionConfig
 
 	locker   sync.Mutex
 	sessions map[string]*Session // protected by locker
 }
 
-func newSessionManager(dialIMAP DialIMAPFunc, dialSMTP DialSMTPFunc, logger echo.Logger, debug bool) *SessionManager {
+func newSessionManager(dialIMAP DialIMAPFunc, dialSMTP DialSMTPFunc, logger echo.Logger, config *config.AlpsConfig) *SessionManager {
 	return &SessionManager{
 		sessions: make(map[string]*Session),
 		dialIMAP: dialIMAP,
 		dialSMTP: dialSMTP,
 		logger:   logger,
-		debug:    debug,
+		debug:    config.Log.Debug,
+		config:   &config.Session,
 	}
 }
 
@@ -322,7 +321,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	sm.sessions[token] = s
 
 	go func() {
-		timer := time.NewTimer(sessionDuration)
+		timer := time.NewTimer(sm.config.IdleTimeout)
 
 		alive := true
 		for alive {
@@ -342,7 +341,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 				if !timer.Stop() {
 					<-timer.C
 				}
-				timer.Reset(sessionDuration)
+				timer.Reset(sm.config.IdleTimeout)
 			case <-timer.C:
 				alive = false
 			case <-s.closed:
