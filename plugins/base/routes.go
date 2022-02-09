@@ -369,8 +369,9 @@ func handleLogin(ctx *alps.Context) error {
 			ctx.SetLoginToken(username, password)
 		}
 
+		// Request has the original redirected method and body.
 		if path := ctx.QueryParam("next"); path != "" && path[0] == '/' && path != "/login" {
-			return ctx.Redirect(http.StatusFound, path)
+			return ctx.Redirect(http.StatusTemporaryRedirect, path)
 		}
 		return ctx.Redirect(http.StatusFound, "/mailbox/INBOX")
 	}

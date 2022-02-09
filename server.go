@@ -350,7 +350,7 @@ func redirectToLogin(ctx *Context) error {
 	if path != "/" && path != "/login" {
 		to += "?next=" + url.QueryEscape(ctx.Request().URL.String())
 	}
-	return ctx.Redirect(http.StatusFound, to)
+	return ctx.Redirect(http.StatusTemporaryRedirect, to)
 }
 
 func handleUnauthenticated(next echo.HandlerFunc, ctx *Context) error {
