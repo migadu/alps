@@ -271,17 +271,31 @@ func (ctx *Context) SetSession(s *Session) {
 type loginToken struct {
 	Username string
 	Password string
+
+	// Used to verify that the lifetime derived from the cookie name is valid.
+	Remember bool
 }
 
-func (ctx *Context) SetLoginToken(username, password string) {
+func (ctx *Context) setLoginToken(username, password string, remember bool) {
 	config := ctx.Server.Config
+
+	var name string
+	if remember {
+		name = config.Security.CookieLoginTokenRememberName
+	} else {
+		name = config.Security.CookieLoginTokenSessionName
+	}
+
 	cookie := http.Cookie{
-		Expires:  time.Now().Add(config.Security.LoginTokenLifetime),
-		Name:     config.Security.CookieLoginTokenName,
+		Name:     name,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
 		Secure:   ctx.IsTLS(),
 		Path:     "/login",
+	}
+
+	if remember {
+		cookie.Expires = time.Now().Add(config.Security.LoginTokenRememberLifetime)
 	}
 	if username == "" {
 		cookie.Expires = aLongTimeAgo // unset the cookie
@@ -289,7 +303,7 @@ func (ctx *Context) SetLoginToken(username, password string) {
 		return
 	}
 
-	loginToken := loginToken{username, password}
+	loginToken := loginToken{username, password, remember}
 	payload, err := json.Marshal(loginToken)
 	if err != nil {
 		panic(err) // Should never happen
@@ -309,9 +323,22 @@ func (ctx *Context) SetLoginToken(username, password string) {
 	ctx.SetCookie(&cookie)
 }
 
+func (ctx *Context) SetSessionLoginToken(username, password string) {
+	ctx.setLoginToken(username, password, false)
+}
+
+func (ctx *Context) SetRememberLoginToken(username, password string) {
+	ctx.setLoginToken(username, password, true)
+}
+
+// GetLoginToken retrieves credentials from one of the available login tokens.
 func (ctx *Context) GetLoginToken() (string, string) {
 	config := ctx.Server.Config
-	cookie, err := ctx.Cookie(config.Security.CookieLoginTokenName)
+
+	cookie, err := ctx.Cookie(config.Security.CookieLoginTokenSessionName)
+	if err != nil || cookie == nil {
+		cookie, err = ctx.Cookie(config.Security.CookieLoginTokenRememberName)
+	}
 	if err != nil || cookie == nil {
 		return "", ""
 	}
@@ -321,8 +348,16 @@ func (ctx *Context) GetLoginToken() (string, string) {
 		return "", ""
 	}
 
-	bytes := fernet.VerifyAndDecrypt([]byte(cookie.Value),
-		config.Security.LoginTokenLifetime, []*fernet.Key{fkey})
+	remember := cookie.Name == config.Security.CookieLoginTokenRememberName
+
+	var lifetime time.Duration
+	if remember {
+		lifetime = config.Security.LoginTokenRememberLifetime
+	} else {
+		lifetime = config.Security.LoginTokenSessionLifetime
+	}
+
+	bytes := fernet.VerifyAndDecrypt([]byte(cookie.Value), lifetime, []*fernet.Key{fkey})
 	if bytes == nil {
 		return "", ""
 	}
@@ -331,6 +366,10 @@ func (ctx *Context) GetLoginToken() (string, string) {
 	err = json.Unmarshal(bytes, &token)
 	if err != nil {
 		panic(err) // Should never happen
+	}
+
+	if token.Remember != remember {
+		return "", ""
 	}
 
 	return token.Username, token.Password
@@ -439,7 +478,7 @@ func New(e *echo.Echo, config *config.AlpsConfig) (*Server, error) {
 			} else if err != nil {
 				return err
 			}
-			ctx.Session.ping()
+			ctx.Session.ping(ctx)
 
 			return next(ctx)
 		}

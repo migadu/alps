@@ -66,8 +66,11 @@ type Attachment struct {
 	Form *multipart.Form
 }
 
-func (s *Session) ping() {
+// ping resets the session timer and extends the lifetime of the session
+// login token, keeping server and client expiration synchronized.
+func (s *Session) ping(ctx *Context) {
 	s.pings <- struct{}{}
+	ctx.SetSessionLoginToken(s.username, s.password)
 }
 
 // Username returns the session's username.

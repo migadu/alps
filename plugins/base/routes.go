@@ -365,8 +365,9 @@ func handleLogin(ctx *alps.Context) error {
 		}
 		ctx.SetSession(s)
 
+		ctx.SetSessionLoginToken(username, password)
 		if remember == "on" {
-			ctx.SetLoginToken(username, password)
+			ctx.SetRememberLoginToken(username, password)
 		}
 
 		// Request has the original redirected method and body.
@@ -382,7 +383,8 @@ func handleLogin(ctx *alps.Context) error {
 func handleLogout(ctx *alps.Context) error {
 	ctx.Session.Close()
 	ctx.SetSession(nil)
-	ctx.SetLoginToken("", "")
+	ctx.SetSessionLoginToken("", "")
+	ctx.SetRememberLoginToken("", "")
 	return ctx.Redirect(http.StatusFound, "/login")
 }
 

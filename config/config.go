@@ -26,10 +26,12 @@ type LogConfig struct {
 }
 
 type SecurityConfig struct {
-	LoginKey             *fernet.Key   `ini:"-"`
-	CookieName           string        `ini:"cookie-name"`
-	CookieLoginTokenName string        `ini:"cookie-login-token-name"`
-	LoginTokenLifetime   time.Duration `ini:"login-token-lifetime"`
+	LoginKey                     *fernet.Key   `ini:"-"`
+	CookieName                   string        `ini:"cookie-name"`
+	CookieLoginTokenSessionName  string        `ini:"cookie-login-token-session-name"`
+	CookieLoginTokenRememberName string        `ini:"cookie-login-token-remember-name"`
+	LoginTokenSessionLifetime    time.Duration `ini:"login-token-session-lifetime"`
+	LoginTokenRememberLifetime   time.Duration `ini:"login-token-remember-lifetime"`
 }
 
 type SessionConfig struct {
@@ -59,9 +61,11 @@ func LoadConfig(filename string, themesPath string) (*AlpsConfig, error) {
 			Debug: false,
 		},
 		Security: SecurityConfig{
-			CookieName:           "alps_session",
-			CookieLoginTokenName: "alps_login_token",
-			LoginTokenLifetime:   30 * 24 * time.Hour,
+			CookieName:                   "alps_session",
+			CookieLoginTokenSessionName:  "alps_login_token_session",
+			CookieLoginTokenRememberName: "alps_login_token_remember",
+			LoginTokenSessionLifetime:    30 * time.Minute,
+			LoginTokenRememberLifetime:   30 * 24 * time.Hour,
 		},
 		Session: SessionConfig{
 			IdleTimeout: 30 * time.Minute,
