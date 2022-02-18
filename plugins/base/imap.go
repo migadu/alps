@@ -529,13 +529,22 @@ func getMessagePart(conn *imapclient.Client, mboxName string, uid uint32, partPa
 	}
 
 	ch := make(chan *imap.Message, 1)
-	if err := conn.UidFetch(seqSet, fetch, ch); err != nil {
-		return nil, nil, fmt.Errorf("failed to fetch message: %v", err)
-	}
+	done := make(chan error, 1)
+	go func() {
+		done <- conn.UidFetch(seqSet, fetch, ch)
+	}()
 
+	// There may be multiple FETCH data responses.
+	// Keep the first message and discard the rest.
 	msg := <-ch
 	if msg == nil {
 		return nil, nil, fmt.Errorf("server didn't return message")
+	}
+	for range ch {
+	}
+
+	if err := <-done; err != nil {
+		return nil, nil, fmt.Errorf("failed to fetch message: %v", err)
 	}
 
 	body := msg.GetBody(&partHeaderSection)
