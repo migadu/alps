@@ -23,13 +23,13 @@
 
         <label class="event-date">
           <span>Starts at</span>
-          <input type="date" name="start" id="start" value="{{.Event.DateTimeStart nil | formatinputdate}}"/>
+          <input type="date" name="start-date" id="start-date" value="{{.Event.DateTimeStart nil | formatinputdate}}"/>
           <input type="time" name="start-time" id="start-time" value="{{.Event.DateTimeStart nil | formatinputtime}}"/>
         </label>
 
         <label class="event-date">
           <span>Ends at</span>
-          <input type="date" name="end" id="end" value="{{.Event.DateTimeEnd nil | formatinputdate}}"/>
+          <input type="date" name="end-date" id="end-date" value="{{.Event.DateTimeEnd nil | formatinputdate}}"/>
           <input type="time" name="end-time" id="end-time" value="{{.Event.DateTimeEnd nil | formatinputtime}}"/>
         </label>
 
