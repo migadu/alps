@@ -366,7 +366,8 @@ func handleLogin(ctx *alps.Context) error {
 		s, err := ctx.Server.Sessions.Put(username, password)
 		if err != nil {
 			if _, ok := err.(alps.AuthError); ok {
-				return ctx.Render(http.StatusOK, "login.html", &renderData)
+				renderData.BaseRenderData.GlobalData.Notice = "Failed to login!"
+				return ctx.Render(http.StatusUnauthorized, "login.html", &renderData)
 			}
 			return fmt.Errorf("failed to put connection in pool: %v", err)
 		}
