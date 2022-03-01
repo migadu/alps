@@ -141,7 +141,7 @@ func registerRoutes(p *plugin) {
 		var ao *carddav.AddressObject
 		var card vcard.Card
 		if addressObjectPath != "" {
-			ao, err := c.GetAddressObject(addressObjectPath)
+			ao, err = c.GetAddressObject(addressObjectPath)
 			if err != nil {
 				return fmt.Errorf("failed to query CardDAV address: %v", err)
 			}
