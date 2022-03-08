@@ -526,11 +526,11 @@ main.create-update .event-date input {
 
 .message-list-subject a { color: #77c; }
 
-.message-list-unread.message-list-sender,
+.message-list-unread.message-list-addresses,
 .message-list-unread.message-list-subject,
 .message-list-unread.message-list-date { font-weight: bold; }
 
-.message-list-unread.message-list-sender,
+.message-list-unread.message-list-addresses,
 .message-list-unread.message-list-date { color: black;}
 
 .message-list-unread.message-list-subject {

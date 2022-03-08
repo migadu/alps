@@ -25,9 +25,19 @@
           <div class="message-list-checkbox {{$classes}}">
             <input type="checkbox" name="uids" value="{{.Uid}}" form="messages-form">
           </div>
-          <div class="message-list-sender {{$classes}}">
-            {{ range .Envelope.From }}
-            <a href='?query=from:"{{.MailboxName}}@{{.HostName}}"'>
+          <div class="message-list-addresses {{$classes}}">
+            {{ $field := "from" }}
+            {{ $addresses := .Envelope.From }}
+
+            {{ if $.CategorizedMailboxes.Common.Sent }}
+            {{ if eq $.Mailbox.Name $.CategorizedMailboxes.Common.Sent.Info.Name }}
+            {{ $field = "to" }}
+            {{ $addresses = .Envelope.To }}
+            {{end}}
+            {{end}}
+
+            {{ range $addresses }}
+            <a href='?query={{$field}}:"{{.MailboxName}}@{{.HostName}}"'>
             {{ if .PersonalName }}
               {{.PersonalName}}
             {{ else }}
