@@ -753,14 +753,14 @@ main.calendar-month .dates {
   grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr;
   grid-template-rows: auto 1fr 1fr 1fr 1fr 1fr 1fr auto;
   grid-template-areas:
-    "sunday-top monday-top wednesday-top tuesday-top thursday-top friday-top saturday-top"
+    "sunday-top monday-top tuesday-top wednesday-top thursday-top friday-top saturday-top"
     "dates dates dates dates dates dates dates"
     "dates dates dates dates dates dates dates"
     "dates dates dates dates dates dates dates"
     "dates dates dates dates dates dates dates"
     "dates dates dates dates dates dates dates"
     "dates dates dates dates dates dates dates"
-    "sunday-bottom monday-bottom wednesday-bottom tuesday-bottom thursday-bottom friday-bottom saturday-bottom";
+    "sunday-bottom monday-bottom tuesday-bottom wednesday-bottom thursday-bottom friday-bottom saturday-bottom";
   grid-gap: 0.3rem;
 }
 
@@ -771,9 +771,9 @@ main.calendar-week .dates {
   grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr;
   grid-template-rows: auto 1fr auto;
   grid-template-areas:
-    "sunday-top monday-top wednesday-top tuesday-top thursday-top friday-top saturday-top"
+    "sunday-top monday-top tuesday-top wednesday-top thursday-top friday-top saturday-top"
     "dates dates dates dates dates dates dates"
-    "sunday-bottom monday-bottom wednesday-bottom tuesday-bottom thursday-bottom friday-bottom saturday-bottom";
+    "sunday-bottom monday-bottom tuesday-bottom wednesday-bottom thursday-bottom friday-bottom saturday-bottom";
   grid-gap: 0.3rem;
 }
 
