@@ -335,6 +335,14 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			event = &events[0]
 		} else {
 			event = ical.NewEvent()
+			if s := ctx.QueryParam("date"); s != "" {
+				date, err := time.Parse(datePageLayout, s)
+				if err != nil {
+					return fmt.Errorf("failed to parse date: %v", err)
+				}
+				event.Props.SetDateTime(ical.PropDateTimeStart, date)
+				event.Props.SetDateTime(ical.PropDateTimeEnd, date)
+			}
 		}
 
 		if ctx.Request().Method == "POST" {

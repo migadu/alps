@@ -3,7 +3,7 @@
 
 <div class="page-wrap">
   <aside>
-    <a href="/calendar/create" class="new">New event</a>
+    <a href="/calendar/create?date={{.Time.Format "2006-01-02"}}" class="new">New event</a>
     <!-- TODO: fetch list of address books -->
     <a href="#" class="active">{{.Calendar.Name}}</a>
     <a href="#">Personal</a>
