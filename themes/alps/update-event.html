@@ -11,8 +11,9 @@
 
   <div class="container">
     <main class="create-update">
+      {{$co := .CalendarObject}}
       <h2>
-        {{if .CalendarObject}}Edit{{else}}Create{{end}} event
+        {{if $co.CalendarObject}}Edit{{else}}Create{{end}} event
       </h2>
 
       <form method="post">
@@ -37,7 +38,7 @@
 
         <div class="actions">
           <button type="submit">Save</button>
-          <a class="button-link" href="/calendar">Cancel</a>
+          <a class="button-link" href="{{if $co.CalendarObject}}{{$co.URL}}{{else}}/calendar{{end}}">Cancel</a>
         </div>
       </form>
     </main>
