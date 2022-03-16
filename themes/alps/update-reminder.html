@@ -1,0 +1,58 @@
+{{template "head.html" .}}
+{{template "nav.html" .}}
+
+<div class="page-wrap">
+  <aside>
+    <a href="/calendar/create" class="new active">New event</a>
+    <!-- TODO: fetch list of address books -->
+    <a href="#">{{.Calendar.Name}}</a>
+    <a href="#">Personal</a>
+  </aside>
+
+  <div class="container">
+    <main class="create-update">
+      <h2>
+        {{if .Create}}Create{{else}}Edit{{end}} reminder
+      </h2>
+
+      <form method="post">
+        <label class="reminder">
+          {{with .Alarm.Props.Text "ACTION"}}
+          {{if eq . "AUDIO"}}
+          Play audio
+          {{else if eq . "DISPLAY"}}
+          Display text
+          {{else if eq . "EMAIL"}}
+          Send email
+          {{end}}
+          {{end}}
+          {{$trigger := .Alarm.Props.Get "TRIGGER"}}
+          {{with call .ParseDuration $trigger.Duration}}
+          <input type="number" name="value" id="value"
+            value="{{.Value}}" min="0">
+          <select name="unit" id="unit">
+            <option value="m">minutes</option>
+            <option value="h" {{if eq .Unit "h"}}selected{{end}}>hours</option>
+            <option value="d" {{if eq .Unit "d"}}selected{{end}}>days</option>
+            <option value="w" {{if eq .Unit "w"}}selected{{end}}>weeks</option>
+          </select>
+          <select name="precedence" id="precedence">
+            <option value="before">before</option>
+            <option value="after" {{if gt .Duration 0}}selected{{end}}>after</option>
+          </select>
+          {{end}}
+          <select name="related" id="related">
+            <option value="start">start</option>
+            <option value="end" {{if eq ($trigger.Params.Get "RELATED") "END"}}selected{{end}}>end</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button type="submit">Save</button>
+          <a class="button-link" href="{{.CalendarObject.URL}}">Cancel</a>
+        </div>
+      </form>
+    </main>
+  </div>
+</div>
+
+{{template "foot.html"}}

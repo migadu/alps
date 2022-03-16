@@ -11,19 +11,18 @@
 
   <div class="container">
     <main class="event">
-      {{$event := index .Event.Data.Events 0}}
       <section class="actions">
         <div class="actions-wrap">
           <div class="actions-message">
             <div class="action-group">
-              <a href="/calendar/date?date={{($event.DateTimeStart nil).Format "2006-01-02"}}" class="button-link">« Back</a>
+              <a href="/calendar/date?date={{(.Event.DateTimeStart nil).Format "2006-01-02"}}" class="button-link">« Back</a>
             </div>
             <div class="action-group">
-              <a href="{{.Event.URL}}/update" class="button-link">Edit</a>
+              <a href="{{.CalendarObject.URL}}/update" class="button-link">Edit</a>
             </div>
             <form
               class="action-group"
-              action="{{.Event.URL}}/delete"
+              action="{{.CalendarObject.URL}}/delete"
               method="post"
             >
               <input type="submit" value="Delete">
@@ -37,20 +36,80 @@
         <table>
           <tr>
             <th colspan="2">
-              <h1>{{$event.Props.Text "SUMMARY"}}</h1>
+              <h1>{{.Event.Props.Text "SUMMARY"}}</h1>
             </th>
           </tr>
           <tr>
             <th>Start date:</th>
-            <td>{{$event.DateTimeStart nil | formatdate}}</td>
+            <td>{{.Event.DateTimeStart nil | formatdate}}</td>
           </tr>
           <tr>
             <th>End date:</th>
-            <td>{{$event.DateTimeEnd nil | formatdate}}</td>
+            <td>{{.Event.DateTimeEnd nil | formatdate}}</td>
           </tr>
+          {{$base := .}}
+          {{range $i, $alarm := .Event.Alarms}}
+          <tr>
+            <th>Reminder:</th>
+            <td>
+              {{with $alarm.Props.Text "ACTION"}}
+              {{if eq . "AUDIO"}}
+              Play audio
+              {{else if eq . "DISPLAY"}}
+              Display text
+              {{else if eq . "EMAIL"}}
+              Send email
+              {{end}}
+              {{end}}
+              {{$trigger := $alarm.Props.Get "TRIGGER"}}
+              {{with call $base.ParseDuration $trigger.Duration}}
+              {{if ne .Value 0}}
+              {{.Value}}
+              {{if eq .Unit "m"}}
+              minute(s)
+              {{else if eq .Unit "h"}}
+              hour(s)
+              {{else if eq .Unit "d"}}
+              day(s)
+              {{else if eq .Unit "w"}}
+              week(s)
+              {{end}}
+              {{end}}
+              {{if eq .Duration 0}}at{{else if lt .Duration 0}}before{{else}}after{{end}}
+              {{if eq ($trigger.Params.Get "RELATED") "END"}}end{{else}}start{{end}}
+              {{end}}
+            </td>
+            <td>
+              <div class="actions-wrap">
+                <div class="actions-message">
+                  <div class="action-group">
+                    <a href="{{$base.CalendarObject.URL}}/alarms/{{$i}}/update"
+                      class="button-link">Edit</a>
+                  </div>
+                  <form
+                    class="action-group"
+                    action="{{$base.CalendarObject.URL}}/alarms/{{$i}}/delete"
+                    method="post"
+                  >
+                    <button>Delete</button>
+                  </form>
+                </div>
+              </div>
+            </td>
+          </tr>
+          {{end}}
+          <tr>
+            <td>
+              <div class="action-group">
+                <a href="{{$base.CalendarObject.URL}}/alarms/create"
+                  class="button-link">Create reminder</a>
+              </div>
+            </td>
+          </tr>
+
           <!-- TODO: List of attendees, room -->
         </table>
-        <pre>{{$event.Props.Text "DESCRIPTION"}}</pre>
+        <pre>{{.Event.Props.Text "DESCRIPTION"}}</pre>
       </section>
     </main>
   </div>

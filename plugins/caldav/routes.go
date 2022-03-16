@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -56,8 +57,10 @@ type CalendarDateRenderData struct {
 
 type EventRenderData struct {
 	alps.BaseRenderData
-	Calendar *caldav.Calendar
-	Event    CalendarObject
+	Calendar       *caldav.Calendar
+	CalendarObject CalendarObject
+	Event          Event
+	ParseDuration  func(d time.Duration) *Duration
 }
 
 type UpdateEventRenderData struct {
@@ -65,6 +68,15 @@ type UpdateEventRenderData struct {
 	Calendar       *caldav.Calendar
 	CalendarObject CalendarObject // internal object nil if creating new event
 	Event          *ical.Event
+}
+
+type UpdateEventAlarmRenderData struct {
+	alps.BaseRenderData
+	Calendar       *caldav.Calendar
+	CalendarObject CalendarObject
+	Alarm          *ical.Component
+	Create         bool
+	ParseDuration  func(d time.Duration) *Duration
 }
 
 const (
@@ -94,6 +106,47 @@ func parseTime(dateStr, timeStr string) (time.Time, error) {
 		return time.Time{}, echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 	return t, nil
+}
+
+type Duration struct {
+	time.Duration
+	Value int
+	Unit  string
+}
+
+func parseDuration(d time.Duration) *Duration {
+	day := 24 * time.Hour
+	week := 7 * day
+
+	var value int
+	var unit string
+	if d%(week) == 0 {
+		value = int(d / week)
+		unit = "w"
+	} else if d%(day) == 0 {
+		value = int(d / day)
+		unit = "d"
+	} else if d%time.Hour == 0 {
+		value = int(d.Hours())
+		unit = "h"
+	} else {
+		value = int(d.Minutes())
+		unit = "m"
+	}
+
+	if value == 0 {
+		unit = "m"
+	}
+	if value < 0 {
+		value = -value
+	}
+
+	return &Duration{
+		Duration: d,
+		Value:    value,
+		Unit:     unit,
+	}
+
 }
 
 func registerRoutes(p *alps.GoPlugin, u *url.URL) {
@@ -418,20 +471,23 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			},
 		}
 
-		events, err := c.MultiGetCalendar(path, &multiGet)
+		coList, err := c.MultiGetCalendar(path, &multiGet)
 		if err != nil {
 			return fmt.Errorf("failed to multi-get calendar: %v", err)
 		}
-		if len(events) != 1 {
-			return fmt.Errorf("expected exactly one calendar object with path %q, got %v", path, len(events))
+		if len(coList) != 1 {
+			return fmt.Errorf("expected exactly one calendar object with path %q, got %v", path, len(coList))
 		}
-		event := &events[0]
-		summary, _ := event.Data.Events()[0].Props.Text("SUMMARY")
+		co := &coList[0]
+		event := &co.Data.Events()[0]
+		summary, _ := event.Props.Text("SUMMARY")
 
 		return ctx.Render(http.StatusOK, "event.html", &EventRenderData{
 			BaseRenderData: *alps.NewBaseRenderData(ctx).WithTitle(summary),
 			Calendar:       calendar,
-			Event:          CalendarObject{event},
+			CalendarObject: CalendarObject{co},
+			Event:          Event{event},
+			ParseDuration:  parseDuration,
 		})
 	})
 
@@ -544,6 +600,115 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 	p.GET("/calendar/:path/update", updateEvent)
 	p.POST("/calendar/:path/update", updateEvent)
 
+	updateEventAlarm := func(ctx *alps.Context) error {
+		calendarObjectPath, err := parseObjectPath(ctx.Param("path"))
+		if err != nil {
+			return err
+		}
+
+		c, calendar, err := getCalendar(u, ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		co, err := c.GetCalendarObject(calendarObjectPath)
+		if err != nil {
+			return fmt.Errorf("failed to get CalDAV event: %v", err)
+		}
+		cal := co.Data
+		events := cal.Events()
+		if len(events) != 1 {
+			return fmt.Errorf("expected exactly one event, got %d", len(events))
+		}
+		event := &events[0]
+
+		indexParam := ctx.Param("index")
+		var alarm *ical.Component
+		if indexParam != "" {
+			idx, err := strconv.Atoi(indexParam)
+			if err != nil {
+				return fmt.Errorf("failed to parse alarm index: %v", err)
+			}
+			alarms := Event{event}.Alarms()
+			if idx < 0 || idx > len(alarms)-1 {
+				return fmt.Errorf("out of bounds alarm index: %v", idx)
+			}
+			alarm = alarms[idx]
+		} else {
+			alarm = ical.NewComponent(ical.CompAlarm)
+
+			trigger := ical.NewProp(ical.PropTrigger)
+			trigger.SetValueType(ical.ValueDuration)
+			trigger.SetDuration(-15 * time.Minute)
+			alarm.Props.Set(trigger)
+			alarm.Props.SetText(ical.PropAction, ical.ParamDisplay)
+		}
+
+		if ctx.Request().Method == "POST" {
+			value, err := strconv.Atoi(ctx.FormValue("value"))
+			if err != nil {
+				return fmt.Errorf("failed to parse duration value: %v", err)
+			}
+
+			unitStr := ctx.FormValue("unit")
+			var unit time.Duration
+			switch unitStr {
+			case "m":
+				unit = time.Minute
+			case "h":
+				unit = time.Hour
+			case "d":
+				unit = 24 * time.Hour
+			case "w":
+				unit = 7 * 24 * time.Hour
+			default:
+				return fmt.Errorf("invalid duration unit: %v", unitStr)
+			}
+
+			duration := time.Duration(value) * unit
+			if ctx.FormValue("precedence") == "before" {
+				duration = -duration
+			}
+
+			trigger := alarm.Props.Get(ical.PropTrigger)
+			trigger.SetValueType(ical.ValueDuration)
+			trigger.SetDuration(duration)
+
+			related := strings.ToUpper(ctx.FormValue("related"))
+			switch related {
+			case "START", "END":
+				trigger.Params.Set(ical.ParamRelated, related)
+			default:
+				return fmt.Errorf("invalid RELATED parameter value: %v", related)
+			}
+
+			if indexParam == "" {
+				event.Children = append(event.Children, alarm)
+			}
+
+			co, err = c.PutCalendarObject(co.Path, cal)
+			if err != nil {
+				return fmt.Errorf("failed to put calendar object: %v", err)
+			}
+
+			return ctx.Redirect(http.StatusFound, CalendarObject{co}.URL())
+		}
+
+		return ctx.Render(http.StatusOK, "update-reminder.html", &UpdateEventAlarmRenderData{
+			BaseRenderData: *alps.NewBaseRenderData(ctx).WithTitle("Update reminder"),
+			Calendar:       calendar,
+			CalendarObject: CalendarObject{co},
+			Alarm:          alarm,
+			Create:         indexParam == "",
+			ParseDuration:  parseDuration,
+		})
+	}
+
+	p.GET("/calendar/:path/alarms/create", updateEventAlarm)
+	p.POST("/calendar/:path/alarms/create", updateEventAlarm)
+	p.GET("/calendar/:path/alarms/:index/update", updateEventAlarm)
+	p.POST("/calendar/:path/alarms/:index/update", updateEventAlarm)
+
 	p.POST("/calendar/:path/delete", func(ctx *alps.Context) error {
 		path, err := parseObjectPath(ctx.Param("path"))
 		if err != nil {
@@ -561,4 +726,56 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 
 		return ctx.Redirect(http.StatusFound, "/calendar")
 	})
+
+	p.POST("/calendar/:path/alarms/:index/delete", func(ctx *alps.Context) error {
+		calendarObjectPath, err := parseObjectPath(ctx.Param("path"))
+		if err != nil {
+			return err
+		}
+
+		alarmIdx, err := strconv.Atoi(ctx.Param("index"))
+		if err != nil {
+			return fmt.Errorf("failed to parse alarm index: %v", err)
+		}
+
+		c, _, err := getCalendar(u, ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		co, err := c.GetCalendarObject(calendarObjectPath)
+		if err != nil {
+			return fmt.Errorf("failed to get CalDAV event: %v", err)
+		}
+		cal := co.Data
+		events := cal.Events()
+		if len(events) != 1 {
+			return fmt.Errorf("expected exactly one event, got %d", len(events))
+		}
+		event := &events[0]
+		children := event.Children
+
+		var alarms, i int
+		for i = 0; i < len(children); i++ {
+			if children[i].Name == ical.CompAlarm {
+				if alarmIdx == alarms {
+					break
+				}
+				alarms = alarms + 1
+			}
+		}
+		if i == len(children) {
+			return fmt.Errorf("failed to find alarm with index %v", alarmIdx)
+		}
+		event.Children = append(children[:i], children[i+1:]...)
+
+		co, err = c.PutCalendarObject(co.Path, cal)
+		if err != nil {
+			return fmt.Errorf("failed to put calendar object: %v", err)
+		}
+
+		ctx.Session.PutNotice("Reminder deleted.")
+		return ctx.Redirect(http.StatusFound, CalendarObject{co}.URL())
+	})
+
 }
