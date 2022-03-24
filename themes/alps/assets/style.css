@@ -671,7 +671,7 @@ main table tfoot {
   float: left;
 }
 
-.action-group select {
+.action-group select[multiple] {
   height: 10rem;
 }
 
