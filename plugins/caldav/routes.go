@@ -15,7 +15,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-type CalendarRenderData struct {
+type CalendarMonthRenderData struct {
 	alps.BaseRenderData
 	Time               time.Time
 	Now                time.Time
@@ -82,6 +82,10 @@ func parseTime(dateStr, timeStr string) (time.Time, error) {
 
 func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 	p.GET("/calendar", func(ctx *alps.Context) error {
+		return ctx.Redirect(http.StatusFound, "/calendar/month")
+	})
+
+	p.GET("/calendar/month", func(ctx *alps.Context) error {
 		var start time.Time
 		if s := ctx.QueryParam("month"); s != "" {
 			var err error
@@ -150,7 +154,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			eventMap[startDate] = append(eventMap[startDate], CalendarObject{&ev})
 		}
 
-		return ctx.Render(http.StatusOK, "calendar.html", &CalendarRenderData{
+		return ctx.Render(http.StatusOK, "calendar-month.html", &CalendarMonthRenderData{
 			BaseRenderData: *alps.NewBaseRenderData(ctx).
 				WithTitle(calendar.Name + " Calendar: " + start.Format("January 2006")),
 			Time:     start,
