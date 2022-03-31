@@ -140,7 +140,7 @@ func newIMAPBaseRenderData(ctx *alps.Context,
 		return nil, echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 
-	settings, err := loadSettings(ctx.Session.Store())
+	settings, err := LoadSettings(ctx.Session.Store())
 	if err != nil {
 		return nil, fmt.Errorf("failed to load settings: %v", err)
 	}
@@ -232,7 +232,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 		}
 	}
 
-	settings, err := loadSettings(ctx.Session.Store())
+	settings, err := LoadSettings(ctx.Session.Store())
 	if err != nil {
 		return err
 	}
@@ -415,7 +415,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 
-	settings, err := loadSettings(ctx.Session.Store())
+	settings, err := LoadSettings(ctx.Session.Store())
 	if err != nil {
 		return err
 	}
@@ -563,7 +563,7 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 	}
 
 	if msg.From == "" && strings.ContainsRune(ctx.Session.Username(), '@') {
-		settings, err := loadSettings(ctx.Session.Store())
+		settings, err := LoadSettings(ctx.Session.Store())
 		if err != nil {
 			return err
 		}
@@ -717,7 +717,7 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 
 func handleComposeNew(ctx *alps.Context) error {
 	text := ctx.QueryParam("body")
-	settings, err := loadSettings(ctx.Session.Store())
+	settings, err := LoadSettings(ctx.Session.Store())
 	if err != nil {
 		return nil
 	}
@@ -1206,7 +1206,7 @@ type Settings struct {
 	Timezone        string
 }
 
-func loadSettings(s alps.Store) (*Settings, error) {
+func LoadSettings(s alps.Store) (*Settings, error) {
 	settings := &Settings{
 		MessagesPerPage: 50,
 	}
@@ -1253,7 +1253,7 @@ func (s Subscriptions) Has(sub string) bool {
 }
 
 func handleSettings(ctx *alps.Context) error {
-	settings, err := loadSettings(ctx.Session.Store())
+	settings, err := LoadSettings(ctx.Session.Store())
 	if err != nil {
 		return fmt.Errorf("failed to load settings: %v", err)
 	}
