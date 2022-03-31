@@ -27,8 +27,8 @@
 
 <div class="container">
   <ul>
-    <li><strong>Start date</strong>: {{$event.DateTimeStart nil | formatdate}}</li>
-    <li><strong>End date</strong>: {{$event.DateTimeEnd nil | formatdate}}</li>
+    <li><strong>Start date</strong>: {{($event.DateTimeStart nil).In .Location | formatdate}}</li>
+    <li><strong>End date</strong>: {{($event.DateTimeEnd nil).In .Location | formatdate}}</li>
   </ul>
 
   <pre>{{$event.Props.Text "DESCRIPTION"}}</pre>

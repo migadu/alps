@@ -25,6 +25,7 @@
     <div class="col-md-10 messages-column">
       {{if .Events}}
         <ul class="nav flex-column">
+          {{$location := .Location}}
           {{range .Events}}
             {{$event := index .Data.Events 0}}
             <li class="nav-item">
@@ -33,7 +34,7 @@
                 href="{{.URL}}"
               >
                 {{$event.Props.Text "SUMMARY"}}
-                ({{$event.DateTimeStart nil | formatdate}} — {{$event.DateTimeEnd nil | formatdate}})
+                ({{($event.DateTimeStart nil).In $location | formatdate}} — {{($event.DateTimeEnd nil).In $location | formatdate}})
               </a>
             </li>
           {{end}}

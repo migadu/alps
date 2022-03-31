@@ -16,13 +16,13 @@
   <br>
 
   <label for="start-date">Start date:</label>
-  <input type="date" name="start-date" id="start-date" value="{{.Event.DateTimeStart nil | formatinputdate}}"/>
-  <input type="time" name="start-time" id="start-time" value="{{.Event.DateTimeStart nil | formatinputtime}}"/>
+  <input type="date" name="start-date" id="start-date" value="({{(.Event.DateTimeStart nil).In .Location | formatinputdate}}"/>
+  <input type="time" name="start-time" id="start-time" value="{{(.Event.DateTimeStart nil).In .Location | formatinputtime}}"/>
   <br>
 
   <label for="end-date">End date:</label>
-  <input type="date" name="end-date" id="end-date" value="{{.Event.DateTimeEnd nil | formatinputdate}}"/>
-  <input type="time" name="end-time" id="end-time" value="{{.Event.DateTimeEnd nil | formatinputtime}}"/>
+  <input type="date" name="end-date" id="end-date" value="{{(.Event.DateTimeEnd nil).In .Location | formatinputdate}}"/>
+  <input type="time" name="end-time" id="end-time" value="{{(.Event.DateTimeEnd nil).In .Location | formatinputtime}}"/>
   <br>
 
   <label for="description">Description:</label><br>

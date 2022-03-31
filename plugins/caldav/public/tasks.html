@@ -1,0 +1,26 @@
+{{template "head.html" .}}
+
+<h1>alps</h1>
+
+<p>
+  <a href="/tasks">Back</a>
+  · <a href="/tasks/create">Create new task</a>
+</p>
+
+<h2>Tasks: {{.Calendar.Name}}</h2>
+
+{{if .Tasks}}
+  <ul>
+    {{$base := .}}
+    {{range .Tasks}}
+      {{$todo := index .Data.ToDos 0}}
+      <li>
+        <a href="{{.URL}}">{{$todo.Props.Text "SUMMARY"}}</a>
+      </li>
+    {{end}}
+  </ul>
+{{else}}
+  <p>No tasks.</p>
+{{end}}
+
+{{template "foot.html"}}

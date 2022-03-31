@@ -15,7 +15,7 @@
         <div class="actions-wrap">
           <div class="actions-message">
             <div class="action-group">
-              <a href="/calendar/date?date={{(.Event.DateTimeStart nil).Format "2006-01-02"}}" class="button-link">« Back</a>
+              <a href="/calendar/date?date={{((.Event.DateTimeStart nil).In .Location).Format "2006-01-02"}}" class="button-link">« Back</a>
             </div>
             <div class="action-group">
               <a href="{{.CalendarObject.URL}}/update" class="button-link">Edit</a>
@@ -41,11 +41,11 @@
           </tr>
           <tr>
             <th>Start date:</th>
-            <td>{{.Event.DateTimeStart nil | formatdate}}</td>
+            <td>{{(.Event.DateTimeStart nil).In .Location | formatdate}}</td>
           </tr>
           <tr>
             <th>End date:</th>
-            <td>{{.Event.DateTimeEnd nil | formatdate}}</td>
+            <td>{{(.Event.DateTimeEnd nil).In .Location | formatdate}}</td>
           </tr>
           {{$base := .}}
           {{range $i, $alarm := .Event.Alarms}}

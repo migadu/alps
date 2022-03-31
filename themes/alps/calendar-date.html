@@ -16,10 +16,11 @@
       </section>
       <section class="events">
         <div class="event-grid">
+          {{$location := .Location}}
           {{range .Events}}
           {{$event := index .Data.Events 0}}
           <div class="event-list-date">
-            {{($event.DateTimeStart nil).Format "15:04"}} — {{($event.DateTimeEnd nil).Format "15:04"}}
+            {{(($event.DateTimeStart nil).In $location).Format "15:04"}} — {{(($event.DateTimeEnd nil).In $location).Format "15:04"}}
           </div>
           <div class="event-list-summary">
             <a href="{{.URL}}">{{$event.Props.Text "SUMMARY"}}</a>

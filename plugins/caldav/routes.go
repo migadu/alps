@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"git.sr.ht/~migadu/alps"
+	alpsbase "git.sr.ht/~migadu/alps/plugins/base"
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/google/uuid"
@@ -25,6 +26,7 @@ type CalendarMonthRenderData struct {
 	Events             []CalendarObject
 	PrevPage, NextPage string
 	PrevTime, NextTime time.Time
+	Location           *time.Location
 
 	EventsForDate func(time.Time) []CalendarObject
 	DaySuffix     func(n int) string
@@ -40,6 +42,7 @@ type CalendarWeekRenderData struct {
 	Events             []CalendarObject
 	PrevPage, NextPage string
 	PrevTime, NextTime time.Time
+	Location           *time.Location
 
 	EventsForDate func(time.Time) []CalendarObject
 	DaySuffix     func(n int) string
@@ -53,6 +56,7 @@ type CalendarDateRenderData struct {
 	Events             []CalendarObject
 	PrevPage, NextPage string
 	PrevTime, NextTime time.Time
+	Location           *time.Location
 }
 
 type EventRenderData struct {
@@ -61,6 +65,7 @@ type EventRenderData struct {
 	CalendarObject CalendarObject
 	Event          Event
 	ParseDuration  func(d time.Duration) *Duration
+	Location       *time.Location
 }
 
 type UpdateEventRenderData struct {
@@ -68,6 +73,7 @@ type UpdateEventRenderData struct {
 	Calendar       *caldav.Calendar
 	CalendarObject CalendarObject // internal object nil if creating new event
 	Event          *ical.Event
+	Location       *time.Location
 }
 
 type UpdateEventAlarmRenderData struct {
@@ -93,19 +99,31 @@ func parseObjectPath(s string) (string, error) {
 	return p, nil
 }
 
-func parseTime(dateStr, timeStr string) (time.Time, error) {
+func parseTime(dateStr, timeStr string, loc *time.Location) (time.Time, error) {
 	layout := inputDateLayout
 	s := dateStr
 	if timeStr != "" {
 		layout = inputDateLayout + "T" + inputTimeLayout
 		s = dateStr + "T" + timeStr
 	}
-	t, err := time.Parse(layout, s)
+	t, err := time.ParseInLocation(layout, s, loc)
 	if err != nil {
 		err = fmt.Errorf("malformed date: %v", err)
 		return time.Time{}, echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 	return t, nil
+}
+
+func clientLocation(ctx *alps.Context) (*time.Location, error) {
+	settings, err := alpsbase.LoadSettings(ctx.Session.Store())
+	if err != nil {
+		return nil, fmt.Errorf("failed to load settings: %v", err)
+	}
+	loc, err := time.LoadLocation(settings.Timezone)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load location: %v", err)
+	}
+	return loc, nil
 }
 
 type Duration struct {
@@ -155,15 +173,20 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 	})
 
 	p.GET("/calendar/month", func(ctx *alps.Context) error {
+		loc, err := clientLocation(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get client location: %v", err)
+		}
+
+		now := time.Now().In(loc)
 		var start time.Time
 		if s := ctx.QueryParam("month"); s != "" {
 			var err error
-			start, err = time.Parse(monthPageLayout, s)
+			start, err = time.ParseInLocation(monthPageLayout, s, loc)
 			if err != nil {
 				return fmt.Errorf("failed to parse month: %v", err)
 			}
 		} else {
-			now := time.Now()
 			start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 		}
 		end := start.AddDate(0, 1, 0)
@@ -193,8 +216,8 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 				Name: "VCALENDAR",
 				Comps: []caldav.CompFilter{{
 					Name:  "VEVENT",
-					Start: start,
-					End:   end,
+					Start: start.UTC(),
+					End:   end.UTC(),
 				}},
 			},
 		}
@@ -205,7 +228,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 
 		// TODO: Time zones are hard
 		var dates [7 * 6]time.Time
-		initialDate := start.UTC()
+		initialDate := start
 		initialDate = initialDate.AddDate(0, 0, -int(initialDate.Weekday()))
 		for i := 0; i < len(dates); i++ {
 			dates[i] = initialDate
@@ -218,7 +241,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			// TODO: include event on each date for which it is active
 			co := ev.Data.Events()[0]
 			startTime, _ := co.DateTimeStart(nil)
-			startTime = startTime.UTC()
+			startTime = startTime.In(loc)
 			startDate := startTime.Format(datePageLayout)
 			eventMap[startDate] = append(eventMap[startDate], CalendarObject{&ev})
 		}
@@ -227,7 +250,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			BaseRenderData: *alps.NewBaseRenderData(ctx).
 				WithTitle(calendar.Name + " Calendar: " + start.Format("January 2006")),
 			Time:     start,
-			Now:      time.Now(), // TODO: Use client time zone
+			Now:      now,
 			Calendar: calendar,
 			Dates:    dates,
 			Events:   newCalendarObjectList(events),
@@ -235,6 +258,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			NextPage: start.AddDate(0, 1, 0).Format(monthPageLayout),
 			PrevTime: start.AddDate(0, -1, 0),
 			NextTime: start.AddDate(0, 1, 0),
+			Location: loc,
 
 			EventsForDate: func(when time.Time) []CalendarObject {
 				if events, ok := eventMap[when.Format(datePageLayout)]; ok {
@@ -269,15 +293,20 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 	})
 
 	p.GET("/calendar/week", func(ctx *alps.Context) error {
+		loc, err := clientLocation(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get client location: %v", err)
+		}
+
+		now := time.Now().In(loc)
 		var start time.Time
 		if s := ctx.QueryParam("date"); s != "" {
 			var err error
-			start, err = time.Parse(datePageLayout, s)
+			start, err = time.ParseInLocation(datePageLayout, s, loc)
 			if err != nil {
 				return fmt.Errorf("failed to parse date: %v", err)
 			}
 		} else {
-			now := time.Now()
 			start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 		}
 		start = start.AddDate(0, 0, -int(start.Weekday()))
@@ -308,8 +337,8 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 				Name: "VCALENDAR",
 				Comps: []caldav.CompFilter{{
 					Name:  "VEVENT",
-					Start: start,
-					End:   end,
+					Start: start.UTC(),
+					End:   end.UTC(),
 				}},
 			},
 		}
@@ -320,7 +349,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 
 		// TODO: Time zones are hard
 		var dates [7]time.Time
-		initialDate := start.UTC()
+		initialDate := start
 		for i := 0; i < len(dates); i++ {
 			dates[i] = initialDate
 			initialDate = initialDate.AddDate(0, 0, 1)
@@ -332,7 +361,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			// TODO: include event on each date for which it is active
 			co := ev.Data.Events()[0]
 			startTime, _ := co.DateTimeStart(nil)
-			startTime = startTime.UTC()
+			startTime = startTime.In(loc)
 			startDate := startTime.Format(datePageLayout)
 			eventMap[startDate] = append(eventMap[startDate], CalendarObject{&ev})
 		}
@@ -343,7 +372,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			BaseRenderData: *alps.NewBaseRenderData(ctx).
 				WithTitle(calendar.Name + " Calendar: " + title),
 			Time:     start,
-			Now:      time.Now(), // TODO: Use client time zone
+			Now:      now,
 			Calendar: calendar,
 			Dates:    dates,
 			Events:   newCalendarObjectList(events),
@@ -351,6 +380,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			NextPage: start.AddDate(0, 0, 7).Format(datePageLayout),
 			PrevTime: start.AddDate(0, 0, -7),
 			NextTime: start.AddDate(0, 0, 7),
+			Location: loc,
 
 			EventsForDate: func(when time.Time) []CalendarObject {
 				if events, ok := eventMap[when.Format(datePageLayout)]; ok {
@@ -380,15 +410,20 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 	})
 
 	p.GET("/calendar/date", func(ctx *alps.Context) error {
+		loc, err := clientLocation(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get client location: %v", err)
+		}
+
+		now := time.Now().In(loc)
 		var start time.Time
 		if s := ctx.QueryParam("date"); s != "" {
 			var err error
-			start, err = time.Parse(datePageLayout, s)
+			start, err = time.ParseInLocation(datePageLayout, s, loc)
 			if err != nil {
 				return fmt.Errorf("failed to parse date: %v", err)
 			}
 		} else {
-			now := time.Now()
 			start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 		}
 		end := start.AddDate(0, 0, 1)
@@ -418,8 +453,8 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 				Name: "VCALENDAR",
 				Comps: []caldav.CompFilter{{
 					Name:  "VEVENT",
-					Start: start,
-					End:   end,
+					Start: start.UTC(),
+					End:   end.UTC(),
 				}},
 			},
 		}
@@ -432,17 +467,23 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			BaseRenderData: *alps.NewBaseRenderData(ctx).
 				WithTitle(calendar.Name + " Calendar: " + start.Format("January 02, 2006")),
 			Time:     start,
-			Now:      time.Now(), // TODO: Use client time zone
+			Now:      now,
 			Events:   newCalendarObjectList(events),
 			Calendar: calendar,
 			PrevPage: start.AddDate(0, 0, -1).Format(datePageLayout),
 			NextPage: start.AddDate(0, 0, 1).Format(datePageLayout),
 			PrevTime: start.AddDate(0, 0, -1),
 			NextTime: start.AddDate(0, 0, 1),
+			Location: loc,
 		})
 	})
 
 	p.GET("/calendar/:path", func(ctx *alps.Context) error {
+		loc, err := clientLocation(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get client location: %v", err)
+		}
+
 		path, err := parseObjectPath(ctx.Param("path"))
 		if err != nil {
 			return err
@@ -488,10 +529,16 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			CalendarObject: CalendarObject{co},
 			Event:          Event{event},
 			ParseDuration:  parseDuration,
+			Location:       loc,
 		})
 	})
 
 	updateEvent := func(ctx *alps.Context) error {
+		loc, err := clientLocation(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get client location: %v", err)
+		}
+
 		calendarObjectPath, err := parseObjectPath(ctx.Param("path"))
 		if err != nil {
 			return err
@@ -531,11 +578,11 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			description := ctx.FormValue("description")
 
 			// TODO: whole-day events
-			start, err := parseTime(ctx.FormValue("start-date"), ctx.FormValue("start-time"))
+			start, err := parseTime(ctx.FormValue("start-date"), ctx.FormValue("start-time"), loc)
 			if err != nil {
 				return err
 			}
-			end, err := parseTime(ctx.FormValue("end-date"), ctx.FormValue("end-time"))
+			end, err := parseTime(ctx.FormValue("end-date"), ctx.FormValue("end-time"), loc)
 			if err != nil {
 				return err
 			}
@@ -591,6 +638,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			Calendar:       calendar,
 			CalendarObject: CalendarObject{co},
 			Event:          event,
+			Location:       loc,
 		})
 	}
 

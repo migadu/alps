@@ -12,10 +12,11 @@
 
 {{if .Events}}
   <ul>
+    {{$base := .}}
     {{range .Events}}
       {{$event := index .Data.Events 0}}
       <li>
-        {{($event.DateTimeStart nil).Format "15:04"}} — {{($event.DateTimeEnd nil).Format "15:04"}}
+        {{(($event.DateTimeStart nil).In $base.Location).Format "15:04"}} — {{(($event.DateTimeEnd nil).In $base.Location).Format "15:04"}}
         <a href="{{.URL}}">{{$event.Props.Text "SUMMARY"}}</a>
       </li>
     {{end}}

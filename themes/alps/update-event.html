@@ -24,14 +24,14 @@
 
         <label class="event-date">
           <span>Starts at</span>
-          <input type="date" name="start-date" id="start-date" value="{{.Event.DateTimeStart nil | formatinputdate}}"/>
-          <input type="time" name="start-time" id="start-time" value="{{.Event.DateTimeStart nil | formatinputtime}}"/>
+          <input type="date" name="start-date" id="start-date" value="{{(.Event.DateTimeStart nil).In .Location | formatinputdate}}"/>
+          <input type="time" name="start-time" id="start-time" value="{{(.Event.DateTimeStart nil).In .Location | formatinputtime}}"/>
         </label>
 
         <label class="event-date">
           <span>Ends at</span>
-          <input type="date" name="end-date" id="end-date" value="{{.Event.DateTimeEnd nil | formatinputdate}}"/>
-          <input type="time" name="end-time" id="end-time" value="{{.Event.DateTimeEnd nil | formatinputtime}}"/>
+          <input type="date" name="end-date" id="end-date" value="{{(.Event.DateTimeEnd nil).In .Location | formatinputdate}}"/>
+          <input type="time" name="end-time" id="end-time" value="{{(.Event.DateTimeEnd nil).In .Location | formatinputtime}}"/>
         </label>
 
         <textarea name="description" id="description">{{.Event.Props.Text "DESCRIPTION"}}</textarea>

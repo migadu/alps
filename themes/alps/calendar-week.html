@@ -42,7 +42,7 @@
               {{$event := index .Data.Events 0}}
               <li>
                 <span class="start-time">
-                  {{($event.DateTimeStart nil).Format "15:04"}}
+                  {{(($event.DateTimeStart nil).In $base.Location).Format "15:04"}}
                 </span>
                 {{$event.Props.Text "SUMMARY"}}
               </li>
