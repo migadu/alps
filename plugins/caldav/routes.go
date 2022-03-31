@@ -139,14 +139,15 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			initialDate = initialDate.AddDate(0, 0, 1)
 		}
 
-		eventMap := make(map[time.Time][]CalendarObject)
+		eventMap := make(map[string][]CalendarObject)
 		for _, ev := range events {
 			ev := ev // make a copy
 			// TODO: include event on each date for which it is active
 			co := ev.Data.Events()[0]
 			startTime, _ := co.DateTimeStart(nil)
-			startTime = startTime.UTC().Truncate(time.Hour * 24)
-			eventMap[startTime] = append(eventMap[startTime], CalendarObject{&ev})
+			startTime = startTime.UTC()
+			startDate := startTime.Format(datePageLayout)
+			eventMap[startDate] = append(eventMap[startDate], CalendarObject{&ev})
 		}
 
 		return ctx.Render(http.StatusOK, "calendar.html", &CalendarRenderData{
@@ -163,7 +164,7 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			NextTime: start.AddDate(0, 1, 0),
 
 			EventsForDate: func(when time.Time) []CalendarObject {
-				if events, ok := eventMap[when.Truncate(time.Hour*24)]; ok {
+				if events, ok := eventMap[when.Format(datePageLayout)]; ok {
 					return events
 				}
 				return nil
