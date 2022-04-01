@@ -1,9 +1,34 @@
 <div class="actions-wrap">
+  {{$view := (index .GlobalData.Path 1)}}
+
+  {{$buttonFormat := ""}}
+  {{$header := ""}}
+  {{$today := false}}
+
+  {{if eq $view "month"}}
+
+  {{$buttonFormat = "January"}}
+  {{$header = .Time.Format "January 2006"}}
+  {{$today = eq (.Time.Format "2006-01") (.Now.Format "2006-01")}}
+  {{else if eq $view "date"}}
+  {{$buttonFormat = "January 02"}}
+  {{$header = .Time.Format "January 02, 2006"}}
+  {{$today = eq (.Time.Format "2006-01-02") (.Now.Format "2006-01-02")}}
+  {{end}}
+
   <div class="actions-pagination" style="margin-left: 0;">
-    <a href="?month={{.PrevPage}}" class="button-link">« {{.PrevTime.Format "January"}}</a>
-    <h3>{{.Time.Format "January 2006"}}</h3>
-    <a href="?month={{.NextPage}}" class="button-link">{{.NextTime.Format "January"}} »</a>
-    <a href="/calendar" class="button-link">Today »</a>
+    <a href="?{{$view}}={{.PrevPage}}" class="button-link">« {{.PrevTime.Format $buttonFormat}}</a>
+    <h3>{{$header}}</h3>
+    <a href="?{{$view}}={{.NextPage}}" class="button-link">{{.NextTime.Format $buttonFormat}} »</a>
+    <a href="{{.GlobalData.URL.Path}}" class="button-link">Today »</a>
+
+    {{$time := .Time}}
+    {{if $today}}
+    {{$time = .Now}}
+    {{end}}
+
+    <a href="/calendar/month?month={{$time.Format "2006-01"}}" class="button-link">Month</a>
+    <a href="/calendar/date?date={{$time.Format "2006-01-02"}}" class="button-link">Day</a>
   </div>
 
   <form method="get" class="actions-search action-group">

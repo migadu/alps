@@ -11,11 +11,12 @@
 
   <div class="container">
     <main class="event">
+      {{$event := index .Event.Data.Events 0}}
       <section class="actions">
         <div class="actions-wrap">
           <div class="actions-message">
             <div class="action-group">
-              <a href="/calendar" class="button-link">« Back</a>
+              <a href="/calendar/date?date={{($event.DateTimeStart nil).Format "2006-01-02"}}" class="button-link">« Back</a>
             </div>
             <div class="action-group">
               <a href="{{.Event.URL}}/update" class="button-link">Edit</a>
@@ -33,7 +34,6 @@
       </section>
 
       <section class="details">
-        {{$event := index .Event.Data.Events 0}}
         <table>
           <tr>
             <th colspan="2">

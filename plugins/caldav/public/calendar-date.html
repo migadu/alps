@@ -1,0 +1,32 @@
+{{template "head.html" .}}
+
+<h1>alps</h1>
+
+<p>
+  <a href="/calendar">Back</a>
+  · <a href="/calendar/create">Create new event</a>
+</p>
+
+<h2>Calendar: {{.Calendar.Name}}</h2>
+<h3>{{.Time.Format "Monday January 02 2006"}}</h3>
+
+{{if .Events}}
+  <ul>
+    {{range .Events}}
+      {{$event := index .Data.Events 0}}
+      <li>
+        {{($event.DateTimeStart nil).Format "15:04"}} — {{($event.DateTimeEnd nil).Format "15:04"}}
+        <a href="{{.URL}}">{{$event.Props.Text "SUMMARY"}}</a>
+      </li>
+    {{end}}
+  </ul>
+{{else}}
+  <p>No events.</p>
+{{end}}
+
+<p>
+  <a href="/calendar/date?date={{.PrevPage}}">Previous</a>
+  · <a href="/calendar/date?date={{.NextPage}}">Next</a>
+</p>
+
+{{template "foot.html"}}

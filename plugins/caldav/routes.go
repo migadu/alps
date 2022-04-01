@@ -33,9 +33,11 @@ type CalendarMonthRenderData struct {
 type CalendarDateRenderData struct {
 	alps.BaseRenderData
 	Time               time.Time
+	Now                time.Time
 	Calendar           *caldav.Calendar
 	Events             []CalendarObject
 	PrevPage, NextPage string
+	PrevTime, NextTime time.Time
 }
 
 type EventRenderData struct {
@@ -252,10 +254,13 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			BaseRenderData: *alps.NewBaseRenderData(ctx).
 				WithTitle(calendar.Name + " Calendar: " + start.Format("January 02, 2006")),
 			Time:     start,
+			Now:      time.Now(), // TODO: Use client time zone
 			Events:   newCalendarObjectList(events),
 			Calendar: calendar,
 			PrevPage: start.AddDate(0, 0, -1).Format(datePageLayout),
 			NextPage: start.AddDate(0, 0, 1).Format(datePageLayout),
+			PrevTime: start.AddDate(0, 0, -1),
+			NextTime: start.AddDate(0, 0, 1),
 		})
 	})
 
