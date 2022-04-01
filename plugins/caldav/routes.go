@@ -30,6 +30,20 @@ type CalendarMonthRenderData struct {
 	Sub           func(a, b int) int
 }
 
+type CalendarWeekRenderData struct {
+	alps.BaseRenderData
+	Time               time.Time
+	Now                time.Time
+	Dates              [7]time.Time
+	Calendar           *caldav.Calendar
+	Events             []CalendarObject
+	PrevPage, NextPage string
+	PrevTime, NextTime time.Time
+
+	EventsForDate func(time.Time) []CalendarObject
+	DaySuffix     func(n int) string
+}
+
 type CalendarDateRenderData struct {
 	alps.BaseRenderData
 	Time               time.Time
@@ -197,6 +211,117 @@ func registerRoutes(p *alps.GoPlugin, u *url.URL) {
 			Sub: func(a, b int) int {
 				// Why isn't this built-in, come on Go
 				return a - b
+			},
+		})
+	})
+
+	p.GET("/calendar/week", func(ctx *alps.Context) error {
+		var start time.Time
+		if s := ctx.QueryParam("date"); s != "" {
+			var err error
+			start, err = time.Parse(datePageLayout, s)
+			if err != nil {
+				return fmt.Errorf("failed to parse date: %v", err)
+			}
+		} else {
+			now := time.Now()
+			start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		}
+		start = start.AddDate(0, 0, -int(start.Weekday()))
+		end := start.AddDate(0, 0, 7)
+
+		// TODO: multi-calendar support
+		c, calendar, err := getCalendar(u, ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		query := caldav.CalendarQuery{
+			CompRequest: caldav.CalendarCompRequest{
+				Name:  "VCALENDAR",
+				Props: []string{"VERSION"},
+				Comps: []caldav.CalendarCompRequest{{
+					Name: "VEVENT",
+					Props: []string{
+						"SUMMARY",
+						"UID",
+						"DTSTART",
+						"DTEND",
+						"DURATION",
+					},
+				}},
+			},
+			CompFilter: caldav.CompFilter{
+				Name: "VCALENDAR",
+				Comps: []caldav.CompFilter{{
+					Name:  "VEVENT",
+					Start: start,
+					End:   end,
+				}},
+			},
+		}
+		events, err := c.QueryCalendar(calendar.Path, &query)
+		if err != nil {
+			return fmt.Errorf("failed to query calendar: %v", err)
+		}
+
+		// TODO: Time zones are hard
+		var dates [7]time.Time
+		initialDate := start.UTC()
+		for i := 0; i < len(dates); i++ {
+			dates[i] = initialDate
+			initialDate = initialDate.AddDate(0, 0, 1)
+		}
+
+		eventMap := make(map[string][]CalendarObject)
+		for _, ev := range events {
+			ev := ev // make a copy
+			// TODO: include event on each date for which it is active
+			co := ev.Data.Events()[0]
+			startTime, _ := co.DateTimeStart(nil)
+			startTime = startTime.UTC()
+			startDate := startTime.Format(datePageLayout)
+			eventMap[startDate] = append(eventMap[startDate], CalendarObject{&ev})
+		}
+
+		title := start.Format("January 02") + " - " + start.AddDate(0, 0, 6).Format("January 02")
+
+		return ctx.Render(http.StatusOK, "calendar-week.html", &CalendarWeekRenderData{
+			BaseRenderData: *alps.NewBaseRenderData(ctx).
+				WithTitle(calendar.Name + " Calendar: " + title),
+			Time:     start,
+			Now:      time.Now(), // TODO: Use client time zone
+			Calendar: calendar,
+			Dates:    dates,
+			Events:   newCalendarObjectList(events),
+			PrevPage: start.AddDate(0, 0, -7).Format(datePageLayout),
+			NextPage: start.AddDate(0, 0, 7).Format(datePageLayout),
+			PrevTime: start.AddDate(0, 0, -7),
+			NextTime: start.AddDate(0, 0, 7),
+
+			EventsForDate: func(when time.Time) []CalendarObject {
+				if events, ok := eventMap[when.Format(datePageLayout)]; ok {
+					return events
+				}
+				return nil
+			},
+
+			DaySuffix: func(n int) string {
+				if n%100 >= 11 && n%100 <= 13 {
+					return "th"
+				}
+				return map[int]string{
+					0: "th",
+					1: "st",
+					2: "nd",
+					3: "rd",
+					4: "th",
+					5: "th",
+					6: "th",
+					7: "th",
+					8: "th",
+					9: "th",
+				}[n%10]
 			},
 		})
 	})

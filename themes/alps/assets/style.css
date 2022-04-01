@@ -746,7 +746,7 @@ main table tfoot {
   margin-top: 1rem;
 }
 
-main.calendar .dates {
+main.calendar-month .dates {
   flex-grow: 1;
   padding: 0.3rem;
   display: grid;
@@ -759,6 +759,19 @@ main.calendar .dates {
     "dates dates dates dates dates dates dates"
     "dates dates dates dates dates dates dates"
     "dates dates dates dates dates dates dates"
+    "dates dates dates dates dates dates dates"
+    "sunday-bottom monday-bottom wednesday-bottom tuesday-bottom thursday-bottom friday-bottom saturday-bottom";
+  grid-gap: 0.3rem;
+}
+
+main.calendar-week .dates {
+  flex-grow: 1;
+  padding: 0.3rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "sunday-top monday-top wednesday-top tuesday-top thursday-top friday-top saturday-top"
     "dates dates dates dates dates dates dates"
     "sunday-bottom monday-bottom wednesday-bottom tuesday-bottom thursday-bottom friday-bottom saturday-bottom";
   grid-gap: 0.3rem;

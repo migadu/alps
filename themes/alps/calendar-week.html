@@ -10,7 +10,7 @@
   </aside>
 
   <div class="container">
-    <main class="calendar calendar-month">
+    <main class="calendar calendar-week">
       <section class="actions">
         {{ template "calendar-header.html" . }}
       </section>
@@ -27,22 +27,17 @@
         {{$base := .}}
         {{range .Dates}}
         <div class="date
-          {{if ne $base.Time.Month .Month}}extra{{end}}
           {{if and (eq $base.Now.Month .Month) (eq $base.Now.Day .Day)}}active{{end}}
           ">
-          {{if eq $base.Time.Month .Month}}
-            <a href="/calendar/date?date={{.Format "2006-01-02"}}" class="date-link"></a>
-          {{end}}
+          <a href="/calendar/date?date={{.Format "2006-01-02"}}" class="date-link"></a>
+          <h4>
+            <span class="mo">{{.Format "Jan"}}</span>
+            <span class="da">{{.Format "2"}}{{call $base.DaySuffix .Day}}</span>
+          </h4>
           <div class="events">
             {{$events := (call $base.EventsForDate .)}}
             {{if $events}}
             <ul>
-              {{$overflow := 0}}
-              {{if gt (len $events) 3}}
-              {{$overflow = call $base.Sub (len $events) 3}}
-              {{$events = slice $events 0 3}}
-              {{end}}
-
               {{range $events}}
               {{$event := index .Data.Events 0}}
               <li>
@@ -52,16 +47,10 @@
                 {{$event.Props.Text "SUMMARY"}}
               </li>
               {{end}}
-              {{if ne $overflow 0}}
-              <li class="overflow">...and {{$overflow}} more</li>
-              {{end}}
             </ul>
             {{end}}
           </div>
-          <h4>
-            <span class="mo">{{.Format "Jan"}}</span>
-            <span class="da">{{.Format "2"}}{{call $base.DaySuffix .Day}}</span>
-          </h4>
+          
         </div>
         {{end}}
 

@@ -6,7 +6,6 @@
   {{$today := false}}
 
   {{if eq $view "month"}}
-
   {{$buttonFormat = "January"}}
   {{$header = .Time.Format "January 2006"}}
   {{$today = eq (.Time.Format "2006-01") (.Now.Format "2006-01")}}
@@ -14,6 +13,16 @@
   {{$buttonFormat = "January 02"}}
   {{$header = .Time.Format "January 02, 2006"}}
   {{$today = eq (.Time.Format "2006-01-02") (.Now.Format "2006-01-02")}}
+  {{else if eq $view "week"}}
+  {{$buttonFormat = "January 2"}}
+  {{$last := .Time.AddDate 0 0 6}}
+  {{$start := .Time.Format "January 2"}}
+  {{$end := $last.Format "January 2"}}
+  {{if eq .Time.Month $last.Month}}
+  {{$end = $last.Format "2"}}
+  {{end}}
+  {{$header = printf "%v - %v" $start $end}}
+  {{$today = and (or (.Now.Equal .Time) (.Now.After .Time)) (.Now.Before .NextTime)}}
   {{end}}
 
   <div class="actions-pagination" style="margin-left: 0;">
@@ -28,6 +37,7 @@
     {{end}}
 
     <a href="/calendar/month?month={{$time.Format "2006-01"}}" class="button-link">Month</a>
+    <a href="/calendar/week?date={{$time.Format "2006-01-02"}}" class="button-link">Week</a>
     <a href="/calendar/date?date={{$time.Format "2006-01-02"}}" class="button-link">Day</a>
   </div>
 
