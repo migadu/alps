@@ -6,6 +6,7 @@ import (
 	"net/url"
 
 	"git.sr.ht/~migadu/alps"
+	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav/caldav"
 )
 
@@ -34,7 +35,7 @@ func newClient(u *url.URL, session *alps.Session) (*caldav.Client, error) {
 	return c, nil
 }
 
-func getCalendar(u *url.URL, session *alps.Session) (*caldav.Client, *caldav.Calendar, error) {
+func getCalendarsByCompType(u *url.URL, session *alps.Session, comp string) (*caldav.Client, []caldav.Calendar, error) {
 	c, err := newClient(u, session)
 	if err != nil {
 		return nil, nil, err
@@ -54,10 +55,27 @@ func getCalendar(u *url.URL, session *alps.Session) (*caldav.Client, *caldav.Cal
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to find calendars: %v", err)
 	}
-	if len(calendars) == 0 {
+
+	var cals []caldav.Calendar
+	for _, cal := range calendars {
+		supportedComps := cal.SupportedComponentSet
+		if len(supportedComps) == 0 || supportedComps[0] == comp {
+			cals = append(cals, cal)
+		}
+	}
+	if len(cals) == 0 {
 		return nil, nil, errNoCalendar
 	}
-	return c, &calendars[0], nil
+
+	return c, cals, nil
+}
+
+func getCalendar(u *url.URL, session *alps.Session) (*caldav.Client, *caldav.Calendar, error) {
+	c, calendars, err := getCalendarsByCompType(u, session, ical.CompEvent)
+	if err != nil {
+		return nil, nil, err
+	}
+	return c, &calendars[0], err
 }
 
 type CalendarObject struct {
