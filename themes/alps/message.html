@@ -184,6 +184,7 @@
       {{ $html := .Message.HTMLPart }}
       {{ $text := .Message.TextPart }}
       <div class="tabs">
+        {{ if $text }}
         {{/* https://github.com/golang/go/issues/31103 */}}
         <a
           href="?part={{$text.PathString}}"
@@ -197,7 +198,7 @@
         Plain text
         {{ end }}
         </a>
-        {{ if and $html $text }}
+        {{ if $html }}
         {{ if ne $html.PathString $text.PathString }}
         <a
           href="?part={{$html.PathString}}"
@@ -205,6 +206,7 @@
           class="active"
           {{ end }}
         >HTML</a>
+        {{ end }}
         {{ end }}
         {{ end }}
         <a href="{{.Message.URL}}/raw?plain=1">Raw email</a>
