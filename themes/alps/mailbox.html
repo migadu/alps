@@ -69,7 +69,15 @@
             </form>
           </div>
           <div class="message-list-subject {{$classes}}">
-            <a href="{{if .TextPart}}{{.TextPart.URL false}}{{else}}{{.URL}}{{end}}">
+            <a href="
+                {{if .TextPart}}
+                {{.TextPart.URL false}}
+                {{else if .CalendarPart}}
+                {{.CalendarPart.URL false}}
+                {{else}}
+                {{.URL}}
+                {{end}}"
+            >
               {{if .Envelope.Subject}}
                 {{.Envelope.Subject}}
               {{else}}

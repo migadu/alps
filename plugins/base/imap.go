@@ -236,6 +236,29 @@ func (msg *IMAPMessage) HTMLPart() *IMAPPartNode {
 	return best
 }
 
+func (msg *IMAPMessage) CalendarPart() *IMAPPartNode {
+	if msg.BodyStructure == nil {
+		return nil
+	}
+
+	var best *IMAPPartNode
+	msg.BodyStructure.Walk(func(path []int, part *imap.BodyStructure) bool {
+		if !strings.EqualFold(part.MIMEType, "text") {
+			return true
+		}
+		if part.Disposition != "" && !strings.EqualFold(part.Disposition, "inline") {
+			return true
+		}
+
+		if part.MIMESubType == "calendar" {
+			best = newIMAPPartNode(msg, path, part)
+		}
+		return true
+	})
+
+	return best
+}
+
 func (msg *IMAPMessage) Attachments() []IMAPPartNode {
 	if msg.BodyStructure == nil {
 		return nil

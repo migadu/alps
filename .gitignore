@@ -8,5 +8,6 @@
 !/plugins/carddav
 !/plugins/lua
 !/plugins/managesieve
+!/plugins/viewcalendar
 !/plugins/viewhtml
 !/plugins/viewtext

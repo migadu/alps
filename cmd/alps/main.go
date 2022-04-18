@@ -19,6 +19,7 @@ import (
 	_ "git.sr.ht/~migadu/alps/plugins/carddav"
 	_ "git.sr.ht/~migadu/alps/plugins/lua"
 	_ "git.sr.ht/~migadu/alps/plugins/managesieve"
+	_ "git.sr.ht/~migadu/alps/plugins/viewcalendar"
 	_ "git.sr.ht/~migadu/alps/plugins/viewhtml"
 	_ "git.sr.ht/~migadu/alps/plugins/viewtext"
 )

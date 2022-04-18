@@ -183,6 +183,7 @@
 
       {{ $html := .Message.HTMLPart }}
       {{ $text := .Message.TextPart }}
+      {{ $calendar := .Message.CalendarPart }}
       <div class="tabs">
         {{ if $text }}
         {{/* https://github.com/golang/go/issues/31103 */}}
@@ -209,6 +210,14 @@
         {{ end }}
         {{ end }}
         {{ end }}
+        {{ if $calendar }}
+        <a
+          href="?part={{$calendar.PathString}}"
+          {{ if eq $calendar.PathString .Part.PathString }}
+          class="active"
+          {{ end }}
+        >Calendar</a>
+        {{ end}}
         <a href="{{.Message.URL}}/raw?plain=1">Raw email</a>
       </div>
 
