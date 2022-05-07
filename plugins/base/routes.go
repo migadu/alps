@@ -1024,6 +1024,11 @@ func handleMove(ctx *alps.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 
+	if len(uids) == 0 {
+		ctx.Session.PutNotice("No messages selected.")
+		return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(mboxName)))
+	}
+
 	to := formOrQueryParam(ctx, "to")
 	if to == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "missing 'to' form parameter")
@@ -1069,6 +1074,11 @@ func handleDelete(ctx *alps.Context) error {
 	uids, err := parseUidList(formParams["uids"])
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+
+	if len(uids) == 0 {
+		ctx.Session.PutNotice("No messages selected.")
+		return ctx.Redirect(http.StatusFound, fmt.Sprintf("/mailbox/%v", url.PathEscape(mboxName)))
 	}
 
 	err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
