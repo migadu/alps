@@ -15,7 +15,7 @@ require (
 	github.com/emersion/go-sasl v0.0.0-20211008083017-0b9dcfb154ac
 	github.com/emersion/go-smtp v0.15.0
 	github.com/emersion/go-vcard v0.0.0-20210521075357-3445b9171995
-	github.com/emersion/go-webdav v0.3.1
+	github.com/emersion/go-webdav v0.3.2-0.20220531141108-9bc7a8f15b2f
 	github.com/fernet/fernet-go v0.0.0-20211208181803-9f70042a33ee
 	github.com/google/uuid v1.3.0
 	github.com/kr/pretty v0.1.0 // indirect
