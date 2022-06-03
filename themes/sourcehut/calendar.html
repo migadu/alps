@@ -30,7 +30,7 @@
             <li class="nav-item">
               <a
                 class="nav-link"
-                href="/calendar/{{$event.Props.Text "UID" | pathescape}}"
+                href="{{.URL}}"
               >
                 {{$event.Props.Text "SUMMARY"}}
                 ({{$event.DateTimeStart nil | formatdate}} — {{$event.DateTimeEnd nil | formatdate}})
