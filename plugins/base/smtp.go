@@ -206,7 +206,6 @@ func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
 	if err != nil {
 		return fmt.Errorf("DATA failed: %v", err)
 	}
-	defer w.Close()
 
 	if err := msg.WriteTo(w); err != nil {
 		return fmt.Errorf("failed to write outgoing message: %v", err)
