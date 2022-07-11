@@ -6,13 +6,4 @@ if (emailFrame) {
 	};
 	emailFrame.addEventListener("load", resizeFrame);
 	emailFrame.contentWindow.addEventListener("resize", resizeFrame);
-
-	// Polyfill in case the srcdoc attribute isn't supported
-	if (!emailFrame.srcdoc) {
-		var srcdoc = emailFrame.getAttribute("srcdoc");
-		var doc = emailFrame.contentWindow.document;
-		doc.open();
-		doc.write(srcdoc);
-		doc.close();
-	}
 }

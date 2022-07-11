@@ -15,7 +15,7 @@ import (
 const tplSrc = `
 <!-- allow-same-origin is required to resize the frame with its content -->
 <!-- allow-popups is required for target="_blank" links -->
-<iframe id="email-frame" srcdoc="{{.}}" sandbox="allow-same-origin allow-popups"></iframe>
+<iframe id="email-frame" src="{{.}}" sandbox="allow-same-origin allow-popups"></iframe>
 <script src="/plugins/viewhtml/assets/script.js"></script>
 <link rel="stylesheet" href="/plugins/viewhtml/assets/style.css">
 `
@@ -49,15 +49,24 @@ func (viewer) ViewMessagePart(ctx *alps.Context, msg *alpsbase.IMAPMessage, part
 		return nil, fmt.Errorf("failed to sanitize HTML part: %v", err)
 	}
 
-	ctx.Set("viewhtml.hasRemoteResources", san.hasRemoteResources)
+	if ctx.QueryParam("src") == "1" {
+		return template.HTML(string(body)), nil
+	} else {
+		ctx.Set("viewhtml.hasRemoteResources", san.hasRemoteResources)
 
-	var buf bytes.Buffer
-	err = tpl.Execute(&buf, string(body))
-	if err != nil {
-		return nil, err
+		u := ctx.Request().URL
+		q := u.Query()
+		q.Set("src", "1")
+		u.RawQuery = q.Encode()
+
+		var buf bytes.Buffer
+		err = tpl.Execute(&buf, u.String())
+		if err != nil {
+			return nil, err
+		}
+
+		return template.HTML(buf.String()), nil
 	}
-
-	return template.HTML(buf.String()), nil
 }
 
 func init() {

@@ -3,6 +3,7 @@ package alpsbase
 import (
 	"bytes"
 	"fmt"
+	"html/template"
 	"io"
 	"io/ioutil"
 	"mime"
@@ -476,6 +477,16 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	view, err := viewMessagePart(ctx, msg, part)
 	if err == ErrViewUnsupported {
 		view = nil
+	}
+
+	if view != nil && ctx.QueryParam("src") == "1" {
+		tpl := template.Must(template.New("").Parse("{{.}}"))
+		var buf bytes.Buffer
+		err = tpl.Execute(&buf, view)
+		if err != nil {
+			return fmt.Errorf("failed to execute template for src of view: %v", err)
+		}
+		return ctx.HTML(http.StatusOK, buf.String())
 	}
 
 	flags := make(map[string]bool)
