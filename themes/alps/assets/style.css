@@ -360,7 +360,7 @@ main.create-update textarea {
 
 main table { border-collapse: collapse; width: 100%; border: 1px solid #eee; }
 main table td {
-  white-space: nowrap;
+  white-space: normal;
   padding: 0.3rem;
   overflow: hidden;
   text-overflow: ellipsis;
