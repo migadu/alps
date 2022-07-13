@@ -12,6 +12,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/emersion/go-imap"
+	sortthread "github.com/emersion/go-imap-sortthread"
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/textproto"
@@ -439,11 +440,29 @@ func searchMessages(conn *imapclient.Client, mboxName, query string, page, messa
 		return nil, 0, err
 	}
 
-	criteria := PrepareSearch(query)
-	nums, err := conn.Search(criteria)
+	searchCriteria := PrepareSearch(query)
+
+	var nums []uint32
+	sc := sortthread.NewSortClient(conn)
+	ok, err := sc.SupportSort()
 	if err != nil {
-		return nil, 0, fmt.Errorf("UID SEARCH failed: %v", err)
+		return nil, 0, err
 	}
+	if !ok {
+		nums, err = conn.Search(searchCriteria)
+		if err != nil {
+			return nil, 0, fmt.Errorf("UID SEARCH failed: %v", err)
+		}
+	} else {
+		sortCriteria := []sortthread.SortCriterion{
+			{Field: sortthread.SortDate, Reverse: true},
+		}
+		nums, err = sc.Sort(sortCriteria, searchCriteria)
+		if err != nil {
+			return nil, 0, fmt.Errorf("SORT failed: %v", err)
+		}
+	}
+
 	total = len(nums)
 
 	from := page * messagesPerPage
