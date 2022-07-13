@@ -59,6 +59,28 @@
             required />
         </div>
 
+        <div class="action-group">
+          <label for="timezones">Timezone</label>
+          <select name="timezones" id="timezones">
+            {{ $zones := .Timezones }}
+            {{ $setting := .Settings.Timezone }}
+            <option
+              value="UTC"
+              {{if or (eq $setting "UTC") (not $setting)}}selected{{end}}
+            >UTC</option>
+            {{ range .Regions }}
+            <optgroup label="{{.}}">
+              {{ range (index $zones .) }}
+              <option
+                value="{{.}}"
+                {{if eq . $setting}}selected{{end}}
+              >{{.}}</option>
+              {{ end }}
+            </optgroup>
+            {{ end }}
+          </select>
+        </div>
+
         <button type="submit">Save settings</button>
       </form>
     </main>

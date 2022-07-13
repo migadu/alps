@@ -27,6 +27,7 @@ require (
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	github.com/ssor/bom v0.0.0-20170718123548-6386211fdfcf // indirect
 	github.com/teambition/rrule-go v1.8.0 // indirect
+	github.com/tkuchiki/go-timezone v0.2.2
 	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64
 	gitlab.com/golang-commonmark/linkify v0.0.0-20200225224916-64bca66f6ad3
 	go.guido-berhoerster.org/managesieve v0.8.1

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
 	"github.com/labstack/echo/v4"
+	"github.com/tkuchiki/go-timezone"
 	"jaytaylor.com/html2text"
 )
 
@@ -1201,6 +1203,7 @@ type Settings struct {
 	Signature       string
 	From            string
 	Subscriptions   []string
+	Timezone        string
 }
 
 func loadSettings(s alps.Store) (*Settings, error) {
@@ -1234,6 +1237,8 @@ type SettingsRenderData struct {
 	Mailboxes     []MailboxInfo
 	Settings      *Settings
 	Subscriptions Subscriptions
+	Regions       []string
+	Timezones     map[string][]string
 }
 
 type Subscriptions []string
@@ -1262,6 +1267,20 @@ func handleSettings(ctx *alps.Context) error {
 		return err
 	}
 
+	regions := []string{
+		"Africa", "America", "Antarctica", "Asia", "Atlantic", "Australia",
+		"Europe", "Indian", "Pacific",
+	}
+	timezones := make(map[string][]string)
+	for zone, _ := range timezone.New().TzInfos() {
+		region := strings.Split(zone, "/")[0]
+		timezones[region] = append(timezones[region], zone)
+	}
+
+	for _, zones := range timezones {
+		sort.Strings(zones)
+	}
+
 	if ctx.Request().Method == http.MethodPost {
 		settings.MessagesPerPage, err = strconv.Atoi(ctx.FormValue("messages_per_page"))
 		if err != nil {
@@ -1269,6 +1288,7 @@ func handleSettings(ctx *alps.Context) error {
 		}
 		settings.Signature = ctx.FormValue("signature")
 		settings.From = ctx.FormValue("from")
+		settings.Timezone = ctx.FormValue("timezones")
 
 		params, err := ctx.FormParams()
 		if err != nil {
@@ -1291,5 +1311,7 @@ func handleSettings(ctx *alps.Context) error {
 		Settings:       settings,
 		Mailboxes:      mailboxes,
 		Subscriptions:  Subscriptions(settings.Subscriptions),
+		Regions:        regions,
+		Timezones:      timezones,
 	})
 }
