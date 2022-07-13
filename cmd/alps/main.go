@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -10,11 +9,11 @@ import (
 	"time"
 
 	"git.sr.ht/~migadu/alps"
-	"github.com/fernet/fernet-go"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
 
+	"git.sr.ht/~migadu/alps/config"
 	_ "git.sr.ht/~migadu/alps/plugins/base"
 	_ "git.sr.ht/~migadu/alps/plugins/caldav"
 	_ "git.sr.ht/~migadu/alps/plugins/carddav"
@@ -24,40 +23,16 @@ import (
 	_ "git.sr.ht/~migadu/alps/plugins/viewtext"
 )
 
-var themesPath = "./themes"
+var (
+	ConfigFile = "./config/alps.conf"
+	ThemesPath = "./themes"
+)
 
 func main() {
-	var (
-		addr     string
-		loginKey string
-		options  alps.Options
-	)
-	flag.StringVar(&options.Theme, "theme", "", "default theme")
-	flag.StringVar(&addr, "addr", ":1323", "listening address")
-	flag.BoolVar(&options.Debug, "debug", false, "enable debug logs")
-	flag.StringVar(&loginKey, "login-key", "", "Fernet key for login persistence")
-
-	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "usage: alps [options...] <upstream servers...>\n")
-		flag.PrintDefaults()
-	}
-
-	flag.Parse()
-
-	options.Upstreams = flag.Args()
-	if len(options.Upstreams) == 0 {
-		flag.Usage()
-		return
-	}
-	options.ThemesPath = themesPath
-
-	if loginKey != "" {
-		fernetKey, err := fernet.DecodeKey(loginKey)
-		if err != nil {
-			flag.Usage()
-			return
-		}
-		options.LoginKey = fernetKey
+	config, err := config.LoadConfig(ConfigFile, ThemesPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+		os.Exit(1)
 	}
 
 	e := echo.New()
@@ -65,19 +40,19 @@ func main() {
 	if l, ok := e.Logger.(*log.Logger); ok {
 		l.SetHeader("${time_rfc3339} ${level}")
 	}
-	s, err := alps.New(e, &options)
+	s, err := alps.New(e, config)
 	if err != nil {
 		e.Logger.Fatal(err)
 	}
 	e.Use(middleware.Recover())
-	if options.Debug {
+	if config.Log.Debug {
 		e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
 			Format: "${time_rfc3339} method=${method}, uri=${uri}, status=${status}\n",
 		}))
 		e.Logger.SetLevel(log.DEBUG)
 	}
 
-	go e.Start(addr)
+	go e.Start(config.Server.Address)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGUSR1, syscall.SIGINT)

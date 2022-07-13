@@ -347,7 +347,7 @@ func handleLogin(ctx *alps.Context) error {
 		CanRememberMe bool
 	}{
 		BaseRenderData: *alps.NewBaseRenderData(ctx),
-		CanRememberMe:  ctx.Server.Options.LoginKey != nil,
+		CanRememberMe:  ctx.Server.Config.Security.LoginKey != nil,
 	}
 
 	if username == "" && password == "" {

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"git.sr.ht/~migadu/alps/config"
 	"github.com/fernet/fernet-go"
 	"github.com/labstack/echo/v4"
 )
@@ -23,7 +24,7 @@ const (
 type Server struct {
 	e        *echo.Echo
 	Sessions *SessionManager
-	Options  *Options
+	Config   *config.AlpsConfig
 
 	mutex   sync.RWMutex // used for server reload
 	plugins []Plugin
@@ -43,11 +44,11 @@ type Server struct {
 	}
 }
 
-func newServer(e *echo.Echo, options *Options) (*Server, error) {
-	s := &Server{e: e, Options: options}
+func newServer(e *echo.Echo, config *config.AlpsConfig) (*Server, error) {
+	s := &Server{e: e, Config: config}
 
-	s.upstreams = make(map[string]*url.URL, len(options.Upstreams))
-	for _, upstream := range options.Upstreams {
+	s.upstreams = make(map[string]*url.URL, len(config.General.Upstreams))
+	for _, upstream := range config.General.Upstreams {
 		u, err := parseUpstream(upstream)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse upstream %q: %v", upstream, err)
@@ -65,7 +66,7 @@ func newServer(e *echo.Echo, options *Options) (*Server, error) {
 		return nil, err
 	}
 
-	s.Sessions = newSessionManager(s.dialIMAP, s.dialSMTP, e.Logger, options.Debug)
+	s.Sessions = newSessionManager(s.dialIMAP, s.dialSMTP, e.Logger, config.Log.Debug)
 	return s, nil
 }
 
@@ -204,7 +205,7 @@ func (s *Server) load() error {
 		plugins = append(plugins, l...)
 	}
 
-	renderer := newRenderer(s.e.Logger, s.Options.ThemesPath, s.Options.Theme)
+	renderer := newRenderer(s.e.Logger, s.Config.UI.ThemesPath, s.Config.UI.Theme)
 	if err := renderer.Load(plugins); err != nil {
 		return fmt.Errorf("failed to load templates: %v", err)
 	}
@@ -297,7 +298,7 @@ func (ctx *Context) SetLoginToken(username, password string) {
 	if err != nil {
 		panic(err) // Should never happen
 	}
-	fkey := ctx.Server.Options.LoginKey
+	fkey := ctx.Server.Config.Security.LoginKey
 	if fkey == nil {
 		return
 	}
@@ -318,7 +319,7 @@ func (ctx *Context) GetLoginToken() (string, string) {
 		return "", ""
 	}
 
-	fkey := ctx.Server.Options.LoginKey
+	fkey := ctx.Server.Config.Security.LoginKey
 	if fkey == nil {
 		return "", ""
 	}
@@ -364,17 +365,9 @@ func handleUnauthenticated(next echo.HandlerFunc, ctx *Context) error {
 	}
 }
 
-type Options struct {
-	Upstreams  []string
-	Theme      string
-	ThemesPath string
-	Debug      bool
-	LoginKey   *fernet.Key
-}
-
 // New creates a new server.
-func New(e *echo.Echo, options *Options) (*Server, error) {
-	s, err := newServer(e, options)
+func New(e *echo.Echo, config *config.AlpsConfig) (*Server, error) {
+	s, err := newServer(e, config)
 	if err != nil {
 		return nil, err
 	}
@@ -455,7 +448,7 @@ func New(e *echo.Echo, options *Options) (*Server, error) {
 		}
 	})
 
-	e.Static("/themes", options.ThemesPath)
+	e.Static("/themes", config.UI.ThemesPath)
 
 	return s, nil
 }
