@@ -26,6 +26,7 @@ The following URL schemes are supported:
   over plain HTTP)
 * `carddavs` (CardDAV over HTTPS), `carddav+insecure` (CardDAV over plain HTTP)
 * `caldavs` (CalDAV over HTTPS), `caldav+insecure` (CalDAV over plain HTTP)
+* `sieve` (ManageSieve with STARTTLS)
 
 # OPTIONS
 

@@ -1,0 +1,59 @@
+{{template "head.html" .}}
+{{template "nav.html" .}}
+
+<div class="page-wrap">
+  <aside>
+    <ul>
+      <li>
+        <a href="/filters/create" class="new">New Sieve filter</a>
+      </li>
+    </ul>
+  </aside>
+  <div class="container">
+    <form id="filters-form" method="POST"></form>
+    <main class="filter-list">
+      <section class="actions">
+        <div class="filter-list-checkbox">
+          <input type="checkbox" id="action-checkbox-all" style="display: none"/>
+        </div>
+        <div class="actions-wrap">
+          <div class="actions-filter">
+            <div class="action-group">
+              <button form="filters-form" formaction="/filters/delete">Delete</button>
+            </div>
+            <div class="action-group">
+              <button form="filters-form" formaction="/filters/activate">Disable any active</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="filters">
+        <div class="filter-grid">
+          {{$active := .Active}}
+          {{range .Scripts}}
+          {{$class := ""}}
+          {{if eq . $active}}
+          {{$class = "filter-list-active"}}
+          {{else}}
+          {{$class = "filter-list-disabled"}}
+          {{end}}
+          <div class="filter-list-checkbox">
+            <input type="checkbox" name="names" value="{{.}}" form="filters-form">
+          </div>
+          <div class="filter-list-name {{$class}}">
+            <a href="/filters/{{. | pathescape}}">{{.}}</a>
+          </div>
+          <div class="filter-list-status {{$class}}">
+            {{if eq . $active}}active{{else}}disabled{{end}}
+          </div>
+          {{end}}
+          {{if not .Scripts}}
+          <p class="empty-list">Nothing here yet.</p>
+          {{end}}
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+{{template "foot.html"}}

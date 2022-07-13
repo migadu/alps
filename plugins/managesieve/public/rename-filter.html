@@ -1,0 +1,27 @@
+{{template "head.html" .}}
+{{template "nav.html" .}}
+
+<div class="page-wrap">
+  <aside>
+    <ul>
+      <li>
+        <a href="/filters/create" class="new">New Sieve filter</a>
+      </li>
+    </ul>
+  </aside>
+  <div class="container">
+    <main class="create-update">
+      <form method="POST">
+        <h2>Rename Sieve filter</h2>
+        <label for="name">New name</label>
+        <input type="text" name="new-name" id="new-name" value="{{.NewName}}" autofocus>
+        <div class="actions">
+          <button type="submit">Save</button>
+          <a class="button-link" href="/filters/{{.OldName | pathescape}}">Cancel</a>
+        </div>
+      </form>
+    </main>
+  </div>
+</div>
+
+{{template "foot.html"}}

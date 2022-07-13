@@ -416,6 +416,7 @@ main.message .tabs a:hover {
 main.message pre,
 main.message iframe,
 main.contact .details,
+main.filter .details,
 main.event pre {
   flex: 1 auto;
   padding: 1rem;
@@ -577,7 +578,8 @@ main table tfoot {
 }
 
 .message-list,
-.contact-list {
+.contact-list,
+.filter-list {
   display: flex;
 }
 
@@ -593,7 +595,8 @@ main table tfoot {
 }
 
 .message-list .actions:first-child,
-.contact-list .actions:first-child {
+.contact-list .actions:first-child,
+.filter-list .actions:first-child {
   border-bottom: 1px solid #e0e0e0;
 }
 
@@ -672,7 +675,8 @@ main table tfoot {
 }
 
 .actions-message,
-.actions-contacts {
+.actions-contacts,
+.actions-filter {
   display: flex;
   flex-direction: row;
   flex-grow: 1;
@@ -680,12 +684,14 @@ main table tfoot {
 }
 
 .message-list-checkbox,
-.contact-list-checkbox {
+.contact-list-checkbox, 
+.filter-list-checkbox {
   align-self: center;
 }
 
 .message-list .messages,
-.contact-list .contacts {
+.contact-list .contacts,
+.filter-list .filters {
   flex-grow: 1;
 }
 
@@ -701,8 +707,15 @@ main table tfoot {
   grid-template-rows: auto;
 }
 
+.filter-grid {
+  display: grid;
+  grid-template-columns: auto 1fr 2fr;
+  grid-template-rows: auto;
+}
+
 .message-list .messages .message-grid > *,
-.contact-list .contacts .contact-grid > * {
+.contact-list .contacts .contact-grid > *,
+.filter-list .filters .filter-grid > * {
   white-space: nowrap;
   padding: 0.3rem;
   overflow: hidden;
@@ -894,3 +907,7 @@ button:active,
   border-color: #f5c6cb;
   max-width: 600px;
 }
+
+.filter-list-active.filter-list-name,
+.filter-list-active.filter-list-status { font-weight: bold; }
+.filter-list-disabled.filter-list-name { opacity: 0.7; }

@@ -1,0 +1,52 @@
+{{template "head.html" .}}
+{{template "nav.html" .}}
+
+<div class="page-wrap">
+  <aside>
+    <ul>
+      <li>
+        <a href="/filters/create" class="new">New Sieve filter</a>
+      </li>
+    </ul>
+  </aside>
+  <div class="container">
+    <main class="filter">
+      <section class="actions">
+        <div class="actions-wrap">
+          <div class="actions-filter">
+            <div class="action-group">
+              <a href="/filters" class="button-link">« Back</a>
+            </div>
+            <div class="action-group">
+              <a href="/filters/{{.Name | pathescape}}/edit" class="button-link">Edit</a>
+            </div>
+            <div class="action-group">
+              <form class="action-group" method="post" action="/filters/activate">
+                <input type="hidden" name="source" value="{{.Name}}">
+                <input type="hidden" name="name"
+                  value="{{if not .IsActive}}{{.Name}}{{end}}"
+                >
+                <button>{{if .IsActive}}Disable{{else}}Activate{{end}}</button>
+              </form>
+            </div>
+            <div class="action-group">
+              <a href="/filters/{{.Name | pathescape}}/rename" class="button-link">Rename</a>
+            </div>
+            <div class="action-group">
+              <form class="action-group" method="post" action="/filters/delete">
+                <input type="hidden" name="names" value="{{.Name}}">
+                <button>Delete</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="details">
+        <h1>{{.Name}}</h1>
+        <pre>{{.Content}}</pre>
+      </section>
+    </main>
+  </div>
+</div>
+
+{{template "foot.html"}}

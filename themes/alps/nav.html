@@ -22,6 +22,14 @@
       {{ end }}
     >Contacts</a>
     {{ end }}
+    {{ if call .GlobalData.HavePlugin "managesieve" }}
+    <a
+      href="/filters"
+      {{ if eq $page "filters" }}
+      class="active"
+      {{ end }}
+    >Filters</a>
+    {{ end }}
     {{ if .GlobalData.LoggedIn }}
     <div>
       <span>{{ .GlobalData.Username }}</span>
