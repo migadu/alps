@@ -41,6 +41,15 @@ func main() {
 	if l, ok := e.Logger.(*log.Logger); ok {
 		l.SetHeader("${time_rfc3339} ${level}")
 	}
+	if config.Log.File != "" {
+		file, err := os.OpenFile(config.Log.File, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+		if err != nil {
+			e.Logger.Errorf("Failed to open log file: %v", err)
+		}
+		defer file.Close()
+		e.Logger.SetOutput(file)
+	}
+
 	s, err := alps.New(e, config)
 	if err != nil {
 		e.Logger.Fatal(err)

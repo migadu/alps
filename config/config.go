@@ -22,7 +22,8 @@ type UIConfig struct {
 }
 
 type LogConfig struct {
-	Debug bool `ini:"debug"`
+	Debug bool   `ini:"debug"`
+	File  string `ini:"file"`
 }
 
 type SecurityConfig struct {
@@ -59,6 +60,7 @@ func LoadConfig(filename string, themesPath string) (*AlpsConfig, error) {
 		},
 		Log: LogConfig{
 			Debug: false,
+			File:  "",
 		},
 		Security: SecurityConfig{
 			CookieName:                   "alps_session",
