@@ -527,8 +527,13 @@ type composeOptions struct {
 }
 
 // Send message, append it to the Sent mailbox, mark the original message as
-// answered
+// answered, delete from the Draft mailbox
 func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOptions) error {
+	draft := options.Draft
+	if draft == nil {
+		return fmt.Errorf("expected a draft message")
+	}
+
 	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
 		return sendMessage(c, msg)
 	})
@@ -536,7 +541,9 @@ func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 		if _, ok := err.(alps.AuthError); ok {
 			return echo.NewHTTPError(http.StatusForbidden, err)
 		}
-		return fmt.Errorf("failed to send message: %v", err)
+		ctx.Session.PutNotice(fmt.Sprintf("Failed to send message: %v", err))
+		return ctx.Redirect(http.StatusFound, fmt.Sprintf(
+			"/message/%s/%d/edit?part=1", draft.Mailbox, draft.Uid))
 	}
 
 	if inReplyTo := options.InReplyTo; inReplyTo != nil {
@@ -552,10 +559,8 @@ func submitCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 		if _, err := appendMessage(c, msg, mailboxSent); err != nil {
 			return err
 		}
-		if draft := options.Draft; draft != nil {
-			if err := deleteMessage(c, draft.Mailbox, draft.Uid); err != nil {
-				return err
-			}
+		if err := deleteMessage(c, draft.Mailbox, draft.Uid); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -674,48 +679,49 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 			defer attachment.Form.RemoveAll()
 		}
 
-		if saveAsDraft {
-			var (
-				drafts *MailboxInfo
-				uid    uint32
-			)
-			err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
-				drafts, err = appendMessage(c, msg, mailboxDrafts)
-				if err != nil {
-					return err
-				}
-
-				if draft := options.Draft; draft != nil {
-					if err := deleteMessage(c, draft.Mailbox, draft.Uid); err != nil {
-						return err
-					}
-				}
-
-				if err := ensureMailboxSelected(c, drafts.Name); err != nil {
-					return err
-				}
-
-				criteria := &imap.SearchCriteria{
-					Header: make(textproto.MIMEHeader),
-				}
-				criteria.Header.Add("Message-Id", msg.MessageID)
-				if uids, err := c.UidSearch(criteria); err != nil {
-					return err
-				} else {
-					if len(uids) != 1 {
-						panic(fmt.Errorf("Duplicate message ID"))
-					}
-					uid = uids[0]
-				}
-				return nil
-			})
+		// Save as draft before sending to prevent data loss
+		var draft *messagePath
+		err = ctx.Session.DoIMAP(func(c *imapclient.Client) error {
+			drafts, err := appendMessage(c, msg, mailboxDrafts)
 			if err != nil {
-				return fmt.Errorf("failed to save message to Draft mailbox: %v", err)
+				return err
 			}
+
+			if draft := options.Draft; draft != nil {
+				if err := deleteMessage(c, draft.Mailbox, draft.Uid); err != nil {
+					return err
+				}
+			}
+
+			if err := ensureMailboxSelected(c, drafts.Name); err != nil {
+				return err
+			}
+
+			criteria := &imap.SearchCriteria{
+				Header: make(textproto.MIMEHeader),
+			}
+			criteria.Header.Add("Message-Id", msg.MessageID)
+			uids, err := c.UidSearch(criteria)
+			if err != nil {
+				return err
+			}
+			if len(uids) != 1 {
+				panic(fmt.Errorf("Duplicate message ID"))
+			}
+
+			draft = &messagePath{Mailbox: drafts.Name, Uid: uids[0]}
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed to save message to Draft mailbox: %v", err)
+		}
+
+		if saveAsDraft {
 			ctx.Session.PutNotice("Message saved as draft.")
 			return ctx.Redirect(http.StatusFound, fmt.Sprintf(
-				"/message/%s/%d/edit?part=1", drafts.Name, uid))
+				"/message/%s/%d/edit?part=1", draft.Mailbox, draft.Uid))
 		} else {
+			options.Draft = draft
 			return submitCompose(ctx, msg, options)
 		}
 	}
