@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"git.sr.ht/~migadu/alps"
 	"github.com/emersion/go-imap"
@@ -421,6 +422,10 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		return err
 	}
 	messagesPerPage := settings.MessagesPerPage
+	loc, err := time.LoadLocation(settings.Timezone)
+	if err != nil {
+		return fmt.Errorf("failed to load location: %v", err)
+	}
 
 	var msg *IMAPMessage
 	var part *message.Entity
@@ -434,6 +439,8 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	if err != nil {
 		return err
 	}
+
+	msg.Envelope.Date = msg.Envelope.Date.In(loc)
 
 	mimeType, _, err := part.Header.ContentType()
 	if err != nil {
