@@ -13,8 +13,7 @@
         <input type="hidden" name="in_reply_to" value="{{.Message.InReplyTo}}">
 
         <div class="headers no-js">
-          <label>From</label>
-          <input type="text" name="from" id="from" value="{{.Message.From}}" />
+          <input type="hidden" name="from" id="from" value="{{.Message.From}}" />
 
           <label>To</label>
           {{ $to := .Message.ToString }}
