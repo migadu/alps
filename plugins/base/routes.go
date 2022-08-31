@@ -590,15 +590,10 @@ func handleCompose(ctx *alps.Context, msg *OutgoingMessage, options *composeOpti
 		if err != nil {
 			return err
 		}
-		if settings.From != "" {
-			addr := mail.Address{
-				Name:    settings.From,
-				Address: ctx.Session.Username(),
-			}
-			msg.From = addr.String()
-		} else {
-			msg.From = ctx.Session.Username()
-		}
+		msg.From = formatAddress(&mail.Address{
+			Name:    settings.From,
+			Address: ctx.Session.Username(),
+		})
 	}
 
 	if ctx.Request().Method == http.MethodPost {
@@ -810,10 +805,21 @@ func handleCancelAttachment(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, nil)
 }
 
-func unwrapIMAPAddressList(addrs []*imap.Address) []string {
+func formatAddress(a *mail.Address) string {
+	if a.Name != "" {
+		return a.String()
+	} else {
+		return a.Address
+	}
+}
+
+func formatIMAPAddressList(addrs []*imap.Address) []string {
 	l := make([]string, len(addrs))
 	for i, addr := range addrs {
-		l[i] = addr.Address()
+		l[i] = formatAddress(&mail.Address{
+			Name:    addr.PersonalName,
+			Address: addr.Address(),
+		})
 	}
 	return l
 }
@@ -879,7 +885,7 @@ func handleReply(ctx *alps.Context) error {
 		if len(replyTo) == 0 {
 			replyTo = inReplyTo.Envelope.From
 		}
-		msg.To = unwrapIMAPAddressList(replyTo)
+		msg.To = formatIMAPAddressList(replyTo)
 		msg.Subject = inReplyTo.Envelope.Subject
 		if !strings.HasPrefix(strings.ToLower(msg.Subject), "re:") {
 			msg.Subject = "Re: " + msg.Subject
@@ -1010,9 +1016,9 @@ func handleEdit(ctx *alps.Context) error {
 		if len(source.Envelope.From) > 0 {
 			msg.From = source.Envelope.From[0].Address()
 		}
-		msg.To = unwrapIMAPAddressList(source.Envelope.To)
-		msg.Cc = unwrapIMAPAddressList(source.Envelope.Cc)
-		msg.Bcc = unwrapIMAPAddressList(source.Envelope.Bcc)
+		msg.To = formatIMAPAddressList(source.Envelope.To)
+		msg.Cc = formatIMAPAddressList(source.Envelope.Cc)
+		msg.Bcc = formatIMAPAddressList(source.Envelope.Bcc)
 		msg.Subject = source.Envelope.Subject
 		msg.InReplyTo = source.Envelope.InReplyTo
 		msg.MessageID = source.Envelope.MessageId
