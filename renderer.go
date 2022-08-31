@@ -35,10 +35,10 @@ type GlobalRenderData struct {
 // BaseRenderData is the base type for templates. It should be extended with
 // additional template-specific fields:
 //
-//     type MyRenderData struct {
-//         BaseRenderData
-//         // add additional fields here
-//     }
+//	type MyRenderData struct {
+//	    BaseRenderData
+//	    // add additional fields here
+//	}
 type BaseRenderData struct {
 	GlobalData GlobalRenderData
 	// additional plugin-specific data
@@ -61,15 +61,15 @@ type RenderData interface {
 //
 // It can be used by routes to pre-fill the base data:
 //
-//     type MyRenderData struct {
-//         BaseRenderData
-//         // add additional fields here
-//     }
+//	type MyRenderData struct {
+//	    BaseRenderData
+//	    // add additional fields here
+//	}
 //
-//     data := &MyRenderData{
-//         BaseRenderData: *alps.NewBaseRenderData(ctx),
-//         // other fields...
-//     }
+//	data := &MyRenderData{
+//	    BaseRenderData: *alps.NewBaseRenderData(ctx),
+//	    // other fields...
+//	}
 func NewBaseRenderData(ectx echo.Context) *BaseRenderData {
 	ctx, isactx := ectx.(*Context)
 

@@ -69,9 +69,9 @@ type goPluginRoute struct {
 //
 // Use this struct to define your plugin, then call RegisterPluginLoader:
 //
-//     p := GoPlugin{Name: "my-plugin"}
-//     // Define routes, template functions, etc
-//     alps.RegisterPluginLoader(p.Loader())
+//	p := GoPlugin{Name: "my-plugin"}
+//	// Define routes, template functions, etc
+//	alps.RegisterPluginLoader(p.Loader())
 type GoPlugin struct {
 	Name string
 

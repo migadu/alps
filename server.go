@@ -242,7 +242,7 @@ func (s *Server) Logger() echo.Logger {
 //
 // Use a type assertion to get it from a echo.Context:
 //
-//     ctx := ectx.(*alps.Context)
+//	ctx := ectx.(*alps.Context)
 type Context struct {
 	echo.Context
 	Server  *Server
