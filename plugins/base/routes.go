@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -805,13 +806,25 @@ func handleCancelAttachment(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, nil)
 }
 
+// Taken with modifications from:
+// https://git.sr.ht/~rjarry/aerc/tree/master/item/lib/format/format.go
+// If the address's name contains non-ASCII characters
+// the name will be quoted but not encoded.
 func formatAddress(a *mail.Address) string {
 	if a.Name != "" {
-		return a.String()
+		if atom.MatchString(a.Name) {
+			return fmt.Sprintf("%s <%s>", a.Name, a.Address)
+		} else {
+			return fmt.Sprintf("\"%s\" <%s>",
+				strings.ReplaceAll(a.Name, "\"", "'"), a.Address)
+		}
 	} else {
 		return a.Address
 	}
 }
+
+// Atom as defined in RFC 5322 3.2.3.
+var atom *regexp.Regexp = regexp.MustCompile("^[A-Za-z0-9!#$%&'*+-/=?^_`{|}~]+$")
 
 func formatIMAPAddressList(addrs []*imap.Address) []string {
 	l := make([]string, len(addrs))
