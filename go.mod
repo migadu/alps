@@ -35,8 +35,8 @@ require (
 	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4
 	golang.org/x/sys v0.0.0-20220503163025-988cb79eb6c6 // indirect
 	golang.org/x/time v0.0.0-20220411224347-583f2d630306 // indirect
-	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
-	gopkg.in/ini.v1 v1.66.6
-	jaytaylor.com/html2text v0.0.0-20211105163654-bc68cce691ba
+	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
+	gopkg.in/ini.v1 v1.66.4
+	jaytaylor.com/html2text v0.0.0-20211105163654-bc68cce691ba // indirect
 	layeh.com/gopher-luar v1.0.10
 )
