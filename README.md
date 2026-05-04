@@ -1,36 +1,41 @@
 # [alps]
 
 [![GoDoc](https://godoc.org/github.com/migadu/alps?status.svg)](https://godoc.org/github.com/migadu/alps)
-[![builds.sr.ht status](https://builds.sr.ht/~migadu/alps/commits.svg)](https://builds.sr.ht/~migadu/alps/commits?)
 
 A simple and extensible webmail.
 
 ## Usage
 
-Assuming SRV DNS records are properly set up (see [RFC 6186]):
+All configuration is provided via a TOML configuration file. A comprehensive example can be found in `config.example.toml`. Copy this file to `config.toml` and edit it to suit your needs.
 
-    go run ./cmd/alps example.org
+Run the alps backend server:
 
-To manually specify upstream servers:
+    go run ./cmd/alps -config config.toml
 
-    go run ./cmd/alps imaps://mail.example.org:993 smtps://mail.example.org:465
+See `docs/cli.md` for more information on the CLI options.
 
-Add `-theme alps` to use the alps theme. See `docs/cli.md` for more
-information.
+### Frontend Interface
 
-When developing themes and plugins, the script `contrib/hotreload.sh` can be
-used to automatically reload alps on file changes.
+The webmail interface is a single-page application that must be compiled:
+
+    cd frontend
+    npm install
+    npm run build
+
+For frontend development, use the Vite dev server:
+
+    cd frontend
+    npm run dev
 
 ## Contributing
 
-Send patches on the [mailing list], report bugs on the [issue tracker].
+Send patches via [GitHub Pull Requests], report bugs on the [issue tracker].
 
 ## License
 
 MIT
 
-[alps]: https://sr.ht/~migadu/alps
+[alps]: https://github.com/migadu/alps
 [RFC 6186]: https://tools.ietf.org/html/rfc6186
-[Go plugin helpers]: https://godoc.org/github.com/migadu/alps#GoPlugin
-[mailing list]: https://lists.sr.ht/~migadu/alps-devel
-[issue tracker]: https://todo.sr.ht/~migadu/alps
+[GitHub Pull Requests]: https://github.com/migadu/alps/pulls
+[issue tracker]: https://github.com/migadu/alps/issues
