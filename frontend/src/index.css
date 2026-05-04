@@ -1,0 +1,146 @@
+/* Premium Professional Light Theme for Alps Webmail */
+
+:root {
+  /* Colors - Light Theme Default */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb;
+  --bg-tertiary: #f3f4f6;
+  --bg-selected: #eff6ff;
+  --hover-color: #f3f4f6;
+
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+
+  --border-color: #e5e7eb;
+
+  --accent-color: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-light: #dbeafe;
+
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+
+  /* Mailbox Icon Colors */
+  --icon-inbox: #3b82f6;
+  --icon-sent: #10b981;
+  --icon-drafts: #f59e0b;
+  --icon-spam: #ef4444;
+  --icon-trash: #6b7280;
+  --icon-archive: #8b5cf6;
+  --icon-default: #9ca3af;
+
+  /* Typography */
+  --font-base: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-heading: 'Inter', sans-serif;
+  /* Professional UI often sticks to a single clean font */
+
+  /* Forms */
+  --input-padding: 8px 12px;
+  --input-radius: 6px;
+  --input-font-size: 14px;
+  --btn-icon-padding: 6px;
+  --btn-icon-size: 18px;
+  --btn-padding: 8px 16px;
+  --btn-radius: 6px;
+  --btn-font-size: 14px;
+
+  /* Layout */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Optional Dark Theme Support based on config class */
+/* Colors are dynamically injected via JS based on selected theme, but we keep this class for scrollbar styling */
+body,
+html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  font-family: var(--font-base);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
+  margin: 0;
+}
+
+/* Utility classes */
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.h-full {
+  height: 100%;
+}
+
+/* Custom Scrollbar for professional look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.theme-dark ::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+
+.theme-dark ::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+.theme-dark {
+  --modal-backdrop: rgba(0, 0, 0, 0.5);
+  --toast-bg: var(--bg-tertiary, #374151);
+  --toast-border: var(--border-color, #4b5563);
+}

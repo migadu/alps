@@ -1,0 +1,377 @@
+# Alps Configuration File Example
+
+[server]
+# Server listening address
+addr = ":1323"
+
+# Enable debug logging
+debug = true
+
+# Fernet key for login persistence (optional)
+# Encrypts user credentials in browser cookies to enable "remember me" functionality
+# and session restoration after server restarts.
+# Generate with: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# login_key = "your-fernet-key-here"
+#
+# Security note: Rotating the login_key will force all users to re-login.
+# This is a security feature - use it to invalidate all persisted credentials
+# during security incidents or when you suspect credential compromise.
+
+# Temporary directory for file uploads and processing (optional)
+# Uses OS default temp directory if not specified
+# temp_dir = "/tmp/alps"
+
+# Session duration in minutes (default: 30)
+# Controls how long user sessions remain active without activity
+# session_minutes = 30
+
+# Maximum session duration in minutes (default: 1440, i.e., 24 hours)
+# Caps the maximum session duration even if user sets a higher auto-logout preference
+# max_session_minutes = 1440
+
+# HTTP Server Timeouts
+# Protects against slow client attacks and resource exhaustion
+
+# HTTP read timeout in seconds (default: 10)
+# Maximum time allowed to read the entire HTTP request (headers + body)
+# Includes time from connection accept to end of request body read
+read_timeout_sec = 10
+
+# HTTP write timeout in seconds (default: 30)
+# Maximum time allowed to write the HTTP response
+# Should be high enough for large email attachments to be uploaded/downloaded
+write_timeout_sec = 30
+
+# HTTP idle timeout in seconds (default: 120)
+# Maximum time to wait for the next request when using HTTP keep-alive connections
+# Applies between requests, not during active transfers
+idle_timeout_sec = 120
+
+# IMAP operation timeout in seconds (default: 30)
+# Connection establishment timeout for the IMAP server (default: 30)
+# This strictly governs the initial TCP handshake and login to the IMAP server.
+# Note: Actual IMAP operations (fetch, search, etc.) are effectively timed out 
+# by the HTTP server's write_timeout_sec when the client connection drops.
+imap_timeout_sec = 30
+
+# SMTP operation timeout in seconds (default: 30)
+# This is a true operation timeout passed directly to the SMTP client.
+# It prevents indefinite blocking on stuck SMTP operations (connect, send, etc.)
+smtp_timeout_sec = 30
+
+# Example configurations for different deployment scenarios:
+#
+# Fast network, small mailboxes:
+#   read_timeout_sec = 5
+#   write_timeout_sec = 15
+#   imap_timeout_sec = 15
+#   smtp_timeout_sec = 15
+#
+# Standard (recommended for most deployments):
+#   read_timeout_sec = 10
+#   write_timeout_sec = 30
+#   imap_timeout_sec = 30
+#   smtp_timeout_sec = 30
+#
+# Slow network or large attachments:
+#   read_timeout_sec = 30
+#   write_timeout_sec = 120
+#   imap_timeout_sec = 60
+#   smtp_timeout_sec = 60
+
+# Session Limits
+# Controls the maximum number of concurrent sessions to prevent memory exhaustion attacks
+# and resource abuse
+
+# Maximum total concurrent sessions globally (default: 10000)
+# Set to 0 for unlimited sessions (not recommended)
+# When limit is reached, oldest sessions are evicted (LRU policy)
+max_sessions = 10000
+
+# Maximum concurrent sessions per user (default: 10)
+# Set to 0 for unlimited sessions per user (not recommended)
+# Prevents a single user or compromised account from creating excessive sessions
+# When limit is reached, oldest user sessions are evicted (LRU policy)
+max_sessions_per_user = 10
+
+# Example configurations for different deployment sizes:
+#
+# Small deployment (< 100 users):
+#   max_sessions = 1000
+#   max_sessions_per_user = 5
+#
+# Medium deployment (100-1000 users):
+#   max_sessions = 10000
+#   max_sessions_per_user = 10
+#
+# Large deployment (> 1000 users):
+#   max_sessions = 50000
+#   max_sessions_per_user = 20
+
+# Max attachment size per composer in MiB (default: 32)
+# Limits the size of a single email being composed
+# max_attachment_mib = 32
+
+# Max attachment size per session in MiB (default: 128)
+# Limits the total size of attachments uploaded across all active composers in a session
+# max_session_attachment_mib = 128
+
+# Max global attachment size in MiB (default: 1024)
+# Limits the total size of attachments stored on the server across all users
+# max_global_attachment_mib = 1024
+
+# Rate Limiting Configuration
+# Protects the login endpoint from brute force attacks and abuse
+[server.rate_limit]
+# Enable rate limiting (default: true)
+# Set to false to disable all rate limiting (not recommended for production)
+enabled = true
+
+# Per-IP rate limits
+# Maximum login attempts from a single IP address per minute
+ip_requests_per_minute = 5
+
+# Maximum login attempts from a single IP address per hour
+# If exceeded, IP is locked out for the duration specified in lockout_minutes
+ip_requests_per_hour = 20
+
+# Per-username rate limits
+# Maximum failed login attempts for a specific username per 15 minutes
+username_fails_per_quarter = 5
+
+# Maximum failed login attempts for a specific username per hour
+# If exceeded, username is locked out for the duration specified in lockout_minutes
+username_fails_per_hour = 10
+
+# Global rate limit
+# Maximum login requests across all users and IPs per second
+# Protects server resources during large-scale attacks
+global_requests_per_second = 100
+
+# Lockout duration in minutes (default: 15)
+# How long an IP or username is blocked after hitting rate limits
+lockout_minutes = 15
+
+# Example configurations for different security postures:
+#
+# Strict (high security, may impact legitimate users):
+#   ip_requests_per_minute = 3
+#   ip_requests_per_hour = 10
+#   username_fails_per_quarter = 3
+#   username_fails_per_hour = 5
+#   lockout_minutes = 30
+#
+# Standard (balanced, recommended for most deployments):
+#   ip_requests_per_minute = 5
+#   ip_requests_per_hour = 20
+#   username_fails_per_quarter = 5
+#   username_fails_per_hour = 10
+#   lockout_minutes = 15
+#
+# Relaxed (lower security, better user experience):
+#   ip_requests_per_minute = 10
+#   ip_requests_per_hour = 40
+#   username_fails_per_quarter = 10
+#   username_fails_per_hour = 20
+#   lockout_minutes = 5
+
+[cache]
+# Cache time-to-live in minutes (default: 10)
+# How long cached data stays valid before expiring
+ttl_minutes = 10
+
+# Enable caching (default: true)
+# Set to false to disable all caching (not recommended)
+enabled = true
+
+[logging]
+# Log output destination
+# Options:
+#   "stdout"  - Write logs to standard output
+#   "stderr"  - Write logs to standard error (default)
+#   "syslog"  - Send logs to system syslog daemon
+#   "/path/to/file.log" - Write logs to a file (path can be absolute or relative)
+#
+# Examples:
+#   output = "stdout"
+#   output = "stderr"
+#   output = "syslog"
+#   output = "/var/log/alps/alps.log"
+#   output = "./logs/alps.log"
+output = "stderr"
+
+# Log format
+# Options:
+#   "json"    - Structured JSON logs for machine parsing (default for production)
+#   "console" - Human-readable text format (default when debug=true)
+#
+# JSON example output:
+#   {"time":"2025-10-21T10:30:45Z","level":"INFO","msg":"Starting server on :1323"}
+# Console example output:
+#   time=2025-10-21T10:30:45.000Z level=INFO msg="Starting server on :1323"
+format = "console"
+
+# Log level
+# Options:
+#   "debug" - Most verbose, includes all log messages
+#   "info"  - Standard operational messages (default for production)
+#   "warn"  - Warning messages only
+#   "error" - Error messages only (least verbose)
+#
+# Note: When server.debug=true, the level defaults to "debug"
+level = "info"
+
+[tls]
+# Enable TLS termination (default: false)
+# enabled = false
+
+# TLS Provider ("file" or "letsencrypt")
+# provider = "file"
+
+# Path to TLS certificate (required if provider="file")
+# cert_file = "/path/to/cert.pem"
+
+# Path to TLS private key (required if provider="file")
+# key_file = "/path/to/key.pem"
+
+[tls.letsencrypt]
+# Email address for ACME registration
+# email = "admin@example.com"
+
+# Domains to obtain certificates for
+# domains = ["mail.example.com", "webmail.example.com"]
+
+# Storage provider for certificates ("s3" or leave empty for local file storage)
+# storage_provider = ""
+
+# Enable fallback to local storage if primary storage fails
+# enable_fallback = false
+
+# Directory to use for fallback storage
+# fallback_dir = "./certs-fallback"
+
+# Duration before expiry to renew certificates (e.g., "720h" for 30 days)
+# renew_before = "720h"
+
+# Optional custom ACME server URL (defaults to Let's Encrypt production)
+# acme_server = "https://acme-v02.api.letsencrypt.org/directory"
+
+[tls.letsencrypt.s3]
+# S3 configuration for certificate storage
+# bucket = "alps-certs"
+# endpoint = "s3.amazonaws.com"
+# access_key_id = "your-access-key"
+# secret_access_key = "your-secret-key"
+# disable_tls = false
+# debug = false
+
+[tls.letsencrypt.cluster]
+# Cluster coordination using S3 to ensure only one node requests certificates
+# enabled = false
+# leader_lock_key = "autocert/leader.lock"
+# leader_ttl = "60s"
+# renew_interval = "30s"
+
+[provider]
+# Mail provider type (default: "imap")
+# Options: "imap", "jmap" (future)
+type = "imap"
+
+# Provider-specific options (optional map)
+# options = { "example_key" = "example_value" }
+
+# IMAP Provider Configuration
+[provider.imap]
+# IMAP server URL (optional if using [upstreams.imap])
+# server = "imaps://imap.migadu.com:993"
+
+# Allow insecure connections (default: false)
+# insecure = false
+
+[upstreams]
+# IMAP server(s)
+# Supported schemes: imaps://, imap://, imap+insecure://
+imap = ["imaps://imap.migadu.com:993"]
+
+# SMTP server(s)
+# Supported schemes: smtps://, smtp://, smtp+insecure://
+smtp = ["smtps://smtp.migadu.com:465"]
+
+
+# Plugin Configuration
+# Each plugin can have its own section with enabled flag and settings
+# If no [plugin.*] sections are defined, all plugins are enabled by default
+
+[plugin.base]
+# Base plugin provides core email functionality (required)
+enabled = true
+
+# Plugin-specific options (optional map)
+# options = { "example_key" = "example_value" }
+
+
+[plugin.caldav]
+# CalDAV plugin for calendar support
+enabled = true
+# CalDAV server URL (optional, can use auto-discovery)
+# Supported schemes: caldavs://, caldav+insecure://, https://, http+insecure://
+server = "https://caldav.example.com"
+
+# Default view for this plugin (if applicable)
+# default_view = ""
+
+# Plugin-specific options (optional map)
+# options = { "example_key" = "example_value" }
+
+
+[plugin.carddav]
+# CardDAV plugin for contacts support
+enabled = true
+# CardDAV server URL (optional, can use auto-discovery)
+# Supported schemes: carddavs://, carddav+insecure://, https://, http+insecure://
+server = "https://carddav.example.com"
+
+# Default view for this plugin (if applicable)
+# default_view = ""
+
+# Plugin-specific options (optional map)
+# options = { "example_key" = "example_value" }
+
+
+# Password Change Configuration
+# Allows users to change their password via an external HTTP API
+[plugin.password]
+# Enable the password change feature (default: false)
+enabled = false
+
+[plugin.password.options]
+# Endpoint URL to send the password change request to.
+# Supports interpolation variables: {email}, {local}, {domain}
+# endpoint = "https://api.example.com/users/{local}/password"
+
+# HTTP method to use (default: POST)
+# method = "POST"
+
+# Authentication type for the upstream request
+# Options: "none", "basic", "bearer" (default: "none")
+# auth_type = "basic"
+
+# Username and password for basic authentication
+# username = "admin"
+# password = "supersecretpassword"
+
+# Token for bearer authentication
+# token = "your_bearer_token"
+
+# Payload format for the request body
+# Options: "json", "form" (default: "json")
+# payload = "json"
+
+# Payload Mapping Configuration (Required)
+# Maps internal ALPS variables to custom payload fields expected by the endpoint.
+# Internal variables available: "username", "local", "domain", "old_password", "new_password"
+# Only the fields mapped here will be sent in the request payload.
+[plugin.password.options.payload_mapping]
+old_password = "old_password"
+password = "new_password"
+domain = "domain"

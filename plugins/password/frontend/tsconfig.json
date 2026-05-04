@@ -1,0 +1,12 @@
+{
+  "extends": "../../../frontend/tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "lit": ["../../../frontend/node_modules/lit"],
+      "lit/*": ["../../../frontend/node_modules/lit/*"],
+      "@lit/*": ["../../../frontend/node_modules/@lit/*"]
+    }
+  },
+  "include": ["**/*.ts"]
+}

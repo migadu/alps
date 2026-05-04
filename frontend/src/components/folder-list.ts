@@ -1,0 +1,760 @@
+import { LitElement, html, css, type TemplateResult } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
+import { consume } from '@lit/context';
+import { renderIcon } from '../utils/ui';
+import { composeContext } from '../store/compose-store';
+import type { ComposeStore } from '../store/compose-store';
+import { i18nContext, I18nStore } from '../store/i18n-store';
+import { mailboxOperations } from '../services/mailbox-operations';
+import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH } from '../utils/folders';
+import '../store/settings-store';
+import './alps-icon-btn';
+import './ui-prompt';
+import './alps-toolbar';
+import './alps-button';
+import './ui-confirm';
+import { popupStyles } from './alps-popup';
+import './alps-popup';
+
+@customElement('alps-folder-list')
+export class FolderList extends LitElement {
+  @consume({ context: composeContext })
+  composeStore!: ComposeStore;
+
+  @consume({ context: i18nContext })
+  i18nStore!: I18nStore;
+
+  @property({ type: Array }) mailboxes: any[] = [];
+  @property({ type: String }) currentMailbox = '';
+  @property({ type: Object }) expandedFolders = new Set<string>();
+  @property({ type: String }) layoutMode = 'vertical';
+  @property({ type: Boolean }) syncing = false;
+  @property({ type: Boolean, reflect: true }) collapsed = false;
+  @state() private isScrolled = false;
+
+  @state() private showCreatePrompt = false;
+  @state() private showRenamePrompt = false;
+  @state() private mailboxToRename = '';
+  @state() private showDeleteConfirm = false;
+  @state() private showMoveToTrashConfirm = false;
+  @state() private mailboxToDelete = '';
+  @state() private parentForNewFolder = '';
+  @state() private activeKebabMenu: string | null = null;
+
+  willUpdate(changedProperties: Map<string, any>) {
+    super.willUpdate(changedProperties);
+  }
+
+
+
+  connectedCallback() {
+    super.connectedCallback();
+    // Use setTimeout or a small delay if composeStore is injected slightly later
+    // Actually, context is provided synchronously down the tree.
+    // Wait until next tick to ensure context is resolved.
+    this.updateComplete.then(() => {
+      if (this.composeStore) {
+        this.composeStore.addEventListener('change', this._handleStoreChange);
+      }
+      if (this.i18nStore) {
+        this.i18nStore.addEventListener('change', this._handleStoreChange);
+      }
+    });
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this.composeStore) {
+      this.composeStore.removeEventListener('change', this._handleStoreChange);
+    }
+    this.i18nStore?.removeEventListener('change', this._handleStoreChange);
+  }
+
+  private _handleStoreChange = () => {
+    this.requestUpdate();
+  };
+
+  static styles = [
+    popupStyles,
+    css`
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      border-right: 1px solid var(--border-color);
+      box-sizing: border-box;
+    }
+
+    :host([collapsed]:not(:hover)) {
+      border-right: none;
+    }
+    
+    .sidebar-wrapper {
+      width: 100%;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background-color: var(--bg-secondary);
+    }
+
+    .sidebar-header {
+      padding: 0 12px;
+      gap: 8px;
+      background-color: var(--bg-secondary);
+    }
+
+    :host([collapsed]:not(:hover)) .sidebar-header {
+      padding: 0 14px;
+      justify-content: flex-start;
+    }
+
+    .compose-btn {
+      flex: 1;
+      height: 36px;
+      font-size: 14px;
+      overflow: hidden;
+      --btn-padding: 8px 16px;
+      --btn-gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .compose-btn::part(button) {
+      width: 100%;
+      height: 100%;
+    }
+
+    .compose-text {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: max-width 0.2s ease, opacity 0.2s ease, margin 0.2s ease;
+      max-width: 150px;
+    }
+
+    :host([collapsed]:not(:hover)) .compose-btn {
+      --btn-padding: 8px;
+      --btn-gap: 0px;
+    }
+
+    :host([collapsed]:not(:hover)) .compose-text {
+      max-width: 0;
+      opacity: 0;
+      margin-left: 0;
+    }
+
+    .sidebar-content {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 12px 8px;
+    }
+
+    :host([collapsed]) .sidebar-content {
+      transition: opacity 0.2s ease;
+    }
+
+    .sidebar-scroll-content {
+      width: calc(max(100%, 215px));
+      margin-left: calc(min(0px, (100% - 215px) * 50 / 167));
+    }
+
+    :host([collapsed]:not(:hover)) .sidebar-content {
+      opacity: 0.5;
+    }
+
+    :host([collapsed]:not(:hover)) .folder-item {
+      border-radius: 6px 0 0 6px;
+    }
+
+    .folder-item {
+      display: flex;
+      align-items: center;
+      position: relative;
+      height: 36px;
+      padding: 0 8px;
+      box-sizing: border-box;
+      border-radius: 6px;
+      cursor: pointer;
+      color: var(--text-color);
+      margin-bottom: 2px;
+      user-select: none;
+      transition: background 0.15s;
+    }
+
+    @media (hover: hover) {
+      .folder-item:hover {
+        background: var(--hover-color);
+      }
+    }
+
+    .folder-item.active {
+      background: var(--bg-selected);
+      color: var(--accent-hover);
+      font-weight: 600;
+    }
+
+    .folder-item .icon {
+      color: var(--text-muted);
+    }
+    
+    .folder-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .folder-badge {
+      background: rgba(0,0,0,0.08);
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    
+    .folder-item.active .folder-badge {
+      background: rgba(255,255,255,0.2);
+    }
+
+    .folder-children {
+      margin-left: 12px;
+    }
+
+    .folder-actions {
+      display: none;
+      align-items: center;
+      padding-left: 8px;
+      margin-left: auto;
+      margin-right: -4px;
+    }
+
+    .folder-item.active .folder-actions {
+      display: none; /* Only show on hover for desktop */
+    }
+
+    @media (hover: hover) {
+      .folder-item:hover .folder-actions {
+        display: flex;
+      }
+      .folder-item.has-actions:hover .folder-badge {
+        display: none;
+      }
+    }
+
+    .folder-actions:focus-within,
+    .folder-actions.popup-open {
+      display: flex;
+    }
+
+    .folder-actions:focus-within ~ .folder-badge,
+    .folder-actions.popup-open ~ .folder-badge {
+      display: none;
+    }
+
+    @media (max-width: 768px) {
+      .folder-item.active .folder-actions {
+        display: flex;
+        position: static;
+        transform: none;
+        background: transparent;
+      }
+      .folder-item.active .folder-badge {
+        display: block; /* keep badge visible alongside actions on mobile */
+      }
+    }
+
+    .sidebar-header-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px 4px 14px;
+      font-size: 12px;
+      text-transform: uppercase;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+    }
+
+    .folder-separator {
+      height: 1px;
+      background: var(--border-color);
+      margin: 8px 12px;
+    }
+
+    .icon-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      border-radius: 4px;
+    }
+    
+    .icon-btn:hover {
+      background: var(--hover-color);
+      color: var(--text-color);
+    }
+
+    .icon {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
+    .folder-icon {
+      margin-right: 10px;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+    }
+
+    /* Standard icon colors */
+    .icon-inbox { color: var(--icon-inbox, #3b82f6); }
+    .icon-sent { color: var(--icon-sent, #10b981); }
+    .icon-drafts { color: var(--icon-drafts, #f59e0b); }
+    .icon-spam { color: var(--icon-spam, #ef4444); }
+    .icon-trash { color: var(--icon-trash, #6b7280); }
+    .icon-archive { color: var(--icon-archive, #8b5cf6); }
+    .icon-default { color: var(--icon-default, #9ca3af); }
+
+    .sidebar-footer {
+      padding: 0 12px;
+      height: 57px;
+      box-sizing: border-box;
+      flex-shrink: 0;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 8px;
+    }
+
+    .footer-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--border-color);
+      margin: 0 4px;
+      flex-shrink: 0;
+    }
+
+    :host([collapsed]:not(:hover)) .footer-divider,
+    :host([collapsed]:not(:hover)) .new-folder-btn {
+      display: none;
+    }
+
+    @media (max-width: 768px) {
+      .collapse-btn,
+      .footer-divider {
+        display: none;
+      }
+    }
+  `];
+
+  private toggleFolder(e: Event | null, folderName: string) {
+    if (e) e.stopPropagation();
+    this.dispatchEvent(new CustomEvent('toggle-folder', {
+      detail: { folderName }
+    }));
+  }
+
+  private handleScroll = (e: Event) => {
+    const target = e.target as HTMLElement;
+    this.isScrolled = target.scrollTop > 0;
+  };
+
+  private selectMailbox(name: string) {
+    this.dispatchEvent(new CustomEvent('select-mailbox', {
+      detail: { name }
+    }));
+  }
+
+  private handleCreateSubmit(e: CustomEvent) {
+    let name = e.detail.name;
+    if (name) {
+      if (this.parentForNewFolder) {
+        const parentMb = this.mailboxes.find(m => (m.Name || m.Mailbox) === this.parentForNewFolder);
+        let delimiter = '.';
+        if (parentMb) {
+          const delim = parentMb.Delimiter || parentMb.Delim;
+          delimiter = typeof delim === 'number' ? String.fromCharCode(delim) : (delim || '.');
+        }
+        name = `${this.parentForNewFolder}${delimiter}${name}`;
+        
+        this.dispatchEvent(new CustomEvent('expand-folder', {
+          detail: { folderName: this.parentForNewFolder }
+        }));
+      }
+      mailboxOperations.createMailbox(name);
+    }
+    this.showCreatePrompt = false;
+    this.parentForNewFolder = '';
+  }
+
+  private async handleRenameSubmit(e: CustomEvent) {
+    const newName = e.detail.name;
+    if (newName && this.mailboxToRename) {
+      const oldName = this.mailboxToRename;
+      this.showRenamePrompt = false;
+      this.mailboxToRename = '';
+      const success = await mailboxOperations.renameMailbox(oldName, newName);
+      if (success) {
+        if (this.currentMailbox === oldName) {
+          this.selectMailbox(newName);
+        }
+        
+        const undoFn = async () => {
+          await mailboxOperations.renameMailbox(newName, oldName);
+          if (this.currentMailbox === newName) {
+            this.selectMailbox(oldName);
+          }
+        };
+        
+        this.dispatchEvent(new CustomEvent('toast', {
+          detail: {
+            message: this.i18nStore?.t('toast.folderRenamed'),
+            actionLabel: this.i18nStore?.t('toast.undo'),
+            actionFn: undoFn,
+            duration: 5000
+          },
+          bubbles: true,
+          composed: true
+        }));
+      }
+    } else {
+      this.showRenamePrompt = false;
+      this.mailboxToRename = '';
+    }
+  }
+
+  private async handleDeleteConfirm() {
+    if (this.mailboxToDelete) {
+      const success = await mailboxOperations.deleteMailbox(this.mailboxToDelete);
+      if (success) {
+        if (this.currentMailbox.startsWith(this.mailboxToDelete)) {
+          this.selectMailbox(FOLDER_INBOX);
+        }
+        
+        this.dispatchEvent(new CustomEvent('toast', {
+          detail: {
+            message: this.i18nStore?.t('toast.folderPermanentlyDeleted'),
+            duration: 3000
+          },
+          bubbles: true,
+          composed: true
+        }));
+      }
+    }
+    this.showDeleteConfirm = false;
+    this.mailboxToDelete = '';
+  }
+
+  private async handleMoveToTrashConfirm() {
+    if (this.mailboxToDelete) {
+      const mb = this.mailboxes.find(m => (m.Name || m.Mailbox) === this.mailboxToDelete);
+      let delimiter = '.';
+      if (mb) {
+        const delim = mb.Delimiter || mb.Delim;
+        delimiter = typeof delim === 'number' ? String.fromCharCode(delim) : (delim || '.');
+      }
+      
+      const parts = this.mailboxToDelete.split(delimiter);
+      const leafName = parts[parts.length - 1];
+      const newName = `Trash${delimiter}${leafName}`;
+      
+      const success = await mailboxOperations.renameMailbox(this.mailboxToDelete, newName);
+      if (success) {
+        if (this.currentMailbox.startsWith(this.mailboxToDelete)) {
+          this.selectMailbox(FOLDER_INBOX);
+        }
+        
+        const oldName = this.mailboxToDelete;
+        const undoFn = async () => {
+          await mailboxOperations.renameMailbox(newName, oldName);
+        };
+        
+        this.dispatchEvent(new CustomEvent('toast', {
+          detail: {
+            message: this.i18nStore?.t('toast.folderMovedToTrash'),
+            actionLabel: this.i18nStore?.t('toast.undo'),
+            actionFn: undoFn,
+            duration: 5000
+          },
+          bubbles: true,
+          composed: true
+        }));
+      }
+    }
+    this.showMoveToTrashConfirm = false;
+    this.mailboxToDelete = '';
+  }
+
+  render() {
+    const standardOrder = [FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH];
+    const stdMap: Record<string, { icon: string, colorClass: string, label: string }> = {
+      [FOLDER_INBOX]: { icon: 'tray', colorClass: 'icon-inbox', label: this.i18nStore?.t('folderList.inbox') },
+      [FOLDER_DRAFTS]: { icon: 'fileText', colorClass: 'icon-drafts', label: this.i18nStore?.t('folderList.drafts') },
+      [FOLDER_SENT]: { icon: 'paperPlaneTilt', colorClass: 'icon-sent', label: this.i18nStore?.t('folderList.sent') },
+      [FOLDER_ARCHIVE]: { icon: 'archiveBox', colorClass: 'icon-archive', label: this.i18nStore?.t('folderList.archive') },
+      [FOLDER_ARCHIVES]: { icon: 'archiveBox', colorClass: 'icon-archive', label: this.i18nStore?.t('folderList.archive') },
+      [FOLDER_SPAM]: { icon: 'warningDiamond', colorClass: 'icon-spam', label: this.i18nStore?.t('folderList.spam') },
+      [FOLDER_JUNK]: { icon: 'warningDiamond', colorClass: 'icon-spam', label: this.i18nStore?.t('folderList.junk') },
+      [FOLDER_TRASH]: { icon: 'trash', colorClass: 'icon-trash', label: this.i18nStore?.t('folderList.trash') }
+    };
+
+    type TreeNode = { name: string; fullName: string; mb?: any; children: Record<string, TreeNode> };
+    const root: Record<string, TreeNode> = {};
+
+    this.mailboxes.forEach(mb => {
+      const fullName = mb.Name || mb.Mailbox || '';
+      const delim = mb.Delimiter || mb.Delim;
+      const delimiter = typeof delim === 'number' ? String.fromCharCode(delim) : (delim || '.');
+      const parts = fullName.split(delimiter);
+
+      let currentLevel = root;
+      let pathAcc = '';
+
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        pathAcc = i === 0 ? part : pathAcc + delimiter + part;
+
+        if (!currentLevel[part]) {
+          currentLevel[part] = {
+            name: part,
+            fullName: pathAcc,
+            children: {}
+          };
+        }
+        if (i === parts.length - 1) {
+          currentLevel[part].mb = mb;
+        }
+        currentLevel = currentLevel[part].children;
+      }
+    });
+
+    const standardNodes: TreeNode[] = [];
+    const customNodes: TreeNode[] = [];
+
+    Object.values(root).forEach(node => {
+      if (standardOrder.includes(node.name)) {
+        standardNodes.push(node);
+      } else {
+        customNodes.push(node);
+      }
+    });
+
+    standardNodes.sort((a, b) => standardOrder.indexOf(a.name) - standardOrder.indexOf(b.name));
+    customNodes.sort((a, b) => a.name.localeCompare(b.name));
+
+    const renderTree = (nodes: TreeNode[], depth: number = 0): TemplateResult[] => {
+      return nodes.map(node => {
+        const hasChildren = Object.keys(node.children).length > 0;
+        const isExpanded = this.expandedFolders.has(node.fullName);
+        const isActive = this.currentMailbox === node.fullName;
+
+        let icon = renderIcon('folder');
+        let colorClass = 'icon-default';
+        let label = node.name;
+
+        if (depth === 0 && stdMap[node.name]) {
+          icon = renderIcon(stdMap[node.name].icon);
+          colorClass = stdMap[node.name].colorClass;
+          label = stdMap[node.name].label;
+        }
+
+        const unseenCount = node.mb?.Unseen || 0;
+        const attrs: string[] = node.mb?.Attrs || [];
+        const isNoSelect = attrs.some(a => typeof a === 'string' && a.toLowerCase() === '\\noselect');
+
+        const handleClick = (e: Event) => {
+          if (isNoSelect) {
+            if (hasChildren) {
+              this.toggleFolder(e, node.fullName);
+            }
+          } else {
+            this.selectMailbox(node.fullName);
+          }
+        };
+
+        const hasActions = depth > 0 || !standardOrder.includes(node.name);
+
+        return html`
+          <div 
+            class="folder-item ${isActive ? 'active' : ''} ${isNoSelect ? 'no-select' : ''} ${hasActions ? 'has-actions' : ''}"
+            title=${label}
+            @click=${handleClick}
+          >
+            <alps-icon-btn 
+              class="folder-toggle-btn" 
+              icon=${isExpanded ? 'caretDown' : 'caretRight'}
+              style="visibility: ${hasChildren ? 'visible' : 'hidden'}; --btn-padding: 2px;" 
+              @click=${(e: Event) => {
+                e.stopPropagation();
+                if (hasChildren) this.toggleFolder(e, node.fullName);
+              }}
+            ></alps-icon-btn>
+            
+            <div class="folder-icon ${colorClass}">${icon}</div>
+            <div class="folder-name">${label}</div>
+            
+            ${hasActions ? html`
+              <div class="folder-actions ${this.activeKebabMenu === node.fullName ? 'popup-open' : ''}" @click=${(e: Event) => e.stopPropagation()}>
+                <alps-popup 
+                  align="right" 
+                  position="bottom"
+                  @popup-open=${() => { this.activeKebabMenu = node.fullName; }}
+                  @popup-close=${() => { if (this.activeKebabMenu === node.fullName) this.activeKebabMenu = null; }}
+                >
+                  <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" style="--btn-padding: 8px;"></alps-icon-btn>
+                  <button class="dropdown-item" @click=${(e: Event) => {
+              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+              if (popup) popup.close();
+              this.parentForNewFolder = node.fullName;
+              this.showCreatePrompt = true;
+            }}>
+                    ${renderIcon('folderPlus')} <span class="item-text">${this.i18nStore?.t('folderList.createSubfolder')}</span>
+                  </button>
+                  <button class="dropdown-item" @click=${(e: Event) => {
+              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+              if (popup) popup.close();
+              this.mailboxToRename = node.fullName;
+              this.showRenamePrompt = true;
+            }}>
+                    ${renderIcon('pen')} <span class="item-text">${this.i18nStore?.t('folderList.rename')}</span>
+                  </button>
+                  <button class="dropdown-item" @click=${(e: Event) => {
+              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+              if (popup) popup.close();
+              if (node.mb?.Subscribed) mailboxOperations.unsubscribeMailbox(node.fullName);
+              else mailboxOperations.subscribeMailbox(node.fullName);
+            }}>
+                    ${renderIcon(node.mb?.Subscribed ? 'eyeSlash' : 'eye')} <span class="item-text">${node.mb?.Subscribed ? 'Unsubscribe' : 'Subscribe'}</span>
+                  </button>
+                  <div class="dropdown-divider"></div>
+                  <button class="dropdown-item" @click=${(e: Event) => {
+              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+              if (popup) popup.close();
+              this.mailboxToDelete = node.fullName;
+              if (node.fullName.toLowerCase().startsWith('trash')) {
+                this.showDeleteConfirm = true;
+              } else {
+                this.showMoveToTrashConfirm = true;
+              }
+            }}>
+                    ${renderIcon('trash')} <span class="item-text">${this.i18nStore?.t('folderList.delete')}</span>
+                  </button>
+                </alps-popup>
+              </div>
+            ` : ''}
+
+            ${unseenCount > 0 ? html`<div class="folder-badge">${unseenCount}</div>` : ''}
+          </div>
+          
+          ${hasChildren && isExpanded ? html`
+            <div class="folder-children">
+              ${renderTree(Object.values(node.children).sort((a, b) => a.name.localeCompare(b.name)), depth + 1)}
+            </div>
+          ` : ''}
+        `;
+      });
+    };
+
+    return html`
+      <div class="sidebar-wrapper">
+        <alps-toolbar class="sidebar-header" ?scrolled=${this.isScrolled}>
+          <alps-button 
+            variant="primary"
+            icon="pen"
+            class="compose-btn" 
+            ?disabled=${(this.composeStore?.getState()?.activeComposers?.length || 0) >= 3}
+            title=${this.i18nStore?.t('folderList.compose')}
+            @click=${() => this.dispatchEvent(new CustomEvent('compose'))}
+          >
+            <span class="compose-text">${this.i18nStore?.t('folderList.compose')}</span>
+          </alps-button>
+        </alps-toolbar>
+        <div class="sidebar-content" @scroll=${this.handleScroll}>
+          <div class="sidebar-scroll-content">
+            ${renderTree(standardNodes)}
+            ${standardNodes.length > 0 && customNodes.length > 0 ? html`
+              <div class="folder-separator"></div>
+            ` : ''}
+            <div class="sidebar-header-title">
+              <span>${this.i18nStore?.t('folderList.title')}</span>
+            </div>
+            ${renderTree(customNodes)}
+          </div>
+        </div>
+        <div class="sidebar-footer">
+          <alps-icon-btn 
+            class="collapse-btn"
+            icon="sidebar"
+            title=${this.collapsed ? (this.i18nStore?.t('folderList.expandSidebar')) : (this.i18nStore?.t('folderList.collapseSidebar'))}
+            @click=${() => this.dispatchEvent(new CustomEvent('toggle-collapse'))}
+            style="--btn-padding: 8px; --icon-size: 20px;"
+          ></alps-icon-btn>
+          <div class="footer-divider"></div>
+          <alps-icon-btn 
+            class="new-folder-btn"
+            icon="folderPlus"
+            title="${this.i18nStore?.t('folderList.createFolder')}"
+            @click=${() => {
+              this.parentForNewFolder = '';
+              this.showCreatePrompt = true;
+            }}
+            style="--btn-padding: 8px; --icon-size: 20px;"
+          ></alps-icon-btn>
+        </div>
+      </div>
+
+      ${this.showCreatePrompt ? html`
+        <ui-prompt
+          title=${this.parentForNewFolder ? 
+            (this.i18nStore?.t('folderList.createSubfolderUnder')?.replace('{folder}', this.parentForNewFolder)) : 
+            this.i18nStore?.t('folderList.createFolder')}
+          confirmText="Create"
+          .fields=${[{ id: 'name', label: 'Folder Name', autofocus: true }]}
+          @submit=${this.handleCreateSubmit}
+          @cancel=${() => {
+            this.showCreatePrompt = false;
+            this.parentForNewFolder = '';
+          }}
+        ></ui-prompt>
+      ` : ''}
+
+      ${this.showRenamePrompt ? html`
+        <ui-prompt
+          title="${this.i18nStore?.t('folderList.renameFolder')}"
+          confirmText="Rename"
+          .fields=${[{ id: 'name', label: 'New Name', autofocus: true, value: this.mailboxToRename }]}
+          @submit=${this.handleRenameSubmit}
+          @cancel=${() => this.showRenamePrompt = false}
+        ></ui-prompt>
+      ` : ''}
+
+      ${this.showMoveToTrashConfirm ? html`
+        <ui-confirm
+          title=${this.i18nStore?.t('folderList.moveToTrash')}
+          message=${this.i18nStore?.t('folderList.moveToTrashConfirm')?.replace('{folder}', this.mailboxToDelete)}
+          confirmText=${this.i18nStore?.t('folderList.moveToTrash')}
+          isDanger=${false}
+          @confirm=${this.handleMoveToTrashConfirm}
+          @cancel=${() => this.showMoveToTrashConfirm = false}
+        ></ui-confirm>
+      ` : ''}
+
+      ${this.showDeleteConfirm ? html`
+        <ui-confirm
+          title="${this.i18nStore?.t('folderList.deleteFolder')}"
+          message=${this.i18nStore?.t('folderList.deleteFolderConfirm')?.replace('{folder}', this.mailboxToDelete)}
+          confirmText="Delete"
+          isDanger=${true}
+          @confirm=${this.handleDeleteConfirm}
+          @cancel=${() => this.showDeleteConfirm = false}
+        ></ui-confirm>
+      ` : ''}
+    `;
+  }
+}
