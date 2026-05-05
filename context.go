@@ -88,8 +88,6 @@ func (c *Context) Redirect(code int, url string) error {
 	return ErrRedirect // Signal that redirect was sent
 }
 
-
-
 // JSON sends a JSON response.
 func (c *Context) JSON(code int, i interface{}) error {
 	c.Response.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -173,39 +171,70 @@ func (c *Context) SetSessionWithExpiry(s *Session, persistent bool) {
 		SameSite: http.SameSiteStrictMode,
 		Secure:   c.IsTLS(),
 	}
+	frontendCookie := http.Cookie{
+		Name:     "alps_logged_in",
+		Path:     "/",
+		HttpOnly: false,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   c.IsTLS(),
+	}
+
 	if s != nil {
 		cookie.Value = s.token
+		frontendCookie.Value = "1"
 		if persistent {
-			cookie.Expires = time.Now().Add(30 * 24 * time.Hour)
+			expires := time.Now().Add(30 * 24 * time.Hour)
+			cookie.Expires = expires
+			frontendCookie.Expires = expires
 		}
 		// If not persistent, no Expires set → browser session cookie
 	} else {
 		cookie.Expires = aLongTimeAgo // unset the cookie
+		frontendCookie.Expires = aLongTimeAgo
 	}
 	c.SetCookie(&cookie)
+	c.SetCookie(&frontendCookie)
 }
 
 type loginToken struct {
-	Username string
-	Password string
+	Username    string
+	Password    string
+	Verified2FA bool
 }
 
-func (c *Context) SetLoginToken(username, password string) {
+func (c *Context) SetLoginToken(username, password string, verified2FA bool, persistent bool) {
 	cookie := http.Cookie{
-		Expires:  time.Now().Add(30 * 24 * time.Hour),
 		Name:     loginTokenCookieName,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
 		Secure:   c.IsTLS(),
 		Path:     "/",
 	}
+	frontendCookie := http.Cookie{
+		Name:     "alps_has_login_token",
+		Path:     "/",
+		HttpOnly: false,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   c.IsTLS(),
+	}
+
+	if persistent {
+		expires := time.Now().Add(30 * 24 * time.Hour)
+		cookie.Expires = expires
+		frontendCookie.Expires = expires
+	}
 	if username == "" {
 		cookie.Expires = aLongTimeAgo // unset the cookie
+		frontendCookie.Expires = aLongTimeAgo
 		c.SetCookie(&cookie)
+		c.SetCookie(&frontendCookie)
 		return
 	}
 
-	loginToken := loginToken{username, password}
+	frontendCookie.Value = "1"
+	c.SetCookie(&frontendCookie)
+
+	loginToken := loginToken{username, password, verified2FA}
 	payload, err := json.Marshal(loginToken)
 	if err != nil {
 		panic(err) // Should never happen
@@ -225,15 +254,15 @@ func (c *Context) SetLoginToken(username, password string) {
 	c.SetCookie(&cookie)
 }
 
-func (c *Context) GetLoginToken() (string, string) {
+func (c *Context) GetLoginToken() (string, string, bool) {
 	cookie, err := c.Cookie(loginTokenCookieName)
 	if err != nil || cookie == nil {
-		return "", ""
+		return "", "", false
 	}
 
 	fkey := c.Server.Options.LoginKey
 	if fkey == nil {
-		return "", ""
+		return "", "", false
 	}
 
 	bytes := fernet.VerifyAndDecrypt([]byte(cookie.Value), 24*time.Hour*30, []*fernet.Key{fkey})
@@ -242,8 +271,8 @@ func (c *Context) GetLoginToken() (string, string) {
 		// This is expected behavior when admin rotates the login_key (security feature)
 		c.Server.logger.Debugf("Failed to decrypt login token cookie (key rotation, expiry, or invalid token)")
 		// Clear the invalid cookie
-		c.SetLoginToken("", "")
-		return "", ""
+		c.SetLoginToken("", "", false, false)
+		return "", "", false
 	}
 
 	var token loginToken
@@ -251,9 +280,9 @@ func (c *Context) GetLoginToken() (string, string) {
 	if err != nil {
 		// This should never happen unless cookie was corrupted
 		c.Server.logger.Printf("Warning: login token cookie unmarshal failed: %v", err)
-		c.SetLoginToken("", "")
-		return "", ""
+		c.SetLoginToken("", "", false, false)
+		return "", "", false
 	}
 
-	return token.Username, token.Password
+	return token.Username, token.Password, token.Verified2FA
 }

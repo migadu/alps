@@ -1,20 +1,19 @@
 export const en = {
   settings: {
     title: 'Settings',
-    back: 'Back',
     categories: {
       general: 'General',
       identity: 'Identity',
       reading: 'Reading & Composing',
       appearance: 'Appearance',
       localization: 'Localization',
-      password: 'Password'
+      accounts: 'Linked Accounts',
+      webauthn: '2FA / WebAuthn'
     },
     loading: 'Loading...',
     placeholderName: 'Your Name',
     placeholderReplyTo: 'reply@example.com',
     general: {
-      title: 'General',
       checkMailInterval: 'Check mail interval',
       checkMailIntervalDesc: 'How often to automatically check for new mail.',
       autoLogout: 'Auto-logout',
@@ -33,7 +32,6 @@ export const en = {
       hours6: '6 hours',
     },
     identity: {
-      title: 'Identity',
       displayName: 'Display Name',
       displayNameDesc: 'The name shown to recipients when you send an email.',
       signature: 'Signature',
@@ -43,7 +41,6 @@ export const en = {
       bccMyself: 'Always BCC myself on outgoing mail',
     },
     reading: {
-      title: 'Reading & Composing',
       messagesPerPage: 'Messages per page',
       preferredView: 'Preferred View',
       preferredViewDesc: 'How to display messages that have both HTML and Plain Text.',
@@ -67,7 +64,6 @@ export const en = {
       sortDate: 'Received Date'
     },
     appearance: {
-      title: 'Appearance',
       colorTheme: 'Color Theme',
       colorThemeDesc: 'Select your preferred color palette.',
       themeMode: 'Theme Mode',
@@ -88,7 +84,6 @@ export const en = {
       ultraCompact: 'Ultra Compact'
     },
     localization: {
-      title: 'Localization',
       language: 'Language',
       timeFormat: 'Time Format',
       dateFormat: 'Date Format',
@@ -100,18 +95,54 @@ export const en = {
       spanish: 'Español',
       serbian: 'Српски',
       serbianLatin: 'Srpski (Latinica)',
-      french: 'Français'
+      french: 'Français',
+      portuguese: 'Português'
+    }
+  },
+  linkedAccounts: {
+    description: 'Connect another account to quickly switch between them without logging out.',
+    noAccounts: 'No linked accounts.',
+    remove: 'Remove',
+    addTitle: 'Link An Account',
+    linkAccount: 'Link Account',
+    addedSuccess: 'Account linked successfully.',
+    addError: 'Failed to add account. Please check the credentials.',
+    removeConfirm: 'Are you sure you want to remove this linked account?',
+    removedSuccess: 'Account removed.',
+    removeError: 'Failed to remove account.',
+    switchError: 'Failed to switch account. The password might have changed.'
+  },
+  webauthn: {
+    title: 'Security Key Verification',
+    instruction: 'Please use your security key to complete login.',
+    not_supported: 'WebAuthn is not supported in your browser.',
+    requesting: 'Requesting authentication...',
+    waiting_for_key: 'Waiting for security key...',
+    verifying: 'Verifying...',
+    success: 'Verification successful, redirecting...',
+    verify_btn: 'Verify Identity',
+    verifying_btn: 'Verifying...',
+    back_to_login: 'Back to Login',
+    key_name_placeholder: 'Device name (e.g. YubiKey)',
+    name_key_title: 'Name Security Key',
+    name_key_label: 'Device Name',
+    add_key: 'Add Security Key',
+    trust_linked: 'Trust Linked Accounts',
+    trust_linked_desc: 'If enabled, you can switch to this account from a linked account without providing a 2FA credential again.',
+    trust_linked_checkbox: 'Allow switching to this account without 2FA',
+    confirm_remove: 'Are you sure you want to remove this security key?',
+    errors: {
+      begin_failed: 'Failed to initiate authentication.',
+      invalid_options: 'Invalid authentication options received.',
+      verification_failed: 'Verification failed. Please try again.',
+      remove_failed: 'Failed to remove the security key.',
+      general: 'An error occurred.',
     },
-    password: {
-      title: 'Password',
-      changePassword: 'Change Password',
-      changePasswordDesc: 'Update your account password.',
-      oldPassword: 'Current Password',
-      newPassword: 'New Password',
-      confirmPassword: 'Confirm New Password',
-      updatePassword: 'Update Password',
-      fillAllFields: 'Please fill in all fields.',
-      passwordMismatch: 'New passwords do not match.'
+    settings: {
+      group_desc: 'Secure your account with a hardware security key or biometrics.',
+      keys_title: 'Security Keys',
+      added: 'Added',
+      remove_btn: 'Remove'
     }
   },
   print: {
@@ -155,7 +186,6 @@ export const en = {
     noMessages: 'No messages',
     loading: 'Loading...',
     unknownSender: 'Unknown Sender',
-    noRecipient: '(No Recipient)',
     unknown: 'Unknown',
     noSubject: '(No Subject)',
     hasAttachments: 'Has attachments',
@@ -165,46 +195,6 @@ export const en = {
     clearSearch: 'Clear search'
   },
   composer: {
-    sizeSmall: 'Small',
-    sizeNormal: 'Normal',
-    sizeLarge: 'Large',
-    sizeHuge: 'Huge',
-    alignLeft: 'Left',
-    alignCenter: 'Center',
-    alignRight: 'Right',
-    changeLink: 'Change',
-    removeLink: 'Remove',
-    linkText: 'Text',
-    linkUrl: 'Link',
-    cancel: 'Cancel',
-    apply: 'Apply',
-    fontSize: 'Font Size',
-    bold: 'Bold',
-    italic: 'Italic',
-    underline: 'Underline',
-    textColor: 'Text Color',
-    align: 'Align',
-    numberedList: 'Numbered List',
-    bulletedList: 'Bulleted List',
-    indentMore: 'Indent More',
-    indentLess: 'Indent Less',
-    moreFormatting: 'More Formatting',
-    placeholder: 'Write your message...',
-    saving: 'Saving...',
-    autosaved: 'Autosaved',
-    to: 'To',
-    cc: 'Cc',
-    bcc: 'Bcc',
-    minimize: 'Minimize',
-    expand: 'Expand',
-    restore: 'Restore',
-    discardDraft: 'Discard Draft?',
-    saveAndClose: 'Save & close',
-    subjectPlaceholder: 'Subject',
-    toggleFormatting: 'Toggle Formatting Options',
-    attachFiles: 'Attach Files',
-    insertLink: 'Insert Link',
-    insertEmoji: 'Insert Emoji',
     attachmentsWait: 'Please wait for attachments to finish uploading before sending.',
     sending: 'Message is being sent...',
     undo: 'Undo',
@@ -219,11 +209,8 @@ export const en = {
     forward: 'Forward',
     to: 'To:',
     cc: 'Cc:',
-    from: 'From:',
-    date: 'Date:',
     undisclosed: 'Undisclosed',
     loadingMessage: 'Loading message...',
-    errorLoading: 'Error loading message.',
     remoteContentWarning: 'This message contains remote content. For your privacy, it has been blocked.',
     loadRemoteContent: 'Load remote content',
     isDraft: 'This is a draft message.',
@@ -243,7 +230,6 @@ export const en = {
     markRead: 'Mark as read',
     star: 'Star',
     moveTo: 'Copy/Move to...',
-    more: 'More',
     print: 'Print',
     showPlaintext: 'Show plaintext',
     showHtml: 'Show HTML',
@@ -276,7 +262,6 @@ export const en = {
     fail: 'FAIL',
   },
   folderSelector: {
-    title: 'Move / Copy',
     filter: 'Filter folders...',
     noResults: 'No matching folders',
     actionMove: 'Move to',
@@ -288,8 +273,7 @@ export const en = {
   navigation: {
     messages: 'Messages',
     contacts: 'Contacts',
-    calendar: 'Calendar',
-    searchPlaceholder: 'Search messages...'
+    calendar: 'Calendar'
   },
   userMenu: {
     settings: 'Settings',
@@ -303,13 +287,7 @@ export const en = {
     zeroMessages: '0 messages'
   },
   toast: {
-    messageMovedToTrash: 'Message moved to Trash',
     messagePermanentlyDeleted: 'Message permanently deleted',
-    messageMovedToArchive: 'Message moved to Archive',
-    messageMovedToSpam: 'Message moved to Spam',
-    messageMovedToInbox: 'Message moved to Inbox',
-    messageMoved: 'Message moved to {folder}',
-    messageCopied: 'Message copied to {folder}',
     draftDiscarded: 'Draft discarded',
     folderRenamed: 'Folder renamed',
     folderMovedToTrash: 'Folder moved to Trash',
@@ -333,8 +311,17 @@ export const en = {
     title: 'Connection Lost',
     description: 'Network connectivity lost',
     tryingAgain: 'Trying again in {seconds} seconds...'
+  },
+  general: {
+    cancel: 'Cancel',
+    save: 'Save',
+    optional: 'Optional'
   }
 };
 
-export type TranslationDictionary = typeof en;
+export type DeepPartial<T> = T extends object ? {
+  [P in keyof T]?: DeepPartial<T[P]>;
+} : T;
+
+export type TranslationDictionary = DeepPartial<typeof en>;
 export default en;

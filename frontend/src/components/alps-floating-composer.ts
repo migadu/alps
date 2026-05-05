@@ -10,6 +10,7 @@ import { messageSync } from '../services/message-sync';
 import './alps-address-input.js';
 import './alps-message-composer.js';
 import './alps-button.js';
+import './alps-input.js';
 import './ui-confirm.js';
 import './alps-popup.js';
 import { AlpsPopup } from './alps-popup.js';
@@ -659,20 +660,6 @@ export class AlpsFloatingComposer extends LitElement {
       gap: 8px;
       margin-top: 4px;
     }
-    .popup-btn {
-      padding: 4px 12px;
-      border: 1px solid var(--border-color);
-      background: transparent;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 13px;
-      color: var(--text-primary);
-    }
-    .popup-btn.primary {
-      background: var(--accent-color);
-      color: white;
-      border-color: var(--accent-color);
-    }
 
     .window-frame {
       display: flex;
@@ -1101,13 +1088,13 @@ export class AlpsFloatingComposer extends LitElement {
                   <div class="popup-form" @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._handleLinkSubmit(); }}>
                     ${this.linkPromptFields.map(f => html`
                       <div class="field-group">
-                        <label for="link-${f.id}">${f.label}</label>
-                        <input id="${f.id}" type="text" placeholder="${f.placeholder}" />
+                        <label for=${f.id}>${f.label}</label>
+                        <alps-input inputId=${f.id} type="text" placeholder=${f.placeholder}></alps-input>
                       </div>
                     `)}
                     <div class="popup-actions">
-                      <button class="popup-btn" @click=${() => (this.shadowRoot?.querySelector('#linkPopup') as AlpsPopup)?.close()}>Cancel</button>
-                      <button class="popup-btn primary" @click=${this._handleLinkSubmit}>Apply</button>
+                      <alps-button variant="text" @click=${() => (this.shadowRoot?.querySelector('#linkPopup') as AlpsPopup)?.close()}>Cancel</alps-button>
+                      <alps-button variant="normal" @click=${this._handleLinkSubmit}>Apply</alps-button>
                     </div>
                   </div>
                 </alps-popup>

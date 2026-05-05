@@ -1,5 +1,5 @@
 import { html, css, LitElement } from 'lit';
-import { customElement, state } from 'lit/decorators.js';
+import { customElement, state, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import type { SettingsState } from '../store/settings-store';
@@ -8,11 +8,11 @@ import { renderIcon } from '../utils/ui';
 import '../components/alps-header';
 import '../components/alps-sidebar';
 import '../components/alps-category-item';
+import '../components/settings-accounts';
+import '../components/alps-webauthn-settings';
 
 import { registry } from '../plugin-registry';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
-
-type SettingsCategory = 'general' | 'identity' | 'reading' | 'appearance' | 'localization' | string;
 
 @customElement('settings-page')
 export class SettingsPage extends LitElement {
@@ -22,7 +22,7 @@ export class SettingsPage extends LitElement {
   @consume({ context: i18nContext })
   i18nStore!: I18nStore;
 
-  @state() private currentCategory: SettingsCategory = 'general';
+  @property({ type: String }) category = 'general';
   @state() private settingsState!: SettingsState;
   @state() private isMobile = window.innerWidth <= 768;
   @state() private mobileSidebarOpen = false;
@@ -216,20 +216,22 @@ export class SettingsPage extends LitElement {
     switch (category) {
       case 'general': return this.i18nStore?.t('settings.categories.general');
       case 'identity': return this.i18nStore?.t('settings.categories.identity');
+      case 'webauthn': return this.i18nStore?.t('settings.categories.webauthn');
+      case 'accounts': return this.i18nStore?.t('settings.categories.accounts');
       case 'reading': return this.i18nStore?.t('settings.categories.reading');
       case 'appearance': return this.i18nStore?.t('settings.categories.appearance');
       case 'localization': return this.i18nStore?.t('settings.categories.localization');
       default: 
         const pluginTab = registry.getSettingsTabs().find(t => t.id === category);
         if (pluginTab) {
-          return this.i18nStore?.t(pluginTab.labelKey) || pluginTab.labelKey;
+          return this.i18nStore?.t(pluginTab.labelKey);
         }
         return category;
     }
   }
 
-  private selectCategory(category: SettingsCategory) {
-    this.currentCategory = category;
+  private selectCategory(category: string) {
+    window.location.hash = `/settings/${category}`;
     if (this.isMobile) {
       this.mobileSidebarOpen = false;
     }
@@ -279,7 +281,7 @@ export class SettingsPage extends LitElement {
             </button>
           ` : ''}
         </div>
-        <div slot="center" class="settings-title">${this.i18nStore?.t('settings.title')} / ${this.getCategoryLabel(this.currentCategory)}</div>
+        <div slot="center" class="settings-title">${this.i18nStore?.t('settings.title')} / ${this.getCategoryLabel(this.category)}</div>
       </alps-header>
       <div class="app-container">
         <alps-sidebar
@@ -289,62 +291,78 @@ export class SettingsPage extends LitElement {
           @close-sidebar=${() => this.mobileSidebarOpen = false}
         >
           <alps-category-item 
-            ?active=${this.currentCategory === 'general'}
+            ?active=${this.category === 'general'}
             @click=${() => this.selectCategory('general')}
             icon="gear"
           >
             ${this.i18nStore?.t('settings.categories.general')}
           </alps-category-item>
           <alps-category-item 
-            ?active=${this.currentCategory === 'identity'}
+            ?active=${this.category === 'identity'}
             @click=${() => this.selectCategory('identity')}
             icon="user"
           >
             ${this.i18nStore?.t('settings.categories.identity')}
           </alps-category-item>
           <alps-category-item 
-            ?active=${this.currentCategory === 'reading'}
-            @click=${() => this.selectCategory('reading')}
-            icon="bookOpen"
+            ?active=${this.category === 'accounts'}
+            @click=${() => this.selectCategory('accounts')}
+            icon="users"
           >
-            ${this.i18nStore?.t('settings.categories.reading')}
-          </alps-category-item>
-          <alps-category-item 
-            ?active=${this.currentCategory === 'appearance'}
-            @click=${() => this.selectCategory('appearance')}
-            icon="palette"
-          >
-            ${this.i18nStore?.t('settings.categories.appearance')}
-          </alps-category-item>
-          <alps-category-item 
-            ?active=${this.currentCategory === 'localization'}
-            @click=${() => this.selectCategory('localization')}
-            icon="globe"
-          >
-            ${this.i18nStore?.t('settings.categories.localization')}
+            ${this.i18nStore?.t('settings.categories.accounts')}
           </alps-category-item>
           ${registry.getSettingsTabs()
             .filter(tab => this.enabledPlugins.includes(tab.id))
             .map(tab => html`
             <alps-category-item 
-              ?active=${this.currentCategory === tab.id}
+              ?active=${this.category === tab.id}
               @click=${() => this.selectCategory(tab.id)}
               .icon=${tab.icon}
             >
               ${this.i18nStore?.t(tab.labelKey)}
             </alps-category-item>
           `)}
+          <alps-category-item 
+            ?active=${this.category === 'webauthn'}
+            @click=${() => this.selectCategory('webauthn')}
+            icon="fingerprint"
+          >
+            ${this.i18nStore?.t('settings.categories.webauthn')}
+          </alps-category-item>
+          <alps-category-item 
+            ?active=${this.category === 'reading'}
+            @click=${() => this.selectCategory('reading')}
+            icon="bookOpen"
+          >
+            ${this.i18nStore?.t('settings.categories.reading')}
+          </alps-category-item>
+          <alps-category-item 
+            ?active=${this.category === 'appearance'}
+            @click=${() => this.selectCategory('appearance')}
+            icon="palette"
+          >
+            ${this.i18nStore?.t('settings.categories.appearance')}
+          </alps-category-item>
+          <alps-category-item 
+            ?active=${this.category === 'localization'}
+            @click=${() => this.selectCategory('localization')}
+            icon="globe"
+          >
+            ${this.i18nStore?.t('settings.categories.localization')}
+          </alps-category-item>
         </alps-sidebar>
         
         <div class="main-view" @scroll=${this._handleScroll}>
           ${!this.settingsState ? html`<div>${this.i18nStore?.t('settings.loading')}</div>` : html`
-            ${this.currentCategory === 'general' ? this.renderGeneral() : ''}
-            ${this.currentCategory === 'identity' ? this.renderIdentity() : ''}
-            ${this.currentCategory === 'reading' ? this.renderReading() : ''}
-            ${this.currentCategory === 'appearance' ? this.renderAppearance() : ''}
-            ${this.currentCategory === 'localization' ? this.renderLocalization() : ''}
+            ${this.category === 'general' ? this.renderGeneral() : ''}
+            ${this.category === 'identity' ? this.renderIdentity() : ''}
+            ${this.category === 'accounts' ? html`<settings-accounts></settings-accounts>` : ''}
+            ${this.category === 'webauthn' ? html`<alps-webauthn-settings></alps-webauthn-settings>` : ''}
+            ${this.category === 'reading' ? this.renderReading() : ''}
+            ${this.category === 'appearance' ? this.renderAppearance() : ''}
+            ${this.category === 'localization' ? this.renderLocalization() : ''}
             ${registry.getSettingsTabs()
-                .filter(tab => tab.id === this.currentCategory && this.enabledPlugins.includes(tab.id))
+                .filter(tab => tab.id === this.category && this.enabledPlugins.includes(tab.id))
                 .map(tab => html`${unsafeHTML(`<${tab.component}></${tab.component}>`)}`)
             }
           `}
@@ -395,13 +413,13 @@ export class SettingsPage extends LitElement {
   renderIdentity() {
     return html`
         <alps-setting-group label="${this.i18nStore?.t('settings.identity.displayName')}" description="${this.i18nStore?.t('settings.identity.displayNameDesc')}">
-          <input type="text" .value=${this.settingsState.name || ''} @change=${(e: Event) => this.handleUpdate(e, 'name')} placeholder="${this.i18nStore?.t('settings.placeholderName')}">
+          <alps-input type="text" .value=${this.settingsState.name || ''} @change=${(e: Event) => this.handleUpdate(e, 'name')} placeholder="${this.i18nStore?.t('settings.placeholderName')}"></alps-input>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.identity.signature')}" description="${this.i18nStore?.t('settings.identity.signatureDesc')}">
           <textarea @change=${(e: Event) => this.handleUpdate(e, 'signature')} .value=${this.settingsState.signature || ''}></textarea>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.identity.replyTo')}" description="${this.i18nStore?.t('settings.identity.replyToDesc')}">
-          <input type="text" .value=${this.settingsState.replyTo || ''} @change=${(e: Event) => this.handleUpdate(e, 'replyTo')} placeholder="${this.i18nStore?.t('settings.placeholderReplyTo')}">
+          <alps-input type="email" .value=${this.settingsState.replyTo || ''} @change=${(e: Event) => this.handleUpdate(e, 'replyTo')} placeholder="${this.i18nStore?.t('settings.placeholderReplyTo')}"></alps-input>
         </alps-setting-group>
         <alps-setting-group>
           <label class="checkbox-label">
@@ -509,6 +527,7 @@ export class SettingsPage extends LitElement {
             <option value="rs">${this.i18nStore?.t('settings.localization.serbian')}</option>
             <option value="sr">${this.i18nStore?.t('settings.localization.serbianLatin')}</option>
             <option value="fr">${this.i18nStore?.t('settings.localization.french')}</option>
+            <option value="pt">${this.i18nStore?.t('settings.localization.portuguese')}</option>
           </select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.localization.timeFormat')}">

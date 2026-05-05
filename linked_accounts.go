@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
-	"github.com/migadu/alps/provider"
 	"github.com/fernet/fernet-go"
+	"github.com/migadu/alps/provider"
 )
 
 const linkedAccountsStoreKey = "linked_accounts"
@@ -22,10 +23,11 @@ var (
 // LinkedAccount represents an additional account linked to the primary account.
 // Credentials are encrypted using the server's LoginKey and stored in IMAP METADATA.
 type LinkedAccount struct {
-	Username    string `json:"username"`
-	PasswordEnc string `json:"password_enc"` // Fernet-encrypted
-	DisplayName string `json:"display_name,omitempty"`
-	IMAPServer  string `json:"imap_server,omitempty"` // Optional: different server
+	Username    string    `json:"username"`
+	PasswordEnc string    `json:"password_enc"` // Fernet-encrypted
+	DisplayName string    `json:"display_name,omitempty"`
+	IMAPServer  string    `json:"imap_server,omitempty"` // Optional: different server
+	AddedAt     time.Time `json:"added_at"`
 }
 
 // LinkedAccounts is the collection of linked accounts stored in METADATA.
@@ -129,6 +131,7 @@ func (s *Session) AddLinkedAccount(username, password, displayName string) error
 		Username:    username,
 		PasswordEnc: targetEncryptedPassword,
 		DisplayName: displayName,
+		AddedAt:     time.Now(),
 	}
 	accounts.Accounts = append(accounts.Accounts, newAccount)
 
@@ -162,6 +165,7 @@ func (s *Session) AddLinkedAccount(username, password, displayName string) error
 			Username:    s.username,
 			PasswordEnc: currentEncryptedPassword,
 			DisplayName: "", // Target account doesn't have a display name for us yet
+			AddedAt:     time.Now(),
 		}
 		targetAccounts.Accounts = append(targetAccounts.Accounts, reverseAccount)
 	}
@@ -291,10 +295,11 @@ func check2FAEnabled(store provider.Store) (bool, error) {
 // This bypasses the custom MarshalJSON that strips passwords for security.
 func linkedAccountsToJSON(accounts *LinkedAccounts) ([]byte, error) {
 	type linkedAccountInternal struct {
-		Username    string `json:"username"`
-		PasswordEnc string `json:"password_enc"`
-		DisplayName string `json:"display_name,omitempty"`
-		IMAPServer  string `json:"imap_server,omitempty"`
+		Username    string    `json:"username"`
+		PasswordEnc string    `json:"password_enc"`
+		DisplayName string    `json:"display_name,omitempty"`
+		IMAPServer  string    `json:"imap_server,omitempty"`
+		AddedAt     time.Time `json:"added_at"`
 	}
 	type linkedAccountsInternal struct {
 		Accounts []linkedAccountInternal `json:"accounts"`
@@ -309,6 +314,7 @@ func linkedAccountsToJSON(accounts *LinkedAccounts) ([]byte, error) {
 			PasswordEnc: acc.PasswordEnc,
 			DisplayName: acc.DisplayName,
 			IMAPServer:  acc.IMAPServer,
+			AddedAt:     acc.AddedAt,
 		}
 	}
 
@@ -334,10 +340,11 @@ func getLinkedAccountsViaStore(store provider.Store) (*LinkedAccounts, error) {
 // This is used to write to another account's METADATA during bidirectional linking.
 func setLinkedAccountsViaStore(store provider.Store, accounts *LinkedAccounts) error {
 	type linkedAccountInternal struct {
-		Username    string `json:"username"`
-		PasswordEnc string `json:"password_enc"`
-		DisplayName string `json:"display_name,omitempty"`
-		IMAPServer  string `json:"imap_server,omitempty"`
+		Username    string    `json:"username"`
+		PasswordEnc string    `json:"password_enc"`
+		DisplayName string    `json:"display_name,omitempty"`
+		IMAPServer  string    `json:"imap_server,omitempty"`
+		AddedAt     time.Time `json:"added_at"`
 	}
 	type linkedAccountsInternal struct {
 		Accounts []linkedAccountInternal `json:"accounts"`
@@ -352,6 +359,7 @@ func setLinkedAccountsViaStore(store provider.Store, accounts *LinkedAccounts) e
 			PasswordEnc: acc.PasswordEnc,
 			DisplayName: acc.DisplayName,
 			IMAPServer:  acc.IMAPServer,
+			AddedAt:     acc.AddedAt,
 		}
 	}
 

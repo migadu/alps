@@ -1,0 +1,18 @@
+export default {
+    settings: {
+        categories: {
+            password: 'Lozinka'
+        },
+        password: {
+      title: 'Lozinka',
+      changePassword: 'Promeni lozinku',
+      changePasswordDesc: 'Ažurirajte lozinku svog naloga.',
+      oldPassword: 'Trenutna lozinka',
+      newPassword: 'Nova lozinka',
+      confirmPassword: 'Potvrdi novu lozinku',
+      updatePassword: 'Ažuriraj lozinku',
+      fillAllFields: 'Molimo popunite sva polja.',
+      passwordMismatch: 'Nove lozinke se ne poklapaju.'
+    }
+    }
+};

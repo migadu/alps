@@ -1,8 +1,9 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, render } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { settingsContext, SettingsStore } from '../store/settings-store';
+import { linkedAccountsContext, LinkedAccountsStore } from '../store/linked-accounts-store';
 import './alps-avatar';
 import { popupStyles } from './alps-popup';
 import './alps-popup';
@@ -66,6 +67,9 @@ export class UserProfileMenu extends LitElement {
   @consume({ context: settingsContext })
   settingsStore!: SettingsStore;
 
+  @consume({ context: linkedAccountsContext })
+  linkedAccountsStore!: LinkedAccountsStore;
+
   private _handleStoreChange = () => {
     this.requestUpdate();
   };
@@ -75,6 +79,10 @@ export class UserProfileMenu extends LitElement {
     this.updateComplete.then(() => {
       this.i18nStore?.addEventListener('change', this._handleStoreChange);
       this.settingsStore?.addEventListener('change', this._handleStoreChange);
+      this.linkedAccountsStore?.addEventListener('change', this._handleStoreChange);
+      if (this.linkedAccountsStore && !this.linkedAccountsStore.isInitialized()) {
+        this.linkedAccountsStore.fetchAccounts();
+      }
     });
   }
 
@@ -82,6 +90,7 @@ export class UserProfileMenu extends LitElement {
     super.disconnectedCallback();
     this.i18nStore?.removeEventListener('change', this._handleStoreChange);
     this.settingsStore?.removeEventListener('change', this._handleStoreChange);
+    this.linkedAccountsStore?.removeEventListener('change', this._handleStoreChange);
   }
 
   private _closePopup() {
@@ -107,6 +116,62 @@ export class UserProfileMenu extends LitElement {
     this.dispatchEvent(new CustomEvent('change-tab', { detail: { tab }, bubbles: true, composed: true }));
   }
 
+  private async _handleSwitchAccount(username: string) {
+    this._closePopup();
+    
+    // Create fade-in overlay
+    const overlayContainer = document.createElement('div');
+    document.body.appendChild(overlayContainer);
+    
+    render(html`
+      <style>
+        @keyframes global-spin { to { transform: rotate(360deg); } }
+        .switch-overlay svg { width: 100%; height: 100%; fill: currentColor; }
+      </style>
+      <div id="switch-account-overlay" class="switch-overlay" style="position: fixed; inset: 0; background-color: var(--bg-primary, #ffffff); z-index: 999999; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s ease-in;">
+        <div style="display: inline-flex; width: 32px; height: 32px; animation: global-spin 1s linear infinite; color: var(--accent-color, #2563eb);">
+          ${renderIcon('edelweiss')}
+        </div>
+      </div>
+    `, overlayContainer);
+
+    const overlayDiv = overlayContainer.querySelector('#switch-account-overlay') as HTMLElement;
+    
+    // Trigger transition
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (overlayDiv) overlayDiv.style.opacity = '1';
+      });
+    });
+
+    // Wait for fade in to complete
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    try {
+      const response = await this.linkedAccountsStore.switchAccount(username);
+      if (response.requires_2fa) {
+         window.location.hash = '#/login/webauthn';
+         // Remove overlay so webauthn page is visible
+         if (overlayDiv) overlayDiv.style.opacity = '0';
+         setTimeout(() => overlayContainer.remove(), 300);
+      } else {
+         localStorage.removeItem('alps_settings');
+         sessionStorage.clear();
+         window.location.reload();
+      }
+    } catch (e: any) {
+      if (overlayDiv) overlayDiv.style.opacity = '0';
+      setTimeout(() => overlayContainer.remove(), 300);
+      
+      window.dispatchEvent(new CustomEvent('show-toast', {
+        detail: {
+          message: e.message || this.i18nStore?.t('linkedAccounts.switchError'),
+          duration: 5000
+        }
+      }));
+    }
+  }
+
   render() {
     const displayName = this.settingsStore?.getState().name || this.username;
     
@@ -123,26 +188,37 @@ export class UserProfileMenu extends LitElement {
             title=${this.i18nStore?.t('userMenu.profileOptions')}
           ></alps-icon-btn>
           
-          <div class="dropdown-header">
-          ${this.username}
-        </div>
-        <button class="dropdown-item ${this.currentTab === 'messages' ? 'active' : ''}" @click="${() => this._handleTabChange('messages')}">
-          ${renderIcon('envelopeSimple')} <span class="item-text">${this.i18nStore?.t('navigation.messages')}</span>
-        </button>
-        <button class="dropdown-item ${this.currentTab === 'contacts' ? 'active' : ''}" @click="${() => this._handleTabChange('contacts')}">
-          ${renderIcon('users')} <span class="item-text">${this.i18nStore?.t('navigation.contacts')}</span>
-        </button>
-        <button class="dropdown-item ${this.currentTab === 'calendar' ? 'active' : ''}" @click="${() => this._handleTabChange('calendar')}">
-          ${renderIcon('calendarBlank')} <span class="item-text">${this.i18nStore?.t('navigation.calendar')}</span>
-        </button>
-        <div class="dropdown-divider"></div>
-        <button class="dropdown-item ${this.currentTab === 'settings' ? 'active' : ''}" @click="${this._handleSettings}">
-          ${renderIcon('gear')} <span class="item-text">${this.i18nStore?.t('userMenu.settings')}</span>
-        </button>
-        <div class="dropdown-divider"></div>
-        <button class="dropdown-item" @click="${this._handleSignOut}">
-          ${renderIcon('signOut')} <span class="item-text">${this.i18nStore?.t('userMenu.signOut')}</span>
-        </button>
+          ${(() => {
+            const accounts = this.linkedAccountsStore?.getAccounts() || [];
+            if (accounts.length === 0) return '';
+            return html`
+              ${accounts.map(account => html`
+                <button class="dropdown-item" @click="${() => this._handleSwitchAccount(account.username)}">
+                  <alps-avatar .name=${account.display_name || account.username} .size=${16} style="margin-right: 4px;"></alps-avatar>
+                  <span class="item-text" style="font-weight: 500;" title="${account.username}">${account.display_name || account.username}</span>
+                </button>
+              `)}
+              <div class="dropdown-divider"></div>
+            `;
+          })()}
+          
+          <button class="dropdown-item ${this.currentTab === 'messages' ? 'active' : ''}" @click="${() => this._handleTabChange('messages')}">
+            ${renderIcon('envelopeSimple')} <span class="item-text">${this.i18nStore?.t('navigation.messages')}</span>
+          </button>
+          <button class="dropdown-item ${this.currentTab === 'contacts' ? 'active' : ''}" @click="${() => this._handleTabChange('contacts')}">
+            ${renderIcon('users')} <span class="item-text">${this.i18nStore?.t('navigation.contacts')}</span>
+          </button>
+          <button class="dropdown-item ${this.currentTab === 'calendar' ? 'active' : ''}" @click="${() => this._handleTabChange('calendar')}">
+            ${renderIcon('calendarBlank')} <span class="item-text">${this.i18nStore?.t('navigation.calendar')}</span>
+          </button>
+          <div class="dropdown-divider"></div>
+          <button class="dropdown-item ${this.currentTab === 'settings' ? 'active' : ''}" @click="${this._handleSettings}">
+            ${renderIcon('gear')} <span class="item-text">${this.i18nStore?.t('userMenu.settings')}</span>
+          </button>
+          <div class="dropdown-divider"></div>
+          <button class="dropdown-item" @click="${this._handleSignOut}">
+            ${renderIcon('signOut')} <span class="item-text">${this.i18nStore?.t('userMenu.signOut')}</span>
+          </button>
         </alps-popup>
       </div>
     `;

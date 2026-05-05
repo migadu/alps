@@ -13,11 +13,11 @@ import (
 )
 
 type PasswordChangeConfig struct {
-	Endpoint string `json:"endpoint"`
-	Method   string `json:"method"`
-	AuthType string `json:"auth_type"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Endpoint       string            `json:"endpoint"`
+	Method         string            `json:"method"`
+	AuthType       string            `json:"auth_type"`
+	Username       string            `json:"username"`
+	Password       string            `json:"password"`
 	Token          string            `json:"token"`
 	Payload        string            `json:"payload"`
 	PayloadMapping map[string]string `json:"payload_mapping"`
@@ -149,8 +149,11 @@ func handlePasswordChange(ctx *alps.Context) error {
 	}
 
 	// Also update login token if present
-	if tokenUsername, _ := ctx.GetLoginToken(); tokenUsername == username {
-		ctx.SetLoginToken(username, req.Password)
+	if tokenUsername, _, verified2FA := ctx.GetLoginToken(); tokenUsername == username {
+		// Keep the persistent status from the old cookie
+		loginCookie, _ := ctx.Cookie("alps_login_token")
+		isPersistent := loginCookie != nil && loginCookie.Expires.After(time.Now().Add(24*time.Hour))
+		ctx.SetLoginToken(username, req.Password, verified2FA, isPersistent)
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]string{"message": "Password successfully changed"})

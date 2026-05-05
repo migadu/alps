@@ -14,11 +14,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/migadu/alps/provider"
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 	"github.com/fernet/fernet-go"
 	"github.com/google/uuid"
+	"github.com/migadu/alps/provider"
 )
 
 const defaultSessionDuration = 30 * time.Minute
@@ -85,6 +85,9 @@ type Session struct {
 
 	// Cache for mail data (mailbox lists, statuses, etc.)
 	cache *Cache
+
+	memoryDataLock sync.RWMutex
+	memoryData     map[string]interface{}
 
 	lastAccess atomic.Int64 // stores unix nano for LRU eviction
 }
@@ -202,7 +205,6 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 
 	return err
 }
-
 
 // DoSMTP executes an SMTP operation on this session. The SMTP client can only
 // be used from inside f.
@@ -764,7 +766,6 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 		}
 		s.providerLocker.Unlock()
 
-
 		// Unregister cache from global cleanup manager
 		if s.cache != nil {
 			s.cache.Close()
@@ -818,4 +819,34 @@ func (sm *SessionManager) UpdatePassword(s *Session, newPassword string) error {
 	s.password = newPassword
 
 	return nil
+}
+
+// SetData stores transient session data
+func (s *Session) SetData(key string, value interface{}) {
+	s.memoryDataLock.Lock()
+	defer s.memoryDataLock.Unlock()
+	if s.memoryData == nil {
+		s.memoryData = make(map[string]interface{})
+	}
+	s.memoryData[key] = value
+}
+
+// GetData retrieves transient session data
+func (s *Session) GetData(key string) (interface{}, bool) {
+	s.memoryDataLock.RLock()
+	defer s.memoryDataLock.RUnlock()
+	if s.memoryData == nil {
+		return nil, false
+	}
+	val, ok := s.memoryData[key]
+	return val, ok
+}
+
+// ClearData removes transient session data
+func (s *Session) ClearData(key string) {
+	s.memoryDataLock.Lock()
+	defer s.memoryDataLock.Unlock()
+	if s.memoryData != nil {
+		delete(s.memoryData, key)
+	}
 }

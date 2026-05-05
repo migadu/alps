@@ -2,3 +2,4 @@ config.toml
 CLAUDE.md
 docs/PASSWORD_CHANGE.md
 tmp/*
+vendor/*

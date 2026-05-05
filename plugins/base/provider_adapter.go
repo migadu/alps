@@ -1,10 +1,10 @@
 package alpsbase
 
 import (
-	"github.com/migadu/alps/provider"
-	imapprovider "github.com/migadu/alps/provider/imap"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/migadu/alps/provider"
+	imapprovider "github.com/migadu/alps/provider/imap"
 )
 
 // Adapter functions to convert between alps provider types and plugin types

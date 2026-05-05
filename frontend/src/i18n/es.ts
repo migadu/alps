@@ -1,20 +1,17 @@
 export const es = {
   settings: {
     title: 'Configuración',
-    back: 'Volver',
     categories: {
       general: 'General',
       identity: 'Identidad',
       reading: 'Lectura y redacción',
       appearance: 'Apariencia',
       localization: 'Localización',
-      password: 'Contraseña'
     },
     loading: 'Cargando...',
     placeholderName: 'Tu nombre',
     placeholderReplyTo: 'responder@ejemplo.com',
     general: {
-      title: 'General',
       checkMailInterval: 'Intervalo de comprobación de correo',
       checkMailIntervalDesc: 'Con qué frecuencia buscar correo nuevo automáticamente.',
       autoLogout: 'Cierre de sesión automático',
@@ -33,7 +30,6 @@ export const es = {
       hours6: '6 horas',
     },
     identity: {
-      title: 'Identidad',
       displayName: 'Nombre para mostrar',
       displayNameDesc: 'El nombre que se muestra a los destinatarios cuando envías un correo.',
       signature: 'Firma',
@@ -43,7 +39,6 @@ export const es = {
       bccMyself: 'Añadirme siempre en CCO en el correo saliente',
     },
     reading: {
-      title: 'Lectura y redacción',
       messagesPerPage: 'Mensajes por página',
       preferredView: 'Vista preferida',
       preferredViewDesc: 'Cómo mostrar mensajes que tienen tanto HTML como texto sin formato.',
@@ -67,7 +62,6 @@ export const es = {
       sortDate: 'Fecha de recepción'
     },
     appearance: {
-      title: 'Apariencia',
       colorTheme: 'Tema de color',
       colorThemeDesc: 'Selecciona tu paleta de colores preferida.',
       themeMode: 'Modo de tema',
@@ -88,7 +82,6 @@ export const es = {
       ultraCompact: 'Ultracompacto'
     },
     localization: {
-      title: 'Localización',
       language: 'Idioma',
       timeFormat: 'Formato de hora',
       dateFormat: 'Formato de fecha',
@@ -100,19 +93,9 @@ export const es = {
       spanish: 'Español',
       serbian: 'Serbio',
       serbianLatin: 'Serbio (Latino)',
-      french: 'Francés'
+      french: 'Francés',
+      portuguese: 'Portugués'
     },
-    password: {
-      title: 'Contraseña',
-      changePassword: 'Cambiar contraseña',
-      changePasswordDesc: 'Actualiza la contraseña de tu cuenta.',
-      oldPassword: 'Contraseña actual',
-      newPassword: 'Nueva contraseña',
-      confirmPassword: 'Confirmar nueva contraseña',
-      updatePassword: 'Actualizar contraseña',
-      fillAllFields: 'Por favor, rellena todos los campos.',
-      passwordMismatch: 'Las contraseñas nuevas no coinciden.'
-    }
   },
   print: {
     loading: 'Cargando vista de impresión...'
@@ -155,7 +138,6 @@ export const es = {
     noMessages: 'No hay mensajes',
     loading: 'Cargando...',
     unknownSender: 'Remitente desconocido',
-    noRecipient: '(Sin destinatario)',
     unknown: 'Desconocido',
     noSubject: '(Sin asunto)',
     hasAttachments: 'Tiene archivos adjuntos',
@@ -165,46 +147,6 @@ export const es = {
     clearSearch: 'Borrar búsqueda'
   },
   composer: {
-    sizeSmall: 'Pequeño',
-    sizeNormal: 'Normal',
-    sizeLarge: 'Grande',
-    sizeHuge: 'Enorme',
-    alignLeft: 'Izquierda',
-    alignCenter: 'Centro',
-    alignRight: 'Derecha',
-    changeLink: 'Cambiar',
-    removeLink: 'Eliminar',
-    linkText: 'Texto',
-    linkUrl: 'Enlace',
-    cancel: 'Cancelar',
-    apply: 'Aplicar',
-    fontSize: 'Tamaño de fuente',
-    bold: 'Negrita',
-    italic: 'Cursiva',
-    underline: 'Subrayado',
-    textColor: 'Color del texto',
-    align: 'Alineación',
-    numberedList: 'Lista numerada',
-    bulletedList: 'Lista con viñetas',
-    indentMore: 'Aumentar sangría',
-    indentLess: 'Reducir sangría',
-    moreFormatting: 'Más opciones de formato',
-    placeholder: 'Escribe tu mensaje...',
-    saving: 'Guardando...',
-    autosaved: 'Guardado automático',
-    to: 'Para',
-    cc: 'Cc',
-    bcc: 'Cco',
-    minimize: 'Minimizar',
-    expand: 'Expandir',
-    restore: 'Restaurar',
-    discardDraft: '¿Descartar borrador?',
-    saveAndClose: 'Guardar y cerrar',
-    subjectPlaceholder: 'Asunto',
-    toggleFormatting: 'Activar/desactivar opciones de formato',
-    attachFiles: 'Adjuntar archivos',
-    insertLink: 'Insertar enlace',
-    insertEmoji: 'Insertar emoji',
     attachmentsWait: 'Espera a que los archivos adjuntos terminen de cargarse antes de enviar.',
     sending: 'Enviando mensaje...',
     undo: 'Deshacer',
@@ -219,11 +161,8 @@ export const es = {
     forward: 'Reenviar',
     to: 'Para:',
     cc: 'Cc:',
-    from: 'De:',
-    date: 'Fecha:',
     undisclosed: 'Oculto',
     loadingMessage: 'Cargando mensaje...',
-    errorLoading: 'Error al cargar el mensaje.',
     remoteContentWarning: 'Este mensaje contiene contenido remoto. Por tu privacidad, ha sido bloqueado.',
     loadRemoteContent: 'Cargar contenido remoto',
     isDraft: 'Este es un mensaje en borrador.',
@@ -243,7 +182,6 @@ export const es = {
     markRead: 'Marcar como leído',
     star: 'Destacar',
     moveTo: 'Copiar/Mover a...',
-    more: 'Más',
     print: 'Imprimir',
     showPlaintext: 'Mostrar texto sin formato',
     showHtml: 'Mostrar HTML',
@@ -276,7 +214,6 @@ export const es = {
     fail: 'FALLIDO',
   },
   folderSelector: {
-    title: 'Mover / Copiar',
     filter: 'Filtrar carpetas...',
     noResults: 'No hay carpetas coincidentes',
     actionMove: 'Mover a',
@@ -288,8 +225,7 @@ export const es = {
   navigation: {
     messages: 'Mensajes',
     contacts: 'Contactos',
-    calendar: 'Calendario',
-    searchPlaceholder: 'Buscar mensajes...'
+    calendar: 'Calendario'
   },
   userMenu: {
     settings: 'Configuración',
@@ -303,13 +239,7 @@ export const es = {
     zeroMessages: '0 mensajes'
   },
   toast: {
-    messageMovedToTrash: 'Mensaje movido a la Papelera',
     messagePermanentlyDeleted: 'Mensaje eliminado de forma permanente',
-    messageMovedToArchive: 'Mensaje movido al Archivo',
-    messageMovedToSpam: 'Mensaje movido al Spam',
-    messageMovedToInbox: 'Mensaje movido a la Bandeja de entrada',
-    messageMoved: 'Mensaje movido a {folder}',
-    messageCopied: 'Mensaje copiado a {folder}',
     draftDiscarded: 'Borrador descartado',
     folderRenamed: 'Carpeta renombrada',
     folderMovedToTrash: 'Carpeta movida a la Papelera',

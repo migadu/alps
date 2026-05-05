@@ -1,20 +1,17 @@
 export const sr = {
   settings: {
     title: 'Podešavanja',
-    back: 'Nazad',
     categories: {
       general: 'Opšte',
       identity: 'Identitet',
       reading: 'Čitanje i pisanje',
       appearance: 'Izgled',
       localization: 'Lokalizacija',
-      password: 'Lozinka'
     },
     loading: 'Učitavanje...',
     placeholderName: 'Tvoje ime',
     placeholderReplyTo: 'odgovor@primer.com',
     general: {
-      title: 'Opšte',
       checkMailInterval: 'Interval provere pošte',
       checkMailIntervalDesc: 'Koliko često automatski proveravati novu poštu.',
       autoLogout: 'Automatska odjava',
@@ -33,7 +30,6 @@ export const sr = {
       hours6: '6 sati',
     },
     identity: {
-      title: 'Identitet',
       displayName: 'Ime za prikaz',
       displayNameDesc: 'Ime koje se prikazuje primaocima kada pošaljete e-poštu.',
       signature: 'Potpis',
@@ -43,7 +39,6 @@ export const sr = {
       bccMyself: 'Uvek dodaj mene u BCC za odlaznu poštu',
     },
     reading: {
-      title: 'Čitanje i pisanje',
       messagesPerPage: 'Poruka po stranici',
       preferredView: 'Željeni prikaz',
       preferredViewDesc: 'Kako prikazati poruke koje imaju i HTML i običan tekst.',
@@ -67,7 +62,6 @@ export const sr = {
       sortDate: 'Datum prijema'
     },
     appearance: {
-      title: 'Izgled',
       colorTheme: 'Tema boja',
       colorThemeDesc: 'Izaberite željenu paletu boja.',
       themeMode: 'Režim teme',
@@ -88,7 +82,6 @@ export const sr = {
       ultraCompact: 'Ultra kompaktno'
     },
     localization: {
-      title: 'Lokalizacija',
       language: 'Jezik',
       timeFormat: 'Format vremena',
       dateFormat: 'Format datuma',
@@ -100,19 +93,9 @@ export const sr = {
       spanish: 'Español',
       serbian: 'Српски (Ћирилица)',
       serbianLatin: 'Srpski (Latinica)',
-      french: 'Francuski'
+      french: 'Francuski',
+      portuguese: 'Portugalski'
     },
-    password: {
-      title: 'Lozinka',
-      changePassword: 'Promeni lozinku',
-      changePasswordDesc: 'Ažurirajte lozinku svog naloga.',
-      oldPassword: 'Trenutna lozinka',
-      newPassword: 'Nova lozinka',
-      confirmPassword: 'Potvrdi novu lozinku',
-      updatePassword: 'Ažuriraj lozinku',
-      fillAllFields: 'Molimo popunite sva polja.',
-      passwordMismatch: 'Nove lozinke se ne poklapaju.'
-    }
   },
   print: {
     loading: 'Učitavanje prikaza za štampanje...'
@@ -155,7 +138,6 @@ export const sr = {
     noMessages: 'Nema poruka',
     loading: 'Učitavanje...',
     unknownSender: 'Nepoznat pošiljalac',
-    noRecipient: '(Nema primaoca)',
     unknown: 'Nepoznato',
     noSubject: '(Bez naslova)',
     hasAttachments: 'Ima priloge',
@@ -165,46 +147,6 @@ export const sr = {
     clearSearch: 'Obriši pretragu'
   },
   composer: {
-    sizeSmall: 'Malo',
-    sizeNormal: 'Normalno',
-    sizeLarge: 'Veliko',
-    sizeHuge: 'Ogromno',
-    alignLeft: 'Levo',
-    alignCenter: 'Centar',
-    alignRight: 'Desno',
-    changeLink: 'Promeni',
-    removeLink: 'Ukloni',
-    linkText: 'Tekst',
-    linkUrl: 'Link',
-    cancel: 'Otkaži',
-    apply: 'Primeni',
-    fontSize: 'Veličina fonta',
-    bold: 'Podebljano',
-    italic: 'Kurziv',
-    underline: 'Podvučeno',
-    textColor: 'Boja teksta',
-    align: 'Poravnanje',
-    numberedList: 'Numerisana lista',
-    bulletedList: 'Lista sa nabrajanjem',
-    indentMore: 'Povećaj uvlačenje',
-    indentLess: 'Smanji uvlačenje',
-    moreFormatting: 'Više opcija formatiranja',
-    placeholder: 'Napišite svoju poruku...',
-    saving: 'Čuvanje...',
-    autosaved: 'Automatski sačuvano',
-    to: 'Za',
-    cc: 'Cc',
-    bcc: 'Bcc',
-    minimize: 'Umanji',
-    expand: 'Proširi',
-    restore: 'Vrati',
-    discardDraft: 'Odbaciti radnu verziju?',
-    saveAndClose: 'Sačuvaj i zatvori',
-    subjectPlaceholder: 'Naslov',
-    toggleFormatting: 'Uključi/isključi opcije formatiranja',
-    attachFiles: 'Priloži datoteke',
-    insertLink: 'Ubaci link',
-    insertEmoji: 'Ubaci emodži',
     attachmentsWait: 'Molimo sačekajte da se prilozi učitaju pre slanja.',
     sending: 'Slanje poruke...',
     undo: 'Opozovi',
@@ -219,11 +161,8 @@ export const sr = {
     forward: 'Prosledi',
     to: 'Za:',
     cc: 'Cc:',
-    from: 'Od:',
-    date: 'Datum:',
     undisclosed: 'Sakriveno',
     loadingMessage: 'Učitavanje poruke...',
-    errorLoading: 'Greška pri učitavanju poruke.',
     remoteContentWarning: 'Ova poruka sadrži udaljeni sadržaj. Radi vaše privatnosti, blokiran je.',
     loadRemoteContent: 'Učitaj udaljeni sadržaj',
     isDraft: 'Ovo je radna verzija poruke.',
@@ -243,7 +182,6 @@ export const sr = {
     markRead: 'Označi kao pročitano',
     star: 'Označi zvezdicom',
     moveTo: 'Kopiraj/Premesti u...',
-    more: 'Više',
     print: 'Štampaj',
     showPlaintext: 'Prikaži običan tekst',
     showHtml: 'Prikaži HTML',
@@ -276,7 +214,6 @@ export const sr = {
     fail: 'PALO',
   },
   folderSelector: {
-    title: 'Premesti / Kopiraj',
     filter: 'Filtriraj fascikle...',
     noResults: 'Nema odgovarajućih fascikli',
     actionMove: 'Premesti u',
@@ -288,8 +225,7 @@ export const sr = {
   navigation: {
     messages: 'Poruke',
     contacts: 'Kontakti',
-    calendar: 'Kalendar',
-    searchPlaceholder: 'Pretraži poruke...'
+    calendar: 'Kalendar'
   },
   userMenu: {
     settings: 'Podešavanja',
@@ -303,13 +239,7 @@ export const sr = {
     zeroMessages: '0 poruka'
   },
   toast: {
-    messageMovedToTrash: 'Poruka premeštena u Otpad',
     messagePermanentlyDeleted: 'Poruka trajno obrisana',
-    messageMovedToArchive: 'Poruka premeštena u Arhivu',
-    messageMovedToSpam: 'Poruka premeštena u Spem',
-    messageMovedToInbox: 'Poruka premeštena u Prijemno sanduče',
-    messageMoved: 'Poruka premeštena u {folder}',
-    messageCopied: 'Poruka kopirana u {folder}',
     draftDiscarded: 'Radna verzija odbačena',
     folderRenamed: 'Fascikla preimenovana',
     folderMovedToTrash: 'Fascikla premeštena u Otpad',

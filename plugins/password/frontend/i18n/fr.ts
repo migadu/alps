@@ -1,0 +1,18 @@
+export default {
+    settings: {
+        categories: {
+            password: 'Mot de passe'
+        },
+        password: {
+      title: 'Mot de passe',
+      changePassword: 'Changer le mot de passe',
+      changePasswordDesc: 'Mettez à jour le mot de passe de votre compte.',
+      oldPassword: 'Mot de passe actuel',
+      newPassword: 'Nouveau mot de passe',
+      confirmPassword: 'Confirmer le nouveau mot de passe',
+      updatePassword: 'Mettre à jour le mot de passe',
+      fillAllFields: 'Veuillez remplir tous les champs.',
+      passwordMismatch: 'Les nouveaux mots de passe ne correspondent pas.'
+    }
+    }
+};

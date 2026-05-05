@@ -12,8 +12,6 @@ func (p *goPlugin) Name() string {
 	return p.p.Name
 }
 
-
-
 func (p *goPlugin) SetRoutes(group *Group) {
 	for _, r := range p.p.routes {
 		group.Add(r.Method, r.Path, r.Handler)

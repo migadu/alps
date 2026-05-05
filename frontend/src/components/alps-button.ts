@@ -13,10 +13,52 @@ export class AlpsButton extends LitElement {
   @property({ type: Boolean, reflect: true }) spinning = false;
   @property({ type: String }) type: ButtonType = 'button';
   @property({ type: String }) title = '';
+  @property({ type: Boolean, attribute: 'full-width', reflect: true }) fullWidth = false;
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.addEventListener('click', this.handleClick);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.removeEventListener('click', this.handleClick);
+  }
+
+  private handleClick = (e: Event) => {
+    if (this.disabled || this.spinning) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
+    if (this.type === 'submit') {
+      const form = this.closest('form');
+      if (form) {
+        e.preventDefault();
+        form.requestSubmit();
+      }
+    } else if (this.type === 'reset') {
+      const form = this.closest('form');
+      if (form) {
+        e.preventDefault();
+        form.reset();
+      }
+    }
+  };
 
   static styles = css`
     :host {
       display: inline-flex;
+    }
+
+    :host([full-width]) {
+      display: flex;
+      width: 100%;
+    }
+
+    :host([full-width]) button {
+      width: 100%;
     }
 
     button {

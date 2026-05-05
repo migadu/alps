@@ -1,20 +1,17 @@
 export const it = {
   settings: {
     title: 'Impostazioni',
-    back: 'Indietro',
     categories: {
       general: 'Generale',
       identity: 'Identità',
       reading: 'Lettura e Composizione',
       appearance: 'Aspetto',
       localization: 'Localizzazione',
-      password: 'Password'
     },
     loading: 'Caricamento...',
     placeholderName: 'Il tuo nome',
     placeholderReplyTo: 'rispondi@esempio.com',
     general: {
-      title: 'Generale',
       checkMailInterval: 'Intervallo di controllo posta',
       checkMailIntervalDesc: 'Con quale frequenza controllare automaticamente la nuova posta.',
       autoLogout: 'Disconnessione automatica',
@@ -33,7 +30,6 @@ export const it = {
       hours6: '6 ore',
     },
     identity: {
-      title: 'Identità',
       displayName: 'Nome visualizzato',
       displayNameDesc: 'Il nome mostrato ai destinatari quando invii un\'email.',
       signature: 'Firma',
@@ -43,7 +39,6 @@ export const it = {
       bccMyself: 'Aggiungimi sempre in Ccn nella posta in uscita',
     },
     reading: {
-      title: 'Lettura e Composizione',
       messagesPerPage: 'Messaggi per pagina',
       preferredView: 'Vista preferita',
       preferredViewDesc: 'Come mostrare i messaggi che hanno sia HTML che testo semplice.',
@@ -67,7 +62,6 @@ export const it = {
       sortDate: 'Data di ricezione'
     },
     appearance: {
-      title: 'Aspetto',
       colorTheme: 'Tema colori',
       colorThemeDesc: 'Seleziona la tua tavolozza colori preferita.',
       themeMode: 'Modalità tema',
@@ -88,7 +82,6 @@ export const it = {
       ultraCompact: 'Ultra compatto'
     },
     localization: {
-      title: 'Localizzazione',
       language: 'Lingua',
       timeFormat: 'Formato ora',
       dateFormat: 'Formato data',
@@ -100,19 +93,9 @@ export const it = {
       spanish: 'Español',
       serbian: 'Serbo',
       serbianLatin: 'Serbo (Latino)',
-      french: 'Francese'
+      french: 'Francese',
+      portuguese: 'Portoghese'
     },
-    password: {
-      title: 'Password',
-      changePassword: 'Cambia password',
-      changePasswordDesc: 'Aggiorna la password del tuo account.',
-      oldPassword: 'Password attuale',
-      newPassword: 'Nuova password',
-      confirmPassword: 'Conferma nuova password',
-      updatePassword: 'Aggiorna password',
-      fillAllFields: 'Compila tutti i campi.',
-      passwordMismatch: 'Le nuove password non corrispondono.'
-    }
   },
   print: {
     loading: 'Caricamento visualizzazione stampa...'
@@ -155,7 +138,6 @@ export const it = {
     noMessages: 'Nessun messaggio',
     loading: 'Caricamento...',
     unknownSender: 'Mittente sconosciuto',
-    noRecipient: '(Nessun destinatario)',
     unknown: 'Sconosciuto',
     noSubject: '(Nessun oggetto)',
     hasAttachments: 'Contiene allegati',
@@ -165,46 +147,6 @@ export const it = {
     clearSearch: 'Cancella ricerca'
   },
   composer: {
-    sizeSmall: 'Piccolo',
-    sizeNormal: 'Normale',
-    sizeLarge: 'Grande',
-    sizeHuge: 'Enorme',
-    alignLeft: 'Sinistra',
-    alignCenter: 'Centro',
-    alignRight: 'Destra',
-    changeLink: 'Cambia',
-    removeLink: 'Rimuovi',
-    linkText: 'Testo',
-    linkUrl: 'Link',
-    cancel: 'Annulla',
-    apply: 'Applica',
-    fontSize: 'Dimensione carattere',
-    bold: 'Grassetto',
-    italic: 'Corsivo',
-    underline: 'Sottolineato',
-    textColor: 'Colore testo',
-    align: 'Allineamento',
-    numberedList: 'Elenco numerato',
-    bulletedList: 'Elenco puntato',
-    indentMore: 'Aumenta rientro',
-    indentLess: 'Riduci rientro',
-    moreFormatting: 'Più opzioni di formattazione',
-    placeholder: 'Scrivi il tuo messaggio...',
-    saving: 'Salvataggio...',
-    autosaved: 'Salvataggio automatico',
-    to: 'A',
-    cc: 'Cc',
-    bcc: 'Ccn',
-    minimize: 'Riduci a icona',
-    expand: 'Espandi',
-    restore: 'Ripristina',
-    discardDraft: 'Scartare la bozza?',
-    saveAndClose: 'Salva e chiudi',
-    subjectPlaceholder: 'Oggetto',
-    toggleFormatting: 'Attiva/disattiva opzioni di formattazione',
-    attachFiles: 'Allega file',
-    insertLink: 'Inserisci link',
-    insertEmoji: 'Inserisci emoji',
     attachmentsWait: 'Attendi il caricamento degli allegati prima di inviare.',
     sending: 'Invio messaggio in corso...',
     undo: 'Annulla',
@@ -219,11 +161,8 @@ export const it = {
     forward: 'Inoltra',
     to: 'A:',
     cc: 'Cc:',
-    from: 'Da:',
-    date: 'Data:',
     undisclosed: 'Non divulgato',
     loadingMessage: 'Caricamento messaggio...',
-    errorLoading: 'Errore nel caricamento del messaggio.',
     remoteContentWarning: 'Questo messaggio contiene contenuti remoti. Per la tua privacy, sono stati bloccati.',
     loadRemoteContent: 'Carica contenuto remoto',
     isDraft: 'Questa è una bozza.',
@@ -243,7 +182,6 @@ export const it = {
     markRead: 'Segna come letto',
     star: 'Speciale',
     moveTo: 'Copia/Sposta in...',
-    more: 'Altro',
     print: 'Stampa',
     showPlaintext: 'Mostra testo semplice',
     showHtml: 'Mostra HTML',
@@ -276,7 +214,6 @@ export const it = {
     fail: 'FALLITO',
   },
   folderSelector: {
-    title: 'Sposta / Copia',
     filter: 'Filtra cartelle...',
     noResults: 'Nessuna cartella corrispondente',
     actionMove: 'Sposta in',
@@ -288,8 +225,7 @@ export const it = {
   navigation: {
     messages: 'Messaggi',
     contacts: 'Contatti',
-    calendar: 'Calendario',
-    searchPlaceholder: 'Cerca messaggi...'
+    calendar: 'Calendario'
   },
   userMenu: {
     settings: 'Impostazioni',
@@ -303,13 +239,7 @@ export const it = {
     zeroMessages: '0 messaggi'
   },
   toast: {
-    messageMovedToTrash: 'Messaggio spostato nel Cestino',
     messagePermanentlyDeleted: 'Messaggio eliminato definitivamente',
-    messageMovedToArchive: 'Messaggio spostato in Archivio',
-    messageMovedToSpam: 'Messaggio spostato nello Spam',
-    messageMovedToInbox: 'Messaggio spostato in Posta in arrivo',
-    messageMoved: 'Messaggio spostato in {folder}',
-    messageCopied: 'Messaggio copiato in {folder}',
     draftDiscarded: 'Bozza scartata',
     folderRenamed: 'Cartella rinominata',
     folderMovedToTrash: 'Cartella spostata nel Cestino',

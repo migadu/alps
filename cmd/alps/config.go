@@ -22,23 +22,23 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Addr                    string                    `toml:"addr"`
-	Debug                   bool                      `toml:"debug"`
-	LoginKey                string                    `toml:"login_key"`
-	TempDir                 string                    `toml:"temp_dir"`
-	SessionMinutes          int                       `toml:"session_minutes"`            // Session timeout in minutes (default: 30)
-	MaxSessionMinutes       int                       `toml:"max_session_minutes"`        // Maximum session duration users can set (0 = no limit)
-	MaxSessions             int                       `toml:"max_sessions"`               // Maximum total concurrent sessions (0 = unlimited, default: 10000)
-	MaxSessionsPerUser      int                       `toml:"max_sessions_per_user"`      // Maximum sessions per username (0 = unlimited, default: 10)
-	MaxAttachmentMiB        int                       `toml:"max_attachment_mib"`         // Max attachment size per composer in MiB (default: 32)
-	MaxSessionAttachmentMiB int                       `toml:"max_session_attachment_mib"` // Max attachment size per session in MiB (default: 128)
-	MaxGlobalAttachmentMiB  int                       `toml:"max_global_attachment_mib"`  // Max global attachment size in MiB (default: 1024)
-	RateLimit               RateLimitConfig           `toml:"rate_limit"`                 // Rate limiting configuration
-	ReadTimeoutSec          int                       `toml:"read_timeout_sec"`           // HTTP read timeout in seconds (default: 10)
-	WriteTimeoutSec         int                       `toml:"write_timeout_sec"`          // HTTP write timeout in seconds (default: 30)
-	IdleTimeoutSec          int                       `toml:"idle_timeout_sec"`           // HTTP idle timeout in seconds (default: 120)
-	IMAPTimeoutSec          int                       `toml:"imap_timeout_sec"`           // IMAP operation timeout in seconds (default: 30)
-	SMTPTimeoutSec          int                       `toml:"smtp_timeout_sec"`           // SMTP operation timeout in seconds (default: 30)
+	Addr                    string          `toml:"addr"`
+	Debug                   bool            `toml:"debug"`
+	LoginKey                string          `toml:"login_key"`
+	TempDir                 string          `toml:"temp_dir"`
+	SessionMinutes          int             `toml:"session_minutes"`            // Session timeout in minutes (default: 30)
+	MaxSessionMinutes       int             `toml:"max_session_minutes"`        // Maximum session duration users can set (0 = no limit)
+	MaxSessions             int             `toml:"max_sessions"`               // Maximum total concurrent sessions (0 = unlimited, default: 10000)
+	MaxSessionsPerUser      int             `toml:"max_sessions_per_user"`      // Maximum sessions per username (0 = unlimited, default: 10)
+	MaxAttachmentMiB        int             `toml:"max_attachment_mib"`         // Max attachment size per composer in MiB (default: 32)
+	MaxSessionAttachmentMiB int             `toml:"max_session_attachment_mib"` // Max attachment size per session in MiB (default: 128)
+	MaxGlobalAttachmentMiB  int             `toml:"max_global_attachment_mib"`  // Max global attachment size in MiB (default: 1024)
+	RateLimit               RateLimitConfig `toml:"rate_limit"`                 // Rate limiting configuration
+	ReadTimeoutSec          int             `toml:"read_timeout_sec"`           // HTTP read timeout in seconds (default: 10)
+	WriteTimeoutSec         int             `toml:"write_timeout_sec"`          // HTTP write timeout in seconds (default: 30)
+	IdleTimeoutSec          int             `toml:"idle_timeout_sec"`           // HTTP idle timeout in seconds (default: 120)
+	IMAPTimeoutSec          int             `toml:"imap_timeout_sec"`           // IMAP operation timeout in seconds (default: 30)
+	SMTPTimeoutSec          int             `toml:"smtp_timeout_sec"`           // SMTP operation timeout in seconds (default: 30)
 }
 
 type RateLimitConfig struct {
@@ -61,7 +61,6 @@ type LoggingConfig struct {
 	Format string `toml:"format"` // "json" or "console"
 	Level  string `toml:"level"`  // "debug", "info", "warn", "error"
 }
-
 
 type ProviderConfig struct {
 	Type    string                 `toml:"type"` // "imap" (default)
@@ -231,7 +230,6 @@ func (c *Config) ToOptions() (alps.Options, error) {
 		options.SMTPTimeout = time.Duration(c.Server.SMTPTimeoutSec) * time.Second
 	}
 
-
 	// Override rate limiting config from config file
 	if c.Server.RateLimit.Enabled != nil && *c.Server.RateLimit.Enabled == false {
 		options.RateLimitEnabled = false
@@ -258,11 +256,10 @@ func (c *Config) ToOptions() (alps.Options, error) {
 		}
 	}
 
-
 	// Set enabled plugins from config
 	if len(c.Plugin) > 0 {
 		options.EnabledPlugins = c.GetEnabledPlugins()
-		
+
 		// Map plugin configurations
 		options.Plugins = make(map[string]alps.PluginConfig)
 		for name, cfg := range c.Plugin {

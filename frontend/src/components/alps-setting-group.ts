@@ -11,7 +11,7 @@ export class AlpsSettingGroup extends LitElement {
       display: block;
       width: 100%;
       max-width: 600px;
-      margin-bottom: 24px;
+      margin-bottom: 36px;
     }
 
     .setting-label {

@@ -140,6 +140,17 @@ export class SettingsStore extends EventTarget {
   }
 
   private async _fetchBackendSettings() {
+    // Avoid unnecessary API calls if we are clearly not logged in
+    const isLoggedIn = document.cookie.split(';').some(c => c.trim().startsWith('alps_logged_in=1'));
+    const hasLoginToken = document.cookie.split(';').some(c => c.trim().startsWith('alps_has_login_token=1'));
+    
+    if (!isLoggedIn && !hasLoginToken) {
+      if (!window.location.hash.startsWith('#/login')) {
+        window.dispatchEvent(new CustomEvent('auth-error'));
+      }
+      return;
+    }
+
     try {
       const response = await fetch('/settings');
       if (response.status === 401) {

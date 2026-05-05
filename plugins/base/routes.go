@@ -11,13 +11,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/migadu/alps"
-	"github.com/migadu/alps/provider"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-message/textproto"
 	"github.com/emersion/go-smtp"
+	"github.com/migadu/alps"
+	"github.com/migadu/alps/provider"
 )
 
 func registerRoutes(p *alps.GoPlugin) {
@@ -61,6 +61,16 @@ func registerRoutes(p *alps.GoPlugin) {
 	// Settings & Accounts
 	p.GET("/settings", handleSettings)
 	p.PUT("/settings", handleSettings)
+
+	// WebAuthn
+	p.GET("/settings/2fa", handleSetupPage)
+	p.POST("/settings/2fa/begin", handleSetupBegin)
+	p.POST("/settings/2fa/finish", handleSetupFinish)
+	p.POST("/settings/2fa/credential/{id}/delete", handleDisable)
+	p.POST("/settings/2fa/trust-linked-accounts", handleLinkedAccountsTrust)
+	p.POST("/webauthn/verify/begin", handleVerifyBegin)
+	p.POST("/webauthn/verify/finish", handleVerifyFinish)
+
 	p.GET("/accounts", handleSettingsAccounts)
 	p.POST("/accounts", handleAddAccount)
 	p.DELETE("/accounts/{id}", handleRemoveAccount)
@@ -244,8 +254,6 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 	if err != nil {
 		return nil, alps.NewHTTPError(http.StatusBadRequest, err)
 	}
-
-
 
 	statuses := make(map[string]*MailboxStatus)
 	var mailboxes []MailboxInfo
@@ -616,7 +624,6 @@ func handleGetMailbox(ctx *alps.Context) error {
 	})
 }
 
-
 func handleNewMailbox(ctx *alps.Context) error {
 	name := ctx.FormValue("name")
 	if name == "" {
@@ -795,12 +802,12 @@ func handleLogin(ctx *alps.Context) error {
 		remember = ctx.FormValue("remember-me")
 	}
 
-	// // Check if we're restoring from a login token (session restoration)
-	// restoredFromToken := false
-	// if username == "" && password == "" {
-	// 	username, password = ctx.GetLoginToken()
-	// 	restoredFromToken = username != "" && password != ""
-	// }
+	// Check if we're restoring from a login token (session restoration)
+	restoredFromToken := false
+	if username == "" && password == "" {
+		username, password, _ = ctx.GetLoginToken()
+		restoredFromToken = username != "" && password != ""
+	}
 
 	// Check rate limiting before attempting login
 	if ctx.Server.RateLimiter != nil {
@@ -841,7 +848,6 @@ func handleLogin(ctx *alps.Context) error {
 		// Check if WebAuthn 2FA is enabled for this user
 		// Skip 2FA check if restoring from login token (token only exists after successful 2FA)
 		enabled := false
-		/* Temporarily disable WebAuthn check so we can log in during dev
 		if !restoredFromToken {
 			var err error
 			enabled, err = checkWebAuthnEnabled(s.Store())
@@ -851,7 +857,6 @@ func handleLogin(ctx *alps.Context) error {
 				enabled = false
 			}
 		}
-		*/
 		if enabled {
 			// 2FA required - store temporary session token and redirect to WebAuthn verification
 			ctx.SetCookie(&http.Cookie{
@@ -889,7 +894,7 @@ func handleLogin(ctx *alps.Context) error {
 
 		// No 2FA - proceed with normal login
 		// Always create encrypted login token to enable session restoration after server restart
-		ctx.SetLoginToken(username, password)
+		ctx.SetLoginToken(username, password, true, ctx.FormValue("remember") == "1")
 
 		// Set session cookie: persistent if "remember me" checked, browser session otherwise
 		persistent := remember == "on"
@@ -906,7 +911,7 @@ func handleLogout(ctx *alps.Context) error {
 		ctx.Session.Close()
 		ctx.SetSession(nil)
 	}
-	ctx.SetLoginToken("", "")
+	ctx.SetLoginToken("", "", false, false)
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
 }
 
@@ -1008,7 +1013,6 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			msg = &imapMsg
 			headerData = cachedData.HeaderData
 			bodyData = cachedData.BodyData
-
 
 			ctx.Server.Logger().Debugf("Cache HIT (full) for message %s/%d part %v", mbox.Name(), uid, partPath)
 		} else {
@@ -1199,8 +1203,6 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		return err
 	}
 
-
-
 	// Use standard IMAP flags
 	standardFlags := []imap.Flag{
 		imap.FlagSeen,
@@ -1219,11 +1221,11 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
-		"Mailboxes":   ibase.Mailboxes,
-		"Mailbox":     ibase.Mailbox,
-		"Inbox":       ibase.Inbox,
-		"Message":     msg,
-		"Part":        partNode,
+		"Mailboxes": ibase.Mailboxes,
+		"Mailbox":   ibase.Mailbox,
+		"Inbox":     ibase.Inbox,
+		"Message":   msg,
+		"Part":      partNode,
 
 		"Flags":       flags,
 		"Attachments": msg.Attachments(),
@@ -1922,9 +1924,9 @@ type Settings struct {
 func loadSettings(s provider.Store) (*Settings, error) {
 	autoLogoutDefault := 30
 	settings := &Settings{
-		MessagesPerPage: 50,
-		PreferredView:   "html", // Default to HTML view
-		AutoLogout:      &autoLogoutDefault,
+		MessagesPerPage:    50,
+		PreferredView:      "html", // Default to HTML view
+		AutoLogout:         &autoLogoutDefault,
 		SoundNotifications: true,
 	}
 	if err := s.Get(settingsKey, settings); err != nil && err != provider.ErrNoStoreEntry {
@@ -1976,7 +1978,6 @@ func (s *Settings) check() error {
 	}
 	return nil
 }
-
 
 func handleSettings(ctx *alps.Context) error {
 	settings, err := loadSettings(ctx.Session.Store())
@@ -2138,9 +2139,9 @@ func handleSettings(ctx *alps.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
-		"Settings":      settings,
-		"Mailboxes":     mailboxes,
-		"AutoLogout":    settings.AutoLogout,
+		"Settings":   settings,
+		"Mailboxes":  mailboxes,
+		"AutoLogout": settings.AutoLogout,
 	})
 }
 
@@ -2266,6 +2267,15 @@ func handleSwitchAccount(ctx *alps.Context) error {
 		// Close the old session
 		ctx.Session.Close()
 
+		// Clear the old session cookie so Auth middleware doesn't try to restore it
+		ctx.SetCookie(&http.Cookie{
+			Name:     "alps_session",
+			Value:    "",
+			Path:     "/",
+			HttpOnly: true,
+			MaxAge:   -1,
+		})
+
 		// Don't set the session cookie yet - will be set after 2FA verification
 		return ctx.JSON(http.StatusOK, map[string]interface{}{"requires_2fa": true})
 	}
@@ -2283,7 +2293,7 @@ func handleSwitchAccount(ctx *alps.Context) error {
 	ctx.SetSession(newSession)
 
 	// Update login token for persistence
-	ctx.SetLoginToken(targetUsername, password)
+	ctx.SetLoginToken(targetUsername, password, true, false)
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
 }

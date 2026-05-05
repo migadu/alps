@@ -12,6 +12,8 @@ import { Color } from '@tiptap/extension-color';
 import { renderIcon } from '../utils/ui';
 import { popupStyles } from './alps-popup';
 import './alps-popup';
+import './alps-input.js';
+import './alps-button.js';
 import { BubbleMenu } from '@tiptap/extension-bubble-menu';
 import { getMarkRange } from '@tiptap/core';
 
@@ -603,22 +605,6 @@ export class AlpsMessageComposer extends LitElement {
       margin-top: 4px;
     }
 
-    .bubble-menu-wrapper .bubble-actions .bubble-btn {
-      padding: 4px 12px;
-      border: 1px solid var(--border-color);
-      background: transparent;
-      border-radius: 4px;
-      cursor: pointer;
-      text-decoration: none;
-      color: var(--text-primary);
-    }
-
-    .bubble-menu-wrapper .bubble-actions .bubble-btn.primary {
-      background: var(--accent-color);
-      color: white;
-      border-color: var(--accent-color);
-    }
-
     .hidden {
       display: none !important;
     }
@@ -761,15 +747,15 @@ export class AlpsMessageComposer extends LitElement {
               <div class="bubble-edit">
                 <div class="field-row">
                   <label>Text</label>
-                  <input type="text" id="bubbleText" .value=${this.activeLinkText} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._applyBubbleLink(e); e.stopPropagation(); }}>
+                  <alps-input inputId="bubbleText" .value=${this.activeLinkText} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._applyBubbleLink(e); e.stopPropagation(); }}></alps-input>
                 </div>
                 <div class="field-row">
                   <label>Link</label>
-                  <input type="url" id="bubbleUrl" .value=${this.activeLinkUrl} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._applyBubbleLink(e); e.stopPropagation(); }}>
+                  <alps-input type="url" inputId="bubbleUrl" .value=${this.activeLinkUrl} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._applyBubbleLink(e); e.stopPropagation(); }}></alps-input>
                 </div>
                 <div class="bubble-actions">
-                  <button class="bubble-btn" @click=${(e: Event) => { e.preventDefault(); this.bubbleMenuState = 'view'; }}>Cancel</button>
-                  <button class="bubble-btn primary" @click=${this._applyBubbleLink}>Apply</button>
+                  <alps-button variant="text" @click=${(e: Event) => { e.preventDefault(); this.bubbleMenuState = 'view'; }}>Cancel</alps-button>
+                  <alps-button variant="normal" @click=${this._applyBubbleLink}>Apply</alps-button>
                 </div>
               </div>
             `}

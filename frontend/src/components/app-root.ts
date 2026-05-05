@@ -1,6 +1,7 @@
 import { html, css, LitElement } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { Router } from '../router';
+import { registry } from '../plugin-registry';
 
 // Import pages
 import '../pages/login-page';
@@ -8,6 +9,7 @@ import '../pages/mailbox-page';
 import '../pages/settings-page';
 import '../pages/original-message-page';
 import '../pages/print-page';
+import '../pages/login-webauthn-page';
 
 // Compose imports
 import { provide } from '@lit/context';
@@ -18,6 +20,7 @@ import { composeContext, ComposeStore } from '../store/compose-store';
 import type { ComposerInstance } from '../store/compose-store';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
+import { linkedAccountsContext, linkedAccountsStore } from '../store/linked-accounts-store';
 import { autoLogoutService } from '../services/auto-logout';
 
 const DEFAULT_TOAST_TIMEOUT_MS = 3000;
@@ -41,6 +44,9 @@ export class AppRoot extends LitElement {
 
   @provide({ context: i18nContext })
   i18nStore = new I18nStore();
+
+  @provide({ context: linkedAccountsContext })
+  linkedAccountsStore = linkedAccountsStore;
 
   @state() private activeComposers: ComposerInstance[] = [];
 
@@ -73,6 +79,14 @@ export class AppRoot extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    
+    // Initial auth check to prevent loading mailbox components if we are clearly not logged in
+    const isLoggedIn = document.cookie.split(';').some(c => c.trim().startsWith('alps_logged_in=1')) ||
+                       document.cookie.split(';').some(c => c.trim().startsWith('alps_has_login_token=1'));
+    if (!isLoggedIn && !window.location.hash.startsWith('#/login')) {
+      window.location.hash = '#/login';
+    }
+
     this.composeStore.addEventListener('change', this._handleComposeChange);
     this.settingsStore.addEventListener('change', this._handleSettingsChange);
     this.activeComposers = this.composeStore.getState().activeComposers;
@@ -225,15 +239,36 @@ export class AppRoot extends LitElement {
 
   private mailboxPageTemplate = html`<mailbox-page></mailbox-page>`;
 
-  private router = new Router(
-    {
+  private getRoutes() {
+    const baseRoutes: Record<string, () => any> = {
       '/': () => this.mailboxPageTemplate,
       '/login': () => html`<login-page></login-page>`,
       '/mailbox/*': () => this.mailboxPageTemplate,
-      '/settings': () => html`<settings-page></settings-page>`,
+      '/settings': () => html`<settings-page category="general"></settings-page>`,
+      '/settings/*': () => {
+         const hash = window.location.hash;
+         const match = hash.match(/^#\/settings\/?(.*)$/);
+         const category = match && match[1] ? match[1].split('?')[0] : 'general';
+         return html`<settings-page .category=${category}></settings-page>`;
+      },
       '/original': () => html`<original-message-page></original-message-page>`,
       '/print': () => html`<print-page></print-page>`,
-    },
+      '/login/webauthn': () => html`<login-webauthn-page></login-webauthn-page>`,
+    };
+
+    registry.getRoutes().forEach(route => {
+      baseRoutes[route.path] = () => {
+        // Create element dynamically based on component tag
+        const el = document.createElement(route.component);
+        return el;
+      };
+    });
+
+    return baseRoutes;
+  }
+
+  private router = new Router(
+    this.getRoutes(),
     () => html`<div>404 Not Found</div>`,
     () => this.requestUpdate()
   );

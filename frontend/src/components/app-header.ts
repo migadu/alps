@@ -4,7 +4,7 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon, getMailboxLabel } from '../utils/ui';
 import './alps-header';
-import './alps-search';
+import './alps-input';
 import './alps-icon-btn';
 
 @customElement('app-header')
@@ -87,6 +87,11 @@ export class AppHeader extends LitElement {
       height: 100%;
       gap: 12px;
     }
+
+    alps-input {
+      flex: 1;
+      --alps-input-bg: var(--bg-secondary, #f9fafb);
+    }
   `;
   private handleTabClick(tab: string) {
     this.currentTab = tab;
@@ -133,11 +138,30 @@ export class AppHeader extends LitElement {
           ` : ''}
         </div>
 
-        <alps-search 
+        <alps-input 
           slot="center"
+          icon="magnifyingGlass"
+          ?clearable=${true}
           .value=${this.searchQuery}
           .placeholder=${this.currentMailbox ? getMailboxLabel(this.currentMailbox, this.i18nStore) : (this.i18nStore?.t('search.placeholder'))}
-        ></alps-search>
+          @keydown=${(e: KeyboardEvent) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              this.dispatchEvent(new CustomEvent('search-submit', {
+                detail: { value: (e.target as HTMLInputElement).value },
+                bubbles: true,
+                composed: true
+              }));
+            }
+          }}
+          @clear=${() => {
+            this.dispatchEvent(new CustomEvent('search-submit', {
+              detail: { value: '' },
+              bubbles: true,
+              composed: true
+            }));
+          }}
+        ></alps-input>
 
         <div slot="right-actions">
           ${this.isMobile ? html`

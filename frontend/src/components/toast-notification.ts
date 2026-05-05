@@ -63,7 +63,7 @@ export class AlpsToast extends LitElement {
 
     .toast-container {
       background: var(--toast-bg, rgba(0, 0, 0, 0.85));
-      color: #fff;
+      color: var(--toast-fg, #fff);
       border: 1px solid var(--toast-border, rgba(255, 255, 255, 0.1));
       border-radius: 6px;
       padding: 0 4px 0 16px;
@@ -91,7 +91,7 @@ export class AlpsToast extends LitElement {
           <alps-button 
             variant="normal" 
             @click=${this.handleAction}
-            style="--text-primary: inherit; --border-color: currentColor; --bg-tertiary: rgba(255, 255, 255, 0.15); --btn-padding: 4px 10px; --btn-font-size: 12px;"
+            style="--text-primary: var(--toast-fg, #fff); --border-color: currentColor; --bg-tertiary: rgba(255, 255, 255, 0.15); --btn-padding: 4px 10px; --btn-font-size: 12px;"
           >
             ${this.actionLabel}
           </alps-button>
@@ -101,7 +101,7 @@ export class AlpsToast extends LitElement {
           icon="x" 
           aria-label="${this.i18nStore?.t('toast.dismiss')}" 
           @click=${this.dismiss}
-          style="--btn-color: rgba(255, 255, 255, 0.7); --btn-hover-bg: rgba(255, 255, 255, 0.15); --text-primary: #fff; --btn-icon-size: 16px;"
+          style="--btn-color: var(--toast-fg, rgba(255, 255, 255, 0.7)); --btn-hover-bg: rgba(255, 255, 255, 0.15); --text-primary: var(--toast-fg, #fff); --btn-icon-size: 16px;"
         ></alps-icon-btn>
       </div>
     `;

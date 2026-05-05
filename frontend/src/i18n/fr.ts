@@ -1,20 +1,17 @@
 export const fr = {
   settings: {
     title: 'Paramètres',
-    back: 'Retour',
     categories: {
       general: 'Général',
       identity: 'Identité',
       reading: 'Lecture et Rédaction',
       appearance: 'Apparence',
       localization: 'Localisation',
-      password: 'Mot de passe'
     },
     loading: 'Chargement...',
     placeholderName: 'Votre Nom',
     placeholderReplyTo: 'reponse@exemple.com',
     general: {
-      title: 'Général',
       checkMailInterval: 'Intervalle de vérification du courrier',
       checkMailIntervalDesc: 'À quelle fréquence vérifier automatiquement les nouveaux messages.',
       autoLogout: 'Déconnexion automatique',
@@ -33,7 +30,6 @@ export const fr = {
       hours6: '6 heures',
     },
     identity: {
-      title: 'Identité',
       displayName: 'Nom d\'affichage',
       displayNameDesc: 'Le nom affiché aux destinataires lorsque vous envoyez un e-mail.',
       signature: 'Signature',
@@ -43,7 +39,6 @@ export const fr = {
       bccMyself: 'Toujours m\'ajouter en Cci sur le courrier sortant',
     },
     reading: {
-      title: 'Lecture et Rédaction',
       messagesPerPage: 'Messages par page',
       preferredView: 'Vue préférée',
       preferredViewDesc: 'Comment afficher les messages contenant à la fois du HTML et du texte brut.',
@@ -67,7 +62,6 @@ export const fr = {
       sortDate: 'Date de réception'
     },
     appearance: {
-      title: 'Apparence',
       colorTheme: 'Thème de couleur',
       colorThemeDesc: 'Sélectionnez votre palette de couleurs préférée.',
       themeMode: 'Mode du thème',
@@ -88,7 +82,6 @@ export const fr = {
       ultraCompact: 'Ultra compact'
     },
     localization: {
-      title: 'Localisation',
       language: 'Langue',
       timeFormat: 'Format de l\'heure',
       dateFormat: 'Format de la date',
@@ -100,19 +93,9 @@ export const fr = {
       spanish: 'Español',
       serbian: 'Српски (Ћирилица)',
       serbianLatin: 'Srpski (Latinica)',
-      french: 'Français'
+      french: 'Français',
+      portuguese: 'Português'
     },
-    password: {
-      title: 'Mot de passe',
-      changePassword: 'Changer le mot de passe',
-      changePasswordDesc: 'Mettez à jour le mot de passe de votre compte.',
-      oldPassword: 'Mot de passe actuel',
-      newPassword: 'Nouveau mot de passe',
-      confirmPassword: 'Confirmer le nouveau mot de passe',
-      updatePassword: 'Mettre à jour le mot de passe',
-      fillAllFields: 'Veuillez remplir tous les champs.',
-      passwordMismatch: 'Les nouveaux mots de passe ne correspondent pas.'
-    }
   },
   print: {
     loading: 'Chargement de l\'aperçu avant impression...'
@@ -155,7 +138,6 @@ export const fr = {
     noMessages: 'Aucun message',
     loading: 'Chargement...',
     unknownSender: 'Expéditeur inconnu',
-    noRecipient: '(Aucun destinataire)',
     unknown: 'Inconnu',
     noSubject: '(Sans objet)',
     hasAttachments: 'Contient des pièces jointes',
@@ -165,46 +147,6 @@ export const fr = {
     clearSearch: 'Effacer la recherche'
   },
   composer: {
-    sizeSmall: 'Petit',
-    sizeNormal: 'Normal',
-    sizeLarge: 'Grand',
-    sizeHuge: 'Énorme',
-    alignLeft: 'Gauche',
-    alignCenter: 'Centre',
-    alignRight: 'Droite',
-    changeLink: 'Modifier',
-    removeLink: 'Supprimer',
-    linkText: 'Texte',
-    linkUrl: 'Lien',
-    cancel: 'Annuler',
-    apply: 'Appliquer',
-    fontSize: 'Taille de la police',
-    bold: 'Gras',
-    italic: 'Italique',
-    underline: 'Souligné',
-    textColor: 'Couleur du texte',
-    align: 'Alignement',
-    numberedList: 'Liste numérotée',
-    bulletedList: 'Liste à puces',
-    indentMore: 'Augmenter le retrait',
-    indentLess: 'Diminuer le retrait',
-    moreFormatting: 'Plus d\'options de formatage',
-    placeholder: 'Écrivez votre message...',
-    saving: 'Enregistrement...',
-    autosaved: 'Enregistrement automatique',
-    to: 'À',
-    cc: 'Cc',
-    bcc: 'Cci',
-    minimize: 'Réduire',
-    expand: 'Développer',
-    restore: 'Restaurer',
-    discardDraft: 'Ignorer le brouillon ?',
-    saveAndClose: 'Enregistrer et fermer',
-    subjectPlaceholder: 'Objet',
-    toggleFormatting: 'Afficher/masquer les options de formatage',
-    attachFiles: 'Joindre des fichiers',
-    insertLink: 'Insérer un lien',
-    insertEmoji: 'Insérer un émoji',
     attachmentsWait: 'Veuillez attendre que le téléchargement des pièces jointes soit terminé avant d\'envoyer.',
     sending: 'Envoi du message en cours...',
     undo: 'Annuler',
@@ -219,11 +161,8 @@ export const fr = {
     forward: 'Transférer',
     to: 'À :',
     cc: 'Cc :',
-    from: 'De :',
-    date: 'Date :',
     undisclosed: 'Non divulgué',
     loadingMessage: 'Chargement du message...',
-    errorLoading: 'Erreur lors du chargement du message.',
     remoteContentWarning: 'Ce message contient du contenu distant. Pour votre confidentialité, il a été bloqué.',
     loadRemoteContent: 'Charger le contenu distant',
     isDraft: 'Ceci est un brouillon.',
@@ -243,7 +182,6 @@ export const fr = {
     markRead: 'Marquer comme lu',
     star: 'Ajouter aux favoris',
     moveTo: 'Copier/Déplacer vers...',
-    more: 'Plus',
     print: 'Imprimer',
     showPlaintext: 'Afficher en texte brut',
     showHtml: 'Afficher en HTML',
@@ -276,7 +214,6 @@ export const fr = {
     fail: 'ÉCHEC',
   },
   folderSelector: {
-    title: 'Déplacer / Copier',
     filter: 'Filtrer les dossiers...',
     noResults: 'Aucun dossier correspondant',
     actionMove: 'Déplacer vers',
@@ -288,8 +225,7 @@ export const fr = {
   navigation: {
     messages: 'Messages',
     contacts: 'Contacts',
-    calendar: 'Calendrier',
-    searchPlaceholder: 'Rechercher des messages...'
+    calendar: 'Calendrier'
   },
   userMenu: {
     settings: 'Paramètres',
@@ -303,13 +239,7 @@ export const fr = {
     zeroMessages: '0 message'
   },
   toast: {
-    messageMovedToTrash: 'Message déplacé vers la corbeille',
     messagePermanentlyDeleted: 'Message définitivement supprimé',
-    messageMovedToArchive: 'Message déplacé vers les archives',
-    messageMovedToSpam: 'Message déplacé vers les spams',
-    messageMovedToInbox: 'Message déplacé vers la boîte de réception',
-    messageMoved: 'Message déplacé vers {folder}',
-    messageCopied: 'Message copié vers {folder}',
     draftDiscarded: 'Brouillon ignoré',
     folderRenamed: 'Dossier renommé',
     folderMovedToTrash: 'Dossier déplacé vers la corbeille',

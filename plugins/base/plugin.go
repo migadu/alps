@@ -10,5 +10,11 @@ func init() {
 	registerRoutes(&p)
 
 	p.AddJob("cleanup_bimi_avatars", cleanupBIMIAvatars)
-	alps.RegisterPluginLoader(p.Loader())
+
+	alps.RegisterPluginLoader(func(s *alps.Server) ([]alps.Plugin, error) {
+		if err := initWebAuthn(); err != nil {
+			return nil, err
+		}
+		return p.Loader()(s)
+	})
 }

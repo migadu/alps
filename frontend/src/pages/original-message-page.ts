@@ -5,6 +5,7 @@ import { parseEmailHeaders, type ParsedHeaders } from '../utils/email-parser';
 import { renderIcon } from '../utils/ui';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
+import '../components/alps-button';
 
 @customElement('original-message-page')
 export class OriginalMessagePage extends LitElement {
@@ -79,35 +80,6 @@ export class OriginalMessagePage extends LitElement {
       display: flex;
       gap: 12px;
       margin-bottom: 24px;
-    }
-    .btn {
-      padding: 8px 16px;
-      background: var(--accent-color, #2563eb);
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 500;
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .btn svg {
-      width: 18px;
-      height: 18px;
-    }
-    .btn:hover {
-      background: var(--accent-hover-color, #1d4ed8);
-    }
-    .btn-secondary {
-      background: transparent;
-      color: var(--accent-color, #2563eb);
-      border: 1px solid var(--accent-color, #2563eb);
-    }
-    .btn-secondary:hover {
-      background: var(--bg-secondary, #f9fafb);
     }
     .raw-content {
       background: var(--bg-secondary, #f9fafb);
@@ -320,13 +292,18 @@ export class OriginalMessagePage extends LitElement {
         ` : ''}
 
         <div class="actions">
-          <a href="${downloadUrl}" download="original_message.eml" class="btn">
-            ${renderIcon('downloadSimple')} ${this.i18nStore?.t('originalMessage.downloadOriginal')}
-          </a>
+          <alps-button variant="primary" icon="downloadSimple" @click=${() => {
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = 'original_message.eml';
+            a.click();
+          }}>
+            ${this.i18nStore?.t('originalMessage.downloadOriginal')}
+          </alps-button>
           ${!this.isTruncated ? html`
-            <button class="btn btn-secondary" @click=${this.copyToClipboard}>
-              ${renderIcon('copy')} ${this.i18nStore?.t('originalMessage.copyClipboard')}
-            </button>
+            <alps-button variant="normal" icon="copy" @click=${this.copyToClipboard}>
+              ${this.i18nStore?.t('originalMessage.copyClipboard')}
+            </alps-button>
           ` : ''}
         </div>
 

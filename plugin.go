@@ -1,7 +1,6 @@
 package alps
 
-import (
-)
+import ()
 
 // PluginDir is the path to the plugins directory.
 const PluginDir = "plugins"

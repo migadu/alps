@@ -1,7 +1,37 @@
 import { createContext } from '@lit/context';
 import type { ReactiveController, ReactiveControllerHost } from 'lit';
-import { en } from '../i18n/en';
+import { en as coreEn } from '../i18n/en';
 import type { TranslationDictionary } from '../i18n/en';
+
+function deepMerge(target: any, source: any): any {
+  if (typeof target !== 'object' || target === null) return source;
+  if (typeof source !== 'object' || source === null) return target;
+
+  const output = { ...target };
+  Object.keys(source).forEach(key => {
+      if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key])) {
+          if (!(key in target)) {
+              output[key] = source[key];
+          } else {
+              output[key] = deepMerge(target[key], source[key]);
+          }
+      } else {
+          output[key] = source[key];
+      }
+  });
+  return output;
+}
+
+const pluginEnLocales = import.meta.glob('../../../plugins/*/frontend/i18n/en.ts', { eager: true });
+let combinedEn = { ...coreEn };
+
+for (const path in pluginEnLocales) {
+  const module: any = pluginEnLocales[path];
+  const pluginDict = module.default || module['en'] || {};
+  combinedEn = deepMerge(combinedEn, pluginDict);
+}
+
+export const en = combinedEn as TranslationDictionary;
 
 export class I18nStore extends EventTarget {
   private language: string = 'en';
@@ -19,14 +49,31 @@ export class I18nStore extends EventTarget {
       if (lang === 'en') {
         this.dictionary = en;
       } else {
+        let newDict: any = {};
         const locales = import.meta.glob(['../i18n/*.ts', '!../i18n/en.ts']);
         const importFn = locales[`../i18n/${lang}.ts`];
         if (importFn) {
           const module: any = await importFn();
-          this.dictionary = module.default || module[lang];
+          newDict = module.default || module[lang];
         } else {
           throw new Error(`Locale file not found for ${lang}`);
         }
+
+        const pluginLocales = import.meta.glob(['../../../plugins/*/frontend/i18n/*.ts', '!../../../plugins/*/frontend/i18n/en.ts']);
+        const pluginPromises = [];
+        for (const path in pluginLocales) {
+            if (path.endsWith(`/${lang}.ts`)) {
+                pluginPromises.push((pluginLocales[path] as () => Promise<any>)());
+            }
+        }
+        
+        const pluginModules = await Promise.all(pluginPromises);
+        for (const module of pluginModules) {
+            const pluginDict = module.default || (module as any)[lang] || {};
+            newDict = deepMerge(newDict, pluginDict);
+        }
+
+        this.dictionary = newDict;
       }
     } catch (e) {
       console.error(`Failed to load language module for ${lang}`, e);
@@ -52,7 +99,19 @@ export class I18nStore extends EventTarget {
       result = result[k];
     }
     
-    return typeof result === 'string' ? result : key;
+    if (typeof result !== 'string') {
+      // Fallback to English
+      let enResult: any = en;
+      for (const k of keys) {
+        if (enResult === undefined || enResult === null) {
+          break;
+        }
+        enResult = enResult[k];
+      }
+      return typeof enResult === 'string' ? enResult : key;
+    }
+    
+    return result;
   }
 }
 

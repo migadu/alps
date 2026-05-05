@@ -3,9 +3,9 @@ package imap
 import (
 	"testing"
 
-	"github.com/migadu/alps/provider"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/migadu/alps/provider"
 )
 
 // TestIMAPUID tests the IMAPUID implementation of MessageID

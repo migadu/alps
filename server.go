@@ -10,16 +10,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fernet/fernet-go"
 	"github.com/migadu/alps/provider"
 	"github.com/migadu/alps/provider/imap"
-	"github.com/fernet/fernet-go"
 )
 
 const (
 	cookieName           = "alps_session"
 	loginTokenCookieName = "alps_login_token"
 )
-
 
 // Server holds all the alps server state.
 type Server struct {
@@ -357,23 +356,23 @@ type Options struct {
 	Upstreams               []string
 	Debug                   bool
 	LoginKey                *fernet.Key
-	EnabledPlugins          []string              // If empty, all plugins are enabled
-	CacheTTL                time.Duration         // Cache TTL, 0 means use default (10 minutes)
-	CacheEnabled            bool                  // If false, caching is disabled
-	SessionDuration         time.Duration         // Session timeout, 0 means use default (30 minutes)
-	MaxSessionDuration      time.Duration         // Maximum session duration users can set, 0 means no limit
-	MaxSessions             int                   // Maximum total concurrent sessions, 0 means unlimited (default: 10000)
-	MaxSessionsPerUser      int                   // Maximum sessions per username, 0 means unlimited (default: 10)
-	MaxAttachmentMiB        int                   // Max attachment size per composer in MiB
-	MaxSessionAttachmentMiB int                   // Max attachment size per session in MiB
-	MaxGlobalAttachmentMiB  int                   // Max global attachment size in MiB
-	RateLimitConfig         *RateLimitConfig      // Rate limiting config, nil = use defaults
-	RateLimitEnabled        bool                  // If false, rate limiting is disabled
-	ReadTimeout             time.Duration         // HTTP read timeout, 0 means use default (10 seconds)
-	WriteTimeout            time.Duration         // HTTP write timeout, 0 means use default (30 seconds)
-	IdleTimeout             time.Duration         // HTTP idle timeout, 0 means use default (120 seconds)
-	IMAPTimeout             time.Duration         // IMAP operation timeout, 0 means use default (30 seconds)
-	SMTPTimeout             time.Duration         // SMTP operation timeout, 0 means use default (30 seconds)
+	EnabledPlugins          []string                // If empty, all plugins are enabled
+	CacheTTL                time.Duration           // Cache TTL, 0 means use default (10 minutes)
+	CacheEnabled            bool                    // If false, caching is disabled
+	SessionDuration         time.Duration           // Session timeout, 0 means use default (30 minutes)
+	MaxSessionDuration      time.Duration           // Maximum session duration users can set, 0 means no limit
+	MaxSessions             int                     // Maximum total concurrent sessions, 0 means unlimited (default: 10000)
+	MaxSessionsPerUser      int                     // Maximum sessions per username, 0 means unlimited (default: 10)
+	MaxAttachmentMiB        int                     // Max attachment size per composer in MiB
+	MaxSessionAttachmentMiB int                     // Max attachment size per session in MiB
+	MaxGlobalAttachmentMiB  int                     // Max global attachment size in MiB
+	RateLimitConfig         *RateLimitConfig        // Rate limiting config, nil = use defaults
+	RateLimitEnabled        bool                    // If false, rate limiting is disabled
+	ReadTimeout             time.Duration           // HTTP read timeout, 0 means use default (10 seconds)
+	WriteTimeout            time.Duration           // HTTP write timeout, 0 means use default (30 seconds)
+	IdleTimeout             time.Duration           // HTTP idle timeout, 0 means use default (120 seconds)
+	IMAPTimeout             time.Duration           // IMAP operation timeout, 0 means use default (30 seconds)
+	SMTPTimeout             time.Duration           // SMTP operation timeout, 0 means use default (30 seconds)
 	Plugins                 map[string]PluginConfig // Generic plugin configuration
 }
 
@@ -418,16 +417,19 @@ func (s *Server) setupMiddleware(router *Router) {
 				ctx.SetSession(nil)
 
 				// Attempt to restore session from encrypted login token
-				username, password := ctx.GetLoginToken()
+				username, password, verified2FA := ctx.GetLoginToken()
 				if username != "" && password != "" {
 					s.logger.Debugf("Auth middleware: attempting session restoration from login token for %s", ctx.Request.URL.Path)
 					session, err := ctx.Server.Sessions.Put(username, password)
 					if err != nil {
 						s.logger.Debugf("Auth middleware: session restoration failed for %s: %v", ctx.Request.URL.Path, err)
 						// Clear invalid login token
-						ctx.SetLoginToken("", "")
+						ctx.SetLoginToken("", "", false, false)
 						return handleUnauthenticated(next, ctx)
 					}
+					// Restore WebAuthn 2FA verified state
+					session.SetData("authenticated2FA", verified2FA)
+
 					s.logger.Debugf("Auth middleware: session restored successfully for %s", ctx.Request.URL.Path)
 					// Restore as persistent session since login token exists (user had "remember me" checked)
 					ctx.Session = session
@@ -556,7 +558,7 @@ func (s *Server) handleError(err error, ctx *Context) {
 			ctx.Session.Close()
 			ctx.SetSession(nil)
 		}
-		ctx.SetLoginToken("", "")
+		ctx.SetLoginToken("", "", false, false)
 		// Return 401 JSON response
 		ctx.JSON(http.StatusUnauthorized, map[string]string{
 			"error": "Authentication required",

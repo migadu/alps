@@ -5,8 +5,14 @@ export interface SettingsTab {
     component: string; // The HTML custom element tag name, e.g. 'alps-password-settings'
 }
 
+export interface Route {
+    path: string;
+    component: string;
+}
+
 class PluginRegistry {
     settingsTabs: SettingsTab[] = [];
+    routes: Route[] = [];
 
     registerSettingsTab(tab: SettingsTab) {
         if (!this.settingsTabs.find(t => t.id === tab.id)) {
@@ -16,6 +22,16 @@ class PluginRegistry {
 
     getSettingsTabs(): SettingsTab[] {
         return this.settingsTabs;
+    }
+
+    registerRoute(route: Route) {
+        if (!this.routes.find(r => r.path === route.path)) {
+            this.routes.push(route);
+        }
+    }
+
+    getRoutes(): Route[] {
+        return this.routes;
     }
 }
 

@@ -3,20 +3,17 @@ import type { TranslationDictionary } from './en';
 export const de: TranslationDictionary = {
   settings: {
     title: 'Einstellungen',
-    back: 'Zurück',
     categories: {
       general: 'Allgemein',
       identity: 'Identität',
       reading: 'Lesen & Schreiben',
       appearance: 'Darstellung',
       localization: 'Lokalisierung',
-      password: 'Passwort'
     },
     loading: 'Laden...',
     placeholderName: 'Ihr Name',
     placeholderReplyTo: 'antwort@beispiel.de',
     general: {
-      title: 'Allgemein',
       checkMailInterval: 'Intervall für E-Mail-Prüfung',
       checkMailIntervalDesc: 'Wie oft automatisch nach neuen E-Mails gesucht werden soll.',
       autoLogout: 'Automatische Abmeldung',
@@ -35,7 +32,6 @@ export const de: TranslationDictionary = {
       hours6: '6 Stunden',
     },
     identity: {
-      title: 'Identität',
       displayName: 'Anzeigename',
       displayNameDesc: 'Der Name, der Empfängern angezeigt wird, wenn Sie eine E-Mail senden.',
       signature: 'Signatur',
@@ -45,7 +41,6 @@ export const de: TranslationDictionary = {
       bccMyself: 'Mich selbst immer in BCC setzen (ausgehende E-Mails)',
     },
     reading: {
-      title: 'Lesen & Schreiben',
       messagesPerPage: 'Nachrichten pro Seite',
       preferredView: 'Bevorzugte Ansicht',
       preferredViewDesc: 'So zeigen Sie Nachrichten an, die sowohl HTML als auch reinen Text enthalten.',
@@ -69,7 +64,6 @@ export const de: TranslationDictionary = {
       sortDate: 'Empfangsdatum'
     },
     appearance: {
-      title: 'Darstellung',
       colorTheme: 'Farbthema',
       colorThemeDesc: 'Wählen Sie Ihre bevorzugte Farbpalette.',
       themeMode: 'Themenmodus',
@@ -90,7 +84,6 @@ export const de: TranslationDictionary = {
       ultraCompact: 'Ultra-Kompakt'
     },
     localization: {
-      title: 'Lokalisierung',
       language: 'Sprache',
       timeFormat: 'Zeitformat',
       dateFormat: 'Datumsformat',
@@ -102,19 +95,9 @@ export const de: TranslationDictionary = {
       spanish: 'Spanisch',
       serbian: 'Serbisch',
       serbianLatin: 'Serbisch (Lateinisch)',
-      french: 'Französisch'
+      french: 'Französisch',
+      portuguese: 'Portugiesisch'
     },
-    password: {
-      title: 'Passwort',
-      changePassword: 'Passwort ändern',
-      changePasswordDesc: 'Aktualisieren Sie Ihr Kontopasswort.',
-      oldPassword: 'Aktuelles Passwort',
-      newPassword: 'Neues Passwort',
-      confirmPassword: 'Neues Passwort bestätigen',
-      updatePassword: 'Passwort aktualisieren',
-      fillAllFields: 'Bitte füllen Sie alle Felder aus.',
-      passwordMismatch: 'Die neuen Passwörter stimmen nicht überein.'
-    }
   },
   print: {
     loading: 'Druckansicht wird geladen...'
@@ -157,7 +140,6 @@ export const de: TranslationDictionary = {
     noMessages: 'Keine Nachrichten',
     loading: 'Wird geladen...',
     unknownSender: 'Unbekannter Absender',
-    noRecipient: '(Kein Empfänger)',
     unknown: 'Unbekannt',
     noSubject: '(Kein Betreff)',
     hasAttachments: 'Hat Anhänge',
@@ -167,46 +149,6 @@ export const de: TranslationDictionary = {
     clearSearch: 'Suche löschen'
   },
   composer: {
-    sizeSmall: 'Klein',
-    sizeNormal: 'Normal',
-    sizeLarge: 'Groß',
-    sizeHuge: 'Riesig',
-    alignLeft: 'Links',
-    alignCenter: 'Zentriert',
-    alignRight: 'Rechts',
-    changeLink: 'Ändern',
-    removeLink: 'Entfernen',
-    linkText: 'Text',
-    linkUrl: 'Link',
-    cancel: 'Abbrechen',
-    apply: 'Anwenden',
-    fontSize: 'Schriftgröße',
-    bold: 'Fett',
-    italic: 'Kursiv',
-    underline: 'Unterstrichen',
-    textColor: 'Textfarbe',
-    align: 'Ausrichten',
-    numberedList: 'Nummerierte Liste',
-    bulletedList: 'Aufzählungsliste',
-    indentMore: 'Einzug vergrößern',
-    indentLess: 'Einzug verkleinern',
-    moreFormatting: 'Mehr Formatierung',
-    placeholder: 'Schreiben Sie Ihre Nachricht...',
-    saving: 'Speichern...',
-    autosaved: 'Automatisch gespeichert',
-    to: 'An',
-    cc: 'Cc',
-    bcc: 'Bcc',
-    minimize: 'Minimieren',
-    expand: 'Erweitern',
-    restore: 'Wiederherstellen',
-    discardDraft: 'Entwurf verwerfen?',
-    saveAndClose: 'Speichern & schließen',
-    subjectPlaceholder: 'Betreff',
-    toggleFormatting: 'Formatierungsoptionen umschalten',
-    attachFiles: 'Dateien anhängen',
-    insertLink: 'Link einfügen',
-    insertEmoji: 'Emoji einfügen',
     attachmentsWait: 'Bitte warten Sie, bis die Anhänge hochgeladen sind, bevor Sie senden.',
     sending: 'Nachricht wird gesendet...',
     undo: 'Rückgängig',
@@ -221,11 +163,8 @@ export const de: TranslationDictionary = {
     forward: 'Weiterleiten',
     to: 'An:',
     cc: 'Cc:',
-    from: 'Von:',
-    date: 'Datum:',
     undisclosed: 'Verborgene Empfänger',
     loadingMessage: 'Nachricht wird geladen...',
-    errorLoading: 'Fehler beim Laden der Nachricht.',
     remoteContentWarning: 'Diese Nachricht enthält externe Inhalte. Aus Datenschutzgründen wurden diese blockiert.',
     loadRemoteContent: 'Externe Inhalte laden',
     isDraft: 'Dies ist ein Entwurf.',
@@ -245,7 +184,6 @@ export const de: TranslationDictionary = {
     markRead: 'Als gelesen markieren',
     star: 'Markieren',
     moveTo: 'Verschieben nach',
-    more: 'Mehr',
     print: 'Drucken',
     showPlaintext: 'Reinen Text anzeigen',
     showHtml: 'HTML anzeigen',
@@ -278,7 +216,6 @@ export const de: TranslationDictionary = {
     fail: 'FEHLGESCHLAGEN',
   },
   folderSelector: {
-    title: 'Verschieben / Kopieren',
     filter: 'Ordner filtern...',
     noResults: 'Keine passenden Ordner',
     actionMove: 'Verschieben nach:',
@@ -290,8 +227,7 @@ export const de: TranslationDictionary = {
   navigation: {
     messages: 'Nachrichten',
     contacts: 'Kontakte',
-    calendar: 'Kalender',
-    searchPlaceholder: 'Nachrichten suchen...'
+    calendar: 'Kalender'
   },
   userMenu: {
     settings: 'Einstellungen',
@@ -305,13 +241,7 @@ export const de: TranslationDictionary = {
     zeroMessages: '0 Nachrichten'
   },
   toast: {
-    messageMovedToTrash: 'Nachricht in den Papierkorb verschoben',
     messagePermanentlyDeleted: 'Nachricht endgültig gelöscht',
-    messageMovedToArchive: 'Nachricht ins Archiv verschoben',
-    messageMovedToSpam: 'Nachricht in den Spam-Ordner verschoben',
-    messageMovedToInbox: 'Nachricht in den Posteingang verschoben',
-    messageMoved: 'Nachricht nach {folder} verschoben',
-    messageCopied: 'Nachricht nach {folder} kopiert',
     draftDiscarded: 'Entwurf verworfen',
     folderRenamed: 'Ordner umbenannt',
     folderMovedToTrash: 'Ordner in den Papierkorb verschoben',

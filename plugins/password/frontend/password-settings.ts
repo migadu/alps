@@ -11,6 +11,7 @@ export class PasswordSettings extends LitElement {
 	i18nStore!: I18nStore;
 
 	@state() private passwordForm = { old: '', new: '', confirm: '' };
+	@state() private isSubmitting = false;
 
 	static styles = css`
 		input[type="password"] {
@@ -47,6 +48,7 @@ export class PasswordSettings extends LitElement {
 			return;
 		}
 
+		this.isSubmitting = true;
 		try {
 			const response = await fetch('/password/change', {
 				method: 'POST',
@@ -68,30 +70,35 @@ export class PasswordSettings extends LitElement {
 			}
 		} catch (e) {
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Network error occurred.', timeout: 3000 } }));
+		} finally {
+			this.isSubmitting = false;
 		}
 	}
 
 	render() {
 		return html`
 			<alps-setting-group label="${this.i18nStore?.t('settings.password.changePassword')}" description="${this.i18nStore?.t('settings.password.changePasswordDesc')}">
-					<input type="password" 
+					<alps-input type="password" icon="key"
 							placeholder="${this.i18nStore?.t('settings.password.oldPassword')}" 
 							.value=${this.passwordForm.old} 
 							@input=${(e: Event) => this.handlePasswordFormChange(e, 'old')}
-					/>
-					<input type="password" 
+					></alps-input>
+					<alps-input type="password" icon="key"
 							placeholder="${this.i18nStore?.t('settings.password.newPassword')}" 
 							.value=${this.passwordForm.new} 
 							@input=${(e: Event) => this.handlePasswordFormChange(e, 'new')}
-					/>
-					<input type="password" 
+					></alps-input>
+					<alps-input type="password" icon="key"
 							placeholder="${this.i18nStore?.t('settings.password.confirmPassword')}" 
 							.value=${this.passwordForm.confirm} 
 							@input=${(e: Event) => this.handlePasswordFormChange(e, 'confirm')}
-					/>
+					></alps-input>
 					
 					<alps-button 
-						variant="primary"
+						variant="normal"
+						style="align-self: flex-start;"
+						?disabled=${this.isSubmitting || !this.passwordForm.old || !this.passwordForm.new || !this.passwordForm.confirm}
+						?spinning=${this.isSubmitting}
 						@click=${this.submitPasswordChange}>
 						${this.i18nStore?.t('settings.password.updatePassword')}
 					</alps-button>

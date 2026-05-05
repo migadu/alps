@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/migadu/alps/provider"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/textproto"
+	"github.com/migadu/alps/provider"
 )
 
 type IMAPProvider struct {
@@ -325,15 +325,16 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 	} else {
 		sortOptions := &imapclient.SortOptions{
 			SearchCriteria: searchCriteria,
-			SortCriteria: []imapclient.SortCriterion{
-				{Key: imapclient.SortKeyDate, Reverse: sortOrder == "desc" || sortOrder == ""},
+			SortCriteria: []imap.SortCriterion{
+				{Key: imap.SortKeyDate, Reverse: sortOrder == "desc" || sortOrder == ""},
 			},
 		}
 		var err error
-		nums, err = p.client.Sort(sortOptions).Wait()
+		sortData, err := p.client.Sort(sortOptions).Wait()
 		if err != nil {
 			return nil, 0, fmt.Errorf("SORT failed: %v", err)
 		}
+		nums = sortData.SeqNums
 	}
 
 	total := len(nums)

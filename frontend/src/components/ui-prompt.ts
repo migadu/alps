@@ -2,6 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { modalButtonStyles } from './ui-modal';
 import './alps-button';
+import './alps-input';
 
 export interface PromptField {
   id: string;
@@ -37,19 +38,7 @@ export class UIPrompt extends LitElement {
         color: var(--text-primary, #111827);
       }
       .field-input {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 8px 12px;
-        border: 1px solid var(--border-color, #e5e7eb);
-        border-radius: 4px;
-        font-size: 14px;
-        color: var(--text-primary, #111827);
-        background-color: var(--bg-primary, #ffffff);
-        font-family: inherit;
-      }
-      .field-input:focus {
-        outline: none;
-        border-color: var(--accent-color, #2563eb);
+        margin-top: 8px;
       }
     `
   ];
@@ -66,12 +55,12 @@ export class UIPrompt extends LitElement {
   firstUpdated() {
     // Need a small timeout to allow the native <dialog> underneath to render and become focusable
     setTimeout(() => {
-      const inputToFocus = this.shadowRoot?.querySelector('input[autofocus]') as HTMLInputElement | null;
-      if (inputToFocus) {
+      const inputToFocus = this.shadowRoot?.querySelector('alps-input[autofocus]') as any;
+      if (inputToFocus && typeof inputToFocus.focus === 'function') {
         inputToFocus.focus();
       } else {
-        const firstInput = this.shadowRoot?.querySelector('input') as HTMLInputElement | null;
-        if (firstInput) firstInput.focus();
+        const firstInput = this.shadowRoot?.querySelector('alps-input') as any;
+        if (firstInput && typeof firstInput.focus === 'function') firstInput.focus();
       }
     }, 50);
   }
@@ -110,8 +99,8 @@ export class UIPrompt extends LitElement {
           ${this.fields.map(f => html`
             <div class="field-group">
               <label class="field-label" for=${f.id}>${f.label}</label>
-              <input 
-                id=${f.id}
+              <alps-input 
+                inputId=${f.id}
                 class="field-input"
                 type=${f.type || 'text'}
                 placeholder=${f.placeholder || ''}
@@ -119,7 +108,7 @@ export class UIPrompt extends LitElement {
                 ?autofocus=${f.autofocus}
                 @input=${(e: Event) => this._handleInput(e, f.id)}
                 @keydown=${this._handleKeyDown}
-              />
+              ></alps-input>
             </div>
           `)}
         </div>

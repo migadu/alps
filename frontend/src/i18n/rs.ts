@@ -1,20 +1,17 @@
 export const rs = {
   settings: {
     title: 'Подешавања',
-    back: 'Назад',
     categories: {
       general: 'Опште',
       identity: 'Идентитет',
       reading: 'Читање и писање',
       appearance: 'Изглед',
       localization: 'Локализација',
-      password: 'Лозинка'
     },
     loading: 'Учитавање...',
     placeholderName: 'Твоје име',
     placeholderReplyTo: 'odgovor@primer.com',
     general: {
-      title: 'Опште',
       checkMailInterval: 'Интервал провере поште',
       checkMailIntervalDesc: 'Колико често аутоматски проверавати нову пошту.',
       autoLogout: 'Аутоматска одјава',
@@ -33,7 +30,6 @@ export const rs = {
       hours6: '6 сати',
     },
     identity: {
-      title: 'Идентитет',
       displayName: 'Име за приказ',
       displayNameDesc: 'Име које се приказује примаоцима када пошаљете е-пошту.',
       signature: 'Потпис',
@@ -43,7 +39,6 @@ export const rs = {
       bccMyself: 'Увек додај мене у BCC за одлазну пошту',
     },
     reading: {
-      title: 'Читање и писање',
       messagesPerPage: 'Порука по страници',
       preferredView: 'Жељени приказ',
       preferredViewDesc: 'Како приказати поруке које имају и HTML и обичан текст.',
@@ -67,7 +62,6 @@ export const rs = {
       sortDate: 'Датум пријема'
     },
     appearance: {
-      title: 'Изглед',
       colorTheme: 'Тема боја',
       colorThemeDesc: 'Изаберите жељену палету боја.',
       themeMode: 'Режим теме',
@@ -88,7 +82,6 @@ export const rs = {
       ultraCompact: 'Ултра компактно'
     },
     localization: {
-      title: 'Локализација',
       language: 'Језик',
       timeFormat: 'Формат времена',
       dateFormat: 'Формат датума',
@@ -100,19 +93,9 @@ export const rs = {
       spanish: 'Español',
       serbian: 'Српски',
       serbianLatin: 'Српски (Латиница)',
-      french: 'Француски'
+      french: 'Француски',
+      portuguese: 'Португалски'
     },
-    password: {
-      title: 'Лозинка',
-      changePassword: 'Промени лозинку',
-      changePasswordDesc: 'Ажурирајте лозинку свог налога.',
-      oldPassword: 'Тренутна лозинка',
-      newPassword: 'Нова лозинка',
-      confirmPassword: 'Потврди нову лозинку',
-      updatePassword: 'Ажурирај лозинку',
-      fillAllFields: 'Молимо попуните сва поља.',
-      passwordMismatch: 'Нове лозинке се не поклапају.'
-    }
   },
   print: {
     loading: 'Учитавање приказа за штампање...'
@@ -155,7 +138,6 @@ export const rs = {
     noMessages: 'Нема порука',
     loading: 'Учитавање...',
     unknownSender: 'Непознат пошиљалац',
-    noRecipient: '(Нема примаоца)',
     unknown: 'Непознато',
     noSubject: '(Без наслова)',
     hasAttachments: 'Има прилоге',
@@ -165,46 +147,6 @@ export const rs = {
     clearSearch: 'Обриши претрагу'
   },
   composer: {
-    sizeSmall: 'Мало',
-    sizeNormal: 'Нормално',
-    sizeLarge: 'Велико',
-    sizeHuge: 'Огромно',
-    alignLeft: 'Лево',
-    alignCenter: 'Центар',
-    alignRight: 'Десно',
-    changeLink: 'Промени',
-    removeLink: 'Уклони',
-    linkText: 'Текст',
-    linkUrl: 'Линк',
-    cancel: 'Откажи',
-    apply: 'Примени',
-    fontSize: 'Величина фонта',
-    bold: 'Подебљано',
-    italic: 'Курзив',
-    underline: 'Подвучено',
-    textColor: 'Боја текста',
-    align: 'Поравнање',
-    numberedList: 'Нумерисана листа',
-    bulletedList: 'Листа са набрајањем',
-    indentMore: 'Повећај увлачење',
-    indentLess: 'Смањи увлачење',
-    moreFormatting: 'Више опција форматирања',
-    placeholder: 'Напишите своју поруку...',
-    saving: 'Чување...',
-    autosaved: 'Аутоматски сачувано',
-    to: 'За',
-    cc: 'Cc',
-    bcc: 'Bcc',
-    minimize: 'Умањи',
-    expand: 'Прошири',
-    restore: 'Врати',
-    discardDraft: 'Одбацити радну верзију?',
-    saveAndClose: 'Сачувај и затвори',
-    subjectPlaceholder: 'Наслов',
-    toggleFormatting: 'Укључи/искључи опције форматирања',
-    attachFiles: 'Приложи датотеке',
-    insertLink: 'Убаци линк',
-    insertEmoji: 'Убаци емоџи',
     attachmentsWait: 'Молимо сачекајте да се прилози учитају пре слања.',
     sending: 'Слање поруке...',
     undo: 'Опозови',
@@ -219,11 +161,8 @@ export const rs = {
     forward: 'Проследи',
     to: 'За:',
     cc: 'Cc:',
-    from: 'Од:',
-    date: 'Датум:',
     undisclosed: 'Сакривено',
     loadingMessage: 'Учитавање поруке...',
-    errorLoading: 'Грешка при учитавању поруке.',
     remoteContentWarning: 'Ова порука садржи удаљени садржај. Ради ваше приватности, блокиран је.',
     loadRemoteContent: 'Учитај удаљени садржај',
     isDraft: 'Ово је радна верзија поруке.',
@@ -243,7 +182,6 @@ export const rs = {
     markRead: 'Означи као прочитано',
     star: 'Означи звездицом',
     moveTo: 'Копирај/Премести у...',
-    more: 'Више',
     print: 'Штампај',
     showPlaintext: 'Прикажи обичан текст',
     showHtml: 'Прикажи HTML',
@@ -276,7 +214,6 @@ export const rs = {
     fail: 'ПАЛО',
   },
   folderSelector: {
-    title: 'Премести / Копирај',
     filter: 'Филтрирај фасцикле...',
     noResults: 'Нема одговарајућих фасцикли',
     actionMove: 'Премести у',
@@ -288,8 +225,7 @@ export const rs = {
   navigation: {
     messages: 'Поруке',
     contacts: 'Контакти',
-    calendar: 'Календар',
-    searchPlaceholder: 'Претражи поруке...'
+    calendar: 'Календар'
   },
   userMenu: {
     settings: 'Подешавања',
@@ -303,13 +239,7 @@ export const rs = {
     zeroMessages: '0 порука'
   },
   toast: {
-    messageMovedToTrash: 'Порука премештена у Отпад',
     messagePermanentlyDeleted: 'Порука трајно обрисана',
-    messageMovedToArchive: 'Порука премештена у Архиву',
-    messageMovedToSpam: 'Порука премештена у Спем',
-    messageMovedToInbox: 'Порука премештена у Пријемно сандуче',
-    messageMoved: 'Порука премештена у {folder}',
-    messageCopied: 'Порука копирана у {folder}',
     draftDiscarded: 'Радна верзија одбачена',
     folderRenamed: 'Фасцикла преименована',
     folderMovedToTrash: 'Фасцикла премештена у Отпад',

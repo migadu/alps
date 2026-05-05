@@ -10,7 +10,6 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import './alps-avatar';
 import './alps-pagination';
 import './alps-icon-btn';
-import './alps-search';
 import './alps-toolbar';
 import { repeat } from 'lit/directives/repeat.js';
 

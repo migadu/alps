@@ -3,9 +3,9 @@ package imap
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"reflect"
 	"sync"
-	"log"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -46,9 +46,21 @@ func (s *memoryStore) Get(key string, out interface{}) error {
 		return provider.ErrNoStoreEntry
 	}
 
-	// out is a pointer, v is the actual value (not a pointer)
-	reflect.ValueOf(out).Elem().Set(reflect.ValueOf(v))
-	return nil
+	// Try direct assignment first
+	outVal := reflect.ValueOf(out).Elem()
+	vVal := reflect.ValueOf(v)
+
+	if outVal.Type() == vVal.Type() {
+		outVal.Set(vVal)
+		return nil
+	}
+
+	// If types differ, bridge via JSON (allows map[string]interface{} -> struct or vice versa)
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, out)
 }
 
 func (s *memoryStore) Put(key string, v interface{}) error {

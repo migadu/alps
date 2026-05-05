@@ -16,6 +16,7 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
 import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_SPAM, FOLDER_TRASH, FOLDER_DRAFTS } from '../utils/folders';
 import type { LayoutMode, DensityMode } from '../store/settings-store';
+import { renderIcon } from '../utils/ui';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
@@ -255,12 +256,44 @@ export class MailboxPage extends LitElement {
       z-index: 15;
       border-left: 1px solid var(--border-color);
     }
+
+    .initial-loader {
+      position: absolute;
+      inset: 0;
+      background-color: var(--bg-primary);
+      z-index: 99999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.4s ease-out, visibility 0.4s ease-out;
+    }
+
+    .initial-loader.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .initial-loader .spinner {
+      display: inline-flex;
+      width: 32px;
+      height: 32px;
+      animation: spin 1s linear infinite;
+      color: var(--accent-color, #2563eb);
+    }
+
+    .initial-loader .spinner svg {
+      width: 100%;
+      height: 100%;
+      fill: currentColor;
+    }
   `;
 
   @state() private mailboxes: any[] = [];
   @state() private messages: any[] = [];
   @state() private currentMailbox = FOLDER_INBOX;
   @state() private loadingMessages = true;
+  @state() private showInitialLoader = true;
   @state() private selectedMessage: any = null;
   @state() private selectedUids = new Set<string>();
 
@@ -594,6 +627,12 @@ export class MailboxPage extends LitElement {
     if (!background) {
       this.loadingMessages = false;
       this.applyTargetUid();
+      
+      if (this.showInitialLoader) {
+        setTimeout(() => {
+          this.showInitialLoader = false;
+        }, 100);
+      }
     }
   };
 
@@ -1165,6 +1204,11 @@ export class MailboxPage extends LitElement {
     const effectiveLayoutMode = this.isMobile ? 'full' : this.layoutMode;
     const isReadingFull = effectiveLayoutMode === 'full' && this.selectedMessage !== null;
     return html`
+      <div class="initial-loader ${!this.showInitialLoader ? 'hidden' : ''}">
+        <div class="spinner">
+          ${renderIcon('edelweiss')}
+        </div>
+      </div>
       <app-header 
         .username=${this.username}
         .isMobile=${this.isMobile}
