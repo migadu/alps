@@ -40,6 +40,7 @@ type LetsEncryptConfig struct {
 	FallbackDir     string
 	RenewBefore     time.Duration
 	ACMEServer      string // Empty = production, or staging URL
+	ACMEHTTPAddr    string // Address for HTTP-01 challenge handler (default: ":80")
 	S3              S3CacheConfig
 	Cluster         ClusterConfig
 }

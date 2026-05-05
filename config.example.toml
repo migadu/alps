@@ -256,6 +256,11 @@ level = "info"
 # Optional custom ACME server URL (defaults to Let's Encrypt production)
 # acme_server = "https://acme-v02.api.letsencrypt.org/directory"
 
+# Address for HTTP-01 challenge handler (default: ":80")
+# Change this if running behind a proxy that already uses port 80.
+# Your proxy should forward /.well-known/acme-challenge/* to this address.
+# acme_http_addr = ":8080"
+
 [tls.letsencrypt.s3]
 # S3 configuration for certificate storage
 # bucket = "alps-certs"

@@ -93,8 +93,9 @@ type LetsEncryptConfig struct {
 	StorageProvider string        `toml:"storage_provider"` // Currently only "s3"
 	EnableFallback  bool          `toml:"enable_fallback"`
 	FallbackDir     string        `toml:"fallback_dir"`
-	RenewBefore     string        `toml:"renew_before"` // Duration string like "720h"
-	ACMEServer      string        `toml:"acme_server"`  // Optional custom ACME server
+	RenewBefore     string        `toml:"renew_before"`    // Duration string like "720h"
+	ACMEServer      string        `toml:"acme_server"`     // Optional custom ACME server
+	ACMEHTTPAddr    string        `toml:"acme_http_addr"`  // Address for HTTP-01 challenges (default: ":80")
 	S3              S3Config      `toml:"s3"`
 	Cluster         ClusterConfig `toml:"cluster"`
 }

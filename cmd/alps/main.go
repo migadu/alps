@@ -118,11 +118,15 @@ func main() {
 		}
 		defer tlsMgr.Close()
 
-		// Start HTTP-01 challenge handler on port 80 for Let's Encrypt
+		// Start HTTP-01 challenge handler for Let's Encrypt
 		if tlsCfg.Provider == tlsmanager.ProviderLetsEncrypt {
+			acmeHTTPAddr := tlsCfg.LetsEncrypt.ACMEHTTPAddr
+			if acmeHTTPAddr == "" {
+				acmeHTTPAddr = ":80"
+			}
 			go func() {
-				logger.Infof("Starting HTTP-01 challenge handler on :80")
-				if err := http.ListenAndServe(":80", tlsMgr.HTTPHandler()); err != nil {
+				logger.Infof("Starting HTTP-01 challenge handler on %s", acmeHTTPAddr)
+				if err := http.ListenAndServe(acmeHTTPAddr, tlsMgr.HTTPHandler()); err != nil {
 					logger.Errorf("HTTP-01 challenge handler error: %v", err)
 				}
 			}()
@@ -243,6 +247,7 @@ func buildTLSConfig(cfg TLSConfig) (*tlsmanager.Config, error) {
 			FallbackDir:     cfg.LetsEncrypt.FallbackDir,
 			RenewBefore:     renewBefore,
 			ACMEServer:      cfg.LetsEncrypt.ACMEServer,
+			ACMEHTTPAddr:    cfg.LetsEncrypt.ACMEHTTPAddr,
 			S3: tlsmanager.S3CacheConfig{
 				Bucket:          cfg.LetsEncrypt.S3.Bucket,
 				Endpoint:        cfg.LetsEncrypt.S3.Endpoint,
