@@ -1,9 +1,9 @@
 .PHONY: all clean build install build-freebsd build-linux help
 
 # Binary names
-ALPS_BINARY ?= alps
-ALPS_FREEBSD_BINARY ?= alps-freebsd-amd64
-ALPS_LINUX_BINARY ?= alps-linux-amd64
+ALPS_BINARY ?= build/alps
+ALPS_FREEBSD_BINARY ?= build/alps-freebsd-amd64
+ALPS_LINUX_BINARY ?= build/alps-linux-amd64
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty --match='v*' 2>/dev/null || echo "dev")
@@ -35,7 +35,7 @@ build-linux:
 
 # Clean build artifacts
 clean:
-	rm -f $(ALPS_BINARY) $(ALPS_FREEBSD_BINARY) $(ALPS_LINUX_BINARY)
+	rm -rf build/
 
 # Run tests
 test:

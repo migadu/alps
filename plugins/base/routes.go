@@ -38,6 +38,7 @@ func registerRoutes(p *alps.GoPlugin) {
 		return handleGetPart(ctx, true)
 	})
 	p.DELETE("/mailboxes/{mbox}/messages", handleDelete)
+	p.POST("/mailboxes/{mbox}/empty", handleEmptyMailbox)
 	p.PUT("/mailboxes/{mbox}/messages/move", handleMove)
 	p.PUT("/mailboxes/{mbox}/messages/copy", handleCopy)
 	p.PUT("/mailboxes/{mbox}/messages/flag", handleSetFlags)
@@ -1747,6 +1748,56 @@ func handleDelete(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
 }
 
+func handleEmptyMailbox(ctx *alps.Context) error {
+	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
+	if err != nil {
+		return alps.NewHTTPError(http.StatusBadRequest, err)
+	}
+
+	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		// Security check: Only allow emptying Trash or Junk
+		mailboxes, err := p.ListMailboxes()
+		if err != nil {
+			return fmt.Errorf("failed to list mailboxes for validation: %v", err)
+		}
+
+		isSpamOrTrash := false
+		for _, mb := range mailboxes {
+			if mb.Name == mboxName {
+				for _, attr := range mb.Attributes {
+					if strings.EqualFold(attr, string(imap.MailboxAttrTrash)) || strings.EqualFold(attr, string(imap.MailboxAttrJunk)) {
+						isSpamOrTrash = true
+						break
+					}
+				}
+				break
+			}
+		}
+
+		// Fallback check by name if attributes are missing
+		if !isSpamOrTrash {
+			lowerName := strings.ToLower(mboxName)
+			if lowerName == "trash" || lowerName == "junk" || lowerName == "spam" || lowerName == "deleted items" {
+				isSpamOrTrash = true
+			}
+		}
+
+		if !isSpamOrTrash {
+			return fmt.Errorf("emptying is only allowed for Trash and Junk mailboxes")
+		}
+
+		return p.EmptyMailbox(mboxName)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to empty mailbox: %v", err)
+	}
+
+	// Invalidate cache for the mailbox
+	invalidateMailboxCache(ctx, mboxName)
+
+	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
+}
+
 func handleGetSession(ctx *alps.Context) error {
 	passwordChangeEnabled := false
 	var enabledPlugins []string
@@ -1760,10 +1811,16 @@ func handleGetSession(ctx *alps.Context) error {
 		}
 	}
 
+	maxAttachmentMiB := ctx.Server.Options.MaxAttachmentMiB
+	if maxAttachmentMiB == 0 {
+		maxAttachmentMiB = 32 // fallback to default
+	}
+
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Username":              ctx.Session.Username(),
 		"PasswordChangeEnabled": passwordChangeEnabled,
 		"EnabledPlugins":        enabledPlugins,
+		"MaxAttachmentMiB":      maxAttachmentMiB,
 	})
 }
 
@@ -2138,10 +2195,16 @@ func handleSettings(ctx *alps.Context) error {
 		return err
 	}
 
+	maxAttachmentMiB := ctx.Server.Options.MaxAttachmentMiB
+	if maxAttachmentMiB == 0 {
+		maxAttachmentMiB = 32 // fallback to default
+	}
+
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
-		"Settings":   settings,
-		"Mailboxes":  mailboxes,
-		"AutoLogout": settings.AutoLogout,
+		"Settings":         settings,
+		"Mailboxes":        mailboxes,
+		"AutoLogout":       settings.AutoLogout,
+		"MaxAttachmentMiB": maxAttachmentMiB,
 	})
 }
 

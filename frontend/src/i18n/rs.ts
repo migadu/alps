@@ -144,7 +144,14 @@ export const rs = {
     replied: 'Одговорено',
     forwarded: 'Прослеђено',
     searchResultsFor: 'Резултати претраге за:',
-    clearSearch: 'Обриши претрагу'
+    clearSearch: 'Очисти претрагу',
+    totalMessagesIn: 'Укупно {count} порука у {folder}',
+    deleteAllNow: 'Обриши све сада',
+    emptyMailboxTitle: 'Испразни {folder}',
+    emptyMailboxConfirm: 'Да ли сте сигурни да желите трајно да обришете свих {count} порука у {folder}? Ова акција се не може поништити.',
+    emptyingMailbox: 'Празњење сандучета...',
+    mailboxEmptied: 'Сандуче је успешно испражњено.',
+    emptyMailboxFailed: 'Није могуће испразнити сандуче. Проверите да ли је Отпад или Непожељно.'
   },
   composer: {
     attachmentsWait: 'Молимо сачекајте да се прилози учитају пре слања.',
@@ -171,6 +178,7 @@ export const rs = {
     discardDraft: 'Одбаци радну верзију',
     noReadableText: 'Ова порука не садржи читљив текст, већ само прилоге.',
     attachments: 'Прилози',
+    downloadAllAttachments: 'Преузми све прилоге',
     unknownAttachment: 'Непознат прилог',
     archive: 'Архивирај',
     reportSpam: 'Пријави као Спем',

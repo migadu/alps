@@ -6,6 +6,7 @@ import { renderIcon } from '../utils/ui';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import '../components/alps-button';
+import '../components/alps-banner';
 
 @customElement('original-message-page')
 export class OriginalMessagePage extends LitElement {
@@ -93,19 +94,11 @@ export class OriginalMessagePage extends LitElement {
       white-space: pre-wrap;
       word-break: break-all;
     }
-    .banner {
-      background: #fff3cd;
-      color: #856404;
-      padding: 12px 16px;
-      border-radius: 4px;
+    alps-banner {
+      position: static;
       margin-bottom: 24px;
-      border: 1px solid #ffeeba;
-      font-size: 14px;
-    }
-    .banner-error {
-      background: #fee2e2;
-      color: #991b1b;
-      border-color: #fecaca;
+      border-radius: 4px;
+      overflow: hidden;
     }
     .auth-status-container {
       display: flex;
@@ -149,7 +142,7 @@ export class OriginalMessagePage extends LitElement {
       this.error = this.i18nStore?.t('originalMessage.errorMissingParams');
       this.loading = false;
     }
-    
+
     this.updateComplete.then(() => {
       this.i18nStore?.addEventListener('change', this._handleStoreChange);
     });
@@ -182,12 +175,12 @@ export class OriginalMessagePage extends LitElement {
         throw new Error(this.i18nStore?.t('originalMessage.errorFailedToFetch'));
       }
       this.rawText = await res.text();
-      
+
       // If the fetched text is exactly MAX_DISPLAY_SIZE, it was likely truncated by the backend
       if (this.rawText.length >= this.MAX_DISPLAY_SIZE) {
         this.isTruncated = true;
       }
-      
+
       this.parsedHeaders = await parseEmailHeaders(this.rawText);
     } catch (e: any) {
       this.error = e.message;
@@ -208,10 +201,10 @@ export class OriginalMessagePage extends LitElement {
   private renderAuthStatus(status: string, detail?: string) {
     status = status.toLowerCase();
     let statusSpan = html`<span class="auth-none">${this.i18nStore?.t('originalMessage.none')}</span>`;
-    
+
     if (status === 'pass') statusSpan = html`<span class="auth-pass">${this.i18nStore?.t('originalMessage.pass')}</span>`;
     else if (status === 'fail') statusSpan = html`<span class="auth-fail">${this.i18nStore?.t('originalMessage.fail')}</span>`;
-    
+
     return html`
       <div class="auth-status-container">
         ${statusSpan}
@@ -233,9 +226,9 @@ export class OriginalMessagePage extends LitElement {
     if (this.error) {
       return html`
         <div class="container">
-          <div class="banner banner-error">
+          <alps-banner>
             ${this.error}
-          </div>
+          </alps-banner>
         </div>
       `;
     }
@@ -286,18 +279,18 @@ export class OriginalMessagePage extends LitElement {
         ` : ''}
 
         ${this.isTruncated ? html`
-          <div class="banner">
+          <alps-banner>
             ${this.i18nStore?.t('originalMessage.truncatedInfo')}
-          </div>
+          </alps-banner>
         ` : ''}
 
         <div class="actions">
           <alps-button variant="primary" icon="downloadSimple" @click=${() => {
-            const a = document.createElement('a');
-            a.href = downloadUrl;
-            a.download = 'original_message.eml';
-            a.click();
-          }}>
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = 'original_message.eml';
+        a.click();
+      }}>
             ${this.i18nStore?.t('originalMessage.downloadOriginal')}
           </alps-button>
           ${!this.isTruncated ? html`

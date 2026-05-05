@@ -26,6 +26,7 @@ type MailProvider interface {
 	CreateMailbox(name string) error
 	RenameMailbox(oldName, newName string) error
 	DeleteMailbox(name string) error
+	EmptyMailbox(name string) error
 	SubscribeMailbox(name string) error
 	UnsubscribeMailbox(name string) error
 

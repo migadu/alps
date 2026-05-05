@@ -52,15 +52,23 @@ func setupCharsetHandling() {
 	}
 }
 
+var (
+	version = "unknown"
+	commit  = "unknown"
+	date    = "unknown"
+)
+
 func main() {
 	// Setup charset handling FIRST before any message parsing
 	setupCharsetHandling()
 
 	var (
-		options    alps.Options
-		configFile string
+		options      alps.Options
+		configFile   string
+		printVersion bool
 	)
 	flag.StringVar(&configFile, "config", "", "path to TOML configuration file")
+	flag.BoolVar(&printVersion, "version", false, "print version information and exit")
 
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "usage: alps -config <path-to-config.toml>\n")
@@ -68,6 +76,11 @@ func main() {
 	}
 
 	flag.Parse()
+
+	if printVersion {
+		fmt.Printf("alps %s (%s) built at %s\n", version, commit, date)
+		os.Exit(0)
+	}
 
 	if configFile == "" {
 		fmt.Fprintf(os.Stderr, "Error: -config flag is required\n")

@@ -30,6 +30,8 @@ export async function deleteAttachment(uuid: string) {
 
 export function handleAttachClick(
   composerId: string,
+  maxBytes: number,
+  currentBytes: number,
   onFileAdded: (tempId: string, file: File) => void,
   onProgress: (tempId: string, progress: number) => void,
   onComplete: (tempId: string, uuids: string[]) => void,
@@ -42,6 +44,21 @@ export function handleAttachClick(
   input.onchange = (e: Event) => {
     const files = Array.from((e.target as HTMLInputElement).files || []);
     if (files.length === 0) return;
+
+    let incomingBytes = 0;
+    for (const file of files) {
+      incomingBytes += file.size;
+    }
+
+    if (maxBytes > 0 && (currentBytes + incomingBytes) > maxBytes) {
+      window.dispatchEvent(new CustomEvent('show-toast', {
+        detail: {
+          message: `Attachments exceed the maximum allowed size.`,
+          duration: 5000
+        }
+      }));
+      return; // Abort upload of all these files
+    }
 
     for (const file of files) {
       const tempId = Math.random().toString(36).substring(2, 15);

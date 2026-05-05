@@ -192,7 +192,14 @@ export const en = {
     replied: 'Replied',
     forwarded: 'Forwarded',
     searchResultsFor: 'Search results for:',
-    clearSearch: 'Clear search'
+    clearSearch: 'Clear search',
+    totalMessagesIn: '{count} total messages in {folder}',
+    deleteAllNow: 'Delete All Now',
+    emptyMailboxTitle: 'Empty {folder}',
+    emptyMailboxConfirm: 'Are you sure you want to permanently delete all {count} messages in {folder}? This action cannot be undone.',
+    emptyingMailbox: 'Emptying mailbox...',
+    mailboxEmptied: 'Mailbox emptied successfully.',
+    emptyMailboxFailed: 'Failed to empty mailbox. Make sure it is Trash or Junk.'
   },
   composer: {
     attachmentsWait: 'Please wait for attachments to finish uploading before sending.',
@@ -219,6 +226,7 @@ export const en = {
     discardDraft: 'Discard Draft',
     noReadableText: 'This message contains no readable text, only attachments.',
     attachments: 'Attachments',
+    downloadAllAttachments: 'Download all attachments',
     unknownAttachment: 'Unknown attachment',
     archive: 'Archive',
     reportSpam: 'Report Spam',

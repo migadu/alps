@@ -206,6 +206,32 @@ func (p *IMAPProvider) DeleteMailbox(name string) error {
 	return cmd.Wait()
 }
 
+// EmptyMailbox empties a mailbox by deleting all its messages
+func (p *IMAPProvider) EmptyMailbox(name string) error {
+	if err := p.ensureMailboxSelected(name); err != nil {
+		return err
+	}
+
+	mbox := p.client.Mailbox()
+	if mbox == nil || mbox.NumMessages == 0 {
+		return nil
+	}
+
+	var seqSet imap.SeqSet
+	seqSet.AddRange(1, mbox.NumMessages)
+
+	err := p.client.Store(seqSet, &imap.StoreFlags{
+		Op:     imap.StoreFlagsAdd,
+		Silent: true,
+		Flags:  []imap.Flag{imap.FlagDeleted},
+	}, nil).Close()
+	if err != nil {
+		return err
+	}
+
+	return p.client.Expunge().Close()
+}
+
 // RenameMailbox renames a mailbox
 func (p *IMAPProvider) RenameMailbox(oldName, newName string) error {
 	cmd := p.client.Rename(oldName, newName, nil)

@@ -8,6 +8,8 @@ import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { formatFullDate, renderIcon } from '../utils/ui';
 import { sanitizeMessageHTML } from '../utils/html-sanitizer';
+import '../components/alps-banner';
+import '../components/alps-button';
 
 @customElement('print-page')
 export class PrintPage extends LitElement {
@@ -111,28 +113,7 @@ export class PrintPage extends LitElement {
     @media print {
       body { padding: 0 !important; margin: 0 !important; }
       .print-container { padding: 0; max-width: none; }
-      .remote-content-warning { display: none !important; }
-    }
-    .remote-content-warning {
-      background: #fff3cd;
-      color: #856404;
-      padding: 8px 16px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 13px;
-      border-bottom: 1px solid #ffeeba;
-      margin-bottom: 24px;
-    }
-    .remote-content-btn {
-      background: transparent;
-      border: 1px solid currentColor;
-      border-radius: 4px;
-      padding: 4px 8px;
-      cursor: pointer;
-      color: inherit;
-      white-space: nowrap;
-      margin-left: 16px;
+      alps-banner { display: none !important; }
     }
   `;
 
@@ -172,7 +153,7 @@ export class PrintPage extends LitElement {
         if (cached.RawHtml !== undefined) {
           this.rawMessageHtml = cached.RawHtml;
           this.hasRemoteResources = false;
-          
+
           this.content = sanitizeMessageHTML(this.rawMessageHtml, {
             mailbox: this.mailbox,
             messageUid: this.uid,
@@ -196,7 +177,7 @@ export class PrintPage extends LitElement {
         throw new Error('Failed to fetch message metadata');
       }
       this.message = await res.json();
-      
+
       await this.fetchMessageBody();
     } catch (e: any) {
       this.error = e.message;
@@ -212,7 +193,7 @@ export class PrintPage extends LitElement {
       if (structure.MIMEType.toLowerCase() === 'multipart/alternative') {
         let textPart = null;
         let htmlPart = null;
-        
+
         for (const child of (structure.Children || [])) {
           if (child.MIMEType?.toLowerCase() === 'text/plain') textPart = child;
           if (child.MIMEType?.toLowerCase() === 'text/html') htmlPart = child;
@@ -281,7 +262,7 @@ export class PrintPage extends LitElement {
     if (this.mimeType.toLowerCase() === 'text/html') {
       this.rawMessageHtml = await rawRes.text();
       this.hasRemoteResources = false;
-      
+
       this.content = sanitizeMessageHTML(this.rawMessageHtml, {
         mailbox: this.mailbox,
         messageUid: this.uid,
@@ -341,15 +322,15 @@ export class PrintPage extends LitElement {
     const sender = msg.Envelope?.From?.[0] || {};
     const senderAddress = sender.Mailbox && sender.Host ? `${sender.Mailbox}@${sender.Host}` : '';
     const senderName = sender.Name || senderAddress || (this.i18nStore?.t('messageList.unknownSender'));
-    
+
     const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
     const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
     const dateStr = msg.Envelope?.Date ? formatFullDate(msg.Envelope.Date, dateFormat, hourFormat) : '';
 
-    const toList = msg.Envelope?.To && msg.Envelope.To.length > 0 
+    const toList = msg.Envelope?.To && msg.Envelope.To.length > 0
       ? msg.Envelope.To.map((t: any) => t.Name ? `${t.Name} &lt;${t.Mailbox}@${t.Host}&gt;` : `${t.Mailbox}@${t.Host}`).join(', ')
       : (this.i18nStore?.t('messageReader.undisclosed'));
-      
+
     let ccHtml = html``;
     if (msg.Envelope?.Cc && msg.Envelope.Cc.length > 0) {
       const ccList = msg.Envelope.Cc.map((t: any) => t.Name ? `${t.Name} &lt;${t.Mailbox}@${t.Host}&gt;` : `${t.Mailbox}@${t.Host}`).join(', ');
@@ -367,12 +348,12 @@ export class PrintPage extends LitElement {
 
     return html`
       ${this.hasRemoteResources && !this.allowRemoteResources ? html`
-        <div class="remote-content-warning">
+        <alps-banner>
           <span>${this.i18nStore.t('messageReader.remoteContentWarning')}</span>
-          <button class="remote-content-btn" @click=${this.loadRemoteResources}>
+          <alps-button slot="action" variant="normal" @click=${this.loadRemoteResources}>
             ${this.i18nStore.t('messageReader.loadRemoteContent')}
-          </button>
-        </div>
+          </alps-button>
+        </alps-banner>
       ` : ''}
       <div class="print-container">
         <div class="print-header">

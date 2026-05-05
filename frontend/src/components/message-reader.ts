@@ -16,6 +16,7 @@ import './alps-folder-selector-popup';
 import './alps-icon-btn';
 import './alps-button';
 import './alps-avatar';
+import './alps-banner';
 import { MessageCache } from '../utils/message-cache';
 import { sanitizeMessageHTML } from '../utils/html-sanitizer';
 import { generateQuote } from '../utils/email-quote';
@@ -412,40 +413,6 @@ export class MessageReader extends LitElement {
       display: flex;
       align-items: center;
       color: var(--text-muted);
-    }
-
-    .remote-content-warning,
-    .draft-banner {
-      background: #fff3cd;
-      color: #856404;
-      padding: 8px 16px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 13px;
-      border-bottom: 1px solid #ffeeba;
-      position: sticky;
-      top: 0;
-      z-index: 2;
-    }
-
-    .remote-content-btn,
-    .edit-draft-btn {
-      margin-left: 16px;
-      --btn-padding: 4px 10px;
-      --btn-font-size: 12px;
-    }
-
-    .remote-content-btn::part(button),
-    .edit-draft-btn::part(button) {
-      border-color: currentColor;
-      color: inherit;
-      border-width: 1px;
-    }
-
-    .remote-content-btn:hover::part(button),
-    .edit-draft-btn:hover::part(button) {
-      background-color: rgba(0, 0, 0, 0.05);
     }
 
     .reader-content-wrapper {
@@ -1060,16 +1027,16 @@ export class MessageReader extends LitElement {
           </div>
         ` : html`
           ${this.hasRemoteResources && !this.allowRemoteResources ? html`
-            <div class="remote-content-warning">
+            <alps-banner>
               <span>${this.i18nStore?.t('messageReader.remoteContentWarning')}</span>
-              <alps-button class="remote-content-btn" variant="normal" @click=${this.loadRemoteResources}>${this.i18nStore?.t('messageReader.loadRemoteContent')}</alps-button>
-            </div>
+              <alps-button slot="action" variant="normal" @click=${this.loadRemoteResources}>${this.i18nStore?.t('messageReader.loadRemoteContent')}</alps-button>
+            </alps-banner>
           ` : ''}
           ${this.message?.Flags?.includes(FLAG_DRAFT) ? html`
-            <div class="draft-banner">
+            <alps-banner>
               <span>${this.i18nStore?.t('messageReader.isDraft')}</span>
-              <alps-button class="edit-draft-btn" variant="normal" @click=${this._handleEditDraft}>${this.i18nStore?.t('messageReader.editDraft')}</alps-button>
-            </div>
+              <alps-button slot="action" variant="normal" @click=${this._handleEditDraft}>${this.i18nStore?.t('messageReader.editDraft')}</alps-button>
+            </alps-banner>
           ` : ''}
           
           <div class="reader-content-wrapper">

@@ -39,6 +39,33 @@ export class AttachmentList extends LitElement {
     this.attachmentsExpanded = !this.attachmentsExpanded;
   }
 
+  private _downloadAll(e: Event) {
+    e.stopPropagation();
+    if (!this.attachments || this.attachments.length === 0 || !this.messageUid) return;
+
+    let mbox = this.mailbox || FOLDER_INBOX;
+    if (!this.mailbox) {
+      const hashMatch = window.location.hash.match(/^#\/mailbox\/([^/]+)/);
+      if (hashMatch) {
+        mbox = decodeURIComponent(hashMatch[1]);
+      }
+    }
+
+    this.attachments.forEach((att, index) => {
+      const partPathStr = Array.isArray(att.Path) ? att.Path.join('.') : att.Path;
+      const downloadUrl = `/mailboxes/${encodeURIComponent(mbox)}/messages/${this.messageUid}/raw?part=${partPathStr}`;
+
+      setTimeout(() => {
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = att.Filename || this.i18nStore?.t('messageReader.unknownAttachment') || 'attachment';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }, index * 200); // 200ms delay between downloads
+    });
+  }
+
   static styles = css`
     :host {
       display: block;
@@ -89,6 +116,28 @@ export class AttachmentList extends LitElement {
       width: 16px;
       height: 16px;
       transition: transform 0.3s ease;
+    }
+
+    .attachments-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .download-all-btn {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+      transition: transform 0.2s ease, color 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+    }
+
+    .download-all-btn:hover {
+      color: var(--text-color);
+      transform: translateY(-1px);
     }
 
     .attachments-wrapper {
@@ -173,30 +222,40 @@ export class AttachmentList extends LitElement {
       <div class="attachments-container ${this.attachmentsExpanded ? 'is-expanded' : 'is-closed'}">
         <div class="attachments-header" @click=${this.toggleAttachments}>
           <div class="attachments-title">
-            ${this.composerMode ? '' : html`<div class="icon">${renderIcon('paperclip')}</div>`}
             <span>${this.i18nStore?.t('messageReader.attachments')} (${this.attachments.length})</span>
           </div>
-          <div class="icon caret">
-            ${renderIcon('caretDown')}
+          <div class="attachments-actions">
+            ${!this.composerMode ? html`
+              <div 
+                class="download-all-btn" 
+                title=${this.i18nStore?.t('messageReader.downloadAllAttachments')} 
+                @click=${this._downloadAll}
+              >
+                ${renderIcon('downloadSimple')}
+              </div>
+            ` : ''}
+            <div class="icon caret">
+              ${renderIcon('caretDown')}
+            </div>
           </div>
         </div>
         <div class="attachments-wrapper ${this.attachmentsExpanded ? 'expanded' : ''}">
           <div class="attachments-list">
             ${this.attachments.map(att => {
-              let downloadUrl = '';
-              if (this.messageUid) {
-                const partPathStr = Array.isArray(att.Path) ? att.Path.join('.') : att.Path;
-                let mbox = this.mailbox || FOLDER_INBOX;
-                if (!this.mailbox) {
-                  const hashMatch = window.location.hash.match(/^#\/mailbox\/([^/]+)/);
-                  if (hashMatch) {
-                    mbox = decodeURIComponent(hashMatch[1]);
-                  }
-                }
-                downloadUrl = `/mailboxes/${encodeURIComponent(mbox)}/messages/${this.messageUid}/raw?part=${partPathStr}`;
-              }
-              
-              return html`
+      let downloadUrl = '';
+      if (this.messageUid) {
+        const partPathStr = Array.isArray(att.Path) ? att.Path.join('.') : att.Path;
+        let mbox = this.mailbox || FOLDER_INBOX;
+        if (!this.mailbox) {
+          const hashMatch = window.location.hash.match(/^#\/mailbox\/([^/]+)/);
+          if (hashMatch) {
+            mbox = decodeURIComponent(hashMatch[1]);
+          }
+        }
+        downloadUrl = `/mailboxes/${encodeURIComponent(mbox)}/messages/${this.messageUid}/raw?part=${partPathStr}`;
+      }
+
+      return html`
                 <alps-attachment-pill
                   .attachment=${att}
                   .downloadUrl=${downloadUrl}
@@ -205,7 +264,7 @@ export class AttachmentList extends LitElement {
                   .compact=${this.composerMode}
                 ></alps-attachment-pill>
               `;
-            })}
+    })}
           </div>
         </div>
       </div>

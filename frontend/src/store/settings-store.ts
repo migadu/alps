@@ -35,6 +35,7 @@ export interface SettingsState {
   sortOrder: 'asc' | 'desc';
   messageSortCriteria: 'uid' | 'date';
   loginUsername?: string;
+  maxAttachmentMiB: number;
 }
 
 const DEFAULT_SETTINGS: SettingsState = {
@@ -65,7 +66,8 @@ const DEFAULT_SETTINGS: SettingsState = {
   hourFormat: '24',
   dateFormat: 'YYYY-MM-DD',
   sortOrder: 'desc',
-  messageSortCriteria: 'date'
+  messageSortCriteria: 'date',
+  maxAttachmentMiB: 32
 };
 
 export class SettingsStore extends EventTarget {
@@ -159,9 +161,14 @@ export class SettingsStore extends EventTarget {
       }
       if (response.ok) {
         const data = await response.json();
+        const updates: Partial<SettingsState> = {};
+        
+        if (data.MaxAttachmentMiB !== undefined) {
+          updates.maxAttachmentMiB = data.MaxAttachmentMiB;
+        }
+
         if (data && data.Settings) {
           const s = data.Settings;
-          const updates: Partial<SettingsState> = {};
           
           if (s.ui) {
             const ui = s.ui;

@@ -1,9 +1,0 @@
-image: alpine/edge
-packages:
-  - go
-sources:
-  - https://github.com/migadu/alps
-tasks:
-  - build: |
-      cd alps
-      go test -v ./...

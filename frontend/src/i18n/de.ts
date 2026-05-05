@@ -146,7 +146,14 @@ export const de: TranslationDictionary = {
     replied: 'Geantwortet',
     forwarded: 'Weitergeleitet',
     searchResultsFor: 'Suchergebnisse für:',
-    clearSearch: 'Suche löschen'
+    clearSearch: 'Suche löschen',
+    totalMessagesIn: '{count} Nachrichten insgesamt in {folder}',
+    deleteAllNow: 'Jetzt alle löschen',
+    emptyMailboxTitle: '{folder} leeren',
+    emptyMailboxConfirm: 'Sind Sie sicher, dass Sie alle {count} Nachrichten in {folder} dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
+    emptyingMailbox: 'Postfach wird geleert...',
+    mailboxEmptied: 'Postfach erfolgreich geleert.',
+    emptyMailboxFailed: 'Postfach konnte nicht geleert werden. Stellen Sie sicher, dass es sich um Papierkorb oder Spam handelt.'
   },
   composer: {
     attachmentsWait: 'Bitte warten Sie, bis die Anhänge hochgeladen sind, bevor Sie senden.',
@@ -173,6 +180,7 @@ export const de: TranslationDictionary = {
     discardDraft: 'Entwurf verwerfen',
     noReadableText: 'Diese Nachricht enthält keinen lesbaren Text, nur Anhänge.',
     attachments: 'Anhänge',
+    downloadAllAttachments: 'Alle Anhänge herunterladen',
     unknownAttachment: 'Unbekannter Anhang',
     archive: 'Archivieren',
     reportSpam: 'Als Spam melden',

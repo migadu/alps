@@ -17,7 +17,7 @@ import { AlpsPopup } from './alps-popup.js';
 import './alps-attachment-list.js';
 import './alps-emoji-selector-popup.js';
 import { i18nContext, I18nStore } from '../store/i18n-store';
-
+import { settingsContext, SettingsStore } from '../store/settings-store';
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
 @customElement('alps-floating-composer')
@@ -27,6 +27,9 @@ export class AlpsFloatingComposer extends LitElement {
 
   @consume({ context: i18nContext })
   i18nStore!: I18nStore;
+
+  @consume({ context: settingsContext })
+  settingsStore!: SettingsStore;
 
   @property({ type: Object }) instance!: ComposerInstance;
   @property({ type: Number }) index: number = 0;
@@ -526,8 +529,13 @@ export class AlpsFloatingComposer extends LitElement {
   }
 
   private _handleAttachClick() {
+    const maxBytes = (this.settingsStore?.getState()?.maxAttachmentMiB || 32) * 1024 * 1024;
+    const currentBytes = (this.instance.attachments || []).reduce((sum, a) => sum + (a.size || 0), 0);
+
     handleAttachClick(
       this.instance.id,
+      maxBytes,
+      currentBytes,
       (tempId, file) => {
         // onFileAdded
         const composer = this.composeStore.getComposer(this.instance.id);

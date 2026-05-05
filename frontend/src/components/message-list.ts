@@ -4,6 +4,7 @@ import { formatDateList, formatSize, getMailboxLabel, renderIcon } from '../util
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED } from '../utils/flags';
 import { FOLDER_DRAFTS, FOLDER_SENT } from '../utils/folders';
 import { messageSync } from '../services/message-sync';
+import { mailboxOperations } from '../services/mailbox-operations';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -11,6 +12,8 @@ import './alps-avatar';
 import './alps-pagination';
 import './alps-icon-btn';
 import './alps-toolbar';
+import './alps-banner';
+import './ui-confirm';
 import { repeat } from 'lit/directives/repeat.js';
 
 @customElement('alps-message-list')
@@ -42,6 +45,7 @@ export class MessageList extends LitElement {
   @state() private isScrolled = false;
   @state() private isAtBottom = false;
   @state() private focusedIndex = -1;
+  @state() private showEmptyConfirm = false;
 
   static styles = css`
     :host {
@@ -510,40 +514,6 @@ export class MessageList extends LitElement {
       align-items: center;
     }
 
-    .search-pane {
-      background: var(--bg-secondary, #f3f4f6);
-      color: var(--text-primary);
-      padding: 4px 12px;
-      font-size: 13px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid var(--border-color);
-    }
-
-    .search-pane-close {
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: inherit;
-      padding: 4px;
-      display: flex;
-      align-items: center;
-      border-radius: 4px;
-      opacity: 0.8;
-      transition: opacity 0.15s;
-    }
-
-    .search-pane-close:hover {
-      opacity: 1;
-    }
-
-    .search-pane-close svg {
-      width: 16px;
-      height: 16px;
-      fill: currentColor;
-    }
-    
     .loading-overlay {
       opacity: 0.5;
       pointer-events: none;
@@ -704,7 +674,7 @@ export class MessageList extends LitElement {
   }
 
   private handleKeyDown(e: KeyboardEvent) {
-    if (this.messages.length === 0) return;
+    if (!this.messages || this.messages.length === 0) return;
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -735,6 +705,30 @@ export class MessageList extends LitElement {
         this.focusedIndex = Math.min(this.messages.length - 1, this.focusedIndex + 1);
         this.scrollToFocused();
       }
+    }
+  }
+
+  private async handleEmptyMailbox() {
+    this.showEmptyConfirm = false;
+    this.dispatchEvent(new CustomEvent('toast', {
+      detail: { type: 'info', message: this.i18nStore?.t('messageList.emptyingMailbox') || 'Emptying mailbox...' },
+      bubbles: true,
+      composed: true
+    }));
+    
+    const success = await mailboxOperations.emptyMailbox(this.currentMailbox);
+    if (success) {
+      this.dispatchEvent(new CustomEvent('toast', {
+        detail: { type: 'success', message: this.i18nStore?.t('messageList.mailboxEmptied') || 'Mailbox emptied successfully.' },
+        bubbles: true,
+        composed: true
+      }));
+    } else {
+      this.dispatchEvent(new CustomEvent('toast', {
+        detail: { type: 'error', message: this.i18nStore?.t('messageList.emptyMailboxFailed') || 'Failed to empty mailbox. Make sure it is Trash or Junk.' },
+        bubbles: true,
+        composed: true
+      }));
     }
   }
 
@@ -802,12 +796,20 @@ export class MessageList extends LitElement {
       ` : ''}
       <div class="list-content ${this.loading && this.messages.length > 0 ? 'loading-overlay' : ''}" tabindex="0" @scroll=${this.handleScroll} @keydown=${this.handleKeyDown}>
         ${this.filterQuery ? html`
-          <div class="search-pane">
+          <alps-banner>
             <span>${this.i18nStore?.t('messageList.searchResultsFor')} <strong>${this.filterQuery}</strong></span>
-            <button class="search-pane-close" @click=${() => this.dispatchEvent(new CustomEvent('clear-search'))} title=${this.i18nStore?.t('messageList.clearSearch')}>
-              ${renderIcon('x')}
-            </button>
-          </div>
+            <alps-button slot="action" variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('clear-search'))}>
+              ${this.i18nStore?.t('messageList.clearSearch')}
+            </alps-button>
+          </alps-banner>
+        ` : ''}
+        ${!this.filterQuery && /^(trash|junk|spam|deleted items)$/i.test(this.currentMailbox) && this.totalMessages > 0 ? html`
+          <alps-banner variant="warning">
+            <span>${this.i18nStore?.t('messageList.totalMessagesIn')?.replace('{count}', String(this.totalMessages)).replace('{folder}', this.currentMailbox) || `${this.totalMessages} total messages in ${this.currentMailbox}`}</span>
+            <alps-button slot="action" variant="normal" ?disabled=${this.selectedMessages.size > 0} @click=${() => this.showEmptyConfirm = true}>
+              ${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
+            </alps-button>
+          </alps-banner>
         ` : ''}
         ${this.loading && this.messages.length === 0 ? html`
           <div class="loading-state">
@@ -817,7 +819,7 @@ export class MessageList extends LitElement {
         this.messages.length === 0 ? html`<div class="empty-state">${this.i18nStore?.t('messageList.noMessages')}</div>` :
           repeat(this.messages, msg => msg.UID, msg => {
             const isDraftOrSent = this.currentMailbox === FOLDER_DRAFTS || this.currentMailbox === FOLDER_SENT;
-            
+
             let rawContacts: any[] = [];
             if (isDraftOrSent) {
               rawContacts = [...(msg.Envelope?.To || []), ...(msg.Envelope?.Cc || [])];
@@ -825,7 +827,7 @@ export class MessageList extends LitElement {
             } else {
               rawContacts = [...(msg.Envelope?.From || []), ...(msg.Envelope?.To || []), ...(msg.Envelope?.Cc || [])];
             }
-            
+
             const seenEmails = new Set<string>();
             let allContacts: any[] = [];
             for (const c of rawContacts) {
@@ -838,7 +840,7 @@ export class MessageList extends LitElement {
                 allContacts.push(c);
               }
             }
-            
+
             const loginUser = this.settingsStore?.getState()?.loginUsername?.toLowerCase() || '';
 
             const isSelf = (c: any) => {
@@ -855,15 +857,15 @@ export class MessageList extends LitElement {
             }
 
             if (!allContacts.length) allContacts = [{}];
-            
+
             const fallbackKey = isDraftOrSent ? 'messageList.noRecipient' : 'messageList.unknownSender';
-            
+
             const displayNames = allContacts.map(c => {
               const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
               return c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
             });
             const senderName = displayNames.join(', ');
-            
+
             const maxAvatars = 3;
             const displayAvatars = allContacts.slice(0, maxAvatars);
             const extraCount = allContacts.length - maxAvatars;
@@ -1022,6 +1024,17 @@ export class MessageList extends LitElement {
             .totalItems=${this.totalMessages} 
             .itemsPerPage=${this.messagesPerPage}>
           </alps-pagination>
+          <alps-toast></alps-toast>
+        ${this.showEmptyConfirm ? html`
+          <ui-confirm
+            title=${this.i18nStore?.t('messageList.emptyMailboxTitle')?.replace('{folder}', this.currentMailbox) || `Empty ${this.currentMailbox}`}
+            message=${this.i18nStore?.t('messageList.emptyMailboxConfirm')?.replace('{folder}', this.currentMailbox).replace('{count}', String(this.totalMessages)) || `Are you sure you want to permanently delete all ${this.totalMessages} messages in ${this.currentMailbox}? This action cannot be undone.`}
+            confirmText=${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
+            confirmVariant="danger"
+            @confirm=${this.handleEmptyMailbox}
+            @cancel=${() => this.showEmptyConfirm = false}
+          ></ui-confirm>
+        ` : ''}
         </div>
       ` : ''}
     `;

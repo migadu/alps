@@ -80,6 +80,29 @@ export class MailboxOperationsService extends EventTarget {
     }
   }
 
+  async emptyMailbox(name: string): Promise<boolean> {
+    try {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(name)}/empty`, {
+        method: 'POST'
+      });
+      
+      if (res.status === 401) {
+        this.dispatchEvent(new CustomEvent('auth-error'));
+        window.dispatchEvent(new CustomEvent('auth-error'));
+        return false;
+      }
+      
+      if (res.ok) {
+        messageSync.sync();
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Failed to empty mailbox', err);
+      return false;
+    }
+  }
+
   async subscribeMailbox(name: string): Promise<boolean> {
     try {
       const res = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(name)}/subscribe`, {

@@ -144,7 +144,14 @@ export const es = {
     replied: 'Respondido',
     forwarded: 'Reenviado',
     searchResultsFor: 'Resultados de búsqueda para:',
-    clearSearch: 'Borrar búsqueda'
+    clearSearch: 'Borrar búsqueda',
+    totalMessagesIn: '{count} mensajes en total en {folder}',
+    deleteAllNow: 'Eliminar todos ahora',
+    emptyMailboxTitle: 'Vaciar {folder}',
+    emptyMailboxConfirm: '¿Estás seguro de que quieres eliminar permanentemente todos los {count} mensajes en {folder}? Esta acción no se puede deshacer.',
+    emptyingMailbox: 'Vaciando buzón...',
+    mailboxEmptied: 'Buzón vaciado correctamente.',
+    emptyMailboxFailed: 'No se pudo vaciar el buzón. Asegúrate de que sea Papelera o Correo no deseado.'
   },
   composer: {
     attachmentsWait: 'Espera a que los archivos adjuntos terminen de cargarse antes de enviar.',
@@ -171,6 +178,7 @@ export const es = {
     discardDraft: 'Descartar borrador',
     noReadableText: 'Este mensaje no contiene texto legible, solo archivos adjuntos.',
     attachments: 'Archivos adjuntos',
+    downloadAllAttachments: 'Descargar todos los archivos adjuntos',
     unknownAttachment: 'Archivo adjunto desconocido',
     archive: 'Archivar',
     reportSpam: 'Marcar como Spam',

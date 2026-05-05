@@ -143,8 +143,15 @@ export const fr = {
     hasAttachments: 'Contient des pièces jointes',
     replied: 'Répondu',
     forwarded: 'Transféré',
-    searchResultsFor: 'Résultats de recherche pour :',
-    clearSearch: 'Effacer la recherche'
+    searchResultsFor: 'Résultats de recherche pour:',
+    clearSearch: 'Effacer la recherche',
+    totalMessagesIn: '{count} messages au total dans {folder}',
+    deleteAllNow: 'Tout supprimer maintenant',
+    emptyMailboxTitle: 'Vider {folder}',
+    emptyMailboxConfirm: 'Êtes-vous sûr de vouloir supprimer définitivement les {count} messages dans {folder} ? Cette action ne peut pas être annulée.',
+    emptyingMailbox: 'Vidage de la boîte aux lettres...',
+    mailboxEmptied: 'Boîte aux lettres vidée avec succès.',
+    emptyMailboxFailed: 'Échec du vidage de la boîte aux lettres. Assurez-vous qu\'il s\'agit de la Corbeille ou des Indésirables.'
   },
   composer: {
     attachmentsWait: 'Veuillez attendre que le téléchargement des pièces jointes soit terminé avant d\'envoyer.',
@@ -171,6 +178,7 @@ export const fr = {
     discardDraft: 'Ignorer le brouillon',
     noReadableText: 'Ce message ne contient pas de texte lisible, seulement des pièces jointes.',
     attachments: 'Pièces jointes',
+    downloadAllAttachments: 'Télécharger toutes les pièces jointes',
     unknownAttachment: 'Pièce jointe inconnue',
     archive: 'Archiver',
     reportSpam: 'Signaler comme Spam',

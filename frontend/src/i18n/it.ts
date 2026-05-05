@@ -143,8 +143,15 @@ export const it = {
     hasAttachments: 'Contiene allegati',
     replied: 'Risposto',
     forwarded: 'Inoltrato',
-    searchResultsFor: 'Risultati di ricerca per:',
-    clearSearch: 'Cancella ricerca'
+    searchResultsFor: 'Risultati della ricerca per:',
+    clearSearch: 'Cancella ricerca',
+    totalMessagesIn: '{count} messaggi in totale in {folder}',
+    deleteAllNow: 'Elimina tutto ora',
+    emptyMailboxTitle: 'Svuota {folder}',
+    emptyMailboxConfirm: 'Sei sicuro di voler eliminare in modo permanente tutti i {count} messaggi in {folder}? Questa azione non può essere annullata.',
+    emptyingMailbox: 'Svuotamento casella di posta...',
+    mailboxEmptied: 'Casella di posta svuotata con successo.',
+    emptyMailboxFailed: 'Impossibile svuotare la casella di posta. Assicurati che sia Cestino o Posta indesiderata.'
   },
   composer: {
     attachmentsWait: 'Attendi il caricamento degli allegati prima di inviare.',
@@ -171,6 +178,7 @@ export const it = {
     discardDraft: 'Scarta bozza',
     noReadableText: 'Questo messaggio non contiene testo leggibile, solo allegati.',
     attachments: 'Allegati',
+    downloadAllAttachments: 'Scarica tutti gli allegati',
     unknownAttachment: 'Allegato sconosciuto',
     archive: 'Archivia',
     reportSpam: 'Segnala Spam',

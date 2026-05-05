@@ -192,7 +192,14 @@ export const pt = {
     replied: 'Respondido',
     forwarded: 'Encaminhado',
     searchResultsFor: 'Resultados da pesquisa para:',
-    clearSearch: 'Limpar pesquisa'
+    clearSearch: 'Limpar pesquisa',
+    totalMessagesIn: '{count} mensagens no total em {folder}',
+    deleteAllNow: 'Excluir tudo agora',
+    emptyMailboxTitle: 'Esvaziar {folder}',
+    emptyMailboxConfirm: 'Tem certeza de que deseja excluir permanentemente todas as {count} mensagens em {folder}? Esta ação não pode ser desfeita.',
+    emptyingMailbox: 'Esvaziando a caixa de correio...',
+    mailboxEmptied: 'Caixa de correio esvaziada com sucesso.',
+    emptyMailboxFailed: 'Falha ao esvaziar a caixa de correio. Certifique-se de que é Lixeira ou Lixo Eletrônico.'
   },
   composer: {
     attachmentsWait: 'Por favor, aguarde o envio dos anexos terminar antes de enviar.',
@@ -219,6 +226,7 @@ export const pt = {
     discardDraft: 'Descartar Rascunho',
     noReadableText: 'Esta mensagem não contém texto legível, apenas anexos.',
     attachments: 'Anexos',
+    downloadAllAttachments: 'Baixar todos os anexos',
     unknownAttachment: 'Anexo Desconhecido',
     archive: 'Arquivar',
     reportSpam: 'Denunciar Spam',
