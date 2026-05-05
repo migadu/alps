@@ -1,6 +1,23 @@
 import { createContext } from '@lit/context';
 import { messageOperations } from '../services/message-operations';
 
+const isBlockedAddress = (addr: string): boolean => {
+  let rawEmail = addr.trim();
+  const match = rawEmail.match(/^.*?<([^>]+)>$/);
+  if (match && match[1]) {
+    rawEmail = match[1];
+  }
+  const lowerEmail = rawEmail.toLowerCase();
+  return lowerEmail.startsWith('noreply') || 
+         lowerEmail.startsWith('no-reply') || 
+         lowerEmail.startsWith('mailer-daemon');
+};
+
+const filterAddresses = (addrs?: string[]): string[] | undefined => {
+  if (!addrs) return addrs;
+  return addrs.filter(addr => !isBlockedAddress(addr));
+};
+
 export interface ComposerInstance {
   id: string;
   to?: string[];
@@ -158,15 +175,15 @@ export class ComposeStore extends EventTarget {
       minimized: false,
       expanded: false,
       dirty: false,
-      to: [],
-      cc: [],
-      bcc: [],
       subject: '',
       format: initialData?.format || defaultFormat,
 
       attachments: [],
       zIndex: 1000 + this.state.activeComposers.length,
       ...initialData,
+      to: filterAddresses(initialData?.to) || [],
+      cc: filterAddresses(initialData?.cc) || [],
+      bcc: filterAddresses(initialData?.bcc) || [],
       text: initialText,
       html: initialHtml,
       initialText: initialText,
@@ -182,6 +199,10 @@ export class ComposeStore extends EventTarget {
   }
 
   updateComposer(id: string, updates: Partial<ComposerInstance>) {
+    if (updates.to) updates.to = filterAddresses(updates.to);
+    if (updates.cc) updates.cc = filterAddresses(updates.cc);
+    if (updates.bcc) updates.bcc = filterAddresses(updates.bcc);
+
     const composers = this.state.activeComposers.map(c => {
       if (c.id !== id) return c;
       

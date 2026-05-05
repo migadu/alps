@@ -16,7 +16,21 @@ export class AlpsAddressInput extends LitElement {
     }
   }
 
+  private _isBlockedAddress(email: string): boolean {
+    let rawEmail = email.trim();
+    const match = rawEmail.match(/^.*?<([^>]+)>$/);
+    if (match && match[1]) {
+      rawEmail = match[1];
+    }
+    const lowerEmail = rawEmail.toLowerCase();
+    return lowerEmail.startsWith('noreply') || 
+           lowerEmail.startsWith('no-reply') || 
+           lowerEmail.startsWith('mailer-daemon');
+  }
+
   private _isValidEmail(email: string) {
+    if (this._isBlockedAddress(email)) return false;
+
     const trimmed = email.trim();
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return true;
     if (/^.*?<[^\s@]+@[^\s@]+\.[^\s@]+>$/.test(trimmed)) return true;

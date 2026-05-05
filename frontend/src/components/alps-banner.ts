@@ -24,6 +24,7 @@ export class AlpsBanner extends LitElement {
       border-bottom: 1px solid var(--border-color);
       background: var(--surface, #ffffff);
       color: var(--text-primary, #111827);
+      box-shadow: rgba(95, 95, 95, 0.1) 0 4px 4px -2px;
     }
 
     .content {
