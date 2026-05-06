@@ -8,7 +8,6 @@ import (
 	"hash/fnv"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -198,13 +197,9 @@ func (m *Manager) initCertMagic() error {
 		acmeIssuer.CA = cfg.ACMEServer
 	}
 
-	// Configure alternate HTTP port for challenges if specified
-	if cfg.ACMEHTTPAddr != "" {
-		port := parsePort(cfg.ACMEHTTPAddr)
-		if port > 0 {
-			acmeIssuer.AltHTTPPort = port
-		}
-	}
+	// Note: We don't set AltHTTPPort here because main.go starts its own
+	// HTTP server using HTTPHandler(). AltHTTPPort would make certmagic
+	// start a competing listener on the same port.
 
 	magic.Issuers = []certmagic.Issuer{acmeIssuer}
 	m.cache = cache
@@ -228,28 +223,6 @@ func (m *Manager) initCertMagic() error {
 		"renewal_window_ratio", renewalWindowRatio)
 
 	return nil
-}
-
-// parsePort extracts the port number from an address like ":8080" or "0.0.0.0:8080"
-func parsePort(addr string) int {
-	if addr == "" {
-		return 0
-	}
-	// Handle ":port" format
-	if strings.HasPrefix(addr, ":") {
-		port, err := strconv.Atoi(addr[1:])
-		if err == nil {
-			return port
-		}
-	}
-	// Handle "host:port" format
-	if idx := strings.LastIndex(addr, ":"); idx != -1 {
-		port, err := strconv.Atoi(addr[idx+1:])
-		if err == nil {
-			return port
-		}
-	}
-	return 0
 }
 
 // calculateJitter returns deterministic jitter based on stable node ID.
@@ -282,12 +255,9 @@ func (m *Manager) Close() error {
 
 // HTTPHandler returns the HTTP-01 challenge handler for ACME validation.
 //
-// When to use this handler vs AltHTTPPort:
-// - If acme_http_addr is set, CertMagic starts its own HTTP server on that port.
-//   You typically don't need this handler in that case.
-// - Use this handler when you want to integrate ACME challenges into an existing
-//   HTTP server (e.g., your main app already listens on port 80 and you want to
-//   handle challenges at /.well-known/acme-challenge/* alongside other routes).
+// The caller is responsible for starting an HTTP server with this handler
+// on the address specified by ACMEHTTPAddr (typically port 80 or an alternate
+// port configured with your ACME provider).
 //
 // The handler checks for ACME challenge requests and responds appropriately.
 // Non-challenge requests receive a 404.

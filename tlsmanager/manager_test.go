@@ -3,8 +3,12 @@ package tlsmanager
 import (
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/caddyserver/certmagic"
 )
 
 func TestCalculateJitter(t *testing.T) {
@@ -73,33 +77,6 @@ func TestCalculateJitter(t *testing.T) {
 			t.Errorf("jitter lacks spread: only %d unique values from 20 nodes", len(seen))
 		}
 	})
-}
-
-func TestParsePort(t *testing.T) {
-	tests := []struct {
-		addr string
-		want int
-	}{
-		{":8080", 8080},
-		{":80", 80},
-		{":443", 443},
-		{"0.0.0.0:8080", 8080},
-		{"127.0.0.1:9000", 9000},
-		{"[::1]:8080", 8080},
-		{"", 0},
-		{"invalid", 0},
-		{"no-port", 0},
-		{":abc", 0}, // Invalid port number
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.addr, func(t *testing.T) {
-			got := parsePort(tc.addr)
-			if got != tc.want {
-				t.Errorf("parsePort(%q) = %d, want %d", tc.addr, got, tc.want)
-			}
-		})
-	}
 }
 
 func TestRenewalWindowRatioCalculation(t *testing.T) {
@@ -279,4 +256,130 @@ func TestLetsEncryptConfigValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHTTPHandlerIntegration(t *testing.T) {
+	t.Run("nil magic returns NotFoundHandler", func(t *testing.T) {
+		m := &Manager{
+			config: &Config{Enabled: true, Provider: ProviderLetsEncrypt},
+			magic:  nil, // Not initialized
+			logger: slog.Default(),
+		}
+
+		handler := m.HTTPHandler()
+
+		// Make a request to verify it returns 404
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected 404 for nil magic, got %d", rec.Code)
+		}
+	})
+
+	t.Run("non-challenge requests return 404", func(t *testing.T) {
+		// Create a minimal manager with magic set (but no real certmagic)
+		// We need to test the handler path, not actual certificate issuance
+		m := &Manager{
+			config: &Config{Enabled: true, Provider: ProviderLetsEncrypt},
+			logger: slog.Default(),
+		}
+
+		// Initialize a minimal certmagic config just to have non-nil magic
+		cache := newTestCache(m)
+		m.magic = newTestMagic(cache)
+		m.cache = cache
+		defer m.Close()
+
+		handler := m.HTTPHandler()
+
+		// Test various non-challenge paths
+		paths := []string{
+			"/",
+			"/index.html",
+			"/api/v1/users",
+			"/.well-known/other",
+		}
+
+		for _, path := range paths {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusNotFound {
+				t.Errorf("path %q: expected 404, got %d", path, rec.Code)
+			}
+		}
+	})
+
+	t.Run("challenge path is processed without panic", func(t *testing.T) {
+		m := &Manager{
+			config: &Config{Enabled: true, Provider: ProviderLetsEncrypt},
+			logger: slog.Default(),
+		}
+
+		cache := newTestCache(m)
+		m.magic = newTestMagic(cache)
+		m.cache = cache
+		defer m.Close()
+
+		handler := m.HTTPHandler()
+
+		// ACME HTTP-01 challenge path format
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/acme-challenge/test-token", nil)
+		req.Host = "example.com"
+		rec := httptest.NewRecorder()
+
+		// This should not panic (the nil logger bug we fixed)
+		handler.ServeHTTP(rec, req)
+
+		// Without an active challenge, it returns 404
+		// The important thing is it doesn't panic
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected 404 for unknown challenge, got %d", rec.Code)
+		}
+	})
+
+	t.Run("handler works with httptest.Server", func(t *testing.T) {
+		m := &Manager{
+			config: &Config{Enabled: true, Provider: ProviderLetsEncrypt},
+			logger: slog.Default(),
+		}
+
+		cache := newTestCache(m)
+		m.magic = newTestMagic(cache)
+		m.cache = cache
+		defer m.Close()
+
+		// Start a real HTTP server with the handler
+		server := httptest.NewServer(m.HTTPHandler())
+		defer server.Close()
+
+		// Make a real HTTP request
+		resp, err := http.Get(server.URL + "/.well-known/acme-challenge/test-token")
+		if err != nil {
+			t.Fatalf("http request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// Should get 404 (no active challenge), but no panic
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("expected 404, got %d", resp.StatusCode)
+		}
+	})
+}
+
+// newTestCache creates a minimal certmagic cache for testing
+func newTestCache(m *Manager) *certmagic.Cache {
+	return certmagic.NewCache(certmagic.CacheOptions{
+		GetConfigForCert: func(certmagic.Certificate) (*certmagic.Config, error) {
+			return m.magic, nil
+		},
+	})
+}
+
+// newTestMagic creates a minimal certmagic config for testing
+func newTestMagic(cache *certmagic.Cache) *certmagic.Config {
+	return certmagic.New(cache, certmagic.Config{})
 }
