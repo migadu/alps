@@ -428,7 +428,7 @@ func (s *Server) setupMiddleware(router *Router) {
 						return handleUnauthenticated(next, ctx)
 					}
 					// Restore WebAuthn 2FA verified state
-					session.SetData("authenticated2FA", verified2FA)
+					session.SetAuthenticated2FA(verified2FA)
 
 					s.logger.Debugf("Auth middleware: session restored successfully for %s", ctx.Request.URL.Path)
 					// Restore as persistent session since login token exists (user had "remember me" checked)

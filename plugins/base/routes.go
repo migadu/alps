@@ -895,10 +895,10 @@ func handleLogin(ctx *alps.Context) error {
 
 		// No 2FA - proceed with normal login
 		// Always create encrypted login token to enable session restoration after server restart
-		ctx.SetLoginToken(username, password, true, ctx.FormValue("remember") == "1")
+		persistent := remember == "on"
+		ctx.SetLoginToken(username, password, true, persistent)
 
 		// Set session cookie: persistent if "remember me" checked, browser session otherwise
-		persistent := remember == "on"
 		ctx.SetSessionWithExpiry(s, persistent)
 
 		return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
@@ -2355,8 +2355,13 @@ func handleSwitchAccount(ctx *alps.Context) error {
 	// Set new session cookie
 	ctx.SetSession(newSession)
 
-	// Update login token for persistence
-	ctx.SetLoginToken(targetUsername, password, true, false)
+	// Preserve persistence state from original login token
+	// If a login token exists, the user had "remember me" checked
+	origUsername, _, _ := ctx.GetLoginToken()
+	wasPersistent := origUsername != ""
+
+	// Update login token for new account, preserving persistence choice
+	ctx.SetLoginToken(targetUsername, password, true, wasPersistent)
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
 }
