@@ -132,39 +132,136 @@ func (s *S3Storage) GetNodeID() string {
 	return s.nodeID
 }
 
+// isChallenge returns true if the key is a CertMagic distributed ACME
+// challenge token key.
+func isChallenge(key string) bool {
+	return strings.Contains(key, "challenge_tokens/")
+}
+
 // Store puts a value at key
 func (s *S3Storage) Store(ctx context.Context, key string, value []byte) error {
-	_, err := s.client.PutObject(ctx, s.bucket, s.key(key),
+	fullKey := s.key(key)
+
+	// Log challenge operations at Info level for debugging distributed solving
+	if isChallenge(key) {
+		s.logger.Info("storing ACME challenge",
+			"key", key,
+			"full_s3_key", fullKey,
+			"size", len(value),
+			"node_id", s.nodeID)
+	}
+
+	_, err := s.client.PutObject(ctx, s.bucket, fullKey,
 		bytes.NewReader(value), int64(len(value)),
 		minio.PutObjectOptions{ContentType: "application/octet-stream"})
 	if err != nil {
+		if isChallenge(key) {
+			s.logger.Error("failed to store ACME challenge",
+				"key", key,
+				"full_s3_key", fullKey,
+				"error", err)
+		}
 		return fmt.Errorf("store %s: %w", key, err)
 	}
-	s.logger.Debug("stored", "key", key, "size", len(value))
+
+	if isChallenge(key) {
+		s.logger.Info("stored ACME challenge successfully",
+			"key", key,
+			"full_s3_key", fullKey,
+			"node_id", s.nodeID)
+	} else {
+		s.logger.Debug("stored", "key", key, "size", len(value))
+	}
 	return nil
 }
 
 // Load retrieves the value at key
 func (s *S3Storage) Load(ctx context.Context, key string) ([]byte, error) {
-	obj, err := s.client.GetObject(ctx, s.bucket, s.key(key), minio.GetObjectOptions{})
+	fullKey := s.key(key)
+
+	// Log challenge operations at Info level for debugging distributed solving
+	if isChallenge(key) {
+		s.logger.Info("loading ACME challenge",
+			"key", key,
+			"full_s3_key", fullKey,
+			"node_id", s.nodeID)
+	}
+
+	obj, err := s.client.GetObject(ctx, s.bucket, fullKey, minio.GetObjectOptions{})
 	if err != nil {
+		if isChallenge(key) {
+			s.logger.Error("failed to get ACME challenge object",
+				"key", key,
+				"full_s3_key", fullKey,
+				"error", err)
+		}
 		return nil, fmt.Errorf("load %s: %w", key, err)
 	}
 	defer obj.Close()
 
 	data, err := io.ReadAll(obj)
 	if err != nil {
-		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+		errCode := minio.ToErrorResponse(err).Code
+		if errCode == "NoSuchKey" {
+			if isChallenge(key) {
+				s.logger.Warn("ACME challenge not found in S3",
+					"key", key,
+					"full_s3_key", fullKey,
+					"node_id", s.nodeID)
+			}
 			return nil, fs.ErrNotExist
+		}
+		if isChallenge(key) {
+			s.logger.Error("failed to read ACME challenge data",
+				"key", key,
+				"full_s3_key", fullKey,
+				"error", err,
+				"error_code", errCode)
 		}
 		return nil, fmt.Errorf("read %s: %w", key, err)
 	}
+
+	if isChallenge(key) {
+		s.logger.Info("loaded ACME challenge successfully",
+			"key", key,
+			"full_s3_key", fullKey,
+			"size", len(data),
+			"node_id", s.nodeID)
+	}
+
 	return data, nil
 }
 
 // Delete removes key
 func (s *S3Storage) Delete(ctx context.Context, key string) error {
-	return s.client.RemoveObject(ctx, s.bucket, s.key(key), minio.RemoveObjectOptions{})
+	fullKey := s.key(key)
+
+	// Log challenge operations at Info level for debugging distributed solving
+	if isChallenge(key) {
+		s.logger.Info("deleting ACME challenge",
+			"key", key,
+			"full_s3_key", fullKey,
+			"node_id", s.nodeID)
+	}
+
+	err := s.client.RemoveObject(ctx, s.bucket, fullKey, minio.RemoveObjectOptions{})
+	if err != nil {
+		if isChallenge(key) {
+			s.logger.Error("failed to delete ACME challenge",
+				"key", key,
+				"full_s3_key", fullKey,
+				"error", err)
+		}
+		return err
+	}
+
+	if isChallenge(key) {
+		s.logger.Info("deleted ACME challenge",
+			"key", key,
+			"full_s3_key", fullKey,
+			"node_id", s.nodeID)
+	}
+	return nil
 }
 
 // Exists returns true if key exists.
@@ -172,16 +269,39 @@ func (s *S3Storage) Delete(ctx context.Context, key string) error {
 // a proper error. This avoids triggering certificate issuance during transient
 // S3 failures.
 func (s *S3Storage) Exists(ctx context.Context, key string) bool {
-	_, err := s.client.StatObject(ctx, s.bucket, s.key(key), minio.StatObjectOptions{})
+	fullKey := s.key(key)
+
+	// Log challenge operations at Info level for debugging distributed solving
+	if isChallenge(key) {
+		s.logger.Info("checking if ACME challenge exists",
+			"key", key,
+			"full_s3_key", fullKey,
+			"node_id", s.nodeID)
+	}
+
+	_, err := s.client.StatObject(ctx, s.bucket, fullKey, minio.StatObjectOptions{})
 	if err != nil {
 		errResp := minio.ToErrorResponse(err)
 		if errResp.Code == "NoSuchKey" {
+			if isChallenge(key) {
+				s.logger.Warn("ACME challenge does not exist",
+					"key", key,
+					"full_s3_key", fullKey,
+					"node_id", s.nodeID)
+			}
 			return false // Object genuinely doesn't exist
 		}
 		// S3 error (network, auth, etc.) - assume exists to be conservative
 		s.logger.Warn("s3 error in Exists, assuming object exists",
 			"key", key, "error", err)
 		return true
+	}
+
+	if isChallenge(key) {
+		s.logger.Info("ACME challenge exists",
+			"key", key,
+			"full_s3_key", fullKey,
+			"node_id", s.nodeID)
 	}
 	return true
 }
@@ -208,6 +328,14 @@ func (s *S3Storage) List(ctx context.Context, prefix string, recursive bool) ([]
 	fullPrefix := s.key(prefix)
 	var keys []string
 
+	if strings.Contains(prefix, "challenge_tokens") {
+		s.logger.Info("listing ACME challenges",
+			"prefix", prefix,
+			"full_s3_prefix", fullPrefix,
+			"recursive", recursive,
+			"node_id", s.nodeID)
+	}
+
 	for obj := range s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{
 		Prefix:    fullPrefix,
 		Recursive: recursive,
@@ -219,6 +347,14 @@ func (s *S3Storage) List(ctx context.Context, prefix string, recursive bool) ([]
 		if !strings.HasSuffix(relKey, ".lock") {
 			keys = append(keys, relKey)
 		}
+	}
+	if strings.Contains(prefix, "challenge_tokens") {
+		s.logger.Info("listed ACME challenges",
+			"prefix", prefix,
+			"full_s3_prefix", fullPrefix,
+			"count", len(keys),
+			"keys", keys,
+			"node_id", s.nodeID)
 	}
 	return keys, nil
 }
