@@ -659,7 +659,9 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer p.Close()
+	// Note: Do NOT defer p.Close() here - the provider is stored in the session
+	// and will be closed when the session is closed. Closing it here would leave
+	// the session with a dead connection.
 
 	sm.locker.Lock()
 	defer sm.locker.Unlock()
@@ -686,6 +688,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	for attempt := 0; attempt < maxTokenRetries; attempt++ {
 		token, err = generateToken()
 		if err != nil {
+			p.Close() // Clean up provider on error
 			return nil, fmt.Errorf("failed to generate session token: %w", err)
 		}
 
@@ -701,6 +704,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 
 	// If we exhausted all retries, something is seriously wrong
 	if _, exists := sm.sessions[token]; exists {
+		p.Close() // Clean up provider on error
 		return nil, fmt.Errorf("failed to generate unique session token after %d attempts (possible RNG failure or token space exhaustion)", maxTokenRetries)
 	}
 
