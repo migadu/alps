@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
+	"go.uber.org/zap"
 )
 
 type TLSProvider string
@@ -308,7 +309,7 @@ func (m *Manager) HTTPHandler() http.Handler {
 			challenge, ok := certmagic.GetACMEChallenge(host)
 			if ok {
 				// Solve the challenge
-				certmagic.SolveHTTPChallenge(nil, w, r, challenge.Challenge)
+				certmagic.SolveHTTPChallenge(zap.NewNop(), w, r, challenge.Challenge)
 				return
 			}
 		}
