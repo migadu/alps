@@ -69,6 +69,7 @@ func main() {
 	)
 	flag.StringVar(&configFile, "config", "", "path to TOML configuration file")
 	flag.BoolVar(&printVersion, "version", false, "print version information and exit")
+	flag.BoolVar(&printVersion, "v", false, "print version information and exit (shorthand)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "usage: alps -config <path-to-config.toml>\n")
