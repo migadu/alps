@@ -22,6 +22,9 @@ type IMAPProvider struct {
 }
 
 func NewIMAPProvider(client *imapclient.Client) *IMAPProvider {
+	if client == nil {
+		return &IMAPProvider{client: nil, store: nil}
+	}
 	store, _ := newStore(client)
 	return &IMAPProvider{client: client, store: store}
 }
