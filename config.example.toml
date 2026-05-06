@@ -260,6 +260,11 @@ level = "info"
 # Uses deterministic jitter based on node_id (±12 hours spread around renew_before)
 # renewal_jitter = true
 
+# Enable TLS-ALPN-01 challenges (default: false)
+# Requires alps to bind to port 443 directly. Leave disabled when running behind
+# a proxy (e.g., HAProxy) that owns port 443. HTTP-01 challenges are always available.
+# enable_tls_alpn_challenge = false
+
 [tls.letsencrypt.storage]
 # S3 storage configuration for certificates (required for letsencrypt provider)
 # Uses CertMagic with S3 storage and advisory locking.

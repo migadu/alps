@@ -87,14 +87,15 @@ type TLSConfig struct {
 }
 
 type LetsEncryptConfig struct {
-	Email         string          `toml:"email"`
-	Domains       []string        `toml:"domains"`
-	DefaultDomain string          `toml:"default_domain"` // Fallback for SNI-less connections
-	RenewBefore   string          `toml:"renew_before"`   // Duration before expiry to renew (e.g., "720h" for 30 days)
-	RenewalJitter *bool           `toml:"renewal_jitter"` // Enable per-node jitter (default: true)
-	ACMEServer    string          `toml:"acme_server"`    // Optional custom ACME server
-	ACMEHTTPAddr  string          `toml:"acme_http_addr"` // Address for HTTP-01 challenges (default: ":80")
-	Storage       S3StorageConfig `toml:"storage"`
+	Email                string          `toml:"email"`
+	Domains              []string        `toml:"domains"`
+	DefaultDomain        string          `toml:"default_domain"`          // Fallback for SNI-less connections
+	RenewBefore          string          `toml:"renew_before"`            // Duration before expiry to renew (e.g., "720h" for 30 days)
+	RenewalJitter        *bool           `toml:"renewal_jitter"`          // Enable per-node jitter (default: true)
+	ACMEServer           string          `toml:"acme_server"`             // Optional custom ACME server
+	ACMEHTTPAddr         string          `toml:"acme_http_addr"`          // Address for HTTP-01 challenges (default: ":80")
+	EnableTLSALPNChallenge bool          `toml:"enable_tls_alpn_challenge"` // Enable TLS-ALPN-01 challenges (default: false, requires port 443)
+	Storage              S3StorageConfig `toml:"storage"`
 }
 
 type S3StorageConfig struct {

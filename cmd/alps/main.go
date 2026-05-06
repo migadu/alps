@@ -247,13 +247,14 @@ func buildTLSConfig(cfg TLSConfig) (*tlsmanager.Config, error) {
 		}
 
 		tlsCfg.LetsEncrypt = &tlsmanager.LetsEncryptConfig{
-			Email:         cfg.LetsEncrypt.Email,
-			Domains:       cfg.LetsEncrypt.Domains,
-			DefaultDomain: cfg.LetsEncrypt.DefaultDomain,
-			RenewBefore:   renewBefore,
-			RenewalJitter: cfg.LetsEncrypt.RenewalJitter,
-			ACMEServer:    cfg.LetsEncrypt.ACMEServer,
-			ACMEHTTPAddr:  cfg.LetsEncrypt.ACMEHTTPAddr,
+			Email:                  cfg.LetsEncrypt.Email,
+			Domains:                cfg.LetsEncrypt.Domains,
+			DefaultDomain:          cfg.LetsEncrypt.DefaultDomain,
+			RenewBefore:            renewBefore,
+			RenewalJitter:          cfg.LetsEncrypt.RenewalJitter,
+			ACMEServer:             cfg.LetsEncrypt.ACMEServer,
+			ACMEHTTPAddr:           cfg.LetsEncrypt.ACMEHTTPAddr,
+			EnableTLSALPNChallenge: cfg.LetsEncrypt.EnableTLSALPNChallenge,
 			Storage: tlsmanager.S3StorageConfig{
 				Endpoint:        cfg.LetsEncrypt.Storage.Endpoint,
 				Bucket:          cfg.LetsEncrypt.Storage.Bucket,

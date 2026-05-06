@@ -31,14 +31,15 @@ type Config struct {
 }
 
 type LetsEncryptConfig struct {
-	Email         string
-	Domains       []string
-	DefaultDomain string        // Fallback for SNI-less connections
-	ACMEServer    string        // Empty = production
-	ACMEHTTPAddr  string        // Address for HTTP-01 challenge handler (e.g., ":8080")
-	RenewBefore   time.Duration // How long before expiry to renew (default: 30 days)
-	RenewalJitter *bool         // Enable per-node jitter (nil = true)
-	Storage       S3StorageConfig
+	Email                  string
+	Domains                []string
+	DefaultDomain          string        // Fallback for SNI-less connections
+	ACMEServer             string        // Empty = production
+	ACMEHTTPAddr           string        // Address for HTTP-01 challenge handler (e.g., ":8080")
+	RenewBefore            time.Duration // How long before expiry to renew (default: 30 days)
+	RenewalJitter          *bool         // Enable per-node jitter (nil = true)
+	EnableTLSALPNChallenge bool          // Enable TLS-ALPN-01 challenges (default: false, requires port 443)
+	Storage                S3StorageConfig
 }
 
 // RenewalJitterEnabled returns whether jitter is enabled (default: true)
@@ -189,6 +190,8 @@ func (m *Manager) initCertMagic() error {
 	acmeIssuer := certmagic.NewACMEIssuer(magic, certmagic.ACMEIssuer{
 		Email:  cfg.Email,
 		Agreed: true,
+		// TLS-ALPN-01 requires binding to port 443; disable unless explicitly enabled
+		DisableTLSALPNChallenge: !cfg.EnableTLSALPNChallenge,
 	})
 	if cfg.ACMEServer != "" {
 		acmeIssuer.CA = cfg.ACMEServer
