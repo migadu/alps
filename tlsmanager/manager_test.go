@@ -286,11 +286,11 @@ func TestLetsEncryptConfigValidation(t *testing.T) {
 }
 
 func TestHTTPHandlerIntegration(t *testing.T) {
-	t.Run("nil magic returns NotFoundHandler", func(t *testing.T) {
+	t.Run("nil acmeIssuer returns NotFoundHandler", func(t *testing.T) {
 		m := &Manager{
-			config: &Config{Enabled: true, Provider: ProviderLetsEncrypt},
-			magic:  nil, // Not initialized
-			logger: slog.Default(),
+			config:     &Config{Enabled: true, Provider: ProviderLetsEncrypt},
+			acmeIssuer: nil, // Not initialized
+			logger:     slog.Default(),
 		}
 
 		handler := m.HTTPHandler()
@@ -301,21 +301,23 @@ func TestHTTPHandlerIntegration(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusNotFound {
-			t.Errorf("expected 404 for nil magic, got %d", rec.Code)
+			t.Errorf("expected 404 for nil acmeIssuer, got %d", rec.Code)
 		}
 	})
 
 	t.Run("non-challenge requests return 404", func(t *testing.T) {
-		// Create a minimal manager with magic set (but no real certmagic)
-		// We need to test the handler path, not actual certificate issuance
 		m := &Manager{
 			config: &Config{Enabled: true, Provider: ProviderLetsEncrypt},
 			logger: slog.Default(),
 		}
 
-		// Initialize a minimal certmagic config just to have non-nil magic
+		// Initialize certmagic with acmeIssuer
 		cache := newTestCache(m)
 		m.magic = newTestMagic(cache)
+		m.acmeIssuer = certmagic.NewACMEIssuer(m.magic, certmagic.ACMEIssuer{
+			Email:  "test@example.com",
+			Agreed: true,
+		})
 		m.cache = cache
 		defer m.Close()
 
@@ -348,6 +350,10 @@ func TestHTTPHandlerIntegration(t *testing.T) {
 
 		cache := newTestCache(m)
 		m.magic = newTestMagic(cache)
+		m.acmeIssuer = certmagic.NewACMEIssuer(m.magic, certmagic.ACMEIssuer{
+			Email:  "test@example.com",
+			Agreed: true,
+		})
 		m.cache = cache
 		defer m.Close()
 
@@ -358,7 +364,7 @@ func TestHTTPHandlerIntegration(t *testing.T) {
 		req.Host = "example.com"
 		rec := httptest.NewRecorder()
 
-		// This should not panic (the nil logger bug we fixed)
+		// This should not panic
 		handler.ServeHTTP(rec, req)
 
 		// Without an active challenge, it returns 404
@@ -376,6 +382,10 @@ func TestHTTPHandlerIntegration(t *testing.T) {
 
 		cache := newTestCache(m)
 		m.magic = newTestMagic(cache)
+		m.acmeIssuer = certmagic.NewACMEIssuer(m.magic, certmagic.ACMEIssuer{
+			Email:  "test@example.com",
+			Agreed: true,
+		})
 		m.cache = cache
 		defer m.Close()
 

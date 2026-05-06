@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	"go.uber.org/zap"
 )
 
 type TLSProvider string
@@ -198,10 +197,9 @@ func (m *Manager) initCertMagic() error {
 		acmeIssuer.CA = cfg.ACMEServer
 	}
 
-	// Set AltHTTPPort so certmagic uses our configured port instead of default 80.
-	// Certmagic will try to bind this port, fail (since main.go already listens there),
-	// log a warning, and fall back to using GetACMEChallenge/SolveHTTPChallenge which
-	// our HTTPHandler() serves. The "address already in use" warning is expected.
+	// Set AltHTTPPort so certmagic starts its own HTTP server on this port
+	// instead of the default port 80. HAProxy forwards ACME challenges from
+	// port 80 to this port.
 	if cfg.ACMEHTTPAddr != "" {
 		port := parsePort(cfg.ACMEHTTPAddr)
 		if port > 0 {
@@ -285,38 +283,20 @@ func (m *Manager) Close() error {
 
 // HTTPHandler returns the HTTP-01 challenge handler for ACME validation.
 //
-// The caller is responsible for starting an HTTP server with this handler
-// on the address specified by ACMEHTTPAddr (typically port 80 or an alternate
-// port configured with your ACME provider).
+// Note: By default, certmagic starts its own HTTP server on AltHTTPPort,
+// so this handler is not needed. It's provided for cases where you want
+// to integrate ACME challenges into an existing HTTP server.
 //
 // The handler checks for ACME challenge requests and responds appropriately.
 // Non-challenge requests receive a 404.
 func (m *Manager) HTTPHandler() http.Handler {
-	if m.magic == nil {
+	if m.acmeIssuer == nil {
 		return http.NotFoundHandler()
 	}
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check if this looks like an ACME HTTP challenge
-		if certmagic.LooksLikeHTTPChallenge(r) {
-			// Try to get the challenge for this identifier
-			// The identifier is the host part of the request
-			host := r.Host
-			if idx := strings.Index(host, ":"); idx != -1 {
-				host = host[:idx]
-			}
-
-			challenge, ok := certmagic.GetACMEChallenge(host)
-			if ok {
-				// Solve the challenge
-				certmagic.SolveHTTPChallenge(zap.NewNop(), w, r, challenge.Challenge)
-				return
-			}
-		}
-
-		// Not a challenge request, return 404
-		http.NotFound(w, r)
-	})
+	// Use ACMEIssuer's HTTPChallengeHandler which has direct access to challenge state.
+	// This wraps the fallback handler (NotFoundHandler) and intercepts ACME challenges.
+	return m.acmeIssuer.HTTPChallengeHandler(http.NotFoundHandler())
 }
 
 // GetACMEHTTPAddr returns the configured address for the HTTP-01 challenge

@@ -132,19 +132,7 @@ func main() {
 		}
 		defer tlsMgr.Close()
 
-		// Start HTTP-01 challenge handler for Let's Encrypt
-		if tlsCfg.Provider == tlsmanager.ProviderLetsEncrypt {
-			acmeHTTPAddr := tlsCfg.LetsEncrypt.ACMEHTTPAddr
-			if acmeHTTPAddr == "" {
-				acmeHTTPAddr = ":80"
-			}
-			go func() {
-				logger.Infof("Starting HTTP-01 challenge handler on %s", acmeHTTPAddr)
-				if err := http.ListenAndServe(acmeHTTPAddr, tlsMgr.HTTPHandler()); err != nil {
-					logger.Errorf("HTTP-01 challenge handler error: %v", err)
-				}
-			}()
-		}
+		// CertMagic handles the HTTP-01 challenge server internally via AltHTTPPort
 	}
 
 	// Apply timeout defaults
