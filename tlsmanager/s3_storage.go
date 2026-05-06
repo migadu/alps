@@ -3,6 +3,8 @@ package tlsmanager
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -368,9 +370,25 @@ func (s *S3Storage) Lock(ctx context.Context, key string) error {
 	// Wait up to 2x lock timeout to allow stale locks to expire
 	acquireTimeout := 2 * s.lockTimeout
 
+	s.logger.Info("attempting to acquire lock",
+		"key", key,
+		"lock_key", lockKey,
+		"node_id", s.nodeID,
+		"lock_owner_id", s.lockOwnerID,
+		"timeout", acquireTimeout)
+
+	attempt := 0
 	for {
+		attempt++
+
 		// Check timeout
 		if time.Since(start) > acquireTimeout {
+			s.logger.Error("lock acquisition timed out",
+				"key", key,
+				"lock_key", lockKey,
+				"node_id", s.nodeID,
+				"elapsed", time.Since(start),
+				"attempts", attempt)
 			return fmt.Errorf("lock timeout after %v: %s", acquireTimeout, key)
 		}
 
@@ -380,9 +398,13 @@ func (s *S3Storage) Lock(ctx context.Context, key string) error {
 		}
 
 		// Check lock state (fail closed on errors)
-		held, err := s.lockIsHeldByOther(ctx, lockKey)
+		held, holder, err := s.lockIsHeldByOther(ctx, lockKey)
 		if err != nil {
 			// S3 error - fail closed, don't proceed
+			s.logger.Error("cannot verify lock state",
+				"key", key,
+				"lock_key", lockKey,
+				"error", err)
 			return fmt.Errorf("cannot verify lock state: %w", err)
 		}
 
@@ -393,8 +415,23 @@ func (s *S3Storage) Lock(ctx context.Context, key string) error {
 				s.logger.Warn("failed to write lock, will retry",
 					"key", key, "error", err)
 			} else {
-				s.logger.Debug("lock acquired", "key", key)
+				s.logger.Info("lock acquired",
+					"key", key,
+					"lock_key", lockKey,
+					"node_id", s.nodeID,
+					"elapsed", time.Since(start),
+					"attempts", attempt)
 				return nil
+			}
+		} else {
+			// Lock held by someone else
+			if attempt == 1 || attempt%10 == 0 {
+				s.logger.Info("lock held by another node, waiting",
+					"key", key,
+					"lock_key", lockKey,
+					"holder", holder,
+					"node_id", s.nodeID,
+					"attempt", attempt)
 			}
 		}
 
@@ -410,17 +447,17 @@ func (s *S3Storage) Lock(ctx context.Context, key string) error {
 
 // lockIsHeldByOther checks if the lock exists and is held by another node.
 // Returns:
-//   - (true, nil): lock is held by another node and not expired
-//   - (false, nil): lock doesn't exist, is expired, or is held by us
-//   - (false, err): S3 error, caller should fail closed
-func (s *S3Storage) lockIsHeldByOther(ctx context.Context, lockKey string) (bool, error) {
+//   - (true, holder, nil): lock is held by another node and not expired
+//   - (false, "", nil): lock doesn't exist, is expired, or is held by us
+//   - (false, "", err): S3 error, caller should fail closed
+func (s *S3Storage) lockIsHeldByOther(ctx context.Context, lockKey string) (bool, string, error) {
 	obj, err := s.client.GetObject(ctx, s.bucket, lockKey, minio.GetObjectOptions{})
 	if err != nil {
 		errResp := minio.ToErrorResponse(err)
 		if errResp.Code == "NoSuchKey" {
-			return false, nil // No lock exists
+			return false, "", nil // No lock exists
 		}
-		return false, fmt.Errorf("get lock: %w", err) // S3 error
+		return false, "", fmt.Errorf("get lock: %w", err) // S3 error
 	}
 	defer obj.Close()
 
@@ -428,48 +465,99 @@ func (s *S3Storage) lockIsHeldByOther(ctx context.Context, lockKey string) (bool
 	if err != nil {
 		errResp := minio.ToErrorResponse(err)
 		if errResp.Code == "NoSuchKey" {
-			return false, nil // Lock disappeared (race)
+			return false, "", nil // Lock disappeared (race)
 		}
-		return false, fmt.Errorf("read lock: %w", err) // S3 error
+		return false, "", fmt.Errorf("read lock: %w", err) // S3 error
 	}
 
 	if len(data) == 0 {
-		return false, nil // Empty lock file, treat as no lock
+		return false, "", nil // Empty lock file, treat as no lock
 	}
 
 	lock, err := parseLockInfo(data)
 	if err != nil {
 		// Corrupt lock file - treat as no lock (we'll overwrite it)
 		s.logger.Warn("corrupt lock file, treating as expired", "error", err)
-		return false, nil
+		return false, "", nil
 	}
 
 	// Check expiry
 	if time.Now().After(lock.ExpiresAt) {
-		return false, nil // Lock expired
+		s.logger.Debug("lock expired, treating as free",
+			"lock_key", lockKey,
+			"holder", lock.NodeID,
+			"expired_at", lock.ExpiresAt)
+		return false, "", nil // Lock expired
 	}
 
 	// Check ownership (using lockOwnerID which includes PID)
 	if lock.NodeID == s.lockOwnerID {
-		return false, nil // We own it
+		return false, "", nil // We own it
 	}
 
 	// Lock is held by another process and not expired
-	return true, nil
+	return true, lock.NodeID, nil
 }
 
+// writeLock attempts to acquire the lock using optimistic locking.
+// It writes the lock, waits for S3 consistency, then verifies we won.
+// Returns nil if lock was acquired, error if we lost the race.
 func (s *S3Storage) writeLock(ctx context.Context, lockKey string) error {
+	attemptID := generateAttemptID()
 	lock := &lockInfo{
 		NodeID:    s.lockOwnerID, // Use lockOwnerID (includes PID) for ownership
+		AttemptID: attemptID,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(s.lockTimeout),
 	}
 	data := lock.marshal()
 
+	// Step 1: Write our lock claim
 	_, err := s.client.PutObject(ctx, s.bucket, lockKey,
 		bytes.NewReader(data), int64(len(data)),
 		minio.PutObjectOptions{ContentType: "application/json"})
-	return err
+	if err != nil {
+		return fmt.Errorf("write lock: %w", err)
+	}
+
+	// Step 2: Wait for S3 eventual consistency
+	// This reduces the window for race conditions significantly
+	time.Sleep(100 * time.Millisecond)
+
+	// Step 3: Read back and verify we won the race
+	obj, err := s.client.GetObject(ctx, s.bucket, lockKey, minio.GetObjectOptions{})
+	if err != nil {
+		return fmt.Errorf("verify lock: %w", err)
+	}
+	defer obj.Close()
+
+	readData, err := io.ReadAll(obj)
+	if err != nil {
+		return fmt.Errorf("read lock for verification: %w", err)
+	}
+
+	readLock, err := parseLockInfo(readData)
+	if err != nil {
+		return fmt.Errorf("parse lock for verification: %w", err)
+	}
+
+	// Step 4: Check if our attempt ID is still there
+	if readLock.AttemptID != attemptID {
+		// We lost the race - another node overwrote our lock
+		s.logger.Info("lost lock race",
+			"lock_key", lockKey,
+			"our_attempt", attemptID,
+			"winner_attempt", readLock.AttemptID,
+			"winner_node", readLock.NodeID)
+		return fmt.Errorf("lost lock race to %s", readLock.NodeID)
+	}
+
+	return nil
+}
+
+// isCertLock returns true if the key is a certificate-related lock
+func isCertLock(key string) bool {
+	return strings.Contains(key, "issue_cert") || strings.Contains(key, "renew_cert")
 }
 
 // Unlock releases the lock (only if we own it).
@@ -478,10 +566,21 @@ func (s *S3Storage) writeLock(ctx context.Context, lockKey string) error {
 func (s *S3Storage) Unlock(ctx context.Context, key string) error {
 	lockKey := s.lockKey(key)
 
+	if isCertLock(key) {
+		s.logger.Info("attempting to release lock",
+			"key", key,
+			"lock_key", lockKey,
+			"node_id", s.nodeID,
+			"lock_owner_id", s.lockOwnerID)
+	}
+
 	obj, err := s.client.GetObject(ctx, s.bucket, lockKey, minio.GetObjectOptions{})
 	if err != nil {
 		errResp := minio.ToErrorResponse(err)
 		if errResp.Code == "NoSuchKey" {
+			if isCertLock(key) {
+				s.logger.Info("unlock: lock already gone", "key", key)
+			}
 			return nil // Lock already gone
 		}
 		s.logger.Warn("unlock: failed to read lock, will expire via TTL",
@@ -505,7 +604,14 @@ func (s *S3Storage) Unlock(ctx context.Context, key string) error {
 	}
 
 	if lock.NodeID != s.lockOwnerID {
-		s.logger.Debug("unlock: not owner, skipping", "key", key, "owner", lock.NodeID)
+		if isCertLock(key) {
+			s.logger.Info("unlock: not owner, skipping",
+				"key", key,
+				"lock_owner", lock.NodeID,
+				"our_owner_id", s.lockOwnerID)
+		} else {
+			s.logger.Debug("unlock: not owner, skipping", "key", key, "owner", lock.NodeID)
+		}
 		return nil
 	}
 
@@ -515,20 +621,29 @@ func (s *S3Storage) Unlock(ctx context.Context, key string) error {
 		return nil
 	}
 
-	s.logger.Debug("lock released", "key", key)
+	if isCertLock(key) {
+		s.logger.Info("lock released",
+			"key", key,
+			"lock_key", lockKey,
+			"node_id", s.nodeID)
+	} else {
+		s.logger.Debug("lock released", "key", key)
+	}
 	return nil
 }
 
 type lockInfo struct {
 	NodeID    string    `json:"node_id"`
+	AttemptID string    `json:"attempt_id"` // Unique ID per lock attempt for race detection
 	CreatedAt time.Time `json:"created_at"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
 func (l *lockInfo) marshal() []byte {
 	return []byte(fmt.Sprintf(
-		`{"node_id":"%s","created_at":"%s","expires_at":"%s"}`,
+		`{"node_id":"%s","attempt_id":"%s","created_at":"%s","expires_at":"%s"}`,
 		l.NodeID,
+		l.AttemptID,
 		l.CreatedAt.Format(time.RFC3339),
 		l.ExpiresAt.Format(time.RFC3339)))
 }
@@ -541,6 +656,12 @@ func parseLockInfo(data []byte) (*lockInfo, error) {
 		i += len(`"node_id":"`)
 		if j := strings.Index(str[i:], `"`); j != -1 {
 			lock.NodeID = str[i : i+j]
+		}
+	}
+	if i := strings.Index(str, `"attempt_id":"`); i != -1 {
+		i += len(`"attempt_id":"`)
+		if j := strings.Index(str[i:], `"`); j != -1 {
+			lock.AttemptID = str[i : i+j]
 		}
 	}
 	if i := strings.Index(str, `"created_at":"`); i != -1 {
@@ -564,4 +685,14 @@ func parseLockInfo(data []byte) (*lockInfo, error) {
 		return nil, errors.New("invalid lock: missing node_id")
 	}
 	return &lock, nil
+}
+
+// generateAttemptID creates a unique ID for this lock attempt
+func generateAttemptID() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to time-based ID if crypto/rand fails
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
 }

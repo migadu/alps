@@ -66,6 +66,7 @@ func TestParseLockInfo(t *testing.T) {
 func TestLockInfoMarshalRoundTrip(t *testing.T) {
 	original := &lockInfo{
 		NodeID:    "test-node-12345",
+		AttemptID: "abc123def456",
 		CreatedAt: time.Date(2026, 5, 6, 10, 0, 0, 0, time.UTC),
 		ExpiresAt: time.Date(2026, 5, 6, 10, 5, 0, 0, time.UTC),
 	}
@@ -80,9 +81,34 @@ func TestLockInfoMarshalRoundTrip(t *testing.T) {
 		t.Errorf("NodeID = %q, want %q", parsed.NodeID, original.NodeID)
 	}
 
+	if parsed.AttemptID != original.AttemptID {
+		t.Errorf("AttemptID = %q, want %q", parsed.AttemptID, original.AttemptID)
+	}
+
 	// ExpiresAt should match (within RFC3339 precision)
 	if !parsed.ExpiresAt.Equal(original.ExpiresAt) {
 		t.Errorf("ExpiresAt = %v, want %v", parsed.ExpiresAt, original.ExpiresAt)
+	}
+}
+
+func TestGenerateAttemptID(t *testing.T) {
+	// Generate multiple IDs and verify they're unique
+	seen := make(map[string]bool)
+	for i := 0; i < 100; i++ {
+		id := generateAttemptID()
+		if id == "" {
+			t.Error("generateAttemptID returned empty string")
+		}
+		if seen[id] {
+			t.Errorf("duplicate attempt ID: %s", id)
+		}
+		seen[id] = true
+	}
+
+	// Verify length (should be 16 hex chars = 8 bytes)
+	id := generateAttemptID()
+	if len(id) != 16 {
+		t.Errorf("attempt ID length = %d, want 16", len(id))
 	}
 }
 
