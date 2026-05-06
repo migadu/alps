@@ -197,9 +197,10 @@ func (m *Manager) initCertMagic() error {
 		acmeIssuer.CA = cfg.ACMEServer
 	}
 
-	// Set AltHTTPPort so certmagic starts its own HTTP server on this port
-	// instead of the default port 80. HAProxy forwards ACME challenges from
-	// port 80 to this port.
+	// Set AltHTTPPort so certmagic's embedded solver tries this port instead of 80.
+	// Without this, certmagic tries port 80 and fails with permission denied (non-root).
+	// main.go also runs HTTPHandler() on this port, so certmagic will get "address
+	// already in use" which it handles gracefully, falling back to distributed solving.
 	if cfg.ACMEHTTPAddr != "" {
 		port := parsePort(cfg.ACMEHTTPAddr)
 		if port > 0 {
@@ -283,19 +284,14 @@ func (m *Manager) Close() error {
 
 // HTTPHandler returns the HTTP-01 challenge handler for ACME validation.
 //
-// Note: By default, certmagic starts its own HTTP server on AltHTTPPort,
-// so this handler is not needed. It's provided for cases where you want
-// to integrate ACME challenges into an existing HTTP server.
-//
-// The handler checks for ACME challenge requests and responds appropriately.
-// Non-challenge requests receive a 404.
+// The handler wraps certmagic's ACMEIssuer.HTTPChallengeHandler which handles
+// challenge solving, including distributed solving via shared storage when
+// configured. Non-challenge requests receive a 404.
 func (m *Manager) HTTPHandler() http.Handler {
 	if m.acmeIssuer == nil {
 		return http.NotFoundHandler()
 	}
 
-	// Use ACMEIssuer's HTTPChallengeHandler which has direct access to challenge state.
-	// This wraps the fallback handler (NotFoundHandler) and intercepts ACME challenges.
 	return m.acmeIssuer.HTTPChallengeHandler(http.NotFoundHandler())
 }
 

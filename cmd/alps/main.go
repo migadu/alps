@@ -132,7 +132,21 @@ func main() {
 		}
 		defer tlsMgr.Close()
 
-		// CertMagic handles the HTTP-01 challenge server internally via AltHTTPPort
+		// Start HTTP-01 challenge handler on all nodes for distributed solving.
+		// This allows any node to serve challenges from shared storage (S3),
+		// not just the node that initiated the certificate request.
+		if tlsCfg.Provider == tlsmanager.ProviderLetsEncrypt {
+			acmeHTTPAddr := tlsCfg.LetsEncrypt.ACMEHTTPAddr
+			if acmeHTTPAddr == "" {
+				acmeHTTPAddr = ":80"
+			}
+			go func() {
+				logger.Infof("Starting ACME HTTP-01 challenge handler on %s", acmeHTTPAddr)
+				if err := http.ListenAndServe(acmeHTTPAddr, tlsMgr.HTTPHandler()); err != nil {
+					logger.Errorf("ACME HTTP-01 handler error: %v", err)
+				}
+			}()
+		}
 	}
 
 	// Apply timeout defaults
