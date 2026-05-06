@@ -148,12 +148,9 @@ func handlePasswordChange(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusOK, map[string]string{"message": "Password changed, but please log in again"})
 	}
 
-	// Also update login token if present
-	// If a login token exists, the user had "remember me" checked - preserve that choice
-	if tokenUsername, _, verified2FA := ctx.GetLoginToken(); tokenUsername == username {
-		// The presence of a login token means persistence was enabled
-		// (login tokens are only created when remember-me is on)
-		ctx.SetLoginToken(username, req.Password, verified2FA, true)
+	// Also update login token if present, preserving the persistence setting
+	if tokenUsername, _, verified2FA, persistent := ctx.GetLoginToken(); tokenUsername == username {
+		ctx.SetLoginToken(username, req.Password, verified2FA, persistent)
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]string{"message": "Password successfully changed"})

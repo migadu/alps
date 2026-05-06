@@ -200,6 +200,7 @@ type loginToken struct {
 	Username    string
 	Password    string
 	Verified2FA bool
+	Persistent  bool
 }
 
 func (c *Context) SetLoginToken(username, password string, verified2FA bool, persistent bool) {
@@ -234,7 +235,7 @@ func (c *Context) SetLoginToken(username, password string, verified2FA bool, per
 	frontendCookie.Value = "1"
 	c.SetCookie(&frontendCookie)
 
-	loginToken := loginToken{username, password, verified2FA}
+	loginToken := loginToken{username, password, verified2FA, persistent}
 	payload, err := json.Marshal(loginToken)
 	if err != nil {
 		panic(err) // Should never happen
@@ -254,15 +255,15 @@ func (c *Context) SetLoginToken(username, password string, verified2FA bool, per
 	c.SetCookie(&cookie)
 }
 
-func (c *Context) GetLoginToken() (string, string, bool) {
+func (c *Context) GetLoginToken() (string, string, bool, bool) {
 	cookie, err := c.Cookie(loginTokenCookieName)
 	if err != nil || cookie == nil {
-		return "", "", false
+		return "", "", false, false
 	}
 
 	fkey := c.Server.Options.LoginKey
 	if fkey == nil {
-		return "", "", false
+		return "", "", false, false
 	}
 
 	bytes := fernet.VerifyAndDecrypt([]byte(cookie.Value), 24*time.Hour*30, []*fernet.Key{fkey})
@@ -272,7 +273,7 @@ func (c *Context) GetLoginToken() (string, string, bool) {
 		c.Server.logger.Debugf("Failed to decrypt login token cookie (key rotation, expiry, or invalid token)")
 		// Clear the invalid cookie
 		c.SetLoginToken("", "", false, false)
-		return "", "", false
+		return "", "", false, false
 	}
 
 	var token loginToken
@@ -281,8 +282,8 @@ func (c *Context) GetLoginToken() (string, string, bool) {
 		// This should never happen unless cookie was corrupted
 		c.Server.logger.Printf("Warning: login token cookie unmarshal failed: %v", err)
 		c.SetLoginToken("", "", false, false)
-		return "", "", false
+		return "", "", false, false
 	}
 
-	return token.Username, token.Password, token.Verified2FA
+	return token.Username, token.Password, token.Verified2FA, token.Persistent
 }

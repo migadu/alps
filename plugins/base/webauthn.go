@@ -266,10 +266,8 @@ func handleSetupFinish(ctx *alps.Context) error {
 	ctx.Session.SetAuthenticated2FA(true)
 
 	// Update the login token so the session restoration knows 2FA is verified
-	tokenUser, tokenPass, _ := ctx.GetLoginToken()
+	tokenUser, tokenPass, _, isPersistent := ctx.GetLoginToken()
 	if tokenUser != "" && tokenPass != "" {
-		loginCookie, _ := ctx.Cookie("alps_login")
-		isPersistent := loginCookie != nil && loginCookie.Expires.After(time.Now().Add(24*time.Hour))
 		ctx.SetLoginToken(tokenUser, tokenPass, true, isPersistent)
 	}
 

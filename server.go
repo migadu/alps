@@ -417,7 +417,7 @@ func (s *Server) setupMiddleware(router *Router) {
 				ctx.SetSession(nil)
 
 				// Attempt to restore session from encrypted login token
-				username, password, verified2FA := ctx.GetLoginToken()
+				username, password, verified2FA, persistent := ctx.GetLoginToken()
 				if username != "" && password != "" {
 					s.logger.Debugf("Auth middleware: attempting session restoration from login token for %s", ctx.Request.URL.Path)
 					session, err := ctx.Server.Sessions.Put(username, password)
@@ -431,9 +431,9 @@ func (s *Server) setupMiddleware(router *Router) {
 					session.SetAuthenticated2FA(verified2FA)
 
 					s.logger.Debugf("Auth middleware: session restored successfully for %s", ctx.Request.URL.Path)
-					// Restore as persistent session since login token exists (user had "remember me" checked)
+					// Restore session with original persistence setting
 					ctx.Session = session
-					ctx.SetSessionWithExpiry(session, true)
+					ctx.SetSessionWithExpiry(session, persistent)
 					// Clear any stale 2FA cookies from previous login attempts
 					ctx.SetCookie(&http.Cookie{
 						Name:     "alps_2fa_pending",

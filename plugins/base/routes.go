@@ -806,7 +806,7 @@ func handleLogin(ctx *alps.Context) error {
 	// Check if we're restoring from a login token (session restoration)
 	restoredFromToken := false
 	if username == "" && password == "" {
-		username, password, _ = ctx.GetLoginToken()
+		username, password, _, _ = ctx.GetLoginToken()
 		restoredFromToken = username != "" && password != ""
 	}
 
@@ -2356,12 +2356,12 @@ func handleSwitchAccount(ctx *alps.Context) error {
 	ctx.SetSession(newSession)
 
 	// Preserve persistence state from original login token
-	// If a login token exists, the user had "remember me" checked
-	origUsername, _, _ := ctx.GetLoginToken()
-	wasPersistent := origUsername != ""
+	origUsername, _, _, wasPersistent := ctx.GetLoginToken()
 
 	// Update login token for new account, preserving persistence choice
-	ctx.SetLoginToken(targetUsername, password, true, wasPersistent)
+	if origUsername != "" {
+		ctx.SetLoginToken(targetUsername, password, true, wasPersistent)
+	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
 }
