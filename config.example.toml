@@ -235,22 +235,17 @@ level = "info"
 # key_file = "/path/to/key.pem"
 
 [tls.letsencrypt]
-# Email address for ACME registration
+# Email address for ACME registration (required)
 # email = "admin@example.com"
 
-# Domains to obtain certificates for
+# Domains to obtain certificates for (required)
 # domains = ["mail.example.com", "webmail.example.com"]
 
-# Storage provider for certificates ("s3" or leave empty for local file storage)
-# storage_provider = ""
+# Default domain for SNI-less connections (optional)
+# default_domain = "mail.example.com"
 
-# Enable fallback to local storage if primary storage fails
-# enable_fallback = false
-
-# Directory to use for fallback storage
-# fallback_dir = "./certs-fallback"
-
-# Duration before expiry to renew certificates (e.g., "720h" for 30 days)
+# How long before expiry to renew certificates (default: 720h = 30 days)
+# Converted to CertMagic's RenewalWindowRatio assuming 90-day Let's Encrypt certs.
 # renew_before = "720h"
 
 # Optional custom ACME server URL (defaults to Let's Encrypt production)
@@ -261,21 +256,40 @@ level = "info"
 # Your proxy should forward /.well-known/acme-challenge/* to this address.
 # acme_http_addr = ":8080"
 
-[tls.letsencrypt.s3]
-# S3 configuration for certificate storage
-# bucket = "alps-certs"
+# Enable per-node renewal jitter to prevent multiple nodes renewing simultaneously
+# Uses deterministic jitter based on node_id (±12 hours spread around renew_before)
+# renewal_jitter = true
+
+[tls.letsencrypt.storage]
+# S3 storage configuration for certificates (required for letsencrypt provider)
+# Uses CertMagic with S3 storage and advisory locking.
+
+# S3 endpoint (required)
 # endpoint = "s3.amazonaws.com"
+
+# S3 bucket name (required)
+# bucket = "alps-certs"
+
+# S3 credentials (optional - uses IAM if not specified)
 # access_key_id = "your-access-key"
 # secret_access_key = "your-secret-key"
-# disable_tls = false
-# debug = false
 
-[tls.letsencrypt.cluster]
-# Cluster coordination using S3 to ensure only one node requests certificates
-# enabled = false
-# leader_lock_key = "autocert/leader.lock"
-# leader_ttl = "60s"
-# renew_interval = "30s"
+# S3 region (optional)
+# region = "us-east-1"
+
+# Disable TLS for S3 connections (default: false)
+# disable_tls = false
+
+# Key prefix for certificate storage (default: "certmagic/")
+# prefix = "certmagic/"
+
+# Lock timeout for advisory locking (default: "5m")
+# lock_timeout = "5m"
+
+# Stable node identifier for renewal jitter (default: hostname)
+# Used to deterministically spread renewal times across nodes.
+# For lock ownership, PID is appended internally to ensure uniqueness per process.
+# node_id = "alps-node-1"
 
 [provider]
 # Mail provider type (default: "imap")

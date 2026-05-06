@@ -225,7 +225,7 @@ func buildTLSConfig(cfg TLSConfig) (*tlsmanager.Config, error) {
 
 	// Build Let's Encrypt config if using that provider
 	if tlsCfg.Provider == tlsmanager.ProviderLetsEncrypt {
-		// Parse renew before duration
+		// Parse renew_before duration
 		var renewBefore time.Duration
 		if cfg.LetsEncrypt.RenewBefore != "" {
 			var err error
@@ -235,45 +235,34 @@ func buildTLSConfig(cfg TLSConfig) (*tlsmanager.Config, error) {
 			}
 		}
 
-		// Parse cluster durations
-		var leaderTTL, renewInterval time.Duration
-		if cfg.LetsEncrypt.Cluster.LeaderTTL != "" {
+		// Parse lock timeout duration
+		var lockTimeout time.Duration
+		if cfg.LetsEncrypt.Storage.LockTimeout != "" {
 			var err error
-			leaderTTL, err = time.ParseDuration(cfg.LetsEncrypt.Cluster.LeaderTTL)
+			lockTimeout, err = time.ParseDuration(cfg.LetsEncrypt.Storage.LockTimeout)
 			if err != nil {
-				return nil, fmt.Errorf("invalid leader_ttl duration: %w", err)
-			}
-		}
-		if cfg.LetsEncrypt.Cluster.RenewInterval != "" {
-			var err error
-			renewInterval, err = time.ParseDuration(cfg.LetsEncrypt.Cluster.RenewInterval)
-			if err != nil {
-				return nil, fmt.Errorf("invalid renew_interval duration: %w", err)
+				return nil, fmt.Errorf("invalid lock_timeout duration: %w", err)
 			}
 		}
 
 		tlsCfg.LetsEncrypt = &tlsmanager.LetsEncryptConfig{
-			Email:           cfg.LetsEncrypt.Email,
-			Domains:         cfg.LetsEncrypt.Domains,
-			StorageProvider: cfg.LetsEncrypt.StorageProvider,
-			EnableFallback:  cfg.LetsEncrypt.EnableFallback,
-			FallbackDir:     cfg.LetsEncrypt.FallbackDir,
-			RenewBefore:     renewBefore,
-			ACMEServer:      cfg.LetsEncrypt.ACMEServer,
-			ACMEHTTPAddr:    cfg.LetsEncrypt.ACMEHTTPAddr,
-			S3: tlsmanager.S3CacheConfig{
-				Bucket:          cfg.LetsEncrypt.S3.Bucket,
-				Endpoint:        cfg.LetsEncrypt.S3.Endpoint,
-				AccessKeyID:     cfg.LetsEncrypt.S3.AccessKeyID,
-				SecretAccessKey: cfg.LetsEncrypt.S3.SecretAccessKey,
-				DisableTLS:      cfg.LetsEncrypt.S3.DisableTLS,
-				Debug:           cfg.LetsEncrypt.S3.Debug,
-			},
-			Cluster: tlsmanager.ClusterConfig{
-				Enabled:       cfg.LetsEncrypt.Cluster.Enabled,
-				LeaderLockKey: cfg.LetsEncrypt.Cluster.LeaderLockKey,
-				LeaderTTL:     leaderTTL,
-				RenewInterval: renewInterval,
+			Email:         cfg.LetsEncrypt.Email,
+			Domains:       cfg.LetsEncrypt.Domains,
+			DefaultDomain: cfg.LetsEncrypt.DefaultDomain,
+			RenewBefore:   renewBefore,
+			RenewalJitter: cfg.LetsEncrypt.RenewalJitter,
+			ACMEServer:    cfg.LetsEncrypt.ACMEServer,
+			ACMEHTTPAddr:  cfg.LetsEncrypt.ACMEHTTPAddr,
+			Storage: tlsmanager.S3StorageConfig{
+				Endpoint:        cfg.LetsEncrypt.Storage.Endpoint,
+				Bucket:          cfg.LetsEncrypt.Storage.Bucket,
+				AccessKeyID:     cfg.LetsEncrypt.Storage.AccessKeyID,
+				SecretAccessKey: cfg.LetsEncrypt.Storage.SecretAccessKey,
+				Region:          cfg.LetsEncrypt.Storage.Region,
+				DisableTLS:      cfg.LetsEncrypt.Storage.DisableTLS,
+				Prefix:          cfg.LetsEncrypt.Storage.Prefix,
+				LockTimeout:     lockTimeout,
+				NodeID:          cfg.LetsEncrypt.Storage.NodeID,
 			},
 		}
 	}

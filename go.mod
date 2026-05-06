@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/BurntSushi/toml v1.5.0
+	github.com/caddyserver/certmagic v0.21.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
@@ -13,13 +14,13 @@ require (
 	github.com/go-webauthn/webauthn v0.17.2
 	github.com/google/uuid v1.6.0
 	github.com/minio/minio-go/v7 v7.0.95
-	golang.org/x/crypto v0.50.0
 	golang.org/x/text v0.36.0
 )
 
 replace github.com/emersion/go-imap/v2 => github.com/migadu/go-imap/v2 v2.0.0-20260316134619-b8676c927c75
 
 require (
+	github.com/caddyserver/zerossl v0.1.2 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
@@ -29,12 +30,22 @@ require (
 	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.11 // indirect
+	github.com/libdns/libdns v0.2.2 // indirect
+	github.com/mholt/acmez/v2 v2.0.1 // indirect
+	github.com/miekg/dns v1.1.59 // indirect
 	github.com/minio/crc64nvme v1.0.2 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
+	github.com/zeebo/blake3 v0.2.3 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
+	go.uber.org/zap v1.27.0 // indirect
+	golang.org/x/crypto v0.50.0 // indirect
+	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/tools v0.43.0 // indirect
 )

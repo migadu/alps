@@ -87,32 +87,26 @@ type TLSConfig struct {
 }
 
 type LetsEncryptConfig struct {
-	Email           string        `toml:"email"`
-	Domains         []string      `toml:"domains"`
-	StorageProvider string        `toml:"storage_provider"` // Currently only "s3"
-	EnableFallback  bool          `toml:"enable_fallback"`
-	FallbackDir     string        `toml:"fallback_dir"`
-	RenewBefore     string        `toml:"renew_before"`   // Duration string like "720h"
-	ACMEServer      string        `toml:"acme_server"`    // Optional custom ACME server
-	ACMEHTTPAddr    string        `toml:"acme_http_addr"` // Address for HTTP-01 challenges (default: ":80")
-	S3              S3Config      `toml:"s3"`
-	Cluster         ClusterConfig `toml:"cluster"`
+	Email         string          `toml:"email"`
+	Domains       []string        `toml:"domains"`
+	DefaultDomain string          `toml:"default_domain"` // Fallback for SNI-less connections
+	RenewBefore   string          `toml:"renew_before"`   // Duration before expiry to renew (e.g., "720h" for 30 days)
+	RenewalJitter *bool           `toml:"renewal_jitter"` // Enable per-node jitter (default: true)
+	ACMEServer    string          `toml:"acme_server"`    // Optional custom ACME server
+	ACMEHTTPAddr  string          `toml:"acme_http_addr"` // Address for HTTP-01 challenges (default: ":80")
+	Storage       S3StorageConfig `toml:"storage"`
 }
 
-type S3Config struct {
-	Bucket          string `toml:"bucket"`
+type S3StorageConfig struct {
 	Endpoint        string `toml:"endpoint"`
+	Bucket          string `toml:"bucket"`
 	AccessKeyID     string `toml:"access_key_id"`
 	SecretAccessKey string `toml:"secret_access_key"`
+	Region          string `toml:"region"`
 	DisableTLS      bool   `toml:"disable_tls"`
-	Debug           bool   `toml:"debug"`
-}
-
-type ClusterConfig struct {
-	Enabled       bool   `toml:"enabled"`         // Enable cluster mode with leader election
-	LeaderLockKey string `toml:"leader_lock_key"` // S3 key for leader lock (default: "autocert/leader.lock")
-	LeaderTTL     string `toml:"leader_ttl"`      // Leader lock TTL (default: "60s")
-	RenewInterval string `toml:"renew_interval"`  // How often to renew leader lock (default: "30s")
+	Prefix          string `toml:"prefix"`       // Default: "certmagic/"
+	LockTimeout     string `toml:"lock_timeout"` // Default: "5m"
+	NodeID          string `toml:"node_id"`      // Stable ID for jitter (default: hostname); PID appended for locks
 }
 
 type PluginConfig struct {
