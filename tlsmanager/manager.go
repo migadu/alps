@@ -8,6 +8,7 @@ import (
 	"hash/fnv"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -197,9 +198,16 @@ func (m *Manager) initCertMagic() error {
 		acmeIssuer.CA = cfg.ACMEServer
 	}
 
-	// Note: We don't set AltHTTPPort here because main.go starts its own
-	// HTTP server using HTTPHandler(). AltHTTPPort would make certmagic
-	// start a competing listener on the same port.
+	// Set AltHTTPPort so certmagic uses our configured port instead of default 80.
+	// Certmagic will try to bind this port, fail (since main.go already listens there),
+	// log a warning, and fall back to using GetACMEChallenge/SolveHTTPChallenge which
+	// our HTTPHandler() serves. The "address already in use" warning is expected.
+	if cfg.ACMEHTTPAddr != "" {
+		port := parsePort(cfg.ACMEHTTPAddr)
+		if port > 0 {
+			acmeIssuer.AltHTTPPort = port
+		}
+	}
 
 	magic.Issuers = []certmagic.Issuer{acmeIssuer}
 	m.cache = cache
@@ -223,6 +231,28 @@ func (m *Manager) initCertMagic() error {
 		"renewal_window_ratio", renewalWindowRatio)
 
 	return nil
+}
+
+// parsePort extracts the port number from an address like ":8080" or "0.0.0.0:8080"
+func parsePort(addr string) int {
+	if addr == "" {
+		return 0
+	}
+	// Handle ":port" format
+	if strings.HasPrefix(addr, ":") {
+		port, err := strconv.Atoi(addr[1:])
+		if err == nil {
+			return port
+		}
+	}
+	// Handle "host:port" format
+	if idx := strings.LastIndex(addr, ":"); idx != -1 {
+		port, err := strconv.Atoi(addr[idx+1:])
+		if err == nil {
+			return port
+		}
+	}
+	return 0
 }
 
 // calculateJitter returns deterministic jitter based on stable node ID.

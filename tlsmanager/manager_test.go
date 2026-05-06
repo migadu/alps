@@ -79,6 +79,33 @@ func TestCalculateJitter(t *testing.T) {
 	})
 }
 
+func TestParsePort(t *testing.T) {
+	tests := []struct {
+		addr string
+		want int
+	}{
+		{":8080", 8080},
+		{":80", 80},
+		{":443", 443},
+		{"0.0.0.0:8080", 8080},
+		{"127.0.0.1:9000", 9000},
+		{"[::1]:8080", 8080},
+		{"", 0},
+		{"invalid", 0},
+		{"no-port", 0},
+		{":abc", 0}, // Invalid port number
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.addr, func(t *testing.T) {
+			got := parsePort(tc.addr)
+			if got != tc.want {
+				t.Errorf("parsePort(%q) = %d, want %d", tc.addr, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRenewalWindowRatioCalculation(t *testing.T) {
 	// These tests verify the renewal window ratio calculation logic
 	// without actually initializing CertMagic
