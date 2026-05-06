@@ -18,15 +18,40 @@ import (
 
 var webAuthn *webauthn.WebAuthn
 
-func initWebAuthn() error {
+// WebAuthnConfig holds configuration for WebAuthn
+type WebAuthnConfig struct {
+	RPID          string   // Relying Party ID (domain name, e.g., "mail.example.com")
+	RPDisplayName string   // Display name shown to users
+	RPOrigins     []string // Allowed origins (e.g., "https://mail.example.com")
+}
+
+func initWebAuthn(cfg *WebAuthnConfig) error {
 	if webAuthn != nil {
 		return nil
 	}
+
+	// Use defaults for development if not configured
+	rpID := "localhost"
+	rpDisplayName := "Alps Webmail"
+	rpOrigins := []string{"http://localhost:1323", "http://localhost:5173"}
+
+	if cfg != nil {
+		if cfg.RPID != "" {
+			rpID = cfg.RPID
+		}
+		if cfg.RPDisplayName != "" {
+			rpDisplayName = cfg.RPDisplayName
+		}
+		if len(cfg.RPOrigins) > 0 {
+			rpOrigins = cfg.RPOrigins
+		}
+	}
+
 	var err error
 	webAuthn, err = webauthn.New(&webauthn.Config{
-		RPDisplayName: "Alps Webmail",
-		RPID:          "localhost", // Should be domain name
-		RPOrigins:     []string{"http://localhost:1323", "http://localhost:5173"},
+		RPDisplayName: rpDisplayName,
+		RPID:          rpID,
+		RPOrigins:     rpOrigins,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create WebAuthn: %v", err)
