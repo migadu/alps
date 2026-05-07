@@ -84,7 +84,7 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 		if options.RateLimitConfig != nil {
 			config = *options.RateLimitConfig
 		}
-		s.RateLimiter = NewRateLimiter(config, logger)
+		s.RateLimiter = NewRateLimiter(config, logger, options.ClusterBroadcaster)
 		logger.Printf("Rate limiting enabled: IP=%d/min, %d/hour | User=%d/15min, %d/hour | Global=%d/sec",
 			config.IPRequestsPerMinute, config.IPRequestsPerHour,
 			config.UsernameFailsPerQuarter, config.UsernameFailsPerHour,
@@ -377,6 +377,7 @@ type Options struct {
 	SMTPTimeout             time.Duration           // SMTP operation timeout, 0 means use default (30 seconds)
 	WebAuthn                WebAuthnOptions         // WebAuthn configuration
 	Plugins                 map[string]PluginConfig // Generic plugin configuration
+	ClusterBroadcaster      ClusterBroadcaster      // Optional interface for cluster message broadcasting
 }
 
 type WebAuthnOptions struct {

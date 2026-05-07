@@ -5,14 +5,26 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"log/slog"
+	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/caddyserver/certmagic"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"golang.org/x/crypto/acme/autocert"
+	
+	"github.com/migadu/alps/tlsmanager/storage"
+)
+
+var (
+	ErrMissingServerName      = errors.New("missing server name")
+	ErrHostNotAllowed         = errors.New("host not configured")
+	ErrCertificateUnavailable = errors.New("certificate unavailable")
 )
 
 type TLSProvider string
@@ -31,36 +43,38 @@ type Config struct {
 }
 
 type LetsEncryptConfig struct {
-	Email                  string
-	Domains                []string
-	DefaultDomain          string        // Fallback for SNI-less connections
-	ACMEServer             string        // Empty = production
-	ACMEHTTPAddr           string        // Address for HTTP-01 challenge handler (e.g., ":8080")
-	RenewBefore            time.Duration // How long before expiry to renew (default: 30 days)
-	RenewalJitter          *bool         // Enable per-node jitter (nil = true)
-	EnableTLSALPNChallenge bool          // Enable TLS-ALPN-01 challenges (default: false, requires port 443)
-	Storage                S3StorageConfig
+	Email               string
+	Domains             []string
+	DefaultDomain       string   // Default domain for SNI-less connections
+	StorageProvider     string   // "s3" or "file"
+	CacheDir            string   // Directory for local file cache
+	SyncIntervalMinutes int      // Interval for syncing local cache to S3
+	ACMEHTTPAddr        string   // Address for HTTP-01 challenge handler (e.g., ":8080")
+	S3                  S3Config
 }
 
-// RenewalJitterEnabled returns whether jitter is enabled (default: true)
-func (c *LetsEncryptConfig) RenewalJitterEnabled() bool {
-	if c.RenewalJitter == nil {
-		return true
-	}
-	return *c.RenewalJitter
+type S3Config struct {
+	Bucket    string
+	Region    string
+	Endpoint  string
+	Prefix    string
+	AccessKey string
+	SecretKey string
 }
 
+// Manager orchestrates TLS certificate management using Let's Encrypt.
 type Manager struct {
-	config     *Config
-	tlsConfig  *tls.Config
-	cache      *certmagic.Cache // For cleanup
-	magic      *certmagic.Config
-	acmeIssuer *certmagic.ACMEIssuer
-	storage    *S3Storage
-	logger     *slog.Logger
+	config          *Config
+	autocertManager *autocert.Manager
+	logger          *slog.Logger
+	domains         []string
+	defaultDomain   string                  // Default domain for SNI-less connections
+	syncWorker      *storage.CertSyncWorker // Periodic S3 sync worker (nil if not using S3)
+	tlsConfig       *tls.Config             // Cached TLS config
 }
 
-func NewManager(cfg *Config, logger *slog.Logger) (*Manager, error) {
+// NewManager creates a new TLS manager.
+func NewManager(cfg *Config, logger *slog.Logger, isLeaderF ...func() bool) (*Manager, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -76,7 +90,7 @@ func NewManager(cfg *Config, logger *slog.Logger) (*Manager, error) {
 	case ProviderFile:
 		return m, m.initFileProvider()
 	case ProviderLetsEncrypt:
-		return m, m.initCertMagic()
+		return m, m.initAutocert(isLeaderF...)
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", cfg.Provider)
 	}
@@ -99,7 +113,7 @@ func (m *Manager) initFileProvider() error {
 	return nil
 }
 
-func (m *Manager) initCertMagic() error {
+func (m *Manager) initAutocert(isLeaderF ...func() bool) error {
 	cfg := m.config.LetsEncrypt
 	if cfg == nil {
 		return errors.New("letsencrypt config required")
@@ -111,195 +125,245 @@ func (m *Manager) initCertMagic() error {
 		return errors.New("email required")
 	}
 
-	// Create S3 storage
-	storage, err := NewS3Storage(cfg.Storage, m.logger.With("component", "s3"))
-	if err != nil {
-		return fmt.Errorf("create storage: %w", err)
-	}
-	m.storage = storage
+	var cache autocert.Cache
+	var syncWorker *storage.CertSyncWorker
 
-	// CertMagic uses RenewalWindowRatio = remaining/total lifetime.
-	// For 90-day Let's Encrypt certs:
-	//   - ratio 0.33 = renew when 30 days remain (default)
-	//   - ratio 0.50 = renew when 45 days remain
-	//   - ratio 0.11 = renew when 10 days remain
-	//
-	// We convert renew_before duration to ratio, then apply optional jitter.
-	//
-	// NOTE: This assumes 90-day certificate lifetime (Let's Encrypt default).
-	// If using a custom ACME server with different cert duration, the actual
-	// renewal timing will differ from renew_before. For example, with 30-day
-	// certs and renew_before=720h, the ratio would be 1.0 (renew immediately).
-	certLifetime := 90 * 24 * time.Hour
-
-	renewBefore := cfg.RenewBefore
-	if renewBefore == 0 {
-		renewBefore = 30 * 24 * time.Hour // Default: 30 days
-	}
-
-	// Warn if renew_before seems unusual
-	if renewBefore < 7*24*time.Hour {
-		m.logger.Warn("renew_before is less than 7 days, certificates may expire before renewal completes",
-			"renew_before", renewBefore)
-	}
-	if renewBefore > 60*24*time.Hour {
-		m.logger.Warn("renew_before exceeds 60 days, certificates will renew very frequently",
-			"renew_before", renewBefore)
-	}
-
-	// Convert duration to ratio
-	renewalWindowRatio := float64(renewBefore) / float64(certLifetime)
-
-	// Apply optional jitter (±12 hours spread)
-	if cfg.RenewalJitterEnabled() {
-		jitter := m.calculateJitter(storage.GetNodeID())
-		jitterRatio := float64(jitter) / float64(certLifetime)
-		renewalWindowRatio += jitterRatio
-
-		m.logger.Info("renewal jitter enabled",
-			"node_id", storage.GetNodeID(),
-			"jitter", jitter,
-			"base_renew_before", renewBefore,
-			"effective_ratio", renewalWindowRatio)
-	}
-
-	// Clamp to valid CertMagic range (must be > 0 and < 1)
-	if renewalWindowRatio < 0.01 {
-		renewalWindowRatio = 0.01 // Minimum ~21 hours for 90-day cert
-	}
-	if renewalWindowRatio > 0.99 {
-		renewalWindowRatio = 0.99
-	}
-
-	// Create CertMagic config (isolated, not global)
-	cache := certmagic.NewCache(certmagic.CacheOptions{
-		GetConfigForCert: func(certmagic.Certificate) (*certmagic.Config, error) {
-			return m.magic, nil
-		},
-	})
-
-	magicCfg := certmagic.Config{
-		Storage:            storage,
-		DefaultServerName:  cfg.DefaultDomain,
-		RenewalWindowRatio: renewalWindowRatio,
-	}
-
-	magic := certmagic.New(cache, magicCfg)
-
-	// Configure ACME issuer
-	acmeIssuer := certmagic.NewACMEIssuer(magic, certmagic.ACMEIssuer{
-		Email:  cfg.Email,
-		Agreed: true,
-		// TLS-ALPN-01 requires binding to port 443; disable unless explicitly enabled
-		DisableTLSALPNChallenge: !cfg.EnableTLSALPNChallenge,
-	})
-	if cfg.ACMEServer != "" {
-		acmeIssuer.CA = cfg.ACMEServer
-	}
-
-	// Set AltHTTPPort so certmagic's embedded solver tries this port instead of 80.
-	// Without this, certmagic tries port 80 and fails with permission denied (non-root).
-	// main.go also runs HTTPHandler() on this port, so certmagic will get "address
-	// already in use" which it handles gracefully, falling back to distributed solving.
-	if cfg.ACMEHTTPAddr != "" {
-		port := parsePort(cfg.ACMEHTTPAddr)
-		if port > 0 {
-			acmeIssuer.AltHTTPPort = port
+	switch cfg.StorageProvider {
+	case "s3":
+		// Create S3 cache
+		s3Cache, err := createS3Cache(context.Background(), *cfg, m.logger)
+		if err != nil {
+			return err
 		}
+
+		// Create fallback cache (local file + S3) for hybrid storage
+		cacheDir := cfg.CacheDir
+		if cacheDir == "" {
+			cacheDir = "cert-cache" // Default local cache directory
+		}
+		fallbackCache := storage.NewFallbackCache(cacheDir, s3Cache, m.logger)
+		cache = fallbackCache
+
+		// Start periodic sync worker
+		syncInterval := time.Duration(cfg.SyncIntervalMinutes) * time.Minute
+		if syncInterval == 0 {
+			syncInterval = 5 * time.Minute // Default: 5 minutes
+		}
+		syncWorker = storage.NewCertSyncWorker(fallbackCache, syncInterval, m.logger)
+		syncWorker.Start()
+
+		prefixInfo := cfg.S3.Prefix
+		if prefixInfo == "" {
+			prefixInfo = "(none - bucket root)"
+		}
+		m.logger.Info("using hybrid file+S3 certificate cache with periodic sync",
+			"local_cache_dir", cacheDir,
+			"s3_bucket", cfg.S3.Bucket,
+			"s3_prefix", prefixInfo,
+			"sync_interval", syncInterval)
+
+	case "file":
+		// Use autocert.DirCache for local filesystem storage only
+		cacheDir := cfg.CacheDir
+		if cacheDir == "" {
+			cacheDir = "cert-cache"
+		}
+		cache = autocert.DirCache(cacheDir)
+		m.logger.Info("using file-based certificate cache",
+			"cache_dir", cacheDir)
+
+	default:
+		return fmt.Errorf("unsupported storage provider: %s", cfg.StorageProvider)
 	}
 
-	magic.Issuers = []certmagic.Issuer{acmeIssuer}
-	m.cache = cache
-	m.magic = magic
-	m.acmeIssuer = acmeIssuer
-
-	// Manage domains
-	ctx := context.Background()
-	if err := magic.ManageAsync(ctx, cfg.Domains); err != nil {
-		return fmt.Errorf("manage domains: %w", err)
+	var leaderFunc func() bool
+	if len(isLeaderF) > 0 && isLeaderF[0] != nil {
+		leaderFunc = isLeaderF[0]
+		cache = storage.NewClusterAwareCache(cache, leaderFunc, m.logger)
+		m.logger.Info("TLS certificate cache wrapped with cluster-aware leader gating")
+	} else {
+		m.logger.Info("TLS running in single-instance mode (no cluster leader election)")
 	}
 
-	// Use CertMagic's TLSConfig (don't reimplement GetCertificate)
-	m.tlsConfig = magic.TLSConfig()
-	m.tlsConfig.MinVersion = tls.VersionTLS12
+	autocertMgr := &autocert.Manager{
+		Prompt:     autocert.AcceptTOS,
+		HostPolicy: autocert.HostWhitelist(cfg.Domains...),
+		Cache:      cache,
+		Email:      cfg.Email,
+	}
 
-	m.logger.Info("certmagic initialized",
+	// Determine default domain for SNI-less connections
+	defaultDomain := cfg.DefaultDomain
+	if defaultDomain == "" && len(cfg.Domains) > 0 {
+		defaultDomain = cfg.Domains[0]
+	}
+
+	m.autocertManager = autocertMgr
+	m.domains = cfg.Domains
+	m.defaultDomain = defaultDomain
+	m.syncWorker = syncWorker
+
+	// Create base TLS config
+	baseTLSConfig := autocertMgr.TLSConfig()
+	baseTLSConfig.MinVersion = tls.VersionTLS12
+
+	// Wrap GetCertificate with enhanced logging and SNI handling
+	originalGetCert := baseTLSConfig.GetCertificate
+	baseTLSConfig.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		serverName := hello.ServerName
+
+		if serverName == "" {
+			if defaultDomain != "" {
+				m.logger.Debug("TLS: missing SNI - using default domain", "domain", defaultDomain)
+				serverName = defaultDomain
+			} else {
+				m.logger.Debug("TLS: rejected certificate request - missing SNI and no default domain")
+				return nil, ErrMissingServerName
+			}
+		}
+
+		serverName = strings.ToLower(serverName)
+
+		if isIPAddress(serverName) {
+			m.logger.Debug("TLS: rejected certificate request for IP address", "ip", serverName)
+			return nil, fmt.Errorf("%w: IP addresses not supported", ErrHostNotAllowed)
+		}
+
+		if err := autocertMgr.HostPolicy(nil, serverName); err != nil {
+			m.logger.Debug("TLS: rejected certificate request for unconfigured domain", "domain", serverName)
+			return nil, fmt.Errorf("%w: %s", ErrHostNotAllowed, serverName)
+		}
+
+		m.logger.Debug("TLS: certificate request", "domain", serverName)
+
+		modifiedHello := *hello
+		modifiedHello.ServerName = serverName
+
+		cert, err := originalGetCert(&modifiedHello)
+		if err != nil {
+			m.logger.Error("TLS: failed to get certificate", "server_name", serverName, "error", err)
+			return nil, fmt.Errorf("%w for %s: %v", ErrCertificateUnavailable, serverName, err)
+		}
+		return cert, nil
+	}
+
+	m.tlsConfig = baseTLSConfig
+
+	m.logger.Info("TLS manager initialized",
 		"domains", cfg.Domains,
-		"default_domain", cfg.DefaultDomain,
-		"renew_before", renewBefore,
-		"renewal_window_ratio", renewalWindowRatio)
+		"email", cfg.Email,
+		"storage", cfg.StorageProvider,
+		"default_domain", defaultDomain)
 
 	return nil
-}
-
-// parsePort extracts the port number from an address like ":8080" or "0.0.0.0:8080"
-func parsePort(addr string) int {
-	if addr == "" {
-		return 0
-	}
-	// Handle ":port" format
-	if strings.HasPrefix(addr, ":") {
-		port, err := strconv.Atoi(addr[1:])
-		if err == nil {
-			return port
-		}
-	}
-	// Handle "host:port" format
-	if idx := strings.LastIndex(addr, ":"); idx != -1 {
-		port, err := strconv.Atoi(addr[idx+1:])
-		if err == nil {
-			return port
-		}
-	}
-	return 0
-}
-
-// calculateJitter returns deterministic jitter based on stable node ID.
-// Spreads renewals ±12 hours around the base window (total 24h spread).
-// Same node always gets the same jitter, even across restarts.
-func (m *Manager) calculateJitter(nodeID string) time.Duration {
-	h := fnv.New32a()
-	h.Write([]byte(nodeID))
-	hash := h.Sum32()
-
-	maxJitter := 24 * time.Hour
-	jitter := time.Duration(hash % uint32(maxJitter))
-
-	// Center around zero: range becomes [-12h, +12h)
-	return jitter - maxJitter/2
 }
 
 func (m *Manager) GetTLSConfig() *tls.Config { return m.tlsConfig }
 func (m *Manager) IsEnabled() bool           { return m.config.Enabled }
 func (m *Manager) GetProvider() TLSProvider  { return m.config.Provider }
 
-// Close stops certificate management and releases resources.
-// Must be called when shutting down to stop background renewal goroutines.
+func (m *Manager) GetACMEHTTPAddr() string {
+	if m.config == nil || m.config.LetsEncrypt == nil {
+		return ""
+	}
+	return m.config.LetsEncrypt.ACMEHTTPAddr
+}
+
+func (m *Manager) HTTPHandler() http.Handler {
+	if m == nil || m.autocertManager == nil {
+		return http.NotFoundHandler()
+	}
+	// Return the autocert HTTPHandler which handles /.well-known/acme-challenge/
+	return m.autocertManager.HTTPHandler(http.NotFoundHandler())
+}
+
+// Stop gracefully shuts down the TLS manager and its sync worker.
 func (m *Manager) Close() error {
-	if m.cache != nil {
-		m.cache.Stop()
+	if m == nil {
+		return nil
+	}
+
+	if m.syncWorker != nil {
+		m.logger.Info("stopping certificate sync worker")
+		m.syncWorker.Stop(10 * time.Second)
 	}
 	return nil
 }
 
-// HTTPHandler returns the HTTP-01 challenge handler for ACME validation.
-//
-// The handler wraps certmagic's ACMEIssuer.HTTPChallengeHandler which handles
-// challenge solving, including distributed solving via shared storage when
-// configured. Non-challenge requests receive a 404.
-func (m *Manager) HTTPHandler() http.Handler {
-	if m.acmeIssuer == nil {
-		return http.NotFoundHandler()
+func createS3Cache(ctx context.Context, cfg LetsEncryptConfig, logger *slog.Logger) (*storage.S3Cache, error) {
+	initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	awsCfg, err := awsconfig.LoadDefaultConfig(initCtx,
+		awsconfig.WithRetryer(func() aws.Retryer {
+			return retry.NewStandard(func(o *retry.StandardOptions) {
+				o.MaxAttempts = 3
+				o.MaxBackoff = 5 * time.Second
+			})
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
-	return m.acmeIssuer.HTTPChallengeHandler(http.NotFoundHandler())
+	if cfg.S3.Region != "" {
+		awsCfg.Region = cfg.S3.Region
+	}
+
+	if cfg.S3.AccessKey != "" && cfg.S3.SecretKey != "" {
+		awsCfg.Credentials = credentials.NewStaticCredentialsProvider(
+			cfg.S3.AccessKey,
+			cfg.S3.SecretKey,
+			"",
+		)
+	}
+
+	var s3Client *s3.Client
+	if cfg.S3.Endpoint != "" {
+		s3Client = s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(cfg.S3.Endpoint)
+			o.UsePathStyle = true
+		})
+		logger.Info("using custom S3 endpoint", "endpoint", cfg.S3.Endpoint)
+	} else {
+		s3Client = s3.NewFromConfig(awsCfg)
+	}
+
+	logger.Info("validating S3 bucket access", "bucket", cfg.S3.Bucket)
+
+	maxRetries := 5
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			backoff := time.Duration(1<<uint(attempt-1)) * time.Second
+			select {
+			case <-time.After(backoff):
+			case <-initCtx.Done():
+				return nil, fmt.Errorf("S3 bucket validation cancelled: %w", initCtx.Err())
+			}
+		}
+
+		_, err = s3Client.HeadBucket(initCtx, &s3.HeadBucketInput{
+			Bucket: &cfg.S3.Bucket,
+		})
+		if err == nil {
+			break
+		}
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("S3 bucket validation failed after %d attempts: %w", maxRetries, err)
+	}
+
+	s3Cache := &storage.S3Cache{
+		S3Client: s3Client,
+		Bucket:   cfg.S3.Bucket,
+		Prefix:   cfg.S3.Prefix,
+		Logger:   logger,
+	}
+
+	return s3Cache, nil
 }
 
-// GetACMEHTTPAddr returns the configured address for the HTTP-01 challenge
-// server, or empty string if not configured.
-func (m *Manager) GetACMEHTTPAddr() string {
-	if m.config.LetsEncrypt == nil {
-		return ""
-	}
-	return m.config.LetsEncrypt.ACMEHTTPAddr
+func isIPAddress(host string) bool {
+	return net.ParseIP(host) != nil
 }

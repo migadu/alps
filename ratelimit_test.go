@@ -39,7 +39,7 @@ func TestRateLimiter_PerIPLimits(t *testing.T) {
 		LockoutDuration:         15 * time.Minute,
 	}
 
-	rl := NewRateLimiter(config, logger)
+	rl := NewRateLimiter(config, logger, nil)
 	defer rl.Close()
 
 	// Create test request
@@ -79,7 +79,7 @@ func TestRateLimiter_PerIPHourlyLockout(t *testing.T) {
 		LockoutDuration:         10 * time.Minute,
 	}
 
-	rl := NewRateLimiter(config, logger)
+	rl := NewRateLimiter(config, logger, nil)
 	defer rl.Close()
 
 	req := httptest.NewRequest("POST", "/session", nil)
@@ -128,7 +128,7 @@ func TestRateLimiter_PerUsernameLimits(t *testing.T) {
 		LockoutDuration:         5 * time.Minute,
 	}
 
-	rl := NewRateLimiter(config, logger)
+	rl := NewRateLimiter(config, logger, nil)
 	defer rl.Close()
 
 	// Use different IPs to isolate username limiting
@@ -166,7 +166,7 @@ func TestRateLimiter_SuccessfulLoginClearsUserCounter(t *testing.T) {
 	logger := &mockLogger{}
 	config := DefaultRateLimitConfig()
 
-	rl := NewRateLimiter(config, logger)
+	rl := NewRateLimiter(config, logger, nil)
 	defer rl.Close()
 
 	req := httptest.NewRequest("POST", "/session", nil)
@@ -213,7 +213,7 @@ func TestRateLimiter_GlobalLimit(t *testing.T) {
 		LockoutDuration:         1 * time.Minute,
 	}
 
-	rl := NewRateLimiter(config, logger)
+	rl := NewRateLimiter(config, logger, nil)
 	defer rl.Close()
 
 	// Make 5 requests from different IPs
@@ -246,7 +246,7 @@ func TestRateLimiter_XForwardedForHandling(t *testing.T) {
 	config := DefaultRateLimitConfig()
 	config.IPRequestsPerMinute = 2
 
-	rl := NewRateLimiter(config, logger)
+	rl := NewRateLimiter(config, logger, nil)
 	defer rl.Close()
 
 	// Test X-Forwarded-For header
@@ -290,7 +290,7 @@ func TestRateLimiter_XRealIPHandling(t *testing.T) {
 	config := DefaultRateLimitConfig()
 	config.IPRequestsPerMinute = 2
 
-	rl := NewRateLimiter(config, logger)
+	rl := NewRateLimiter(config, logger, nil)
 	defer rl.Close()
 
 	// Test X-Real-IP header
@@ -328,7 +328,7 @@ func TestRateLimiter_CleanupRemovesOldEntries(t *testing.T) {
 	logger := &mockLogger{}
 	config := DefaultRateLimitConfig()
 
-	rl := NewRateLimiter(config, logger)
+	rl := NewRateLimiter(config, logger, nil)
 	defer rl.Close()
 
 	// Add some entries
@@ -390,7 +390,7 @@ func TestRateLimiter_ConcurrentAccess(t *testing.T) {
 	logger := &mockLogger{}
 	config := DefaultRateLimitConfig()
 
-	rl := NewRateLimiter(config, logger)
+	rl := NewRateLimiter(config, logger, nil)
 	defer rl.Close()
 
 	// Simulate concurrent requests from multiple goroutines
@@ -447,7 +447,7 @@ func TestDefaultRateLimitConfig(t *testing.T) {
 func BenchmarkRateLimiter_CheckLoginAllowed(b *testing.B) {
 	logger := &mockLogger{}
 	config := DefaultRateLimitConfig()
-	rl := NewRateLimiter(config, logger)
+	rl := NewRateLimiter(config, logger, nil)
 	defer rl.Close()
 
 	req := httptest.NewRequest("POST", "/session", nil)
@@ -462,7 +462,7 @@ func BenchmarkRateLimiter_CheckLoginAllowed(b *testing.B) {
 func BenchmarkRateLimiter_RecordLoginAttempt(b *testing.B) {
 	logger := &mockLogger{}
 	config := DefaultRateLimitConfig()
-	rl := NewRateLimiter(config, logger)
+	rl := NewRateLimiter(config, logger, nil)
 	defer rl.Close()
 
 	req := httptest.NewRequest("POST", "/session", nil)
@@ -471,5 +471,83 @@ func BenchmarkRateLimiter_RecordLoginAttempt(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		rl.RecordLoginAttempt(req, "bench@example.com", false)
+	}
+}
+
+// mockBroadcaster implements ClusterBroadcaster for testing
+type mockBroadcaster struct {
+	messages [][]byte
+}
+
+func (m *mockBroadcaster) Broadcast(msg []byte) {
+	m.messages = append(m.messages, msg)
+}
+
+func TestDistributedRateLimiter(t *testing.T) {
+	logger := &mockLogger{}
+	config := RateLimitConfig{
+		IPRequestsPerMinute:     3,
+		IPRequestsPerHour:       10,
+		UsernameFailsPerQuarter: 5,
+		UsernameFailsPerHour:    10,
+		GlobalRequestsPerSecond: 100,
+		LockoutDuration:         15 * time.Minute,
+	}
+
+	broadcaster := &mockBroadcaster{}
+	
+	// Create Node A
+	rlA := NewRateLimiter(config, logger, broadcaster)
+	defer rlA.Close()
+
+	// Create Node B (will receive messages from A)
+	rlB := NewRateLimiter(config, logger, nil)
+	defer rlB.Close()
+
+	// 1. Simulate 3 failed logins on Node A
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.55:12345"
+	username := "cluster@example.com"
+
+	for i := 0; i < 3; i++ {
+		rlA.RecordLoginAttempt(req, username, false)
+	}
+
+	// Verify Node A broadcasted 3 messages
+	if len(broadcaster.messages) != 3 {
+		t.Fatalf("Expected 3 broadcast messages, got %d", len(broadcaster.messages))
+	}
+
+	// 2. Feed those messages to Node B
+	for _, msg := range broadcaster.messages {
+		rlB.HandleClusterMessage(msg)
+	}
+
+	// 3. Node B should now block the 4th attempt from the same IP
+	reqB := httptest.NewRequest("POST", "/session", nil)
+	reqB.RemoteAddr = "10.0.0.55:54321" // Same IP, different port
+
+	allowed, reason, _ := rlB.CheckLoginAllowed(reqB, username)
+	if allowed {
+		t.Error("Node B should block the request based on distributed rate limits from Node A")
+	}
+	if reason != "Too many login attempts, please wait a minute" {
+		t.Errorf("Expected per-minute rate limit message on Node B, got: %s", reason)
+	}
+	
+	// 4. Simulate successful login on Node A
+	rlA.RecordLoginAttempt(req, username, true)
+	
+	// Send the success message to Node B
+	rlB.HandleClusterMessage(broadcaster.messages[3])
+	
+	// Verify user failures were cleared on Node B
+	rlB.mu.RLock()
+	userEntry := rlB.userMap[username]
+	cleared := userEntry == nil || len(userEntry.timestamps) == 0
+	rlB.mu.RUnlock()
+	
+	if !cleared {
+		t.Error("Successful login broadcast should clear user failures on Node B")
 	}
 }

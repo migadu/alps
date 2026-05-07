@@ -19,7 +19,55 @@ type Config struct {
 	Provider  ProviderConfig          `toml:"provider"`
 	Upstreams UpstreamsConfig         `toml:"upstreams"`
 	WebAuthn  WebAuthnConfig          `toml:"webauthn"`
+	Cluster   ClusterConfig           `toml:"cluster"`
 	Plugin    map[string]PluginConfig `toml:"plugin"`
+}
+
+type ClusterConfig struct {
+	Enabled   bool     `toml:"enabled"`
+	NodeID    string   `toml:"node_id"`
+	Bind      string   `toml:"bind"`       // e.g., "0.0.0.0" or "0.0.0.0:7946"
+	Port      int      `toml:"port"`       // default: 7946
+	SecretKey string   `toml:"secret_key"` // base64 encoded 32-byte key
+	Peers     []string `toml:"peers"`      // List of peer addresses
+}
+
+// GetBindAddr returns just the IP address part of Bind, or 0.0.0.0 if empty.
+func (c *ClusterConfig) GetBindAddr() string {
+	if c.Bind == "" {
+		return "0.0.0.0"
+	}
+	// Check if bind contains a port (e.g. 127.0.0.1:7946)
+	for i := len(c.Bind) - 1; i >= 0; i-- {
+		if c.Bind[i] == ':' {
+			return c.Bind[:i]
+		}
+	}
+	return c.Bind
+}
+
+// GetBindPort returns the port to bind to.
+// Order of precedence:
+// 1. Port specified in Bind string (e.g., "0.0.0.0:8000")
+// 2. Port field (e.g., port = 8000)
+// 3. Default: 7946
+func (c *ClusterConfig) GetBindPort() int {
+	// Check if bind contains a port
+	for i := len(c.Bind) - 1; i >= 0; i-- {
+		if c.Bind[i] == ':' {
+			var p int
+			fmt.Sscanf(c.Bind[i+1:], "%d", &p)
+			if p > 0 {
+				return p
+			}
+		}
+	}
+	
+	if c.Port > 0 {
+		return c.Port
+	}
+	
+	return 7946
 }
 
 type ServerConfig struct {
@@ -88,27 +136,23 @@ type TLSConfig struct {
 }
 
 type LetsEncryptConfig struct {
-	Email                string          `toml:"email"`
-	Domains              []string        `toml:"domains"`
-	DefaultDomain        string          `toml:"default_domain"`          // Fallback for SNI-less connections
-	RenewBefore          string          `toml:"renew_before"`            // Duration before expiry to renew (e.g., "720h" for 30 days)
-	RenewalJitter        *bool           `toml:"renewal_jitter"`          // Enable per-node jitter (default: true)
-	ACMEServer           string          `toml:"acme_server"`             // Optional custom ACME server
-	ACMEHTTPAddr         string          `toml:"acme_http_addr"`          // Address for HTTP-01 challenges (default: ":80")
-	EnableTLSALPNChallenge bool          `toml:"enable_tls_alpn_challenge"` // Enable TLS-ALPN-01 challenges (default: false, requires port 443)
-	Storage              S3StorageConfig `toml:"storage"`
+	Email               string          `toml:"email"`
+	Domains             []string        `toml:"domains"`
+	DefaultDomain       string          `toml:"default_domain"`          // Fallback for SNI-less connections
+	StorageProvider     string          `toml:"storage_provider"`        // "s3" or "file" (default: s3)
+	CacheDir            string          `toml:"cache_dir"`               // Directory for local file cache
+	SyncIntervalMinutes int             `toml:"sync_interval_minutes"`   // Interval for syncing local cache to S3
+	ACMEHTTPAddr        string          `toml:"acme_http_addr"`          // Address for HTTP-01 challenges (default: ":80")
+	S3                  S3StorageConfig `toml:"s3"`
 }
 
 type S3StorageConfig struct {
 	Endpoint        string `toml:"endpoint"`
 	Bucket          string `toml:"bucket"`
-	AccessKeyID     string `toml:"access_key_id"`
-	SecretAccessKey string `toml:"secret_access_key"`
+	AccessKeyID     string `toml:"access_key"`
+	SecretAccessKey string `toml:"secret_key"`
 	Region          string `toml:"region"`
-	DisableTLS      bool   `toml:"disable_tls"`
-	Prefix          string `toml:"prefix"`       // Default: "certmagic/"
-	LockTimeout     string `toml:"lock_timeout"` // Default: "5m"
-	NodeID          string `toml:"node_id"`      // Stable ID for jitter (default: hostname); PID appended for locks
+	Prefix          string `toml:"prefix"`
 }
 
 type WebAuthnConfig struct {

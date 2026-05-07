@@ -1,6 +1,7 @@
 package alps
 
 import (
+	"encoding/json"
 	"net"
 	"net/http"
 	"strings"
@@ -43,10 +44,24 @@ type rateLimitEntry struct {
 	lockedUntil time.Time
 }
 
+// ClusterBroadcaster defines the interface for broadcasting messages across the cluster
+type ClusterBroadcaster interface {
+	Broadcast(msg []byte)
+}
+
+// RateLimitEvent is the payload broadcasted over the gossip network
+type RateLimitEvent struct {
+	IP        string    `json:"ip,omitempty"`
+	Username  string    `json:"username,omitempty"`
+	Success   bool      `json:"success"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
 // RateLimiter implements multi-tier rate limiting for login attempts
 type RateLimiter struct {
 	config RateLimitConfig
 	logger Logger
+	broadcaster ClusterBroadcaster
 
 	mu       sync.RWMutex
 	ipMap    map[string]*rateLimitEntry // IP address -> attempts
@@ -59,10 +74,11 @@ type RateLimiter struct {
 }
 
 // NewRateLimiter creates a new rate limiter with the given configuration
-func NewRateLimiter(config RateLimitConfig, logger Logger) *RateLimiter {
+func NewRateLimiter(config RateLimitConfig, logger Logger, broadcaster ClusterBroadcaster) *RateLimiter {
 	rl := &RateLimiter{
 		config:        config,
 		logger:        logger,
+		broadcaster:   broadcaster,
 		ipMap:         make(map[string]*rateLimitEntry),
 		userMap:       make(map[string]*rateLimitEntry),
 		globalTS:      make([]time.Time, 0),
@@ -254,6 +270,60 @@ func (rl *RateLimiter) RecordLoginAttempt(r *http.Request, username string, succ
 		if userEntry, exists := rl.userMap[username]; exists {
 			userEntry.timestamps = nil
 			userEntry.lockedUntil = time.Time{}
+		}
+	}
+
+	// Broadcast the event to the cluster
+	if rl.broadcaster != nil {
+		event := RateLimitEvent{
+			IP:        ip,
+			Username:  username,
+			Success:   success,
+			Timestamp: now,
+		}
+		if data, err := json.Marshal(event); err == nil {
+			// We only want to broadcast prefix 0x01 to distinguish rate limit events if we had multiple types,
+			// but for now we just marshal JSON
+			rl.broadcaster.Broadcast(data)
+		} else {
+			rl.logger.Printf("Failed to marshal rate limit event for broadcast: %v", err)
+		}
+	}
+}
+
+// HandleClusterMessage processes a rate limit event received from another cluster node
+func (rl *RateLimiter) HandleClusterMessage(data []byte) {
+	if rl == nil {
+		return
+	}
+
+	var event RateLimitEvent
+	if err := json.Unmarshal(data, &event); err != nil {
+		rl.logger.Printf("Failed to unmarshal rate limit cluster event: %v", err)
+		return
+	}
+
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	// Record global attempt
+	rl.globalTS = append(rl.globalTS, event.Timestamp)
+
+	// Record IP attempt
+	if event.IP != "" {
+		ipEntry := rl.getOrCreateEntry(rl.ipMap, event.IP)
+		ipEntry.timestamps = append(ipEntry.timestamps, event.Timestamp)
+	}
+
+	// Record or clear username attempt
+	if event.Username != "" {
+		userEntry := rl.getOrCreateEntry(rl.userMap, event.Username)
+		if event.Success {
+			// If login succeeded on another node, clear failures locally too
+			userEntry.timestamps = nil
+			userEntry.lockedUntil = time.Time{}
+		} else {
+			userEntry.timestamps = append(userEntry.timestamps, event.Timestamp)
 		}
 	}
 }

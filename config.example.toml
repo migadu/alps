@@ -258,57 +258,48 @@ level = "info"
 # Default domain for SNI-less connections (optional)
 # default_domain = "mail.example.com"
 
-# How long before expiry to renew certificates (default: 720h = 30 days)
-# Converted to CertMagic's RenewalWindowRatio assuming 90-day Let's Encrypt certs.
-# renew_before = "720h"
+# Storage provider for certificates (default: "s3")
+# storage_provider = "s3"
 
-# Optional custom ACME server URL (defaults to Let's Encrypt production)
-# acme_server = "https://acme-v02.api.letsencrypt.org/directory"
+# Local cache directory for certificates (default: "cert-cache")
+# Used as fallback cache when using s3, or as main cache when using file provider
+# cache_dir = "cert-cache"
+
+# Sync interval in minutes for S3 fallback cache (default: 5)
+# sync_interval_minutes = 5
 
 # Address for HTTP-01 challenge handler (default: ":80")
 # Change this if running behind a proxy that already uses port 80.
 # Your proxy should forward /.well-known/acme-challenge/* to this address.
 # acme_http_addr = ":8080"
 
-# Enable per-node renewal jitter to prevent multiple nodes renewing simultaneously
-# Uses deterministic jitter based on node_id (±12 hours spread around renew_before)
-# renewal_jitter = true
+[tls.letsencrypt.s3]
+# S3 storage configuration for certificates
+# Uses autocert with S3 storage as the primary source of truth.
 
-# Enable TLS-ALPN-01 challenges (default: false)
-# Requires alps to bind to port 443 directly. Leave disabled when running behind
-# a proxy (e.g., HAProxy) that owns port 443. HTTP-01 challenges are always available.
-# enable_tls_alpn_challenge = false
-
-[tls.letsencrypt.storage]
-# S3 storage configuration for certificates (required for letsencrypt provider)
-# Uses CertMagic with S3 storage and advisory locking.
-
-# S3 endpoint (required)
+# S3 endpoint (required if using custom S3 like MinIO or Backblaze B2)
 # endpoint = "s3.amazonaws.com"
 
 # S3 bucket name (required)
 # bucket = "alps-certs"
 
 # S3 credentials (optional - uses IAM if not specified)
-# access_key_id = "your-access-key"
-# secret_access_key = "your-secret-key"
+# access_key = "your-access-key"
+# secret_key = "your-secret-key"
 
 # S3 region (optional)
 # region = "us-east-1"
 
-# Disable TLS for S3 connections (default: false)
-# disable_tls = false
+# Key prefix for certificate storage (default: "")
+# prefix = "alps/"
 
-# Key prefix for certificate storage (default: "certmagic/")
-# prefix = "certmagic/"
-
-# Lock timeout for advisory locking (default: "5m")
-# lock_timeout = "5m"
-
-# Stable node identifier for renewal jitter (default: hostname)
-# Used to deterministically spread renewal times across nodes.
-# For lock ownership, PID is appended internally to ensure uniqueness per process.
-# node_id = "alps-node-1"
+[cluster]
+# Optional - only needed for Let's Encrypt with S3 storage and multiple ALPS nodes
+enabled = false
+# bind = "0.0.0.0"                              # Can be "IP:port" or just "IP" (default: 0.0.0.0)
+# port = 7946                                    # Gossip port, used if not specified in bind (default: 7946)
+# secret_key = "base64-encoded-32-byte-key"    # Generate: openssl rand -base64 32
+# peers = ["node2:7946", "node3:7946"]
 
 [provider]
 # Mail provider type (default: "imap")

@@ -16,6 +16,7 @@ import (
 	"github.com/emersion/go-message/charset"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/migadu/alps"
+	"github.com/migadu/alps/cluster"
 	"github.com/migadu/alps/tlsmanager"
 	"golang.org/x/text/encoding/charmap"
 	_ "golang.org/x/text/encoding/japanese"
@@ -111,9 +112,52 @@ func main() {
 	// Create logger based on config or defaults
 	logger := config.ToLogger()
 
+	// Initialize cluster for leader election and gossip broadcasting (if enabled)
+	var clusterMgr *cluster.Cluster
+	if config.Cluster.Enabled {
+		// Decode secret key from base64
+		var secretKey []byte
+		secretKeyStr := os.Getenv("CLUSTER_SECRET_KEY")
+		if secretKeyStr == "" {
+			secretKeyStr = config.Cluster.SecretKey
+		}
+		if secretKeyStr != "" {
+			secretKey, err = cluster.DecodeSecretKey(secretKeyStr)
+			if err != nil {
+				logger.Fatalf("failed to decode cluster secret key: %v", err)
+			}
+		}
+
+		nodeID := config.Cluster.NodeID
+		if nodeID == "" {
+			if h, hErr := os.Hostname(); hErr == nil {
+				nodeID = h
+			}
+		}
+
+		clusterMgr, err = cluster.NewCluster(cluster.Config{
+			NodeName:  nodeID,
+			BindAddr:  config.Cluster.GetBindAddr(),
+			BindPort:  config.Cluster.GetBindPort(),
+			Peers:     config.Cluster.Peers,
+			SecretKey: secretKey,
+			Logger:    slog.Default(),
+		})
+		if err != nil {
+			logger.Fatalf("failed to initialize cluster: %v", err)
+		}
+		defer clusterMgr.Shutdown()
+		
+		options.ClusterBroadcaster = clusterMgr
+	}
+
 	s, err := alps.New(logger, &options)
 	if err != nil {
 		logger.Fatal(err)
+	}
+
+	if clusterMgr != nil && s.RateLimiter != nil {
+		clusterMgr.SetMessageHandler(s.RateLimiter.HandleClusterMessage)
 	}
 
 	// Initialize WebAuthn
@@ -150,7 +194,15 @@ func main() {
 
 		// Create slog logger from alps logger for TLS manager
 		slogLogger := slog.Default()
-		tlsMgr, err = tlsmanager.NewManager(tlsCfg, slogLogger)
+		
+		if clusterMgr != nil {
+			// Cluster enabled: only leader can request new certs from Let's Encrypt
+			tlsMgr, err = tlsmanager.NewManager(tlsCfg, slogLogger, clusterMgr.IsLeader)
+		} else {
+			// Single-instance mode
+			tlsMgr, err = tlsmanager.NewManager(tlsCfg, slogLogger)
+		}
+		
 		if err != nil {
 			logger.Fatalf("Failed to initialize TLS manager: %v", err)
 		}
@@ -252,45 +304,21 @@ func buildTLSConfig(cfg TLSConfig) (*tlsmanager.Config, error) {
 
 	// Build Let's Encrypt config if using that provider
 	if tlsCfg.Provider == tlsmanager.ProviderLetsEncrypt {
-		// Parse renew_before duration
-		var renewBefore time.Duration
-		if cfg.LetsEncrypt.RenewBefore != "" {
-			var err error
-			renewBefore, err = time.ParseDuration(cfg.LetsEncrypt.RenewBefore)
-			if err != nil {
-				return nil, fmt.Errorf("invalid renew_before duration: %w", err)
-			}
-		}
-
-		// Parse lock timeout duration
-		var lockTimeout time.Duration
-		if cfg.LetsEncrypt.Storage.LockTimeout != "" {
-			var err error
-			lockTimeout, err = time.ParseDuration(cfg.LetsEncrypt.Storage.LockTimeout)
-			if err != nil {
-				return nil, fmt.Errorf("invalid lock_timeout duration: %w", err)
-			}
-		}
-
 		tlsCfg.LetsEncrypt = &tlsmanager.LetsEncryptConfig{
-			Email:                  cfg.LetsEncrypt.Email,
-			Domains:                cfg.LetsEncrypt.Domains,
-			DefaultDomain:          cfg.LetsEncrypt.DefaultDomain,
-			RenewBefore:            renewBefore,
-			RenewalJitter:          cfg.LetsEncrypt.RenewalJitter,
-			ACMEServer:             cfg.LetsEncrypt.ACMEServer,
-			ACMEHTTPAddr:           cfg.LetsEncrypt.ACMEHTTPAddr,
-			EnableTLSALPNChallenge: cfg.LetsEncrypt.EnableTLSALPNChallenge,
-			Storage: tlsmanager.S3StorageConfig{
-				Endpoint:        cfg.LetsEncrypt.Storage.Endpoint,
-				Bucket:          cfg.LetsEncrypt.Storage.Bucket,
-				AccessKeyID:     cfg.LetsEncrypt.Storage.AccessKeyID,
-				SecretAccessKey: cfg.LetsEncrypt.Storage.SecretAccessKey,
-				Region:          cfg.LetsEncrypt.Storage.Region,
-				DisableTLS:      cfg.LetsEncrypt.Storage.DisableTLS,
-				Prefix:          cfg.LetsEncrypt.Storage.Prefix,
-				LockTimeout:     lockTimeout,
-				NodeID:          cfg.LetsEncrypt.Storage.NodeID,
+			Email:               cfg.LetsEncrypt.Email,
+			Domains:             cfg.LetsEncrypt.Domains,
+			DefaultDomain:       cfg.LetsEncrypt.DefaultDomain,
+			StorageProvider:     cfg.LetsEncrypt.StorageProvider,
+			CacheDir:            cfg.LetsEncrypt.CacheDir,
+			SyncIntervalMinutes: cfg.LetsEncrypt.SyncIntervalMinutes,
+			ACMEHTTPAddr:        cfg.LetsEncrypt.ACMEHTTPAddr,
+			S3: tlsmanager.S3Config{
+				Endpoint:  cfg.LetsEncrypt.S3.Endpoint,
+				Bucket:    cfg.LetsEncrypt.S3.Bucket,
+				AccessKey: cfg.LetsEncrypt.S3.AccessKeyID,
+				SecretKey: cfg.LetsEncrypt.S3.SecretAccessKey,
+				Region:    cfg.LetsEncrypt.S3.Region,
+				Prefix:    cfg.LetsEncrypt.S3.Prefix,
 			},
 		}
 	}
