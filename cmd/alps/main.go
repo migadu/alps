@@ -5,10 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -246,6 +248,10 @@ func main() {
 		ReadTimeout:  readTimeout,
 		WriteTimeout: writeTimeout,
 		IdleTimeout:  idleTimeout,
+		ErrorLog: log.New(&tlsErrorFilter{
+			logger: logger,
+			debug:  options.Debug,
+		}, "", 0),
 	}
 
 	// Add TLS config if enabled
@@ -325,4 +331,21 @@ func buildTLSConfig(cfg TLSConfig) (*tlsmanager.Config, error) {
 	}
 
 	return tlsCfg, nil
+}
+
+type tlsErrorFilter struct {
+	logger alps.Logger
+	debug  bool
+}
+
+func (f *tlsErrorFilter) Write(p []byte) (n int, err error) {
+	msg := string(p)
+	if strings.Contains(msg, "TLS handshake error") {
+		if f.debug {
+			f.logger.Debug(strings.TrimSpace(msg))
+		}
+		return len(p), nil
+	}
+	f.logger.Error(strings.TrimSpace(msg))
+	return len(p), nil
 }

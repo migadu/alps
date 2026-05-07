@@ -23,6 +23,17 @@ func sanitizeSVG(raw []byte) []byte {
 	return scriptRegex.ReplaceAll(raw, []byte(""))
 }
 
+func bimiNotFound(ctx *alps.Context, msg string) error {
+	if ctx.Server.Options.Debug {
+		ctx.Logger().Debugf("Request error: code=404, message=%s", msg)
+	}
+	return ctx.JSON(http.StatusNotFound, map[string]interface{}{
+		"error":  msg,
+		"code":   404,
+		"status": http.StatusText(404),
+	})
+}
+
 func handleBIMIAvatar(ctx *alps.Context) error {
 	ctx.Response.Header().Set("Cache-Control", "public, max-age=86400")
 
@@ -48,7 +59,7 @@ func handleBIMIAvatar(ctx *alps.Context) error {
 	negCacheFile := filepath.Join(cacheDir, hash+".neg")
 
 	if _, err := os.Stat(negCacheFile); err == nil {
-		return alps.NewHTTPError(http.StatusNotFound, "BIMI avatar not found (negative cache)")
+		return bimiNotFound(ctx, "BIMI avatar not found (negative cache)")
 	}
 
 	if data, err := os.ReadFile(cacheFile); err == nil {
@@ -77,21 +88,21 @@ func handleBIMIAvatar(ctx *alps.Context) error {
 
 	if bimiURL == "" || !strings.HasPrefix(bimiURL, "https://") {
 		os.WriteFile(negCacheFile, []byte(""), 0644)
-		return alps.NewHTTPError(http.StatusNotFound, "BIMI avatar not found")
+		return bimiNotFound(ctx, "BIMI avatar not found")
 	}
 
 	client := http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get(bimiURL)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		os.WriteFile(negCacheFile, []byte(""), 0644)
-		return alps.NewHTTPError(http.StatusNotFound, "BIMI avatar not found")
+		return bimiNotFound(ctx, "BIMI avatar not found")
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		os.WriteFile(negCacheFile, []byte(""), 0644)
-		return alps.NewHTTPError(http.StatusNotFound, "BIMI avatar not found")
+		return bimiNotFound(ctx, "BIMI avatar not found")
 	}
 
 	sanitized := sanitizeSVG(body)

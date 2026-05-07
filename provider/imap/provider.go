@@ -19,14 +19,15 @@ import (
 type IMAPProvider struct {
 	client *imapclient.Client
 	store  provider.Store
+	debug  bool
 }
 
-func NewIMAPProvider(client *imapclient.Client) *IMAPProvider {
+func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
 	if client == nil {
-		return &IMAPProvider{client: nil, store: nil}
+		return &IMAPProvider{client: nil, store: nil, debug: debug}
 	}
 	store, _ := newStore(client)
-	return &IMAPProvider{client: client, store: store}
+	return &IMAPProvider{client: client, store: store, debug: debug}
 }
 
 // GetStore returns the per-user store for this provider
@@ -314,7 +315,7 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 
 	msgs := make([]provider.Message, 0, len(imapMsgs))
 	for _, msg := range imapMsgs {
-		msgs = append(msgs, convertIMAPMessage(msg, mailbox))
+		msgs = append(msgs, p.convertIMAPMessage(msg, mailbox))
 	}
 
 	// Reverse list of messages if descending
@@ -402,7 +403,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		if !ok {
 			continue
 		}
-		msgs[i] = convertIMAPMessage(msg, mailbox)
+		msgs[i] = p.convertIMAPMessage(msg, mailbox)
 	}
 
 	var validMsgs []provider.Message
@@ -452,7 +453,7 @@ func (p *IMAPProvider) GetMessageMetadata(mailbox string, id provider.MessageID)
 		}
 	}
 
-	converted := convertIMAPMessage(msgs[0], mailbox)
+	converted := p.convertIMAPMessage(msgs[0], mailbox)
 	return &converted, nil
 }
 
@@ -463,7 +464,7 @@ func (p *IMAPProvider) GetMessagePart(mailbox string, id provider.MessageID, par
 	if err != nil {
 		return nil, nil, err
 	}
-	converted := convertIMAPMessage(msg, mailbox)
+	converted := p.convertIMAPMessage(msg, mailbox)
 	return &converted, part, nil
 }
 
@@ -474,7 +475,7 @@ func (p *IMAPProvider) GetMessagePartRaw(mailbox string, id provider.MessageID, 
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	converted := convertIMAPMessage(msg, mailbox)
+	converted := p.convertIMAPMessage(msg, mailbox)
 	return &converted, headerBuf, bodyBuf, nil
 }
 
@@ -485,7 +486,7 @@ func (p *IMAPProvider) GetMessagePartWithData(mailbox string, id provider.Messag
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	converted := convertIMAPMessage(msg, mailbox)
+	converted := p.convertIMAPMessage(msg, mailbox)
 	return &converted, part, headerBuf, bodyBuf, nil
 }
 
@@ -852,7 +853,7 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 }
 
 // Helper function to convert IMAP message to alps.Message
-func convertIMAPMessage(msg *imapclient.FetchMessageBuffer, mailbox string) provider.Message {
+func (p *IMAPProvider) convertIMAPMessage(msg *imapclient.FetchMessageBuffer, mailbox string) provider.Message {
 	size := uint32(0)
 	if msg.RFC822Size != 0 {
 		size = uint32(msg.RFC822Size)
@@ -887,7 +888,9 @@ func convertIMAPMessage(msg *imapclient.FetchMessageBuffer, mailbox string) prov
 	}
 	b := msg.FindBodySection(bodySection)
 	if b != nil {
-		fmt.Printf("BIMI debug: Auth-Results for %d: %q\n", msg.UID, string(b))
+		if p.debug {
+			fmt.Printf("BIMI debug: Auth-Results for %d: %q\n", msg.UID, string(b))
+		}
 		lowerStr := strings.ToLower(string(b))
 		if strings.Contains(lowerStr, "dmarc=fail") || strings.Contains(lowerStr, "dkim=fail") || strings.Contains(lowerStr, "spf=fail") || strings.Contains(lowerStr, "dkim=hardfail") || strings.Contains(lowerStr, "spf=hardfail") {
 			converted.BimiFailed = true

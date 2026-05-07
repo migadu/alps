@@ -154,7 +154,7 @@ func (s *Server) createProviderFactory() provider.AuthenticatedProviderFactory {
 			return nil, AuthError{err}
 		}
 
-		return imap.NewIMAPProvider(client), nil
+		return imap.NewIMAPProvider(client, s.Options.Debug), nil
 	}
 }
 

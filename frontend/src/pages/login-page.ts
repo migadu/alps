@@ -3,10 +3,9 @@ import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
-
+import { renderIcon } from '../utils/ui';
 
 import '../components/alps-auth-card';
-import '../components/alps-input';
 
 @customElement('login-page')
 export class LoginPage extends LitElement {
@@ -17,6 +16,59 @@ export class LoginPage extends LitElement {
     .form-group {
       margin-bottom: 16px;
       position: relative;
+    }
+
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+    }
+
+    .native-input {
+      width: 100%;
+      height: 36px;
+      padding: 0 12px;
+      background: var(--alps-input-bg, var(--bg-primary, #ffffff));
+      border: 1px solid var(--border-color, #e5e7eb);
+      border-radius: var(--input-radius, 6px);
+      color: var(--text-primary, #111827);
+      font-family: var(--font-base, 'Inter', sans-serif);
+      font-size: var(--input-font-size, 14px);
+      transition: all 0.2s ease;
+      box-sizing: border-box;
+      outline: none;
+    }
+
+    .has-left-icon .native-input {
+      padding-left: 36px;
+    }
+
+    .native-input:focus {
+      border-color: var(--accent-color, #005A9E);
+      box-shadow: 0 0 0 2px rgba(0, 90, 158, 0.2);
+    }
+
+    .native-input::placeholder {
+      color: var(--text-muted, #9ca3af);
+    }
+
+    .icon-left {
+      position: absolute;
+      left: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      color: var(--text-muted, #9ca3af);
+      pointer-events: none;
+    }
+
+    .icon-left svg {
+      width: 100%;
+      height: 100%;
+      fill: currentColor;
     }
 
     .checkbox-group {
@@ -126,16 +178,11 @@ export class LoginPage extends LitElement {
     e.preventDefault();
     if (this.isSubmitting) return;
 
-    // Validate custom inputs
-    const inputs = this.shadowRoot?.querySelectorAll('alps-input');
-    if (inputs) {
-      for (const input of Array.from(inputs)) {
-        if (typeof (input as any).reportValidity === 'function') {
-          if (!(input as any).reportValidity()) {
-            return;
-          }
-        }
-      }
+    // Validate native inputs
+    const form = this.shadowRoot?.querySelector('form');
+    if (form && !form.checkValidity()) {
+      form.reportValidity();
+      return;
     }
 
     this.error = '';
@@ -205,26 +252,36 @@ export class LoginPage extends LitElement {
 
         <form @submit=${this.handleSubmit}>
           <div class="form-group">
-            <alps-input 
-              type="email" 
-              inputId="username" 
-              placeholder="${this.i18nStore?.t('login.emailPlaceholder')}"
-              .value=${this.username}
-              @input=${(e: Event) => this.username = (e.target as HTMLInputElement).value}
-              ?required=${true}
-              autocomplete="username"
-            ></alps-input>
+            <div class="input-wrapper has-left-icon">
+              <span class="icon-left">${renderIcon('at')}</span>
+              <input 
+                type="email" 
+                id="username" 
+                name="username"
+                class="native-input"
+                placeholder="${this.i18nStore?.t('login.emailPlaceholder')}"
+                .value=${this.username}
+                @input=${(e: Event) => this.username = (e.target as HTMLInputElement).value}
+                required
+                autocomplete="username"
+              />
+            </div>
           </div>
           <div class="form-group">
-            <alps-input 
-              type="password" icon="key"
-              inputId="password" 
-              placeholder="${this.i18nStore?.t('login.passwordPlaceholder')}"
-              .value=${this.password}
-              @input=${(e: Event) => this.password = (e.target as HTMLInputElement).value}
-              ?required=${true}
-              autocomplete="current-password"
-            ></alps-input>
+            <div class="input-wrapper has-left-icon">
+              <span class="icon-left">${renderIcon('key')}</span>
+              <input 
+                type="password" 
+                id="password" 
+                name="password"
+                class="native-input"
+                placeholder="${this.i18nStore?.t('login.passwordPlaceholder')}"
+                .value=${this.password}
+                @input=${(e: Event) => this.password = (e.target as HTMLInputElement).value}
+                required
+                autocomplete="current-password"
+              />
+            </div>
           </div>
           <div class="checkbox-group">
             <label>

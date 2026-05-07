@@ -225,7 +225,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
 						${this.i18nStore?.t(`settings.password.updatePassword`)}
 					</alps-button>
 			</alps-setting-group>			
-	`}};S([f({context:y})],Fe.prototype,`i18nStore`,void 0),S([_()],Fe.prototype,`passwordForm`,void 0),S([_()],Fe.prototype,`isSubmitting`,void 0),Fe=S([a(`alps-password-settings`)],Fe);var Ie=e({});ue.registerSettingsTab({id:`password`,labelKey:`settings.categories.password`,icon:`password`,component:`alps-password-settings`});var Le=class{constructor(e,t,n){this.routes=e,this.fallback=t,this.currentPath=this.getHashPath(),window.addEventListener(`hashchange`,()=>{this.currentPath=this.getHashPath(),n()})}getHashPath(){let e=window.location.hash;return!e||e===`#`?`/`:e.substring(1).split(`?`)[0]}navigate(e){window.location.hash=e}render(){if(this.routes[this.currentPath])return this.routes[this.currentPath]();for(let e in this.routes)if(e.endsWith(`/*`)&&this.currentPath.startsWith(e.replace(`/*`,``)))return this.routes[e]();return this.fallback()}};async function w(e,t={},n=25e3){let r=new AbortController,i=setTimeout(()=>r.abort(),n);try{let n=await fetch(e,{...t,signal:r.signal});return(n.status===502||n.status===503||n.status===504)&&window.dispatchEvent(new CustomEvent(`network-error`)),n}catch(e){throw(e instanceof TypeError||e.name===`AbortError`)&&window.dispatchEvent(new CustomEvent(`network-error`)),e}finally{clearTimeout(i)}}var T=new class extends EventTarget{constructor(...e){super(...e),this.interval=null,this.currentMailbox=b,this.currentPage=0,this.currentQuery=``,this.currentFetchId=0}setContext(e,t,n=``){this.currentMailbox=e,this.currentPage=t,this.currentQuery=n}start(e=5){if(this.stop(),e<=0)return;let t=e*60*1e3;this.interval=setInterval(()=>this.backgroundSync(),t)}stop(){this.interval&&=(clearInterval(this.interval),null)}sync(){this.fetch(this.currentMailbox,this.currentPage,this.currentQuery,!0)}syncIfViewing(e){this.currentMailbox===e&&this.sync()}async fetch(e,t,n=``,r=!1){this.setContext(e,t,n);let i=++this.currentFetchId;this.dispatchEvent(new CustomEvent(`sync-start`,{detail:{background:!1}}));let a=Date.now();try{let o=`/mailboxes/${encodeURIComponent(e)}?page=${t}`;n&&(o+=`&query=${encodeURIComponent(n)}`),r&&(o+=`&refresh=true`);let s=await w(o);if(this.currentFetchId!==i)return;if(s.status===401){this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`));return}if(s.status===404){this.dispatchEvent(new CustomEvent(`mailbox-not-found`));return}let c=await s.json();if(this.currentFetchId!==i)return;let l=Date.now()-a;if(l<200&&await new Promise(e=>setTimeout(e,200-l)),this.currentFetchId!==i)return;this.dispatchEvent(new CustomEvent(`sync-success`,{detail:{data:c,background:!1}}))}catch(e){if(this.currentFetchId!==i)return;console.error(`Failed to fetch mailbox data`,e);let t=Date.now()-a;if(t<200&&await new Promise(e=>setTimeout(e,200-t)),this.currentFetchId!==i)return;this.dispatchEvent(new CustomEvent(`sync-error`,{detail:{error:e,background:!1}}))}}async backgroundSync(){try{this.currentMailbox!==`INBOX`&&await w(`/mailboxes/${b}/status`).catch(()=>{}),await w(`/mailboxes/${encodeURIComponent(this.currentMailbox)}/status`);let e=`/mailboxes/${encodeURIComponent(this.currentMailbox)}?page=${this.currentPage}`;this.currentQuery&&(e+=`&query=${encodeURIComponent(this.currentQuery)}`);let t=await w(e);if(t.status===401){this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`));return}let n=await t.json();this.dispatchEvent(new CustomEvent(`sync-success`,{detail:{data:n,background:!0}}))}catch(e){console.error(`Background sync failed`,e)}}},E=`\\Seen`,D=`\\Flagged`,Re=`\\Draft`,O=new class extends EventTarget{async setFlag(e,t,n,r){try{let i=await w(`/mailboxes/${encodeURIComponent(e)}/messages/flag`,{method:`PUT`,headers:{"Content-Type":`application/json`},body:JSON.stringify({uids:t,flags:n,action:r})});return i.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):i.ok}catch(e){return console.error(`Failed to set flag`,e),!1}}async toggleStar(e,t){let n=t?.UID;if(!n)return t;let r=t.Flags?.includes(D),i=r?`remove`:`add`;if(await this.setFlag(e,[String(n)],[`\\Flagged`],i)){let e={...t};return r?e.Flags=e.Flags.filter(e=>e!==D):e.Flags=[...e.Flags||[],D],e}return t}async markAsUnread(e,t){let n=t?.UID;return n?!!await this.setFlag(e,[String(n)],[`\\Seen`],`remove`):!1}async markAsRead(e,t){let n=t?.UID;if(!n||t.Flags?.includes(`\\Seen`))return t;if(await this.setFlag(e,[String(n)],[`\\Seen`],`add`)){let e={...t};return e.Flags=[...e.Flags||[],E],e}return t}async deleteMessages(e,t){if(!t||t.length===0)return!1;try{let n=await w(`/mailboxes/${encodeURIComponent(e)}/messages`,{method:`DELETE`,headers:{"Content-Type":`application/json`},body:JSON.stringify({uids:t})});return n.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):n.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to delete messages`,e),!1}}async moveMessages(e,t,n){if(!t||t.length===0)return{success:!1};try{let r=await w(`/mailboxes/${encodeURIComponent(e)}/messages/move`,{method:`PUT`,headers:{"Content-Type":`application/json`},body:JSON.stringify({uids:t,to:n})});return r.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),{success:!1}):r.ok?(T.sync(),{success:!0,uidMapping:(await r.json()).uidMapping}):{success:!1}}catch(e){return console.error(`Failed to move messages`,e),{success:!1}}}async copyMessages(e,t,n){if(!t||t.length===0)return{success:!1};try{let r=await w(`/mailboxes/${encodeURIComponent(e)}/messages/copy`,{method:`PUT`,headers:{"Content-Type":`application/json`},body:JSON.stringify({uids:t,to:n})});return r.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),{success:!1}):r.ok?(T.sync(),{success:!0}):{success:!1}}catch(e){return console.error(`Failed to copy messages`,e),{success:!1}}}async markMessagesAsRead(e,t){return!t||t.length===0?!1:await this.setFlag(e,t,[E],`add`)}async markMessagesAsUnread(e,t){return!t||t.length===0?!1:await this.setFlag(e,t,[E],`remove`)}async saveDraft(e){try{let t=await w(`/messages`,{method:`POST`,body:e});if(t.status===401)return this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),null;if(t.ok){let e=await t.json();return{uid:e.draft_uid,mailbox:e.draft_mailbox,size:e.draft_size,attachments:e.attachments}}let n=await t.json();return console.error(`Failed to save draft:`,n),null}catch(e){return console.error(`Failed to save draft:`,e),null}}async sendDraft(e){try{let t=await w(`/messages`,{method:`POST`,body:e});if(t.status===401)return this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1;if(t.ok)return T.sync(),!0;let n=await t.json();throw Error(n.error||`Failed to send message`)}catch(e){throw console.error(`Failed to send message:`,e),e}}},ze=e=>{let t=e.trim(),n=t.match(/^.*?<([^>]+)>$/);n&&n[1]&&(t=n[1]);let r=t.toLowerCase();return r.startsWith(`noreply`)||r.startsWith(`no-reply`)||r.startsWith(`mailer-daemon`)},Be=e=>e&&e.filter(e=>!ze(e)),Ve=class extends EventTarget{constructor(){super(),this.state={activeComposers:[]},this.saveTimeout=null,this.state.activeComposers=this.loadDrafts()}loadDrafts(){try{let e=localStorage.getItem(`alps_compose_drafts`);if(e)return JSON.parse(e).map(e=>{let t=e.isSending;return{...e,attachments:e.attachments?.filter(e=>!e.uploading&&e.uuid)||[],isSending:!1,minimized:t?!1:e.minimized}})}catch(e){console.error(`Failed to parse compose drafts from localStorage`,e)}return[]}saveDrafts(){try{localStorage.setItem(`alps_compose_drafts`,JSON.stringify(this.state.activeComposers))}catch(e){console.error(`Failed to save compose drafts to localStorage`,e)}}debouncedSaveDrafts(){this.saveTimeout!==null&&window.clearTimeout(this.saveTimeout),this.saveTimeout=window.setTimeout(()=>{this.saveDrafts(),this.saveTimeout=null},500)}notify(){this.dispatchEvent(new CustomEvent(`change`))}get stateCopy(){return{...this.state}}getComposer(e){return this.state.activeComposers.find(t=>t.id===e)}getState(){return this.state}openComposer(e){if(e?.draftUid){let t=this.state.activeComposers.find(t=>t.draftUid===e.draftUid);if(t){this.bringComposerToFront(t.id),t.minimized&&this.updateComposer(t.id,{minimized:!1});return}}let t=window.innerWidth<=768;if(t&&this.state.activeComposers.length>=1){let e=this.state.activeComposers[0].id;this.bringComposerToFront(e);return}if(!t&&this.state.activeComposers.length>=3)return;let n=`composer_`+Date.now()+`_`+Math.random().toString(36).substr(2,5),r=`html`,i=``;try{let e=localStorage.getItem(`alps_settings`);if(e){let t=JSON.parse(e);t.composeFormat===`text`&&(r=`text`),t.signature&&(i=t.signature)}}catch{}let a=e?.text||``,o=e?.html||``;if(i&&!e?.draftUid){let t=`-- \n${i}`,n=`<div class="alps-signature">-- <br>${i.replace(/\n/g,`<br>`)}</div>`;a=`\n\n${t}\n${a}`,o=o||e?.text?`<br><br>${n}${o}`:`<br><br>${n}`}let s={id:n,minimized:!1,expanded:!1,dirty:!1,subject:``,format:e?.format||r,attachments:[],zIndex:1e3+this.state.activeComposers.length,...e,to:Be(e?.to)||[],cc:Be(e?.cc)||[],bcc:Be(e?.bcc)||[],text:a,html:o,initialText:a,initialHtml:o};this.state={...this.state,activeComposers:[...this.state.activeComposers,s]},this.saveDrafts(),this.notify()}updateComposer(e,t){t.to&&=Be(t.to),t.cc&&=Be(t.cc),t.bcc&&=Be(t.bcc);let n=this.state.activeComposers.map(n=>{if(n.id!==e)return n;let r=!1;if(`subject`in t&&t.subject!==n.subject&&(r=!0),`to`in t&&JSON.stringify(t.to||[])!==JSON.stringify(n.to||[])&&(r=!0),`cc`in t&&JSON.stringify(t.cc||[])!==JSON.stringify(n.cc||[])&&(r=!0),`bcc`in t&&JSON.stringify(t.bcc||[])!==JSON.stringify(n.bcc||[])&&(r=!0),`attachments`in t&&t.attachments!==n.attachments&&(r=!0),!r&&!n.dirty){if(`text`in t||`html`in t){let e=`text`in t?t.text||``:n.text||``,i=n.initialText||``;e.trim()!==i.trim()&&(r=!0)}}else !r&&n.dirty;let i=`dirty`in t?t.dirty:r?!0:n.dirty;return{...n,...t,dirty:i}});this.state={...this.state,activeComposers:n},this.debouncedSaveDrafts(),this.notify()}closeComposer(e){this.state={...this.state,activeComposers:this.state.activeComposers.filter(t=>t.id!==e)},this.saveDrafts(),this.notify()}discardDraft(e){let t=this.state.activeComposers.find(t=>t.id===e);t&&t.draftUid&&t.draftMailbox&&O.deleteMessages(t.draftMailbox,[String(t.draftUid)]),this.closeComposer(e)}clearAllComposers(){this.state={...this.state,activeComposers:[]},this.saveDrafts(),this.notify()}async saveAllDirtyDrafts(){let e=this.state.activeComposers.filter(e=>e.dirty);if(e.length>0)for(let t of e){let e=(t.to?.length||0)>0||(t.cc?.length||0)>0||(t.bcc?.length||0)>0,n=t.text?.trim()!==t.initialText?.trim()||(t.subject?.trim().length||0)>0;if(!e&&!n&&!(t.attachments&&t.attachments.length>0))continue;let r=new FormData,i=[...t.bcc||[]],a=``;try{let e=localStorage.getItem(`alps_settings`);if(e){let t=JSON.parse(e);t.bccMyself&&t.loginUsername&&(i.includes(t.loginUsername)||i.push(t.loginUsername)),t.replyTo&&(a=t.replyTo)}}catch{}r.append(`to`,(t.to||[]).join(`, `)),r.append(`cc`,(t.cc||[]).join(`, `)),r.append(`bcc`,i.join(`, `)),a&&r.append(`reply_to`,a),r.append(`subject`,(t.subject||``).trim()),r.append(`text`,t.text||``),t.html&&t.format===`html`&&r.append(`html`,t.html),r.append(`save_as_draft`,`1`);let o=t.attachments||[],s=o.map(e=>e.uuid).filter(Boolean).join(`,`);s&&r.append(`attachment-uuids`,s);let c=o.map(e=>e.partPath).filter(Boolean).join(`,`);c&&r.append(`prev_attachments`,c),t.draftMailbox&&r.append(`draft_mailbox`,t.draftMailbox),t.draftUid&&r.append(`draft_uid`,t.draftUid),await O.saveDraft(r)}this.state={...this.state,activeComposers:[]},this.saveDrafts(),this.notify()}bringComposerToFront(e){let t=1e3;this.state.activeComposers.forEach(e=>{e.zIndex&&e.zIndex>t&&(t=e.zIndex)}),this.updateComposer(e,{zIndex:t+1})}},He=r(`compose-store`),Ue=class extends p{constructor(...e){super(...e),this.icon=``,this.title=``,this.subtitle=``}static{this.styles=o`
+	`}};S([f({context:y})],Fe.prototype,`i18nStore`,void 0),S([_()],Fe.prototype,`passwordForm`,void 0),S([_()],Fe.prototype,`isSubmitting`,void 0),Fe=S([a(`alps-password-settings`)],Fe);var Ie=e({});ue.registerSettingsTab({id:`password`,labelKey:`settings.categories.password`,icon:`password`,component:`alps-password-settings`});var Le=class{constructor(e,t,n){this.routes=e,this.fallback=t,this.currentPath=this.getHashPath(),window.addEventListener(`hashchange`,()=>{this.currentPath=this.getHashPath(),n()})}getHashPath(){let e=window.location.hash;return!e||e===`#`?`/`:e.substring(1).split(`?`)[0]}navigate(e){window.location.hash=e}render(){if(this.routes[this.currentPath])return this.routes[this.currentPath]();for(let e in this.routes)if(e.endsWith(`/*`)&&this.currentPath.startsWith(e.replace(`/*`,``)))return this.routes[e]();return this.fallback()}};async function w(e,t={},n=25e3){let r=new AbortController,i=setTimeout(()=>r.abort(),n);try{let n=await fetch(e,{...t,signal:r.signal});return(n.status===502||n.status===503||n.status===504)&&window.dispatchEvent(new CustomEvent(`network-error`)),n}catch(e){throw(e instanceof TypeError||e.name===`AbortError`)&&window.dispatchEvent(new CustomEvent(`network-error`)),e}finally{clearTimeout(i)}}var T=new class extends EventTarget{constructor(...e){super(...e),this.interval=null,this.currentMailbox=b,this.currentPage=0,this.currentQuery=``,this.currentFetchId=0}setContext(e,t,n=``){this.currentMailbox=e,this.currentPage=t,this.currentQuery=n}start(e=5){if(this.stop(),e<=0)return;let t=e*60*1e3;this.interval=setInterval(()=>this.backgroundSync(),t)}stop(){this.interval&&=(clearInterval(this.interval),null)}sync(){this.fetch(this.currentMailbox,this.currentPage,this.currentQuery,!0)}syncIfViewing(e){this.currentMailbox===e&&this.sync()}async fetch(e,t,n=``,r=!1){this.setContext(e,t,n);let i=++this.currentFetchId;this.dispatchEvent(new CustomEvent(`sync-start`,{detail:{background:!1}}));let a=Date.now();try{let o=`/mailboxes/${encodeURIComponent(e)}?page=${t}`;n&&(o+=`&query=${encodeURIComponent(n)}`),r&&(o+=`&refresh=true`);let s=await w(o);if(this.currentFetchId!==i)return;if(s.status===401){this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`));return}if(s.status===404){this.dispatchEvent(new CustomEvent(`mailbox-not-found`));return}let c=await s.json();if(this.currentFetchId!==i)return;let l=Date.now()-a;if(l<200&&await new Promise(e=>setTimeout(e,200-l)),this.currentFetchId!==i)return;this.dispatchEvent(new CustomEvent(`sync-success`,{detail:{data:c,background:!1}}))}catch(e){if(this.currentFetchId!==i)return;console.error(`Failed to fetch mailbox data`,e);let t=Date.now()-a;if(t<200&&await new Promise(e=>setTimeout(e,200-t)),this.currentFetchId!==i)return;this.dispatchEvent(new CustomEvent(`sync-error`,{detail:{error:e,background:!1}}))}}async backgroundSync(){try{this.currentMailbox!==`INBOX`&&await w(`/mailboxes/${b}/status`).catch(()=>{}),await w(`/mailboxes/${encodeURIComponent(this.currentMailbox)}/status`);let e=`/mailboxes/${encodeURIComponent(this.currentMailbox)}?page=${this.currentPage}`;this.currentQuery&&(e+=`&query=${encodeURIComponent(this.currentQuery)}`);let t=await w(e);if(t.status===401){this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`));return}let n=await t.json();this.dispatchEvent(new CustomEvent(`sync-success`,{detail:{data:n,background:!0}}))}catch(e){console.error(`Background sync failed`,e)}}},E=`\\Seen`,D=`\\Flagged`,Re=`\\Draft`,O=new class extends EventTarget{async setFlag(e,t,n,r){try{let i=await w(`/mailboxes/${encodeURIComponent(e)}/messages/flag`,{method:`PUT`,headers:{"Content-Type":`application/json`},body:JSON.stringify({uids:t,flags:n,action:r})});return i.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):i.ok}catch(e){return console.error(`Failed to set flag`,e),!1}}async toggleStar(e,t){let n=t?.UID;if(!n)return t;let r=t.Flags?.includes(D),i=r?`remove`:`add`;if(await this.setFlag(e,[String(n)],[`\\Flagged`],i)){let e={...t};return r?e.Flags=e.Flags.filter(e=>e!==D):e.Flags=[...e.Flags||[],D],e}return t}async markAsUnread(e,t){let n=t?.UID;return n?!!await this.setFlag(e,[String(n)],[`\\Seen`],`remove`):!1}async markAsRead(e,t){let n=t?.UID;if(!n||t.Flags?.includes(`\\Seen`))return t;if(await this.setFlag(e,[String(n)],[`\\Seen`],`add`)){let e={...t};return e.Flags=[...e.Flags||[],E],e}return t}async deleteMessages(e,t){if(!t||t.length===0)return!1;try{let n=await w(`/mailboxes/${encodeURIComponent(e)}/messages`,{method:`DELETE`,headers:{"Content-Type":`application/json`},body:JSON.stringify({uids:t})});return n.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):n.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to delete messages`,e),!1}}async moveMessages(e,t,n){if(!t||t.length===0)return{success:!1};try{let r=await w(`/mailboxes/${encodeURIComponent(e)}/messages/move`,{method:`PUT`,headers:{"Content-Type":`application/json`},body:JSON.stringify({uids:t,to:n})});return r.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),{success:!1}):r.ok?(T.sync(),{success:!0,uidMapping:(await r.json()).uidMapping}):{success:!1}}catch(e){return console.error(`Failed to move messages`,e),{success:!1}}}async copyMessages(e,t,n){if(!t||t.length===0)return{success:!1};try{let r=await w(`/mailboxes/${encodeURIComponent(e)}/messages/copy`,{method:`PUT`,headers:{"Content-Type":`application/json`},body:JSON.stringify({uids:t,to:n})});return r.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),{success:!1}):r.ok?(T.sync(),{success:!0}):{success:!1}}catch(e){return console.error(`Failed to copy messages`,e),{success:!1}}}async markMessagesAsRead(e,t){return!t||t.length===0?!1:await this.setFlag(e,t,[E],`add`)}async markMessagesAsUnread(e,t){return!t||t.length===0?!1:await this.setFlag(e,t,[E],`remove`)}async saveDraft(e){try{let t=await w(`/messages`,{method:`POST`,body:e});if(t.status===401)return this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),null;if(t.ok){let e=await t.json();return{uid:e.draft_uid,mailbox:e.draft_mailbox,size:e.draft_size,attachments:e.attachments}}let n=await t.json();return console.error(`Failed to save draft:`,n),null}catch(e){return console.error(`Failed to save draft:`,e),null}}async sendDraft(e){try{let t=await w(`/messages`,{method:`POST`,body:e});if(t.status===401)return this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1;if(t.ok)return T.sync(),!0;let n=await t.json();throw Error(n.error||`Failed to send message`)}catch(e){throw console.error(`Failed to send message:`,e),e}}},ze=e=>{let t=e.trim(),n=t.match(/^.*?<([^>]+)>$/);n&&n[1]&&(t=n[1]);let r=t.toLowerCase();return r.startsWith(`noreply`)||r.startsWith(`no-reply`)||r.startsWith(`mailer-daemon`)},Be=e=>e&&e.filter(e=>!ze(e)),Ve=class extends EventTarget{constructor(){super(),this.state={activeComposers:[]},this.saveTimeout=null,this.state.activeComposers=this.loadDrafts()}loadDrafts(){try{let e=localStorage.getItem(`alps_compose_drafts`);if(e)return JSON.parse(e).map(e=>{let t=e.isSending;return{...e,attachments:e.attachments?.filter(e=>!e.uploading&&e.uuid)||[],isSending:!1,minimized:t?!1:e.minimized}})}catch(e){console.error(`Failed to parse compose drafts from localStorage`,e)}return[]}saveDrafts(){try{localStorage.setItem(`alps_compose_drafts`,JSON.stringify(this.state.activeComposers))}catch(e){console.error(`Failed to save compose drafts to localStorage`,e)}}debouncedSaveDrafts(){this.saveTimeout!==null&&window.clearTimeout(this.saveTimeout),this.saveTimeout=window.setTimeout(()=>{this.saveDrafts(),this.saveTimeout=null},500)}notify(){this.dispatchEvent(new CustomEvent(`change`))}get stateCopy(){return{...this.state}}getComposer(e){return this.state.activeComposers.find(t=>t.id===e)}getState(){return this.state}openComposer(e){if(e?.draftUid){let t=this.state.activeComposers.find(t=>t.draftUid===e.draftUid);if(t){this.bringComposerToFront(t.id),t.minimized&&this.updateComposer(t.id,{minimized:!1});return}}let t=window.innerWidth<=768;if(t&&this.state.activeComposers.length>=1){let e=this.state.activeComposers[0].id;this.bringComposerToFront(e);return}if(!t&&this.state.activeComposers.length>=3)return;let n=`composer_`+Date.now()+`_`+Math.random().toString(36).substr(2,5),r=`html`,i=``;try{let e=localStorage.getItem(`alps_settings`);if(e){let t=JSON.parse(e);t.composeFormat===`text`&&(r=`text`),t.signature&&(i=t.signature)}}catch{}let a=e?.text||``,o=e?.html||``;if(i&&!e?.draftUid){let t=`-- \n${i}`,n=`<div class="alps-signature">-- <br>${i.replace(/\n/g,`<br>`)}</div>`;a=`\n\n${t}\n${a}`,o=o||e?.text?`<br><br>${n}${o}`:`<br><br>${n}`}let s={id:n,minimized:!1,expanded:!1,dirty:!1,subject:``,format:e?.format||r,attachments:[],zIndex:1e3+this.state.activeComposers.length,...e,to:Be(e?.to)||[],cc:Be(e?.cc)||[],bcc:Be(e?.bcc)||[],text:a,html:o,initialText:a,initialHtml:o};this.state={...this.state,activeComposers:[...this.state.activeComposers,s]},this.saveDrafts(),this.notify()}updateComposer(e,t){t.to&&=Be(t.to),t.cc&&=Be(t.cc),t.bcc&&=Be(t.bcc);let n=this.state.activeComposers.map(n=>{if(n.id!==e)return n;let r=!1;if(`subject`in t&&t.subject!==n.subject&&(r=!0),`to`in t&&JSON.stringify(t.to||[])!==JSON.stringify(n.to||[])&&(r=!0),`cc`in t&&JSON.stringify(t.cc||[])!==JSON.stringify(n.cc||[])&&(r=!0),`bcc`in t&&JSON.stringify(t.bcc||[])!==JSON.stringify(n.bcc||[])&&(r=!0),`attachments`in t&&t.attachments!==n.attachments&&(r=!0),!r&&!n.dirty){if(`text`in t||`html`in t){let e=`text`in t?t.text||``:n.text||``,i=n.initialText||``;e.trim()!==i.trim()&&(r=!0)}}else !r&&n.dirty;let i=`dirty`in t?t.dirty:r?!0:n.dirty;return{...n,...t,dirty:i}});this.state={...this.state,activeComposers:n},this.debouncedSaveDrafts(),this.notify()}closeComposer(e){this.state={...this.state,activeComposers:this.state.activeComposers.filter(t=>t.id!==e)},this.saveDrafts(),this.notify()}discardDraft(e){let t=this.state.activeComposers.find(t=>t.id===e);t&&t.draftUid&&t.draftMailbox&&O.deleteMessages(t.draftMailbox,[String(t.draftUid)]),this.closeComposer(e)}clearAllComposers(){this.state={...this.state,activeComposers:[]},this.saveDrafts(),this.notify()}async saveAllDirtyDrafts(){let e=this.state.activeComposers.filter(e=>e.dirty);if(e.length>0)for(let t of e){let e=(t.to?.length||0)>0||(t.cc?.length||0)>0||(t.bcc?.length||0)>0,n=t.text?.trim()!==t.initialText?.trim()||(t.subject?.trim().length||0)>0;if(!e&&!n&&!(t.attachments&&t.attachments.length>0))continue;let r=new FormData,i=[...t.bcc||[]],a=``;try{let e=localStorage.getItem(`alps_settings`);if(e){let t=JSON.parse(e);t.bccMyself&&t.loginUsername&&(i.includes(t.loginUsername)||i.push(t.loginUsername)),t.replyTo&&(a=t.replyTo)}}catch{}r.append(`to`,(t.to||[]).join(`, `)),r.append(`cc`,(t.cc||[]).join(`, `)),r.append(`bcc`,i.join(`, `)),a&&r.append(`reply_to`,a),r.append(`subject`,(t.subject||``).trim()),r.append(`text`,t.text||``),t.html&&t.format===`html`&&r.append(`html`,t.html),r.append(`save_as_draft`,`1`);let o=t.attachments||[],s=o.map(e=>e.uuid).filter(Boolean).join(`,`);s&&r.append(`attachment-uuids`,s);let c=o.map(e=>e.partPath).filter(Boolean).join(`,`);c&&r.append(`prev_attachments`,c),t.draftMailbox&&r.append(`draft_mailbox`,t.draftMailbox),t.draftUid&&r.append(`draft_uid`,t.draftUid),await O.saveDraft(r)}this.state={...this.state,activeComposers:[]},this.saveDrafts(),this.notify()}bringComposerToFront(e){let t=1e3;this.state.activeComposers.forEach(e=>{e.zIndex&&e.zIndex>t&&(t=e.zIndex)}),this.updateComposer(e,{zIndex:t+1})}},k=r(`compose-store`),He=class extends p{constructor(...e){super(...e),this.icon=``,this.title=``,this.subtitle=``}static{this.styles=o`
     :host {
       display: flex;
       justify-content: center;
@@ -290,7 +290,355 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
         
         <slot></slot>
       </div>
-    `}};S([i({type:String})],Ue.prototype,`icon`,void 0),S([i({type:String})],Ue.prototype,`title`,void 0),S([i({type:String})],Ue.prototype,`subtitle`,void 0),Ue=S([a(`alps-auth-card`)],Ue);var k=class extends p{constructor(...e){super(...e),this.type=`text`,this.value=``,this.placeholder=``,this.required=!1,this.autocomplete=``,this.inputId=``,this.icon=``,this.clearable=!1,this.autofocus=!1,this.showPassword=!1}static{this.styles=o`
+    `}};S([i({type:String})],He.prototype,`icon`,void 0),S([i({type:String})],He.prototype,`title`,void 0),S([i({type:String})],He.prototype,`subtitle`,void 0),He=S([a(`alps-auth-card`)],He);var A=class extends p{constructor(...e){super(...e),this.username=``,this.password=``,this.rememberMe=!1,this.error=``,this.isSubmitting=!1,this.retryAfter=0,this.isRateLimited=!1}static{this.styles=o`
+    .form-group {
+      margin-bottom: 16px;
+      position: relative;
+    }
+
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+    }
+
+    .native-input {
+      width: 100%;
+      height: 36px;
+      padding: 0 12px;
+      background: var(--alps-input-bg, var(--bg-primary, #ffffff));
+      border: 1px solid var(--border-color, #e5e7eb);
+      border-radius: var(--input-radius, 6px);
+      color: var(--text-primary, #111827);
+      font-family: var(--font-base, 'Inter', sans-serif);
+      font-size: var(--input-font-size, 14px);
+      transition: all 0.2s ease;
+      box-sizing: border-box;
+      outline: none;
+    }
+
+    .has-left-icon .native-input {
+      padding-left: 36px;
+    }
+
+    .native-input:focus {
+      border-color: var(--accent-color, #005A9E);
+      box-shadow: 0 0 0 2px rgba(0, 90, 158, 0.2);
+    }
+
+    .native-input::placeholder {
+      color: var(--text-muted, #9ca3af);
+    }
+
+    .icon-left {
+      position: absolute;
+      left: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      color: var(--text-muted, #9ca3af);
+      pointer-events: none;
+    }
+
+    .icon-left svg {
+      width: 100%;
+      height: 100%;
+      fill: currentColor;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .checkbox-group label {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--text-secondary, #4b5563);
+      user-select: none;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      margin-right: 8px;
+      cursor: pointer;
+      accent-color: var(--accent-color, #2563eb);
+    }
+
+    .error-container {
+      border-radius: var(--radius-md, 6px);
+      padding: 8px 12px;
+      margin-bottom: 24px;
+      animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+    }
+
+    .error-text {
+      color: var(--error, #ef4444);
+      font-size: 14px;
+      margin: 0;
+      text-align: center;
+    }
+
+    @keyframes shake {
+      10%, 90% { transform: translate3d(-1px, 0, 0); }
+      20%, 80% { transform: translate3d(2px, 0, 0); }
+      30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+      40%, 60% { transform: translate3d(4px, 0, 0); }
+    }
+  `}connectedCallback(){super.connectedCallback(),this.composeStore&&this.composeStore.clearAllComposers()}disconnectedCallback(){super.disconnectedCallback(),this.retryCountdownInterval&&clearInterval(this.retryCountdownInterval)}startRetryCountdown(e){this.retryAfter=e,this.isRateLimited=!0,this.retryCountdownInterval&&clearInterval(this.retryCountdownInterval),this.retryCountdownInterval=setInterval(()=>{this.retryAfter--,this.retryAfter<=0&&(this.isRateLimited=!1,this.retryCountdownInterval&&=(clearInterval(this.retryCountdownInterval),void 0))},1e3)}formatRetryTime(e){if(e<60)return`${e} second${e===1?``:`s`}`;let t=Math.ceil(e/60);return`${t} minute${t===1?``:`s`}`}async handleSubmit(e){if(e.preventDefault(),this.isSubmitting)return;let t=this.shadowRoot?.querySelector(`form`);if(t&&!t.checkValidity()){t.reportValidity();return}this.error=``,this.isSubmitting=!0;try{await new Promise(e=>setTimeout(e,600));let e={username:this.username,password:this.password,"remember-me":this.rememberMe?`on`:``},t=await fetch(`/session`,{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify(e)}),n=await t.json();t.ok?n.requires_2fa?(window.location.hash=`/login/webauthn`,this.isSubmitting=!1):(window.dispatchEvent(new CustomEvent(`user-logged-in`)),window.location.hash=`/mailbox/INBOX`):(t.status===429&&n.retry_after?(this.error=n.error||`Too many login attempts`,this.startRetryCountdown(n.retry_after)):(this.error=n.error||`Login failed. Please check your credentials.`,this.isRateLimited=!1),this.isSubmitting=!1)}catch{this.error=`Network error occurred. Please try again.`,this.isSubmitting=!1,this.isRateLimited=!1}}render(){return s`
+      <alps-auth-card 
+        icon="edelweiss" 
+        title="Alps" 
+        subtitle="${this.i18nStore?.t(`login.subtitle`)}">
+        
+        ${this.error?s`
+          <div class="error-container">
+            <p class="error-text">
+              ${this.error}
+              ${this.isRateLimited&&this.retryAfter>0?s`
+                <br><strong>Please wait ${this.formatRetryTime(this.retryAfter)}</strong>
+              `:``}
+            </p>
+          </div>
+        `:``}
+
+        <form @submit=${this.handleSubmit}>
+          <div class="form-group">
+            <div class="input-wrapper has-left-icon">
+              <span class="icon-left">${x(`at`)}</span>
+              <input 
+                type="email" 
+                id="username" 
+                name="username"
+                class="native-input"
+                placeholder="${this.i18nStore?.t(`login.emailPlaceholder`)}"
+                .value=${this.username}
+                @input=${e=>this.username=e.target.value}
+                required
+                autocomplete="username"
+              />
+            </div>
+          </div>
+          <div class="form-group">
+            <div class="input-wrapper has-left-icon">
+              <span class="icon-left">${x(`key`)}</span>
+              <input 
+                type="password" 
+                id="password" 
+                name="password"
+                class="native-input"
+                placeholder="${this.i18nStore?.t(`login.passwordPlaceholder`)}"
+                .value=${this.password}
+                @input=${e=>this.password=e.target.value}
+                required
+                autocomplete="current-password"
+              />
+            </div>
+          </div>
+          <div class="checkbox-group">
+            <label>
+              <input 
+                type="checkbox" 
+                .checked=${this.rememberMe}
+                @change=${e=>this.rememberMe=e.target.checked}
+              />
+              Keep me signed in
+            </label>
+          </div>
+          <alps-button 
+            type="submit" 
+            variant="primary" 
+            full-width
+            style="height: 36px; margin-top: 4px;"
+            ?disabled=${this.isSubmitting||this.isRateLimited}
+            ?spinning=${this.isSubmitting}>
+            ${this.isRateLimited?`Wait ${this.formatRetryTime(this.retryAfter)}`:`Sign In`}
+          </alps-button>
+        </form>
+      </alps-auth-card>
+    `}};S([f({context:y})],A.prototype,`i18nStore`,void 0),S([_()],A.prototype,`username`,void 0),S([_()],A.prototype,`password`,void 0),S([_()],A.prototype,`rememberMe`,void 0),S([_()],A.prototype,`error`,void 0),S([_()],A.prototype,`isSubmitting`,void 0),S([_()],A.prototype,`retryAfter`,void 0),S([_()],A.prototype,`isRateLimited`,void 0),S([f({context:k,subscribe:!0})],A.prototype,`composeStore`,void 0),A=S([a(`login-page`)],A);var j=new class extends EventTarget{async createMailbox(e){try{let t=new URLSearchParams;t.append(`name`,e);let n=await w(`/mailboxes`,{method:`POST`,headers:{"Content-Type":`application/x-www-form-urlencoded`},body:t.toString()});return n.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):n.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to create mailbox`,e),!1}}async renameMailbox(e,t){try{let n=await w(`/mailboxes/${encodeURIComponent(e)}/rename`,{method:`PUT`,headers:{"Content-Type":`application/json`},body:JSON.stringify({new_name:t})});return n.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):n.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to rename mailbox`,e),!1}}async deleteMailbox(e){try{let t=await w(`/mailboxes/${encodeURIComponent(e)}`,{method:`DELETE`});return t.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):t.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to delete mailbox`,e),!1}}async emptyMailbox(e){try{let t=await w(`/mailboxes/${encodeURIComponent(e)}/empty`,{method:`POST`});return t.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):t.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to empty mailbox`,e),!1}}async subscribeMailbox(e){try{let t=await w(`/mailboxes/${encodeURIComponent(e)}/subscribe`,{method:`PUT`});return t.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):t.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to subscribe mailbox`,e),!1}}async unsubscribeMailbox(e){try{let t=await w(`/mailboxes/${encodeURIComponent(e)}/unsubscribe`,{method:`PUT`});return t.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):t.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to unsubscribe mailbox`,e),!1}}},Ue={"default-light":{id:`default-light`,name:`Default Light`,isDark:!1,colors:{"bg-primary":`#ffffff`,"bg-secondary":`#f9fafb`,"bg-tertiary":`#f3f4f6`,"bg-selected":`#eff6ff`,"bg-starred":`#2563eb0f`,"text-primary":`#111827`,"text-sender-read":`#202020`,"text-secondary":`#4b5563`,"text-muted":`#9ca3af`,"border-color":`#e5e7eb`,"accent-color":`#2563eb`,"accent-hover":`#1d4ed8`,"accent-light":`#dbeafe`,success:`#10b981`,warning:`#f59e0b`,error:`#ef4444`,"hover-color":`#f3f4f6`}},"default-dark":{id:`default-dark`,name:`Default Dark`,isDark:!0,colors:{"bg-primary":`#1f2937`,"bg-secondary":`#111827`,"bg-tertiary":`#374151`,"bg-selected":`#1e3a8a`,"bg-starred":`#3b82f615`,"text-primary":`#f9fafb`,"text-sender-read":`#e5e7eb`,"text-secondary":`#d1d5db`,"text-muted":`#9ca3af`,"border-color":`#374151`,"accent-color":`#3b82f6`,"accent-hover":`#60a5fa`,"accent-light":`#1e3a8a`,success:`#10b981`,warning:`#f59e0b`,error:`#ef4444`,"hover-color":`rgba(255, 255, 255, 0.1)`}},"nord-light":{id:`nord-light`,name:`Nord Light`,isDark:!1,colors:{"bg-primary":`#eceff4`,"bg-secondary":`#e5e9f0`,"bg-tertiary":`#d8dee9`,"bg-selected":`#81a1c133`,"bg-starred":`#5e81ac15`,"text-primary":`#2e3440`,"text-sender-read":`#3b4252`,"text-secondary":`#3b4252`,"text-muted":`#4c566a`,"border-color":`#d8dee9`,"accent-color":`#5e81ac`,"accent-hover":`#81a1c1`,"accent-light":`#81a1c133`,success:`#a3be8c`,warning:`#ebcb8b`,error:`#bf616a`,"hover-color":`rgba(0, 0, 0, 0.05)`}},"nord-dark":{id:`nord-dark`,name:`Nord Dark`,isDark:!0,colors:{"bg-primary":`#2e3440`,"bg-secondary":`#3b4252`,"bg-tertiary":`#434c5e`,"bg-selected":`#81a1c133`,"bg-starred":`#88c0d015`,"text-primary":`#eceff4`,"text-sender-read":`#e5e9f0`,"text-secondary":`#e5e9f0`,"text-muted":`#d8dee9`,"border-color":`#434c5e`,"accent-color":`#88c0d0`,"accent-hover":`#81a1c1`,"accent-light":`#81a1c133`,success:`#a3be8c`,warning:`#ebcb8b`,error:`#bf616a`,"hover-color":`rgba(255, 255, 255, 0.1)`}},"ocean-light":{id:`ocean-light`,name:`Ocean Light`,isDark:!1,colors:{"bg-primary":`#f8fafc`,"bg-secondary":`#f1f5f9`,"bg-tertiary":`#e2e8f0`,"bg-selected":`#e0f2fe`,"bg-starred":`#0ea5e915`,"text-primary":`#0f172a`,"text-sender-read":`#1e293b`,"text-secondary":`#334155`,"text-muted":`#64748b`,"border-color":`#cbd5e1`,"accent-color":`#0ea5e9`,"accent-hover":`#0284c7`,"accent-light":`#e0f2fe`,success:`#10b981`,warning:`#f59e0b`,error:`#ef4444`,"hover-color":`rgba(0, 0, 0, 0.05)`}},"ocean-dark":{id:`ocean-dark`,name:`Ocean Dark`,isDark:!0,colors:{"bg-primary":`#0f172a`,"bg-secondary":`#1e293b`,"bg-tertiary":`#334155`,"bg-selected":`#0c4a6e`,"bg-starred":`#38bdf815`,"text-primary":`#f8fafc`,"text-sender-read":`#e2e8f0`,"text-secondary":`#cbd5e1`,"text-muted":`#94a3b8`,"border-color":`#334155`,"accent-color":`#38bdf8`,"accent-hover":`#0ea5e9`,"accent-light":`#0c4a6e`,success:`#10b981`,warning:`#f59e0b`,error:`#ef4444`,"hover-color":`rgba(255, 255, 255, 0.1)`}}},We={themeMode:`auto`,colorFamily:`default`,layoutMode:`vertical`,densityMode:`compact`,sidebarCollapsed:!1,checkMailInterval:5,autoLogout:30,desktopNotifications:!1,soundNotifications:!0,name:``,signature:``,replyTo:``,bccMyself:!1,messagesPerPage:50,preferredView:`html`,markReadTimeout:3,showRemoteContent:`ask`,composeFormat:`html`,undoTimeout:0,language:`en`,hourFormat:`24`,dateFormat:`YYYY-MM-DD`,sortOrder:`desc`,messageSortCriteria:`date`,maxAttachmentMiB:32},Ge=class extends EventTarget{constructor(){super(),this.state=this.loadSettings(),this.applyTheme(),window.matchMedia(`(prefers-color-scheme: dark)`).addEventListener(`change`,()=>{this.state.themeMode===`auto`&&this.applyTheme()}),window.addEventListener(`session-cleared`,()=>{this.state=this.loadSettings(),this.applyTheme(),this.notify()}),window.addEventListener(`user-logged-in`,()=>{this._fetchBackendSettings()}),this._fetchBackendSettings()}loadSettings(){let e=localStorage.getItem(`alps_settings`);if(e)try{let t=JSON.parse(e);return{...We,...t}}catch(e){console.error(`Failed to parse settings`,e)}return{...We}}saveSettings(){localStorage.setItem(`alps_settings`,JSON.stringify(this.state))}notify(){this.dispatchEvent(new CustomEvent(`change`))}getState(){return this.state}async updateSettings(e){this.state={...this.state,...e},this.saveSettings(),(e.themeMode!==void 0||e.colorFamily!==void 0)&&this.applyTheme(),this.notify();let t={...e};if(delete t.loginUsername,Object.keys(t).length>0)return this._saveBackendSettings(this.state)}async _fetchBackendSettings(){let e=document.cookie.split(`;`).some(e=>e.trim().startsWith(`alps_logged_in=1`)),t=document.cookie.split(`;`).some(e=>e.trim().startsWith(`alps_has_login_token=1`));if(!e&&!t){window.location.hash.startsWith(`#/login`)||window.dispatchEvent(new CustomEvent(`auth-error`));return}try{let e=await fetch(`/settings`);if(e.status===401){window.dispatchEvent(new CustomEvent(`auth-error`));return}if(e.ok){let t=await e.json(),n={};if(t.MaxAttachmentMiB!==void 0&&(n.maxAttachmentMiB=t.MaxAttachmentMiB),t&&t.Settings){let e=t.Settings;if(e.ui){let t=e.ui;t.themeMode&&(n.themeMode=t.themeMode),t.colorFamily&&(n.colorFamily=t.colorFamily),t.layoutMode&&(n.layoutMode=t.layoutMode),t.densityMode&&(n.densityMode=t.densityMode),t.sidebarCollapsed!==void 0&&(n.sidebarCollapsed=t.sidebarCollapsed)}e.check_mail_interval!==void 0&&e.check_mail_interval!==0&&(n.checkMailInterval=e.check_mail_interval),e.auto_logout!==void 0&&(n.autoLogout=e.auto_logout),e.desktop_notifications!==void 0&&(n.desktopNotifications=e.desktop_notifications),e.sound_notifications!==void 0&&(n.soundNotifications=e.sound_notifications),e.from!==void 0&&(n.name=e.from),e.signature!==void 0&&(n.signature=e.signature),e.reply_to!==void 0&&(n.replyTo=e.reply_to),e.bcc_myself!==void 0&&(n.bccMyself=e.bcc_myself),e.messages_per_page!==void 0&&e.messages_per_page!==0&&(n.messagesPerPage=e.messages_per_page),e.preferred_view!==void 0&&e.preferred_view!==``&&(n.preferredView=e.preferred_view),e.mark_read_timeout!==void 0&&(n.markReadTimeout=e.mark_read_timeout),e.show_remote_content!==void 0&&e.show_remote_content!==``&&(n.showRemoteContent=e.show_remote_content),e.compose_format!==void 0&&e.compose_format!==``&&(n.composeFormat=e.compose_format),e.undo_timeout!==void 0&&(n.undoTimeout=e.undo_timeout),e.language!==void 0&&e.language!==``&&(n.language=e.language),e.hour_format!==void 0&&e.hour_format!==``&&(n.hourFormat=e.hour_format),e.date_format!==void 0&&e.date_format!==``&&(n.dateFormat=e.date_format),e.sort_order!==void 0&&e.sort_order!==``&&(n.sortOrder=e.sort_order),e.message_sort_criteria!==void 0&&e.message_sort_criteria!==``&&(n.messageSortCriteria=e.message_sort_criteria),Object.keys(n).length>0&&(this.state={...this.state,...n},this.saveSettings(),this.applyTheme(),this.notify())}}}catch(e){console.error(`Failed to fetch backend settings`,e)}}async _saveBackendSettings(e){try{(await fetch(`/settings`,{method:`PUT`,headers:{"Content-Type":`application/json`},body:JSON.stringify({ui:{themeMode:e.themeMode,colorFamily:e.colorFamily,layoutMode:e.layoutMode,densityMode:e.densityMode,sidebarCollapsed:e.sidebarCollapsed},check_mail_interval:Number(e.checkMailInterval)||0,auto_logout:Number(e.autoLogout)||0,desktop_notifications:!!e.desktopNotifications,sound_notifications:!!e.soundNotifications,from:e.name,signature:e.signature,reply_to:e.replyTo,bcc_myself:!!e.bccMyself,messages_per_page:Number(e.messagesPerPage)||50,preferred_view:e.preferredView,mark_read_timeout:Number(e.markReadTimeout)||0,show_remote_content:e.showRemoteContent,compose_format:e.composeFormat,undo_timeout:Number(e.undoTimeout)||0,language:e.language,hour_format:e.hourFormat,date_format:e.dateFormat,sort_order:e.sortOrder,message_sort_criteria:e.messageSortCriteria})})).status===401&&window.dispatchEvent(new CustomEvent(`auth-error`))}catch(e){console.error(`Failed to save backend settings`,e)}}applyTheme(){let e=!1;this.state.themeMode===`dark`?e=!0:this.state.themeMode===`auto`&&(e=window.matchMedia(`(prefers-color-scheme: dark)`).matches),e?document.body.classList.add(`theme-dark`):document.body.classList.remove(`theme-dark`);let t=Ue[`${this.state.colorFamily}-${e?`dark`:`light`}`]||Ue[`default-${e?`dark`:`light`}`];if(t)for(let[e,n]of Object.entries(t.colors))document.documentElement.style.setProperty(`--${e}`,n)}},M=r(`settings-store`),Ke=class extends p{constructor(...e){super(...e),this.icon=``,this.title=``,this.disabled=!1,this.active=!1,this.spinning=!1}static{this.styles=o`
+    :host {
+      display: inline-flex;
+      line-height: 0;
+    }
+
+    button {
+      background: transparent;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      padding: var(--btn-icon-padding, 6px);
+      border-radius: var(--btn-radius, 4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      margin: 0;
+      line-height: 0;
+      aspect-ratio: 1 / 1;
+      box-sizing: border-box;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    @media (hover: hover) {
+      button:hover:not(:disabled) {
+        background: var(--btn-hover-bg, var(--hover-color, rgba(0, 0, 0, 0.05)));
+      }
+      button:hover:not(:disabled) .icon {
+        color: var(--text-primary);
+      }
+    }
+
+    :host([active]) button {
+      background: var(--btn-hover-bg, var(--hover-color, rgba(0, 0, 0, 0.05)));
+    }
+    :host([active]) .icon {
+      color: var(--text-primary);
+    }
+
+    .icon {
+      width: var(--btn-icon-size, 18px);
+      height: var(--btn-icon-size, 18px);
+      fill: currentColor;
+      color: var(--btn-color, var(--text-muted));
+      transition: color 0.2s;
+    }
+
+    .spinning .icon {
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  `}_handleAnimationIteration(){this.dispatchEvent(new Event(`animationiteration`,{bubbles:!0,composed:!0}))}render(){return s`
+      <button 
+        type="button"
+        title=${this.title}
+        ?disabled=${this.disabled}
+        class=${this.spinning?`spinning`:``}
+        part="button"
+        @animationiteration=${this._handleAnimationIteration}
+      >
+        ${this.icon?x(this.icon):s`<slot></slot>`}
+      </button>
+    `}};S([i({type:String})],Ke.prototype,`icon`,void 0),S([i({type:String})],Ke.prototype,`title`,void 0),S([i({type:Boolean})],Ke.prototype,`disabled`,void 0),S([i({type:Boolean,reflect:!0})],Ke.prototype,`active`,void 0),S([i({type:Boolean})],Ke.prototype,`spinning`,void 0),Ke=S([a(`alps-icon-btn`)],Ke);var qe=o`
+  .btn-cancel {
+    background: transparent;
+    border: none;
+    color: var(--text-muted, #6b7280);
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    font-weight: 500;
+    padding: 8px 16px;
+    transition: color 0.2s;
+  }
+  .btn-cancel:hover { color: var(--text-primary, #111827); }
+  
+  .btn-confirm {
+    background-color: transparent;
+    color: var(--text-primary, #111827);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 4px;
+    font-family: inherit;
+    padding: 8px 16px;
+    font-weight: 500;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+  }
+  .btn-confirm:hover { 
+    background-color: var(--bg-tertiary, #f3f4f6);
+  }
+  .btn-confirm.danger {
+    color: var(--error, #ef4444);
+    border-color: var(--error, #ef4444);
+  }
+  .btn-confirm.danger:hover {
+    background-color: var(--error, #ef4444);
+    color: #ffffff;
+  }
+`,Je=class extends p{constructor(...e){super(...e),this.title=``,this.isDanger=!1,this.dismissible=!1,this.width=`400px`,this._handleDialogClose=()=>{this.dispatchEvent(new CustomEvent(`cancel`,{bubbles:!0,composed:!0}))}}static{this.styles=o`
+    .modal-dialog {
+      position: fixed;
+      inset: 0;
+      margin: 0;
+      padding: 0;
+      border: none;
+      background: transparent;
+      width: 100vw;
+      height: 100vh;
+      max-width: none;
+      max-height: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .modal-dialog::backdrop {
+      background: var(--modal-backdrop, rgba(255, 255, 255, 0.8));
+    }
+
+    .modal-card {
+      background: var(--bg-primary, #ffffff);
+      padding: 24px;
+      border-radius: 8px;
+      max-width: 100%;
+      border: 1px solid var(--border-color, #e5e7eb);
+      box-shadow: 0 8px 24px -6px rgba(0,0,0,0.15);
+      font-family: inherit;
+    }
+    .modal-title {
+      margin-top: 0;
+      margin-bottom: 12px;
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text-primary, #111827);
+    }
+    .modal-title.danger {
+      color: var(--error, #ef4444);
+    }
+    .modal-body {
+      margin-bottom: 24px;
+      color: var(--text-secondary, #4b5563);
+      line-height: 1.5;
+      font-size: 14px;
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      align-items: center;
+    }
+  `}firstUpdated(){let e=this.shadowRoot?.querySelector(`.modal-dialog`);e&&!e.open&&e.showModal()}_handleOverlayClick(e){this.dismissible?e.target===e.currentTarget&&(e.stopPropagation(),this.dispatchEvent(new CustomEvent(`cancel`,{bubbles:!0,composed:!0}))):e.stopPropagation()}render(){return s`
+      <dialog class="modal-dialog" @pointerdown=${this._handleOverlayClick} @close=${this._handleDialogClose}>
+        <div class="modal-card" style="width: ${this.width};" @pointerdown=${e=>e.stopPropagation()}>
+          <slot name="header">
+            ${this.title?s`<h3 class="modal-title ${this.isDanger?`danger`:``}">${this.title}</h3>`:``}
+          </slot>
+          <div class="modal-body">
+            <slot></slot>
+          </div>
+          <div class="modal-actions">
+            <slot name="actions"></slot>
+          </div>
+        </div>
+      </dialog>
+    `}};S([i({type:String})],Je.prototype,`title`,void 0),S([i({type:Boolean})],Je.prototype,`isDanger`,void 0),S([i({type:Boolean})],Je.prototype,`dismissible`,void 0),S([i({type:String})],Je.prototype,`width`,void 0),Je=S([a(`ui-modal`)],Je);var N=class extends p{constructor(...e){super(...e),this.type=`text`,this.value=``,this.placeholder=``,this.required=!1,this.autocomplete=``,this.inputId=``,this.icon=``,this.clearable=!1,this.autofocus=!1,this.showPassword=!1}static{this.styles=o`
     :host {
       display: block;
       width: 100%;
@@ -426,292 +774,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
           </button>
         `:``}
       </div>
-    `}};S([i({type:String})],k.prototype,`type`,void 0),S([i({type:String})],k.prototype,`value`,void 0),S([i({type:String})],k.prototype,`placeholder`,void 0),S([i({type:Boolean})],k.prototype,`required`,void 0),S([i({type:String})],k.prototype,`autocomplete`,void 0),S([i({type:String})],k.prototype,`inputId`,void 0),S([i({type:String})],k.prototype,`icon`,void 0),S([i({type:Boolean})],k.prototype,`clearable`,void 0),S([i({type:Boolean})],k.prototype,`autofocus`,void 0),S([_()],k.prototype,`showPassword`,void 0),k=S([a(`alps-input`)],k);var A=class extends p{constructor(...e){super(...e),this.username=``,this.password=``,this.rememberMe=!1,this.error=``,this.isSubmitting=!1,this.retryAfter=0,this.isRateLimited=!1}static{this.styles=o`
-    .form-group {
-      margin-bottom: 16px;
-      position: relative;
-    }
-
-    .checkbox-group {
-      display: flex;
-      align-items: center;
-      margin-bottom: 20px;
-    }
-
-    .checkbox-group label {
-      display: flex;
-      align-items: center;
-      cursor: pointer;
-      font-size: 14px;
-      color: var(--text-secondary, #4b5563);
-      user-select: none;
-    }
-
-    .checkbox-group input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      margin: 0;
-      margin-right: 8px;
-      cursor: pointer;
-      accent-color: var(--accent-color, #2563eb);
-    }
-
-    .error-container {
-      border-radius: var(--radius-md, 6px);
-      padding: 8px 12px;
-      margin-bottom: 24px;
-      animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
-    }
-
-    .error-text {
-      color: var(--error, #ef4444);
-      font-size: 14px;
-      margin: 0;
-      text-align: center;
-    }
-
-    @keyframes shake {
-      10%, 90% { transform: translate3d(-1px, 0, 0); }
-      20%, 80% { transform: translate3d(2px, 0, 0); }
-      30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
-      40%, 60% { transform: translate3d(4px, 0, 0); }
-    }
-  `}connectedCallback(){super.connectedCallback(),this.composeStore&&this.composeStore.clearAllComposers()}disconnectedCallback(){super.disconnectedCallback(),this.retryCountdownInterval&&clearInterval(this.retryCountdownInterval)}startRetryCountdown(e){this.retryAfter=e,this.isRateLimited=!0,this.retryCountdownInterval&&clearInterval(this.retryCountdownInterval),this.retryCountdownInterval=setInterval(()=>{this.retryAfter--,this.retryAfter<=0&&(this.isRateLimited=!1,this.retryCountdownInterval&&=(clearInterval(this.retryCountdownInterval),void 0))},1e3)}formatRetryTime(e){if(e<60)return`${e} second${e===1?``:`s`}`;let t=Math.ceil(e/60);return`${t} minute${t===1?``:`s`}`}async handleSubmit(e){if(e.preventDefault(),this.isSubmitting)return;let t=this.shadowRoot?.querySelectorAll(`alps-input`);if(t){for(let e of Array.from(t))if(typeof e.reportValidity==`function`&&!e.reportValidity())return}this.error=``,this.isSubmitting=!0;try{await new Promise(e=>setTimeout(e,600));let e={username:this.username,password:this.password,"remember-me":this.rememberMe?`on`:``},t=await fetch(`/session`,{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify(e)}),n=await t.json();t.ok?n.requires_2fa?(window.location.hash=`/login/webauthn`,this.isSubmitting=!1):(window.dispatchEvent(new CustomEvent(`user-logged-in`)),window.location.hash=`/mailbox/INBOX`):(t.status===429&&n.retry_after?(this.error=n.error||`Too many login attempts`,this.startRetryCountdown(n.retry_after)):(this.error=n.error||`Login failed. Please check your credentials.`,this.isRateLimited=!1),this.isSubmitting=!1)}catch{this.error=`Network error occurred. Please try again.`,this.isSubmitting=!1,this.isRateLimited=!1}}render(){return s`
-      <alps-auth-card 
-        icon="edelweiss" 
-        title="Alps" 
-        subtitle="${this.i18nStore?.t(`login.subtitle`)}">
-        
-        ${this.error?s`
-          <div class="error-container">
-            <p class="error-text">
-              ${this.error}
-              ${this.isRateLimited&&this.retryAfter>0?s`
-                <br><strong>Please wait ${this.formatRetryTime(this.retryAfter)}</strong>
-              `:``}
-            </p>
-          </div>
-        `:``}
-
-        <form @submit=${this.handleSubmit}>
-          <div class="form-group">
-            <alps-input 
-              type="email" 
-              inputId="username" 
-              placeholder="${this.i18nStore?.t(`login.emailPlaceholder`)}"
-              .value=${this.username}
-              @input=${e=>this.username=e.target.value}
-              ?required=${!0}
-              autocomplete="username"
-            ></alps-input>
-          </div>
-          <div class="form-group">
-            <alps-input 
-              type="password" icon="key"
-              inputId="password" 
-              placeholder="${this.i18nStore?.t(`login.passwordPlaceholder`)}"
-              .value=${this.password}
-              @input=${e=>this.password=e.target.value}
-              ?required=${!0}
-              autocomplete="current-password"
-            ></alps-input>
-          </div>
-          <div class="checkbox-group">
-            <label>
-              <input 
-                type="checkbox" 
-                .checked=${this.rememberMe}
-                @change=${e=>this.rememberMe=e.target.checked}
-              />
-              Keep me signed in
-            </label>
-          </div>
-          <alps-button 
-            type="submit" 
-            variant="primary" 
-            full-width
-            style="height: 36px; margin-top: 4px;"
-            ?disabled=${this.isSubmitting||this.isRateLimited}
-            ?spinning=${this.isSubmitting}>
-            ${this.isRateLimited?`Wait ${this.formatRetryTime(this.retryAfter)}`:`Sign In`}
-          </alps-button>
-        </form>
-      </alps-auth-card>
-    `}};S([f({context:y})],A.prototype,`i18nStore`,void 0),S([_()],A.prototype,`username`,void 0),S([_()],A.prototype,`password`,void 0),S([_()],A.prototype,`rememberMe`,void 0),S([_()],A.prototype,`error`,void 0),S([_()],A.prototype,`isSubmitting`,void 0),S([_()],A.prototype,`retryAfter`,void 0),S([_()],A.prototype,`isRateLimited`,void 0),S([f({context:He,subscribe:!0})],A.prototype,`composeStore`,void 0),A=S([a(`login-page`)],A);var j=new class extends EventTarget{async createMailbox(e){try{let t=new URLSearchParams;t.append(`name`,e);let n=await w(`/mailboxes`,{method:`POST`,headers:{"Content-Type":`application/x-www-form-urlencoded`},body:t.toString()});return n.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):n.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to create mailbox`,e),!1}}async renameMailbox(e,t){try{let n=await w(`/mailboxes/${encodeURIComponent(e)}/rename`,{method:`PUT`,headers:{"Content-Type":`application/json`},body:JSON.stringify({new_name:t})});return n.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):n.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to rename mailbox`,e),!1}}async deleteMailbox(e){try{let t=await w(`/mailboxes/${encodeURIComponent(e)}`,{method:`DELETE`});return t.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):t.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to delete mailbox`,e),!1}}async emptyMailbox(e){try{let t=await w(`/mailboxes/${encodeURIComponent(e)}/empty`,{method:`POST`});return t.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):t.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to empty mailbox`,e),!1}}async subscribeMailbox(e){try{let t=await w(`/mailboxes/${encodeURIComponent(e)}/subscribe`,{method:`PUT`});return t.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):t.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to subscribe mailbox`,e),!1}}async unsubscribeMailbox(e){try{let t=await w(`/mailboxes/${encodeURIComponent(e)}/unsubscribe`,{method:`PUT`});return t.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):t.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to unsubscribe mailbox`,e),!1}}},We={"default-light":{id:`default-light`,name:`Default Light`,isDark:!1,colors:{"bg-primary":`#ffffff`,"bg-secondary":`#f9fafb`,"bg-tertiary":`#f3f4f6`,"bg-selected":`#eff6ff`,"bg-starred":`#2563eb0f`,"text-primary":`#111827`,"text-sender-read":`#202020`,"text-secondary":`#4b5563`,"text-muted":`#9ca3af`,"border-color":`#e5e7eb`,"accent-color":`#2563eb`,"accent-hover":`#1d4ed8`,"accent-light":`#dbeafe`,success:`#10b981`,warning:`#f59e0b`,error:`#ef4444`,"hover-color":`#f3f4f6`}},"default-dark":{id:`default-dark`,name:`Default Dark`,isDark:!0,colors:{"bg-primary":`#1f2937`,"bg-secondary":`#111827`,"bg-tertiary":`#374151`,"bg-selected":`#1e3a8a`,"bg-starred":`#3b82f615`,"text-primary":`#f9fafb`,"text-sender-read":`#e5e7eb`,"text-secondary":`#d1d5db`,"text-muted":`#9ca3af`,"border-color":`#374151`,"accent-color":`#3b82f6`,"accent-hover":`#60a5fa`,"accent-light":`#1e3a8a`,success:`#10b981`,warning:`#f59e0b`,error:`#ef4444`,"hover-color":`rgba(255, 255, 255, 0.1)`}},"nord-light":{id:`nord-light`,name:`Nord Light`,isDark:!1,colors:{"bg-primary":`#eceff4`,"bg-secondary":`#e5e9f0`,"bg-tertiary":`#d8dee9`,"bg-selected":`#81a1c133`,"bg-starred":`#5e81ac15`,"text-primary":`#2e3440`,"text-sender-read":`#3b4252`,"text-secondary":`#3b4252`,"text-muted":`#4c566a`,"border-color":`#d8dee9`,"accent-color":`#5e81ac`,"accent-hover":`#81a1c1`,"accent-light":`#81a1c133`,success:`#a3be8c`,warning:`#ebcb8b`,error:`#bf616a`,"hover-color":`rgba(0, 0, 0, 0.05)`}},"nord-dark":{id:`nord-dark`,name:`Nord Dark`,isDark:!0,colors:{"bg-primary":`#2e3440`,"bg-secondary":`#3b4252`,"bg-tertiary":`#434c5e`,"bg-selected":`#81a1c133`,"bg-starred":`#88c0d015`,"text-primary":`#eceff4`,"text-sender-read":`#e5e9f0`,"text-secondary":`#e5e9f0`,"text-muted":`#d8dee9`,"border-color":`#434c5e`,"accent-color":`#88c0d0`,"accent-hover":`#81a1c1`,"accent-light":`#81a1c133`,success:`#a3be8c`,warning:`#ebcb8b`,error:`#bf616a`,"hover-color":`rgba(255, 255, 255, 0.1)`}},"ocean-light":{id:`ocean-light`,name:`Ocean Light`,isDark:!1,colors:{"bg-primary":`#f8fafc`,"bg-secondary":`#f1f5f9`,"bg-tertiary":`#e2e8f0`,"bg-selected":`#e0f2fe`,"bg-starred":`#0ea5e915`,"text-primary":`#0f172a`,"text-sender-read":`#1e293b`,"text-secondary":`#334155`,"text-muted":`#64748b`,"border-color":`#cbd5e1`,"accent-color":`#0ea5e9`,"accent-hover":`#0284c7`,"accent-light":`#e0f2fe`,success:`#10b981`,warning:`#f59e0b`,error:`#ef4444`,"hover-color":`rgba(0, 0, 0, 0.05)`}},"ocean-dark":{id:`ocean-dark`,name:`Ocean Dark`,isDark:!0,colors:{"bg-primary":`#0f172a`,"bg-secondary":`#1e293b`,"bg-tertiary":`#334155`,"bg-selected":`#0c4a6e`,"bg-starred":`#38bdf815`,"text-primary":`#f8fafc`,"text-sender-read":`#e2e8f0`,"text-secondary":`#cbd5e1`,"text-muted":`#94a3b8`,"border-color":`#334155`,"accent-color":`#38bdf8`,"accent-hover":`#0ea5e9`,"accent-light":`#0c4a6e`,success:`#10b981`,warning:`#f59e0b`,error:`#ef4444`,"hover-color":`rgba(255, 255, 255, 0.1)`}}},Ge={themeMode:`auto`,colorFamily:`default`,layoutMode:`vertical`,densityMode:`compact`,sidebarCollapsed:!1,checkMailInterval:5,autoLogout:30,desktopNotifications:!1,soundNotifications:!0,name:``,signature:``,replyTo:``,bccMyself:!1,messagesPerPage:50,preferredView:`html`,markReadTimeout:3,showRemoteContent:`ask`,composeFormat:`html`,undoTimeout:0,language:`en`,hourFormat:`24`,dateFormat:`YYYY-MM-DD`,sortOrder:`desc`,messageSortCriteria:`date`,maxAttachmentMiB:32},Ke=class extends EventTarget{constructor(){super(),this.state=this.loadSettings(),this.applyTheme(),window.matchMedia(`(prefers-color-scheme: dark)`).addEventListener(`change`,()=>{this.state.themeMode===`auto`&&this.applyTheme()}),window.addEventListener(`session-cleared`,()=>{this.state=this.loadSettings(),this.applyTheme(),this.notify()}),window.addEventListener(`user-logged-in`,()=>{this._fetchBackendSettings()}),this._fetchBackendSettings()}loadSettings(){let e=localStorage.getItem(`alps_settings`);if(e)try{let t=JSON.parse(e);return{...Ge,...t}}catch(e){console.error(`Failed to parse settings`,e)}return{...Ge}}saveSettings(){localStorage.setItem(`alps_settings`,JSON.stringify(this.state))}notify(){this.dispatchEvent(new CustomEvent(`change`))}getState(){return this.state}async updateSettings(e){this.state={...this.state,...e},this.saveSettings(),(e.themeMode!==void 0||e.colorFamily!==void 0)&&this.applyTheme(),this.notify();let t={...e};if(delete t.loginUsername,Object.keys(t).length>0)return this._saveBackendSettings(this.state)}async _fetchBackendSettings(){let e=document.cookie.split(`;`).some(e=>e.trim().startsWith(`alps_logged_in=1`)),t=document.cookie.split(`;`).some(e=>e.trim().startsWith(`alps_has_login_token=1`));if(!e&&!t){window.location.hash.startsWith(`#/login`)||window.dispatchEvent(new CustomEvent(`auth-error`));return}try{let e=await fetch(`/settings`);if(e.status===401){window.dispatchEvent(new CustomEvent(`auth-error`));return}if(e.ok){let t=await e.json(),n={};if(t.MaxAttachmentMiB!==void 0&&(n.maxAttachmentMiB=t.MaxAttachmentMiB),t&&t.Settings){let e=t.Settings;if(e.ui){let t=e.ui;t.themeMode&&(n.themeMode=t.themeMode),t.colorFamily&&(n.colorFamily=t.colorFamily),t.layoutMode&&(n.layoutMode=t.layoutMode),t.densityMode&&(n.densityMode=t.densityMode),t.sidebarCollapsed!==void 0&&(n.sidebarCollapsed=t.sidebarCollapsed)}e.check_mail_interval!==void 0&&e.check_mail_interval!==0&&(n.checkMailInterval=e.check_mail_interval),e.auto_logout!==void 0&&(n.autoLogout=e.auto_logout),e.desktop_notifications!==void 0&&(n.desktopNotifications=e.desktop_notifications),e.sound_notifications!==void 0&&(n.soundNotifications=e.sound_notifications),e.from!==void 0&&(n.name=e.from),e.signature!==void 0&&(n.signature=e.signature),e.reply_to!==void 0&&(n.replyTo=e.reply_to),e.bcc_myself!==void 0&&(n.bccMyself=e.bcc_myself),e.messages_per_page!==void 0&&e.messages_per_page!==0&&(n.messagesPerPage=e.messages_per_page),e.preferred_view!==void 0&&e.preferred_view!==``&&(n.preferredView=e.preferred_view),e.mark_read_timeout!==void 0&&(n.markReadTimeout=e.mark_read_timeout),e.show_remote_content!==void 0&&e.show_remote_content!==``&&(n.showRemoteContent=e.show_remote_content),e.compose_format!==void 0&&e.compose_format!==``&&(n.composeFormat=e.compose_format),e.undo_timeout!==void 0&&(n.undoTimeout=e.undo_timeout),e.language!==void 0&&e.language!==``&&(n.language=e.language),e.hour_format!==void 0&&e.hour_format!==``&&(n.hourFormat=e.hour_format),e.date_format!==void 0&&e.date_format!==``&&(n.dateFormat=e.date_format),e.sort_order!==void 0&&e.sort_order!==``&&(n.sortOrder=e.sort_order),e.message_sort_criteria!==void 0&&e.message_sort_criteria!==``&&(n.messageSortCriteria=e.message_sort_criteria),Object.keys(n).length>0&&(this.state={...this.state,...n},this.saveSettings(),this.applyTheme(),this.notify())}}}catch(e){console.error(`Failed to fetch backend settings`,e)}}async _saveBackendSettings(e){try{(await fetch(`/settings`,{method:`PUT`,headers:{"Content-Type":`application/json`},body:JSON.stringify({ui:{themeMode:e.themeMode,colorFamily:e.colorFamily,layoutMode:e.layoutMode,densityMode:e.densityMode,sidebarCollapsed:e.sidebarCollapsed},check_mail_interval:Number(e.checkMailInterval)||0,auto_logout:Number(e.autoLogout)||0,desktop_notifications:!!e.desktopNotifications,sound_notifications:!!e.soundNotifications,from:e.name,signature:e.signature,reply_to:e.replyTo,bcc_myself:!!e.bccMyself,messages_per_page:Number(e.messagesPerPage)||50,preferred_view:e.preferredView,mark_read_timeout:Number(e.markReadTimeout)||0,show_remote_content:e.showRemoteContent,compose_format:e.composeFormat,undo_timeout:Number(e.undoTimeout)||0,language:e.language,hour_format:e.hourFormat,date_format:e.dateFormat,sort_order:e.sortOrder,message_sort_criteria:e.messageSortCriteria})})).status===401&&window.dispatchEvent(new CustomEvent(`auth-error`))}catch(e){console.error(`Failed to save backend settings`,e)}}applyTheme(){let e=!1;this.state.themeMode===`dark`?e=!0:this.state.themeMode===`auto`&&(e=window.matchMedia(`(prefers-color-scheme: dark)`).matches),e?document.body.classList.add(`theme-dark`):document.body.classList.remove(`theme-dark`);let t=We[`${this.state.colorFamily}-${e?`dark`:`light`}`]||We[`default-${e?`dark`:`light`}`];if(t)for(let[e,n]of Object.entries(t.colors))document.documentElement.style.setProperty(`--${e}`,n)}},M=r(`settings-store`),qe=class extends p{constructor(...e){super(...e),this.icon=``,this.title=``,this.disabled=!1,this.active=!1,this.spinning=!1}static{this.styles=o`
-    :host {
-      display: inline-flex;
-      line-height: 0;
-    }
-
-    button {
-      background: transparent;
-      border: none;
-      color: inherit;
-      cursor: pointer;
-      padding: var(--btn-icon-padding, 6px);
-      border-radius: var(--btn-radius, 4px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-      margin: 0;
-      line-height: 0;
-      aspect-ratio: 1 / 1;
-      box-sizing: border-box;
-    }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    @media (hover: hover) {
-      button:hover:not(:disabled) {
-        background: var(--btn-hover-bg, var(--hover-color, rgba(0, 0, 0, 0.05)));
-      }
-      button:hover:not(:disabled) .icon {
-        color: var(--text-primary);
-      }
-    }
-
-    :host([active]) button {
-      background: var(--btn-hover-bg, var(--hover-color, rgba(0, 0, 0, 0.05)));
-    }
-    :host([active]) .icon {
-      color: var(--text-primary);
-    }
-
-    .icon {
-      width: var(--btn-icon-size, 18px);
-      height: var(--btn-icon-size, 18px);
-      fill: currentColor;
-      color: var(--btn-color, var(--text-muted));
-      transition: color 0.2s;
-    }
-
-    .spinning .icon {
-      animation: spin 1s linear infinite;
-    }
-
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-  `}_handleAnimationIteration(){this.dispatchEvent(new Event(`animationiteration`,{bubbles:!0,composed:!0}))}render(){return s`
-      <button 
-        type="button"
-        title=${this.title}
-        ?disabled=${this.disabled}
-        class=${this.spinning?`spinning`:``}
-        part="button"
-        @animationiteration=${this._handleAnimationIteration}
-      >
-        ${this.icon?x(this.icon):s`<slot></slot>`}
-      </button>
-    `}};S([i({type:String})],qe.prototype,`icon`,void 0),S([i({type:String})],qe.prototype,`title`,void 0),S([i({type:Boolean})],qe.prototype,`disabled`,void 0),S([i({type:Boolean,reflect:!0})],qe.prototype,`active`,void 0),S([i({type:Boolean})],qe.prototype,`spinning`,void 0),qe=S([a(`alps-icon-btn`)],qe);var Je=o`
-  .btn-cancel {
-    background: transparent;
-    border: none;
-    color: var(--text-muted, #6b7280);
-    font-family: inherit;
-    font-size: 14px;
-    cursor: pointer;
-    font-weight: 500;
-    padding: 8px 16px;
-    transition: color 0.2s;
-  }
-  .btn-cancel:hover { color: var(--text-primary, #111827); }
-  
-  .btn-confirm {
-    background-color: transparent;
-    color: var(--text-primary, #111827);
-    border: 1px solid var(--border-color, #e5e7eb);
-    border-radius: 4px;
-    font-family: inherit;
-    padding: 8px 16px;
-    font-weight: 500;
-    font-size: 14px;
-    cursor: pointer;
-    transition: background-color 0.2s, color 0.2s;
-  }
-  .btn-confirm:hover { 
-    background-color: var(--bg-tertiary, #f3f4f6);
-  }
-  .btn-confirm.danger {
-    color: var(--error, #ef4444);
-    border-color: var(--error, #ef4444);
-  }
-  .btn-confirm.danger:hover {
-    background-color: var(--error, #ef4444);
-    color: #ffffff;
-  }
-`,Ye=class extends p{constructor(...e){super(...e),this.title=``,this.isDanger=!1,this.dismissible=!1,this.width=`400px`,this._handleDialogClose=()=>{this.dispatchEvent(new CustomEvent(`cancel`,{bubbles:!0,composed:!0}))}}static{this.styles=o`
-    .modal-dialog {
-      position: fixed;
-      inset: 0;
-      margin: 0;
-      padding: 0;
-      border: none;
-      background: transparent;
-      width: 100vw;
-      height: 100vh;
-      max-width: none;
-      max-height: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    
-    .modal-dialog::backdrop {
-      background: var(--modal-backdrop, rgba(255, 255, 255, 0.8));
-    }
-
-    .modal-card {
-      background: var(--bg-primary, #ffffff);
-      padding: 24px;
-      border-radius: 8px;
-      max-width: 100%;
-      border: 1px solid var(--border-color, #e5e7eb);
-      box-shadow: 0 8px 24px -6px rgba(0,0,0,0.15);
-      font-family: inherit;
-    }
-    .modal-title {
-      margin-top: 0;
-      margin-bottom: 12px;
-      font-size: 16px;
-      font-weight: 500;
-      color: var(--text-primary, #111827);
-    }
-    .modal-title.danger {
-      color: var(--error, #ef4444);
-    }
-    .modal-body {
-      margin-bottom: 24px;
-      color: var(--text-secondary, #4b5563);
-      line-height: 1.5;
-      font-size: 14px;
-    }
-    .modal-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      align-items: center;
-    }
-  `}firstUpdated(){let e=this.shadowRoot?.querySelector(`.modal-dialog`);e&&!e.open&&e.showModal()}_handleOverlayClick(e){this.dismissible?e.target===e.currentTarget&&(e.stopPropagation(),this.dispatchEvent(new CustomEvent(`cancel`,{bubbles:!0,composed:!0}))):e.stopPropagation()}render(){return s`
-      <dialog class="modal-dialog" @pointerdown=${this._handleOverlayClick} @close=${this._handleDialogClose}>
-        <div class="modal-card" style="width: ${this.width};" @pointerdown=${e=>e.stopPropagation()}>
-          <slot name="header">
-            ${this.title?s`<h3 class="modal-title ${this.isDanger?`danger`:``}">${this.title}</h3>`:``}
-          </slot>
-          <div class="modal-body">
-            <slot></slot>
-          </div>
-          <div class="modal-actions">
-            <slot name="actions"></slot>
-          </div>
-        </div>
-      </dialog>
-    `}};S([i({type:String})],Ye.prototype,`title`,void 0),S([i({type:Boolean})],Ye.prototype,`isDanger`,void 0),S([i({type:Boolean})],Ye.prototype,`dismissible`,void 0),S([i({type:String})],Ye.prototype,`width`,void 0),Ye=S([a(`ui-modal`)],Ye);var Xe=class extends p{constructor(...e){super(...e),this.title=`Prompt`,this.fields=[],this.confirmText=`Apply`,this.cancelText=`Cancel`,this.values={}}static{this.styles=[Je,o`
+    `}};S([i({type:String})],N.prototype,`type`,void 0),S([i({type:String})],N.prototype,`value`,void 0),S([i({type:String})],N.prototype,`placeholder`,void 0),S([i({type:Boolean})],N.prototype,`required`,void 0),S([i({type:String})],N.prototype,`autocomplete`,void 0),S([i({type:String})],N.prototype,`inputId`,void 0),S([i({type:String})],N.prototype,`icon`,void 0),S([i({type:Boolean})],N.prototype,`clearable`,void 0),S([i({type:Boolean})],N.prototype,`autofocus`,void 0),S([_()],N.prototype,`showPassword`,void 0),N=S([a(`alps-input`)],N);var Ye=class extends p{constructor(...e){super(...e),this.title=`Prompt`,this.fields=[],this.confirmText=`Apply`,this.cancelText=`Cancel`,this.values={}}static{this.styles=[qe,o`
       .field-group {
         margin-bottom: 16px;
       }
@@ -753,7 +816,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
         <alps-button slot="actions" variant="text" @click=${this._handleCancel}>${this.cancelText}</alps-button>
         <alps-button slot="actions" variant="normal" @click=${this._handleSubmit}>${this.confirmText}</alps-button>
       </ui-modal>
-    `}};S([i({type:String})],Xe.prototype,`title`,void 0),S([i({type:Array})],Xe.prototype,`fields`,void 0),S([i({type:String})],Xe.prototype,`confirmText`,void 0),S([i({type:String})],Xe.prototype,`cancelText`,void 0),S([_()],Xe.prototype,`values`,void 0),Xe=S([a(`ui-prompt`)],Xe);var Ze=class extends p{constructor(...e){super(...e),this.scrolled=!1}static{this.styles=o`
+    `}};S([i({type:String})],Ye.prototype,`title`,void 0),S([i({type:Array})],Ye.prototype,`fields`,void 0),S([i({type:String})],Ye.prototype,`confirmText`,void 0),S([i({type:String})],Ye.prototype,`cancelText`,void 0),S([_()],Ye.prototype,`values`,void 0),Ye=S([a(`ui-prompt`)],Ye);var Xe=class extends p{constructor(...e){super(...e),this.scrolled=!1}static{this.styles=o`
     :host {
       display: flex;
       align-items: center;
@@ -769,7 +832,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
     :host([scrolled]) {
       box-shadow: rgba(95, 95, 95, 0.1) 0 4px 4px -2px;
     }
-  `}render(){return s`<slot></slot>`}};S([i({type:Boolean,reflect:!0})],Ze.prototype,`scrolled`,void 0),Ze=S([a(`alps-toolbar`)],Ze);var N=class extends p{constructor(...e){super(...e),this.title=`Confirm`,this.message=`Are you sure?`,this.confirmText=`Confirm`,this.cancelText=`Cancel`,this.isDanger=!1,this.dismissible=!1}static{this.styles=[Je]}_handleCancel(e){e.stopPropagation(),this.dispatchEvent(new CustomEvent(`cancel`,{bubbles:!0,composed:!0}))}_handleSecondary(e){e.stopPropagation(),this.dispatchEvent(new CustomEvent(`secondary`,{bubbles:!0,composed:!0}))}_handleConfirm(e){e.stopPropagation(),this.dispatchEvent(new CustomEvent(`confirm`,{bubbles:!0,composed:!0}))}render(){return s`
+  `}render(){return s`<slot></slot>`}};S([i({type:Boolean,reflect:!0})],Xe.prototype,`scrolled`,void 0),Xe=S([a(`alps-toolbar`)],Xe);var P=class extends p{constructor(...e){super(...e),this.title=`Confirm`,this.message=`Are you sure?`,this.confirmText=`Confirm`,this.cancelText=`Cancel`,this.isDanger=!1,this.dismissible=!1}static{this.styles=[qe]}_handleCancel(e){e.stopPropagation(),this.dispatchEvent(new CustomEvent(`cancel`,{bubbles:!0,composed:!0}))}_handleSecondary(e){e.stopPropagation(),this.dispatchEvent(new CustomEvent(`secondary`,{bubbles:!0,composed:!0}))}_handleConfirm(e){e.stopPropagation(),this.dispatchEvent(new CustomEvent(`confirm`,{bubbles:!0,composed:!0}))}render(){return s`
       <ui-modal 
         .title=${this.title}
         .isDanger=${this.isDanger}
@@ -783,7 +846,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
           ${this.confirmText}
         </alps-button>
       </ui-modal>
-    `}};S([i({type:String})],N.prototype,`title`,void 0),S([i({type:String})],N.prototype,`message`,void 0),S([i({type:String})],N.prototype,`confirmText`,void 0),S([i({type:String})],N.prototype,`cancelText`,void 0),S([i({type:String})],N.prototype,`secondaryText`,void 0),S([i({type:Boolean})],N.prototype,`isDanger`,void 0),S([i({type:Boolean})],N.prototype,`dismissible`,void 0),N=S([a(`ui-confirm`)],N);var Qe=o`
+    `}};S([i({type:String})],P.prototype,`title`,void 0),S([i({type:String})],P.prototype,`message`,void 0),S([i({type:String})],P.prototype,`confirmText`,void 0),S([i({type:String})],P.prototype,`cancelText`,void 0),S([i({type:String})],P.prototype,`secondaryText`,void 0),S([i({type:Boolean})],P.prototype,`isDanger`,void 0),S([i({type:Boolean})],P.prototype,`dismissible`,void 0),P=S([a(`ui-confirm`)],P);var Ze=o`
   .dropdown-header {
     padding: 12px 16px 8px;
     font-size: 12px;
@@ -860,7 +923,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
     background: var(--border-color, #e5e7eb);
     margin: 4px 0;
   }
-`,$e=class extends p{constructor(...e){super(...e),this.align=`right`,this.position=`bottom`,this.openState=!1,this._handleDialogClick=e=>{this.openState&&e.target===e.currentTarget&&(e.stopPropagation(),e.preventDefault(),this.close())},this._handleDialogClose=()=>{this.openState&&this.close()},this._handleResize=()=>{this.openState&&this._updatePosition()}}static{this.styles=o`
+`,Qe=class extends p{constructor(...e){super(...e),this.align=`right`,this.position=`bottom`,this.openState=!1,this._handleDialogClick=e=>{this.openState&&e.target===e.currentTarget&&(e.stopPropagation(),e.preventDefault(),this.close())},this._handleDialogClose=()=>{this.openState&&this.close()},this._handleResize=()=>{this.openState&&this._updatePosition()}}static{this.styles=o`
     :host {
       display: inline-block;
       position: relative;
@@ -976,7 +1039,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
           <slot></slot>
         </div>
       </dialog>
-    `}};S([i({type:String})],$e.prototype,`align`,void 0),S([i({type:String})],$e.prototype,`position`,void 0),S([i({type:Boolean,reflect:!0,attribute:`open`})],$e.prototype,`openState`,void 0),$e=S([a(`alps-popup`)],$e);var P=class extends p{constructor(...e){super(...e),this.mailboxes=[],this.currentMailbox=``,this.expandedFolders=new Set,this.layoutMode=`vertical`,this.syncing=!1,this.collapsed=!1,this.isScrolled=!1,this.showCreatePrompt=!1,this.showRenamePrompt=!1,this.mailboxToRename=``,this.showDeleteConfirm=!1,this.showMoveToTrashConfirm=!1,this.mailboxToDelete=``,this.parentForNewFolder=``,this.activeKebabMenu=null,this._handleStoreChange=()=>{this.requestUpdate()},this.handleScroll=e=>{let t=e.target;this.isScrolled=t.scrollTop>0}}willUpdate(e){super.willUpdate(e)}connectedCallback(){super.connectedCallback(),this.updateComplete.then(()=>{this.composeStore&&this.composeStore.addEventListener(`change`,this._handleStoreChange),this.i18nStore&&this.i18nStore.addEventListener(`change`,this._handleStoreChange)})}disconnectedCallback(){super.disconnectedCallback(),this.composeStore&&this.composeStore.removeEventListener(`change`,this._handleStoreChange),this.i18nStore?.removeEventListener(`change`,this._handleStoreChange)}static{this.styles=[Qe,o`
+    `}};S([i({type:String})],Qe.prototype,`align`,void 0),S([i({type:String})],Qe.prototype,`position`,void 0),S([i({type:Boolean,reflect:!0,attribute:`open`})],Qe.prototype,`openState`,void 0),Qe=S([a(`alps-popup`)],Qe);var F=class extends p{constructor(...e){super(...e),this.mailboxes=[],this.currentMailbox=``,this.expandedFolders=new Set,this.layoutMode=`vertical`,this.syncing=!1,this.collapsed=!1,this.isScrolled=!1,this.showCreatePrompt=!1,this.showRenamePrompt=!1,this.mailboxToRename=``,this.showDeleteConfirm=!1,this.showMoveToTrashConfirm=!1,this.mailboxToDelete=``,this.parentForNewFolder=``,this.activeKebabMenu=null,this._handleStoreChange=()=>{this.requestUpdate()},this.handleScroll=e=>{let t=e.target;this.isScrolled=t.scrollTop>0}}willUpdate(e){super.willUpdate(e)}connectedCallback(){super.connectedCallback(),this.updateComplete.then(()=>{this.composeStore&&this.composeStore.addEventListener(`change`,this._handleStoreChange),this.i18nStore&&this.i18nStore.addEventListener(`change`,this._handleStoreChange)})}disconnectedCallback(){super.disconnectedCallback(),this.composeStore&&this.composeStore.removeEventListener(`change`,this._handleStoreChange),this.i18nStore?.removeEventListener(`change`,this._handleStoreChange)}static{this.styles=[Ze,o`
     :host {
       display: flex;
       flex-direction: column;
@@ -1387,7 +1450,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
           @cancel=${()=>this.showDeleteConfirm=!1}
         ></ui-confirm>
       `:``}
-    `}};S([f({context:He})],P.prototype,`composeStore`,void 0),S([f({context:y})],P.prototype,`i18nStore`,void 0),S([i({type:Array})],P.prototype,`mailboxes`,void 0),S([i({type:String})],P.prototype,`currentMailbox`,void 0),S([i({type:Object})],P.prototype,`expandedFolders`,void 0),S([i({type:String})],P.prototype,`layoutMode`,void 0),S([i({type:Boolean})],P.prototype,`syncing`,void 0),S([i({type:Boolean,reflect:!0})],P.prototype,`collapsed`,void 0),S([_()],P.prototype,`isScrolled`,void 0),S([_()],P.prototype,`showCreatePrompt`,void 0),S([_()],P.prototype,`showRenamePrompt`,void 0),S([_()],P.prototype,`mailboxToRename`,void 0),S([_()],P.prototype,`showDeleteConfirm`,void 0),S([_()],P.prototype,`showMoveToTrashConfirm`,void 0),S([_()],P.prototype,`mailboxToDelete`,void 0),S([_()],P.prototype,`parentForNewFolder`,void 0),S([_()],P.prototype,`activeKebabMenu`,void 0),P=S([a(`alps-folder-list`)],P);var F=class extends p{constructor(...e){super(...e),this.name=``,this.email=``,this.src=``,this.size=40,this.imageError=!1,this._handleStoreChange=()=>{this.requestUpdate()}}willUpdate(e){e.has(`src`)&&(this.imageError=!1)}connectedCallback(){super.connectedCallback(),this.updateComplete.then(()=>{this.settingsStore?.addEventListener(`change`,this._handleStoreChange)})}disconnectedCallback(){super.disconnectedCallback(),this.settingsStore?.removeEventListener(`change`,this._handleStoreChange)}static{this.styles=o`
+    `}};S([f({context:k})],F.prototype,`composeStore`,void 0),S([f({context:y})],F.prototype,`i18nStore`,void 0),S([i({type:Array})],F.prototype,`mailboxes`,void 0),S([i({type:String})],F.prototype,`currentMailbox`,void 0),S([i({type:Object})],F.prototype,`expandedFolders`,void 0),S([i({type:String})],F.prototype,`layoutMode`,void 0),S([i({type:Boolean})],F.prototype,`syncing`,void 0),S([i({type:Boolean,reflect:!0})],F.prototype,`collapsed`,void 0),S([_()],F.prototype,`isScrolled`,void 0),S([_()],F.prototype,`showCreatePrompt`,void 0),S([_()],F.prototype,`showRenamePrompt`,void 0),S([_()],F.prototype,`mailboxToRename`,void 0),S([_()],F.prototype,`showDeleteConfirm`,void 0),S([_()],F.prototype,`showMoveToTrashConfirm`,void 0),S([_()],F.prototype,`mailboxToDelete`,void 0),S([_()],F.prototype,`parentForNewFolder`,void 0),S([_()],F.prototype,`activeKebabMenu`,void 0),F=S([a(`alps-folder-list`)],F);var I=class extends p{constructor(...e){super(...e),this.name=``,this.email=``,this.src=``,this.size=40,this.imageError=!1,this._handleStoreChange=()=>{this.requestUpdate()}}willUpdate(e){e.has(`src`)&&(this.imageError=!1)}connectedCallback(){super.connectedCallback(),this.updateComplete.then(()=>{this.settingsStore?.addEventListener(`change`,this._handleStoreChange)})}disconnectedCallback(){super.disconnectedCallback(),this.settingsStore?.removeEventListener(`change`,this._handleStoreChange)}static{this.styles=o`
     :host {
       display: inline-block;
       flex-shrink: 0;
@@ -1412,7 +1475,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
       <div class="avatar" style="${n({width:`${this.size}px`,height:`${this.size}px`,fontSize:`${o}px`,backgroundColor:ke(i)})}">
         ${this.src&&!this.imageError?s`<img src="${this.src}" alt="${this.name}" @error="${()=>this.imageError=!0}" />`:this.getInitials(a)}
       </div>
-    `}};S([f({context:M})],F.prototype,`settingsStore`,void 0),S([i({type:String})],F.prototype,`name`,void 0),S([i({type:String})],F.prototype,`email`,void 0),S([i({type:String})],F.prototype,`src`,void 0),S([i({type:Number})],F.prototype,`size`,void 0),S([_()],F.prototype,`imageError`,void 0),F=S([a(`alps-avatar`)],F);var et=class extends p{constructor(...e){super(...e),this.currentPage=0,this.totalItems=0,this.itemsPerPage=50,this._handleStoreChange=()=>{this.requestUpdate()}}connectedCallback(){super.connectedCallback(),this.updateComplete.then(()=>{this.i18nStore?.addEventListener(`change`,this._handleStoreChange)})}disconnectedCallback(){super.disconnectedCallback(),this.i18nStore?.removeEventListener(`change`,this._handleStoreChange)}static{this.styles=o`
+    `}};S([f({context:M})],I.prototype,`settingsStore`,void 0),S([i({type:String})],I.prototype,`name`,void 0),S([i({type:String})],I.prototype,`email`,void 0),S([i({type:String})],I.prototype,`src`,void 0),S([i({type:Number})],I.prototype,`size`,void 0),S([_()],I.prototype,`imageError`,void 0),I=S([a(`alps-avatar`)],I);var $e=class extends p{constructor(...e){super(...e),this.currentPage=0,this.totalItems=0,this.itemsPerPage=50,this._handleStoreChange=()=>{this.requestUpdate()}}connectedCallback(){super.connectedCallback(),this.updateComplete.then(()=>{this.i18nStore?.addEventListener(`change`,this._handleStoreChange)})}disconnectedCallback(){super.disconnectedCallback(),this.i18nStore?.removeEventListener(`change`,this._handleStoreChange)}static{this.styles=o`
     :host {
       display: block;
     }
@@ -1463,7 +1526,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
           ></alps-icon-btn>
         </div>
       </div>
-    `}};S([i({type:Number})],et.prototype,`currentPage`,void 0),S([i({type:Number})],et.prototype,`totalItems`,void 0),S([i({type:Number})],et.prototype,`itemsPerPage`,void 0),S([f({context:y})],et.prototype,`i18nStore`,void 0),et=S([a(`alps-pagination`)],et);var tt=class extends p{constructor(...e){super(...e),this.variant=`info`}static{this.styles=o`
+    `}};S([i({type:Number})],$e.prototype,`currentPage`,void 0),S([i({type:Number})],$e.prototype,`totalItems`,void 0),S([i({type:Number})],$e.prototype,`itemsPerPage`,void 0),S([f({context:y})],$e.prototype,`i18nStore`,void 0),$e=S([a(`alps-pagination`)],$e);var et=class extends p{constructor(...e){super(...e),this.variant=`info`}static{this.styles=o`
     :host {
       display: block;
       position: sticky;
@@ -1510,7 +1573,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
           <slot name="action"></slot>
         </div>
       </div>
-    `}};S([i({type:String,reflect:!0})],tt.prototype,`variant`,void 0),tt=S([a(`alps-banner`)],tt);var I=class extends p{constructor(...e){super(...e),this.messages=[],this.currentMailbox=``,this.loading=!1,this.selectedMessage=null,this.layoutMode=`vertical`,this.isMobile=!1,this.sidebarCollapsed=!1,this.currentPage=0,this.totalMessages=0,this.messagesPerPage=50,this.filterQuery=``,this.sortOrder=`desc`,this.densityMode=`compact`,this.selectedMessages=new Set,this.isSpinning=!1,this.isSyncing=!1,this.isScrolled=!1,this.isAtBottom=!1,this.focusedIndex=-1,this.showEmptyConfirm=!1,this._handleStoreChange=()=>{this.requestUpdate()},this.handleSyncStart=()=>{this.isSyncing=!0,this.isSpinning=!0},this.handleSyncEnd=()=>{this.isSyncing=!1},this.handleSpinIteration=()=>{this.isSyncing||(this.isSpinning=!1)},this.handleScroll=e=>{this.checkScrollState(e.target)}}static{this.styles=o`
+    `}};S([i({type:String,reflect:!0})],et.prototype,`variant`,void 0),et=S([a(`alps-banner`)],et);var L=class extends p{constructor(...e){super(...e),this.messages=[],this.currentMailbox=``,this.loading=!1,this.selectedMessage=null,this.layoutMode=`vertical`,this.isMobile=!1,this.sidebarCollapsed=!1,this.currentPage=0,this.totalMessages=0,this.messagesPerPage=50,this.filterQuery=``,this.sortOrder=`desc`,this.densityMode=`compact`,this.selectedMessages=new Set,this.isSpinning=!1,this.isSyncing=!1,this.isScrolled=!1,this.isAtBottom=!1,this.focusedIndex=-1,this.showEmptyConfirm=!1,this._handleStoreChange=()=>{this.requestUpdate()},this.handleSyncStart=()=>{this.isSyncing=!0,this.isSpinning=!0},this.handleSyncEnd=()=>{this.isSyncing=!1},this.handleSpinIteration=()=>{this.isSyncing||(this.isSpinning=!1)},this.handleScroll=e=>{this.checkScrollState(e.target)}}static{this.styles=o`
     :host {
       display: flex;
       flex-direction: column;
@@ -2174,7 +2237,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
         `:``}
         </div>
       `:``}
-    `}};S([f({context:M})],I.prototype,`settingsStore`,void 0),S([f({context:y})],I.prototype,`i18nStore`,void 0),S([i({type:Array})],I.prototype,`messages`,void 0),S([i({type:String})],I.prototype,`currentMailbox`,void 0),S([i({type:Boolean})],I.prototype,`loading`,void 0),S([i({type:Object})],I.prototype,`selectedMessage`,void 0),S([i({type:String})],I.prototype,`layoutMode`,void 0),S([i({type:Boolean})],I.prototype,`isMobile`,void 0),S([i({type:Boolean})],I.prototype,`sidebarCollapsed`,void 0),S([i({type:Number})],I.prototype,`currentPage`,void 0),S([i({type:Number})],I.prototype,`totalMessages`,void 0),S([i({type:Number})],I.prototype,`messagesPerPage`,void 0),S([i({type:String})],I.prototype,`filterQuery`,void 0),S([i({type:String})],I.prototype,`sortOrder`,void 0),S([i({type:String})],I.prototype,`densityMode`,void 0),S([i({type:Object})],I.prototype,`selectedMessages`,void 0),S([_()],I.prototype,`isSpinning`,void 0),S([_()],I.prototype,`isSyncing`,void 0),S([_()],I.prototype,`isScrolled`,void 0),S([_()],I.prototype,`isAtBottom`,void 0),S([_()],I.prototype,`focusedIndex`,void 0),S([_()],I.prototype,`showEmptyConfirm`,void 0),I=S([a(`alps-message-list`)],I);var nt=class extends p{constructor(...e){super(...e),this.name=``,this.address=``}static{this.styles=o`
+    `}};S([f({context:M})],L.prototype,`settingsStore`,void 0),S([f({context:y})],L.prototype,`i18nStore`,void 0),S([i({type:Array})],L.prototype,`messages`,void 0),S([i({type:String})],L.prototype,`currentMailbox`,void 0),S([i({type:Boolean})],L.prototype,`loading`,void 0),S([i({type:Object})],L.prototype,`selectedMessage`,void 0),S([i({type:String})],L.prototype,`layoutMode`,void 0),S([i({type:Boolean})],L.prototype,`isMobile`,void 0),S([i({type:Boolean})],L.prototype,`sidebarCollapsed`,void 0),S([i({type:Number})],L.prototype,`currentPage`,void 0),S([i({type:Number})],L.prototype,`totalMessages`,void 0),S([i({type:Number})],L.prototype,`messagesPerPage`,void 0),S([i({type:String})],L.prototype,`filterQuery`,void 0),S([i({type:String})],L.prototype,`sortOrder`,void 0),S([i({type:String})],L.prototype,`densityMode`,void 0),S([i({type:Object})],L.prototype,`selectedMessages`,void 0),S([_()],L.prototype,`isSpinning`,void 0),S([_()],L.prototype,`isSyncing`,void 0),S([_()],L.prototype,`isScrolled`,void 0),S([_()],L.prototype,`isAtBottom`,void 0),S([_()],L.prototype,`focusedIndex`,void 0),S([_()],L.prototype,`showEmptyConfirm`,void 0),L=S([a(`alps-message-list`)],L);var tt=class extends p{constructor(...e){super(...e),this.name=``,this.address=``}static{this.styles=o`
     :host {
       display: inline;
     }
@@ -2206,7 +2269,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
         <a class="recipient-link" title="${this.address}" @click=${this.handleClick}>
           ${this.address}
         </a>
-      `}};S([f({context:He})],nt.prototype,`composeStore`,void 0),S([i({type:String})],nt.prototype,`name`,void 0),S([i({type:String})],nt.prototype,`address`,void 0),nt=S([a(`alps-recipient-pill`)],nt);var L=class extends p{constructor(...e){super(...e),this.attachment=null,this.downloadUrl=``,this.fallbackName=`Unknown attachment`,this.removable=!1,this.compact=!1}static{this.styles=o`
+      `}};S([f({context:k})],tt.prototype,`composeStore`,void 0),S([i({type:String})],tt.prototype,`name`,void 0),S([i({type:String})],tt.prototype,`address`,void 0),tt=S([a(`alps-recipient-pill`)],tt);var R=class extends p{constructor(...e){super(...e),this.attachment=null,this.downloadUrl=``,this.fallbackName=`Unknown attachment`,this.removable=!1,this.compact=!1}static{this.styles=o`
     .attachment-chip {
       display: inline-flex;
       align-items: center;
@@ -2329,7 +2392,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
         <div class="attachment-chip" title="${e}">
           ${i}
         </div>
-      `}};S([f({context:y})],L.prototype,`i18nStore`,void 0),S([i({type:Object})],L.prototype,`attachment`,void 0),S([i({type:String})],L.prototype,`downloadUrl`,void 0),S([i({type:String})],L.prototype,`fallbackName`,void 0),S([i({type:Boolean})],L.prototype,`removable`,void 0),S([i({type:Boolean,reflect:!0})],L.prototype,`compact`,void 0),L=S([a(`alps-attachment-pill`)],L);var R=class extends p{constructor(...e){super(...e),this.attachments=[],this.mailbox=b,this.messageUid=``,this.removable=!1,this.composerMode=!1,this.attachmentsExpanded=!0,this._handleStoreChange=()=>{this.requestUpdate()}}connectedCallback(){super.connectedCallback(),this.updateComplete.then(()=>{this.i18nStore?.addEventListener(`change`,this._handleStoreChange)})}disconnectedCallback(){super.disconnectedCallback(),this.i18nStore?.removeEventListener(`change`,this._handleStoreChange)}toggleAttachments(){this.attachmentsExpanded=!this.attachmentsExpanded}_downloadAll(e){if(e.stopPropagation(),!this.attachments||this.attachments.length===0||!this.messageUid)return;let t=this.mailbox||`INBOX`;if(!this.mailbox){let e=window.location.hash.match(/^#\/mailbox\/([^/]+)/);e&&(t=decodeURIComponent(e[1]))}this.attachments.forEach((e,n)=>{let r=Array.isArray(e.Path)?e.Path.join(`.`):e.Path,i=`/mailboxes/${encodeURIComponent(t)}/messages/${this.messageUid}/raw?part=${r}`;setTimeout(()=>{let t=document.createElement(`a`);t.href=i,t.download=e.Filename||this.i18nStore?.t(`messageReader.unknownAttachment`)||`attachment`,document.body.appendChild(t),t.click(),document.body.removeChild(t)},n*200)})}static{this.styles=o`
+      `}};S([f({context:y})],R.prototype,`i18nStore`,void 0),S([i({type:Object})],R.prototype,`attachment`,void 0),S([i({type:String})],R.prototype,`downloadUrl`,void 0),S([i({type:String})],R.prototype,`fallbackName`,void 0),S([i({type:Boolean})],R.prototype,`removable`,void 0),S([i({type:Boolean,reflect:!0})],R.prototype,`compact`,void 0),R=S([a(`alps-attachment-pill`)],R);var z=class extends p{constructor(...e){super(...e),this.attachments=[],this.mailbox=b,this.messageUid=``,this.removable=!1,this.composerMode=!1,this.attachmentsExpanded=!0,this._handleStoreChange=()=>{this.requestUpdate()}}connectedCallback(){super.connectedCallback(),this.updateComplete.then(()=>{this.i18nStore?.addEventListener(`change`,this._handleStoreChange)})}disconnectedCallback(){super.disconnectedCallback(),this.i18nStore?.removeEventListener(`change`,this._handleStoreChange)}toggleAttachments(){this.attachmentsExpanded=!this.attachmentsExpanded}_downloadAll(e){if(e.stopPropagation(),!this.attachments||this.attachments.length===0||!this.messageUid)return;let t=this.mailbox||`INBOX`;if(!this.mailbox){let e=window.location.hash.match(/^#\/mailbox\/([^/]+)/);e&&(t=decodeURIComponent(e[1]))}this.attachments.forEach((e,n)=>{let r=Array.isArray(e.Path)?e.Path.join(`.`):e.Path,i=`/mailboxes/${encodeURIComponent(t)}/messages/${this.messageUid}/raw?part=${r}`;setTimeout(()=>{let t=document.createElement(`a`);t.href=i,t.download=e.Filename||this.i18nStore?.t(`messageReader.unknownAttachment`)||`attachment`,document.body.appendChild(t),t.click(),document.body.removeChild(t)},n*200)})}static{this.styles=o`
     :host {
       display: block;
       width: 100%;
@@ -2511,7 +2574,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
           </div>
         </div>
       </div>
-    `}};S([f({context:y})],R.prototype,`i18nStore`,void 0),S([i({type:Array})],R.prototype,`attachments`,void 0),S([i({type:String})],R.prototype,`mailbox`,void 0),S([i({type:String})],R.prototype,`messageUid`,void 0),S([i({type:Boolean})],R.prototype,`removable`,void 0),S([i({type:Boolean,reflect:!0})],R.prototype,`composerMode`,void 0),S([_()],R.prototype,`attachmentsExpanded`,void 0),R=S([a(`alps-attachment-list`)],R);var z=class extends p{constructor(...e){super(...e),this.mailboxes=[],this.currentMailbox=``,this.filterQuery=``,this.isMove=!0}static{this.styles=o`
+    `}};S([f({context:y})],z.prototype,`i18nStore`,void 0),S([i({type:Array})],z.prototype,`attachments`,void 0),S([i({type:String})],z.prototype,`mailbox`,void 0),S([i({type:String})],z.prototype,`messageUid`,void 0),S([i({type:Boolean})],z.prototype,`removable`,void 0),S([i({type:Boolean,reflect:!0})],z.prototype,`composerMode`,void 0),S([_()],z.prototype,`attachmentsExpanded`,void 0),z=S([a(`alps-attachment-list`)],z);var B=class extends p{constructor(...e){super(...e),this.mailboxes=[],this.currentMailbox=``,this.filterQuery=``,this.isMove=!0}static{this.styles=o`
     :host {
       display: inline-block;
     }
@@ -2671,7 +2734,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
           </div>
         </div>
       </alps-popup>
-    `}};S([f({context:y})],z.prototype,`i18nStore`,void 0),S([i({type:Array})],z.prototype,`mailboxes`,void 0),S([i({type:String})],z.prototype,`currentMailbox`,void 0),S([_()],z.prototype,`filterQuery`,void 0),S([_()],z.prototype,`isMove`,void 0),S([l(`alps-popup`)],z.prototype,`popup`,void 0),S([l(`input`)],z.prototype,`filterInput`,void 0),z=S([a(`alps-folder-selector-popup`)],z);var rt=`alps_msg_`,it=1800*1e3,at={get(e,t,n=`html`){try{let r=`${rt}${e}_${t}_${n}`,i=sessionStorage.getItem(r);if(!i)return null;let a=JSON.parse(i);return Date.now()-a.timestamp>it?(sessionStorage.removeItem(r),null):a}catch(e){return console.error(`Failed to read message cache`,e),null}},set(e,t,n,r){try{let i=`${rt}${e}_${t}_${n}`,a={...r,timestamp:Date.now()},o=JSON.stringify(a);if(o.length>2*1024*1024){console.warn(`Message ${t} is too large to cache (${Math.round(o.length/1024)}KB)`);return}sessionStorage.setItem(i,o)}catch(i){if(i instanceof DOMException&&(i.name===`QuotaExceededError`||i.code===22)){console.warn(`Session storage quota exceeded, clearing cache and retrying...`),this.clear();try{let i=`${rt}${e}_${t}_${n}`,a={...r,timestamp:Date.now()};sessionStorage.setItem(i,JSON.stringify(a))}catch(e){console.error(`Failed to write message cache even after clearing`,e)}}else console.error(`Failed to write message cache`,i)}},clear(){try{let e=[];for(let t=0;t<sessionStorage.length;t++){let n=sessionStorage.key(t);n&&n.startsWith(rt)&&e.push(n)}e.forEach(e=>sessionStorage.removeItem(e))}catch(e){console.error(`Failed to clear message cache`,e)}}},ot=t(ee(),1);function st(e,t,n=``){if(!e)return null;let r=t.replace(/^<|>$/g,``);if(e.ID&&e.ID.replace(/^<|>$/g,``)===r)return n||`1`;if(e.Children&&Array.isArray(e.Children))for(let r=0;r<e.Children.length;r++){let i=n?`${n}.${r+1}`:`${r+1}`,a=st(e.Children[r],t,i);if(a)return a}return null}function ct(e,t){if(!e)return e;try{let n=ot.parse(e,{silent:!0});if(n&&n.stylesheet&&n.stylesheet.rules){let e=/url\(\s*(['"]?)(https?:\/\/[^'"\)]+)\1\s*\)/gi,r=n=>n.replace(e,(e,n,r)=>{if(t.onRemoteResourceBlocked&&t.onRemoteResourceBlocked(),t.allowRemoteResources){let e=n||`"`;return`url(${e}/proxy?url=${encodeURIComponent(r)}${e})`}else return`url(data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7)`}),i=n=>{for(let a=n.length-1;a>=0;a--){let o=n[a];if([`rule`,`font-face`,`page`,`keyframe`].includes(o.type)&&!o.declarations&&(o.declarations=[]),[`rule`,`page`].includes(o.type)&&!o.selectors&&(o.selectors=[]),o.type===`keyframe`&&!o.values&&(o.values=[]),o.type===`import`){let e=o;if(e.import&&e.import.match(/https?:\/\//i))if(t.onRemoteResourceBlocked&&t.onRemoteResourceBlocked(),t.allowRemoteResources)e.import=e.import.replace(/(url\(\s*)?(['"]?)(https?:\/\/[^'"\)]+)\2(\s*\))?/i,(e,t,n,r,i)=>{let a=t||``,o=i||``,s=n||`"`;return`${a}${s}/proxy?url=${encodeURIComponent(r)}${s}${o}`});else{n.splice(a,1);continue}}else if(o.type===`font-face`){let r=o;if(r.declarations){let i=!1;for(let n of r.declarations)n.type===`declaration`&&n.value?.match(e)&&(t.onRemoteResourceBlocked&&t.onRemoteResourceBlocked(),i=!0);if(i&&!t.allowRemoteResources){n.splice(a,1);continue}}}if(o.declarations)for(let t of o.declarations)t.type===`declaration`&&t.value&&t.value.match(e)&&(t.value=r(t.value));o.rules&&i(o.rules)}};return i(n.stylesheet.rules),ot.stringify(n)}}catch(e){console.warn(`AST CSS parsing failed, falling back to regex sanitizer`,e)}let n=e,r=/@import\s+(?:url\(\s*)?(['"]?)(https?:\/\/[^'"\)]+)\1\s*\)?\s*;?/gi,i=/url\(\s*(['"]?)(https?:\/\/[^'"\)]+)\1\s*\)/gi;return(n.match(r)||n.match(i))&&(t.onRemoteResourceBlocked&&t.onRemoteResourceBlocked(),t.allowRemoteResources?(n=n.replace(r,(e,t,n)=>{let r=t||`"`;return`@import url(${r}/proxy?url=${encodeURIComponent(n)}${r});`}),n=n.replace(i,(e,t,n)=>`url(${t}/proxy?url=${encodeURIComponent(n)}${t})`)):(n=n.replace(r,``),n=n.replace(/@font-face\s*\{[^{}]*\}/gi,e=>/url\(\s*['"]?https?:\/\//i.test(e)?``:e),n=n.replace(i,`url(data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7)`))),n}function lt(e,t){let n=new DOMParser().parseFromString(e,`text/html`),r=n.createElement(`base`);r.target=`_blank`,n.head.prepend(r);let i=n.createElement(`meta`);i.httpEquiv=`Content-Security-Policy`,i.content=`script-src 'none'; img-src ${window.location.origin} data: blob: cid:; media-src ${window.location.origin} data: blob: cid:;`,n.head.prepend(i);let a=n.createElement(`style`);a.textContent=`
+    `}};S([f({context:y})],B.prototype,`i18nStore`,void 0),S([i({type:Array})],B.prototype,`mailboxes`,void 0),S([i({type:String})],B.prototype,`currentMailbox`,void 0),S([_()],B.prototype,`filterQuery`,void 0),S([_()],B.prototype,`isMove`,void 0),S([l(`alps-popup`)],B.prototype,`popup`,void 0),S([l(`input`)],B.prototype,`filterInput`,void 0),B=S([a(`alps-folder-selector-popup`)],B);var nt=`alps_msg_`,rt=1800*1e3,it={get(e,t,n=`html`){try{let r=`${nt}${e}_${t}_${n}`,i=sessionStorage.getItem(r);if(!i)return null;let a=JSON.parse(i);return Date.now()-a.timestamp>rt?(sessionStorage.removeItem(r),null):a}catch(e){return console.error(`Failed to read message cache`,e),null}},set(e,t,n,r){try{let i=`${nt}${e}_${t}_${n}`,a={...r,timestamp:Date.now()},o=JSON.stringify(a);if(o.length>2*1024*1024){console.warn(`Message ${t} is too large to cache (${Math.round(o.length/1024)}KB)`);return}sessionStorage.setItem(i,o)}catch(i){if(i instanceof DOMException&&(i.name===`QuotaExceededError`||i.code===22)){console.warn(`Session storage quota exceeded, clearing cache and retrying...`),this.clear();try{let i=`${nt}${e}_${t}_${n}`,a={...r,timestamp:Date.now()};sessionStorage.setItem(i,JSON.stringify(a))}catch(e){console.error(`Failed to write message cache even after clearing`,e)}}else console.error(`Failed to write message cache`,i)}},clear(){try{let e=[];for(let t=0;t<sessionStorage.length;t++){let n=sessionStorage.key(t);n&&n.startsWith(nt)&&e.push(n)}e.forEach(e=>sessionStorage.removeItem(e))}catch(e){console.error(`Failed to clear message cache`,e)}}},at=t(ee(),1);function ot(e,t,n=``){if(!e)return null;let r=t.replace(/^<|>$/g,``);if(e.ID&&e.ID.replace(/^<|>$/g,``)===r)return n||`1`;if(e.Children&&Array.isArray(e.Children))for(let r=0;r<e.Children.length;r++){let i=n?`${n}.${r+1}`:`${r+1}`,a=ot(e.Children[r],t,i);if(a)return a}return null}function st(e,t){if(!e)return e;try{let n=at.parse(e,{silent:!0});if(n&&n.stylesheet&&n.stylesheet.rules){let e=/url\(\s*(['"]?)(https?:\/\/[^'"\)]+)\1\s*\)/gi,r=n=>n.replace(e,(e,n,r)=>{if(t.onRemoteResourceBlocked&&t.onRemoteResourceBlocked(),t.allowRemoteResources){let e=n||`"`;return`url(${e}/proxy?url=${encodeURIComponent(r)}${e})`}else return`url(data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7)`}),i=n=>{for(let a=n.length-1;a>=0;a--){let o=n[a];if([`rule`,`font-face`,`page`,`keyframe`].includes(o.type)&&!o.declarations&&(o.declarations=[]),[`rule`,`page`].includes(o.type)&&!o.selectors&&(o.selectors=[]),o.type===`keyframe`&&!o.values&&(o.values=[]),o.type===`import`){let e=o;if(e.import&&e.import.match(/https?:\/\//i))if(t.onRemoteResourceBlocked&&t.onRemoteResourceBlocked(),t.allowRemoteResources)e.import=e.import.replace(/(url\(\s*)?(['"]?)(https?:\/\/[^'"\)]+)\2(\s*\))?/i,(e,t,n,r,i)=>{let a=t||``,o=i||``,s=n||`"`;return`${a}${s}/proxy?url=${encodeURIComponent(r)}${s}${o}`});else{n.splice(a,1);continue}}else if(o.type===`font-face`){let r=o;if(r.declarations){let i=!1;for(let n of r.declarations)n.type===`declaration`&&n.value?.match(e)&&(t.onRemoteResourceBlocked&&t.onRemoteResourceBlocked(),i=!0);if(i&&!t.allowRemoteResources){n.splice(a,1);continue}}}if(o.declarations)for(let t of o.declarations)t.type===`declaration`&&t.value&&t.value.match(e)&&(t.value=r(t.value));o.rules&&i(o.rules)}};return i(n.stylesheet.rules),at.stringify(n)}}catch(e){console.warn(`AST CSS parsing failed, falling back to regex sanitizer`,e)}let n=e,r=/@import\s+(?:url\(\s*)?(['"]?)(https?:\/\/[^'"\)]+)\1\s*\)?\s*;?/gi,i=/url\(\s*(['"]?)(https?:\/\/[^'"\)]+)\1\s*\)/gi;return(n.match(r)||n.match(i))&&(t.onRemoteResourceBlocked&&t.onRemoteResourceBlocked(),t.allowRemoteResources?(n=n.replace(r,(e,t,n)=>{let r=t||`"`;return`@import url(${r}/proxy?url=${encodeURIComponent(n)}${r});`}),n=n.replace(i,(e,t,n)=>`url(${t}/proxy?url=${encodeURIComponent(n)}${t})`)):(n=n.replace(r,``),n=n.replace(/@font-face\s*\{[^{}]*\}/gi,e=>/url\(\s*['"]?https?:\/\//i.test(e)?``:e),n=n.replace(i,`url(data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7)`))),n}function ct(e,t){let n=new DOMParser().parseFromString(e,`text/html`),r=n.createElement(`base`);r.target=`_blank`,n.head.prepend(r);let i=n.createElement(`meta`);i.httpEquiv=`Content-Security-Policy`,i.content=`script-src 'none'; img-src ${window.location.origin} data: blob: cid:; media-src ${window.location.origin} data: blob: cid:;`,n.head.prepend(i);let a=n.createElement(`style`);a.textContent=`
     body { margin: 0; padding: 24px; box-sizing: border-box; font: 14px -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif; overflow-x: hidden; word-wrap: break-word; background-color: #ffffff; color: #000000; }
     @media (max-width: 768px) { body { padding: 16px !important; } }
     html:not(.x), body:not(.x) { height: auto !important; }
@@ -2681,9 +2744,9 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
     a[href]:hover { text-decoration: underline; }
     blockquote[type='cite'] { margin: 0 0 0 0.8ex; border-left: 1px #ccc solid; padding-left: 1ex; }
     img { max-width: 100%; height: auto; }
-  `,n.head.prepend(a),n.querySelectorAll(`img`).forEach(e=>{let n=e.getAttribute(`src`);if(n)if(n.toLowerCase().startsWith(`cid:`)){let r=n.substring(4);if(t.messageStructure){let n=st(t.messageStructure,r);n&&(e.src=`/mailboxes/${encodeURIComponent(t.mailbox)}/messages/${t.messageUid}/raw?part=${n}`)}}else (n.toLowerCase().startsWith(`http://`)||n.toLowerCase().startsWith(`https://`))&&(t.onRemoteResourceBlocked&&t.onRemoteResourceBlocked(),t.allowRemoteResources?e.src=`/proxy?url=${encodeURIComponent(n)}`:(e.setAttribute(`data-original-src`,n),e.src=`data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7`,e.style.height=`0`,e.style.width=`0`))}),n.querySelectorAll(`link[rel="stylesheet"]`).forEach(e=>{let n=e.getAttribute(`href`);n&&(n.toLowerCase().startsWith(`http://`)||n.toLowerCase().startsWith(`https://`))&&(t.onRemoteResourceBlocked&&t.onRemoteResourceBlocked(),t.allowRemoteResources?e.setAttribute(`href`,`/proxy?url=${encodeURIComponent(n)}`):e.remove())}),n.querySelectorAll(`style`).forEach(e=>{e.textContent&&=ct(e.textContent,t)});let o=/url\(\s*(['"]?)(https?:\/\/[^'"\)]+)\1\s*\)/gi;return n.querySelectorAll(`[style]`).forEach(e=>{let n=e.getAttribute(`style`);n&&n.match(o)&&(t.onRemoteResourceBlocked&&t.onRemoteResourceBlocked(),n=t.allowRemoteResources?n.replace(o,(e,t,n)=>{let r=t||`"`;return`url(${r}/proxy?url=${encodeURIComponent(n)}${r})`}):n.replace(o,`url(data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7)`),e.setAttribute(`style`,n))}),n.documentElement.outerHTML}function ut(e){return e?e.map(e=>e.Name?`${e.Name} <${e.Mailbox}@${e.Host}>`:`${e.Mailbox}@${e.Host}`):[]}function dt(e,t,n,r,i,a=`YYYY-MM-DD`,o=`12`){let s=t?.Envelope?.Subject||``,c=s;c=e===`forward`?c.toLowerCase().startsWith(`fwd:`)?c:`Fwd: ${c}`:c.toLowerCase().startsWith(`re:`)?c:`Re: ${c}`;let l=[],u=[];if(e===`reply`||e===`replyAll`){let n=t?.Envelope?.ReplyTo,r=t?.Envelope?.From;if(l=[...ut(n&&n.length>0?n:r)],e===`replyAll`){let e=ut(t?.Envelope?.To)||[],n=ut(t?.Envelope?.Cc)||[],r=new Set([...l,...e]);l=Array.from(r),u=[...n]}}let d=t?.Envelope?.Date?je(t.Envelope.Date,a,o):``,f=t?.Envelope?.From?.[0],p=f?.Mailbox&&f?.Host?`${f.Mailbox}@${f.Host}`:``,m=f?.Name||p||`Unknown Sender`,h=`On ${d}, ${m} wrote:`;e===`forward`&&(h=`---------- Forwarded message ---------\nFrom: ${m} <${p}>\nDate: ${d}\nSubject: ${s}\nTo: ${ut(t?.Envelope?.To).join(`, `)}\n`);let g=`\n\n${h}\n`+n.split(`
+  `,n.head.prepend(a),n.querySelectorAll(`img`).forEach(e=>{let n=e.getAttribute(`src`);if(n)if(n.toLowerCase().startsWith(`cid:`)){let r=n.substring(4);if(t.messageStructure){let n=ot(t.messageStructure,r);n&&(e.src=`/mailboxes/${encodeURIComponent(t.mailbox)}/messages/${t.messageUid}/raw?part=${n}`)}}else (n.toLowerCase().startsWith(`http://`)||n.toLowerCase().startsWith(`https://`))&&(t.onRemoteResourceBlocked&&t.onRemoteResourceBlocked(),t.allowRemoteResources?e.src=`/proxy?url=${encodeURIComponent(n)}`:(e.setAttribute(`data-original-src`,n),e.src=`data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7`,e.style.height=`0`,e.style.width=`0`))}),n.querySelectorAll(`link[rel="stylesheet"]`).forEach(e=>{let n=e.getAttribute(`href`);n&&(n.toLowerCase().startsWith(`http://`)||n.toLowerCase().startsWith(`https://`))&&(t.onRemoteResourceBlocked&&t.onRemoteResourceBlocked(),t.allowRemoteResources?e.setAttribute(`href`,`/proxy?url=${encodeURIComponent(n)}`):e.remove())}),n.querySelectorAll(`style`).forEach(e=>{e.textContent&&=st(e.textContent,t)});let o=/url\(\s*(['"]?)(https?:\/\/[^'"\)]+)\1\s*\)/gi;return n.querySelectorAll(`[style]`).forEach(e=>{let n=e.getAttribute(`style`);n&&n.match(o)&&(t.onRemoteResourceBlocked&&t.onRemoteResourceBlocked(),n=t.allowRemoteResources?n.replace(o,(e,t,n)=>{let r=t||`"`;return`url(${r}/proxy?url=${encodeURIComponent(n)}${r})`}):n.replace(o,`url(data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7)`),e.setAttribute(`style`,n))}),n.documentElement.outerHTML}function lt(e){return e?e.map(e=>e.Name?`${e.Name} <${e.Mailbox}@${e.Host}>`:`${e.Mailbox}@${e.Host}`):[]}function ut(e,t,n,r,i,a=`YYYY-MM-DD`,o=`12`){let s=t?.Envelope?.Subject||``,c=s;c=e===`forward`?c.toLowerCase().startsWith(`fwd:`)?c:`Fwd: ${c}`:c.toLowerCase().startsWith(`re:`)?c:`Re: ${c}`;let l=[],u=[];if(e===`reply`||e===`replyAll`){let n=t?.Envelope?.ReplyTo,r=t?.Envelope?.From;if(l=[...lt(n&&n.length>0?n:r)],e===`replyAll`){let e=lt(t?.Envelope?.To)||[],n=lt(t?.Envelope?.Cc)||[],r=new Set([...l,...e]);l=Array.from(r),u=[...n]}}let d=t?.Envelope?.Date?je(t.Envelope.Date,a,o):``,f=t?.Envelope?.From?.[0],p=f?.Mailbox&&f?.Host?`${f.Mailbox}@${f.Host}`:``,m=f?.Name||p||`Unknown Sender`,h=`On ${d}, ${m} wrote:`;e===`forward`&&(h=`---------- Forwarded message ---------\nFrom: ${m} <${p}>\nDate: ${d}\nSubject: ${s}\nTo: ${lt(t?.Envelope?.To).join(`, `)}\n`);let g=`\n\n${h}\n`+n.split(`
 `).map(e=>`> ${e}`).join(`
-`),_=``;return _=i&&r?e===`forward`?`<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">---------- Forwarded message ---------<br>From: ${m} &lt;${p}&gt;<br>Date: ${d}<br>Subject: ${s}<br>To: ${ut(t?.Envelope?.To).join(`, `)}<br></div><br>${r}</div>`:`<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On ${d}, ${m} wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${r}</blockquote></div>`:`<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">${h.replace(/\n/g,`<br>`)}<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${n.replace(/\n/g,`<br>`)}</blockquote></div>`,{subject:c,to:l,cc:u,quotedText:g,quotedHtml:_}}var B=class extends p{constructor(...e){super(...e),this.localPreferredView=null,this.hasHtml=!1,this.hasText=!1,this.mailbox=b,this.message=null,this.selectedUids=new Set,this.allSelectedStarred=!1,this.allSelectedUnread=!1,this.bulkProcessing=!1,this.layoutMode=`vertical`,this.mailboxes=[],this.content=``,this.mimeType=``,this.loading=!1,this.hasRemoteResources=!1,this.allowRemoteResources=!1,this.attachments=[],this.rawMessageHtml=``,this.isScrolled=!1,this.handleScroll=e=>{let t=e.target;this.isScrolled=t.scrollTop>0}}_closePopup(){let e=this.shadowRoot?.querySelector(`.more-menu-popup`);e&&e.close()}async _handleAction(e,t){if(e===`reply`||e===`replyAll`||e===`forward`){if(!this.message)return;this._closePopup();let t=``;if(this.mimeType===`text/plain`)t=this.content;else{try{let e=await w(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${this.message.UID}?view=text`);if(e.ok){let n=await e.json();n.Part&&n.RawText&&(t=n.RawText)}}catch(e){console.error(`Failed to fetch text body for quote`,e)}if(!t&&this.rawMessageHtml){let e=document.createElement(`div`);e.innerHTML=this.rawMessageHtml,t=e.innerText||``}}let n=this.settingsStore?.getState()?.dateFormat||`YYYY-MM-DD`,r=String(this.settingsStore?.getState()?.hourFormat||`12`),{subject:i,to:a,cc:o,quotedText:s,quotedHtml:c}=dt(e,this.message,t,this.rawMessageHtml,this.hasHtml,n,r),l=e===`forward`?this.attachments.map(e=>({name:e.Filename||`attachment`,size:e.Size||0,type:e.MIMEType||`application/octet-stream`,partPath:e.Path?e.Path.join(`.`):void 0})):[],u=e===`reply`||e===`replyAll`?this.message.Envelope?.MessageId:void 0;this.composeStore.openComposer({subject:i,to:a,cc:o,text:s,html:c,format:this.settingsStore?.getState()?.composeFormat||`html`,attachments:l,inReplyTo:u});return}if(e===`showPlaintext`){this.localPreferredView=`text`,this.message&&this.fetchMessageBody(this.message),this._closePopup();return}if(e===`showHtml`){this.localPreferredView=`html`,this.message&&this.fetchMessageBody(this.message),this._closePopup();return}if(e===`print`){let e=this.allowRemoteResources?`&remote=1`:``;window.open(`#/print?mailbox=`+encodeURIComponent(this.mailbox)+`&uid=`+this.message.UID+e,`_blank`),this._closePopup();return}this._closePopup(),this.dispatchEvent(new CustomEvent(`action`,{detail:{action:e,folder:t}}))}static{this.styles=[Qe,o`
+`),_=``;return _=i&&r?e===`forward`?`<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">---------- Forwarded message ---------<br>From: ${m} &lt;${p}&gt;<br>Date: ${d}<br>Subject: ${s}<br>To: ${lt(t?.Envelope?.To).join(`, `)}<br></div><br>${r}</div>`:`<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On ${d}, ${m} wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${r}</blockquote></div>`:`<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">${h.replace(/\n/g,`<br>`)}<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${n.replace(/\n/g,`<br>`)}</blockquote></div>`,{subject:c,to:l,cc:u,quotedText:g,quotedHtml:_}}var V=class extends p{constructor(...e){super(...e),this.localPreferredView=null,this.hasHtml=!1,this.hasText=!1,this.mailbox=b,this.message=null,this.selectedUids=new Set,this.allSelectedStarred=!1,this.allSelectedUnread=!1,this.bulkProcessing=!1,this.layoutMode=`vertical`,this.mailboxes=[],this.content=``,this.mimeType=``,this.loading=!1,this.hasRemoteResources=!1,this.allowRemoteResources=!1,this.attachments=[],this.rawMessageHtml=``,this.isScrolled=!1,this.handleScroll=e=>{let t=e.target;this.isScrolled=t.scrollTop>0}}_closePopup(){let e=this.shadowRoot?.querySelector(`.more-menu-popup`);e&&e.close()}async _handleAction(e,t){if(e===`reply`||e===`replyAll`||e===`forward`){if(!this.message)return;this._closePopup();let t=``;if(this.mimeType===`text/plain`)t=this.content;else{try{let e=await w(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${this.message.UID}?view=text`);if(e.ok){let n=await e.json();n.Part&&n.RawText&&(t=n.RawText)}}catch(e){console.error(`Failed to fetch text body for quote`,e)}if(!t&&this.rawMessageHtml){let e=document.createElement(`div`);e.innerHTML=this.rawMessageHtml,t=e.innerText||``}}let n=this.settingsStore?.getState()?.dateFormat||`YYYY-MM-DD`,r=String(this.settingsStore?.getState()?.hourFormat||`12`),{subject:i,to:a,cc:o,quotedText:s,quotedHtml:c}=ut(e,this.message,t,this.rawMessageHtml,this.hasHtml,n,r),l=e===`forward`?this.attachments.map(e=>({name:e.Filename||`attachment`,size:e.Size||0,type:e.MIMEType||`application/octet-stream`,partPath:e.Path?e.Path.join(`.`):void 0})):[],u=e===`reply`||e===`replyAll`?this.message.Envelope?.MessageId:void 0;this.composeStore.openComposer({subject:i,to:a,cc:o,text:s,html:c,format:this.settingsStore?.getState()?.composeFormat||`html`,attachments:l,inReplyTo:u});return}if(e===`showPlaintext`){this.localPreferredView=`text`,this.message&&this.fetchMessageBody(this.message),this._closePopup();return}if(e===`showHtml`){this.localPreferredView=`html`,this.message&&this.fetchMessageBody(this.message),this._closePopup();return}if(e===`print`){let e=this.allowRemoteResources?`&remote=1`:``;window.open(`#/print?mailbox=`+encodeURIComponent(this.mailbox)+`&uid=`+this.message.UID+e,`_blank`),this._closePopup();return}this._closePopup(),this.dispatchEvent(new CustomEvent(`action`,{detail:{action:e,folder:t}}))}static{this.styles=[Ze,o`
     :host {
       display: flex;
       flex-direction: column;
@@ -3030,7 +3093,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
         font-weight: normal;
       }
     }
-  `]}willUpdate(e){let t=e.has(`message`),n=e.has(`mailbox`);if(t||n){let t=e.get(`message`),n=e.has(`mailbox`)?e.get(`mailbox`):this.mailbox;this.message?!t||t.UID!==this.message.UID||n!==this.mailbox?(this.localPreferredView=null,this.fetchMessageBody(this.message,this.message._isAutosaveUpdate)):this.message._isAutosaveUpdate&&t&&this.message!==t&&this.fetchMessageBody(this.message,!0):(this.localPreferredView=null,this.content=``,this.mimeType=``,this.rawMessageHtml=``,this.loading=!1,this.allowRemoteResources=!1,this.hasRemoteResources=!1,this.hasHtml=!1,this.hasText=!1)}}loadRemoteResources(){this.allowRemoteResources=!0,this.rawMessageHtml&&(this.content=lt(this.rawMessageHtml,{mailbox:this.mailbox,messageUid:this.message?.UID,allowRemoteResources:this.allowRemoteResources,messageStructure:this.message?.BodyStructure,onRemoteResourceBlocked:()=>{this.hasRemoteResources=!0}}))}async fetchMessageBody(e,t=!1){t||(this.content=``,this.mimeType=``,this.rawMessageHtml=``,this.loading=!0,this.allowRemoteResources=this.settingsStore?.getState().showRemoteContent===`always`,this.hasRemoteResources=!1);let n=this.localPreferredView||this.settingsStore?.getState()?.preferredView||`html`;try{let t=at.get(this.mailbox,e.UID.toString(),n);if(t){this.attachments=t.Attachments||[],this.hasHtml=t.HasHTML||!1,this.hasText=t.HasText||!1,t.Message&&(this.message={...this.message,...t.Message,...e}),t.Part&&(this.mimeType=t.Part.MIMEType||t.Part.MimeType||`text/plain`,t.RawHtml===void 0?t.RawText!==void 0&&(this.content=t.RawText):(this.rawMessageHtml=t.RawHtml,this.content=lt(this.rawMessageHtml,{mailbox:this.mailbox,messageUid:this.message?.UID,allowRemoteResources:this.allowRemoteResources,messageStructure:this.message?.BodyStructure,onRemoteResourceBlocked:()=>{this.hasRemoteResources=!0}}))),this.loading=!1;return}let r=await w(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${e.UID}?view=${n}`);if(r.status===401){window.location.hash=`/login`;return}if(!r.ok)throw Error(`Failed to fetch metadata`);let i=await r.json();this.attachments=i.Attachments||[],this.hasHtml=!!i.HasHTML,this.hasText=!!i.HasText,i.Message&&(this.message={...this.message,...i.Message});let a,o,s=i.Part;if(s){this.mimeType=s.MIMEType||s.MimeType||`text/plain`;let t=Array.isArray(s.Path)?s.Path.join(`.`):s.Path,n=await w(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${e.UID}/raw?part=${t}`);if(n.status===401){window.location.hash=`/login`;return}n.ok&&(this.mimeType.toLowerCase()===`text/html`?(a=await n.text(),this.rawMessageHtml=a,this.content=lt(this.rawMessageHtml,{mailbox:this.mailbox,messageUid:this.message?.UID,allowRemoteResources:this.allowRemoteResources,messageStructure:this.message?.BodyStructure,onRemoteResourceBlocked:()=>{this.hasRemoteResources=!0}})):(o=await n.text(),this.content=o))}at.set(this.mailbox,e.UID.toString(),n,{Message:i.Message,Part:i.Part,Attachments:i.Attachments,RawHtml:a,RawText:o,HasHTML:this.hasHtml,HasText:this.hasText})}catch(e){console.error(`Failed to fetch message:`,e),this.content=`Error loading message.`}finally{this.loading=!1}}onIframeLoad(e){let t=e.target;if(!t.contentDocument||!t.contentDocument.body)return;t.style.height=`0px`,t.style.width=`100%`,t._ro&&t._ro.disconnect();let n=0,r=new ResizeObserver(e=>{let r=0,i=0;for(let a of e)a.target===t.parentElement?n=a.contentRect.width:t.contentDocument&&a.target===t.contentDocument.body&&(a.borderBoxSize&&a.borderBoxSize.length>0?(r=a.borderBoxSize[0].blockSize,i=a.borderBoxSize[0].inlineSize):(r=a.contentRect.height+48,i=a.contentRect.width+48));r>0&&t.style.height!==`${r}px`&&(t.style.height=`${r}px`),n>0&&i>n&&t.style.width!==`${i}px`&&(t.style.width=`${i}px`)});r.observe(t.contentDocument.body),t.parentElement&&r.observe(t.parentElement),t._ro=r}async _handleEditDraft(){if(!this.message)return;let e=``;if(this.mimeType===`text/plain`)e=this.content;else{try{let t=await w(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${this.message.UID}?view=text`);if(t.ok){let n=await t.json();n.Part&&n.RawText&&(e=n.RawText)}}catch(e){console.error(`Failed to fetch text body for draft`,e)}if(!e){let t=document.createElement(`div`);t.innerHTML=this.rawMessageHtml,e=t.innerText||``}}let t=this.attachments.map(e=>({name:e.Filename||`attachment`,size:e.Size||0,type:e.MIMEType||`application/octet-stream`,partPath:e.Path?e.Path.join(`.`):void 0})),n=e=>e?e.map(e=>e.Name?`${e.Name} <${e.Mailbox}@${e.Host}>`:`${e.Mailbox}@${e.Host}`):[];this.composeStore.openComposer({draftUid:this.message.UID.toString(),draftMailbox:this.mailbox,subject:this.message.Envelope?.Subject||``,to:n(this.message.Envelope?.To),cc:n(this.message.Envelope?.Cc),bcc:n(this.message.Envelope?.Bcc),text:e,html:this.rawMessageHtml,format:this.settingsStore?.getState()?.composeFormat||`html`,attachments:t})}render(){let e=this.selectedUids&&this.selectedUids.size>0;if(!this.message&&!e)return s`
+  `]}willUpdate(e){let t=e.has(`message`),n=e.has(`mailbox`);if(t||n){let t=e.get(`message`),n=e.has(`mailbox`)?e.get(`mailbox`):this.mailbox;this.message?!t||t.UID!==this.message.UID||n!==this.mailbox?(this.localPreferredView=null,this.fetchMessageBody(this.message,this.message._isAutosaveUpdate)):this.message._isAutosaveUpdate&&t&&this.message!==t&&this.fetchMessageBody(this.message,!0):(this.localPreferredView=null,this.content=``,this.mimeType=``,this.rawMessageHtml=``,this.loading=!1,this.allowRemoteResources=!1,this.hasRemoteResources=!1,this.hasHtml=!1,this.hasText=!1)}}loadRemoteResources(){this.allowRemoteResources=!0,this.rawMessageHtml&&(this.content=ct(this.rawMessageHtml,{mailbox:this.mailbox,messageUid:this.message?.UID,allowRemoteResources:this.allowRemoteResources,messageStructure:this.message?.BodyStructure,onRemoteResourceBlocked:()=>{this.hasRemoteResources=!0}}))}async fetchMessageBody(e,t=!1){t||(this.content=``,this.mimeType=``,this.rawMessageHtml=``,this.loading=!0,this.allowRemoteResources=this.settingsStore?.getState().showRemoteContent===`always`,this.hasRemoteResources=!1);let n=this.localPreferredView||this.settingsStore?.getState()?.preferredView||`html`;try{let t=it.get(this.mailbox,e.UID.toString(),n);if(t){this.attachments=t.Attachments||[],this.hasHtml=t.HasHTML||!1,this.hasText=t.HasText||!1,t.Message&&(this.message={...this.message,...t.Message,...e}),t.Part&&(this.mimeType=t.Part.MIMEType||t.Part.MimeType||`text/plain`,t.RawHtml===void 0?t.RawText!==void 0&&(this.content=t.RawText):(this.rawMessageHtml=t.RawHtml,this.content=ct(this.rawMessageHtml,{mailbox:this.mailbox,messageUid:this.message?.UID,allowRemoteResources:this.allowRemoteResources,messageStructure:this.message?.BodyStructure,onRemoteResourceBlocked:()=>{this.hasRemoteResources=!0}}))),this.loading=!1;return}let r=await w(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${e.UID}?view=${n}`);if(r.status===401){window.location.hash=`/login`;return}if(!r.ok)throw Error(`Failed to fetch metadata`);let i=await r.json();this.attachments=i.Attachments||[],this.hasHtml=!!i.HasHTML,this.hasText=!!i.HasText,i.Message&&(this.message={...this.message,...i.Message});let a,o,s=i.Part;if(s){this.mimeType=s.MIMEType||s.MimeType||`text/plain`;let t=Array.isArray(s.Path)?s.Path.join(`.`):s.Path,n=await w(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${e.UID}/raw?part=${t}`);if(n.status===401){window.location.hash=`/login`;return}n.ok&&(this.mimeType.toLowerCase()===`text/html`?(a=await n.text(),this.rawMessageHtml=a,this.content=ct(this.rawMessageHtml,{mailbox:this.mailbox,messageUid:this.message?.UID,allowRemoteResources:this.allowRemoteResources,messageStructure:this.message?.BodyStructure,onRemoteResourceBlocked:()=>{this.hasRemoteResources=!0}})):(o=await n.text(),this.content=o))}it.set(this.mailbox,e.UID.toString(),n,{Message:i.Message,Part:i.Part,Attachments:i.Attachments,RawHtml:a,RawText:o,HasHTML:this.hasHtml,HasText:this.hasText})}catch(e){console.error(`Failed to fetch message:`,e),this.content=`Error loading message.`}finally{this.loading=!1}}onIframeLoad(e){let t=e.target;if(!t.contentDocument||!t.contentDocument.body)return;t.style.height=`0px`,t.style.width=`100%`,t._ro&&t._ro.disconnect();let n=0,r=new ResizeObserver(e=>{let r=0,i=0;for(let a of e)a.target===t.parentElement?n=a.contentRect.width:t.contentDocument&&a.target===t.contentDocument.body&&(a.borderBoxSize&&a.borderBoxSize.length>0?(r=a.borderBoxSize[0].blockSize,i=a.borderBoxSize[0].inlineSize):(r=a.contentRect.height+48,i=a.contentRect.width+48));r>0&&t.style.height!==`${r}px`&&(t.style.height=`${r}px`),n>0&&i>n&&t.style.width!==`${i}px`&&(t.style.width=`${i}px`)});r.observe(t.contentDocument.body),t.parentElement&&r.observe(t.parentElement),t._ro=r}async _handleEditDraft(){if(!this.message)return;let e=``;if(this.mimeType===`text/plain`)e=this.content;else{try{let t=await w(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${this.message.UID}?view=text`);if(t.ok){let n=await t.json();n.Part&&n.RawText&&(e=n.RawText)}}catch(e){console.error(`Failed to fetch text body for draft`,e)}if(!e){let t=document.createElement(`div`);t.innerHTML=this.rawMessageHtml,e=t.innerText||``}}let t=this.attachments.map(e=>({name:e.Filename||`attachment`,size:e.Size||0,type:e.MIMEType||`application/octet-stream`,partPath:e.Path?e.Path.join(`.`):void 0})),n=e=>e?e.map(e=>e.Name?`${e.Name} <${e.Mailbox}@${e.Host}>`:`${e.Mailbox}@${e.Host}`):[];this.composeStore.openComposer({draftUid:this.message.UID.toString(),draftMailbox:this.mailbox,subject:this.message.Envelope?.Subject||``,to:n(this.message.Envelope?.To),cc:n(this.message.Envelope?.Cc),bcc:n(this.message.Envelope?.Bcc),text:e,html:this.rawMessageHtml,format:this.settingsStore?.getState()?.composeFormat||`html`,attachments:t})}render(){let e=this.selectedUids&&this.selectedUids.size>0;if(!this.message&&!e)return s`
         <div class="empty-reader-state">
           ${this.i18nStore?.t(`messageReader.selectMessage`)}
         </div>
@@ -3278,7 +3341,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
         ></alps-attachment-list>
       `:``}
       `}
-    `}};S([f({context:M})],B.prototype,`settingsStore`,void 0),S([f({context:y})],B.prototype,`i18nStore`,void 0),S([f({context:He})],B.prototype,`composeStore`,void 0),S([_()],B.prototype,`localPreferredView`,void 0),S([_()],B.prototype,`hasHtml`,void 0),S([_()],B.prototype,`hasText`,void 0),S([i({type:String})],B.prototype,`mailbox`,void 0),S([i({type:Object})],B.prototype,`message`,void 0),S([i({type:Object})],B.prototype,`selectedUids`,void 0),S([i({type:Boolean})],B.prototype,`allSelectedStarred`,void 0),S([i({type:Boolean})],B.prototype,`allSelectedUnread`,void 0),S([i({type:Boolean})],B.prototype,`bulkProcessing`,void 0),S([i({type:String})],B.prototype,`layoutMode`,void 0),S([i({type:Array})],B.prototype,`mailboxes`,void 0),S([_()],B.prototype,`content`,void 0),S([_()],B.prototype,`mimeType`,void 0),S([_()],B.prototype,`loading`,void 0),S([_()],B.prototype,`hasRemoteResources`,void 0),S([_()],B.prototype,`allowRemoteResources`,void 0),S([_()],B.prototype,`attachments`,void 0),S([_()],B.prototype,`rawMessageHtml`,void 0),S([_()],B.prototype,`isScrolled`,void 0),B=S([a(`alps-message-reader`)],B);var ft=new class extends EventTarget{constructor(){super(),this.accounts=[],this.loading=!1,this.initialized=!1}getAccounts(){return this.accounts}isLoading(){return this.loading}isInitialized(){return this.initialized}async fetchAccounts(){this.loading=!0,this.dispatchEvent(new Event(`change`));try{let e=await fetch(`/accounts`);if(e.ok){let t=await e.json();this.accounts=t.accounts||[],this.initialized=!0}else console.error(`Failed to fetch linked accounts`)}catch(e){console.error(`Error fetching linked accounts:`,e)}finally{this.loading=!1,this.dispatchEvent(new Event(`change`))}}async addAccount(e,t,n=``){let r=new URLSearchParams;r.append(`username`,e),r.append(`password`,t),r.append(`display_name`,n);let i=await fetch(`/accounts`,{method:`POST`,headers:{"Content-Type":`application/x-www-form-urlencoded`},body:r.toString()});if(!i.ok){let e=await i.json().catch(()=>({}));throw Error(e.error||`Failed to add linked account`)}await this.fetchAccounts()}async removeAccount(e){let t=await fetch(`/accounts/${encodeURIComponent(e)}`,{method:`DELETE`});if(!t.ok){let e=await t.json().catch(()=>({}));throw Error(e.error||`Failed to remove linked account`)}await this.fetchAccounts()}async switchAccount(e){let t=new URLSearchParams;t.append(`username`,e);let n=await fetch(`/accounts/switch`,{method:`POST`,headers:{"Content-Type":`application/x-www-form-urlencoded`},body:t.toString()});if(!n.ok){let e=await n.json().catch(()=>({}));throw Error(e.error||`Failed to switch account`)}return await n.json()}},pt=r(`alps-linked-accounts`),V=class extends p{constructor(...e){super(...e),this.username=``,this.isMobile=!1,this.currentTab=`messages`,this._handleStoreChange=()=>{this.requestUpdate()}}static{this.styles=[Qe,o`
+    `}};S([f({context:M})],V.prototype,`settingsStore`,void 0),S([f({context:y})],V.prototype,`i18nStore`,void 0),S([f({context:k})],V.prototype,`composeStore`,void 0),S([_()],V.prototype,`localPreferredView`,void 0),S([_()],V.prototype,`hasHtml`,void 0),S([_()],V.prototype,`hasText`,void 0),S([i({type:String})],V.prototype,`mailbox`,void 0),S([i({type:Object})],V.prototype,`message`,void 0),S([i({type:Object})],V.prototype,`selectedUids`,void 0),S([i({type:Boolean})],V.prototype,`allSelectedStarred`,void 0),S([i({type:Boolean})],V.prototype,`allSelectedUnread`,void 0),S([i({type:Boolean})],V.prototype,`bulkProcessing`,void 0),S([i({type:String})],V.prototype,`layoutMode`,void 0),S([i({type:Array})],V.prototype,`mailboxes`,void 0),S([_()],V.prototype,`content`,void 0),S([_()],V.prototype,`mimeType`,void 0),S([_()],V.prototype,`loading`,void 0),S([_()],V.prototype,`hasRemoteResources`,void 0),S([_()],V.prototype,`allowRemoteResources`,void 0),S([_()],V.prototype,`attachments`,void 0),S([_()],V.prototype,`rawMessageHtml`,void 0),S([_()],V.prototype,`isScrolled`,void 0),V=S([a(`alps-message-reader`)],V);var dt=new class extends EventTarget{constructor(){super(),this.accounts=[],this.loading=!1,this.initialized=!1}getAccounts(){return this.accounts}isLoading(){return this.loading}isInitialized(){return this.initialized}async fetchAccounts(){this.loading=!0,this.dispatchEvent(new Event(`change`));try{let e=await fetch(`/accounts`);if(e.ok){let t=await e.json();this.accounts=t.accounts||[],this.initialized=!0}else console.error(`Failed to fetch linked accounts`)}catch(e){console.error(`Error fetching linked accounts:`,e)}finally{this.loading=!1,this.dispatchEvent(new Event(`change`))}}async addAccount(e,t,n=``){let r=new URLSearchParams;r.append(`username`,e),r.append(`password`,t),r.append(`display_name`,n);let i=await fetch(`/accounts`,{method:`POST`,headers:{"Content-Type":`application/x-www-form-urlencoded`},body:r.toString()});if(!i.ok){let e=await i.json().catch(()=>({}));throw Error(e.error||`Failed to add linked account`)}await this.fetchAccounts()}async removeAccount(e){let t=await fetch(`/accounts/${encodeURIComponent(e)}`,{method:`DELETE`});if(!t.ok){let e=await t.json().catch(()=>({}));throw Error(e.error||`Failed to remove linked account`)}await this.fetchAccounts()}async switchAccount(e){let t=new URLSearchParams;t.append(`username`,e);let n=await fetch(`/accounts/switch`,{method:`POST`,headers:{"Content-Type":`application/x-www-form-urlencoded`},body:t.toString()});if(!n.ok){let e=await n.json().catch(()=>({}));throw Error(e.error||`Failed to switch account`)}return await n.json()}},ft=r(`alps-linked-accounts`),H=class extends p{constructor(...e){super(...e),this.username=``,this.isMobile=!1,this.currentTab=`messages`,this._handleStoreChange=()=>{this.requestUpdate()}}static{this.styles=[Ze,o`
     :host {
       display: block;
       position: relative;
@@ -3369,7 +3432,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
           </button>
         </alps-popup>
       </div>
-    `}};S([i({type:String})],V.prototype,`username`,void 0),S([i({type:Boolean})],V.prototype,`isMobile`,void 0),S([i({type:String})],V.prototype,`currentTab`,void 0),S([f({context:y})],V.prototype,`i18nStore`,void 0),S([f({context:M})],V.prototype,`settingsStore`,void 0),S([f({context:pt})],V.prototype,`linkedAccountsStore`,void 0),V=S([a(`user-profile-menu`)],V);var H=class extends p{constructor(...e){super(...e),this.username=``,this.currentTab=``,this.isMobile=!1,this.scrolled=!1,this._handleStoreChange=()=>{this.requestUpdate()}}connectedCallback(){super.connectedCallback(),this.updateComplete.then(()=>{this.i18nStore?.addEventListener(`change`,this._handleStoreChange)})}disconnectedCallback(){super.disconnectedCallback(),this.i18nStore?.removeEventListener(`change`,this._handleStoreChange)}static{this.styles=o`
+    `}};S([i({type:String})],H.prototype,`username`,void 0),S([i({type:Boolean})],H.prototype,`isMobile`,void 0),S([i({type:String})],H.prototype,`currentTab`,void 0),S([f({context:y})],H.prototype,`i18nStore`,void 0),S([f({context:M})],H.prototype,`settingsStore`,void 0),S([f({context:ft})],H.prototype,`linkedAccountsStore`,void 0),H=S([a(`user-profile-menu`)],H);var pt=class extends p{constructor(...e){super(...e),this.username=``,this.currentTab=``,this.isMobile=!1,this.scrolled=!1,this._handleStoreChange=()=>{this.requestUpdate()}}connectedCallback(){super.connectedCallback(),this.updateComplete.then(()=>{this.i18nStore?.addEventListener(`change`,this._handleStoreChange)})}disconnectedCallback(){super.disconnectedCallback(),this.i18nStore?.removeEventListener(`change`,this._handleStoreChange)}static{this.styles=o`
     :host {
       display: block;
       position: relative;
@@ -3421,7 +3484,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
     ::slotted([slot="center"]) {
       width: 100%;
     }
-  `}handleSettings(){window.location.hash=`/settings`}async handleSignOut(){try{this.composeStore&&await this.composeStore.saveAllDirtyDrafts(),await fetch(`/session`,{method:`DELETE`}),at.clear(),localStorage.removeItem(`alps_settings`),window.dispatchEvent(new CustomEvent(`session-cleared`)),window.location.hash=`#/login`}catch(e){console.error(`Failed to sign out`,e)}}render(){return s`
+  `}handleSettings(){window.location.hash=`/settings`}async handleSignOut(){try{this.composeStore&&await this.composeStore.saveAllDirtyDrafts(),await fetch(`/session`,{method:`DELETE`}),it.clear(),localStorage.removeItem(`alps_settings`),window.dispatchEvent(new CustomEvent(`session-cleared`)),window.location.hash=`#/login`}catch(e){console.error(`Failed to sign out`,e)}}render(){return s`
       <div class="header-container">
         <div class="left-section">
           ${this.isMobile?s`
@@ -3452,7 +3515,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
           `:``}
         </div>
       </div>
-    `}};S([i({type:String})],H.prototype,`username`,void 0),S([i({type:String})],H.prototype,`currentTab`,void 0),S([i({type:Boolean,reflect:!0})],H.prototype,`isMobile`,void 0),S([i({type:Boolean,reflect:!0})],H.prototype,`scrolled`,void 0),S([f({context:y})],H.prototype,`i18nStore`,void 0),S([f({context:He})],H.prototype,`composeStore`,void 0),H=S([a(`alps-header`)],H);var U=class extends p{constructor(...e){super(...e),this.username=``,this.currentTab=`messages`,this.isMobile=!1,this.currentMailbox=``,this.searchQuery=``,this.scrolled=!1,this._handleStoreChange=()=>{this.requestUpdate()}}connectedCallback(){super.connectedCallback(),this.updateComplete.then(()=>{this.i18nStore?.addEventListener(`change`,this._handleStoreChange)})}disconnectedCallback(){super.disconnectedCallback(),this.i18nStore?.removeEventListener(`change`,this._handleStoreChange)}static{this.styles=o`
+    `}};S([i({type:String})],pt.prototype,`username`,void 0),S([i({type:String})],pt.prototype,`currentTab`,void 0),S([i({type:Boolean,reflect:!0})],pt.prototype,`isMobile`,void 0),S([i({type:Boolean,reflect:!0})],pt.prototype,`scrolled`,void 0),S([f({context:y})],pt.prototype,`i18nStore`,void 0),S([f({context:k})],pt.prototype,`composeStore`,void 0),pt=S([a(`alps-header`)],pt);var U=class extends p{constructor(...e){super(...e),this.username=``,this.currentTab=`messages`,this.isMobile=!1,this.currentMailbox=``,this.searchQuery=``,this.scrolled=!1,this._handleStoreChange=()=>{this.requestUpdate()}}connectedCallback(){super.connectedCallback(),this.updateComplete.then(()=>{this.i18nStore?.addEventListener(`change`,this._handleStoreChange)})}disconnectedCallback(){super.disconnectedCallback(),this.i18nStore?.removeEventListener(`change`,this._handleStoreChange)}static{this.styles=o`
     :host {
       display: block;
       width: 100%;
@@ -3962,7 +4025,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
           @cancel=${this._cancelDelete}
         ></ui-confirm>
       `:``}
-    `}};S([f({context:He})],G.prototype,`composeStore`,void 0),S([f({context:M})],G.prototype,`settingsStore`,void 0),S([f({context:y})],G.prototype,`i18nStore`,void 0),S([_()],G.prototype,`showDeleteConfirm`,void 0),S([_()],G.prototype,`pendingDeleteDetails`,void 0),S([_()],G.prototype,`mailboxes`,void 0),S([_()],G.prototype,`messages`,void 0),S([_()],G.prototype,`currentMailbox`,void 0),S([_()],G.prototype,`loadingMessages`,void 0),S([_()],G.prototype,`showInitialLoader`,void 0),S([_()],G.prototype,`selectedMessage`,void 0),S([_()],G.prototype,`selectedUids`,void 0),S([_()],G.prototype,`layoutMode`,void 0),S([_()],G.prototype,`filterQuery`,void 0),S([_()],G.prototype,`expandedFolders`,void 0),S([_()],G.prototype,`username`,void 0),S([_()],G.prototype,`currentPage`,void 0),S([_()],G.prototype,`totalMessages`,void 0),S([_()],G.prototype,`messagesPerPage`,void 0),S([_()],G.prototype,`resizerPositionX`,void 0),S([_()],G.prototype,`listHeight`,void 0),S([_()],G.prototype,`isDragging`,void 0),S([_()],G.prototype,`isDraggingSidebar`,void 0),S([_()],G.prototype,`sidebarWidth`,void 0),S([_()],G.prototype,`densityMode`,void 0),S([_()],G.prototype,`isSyncing`,void 0),S([_()],G.prototype,`sidebarCollapsed`,void 0),S([_()],G.prototype,`suppressSidebarHover`,void 0),S([_()],G.prototype,`sortOrder`,void 0),S([_()],G.prototype,`listScrolled`,void 0),S([_()],G.prototype,`targetUid`,void 0),S([_()],G.prototype,`isMobile`,void 0),S([_()],G.prototype,`mobileSidebarOpen`,void 0),S([_()],G.prototype,`bulkProcessing`,void 0),G=S([a(`mailbox-page`)],G);var Tt=class extends p{constructor(...e){super(...e),this.active=!1,this.icon=``}static{this.styles=o`
+    `}};S([f({context:k})],G.prototype,`composeStore`,void 0),S([f({context:M})],G.prototype,`settingsStore`,void 0),S([f({context:y})],G.prototype,`i18nStore`,void 0),S([_()],G.prototype,`showDeleteConfirm`,void 0),S([_()],G.prototype,`pendingDeleteDetails`,void 0),S([_()],G.prototype,`mailboxes`,void 0),S([_()],G.prototype,`messages`,void 0),S([_()],G.prototype,`currentMailbox`,void 0),S([_()],G.prototype,`loadingMessages`,void 0),S([_()],G.prototype,`showInitialLoader`,void 0),S([_()],G.prototype,`selectedMessage`,void 0),S([_()],G.prototype,`selectedUids`,void 0),S([_()],G.prototype,`layoutMode`,void 0),S([_()],G.prototype,`filterQuery`,void 0),S([_()],G.prototype,`expandedFolders`,void 0),S([_()],G.prototype,`username`,void 0),S([_()],G.prototype,`currentPage`,void 0),S([_()],G.prototype,`totalMessages`,void 0),S([_()],G.prototype,`messagesPerPage`,void 0),S([_()],G.prototype,`resizerPositionX`,void 0),S([_()],G.prototype,`listHeight`,void 0),S([_()],G.prototype,`isDragging`,void 0),S([_()],G.prototype,`isDraggingSidebar`,void 0),S([_()],G.prototype,`sidebarWidth`,void 0),S([_()],G.prototype,`densityMode`,void 0),S([_()],G.prototype,`isSyncing`,void 0),S([_()],G.prototype,`sidebarCollapsed`,void 0),S([_()],G.prototype,`suppressSidebarHover`,void 0),S([_()],G.prototype,`sortOrder`,void 0),S([_()],G.prototype,`listScrolled`,void 0),S([_()],G.prototype,`targetUid`,void 0),S([_()],G.prototype,`isMobile`,void 0),S([_()],G.prototype,`mobileSidebarOpen`,void 0),S([_()],G.prototype,`bulkProcessing`,void 0),G=S([a(`mailbox-page`)],G);var Tt=class extends p{constructor(...e){super(...e),this.active=!1,this.icon=``}static{this.styles=o`
     :host {
       display: flex;
       align-items: center;
@@ -4114,7 +4177,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
                     </alps-button>
                 </form>
             </alps-setting-group>
-        `}};S([f({context:y})],K.prototype,`i18nStore`,void 0),S([f({context:pt})],K.prototype,`linkedAccountsStore`,void 0),S([_()],K.prototype,`newUsername`,void 0),S([_()],K.prototype,`newPassword`,void 0),S([_()],K.prototype,`newDisplayName`,void 0),S([_()],K.prototype,`isSubmitting`,void 0),S([_()],K.prototype,`error`,void 0),K=S([a(`settings-accounts`)],K);function Et(e){if(!e)throw Error(`base64url is null or undefined`);let t=e.replace(/-/g,`+`).replace(/_/g,`/`),n=atob(t),r=new Uint8Array(n.length);for(let e=0;e<n.length;e++)r[e]=n.charCodeAt(e);return r.buffer}function Dt(e){let t=new Uint8Array(e),n=``;for(let e=0;e<t.byteLength;e++)n+=String.fromCharCode(t[e]);return btoa(n).replace(/\+/g,`-`).replace(/\//g,`_`).replace(/=/g,``)}async function Ot(e){e.publicKey.challenge=Et(e.publicKey.challenge),e.publicKey.user.id=Et(e.publicKey.user.id),e.publicKey.excludeCredentials&&(e.publicKey.excludeCredentials=e.publicKey.excludeCredentials.map(e=>({...e,id:Et(e.id)})));let t=await navigator.credentials.create(e);if(!t)throw Error(`Credential creation failed or was cancelled.`);let n=t.response,r=n.getTransports?n.getTransports():[];return{id:t.id,rawId:Dt(t.rawId),type:t.type,response:{attestationObject:Dt(n.attestationObject),clientDataJSON:Dt(n.clientDataJSON)},transports:r}}async function kt(e){e.publicKey.challenge=Et(e.publicKey.challenge),e.publicKey.allowCredentials&&(e.publicKey.allowCredentials=e.publicKey.allowCredentials.map(e=>({...e,id:Et(e.id)})));let t=await navigator.credentials.get(e);if(!t)throw Error(`Assertion failed or was cancelled.`);let n=t.response;return{id:t.id,rawId:Dt(t.rawId),type:t.type,response:{authenticatorData:Dt(n.authenticatorData),clientDataJSON:Dt(n.clientDataJSON),signature:Dt(n.signature),userHandle:n.userHandle?Dt(n.userHandle):null}}}function At(){return window.PublicKeyCredential!==void 0&&navigator.credentials!==void 0}var q=class extends p{constructor(...e){super(...e),this.data=null,this.error=``,this.loading=!0,this.adding=!1,this.showNamePrompt=!1,this.pendingCredential=null}static{this.styles=o`
+        `}};S([f({context:y})],K.prototype,`i18nStore`,void 0),S([f({context:ft})],K.prototype,`linkedAccountsStore`,void 0),S([_()],K.prototype,`newUsername`,void 0),S([_()],K.prototype,`newPassword`,void 0),S([_()],K.prototype,`newDisplayName`,void 0),S([_()],K.prototype,`isSubmitting`,void 0),S([_()],K.prototype,`error`,void 0),K=S([a(`settings-accounts`)],K);function Et(e){if(!e)throw Error(`base64url is null or undefined`);let t=e.replace(/-/g,`+`).replace(/_/g,`/`),n=atob(t),r=new Uint8Array(n.length);for(let e=0;e<n.length;e++)r[e]=n.charCodeAt(e);return r.buffer}function Dt(e){let t=new Uint8Array(e),n=``;for(let e=0;e<t.byteLength;e++)n+=String.fromCharCode(t[e]);return btoa(n).replace(/\+/g,`-`).replace(/\//g,`_`).replace(/=/g,``)}async function Ot(e){e.publicKey.challenge=Et(e.publicKey.challenge),e.publicKey.user.id=Et(e.publicKey.user.id),e.publicKey.excludeCredentials&&(e.publicKey.excludeCredentials=e.publicKey.excludeCredentials.map(e=>({...e,id:Et(e.id)})));let t=await navigator.credentials.create(e);if(!t)throw Error(`Credential creation failed or was cancelled.`);let n=t.response,r=n.getTransports?n.getTransports():[];return{id:t.id,rawId:Dt(t.rawId),type:t.type,response:{attestationObject:Dt(n.attestationObject),clientDataJSON:Dt(n.clientDataJSON)},transports:r}}async function kt(e){e.publicKey.challenge=Et(e.publicKey.challenge),e.publicKey.allowCredentials&&(e.publicKey.allowCredentials=e.publicKey.allowCredentials.map(e=>({...e,id:Et(e.id)})));let t=await navigator.credentials.get(e);if(!t)throw Error(`Assertion failed or was cancelled.`);let n=t.response;return{id:t.id,rawId:Dt(t.rawId),type:t.type,response:{authenticatorData:Dt(n.authenticatorData),clientDataJSON:Dt(n.clientDataJSON),signature:Dt(n.signature),userHandle:n.userHandle?Dt(n.userHandle):null}}}function At(){return window.PublicKeyCredential!==void 0&&navigator.credentials!==void 0}var q=class extends p{constructor(...e){super(...e),this.data=null,this.error=``,this.loading=!0,this.adding=!1,this.showNamePrompt=!1,this.pendingCredential=null}static{this.styles=o`
         :host { display: block; }
         .setting-row {
             display: flex;
@@ -4832,7 +4895,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
       .print-container { padding: 0; max-width: none; }
       alps-banner { display: none !important; }
     }
-  `}connectedCallback(){super.connectedCallback(),this.allowRemoteResources=this.settingsStore.getState().showRemoteContent===`always`,this.extractParams(),this.mailbox&&this.uid?this.fetchMessage():(this.error=`Missing mailbox or uid parameters`,this.loading=!1)}extractParams(){let e=window.location.hash,t=e.indexOf(`?`);if(t!==-1){let n=new URLSearchParams(e.substring(t+1));this.mailbox=n.get(`mailbox`)||``,this.uid=n.get(`uid`)||``,n.get(`remote`)===`1`&&(this.allowRemoteResources=!0)}}async fetchMessage(){try{this.loading=!0;let e=at.get(this.mailbox,this.uid);if(e&&e.Part){this.message=e.Message,this.mimeType=e.Part.MIMEType||e.Part.MimeType||`text/plain`,e.RawHtml===void 0?e.RawText!==void 0&&(this.content=e.RawText):(this.rawMessageHtml=e.RawHtml,this.hasRemoteResources=!1,this.content=lt(this.rawMessageHtml,{mailbox:this.mailbox,messageUid:this.uid,allowRemoteResources:this.allowRemoteResources,messageStructure:this.message.BodyStructure,onRemoteResourceBlocked:()=>{this.hasRemoteResources=!0}})),this.loading=!1;return}let t=await w(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${this.uid}`);if(!t.ok){if(t.status===401){window.location.hash=`#/login`;return}throw Error(`Failed to fetch message metadata`)}this.message=await t.json(),await this.fetchMessageBody()}catch(e){this.error=e.message}finally{this.loading=!1}}findDisplayPart(e,t){if(!e)return null;if(e.MIMEType&&e.MIMEType.toLowerCase().startsWith(`multipart/`)){if(e.MIMEType.toLowerCase()===`multipart/alternative`){let n=null,r=null;for(let t of e.Children||[])t.MIMEType?.toLowerCase()===`text/plain`&&(n=t),t.MIMEType?.toLowerCase()===`text/html`&&(r=t);return t===`html`?r||n||e.Children[0]:n||r||e.Children[0]}for(let n of e.Children||[]){let e=this.findDisplayPart(n,t);if(e)return e}}return e.MIMEType?.toLowerCase()===`text/html`||e.MIMEType?.toLowerCase()===`text/plain`?e:null}findPartPath(e,t,n=``){if(!e)return null;if(e===t)return n||`1`;if(e.Children&&Array.isArray(e.Children))for(let r=0;r<e.Children.length;r++){let i=n?`${n}.${r+1}`:`${r+1}`,a=this.findPartPath(e.Children[r],t,i);if(a)return a}return null}async fetchMessageBody(){if(!this.message||!this.message.BodyStructure)return;let e=`1`,t=this.findDisplayPart(this.message.BodyStructure,`html`);if(t?(e=this.findPartPath(this.message.BodyStructure,t)||`1`,this.mimeType=t.MIMEType||`text/plain`):(this.mimeType=this.message.BodyStructure.MIMEType||`text/plain`,this.mimeType.toLowerCase()===`text/plain`||this.mimeType.toLowerCase()===`text/html`?e=`1`:this.mimeType=`multipart/mixed`),this.mimeType.toLowerCase().startsWith(`multipart/`)){this.content=``;return}let n=await w(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${this.uid}/raw?part=${e}`);if(!n.ok)throw Error(`Failed to fetch message body`);this.mimeType.toLowerCase()===`text/html`?(this.rawMessageHtml=await n.text(),this.hasRemoteResources=!1,this.content=lt(this.rawMessageHtml,{mailbox:this.mailbox,messageUid:this.uid,allowRemoteResources:this.allowRemoteResources,messageStructure:this.message.BodyStructure,onRemoteResourceBlocked:()=>{this.hasRemoteResources=!0}})):this.content=await n.text()}loadRemoteResources(){this.allowRemoteResources=!0,this.rawMessageHtml&&(this.content=lt(this.rawMessageHtml,{mailbox:this.mailbox,messageUid:this.uid,allowRemoteResources:this.allowRemoteResources,messageStructure:this.message?.BodyStructure,onRemoteResourceBlocked:()=>{this.hasRemoteResources=!0}}))}updated(e){e.has(`content`)&&this.content&&setTimeout(()=>{window.print()},500)}render(){if(this.loading)return s`
+  `}connectedCallback(){super.connectedCallback(),this.allowRemoteResources=this.settingsStore.getState().showRemoteContent===`always`,this.extractParams(),this.mailbox&&this.uid?this.fetchMessage():(this.error=`Missing mailbox or uid parameters`,this.loading=!1)}extractParams(){let e=window.location.hash,t=e.indexOf(`?`);if(t!==-1){let n=new URLSearchParams(e.substring(t+1));this.mailbox=n.get(`mailbox`)||``,this.uid=n.get(`uid`)||``,n.get(`remote`)===`1`&&(this.allowRemoteResources=!0)}}async fetchMessage(){try{this.loading=!0;let e=it.get(this.mailbox,this.uid);if(e&&e.Part){this.message=e.Message,this.mimeType=e.Part.MIMEType||e.Part.MimeType||`text/plain`,e.RawHtml===void 0?e.RawText!==void 0&&(this.content=e.RawText):(this.rawMessageHtml=e.RawHtml,this.hasRemoteResources=!1,this.content=ct(this.rawMessageHtml,{mailbox:this.mailbox,messageUid:this.uid,allowRemoteResources:this.allowRemoteResources,messageStructure:this.message.BodyStructure,onRemoteResourceBlocked:()=>{this.hasRemoteResources=!0}})),this.loading=!1;return}let t=await w(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${this.uid}`);if(!t.ok){if(t.status===401){window.location.hash=`#/login`;return}throw Error(`Failed to fetch message metadata`)}this.message=await t.json(),await this.fetchMessageBody()}catch(e){this.error=e.message}finally{this.loading=!1}}findDisplayPart(e,t){if(!e)return null;if(e.MIMEType&&e.MIMEType.toLowerCase().startsWith(`multipart/`)){if(e.MIMEType.toLowerCase()===`multipart/alternative`){let n=null,r=null;for(let t of e.Children||[])t.MIMEType?.toLowerCase()===`text/plain`&&(n=t),t.MIMEType?.toLowerCase()===`text/html`&&(r=t);return t===`html`?r||n||e.Children[0]:n||r||e.Children[0]}for(let n of e.Children||[]){let e=this.findDisplayPart(n,t);if(e)return e}}return e.MIMEType?.toLowerCase()===`text/html`||e.MIMEType?.toLowerCase()===`text/plain`?e:null}findPartPath(e,t,n=``){if(!e)return null;if(e===t)return n||`1`;if(e.Children&&Array.isArray(e.Children))for(let r=0;r<e.Children.length;r++){let i=n?`${n}.${r+1}`:`${r+1}`,a=this.findPartPath(e.Children[r],t,i);if(a)return a}return null}async fetchMessageBody(){if(!this.message||!this.message.BodyStructure)return;let e=`1`,t=this.findDisplayPart(this.message.BodyStructure,`html`);if(t?(e=this.findPartPath(this.message.BodyStructure,t)||`1`,this.mimeType=t.MIMEType||`text/plain`):(this.mimeType=this.message.BodyStructure.MIMEType||`text/plain`,this.mimeType.toLowerCase()===`text/plain`||this.mimeType.toLowerCase()===`text/html`?e=`1`:this.mimeType=`multipart/mixed`),this.mimeType.toLowerCase().startsWith(`multipart/`)){this.content=``;return}let n=await w(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${this.uid}/raw?part=${e}`);if(!n.ok)throw Error(`Failed to fetch message body`);this.mimeType.toLowerCase()===`text/html`?(this.rawMessageHtml=await n.text(),this.hasRemoteResources=!1,this.content=ct(this.rawMessageHtml,{mailbox:this.mailbox,messageUid:this.uid,allowRemoteResources:this.allowRemoteResources,messageStructure:this.message.BodyStructure,onRemoteResourceBlocked:()=>{this.hasRemoteResources=!0}})):this.content=await n.text()}loadRemoteResources(){this.allowRemoteResources=!0,this.rawMessageHtml&&(this.content=ct(this.rawMessageHtml,{mailbox:this.mailbox,messageUid:this.uid,allowRemoteResources:this.allowRemoteResources,messageStructure:this.message?.BodyStructure,onRemoteResourceBlocked:()=>{this.hasRemoteResources=!0}}))}updated(e){e.has(`content`)&&this.content&&setTimeout(()=>{window.print()},500)}render(){if(this.loading)return s`
         <div class="loading-state">
           <div class="spinner">${x(`edelweiss`)}</div>
           <span>${this.i18nStore?.t(`print.loading`)}</span>
@@ -5024,7 +5087,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
       </div>
     `}};S([i({type:Array})],Lt.prototype,`addresses`,void 0),S([i({type:Boolean})],Lt.prototype,`disabled`,void 0),S([_()],Lt.prototype,`inputText`,void 0),Lt=S([a(`alps-address-input`)],Lt);var Rt=ce.create({name:`fontSize`,addOptions(){return{types:[`textStyle`]}},addGlobalAttributes(){return[{types:this.options.types,attributes:{fontSize:{default:null,parseHTML:e=>e.style.fontSize?.replace(/['"]+/g,``),renderHTML:e=>e.fontSize?{style:`font-size: ${e.fontSize}`}:{}}}}]},addCommands(){return{setFontSize:e=>({chain:t})=>t().setMark(`textStyle`,{fontSize:e}).run(),unsetFontSize:()=>({chain:e})=>e().setMark(`textStyle`,{fontSize:null}).removeEmptyTextStyle().run()}}}),zt=ce.create({name:`indent`,addOptions(){return{types:[`paragraph`,`heading`,`blockquote`],minIndent:0,maxIndent:240,step:40}},addGlobalAttributes(){return[{types:this.options.types,attributes:{indent:{default:0,parseHTML:e=>parseInt(e.style.marginLeft,10)||0,renderHTML:e=>e.indent?{style:`margin-left: ${e.indent}px`}:{}}}}]},addCommands(){return{indent:()=>({tr:e,state:t,dispatch:n,editor:r})=>{if(r.can().sinkListItem(`listItem`))return r.chain().sinkListItem(`listItem`).run();let i=!1;return t.doc.nodesBetween(t.selection.from,t.selection.to,(t,r)=>{if(this.options.types.includes(t.type.name)){let a=t.attrs.indent||0;a<this.options.maxIndent&&(n&&e.setNodeMarkup(r,null,{...t.attrs,indent:a+this.options.step}),i=!0)}}),i},outdent:()=>({tr:e,state:t,dispatch:n,editor:r})=>{if(r.can().liftListItem(`listItem`))return r.chain().liftListItem(`listItem`).run();let i=!1;return t.doc.nodesBetween(t.selection.from,t.selection.to,(t,r)=>{if(this.options.types.includes(t.type.name)){let a=t.attrs.indent||0;a>this.options.minIndent&&(n&&e.setNodeMarkup(r,null,{...t.attrs,indent:Math.max(this.options.minIndent,a-this.options.step)}),i=!0)}}),i}}}}),Z=class extends p{constructor(...e){super(...e),this.isSending=!1,this.text=``,this.htmlText=``,this.format=`text`,this.attachments=[],this.bubbleMenuState=`view`,this.activeLinkUrl=``,this.activeLinkText=``,this.replyInputRef=g(),this.editorContainerRef=g(),this.bubbleMenuRef=g()}focusEditor(){this.format===`html`&&this.editor?this.editor.commands.focus(`start`):this.replyInputRef.value&&(this.replyInputRef.value.focus(),this.replyInputRef.value.setSelectionRange(0,0))}hasSelection(){if(this.format===`html`&&this.editor)return!this.editor.state.selection.empty;let e=this.replyInputRef.value;return e?e.selectionStart!==e.selectionEnd:!1}getSelectionText(){if(this.format===`html`&&this.editor){if(this.editor.state.selection.empty)return``;let{from:e,to:t}=this.editor.state.selection;return this.editor.state.doc.textBetween(e,t,` `)}let e=this.replyInputRef.value;return e?e.value.substring(e.selectionStart,e.selectionEnd):``}getActiveLink(){return this.format===`html`&&this.editor&&this.editor.isActive(`link`)&&this.editor.getAttributes(`link`).href||null}_getLinkDetails(){if(!this.editor||!this.editor.isActive(`link`))return{url:``,text:``,range:null};let e=this.editor.getAttributes(`link`).href||``,t=re(this.editor.state.selection.$from,this.editor.schema.marks.link),n=``;return t&&(n=this.editor.state.doc.textBetween(t.from,t.to,` `)),{url:e,text:n,range:t}}_enterEditMode(){let e=this._getLinkDetails();this.activeLinkUrl=e.url,this.activeLinkText=e.text,this.bubbleMenuState=`edit`}_applyBubbleLink(e){e.preventDefault();let t=this.shadowRoot?.querySelector(`#bubbleUrl`),n=this.shadowRoot?.querySelector(`#bubbleText`),r=t?.value||``,i=n?.value||``;if(!r||!this.editor)return;let a=this._getLinkDetails();a.range&&(i===a.text?this.editor.chain().focus().setLink({href:r}).run():this.editor.chain().focus().setTextSelection({from:a.range.from,to:a.range.to}).insertContent(i).setTextSelection({from:a.range.from,to:a.range.from+i.length}).setLink({href:r}).run()),this.bubbleMenuState=`view`}get messageText(){return this.text}get messageHtml(){return this.htmlText}getAttachments(){return this.attachments}firstUpdated(){this.initEditor()}disconnectedCallback(){super.disconnectedCallback(),this.editor?.destroy()}updated(e){if(e.has(`isSending`)&&this.editor&&this.editor.setEditable(!this.isSending),e.has(`format`)){let t=e.get(`format`);if(t===`text`&&this.format===`html`){if(this.editor&&this.editor.getText()!==this.text){let e=this.text.split(`
 `).map(e=>`<p>${e}</p>`).join(``);this.editor.commands.setContent(e),this.htmlText=this.editor.getHTML()}}else t===`html`&&this.format===`text`&&this.editor&&(this.text=this.editor.getText())}}initEditor(){this.editorContainerRef.value&&(this.editor=new oe({element:this.editorContainerRef.value,extensions:[ne.configure({link:{openOnClick:!1}}),ie.configure({types:[`heading`,`paragraph`]}),se,ae,Rt,zt,le.configure({element:this.bubbleMenuRef.value,options:{placement:`bottom`},shouldShow:({editor:e})=>this.bubbleMenuState===`edit`?!0:e.isActive(`link`)})],content:this.htmlText||(this.format===`html`?this.text.split(`
-`).map(e=>`<p>${e}</p>`).join(``):this.text),onUpdate:({editor:e})=>{this.htmlText=e.getHTML(),this.text=e.getText(),this.dispatchEvent(new CustomEvent(`text-changed`,{detail:{text:this.text,html:this.htmlText},bubbles:!0,composed:!0}))},onTransaction:({editor:e})=>{!e.isActive(`link`)&&this.bubbleMenuState===`edit`&&(this.bubbleMenuState=`view`),this.requestUpdate()}}),this.editor.setEditable(!this.isSending),this.requestUpdate())}clear(){this.replyInputRef.value&&(this.replyInputRef.value.value=``),this.text=``,this.htmlText=``,this.editor&&this.editor.commands.clearContent(),this.attachments=[],this.dispatchEvent(new CustomEvent(`text-changed`,{detail:{text:``,html:``},bubbles:!0,composed:!0}))}insertFormatting(e,t=``){if(this.format===`html`&&this.editor){e===`**`?this.editor.chain().focus().toggleBold().run():e===`*`&&this.editor.chain().focus().toggleItalic().run();return}let n=this.replyInputRef.value;if(!n)return;let r=n.selectionStart,i=n.selectionEnd,a=n.value,o=a.substring(r,i);if(o.startsWith(e)&&o.endsWith(t)&&o.length>=e.length+t.length){let a=o.substring(e.length,o.length-t.length);n.setRangeText(a,r,i,`select`)}else r>=e.length&&a.substring(r-e.length,r)===e&&i+t.length<=a.length&&a.substring(i,i+t.length)===t?n.setRangeText(o,r-e.length,i+t.length,`select`):(n.setRangeText(e+o+t,r,i,`select`),r===i&&(n.selectionStart=r+e.length,n.selectionEnd=r+e.length));this.text=n.value,this.editor&&(this.htmlText=this.editor.getHTML()),this.dispatchEvent(new CustomEvent(`text-changed`,{detail:{text:this.text,html:this.htmlText},bubbles:!0,composed:!0})),n.focus()}insertEmoji(e){if(this.format===`html`&&this.editor)this.editor.chain().focus().insertContent(e).run();else{let t=this.replyInputRef.value;if(!t)return;let n=t.selectionStart,r=t.selectionEnd;t.setRangeText(e,n,r,`end`),this.text=t.value,this.editor&&(this.htmlText=this.editor.getHTML()),this.dispatchEvent(new CustomEvent(`text-changed`,{detail:{text:this.text,html:this.htmlText},bubbles:!0,composed:!0})),t.focus()}}_handleInput(e){this.text=e.target.value,this.dispatchEvent(new CustomEvent(`text-changed`,{detail:{text:this.text,html:this.htmlText},bubbles:!0,composed:!0}))}static{this.styles=[Qe,o`
+`).map(e=>`<p>${e}</p>`).join(``):this.text),onUpdate:({editor:e})=>{this.htmlText=e.getHTML(),this.text=e.getText(),this.dispatchEvent(new CustomEvent(`text-changed`,{detail:{text:this.text,html:this.htmlText},bubbles:!0,composed:!0}))},onTransaction:({editor:e})=>{!e.isActive(`link`)&&this.bubbleMenuState===`edit`&&(this.bubbleMenuState=`view`),this.requestUpdate()}}),this.editor.setEditable(!this.isSending),this.requestUpdate())}clear(){this.replyInputRef.value&&(this.replyInputRef.value.value=``),this.text=``,this.htmlText=``,this.editor&&this.editor.commands.clearContent(),this.attachments=[],this.dispatchEvent(new CustomEvent(`text-changed`,{detail:{text:``,html:``},bubbles:!0,composed:!0}))}insertFormatting(e,t=``){if(this.format===`html`&&this.editor){e===`**`?this.editor.chain().focus().toggleBold().run():e===`*`&&this.editor.chain().focus().toggleItalic().run();return}let n=this.replyInputRef.value;if(!n)return;let r=n.selectionStart,i=n.selectionEnd,a=n.value,o=a.substring(r,i);if(o.startsWith(e)&&o.endsWith(t)&&o.length>=e.length+t.length){let a=o.substring(e.length,o.length-t.length);n.setRangeText(a,r,i,`select`)}else r>=e.length&&a.substring(r-e.length,r)===e&&i+t.length<=a.length&&a.substring(i,i+t.length)===t?n.setRangeText(o,r-e.length,i+t.length,`select`):(n.setRangeText(e+o+t,r,i,`select`),r===i&&(n.selectionStart=r+e.length,n.selectionEnd=r+e.length));this.text=n.value,this.editor&&(this.htmlText=this.editor.getHTML()),this.dispatchEvent(new CustomEvent(`text-changed`,{detail:{text:this.text,html:this.htmlText},bubbles:!0,composed:!0})),n.focus()}insertEmoji(e){if(this.format===`html`&&this.editor)this.editor.chain().focus().insertContent(e).run();else{let t=this.replyInputRef.value;if(!t)return;let n=t.selectionStart,r=t.selectionEnd;t.setRangeText(e,n,r,`end`),this.text=t.value,this.editor&&(this.htmlText=this.editor.getHTML()),this.dispatchEvent(new CustomEvent(`text-changed`,{detail:{text:this.text,html:this.htmlText},bubbles:!0,composed:!0})),t.focus()}}_handleInput(e){this.text=e.target.value,this.dispatchEvent(new CustomEvent(`text-changed`,{detail:{text:this.text,html:this.htmlText},bubbles:!0,composed:!0}))}static{this.styles=[Ze,o`
     :host {
       display: flex;
       flex-direction: column;
@@ -5798,7 +5861,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
           </div>
         </div>
       </div>
-    `}};S([f({context:He})],Q.prototype,`composeStore`,void 0),S([f({context:y})],Q.prototype,`i18nStore`,void 0),S([f({context:M})],Q.prototype,`settingsStore`,void 0),S([i({type:Object})],Q.prototype,`instance`,void 0),S([i({type:Number})],Q.prototype,`index`,void 0),S([i({type:Number})],Q.prototype,`totalOpen`,void 0),S([i({type:Number})],Q.prototype,`totalMinimized`,void 0),S([i({type:Number})],Q.prototype,`openIndex`,void 0),S([i({type:Number})],Q.prototype,`minimizedIndex`,void 0),S([_()],Q.prototype,`showCc`,void 0),S([_()],Q.prototype,`showBcc`,void 0),S([_()],Q.prototype,`showDiscardConfirm`,void 0),S([_()],Q.prototype,`pendingDiscardType`,void 0),S([_()],Q.prototype,`windowWidth`,void 0),S([_()],Q.prototype,`windowHeight`,void 0),S([_()],Q.prototype,`isSaving`,void 0),S([_()],Q.prototype,`linkPromptFields`,void 0),Q=S([a(`alps-floating-composer`)],Q);var Ht=class extends p{constructor(...e){super(...e),this.show=!1,this.message=``,this.actionLabel=``,this.timeout=0,this._timer=null}updated(e){e.has(`show`)&&(this.show&&this.timeout>0?(this._timer&&clearTimeout(this._timer),this._timer=setTimeout(()=>{this.dismiss()},this.timeout)):!this.show&&this._timer&&(clearTimeout(this._timer),this._timer=null))}dismiss(){this.show=!1,this.dispatchEvent(new CustomEvent(`dismiss`)),this.onAction=void 0}handleAction(){this.onAction?this.onAction():this.dispatchEvent(new CustomEvent(`action`)),this.dismiss()}static{this.styles=o`
+    `}};S([f({context:k})],Q.prototype,`composeStore`,void 0),S([f({context:y})],Q.prototype,`i18nStore`,void 0),S([f({context:M})],Q.prototype,`settingsStore`,void 0),S([i({type:Object})],Q.prototype,`instance`,void 0),S([i({type:Number})],Q.prototype,`index`,void 0),S([i({type:Number})],Q.prototype,`totalOpen`,void 0),S([i({type:Number})],Q.prototype,`totalMinimized`,void 0),S([i({type:Number})],Q.prototype,`openIndex`,void 0),S([i({type:Number})],Q.prototype,`minimizedIndex`,void 0),S([_()],Q.prototype,`showCc`,void 0),S([_()],Q.prototype,`showBcc`,void 0),S([_()],Q.prototype,`showDiscardConfirm`,void 0),S([_()],Q.prototype,`pendingDiscardType`,void 0),S([_()],Q.prototype,`windowWidth`,void 0),S([_()],Q.prototype,`windowHeight`,void 0),S([_()],Q.prototype,`isSaving`,void 0),S([_()],Q.prototype,`linkPromptFields`,void 0),Q=S([a(`alps-floating-composer`)],Q);var Ht=class extends p{constructor(...e){super(...e),this.show=!1,this.message=``,this.actionLabel=``,this.timeout=0,this._timer=null}updated(e){e.has(`show`)&&(this.show&&this.timeout>0?(this._timer&&clearTimeout(this._timer),this._timer=setTimeout(()=>{this.dismiss()},this.timeout)):!this.show&&this._timer&&(clearTimeout(this._timer),this._timer=null))}dismiss(){this.show=!1,this.dispatchEvent(new CustomEvent(`dismiss`)),this.onAction=void 0}handleAction(){this.onAction?this.onAction():this.dispatchEvent(new CustomEvent(`action`)),this.dismiss()}static{this.styles=o`
     :host {
       display: block;
       transform: translateY(20px);
@@ -5853,7 +5916,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
           style="--btn-color: var(--toast-fg, rgba(255, 255, 255, 0.7)); --btn-hover-bg: rgba(255, 255, 255, 0.15); --text-primary: var(--toast-fg, #fff); --btn-icon-size: 16px;"
         ></alps-icon-btn>
       </div>
-    `}};S([f({context:y})],Ht.prototype,`i18nStore`,void 0),S([i({type:Boolean,reflect:!0})],Ht.prototype,`show`,void 0),S([i({type:String})],Ht.prototype,`message`,void 0),S([i({type:String})],Ht.prototype,`actionLabel`,void 0),S([i({type:Object})],Ht.prototype,`onAction`,void 0),S([i({type:Number})],Ht.prototype,`timeout`,void 0),Ht=S([a(`alps-toast`)],Ht);var Ut=new class{constructor(){this.events=[`mousedown`,`mousemove`,`keypress`,`scroll`,`touchstart`],this.logoutMinutes=0,this.lastActivity=Date.now(),this.lastPing=Date.now(),this.checkInterval=null,this.handleActivity=()=>{this.lastActivity=Date.now()}}setLogoutTime(e){let t=this.logoutMinutes>0;this.logoutMinutes=e;let n=this.logoutMinutes>0;n&&!t?(this.attachEvents(),this.startInterval()):!n&&t?(this.detachEvents(),this.clearInterval()):n&&t&&(this.lastActivity=Date.now())}attachEvents(){this.events.forEach(e=>document.addEventListener(e,this.handleActivity,{passive:!0})),this.lastActivity=Date.now()}detachEvents(){this.events.forEach(e=>document.removeEventListener(e,this.handleActivity))}startInterval(){this.clearInterval(),this.checkInterval=setInterval(()=>this.checkTimeout(),3e4)}clearInterval(){this.checkInterval&&=(clearInterval(this.checkInterval),null)}checkTimeout(){if(this.logoutMinutes<=0)return;if(window.location.hash===`#/login`||window.location.hash===``){this.lastActivity=Date.now();return}let e=Date.now()-this.lastActivity;e>=this.logoutMinutes*60*1e3?this.logout():e<300*1e3&&Date.now()-this.lastPing>300*1e3&&this.pingBackend()}async pingBackend(){this.lastPing=Date.now();try{await fetch(`/session`)}catch{}}async logout(){if(this.clearInterval(),this.detachEvents(),this.onBeforeLogout)try{await this.onBeforeLogout()}catch(e){console.error(`Failed to run onBeforeLogout hook`,e)}try{await fetch(`/session`,{method:`DELETE`}),at.clear(),localStorage.removeItem(`alps_settings`),window.dispatchEvent(new CustomEvent(`session-cleared`)),window.location.hash=`#/login`,this.lastActivity=Date.now(),this.setLogoutTime(this.logoutMinutes)}catch(e){console.error(`Failed to auto sign out`,e)}}},Wt=3e3,$=class extends p{constructor(...e){super(...e),this.composeStore=new Ve,this.settingsStore=new Ke,this.i18nStore=new xe,this.linkedAccountsStore=ft,this.activeComposers=[],this.toasts=[],this.toastIdCounter=0,this.isOffline=!navigator.onLine,this.offlineCountdown=0,this.offlineInterval=null,this._handleAuthError=()=>{sessionStorage.clear(),localStorage.removeItem(`alps_settings`),window.dispatchEvent(new CustomEvent(`session-cleared`)),window.location.hash=`#/login`},this._verifyConnectivity=async()=>{if(!navigator.onLine)return!1;try{let e=await fetch(`/site.webmanifest`,{method:`HEAD`,cache:`no-store`});return!(e.status===502||e.status===503||e.status===504)}catch{return!1}},this._handleOnlineEvent=async()=>{await this._verifyConnectivity()?(this.isOffline=!1,this._stopOfflineCountdown()):this._handleOfflineEvent()},this._handleOfflineEvent=()=>{this.isOffline||(this.isOffline=!0,this.offlineCountdown=10,this._startOfflineCountdown())},this._isPinging=!1,this._handleShowToast=e=>{let t=++this.toastIdCounter,n={id:t,message:e.detail.message,actionLabel:e.detail.actionLabel||``,actionFn:e.detail.actionFn,timeout:e.detail.duration||Wt,show:!1};this.toasts=[...this.toasts,n],requestAnimationFrame(()=>{this.toasts=this.toasts.map(e=>e.id===t?{...e,show:!0}:e)})},this._handleBeforeUnload=e=>{if(this.activeComposers.some(e=>e.isSending))return e.preventDefault(),`You have a message currently sending. Are you sure you want to leave?`},this._handleComposeChange=()=>{this.activeComposers=this.composeStore.getState().activeComposers},this._handleSettingsChange=()=>{let e=this.settingsStore.getState();Ut.setLogoutTime(e.autoLogout||0),this.i18nStore.setLanguage(e.language||`en`)},this.mailboxPageTemplate=s`<mailbox-page></mailbox-page>`,this.router=new Le(this.getRoutes(),()=>s`<div>404 Not Found</div>`,()=>this.requestUpdate())}static{this.styles=o`
+    `}};S([f({context:y})],Ht.prototype,`i18nStore`,void 0),S([i({type:Boolean,reflect:!0})],Ht.prototype,`show`,void 0),S([i({type:String})],Ht.prototype,`message`,void 0),S([i({type:String})],Ht.prototype,`actionLabel`,void 0),S([i({type:Object})],Ht.prototype,`onAction`,void 0),S([i({type:Number})],Ht.prototype,`timeout`,void 0),Ht=S([a(`alps-toast`)],Ht);var Ut=new class{constructor(){this.events=[`mousedown`,`mousemove`,`keypress`,`scroll`,`touchstart`],this.logoutMinutes=0,this.lastActivity=Date.now(),this.lastPing=Date.now(),this.checkInterval=null,this.handleActivity=()=>{this.lastActivity=Date.now()}}setLogoutTime(e){let t=this.logoutMinutes>0;this.logoutMinutes=e;let n=this.logoutMinutes>0;n&&!t?(this.attachEvents(),this.startInterval()):!n&&t?(this.detachEvents(),this.clearInterval()):n&&t&&(this.lastActivity=Date.now())}attachEvents(){this.events.forEach(e=>document.addEventListener(e,this.handleActivity,{passive:!0})),this.lastActivity=Date.now()}detachEvents(){this.events.forEach(e=>document.removeEventListener(e,this.handleActivity))}startInterval(){this.clearInterval(),this.checkInterval=setInterval(()=>this.checkTimeout(),3e4)}clearInterval(){this.checkInterval&&=(clearInterval(this.checkInterval),null)}checkTimeout(){if(this.logoutMinutes<=0)return;if(window.location.hash===`#/login`||window.location.hash===``){this.lastActivity=Date.now();return}let e=Date.now()-this.lastActivity;e>=this.logoutMinutes*60*1e3?this.logout():e<300*1e3&&Date.now()-this.lastPing>300*1e3&&this.pingBackend()}async pingBackend(){this.lastPing=Date.now();try{await fetch(`/session`)}catch{}}async logout(){if(this.clearInterval(),this.detachEvents(),this.onBeforeLogout)try{await this.onBeforeLogout()}catch(e){console.error(`Failed to run onBeforeLogout hook`,e)}try{await fetch(`/session`,{method:`DELETE`}),it.clear(),localStorage.removeItem(`alps_settings`),window.dispatchEvent(new CustomEvent(`session-cleared`)),window.location.hash=`#/login`,this.lastActivity=Date.now(),this.setLogoutTime(this.logoutMinutes)}catch(e){console.error(`Failed to auto sign out`,e)}}},Wt=3e3,$=class extends p{constructor(...e){super(...e),this.composeStore=new Ve,this.settingsStore=new Ge,this.i18nStore=new xe,this.linkedAccountsStore=dt,this.activeComposers=[],this.toasts=[],this.toastIdCounter=0,this.isOffline=!navigator.onLine,this.offlineCountdown=0,this.offlineInterval=null,this._handleAuthError=()=>{sessionStorage.clear(),localStorage.removeItem(`alps_settings`),window.dispatchEvent(new CustomEvent(`session-cleared`)),window.location.hash=`#/login`},this._verifyConnectivity=async()=>{if(!navigator.onLine)return!1;try{let e=await fetch(`/site.webmanifest`,{method:`HEAD`,cache:`no-store`});return!(e.status===502||e.status===503||e.status===504)}catch{return!1}},this._handleOnlineEvent=async()=>{await this._verifyConnectivity()?(this.isOffline=!1,this._stopOfflineCountdown()):this._handleOfflineEvent()},this._handleOfflineEvent=()=>{this.isOffline||(this.isOffline=!0,this.offlineCountdown=10,this._startOfflineCountdown())},this._isPinging=!1,this._handleShowToast=e=>{let t=++this.toastIdCounter,n={id:t,message:e.detail.message,actionLabel:e.detail.actionLabel||``,actionFn:e.detail.actionFn,timeout:e.detail.duration||Wt,show:!1};this.toasts=[...this.toasts,n],requestAnimationFrame(()=>{this.toasts=this.toasts.map(e=>e.id===t?{...e,show:!0}:e)})},this._handleBeforeUnload=e=>{if(this.activeComposers.some(e=>e.isSending))return e.preventDefault(),`You have a message currently sending. Are you sure you want to leave?`},this._handleComposeChange=()=>{this.activeComposers=this.composeStore.getState().activeComposers},this._handleSettingsChange=()=>{let e=this.settingsStore.getState();Ut.setLogoutTime(e.autoLogout||0),this.i18nStore.setLanguage(e.language||`en`)},this.mailboxPageTemplate=s`<mailbox-page></mailbox-page>`,this.router=new Le(this.getRoutes(),()=>s`<div>404 Not Found</div>`,()=>this.requestUpdate())}static{this.styles=o`
     :host {
       display: block;
       height: 100vh;
@@ -5913,4 +5976,4 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
           </div>
         </ui-modal>
       `:``}
-    `}};S([h({context:He})],$.prototype,`composeStore`,void 0),S([h({context:M})],$.prototype,`settingsStore`,void 0),S([h({context:y})],$.prototype,`i18nStore`,void 0),S([h({context:pt})],$.prototype,`linkedAccountsStore`,void 0),S([_()],$.prototype,`activeComposers`,void 0),S([_()],$.prototype,`toasts`,void 0),S([_()],$.prototype,`isOffline`,void 0),S([_()],$.prototype,`offlineCountdown`,void 0),$=S([a(`app-root`)],$),console.log(`Loaded ${Object.keys(Object.assign({"../../plugins/password/frontend/index.ts":Ie})).length} frontend plugins.`);
+    `}};S([h({context:k})],$.prototype,`composeStore`,void 0),S([h({context:M})],$.prototype,`settingsStore`,void 0),S([h({context:y})],$.prototype,`i18nStore`,void 0),S([h({context:ft})],$.prototype,`linkedAccountsStore`,void 0),S([_()],$.prototype,`activeComposers`,void 0),S([_()],$.prototype,`toasts`,void 0),S([_()],$.prototype,`isOffline`,void 0),S([_()],$.prototype,`offlineCountdown`,void 0),$=S([a(`app-root`)],$),console.log(`Loaded ${Object.keys(Object.assign({"../../plugins/password/frontend/index.ts":Ie})).length} frontend plugins.`);
