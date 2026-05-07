@@ -495,7 +495,7 @@ func TestDistributedRateLimiter(t *testing.T) {
 	}
 
 	broadcaster := &mockBroadcaster{}
-	
+
 	// Create Node A
 	rlA := NewRateLimiter(config, logger, broadcaster)
 	defer rlA.Close()
@@ -534,19 +534,19 @@ func TestDistributedRateLimiter(t *testing.T) {
 	if reason != "Too many login attempts, please wait a minute" {
 		t.Errorf("Expected per-minute rate limit message on Node B, got: %s", reason)
 	}
-	
+
 	// 4. Simulate successful login on Node A
 	rlA.RecordLoginAttempt(req, username, true)
-	
+
 	// Send the success message to Node B
 	rlB.HandleClusterMessage(broadcaster.messages[3])
-	
+
 	// Verify user failures were cleared on Node B
 	rlB.mu.RLock()
 	userEntry := rlB.userMap[username]
 	cleared := userEntry == nil || len(userEntry.timestamps) == 0
 	rlB.mu.RUnlock()
-	
+
 	if !cleared {
 		t.Error("Successful login broadcast should clear user failures on Node B")
 	}

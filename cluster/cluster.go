@@ -112,7 +112,7 @@ func NewCluster(cfg Config) (*Cluster, error) {
 	cluster.leaderMtx.Lock()
 	cluster.ml = ml
 	cluster.broadcasts = &memberlist.TransmitLimitedQueue{
-		NumNodes: func() int { return ml.NumMembers() },
+		NumNodes:       func() int { return ml.NumMembers() },
 		RetransmitMult: 3,
 	}
 	cluster.leaderMtx.Unlock()

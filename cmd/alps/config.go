@@ -62,11 +62,11 @@ func (c *ClusterConfig) GetBindPort() int {
 			}
 		}
 	}
-	
+
 	if c.Port > 0 {
 		return c.Port
 	}
-	
+
 	return 7946
 }
 
@@ -138,11 +138,11 @@ type TLSConfig struct {
 type LetsEncryptConfig struct {
 	Email               string          `toml:"email"`
 	Domains             []string        `toml:"domains"`
-	DefaultDomain       string          `toml:"default_domain"`          // Fallback for SNI-less connections
-	StorageProvider     string          `toml:"storage_provider"`        // "s3" or "file" (default: s3)
-	CacheDir            string          `toml:"cache_dir"`               // Directory for local file cache
-	SyncIntervalMinutes int             `toml:"sync_interval_minutes"`   // Interval for syncing local cache to S3
-	ACMEHTTPAddr        string          `toml:"acme_http_addr"`          // Address for HTTP-01 challenges (default: ":80")
+	DefaultDomain       string          `toml:"default_domain"`        // Fallback for SNI-less connections
+	StorageProvider     string          `toml:"storage_provider"`      // "s3" or "file" (default: s3)
+	CacheDir            string          `toml:"cache_dir"`             // Directory for local file cache
+	SyncIntervalMinutes int             `toml:"sync_interval_minutes"` // Interval for syncing local cache to S3
+	ACMEHTTPAddr        string          `toml:"acme_http_addr"`        // Address for HTTP-01 challenges (default: ":80")
 	S3                  S3StorageConfig `toml:"s3"`
 }
 

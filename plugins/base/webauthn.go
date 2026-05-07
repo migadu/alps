@@ -16,8 +16,6 @@ import (
 	"github.com/migadu/alps/provider"
 )
 
-
-
 // CredentialDisplay is used to display credentials in the UI
 type CredentialDisplay struct {
 	ID      string

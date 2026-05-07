@@ -59,8 +59,8 @@ type RateLimitEvent struct {
 
 // RateLimiter implements multi-tier rate limiting for login attempts
 type RateLimiter struct {
-	config RateLimitConfig
-	logger Logger
+	config      RateLimitConfig
+	logger      Logger
 	broadcaster ClusterBroadcaster
 
 	mu       sync.RWMutex

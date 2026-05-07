@@ -17,7 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"golang.org/x/crypto/acme/autocert"
-	
+
 	"github.com/migadu/alps/tlsmanager/storage"
 )
 
@@ -45,11 +45,11 @@ type Config struct {
 type LetsEncryptConfig struct {
 	Email               string
 	Domains             []string
-	DefaultDomain       string   // Default domain for SNI-less connections
-	StorageProvider     string   // "s3" or "file"
-	CacheDir            string   // Directory for local file cache
-	SyncIntervalMinutes int      // Interval for syncing local cache to S3
-	ACMEHTTPAddr        string   // Address for HTTP-01 challenge handler (e.g., ":8080")
+	DefaultDomain       string // Default domain for SNI-less connections
+	StorageProvider     string // "s3" or "file"
+	CacheDir            string // Directory for local file cache
+	SyncIntervalMinutes int    // Interval for syncing local cache to S3
+	ACMEHTTPAddr        string // Address for HTTP-01 challenge handler (e.g., ":8080")
 	S3                  S3Config
 }
 
@@ -308,6 +308,10 @@ func createS3Cache(ctx context.Context, cfg LetsEncryptConfig, logger *slog.Logg
 
 	if cfg.S3.Region != "" {
 		awsCfg.Region = cfg.S3.Region
+	} else if cfg.S3.Endpoint != "" {
+		// Provide a default region to prevent AWS SDK from querying EC2 metadata service and hanging
+		awsCfg.Region = "us-east-1"
+		logger.Debug("No S3 region provided, falling back to us-east-1")
 	}
 
 	if cfg.S3.AccessKey != "" && cfg.S3.SecretKey != "" {
@@ -320,11 +324,16 @@ func createS3Cache(ctx context.Context, cfg LetsEncryptConfig, logger *slog.Logg
 
 	var s3Client *s3.Client
 	if cfg.S3.Endpoint != "" {
+		endpoint := cfg.S3.Endpoint
+		if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+			endpoint = "https://" + endpoint
+		}
+
 		s3Client = s3.NewFromConfig(awsCfg, func(o *s3.Options) {
-			o.BaseEndpoint = aws.String(cfg.S3.Endpoint)
+			o.BaseEndpoint = aws.String(endpoint)
 			o.UsePathStyle = true
 		})
-		logger.Info("using custom S3 endpoint", "endpoint", cfg.S3.Endpoint)
+		logger.Info("using custom S3 endpoint", "endpoint", endpoint)
 	} else {
 		s3Client = s3.NewFromConfig(awsCfg)
 	}

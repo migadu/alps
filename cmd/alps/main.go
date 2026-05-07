@@ -144,11 +144,12 @@ func main() {
 			Logger:    slog.Default(),
 		})
 		if err != nil {
-			logger.Fatalf("failed to initialize cluster: %v", err)
+			logger.Errorf("failed to initialize cluster (falling back to single-node mode): %v", err)
+			clusterMgr = nil
+		} else {
+			defer clusterMgr.Shutdown()
+			options.ClusterBroadcaster = clusterMgr
 		}
-		defer clusterMgr.Shutdown()
-		
-		options.ClusterBroadcaster = clusterMgr
 	}
 
 	s, err := alps.New(logger, &options)
@@ -194,7 +195,7 @@ func main() {
 
 		// Create slog logger from alps logger for TLS manager
 		slogLogger := slog.Default()
-		
+
 		if clusterMgr != nil {
 			// Cluster enabled: only leader can request new certs from Let's Encrypt
 			tlsMgr, err = tlsmanager.NewManager(tlsCfg, slogLogger, clusterMgr.IsLeader)
@@ -202,7 +203,7 @@ func main() {
 			// Single-instance mode
 			tlsMgr, err = tlsmanager.NewManager(tlsCfg, slogLogger)
 		}
-		
+
 		if err != nil {
 			logger.Fatalf("Failed to initialize TLS manager: %v", err)
 		}
