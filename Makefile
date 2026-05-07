@@ -17,6 +17,10 @@ LDFLAGS = -ldflags="${LDFLAGS_VARS}"
 # Default target
 all: build
 
+# Build the frontend
+build-frontend:
+	cd frontend && npm install && npm run build
+
 # Build the alps binary
 build:
 	go build $(LDFLAGS) -o $(ALPS_BINARY) ./cmd/alps
@@ -45,6 +49,7 @@ test:
 help:
 	@echo "Available targets:"
 	@echo "  all            - Build alps (default)"
+	@echo "  build-frontend - Build frontend assets"
 	@echo "  build          - Build alps binary"
 	@echo "  install        - Install to GOPATH/bin"
 	@echo "  build-freebsd  - Cross-compile for FreeBSD amd64"

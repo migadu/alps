@@ -148,6 +148,13 @@ func (r *Router) Static(prefix, dir string) {
 	r.mux.Handle(pattern, http.StripPrefix(prefix, fs))
 }
 
+// StaticFS serves static files from the given http.FileSystem.
+func (r *Router) StaticFS(prefix string, hfs http.FileSystem) {
+	fileServer := http.FileServer(hfs)
+	pattern := "GET " + prefix + "/"
+	r.mux.Handle(pattern, http.StripPrefix(prefix, fileServer))
+}
+
 // wrapHandler converts our HandlerFunc to http.HandlerFunc and applies middleware.
 func (r *Router) wrapHandler(h HandlerFunc) http.HandlerFunc {
 	// Apply middlewares in reverse order
@@ -209,4 +216,9 @@ func (g *Group) Add(method, path string, handler HandlerFunc) {
 // Static serves static files in the group.
 func (g *Group) Static(path, dir string) {
 	g.router.Static(g.prefix+path, dir)
+}
+
+// StaticFS serves static files in the group from the given http.FileSystem.
+func (g *Group) StaticFS(path string, hfs http.FileSystem) {
+	g.router.StaticFS(g.prefix+path, hfs)
 }

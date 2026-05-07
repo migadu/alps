@@ -1,8 +1,10 @@
 package alps
 
 import (
+	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,6 +22,9 @@ const (
 	cookieName           = "alps_session"
 	loginTokenCookieName = "alps_login_token"
 )
+
+//go:embed all:frontend/dist
+var frontendFS embed.FS
 
 // Server holds all the alps server state.
 type Server struct {
@@ -301,8 +306,12 @@ func (s *Server) loadPlugins() error {
 		p.SetRoutes(router.Group(""))
 	}
 
-	// Setup static routes
-	router.Static("", "frontend/dist")
+	// Setup static routes using embedded filesystem
+	distFS, err := fs.Sub(frontendFS, "frontend/dist")
+	if err != nil {
+		return fmt.Errorf("failed to get frontend/dist sub-filesystem: %v", err)
+	}
+	router.StaticFS("", http.FS(distFS))
 
 	s.router = router
 	s.plugins = plugins
