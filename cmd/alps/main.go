@@ -14,6 +14,7 @@ import (
 
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/charset"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/tlsmanager"
 	"golang.org/x/text/encoding/charmap"
@@ -69,7 +70,6 @@ func main() {
 	)
 	flag.StringVar(&configFile, "config", "", "path to TOML configuration file")
 	flag.BoolVar(&printVersion, "version", false, "print version information and exit")
-	flag.BoolVar(&printVersion, "v", false, "print version information and exit (shorthand)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "usage: alps -config <path-to-config.toml>\n")
@@ -114,6 +114,30 @@ func main() {
 	s, err := alps.New(logger, &options)
 	if err != nil {
 		logger.Fatal(err)
+	}
+
+	// Initialize WebAuthn
+	rpID := "localhost"
+	rpDisplayName := "Alps Webmail"
+	rpOrigins := []string{"http://localhost:1323", "http://localhost:5173"}
+
+	if config.WebAuthn.RPID != "" {
+		rpID = config.WebAuthn.RPID
+	}
+	if config.WebAuthn.RPDisplayName != "" {
+		rpDisplayName = config.WebAuthn.RPDisplayName
+	}
+	if len(config.WebAuthn.RPOrigins) > 0 {
+		rpOrigins = config.WebAuthn.RPOrigins
+	}
+
+	s.WebAuthn, err = webauthn.New(&webauthn.Config{
+		RPDisplayName: rpDisplayName,
+		RPID:          rpID,
+		RPOrigins:     rpOrigins,
+	})
+	if err != nil {
+		logger.Fatalf("Failed to initialize WebAuthn: %v", err)
 	}
 
 	// Initialize TLS manager if configured

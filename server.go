@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/fernet/fernet-go"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/migadu/alps/provider"
 	"github.com/migadu/alps/provider/imap"
 )
@@ -33,6 +34,7 @@ type Server struct {
 
 	// maps protocols to URLs (protocol can be empty for auto-discovery)
 	upstreams map[string]*url.URL
+	WebAuthn  *webauthn.WebAuthn // Global WebAuthn instance
 
 	imap struct {
 		host     string
@@ -373,7 +375,14 @@ type Options struct {
 	IdleTimeout             time.Duration           // HTTP idle timeout, 0 means use default (120 seconds)
 	IMAPTimeout             time.Duration           // IMAP operation timeout, 0 means use default (30 seconds)
 	SMTPTimeout             time.Duration           // SMTP operation timeout, 0 means use default (30 seconds)
+	WebAuthn                WebAuthnOptions         // WebAuthn configuration
 	Plugins                 map[string]PluginConfig // Generic plugin configuration
+}
+
+type WebAuthnOptions struct {
+	RPID          string
+	RPDisplayName string
+	RPOrigins     []string
 }
 
 type PluginConfig struct {

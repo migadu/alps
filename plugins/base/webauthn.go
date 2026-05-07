@@ -16,48 +16,7 @@ import (
 	"github.com/migadu/alps/provider"
 )
 
-var webAuthn *webauthn.WebAuthn
 
-// WebAuthnConfig holds configuration for WebAuthn
-type WebAuthnConfig struct {
-	RPID          string   // Relying Party ID (domain name, e.g., "mail.example.com")
-	RPDisplayName string   // Display name shown to users
-	RPOrigins     []string // Allowed origins (e.g., "https://mail.example.com")
-}
-
-func initWebAuthn(cfg *WebAuthnConfig) error {
-	if webAuthn != nil {
-		return nil
-	}
-
-	// Use defaults for development if not configured
-	rpID := "localhost"
-	rpDisplayName := "Alps Webmail"
-	rpOrigins := []string{"http://localhost:1323", "http://localhost:5173"}
-
-	if cfg != nil {
-		if cfg.RPID != "" {
-			rpID = cfg.RPID
-		}
-		if cfg.RPDisplayName != "" {
-			rpDisplayName = cfg.RPDisplayName
-		}
-		if len(cfg.RPOrigins) > 0 {
-			rpOrigins = cfg.RPOrigins
-		}
-	}
-
-	var err error
-	webAuthn, err = webauthn.New(&webauthn.Config{
-		RPDisplayName: rpDisplayName,
-		RPID:          rpID,
-		RPOrigins:     rpOrigins,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create WebAuthn: %v", err)
-	}
-	return nil
-}
 
 // CredentialDisplay is used to display credentials in the UI
 type CredentialDisplay struct {
@@ -141,7 +100,7 @@ func handleSetupBegin(ctx *alps.Context) error {
 	}
 
 	// Begin registration with explicit exclusions
-	options, session, err := webAuthn.BeginRegistration(user, webauthn.WithExclusions(exclusions))
+	options, session, err := ctx.Server.WebAuthn.BeginRegistration(user, webauthn.WithExclusions(exclusions))
 	if err != nil {
 		return fmt.Errorf("failed to begin registration: %v", err)
 	}
@@ -226,7 +185,7 @@ func handleSetupFinish(ctx *alps.Context) error {
 		credentials: creds,
 	}
 
-	credential, err := webAuthn.FinishRegistration(user, session, ctx.Request)
+	credential, err := ctx.Server.WebAuthn.FinishRegistration(user, session, ctx.Request)
 	if err != nil {
 		return fmt.Errorf("failed to finish registration: %v", err)
 	}
@@ -409,8 +368,8 @@ func handleVerifyBegin(ctx *alps.Context) error {
 
 	// Begin WebAuthn authentication
 	// Use UserVerificationPreferred to allow both platform (fingerprint) and cross-platform (security key) authenticators
-	options, webauthnSession, err := webAuthn.BeginLogin(user,
-		webauthn.WithUserVerification(protocol.VerificationPreferred))
+	options, webauthnSession, err := ctx.Server.WebAuthn.BeginLogin(user,
+		webauthn.WithUserVerification(protocol.VerificationDiscouraged))
 	if err != nil {
 		return fmt.Errorf("failed to begin login: %v", err)
 	}
@@ -468,7 +427,7 @@ func handleVerifyFinish(ctx *alps.Context) error {
 	}
 
 	// Verify WebAuthn assertion
-	_, err = webAuthn.FinishLogin(user, sessionData, ctx.Request)
+	_, err = ctx.Server.WebAuthn.FinishLogin(user, sessionData, ctx.Request)
 	if err != nil {
 		return fmt.Errorf("failed to finish login: %v", err)
 	}
@@ -539,7 +498,7 @@ func IsEnabled(store provider.Store) (bool, error) {
 }
 
 // BeginLogin starts WebAuthn authentication for a user
-func BeginLogin(username string, session *alps.Session) (*protocol.CredentialAssertion, error) {
+func BeginLogin(server *alps.Server, username string, session *alps.Session) (*protocol.CredentialAssertion, error) {
 	creds, err := loadCredentials(session.Store())
 	if err != nil {
 		return nil, err
@@ -550,7 +509,7 @@ func BeginLogin(username string, session *alps.Session) (*protocol.CredentialAss
 		credentials: creds,
 	}
 
-	options, webauthnSession, err := webAuthn.BeginLogin(user)
+	options, webauthnSession, err := server.WebAuthn.BeginLogin(user)
 	if err != nil {
 		return nil, err
 	}
@@ -571,7 +530,7 @@ func BeginLogin(username string, session *alps.Session) (*protocol.CredentialAss
 }
 
 // FinishLogin completes WebAuthn authentication
-func FinishLogin(session *alps.Session, response *http.Request) error {
+func FinishLogin(server *alps.Server, session *alps.Session, response *http.Request) error {
 	// Load session data
 	sessionDataStored, err := loadSessionData(session)
 	if err != nil {
@@ -593,7 +552,7 @@ func FinishLogin(session *alps.Session, response *http.Request) error {
 		credentials: creds,
 	}
 
-	_, err = webAuthn.FinishLogin(user, webauthnSession, response)
+	_, err = server.WebAuthn.FinishLogin(user, webauthnSession, response)
 	if err != nil {
 		return err
 	}

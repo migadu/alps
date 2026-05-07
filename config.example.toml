@@ -221,6 +221,20 @@ format = "console"
 # Note: When server.debug=true, the level defaults to "debug"
 level = "info"
 
+[webauthn]
+# WebAuthn Configuration for Two-Factor Authentication (2FA)
+# Required for WebAuthn to work in production environments
+
+# The Relying Party ID (usually your domain name)
+# rpid = "webmail.example.com"
+
+# The display name shown to users during authentication
+# display_name = "Alps Webmail"
+
+# Allowed origins for WebAuthn requests
+# Must include the exact scheme (https://) and no trailing slash
+# origins = ["https://webmail.example.com"]
+
 [tls]
 # Enable TLS termination (default: false)
 # enabled = false

@@ -18,6 +18,7 @@ type Config struct {
 	TLS       TLSConfig               `toml:"tls"`
 	Provider  ProviderConfig          `toml:"provider"`
 	Upstreams UpstreamsConfig         `toml:"upstreams"`
+	WebAuthn  WebAuthnConfig          `toml:"webauthn"`
 	Plugin    map[string]PluginConfig `toml:"plugin"`
 }
 
@@ -110,6 +111,12 @@ type S3StorageConfig struct {
 	NodeID          string `toml:"node_id"`      // Stable ID for jitter (default: hostname); PID appended for locks
 }
 
+type WebAuthnConfig struct {
+	RPID          string   `toml:"rpid"`
+	RPDisplayName string   `toml:"display_name"`
+	RPOrigins     []string `toml:"origins"`
+}
+
 type PluginConfig struct {
 	Enabled bool                   `toml:"enabled"`
 	Server  string                 `toml:"server"`
@@ -163,6 +170,13 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	options := alps.Options{}
 
 	options.Debug = c.Server.Debug
+
+	// Set WebAuthn options
+	options.WebAuthn = alps.WebAuthnOptions{
+		RPID:          c.WebAuthn.RPID,
+		RPDisplayName: c.WebAuthn.RPDisplayName,
+		RPOrigins:     c.WebAuthn.RPOrigins,
+	}
 
 	// Set session limit defaults
 	options.MaxSessions = 10000     // Global limit: 10,000 sessions
