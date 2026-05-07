@@ -231,7 +231,8 @@ func TestConvertIMAPMessage(t *testing.T) {
 	}
 
 	mailbox := "INBOX"
-	result := convertIMAPMessage(msg, mailbox)
+	provider := &IMAPProvider{}
+	result := provider.convertIMAPMessage(msg, mailbox)
 
 	if result.ID.String() != "123" {
 		t.Errorf("Expected ID '123', got %q", result.ID.String())
@@ -266,7 +267,7 @@ func TestNewIMAPProvider(t *testing.T) {
 	// A real test would need a mock IMAP client
 	var client *imapclient.Client // nil is fine for constructor test
 
-	provider := NewIMAPProvider(client)
+	provider := NewIMAPProvider(client, false)
 
 	if provider == nil {
 		t.Error("Expected non-nil provider")
