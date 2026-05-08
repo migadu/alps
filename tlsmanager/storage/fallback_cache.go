@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -346,6 +347,17 @@ func (f *FallbackCache) SyncAllToS3(ctx context.Context) error {
 			continue
 		}
 		// If err == autocert.ErrCacheMiss, cert is genuinely missing from S3 - sync it
+
+		// If this is an ephemeral ACME challenge token that is missing in S3, it was
+		// likely completed and deleted by the cluster leader. Instead of resurrecting
+		// it in S3, clean up our local orphaned copy.
+		if err == autocert.ErrCacheMiss && strings.HasSuffix(name, "+token") {
+			f.logger.Info("cleaning up orphaned challenge token from local cache", "name", name)
+			if delErr := f.fallback.Delete(ctx, name); delErr != nil {
+				f.logger.Warn("failed to delete orphaned token from local cache", "name", name, "error", delErr)
+			}
+			continue
+		}
 
 		// Write to S3 (either missing or different)
 		if err := f.primary.Put(ctx, name, data); err != nil {

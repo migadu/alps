@@ -1019,22 +1019,23 @@ export class MessageList extends LitElement {
               ?active=${this.filterQuery === 'is:unread'}
             ></alps-icon-btn>
           </div>
+          <alps-toast></alps-toast>
+          ${this.showEmptyConfirm ? html`
+            <ui-confirm
+              title=${this.i18nStore?.t('messageList.emptyMailboxTitle')?.replace('{folder}', this.currentMailbox) || `Empty ${this.currentMailbox}`}
+              message=${this.i18nStore?.t('messageList.emptyMailboxConfirm')?.replace('{folder}', this.currentMailbox).replace('{count}', String(this.totalMessages)) || `Are you sure you want to permanently delete all ${this.totalMessages} messages in ${this.currentMailbox}? This action cannot be undone.`}
+              confirmText=${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
+              confirmVariant="danger"
+              @confirm=${this.handleEmptyMailbox}
+              @cancel=${() => this.showEmptyConfirm = false}
+            ></ui-confirm>
+          ` : ''}
+          <div class="spacer"></div>
           <alps-pagination 
             .currentPage=${this.currentPage} 
             .totalItems=${this.totalMessages} 
             .itemsPerPage=${this.messagesPerPage}>
           </alps-pagination>
-          <alps-toast></alps-toast>
-        ${this.showEmptyConfirm ? html`
-          <ui-confirm
-            title=${this.i18nStore?.t('messageList.emptyMailboxTitle')?.replace('{folder}', this.currentMailbox) || `Empty ${this.currentMailbox}`}
-            message=${this.i18nStore?.t('messageList.emptyMailboxConfirm')?.replace('{folder}', this.currentMailbox).replace('{count}', String(this.totalMessages)) || `Are you sure you want to permanently delete all ${this.totalMessages} messages in ${this.currentMailbox}? This action cannot be undone.`}
-            confirmText=${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
-            confirmVariant="danger"
-            @confirm=${this.handleEmptyMailbox}
-            @cancel=${() => this.showEmptyConfirm = false}
-          ></ui-confirm>
-        ` : ''}
         </div>
       ` : ''}
     `;

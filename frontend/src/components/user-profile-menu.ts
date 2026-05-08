@@ -35,10 +35,34 @@ export class UserProfileMenu extends LitElement {
       display: flex;
       align-items: center;
       gap: 8px;
-      font-size: 14px;
-      font-weight: 500;
       color: var(--text-primary, #111827);
       user-select: none;
+    }
+
+    .user-text-container {
+      display: flex;
+      flex-direction: column;
+      max-width: 180px;
+    }
+
+    .user-name-text {
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.2;
+    }
+
+    .user-address-text {
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-secondary, #6b7280);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.2;
+      margin-top: 2px;
     }
 
     .item-text {
@@ -49,7 +73,7 @@ export class UserProfileMenu extends LitElement {
     }
 
     @media (max-width: 768px) {
-      .user-name-text {
+      .user-text-container {
         display: none;
       }
       
@@ -178,8 +202,11 @@ export class UserProfileMenu extends LitElement {
     return html`
       <div class="user-profile">
         <div class="user-info">
-          <alps-avatar .name=${displayName} .size=${20}></alps-avatar>
-          <span class="user-name-text">${displayName}</span>
+          <alps-avatar .name=${displayName} .size=${28}></alps-avatar>
+          <div class="user-text-container">
+            <span class="user-name-text">${displayName}</span>
+            <span class="user-address-text">${this.username}</span>
+          </div>
         </div>
         <alps-popup align="right">
           <alps-icon-btn

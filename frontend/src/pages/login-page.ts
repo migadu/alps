@@ -115,6 +115,53 @@ export class LoginPage extends LitElement {
       30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
       40%, 60% { transform: translate3d(4px, 0, 0); }
     }
+
+    .submit-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 36px;
+      margin-top: 4px;
+      gap: 8px;
+      background-color: var(--accent-color, #3b82f6);
+      color: #ffffff;
+      border: 1px solid transparent;
+      border-radius: var(--btn-radius, 4px);
+      font-family: inherit;
+      font-size: var(--btn-font-size, 14px);
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-sizing: border-box;
+      outline: none;
+    }
+
+    .submit-btn:hover:not(:disabled) {
+      background-color: var(--accent-hover, #2563eb);
+    }
+
+    .submit-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .submit-btn:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+
+    .spinner {
+      animation: spin 1s linear infinite;
+      display: flex;
+      width: 18px;
+      height: 18px;
+    }
+
+    .spinner svg {
+      width: 100%;
+      height: 100%;
+      fill: currentColor;
+    }
   `;
 
   @state() private username = '';
@@ -293,15 +340,13 @@ export class LoginPage extends LitElement {
               Keep me signed in
             </label>
           </div>
-          <alps-button 
+          <button 
             type="submit" 
-            variant="primary" 
-            full-width
-            style="height: 36px; margin-top: 4px;"
-            ?disabled=${this.isSubmitting || this.isRateLimited}
-            ?spinning=${this.isSubmitting}>
-            ${this.isRateLimited ? `Wait ${this.formatRetryTime(this.retryAfter)}` : 'Sign In'}
-          </alps-button>
+            class="submit-btn"
+            ?disabled=${this.isSubmitting || this.isRateLimited}>
+            ${this.isSubmitting ? html`<span class="spinner">${renderIcon('edelweiss')}</span>` : ''}
+            <span>${this.isRateLimited ? `Wait ${this.formatRetryTime(this.retryAfter)}` : 'Sign In'}</span>
+          </button>
         </form>
       </alps-auth-card>
     `;

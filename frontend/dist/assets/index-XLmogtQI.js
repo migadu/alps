@@ -393,6 +393,53 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
       30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
       40%, 60% { transform: translate3d(4px, 0, 0); }
     }
+
+    .submit-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 36px;
+      margin-top: 4px;
+      gap: 8px;
+      background-color: var(--accent-color, #3b82f6);
+      color: #ffffff;
+      border: 1px solid transparent;
+      border-radius: var(--btn-radius, 4px);
+      font-family: inherit;
+      font-size: var(--btn-font-size, 14px);
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-sizing: border-box;
+      outline: none;
+    }
+
+    .submit-btn:hover:not(:disabled) {
+      background-color: var(--accent-hover, #2563eb);
+    }
+
+    .submit-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .submit-btn:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+
+    .spinner {
+      animation: spin 1s linear infinite;
+      display: flex;
+      width: 18px;
+      height: 18px;
+    }
+
+    .spinner svg {
+      width: 100%;
+      height: 100%;
+      fill: currentColor;
+    }
   `}connectedCallback(){super.connectedCallback(),this.composeStore&&this.composeStore.clearAllComposers()}disconnectedCallback(){super.disconnectedCallback(),this.retryCountdownInterval&&clearInterval(this.retryCountdownInterval)}startRetryCountdown(e){this.retryAfter=e,this.isRateLimited=!0,this.retryCountdownInterval&&clearInterval(this.retryCountdownInterval),this.retryCountdownInterval=setInterval(()=>{this.retryAfter--,this.retryAfter<=0&&(this.isRateLimited=!1,this.retryCountdownInterval&&=(clearInterval(this.retryCountdownInterval),void 0))},1e3)}formatRetryTime(e){if(e<60)return`${e} second${e===1?``:`s`}`;let t=Math.ceil(e/60);return`${t} minute${t===1?``:`s`}`}async handleSubmit(e){if(e.preventDefault(),this.isSubmitting)return;let t=this.shadowRoot?.querySelector(`form`);if(t&&!t.checkValidity()){t.reportValidity();return}this.error=``,this.isSubmitting=!0;try{await new Promise(e=>setTimeout(e,600));let e={username:this.username,password:this.password,"remember-me":this.rememberMe?`on`:``},t=await fetch(`/session`,{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify(e)}),n=await t.json();t.ok?n.requires_2fa?(window.location.hash=`/login/webauthn`,this.isSubmitting=!1):(window.dispatchEvent(new CustomEvent(`user-logged-in`)),window.location.hash=`/mailbox/INBOX`):(t.status===429&&n.retry_after?(this.error=n.error||`Too many login attempts`,this.startRetryCountdown(n.retry_after)):(this.error=n.error||`Login failed. Please check your credentials.`,this.isRateLimited=!1),this.isSubmitting=!1)}catch{this.error=`Network error occurred. Please try again.`,this.isSubmitting=!1,this.isRateLimited=!1}}render(){return s`
       <alps-auth-card 
         icon="edelweiss" 
@@ -453,15 +500,13 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
               Keep me signed in
             </label>
           </div>
-          <alps-button 
+          <button 
             type="submit" 
-            variant="primary" 
-            full-width
-            style="height: 36px; margin-top: 4px;"
-            ?disabled=${this.isSubmitting||this.isRateLimited}
-            ?spinning=${this.isSubmitting}>
-            ${this.isRateLimited?`Wait ${this.formatRetryTime(this.retryAfter)}`:`Sign In`}
-          </alps-button>
+            class="submit-btn"
+            ?disabled=${this.isSubmitting||this.isRateLimited}>
+            ${this.isSubmitting?s`<span class="spinner">${x(`edelweiss`)}</span>`:``}
+            <span>${this.isRateLimited?`Wait ${this.formatRetryTime(this.retryAfter)}`:`Sign In`}</span>
+          </button>
         </form>
       </alps-auth-card>
     `}};S([f({context:y})],A.prototype,`i18nStore`,void 0),S([_()],A.prototype,`username`,void 0),S([_()],A.prototype,`password`,void 0),S([_()],A.prototype,`rememberMe`,void 0),S([_()],A.prototype,`error`,void 0),S([_()],A.prototype,`isSubmitting`,void 0),S([_()],A.prototype,`retryAfter`,void 0),S([_()],A.prototype,`isRateLimited`,void 0),S([f({context:k,subscribe:!0})],A.prototype,`composeStore`,void 0),A=S([a(`login-page`)],A);var j=new class extends EventTarget{async createMailbox(e){try{let t=new URLSearchParams;t.append(`name`,e);let n=await w(`/mailboxes`,{method:`POST`,headers:{"Content-Type":`application/x-www-form-urlencoded`},body:t.toString()});return n.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):n.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to create mailbox`,e),!1}}async renameMailbox(e,t){try{let n=await w(`/mailboxes/${encodeURIComponent(e)}/rename`,{method:`PUT`,headers:{"Content-Type":`application/json`},body:JSON.stringify({new_name:t})});return n.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):n.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to rename mailbox`,e),!1}}async deleteMailbox(e){try{let t=await w(`/mailboxes/${encodeURIComponent(e)}`,{method:`DELETE`});return t.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):t.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to delete mailbox`,e),!1}}async emptyMailbox(e){try{let t=await w(`/mailboxes/${encodeURIComponent(e)}/empty`,{method:`POST`});return t.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):t.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to empty mailbox`,e),!1}}async subscribeMailbox(e){try{let t=await w(`/mailboxes/${encodeURIComponent(e)}/subscribe`,{method:`PUT`});return t.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):t.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to subscribe mailbox`,e),!1}}async unsubscribeMailbox(e){try{let t=await w(`/mailboxes/${encodeURIComponent(e)}/unsubscribe`,{method:`PUT`});return t.status===401?(this.dispatchEvent(new CustomEvent(`auth-error`)),window.dispatchEvent(new CustomEvent(`auth-error`)),!1):t.ok?(T.sync(),!0):!1}catch(e){return console.error(`Failed to unsubscribe mailbox`,e),!1}}},Ue={"default-light":{id:`default-light`,name:`Default Light`,isDark:!1,colors:{"bg-primary":`#ffffff`,"bg-secondary":`#f9fafb`,"bg-tertiary":`#f3f4f6`,"bg-selected":`#eff6ff`,"bg-starred":`#2563eb0f`,"text-primary":`#111827`,"text-sender-read":`#202020`,"text-secondary":`#4b5563`,"text-muted":`#9ca3af`,"border-color":`#e5e7eb`,"accent-color":`#2563eb`,"accent-hover":`#1d4ed8`,"accent-light":`#dbeafe`,success:`#10b981`,warning:`#f59e0b`,error:`#ef4444`,"hover-color":`#f3f4f6`}},"default-dark":{id:`default-dark`,name:`Default Dark`,isDark:!0,colors:{"bg-primary":`#1f2937`,"bg-secondary":`#111827`,"bg-tertiary":`#374151`,"bg-selected":`#1e3a8a`,"bg-starred":`#3b82f615`,"text-primary":`#f9fafb`,"text-sender-read":`#e5e7eb`,"text-secondary":`#d1d5db`,"text-muted":`#9ca3af`,"border-color":`#374151`,"accent-color":`#3b82f6`,"accent-hover":`#60a5fa`,"accent-light":`#1e3a8a`,success:`#10b981`,warning:`#f59e0b`,error:`#ef4444`,"hover-color":`rgba(255, 255, 255, 0.1)`}},"nord-light":{id:`nord-light`,name:`Nord Light`,isDark:!1,colors:{"bg-primary":`#eceff4`,"bg-secondary":`#e5e9f0`,"bg-tertiary":`#d8dee9`,"bg-selected":`#81a1c133`,"bg-starred":`#5e81ac15`,"text-primary":`#2e3440`,"text-sender-read":`#3b4252`,"text-secondary":`#3b4252`,"text-muted":`#4c566a`,"border-color":`#d8dee9`,"accent-color":`#5e81ac`,"accent-hover":`#81a1c1`,"accent-light":`#81a1c133`,success:`#a3be8c`,warning:`#ebcb8b`,error:`#bf616a`,"hover-color":`rgba(0, 0, 0, 0.05)`}},"nord-dark":{id:`nord-dark`,name:`Nord Dark`,isDark:!0,colors:{"bg-primary":`#2e3440`,"bg-secondary":`#3b4252`,"bg-tertiary":`#434c5e`,"bg-selected":`#81a1c133`,"bg-starred":`#88c0d015`,"text-primary":`#eceff4`,"text-sender-read":`#e5e9f0`,"text-secondary":`#e5e9f0`,"text-muted":`#d8dee9`,"border-color":`#434c5e`,"accent-color":`#88c0d0`,"accent-hover":`#81a1c1`,"accent-light":`#81a1c133`,success:`#a3be8c`,warning:`#ebcb8b`,error:`#bf616a`,"hover-color":`rgba(255, 255, 255, 0.1)`}},"ocean-light":{id:`ocean-light`,name:`Ocean Light`,isDark:!1,colors:{"bg-primary":`#f8fafc`,"bg-secondary":`#f1f5f9`,"bg-tertiary":`#e2e8f0`,"bg-selected":`#e0f2fe`,"bg-starred":`#0ea5e915`,"text-primary":`#0f172a`,"text-sender-read":`#1e293b`,"text-secondary":`#334155`,"text-muted":`#64748b`,"border-color":`#cbd5e1`,"accent-color":`#0ea5e9`,"accent-hover":`#0284c7`,"accent-light":`#e0f2fe`,success:`#10b981`,warning:`#f59e0b`,error:`#ef4444`,"hover-color":`rgba(0, 0, 0, 0.05)`}},"ocean-dark":{id:`ocean-dark`,name:`Ocean Dark`,isDark:!0,colors:{"bg-primary":`#0f172a`,"bg-secondary":`#1e293b`,"bg-tertiary":`#334155`,"bg-selected":`#0c4a6e`,"bg-starred":`#38bdf815`,"text-primary":`#f8fafc`,"text-sender-read":`#e2e8f0`,"text-secondary":`#cbd5e1`,"text-muted":`#94a3b8`,"border-color":`#334155`,"accent-color":`#38bdf8`,"accent-hover":`#0ea5e9`,"accent-light":`#0c4a6e`,success:`#10b981`,warning:`#f59e0b`,error:`#ef4444`,"hover-color":`rgba(255, 255, 255, 0.1)`}}},We={themeMode:`auto`,colorFamily:`default`,layoutMode:`vertical`,densityMode:`compact`,sidebarCollapsed:!1,checkMailInterval:5,autoLogout:30,desktopNotifications:!1,soundNotifications:!0,name:``,signature:``,replyTo:``,bccMyself:!1,messagesPerPage:50,preferredView:`html`,markReadTimeout:3,showRemoteContent:`ask`,composeFormat:`html`,undoTimeout:0,language:`en`,hourFormat:`24`,dateFormat:`YYYY-MM-DD`,sortOrder:`desc`,messageSortCriteria:`date`,maxAttachmentMiB:32},Ge=class extends EventTarget{constructor(){super(),this.state=this.loadSettings(),this.applyTheme(),window.matchMedia(`(prefers-color-scheme: dark)`).addEventListener(`change`,()=>{this.state.themeMode===`auto`&&this.applyTheme()}),window.addEventListener(`session-cleared`,()=>{this.state=this.loadSettings(),this.applyTheme(),this.notify()}),window.addEventListener(`user-logged-in`,()=>{this._fetchBackendSettings()}),this._fetchBackendSettings()}loadSettings(){let e=localStorage.getItem(`alps_settings`);if(e)try{let t=JSON.parse(e);return{...We,...t}}catch(e){console.error(`Failed to parse settings`,e)}return{...We}}saveSettings(){localStorage.setItem(`alps_settings`,JSON.stringify(this.state))}notify(){this.dispatchEvent(new CustomEvent(`change`))}getState(){return this.state}async updateSettings(e){this.state={...this.state,...e},this.saveSettings(),(e.themeMode!==void 0||e.colorFamily!==void 0)&&this.applyTheme(),this.notify();let t={...e};if(delete t.loginUsername,Object.keys(t).length>0)return this._saveBackendSettings(this.state)}async _fetchBackendSettings(){let e=document.cookie.split(`;`).some(e=>e.trim().startsWith(`alps_logged_in=1`)),t=document.cookie.split(`;`).some(e=>e.trim().startsWith(`alps_has_login_token=1`));if(!e&&!t){window.location.hash.startsWith(`#/login`)||window.dispatchEvent(new CustomEvent(`auth-error`));return}try{let e=await fetch(`/settings`);if(e.status===401){window.dispatchEvent(new CustomEvent(`auth-error`));return}if(e.ok){let t=await e.json(),n={};if(t.MaxAttachmentMiB!==void 0&&(n.maxAttachmentMiB=t.MaxAttachmentMiB),t&&t.Settings){let e=t.Settings;if(e.ui){let t=e.ui;t.themeMode&&(n.themeMode=t.themeMode),t.colorFamily&&(n.colorFamily=t.colorFamily),t.layoutMode&&(n.layoutMode=t.layoutMode),t.densityMode&&(n.densityMode=t.densityMode),t.sidebarCollapsed!==void 0&&(n.sidebarCollapsed=t.sidebarCollapsed)}e.check_mail_interval!==void 0&&e.check_mail_interval!==0&&(n.checkMailInterval=e.check_mail_interval),e.auto_logout!==void 0&&(n.autoLogout=e.auto_logout),e.desktop_notifications!==void 0&&(n.desktopNotifications=e.desktop_notifications),e.sound_notifications!==void 0&&(n.soundNotifications=e.sound_notifications),e.from!==void 0&&(n.name=e.from),e.signature!==void 0&&(n.signature=e.signature),e.reply_to!==void 0&&(n.replyTo=e.reply_to),e.bcc_myself!==void 0&&(n.bccMyself=e.bcc_myself),e.messages_per_page!==void 0&&e.messages_per_page!==0&&(n.messagesPerPage=e.messages_per_page),e.preferred_view!==void 0&&e.preferred_view!==``&&(n.preferredView=e.preferred_view),e.mark_read_timeout!==void 0&&(n.markReadTimeout=e.mark_read_timeout),e.show_remote_content!==void 0&&e.show_remote_content!==``&&(n.showRemoteContent=e.show_remote_content),e.compose_format!==void 0&&e.compose_format!==``&&(n.composeFormat=e.compose_format),e.undo_timeout!==void 0&&(n.undoTimeout=e.undo_timeout),e.language!==void 0&&e.language!==``&&(n.language=e.language),e.hour_format!==void 0&&e.hour_format!==``&&(n.hourFormat=e.hour_format),e.date_format!==void 0&&e.date_format!==``&&(n.dateFormat=e.date_format),e.sort_order!==void 0&&e.sort_order!==``&&(n.sortOrder=e.sort_order),e.message_sort_criteria!==void 0&&e.message_sort_criteria!==``&&(n.messageSortCriteria=e.message_sort_criteria),Object.keys(n).length>0&&(this.state={...this.state,...n},this.saveSettings(),this.applyTheme(),this.notify())}}}catch(e){console.error(`Failed to fetch backend settings`,e)}}async _saveBackendSettings(e){try{(await fetch(`/settings`,{method:`PUT`,headers:{"Content-Type":`application/json`},body:JSON.stringify({ui:{themeMode:e.themeMode,colorFamily:e.colorFamily,layoutMode:e.layoutMode,densityMode:e.densityMode,sidebarCollapsed:e.sidebarCollapsed},check_mail_interval:Number(e.checkMailInterval)||0,auto_logout:Number(e.autoLogout)||0,desktop_notifications:!!e.desktopNotifications,sound_notifications:!!e.soundNotifications,from:e.name,signature:e.signature,reply_to:e.replyTo,bcc_myself:!!e.bccMyself,messages_per_page:Number(e.messagesPerPage)||50,preferred_view:e.preferredView,mark_read_timeout:Number(e.markReadTimeout)||0,show_remote_content:e.showRemoteContent,compose_format:e.composeFormat,undo_timeout:Number(e.undoTimeout)||0,language:e.language,hour_format:e.hourFormat,date_format:e.dateFormat,sort_order:e.sortOrder,message_sort_criteria:e.messageSortCriteria})})).status===401&&window.dispatchEvent(new CustomEvent(`auth-error`))}catch(e){console.error(`Failed to save backend settings`,e)}}applyTheme(){let e=!1;this.state.themeMode===`dark`?e=!0:this.state.themeMode===`auto`&&(e=window.matchMedia(`(prefers-color-scheme: dark)`).matches),e?document.body.classList.add(`theme-dark`):document.body.classList.remove(`theme-dark`);let t=Ue[`${this.state.colorFamily}-${e?`dark`:`light`}`]||Ue[`default-${e?`dark`:`light`}`];if(t)for(let[e,n]of Object.entries(t.colors))document.documentElement.style.setProperty(`--${e}`,n)}},M=r(`settings-store`),Ke=class extends p{constructor(...e){super(...e),this.icon=``,this.title=``,this.disabled=!1,this.active=!1,this.spinning=!1}static{this.styles=o`
@@ -2219,22 +2264,23 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
               ?active=${this.filterQuery===`is:unread`}
             ></alps-icon-btn>
           </div>
+          <alps-toast></alps-toast>
+          ${this.showEmptyConfirm?s`
+            <ui-confirm
+              title=${this.i18nStore?.t(`messageList.emptyMailboxTitle`)?.replace(`{folder}`,this.currentMailbox)||`Empty ${this.currentMailbox}`}
+              message=${this.i18nStore?.t(`messageList.emptyMailboxConfirm`)?.replace(`{folder}`,this.currentMailbox).replace(`{count}`,String(this.totalMessages))||`Are you sure you want to permanently delete all ${this.totalMessages} messages in ${this.currentMailbox}? This action cannot be undone.`}
+              confirmText=${this.i18nStore?.t(`messageList.deleteAllNow`)||`Delete All Now`}
+              confirmVariant="danger"
+              @confirm=${this.handleEmptyMailbox}
+              @cancel=${()=>this.showEmptyConfirm=!1}
+            ></ui-confirm>
+          `:``}
+          <div class="spacer"></div>
           <alps-pagination 
             .currentPage=${this.currentPage} 
             .totalItems=${this.totalMessages} 
             .itemsPerPage=${this.messagesPerPage}>
           </alps-pagination>
-          <alps-toast></alps-toast>
-        ${this.showEmptyConfirm?s`
-          <ui-confirm
-            title=${this.i18nStore?.t(`messageList.emptyMailboxTitle`)?.replace(`{folder}`,this.currentMailbox)||`Empty ${this.currentMailbox}`}
-            message=${this.i18nStore?.t(`messageList.emptyMailboxConfirm`)?.replace(`{folder}`,this.currentMailbox).replace(`{count}`,String(this.totalMessages))||`Are you sure you want to permanently delete all ${this.totalMessages} messages in ${this.currentMailbox}? This action cannot be undone.`}
-            confirmText=${this.i18nStore?.t(`messageList.deleteAllNow`)||`Delete All Now`}
-            confirmVariant="danger"
-            @confirm=${this.handleEmptyMailbox}
-            @cancel=${()=>this.showEmptyConfirm=!1}
-          ></ui-confirm>
-        `:``}
         </div>
       `:``}
     `}};S([f({context:M})],L.prototype,`settingsStore`,void 0),S([f({context:y})],L.prototype,`i18nStore`,void 0),S([i({type:Array})],L.prototype,`messages`,void 0),S([i({type:String})],L.prototype,`currentMailbox`,void 0),S([i({type:Boolean})],L.prototype,`loading`,void 0),S([i({type:Object})],L.prototype,`selectedMessage`,void 0),S([i({type:String})],L.prototype,`layoutMode`,void 0),S([i({type:Boolean})],L.prototype,`isMobile`,void 0),S([i({type:Boolean})],L.prototype,`sidebarCollapsed`,void 0),S([i({type:Number})],L.prototype,`currentPage`,void 0),S([i({type:Number})],L.prototype,`totalMessages`,void 0),S([i({type:Number})],L.prototype,`messagesPerPage`,void 0),S([i({type:String})],L.prototype,`filterQuery`,void 0),S([i({type:String})],L.prototype,`sortOrder`,void 0),S([i({type:String})],L.prototype,`densityMode`,void 0),S([i({type:Object})],L.prototype,`selectedMessages`,void 0),S([_()],L.prototype,`isSpinning`,void 0),S([_()],L.prototype,`isSyncing`,void 0),S([_()],L.prototype,`isScrolled`,void 0),S([_()],L.prototype,`isAtBottom`,void 0),S([_()],L.prototype,`focusedIndex`,void 0),S([_()],L.prototype,`showEmptyConfirm`,void 0),L=S([a(`alps-message-list`)],L);var tt=class extends p{constructor(...e){super(...e),this.name=``,this.address=``}static{this.styles=o`
@@ -3358,10 +3404,34 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
       display: flex;
       align-items: center;
       gap: 8px;
-      font-size: 14px;
-      font-weight: 500;
       color: var(--text-primary, #111827);
       user-select: none;
+    }
+
+    .user-text-container {
+      display: flex;
+      flex-direction: column;
+      max-width: 180px;
+    }
+
+    .user-name-text {
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.2;
+    }
+
+    .user-address-text {
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-secondary, #6b7280);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.2;
+      margin-top: 2px;
     }
 
     .item-text {
@@ -3372,7 +3442,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
     }
 
     @media (max-width: 768px) {
-      .user-name-text {
+      .user-text-container {
         display: none;
       }
       
@@ -3393,8 +3463,11 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{a as n,c as r,d
     `,t);let n=t.querySelector(`#switch-account-overlay`);requestAnimationFrame(()=>{requestAnimationFrame(()=>{n&&(n.style.opacity=`1`)})}),await new Promise(e=>setTimeout(e,300));try{(await this.linkedAccountsStore.switchAccount(e)).requires_2fa?(window.location.hash=`#/login/webauthn`,n&&(n.style.opacity=`0`),setTimeout(()=>t.remove(),300)):(localStorage.removeItem(`alps_settings`),sessionStorage.clear(),window.location.reload())}catch(e){n&&(n.style.opacity=`0`),setTimeout(()=>t.remove(),300),window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:e.message||this.i18nStore?.t(`linkedAccounts.switchError`),duration:5e3}}))}}render(){let e=this.settingsStore?.getState().name||this.username;return s`
       <div class="user-profile">
         <div class="user-info">
-          <alps-avatar .name=${e} .size=${20}></alps-avatar>
-          <span class="user-name-text">${e}</span>
+          <alps-avatar .name=${e} .size=${28}></alps-avatar>
+          <div class="user-text-container">
+            <span class="user-name-text">${e}</span>
+            <span class="user-address-text">${this.username}</span>
+          </div>
         </div>
         <alps-popup align="right">
           <alps-icon-btn
