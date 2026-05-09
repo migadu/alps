@@ -1,3 +1,8 @@
+export interface NavTab {
+    id: string;
+    labelKey: string;
+}
+
 export interface SettingsTab {
     id: string;
     labelKey: string; // The i18n translation key for the tab label
@@ -11,8 +16,19 @@ export interface Route {
 }
 
 class PluginRegistry {
+    navTabs: NavTab[] = [];
     settingsTabs: SettingsTab[] = [];
     routes: Route[] = [];
+
+    registerNavTab(tab: NavTab) {
+        if (!this.navTabs.find(t => t.id === tab.id)) {
+            this.navTabs.push(tab);
+        }
+    }
+
+    getNavTabs(): NavTab[] {
+        return this.navTabs;
+    }
 
     registerSettingsTab(tab: SettingsTab) {
         if (!this.settingsTabs.find(t => t.id === tab.id)) {

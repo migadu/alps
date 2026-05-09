@@ -300,7 +300,7 @@ export class PrintPage extends LitElement {
     if (this.loading) {
       return html`
         <div class="loading-state">
-          <div class="spinner">${renderIcon('edelweiss')}</div>
+          <alps-loader></alps-loader>
           <span>${this.i18nStore?.t('print.loading')}</span>
         </div>
       `;

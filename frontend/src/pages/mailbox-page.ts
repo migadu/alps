@@ -16,7 +16,7 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
 import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_SPAM, FOLDER_TRASH, FOLDER_DRAFTS } from '../utils/folders';
 import type { LayoutMode, DensityMode } from '../store/settings-store';
-import { renderIcon } from '../utils/ui';
+import '../components/alps-initial-loader';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
@@ -165,34 +165,7 @@ export class MailboxPage extends LitElement {
       background: var(--accent-color, #005A9E);
     }
 
-    .sidebar-resizer {
-      position: absolute;
-      left: calc(var(--sidebar-width, ${SIDEBAR_WIDTH_DEFAULT}px) - 2px);
-      width: 4px;
-      top: 0;
-      bottom: 0;
-      cursor: col-resize;
-      z-index: 25;
-    }
 
-    .sidebar-resizer::after {
-      content: '';
-      position: absolute;
-      background: transparent;
-      transition: background 0.2s;
-      width: 3px;
-      top: 0;
-      bottom: 0;
-      left: 1px;
-    }
-
-    .sidebar-resizer:hover, .sidebar-resizer.dragging {
-      z-index: 9999;
-    }
-
-    .sidebar-resizer:hover::after, .sidebar-resizer.dragging::after {
-      background: var(--accent-color, #005A9E);
-    }
 
     .app-container.dragging {
       user-select: none;
@@ -201,18 +174,12 @@ export class MailboxPage extends LitElement {
     
 
     alps-sidebar.desktop-sidebar {
-      transition: width 0.2s, z-index 0s 0s;
+      transition: width 0.2s, z-index 0s 0.2s;
       position: relative;
       z-index: 20;
     }
 
-    .app-container.collapsed alps-sidebar.desktop-sidebar {
-      z-index: 10;
-      transition: width 0.2s, z-index 0s 0.2s;
-    }
-
-    .app-container.collapsed:not(.suppress-sidebar-hover) alps-sidebar.desktop-sidebar:hover {
-      z-index: 30;
+    alps-sidebar.desktop-sidebar[collapsed]:hover {
       transition: width 0.2s, z-index 0s 0s;
     }
 
@@ -220,74 +187,21 @@ export class MailboxPage extends LitElement {
       transition: none;
     }
 
-    alps-sidebar.desktop-sidebar alps-folder-list {
-      width: var(--sidebar-width, ${SIDEBAR_WIDTH_DEFAULT}px); /* Fill sidebar entirely, alps-folder-list manages its own right border */
-    }
+
 
     .app-container.collapsed {
       --sidebar-width: ${SIDEBAR_WIDTH_COLLAPSED}px;
     }
 
-    .app-container.collapsed alps-sidebar::part(sidebar) {
-      border-right: none;
-    }
-
-    .app-container.collapsed alps-folder-list {
-      position: absolute;
-      top: 0;
-      left: 0;
-      bottom: 0;
-      width: ${SIDEBAR_WIDTH_COLLAPSED}px;
-      transition: width 0.2s, box-shadow 0.2s, z-index 0s 0.2s;
-      background-color: var(--bg-secondary);
-      overflow: hidden;
-      z-index: 10;
-    }
-
-    .app-container.collapsed:not(.suppress-sidebar-hover) alps-folder-list:hover {
-      width: ${SIDEBAR_WIDTH_DEFAULT}px;
-      box-shadow: rgba(95, 95, 95, 0.1) 4px 0 4px -2px;
-      z-index: 30;
-      transition: width 0.2s, box-shadow 0.2s, z-index 0s 0s;
-    }
-
     .app-container.collapsed .message-list-pane {
       box-shadow: rgba(95, 95, 95, 0.1) -4px 0 4px -2px;
-      z-index: 15;
+      z-index: 25;
       border-left: 1px solid var(--border-color);
     }
 
-    .initial-loader {
-      position: absolute;
-      inset: 0;
-      background-color: var(--bg-primary);
-      z-index: 99999;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: opacity 0.4s ease-out, visibility 0.4s ease-out;
-    }
 
-    .initial-loader.hidden {
-      opacity: 0;
-      visibility: hidden;
-      pointer-events: none;
-    }
 
-    .initial-loader .spinner {
-      display: inline-flex;
-      width: 32px;
-      height: 32px;
-      animation: spin 1s linear infinite;
-      color: var(--accent-color, #2563eb);
-    }
-
-    .initial-loader .spinner svg {
-      width: 100%;
-      height: 100%;
-      fill: currentColor;
-    }
-  `;
+    `;
 
   @state() private mailboxes: any[] = [];
   @state() private messages: any[] = [];
@@ -306,9 +220,11 @@ export class MailboxPage extends LitElement {
   @state() private messagesPerPage = 50;
   @state() private resizerPositionX = SIDEBAR_WIDTH_DEFAULT + Math.max(MESSAGE_LIST_WIDTH_MIN, (window.innerWidth - SIDEBAR_WIDTH_DEFAULT) * 0.4);
   @state() private listHeight = Math.max(HORIZONTAL_LIST_HEIGHT_DEFAULT, (window.innerHeight - HEADER_HEIGHT) * 0.4);
-  @state() private isDragging = false;
-  @state() private isDraggingSidebar = false;
+  @state() private isSidebarDragging = false;
+  @state() private isPaneDragging = false;
   @state() private sidebarWidth = SIDEBAR_WIDTH_DEFAULT;
+  @state() private isSidebarHovered = false;
+  private hoverTimeout: any = null;
   @state() private densityMode: DensityMode = 'compact';
   @state() private isSyncing = false;
   @state() private sidebarCollapsed = false;
@@ -385,7 +301,7 @@ export class MailboxPage extends LitElement {
 
     window.addEventListener('draft-autosaved', this.handleDraftAutosaved as EventListener);
 
-    messageSync.fetch(this.currentMailbox, this.currentPage, this.filterQuery, false);
+    messageSync.fetch(this.currentMailbox, this.currentPage, this.filterQuery, true);
   }
 
   disconnectedCallback() {
@@ -678,7 +594,7 @@ export class MailboxPage extends LitElement {
 
   private startResize = (e: MouseEvent) => {
     e.preventDefault();
-    this.isDragging = true;
+    this.isPaneDragging = true;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       if (this.layoutMode === 'vertical') {
@@ -691,7 +607,7 @@ export class MailboxPage extends LitElement {
     };
 
     const onMouseUp = () => {
-      this.isDragging = false;
+      this.isPaneDragging = false;
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
@@ -700,36 +616,12 @@ export class MailboxPage extends LitElement {
     window.addEventListener('mouseup', onMouseUp);
   };
 
-  private startSidebarResize = (e: MouseEvent) => {
-    e.preventDefault();
-    this.isDraggingSidebar = true;
-
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      const newWidth = Math.max(0, moveEvent.clientX);
-
-      if (newWidth < SIDEBAR_COLLAPSE_THRESHOLD) {
-        if (!this.sidebarCollapsed) {
-          this.settingsStore.updateSettings({ sidebarCollapsed: true });
-        }
-        this.sidebarWidth = SIDEBAR_WIDTH_DEFAULT;
-      } else {
-        if (this.sidebarCollapsed) {
-          this.settingsStore.updateSettings({ sidebarCollapsed: false });
-        }
-        this.sidebarWidth = Math.min(Math.max(newWidth, SIDEBAR_WIDTH_MIN), SIDEBAR_WIDTH_MAX);
-        this.resizerPositionX = Math.max(this.resizerPositionX, this.sidebarWidth + MESSAGE_LIST_WIDTH_MIN);
-      }
-    };
-
-    const onMouseUp = () => {
-      this.isDraggingSidebar = false;
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-  };
+  private openFolderPrompt() {
+    const folderList = this.shadowRoot?.querySelector('alps-folder-list') as any;
+    if (folderList && typeof folderList.triggerCreateFolder === 'function') {
+      folderList.triggerCreateFolder();
+    }
+  }
 
   private updateUrl(mailbox: string, page: number, uid: string | null, filterQuery: string | null = this.filterQuery) {
     let hash = `#/mailbox/${encodeURIComponent(mailbox)}`;
@@ -1204,11 +1096,7 @@ export class MailboxPage extends LitElement {
     const effectiveLayoutMode = this.isMobile ? 'full' : this.layoutMode;
     const isReadingFull = effectiveLayoutMode === 'full' && this.selectedMessage !== null;
     return html`
-      <div class="initial-loader ${!this.showInitialLoader ? 'hidden' : ''}">
-        <div class="spinner">
-          ${renderIcon('edelweiss')}
-        </div>
-      </div>
+      <alps-initial-loader ?hidden=${!this.showInitialLoader}></alps-initial-loader>
       <app-header 
         .username=${this.username}
         .isMobile=${this.isMobile}
@@ -1222,12 +1110,43 @@ export class MailboxPage extends LitElement {
         this.updateUrl(this.currentMailbox, 0, null, newFilter);
       }}
       ></app-header>
-      <div class="app-container layout-${effectiveLayoutMode} ${isReadingFull ? 'reading' : ''} ${this.isDragging || this.isDraggingSidebar ? 'dragging' : ''} ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isMobile ? 'mobile-view' : ''} ${this.suppressSidebarHover ? 'suppress-sidebar-hover' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
+      <div class="app-container layout-${effectiveLayoutMode} ${isReadingFull ? 'reading' : ''} ${this.isPaneDragging || this.isSidebarDragging ? 'dragging' : ''} ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isMobile ? 'mobile-view' : ''} ${this.suppressSidebarHover ? 'suppress-sidebar-hover' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
         <alps-sidebar 
           class="${this.isMobile ? 'mobile-sidebar' : 'desktop-sidebar'} ${this.mobileSidebarOpen ? 'open' : ''}"
           .isMobile=${this.isMobile}
           .isOpen=${this.mobileSidebarOpen}
+          .isHovered=${this.isSidebarHovered}
+          .suppressHover=${this.suppressSidebarHover}
+          .collapsed=${this.sidebarCollapsed && !this.isMobile}
+          .width=${this.sidebarWidth}
+          @sidebar-resize=${(e: CustomEvent) => {
+            const newWidth = e.detail.newWidth;
+            if (newWidth < SIDEBAR_COLLAPSE_THRESHOLD) {
+              if (!this.sidebarCollapsed) this.settingsStore.updateSettings({ sidebarCollapsed: true });
+              this.sidebarWidth = SIDEBAR_WIDTH_DEFAULT;
+            } else {
+              if (this.sidebarCollapsed) this.settingsStore.updateSettings({ sidebarCollapsed: false });
+              this.sidebarWidth = Math.min(Math.max(newWidth, SIDEBAR_WIDTH_MIN), SIDEBAR_WIDTH_MAX);
+              this.resizerPositionX = Math.max(this.resizerPositionX, this.sidebarWidth + MESSAGE_LIST_WIDTH_MIN);
+            }
+          }}
+          @drag-start=${() => this.isSidebarDragging = true}
+          @drag-end=${() => this.isSidebarDragging = false}
+          @toggle-collapse=${() => this.settingsStore.updateSettings({ sidebarCollapsed: !this.sidebarCollapsed })}
           @close-sidebar=${() => this.mobileSidebarOpen = false}
+          @mouseenter=${() => {
+            if (this.hoverTimeout) {
+              clearTimeout(this.hoverTimeout);
+              this.hoverTimeout = null;
+            }
+            this.isSidebarHovered = true;
+            this.suppressSidebarHover = false;
+          }}
+          @mouseleave=${() => {
+            this.hoverTimeout = setTimeout(() => {
+              this.isSidebarHovered = false;
+            }, 300);
+          }}
         >
           <alps-folder-list
             .mailboxes=${this.mailboxes}
@@ -1235,11 +1154,7 @@ export class MailboxPage extends LitElement {
             .expandedFolders=${this.expandedFolders}
             .layoutMode=${effectiveLayoutMode}
             .syncing=${this.isSyncing}
-            ?collapsed=${this.sidebarCollapsed && !this.isMobile}
-            @mouseleave=${() => { this.suppressSidebarHover = false; }}
-            @toggle-collapse=${() => {
-        this.settingsStore.updateSettings({ sidebarCollapsed: !this.sidebarCollapsed });
-      }}
+            ?collapsed=${this.sidebarCollapsed && !this.isMobile && !this.isSidebarHovered}
             @select-mailbox=${(e: CustomEvent) => {
         if (this.currentMailbox === e.detail.name) {
           this.currentPage = 0;
@@ -1254,6 +1169,9 @@ export class MailboxPage extends LitElement {
           this.filterQuery = '';
           this.selectedUids = new Set();
           this.updateUrl(e.detail.name, 0, null);
+        }
+        if (!this.isMobile && !this.sidebarCollapsed) {
+          this.settingsStore.updateSettings({ sidebarCollapsed: true });
         }
         if (this.sidebarCollapsed && !this.isMobile) {
           this.suppressSidebarHover = true;
@@ -1276,12 +1194,17 @@ export class MailboxPage extends LitElement {
       }}
             @toast=${(e: CustomEvent) => this.showGlobalToast(e.detail.message, e.detail.actionLabel, e.detail.actionFn, e.detail.duration)}
           ></alps-folder-list>
+          <alps-icon-btn 
+            slot="footer-actions"
+            class="new-folder-btn"
+            icon="folderPlus"
+            title="${this.i18nStore?.t('folderList.createFolder')}"
+            @click=${this.openFolderPrompt}
+            style="--btn-padding: 8px; --icon-size: 20px;"
+          ></alps-icon-btn>
         </alps-sidebar>
-        ${!this.isMobile && !this.sidebarCollapsed ? html`
-          <div class="sidebar-resizer ${this.isDraggingSidebar ? 'dragging' : ''}" @mousedown=${this.startSidebarResize}></div>
-        ` : ''}
         <div class="main-view">
-          <div class="pane message-list-pane" style="position: relative; ${effectiveLayoutMode === 'vertical' ? `width: ${this.effectiveListWidth}px; flex: none; ${this.isDragging || this.isDraggingSidebar ? '' : 'transition: width 0.2s;'}` : effectiveLayoutMode === 'horizontal' ? `height: ${this.listHeight}px; flex: none;` : ''}">
+          <div class="pane message-list-pane" style="position: relative; ${effectiveLayoutMode === 'vertical' ? `width: ${this.effectiveListWidth}px; flex: none; ${this.isPaneDragging ? '' : 'transition: width 0.2s;'}` : effectiveLayoutMode === 'horizontal' ? `height: ${this.listHeight}px; flex: none;` : ''}">
 
             <alps-message-list
               .messages=${this.messages}
@@ -1298,6 +1221,7 @@ export class MailboxPage extends LitElement {
               .densityMode=${this.densityMode}
               .filterQuery=${this.filterQuery}
               .sortOrder=${this.sortOrder}
+              .syncing=${this.isSyncing}
               @refresh=${() => {
         this.currentPage = 0;
 
@@ -1330,7 +1254,7 @@ export class MailboxPage extends LitElement {
             ></alps-message-list>
           </div>
           ${effectiveLayoutMode !== 'full' ? html`
-            <div class="resizer ${this.isDragging ? 'dragging' : ''}" @mousedown=${this.startResize}></div>
+            <div class="resizer ${this.isPaneDragging ? 'dragging' : ''}" @mousedown=${this.startResize}></div>
           ` : ''}
           <div class="pane message-reader-pane">
             <alps-message-reader

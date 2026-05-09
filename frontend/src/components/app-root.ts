@@ -257,10 +257,12 @@ export class AppRoot extends LitElement {
     };
 
     registry.getRoutes().forEach(route => {
+      let cachedEl: HTMLElement | null = null;
       baseRoutes[route.path] = () => {
-        // Create element dynamically based on component tag
-        const el = document.createElement(route.component);
-        return el;
+        if (!cachedEl) {
+          cachedEl = document.createElement(route.component);
+        }
+        return cachedEl;
       };
     });
 

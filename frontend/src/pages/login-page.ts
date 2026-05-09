@@ -6,6 +6,10 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
 
 import '../components/alps-auth-card';
+import '../components/alps-input';
+import '../components/alps-button';
+import '../components/alps-loader';
+import '../components/alps-icon-btn';
 
 @customElement('login-page')
 export class LoginPage extends LitElement {
@@ -344,7 +348,7 @@ export class LoginPage extends LitElement {
             type="submit" 
             class="submit-btn"
             ?disabled=${this.isSubmitting || this.isRateLimited}>
-            ${this.isSubmitting ? html`<span class="spinner">${renderIcon('edelweiss')}</span>` : ''}
+            ${this.isSubmitting ? html`<alps-loader style="--loader-size: 16px;"></alps-loader>` : ''}
             <span>${this.isRateLimited ? `Wait ${this.formatRetryTime(this.retryAfter)}` : 'Sign In'}</span>
           </button>
         </form>

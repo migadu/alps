@@ -10,6 +10,7 @@ import { renderIcon, formatFullDate, formatSize } from '../utils/ui';
 import './alps-recipient-pill';
 import './alps-attachment-list';
 import './alps-toolbar';
+import './alps-loader';
 import { popupStyles } from './alps-popup';
 import './alps-popup';
 import './alps-folder-selector-popup';
@@ -409,7 +410,7 @@ export class MessageReader extends LitElement {
       height: 100%;
     }
 
-    .loading-text {
+    .loading-state {
       display: flex;
       align-items: center;
       color: var(--text-muted);
@@ -945,10 +946,14 @@ export class MessageReader extends LitElement {
       
       ${isBulk ? html`
         <div class="reader-body">
-          <div class="empty-reader-state">
-            <div class="bulk-spinner-container">
-              ${this.bulkProcessing ? html`<div class="spinner bulk-spinner">${renderIcon('edelweiss')}</div>` : ''}
-            </div>
+          <div class="empty-reader-state" style="flex-direction: column; gap: 16px;">
+            ${this.bulkProcessing ? html`
+              <div class="bulk-spinner-container">
+                <alps-loader></alps-loader>
+              </div>
+            ` : html`
+              <alps-icon-btn icon="envelopeSimple" style="pointer-events: none;"></alps-icon-btn>
+            `}
             <span>${this.selectedUids.size} ${this.i18nStore?.t('messageReader.messagesSelected')}</span>
           </div>
         </div>
@@ -1021,8 +1026,8 @@ export class MessageReader extends LitElement {
 
         ${this.loading ? html`
           <div class="loading-overlay">
-            <div class="loading-text">
-              <div class="spinner">${renderIcon('edelweiss')}</div> ${this.i18nStore?.t('messageReader.loadingMessage')}
+            <div class="loading-state">
+              <alps-loader full-height .text=${this.i18nStore?.t('messageReader.loadingMessage') || 'Loading message...'}></alps-loader>
             </div>
           </div>
         ` : html`

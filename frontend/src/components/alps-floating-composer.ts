@@ -1,7 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
-import { renderIcon } from '../utils/ui';
 import { composeContext } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment } from '../utils/attachment-utils';
@@ -10,6 +9,8 @@ import { messageSync } from '../services/message-sync';
 import './alps-address-input.js';
 import './alps-message-composer.js';
 import './alps-button.js';
+import './alps-attachment-list';
+import './alps-loader';
 import './alps-input.js';
 import './ui-confirm.js';
 import './alps-popup.js';
@@ -980,7 +981,7 @@ export class AlpsFloatingComposer extends LitElement {
       <div class="window-frame" @mousedown=${this._bringToFront}>
         ${this.instance.isSending ? html`
           <div class="sending-overlay">
-            <div class="spinner">${renderIcon('edelweiss')}</div>
+            <alps-loader></alps-loader>
           </div>
         ` : ''}
         

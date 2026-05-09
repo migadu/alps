@@ -2,6 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
+import { registry } from '../plugin-registry';
 import { renderIcon, getMailboxLabel } from '../utils/ui';
 import './alps-header';
 import './alps-input';
@@ -24,15 +25,31 @@ export class AppHeader extends LitElement {
     this.updateComplete.then(() => {
       this.i18nStore?.addEventListener('change', this._handleStoreChange);
     });
+    window.addEventListener('hashchange', this._handleHashChange);
+    this._handleHashChange();
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this.i18nStore?.removeEventListener('change', this._handleStoreChange);
+    window.removeEventListener('hashchange', this._handleHashChange);
   }
 
   private _handleStoreChange = () => {
     this.requestUpdate();
+  };
+
+  private _handleHashChange = () => {
+    const hash = window.location.hash;
+    if (hash.startsWith('#/contacts')) {
+      this.currentTab = 'contacts';
+    } else if (hash.startsWith('#/calendar')) {
+      this.currentTab = 'calendar';
+    } else if (hash.startsWith('#/settings')) {
+      this.currentTab = 'settings';
+    } else {
+      this.currentTab = 'messages';
+    }
   };
 
   static styles = css`
@@ -96,6 +113,13 @@ export class AppHeader extends LitElement {
   private handleTabClick(tab: string) {
     this.currentTab = tab;
     this.dispatchEvent(new CustomEvent('change-tab', { detail: { tab } }));
+    if (tab === 'messages') {
+        if (!window.location.hash.startsWith('#/mailbox/')) {
+            window.location.hash = '#/';
+        }
+    } else {
+        window.location.hash = '#/' + tab;
+    }
   }
 
   render() {
@@ -120,13 +144,15 @@ export class AppHeader extends LitElement {
               >
                 ${this.i18nStore?.t('navigation.messages')}
               </div>
-              <div 
-                class="nav-tab ${this.currentTab === 'contacts' ? 'active' : ''}"
-                @click=${() => this.handleTabClick('contacts')}
-                title=${this.i18nStore?.t('navigation.contacts')}
-              >
-                ${this.i18nStore?.t('navigation.contacts')}
-              </div>
+              ${registry.getNavTabs().map(tab => html`
+                <div 
+                  class="nav-tab ${this.currentTab === tab.id ? 'active' : ''}"
+                  @click=${() => this.handleTabClick(tab.id)}
+                  title=${this.i18nStore?.t(tab.labelKey) || tab.id}
+                >
+                  ${this.i18nStore?.t(tab.labelKey) || tab.id}
+                </div>
+              `)}
               <div 
                 class="nav-tab ${this.currentTab === 'calendar' ? 'active' : ''}"
                 @click=${() => this.handleTabClick('calendar')}
@@ -143,7 +169,7 @@ export class AppHeader extends LitElement {
           icon="magnifyingGlass"
           ?clearable=${true}
           .value=${this.searchQuery}
-          .placeholder=${this.currentMailbox ? getMailboxLabel(this.currentMailbox, this.i18nStore) : (this.i18nStore?.t('search.placeholder'))}
+          .placeholder=${this.currentTab === 'contacts' ? (this.i18nStore?.t('contacts.title') || 'Contacts') : (this.currentMailbox ? getMailboxLabel(this.currentMailbox, this.i18nStore) : (this.i18nStore?.t('search.placeholder')))}
           @keydown=${(e: KeyboardEvent) => {
             if (e.key === 'Enter') {
               e.preventDefault();

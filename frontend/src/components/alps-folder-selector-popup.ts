@@ -12,6 +12,8 @@ export class AlpsFolderSelectorPopup extends LitElement {
 
   @property({ type: Array }) mailboxes: any[] = [];
   @property({ type: String }) currentMailbox = '';
+  @property({ type: Boolean }) noActionBox = false;
+  @property({ type: Boolean }) noSearchBox = false;
 
   @state() private filterQuery = '';
   @state() private isMove = true;
@@ -169,6 +171,7 @@ export class AlpsFolderSelectorPopup extends LitElement {
         <slot name="trigger" slot="trigger"></slot>
         
         <div class="selector-container" @click=${(e: Event) => e.stopPropagation()}>
+          ${this.noActionBox ? '' : html`
           <div class="action-box">
             <label>
               <input 
@@ -189,16 +192,19 @@ export class AlpsFolderSelectorPopup extends LitElement {
               ${this.i18nStore?.t('folderSelector.actionCopy')}
             </label>
           </div>
+          `}
           
-          <div class="search-box">
-            <input 
-              type="text" 
-              class="search-input" 
-              placeholder=${this.i18nStore?.t('folderSelector.filter')}
-              .value=${this.filterQuery}
-              @input=${this._handleFilter}
-            />
-          </div>
+          ${this.noSearchBox ? '' : html`
+            <div class="search-box">
+              <input 
+                type="text" 
+                class="search-input" 
+                placeholder=${this.i18nStore?.t('folderSelector.filter')}
+                .value=${this.filterQuery}
+                @input=${this._handleFilter}
+              />
+            </div>
+          `}
           
           <div class="folder-list">
             ${filteredFolders.length > 0 ? filteredFolders.map(folderName => html`

@@ -14,6 +14,8 @@ import './alps-toolbar';
 import './alps-button';
 import './ui-confirm';
 import { popupStyles } from './alps-popup';
+import './alps-icon-btn';
+import './alps-create-button';
 import './alps-popup';
 
 @customElement('alps-folder-list')
@@ -80,13 +82,10 @@ export class FolderList extends LitElement {
     :host {
       display: flex;
       flex-direction: column;
-      height: 100%;
-      border-right: 1px solid var(--border-color);
+      flex: 1;
+      width: 100%;
+      min-height: 0;
       box-sizing: border-box;
-    }
-
-    :host([collapsed]:not(:hover)) {
-      border-right: none;
     }
     
     .sidebar-wrapper {
@@ -104,43 +103,9 @@ export class FolderList extends LitElement {
       background-color: var(--bg-secondary);
     }
 
-    :host([collapsed]:not(:hover)) .sidebar-header {
+    :host([collapsed]) .sidebar-header {
       padding: 0 14px;
       justify-content: flex-start;
-    }
-
-    .compose-btn {
-      flex: 1;
-      height: 36px;
-      font-size: 14px;
-      overflow: hidden;
-      --btn-padding: 8px 16px;
-      --btn-gap: 8px;
-      transition: all 0.2s ease;
-    }
-
-    .compose-btn::part(button) {
-      width: 100%;
-      height: 100%;
-    }
-
-    .compose-text {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      transition: max-width 0.2s ease, opacity 0.2s ease, margin 0.2s ease;
-      max-width: 150px;
-    }
-
-    :host([collapsed]:not(:hover)) .compose-btn {
-      --btn-padding: 8px;
-      --btn-gap: 0px;
-    }
-
-    :host([collapsed]:not(:hover)) .compose-text {
-      max-width: 0;
-      opacity: 0;
-      margin-left: 0;
     }
 
     .sidebar-content {
@@ -159,11 +124,12 @@ export class FolderList extends LitElement {
       margin-left: calc(min(0px, (100% - 215px) * 50 / 167));
     }
 
-    :host([collapsed]:not(:hover)) .sidebar-content {
+    :host([collapsed]) .sidebar-content {
       opacity: 0.5;
+      overflow-y: hidden;
     }
 
-    :host([collapsed]:not(:hover)) .folder-item {
+    :host([collapsed]) .folder-item {
       border-radius: 6px 0 0 6px;
     }
 
@@ -320,37 +286,6 @@ export class FolderList extends LitElement {
     .icon-archive { color: var(--icon-archive, #8b5cf6); }
     .icon-default { color: var(--icon-default, #9ca3af); }
 
-    .sidebar-footer {
-      padding: 0 12px;
-      height: 57px;
-      box-sizing: border-box;
-      flex-shrink: 0;
-      border-top: 1px solid var(--border-color);
-      display: flex;
-      align-items: center;
-      justify-content: flex-start;
-      gap: 8px;
-    }
-
-    .footer-divider {
-      width: 1px;
-      height: 20px;
-      background: var(--border-color);
-      margin: 0 4px;
-      flex-shrink: 0;
-    }
-
-    :host([collapsed]:not(:hover)) .footer-divider,
-    :host([collapsed]:not(:hover)) .new-folder-btn {
-      display: none;
-    }
-
-    @media (max-width: 768px) {
-      .collapse-btn,
-      .footer-divider {
-        display: none;
-      }
-    }
   `];
 
   private toggleFolder(e: Event | null, folderName: string) {
@@ -369,6 +304,11 @@ export class FolderList extends LitElement {
     this.dispatchEvent(new CustomEvent('select-mailbox', {
       detail: { name }
     }));
+  }
+
+  public triggerCreateFolder() {
+    this.parentForNewFolder = '';
+    this.showCreatePrompt = true;
   }
 
   private handleCreateSubmit(e: CustomEvent) {
@@ -664,16 +604,13 @@ export class FolderList extends LitElement {
     return html`
       <div class="sidebar-wrapper">
         <alps-toolbar class="sidebar-header" ?scrolled=${this.isScrolled}>
-          <alps-button 
-            variant="primary"
+          <alps-create-button 
             icon="pen"
-            class="compose-btn" 
             ?disabled=${(this.composeStore?.getState()?.activeComposers?.length || 0) >= 3}
             title=${this.i18nStore?.t('folderList.compose')}
+            ?collapsed=${this.hasAttribute('collapsed')}
             @click=${() => this.dispatchEvent(new CustomEvent('compose'))}
-          >
-            <span class="compose-text">${this.i18nStore?.t('folderList.compose')}</span>
-          </alps-button>
+          >${this.i18nStore?.t('folderList.compose')}</alps-create-button>
         </alps-toolbar>
         <div class="sidebar-content" @scroll=${this.handleScroll}>
           <div class="sidebar-scroll-content">
@@ -686,26 +623,6 @@ export class FolderList extends LitElement {
             </div>
             ${renderTree(customNodes)}
           </div>
-        </div>
-        <div class="sidebar-footer">
-          <alps-icon-btn 
-            class="collapse-btn"
-            icon="sidebar"
-            title=${this.collapsed ? (this.i18nStore?.t('folderList.expandSidebar')) : (this.i18nStore?.t('folderList.collapseSidebar'))}
-            @click=${() => this.dispatchEvent(new CustomEvent('toggle-collapse'))}
-            style="--btn-padding: 8px; --icon-size: 20px;"
-          ></alps-icon-btn>
-          <div class="footer-divider"></div>
-          <alps-icon-btn 
-            class="new-folder-btn"
-            icon="folderPlus"
-            title="${this.i18nStore?.t('folderList.createFolder')}"
-            @click=${() => {
-              this.parentForNewFolder = '';
-              this.showCreatePrompt = true;
-            }}
-            style="--btn-padding: 8px; --icon-size: 20px;"
-          ></alps-icon-btn>
         </div>
       </div>
 

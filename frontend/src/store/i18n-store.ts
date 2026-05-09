@@ -88,7 +88,7 @@ export class I18nStore extends EventTarget {
     return this.language;
   }
 
-  t(key: string): string {
+  t(key: string, params?: Record<string, any>): string {
     const keys = key.split('.');
     let result: any = this.dictionary;
     
@@ -108,7 +108,13 @@ export class I18nStore extends EventTarget {
         }
         enResult = enResult[k];
       }
-      return typeof enResult === 'string' ? enResult : key;
+      result = typeof enResult === 'string' ? enResult : key;
+    }
+    
+    if (typeof result === 'string' && params) {
+      return result.replace(/\{(\w+)\}/g, (match, paramKey) => {
+        return params[paramKey] !== undefined ? String(params[paramKey]) : match;
+      });
     }
     
     return result;

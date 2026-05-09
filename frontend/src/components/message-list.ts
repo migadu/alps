@@ -14,6 +14,7 @@ import './alps-icon-btn';
 import './alps-toolbar';
 import './alps-banner';
 import './ui-confirm';
+import './alps-loader';
 import { repeat } from 'lit/directives/repeat.js';
 
 @customElement('alps-message-list')
@@ -40,8 +41,8 @@ export class MessageList extends LitElement {
   @property({ type: String }) densityMode: 'loose' | 'normal' | 'compact' | 'ultra-compact' = 'compact';
 
   @property({ type: Object }) selectedMessages = new Set<string>();
+  @property({ type: Boolean }) syncing = false;
   @state() private isSpinning = false;
-  @state() private isSyncing = false;
   @state() private isScrolled = false;
   @state() private isAtBottom = false;
   @state() private focusedIndex = -1;
@@ -570,12 +571,12 @@ export class MessageList extends LitElement {
   };
 
   private handleSyncStart = () => {
-    this.isSyncing = true;
+    this.syncing = true;
     this.isSpinning = true;
   };
 
   private handleSyncEnd = () => {
-    this.isSyncing = false;
+    this.syncing = false;
   };
 
   willUpdate(changedProperties: Map<string, any>) {
@@ -620,7 +621,7 @@ export class MessageList extends LitElement {
   }
 
   private handleSpinIteration = () => {
-    if (!this.isSyncing) {
+    if (!this.syncing) {
       this.isSpinning = false;
     }
   };
@@ -648,6 +649,9 @@ export class MessageList extends LitElement {
     if (changedProperties.has('densityMode')) {
       this.classList.remove('density-loose', 'density-normal', 'density-compact', 'density-ultra-compact');
       this.classList.add(`density-${this.densityMode}`);
+    }
+    if (changedProperties.has('syncing') && this.syncing) {
+      this.isSpinning = true;
     }
     if (changedProperties.has('currentPage') || changedProperties.has('currentMailbox')) {
       const listContent = this.renderRoot.querySelector('.list-content');
@@ -812,9 +816,7 @@ export class MessageList extends LitElement {
           </alps-banner>
         ` : ''}
         ${this.loading && this.messages.length === 0 ? html`
-          <div class="loading-state">
-            <div class="spinner">${renderIcon('edelweiss')}</div> ${this.i18nStore?.t('messageList.loading')}
-          </div>
+          <alps-loader full-height .text=${this.i18nStore?.t('messageList.loading') || 'Loading...'}></alps-loader>
         ` :
         this.messages.length === 0 ? html`<div class="empty-state">${this.i18nStore?.t('messageList.noMessages')}</div>` :
           repeat(this.messages, msg => msg.UID, msg => {

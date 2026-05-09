@@ -1,8 +1,9 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
+import '../components/alps-icon-btn';
+import '../components/alps-loader';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { parseEmailHeaders, type ParsedHeaders } from '../utils/email-parser';
-import { renderIcon } from '../utils/ui';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import '../components/alps-button';
@@ -217,7 +218,7 @@ export class OriginalMessagePage extends LitElement {
     if (this.loading) {
       return html`
         <div class="loading-state">
-          <div class="spinner">${renderIcon('edelweiss')}</div>
+          <alps-loader></alps-loader>
           <span>${this.i18nStore?.t('originalMessage.loading')}</span>
         </div>
       `;
