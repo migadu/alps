@@ -3,7 +3,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { composeContext } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
-import { handleAttachClick, abortUpload, deleteAttachment } from '../utils/attachment-utils';
+import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
 import { messageOperations } from '../services/message-operations';
 import { messageSync } from '../services/message-sync';
 import './alps-address-input.js';
@@ -47,12 +47,16 @@ export class AlpsFloatingComposer extends LitElement {
   @state() private windowWidth = window.innerWidth;
   @state() private windowHeight = window.innerHeight;
   @state() private isSaving = false;
+  @state() private isDragOver = false;
 
   private autoSaveTimer: number | null = null;
 
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener('resize', this._handleResize);
+    window.addEventListener('dragover', this._handleWindowDragOver);
+    window.addEventListener('dragleave', this._handleWindowDragLeave);
+    window.addEventListener('alps-composer-drop', this._handleGlobalDropHandled as EventListener);
     if ((this.instance.cc && this.instance.cc.length > 0)) this.showCc = true;
     if ((this.instance.bcc && this.instance.bcc.length > 0)) this.showBcc = true;
   }
@@ -60,8 +64,32 @@ export class AlpsFloatingComposer extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener('resize', this._handleResize);
+    window.removeEventListener('dragover', this._handleWindowDragOver);
+    window.removeEventListener('dragleave', this._handleWindowDragLeave);
+    window.removeEventListener('alps-composer-drop', this._handleGlobalDropHandled as EventListener);
     this._clearAutoSave();
   }
+
+  private _handleWindowDragOver = () => {
+    // If window receives dragover, it means the drag is outside the composer
+    // (since composer stops propagation of dragover)
+    if (this.isDragOver) {
+      this.isDragOver = false;
+    }
+  };
+
+  private _handleWindowDragLeave = (e: DragEvent) => {
+    // If relatedTarget is null, the drag left the browser window entirely
+    if (e.relatedTarget === null && this.isDragOver) {
+      this.isDragOver = false;
+    }
+  };
+
+  private _handleGlobalDropHandled = () => {
+    if (this.isDragOver) {
+      this.isDragOver = false;
+    }
+  };
 
   firstUpdated() {
     setTimeout(() => {
@@ -538,6 +566,30 @@ export class AlpsFloatingComposer extends LitElement {
       this.instance.id,
       maxBytes,
       currentBytes,
+      ...this._getUploadCallbacks()
+    );
+  }
+
+  private _startUpload(files: File[]) {
+    const maxBytes = (this.settingsStore?.getState()?.maxAttachmentMiB || 32) * 1024 * 1024;
+    const currentBytes = (this.instance.attachments || []).reduce((sum, a) => sum + (a.size || 0), 0);
+    
+    uploadFiles(
+      files,
+      this.instance.id,
+      maxBytes,
+      currentBytes,
+      ...this._getUploadCallbacks()
+    );
+  }
+
+  private _getUploadCallbacks(): [
+    (tempId: string, file: File) => void,
+    (tempId: string, progress: number) => void,
+    (tempId: string, uuids: string[]) => void,
+    (tempId: string, err: any) => void
+  ] {
+    return [
       (tempId, file) => {
         // onFileAdded
         const composer = this.composeStore.getComposer(this.instance.id);
@@ -610,7 +662,7 @@ export class AlpsFloatingComposer extends LitElement {
           alert('Failed to upload attachment: ' + (err.message || 'Unknown error'));
         }
       }
-    );
+    ];
   }
 
   private _removeAttachment(index: number) {
@@ -623,6 +675,32 @@ export class AlpsFloatingComposer extends LitElement {
     }
     this.composeStore.updateComposer(this.instance.id, { attachments });
   }
+
+  private _handleDragOver = (e: DragEvent) => {
+    if (this.instance.isSending || this.instance.minimized) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.isDragOver = true;
+  };
+
+  private _handleDragLeave = (e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    this.isDragOver = false;
+  };
+
+  private _handleDrop = (e: DragEvent) => {
+    if (this.instance.isSending || this.instance.minimized) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.isDragOver = false;
+    window.dispatchEvent(new CustomEvent('alps-composer-drop'));
+
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length > 0) {
+      this._startUpload(files);
+    }
+  };
 
   static styles = css`
     :host {
@@ -683,6 +761,42 @@ export class AlpsFloatingComposer extends LitElement {
       overflow: hidden;
       position: relative;
       z-index: 1;
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+
+    .drag-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(255, 255, 255, 0.85);
+      z-index: 60;
+      display: flex;
+      padding: 16px;
+      pointer-events: auto;
+    }
+
+    .drag-overlay * {
+      pointer-events: none;
+    }
+
+    .drag-drop-zone {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 2px dashed var(--accent-color, #005A9E);
+      border-radius: 8px;
+      color: var(--accent-color, #005A9E);
+      font-size: 16px;
+      font-weight: 500;
+      background: rgba(0, 90, 158, 0.05);
+    }
+
+    .drag-drop-zone svg {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 16px;
+      fill: currentColor;
     }
 
     :host([expanded]) .window-frame,
@@ -979,7 +1093,22 @@ export class AlpsFloatingComposer extends LitElement {
         ></ui-confirm>
       ` : ''}
 
-      <div class="window-frame" @mousedown=${this._bringToFront}>
+      <div class="window-frame ${this.isDragOver ? 'drag-over' : ''}" 
+           @mousedown=${this._bringToFront}
+           @dragover=${this._handleDragOver}
+           @drop=${this._handleDrop}>
+        
+        ${this.isDragOver && !this.instance.isSending ? html`
+          <div class="drag-overlay" @dragleave=${this._handleDragLeave}>
+            <div class="drag-drop-zone">
+              <svg viewBox="0 0 256 256">
+                <path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216ZM128,112a8,8,0,0,0-8,8v44.69l-22.34-22.35a8,8,0,0,0-11.32,11.32l36,36a8,8,0,0,0,11.32,0l36-36a8,8,0,0,0-11.32-11.32L136,164.69V120A8,8,0,0,0,128,112Z"></path>
+              </svg>
+              <span>Drop files here to attach</span>
+            </div>
+          </div>
+        ` : ''}
+
         ${this.instance.isSending ? html`
           <div class="sending-overlay">
             <alps-loader></alps-loader>

@@ -692,6 +692,10 @@ export class MessageReader extends LitElement {
     iframe.style.height = '0px';
     iframe.style.width = '100%';
 
+    // Prevent dropping files inside the iframe from navigating away
+    iframe.contentDocument.addEventListener('dragover', (ev) => ev.preventDefault());
+    iframe.contentDocument.addEventListener('drop', (ev) => ev.preventDefault());
+
     if ((iframe as any)._ro) {
       (iframe as any)._ro.disconnect();
     }

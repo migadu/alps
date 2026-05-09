@@ -106,6 +106,8 @@ export class AppRoot extends LitElement {
     window.addEventListener('online', this._handleOnlineEvent);
     window.addEventListener('offline', this._handleOfflineEvent);
     window.addEventListener('network-error', this._handleOfflineEvent);
+    window.addEventListener('dragover', this._handleGlobalDragOver);
+    window.addEventListener('drop', this._handleGlobalDrop);
 
     if (this.isOffline) {
       this._handleOfflineEvent();
@@ -122,8 +124,19 @@ export class AppRoot extends LitElement {
     window.removeEventListener('online', this._handleOnlineEvent);
     window.removeEventListener('offline', this._handleOfflineEvent);
     window.removeEventListener('network-error', this._handleOfflineEvent);
+    window.removeEventListener('dragover', this._handleGlobalDragOver);
+    window.removeEventListener('drop', this._handleGlobalDrop);
     this._stopOfflineCountdown();
   }
+
+  private _handleGlobalDragOver = (e: DragEvent) => {
+    e.preventDefault();
+  };
+
+  private _handleGlobalDrop = (e: DragEvent) => {
+    e.preventDefault();
+    window.dispatchEvent(new CustomEvent('alps-composer-drop'));
+  };
 
   private _handleAuthError = () => {
     sessionStorage.clear();
