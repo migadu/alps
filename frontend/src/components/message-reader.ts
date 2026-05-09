@@ -715,12 +715,18 @@ export class MessageReader extends LitElement {
         }
       }
 
-      if (newHeight > 0 && iframe.style.height !== `${newHeight}px`) {
-        iframe.style.height = `${newHeight}px`;
+      if (newHeight > 0) {
+        const currentHeight = parseFloat(iframe.style.height) || 0;
+        if (Math.abs(currentHeight - newHeight) > 2) {
+          iframe.style.height = `${Math.ceil(newHeight)}px`;
+        }
       }
 
-      if (parentWidth > 0 && newWidth > parentWidth && iframe.style.width !== `${newWidth}px`) {
-        iframe.style.width = `${newWidth}px`;
+      if (parentWidth > 0 && newWidth > parentWidth) {
+        const currentWidth = parseFloat(iframe.style.width) || 0;
+        if (Math.abs(currentWidth - newWidth) > 2) {
+          iframe.style.width = `${Math.ceil(newWidth)}px`;
+        }
       }
     });
 
