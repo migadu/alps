@@ -22,6 +22,7 @@ import { MessageCache } from '../utils/message-cache';
 import { sanitizeMessageHTML } from '../utils/html-sanitizer';
 import { generateQuote } from '../utils/email-quote';
 import { composeContext, ComposeStore } from '../store/compose-store';
+import { Logger } from '../utils/logger';
 
 @customElement('alps-message-reader')
 export class MessageReader extends LitElement {
@@ -68,7 +69,7 @@ export class MessageReader extends LitElement {
             }
           }
         } catch (e) {
-          console.error('Failed to fetch text body for quote', e);
+          Logger.error('Failed to fetch text body for quote', e);
         }
         if (!textBody && this.rawMessageHtml) {
           const temp = document.createElement('div');
@@ -670,7 +671,7 @@ export class MessageReader extends LitElement {
         HasText: this.hasText
       });
     } catch (e) {
-      console.error('Failed to fetch message:', e);
+      Logger.error('Failed to fetch message:', e);
       this.content = 'Error loading message.';
     } finally {
       this.loading = false;
@@ -759,7 +760,7 @@ export class MessageReader extends LitElement {
           }
         }
       } catch (e) {
-        console.error('Failed to fetch text body for draft', e);
+        Logger.error('Failed to fetch text body for draft', e);
       }
 
       if (!textBody) {

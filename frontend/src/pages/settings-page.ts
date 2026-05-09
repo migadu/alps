@@ -13,6 +13,7 @@ import '../components/alps-webauthn-settings';
 
 import { registry } from '../plugin-registry';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { Logger } from '../utils/logger';
 
 @customElement('settings-page')
 export class SettingsPage extends LitElement {
@@ -189,7 +190,7 @@ export class SettingsPage extends LitElement {
         if (data.EnabledPlugins) this.enabledPlugins = data.EnabledPlugins;
       }
     } catch (e) {
-      console.error('Failed to fetch username in settings', e);
+      Logger.error('Failed to fetch username in settings', e);
     }
   }
 

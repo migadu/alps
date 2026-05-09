@@ -1,4 +1,5 @@
 import { createContext } from '@lit/context';
+import { Logger } from '../utils/logger';
 
 export interface LinkedAccount {
     username: string;
@@ -43,10 +44,10 @@ export class LinkedAccountsStore extends EventTarget {
                 this.accounts = data.accounts || [];
                 this.initialized = true;
             } else {
-                console.error('Failed to fetch linked accounts');
+                Logger.error('Failed to fetch linked accounts');
             }
         } catch (error) {
-            console.error('Error fetching linked accounts:', error);
+            Logger.error('Error fetching linked accounts:', error);
         } finally {
             this.loading = false;
             this.dispatchEvent(new Event('change'));

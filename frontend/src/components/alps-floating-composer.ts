@@ -19,6 +19,7 @@ import './alps-attachment-list.js';
 import './alps-emoji-selector-popup.js';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { settingsContext, SettingsStore } from '../store/settings-store';
+import { Logger } from '../utils/logger';
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
 @customElement('alps-floating-composer')
@@ -313,7 +314,7 @@ export class AlpsFloatingComposer extends LitElement {
       try {
         await messageOperations.deleteMessages(this.instance.draftMailbox, [String(this.instance.draftUid)]);
       } catch (e) {
-        console.error('Failed to delete draft', e);
+        Logger.error('Failed to delete draft', e);
       }
     }
 
@@ -502,7 +503,7 @@ export class AlpsFloatingComposer extends LitElement {
 
       this.composeStore.closeComposer(this.instance.id);
     } catch (err: any) {
-      console.error('Failed to send message:', err);
+      Logger.error('Failed to send message:', err);
       // Bring back the composer window if it was minimized or hidden
       this.composeStore.updateComposer(this.instance.id, { isSending: false, minimized: false, expanded: false });
       this._bringToFront();
@@ -589,7 +590,7 @@ export class AlpsFloatingComposer extends LitElement {
       },
       (tempId, err) => {
         // onError
-        console.error('Failed to upload attachment:', err);
+        Logger.error('Failed to upload attachment:', err);
         const composer = this.composeStore.getComposer(this.instance.id);
         const currentAttachments = composer?.attachments || [];
         const attachments = [...currentAttachments];

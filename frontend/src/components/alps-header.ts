@@ -6,6 +6,7 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import './user-profile-menu';
 import './alps-icon-btn';
+import { Logger } from '../utils/logger';
 
 @customElement('alps-header')
 export class AlpsHeader extends LitElement {
@@ -105,7 +106,7 @@ export class AlpsHeader extends LitElement {
       window.dispatchEvent(new CustomEvent('session-cleared'));
       window.location.hash = '#/login'; // Return to login page
     } catch (err) {
-      console.error('Failed to sign out', err);
+      Logger.error('Failed to sign out', err);
     }
   }
 

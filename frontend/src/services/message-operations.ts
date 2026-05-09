@@ -1,6 +1,7 @@
 import { messageSync } from './message-sync';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { FLAG_FLAGGED, FLAG_SEEN } from '../utils/flags';
+import { Logger } from '../utils/logger';
 
 export class MessageOperationsService extends EventTarget {
   /**
@@ -25,7 +26,7 @@ export class MessageOperationsService extends EventTarget {
       }
       return res.ok;
     } catch (err) {
-      console.error('Failed to set flag', err);
+      Logger.error('Failed to set flag', err);
       return false;
     }
   }
@@ -116,7 +117,7 @@ export class MessageOperationsService extends EventTarget {
       }
       return false;
     } catch (err) {
-      console.error('Failed to delete messages', err);
+      Logger.error('Failed to delete messages', err);
       return false;
     }
   }
@@ -144,7 +145,7 @@ export class MessageOperationsService extends EventTarget {
       }
       return { success: false };
     } catch (err) {
-      console.error('Failed to move messages', err);
+      Logger.error('Failed to move messages', err);
       return { success: false };
     }
   }
@@ -171,7 +172,7 @@ export class MessageOperationsService extends EventTarget {
       }
       return { success: false };
     } catch (err) {
-      console.error('Failed to copy messages', err);
+      Logger.error('Failed to copy messages', err);
       return { success: false };
     }
   }
@@ -213,10 +214,10 @@ export class MessageOperationsService extends EventTarget {
         return { uid: data.draft_uid, mailbox: data.draft_mailbox, size: data.draft_size, attachments: data.attachments };
       }
       const err = await res.json();
-      console.error('Failed to save draft:', err);
+      Logger.error('Failed to save draft:', err);
       return null;
     } catch (err) {
-      console.error('Failed to save draft:', err);
+      Logger.error('Failed to save draft:', err);
       return null;
     }
   }
@@ -242,7 +243,7 @@ export class MessageOperationsService extends EventTarget {
       const err = await res.json();
       throw new Error(err.error || 'Failed to send message');
     } catch (err: any) {
-      console.error('Failed to send message:', err);
+      Logger.error('Failed to send message:', err);
       throw err;
     }
   }

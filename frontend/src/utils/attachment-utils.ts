@@ -1,3 +1,4 @@
+import { Logger } from './logger';
 export interface Attachment {
   uuid?: string;
   partPath?: string;
@@ -24,7 +25,7 @@ export async function deleteAttachment(uuid: string) {
       method: 'DELETE'
     });
   } catch (err) {
-    console.error('Failed to delete attachment from server:', err);
+    Logger.error('Failed to delete attachment from server:', err);
   }
 }
 

@@ -1,4 +1,5 @@
 import { MessageCache } from '../utils/message-cache';
+import { Logger } from '../utils/logger';
 
 class AutoLogoutService {
   private events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
@@ -90,7 +91,7 @@ class AutoLogoutService {
       try {
         await this.onBeforeLogout();
       } catch (err) {
-        console.error('Failed to run onBeforeLogout hook', err);
+        Logger.error('Failed to run onBeforeLogout hook', err);
       }
     }
 
@@ -105,7 +106,7 @@ class AutoLogoutService {
       this.lastActivity = Date.now();
       this.setLogoutTime(this.logoutMinutes);
     } catch (err) {
-      console.error('Failed to auto sign out', err);
+      Logger.error('Failed to auto sign out', err);
     }
   }
 }

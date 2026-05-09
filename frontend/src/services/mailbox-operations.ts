@@ -1,5 +1,6 @@
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { messageSync } from './message-sync';
+import { Logger } from '../utils/logger';
 
 export class MailboxOperationsService extends EventTarget {
   
@@ -27,7 +28,7 @@ export class MailboxOperationsService extends EventTarget {
       }
       return false;
     } catch (err) {
-      console.error('Failed to create mailbox', err);
+      Logger.error('Failed to create mailbox', err);
       return false;
     }
   }
@@ -52,7 +53,7 @@ export class MailboxOperationsService extends EventTarget {
       }
       return false;
     } catch (err) {
-      console.error('Failed to rename mailbox', err);
+      Logger.error('Failed to rename mailbox', err);
       return false;
     }
   }
@@ -75,7 +76,7 @@ export class MailboxOperationsService extends EventTarget {
       }
       return false;
     } catch (err) {
-      console.error('Failed to delete mailbox', err);
+      Logger.error('Failed to delete mailbox', err);
       return false;
     }
   }
@@ -98,7 +99,7 @@ export class MailboxOperationsService extends EventTarget {
       }
       return false;
     } catch (err) {
-      console.error('Failed to empty mailbox', err);
+      Logger.error('Failed to empty mailbox', err);
       return false;
     }
   }
@@ -121,7 +122,7 @@ export class MailboxOperationsService extends EventTarget {
       }
       return false;
     } catch (err) {
-      console.error('Failed to subscribe mailbox', err);
+      Logger.error('Failed to subscribe mailbox', err);
       return false;
     }
   }
@@ -144,7 +145,7 @@ export class MailboxOperationsService extends EventTarget {
       }
       return false;
     } catch (err) {
-      console.error('Failed to unsubscribe mailbox', err);
+      Logger.error('Failed to unsubscribe mailbox', err);
       return false;
     }
   }

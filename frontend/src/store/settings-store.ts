@@ -1,5 +1,6 @@
 import { createContext } from '@lit/context';
 import { THEME_BUNDLES } from './themes';
+import { Logger } from '../utils/logger';
 
 export type ThemeMode = 'light' | 'dark' | 'auto';
 export type LayoutMode = 'vertical' | 'horizontal' | 'full';
@@ -105,7 +106,7 @@ export class SettingsStore extends EventTarget {
         const parsed = JSON.parse(stored);
         return { ...DEFAULT_SETTINGS, ...parsed };
       } catch (e) {
-        console.error('Failed to parse settings', e);
+        Logger.error('Failed to parse settings', e);
       }
     }
     return { ...DEFAULT_SETTINGS };
@@ -208,7 +209,7 @@ export class SettingsStore extends EventTarget {
         }
       }
     } catch (e) {
-      console.error('Failed to fetch backend settings', e);
+      Logger.error('Failed to fetch backend settings', e);
     }
   }
 
@@ -253,7 +254,7 @@ export class SettingsStore extends EventTarget {
         window.dispatchEvent(new CustomEvent('auth-error'));
       }
     } catch (e) {
-      console.error('Failed to save backend settings', e);
+      Logger.error('Failed to save backend settings', e);
     }
   }
 

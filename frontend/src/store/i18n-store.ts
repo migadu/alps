@@ -2,6 +2,7 @@ import { createContext } from '@lit/context';
 import type { ReactiveController, ReactiveControllerHost } from 'lit';
 import { en as coreEn } from '../i18n/en';
 import type { TranslationDictionary } from '../i18n/en';
+import { Logger } from '../utils/logger';
 
 function deepMerge(target: any, source: any): any {
   if (typeof target !== 'object' || target === null) return source;
@@ -76,7 +77,7 @@ export class I18nStore extends EventTarget {
         this.dictionary = newDict;
       }
     } catch (e) {
-      console.error(`Failed to load language module for ${lang}`, e);
+      Logger.error(`Failed to load language module for ${lang}`, e);
       // Fallback to English if missing
       this.dictionary = en;
     }

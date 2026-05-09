@@ -17,6 +17,7 @@ import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
 import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_SPAM, FOLDER_TRASH, FOLDER_DRAFTS } from '../utils/folders';
 import type { LayoutMode, DensityMode } from '../store/settings-store';
 import '../components/alps-initial-loader';
+import { Logger } from '../utils/logger';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
@@ -467,7 +468,7 @@ export class MailboxPage extends LitElement {
       this.notificationSound.currentTime = 0;
       this.notificationSound.play().catch(e => {
         if (e.name !== 'NotAllowedError') {
-          console.error('Failed to play sound notification:', e);
+          Logger.error('Failed to play sound notification:', e);
         }
       });
     }
@@ -495,7 +496,7 @@ export class MailboxPage extends LitElement {
           }
         };
       } catch (e) {
-        console.error('Failed to show desktop notification:', e);
+        Logger.error('Failed to show desktop notification:', e);
       }
     }
 
@@ -703,7 +704,7 @@ export class MailboxPage extends LitElement {
           }
         }
       } catch (err) {
-        console.error('Failed to fetch shifted message:', err);
+        Logger.error('Failed to fetch shifted message:', err);
       }
     }
 
@@ -923,7 +924,7 @@ export class MailboxPage extends LitElement {
                   }
                 }
               } catch (err) {
-                console.error("Undo failed", err);
+                Logger.error("Undo failed", err);
               }
             };
           } else if (!isBulk && moveResult.uidMapping?.[String(currentMsg.UID)]) {
@@ -940,7 +941,7 @@ export class MailboxPage extends LitElement {
                   }
                 }
               } catch (err) {
-                console.error("Undo failed", err);
+                Logger.error("Undo failed", err);
               }
             };
           }
@@ -991,7 +992,7 @@ export class MailboxPage extends LitElement {
                   }
                 }
               } catch (err) {
-                console.error("Undo failed", err);
+                Logger.error("Undo failed", err);
               }
             };
           } else if (!isBulk && isMove && result.uidMapping?.[String(currentMsg.UID)]) {
@@ -1008,7 +1009,7 @@ export class MailboxPage extends LitElement {
                   }
                 }
               } catch (err) {
-                console.error("Undo failed", err);
+                Logger.error("Undo failed", err);
               }
             };
           }

@@ -1,5 +1,6 @@
 import { createContext } from '@lit/context';
 import { messageOperations } from '../services/message-operations';
+import { Logger } from '../utils/logger';
 
 const isBlockedAddress = (addr: string): boolean => {
   let rawEmail = addr.trim();
@@ -75,7 +76,7 @@ export class ComposeStore extends EventTarget {
         });
       }
     } catch (e) {
-      console.error('Failed to parse compose drafts from localStorage', e);
+      Logger.error('Failed to parse compose drafts from localStorage', e);
     }
     return [];
   }
@@ -84,7 +85,7 @@ export class ComposeStore extends EventTarget {
     try {
       localStorage.setItem('alps_compose_drafts', JSON.stringify(this.state.activeComposers));
     } catch (e) {
-      console.error('Failed to save compose drafts to localStorage', e);
+      Logger.error('Failed to save compose drafts to localStorage', e);
     }
   }
 

@@ -1,5 +1,6 @@
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { FOLDER_INBOX } from '../utils/folders';
+import { Logger } from '../utils/logger';
 
 export interface MailboxData {
   Username?: string;
@@ -105,7 +106,7 @@ export class MessageSyncService extends EventTarget {
       this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: false } }));
     } catch (err) {
       if (this.currentFetchId !== fetchId) return;
-      console.error('Failed to fetch mailbox data', err);
+      Logger.error('Failed to fetch mailbox data', err);
 
       const elapsed = Date.now() - startTime;
       if (elapsed < 200) {
@@ -139,7 +140,7 @@ export class MessageSyncService extends EventTarget {
       const data: MailboxData = await response.json();
       this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: true } }));
     } catch (err) {
-      console.error('Background sync failed', err);
+      Logger.error('Background sync failed', err);
     }
   }
 }

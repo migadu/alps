@@ -1,3 +1,4 @@
+import { Logger } from './logger';
 export interface CachedMessage {
   Message: any;
   Part: any;
@@ -26,7 +27,7 @@ export const MessageCache = {
       }
       return item;
     } catch (e) {
-      console.error('Failed to read message cache', e);
+      Logger.error('Failed to read message cache', e);
       return null;
     }
   },
@@ -58,10 +59,10 @@ export const MessageCache = {
           const item: CachedMessage = { ...data, timestamp: Date.now() };
           sessionStorage.setItem(key, JSON.stringify(item));
         } catch (retryErr) {
-          console.error('Failed to write message cache even after clearing', retryErr);
+          Logger.error('Failed to write message cache even after clearing', retryErr);
         }
       } else {
-        console.error('Failed to write message cache', e);
+        Logger.error('Failed to write message cache', e);
       }
     }
   },
@@ -77,7 +78,7 @@ export const MessageCache = {
       }
       keysToRemove.forEach(k => sessionStorage.removeItem(k));
     } catch (e) {
-      console.error('Failed to clear message cache', e);
+      Logger.error('Failed to clear message cache', e);
     }
   }
 };

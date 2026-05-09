@@ -8,6 +8,7 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import '../components/alps-button';
 import '../components/alps-banner';
+import { Logger } from '../utils/logger';
 
 @customElement('original-message-page')
 export class OriginalMessagePage extends LitElement {
@@ -194,7 +195,7 @@ export class OriginalMessagePage extends LitElement {
     navigator.clipboard.writeText(this.rawText).then(() => {
       alert(this.isTruncated ? (this.i18nStore?.t('originalMessage.copiedTruncated')) : (this.i18nStore?.t('originalMessage.copied')));
     }).catch(err => {
-      console.error('Failed to copy: ', err);
+      Logger.error('Failed to copy: ', err);
       alert(this.i18nStore?.t('originalMessage.copyFailed'));
     });
   }
