@@ -5,7 +5,7 @@ import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIV
 export function renderIcon(name: string): TemplateResult {
   return html`
     <svg class="icon">
-      <use href="/assets/icons/sprite.svg?v=6#${name}"></use>
+      <use href="/assets/icons/sprite.svg?v=7#${name}"></use>
     </svg>
   `;
 }

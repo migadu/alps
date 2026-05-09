@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { formatDateList, formatSize, getMailboxLabel, renderIcon } from '../utils/ui';
-import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED } from '../utils/flags';
+import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED, getMessageTags } from '../utils/flags';
 import { FOLDER_DRAFTS, FOLDER_SENT } from '../utils/folders';
 import { messageSync } from '../services/message-sync';
 import { mailboxOperations } from '../services/mailbox-operations';
@@ -9,6 +9,7 @@ import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import './alps-avatar';
+import './alps-tag';
 import './alps-pagination';
 import './alps-icon-btn';
 import './alps-toolbar';
@@ -489,6 +490,16 @@ export class MessageList extends LitElement {
       flex-shrink: 0;
     }
 
+    .tag-pills {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 4px;
+      margin-right: 6px;
+      overflow: hidden;
+      flex-shrink: 0;
+      align-items: center;
+    }
+
     .mobile-bottom-header {
       height: 57px;
       box-sizing: border-box;
@@ -719,7 +730,7 @@ export class MessageList extends LitElement {
       bubbles: true,
       composed: true
     }));
-    
+
     const success = await mailboxOperations.emptyMailbox(this.currentMailbox);
     if (success) {
       this.dispatchEvent(new CustomEvent('toast', {
@@ -885,6 +896,8 @@ export class MessageList extends LitElement {
             const isAnswered = msg.Flags && msg.Flags.includes(FLAG_ANSWERED);
             const isForwarded = msg.Flags && msg.Flags.includes(FLAG_FORWARDED);
 
+            const customTags = getMessageTags(msg.Flags, this.i18nStore);
+
             if (this.densityMode === 'ultra-compact') {
               return html`
               <div class="message-item ${(this.selectedMessages.size === 0 && this.selectedMessage?.UID === msg.UID) || this.selectedMessages.has(String(msg.UID)) ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.messages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
@@ -912,6 +925,13 @@ export class MessageList extends LitElement {
                   <div class="indicators-wrapper-ultra">
                     ${isAnswered ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.replied')}>${renderIcon('arrowBendUpLeft')}</div>` : ''}
                     ${isForwarded ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.forwarded')}>${renderIcon('arrowBendUpRight')}</div>` : ''}
+                  </div>
+                ` : ''}
+                ${customTags.length > 0 ? html`
+                  <div class="tag-pills">
+                    ${customTags.map(tag => html`
+                      <alps-tag .name=${tag.name} .color=${tag.color}></alps-tag>
+                    `)}
                   </div>
                 ` : ''}
                 <div class="message-subject">${subject}</div>
@@ -982,6 +1002,13 @@ export class MessageList extends LitElement {
                     <div class="indicators-wrapper">
                       ${isAnswered ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.replied')}>${renderIcon('arrowBendUpLeft')}</div>` : ''}
                       ${isForwarded ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.forwarded')}>${renderIcon('arrowBendUpRight')}</div>` : ''}
+                    </div>
+                  ` : ''}
+                  ${customTags.length > 0 ? html`
+                    <div class="tag-pills">
+                      ${customTags.map(tag => html`
+                        <alps-tag .name=${tag.name} .color=${tag.color}></alps-tag>
+                      `)}
                     </div>
                   ` : ''}
                   <div class="message-subject">${subject}</div>

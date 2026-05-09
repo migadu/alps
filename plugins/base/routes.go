@@ -1885,9 +1885,27 @@ func handleSetFlags(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusBadRequest, "invalid 'action' value")
 	}
 
-	l := make([]imap.Flag, len(flags))
-	for i, s := range flags {
-		l[i] = imap.Flag(s)
+	var l []imap.Flag
+	for _, s := range flags {
+		lower := strings.ToLower(s)
+		switch lower {
+		case strings.ToLower(string(imap.FlagSeen)),
+			strings.ToLower(string(imap.FlagFlagged)),
+			strings.ToLower(string(imap.FlagDraft)),
+			strings.ToLower(string(imap.FlagDeleted)),
+			strings.ToLower(string(imap.FlagAnswered)):
+			l = append(l, imap.Flag(s))
+		case "$label1", "$label2", "$label3", "$label4", "$label5":
+			l = append(l, imap.Flag(lower)) // enforce lowercase for Thunderbird labels
+		default:
+			// restrict creation of unsupported labels
+			continue
+		}
+	}
+
+	// If flags were provided but all were filtered out, just return success
+	if len(l) == 0 && len(flags) > 0 {
+		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
 	}
 
 	// Convert IMAP flag op to alps flag op

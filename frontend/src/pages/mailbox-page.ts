@@ -263,6 +263,20 @@ export class MailboxPage extends LitElement {
     return true;
   }
 
+  private get commonSelectedTags() {
+    if (this.selectedUids.size === 0) return [];
+    const allLabels = ['$label1', '$label2', '$label3', '$label4', '$label5'];
+    return allLabels.filter(label => {
+      for (const uid of this.selectedUids) {
+        const msg = this.messages.find(m => String(m.UID) === uid);
+        if (!msg || !msg.Flags?.some((f: string) => f.toLowerCase() === label.toLowerCase())) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+
   private get allSelectedUnread() {
     if (this.selectedUids.size === 0) return false;
     for (const uid of this.selectedUids) {
@@ -837,6 +851,18 @@ export class MailboxPage extends LitElement {
           this.selectedMessage = await messageOperations.toggleStar(this.currentMailbox, this.selectedMessage);
           this.updateLocalMessageFlags([String(this.selectedMessage.UID)], FLAG_FLAGGED, this.selectedMessage.Flags?.includes(FLAG_FLAGGED) ? 'add' : 'remove');
         }
+      } else if (action === 'addTag' || action === 'removeTag') {
+        const tags = e.detail.tags || (e.detail.folder ? [e.detail.folder] : []);
+        if (!tags || tags.length === 0) return;
+        const op = action === 'addTag' ? 'add' : 'remove';
+        if (isBulk) {
+          await messageOperations.setFlag(this.currentMailbox, uidsArray, tags, op);
+          for (const t of tags) this.updateLocalMessageFlags(uidsArray, t, op);
+        } else {
+          await messageOperations.setFlag(this.currentMailbox, [String(currentMsg.UID)], tags, op);
+          for (const t of tags) this.updateLocalMessageFlags([String(currentMsg.UID)], t, op);
+        }
+        this.requestUpdate();
       } else if (action === 'markUnread') {
         if (isBulk) {
           const op = this.allSelectedUnread ? 'add' : 'remove';
@@ -1266,6 +1292,7 @@ export class MailboxPage extends LitElement {
               .selectedUids=${this.selectedUids}
               .allSelectedStarred=${this.allSelectedStarred}
               .allSelectedUnread=${this.allSelectedUnread}
+              .commonTags=${this.commonSelectedTags}
               .bulkProcessing=${this.bulkProcessing}
               @close=${() => { this.updateUrl(this.currentMailbox, this.currentPage, null); }}
               @action=${this._handleReaderAction}

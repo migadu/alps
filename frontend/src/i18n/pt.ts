@@ -208,6 +208,8 @@ export const pt = {
     sendError: 'Falha ao enviar mensagem: {error}'
   },
   messageReader: {
+    tags: 'Etiquetas',
+    removeAllTags: 'Remover todas as etiquetas',
     selectMessage: 'Selecione uma mensagem para ler',
     messagesSelected: 'mensagens selecionadas',
     back: 'Voltar',

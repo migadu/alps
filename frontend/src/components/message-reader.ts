@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
+import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName } from '../utils/flags';
 import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_TRASH, FOLDER_JUNK, FOLDER_SPAM, FOLDER_ARCHIVE, FOLDER_ARCHIVES } from '../utils/folders';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
@@ -17,6 +17,7 @@ import './alps-folder-selector-popup';
 import './alps-icon-btn';
 import './alps-button';
 import './alps-avatar';
+import './alps-tag';
 import './alps-banner';
 import { MessageCache } from '../utils/message-cache';
 import { sanitizeMessageHTML } from '../utils/html-sanitizer';
@@ -39,8 +40,10 @@ export class MessageReader extends LitElement {
    * Closes the "More" actions popup menu if it is currently open.
    */
   private _closePopup() {
-    const popup = this.shadowRoot?.querySelector('.more-menu-popup') as any;
-    if (popup) popup.close();
+    const popups = this.shadowRoot?.querySelectorAll('alps-popup');
+    if (popups) {
+      popups.forEach(p => (p as any).close());
+    }
   }
 
   /**
@@ -134,6 +137,22 @@ export class MessageReader extends LitElement {
     this.dispatchEvent(new CustomEvent('action', { detail: { action, folder } }));
   }
 
+  private _handleTag(tag: string) {
+    this._closePopup();
+    const isBulk = this.selectedUids.size > 1 && !this.message;
+    const hasTag = isBulk 
+      ? this.commonTags?.some(f => f.toLowerCase() === tag.toLowerCase())
+      : this.message?.Flags?.some((f: string) => f.toLowerCase() === tag.toLowerCase());
+      
+    this.dispatchEvent(new CustomEvent('action', { detail: { action: hasTag ? 'removeTag' : 'addTag', folder: tag } }));
+  }
+
+  private _handleRemoveAllTags() {
+    this._closePopup();
+    const allLabels = ['$label1', '$label2', '$label3', '$label4', '$label5'];
+    this.dispatchEvent(new CustomEvent('action', { detail: { action: 'removeTag', tags: allLabels } }));
+  }
+
   @state()
   private localPreferredView: 'html' | 'text' | null = null;
 
@@ -148,6 +167,7 @@ export class MessageReader extends LitElement {
   @property({ type: Object }) selectedUids = new Set<string>();
   @property({ type: Boolean }) allSelectedStarred = false;
   @property({ type: Boolean }) allSelectedUnread = false;
+  @property({ type: Array }) commonTags: string[] = [];
   @property({ type: Boolean }) bulkProcessing = false;
   @property({ type: String }) layoutMode = 'vertical';
   @property({ type: Array }) mailboxes: any[] = [];
@@ -204,6 +224,15 @@ export class MessageReader extends LitElement {
       margin-bottom: 20px;
       display: flow-root;
       word-break: break-word;
+    }
+
+    .tag-pills {
+      float: right;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-left: 12px;
+      margin-bottom: 4px;
     }
 
     .reader-meta {
@@ -817,6 +846,7 @@ export class MessageReader extends LitElement {
     const currentView = this.localPreferredView || this.settingsStore?.getState()?.preferredView || 'html';
 
     const msg = this.message || {};
+    const customTags = getMessageTags(msg.Flags, this.i18nStore);
     const sender = msg.Envelope?.From?.[0] || {};
     const senderAddress = sender.Mailbox && sender.Host ? `${sender.Mailbox}@${sender.Host}` : '';
     const senderName = sender.Name || senderAddress || (this.i18nStore?.t('messageList.unknownSender'));
@@ -869,6 +899,27 @@ export class MessageReader extends LitElement {
         <alps-icon-btn title=${(isBulk && this.allSelectedUnread) || (!isBulk && !this.message?.Flags?.includes(FLAG_SEEN)) ? (this.i18nStore?.t('messageReader.markRead')) : (this.i18nStore?.t('messageReader.markUnread'))} @click=${() => this._handleAction('markUnread')} icon=${(isBulk && this.allSelectedUnread) || (!isBulk && !this.message?.Flags?.includes(FLAG_SEEN)) ? 'envelopeOpen' : 'envelopeUnread'}></alps-icon-btn>
         ` : ''}
         <alps-icon-btn class="desktop-only" ?active=${(isBulk && this.allSelectedStarred) || (!isBulk && this.message?.Flags?.includes(FLAG_FLAGGED))} title=${this.i18nStore?.t('messageReader.star')} @click=${() => this._handleAction('star')} icon=${(isBulk && this.allSelectedStarred) || (!isBulk && this.message?.Flags?.includes(FLAG_FLAGGED)) ? 'starFourFill' : 'starFour'}></alps-icon-btn>
+        
+        <alps-popup align="left" class="tags-popup">
+          <alps-icon-btn slot="trigger" class="desktop-only" title=${this.i18nStore?.t('messageReader.tags') || 'Tags'} icon="tag"></alps-icon-btn>
+          ${['$label1', '$label2', '$label3', '$label4', '$label5'].map(tag => {
+            const isActive = isBulk 
+              ? this.commonTags?.some(f => f.toLowerCase() === tag.toLowerCase())
+              : this.message?.Flags?.some((f: string) => f.toLowerCase() === tag.toLowerCase());
+            
+            return html`
+              <button class="dropdown-item ${isActive ? 'active' : ''}" @click=${() => this._handleTag(tag)}>
+                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${getTagColor(tag)};margin-right:12px;opacity:0.9;"></span>
+                <span class="item-text">${getTagName(tag, this.i18nStore)}</span>
+              </button>
+            `;
+          })}
+          <div class="dropdown-divider"></div>
+          <button class="dropdown-item text-danger" @click=${() => this._handleRemoveAllTags()}>
+            <span class="item-text">${this.i18nStore?.t('messageReader.removeAllTags') || 'Remove all tags'}</span>
+          </button>
+        </alps-popup>
+
         <div class="toolbar-spacer desktop-spacer"></div>
         <div class="toolbar-separator mobile-only"></div>
           
@@ -972,6 +1023,13 @@ export class MessageReader extends LitElement {
         <div class="reader-body" @scroll=${this.handleScroll}>
           <div class="reader-header">
           <div class="reader-subject">
+            ${customTags.length > 0 ? html`
+              <div class="tag-pills">
+                ${customTags.map(tag => html`
+                  <alps-tag .name=${tag.name} .color=${tag.color}></alps-tag>
+                `)}
+              </div>
+            ` : ''}
             <div class="mobile-date-container">
               <div class="reader-date mobile-date">${dateStr}</div>
               ${msg.RFC822Size ? html`<div class="reader-size mobile-size">${formatSize(msg.RFC822Size)}</div>` : ''}

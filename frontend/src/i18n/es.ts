@@ -160,7 +160,9 @@ export const es = {
     sendError: 'Error al enviar el mensaje: {error}'
   },
   messageReader: {
-    selectMessage: 'Selecciona un mensaje para leer',
+    tags: 'Etiquetas',
+    removeAllTags: 'Eliminar todas las etiquetas',
+    selectMessage: 'Seleccione un mensaje para leer',
     messagesSelected: 'mensajes seleccionados',
     back: 'Volver',
     reply: 'Responder',

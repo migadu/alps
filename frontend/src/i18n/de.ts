@@ -162,6 +162,8 @@ export const de: TranslationDictionary = {
     sendError: 'Nachricht konnte nicht gesendet werden: {error}'
   },
   messageReader: {
+    tags: 'Schlagwörter',
+    removeAllTags: 'Alle Schlagwörter entfernen',
     selectMessage: 'Wählen Sie eine Nachricht zum Lesen aus',
     messagesSelected: 'Nachrichten ausgewählt',
     back: 'Zurück',

@@ -160,6 +160,8 @@ export const rs = {
     sendError: 'Грешка при слању поруке: {error}'
   },
   messageReader: {
+    tags: 'Ознаке',
+    removeAllTags: 'Уклони све ознаке',
     selectMessage: 'Изаберите поруку за читање',
     messagesSelected: 'изабраних порука',
     back: 'Назад',

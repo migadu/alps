@@ -331,7 +331,7 @@ export class AppRoot extends LitElement {
         <ui-modal title=${this.i18nStore.t('offline.title')} .dismissible=${false} width="400px">
           <div style="text-align: center; padding: 16px 0;">
             <svg style="width: 48px; height: 48px; color: var(--text-muted, #9ca3af); margin-bottom: 16px; fill: currentColor;">
-              <use href="/assets/icons/sprite.svg?v=6#wifiSlash"></use>
+              <use href="/assets/icons/sprite.svg?v=7#wifiSlash"></use>
             </svg>
             <div style="font-weight: 500; font-size: 16px; margin-bottom: 8px; color: var(--text-primary, #111827);">
               ${this.i18nStore.t('offline.description')}

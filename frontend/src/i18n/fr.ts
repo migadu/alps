@@ -160,6 +160,8 @@ export const fr = {
     sendError: 'Échec de l\'envoi du message : {error}'
   },
   messageReader: {
+    tags: 'Étiquettes',
+    removeAllTags: 'Supprimer toutes les étiquettes',
     selectMessage: 'Sélectionnez un message à lire',
     messagesSelected: 'messages sélectionnés',
     back: 'Retour',

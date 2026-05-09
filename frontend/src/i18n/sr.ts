@@ -160,6 +160,8 @@ export const sr = {
     sendError: 'Greška pri slanju poruke: {error}'
   },
   messageReader: {
+    tags: 'Oznake',
+    removeAllTags: 'Ukloni sve oznake',
     selectMessage: 'Izaberite poruku za čitanje',
     messagesSelected: 'izabranih poruka',
     back: 'Nazad',
