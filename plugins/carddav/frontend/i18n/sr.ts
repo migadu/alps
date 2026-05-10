@@ -45,6 +45,7 @@ export default {
     url: 'URL',
     birthday: 'Rođendan',
     back: 'Nazad',
-    toggleStar: 'Uključi/isključi omiljeno'
+    toggleStar: 'Uključi/isključi omiljeno',
+    publicKey: 'Javni ključ'
   }
 };

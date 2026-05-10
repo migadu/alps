@@ -29,6 +29,7 @@ type ContactData struct {
 	Avatar       string   `json:"avatar,omitempty"`
 	Categories   []string `json:"categories,omitempty"`
 	Revision     string   `json:"revision,omitempty"`
+	PublicKey    string   `json:"public_key,omitempty"`
 	Path         string   `json:"path"`
 }
 
@@ -129,6 +130,11 @@ func extractContactData(card vcard.Card, path string) ContactData {
 		revision = f.Value
 	}
 
+	publicKey := ""
+	if f := card.Preferred(vcard.FieldKey); f != nil {
+		publicKey = f.Value
+	}
+
 	return ContactData{
 		UID:          uid,
 		Name:         fn,
@@ -144,6 +150,7 @@ func extractContactData(card vcard.Card, path string) ContactData {
 		Avatar:       avatar,
 		Categories:   categories,
 		Revision:     revision,
+		PublicKey:    publicKey,
 		Path:         path,
 	}
 }
@@ -318,6 +325,14 @@ func registerRoutes(p *plugin) {
 		setSimpleField(vcard.FieldNote, req.Note)
 		setSimpleField(vcard.FieldURL, req.URL)
 		setSimpleField(vcard.FieldNickname, req.Nickname)
+		
+		if strings.TrimSpace(req.PublicKey) == "" {
+			delete(card, vcard.FieldKey)
+		} else {
+			// RFC 6350 specifies KEY can be a URI, text, etc. We will prefix with data:application/pgp-keys if not present to ensure compliance, or just store it as text if it's already a full block.
+			val := strings.TrimSpace(req.PublicKey)
+			card[vcard.FieldKey] = []*vcard.Field{{Value: val}}
+		}
 
 		if len(req.Categories) > 0 {
 			var validCats []string

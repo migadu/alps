@@ -20,6 +20,8 @@ export class AlpsBanner extends LitElement {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      min-height: 38px;
+      box-sizing: border-box;
       font-size: 13px;
       border-bottom: 1px solid var(--border-color);
       background: var(--surface, #ffffff);

@@ -143,12 +143,14 @@ export const en = {
       begin_failed: 'Failed to initiate authentication.',
       invalid_options: 'Invalid authentication options received.',
       verification_failed: 'Verification failed. Please try again.',
+      register_failed: 'There was an error registering your security key. Please try again.',
       remove_failed: 'Failed to remove the security key.',
       general: 'An error occurred.',
     },
     settings: {
       group_desc: 'Secure your account with a hardware security key or biometrics.',
       keys_title: 'Security Keys',
+      noKeys: 'No registered keys.',
       added: 'Added',
       remove_btn: 'Remove'
     }
@@ -413,9 +415,11 @@ export const en = {
     tryingAgain: 'Trying again in {seconds} seconds...'
   },
   general: {
+    error: 'Error',
     cancel: 'Cancel',
     save: 'Save',
-    optional: 'Optional'
+    optional: 'Optional',
+    delete: 'Delete'
   }
 };
 

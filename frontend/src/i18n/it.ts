@@ -381,9 +381,11 @@ export const it = {
     tryingAgain: 'Nuovo tentativo in {seconds} secondi...'
   },
   general: {
+    error: 'Errore',
     cancel: 'Annulla',
     save: 'Salva',
-    optional: 'Opzionale'
+    optional: 'Opzionale',
+    delete: 'Elimina'
   },
   webauthn: {
     title: 'Verifica della chiave di sicurezza',
@@ -408,12 +410,14 @@ export const it = {
       begin_failed: 'Impossibile avviare l\'autenticazione.',
       invalid_options: 'Opzioni di autenticazione non valide ricevute.',
       verification_failed: 'Verifica non riuscita. Per favore riprova.',
+      register_failed: 'Si è verificato un errore durante la registrazione della chiave di sicurezza. Riprova.',
       remove_failed: 'Impossibile rimuovere la chiave di sicurezza.',
       general: 'Si è verificato un errore.',
     },
     settings: {
       group_desc: 'Proteggi il tuo account con una chiave di sicurezza hardware o dati biometrici.',
       keys_title: 'Chiavi di sicurezza',
+      noKeys: 'Nessuna chiave registrata.',
       added: 'Aggiunto',
       remove_btn: 'Rimuovi'
     }

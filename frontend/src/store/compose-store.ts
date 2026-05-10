@@ -40,6 +40,7 @@ export interface ComposerInstance {
   inReplyTo?: string;
   isSending?: boolean;
   closing?: boolean;
+  [key: string]: any;
 }
 
 export interface ComposeState {

@@ -423,6 +423,7 @@ export class AlpsContactView extends LitElement {
             <alps-input placeholder="${this.i18nStore?.t('contacts.url')}" type="url" .value=${this.editForm.url || ''} @input=${(e: any) => this.handleInput('url', e.target.value)}></alps-input>
             <alps-input placeholder="${this.i18nStore?.t('contacts.birthday')}" type="date" .value=${this.editForm.birthday || ''} @input=${(e: any) => this.handleInput('birthday', e.target.value)}></alps-input>
             <textarea class="edit-textarea" placeholder="${this.i18nStore?.t('contacts.notes')}" .value=${this.editForm.note || ''} @input=${(e: any) => this.handleInput('note', e.target.value)}></textarea>
+            <textarea class="edit-textarea" placeholder="${this.i18nStore?.t('contacts.publicKey') || 'GPG Public Key Block'}" .value=${this.editForm.public_key || ''} @input=${(e: any) => this.handleInput('public_key', e.target.value)} style="font-family: monospace; white-space: pre;"></textarea>
           </div>
         ` : html`
           <div class="view-header" style="margin-top: -32px;">
@@ -447,6 +448,7 @@ export class AlpsContactView extends LitElement {
             ${this.renderDetailRow(this.i18nStore?.t('contacts.birthday'), this.formattedBirthday)}
             ${this.renderDetailRow(this.i18nStore?.t('contacts.url'), this.contact.url)}
             ${this.renderDetailRow(this.i18nStore?.t('contacts.notes'), this.contact.note)}
+            ${this.renderDetailRow(this.i18nStore?.t('contacts.publicKey') || 'Public Key', this.contact.public_key)}
           </div>
         `}
         `}

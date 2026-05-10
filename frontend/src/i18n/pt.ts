@@ -136,12 +136,14 @@ export const pt = {
       begin_failed: 'Falha ao iniciar autenticação.',
       invalid_options: 'Opções de autenticação inválidas recebidas.',
       verification_failed: 'Falha na verificação. Por favor, tente novamente.',
+      register_failed: 'Ocorreu um erro ao registar a sua chave de segurança. Por favor, tente novamente.',
       remove_failed: 'Falha ao remover a chave de segurança.',
       general: 'Ocorreu um erro.',
     },
     settings: {
       group_desc: 'Proteja sua conta com uma chave de segurança física ou biometria.',
       keys_title: 'Chaves de Segurança',
+      noKeys: 'Nenhuma chave registrada.',
       added: 'Adicionada',
       remove_btn: 'Remover'
     }
@@ -413,9 +415,11 @@ export const pt = {
     tryingAgain: 'Tentando novamente em {seconds} segundos...'
   },
   general: {
+    error: 'Erro',
     cancel: 'Cancelar',
     save: 'Salvar',
-    optional: 'Opcional'
+    optional: 'Opcional',
+    delete: 'Excluir'
   }
 };
 

@@ -155,7 +155,7 @@ export class SettingsAccounts extends LitElement {
                 </div>
 
                 ${!this.showAddForm ? html`
-                    <alps-button variant="normal" style="margin-top: 16px;" @click=${() => this.showAddForm = true}>
+                    <alps-button variant="normal" @click=${() => this.showAddForm = true}>
                         ${this.i18nStore?.t('linkedAccounts.addTitle')}
                     </alps-button>
                 ` : ''}

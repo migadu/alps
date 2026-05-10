@@ -45,6 +45,7 @@ export default {
     url: 'URL',
     birthday: 'Compleanno',
     back: 'Indietro',
-    toggleStar: 'Attiva/disattiva preferito'
+    toggleStar: 'Attiva/disattiva preferito',
+    publicKey: 'Chiave pubblica'
   }
 };

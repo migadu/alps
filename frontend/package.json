@@ -24,10 +24,12 @@
     "@types/css": "^0.0.38",
     "css": "^3.0.0",
     "lit": "^3.3.2",
+    "openpgp": "^6.3.0",
     "postal-mime": "^2.7.4",
     "unicode-emoji-picker": "^1.5.0"
   },
   "devDependencies": {
+    "@types/openpgp": "^4.4.22",
     "typescript": "~6.0.2",
     "vite": "^8.0.10"
   }

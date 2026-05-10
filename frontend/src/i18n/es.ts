@@ -381,9 +381,11 @@ export const es = {
     tryingAgain: 'Reintentando en {seconds} segundos...'
   },
   general: {
+    error: 'Error',
     cancel: 'Cancelar',
     save: 'Guardar',
-    optional: 'Opcional'
+    optional: 'Opcional',
+    delete: 'Eliminar'
   },
   webauthn: {
     title: 'Verificación de clave de seguridad',
@@ -408,12 +410,14 @@ export const es = {
       begin_failed: 'Error al iniciar la autenticación.',
       invalid_options: 'Se recibieron opciones de autenticación no válidas.',
       verification_failed: 'Error en la verificación. Por favor, inténtalo de nuevo.',
+      register_failed: 'Hubo un error al registrar su clave de seguridad. Por favor, inténtelo de nuevo.',
       remove_failed: 'Error al eliminar la clave de seguridad.',
       general: 'Se ha producido un error.',
     },
     settings: {
       group_desc: 'Protege tu cuenta con una clave de seguridad de hardware o biometría.',
       keys_title: 'Claves de seguridad',
+      noKeys: 'No hay claves registradas.',
       added: 'Añadido',
       remove_btn: 'Eliminar'
     }

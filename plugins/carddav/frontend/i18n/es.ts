@@ -45,6 +45,7 @@ export default {
     url: 'URL',
     birthday: 'Cumpleaños',
     back: 'Volver',
-    toggleStar: 'Alternar destacado'
+    toggleStar: 'Alternar destacado',
+    publicKey: 'Clave pública'
   }
 };

@@ -381,9 +381,11 @@ export const sr = {
     tryingAgain: 'Pokušaj ponovo za {seconds} sekundi...'
   },
   general: {
+    error: 'Greška',
     cancel: 'Otkaži',
     save: 'Sačuvaj',
-    optional: 'Opciono'
+    optional: 'Opciono',
+    delete: 'Obriši'
   },
   webauthn: {
     title: 'Verifikacija bezbednosnog ključa',
@@ -408,12 +410,14 @@ export const sr = {
       begin_failed: 'Nije uspelo pokretanje autentifikacije.',
       invalid_options: 'Primljene su nevažeće opcije autentifikacije.',
       verification_failed: 'Verifikacija nije uspela. Pokušajte ponovo.',
+      register_failed: 'Дошло је до грешке приликом регистрације безбедносног кључа. Покушајте поново.',
       remove_failed: 'Nije uspelo uklanjanje bezbednosnog ključa.',
       general: 'Došlo je do greške.',
     },
     settings: {
       group_desc: 'Zaštitite svoj nalog hardverskim bezbednosnim ključem ili biometrijom.',
       keys_title: 'Bezbednosni ključevi',
+      noKeys: 'Нема регистрованих кључева.',
       added: 'Dodato',
       remove_btn: 'Ukloni'
     }

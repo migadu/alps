@@ -45,6 +45,7 @@ export default {
     url: 'URL',
     birthday: 'Date de naissance',
     back: 'Retour',
-    toggleStar: 'Basculer le favori'
+    toggleStar: 'Basculer le favori',
+    publicKey: 'Clé publique'
   }
 };

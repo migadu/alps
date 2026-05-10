@@ -9,6 +9,8 @@ import './alps-setting-group';
 import './alps-icon-btn';
 import './alps-button';
 import './ui-prompt';
+import './ui-modal';
+import './ui-confirm';
 
 interface CredentialDisplay {
     ID: string;
@@ -34,6 +36,7 @@ export class AlpsWebauthnSettings extends LitElement {
     @state() private adding = false;
     @state() private showNamePrompt = false;
     @state() private pendingCredential: any = null;
+    @state() private pendingDeleteId: string | null = null;
 
     static styles = css`
         :host { display: block; }
@@ -58,6 +61,12 @@ export class AlpsWebauthnSettings extends LitElement {
         }
         .cred-list { margin-top: 16px; }
         .alert { padding: 12px; border-radius: 6px; background: rgba(220, 38, 38, 0.1); color: var(--danger-color); margin-bottom: 12px; }
+        .empty-state {
+            color: var(--text-muted);
+            font-style: italic;
+            padding: 16px 0;
+            text-align: left;
+        }
     `;
 
     connectedCallback() {
@@ -109,7 +118,7 @@ export class AlpsWebauthnSettings extends LitElement {
                 // User cancelled or key is already registered. Swallow the error.
                 this.error = '';
             } else {
-                this.error = e.message;
+                this.error = this.i18nStore?.t('webauthn.errors.register_failed') || 'There was an error registering your security key. Please try again.';
             }
             this.adding = false;
         }
@@ -137,7 +146,7 @@ export class AlpsWebauthnSettings extends LitElement {
 
             this.fetchData();
         } catch (err: any) {
-            this.error = err.message;
+            this.error = this.i18nStore?.t('webauthn.errors.register_failed') || 'There was an error registering your security key. Please try again.';
         } finally {
             this.adding = false;
             this.pendingCredential = null;
@@ -149,16 +158,21 @@ export class AlpsWebauthnSettings extends LitElement {
         this.pendingCredential = null;
     }
 
-    async removeCredential(id: string) {
-        if (confirm(this.i18nStore?.t('webauthn.confirm_remove'))) {
-            try {
-                this.error = '';
-                const res = await fetch(`/settings/2fa/credential/${encodeURIComponent(id)}/delete`, { method: 'POST' });
-                if (!res.ok) throw new Error(await res.text());
-                this.fetchData();
-            } catch (err: any) {
-                this.error = err.message || this.i18nStore?.t('webauthn.errors.remove_failed');
-            }
+    removeCredential(id: string) {
+        this.pendingDeleteId = id;
+    }
+
+    async executeRemoveCredential() {
+        if (!this.pendingDeleteId) return;
+        const id = this.pendingDeleteId;
+        this.pendingDeleteId = null;
+        try {
+            this.error = '';
+            const res = await fetch(`/settings/2fa/credential/${encodeURIComponent(id)}/delete`, { method: 'POST' });
+            if (!res.ok) throw new Error(await res.text());
+            this.fetchData();
+        } catch (err: any) {
+            this.error = err.message || this.i18nStore?.t('webauthn.errors.remove_failed');
         }
     }
 
@@ -184,11 +198,36 @@ export class AlpsWebauthnSettings extends LitElement {
                 ></ui-prompt>
             ` : ''}
 
+            ${this.error ? html`
+                <ui-modal 
+                    title="${this.i18nStore?.t('general.error') || 'Error'}" 
+                    .isDanger=${true} 
+                    .dismissible=${true}
+                    @cancel=${() => this.error = ''}>
+                    <div>${this.error}</div>
+                    <div slot="actions">
+                        <alps-button variant="normal" @click=${() => this.error = ''}>
+                            ${this.i18nStore?.t('general.cancel') || 'Close'}
+                        </alps-button>
+                    </div>
+                </ui-modal>
+            ` : ''}
+
+            ${this.pendingDeleteId ? html`
+                <ui-confirm
+                    title="${this.i18nStore?.t('webauthn.settings.remove_btn') || 'Remove Key'}"
+                    message="${this.i18nStore?.t('webauthn.confirm_remove')}"
+                    confirmText="${this.i18nStore?.t('general.delete') || 'Delete'}"
+                    cancelText="${this.i18nStore?.t('general.cancel')}"
+                    isDanger
+                    @confirm=${this.executeRemoveCredential}
+                    @cancel=${() => this.pendingDeleteId = null}
+                ></ui-confirm>
+            ` : ''}
 
             <alps-setting-group 
                 label="${this.i18nStore?.t('webauthn.settings.keys_title')}" 
                 description="${this.i18nStore?.t('webauthn.settings.group_desc')}">
-                ${this.error ? html`<div class="alert">${this.error}</div>` : ''}
 
                 <div class="cred-list" style="margin-top: 0;">
                     ${this.data?.credentialCount && this.data.credentialCount > 0 ? html`
@@ -204,7 +243,7 @@ export class AlpsWebauthnSettings extends LitElement {
                                 </div>
                             </div>
                         `)}
-                    ` : ''}
+                    ` : html`<div class="empty-state">${this.i18nStore?.t('webauthn.settings.noKeys')}</div>`}
                     <alps-button variant="normal" style="margin-top: 12px;" @click=${this.addCredential} ?disabled=${this.adding} ?spinning=${this.adding}>
                         ${this.i18nStore?.t('webauthn.add_key')}
                     </alps-button>

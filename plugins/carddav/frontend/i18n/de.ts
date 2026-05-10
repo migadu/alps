@@ -45,6 +45,7 @@ export default {
     url: 'URL',
     birthday: 'Geburtstag',
     back: 'Zurück',
-    toggleStar: 'Markierung umschalten'
+    toggleStar: 'Markierung umschalten',
+    publicKey: 'Öffentlicher Schlüssel'
   }
 };

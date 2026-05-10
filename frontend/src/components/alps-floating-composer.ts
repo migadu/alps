@@ -531,8 +531,22 @@ export class AlpsFloatingComposer extends LitElement {
       }
 
       const currentInstance = this.composeStore.getComposer(this.instance.id) || this.instance;
-      const formData = this._buildFormData(currentInstance);
-      await messageOperations.sendDraft(formData);
+      let finalFormData = this._buildFormData(currentInstance);
+
+      const presendResults = await registry.invokeHookAsync('composer:presend', { composer: this, formData: finalFormData, instance: currentInstance });
+      let abortSend = false;
+      for (const res of presendResults) {
+        if (res instanceof FormData) finalFormData = res;
+        else if (res === false) abortSend = true;
+      }
+
+      if (abortSend) {
+        this.composeStore.updateComposer(this.instance.id, { isSending: false, minimized: false });
+        this.composeStore.bringComposerToFront(this.instance.id);
+        return;
+      }
+
+      await messageOperations.sendDraft(finalFormData);
 
       registry.invokeHook('composer:send', { recipients: allTo });
 
@@ -1249,6 +1263,8 @@ export class AlpsFloatingComposer extends LitElement {
                   </div>
                 </alps-popup>
               ` : ''}
+              
+              ${registry.invokeHook('composer:toolbar', { composer: this, instance: this.instance })?.filter(Boolean)}
               
               <alps-emoji-selector-popup position="top" @emoji-selected=${(e: CustomEvent) => this.composer?.insertEmoji(e.detail.emoji)}>
                 <alps-icon-btn slot="trigger" title=${this.i18nStore?.t('floatingComposer.insertEmoji')} icon="smiley"></alps-icon-btn>

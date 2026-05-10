@@ -399,38 +399,6 @@ export class SettingsPage extends LitElement {
             ${this.i18nStore?.t('settings.categories.general')}
           </alps-category-item>
           <alps-category-item 
-            ?active=${this.category === 'identity'}
-            @click=${() => this.selectCategory('identity')}
-            icon="user"
-          >
-            ${this.i18nStore?.t('settings.categories.identity')}
-          </alps-category-item>
-          <alps-category-item 
-            ?active=${this.category === 'accounts'}
-            @click=${() => this.selectCategory('accounts')}
-            icon="users"
-          >
-            ${this.i18nStore?.t('settings.categories.accounts')}
-          </alps-category-item>
-          ${registry.getSettingsTabs()
-            .filter(tab => this.enabledPlugins.includes(tab.id))
-            .map(tab => html`
-            <alps-category-item 
-              ?active=${this.category === tab.id}
-              @click=${() => this.selectCategory(tab.id)}
-              .icon=${tab.icon}
-            >
-              ${this.i18nStore?.t(tab.labelKey)}
-            </alps-category-item>
-          `)}
-          <alps-category-item 
-            ?active=${this.category === 'webauthn'}
-            @click=${() => this.selectCategory('webauthn')}
-            icon="fingerprint"
-          >
-            ${this.i18nStore?.t('settings.categories.webauthn')}
-          </alps-category-item>
-          <alps-category-item 
             ?active=${this.category === 'reading'}
             @click=${() => this.selectCategory('reading')}
             icon="bookOpen"
@@ -451,6 +419,38 @@ export class SettingsPage extends LitElement {
           >
             ${this.i18nStore?.t('settings.categories.localization')}
           </alps-category-item>
+          <alps-category-item 
+            ?active=${this.category === 'identity'}
+            @click=${() => this.selectCategory('identity')}
+            icon="user"
+          >
+            ${this.i18nStore?.t('settings.categories.identity')}
+          </alps-category-item>
+          <alps-category-item 
+            ?active=${this.category === 'accounts'}
+            @click=${() => this.selectCategory('accounts')}
+            icon="users"
+          >
+            ${this.i18nStore?.t('settings.categories.accounts')}
+          </alps-category-item>
+          <alps-category-item 
+            ?active=${this.category === 'webauthn'}
+            @click=${() => this.selectCategory('webauthn')}
+            icon="fingerprint"
+          >
+            ${this.i18nStore?.t('settings.categories.webauthn')}
+          </alps-category-item>
+          ${registry.getSettingsTabs()
+            .filter(tab => this.enabledPlugins.includes(tab.id))
+            .map(tab => html`
+            <alps-category-item 
+              ?active=${this.category === tab.id}
+              @click=${() => this.selectCategory(tab.id)}
+              .icon=${tab.icon}
+            >
+              ${this.i18nStore?.t(tab.labelKey)}
+            </alps-category-item>
+          `)}
               </div>
             </div>
           </div>

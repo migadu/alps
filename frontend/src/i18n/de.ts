@@ -383,9 +383,11 @@ export const de: TranslationDictionary = {
     tryingAgain: 'Nächster Versuch in {seconds} Sekunden...'
   },
   general: {
+    error: 'Fehler',
     cancel: 'Abbrechen',
     save: 'Speichern',
-    optional: 'Optional'
+    optional: 'Optional',
+    delete: 'Löschen'
   },
   webauthn: {
     title: 'Sicherheitsschlüssel-Überprüfung',
@@ -410,12 +412,14 @@ export const de: TranslationDictionary = {
       begin_failed: 'Fehler beim Starten der Authentifizierung.',
       invalid_options: 'Ungültige Authentifizierungsoptionen erhalten.',
       verification_failed: 'Überprüfung fehlgeschlagen. Bitte versuchen Sie es erneut.',
+      register_failed: 'Beim Registrieren Ihres Sicherheitsschlüssels ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.',
       remove_failed: 'Fehler beim Entfernen des Sicherheitsschlüssels.',
       general: 'Ein Fehler ist aufgetreten.',
     },
     settings: {
       group_desc: 'Sichern Sie Ihr Konto mit einem Hardware-Sicherheitsschlüssel oder Biometrie.',
       keys_title: 'Sicherheitsschlüssel',
+      noKeys: 'Keine registrierten Schlüssel.',
       added: 'Hinzugefügt',
       remove_btn: 'Entfernen'
     }

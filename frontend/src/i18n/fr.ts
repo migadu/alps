@@ -381,9 +381,11 @@ export const fr = {
     tryingAgain: 'Nouvel essai dans {seconds} secondes...'
   },
   general: {
+    error: 'Erreur',
     cancel: 'Annuler',
     save: 'Enregistrer',
-    optional: 'Facultatif'
+    optional: 'Facultatif',
+    delete: 'Supprimer'
   },
   webauthn: {
     title: 'Vérification de la clé de sécurité',
@@ -408,12 +410,14 @@ export const fr = {
       begin_failed: 'Échec de l\'initiation de l\'authentification.',
       invalid_options: 'Options d\'authentification invalides reçues.',
       verification_failed: 'La vérification a échoué. Veuillez réessayer.',
+      register_failed: 'Une erreur s\'est produite lors de l\'enregistrement de votre clé de sécurité. Veuillez réessayer.',
       remove_failed: 'Échec de la suppression de la clé de sécurité.',
       general: 'Une erreur s\'est produite.',
     },
     settings: {
       group_desc: 'Sécurisez votre compte avec une clé de sécurité matérielle ou la biométrie.',
       keys_title: 'Clés de sécurité',
+      noKeys: 'Aucune clé enregistrée.',
       added: 'Ajouté',
       remove_btn: 'Supprimer'
     }

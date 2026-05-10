@@ -34,15 +34,17 @@ class PluginRegistry {
         return results;
     }
 
-    invokeHook(hookName: string, payload: any) {
+    invokeHook(hookName: string, payload: any): any[] {
         const handlers = this.hooks.get(hookName) || [];
+        const results: any[] = [];
         handlers.forEach(handler => {
             try {
-                handler(payload);
+                results.push(handler(payload));
             } catch (e) {
                 console.error(`Error in hook ${hookName}:`, e);
             }
         });
+        return results;
     }
 
     registerNavTab(tab: NavTab) {

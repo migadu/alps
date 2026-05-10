@@ -43,13 +43,14 @@ export class UIPrompt extends LitElement {
     `
   ];
 
-  connectedCallback() {
-    super.connectedCallback();
-    const initialValues: Record<string, string> = {};
-    for (const f of this.fields) {
-      initialValues[f.id] = f.value || '';
+  willUpdate(changedProperties: Map<string, any>) {
+    if (changedProperties.has('fields')) {
+      const initialValues: Record<string, string> = {};
+      for (const f of this.fields) {
+        initialValues[f.id] = f.value || '';
+      }
+      this.values = initialValues;
     }
-    this.values = initialValues;
   }
 
   firstUpdated() {

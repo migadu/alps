@@ -45,6 +45,7 @@ export default {
     url: 'URL',
     birthday: 'Birthday',
     back: 'Back',
-    toggleStar: 'Toggle Star'
+    toggleStar: 'Toggle Star',
+    publicKey: 'Public Key'
   }
 };

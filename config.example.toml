@@ -375,6 +375,10 @@ enabled = true
 # upstream = "managesieves://sieve.example.com:4190"
 
 
+[plugin.gpg]
+# GPG End-to-End Encryption plugin
+enabled = true
+
 # Password Change Configuration
 # Allows users to change their password via an external HTTP API
 [plugin.password]

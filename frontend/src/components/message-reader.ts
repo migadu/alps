@@ -24,6 +24,7 @@ import { sanitizeMessageHTML } from '../utils/html-sanitizer';
 import { generateQuote } from '../utils/email-quote';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { Logger } from '../utils/logger';
+import { registry } from '../plugin-registry';
 
 @customElement('alps-message-reader')
 export class MessageReader extends LitElement {
@@ -140,10 +141,10 @@ export class MessageReader extends LitElement {
   private _handleTag(tag: string) {
     this._closePopup();
     const isBulk = this.selectedUids.size > 1 && !this.message;
-    const hasTag = isBulk 
+    const hasTag = isBulk
       ? this.commonTags?.some(f => f.toLowerCase() === tag.toLowerCase())
       : this.message?.Flags?.some((f: string) => f.toLowerCase() === tag.toLowerCase());
-      
+
     this.dispatchEvent(new CustomEvent('action', { detail: { action: hasTag ? 'removeTag' : 'addTag', folder: tag } }));
   }
 
@@ -175,9 +176,10 @@ export class MessageReader extends LitElement {
   @state() private content = '';
   @state() private mimeType = '';
   @state() private loading = false;
-  @state() private hasRemoteResources = false;
-  @state() private allowRemoteResources = false;
+  @state() private activeBanners: any[] = [];
   @state() private attachments: any[] = [];
+  @state() private allowRemoteResources = false;
+  @state() private hasRemoteResources = false;
   @state() private rawMessageHtml = '';
   @state() private isScrolled = false;
 
@@ -566,6 +568,7 @@ export class MessageReader extends LitElement {
         this.hasRemoteResources = false;
         this.hasHtml = false;
         this.hasText = false;
+        this.activeBanners = [];
       } else {
         const isNewMessage = !oldMessage || oldMessage.UID !== this.message.UID || oldMailbox !== this.mailbox;
 
@@ -610,6 +613,7 @@ export class MessageReader extends LitElement {
       this.mimeType = '';
       this.rawMessageHtml = '';
       this.loading = true;
+      this.activeBanners = [];
       this.allowRemoteResources = this.settingsStore?.getState().showRemoteContent === 'always';
       this.hasRemoteResources = false;
     }
@@ -628,8 +632,35 @@ export class MessageReader extends LitElement {
         }
         if (cached.Part) {
           this.mimeType = cached.Part.MIMEType || cached.Part.MimeType || 'text/plain';
-          if (cached.RawHtml !== undefined) {
+          if (cached.RawHtml === undefined) {
+            if (cached.RawText !== undefined) {
+              this.content = cached.RawText;
+              const payload: any = { content: this.content, isHtml: false, message: this.message, banners: [], i18nStore: this.i18nStore };
+              const hookResults = await registry.invokeHookAsync('reader:content', payload);
+              for (const res of hookResults) {
+                if (res && typeof res === 'string') this.content = res;
+              }
+              this.activeBanners = payload.banners || [];
+              if (payload.isHtml) {
+                this.mimeType = 'text/html';
+                this.hasHtml = true;
+                this.content = sanitizeMessageHTML(this.content, {
+                  mailbox: this.mailbox,
+                  messageUid: this.message?.UID,
+                  allowRemoteResources: this.allowRemoteResources,
+                  messageStructure: this.message?.BodyStructure,
+                  onRemoteResourceBlocked: () => { this.hasRemoteResources = true; }
+                });
+              }
+            }
+          } else {
             this.rawMessageHtml = cached.RawHtml;
+            const payload: any = { content: this.rawMessageHtml, isHtml: true, message: this.message, banners: [], i18nStore: this.i18nStore };
+            const hookResults = await registry.invokeHookAsync('reader:content', payload);
+            for (const res of hookResults) {
+              if (res && typeof res === 'string') this.rawMessageHtml = res;
+            }
+            this.activeBanners = payload.banners || [];
             this.content = sanitizeMessageHTML(this.rawMessageHtml, {
               mailbox: this.mailbox,
               messageUid: this.message?.UID,
@@ -637,8 +668,6 @@ export class MessageReader extends LitElement {
               messageStructure: this.message?.BodyStructure,
               onRemoteResourceBlocked: () => { this.hasRemoteResources = true; }
             });
-          } else if (cached.RawText !== undefined) {
-            this.content = cached.RawText;
           }
         }
         this.loading = false;
@@ -676,6 +705,13 @@ export class MessageReader extends LitElement {
           if (this.mimeType.toLowerCase() === 'text/html') {
             rawHtml = await rawRes.text();
             this.rawMessageHtml = rawHtml;
+            const payload: any = { content: this.rawMessageHtml, isHtml: true, message: this.message, banners: [], i18nStore: this.i18nStore };
+            const hookResults = await registry.invokeHookAsync('reader:content', payload);
+            for (const res of hookResults) {
+              if (res && typeof res === 'string') this.rawMessageHtml = res;
+            }
+            this.activeBanners = payload.banners || [];
+
             this.content = sanitizeMessageHTML(this.rawMessageHtml, {
               mailbox: this.mailbox,
               messageUid: this.message?.UID,
@@ -686,6 +722,24 @@ export class MessageReader extends LitElement {
           } else {
             rawText = await rawRes.text();
             this.content = rawText;
+            const payload: any = { content: this.content, isHtml: false, message: this.message, banners: [], i18nStore: this.i18nStore };
+            const hookResults = await registry.invokeHookAsync('reader:content', payload);
+            for (const res of hookResults) {
+              if (res && typeof res === 'string') this.content = res;
+            }
+            this.activeBanners = payload.banners || [];
+
+            if (payload.isHtml) {
+              this.mimeType = 'text/html';
+              this.hasHtml = true;
+              this.content = sanitizeMessageHTML(this.content, {
+                mailbox: this.mailbox,
+                messageUid: this.message?.UID,
+                allowRemoteResources: this.allowRemoteResources,
+                messageStructure: this.message?.BodyStructure,
+                onRemoteResourceBlocked: () => { this.hasRemoteResources = true; }
+              });
+            }
           }
         }
       }
@@ -903,17 +957,17 @@ export class MessageReader extends LitElement {
         <alps-popup align="left" class="tags-popup">
           <alps-icon-btn slot="trigger" class="desktop-only" title=${this.i18nStore?.t('messageReader.tags')} icon="tag"></alps-icon-btn>
           ${['$label1', '$label2', '$label3', '$label4', '$label5'].map(tag => {
-            const isActive = isBulk 
-              ? this.commonTags?.some(f => f.toLowerCase() === tag.toLowerCase())
-              : this.message?.Flags?.some((f: string) => f.toLowerCase() === tag.toLowerCase());
-            
-            return html`
+      const isActive = isBulk
+        ? this.commonTags?.some(f => f.toLowerCase() === tag.toLowerCase())
+        : this.message?.Flags?.some((f: string) => f.toLowerCase() === tag.toLowerCase());
+
+      return html`
               <button class="dropdown-item ${isActive ? 'active' : ''}" @click=${() => this._handleTag(tag)}>
                 <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${getTagColor(tag)};margin-right:12px;opacity:0.9;"></span>
                 <span class="item-text">${getTagName(tag, this.i18nStore)}</span>
               </button>
             `;
-          })}
+    })}
           <div class="dropdown-divider"></div>
           <button class="dropdown-item text-danger" @click=${() => this._handleRemoveAllTags()}>
             <span class="item-text">${this.i18nStore?.t('messageReader.removeAllTags')}</span>
@@ -1100,6 +1154,10 @@ export class MessageReader extends LitElement {
             </div>
           </div>
         ` : html`
+          <div class="message-content">
+          ${this.activeBanners && this.activeBanners.length > 0 ? html`
+            ${this.activeBanners.map((banner: any) => banner)}
+          ` : ''}
           ${this.hasRemoteResources && !this.allowRemoteResources ? html`
             <alps-banner>
               <span>${this.i18nStore?.t('messageReader.remoteContentWarning')}</span>

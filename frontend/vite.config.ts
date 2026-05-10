@@ -5,12 +5,13 @@ export default defineConfig({
   resolve: {
     alias: {
       'lit': path.resolve(__dirname, './node_modules/lit'),
-      '@lit': path.resolve(__dirname, './node_modules/@lit')
+      '@lit': path.resolve(__dirname, './node_modules/@lit'),
+      'openpgp': path.resolve(__dirname, './node_modules/openpgp')
     }
   },
   server: {
     proxy: {
-      '^/(mailboxes|messages|bimi|attachments|session|proxy|settings|accounts|password|webauthn|contacts|managesieve)': {
+      '^/(mailboxes|messages|bimi|attachments|session|proxy|settings|accounts|password|webauthn|contacts|managesieve|gpg)': {
         target: 'http://localhost:1323',
         changeOrigin: true,
         secure: false,
@@ -23,6 +24,9 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
+            if (id.includes('openpgp')) {
+              return 'openpgp';
+            }
             if (id.includes('@tiptap') || id.includes('prosemirror')) {
               return 'editor';
             }

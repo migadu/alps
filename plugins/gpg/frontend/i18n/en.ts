@@ -1,0 +1,43 @@
+export default {
+  settings: {
+    gpg: 'GPG Keys'
+  },
+  gpg: {
+    toggleEncryption: 'Toggle GPG Encryption',
+    decryptedSuccess: 'The content of this message was end-to-end encrypted with GPG.',
+    decryptedFailed: 'This message is encrypted but no matching private key is found on server to decrypt it.',
+    passphraseRequired: 'GPG Passphrase Required',
+    passphraseSetTitle: 'Set GPG Passphrase',
+    passphraseConfirmTitle: 'Confirm GPG Passphrase',
+    passphrasePrompt: 'Please enter your passphrase to unlock your private key.',
+    passphraseLockPrompt: 'Please enter a new passphrase to encrypt your private key.',
+    passphraseConfirmPrompt: 'Please re-enter your passphrase to confirm.',
+    passphrase: 'Passphrase',
+    cancel: 'Cancel',
+    unlock: 'Unlock',
+    lock: 'Set Passphrase',
+    confirm: 'Confirm',
+    yourGpgKey: 'Your GPG Key',
+    keyStoredSecurely: 'You have a GPG keypair stored securely on the server. The private key is encrypted with your passphrase.',
+    publicKey: 'Public Key',
+    purgeKeys: 'Purge Keypair',
+    generateNewKeypair: 'Generate New Keypair',
+    enableEncryptionDesc: "To enable end-to-end encryption between contacts that support it, you'll need a GPG keypair.",
+    noKeyPresent: 'No key present',
+    passphraseRequiredLabel: 'Passphrase (Required)',
+    generateKeysBtn: 'Generate Keys',
+    importExistingKeys: 'Import Existing GPG Keypair',
+    publicKeyBlock: 'Public Key Block',
+    privateKeyBlock: 'Private Key Block',
+    importUnencryptedDesc: 'The keys must be unencrypted, we will prompt for a new passphrase to encrypt it.',
+    importKeysBtn: 'Import Keys',
+    purgeConfirm: 'Are you sure you want to permanently delete your GPG keys from the server? Past encrypted emails will become unreadable.',
+    passphraseMissing: 'Passphrase is required to encrypt your new private key.',
+    importMissing: 'Both public and private blocks are required for import.',
+    generateFailed: 'Failed to generate keys: {error}',
+    importFailed: 'Import failed: {error}',
+    importFailedTitle: 'Import Failed',
+    passphraseMismatch: 'Passphrases do not match. Please try again.',
+    missingPublicKeys: 'Cannot encrypt: Missing public keys for:\n{keys}'
+  }
+};
