@@ -149,10 +149,17 @@ export const pt = {
   print: {
     loading: 'Carregando visualização de impressão...'
   },
-  login: {
+    login: {
     subtitle: 'Faça login no seu webmail.',
     emailPlaceholder: 'Endereço de E-mail',
-    passwordPlaceholder: 'Senha'
+    passwordPlaceholder: 'Senha',
+    keepMeSignedIn: 'Mantenha-me conectado',
+    signIn: 'Entrar',
+    tooManyAttempts: 'Muitas tentativas de login',
+    loginFailed: 'Falha no login. Verifique suas credenciais.',
+    networkError: 'Ocorreu um erro de rede. Tente novamente.',
+    pleaseWait: 'Por favor, aguarde',
+    wait: 'Aguarde'
   },
   folderList: {
     compose: 'Escrever',
@@ -351,8 +358,7 @@ export const pt = {
   },
   navigation: {
     messages: 'Mensagens',
-    contacts: 'Contatos',
-    calendar: 'Calendário'
+    contacts: 'Contatos'
   },
   userMenu: {
     settings: 'Configurações',

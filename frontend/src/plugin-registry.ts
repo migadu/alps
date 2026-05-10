@@ -19,6 +19,31 @@ class PluginRegistry {
     navTabs: NavTab[] = [];
     settingsTabs: SettingsTab[] = [];
     routes: Route[] = [];
+    hooks: Map<string, Function[]> = new Map();
+
+    registerHook(hookName: string, handler: Function) {
+        if (!this.hooks.has(hookName)) {
+            this.hooks.set(hookName, []);
+        }
+        this.hooks.get(hookName)!.push(handler);
+    }
+
+    async invokeHookAsync(hookName: string, payload: any): Promise<any[]> {
+        const handlers = this.hooks.get(hookName) || [];
+        const results = await Promise.all(handlers.map(handler => handler(payload)));
+        return results;
+    }
+
+    invokeHook(hookName: string, payload: any) {
+        const handlers = this.hooks.get(hookName) || [];
+        handlers.forEach(handler => {
+            try {
+                handler(payload);
+            } catch (e) {
+                console.error(`Error in hook ${hookName}:`, e);
+            }
+        });
+    }
 
     registerNavTab(tab: NavTab) {
         if (!this.navTabs.find(t => t.id === tab.id)) {

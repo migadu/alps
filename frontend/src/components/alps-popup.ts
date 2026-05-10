@@ -27,6 +27,12 @@ export const popupStyles = css`
     text-align: left;
     transition: background-color 0.2s;
     white-space: nowrap;
+    position: relative;
+  }
+
+  .dropdown-item:focus,
+  .dropdown-item:focus-visible {
+    z-index: 10;
   }
 
   .dropdown-item:hover:not(:disabled) {
@@ -227,6 +233,63 @@ export class AlpsPopup extends LitElement {
     }
   };
 
+  private _getActiveElement(): Element | null {
+    let active = document.activeElement;
+    while (active?.shadowRoot && active.shadowRoot.activeElement) {
+      active = active.shadowRoot.activeElement;
+    }
+    return active;
+  }
+
+  private _getFocusableElements(): HTMLElement[] {
+    const slot = this.shadowRoot?.querySelector('slot:not([name])') as HTMLSlotElement | null;
+    if (!slot) return [];
+    
+    const elements = slot.assignedElements({ flatten: true });
+    const focusable: HTMLElement[] = [];
+    
+    const selector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    
+    elements.forEach(el => {
+      if (el instanceof HTMLElement) {
+        if (el.matches(selector)) {
+          focusable.push(el);
+        }
+        const children = Array.from(el.querySelectorAll(selector)) as HTMLElement[];
+        focusable.push(...children);
+      }
+    });
+    
+    return focusable;
+  }
+
+  private _handleDialogKeydown = (e: KeyboardEvent) => {
+    if (!this.openState) return;
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const focusable = this._getFocusableElements();
+      if (focusable.length === 0) return;
+
+      const active = this._getActiveElement();
+      let index = focusable.findIndex(el => el === active);
+
+      if (e.key === 'ArrowDown') {
+        index = index === -1 ? 0 : (index + 1) % focusable.length;
+      } else {
+        index = index === -1 ? focusable.length - 1 : (index - 1 + focusable.length) % focusable.length;
+      }
+
+      focusable[index].focus();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      const active = this._getActiveElement() as HTMLElement;
+      if (active && typeof active.click === 'function') {
+        e.preventDefault();
+        active.click();
+      }
+    }
+  };
+
   updated(changedProperties: Map<string, any>) {
     super.updated(changedProperties);
     if (changedProperties.has('openState')) {
@@ -326,7 +389,11 @@ export class AlpsPopup extends LitElement {
         <slot name="trigger"></slot>
       </div>
       
-      <dialog class="popup-dialog" @pointerdown=${this._handleDialogClick} @contextmenu=${this._handleDialogClick} @close=${this._handleDialogClose}>
+      <dialog class="popup-dialog" 
+        @pointerdown=${this._handleDialogClick} 
+        @contextmenu=${this._handleDialogClick} 
+        @close=${this._handleDialogClose}
+        @keydown=${this._handleDialogKeydown}>
         <div class="popup-content align-${this.align} position-${this.position}">
           <slot></slot>
         </div>

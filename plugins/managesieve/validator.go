@@ -10,7 +10,7 @@ import (
 // check for syntax and extension support errors.
 func ValidateScript(scriptContent string, allowedExtensions []string) error {
 	opts := sieve.DefaultOptions()
-	
+
 	if len(allowedExtensions) > 0 {
 		opts.EnabledExtensions = allowedExtensions
 	}

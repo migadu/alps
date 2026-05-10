@@ -3,6 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { authenticateCredential, isWebAuthnSupported } from '../utils/webauthn-utils';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
+import { clearSessionSettings } from '../store/settings-store';
 
 import '../components/alps-auth-card';
 
@@ -53,8 +54,16 @@ export class LoginWebAuthnPage extends LitElement {
   @state()
   private isSuccess = false;
 
+  private _handleI18nChange = () => {
+    this.requestUpdate();
+  };
+
   connectedCallback() {
     super.connectedCallback();
+    this.updateComplete.then(() => {
+      this.i18nStore?.addEventListener('change', this._handleI18nChange);
+    });
+    
     if (!isWebAuthnSupported()) {
       this.statusMessage = this.i18nStore?.t('webauthn.not_supported');
       this.statusType = 'error';
@@ -64,6 +73,11 @@ export class LoginWebAuthnPage extends LitElement {
         this._handleVerify();
       }, 300);
     }
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.i18nStore?.removeEventListener('change', this._handleI18nChange);
   }
 
   private async _handleVerify() {
@@ -107,7 +121,7 @@ export class LoginWebAuthnPage extends LitElement {
         setTimeout(() => {
           window.location.hash = '#/';
           // Clear any stored data from previous session
-          localStorage.removeItem('alps_settings');
+          clearSessionSettings();
           sessionStorage.clear();
           // Reload to ensure a completely clean state (crucial for account switching)
           window.location.reload();

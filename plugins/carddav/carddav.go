@@ -22,7 +22,7 @@ type authRoundTripper struct {
 
 func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	rt.session.SetHTTPBasicAuth(req)
-	
+
 	if rt.debug {
 		b, _ := httputil.DumpRequestOut(req, true)
 		bStr := string(b)
@@ -30,15 +30,15 @@ func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 		os.Stdout.Write(append([]byte("C: \n"), []byte(bStr)...))
 		os.Stdout.Write([]byte("\n"))
 	}
-	
+
 	resp, err := rt.upstream.RoundTrip(req)
-	
+
 	if rt.debug && err == nil {
 		b, _ := httputil.DumpResponse(resp, true)
 		os.Stdout.Write(append([]byte("S: \n"), b...))
 		os.Stdout.Write([]byte("\n"))
 	}
-	
+
 	return resp, err
 }
 

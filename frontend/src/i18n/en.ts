@@ -159,7 +159,14 @@ export const en = {
   login: {
     subtitle: 'Sign in to your webmail.',
     emailPlaceholder: 'Email Address',
-    passwordPlaceholder: 'Password'
+    passwordPlaceholder: 'Password',
+    keepMeSignedIn: 'Keep me signed in',
+    signIn: 'Sign In',
+    tooManyAttempts: 'Too many login attempts',
+    loginFailed: 'Login failed. Please check your credentials.',
+    networkError: 'Network error occurred. Please try again.',
+    pleaseWait: 'Please wait',
+    wait: 'Wait'
   },
   folderList: {
     compose: 'Compose',
@@ -351,8 +358,7 @@ export const en = {
   },
   navigation: {
     messages: 'Messages',
-    contacts: 'Contacts',
-    calendar: 'Calendar'
+    contacts: 'Contacts'
   },
   userMenu: {
     settings: 'Settings',

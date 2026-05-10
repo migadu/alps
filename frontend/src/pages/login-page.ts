@@ -181,8 +181,15 @@ export class LoginPage extends LitElement {
   @consume({ context: composeContext, subscribe: true })
   composeStore!: ComposeStore;
 
+  private _handleI18nChange = () => {
+    this.requestUpdate();
+  };
+
   connectedCallback() {
     super.connectedCallback();
+    this.updateComplete.then(() => {
+      this.i18nStore?.addEventListener('change', this._handleI18nChange);
+    });
     if (this.composeStore) {
       this.composeStore.clearAllComposers();
     }
@@ -190,6 +197,7 @@ export class LoginPage extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.i18nStore?.removeEventListener('change', this._handleI18nChange);
     if (this.retryCountdownInterval) {
       clearInterval(this.retryCountdownInterval);
     }
@@ -268,16 +276,16 @@ export class LoginPage extends LitElement {
       } else {
         // Check if this is a rate limiting error (HTTP 429)
         if (response.status === 429 && data.retry_after) {
-          this.error = data.error || 'Too many login attempts';
+          this.error = data.error || this.i18nStore?.t('login.tooManyAttempts');
           this.startRetryCountdown(data.retry_after);
         } else {
-          this.error = data.error || 'Login failed. Please check your credentials.';
+          this.error = data.error || this.i18nStore?.t('login.loginFailed');
           this.isRateLimited = false;
         }
         this.isSubmitting = false;
       }
     } catch (err) {
-      this.error = 'Network error occurred. Please try again.';
+      this.error = this.i18nStore?.t('login.networkError');
       this.isSubmitting = false;
       this.isRateLimited = false;
     }
@@ -295,7 +303,7 @@ export class LoginPage extends LitElement {
             <p class="error-text">
               ${this.error}
               ${this.isRateLimited && this.retryAfter > 0 ? html`
-                <br><strong>Please wait ${this.formatRetryTime(this.retryAfter)}</strong>
+                <br><strong>${this.i18nStore?.t('login.pleaseWait')} ${this.formatRetryTime(this.retryAfter)}</strong>
               ` : ''}
             </p>
           </div>
@@ -341,7 +349,7 @@ export class LoginPage extends LitElement {
                 .checked=${this.rememberMe}
                 @change=${(e: Event) => this.rememberMe = (e.target as HTMLInputElement).checked}
               />
-              Keep me signed in
+              ${this.i18nStore?.t('login.keepMeSignedIn')}
             </label>
           </div>
           <button 
@@ -349,7 +357,7 @@ export class LoginPage extends LitElement {
             class="submit-btn"
             ?disabled=${this.isSubmitting || this.isRateLimited}>
             ${this.isSubmitting ? html`<alps-loader style="--loader-size: 16px;"></alps-loader>` : ''}
-            <span>${this.isRateLimited ? `Wait ${this.formatRetryTime(this.retryAfter)}` : 'Sign In'}</span>
+            <span>${this.isRateLimited ? `${this.i18nStore?.t('login.wait')} ${this.formatRetryTime(this.retryAfter)}` : this.i18nStore?.t('login.signIn')}</span>
           </button>
         </form>
       </alps-auth-card>

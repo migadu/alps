@@ -1239,7 +1239,7 @@ export class MailboxPage extends LitElement {
           ></alps-icon-btn>
         </alps-sidebar>
         <div class="main-view">
-          <div class="pane message-list-pane" style="position: relative; ${effectiveLayoutMode === 'vertical' ? `width: ${this.effectiveListWidth}px; flex: none; ${this.isPaneDragging ? '' : 'transition: width 0.2s;'}` : effectiveLayoutMode === 'horizontal' ? `height: ${this.listHeight}px; flex: none;` : ''}">
+          <div class="pane message-list-pane" style="position: relative; ${effectiveLayoutMode === 'vertical' ? `width: ${this.effectiveListWidth}px; flex: none; ${this.isPaneDragging || this.isSidebarDragging ? '' : 'transition: width 0.2s;'}` : effectiveLayoutMode === 'horizontal' ? `height: ${this.listHeight}px; flex: none;` : ''}">
 
             <alps-message-list
               .messages=${this.messages}

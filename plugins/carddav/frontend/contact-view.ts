@@ -143,7 +143,7 @@ export class AlpsContactView extends LitElement {
       margin-top: 16px;
       margin-bottom: 4px;
       text-align: center;
-      color: var(--text-color, #111827);
+      color: var(--text-primary);
     }
     .view-organization {
       font-size: 14px;
@@ -191,7 +191,7 @@ export class AlpsContactView extends LitElement {
     }
     .group-value {
       font-size: 15px;
-      color: var(--text-color, #111827);
+      color: var(--text-primary);
       word-break: break-word;
       white-space: pre-wrap;
     }
@@ -321,7 +321,7 @@ export class AlpsContactView extends LitElement {
                   this.handleAddCategory();
                 }
               }}
-              style="flex: 1; padding: 4px 8px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 4px; font-size: 13px; outline: none; min-width: 0; background: var(--bg-primary, #ffffff); color: var(--text-primary, #111827);">
+              style="flex: 1; padding: 4px 8px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 4px; font-size: 13px; outline: none; min-width: 0; background: var(--bg-primary, #ffffff); color: var(--text-primary);">
             <alps-button variant="normal" @click=${this.handleAddCategory} style="--btn-padding: 4px 12px; --btn-font-size: 13px;">${this.i18nStore?.t('contacts.add') || 'Add'}</alps-button>
           </div>
           
@@ -399,7 +399,7 @@ export class AlpsContactView extends LitElement {
           </div>
         ` : html`
         <div class="view-header">
-          <alps-avatar .name=${this.isEditing ? this.editForm.name : this.contact?.name} .email=${this.isEditing ? this.editForm.email : this.contact?.email} .src=${this.contact?.avatar || ''} .size=${100}></alps-avatar>
+          <alps-avatar .name=${this.isEditing ? (this.editForm.name || this.editForm.email || 'Unknown') : (this.contact?.name || this.contact?.email || 'Unknown')} .email=${this.isEditing ? this.editForm.email : this.contact?.email} .src=${this.contact?.avatar || ''} .size=${100}></alps-avatar>
         </div>
 
         ${this.isEditing ? html`
@@ -427,7 +427,7 @@ export class AlpsContactView extends LitElement {
         ` : html`
           <div class="view-header" style="margin-top: -32px;">
             <div class="view-name">
-              ${this.contact.name || 'Unnamed Contact'} ${this.contact.nickname ? `(${this.contact.nickname})` : ''}
+              ${(this.contact.name || this.contact.email) || this.i18nStore?.t('contacts.unnamedContact') || 'Unnamed Contact'} ${this.contact.nickname ? `(${this.contact.nickname})` : ''}
             </div>
             ${this.contact.organization || this.contact.title ? html`
               <div class="view-organization">

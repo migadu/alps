@@ -18,7 +18,7 @@ type ScriptPayload struct {
 
 func (p *plugin) connectClient(ctx *alps.Context) (*MSClient, error) {
 	username := ctx.Session.Username()
-	
+
 	if p.url == nil {
 		return nil, fmt.Errorf("ManageSieve upstream is not configured")
 	}
@@ -96,7 +96,7 @@ func (p *plugin) handlePutScript(ctx *alps.Context) error {
 			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to deactivate script: " + err.Error()})
 		}
 		// Optionally delete it
-		
+
 		return ctx.JSON(http.StatusOK, map[string]string{"message": "Script deactivated successfully"})
 	}
 

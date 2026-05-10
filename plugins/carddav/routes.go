@@ -247,6 +247,31 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
+		// Deduplication check for new contacts
+		if addressObjectPath == "" && req.Email != "" {
+			query := carddav.AddressBookQuery{
+				DataRequest: carddav.AddressDataRequest{
+					Props: []string{vcard.FieldEmail},
+				},
+				PropFilters: []carddav.PropFilter{
+					{
+						Name:        vcard.FieldEmail,
+						TextMatches: []carddav.TextMatch{{Text: req.Email}},
+					},
+				},
+			}
+			if aos, err := c.QueryAddressBook(ctx.Request.Context(), addressBook.Path, &query); err == nil {
+				for _, existingAo := range aos {
+					if existingEmailField := existingAo.Card.Preferred(vcard.FieldEmail); existingEmailField != nil {
+						if strings.EqualFold(strings.TrimSpace(existingEmailField.Value), strings.TrimSpace(req.Email)) {
+							// Contact already exists. Do not overwrite.
+							return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "path": existingAo.Path})
+						}
+					}
+				}
+			}
+		}
+
 		var ao *carddav.AddressObject
 		var card vcard.Card
 		if addressObjectPath != "" {

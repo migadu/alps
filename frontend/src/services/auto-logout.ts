@@ -1,5 +1,6 @@
 import { MessageCache } from '../utils/message-cache';
 import { Logger } from '../utils/logger';
+import { clearSessionSettings } from '../store/settings-store';
 
 class AutoLogoutService {
   private events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
@@ -98,7 +99,7 @@ class AutoLogoutService {
     try {
       await fetch('/session', { method: 'DELETE' });
       MessageCache.clear();
-      localStorage.removeItem('alps_settings');
+      clearSessionSettings();
       window.dispatchEvent(new CustomEvent('session-cleared'));
       window.location.hash = '#/login';
       

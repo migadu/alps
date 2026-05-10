@@ -119,10 +119,17 @@ export const de: TranslationDictionary = {
   print: {
     loading: 'Druckansicht wird geladen...'
   },
-  login: {
+    login: {
     subtitle: 'Melden Sie sich bei Ihrem Webmail an.',
     emailPlaceholder: 'E-Mail Adresse',
-    passwordPlaceholder: 'Passwort'
+    passwordPlaceholder: 'Passwort',
+    keepMeSignedIn: 'Angemeldet bleiben',
+    signIn: 'Anmelden',
+    tooManyAttempts: 'Zu viele Anmeldeversuche',
+    loginFailed: 'Anmeldung fehlgeschlagen. Bitte überprüfen Sie Ihre Anmeldedaten.',
+    networkError: 'Netzwerkfehler aufgetreten. Bitte versuchen Sie es erneut.',
+    pleaseWait: 'Bitte warten',
+    wait: 'Warten'
   },
   folderList: {
     compose: 'Verfassen',
@@ -321,8 +328,7 @@ export const de: TranslationDictionary = {
   },
   navigation: {
     messages: 'Nachrichten',
-    contacts: 'Kontakte',
-    calendar: 'Kalender'
+    contacts: 'Kontakte'
   },
   userMenu: {
     settings: 'Einstellungen',

@@ -117,10 +117,17 @@ export const fr = {
   print: {
     loading: 'Chargement de l\'aperçu avant impression...'
   },
-  login: {
+    login: {
     subtitle: 'Connectez-vous à votre webmail.',
     emailPlaceholder: 'Adresse e-mail',
-    passwordPlaceholder: 'Mot de passe'
+    passwordPlaceholder: 'Mot de passe',
+    keepMeSignedIn: 'Rester connecté',
+    signIn: 'Se connecter',
+    tooManyAttempts: 'Trop de tentatives de connexion',
+    loginFailed: 'Échec de la connexion. Veuillez vérifier vos identifiants.',
+    networkError: "Une erreur de réseau s'est produite. Veuillez réessayer.",
+    pleaseWait: 'Veuillez patienter',
+    wait: 'Patienter'
   },
   folderList: {
     compose: 'Nouveau message',
@@ -319,8 +326,7 @@ export const fr = {
   },
   navigation: {
     messages: 'Messages',
-    contacts: 'Contacts',
-    calendar: 'Calendrier'
+    contacts: 'Contacts'
   },
   userMenu: {
     settings: 'Paramètres',

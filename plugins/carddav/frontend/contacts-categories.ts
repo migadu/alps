@@ -78,7 +78,7 @@ export class AlpsContactsCategories extends LitElement {
       box-sizing: border-box;
       border-radius: 6px;
       cursor: pointer;
-      color: var(--text-color, #111827);
+      color: var(--text-primary);
       margin-bottom: 2px;
       user-select: none;
       transition: background 0.15s;

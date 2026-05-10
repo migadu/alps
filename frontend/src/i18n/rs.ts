@@ -117,10 +117,17 @@ export const rs = {
   print: {
     loading: 'Учитавање приказа за штампање...'
   },
-  login: {
+    login: {
     subtitle: 'Пријавите се на свој вебмејл.',
     emailPlaceholder: 'Адреса е-поште',
-    passwordPlaceholder: 'Лозинка'
+    passwordPlaceholder: 'Лозинка',
+    keepMeSignedIn: 'Остани пријављен',
+    signIn: 'Пријави се',
+    tooManyAttempts: 'Превише покушаја пријављивања',
+    loginFailed: 'Пријављивање није успело. Проверите своје податке.',
+    networkError: 'Дошло је до грешке на мрежи. Покушајте поново.',
+    pleaseWait: 'Молимо сачекајте',
+    wait: 'Сачекај'
   },
   folderList: {
     compose: 'Напиши',
@@ -319,8 +326,7 @@ export const rs = {
   },
   navigation: {
     messages: 'Поруке',
-    contacts: 'Контакти',
-    calendar: 'Календар'
+    contacts: 'Контакти'
   },
   userMenu: {
     settings: 'Подешавања',

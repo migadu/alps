@@ -71,7 +71,7 @@ export class ContactsPage extends LitElement {
       height: 100vh;
       width: 100vw;
       background-color: var(--bg-primary, #ffffff);
-      color: var(--text-primary, #111827);
+      color: var(--text-primary);
       overflow: hidden;
     }
     .folder-name {
@@ -184,7 +184,7 @@ export class ContactsPage extends LitElement {
     }
     .detail-value {
       font-size: 14px;
-      color: var(--text-primary, #111827);
+      color: var(--text-primary);
       white-space: pre-wrap;
     }
 

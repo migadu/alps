@@ -43,12 +43,15 @@ export class AppHeader extends LitElement {
     const hash = window.location.hash;
     if (hash.startsWith('#/contacts')) {
       this.currentTab = 'contacts';
-    } else if (hash.startsWith('#/calendar')) {
-      this.currentTab = 'calendar';
     } else if (hash.startsWith('#/settings')) {
       this.currentTab = 'settings';
     } else {
-      this.currentTab = 'messages';
+      const pluginTab = registry.getNavTabs().find(tab => hash.startsWith(`#/${tab.id}`));
+      if (pluginTab) {
+        this.currentTab = pluginTab.id;
+      } else {
+        this.currentTab = 'messages';
+      }
     }
   };
 
@@ -153,13 +156,6 @@ export class AppHeader extends LitElement {
                   ${this.i18nStore?.t(tab.labelKey) || tab.id}
                 </div>
               `)}
-              <div 
-                class="nav-tab ${this.currentTab === 'calendar' ? 'active' : ''}"
-                @click=${() => this.handleTabClick('calendar')}
-                title=${this.i18nStore?.t('navigation.calendar')}
-              >
-                ${this.i18nStore?.t('navigation.calendar')}
-              </div>
             </div>
           ` : ''}
         </div>

@@ -199,9 +199,9 @@ export class MessageList extends LitElement {
     }
 
     .list-content:focus-within .message-item.focused {
-      outline: 1px solid var(--accent-color);
-      outline-offset: -1px;
-      z-index: 2;
+      outline: 2px solid var(--accent-color);
+      outline-offset: -2px;
+      z-index: 10;
       position: relative;
     }
 

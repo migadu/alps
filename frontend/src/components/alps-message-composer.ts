@@ -252,12 +252,24 @@ export class AlpsMessageComposer extends LitElement {
     return this.attachments;
   }
 
+  private _handleI18nChange = () => {
+    this.requestUpdate();
+  };
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.updateComplete.then(() => {
+      this.i18nStore?.addEventListener('change', this._handleI18nChange);
+    });
+  }
+
   firstUpdated() {
     this.initEditor();
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.i18nStore?.removeEventListener('change', this._handleI18nChange);
     this.editor?.destroy();
   }
 

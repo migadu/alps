@@ -48,6 +48,14 @@ export class AlpsSidebar extends LitElement {
       transition: width 0.2s, box-shadow 0.2s, z-index 0s 0.2s;
     }
 
+    .sidebar.dragging {
+      transition: none !important;
+    }
+
+    :host(:not([collapsed])) .sidebar {
+      width: var(--sidebar-width-expanded, 250px);
+    }
+
     :host([collapsed]:not([ishovered])) .sidebar,
     :host([collapsed][suppresshover]) .sidebar {
       border-right: none;
@@ -178,7 +186,7 @@ export class AlpsSidebar extends LitElement {
     .mobile-return-btn {
       background: transparent;
       border: none;
-      color: var(--text-color, #111827);
+      color: var(--text-primary);
       font-weight: 500;
       font-size: 14px;
       cursor: pointer;
@@ -231,7 +239,7 @@ export class AlpsSidebar extends LitElement {
   render() {
     return html`
       <div class="mobile-backdrop" @click=${() => this.dispatchEvent(new CustomEvent('close-sidebar'))}></div>
-      <aside class="sidebar" part="sidebar">
+      <aside class="sidebar ${this.isDragging ? 'dragging' : ''}" part="sidebar" style="--sidebar-width-expanded: ${this.width}px">
         <div class="sidebar-content">
           <slot></slot>
         </div>

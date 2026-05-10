@@ -20,6 +20,7 @@ import './alps-emoji-selector-popup.js';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { Logger } from '../utils/logger';
+import { registry } from '../plugin-registry';
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
 @customElement('alps-floating-composer')
@@ -51,12 +52,19 @@ export class AlpsFloatingComposer extends LitElement {
 
   private autoSaveTimer: number | null = null;
 
+  private _handleI18nChange = () => {
+    this.requestUpdate();
+  };
+
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener('resize', this._handleResize);
     window.addEventListener('dragover', this._handleWindowDragOver);
     window.addEventListener('dragleave', this._handleWindowDragLeave);
     window.addEventListener('alps-composer-drop', this._handleGlobalDropHandled as EventListener);
+    this.updateComplete.then(() => {
+      this.i18nStore?.addEventListener('change', this._handleI18nChange);
+    });
     if ((this.instance.cc && this.instance.cc.length > 0)) this.showCc = true;
     if ((this.instance.bcc && this.instance.bcc.length > 0)) this.showBcc = true;
   }
@@ -67,6 +75,7 @@ export class AlpsFloatingComposer extends LitElement {
     window.removeEventListener('dragover', this._handleWindowDragOver);
     window.removeEventListener('dragleave', this._handleWindowDragLeave);
     window.removeEventListener('alps-composer-drop', this._handleGlobalDropHandled as EventListener);
+    this.i18nStore?.removeEventListener('change', this._handleI18nChange);
     this._clearAutoSave();
   }
 
@@ -524,6 +533,8 @@ export class AlpsFloatingComposer extends LitElement {
       const currentInstance = this.composeStore.getComposer(this.instance.id) || this.instance;
       const formData = this._buildFormData(currentInstance);
       await messageOperations.sendDraft(formData);
+
+      registry.invokeHook('composer:send', { recipients: allTo });
 
       if (currentInstance.draftMailbox) {
         messageSync.fetch(currentInstance.draftMailbox, 0, '', false);

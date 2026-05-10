@@ -2,7 +2,7 @@ import { LitElement, html, css, render } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
-import { settingsContext, SettingsStore } from '../store/settings-store';
+import { settingsContext, SettingsStore, clearSessionSettings } from '../store/settings-store';
 import { linkedAccountsContext, LinkedAccountsStore } from '../store/linked-accounts-store';
 import './alps-avatar';
 import { popupStyles } from './alps-popup';
@@ -179,7 +179,7 @@ export class UserProfileMenu extends LitElement {
          if (overlayDiv) overlayDiv.style.opacity = '0';
          setTimeout(() => overlayContainer.remove(), 300);
       } else {
-         localStorage.removeItem('alps_settings');
+         clearSessionSettings();
          sessionStorage.clear();
          window.location.reload();
       }
@@ -234,9 +234,6 @@ export class UserProfileMenu extends LitElement {
           </button>
           <button class="dropdown-item ${this.currentTab === 'contacts' ? 'active' : ''}" @click="${() => this._handleTabChange('contacts')}">
             ${renderIcon('users')} <span class="item-text">${this.i18nStore?.t('navigation.contacts')}</span>
-          </button>
-          <button class="dropdown-item ${this.currentTab === 'calendar' ? 'active' : ''}" @click="${() => this._handleTabChange('calendar')}">
-            ${renderIcon('calendarBlank')} <span class="item-text">${this.i18nStore?.t('navigation.calendar')}</span>
           </button>
           <div class="dropdown-divider"></div>
           <button class="dropdown-item ${this.currentTab === 'settings' ? 'active' : ''}" @click="${this._handleSettings}">

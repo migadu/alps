@@ -117,10 +117,17 @@ export const es = {
   print: {
     loading: 'Cargando vista de impresión...'
   },
-  login: {
+    login: {
     subtitle: 'Inicia sesión en tu webmail.',
     emailPlaceholder: 'Dirección de correo electrónico',
-    passwordPlaceholder: 'Contraseña'
+    passwordPlaceholder: 'Contraseña',
+    keepMeSignedIn: 'Mantener sesión iniciada',
+    signIn: 'Iniciar sesión',
+    tooManyAttempts: 'Demasiados intentos de inicio de sesión',
+    loginFailed: 'Error de inicio de sesión. Por favor, verifique sus credenciales.',
+    networkError: 'Ocurrió un error de red. Por favor, inténtelo de nuevo.',
+    pleaseWait: 'Por favor espere',
+    wait: 'Esperar'
   },
   folderList: {
     compose: 'Redactar',
@@ -319,8 +326,7 @@ export const es = {
   },
   navigation: {
     messages: 'Mensajes',
-    contacts: 'Contactos',
-    calendar: 'Calendario'
+    contacts: 'Contactos'
   },
   userMenu: {
     settings: 'Configuración',

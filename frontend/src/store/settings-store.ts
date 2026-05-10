@@ -285,3 +285,23 @@ export class SettingsStore extends EventTarget {
 }
 
 export const settingsContext = createContext<SettingsStore>('settings-store');
+
+export function clearSessionSettings() {
+  const stored = localStorage.getItem('alps_settings');
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      const preserved: Partial<SettingsState> = {};
+      
+      if (parsed.themeMode) preserved.themeMode = parsed.themeMode;
+      if (parsed.colorFamily) preserved.colorFamily = parsed.colorFamily;
+      if (parsed.language) preserved.language = parsed.language;
+      if (parsed.layoutMode) preserved.layoutMode = parsed.layoutMode;
+      if (parsed.densityMode) preserved.densityMode = parsed.densityMode;
+      
+      localStorage.setItem('alps_settings', JSON.stringify(preserved));
+    } catch (e) {
+      localStorage.removeItem('alps_settings');
+    }
+  }
+}

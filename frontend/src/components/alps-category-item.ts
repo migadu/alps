@@ -19,9 +19,12 @@ export class AlpsCategoryItem extends LitElement {
       font-weight: 500;
       transition: background 0.15s;
       user-select: none;
+      white-space: nowrap;
+      overflow: hidden;
     }
 
     .category-icon {
+      flex-shrink: 0;
       display: flex;
       align-items: center;
       margin-right: 12px;
@@ -48,6 +51,12 @@ export class AlpsCategoryItem extends LitElement {
       color: var(--accent-hover);
       font-weight: 600;
     }
+
+    .label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   `;
 
   render() {
@@ -55,7 +64,7 @@ export class AlpsCategoryItem extends LitElement {
       ${this.icon ? html`
         <span class="category-icon">${renderIcon(this.icon as any)}</span>
       ` : ''}
-      <slot></slot>
+      <span class="label"><slot></slot></span>
     `;
   }
 }

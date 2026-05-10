@@ -1,5 +1,5 @@
 import { html, css, LitElement } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
@@ -32,6 +32,56 @@ export class AlpsContactsList extends LitElement {
   @property({ type: Boolean }) isSpinning = false;
   @property({ type: Boolean }) loading = false;
   @property({ type: Boolean }) listScrolled = false;
+
+  @state() private focusedIndex = -1;
+
+  private getFilteredContacts() {
+    let filteredContacts = this.contacts.filter(c => {
+      if (this.selectedCategory) {
+        if (!c.categories || !c.categories.includes(this.selectedCategory)) return false;
+      }
+      if (this.showOnlyStarred) {
+        if (!c.categories || !c.categories.includes('Favorites')) return false;
+      }
+      if (this.filterQuery) {
+        const query = this.filterQuery.toLowerCase();
+        if (!(c.name || '').toLowerCase().includes(query) &&
+          !(c.email || '').toLowerCase().includes(query) &&
+          !(c.nickname || '').toLowerCase().includes(query) &&
+          !(c.organization || '').toLowerCase().includes(query)) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    filteredContacts.sort((a, b) => {
+      const nameA = (a.name || a.email || '').toLowerCase();
+      const nameB = (b.name || b.email || '').toLowerCase();
+      if (nameA < nameB) return this.sortOrder === 'asc' ? -1 : 1;
+      if (nameA > nameB) return this.sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return filteredContacts;
+  }
+
+  willUpdate(changedProperties: Map<string, any>) {
+    super.willUpdate(changedProperties);
+    if (changedProperties.has('selectedContact') || changedProperties.has('contacts') || changedProperties.has('selectedCategory') || changedProperties.has('filterQuery') || changedProperties.has('sortOrder') || changedProperties.has('showOnlyStarred')) {
+      const filtered = this.getFilteredContacts();
+      if (this.selectedContact && filtered.length > 0) {
+        const idx = filtered.findIndex(c => c.path === this.selectedContact.path);
+        if (idx !== -1) {
+          this.focusedIndex = idx;
+        } else {
+          this.focusedIndex = -1;
+        }
+      } else {
+        this.focusedIndex = -1;
+      }
+    }
+  }
 
   updated(changedProperties: Map<string, any>) {
     super.updated(changedProperties);
@@ -111,6 +161,15 @@ export class AlpsContactsList extends LitElement {
     .contact-item.starred .contact-subject {
       color: var(--accent-color);
       font-weight: 600;
+    }
+    .list-content:focus {
+      outline: none;
+    }
+    .list-content:focus-within .contact-item.focused {
+      outline: 2px solid var(--accent-color);
+      outline-offset: -2px;
+      z-index: 10;
+      position: relative;
     }
     .contact-item.active .avatar-wrapper {
       border-color: var(--bg-selected);
@@ -216,6 +275,45 @@ export class AlpsContactsList extends LitElement {
     return formatDateList(new Date(d), dateFormat, hourFormat);
   }
 
+  private handleKeyDown(e: KeyboardEvent) {
+    const filtered = this.getFilteredContacts();
+    if (filtered.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      this.focusedIndex = Math.min(filtered.length - 1, this.focusedIndex + 1);
+      this.scrollToFocused();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      this.focusedIndex = Math.max(0, this.focusedIndex - 1);
+      this.scrollToFocused();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (this.focusedIndex >= 0 && this.focusedIndex < filtered.length) {
+        this.dispatchEvent(new CustomEvent('select-contact', { detail: { contact: filtered[this.focusedIndex] } }));
+      }
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      if (this.focusedIndex >= 0 && this.focusedIndex < filtered.length) {
+        const c = filtered[this.focusedIndex];
+        if (!c.isTemporary) {
+          this.dispatchEvent(new CustomEvent('toggle-selection', { detail: { path: c.path, event: e } }));
+        }
+        this.focusedIndex = Math.min(filtered.length - 1, this.focusedIndex + 1);
+        this.scrollToFocused();
+      }
+    }
+  }
+
+  private scrollToFocused() {
+    this.updateComplete.then(() => {
+      const el = this.renderRoot.querySelector('.contact-item.focused') as HTMLElement;
+      if (el) {
+        el.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }
+
   private handleListScroll(e: Event) {
     const target = e.target as HTMLElement;
     const isScrolled = target.scrollTop > 0;
@@ -254,38 +352,13 @@ export class AlpsContactsList extends LitElement {
         </alps-toolbar>
       ` : ''}
       
-      <div @scroll=${this.handleListScroll} style="flex: 1; overflow-y: auto; transition: opacity 0.2s ease-in-out; opacity: ${this.loading && this.contacts.length > 0 ? 0.5 : 1}; pointer-events: ${this.loading ? 'none' : 'auto'};">
+      <div class="list-content" tabindex="0" @keydown=${this.handleKeyDown} @scroll=${this.handleListScroll} style="flex: 1; overflow-y: auto; transition: opacity 0.2s ease-in-out; opacity: ${this.loading && this.contacts.length > 0 ? 0.5 : 1}; pointer-events: ${this.loading ? 'none' : 'auto'};">
         ${this.loading && this.contacts.length === 0
-          ? html`<alps-loader full-height .text=${this.i18nStore?.t('messageList.loading')}></alps-loader>`
-          : (() => {
-            let filteredContacts = this.contacts.filter(c => {
-              if (this.selectedCategory) {
-                if (!c.categories || !c.categories.includes(this.selectedCategory)) return false;
-              }
-              if (this.showOnlyStarred) {
-                if (!c.categories || !c.categories.includes('Favorites')) return false;
-              }
-              if (this.filterQuery) {
-                const query = this.filterQuery.toLowerCase();
-                if (!(c.name || '').toLowerCase().includes(query) &&
-                  !(c.email || '').toLowerCase().includes(query) &&
-                  !(c.nickname || '').toLowerCase().includes(query) &&
-                  !(c.organization || '').toLowerCase().includes(query)) {
-                  return false;
-                }
-              }
-              return true;
-            });
+        ? html`<alps-loader full-height .text=${this.i18nStore?.t('messageList.loading')}></alps-loader>`
+        : (() => {
+          const filteredContacts = this.getFilteredContacts();
 
-            filteredContacts.sort((a, b) => {
-              const nameA = (a.name || a.email || '').toLowerCase();
-              const nameB = (b.name || b.email || '').toLowerCase();
-              if (nameA < nameB) return this.sortOrder === 'asc' ? -1 : 1;
-              if (nameA > nameB) return this.sortOrder === 'asc' ? 1 : -1;
-              return 0;
-            });
-
-            return html`
+          return html`
               ${this.filterQuery ? html`
                 <alps-banner>
                   <span>${this.i18nStore?.t('messageList.searchResultsFor')} <strong>${this.filterQuery}</strong></span>
@@ -296,14 +369,14 @@ export class AlpsContactsList extends LitElement {
               ` : ''}
               
               ${filteredContacts.length === 0
-                ? html`<div class="empty-state">${this.i18nStore?.t('contacts.noContacts')}</div>`
-                : filteredContacts.map(c => html`
-                  <div class="contact-item ${this.selectedContact?.path === c.path || (c.isTemporary && this.selectedContact?.isTemporary) ? 'active' : ''} ${this.selectedContacts.has(c.path) ? 'selected' : ''}" @click=${() => this.dispatchEvent(new CustomEvent('select-contact', { detail: { contact: c } }))}>
+              ? html`<div class="empty-state">${this.i18nStore?.t('contacts.noContacts')}</div>`
+              : filteredContacts.map((c, index) => html`
+                  <div class="contact-item ${this.selectedContact?.path === c.path || (c.isTemporary && this.selectedContact?.isTemporary) ? 'active' : ''} ${this.selectedContacts.has(c.path) ? 'selected' : ''} ${this.focusedIndex === index ? 'focused' : ''}" @click=${() => this.dispatchEvent(new CustomEvent('select-contact', { detail: { contact: c } }))}>
                     ${!this.isMobile ? html`
                       <div class="checkbox-col" @click=${(e: Event) => {
-                        if (c.isTemporary) { e.stopPropagation(); return; }
-                        this.dispatchEvent(new CustomEvent('toggle-selection', { detail: { path: c.path, event: e } }));
-                      }}>
+                    if (c.isTemporary) { e.stopPropagation(); return; }
+                    this.dispatchEvent(new CustomEvent('toggle-selection', { detail: { path: c.path, event: e } }));
+                  }}>
                         <input type="checkbox" class="contact-checkbox" 
                           ?disabled=${c.isTemporary}
                           .checked=${this.selectedContacts.has(c.path)}
@@ -335,8 +408,8 @@ export class AlpsContactsList extends LitElement {
                   </div>
                 `)}
             `;
-          })()
-        }
+        })()
+      }
       </div>
     `;
   }

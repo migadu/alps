@@ -4,6 +4,7 @@ import { MessageCache } from '../utils/message-cache';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { composeContext, ComposeStore } from '../store/compose-store';
+import { clearSessionSettings } from '../store/settings-store';
 import './user-profile-menu';
 import './alps-icon-btn';
 import { Logger } from '../utils/logger';
@@ -102,7 +103,7 @@ export class AlpsHeader extends LitElement {
       }
       await fetch('/session', { method: 'DELETE' });
       MessageCache.clear();
-      localStorage.removeItem('alps_settings');
+      clearSessionSettings();
       window.dispatchEvent(new CustomEvent('session-cleared'));
       window.location.hash = '#/login'; // Return to login page
     } catch (err) {

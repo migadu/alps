@@ -78,7 +78,7 @@ export class AlpsSelect extends LitElement {
 		return html`
 			<div class="select-wrapper">
 				<select .value=${this.value} @change=${this.handleChange}>
-					${this.options.map(opt => html`<option value=${opt.value} ?disabled=${opt.disabled}>${opt.label}</option>`)}
+					${this.options.map(opt => html`<option value=${opt.value} ?selected=${opt.value === this.value} ?disabled=${opt.disabled}>${opt.label}</option>`)}
 				</select>
 				<span class="caret">
 					${renderIcon('caret-down')}

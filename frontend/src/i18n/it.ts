@@ -117,10 +117,17 @@ export const it = {
   print: {
     loading: 'Caricamento visualizzazione stampa...'
   },
-  login: {
+    login: {
     subtitle: 'Accedi alla tua webmail.',
     emailPlaceholder: 'Indirizzo Email',
-    passwordPlaceholder: 'Password'
+    passwordPlaceholder: 'Password',
+    keepMeSignedIn: 'Resta collegato',
+    signIn: 'Accedi',
+    tooManyAttempts: 'Troppi tentativi di accesso',
+    loginFailed: 'Accesso fallito. Controlla le tue credenziali.',
+    networkError: 'Si è verificato un errore di rete. Riprova.',
+    pleaseWait: 'Attendere prego',
+    wait: 'Attendi'
   },
   folderList: {
     compose: 'Componi',
@@ -319,8 +326,7 @@ export const it = {
   },
   navigation: {
     messages: 'Messaggi',
-    contacts: 'Contatti',
-    calendar: 'Calendario'
+    contacts: 'Contatti'
   },
   userMenu: {
     settings: 'Impostazioni',

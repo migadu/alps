@@ -22,6 +22,7 @@ import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { linkedAccountsContext, linkedAccountsStore } from '../store/linked-accounts-store';
 import { autoLogoutService } from '../services/auto-logout';
+import { clearSessionSettings } from '../store/settings-store';
 
 const DEFAULT_TOAST_TIMEOUT_MS = 3000;
 
@@ -140,7 +141,7 @@ export class AppRoot extends LitElement {
 
   private _handleAuthError = () => {
     sessionStorage.clear();
-    localStorage.removeItem('alps_settings');
+    clearSessionSettings();
     window.dispatchEvent(new CustomEvent('session-cleared'));
     window.location.hash = '#/login';
   };
