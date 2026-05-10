@@ -117,6 +117,7 @@ export class AlpsAddressInput extends LitElement {
       align-items: center;
       gap: 8px;
       min-height: 32px;
+      cursor: text;
     }
 
     .pill {
@@ -160,8 +161,13 @@ export class AlpsAddressInput extends LitElement {
 
     .input-wrapper {
       flex: 1;
-      min-width: 144px;
+      min-width: 8px;
       display: flex;
+    }
+
+    .input-wrapper:focus-within,
+    .input-wrapper.has-value {
+      min-width: 144px;
     }
 
     input {
@@ -177,7 +183,7 @@ export class AlpsAddressInput extends LitElement {
 
   render() {
     return html`
-      <div class="address-container">
+      <div class="address-container" @click=${this.focus}>
         ${this.addresses.map(addr => html`
           <div class="pill" title=${addr}>
             <span class="pill-addr">${this._displayAddr(addr)}</span>
@@ -187,7 +193,7 @@ export class AlpsAddressInput extends LitElement {
           </div>
         `)}
         
-        <div class="input-wrapper">
+        <div class="input-wrapper ${this.inputText.length > 0 ? 'has-value' : ''}">
           <input
             type="text"
             .value=${this.inputText}

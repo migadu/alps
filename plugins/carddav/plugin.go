@@ -35,14 +35,18 @@ type plugin struct {
 	url          *url.URL
 	homeSetCache map[string]string
 	cacheMutex   sync.RWMutex
+	debug        bool
 }
 
-func (p *plugin) client(session *alps.Session) (*carddav.Client, error) {
-	return newClient(p.url, session)
+func (p *plugin) client(ctx context.Context, session *alps.Session) (*carddav.Client, error) {
+	if p.url == nil {
+		return nil, fmt.Errorf("CardDAV upstream is not configured")
+	}
+	return newClient(p.url, session, p.debug)
 }
 
 func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Session) (*carddav.Client, *carddav.AddressBook, error) {
-	c, err := newClient(p.url, session)
+	c, err := p.client(ctx, session)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create CardDAV client: %v", err)
 	}
@@ -84,10 +88,12 @@ func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Sessio
 func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	u, err := srv.Upstream("carddavs", "carddav+insecure", "https", "http+insecure")
 	if _, ok := err.(*alps.NoUpstreamError); ok {
+		// No upstream configured, disable plugin
 		return nil, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("carddav: failed to parse upstream CardDAV server: %v", err)
 	}
+
 	switch u.Scheme {
 	case "carddavs":
 		u.Scheme = "https"
@@ -95,15 +101,7 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 		u.Scheme = "http"
 	}
 	if u.Scheme == "" {
-		s, err := carddav.DiscoverContextURL(context.Background(), u.Host)
-		if err != nil {
-			srv.Logger().Printf("carddav: failed to discover CardDAV server: %v", err)
-			return nil, nil
-		}
-		u, err = url.Parse(s)
-		if err != nil {
-			return nil, fmt.Errorf("carddav: Discover returned an invalid URL: %v", err)
-		}
+		return nil, fmt.Errorf("upstream CardDAV server requires a scheme (https://, http+insecure://), got: %v", u.String())
 	}
 
 	if err := sanityCheckURL(u); err != nil {
@@ -116,6 +114,7 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 		GoPlugin:     alps.GoPlugin{Name: "carddav"},
 		url:          u,
 		homeSetCache: make(map[string]string),
+		debug:        srv.Options.Debug,
 	}
 
 	registerRoutes(p)

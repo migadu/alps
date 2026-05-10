@@ -318,13 +318,13 @@ type = "imap"
 # insecure = false
 
 [upstreams]
-# IMAP server(s)
+# IMAP server
 # Supported schemes: imaps://, imap://, imap+insecure://
-imap = ["imaps://imap.migadu.com:993"]
+imap = "imaps://imap.migadu.com:993"
 
-# SMTP server(s)
+# SMTP server
 # Supported schemes: smtps://, smtp://, smtp+insecure://
-smtp = ["smtps://smtp.migadu.com:465"]
+smtp = "smtps://smtp.migadu.com:465"
 
 
 # Plugin Configuration
@@ -342,9 +342,9 @@ enabled = true
 [plugin.caldav]
 # CalDAV plugin for calendar support
 enabled = true
-# CalDAV server URL (optional, can use auto-discovery)
+# CalDAV upstream URL (optional, can use auto-discovery)
 # Supported schemes: caldavs://, caldav+insecure://, https://, http+insecure://
-server = "https://caldav.example.com"
+# upstream = "https://caldav.example.com"
 
 # Default view for this plugin (if applicable)
 # default_view = ""
@@ -356,15 +356,23 @@ server = "https://caldav.example.com"
 [plugin.carddav]
 # CardDAV plugin for contacts support
 enabled = true
-# CardDAV server URL (optional, can use auto-discovery)
+# CardDAV upstream URL (optional, can use auto-discovery)
 # Supported schemes: carddavs://, carddav+insecure://, https://, http+insecure://
-server = "https://carddav.example.com"
+# upstream = "https://carddav.example.com"
 
 # Default view for this plugin (if applicable)
 # default_view = ""
 
 # Plugin-specific options (optional map)
 # options = { "example_key" = "example_value" }
+
+
+[plugin.managesieve]
+# ManageSieve plugin for email filtering
+enabled = true
+# ManageSieve upstream URL (optional, can use auto-discovery via SRV records)
+# Supported schemes: managesieves://, managesieve+insecure://, managesieve://, sieve://
+# upstream = "managesieves://sieve.example.com:4190"
 
 
 # Password Change Configuration

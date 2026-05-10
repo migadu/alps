@@ -202,10 +202,7 @@ func (s *Server) parseIMAPUpstream() error {
 	}
 
 	if u.Scheme == "" {
-		u, err = discoverIMAP(u.Host)
-		if err != nil {
-			return fmt.Errorf("failed to discover IMAP server: %v", err)
-		}
+		return fmt.Errorf("upstream IMAP server requires a scheme (imaps://, imap://, imap+insecure://), got: %v", u.String())
 	}
 
 	switch u.Scheme {
@@ -237,11 +234,7 @@ func (s *Server) parseSMTPUpstream() error {
 	}
 
 	if u.Scheme == "" {
-		u, err = discoverSMTP(u.Host)
-		if err != nil {
-			s.logger.Printf("Failed to discover SMTP server: %v", err)
-			return nil
-		}
+		return fmt.Errorf("upstream SMTP server requires a scheme (smtps://, smtp://, smtp+insecure://), got: %v", u.String())
 	}
 
 	switch u.Scheme {
@@ -396,9 +389,9 @@ type WebAuthnOptions struct {
 }
 
 type PluginConfig struct {
-	Enabled bool                   `toml:"enabled"`
-	Server  string                 `toml:"server"`
-	Options map[string]interface{} `toml:"options"`
+	Enabled  bool                   `toml:"enabled"`
+	Upstream string                 `toml:"upstream"`
+	Options  map[string]interface{} `toml:"options"`
 }
 
 // setupMiddleware registers middleware on the router.

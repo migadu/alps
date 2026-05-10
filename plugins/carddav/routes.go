@@ -349,7 +349,7 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		c, err := p.client(ctx.Session)
+		c, err := p.client(ctx.Request.Context(), ctx.Session)
 		if err != nil {
 			return err
 		}

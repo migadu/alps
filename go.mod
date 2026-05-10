@@ -16,14 +16,13 @@ require (
 	github.com/emersion/go-vcard v0.0.0-20241024213814-c9703dde27ff
 	github.com/emersion/go-webdav v0.7.0
 	github.com/fernet/fernet-go v0.0.0-20240119011108-303da6aec611
+	github.com/foxcpp/go-sieve v0.0.0-20240130002450-72d6b002882a
 	github.com/go-webauthn/webauthn v0.17.2
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/memberlist v0.5.4
 	golang.org/x/crypto v0.50.0
 	golang.org/x/text v0.36.0
 )
-
-replace github.com/emersion/go-imap/v2 => github.com/migadu/go-imap/v2 v2.0.0-20260316134619-b8676c927c75
 
 require (
 	github.com/armon/go-metrics v0.4.1 // indirect
@@ -64,4 +63,13 @@ require (
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/tools v0.43.0 // indirect
+	rsc.io/binaryregexp v0.2.0 // indirect
 )
+
+replace github.com/foxcpp/go-sieve => github.com/migadu/go-sieve v0.0.0-20260206073348-d47e90518da5
+
+replace github.com/emersion/go-imap/v2 => github.com/migadu/go-imap/v2 v2.0.0-20260316134619-b8676c927c75
+
+replace github.com/emersion/go-smtp => github.com/dejanstrbac/go-smtp v0.0.0-20260313205502-a1dea4f0d630
+
+replace github.com/emersion/go-message => github.com/migadu/go-message v0.0.0-20251204083122-d583d81190da

@@ -22,6 +22,7 @@ export class SettingsAccounts extends LitElement {
     @state() private newDisplayName = '';
     @state() private isSubmitting = false;
     @state() private error = '';
+    @state() private showAddForm = false;
 
     static styles = css`
         :host {
@@ -61,6 +62,7 @@ export class SettingsAccounts extends LitElement {
             color: var(--text-muted);
             font-style: italic;
             padding: 16px 0;
+            text-align: left;
         }
     `;
 
@@ -97,6 +99,7 @@ export class SettingsAccounts extends LitElement {
             this.newUsername = '';
             this.newPassword = '';
             this.newDisplayName = '';
+            this.showAddForm = false;
             window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore?.t('linkedAccounts.addedSuccess') } }));
         } catch (err: any) {
             this.error = err.message || this.i18nStore?.t('linkedAccounts.addError');
@@ -124,7 +127,8 @@ export class SettingsAccounts extends LitElement {
 
         return html`
             <alps-setting-group 
-                label="${this.i18nStore?.t('settings.categories.accounts')}">
+                label="${this.i18nStore?.t('settings.categories.accounts')}"
+                description="${this.i18nStore?.t('settings.categories.accountsDesc')}">
                 
                 <div class="account-list">
                     ${isLoading && !this.linkedAccountsStore.isInitialized() ? html`<div>${this.i18nStore?.t('settings.loading')}</div>` :
@@ -149,8 +153,15 @@ export class SettingsAccounts extends LitElement {
                         </div>
                     `)}
                 </div>
+
+                ${!this.showAddForm ? html`
+                    <alps-button variant="normal" style="margin-top: 16px;" @click=${() => this.showAddForm = true}>
+                        ${this.i18nStore?.t('linkedAccounts.addTitle')}
+                    </alps-button>
+                ` : ''}
             </alps-setting-group>
 
+            ${this.showAddForm ? html`
             <alps-setting-group 
                 label="${this.i18nStore?.t('linkedAccounts.addTitle')}"
                 description="${this.i18nStore?.t('linkedAccounts.description')}">
@@ -177,7 +188,7 @@ export class SettingsAccounts extends LitElement {
 
                     <div class="form-row">
                         <alps-input 
-                            type="text" 
+                            type="text" icon="user"
                             placeholder="${this.i18nStore?.t('settings.identity.displayName')} (${this.i18nStore?.t('general.optional')})"
                             .value=${this.newDisplayName}
                             @input=${(e: Event) => this.newDisplayName = (e.target as HTMLInputElement).value}
@@ -186,11 +197,17 @@ export class SettingsAccounts extends LitElement {
 
                     ${this.error ? html`<div class="error-message">${this.error}</div>` : ''}
 
-                    <alps-button variant="normal" style="align-self: flex-start;" ?disabled=${this.isSubmitting || !this.newUsername || !this.newPassword} ?spinning=${this.isSubmitting} @click=${this.handleAdd}>
-                        ${this.i18nStore?.t('linkedAccounts.linkAccount')}
-                    </alps-button>
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <alps-button variant="primary" ?disabled=${this.isSubmitting || !this.newUsername || !this.newPassword} ?spinning=${this.isSubmitting} @click=${this.handleAdd}>
+                            ${this.i18nStore?.t('linkedAccounts.linkAccount')}
+                        </alps-button>
+                        <alps-button variant="text" @click=${(e: Event) => { e.preventDefault(); this.showAddForm = false; }}>
+                            ${this.i18nStore?.t('general.cancel')}
+                        </alps-button>
+                    </div>
                 </form>
             </alps-setting-group>
+            ` : ''}
         `;
     }
 }

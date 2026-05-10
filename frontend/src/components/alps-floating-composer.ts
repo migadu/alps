@@ -93,7 +93,7 @@ export class AlpsFloatingComposer extends LitElement {
 
   firstUpdated() {
     setTimeout(() => {
-      if (this.composer && (this.composer as any).focusEditor) {
+      if (this.isConnected && this.composer && (this.composer as any).focusEditor) {
         (this.composer as any).focusEditor();
       }
     }, 100);
@@ -275,13 +275,13 @@ export class AlpsFloatingComposer extends LitElement {
     if (this.instance.minimized) {
       this.composeStore.updateComposer(this.instance.id, { minimized: false });
       setTimeout(() => {
-        if (this.composer && (this.composer as any).focusEditor) {
+        if (this.isConnected && this.composer && (this.composer as any).focusEditor) {
           (this.composer as any).focusEditor();
         }
       }, 100);
     } else if (!this._wasActiveOnMousedown) {
       setTimeout(() => {
-        if (this.composer && (this.composer as any).focusEditor) {
+        if (this.isConnected && this.composer && (this.composer as any).focusEditor) {
           (this.composer as any).focusEditor();
         }
       }, 100);
@@ -391,13 +391,13 @@ export class AlpsFloatingComposer extends LitElement {
 
     if (activeLink) {
       this.linkPromptFields = [
-        { id: 'url', label: 'Link URL', placeholder: 'https://example.com', value: activeLink }
+        { id: 'url', label: this.i18nStore?.t('floatingComposer.linkUrl'), placeholder: this.i18nStore?.t('floatingComposer.linkUrlPlaceholder'), value: activeLink }
       ];
     } else {
       const selectedText = hasSelection && (this.composer as any).getSelectionText ? (this.composer as any).getSelectionText() : '';
       this.linkPromptFields = [
-        { id: 'text', label: 'Display Text', placeholder: 'My Website', value: selectedText },
-        { id: 'url', label: 'Link URL', placeholder: 'https://example.com' }
+        { id: 'text', label: this.i18nStore?.t('floatingComposer.displayText'), placeholder: this.i18nStore?.t('floatingComposer.displayTextPlaceholder'), value: selectedText },
+        { id: 'url', label: this.i18nStore?.t('floatingComposer.linkUrl'), placeholder: this.i18nStore?.t('floatingComposer.linkUrlPlaceholder') }
       ];
     }
 
@@ -551,7 +551,7 @@ export class AlpsFloatingComposer extends LitElement {
     // Wait for the render cycle to complete and the new format to be applied
     requestAnimationFrame(() => {
       setTimeout(() => {
-        if (this.composer && (this.composer as any).focusEditor) {
+        if (this.isConnected && this.composer && (this.composer as any).focusEditor) {
           (this.composer as any).focusEditor();
         }
       }, 0);
@@ -659,7 +659,7 @@ export class AlpsFloatingComposer extends LitElement {
             this.composeStore.closeComposer(this.instance.id);
           });
         } else if (!latestComposer?.closing) {
-          alert('Failed to upload attachment: ' + (err.message || 'Unknown error'));
+          alert(this.i18nStore?.t('floatingComposer.uploadFailed', { error: err.message || this.i18nStore?.t('floatingComposer.unknownError') }));
         }
       }
     ];
@@ -1083,10 +1083,10 @@ export class AlpsFloatingComposer extends LitElement {
       
       ${this.showDiscardConfirm ? html`
         <ui-confirm
-          title="Discard Draft?"
-          message="Are you sure you want to discard this draft? This action cannot be undone."
-          confirmText="Discard"
-          cancelText="Cancel"
+          title=${this.i18nStore?.t('floatingComposer.discardDraftTitle')}
+          message=${this.i18nStore?.t('floatingComposer.discardDraftMessage')}
+          confirmText=${this.i18nStore?.t('floatingComposer.discard')}
+          cancelText=${this.i18nStore?.t('general.cancel')}
           .isDanger=${true}
           @confirm=${this._confirmDiscard}
           @cancel=${this._cancelDiscard}
@@ -1104,7 +1104,7 @@ export class AlpsFloatingComposer extends LitElement {
               <svg viewBox="0 0 256 256">
                 <path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216ZM128,112a8,8,0,0,0-8,8v44.69l-22.34-22.35a8,8,0,0,0-11.32,11.32l36,36a8,8,0,0,0,11.32,0l36-36a8,8,0,0,0-11.32-11.32L136,164.69V120A8,8,0,0,0,128,112Z"></path>
               </svg>
-              <span>Drop files here to attach</span>
+              <span>${this.i18nStore?.t('floatingComposer.dropFiles')}</span>
             </div>
           </div>
         ` : ''}
@@ -1116,21 +1116,21 @@ export class AlpsFloatingComposer extends LitElement {
         ` : ''}
         
         <div class="header" @click=${this._handleHeaderClick}>
-          <div class="header-title">${this.instance.subject || 'New Message'}</div>
+          <div class="header-title">${this.instance.subject || this.i18nStore?.t('floatingComposer.newMessage')}</div>
           <div class="header-actions">
-            ${this.isSaving ? html`<span class="saving-indicator">Saving...</span>` : (this.instance.draftUid && !this.instance.dirty) ? html`<span class="saving-indicator">Autosaved</span>` : ''}
+            ${this.isSaving ? html`<span class="saving-indicator">${this.i18nStore?.t('floatingComposer.saving')}</span>` : (this.instance.draftUid && !this.instance.dirty) ? html`<span class="saving-indicator">${this.i18nStore?.t('floatingComposer.autosaved')}</span>` : ''}
             <alps-icon-btn 
-              title="${this.instance.minimized ? 'Restore' : 'Minimize'}" 
+              title="${this.instance.minimized ? this.i18nStore?.t('floatingComposer.restore') : this.i18nStore?.t('floatingComposer.minimize')}" 
               icon="${this.instance.minimized ? 'caretUp' : 'composerMinimize'}"
               @click=${(e: Event) => { e.stopPropagation(); this._toggleMinimize(); }}>
             </alps-icon-btn>
             <alps-icon-btn 
-              title="${this.instance.expanded ? 'Restore' : 'Expand'}" 
+              title="${this.instance.expanded ? this.i18nStore?.t('floatingComposer.restore') : this.i18nStore?.t('floatingComposer.expand')}" 
               icon="${this.instance.expanded ? 'arrowsInSimple' : 'arrowsOutSimple'}"
               @click=${(e: Event) => { e.stopPropagation(); this._toggleExpand(); }}>
             </alps-icon-btn>
             <alps-icon-btn 
-              title="Save & close" 
+              title="${this.i18nStore?.t('floatingComposer.saveAndClose')}" 
               icon="x"
               @click=${(e: Event) => { e.stopPropagation(); this._handleCloseClick(); }}>
             </alps-icon-btn>
@@ -1139,7 +1139,7 @@ export class AlpsFloatingComposer extends LitElement {
 
         <div class="content">
           <div class="field-row">
-            <span class="field-label">To</span>
+            <span class="field-label">${this.i18nStore?.t('floatingComposer.to')}</span>
             <alps-address-input 
               class="address-input"
               .addresses=${this.instance.to || []}
@@ -1148,15 +1148,15 @@ export class AlpsFloatingComposer extends LitElement {
             ></alps-address-input>
             ${!this.showCc || !this.showBcc ? html`
               <div class="cc-bcc-toggles">
-                ${!this.showCc ? html`<span @click=${() => this.showCc = true}>Cc</span>` : ''}
-                ${!this.showBcc ? html`<span @click=${() => this.showBcc = true}>Bcc</span>` : ''}
+                ${!this.showCc ? html`<span @click=${() => this.showCc = true}>${this.i18nStore?.t('floatingComposer.cc')}</span>` : ''}
+                ${!this.showBcc ? html`<span @click=${() => this.showBcc = true}>${this.i18nStore?.t('floatingComposer.bcc')}</span>` : ''}
               </div>
             ` : ''}
           </div>
 
           ${this.showCc ? html`
             <div class="field-row">
-              <span class="field-label">Cc</span>
+              <span class="field-label">${this.i18nStore?.t('floatingComposer.cc')}</span>
               <alps-address-input 
                 class="address-input"
                 .addresses=${this.instance.cc || []}
@@ -1168,7 +1168,7 @@ export class AlpsFloatingComposer extends LitElement {
 
           ${this.showBcc ? html`
             <div class="field-row">
-              <span class="field-label">Bcc</span>
+              <span class="field-label">${this.i18nStore?.t('floatingComposer.bcc')}</span>
               <alps-address-input 
                 class="address-input"
                 .addresses=${this.instance.bcc || []}
@@ -1181,7 +1181,7 @@ export class AlpsFloatingComposer extends LitElement {
           <div class="field-row">
             <input 
               class="field-input" 
-              placeholder="Subject" 
+              placeholder=${this.i18nStore?.t('floatingComposer.subject')} 
               .value=${this.instance.subject || ''}
               @input=${(e: any) => this.composeStore.updateComposer(this.instance.id, { subject: e.target.value })}
               ?disabled=${this.instance.isSending}
@@ -1212,18 +1212,18 @@ export class AlpsFloatingComposer extends LitElement {
             <div class="toolbar-actions">
               <alps-icon-btn 
                 ?active=${(this.instance.format || 'html') === 'html'} 
-                title="Toggle Formatting Options" 
+                title=${this.i18nStore?.t('floatingComposer.toggleFormatting')} 
                 icon="textAa"
                 @click=${this._toggleFormat}>
               </alps-icon-btn>
               <alps-icon-btn 
-                title="Attach Files" 
+                title=${this.i18nStore?.t('floatingComposer.attachFiles')} 
                 icon="paperclip"
                 @click=${this._handleAttachClick}>
               </alps-icon-btn>
               ${(this.instance.format || 'html') === 'html' ? html`
                 <alps-popup id="linkPopup" align="left" position="top">
-                  <alps-icon-btn slot="trigger" title="Insert Link" icon="linkSimple" @mousedown=${(e: Event) => e.preventDefault()} @click=${this._handleLinkClick}></alps-icon-btn>
+                  <alps-icon-btn slot="trigger" title=${this.i18nStore?.t('floatingComposer.insertLink')} icon="linkSimple" @mousedown=${(e: Event) => e.preventDefault()} @click=${this._handleLinkClick}></alps-icon-btn>
                   <div class="popup-form" @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._handleLinkSubmit(); }}>
                     ${this.linkPromptFields.map(f => html`
                       <div class="field-group">
@@ -1232,23 +1232,23 @@ export class AlpsFloatingComposer extends LitElement {
                       </div>
                     `)}
                     <div class="popup-actions">
-                      <alps-button variant="text" @click=${() => (this.shadowRoot?.querySelector('#linkPopup') as AlpsPopup)?.close()}>Cancel</alps-button>
-                      <alps-button variant="normal" @click=${this._handleLinkSubmit}>Apply</alps-button>
+                      <alps-button variant="text" @click=${() => (this.shadowRoot?.querySelector('#linkPopup') as AlpsPopup)?.close()}>${this.i18nStore?.t('general.cancel')}</alps-button>
+                      <alps-button variant="normal" @click=${this._handleLinkSubmit}>${this.i18nStore?.t('floatingComposer.apply')}</alps-button>
                     </div>
                   </div>
                 </alps-popup>
               ` : ''}
               
               <alps-emoji-selector-popup position="top" @emoji-selected=${(e: CustomEvent) => this.composer?.insertEmoji(e.detail.emoji)}>
-                <alps-icon-btn slot="trigger" title="Insert Emoji" icon="smiley"></alps-icon-btn>
+                <alps-icon-btn slot="trigger" title=${this.i18nStore?.t('floatingComposer.insertEmoji')} icon="smiley"></alps-icon-btn>
               </alps-emoji-selector-popup>
             </div>
             <div class="send-actions">
               <alps-button variant="text" @click=${(e: Event) => { e.stopPropagation(); this._handleDiscardClick(); }}>
-                Discard
+                ${this.i18nStore?.t('floatingComposer.discard')}
               </alps-button>
               <alps-button variant="primary" @click=${this._handleSend} ?disabled=${this.instance.isSending || !canSend}>
-                Send
+                ${this.i18nStore?.t('floatingComposer.send')}
               </alps-button>
             </div>
           </div>

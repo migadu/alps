@@ -925,15 +925,22 @@ export class MailboxPage extends LitElement {
           let toastMessage = '';
           let undoFn: (() => void) | undefined;
 
-          const msgStr = isBulk ? `${uidsArray.length} messages` : 'Message';
           if (action === 'archive') {
-            toastMessage = `${msgStr} moved to Archive`;
+            toastMessage = isBulk 
+              ? this.i18nStore?.t('toast.messagesMovedToArchive', { count: uidsArray.length }) 
+              : this.i18nStore?.t('toast.messageMovedToArchive');
           } else if (action === 'reportSpam') {
-            toastMessage = `${msgStr} moved to Spam`;
+            toastMessage = isBulk 
+              ? this.i18nStore?.t('toast.messagesMovedToSpam', { count: uidsArray.length }) 
+              : this.i18nStore?.t('toast.messageMovedToSpam');
           } else if (action === 'notSpam') {
-            toastMessage = `${msgStr} moved to Inbox`;
+            toastMessage = isBulk 
+              ? this.i18nStore?.t('toast.messagesMovedToInbox', { count: uidsArray.length }) 
+              : this.i18nStore?.t('toast.messageMovedToInbox');
           } else {
-            toastMessage = `${msgStr} moved to Trash`;
+            toastMessage = isBulk 
+              ? this.i18nStore?.t('toast.messagesMovedToTrash', { count: uidsArray.length }) 
+              : this.i18nStore?.t('toast.messageMovedToTrash');
           }
 
           if (isBulk && moveResult.uidMapping) {
@@ -1000,8 +1007,9 @@ export class MailboxPage extends LitElement {
               this.updateUrl(this.currentMailbox, this.currentPage, null);
             }
           }
-          const msgStr = isBulk ? `${uidsArray.length} messages` : 'Message';
-          let toastMessage = isMove ? `${msgStr} moved to ${destinationFolder}` : `${msgStr} copied to ${destinationFolder}`;
+          let toastMessage = isMove 
+            ? (isBulk ? this.i18nStore?.t('toast.messagesMovedToFolder', { count: uidsArray.length, folder: destinationFolder }) : this.i18nStore?.t('toast.messageMovedToFolder', { folder: destinationFolder }))
+            : (isBulk ? this.i18nStore?.t('toast.messagesCopiedToFolder', { count: uidsArray.length, folder: destinationFolder }) : this.i18nStore?.t('toast.messageCopiedToFolder', { folder: destinationFolder }));
           let undoFn: (() => void) | undefined;
 
           if (isBulk && isMove && result.uidMapping) {
@@ -1089,9 +1097,9 @@ export class MailboxPage extends LitElement {
 
         let toastMessage = '';
         if (isDrafts) {
-          toastMessage = isBulk ? `${uidsArray.length} drafts discarded` : (this.i18nStore?.t('toast.draftDiscarded'));
+          toastMessage = isBulk ? this.i18nStore?.t('toast.draftsDiscarded', { count: uidsArray.length }) : (this.i18nStore?.t('toast.draftDiscarded'));
         } else {
-          toastMessage = isBulk ? `${uidsArray.length} messages permanently deleted` : (this.i18nStore?.t('toast.messagePermanentlyDeleted'));
+          toastMessage = isBulk ? this.i18nStore?.t('toast.messagesPermanentlyDeleted', { count: uidsArray.length }) : (this.i18nStore?.t('toast.messagePermanentlyDeleted'));
         }
         this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
       }
@@ -1304,8 +1312,8 @@ export class MailboxPage extends LitElement {
         <ui-confirm
           title="${this.i18nStore?.t('mailboxPage.permanentlyDelete')}"
           message=${this.pendingDeleteDetails?.isBulk ? (this.i18nStore?.t('messageReader.deleteConfirmMultiple')) : (this.i18nStore?.t('messageReader.deleteConfirmSingle'))}
-          confirmText="Delete Permanently"
-          cancelText="Cancel"
+          confirmText=${this.i18nStore?.t('mailboxPage.deletePermanently')}
+          cancelText=${this.i18nStore?.t('general.cancel')}
           .isDanger=${true}
           @confirm=${this._confirmDelete}
           @cancel=${this._cancelDelete}

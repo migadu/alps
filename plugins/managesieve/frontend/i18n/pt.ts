@@ -1,0 +1,62 @@
+export default {
+  "settings": {
+    "categories": {
+      "filters": "Filtros"
+    }
+  },
+  "managesieve": {
+    "title": "Filtros",
+    "description": "Adicione regras personalizadas sobre como as mensagens são processadas e arquivadas.",
+    "tabs": {
+      "switchToRaw": "Editor Bruto"
+    },
+    "warningRawSwitchTitle": "Mudar para modo bruto",
+    "warningRawSwitchConfirm": "Mudar",
+    "warningRawSwitch": "Mudar para o modo bruto significa que o script não será mais editável visualmente. Continuar?",
+    "toast": {
+      "saved": "Regras salvas e ativadas.",
+      "deactivated": "Regras desativadas.",
+      "valid": "O script é válido!",
+      "networkError": "Ocorreu um erro de rede."
+    },
+    "visual": {
+      "newRule": "Nova Regra",
+      "noRules": "Nenhuma regra definida.",
+      "saveFilters": "Salvar Regras",
+      "deleteRule": "Excluir Regra",
+      "remove": "Remover",
+      "add": "Adicionar",
+      "if": "SE",
+      "all": "TODAS",
+      "any": "QUALQUER",
+      "ofTheFollowing": "das seguintes condições corresponderem",
+      "then": "ENTÃO",
+      "actions": {
+        "fileinto": "Mover para pasta",
+        "discard": "Descartar (Excluir)",
+        "redirect": "Redirecionar para e-mail",
+        "stop": "Parar de avaliar regras"
+      },
+      "fields": {
+        "subject": "Assunto",
+        "from": "De",
+        "to": "Para",
+        "body": "Corpo",
+        "size": "Tamanho",
+        "emailAddress": "Endereço de e-mail"
+      },
+      "operators": {
+        "contains": "Contém",
+        "not_contains": "Não contém",
+        "is": "É exatamente",
+        "not_is": "Não é exatamente",
+        "over": "Mais de",
+        "under": "Menos de"
+      }
+    },
+    "raw": {
+      "validate": "Validar",
+      "save": "Salvar"
+    }
+  }
+};

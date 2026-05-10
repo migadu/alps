@@ -30,6 +30,12 @@ export class SettingsPage extends LitElement {
   @state() private username = '';
   @state() private isScrolled = false;
   @state() private enabledPlugins: string[] = [];
+  @state() private sidebarWidth = 250;
+  @state() private sidebarCollapsed = false;
+  @state() private isSidebarDragging = false;
+  @state() private isSidebarHovered = false;
+  private hoverTimeout: any = null;
+  @state() private suppressSidebarHover = false;
 
   static styles = css`
     :host {
@@ -61,14 +67,70 @@ export class SettingsPage extends LitElement {
       position: relative;
     }
 
+    .app-container.dragging {
+      user-select: none;
+      pointer-events: none;
+    }
+
     alps-sidebar.desktop-sidebar {
-      width: 250px;
+      width: var(--sidebar-width, 250px);
       flex-shrink: 0;
-      border-right: 1px solid var(--border-color);
+      transition: width 0.2s, z-index 0s 0.2s;
+      position: relative;
+      z-index: 20;
+    }
+
+    alps-sidebar.desktop-sidebar[collapsed]:hover {
+      transition: width 0.2s, z-index 0s 0s;
+    }
+
+    .app-container.dragging alps-sidebar.desktop-sidebar {
+      transition: none;
+    }
+
+    .app-container.collapsed {
+      --sidebar-width: 64px;
+    }
+
+    .app-container.collapsed .main-view {
+      box-shadow: rgba(95, 95, 95, 0.1) -4px 0 4px -2px;
+      z-index: 25;
+      border-left: 1px solid var(--border-color);
+      position: relative;
+    }
+
+    .sidebar-wrapper {
+      width: 100%;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background-color: transparent;
+    }
+
+    .sidebar-wrapper.collapsed .sidebar-content {
+      opacity: 0.5;
+      overflow-y: hidden;
+    }
+
+    .sidebar-scroll-content {
+      width: calc(max(100%, 215px));
+      margin-left: calc(min(0px, (100% - 215px) * 50 / 167));
+    }
+
+    .sidebar-wrapper.collapsed alps-category-item {
+      border-radius: 6px 0 0 6px;
+    }
+
+    .sidebar-content {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 8px 0;
     }
 
     alps-sidebar::part(sidebar) {
-      padding-top: 8px;
+      padding-top: 0;
     }
 
     .main-view {
@@ -211,6 +273,7 @@ export class SettingsPage extends LitElement {
 
   private _syncState() {
     this.settingsState = { ...this.settingsStore.getState() };
+    this.sidebarCollapsed = this.settingsState.sidebarCollapsed || false;
   }
 
   private getCategoryLabel(category: string) {
@@ -235,6 +298,9 @@ export class SettingsPage extends LitElement {
     window.location.hash = `/settings/${category}`;
     if (this.isMobile) {
       this.mobileSidebarOpen = false;
+    }
+    if (this.sidebarCollapsed && !this.isMobile) {
+      this.suppressSidebarHover = true;
     }
   }
 
@@ -284,14 +350,48 @@ export class SettingsPage extends LitElement {
         </div>
         <div slot="center" class="settings-title">${this.i18nStore?.t('settings.title')} / ${this.getCategoryLabel(this.category)}</div>
       </alps-header>
-      <div class="app-container">
+      <div class="app-container ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isSidebarDragging ? 'dragging' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
         <alps-sidebar
           class="${this.isMobile ? 'mobile-sidebar' : 'desktop-sidebar'} ${this.mobileSidebarOpen ? 'open' : ''}"
           .isMobile=${this.isMobile}
           .isOpen=${this.mobileSidebarOpen}
+          .isHovered=${this.isSidebarHovered}
+          .suppressHover=${this.suppressSidebarHover}
+          .width=${this.sidebarWidth}
+          .hideFooterDivider=${true}
+          .collapsed=${this.sidebarCollapsed && !this.isMobile}
+          @sidebar-resize=${(e: CustomEvent) => {
+            const newWidth = e.detail.newWidth;
+            if (newWidth < 120) {
+              if (!this.sidebarCollapsed) this.settingsStore.updateSettings({ sidebarCollapsed: true });
+              this.sidebarWidth = 250;
+            } else {
+              if (this.sidebarCollapsed) this.settingsStore.updateSettings({ sidebarCollapsed: false });
+              this.sidebarWidth = Math.min(Math.max(newWidth, 150), 500);
+            }
+          }}
+          @drag-start=${() => this.isSidebarDragging = true}
+          @drag-end=${() => this.isSidebarDragging = false}
+          @toggle-collapse=${() => this.settingsStore.updateSettings({ sidebarCollapsed: !this.sidebarCollapsed })}
+          @mouseenter=${() => {
+            if (this.hoverTimeout) {
+              clearTimeout(this.hoverTimeout);
+              this.hoverTimeout = null;
+            }
+            this.isSidebarHovered = true;
+            this.suppressSidebarHover = false;
+          }}
+          @mouseleave=${() => {
+            this.hoverTimeout = setTimeout(() => {
+              this.isSidebarHovered = false;
+            }, 300);
+          }}
           @close-sidebar=${() => this.mobileSidebarOpen = false}
         >
-          <alps-category-item 
+          <div class="sidebar-wrapper ${this.sidebarCollapsed && (!this.isSidebarHovered || this.suppressSidebarHover) && !this.isMobile ? 'collapsed' : ''}">
+            <div class="sidebar-content">
+              <div class="sidebar-scroll-content">
+                <alps-category-item 
             ?active=${this.category === 'general'}
             @click=${() => this.selectCategory('general')}
             icon="gear"
@@ -351,6 +451,9 @@ export class SettingsPage extends LitElement {
           >
             ${this.i18nStore?.t('settings.categories.localization')}
           </alps-category-item>
+              </div>
+            </div>
+          </div>
         </alps-sidebar>
         
         <div class="main-view" @scroll=${this._handleScroll}>
@@ -375,22 +478,26 @@ export class SettingsPage extends LitElement {
   renderGeneral() {
     return html`
         <alps-setting-group label="${this.i18nStore?.t('settings.general.checkMailInterval')}" description="${this.i18nStore?.t('settings.general.checkMailIntervalDesc')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'checkMailInterval')} .value=${this.settingsState.checkMailInterval.toString()}>
-            <option value="1">${this.i18nStore?.t('settings.general.everyMinute')}</option>
-            <option value="5">${this.i18nStore?.t('settings.general.every5Minutes')}</option>
-            <option value="15">${this.i18nStore?.t('settings.general.every15Minutes')}</option>
-            <option value="30">${this.i18nStore?.t('settings.general.every30Minutes')}</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'checkMailInterval')} .value=${this.settingsState.checkMailInterval.toString()}
+            .options=${[
+            {value: "1", label: this.i18nStore?.t('settings.general.everyMinute') || "1"},
+            {value: "5", label: this.i18nStore?.t('settings.general.every5Minutes') || "5"},
+            {value: "15", label: this.i18nStore?.t('settings.general.every15Minutes') || "15"},
+            {value: "30", label: this.i18nStore?.t('settings.general.every30Minutes') || "30"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.general.autoLogout')}" description="${this.i18nStore?.t('settings.general.autoLogoutDesc')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'autoLogout')} .value=${this.settingsState.autoLogout.toString()}>
-            <option value="0">${this.i18nStore?.t('settings.general.never')}</option>
-            <option value="15">${this.i18nStore?.t('settings.general.minutes15')}</option>
-            <option value="30">${this.i18nStore?.t('settings.general.minutes30')}</option>
-            <option value="60">${this.i18nStore?.t('settings.general.hour1')}</option>
-            <option value="120">${this.i18nStore?.t('settings.general.hours2')}</option>
-            <option value="360">${this.i18nStore?.t('settings.general.hours6')}</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'autoLogout')} .value=${this.settingsState.autoLogout.toString()}
+            .options=${[
+            {value: "0", label: this.i18nStore?.t('settings.general.never') || "0"},
+            {value: "15", label: this.i18nStore?.t('settings.general.minutes15') || "15"},
+            {value: "30", label: this.i18nStore?.t('settings.general.minutes30') || "30"},
+            {value: "60", label: this.i18nStore?.t('settings.general.hour1') || "60"},
+            {value: "120", label: this.i18nStore?.t('settings.general.hours2') || "120"},
+            {value: "360", label: this.i18nStore?.t('settings.general.hours6') || "360"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
         <alps-setting-group>
           <label class="checkbox-label">
@@ -414,7 +521,7 @@ export class SettingsPage extends LitElement {
   renderIdentity() {
     return html`
         <alps-setting-group label="${this.i18nStore?.t('settings.identity.displayName')}" description="${this.i18nStore?.t('settings.identity.displayNameDesc')}">
-          <alps-input type="text" .value=${this.settingsState.name || ''} @change=${(e: Event) => this.handleUpdate(e, 'name')} placeholder="${this.i18nStore?.t('settings.placeholderName')}"></alps-input>
+          <alps-input type="text" icon="user" .value=${this.settingsState.name || ''} @change=${(e: Event) => this.handleUpdate(e, 'name')} placeholder="${this.i18nStore?.t('settings.placeholderName')}"></alps-input>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.identity.signature')}" description="${this.i18nStore?.t('settings.identity.signatureDesc')}">
           <textarea @change=${(e: Event) => this.handleUpdate(e, 'signature')} .value=${this.settingsState.signature || ''}></textarea>
@@ -436,45 +543,57 @@ export class SettingsPage extends LitElement {
   renderReading() {
     return html`
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.messagesPerPage')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'messagesPerPage')} .value=${this.settingsState.messagesPerPage.toString()}>
-            <option value="25">25</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'messagesPerPage')} .value=${this.settingsState.messagesPerPage.toString()}
+            .options=${[
+            {value: "25", label: "25"},
+            {value: "50", label: "50"},
+            {value: "100", label: "100"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.preferredView')}" description="${this.i18nStore?.t('settings.reading.preferredViewDesc')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'preferredView')} .value=${this.settingsState.preferredView}>
-            <option value="html">${this.i18nStore?.t('settings.reading.html')}</option>
-            <option value="text">${this.i18nStore?.t('settings.reading.plainText')}</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'preferredView')} .value=${this.settingsState.preferredView}
+            .options=${[
+            {value: "html", label: this.i18nStore?.t('settings.reading.html') || "html"},
+            {value: "text", label: this.i18nStore?.t('settings.reading.plainText') || "text"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.showRemoteContent')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'showRemoteContent')} .value=${this.settingsState.showRemoteContent}>
-            <option value="ask">${this.i18nStore?.t('settings.reading.alwaysAsk')}</option>
-            <option value="always">${this.i18nStore?.t('settings.reading.alwaysLoad')}</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'showRemoteContent')} .value=${this.settingsState.showRemoteContent}
+            .options=${[
+            {value: "ask", label: this.i18nStore?.t('settings.reading.alwaysAsk') || "ask"},
+            {value: "always", label: this.i18nStore?.t('settings.reading.alwaysLoad') || "always"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.markReadTimeout')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'markReadTimeout')} .value=${this.settingsState.markReadTimeout.toString()}>
-            <option value="0">${this.i18nStore?.t('settings.reading.markReadImmediately')}</option>
-            <option value="1">${this.i18nStore?.t('settings.reading.markRead1s')}</option>
-            <option value="3">${this.i18nStore?.t('settings.reading.markRead3s')}</option>
-            <option value="5">${this.i18nStore?.t('settings.reading.markRead5s')}</option>
-            <option value="10">${this.i18nStore?.t('settings.reading.markRead10s')}</option>
-            <option value="-1">${this.i18nStore?.t('settings.reading.markReadNever')}</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'markReadTimeout')} .value=${this.settingsState.markReadTimeout.toString()}
+            .options=${[
+            {value: "0", label: this.i18nStore?.t('settings.reading.markReadImmediately') || "0"},
+            {value: "1", label: this.i18nStore?.t('settings.reading.markRead1s') || "1"},
+            {value: "3", label: this.i18nStore?.t('settings.reading.markRead3s') || "3"},
+            {value: "5", label: this.i18nStore?.t('settings.reading.markRead5s') || "5"},
+            {value: "10", label: this.i18nStore?.t('settings.reading.markRead10s') || "10"},
+            {value: "-1", label: this.i18nStore?.t('settings.reading.markReadNever') || "-1"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.composeFormat')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'composeFormat')} .value=${this.settingsState.composeFormat}>
-            <option value="html">${this.i18nStore?.t('settings.reading.richText')}</option>
-            <option value="text">${this.i18nStore?.t('settings.reading.plainText')}</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'composeFormat')} .value=${this.settingsState.composeFormat}
+            .options=${[
+            {value: "html", label: this.i18nStore?.t('settings.reading.richText') || "html"},
+            {value: "text", label: this.i18nStore?.t('settings.reading.plainText') || "text"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.messageSortCriteria')}" description="${this.i18nStore?.t('settings.reading.messageSortCriteriaDesc')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'messageSortCriteria')} .value=${this.settingsState.messageSortCriteria}>
-            <option value="date">${this.i18nStore?.t('settings.reading.sortDate')}</option>
-            <option value="uid">${this.i18nStore?.t('settings.reading.sortUid')}</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'messageSortCriteria')} .value=${this.settingsState.messageSortCriteria}
+            .options=${[
+            {value: "date", label: this.i18nStore?.t('settings.reading.sortDate') || "date"},
+            {value: "uid", label: this.i18nStore?.t('settings.reading.sortUid') || "uid"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
     `;
   }
@@ -483,36 +602,44 @@ export class SettingsPage extends LitElement {
     return html`
         
         <alps-setting-group label="${this.i18nStore?.t('settings.appearance.colorTheme')}" description="${this.i18nStore?.t('settings.appearance.colorThemeDesc')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'colorFamily')} .value=${this.settingsState.colorFamily}>
-            <option value="default">Default Alps</option>
-            <option value="nord">Nord</option>
-            <option value="ocean">Ocean</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'colorFamily')} .value=${this.settingsState.colorFamily}
+            .options=${[
+            {value: "default", label: "Alps"},
+            {value: "nord", label: "Nord"},
+            {value: "ocean", label: "Ocean"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
 
         <alps-setting-group label="${this.i18nStore?.t('settings.appearance.themeMode')}" description="${this.i18nStore?.t('settings.appearance.themeModeDesc')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'themeMode')} .value=${this.settingsState.themeMode}>
-            <option value="light">${this.i18nStore?.t('settings.appearance.light')}</option>
-            <option value="dark">${this.i18nStore?.t('settings.appearance.dark')}</option>
-            <option value="auto">${this.i18nStore?.t('settings.appearance.systemAuto')}</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'themeMode')} .value=${this.settingsState.themeMode}
+            .options=${[
+            {value: "light", label: this.i18nStore?.t('settings.appearance.light') || "light"},
+            {value: "dark", label: this.i18nStore?.t('settings.appearance.dark') || "dark"},
+            {value: "auto", label: this.i18nStore?.t('settings.appearance.systemAuto') || "auto"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
 
         <alps-setting-group label="${this.i18nStore?.t('settings.appearance.layoutMode')}" description="${this.i18nStore?.t('settings.appearance.layoutModeDesc')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'layoutMode')} .value=${this.settingsState.layoutMode}>
-            <option value="vertical">${this.i18nStore?.t('settings.appearance.vertical')}</option>
-            <option value="horizontal">${this.i18nStore?.t('settings.appearance.horizontal')}</option>
-            <option value="full">${this.i18nStore?.t('settings.appearance.fullScreen')}</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'layoutMode')} .value=${this.settingsState.layoutMode}
+            .options=${[
+            {value: "vertical", label: this.i18nStore?.t('settings.appearance.vertical') || "vertical"},
+            {value: "horizontal", label: this.i18nStore?.t('settings.appearance.horizontal') || "horizontal"},
+            {value: "full", label: this.i18nStore?.t('settings.appearance.fullScreen') || "full"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
 
         <alps-setting-group label="${this.i18nStore?.t('settings.appearance.listDensity')}" description="${this.i18nStore?.t('settings.appearance.listDensityDesc')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'densityMode')} .value=${this.settingsState.densityMode}>
-            <option value="loose">${this.i18nStore?.t('settings.appearance.loose')}</option>
-            <option value="normal">${this.i18nStore?.t('settings.appearance.normal')}</option>
-            <option value="compact">${this.i18nStore?.t('settings.appearance.compact')}</option>
-            <option value="ultra-compact">${this.i18nStore?.t('settings.appearance.ultraCompact')}</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'densityMode')} .value=${this.settingsState.densityMode}
+            .options=${[
+            {value: "loose", label: this.i18nStore?.t('settings.appearance.loose') || "loose"},
+            {value: "normal", label: this.i18nStore?.t('settings.appearance.normal') || "normal"},
+            {value: "compact", label: this.i18nStore?.t('settings.appearance.compact') || "compact"},
+            {value: "ultra-compact", label: this.i18nStore?.t('settings.appearance.ultraCompact') || "ultra-compact"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
     `;
   }
@@ -520,29 +647,35 @@ export class SettingsPage extends LitElement {
   renderLocalization() {
     return html`
         <alps-setting-group label="${this.i18nStore?.t('settings.localization.language')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'language')} .value=${this.settingsState.language}>
-            <option value="en">${this.i18nStore?.t('settings.localization.english')}</option>
-            <option value="de">${this.i18nStore?.t('settings.localization.german')}</option>
-            <option value="it">${this.i18nStore?.t('settings.localization.italian')}</option>
-            <option value="es">${this.i18nStore?.t('settings.localization.spanish')}</option>
-            <option value="rs">${this.i18nStore?.t('settings.localization.serbian')}</option>
-            <option value="sr">${this.i18nStore?.t('settings.localization.serbianLatin')}</option>
-            <option value="fr">${this.i18nStore?.t('settings.localization.french')}</option>
-            <option value="pt">${this.i18nStore?.t('settings.localization.portuguese')}</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'language')} .value=${this.settingsState.language}
+            .options=${[
+            {value: "en", label: this.i18nStore?.t('settings.localization.english') || "en"},
+            {value: "de", label: this.i18nStore?.t('settings.localization.german') || "de"},
+            {value: "it", label: this.i18nStore?.t('settings.localization.italian') || "it"},
+            {value: "es", label: this.i18nStore?.t('settings.localization.spanish') || "es"},
+            {value: "rs", label: this.i18nStore?.t('settings.localization.serbian') || "rs"},
+            {value: "sr", label: this.i18nStore?.t('settings.localization.serbianLatin') || "sr"},
+            {value: "fr", label: this.i18nStore?.t('settings.localization.french') || "fr"},
+            {value: "pt", label: this.i18nStore?.t('settings.localization.portuguese') || "pt"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.localization.timeFormat')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'hourFormat')} .value=${this.settingsState.hourFormat}>
-            <option value="12">${this.i18nStore?.t('settings.localization.format12h')}</option>
-            <option value="24">${this.i18nStore?.t('settings.localization.format24h')}</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'hourFormat')} .value=${this.settingsState.hourFormat}
+            .options=${[
+            {value: "12", label: this.i18nStore?.t('settings.localization.format12h') || "12"},
+            {value: "24", label: this.i18nStore?.t('settings.localization.format24h') || "24"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.localization.dateFormat')}">
-          <select @change=${(e: Event) => this.handleUpdate(e, 'dateFormat')} .value=${this.settingsState.dateFormat}>
-            <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-            <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-            <option value="DD.MM.YYYY">DD.MM.YYYY</option>
-          </select>
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'dateFormat')} .value=${this.settingsState.dateFormat}
+            .options=${[
+            {value: "YYYY-MM-DD", label: "YYYY-MM-DD"},
+            {value: "MM/DD/YYYY", label: "MM/DD/YYYY"},
+            {value: "DD.MM.YYYY", label: "DD.MM.YYYY"}
+          ]}>
+          </alps-select>
         </alps-setting-group>
     `;
   }

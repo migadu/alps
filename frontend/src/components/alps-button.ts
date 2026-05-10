@@ -122,8 +122,7 @@ export class AlpsButton extends LitElement {
     
     @media (hover: hover) {
       :host([variant="danger"]) button:hover:not(:disabled) {
-        background-color: var(--error-light, #fee2e2);
-        border-color: var(--error, #ef4444);
+        background-color: var(--hover-color, rgba(0, 0, 0, 0.05));
       }
     }
 

@@ -117,6 +117,11 @@ func (s *Session) Username() string {
 	return s.username
 }
 
+// Password returns the session's password.
+func (s *Session) Password() string {
+	return s.password
+}
+
 // Token returns the session's token.
 func (s *Session) Token() string {
 	return s.token

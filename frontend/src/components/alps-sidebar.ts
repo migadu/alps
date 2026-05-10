@@ -1,15 +1,22 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { consume } from '@lit/context';
+import { i18nContext, I18nStore } from '../store/i18n-store';
+import { renderIcon } from '../utils/ui';
 import './alps-icon-btn';
 
 @customElement('alps-sidebar')
 export class AlpsSidebar extends LitElement {
+  @consume({ context: i18nContext })
+  i18nStore!: I18nStore;
+
   @property({ type: Boolean }) isMobile = false;
   @property({ type: Boolean }) isOpen = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
   @property({ type: Boolean, reflect: true }) suppressHover = false;
   @property({ type: Boolean, reflect: true }) isHovered = false;
   @property({ type: Number }) width = 250;
+  @property({ type: Boolean }) hideFooterDivider = false;
 
   @state() private isDragging = false;
 
@@ -167,6 +174,29 @@ export class AlpsSidebar extends LitElement {
     :host([collapsed]:not([ishovered])) ::slotted([slot="footer-actions"]) {
       display: none;
     }
+
+    .mobile-return-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-color, #111827);
+      font-weight: 500;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px;
+      border-radius: 6px;
+      font-family: inherit;
+    }
+    .mobile-return-btn:hover {
+      background: var(--hover-color, #e5e7eb);
+    }
+    .mobile-return-btn svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
   `;
 
   private startResize(e: MouseEvent) {
@@ -206,14 +236,20 @@ export class AlpsSidebar extends LitElement {
           <slot></slot>
         </div>
         <div class="sidebar-footer">
-          <alps-icon-btn 
-            class="collapse-btn"
-            icon="sidebar"
-            title=${this.collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            @click=${() => this.dispatchEvent(new CustomEvent('toggle-collapse'))}
-            style="--btn-padding: 8px; --icon-size: 20px;"
-          ></alps-icon-btn>
-          <div class="footer-divider"></div>
+          ${this.isMobile ? html`
+            <button class="mobile-return-btn" @click=${() => window.location.hash = ''}>
+              ${renderIcon('arrowLeft')} <span class="return-text">${this.i18nStore?.t('messageReader.back') || 'Back'}</span>
+            </button>
+          ` : html`
+            <alps-icon-btn 
+              class="collapse-btn"
+              icon="sidebar"
+              title=${this.collapsed ? this.i18nStore?.t('folderList.expandSidebar') : this.i18nStore?.t('folderList.collapseSidebar')}
+              @click=${() => this.dispatchEvent(new CustomEvent('toggle-collapse'))}
+              style="--btn-padding: 8px; --icon-size: 20px;"
+            ></alps-icon-btn>
+          `}
+          ${!this.hideFooterDivider ? html`<div class="footer-divider"></div>` : ''}
           <slot name="footer-actions"></slot>
         </div>
       </aside>

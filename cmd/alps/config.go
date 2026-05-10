@@ -123,8 +123,8 @@ type IMAPProviderConfig struct {
 }
 
 type UpstreamsConfig struct {
-	IMAP []string `toml:"imap"`
-	SMTP []string `toml:"smtp"`
+	IMAP string `toml:"imap"`
+	SMTP string `toml:"smtp"`
 }
 
 type TLSConfig struct {
@@ -162,9 +162,9 @@ type WebAuthnConfig struct {
 }
 
 type PluginConfig struct {
-	Enabled bool                   `toml:"enabled"`
-	Server  string                 `toml:"server"`
-	Options map[string]interface{} `toml:"options"`
+	Enabled  bool                   `toml:"enabled"`
+	Upstream string                 `toml:"upstream"`
+	Options  map[string]interface{} `toml:"options"`
 }
 
 // GetEnabledPlugins returns a list of plugin names that are enabled
@@ -182,8 +182,8 @@ func (c *Config) GetEnabledPlugins() []string {
 func (c *Config) GetPluginUpstreams() []string {
 	var upstreams []string
 	for _, cfg := range c.Plugin {
-		if cfg.Enabled && cfg.Server != "" {
-			upstreams = append(upstreams, cfg.Server)
+		if cfg.Enabled && cfg.Upstream != "" {
+			upstreams = append(upstreams, cfg.Upstream)
 		}
 	}
 	return upstreams
@@ -317,17 +317,21 @@ func (c *Config) ToOptions() (alps.Options, error) {
 		options.Plugins = make(map[string]alps.PluginConfig)
 		for name, cfg := range c.Plugin {
 			options.Plugins[name] = alps.PluginConfig{
-				Enabled: cfg.Enabled,
-				Server:  cfg.Server,
-				Options: cfg.Options,
+				Enabled:  cfg.Enabled,
+				Upstream: cfg.Upstream,
+				Options:  cfg.Options,
 			}
 		}
 	}
 
 	// Build upstreams list from config
 	var upstreams []string
-	upstreams = append(upstreams, c.Upstreams.IMAP...)
-	upstreams = append(upstreams, c.Upstreams.SMTP...)
+	if c.Upstreams.IMAP != "" {
+		upstreams = append(upstreams, c.Upstreams.IMAP)
+	}
+	if c.Upstreams.SMTP != "" {
+		upstreams = append(upstreams, c.Upstreams.SMTP)
+	}
 	// Add plugin-specific upstream servers
 	upstreams = append(upstreams, c.GetPluginUpstreams()...)
 

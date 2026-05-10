@@ -3,6 +3,7 @@ package main
 import (
 	_ "github.com/migadu/alps/plugins/base"
 	_ "github.com/migadu/alps/plugins/carddav"
+	_ "github.com/migadu/alps/plugins/managesieve"
 	_ "github.com/migadu/alps/plugins/password"
 )
 

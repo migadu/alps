@@ -901,7 +901,7 @@ export class MessageReader extends LitElement {
         <alps-icon-btn class="desktop-only" ?active=${(isBulk && this.allSelectedStarred) || (!isBulk && this.message?.Flags?.includes(FLAG_FLAGGED))} title=${this.i18nStore?.t('messageReader.star')} @click=${() => this._handleAction('star')} icon=${(isBulk && this.allSelectedStarred) || (!isBulk && this.message?.Flags?.includes(FLAG_FLAGGED)) ? 'starFourFill' : 'starFour'}></alps-icon-btn>
         
         <alps-popup align="left" class="tags-popup">
-          <alps-icon-btn slot="trigger" class="desktop-only" title=${this.i18nStore?.t('messageReader.tags') || 'Tags'} icon="tag"></alps-icon-btn>
+          <alps-icon-btn slot="trigger" class="desktop-only" title=${this.i18nStore?.t('messageReader.tags')} icon="tag"></alps-icon-btn>
           ${['$label1', '$label2', '$label3', '$label4', '$label5'].map(tag => {
             const isActive = isBulk 
               ? this.commonTags?.some(f => f.toLowerCase() === tag.toLowerCase())
@@ -916,7 +916,7 @@ export class MessageReader extends LitElement {
           })}
           <div class="dropdown-divider"></div>
           <button class="dropdown-item text-danger" @click=${() => this._handleRemoveAllTags()}>
-            <span class="item-text">${this.i18nStore?.t('messageReader.removeAllTags') || 'Remove all tags'}</span>
+            <span class="item-text">${this.i18nStore?.t('messageReader.removeAllTags')}</span>
           </button>
         </alps-popup>
 
