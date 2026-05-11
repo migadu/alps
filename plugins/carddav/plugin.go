@@ -105,7 +105,7 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	}
 
 	if err := sanityCheckURL(u); err != nil {
-		return nil, fmt.Errorf("carddav: failed to connect to CardDAV server %q: %v", u, err)
+		srv.Logger().Printf("carddav: failed to connect to CardDAV server %q: %v (continuing anyway)", u, err)
 	}
 
 	srv.Logger().Printf("Configured upstream CardDAV server: %v", u)

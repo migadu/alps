@@ -9,6 +9,7 @@ import { popupStyles } from './alps-popup';
 import './alps-popup';
 import './alps-icon-btn';
 import { renderIcon } from '../utils/ui';
+import { registry } from '../plugin-registry';
 
 @customElement('user-profile-menu')
 export class UserProfileMenu extends LitElement {
@@ -135,7 +136,11 @@ export class UserProfileMenu extends LitElement {
   private _handleTabChange(tab: string) {
     this._closePopup();
     if (tab === 'messages') {
-      window.location.hash = '#/';
+      if (!window.location.hash.startsWith('#/mailbox/')) {
+        window.location.hash = '#/';
+      }
+    } else {
+      window.location.hash = '#/' + tab;
     }
     this.dispatchEvent(new CustomEvent('change-tab', { detail: { tab }, bubbles: true, composed: true }));
   }
@@ -232,9 +237,11 @@ export class UserProfileMenu extends LitElement {
           <button class="dropdown-item ${this.currentTab === 'messages' ? 'active' : ''}" @click="${() => this._handleTabChange('messages')}">
             ${renderIcon('envelopeSimple')} <span class="item-text">${this.i18nStore?.t('navigation.messages')}</span>
           </button>
-          <button class="dropdown-item ${this.currentTab === 'contacts' ? 'active' : ''}" @click="${() => this._handleTabChange('contacts')}">
-            ${renderIcon('users')} <span class="item-text">${this.i18nStore?.t('navigation.contacts')}</span>
-          </button>
+          ${registry.getNavTabs().map(tab => html`
+            <button class="dropdown-item ${this.currentTab === tab.id ? 'active' : ''}" @click="${() => this._handleTabChange(tab.id)}">
+              ${renderIcon(tab.icon || 'star')} <span class="item-text">${this.i18nStore?.t(tab.labelKey)}</span>
+            </button>
+          `)}
           <div class="dropdown-divider"></div>
           <button class="dropdown-item ${this.currentTab === 'settings' ? 'active' : ''}" @click="${this._handleSettings}">
             ${renderIcon('gear')} <span class="item-text">${this.i18nStore?.t('userMenu.settings')}</span>

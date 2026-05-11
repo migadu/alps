@@ -12,7 +12,9 @@ registry.registerRoute({
 
 registry.registerNavTab({
     id: 'contacts',
-    labelKey: 'navigation.contacts'
+    labelKey: 'navigation.contacts',
+    icon: 'users',
+    order: 10
 });
 
 registry.registerHook('composer:send', async ({ recipients }: { recipients: string[] }) => {

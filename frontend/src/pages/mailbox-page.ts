@@ -208,7 +208,7 @@ export class MailboxPage extends LitElement {
   @state() private messages: any[] = [];
   @state() private currentMailbox = FOLDER_INBOX;
   @state() private loadingMessages = true;
-  @state() private showInitialLoader = true;
+  @state() private showInitialLoader = !(window as any).alpsAppLoaded;
   @state() private selectedMessage: any = null;
   @state() private selectedUids = new Set<string>();
 
@@ -562,6 +562,7 @@ export class MailboxPage extends LitElement {
       if (this.showInitialLoader) {
         setTimeout(() => {
           this.showInitialLoader = false;
+          (window as any).alpsAppLoaded = true;
         }, 100);
       }
     }

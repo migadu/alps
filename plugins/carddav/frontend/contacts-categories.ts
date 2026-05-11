@@ -5,6 +5,7 @@ import { CATEGORY_ALL_CONTACTS, CATEGORY_FAVORITES } from './constants';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
+import { sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 
 @customElement('alps-contacts-categories')
 export class AlpsContactsCategories extends LitElement {
@@ -25,6 +26,7 @@ export class AlpsContactsCategories extends LitElement {
 
   static styles = [
     popupStyles,
+    sidebarLayoutStyles,
     css`
     :host {
       display: flex;
@@ -35,30 +37,10 @@ export class AlpsContactsCategories extends LitElement {
       box-sizing: border-box;
     }
     .sidebar-wrapper {
-      width: 100%;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
       background-color: var(--bg-secondary, #f9fafb);
     }
     .sidebar-header {
-      padding: 0 12px;
-      gap: 8px;
       background-color: var(--bg-secondary, #f9fafb);
-      z-index: 10;
-    }
-    .sidebar-wrapper.collapsed .sidebar-header {
-      padding: 0 14px !important;
-      justify-content: flex-start;
-    }
-    .sidebar-wrapper.collapsed .sidebar-content {
-      opacity: 0.5;
-      overflow-y: hidden;
-    }
-    .sidebar-scroll-content {
-      width: calc(max(100%, 215px));
-      margin-left: calc(min(0px, (100% - 215px) * 50 / 167));
     }
     .sidebar-wrapper.collapsed .category-item {
       border-radius: 6px 0 0 6px;
@@ -155,11 +137,11 @@ export class AlpsContactsCategories extends LitElement {
 
   render() {
     return html`
-      <div class="sidebar-wrapper ${this.sidebarCollapsed && (!this.isSidebarHovered || this.suppressSidebarHover) ? 'collapsed' : ''}">
+      <div class="sidebar-wrapper ${this.sidebarCollapsed && !this.isMobile && (!this.isSidebarHovered || this.suppressSidebarHover) ? 'collapsed' : ''}">
         <alps-toolbar class="sidebar-header" ?scrolled=${this.sidebarScrolled}>
           <alps-create-button 
             icon="userPlus" 
-            ?collapsed=${this.sidebarCollapsed && (!this.isSidebarHovered || this.suppressSidebarHover)}
+            ?collapsed=${this.sidebarCollapsed && !this.isMobile && (!this.isSidebarHovered || this.suppressSidebarHover)}
             @click=${() => this.dispatchEvent(new CustomEvent('create-contact'))}
           >${this.i18nStore?.t('contacts.addContact')}</alps-create-button>
         </alps-toolbar>

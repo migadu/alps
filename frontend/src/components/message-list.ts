@@ -1048,7 +1048,7 @@ export class MessageList extends LitElement {
               ?active=${this.filterQuery === 'is:unread'}
             ></alps-icon-btn>
           </div>
-          <alps-toast></alps-toast>
+
           ${this.showEmptyConfirm ? html`
             <ui-confirm
               title=${this.i18nStore?.t('messageList.emptyMailboxTitle')?.replace('{folder}', this.currentMailbox) || `Empty ${this.currentMailbox}`}

@@ -34,7 +34,7 @@ export class ContactsPage extends LitElement {
   @state() private showOnlyStarred = false;
   @state() private loading = true;
   @state() private isSpinning = false;
-  @state() private showInitialLoader = true;
+  @state() private showInitialLoader = !(window as any).alpsAppLoaded;
   @state() private selectedContact: any = null;
   @state() private filterQuery = '';
 
@@ -59,6 +59,8 @@ export class ContactsPage extends LitElement {
   @state() private listScrolled = false;
   @state() private categoryToRename: string | null = null;
   @state() private categoryToDelete: string | null = null;
+  
+  private syncIntervalTimer: ReturnType<typeof setInterval> | null = null;
 
   static styles = [
     MailboxPage.styles,
@@ -121,8 +123,23 @@ export class ContactsPage extends LitElement {
     }
     .contact-reader-pane {
       background: var(--bg-primary, #ffffff);
-      padding: 24px;
+      padding: 0;
       overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .contact-reader-pane alps-contact-view {
+      flex: 1;
+      width: 100%;
+    }
+    
+    .app-container.mobile-view.reading .contact-list-pane {
+      display: none !important;
+    }
+    .app-container.mobile-view:not(.reading) .contact-reader-pane {
+      display: none !important;
     }
 
     .empty-state {
@@ -195,6 +212,18 @@ export class ContactsPage extends LitElement {
       const state = this.settingsStore.getState();
       this.sidebarCollapsed = state.sidebarCollapsed;
       this.densityMode = state.densityMode || 'compact';
+
+      // Manage background sync interval based on checkMailInterval (in minutes)
+      if (this.syncIntervalTimer) {
+        clearInterval(this.syncIntervalTimer);
+        this.syncIntervalTimer = null;
+      }
+      if (state.checkMailInterval && state.checkMailInterval > 0) {
+        const ms = state.checkMailInterval * 60 * 1000;
+        this.syncIntervalTimer = setInterval(() => {
+          this.fetchContacts();
+        }, ms);
+      }
     }
   };
 
@@ -228,7 +257,7 @@ export class ContactsPage extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    this.showInitialLoader = true;
+    this.showInitialLoader = !(window as any).alpsAppLoaded;
     this.classList.add('density-compact');
     const savedCats = localStorage.getItem('contacts_categories_cache');
     if (savedCats) {
@@ -256,6 +285,10 @@ export class ContactsPage extends LitElement {
     window.removeEventListener('hashchange', this._handleHashChange);
     if (this.settingsStore) {
       this.settingsStore.removeEventListener('change', this._handleSettingsChange);
+    }
+    if (this.syncIntervalTimer) {
+      clearInterval(this.syncIntervalTimer);
+      this.syncIntervalTimer = null;
     }
   }
 
@@ -332,6 +365,7 @@ export class ContactsPage extends LitElement {
       if (this.showInitialLoader) {
         setTimeout(() => {
           this.showInitialLoader = false;
+          (window as any).alpsAppLoaded = true;
         }, 100);
       }
     }
@@ -786,7 +820,7 @@ export class ContactsPage extends LitElement {
         this.fetchContacts();
       }}
       ></app-header>
-      <div class="app-container layout-vertical ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isPaneDragging || this.isSidebarDragging ? 'dragging' : ''} ${this.isMobile ? 'mobile-view' : ''} ${this.suppressSidebarHover ? 'suppress-sidebar-hover' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
+      <div class="app-container layout-vertical ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isPaneDragging || this.isSidebarDragging ? 'dragging' : ''} ${this.isMobile ? 'mobile-view' : ''} ${this.suppressSidebarHover ? 'suppress-sidebar-hover' : ''} ${this.isMobile && this.selectedContact ? 'reading' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
         <alps-sidebar 
           class="${this.isMobile ? 'mobile-sidebar' : 'desktop-sidebar'} ${this.mobileSidebarOpen ? 'open' : ''}"
           .isMobile=${this.isMobile}
@@ -923,6 +957,11 @@ export class ContactsPage extends LitElement {
               @toggle-star=${this.handleToggleStarEvent}
               @update-categories=${this.handleUpdateCategories}
               @list-scrolled=${(e: CustomEvent) => this.listScrolled = e.detail.scrolled}
+              @close=${() => {
+                this.selectedContact = null;
+                this.isEditing = false;
+                window.location.hash = `/contacts/${encodeURIComponent(this.selectedCategory || 'all')}`;
+              }}
             ></alps-contact-view>
           </div>
         </div>

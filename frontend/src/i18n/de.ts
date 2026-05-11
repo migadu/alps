@@ -326,9 +326,11 @@ export const de: TranslationDictionary = {
   attachment: {
     remove: 'Entfernen'
   },
+
   navigation: {
     messages: 'Nachrichten',
-    contacts: 'Kontakte'
+    contacts: 'Kontakte',
+    calendar: 'Kalender'
   },
   userMenu: {
     settings: 'Einstellungen',

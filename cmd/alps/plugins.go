@@ -2,10 +2,11 @@ package main
 
 import (
 	_ "github.com/migadu/alps/plugins/base"
+	_ "github.com/migadu/alps/plugins/caldav"
 	_ "github.com/migadu/alps/plugins/carddav"
+	_ "github.com/migadu/alps/plugins/gpg"
 	_ "github.com/migadu/alps/plugins/managesieve"
 	_ "github.com/migadu/alps/plugins/password"
-	_ "github.com/migadu/alps/plugins/gpg"
 )
 
 // All plugins are imported here for registration.

@@ -324,9 +324,11 @@ export const sr = {
   attachment: {
     remove: 'Ukloni'
   },
+
   navigation: {
     messages: 'Poruke',
-    contacts: 'Kontakti'
+    contacts: 'Kontakti',
+    calendar: 'Kalendar'
   },
   userMenu: {
     settings: 'Podešavanja',

@@ -324,9 +324,11 @@ export const rs = {
   attachment: {
     remove: 'Уклони'
   },
+
   navigation: {
     messages: 'Поруке',
-    contacts: 'Контакти'
+    contacts: 'Контакти',
+    calendar: 'Календар'
   },
   userMenu: {
     settings: 'Подешавања',

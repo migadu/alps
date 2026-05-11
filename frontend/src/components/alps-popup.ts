@@ -145,56 +145,56 @@ export class AlpsPopup extends LitElement {
 
     .popup-content.position-bottom.align-right::before {
       top: -6px;
-      right: 10px;
+      right: var(--arrow-right, 10px);
       border-width: 0 6px 6px 6px;
       border-color: transparent transparent var(--border-color, #e5e7eb) transparent;
     }
 
     .popup-content.position-bottom.align-right::after {
       top: -5px;
-      right: 11px;
+      right: calc(var(--arrow-right, 10px) + 1px);
       border-width: 0 5px 5px 5px;
       border-color: transparent transparent var(--bg-primary, #ffffff) transparent;
     }
 
     .popup-content.position-bottom.align-left::before {
       top: -6px;
-      left: 10px;
+      left: var(--arrow-left, 10px);
       border-width: 0 6px 6px 6px;
       border-color: transparent transparent var(--border-color, #e5e7eb) transparent;
     }
 
     .popup-content.position-bottom.align-left::after {
       top: -5px;
-      left: 11px;
+      left: calc(var(--arrow-left, 10px) + 1px);
       border-width: 0 5px 5px 5px;
       border-color: transparent transparent var(--bg-primary, #ffffff) transparent;
     }
 
     .popup-content.position-top.align-right::before {
       bottom: -6px;
-      right: 10px;
+      right: var(--arrow-right, 10px);
       border-width: 6px 6px 0 6px;
       border-color: var(--border-color, #e5e7eb) transparent transparent transparent;
     }
 
     .popup-content.position-top.align-right::after {
       bottom: -5px;
-      right: 11px;
+      right: calc(var(--arrow-right, 10px) + 1px);
       border-width: 5px 5px 0 5px;
       border-color: var(--bg-primary, #ffffff) transparent transparent transparent;
     }
 
     .popup-content.position-top.align-left::before {
       bottom: -6px;
-      left: 10px;
+      left: var(--arrow-left, 10px);
       border-width: 6px 6px 0 6px;
       border-color: var(--border-color, #e5e7eb) transparent transparent transparent;
     }
 
     .popup-content.position-top.align-left::after {
       bottom: -5px;
-      left: 11px;
+      left: calc(var(--arrow-left, 10px) + 1px);
       border-width: 5px 5px 0 5px;
       border-color: var(--bg-primary, #ffffff) transparent transparent transparent;
     }
@@ -356,11 +356,32 @@ export class AlpsPopup extends LitElement {
     }
 
     if (effectiveAlign === 'right') {
-      content.style.right = `${window.innerWidth - rect.right}px`;
+      let rightOffset = window.innerWidth - rect.right;
+      if (rightOffset + contentRect.width > window.innerWidth) {
+        rightOffset = window.innerWidth - contentRect.width - 8;
+      }
+      rightOffset = Math.max(8, rightOffset);
+      content.style.right = `${rightOffset}px`;
       content.style.left = 'auto';
+
+      // calculate arrow position
+      const triggerCenter = rect.left + rect.width / 2;
+      const popupRight = window.innerWidth - rightOffset;
+      const arrowRight = popupRight - triggerCenter - 6; // -6 for half arrow width
+      content.style.setProperty('--arrow-right', `${Math.max(10, Math.min(contentRect.width - 20, arrowRight))}px`);
     } else {
-      content.style.left = `${rect.left}px`;
+      let leftOffset = rect.left;
+      if (leftOffset + contentRect.width > window.innerWidth) {
+        leftOffset = window.innerWidth - contentRect.width - 8;
+      }
+      leftOffset = Math.max(8, leftOffset);
+      content.style.left = `${leftOffset}px`;
       content.style.right = 'auto';
+
+      // calculate arrow position
+      const triggerCenter = rect.left + rect.width / 2;
+      const arrowLeft = triggerCenter - leftOffset - 6; // -6 for half arrow width
+      content.style.setProperty('--arrow-left', `${Math.max(10, Math.min(contentRect.width - 20, arrowLeft))}px`);
     }
 
     content.classList.remove('position-top', 'position-bottom', 'align-left', 'align-right');

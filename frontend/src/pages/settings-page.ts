@@ -5,6 +5,7 @@ import { settingsContext, SettingsStore } from '../store/settings-store';
 import type { SettingsState } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
+import { sidebarLayoutStyles } from '../components/alps-sidebar';
 import '../components/alps-header';
 import '../components/alps-sidebar';
 import '../components/alps-category-item';
@@ -37,7 +38,9 @@ export class SettingsPage extends LitElement {
   private hoverTimeout: any = null;
   @state() private suppressSidebarHover = false;
 
-  static styles = css`
+  static styles = [
+    sidebarLayoutStyles,
+    css`
     :host {
       display: flex;
       flex-direction: column;
@@ -59,63 +62,11 @@ export class SettingsPage extends LitElement {
       text-align: center;
     }
 
-    .app-container {
-      display: flex;
-      flex: 1;
-      min-height: 0;
-      width: 100%;
-      position: relative;
-    }
-
-    .app-container.dragging {
-      user-select: none;
-      pointer-events: none;
-    }
-
-    alps-sidebar.desktop-sidebar {
-      width: var(--sidebar-width, 250px);
-      flex-shrink: 0;
-      transition: width 0.2s, z-index 0s 0.2s;
-      position: relative;
-      z-index: 20;
-    }
-
-    alps-sidebar.desktop-sidebar[collapsed]:hover {
-      transition: width 0.2s, z-index 0s 0s;
-    }
-
-    .app-container.dragging alps-sidebar.desktop-sidebar {
-      transition: none;
-    }
-
-    .app-container.collapsed {
-      --sidebar-width: 64px;
-    }
-
     .app-container.collapsed .main-view {
       box-shadow: rgba(95, 95, 95, 0.1) -4px 0 4px -2px;
       z-index: 25;
       border-left: 1px solid var(--border-color);
       position: relative;
-    }
-
-    .sidebar-wrapper {
-      width: 100%;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      background-color: transparent;
-    }
-
-    .sidebar-wrapper.collapsed .sidebar-content {
-      opacity: 0.5;
-      overflow-y: hidden;
-    }
-
-    .sidebar-scroll-content {
-      width: calc(max(100%, 215px));
-      margin-left: calc(min(0px, (100% - 215px) * 50 / 167));
     }
 
     .sidebar-wrapper.collapsed alps-category-item {
@@ -223,7 +174,7 @@ export class SettingsPage extends LitElement {
       color: var(--text-primary);
       transition: color 0.2s;
     }
-  `;
+  `];
 
   private _handleResize = () => {
     this.isMobile = window.innerWidth <= 768;
@@ -359,6 +310,7 @@ export class SettingsPage extends LitElement {
           .suppressHover=${this.suppressSidebarHover}
           .width=${this.sidebarWidth}
           .hideFooterDivider=${true}
+          .showMobileBack=${true}
           .collapsed=${this.sidebarCollapsed && !this.isMobile}
           @sidebar-resize=${(e: CustomEvent) => {
             const newWidth = e.detail.newWidth;

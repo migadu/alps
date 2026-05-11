@@ -358,9 +358,11 @@ export const pt = {
   attachment: {
     remove: 'Remover'
   },
+
   navigation: {
     messages: 'Mensagens',
-    contacts: 'Contatos'
+    contacts: 'Contatos',
+    calendar: 'Calendário'
   },
   userMenu: {
     settings: 'Configurações',

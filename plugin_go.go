@@ -65,6 +65,10 @@ func (p *GoPlugin) PUT(path string, handler HandlerFunc) {
 	p.AddRoute(http.MethodPut, path, handler)
 }
 
+func (p *GoPlugin) PATCH(path string, handler HandlerFunc) {
+	p.AddRoute(http.MethodPatch, path, handler)
+}
+
 // AddJob registers a background job to run periodically.
 func (p *GoPlugin) AddJob(name string, handler JobFunc) {
 	if p.jobs == nil {

@@ -358,9 +358,11 @@ export const en = {
   attachment: {
     remove: 'Remove'
   },
+
   navigation: {
     messages: 'Messages',
-    contacts: 'Contacts'
+    contacts: 'Contacts',
+    calendar: 'Calendar'
   },
   userMenu: {
     settings: 'Settings',

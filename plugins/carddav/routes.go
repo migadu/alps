@@ -325,7 +325,7 @@ func registerRoutes(p *plugin) {
 		setSimpleField(vcard.FieldNote, req.Note)
 		setSimpleField(vcard.FieldURL, req.URL)
 		setSimpleField(vcard.FieldNickname, req.Nickname)
-		
+
 		if strings.TrimSpace(req.PublicKey) == "" {
 			delete(card, vcard.FieldKey)
 		} else {

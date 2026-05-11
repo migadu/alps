@@ -6,12 +6,13 @@ export default defineConfig({
     alias: {
       'lit': path.resolve(__dirname, './node_modules/lit'),
       '@lit': path.resolve(__dirname, './node_modules/@lit'),
-      'openpgp': path.resolve(__dirname, './node_modules/openpgp')
+      'openpgp': path.resolve(__dirname, './node_modules/openpgp'),
+      'rrule': path.resolve(__dirname, './node_modules/rrule')
     }
   },
   server: {
     proxy: {
-      '^/(mailboxes|messages|bimi|attachments|session|proxy|settings|accounts|password|webauthn|contacts|managesieve|gpg)': {
+      '^/(mailboxes|messages|bimi|attachments|session|proxy|settings|accounts|password|webauthn|contacts|managesieve|gpg|calendar)': {
         target: 'http://localhost:1323',
         changeOrigin: true,
         secure: false,

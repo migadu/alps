@@ -1092,10 +1092,17 @@ export class AlpsFloatingComposer extends LitElement {
       this.removeAttribute('expanded');
     }
 
-    this.style.width = `${widthPx}px`;
-    this.style.height = `${heightPx}px`;
-    this.style.left = `${leftPx}px`;
-    this.style.top = `${topPx}px`;
+    if (isMobile) {
+      this.style.width = '100%';
+      this.style.height = '100dvh';
+      this.style.left = '0';
+      this.style.top = '0';
+    } else {
+      this.style.width = `${widthPx}px`;
+      this.style.height = `${heightPx}px`;
+      this.style.left = `${leftPx}px`;
+      this.style.top = `${topPx}px`;
+    }
 
     if (this.instance.minimized) {
       this.setAttribute('minimized', '');

@@ -9,7 +9,7 @@ import (
 )
 
 type Keyring struct {
-	PublicKey          string `json:"public_key"`
+	PublicKey           string `json:"public_key"`
 	EncryptedPrivateKey string `json:"encrypted_private_key"`
 }
 

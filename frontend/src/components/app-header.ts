@@ -165,7 +165,7 @@ export class AppHeader extends LitElement {
           icon="magnifyingGlass"
           ?clearable=${true}
           .value=${this.searchQuery}
-          .placeholder=${this.currentTab === 'contacts' ? (this.i18nStore?.t('contacts.title') || 'Contacts') : (this.currentMailbox ? getMailboxLabel(this.currentMailbox, this.i18nStore) : (this.i18nStore?.t('search.placeholder')))}
+          .placeholder=${this.currentTab === 'contacts' ? (this.i18nStore?.t('contacts.title') || 'Contacts') : this.currentTab === 'calendar' ? (this.i18nStore?.t('calendar.title') || 'Search Calendar') : (this.currentMailbox ? getMailboxLabel(this.currentMailbox, this.i18nStore) : (this.i18nStore?.t('search.placeholder')))}
           @keydown=${(e: KeyboardEvent) => {
             if (e.key === 'Enter') {
               e.preventDefault();
@@ -186,14 +186,6 @@ export class AppHeader extends LitElement {
         ></alps-input>
 
         <div slot="right-actions">
-          ${this.isMobile ? html`
-            <alps-icon-btn 
-              title=${this.i18nStore?.t('messageList.compose')} 
-              @click=${() => this.dispatchEvent(new CustomEvent('compose', { bubbles: true, composed: true }))}
-              icon="pen"
-              style="--icon-size: 20px;"
-            ></alps-icon-btn>
-          ` : ''}
         </div>
       </alps-header>
     `;

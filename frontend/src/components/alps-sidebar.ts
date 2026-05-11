@@ -5,6 +5,59 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
 import './alps-icon-btn';
 
+export const sidebarLayoutStyles = css`
+  .app-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+  .app-container.collapsed {
+    --sidebar-width: 64px;
+  }
+  alps-sidebar.desktop-sidebar {
+    width: var(--sidebar-width, 250px);
+    flex-shrink: 0;
+    transition: width 0.2s, z-index 0s 0.2s;
+    position: relative;
+    z-index: 20;
+  }
+  alps-sidebar.desktop-sidebar[collapsed]:hover {
+    transition: width 0.2s, z-index 0s 0s;
+  }
+  .app-container.dragging alps-sidebar.desktop-sidebar {
+    transition: none;
+  }
+  .sidebar-wrapper {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background-color: transparent;
+  }
+  .sidebar-wrapper.collapsed .sidebar-content {
+    opacity: 0.5;
+    overflow-y: hidden;
+    pointer-events: none;
+  }
+  .sidebar-header {
+    padding: 0 12px;
+    gap: 8px;
+    background-color: transparent;
+    z-index: 10;
+  }
+  .sidebar-wrapper.collapsed .sidebar-header,
+  :host([collapsed]) .sidebar-header {
+    padding: 0 14px !important;
+    justify-content: flex-start;
+  }
+  .sidebar-scroll-content {
+    width: calc(max(100%, 215px));
+    margin-left: calc(min(0px, (100% - 215px) * 50 / 167));
+  }
+`;
+
 @customElement('alps-sidebar')
 export class AlpsSidebar extends LitElement {
   @consume({ context: i18nContext })
@@ -17,6 +70,8 @@ export class AlpsSidebar extends LitElement {
   @property({ type: Boolean, reflect: true }) isHovered = false;
   @property({ type: Number }) width = 250;
   @property({ type: Boolean }) hideFooterDivider = false;
+
+  @property({ type: Boolean }) showMobileBack = false;
 
   @state() private isDragging = false;
 
@@ -244,11 +299,11 @@ export class AlpsSidebar extends LitElement {
           <slot></slot>
         </div>
         <div class="sidebar-footer">
-          ${this.isMobile ? html`
+          ${this.isMobile && this.showMobileBack ? html`
             <button class="mobile-return-btn" @click=${() => window.location.hash = ''}>
               ${renderIcon('arrowLeft')} <span class="return-text">${this.i18nStore?.t('messageReader.back') || 'Back'}</span>
             </button>
-          ` : html`
+          ` : (!this.isMobile ? html`
             <alps-icon-btn 
               class="collapse-btn"
               icon="sidebar"
@@ -256,9 +311,11 @@ export class AlpsSidebar extends LitElement {
               @click=${() => this.dispatchEvent(new CustomEvent('toggle-collapse'))}
               style="--btn-padding: 8px; --icon-size: 20px;"
             ></alps-icon-btn>
-          `}
-          ${!this.hideFooterDivider ? html`<div class="footer-divider"></div>` : ''}
-          <slot name="footer-actions"></slot>
+          ` : '')}
+          ${(!this.hideFooterDivider && (!this.isMobile || this.showMobileBack)) ? html`<div class="footer-divider"></div>` : ''}
+          <div style="display: flex; flex: 1; justify-content: flex-start;">
+            <slot name="footer-actions"></slot>
+          </div>
         </div>
       </aside>
       <div class="sidebar-resizer ${this.isDragging ? 'dragging' : ''}" @mousedown=${this.startResize}></div>

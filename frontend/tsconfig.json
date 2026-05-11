@@ -10,7 +10,8 @@
     "paths": {
       "lit": ["./node_modules/lit"],
       "lit/*": ["./node_modules/lit/*"],
-      "@lit/*": ["./node_modules/@lit/*"]
+      "@lit/*": ["./node_modules/@lit/*"],
+      "rrule": ["./node_modules/rrule"]
     },
 
     /* Bundler mode */

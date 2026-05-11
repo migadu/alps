@@ -1,6 +1,8 @@
 export interface NavTab {
     id: string;
     labelKey: string;
+    icon?: string;
+    order?: number;
 }
 
 export interface SettingsTab {
@@ -54,7 +56,7 @@ class PluginRegistry {
     }
 
     getNavTabs(): NavTab[] {
-        return this.navTabs;
+        return this.navTabs.slice().sort((a, b) => (a.order || 999) - (b.order || 999));
     }
 
     registerSettingsTab(tab: SettingsTab) {

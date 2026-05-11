@@ -560,9 +560,6 @@ func (s *Server) handleError(err error, ctx *Context) {
 	} else if strings.Contains(err.Error(), "failed to re-connect to IMAP server") {
 		s.logger.Debugf("IMAP reconnection failed, logging out user")
 		shouldLogout = true
-	} else if strings.Contains(err.Error(), "connection") && strings.Contains(err.Error(), "refused") {
-		s.logger.Debugf("Connection refused, logging out user")
-		shouldLogout = true
 	}
 
 	if shouldLogout {

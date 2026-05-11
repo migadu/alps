@@ -89,6 +89,12 @@ export class I18nStore extends EventTarget {
     return this.language;
   }
 
+  getIntlLanguage() {
+    if (this.language === 'rs') return 'sr-Latn';
+    if (this.language === 'sr') return 'sr-Cyrl';
+    return this.language;
+  }
+
   t(key: string, params?: Record<string, any>): string {
     const keys = key.split('.');
     let result: any = this.dictionary;

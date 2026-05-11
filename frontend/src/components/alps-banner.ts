@@ -24,7 +24,7 @@ export class AlpsBanner extends LitElement {
       box-sizing: border-box;
       font-size: 13px;
       border-bottom: 1px solid var(--border-color);
-      background: var(--surface, #ffffff);
+      background: var(--bg-primary, #ffffff);
       color: var(--text-primary, #111827);
       box-shadow: rgba(95, 95, 95, 0.1) 0 4px 4px -2px;
     }
@@ -46,6 +46,22 @@ export class AlpsBanner extends LitElement {
     ::slotted(alps-button) {
       --btn-padding: 4px 10px;
       --btn-font-size: 12px;
+    }
+
+    @media (max-width: 768px) {
+      .banner {
+        font-size: 11px;
+        padding: 6px 12px;
+      }
+      .content {
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .actions {
+        margin-left: 8px;
+      }
     }
   `;
 

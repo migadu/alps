@@ -324,9 +324,11 @@ export const it = {
   attachment: {
     remove: 'Rimuovi'
   },
+
   navigation: {
     messages: 'Messaggi',
-    contacts: 'Contatti'
+    contacts: 'Contatti',
+    calendar: 'Calendario'
   },
   userMenu: {
     settings: 'Impostazioni',

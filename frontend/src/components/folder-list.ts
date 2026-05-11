@@ -16,6 +16,7 @@ import './ui-confirm';
 import { popupStyles } from './alps-popup';
 import './alps-icon-btn';
 import './alps-create-button';
+import { sidebarLayoutStyles } from './alps-sidebar';
 import './alps-popup';
 
 @customElement('alps-folder-list')
@@ -78,6 +79,7 @@ export class FolderList extends LitElement {
 
   static styles = [
     popupStyles,
+    sidebarLayoutStyles,
     css`
     :host {
       display: flex;
@@ -89,23 +91,11 @@ export class FolderList extends LitElement {
     }
     
     .sidebar-wrapper {
-      width: 100%;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
       background-color: var(--bg-secondary);
     }
 
     .sidebar-header {
-      padding: 0 12px;
-      gap: 8px;
       background-color: var(--bg-secondary);
-    }
-
-    :host([collapsed]) .sidebar-header {
-      padding: 0 14px;
-      justify-content: flex-start;
     }
 
     .sidebar-content {
@@ -119,17 +109,7 @@ export class FolderList extends LitElement {
       transition: opacity 0.2s ease;
     }
 
-    .sidebar-scroll-content {
-      width: calc(max(100%, 215px));
-      margin-left: calc(min(0px, (100% - 215px) * 50 / 167));
-    }
-
-    :host([collapsed]) .sidebar-content {
-      opacity: 0.5;
-      overflow-y: hidden;
-    }
-
-    :host([collapsed]) .folder-item {
+    .sidebar-wrapper.collapsed .folder-item {
       border-radius: 6px 0 0 6px;
     }
 
@@ -602,7 +582,7 @@ export class FolderList extends LitElement {
     };
 
     return html`
-      <div class="sidebar-wrapper">
+      <div class="sidebar-wrapper ${this.collapsed ? 'collapsed' : ''}">
         <alps-toolbar class="sidebar-header" ?scrolled=${this.isScrolled}>
           <alps-create-button 
             icon="pen"
