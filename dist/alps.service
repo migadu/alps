@@ -1,0 +1,48 @@
+# Alps Webmail — systemd service file
+# Install: cp dist/alps.service /etc/systemd/system/alps.service
+# Enable:  systemctl daemon-reload && systemctl enable alps
+# Start:   systemctl start alps
+# Reload:  systemctl reload alps  (sends SIGHUP for config reload)
+# Logs:    journalctl -u alps -f
+
+[Unit]
+Description=Alps Webmail
+Documentation=https://github.com/migadu/alps
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alps
+Group=alps
+
+ExecStart=/usr/local/bin/alps -config /etc/alps/config.toml
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Graceful shutdown (30s timeout matches server's internal shutdown timeout)
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Restart on failure with backoff
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+# Uncomment and configure if Alps is configured to write to disk (e.g., cert-cache or temp_dir)
+# ReadWritePaths=/var/lib/alps /var/cache/alps
+
+# File descriptor limits (for many concurrent connections)
+LimitNOFILE=65536
+
+# Allow binding to privileged ports (80, 443, etc.)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

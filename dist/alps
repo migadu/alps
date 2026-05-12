@@ -1,0 +1,42 @@
+#!/bin/sh
+
+# Alps Webmail — FreeBSD rc.d service script
+# Install: cp dist/alps /usr/local/etc/rc.d/alps && chmod +x /usr/local/etc/rc.d/alps
+# Enable:  sysrc alps_enable=YES
+# Start:   service alps start
+# Reload:  service alps reload  (sends SIGHUP for config reload)
+# Logs:    tail -f /var/log/alps/alps.log
+
+# PROVIDE: alps
+# REQUIRE: LOGIN networking
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="alps"
+rcvar="alps_enable"
+
+load_rc_config $name
+
+: ${alps_enable:="NO"}
+: ${alps_user:="alps"}
+: ${alps_group:="alps"}
+: ${alps_config:="/usr/local/etc/alps/config.toml"}
+: ${alps_logdir:="/var/log/alps"}
+
+pidfile="/var/run/${name}.pid"
+command="/usr/sbin/daemon"
+command_args="-c -f -o ${alps_logdir}/alps.log -p ${pidfile} -u ${alps_user} /usr/local/bin/alps -config ${alps_config}"
+
+# SIGHUP triggers config reload
+sig_reload="HUP"
+
+start_precmd="alps_precmd"
+
+alps_precmd()
+{
+    # Ensure required directories exist
+    install -d -o ${alps_user} -g ${alps_group} -m 750 ${alps_logdir}
+}
+
+run_rc_command "$1"

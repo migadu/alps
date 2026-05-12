@@ -1,4 +1,4 @@
-# [alps]
+# Alps Webmail
 
 A simple and extensible webmail.
 
