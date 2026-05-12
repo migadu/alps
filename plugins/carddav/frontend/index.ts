@@ -12,6 +12,7 @@ registry.registerRoute({
 
 registry.registerNavTab({
     id: 'contacts',
+    pluginId: 'carddav',
     labelKey: 'navigation.contacts',
     icon: 'users',
     order: 10

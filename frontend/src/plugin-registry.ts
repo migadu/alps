@@ -1,5 +1,6 @@
 export interface NavTab {
     id: string;
+    pluginId?: string;
     labelKey: string;
     icon?: string;
     order?: number;
@@ -7,6 +8,7 @@ export interface NavTab {
 
 export interface SettingsTab {
     id: string;
+    pluginId?: string;
     labelKey: string; // The i18n translation key for the tab label
     icon: string;     // The icon name for the sidebar
     component: string; // The HTML custom element tag name, e.g. 'alps-password-settings'
@@ -64,7 +66,10 @@ class PluginRegistry {
     getNavTabs(): NavTab[] {
         let tabs = this.navTabs;
         if (this.enabledPlugins !== null) {
-            tabs = tabs.filter(t => this.enabledPlugins!.has(t.id));
+            tabs = tabs.filter(t => {
+                const pluginName = t.pluginId || t.id;
+                return this.enabledPlugins!.has(pluginName);
+            });
         }
         return tabs.slice().sort((a, b) => (a.order || 999) - (b.order || 999));
     }
@@ -77,7 +82,10 @@ class PluginRegistry {
 
     getSettingsTabs(): SettingsTab[] {
         if (this.enabledPlugins !== null) {
-            return this.settingsTabs.filter(t => this.enabledPlugins!.has(t.id));
+            return this.settingsTabs.filter(t => {
+                const pluginName = t.pluginId || t.id;
+                return this.enabledPlugins!.has(pluginName);
+            });
         }
         return this.settingsTabs;
     }

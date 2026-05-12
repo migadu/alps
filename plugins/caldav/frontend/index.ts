@@ -8,6 +8,7 @@ registry.registerRoute({
 
 registry.registerNavTab({
     id: 'calendar',
+    pluginId: 'caldav',
     labelKey: 'navigation.calendar',
     icon: 'calendar',
     order: 20
