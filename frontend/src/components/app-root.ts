@@ -109,9 +109,33 @@ export class AppRoot extends LitElement {
     window.addEventListener('network-error', this._handleOfflineEvent);
     window.addEventListener('dragover', this._handleGlobalDragOver);
     window.addEventListener('drop', this._handleGlobalDrop);
+    window.addEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
 
     if (this.isOffline) {
       this._handleOfflineEvent();
+    }
+
+    // Fetch enabled plugins
+    if (isLoggedIn) {
+      this._fetchSessionData();
+    }
+  }
+
+  private _handlePluginsUpdated = () => {
+    this.requestUpdate();
+  };
+
+  private async _fetchSessionData() {
+    try {
+      const response = await fetch('/session');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.EnabledPlugins) {
+          registry.setEnabledPlugins(data.EnabledPlugins);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch session data', e);
     }
   }
 
@@ -127,6 +151,7 @@ export class AppRoot extends LitElement {
     window.removeEventListener('network-error', this._handleOfflineEvent);
     window.removeEventListener('dragover', this._handleGlobalDragOver);
     window.removeEventListener('drop', this._handleGlobalDrop);
+    window.removeEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
     this._stopOfflineCountdown();
   }
 

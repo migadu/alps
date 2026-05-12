@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -12,15 +14,15 @@ import (
 
 // Config represents the TOML configuration file structure
 type Config struct {
-	Server    ServerConfig            `toml:"server"`
-	Cache     CacheConfig             `toml:"cache"`
-	Logging   LoggingConfig           `toml:"logging"`
-	TLS       TLSConfig               `toml:"tls"`
-	Provider  ProviderConfig          `toml:"provider"`
-	Upstreams UpstreamsConfig         `toml:"upstreams"`
-	WebAuthn  WebAuthnConfig          `toml:"webauthn"`
-	Cluster   ClusterConfig           `toml:"cluster"`
-	Plugin    map[string]PluginConfig `toml:"plugin"`
+	Server   ServerConfig            `toml:"server"`
+	Cache    CacheConfig             `toml:"cache"`
+	Logging  LoggingConfig           `toml:"logging"`
+	TLS      TLSConfig               `toml:"tls"`
+	Provider ProviderConfig          `toml:"provider"`
+	SMTP     SMTPConfig              `toml:"smtp"`
+	WebAuthn WebAuthnConfig          `toml:"webauthn"`
+	Cluster  ClusterConfig           `toml:"cluster"`
+	Plugin   map[string]PluginConfig `toml:"plugin"`
 }
 
 type ClusterConfig struct {
@@ -75,6 +77,7 @@ type ServerConfig struct {
 	Debug                   bool            `toml:"debug"`
 	LoginKey                string          `toml:"login_key"`
 	TempDir                 string          `toml:"temp_dir"`
+	TrustedProxies          []string        `toml:"trusted_proxies"`            // Trust X-Forwarded-For headers from these proxy IPs/CIDRs
 	SessionMinutes          int             `toml:"session_minutes"`            // Session timeout in minutes (default: 30)
 	MaxSessionMinutes       int             `toml:"max_session_minutes"`        // Maximum session duration users can set (0 = no limit)
 	MaxSessions             int             `toml:"max_sessions"`               // Maximum total concurrent sessions (0 = unlimited, default: 10000)
@@ -114,7 +117,13 @@ type LoggingConfig struct {
 type ProviderConfig struct {
 	Type    string                 `toml:"type"` // "imap" (default)
 	IMAP    IMAPProviderConfig     `toml:"imap"`
+	Maildir MaildirProviderConfig  `toml:"maildir"`
 	Options map[string]interface{} `toml:"options"` // Provider-specific options
+}
+
+type MaildirProviderConfig struct {
+	Path           string `toml:"path"`
+	AuthPasswdFile string `toml:"auth_passwd_file"`
 }
 
 type IMAPProviderConfig struct {
@@ -122,9 +131,9 @@ type IMAPProviderConfig struct {
 	Insecure bool   `toml:"insecure"` // Allow insecure connections
 }
 
-type UpstreamsConfig struct {
-	IMAP string `toml:"imap"`
-	SMTP string `toml:"smtp"`
+type SMTPConfig struct {
+	Server   string `toml:"server"`   // Server URL (e.g., "smtps://smtp.example.com:465")
+	Insecure bool   `toml:"insecure"` // Allow insecure connections
 }
 
 type TLSConfig struct {
@@ -222,6 +231,17 @@ func (c *Config) ToOptions() (alps.Options, error) {
 		RPOrigins:     c.WebAuthn.RPOrigins,
 	}
 
+	options.Provider = alps.ProviderOptions{
+		Type: c.Provider.Type,
+		Maildir: alps.MaildirProviderOptions{
+			Path:           c.Provider.Maildir.Path,
+			AuthPasswdFile: c.Provider.Maildir.AuthPasswdFile,
+		},
+	}
+	if options.Provider.Type == "" {
+		options.Provider.Type = "imap" // Default provider
+	}
+
 	// Set session limit defaults
 	options.MaxSessions = 10000     // Global limit: 10,000 sessions
 	options.MaxSessionsPerUser = 10 // Per-user limit: 10 sessions
@@ -229,6 +249,29 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	// Enable rate limiting by default
 	options.RateLimitEnabled = true
 	rlConfig := alps.DefaultRateLimitConfig()
+
+	var trustedProxies []*net.IPNet
+	for _, ipStr := range c.Server.TrustedProxies {
+		ipStr = strings.TrimSpace(ipStr)
+		if ipStr == "" {
+			continue
+		}
+		if !strings.Contains(ipStr, "/") {
+			// Check if it's IPv6
+			if strings.Contains(ipStr, ":") {
+				ipStr += "/128"
+			} else {
+				ipStr += "/32"
+			}
+		}
+		_, cidr, err := net.ParseCIDR(ipStr)
+		if err != nil {
+			return options, fmt.Errorf("invalid trusted_proxies IP/CIDR %q: %v", ipStr, err)
+		}
+		trustedProxies = append(trustedProxies, cidr)
+	}
+	rlConfig.TrustedProxies = trustedProxies
+
 	options.RateLimitConfig = &rlConfig
 
 	// Set cache config (default to enabled with 10 minute TTL)
@@ -324,21 +367,31 @@ func (c *Config) ToOptions() (alps.Options, error) {
 		}
 	}
 
-	// Build upstreams list from config
-	var upstreams []string
-	if c.Upstreams.IMAP != "" {
-		upstreams = append(upstreams, c.Upstreams.IMAP)
+	// Set SMTP and IMAP options
+	options.SMTP = alps.SMTPOptions{
+		Server:   c.SMTP.Server,
+		Insecure: c.SMTP.Insecure,
 	}
-	if c.Upstreams.SMTP != "" {
-		upstreams = append(upstreams, c.Upstreams.SMTP)
+
+	options.Provider.IMAP = alps.IMAPProviderOptions{
+		Server:   c.Provider.IMAP.Server,
+		Insecure: c.Provider.IMAP.Insecure,
 	}
-	// Add plugin-specific upstream servers
-	upstreams = append(upstreams, c.GetPluginUpstreams()...)
 
-	options.Upstreams = upstreams
+	// Validation
+	if options.SMTP.Server == "" {
+		return options, fmt.Errorf("no SMTP server specified in config file ([smtp] server)")
+	}
 
-	if len(options.Upstreams) == 0 {
-		return options, fmt.Errorf("no upstreams specified in config file")
+	switch options.Provider.Type {
+	case "imap", "":
+		if options.Provider.IMAP.Server == "" {
+			return options, fmt.Errorf("no IMAP server specified in config file for imap provider ([provider.imap] server)")
+		}
+	case "maildir":
+		if options.Provider.Maildir.Path == "" {
+			return options, fmt.Errorf("no Maildir path specified in config file for maildir provider ([provider.maildir] path)")
+		}
 	}
 
 	if c.Server.LoginKey != "" {

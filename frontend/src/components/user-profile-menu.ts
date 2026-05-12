@@ -105,6 +105,7 @@ export class UserProfileMenu extends LitElement {
       this.i18nStore?.addEventListener('change', this._handleStoreChange);
       this.settingsStore?.addEventListener('change', this._handleStoreChange);
       this.linkedAccountsStore?.addEventListener('change', this._handleStoreChange);
+      window.addEventListener('plugins-updated', this._handleStoreChange as EventListener);
       if (this.linkedAccountsStore && !this.linkedAccountsStore.isInitialized()) {
         this.linkedAccountsStore.fetchAccounts();
       }
@@ -116,6 +117,7 @@ export class UserProfileMenu extends LitElement {
     this.i18nStore?.removeEventListener('change', this._handleStoreChange);
     this.settingsStore?.removeEventListener('change', this._handleStoreChange);
     this.linkedAccountsStore?.removeEventListener('change', this._handleStoreChange);
+    window.removeEventListener('plugins-updated', this._handleStoreChange as EventListener);
   }
 
   private _closePopup() {

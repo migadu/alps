@@ -43,6 +43,13 @@ func (m *cacheCleanupManager) cleanupLoop() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
+	defer func() {
+		if r := recover(); r != nil {
+			// Panic occurred, but don't crash the server.
+			// Ideally we would restart the loop, but this is a fatal cache error.
+		}
+	}()
+
 	for {
 		select {
 		case <-ticker.C:

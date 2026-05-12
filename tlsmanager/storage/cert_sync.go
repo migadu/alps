@@ -33,6 +33,11 @@ func (w *CertSyncWorker) Start() {
 
 	go func() {
 		defer close(w.doneCh)
+		defer func() {
+			if r := recover(); r != nil {
+				w.logger.Error("panic in certificate sync worker", "panic", r)
+			}
+		}()
 
 		// One-time startup sync: push local certs to S3 if they're missing there.
 		// This covers the case where S3 was wiped or certs exist only locally.

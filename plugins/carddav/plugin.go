@@ -86,12 +86,14 @@ func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Sessio
 }
 
 func newPlugin(srv *alps.Server) (alps.Plugin, error) {
-	u, err := srv.Upstream("carddavs", "carddav+insecure", "https", "http+insecure")
-	if _, ok := err.(*alps.NoUpstreamError); ok {
+	cfg := srv.Options.Plugins["carddav"]
+	if cfg.Upstream == "" {
 		// No upstream configured, disable plugin
 		return nil, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("carddav: failed to parse upstream CardDAV server: %v", err)
+	}
+	u, err := alps.ParseUpstreamURL(cfg.Upstream)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse upstream CardDAV server: %v", err)
 	}
 
 	switch u.Scheme {

@@ -22,6 +22,12 @@ class PluginRegistry {
     settingsTabs: SettingsTab[] = [];
     routes: Route[] = [];
     hooks: Map<string, Function[]> = new Map();
+    enabledPlugins: Set<string> | null = null;
+
+    setEnabledPlugins(plugins: string[]) {
+        this.enabledPlugins = new Set(plugins);
+        window.dispatchEvent(new CustomEvent('plugins-updated'));
+    }
 
     registerHook(hookName: string, handler: Function) {
         if (!this.hooks.has(hookName)) {
@@ -56,7 +62,11 @@ class PluginRegistry {
     }
 
     getNavTabs(): NavTab[] {
-        return this.navTabs.slice().sort((a, b) => (a.order || 999) - (b.order || 999));
+        let tabs = this.navTabs;
+        if (this.enabledPlugins !== null) {
+            tabs = tabs.filter(t => this.enabledPlugins!.has(t.id));
+        }
+        return tabs.slice().sort((a, b) => (a.order || 999) - (b.order || 999));
     }
 
     registerSettingsTab(tab: SettingsTab) {
@@ -66,6 +76,9 @@ class PluginRegistry {
     }
 
     getSettingsTabs(): SettingsTab[] {
+        if (this.enabledPlugins !== null) {
+            return this.settingsTabs.filter(t => this.enabledPlugins!.has(t.id));
+        }
         return this.settingsTabs;
     }
 

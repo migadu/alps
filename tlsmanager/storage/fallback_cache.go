@@ -159,6 +159,11 @@ func (f *FallbackCache) Get(ctx context.Context, key string) ([]byte, error) {
 
 		// Store in local cache for future fast access (async to avoid blocking)
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					f.logger.Error("panic syncing to local cache", "panic", r)
+				}
+			}()
 			if putErr := f.fallback.Put(context.Background(), key, data); putErr != nil {
 				f.logger.Warn("FallbackCache: failed to sync certificate to local cache", "name", key, "error", putErr)
 			} else {
@@ -219,6 +224,11 @@ func (f *FallbackCache) Put(ctx context.Context, key string, data []byte) error 
 
 	// Schedule S3 sync for later (best effort)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				f.logger.Error("panic in background S3 sync", "panic", r)
+			}
+		}()
 		f.syncToS3(key, data)
 	}()
 

@@ -134,7 +134,7 @@ type CachedMessagePart struct {
 }
 
 // updateCachedMessageFlags updates flags for specific messages in cached message lists
-func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid imap.UID, addFlags []imap.Flag, removeFlags []imap.Flag) {
+func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.MessageID, addFlags []imap.Flag, removeFlags []imap.Flag) {
 	cache := ctx.Session.Cache()
 
 	// Convert IMAP flags to alps flags
@@ -179,7 +179,7 @@ func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid imap.UID, a
 	keys := cache.GetKeysWithPrefix(prefix)
 
 	// Convert UID to MessageID for comparison
-	uidStr := strconv.FormatUint(uint64(uid), 10)
+	uidStr := uid.String()
 
 	messageUpdated := false
 	for _, key := range keys {
@@ -917,11 +917,10 @@ func handleLogout(ctx *alps.Context) error {
 }
 
 func handleGetPart(ctx *alps.Context, raw bool) error {
-	_, imapUID, err := parseMboxAndUid(ctx.Param("mbox"), ctx.Param("uid"))
+	_, uidStr, err := parseMboxAndUidStr(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
 		return err
 	}
-	uid := imapUIDFromIMAP(imapUID)
 	ibase, err := getBaseMailboxData(ctx)
 	if err != nil {
 		return err
@@ -944,16 +943,27 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 	// We need to briefly fetch the message structure to see what parts are available
 	var tempMsg *IMAPMessage
-	// If no part specified and not raw, determine preferred part
-	if partPathParam == "" && !raw {
-		err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-			tempMsg, err = getMessageMetadataWithProvider(p, mbox.Name(), uid)
-			return err
-		})
-		if err != nil {
-			return err
+	var uid provider.MessageID
+
+	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		var parseErr error
+		uid, parseErr = p.ParseMessageID(uidStr)
+		if parseErr != nil {
+			return parseErr
 		}
 
+		// If no part specified and not raw, determine preferred part
+		if partPathParam == "" && !raw {
+			tempMsg, parseErr = getMessageMetadataWithProvider(p, mbox.Name(), uid)
+			return parseErr
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	if partPathParam == "" && !raw {
 		// Determine preference: user setting overrides system default (true for HTML)
 		preferHTML := true
 		if settings.PreferredView != "" {
@@ -1015,7 +1025,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			headerData = cachedData.HeaderData
 			bodyData = cachedData.BodyData
 
-			ctx.Server.Logger().Debugf("Cache HIT (full) for message %s/%d part %v", mbox.Name(), uid, partPath)
+			ctx.Server.Logger().Debugf("Cache HIT (full) for message %s/%v part %v", mbox.Name(), uid, partPath)
 		} else {
 			// Only metadata cached, need to fetch body
 			var providerMsg *provider.Message
@@ -1055,7 +1065,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			msg = &imapMsg
 
 			// Fetching body without Peek marks message as \Seen, so update the cached flags
-			updateCachedMessageFlags(ctx, mbox.Name(), imapUID, []imap.Flag{imap.FlagSeen}, nil)
+			updateCachedMessageFlags(ctx, mbox.Name(), uid, []imap.Flag{imap.FlagSeen}, nil)
 		}
 	} else {
 		// Nothing cached, fetch everything
@@ -1106,7 +1116,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		msg = &imapMsg
 
 		// Fetching body without Peek marks message as \Seen, so update the cached flags
-		updateCachedMessageFlags(ctx, mbox.Name(), imapUID, []imap.Flag{imap.FlagSeen}, nil)
+		updateCachedMessageFlags(ctx, mbox.Name(), uid, []imap.Flag{imap.FlagSeen}, nil)
 	}
 
 	// Note: We no longer need selected mailbox info from IMAP
@@ -1128,7 +1138,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			}
 			subject := msg.Envelope.Subject
 			if subject == "" {
-				subject = fmt.Sprintf("message_%d", msg.UID)
+				subject = fmt.Sprintf("message_%s", msg.AlpsUID)
 			}
 			cleanSubject := strings.Map(func(r rune) rune {
 				if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' {
@@ -1217,7 +1227,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		flags[f] = msg.HasFlag(f)
 	}
 	partNode := msg.PartByPath(partPath)
-	if partNode != nil && (!partNode.IsText() || partNode.Size == 0) {
+	if partNode != nil && !partNode.IsText() {
 		partNode = nil
 	}
 
@@ -1237,7 +1247,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 type messagePath struct {
 	Mailbox string
-	Uid     imap.UID
+	Uid     string
 }
 
 func handleComposeNew(ctx *alps.Context) error {
@@ -1289,20 +1299,14 @@ func handleComposeNew(ctx *alps.Context) error {
 	var draftPath *messagePath
 	if draftMbox := ctx.FormValue("draft_mailbox"); draftMbox != "" {
 		if draftUidStr := ctx.FormValue("draft_uid"); draftUidStr != "" {
-			draftUid, err := strconv.ParseUint(draftUidStr, 10, 32)
-			if err == nil {
-				draftPath = &messagePath{Mailbox: draftMbox, Uid: imap.UID(draftUid)}
-			}
+			draftPath = &messagePath{Mailbox: draftMbox, Uid: draftUidStr}
 		}
 	}
 
 	var inReplyToPath *messagePath
 	if replyMbox := ctx.FormValue("reply_mailbox"); replyMbox != "" {
 		if replyUidStr := ctx.FormValue("reply_uid"); replyUidStr != "" {
-			replyUid, err := strconv.ParseUint(replyUidStr, 10, 32)
-			if err == nil {
-				inReplyToPath = &messagePath{Mailbox: replyMbox, Uid: imap.UID(replyUid)}
-			}
+			inReplyToPath = &messagePath{Mailbox: replyMbox, Uid: replyUidStr}
 		}
 	}
 
@@ -1330,7 +1334,11 @@ func handleComposeNew(ctx *alps.Context) error {
 					if err != nil {
 						return fmt.Errorf("invalid part path: %v", err)
 					}
-					_, entity, _, _, err := p.GetMessagePartWithData(sourcePath.Mailbox, imapUIDFromIMAP(sourcePath.Uid), partPath)
+					parsedUid, err := p.ParseMessageID(sourcePath.Uid)
+					if err != nil {
+						return fmt.Errorf("invalid UID: %v", err)
+					}
+					_, entity, _, _, err := p.GetMessagePartWithData(sourcePath.Mailbox, parsedUid, partPath)
 					if err != nil {
 						return fmt.Errorf("failed to fetch attachment %s: %v", pathStr, err)
 					}
@@ -1406,7 +1414,11 @@ func handleComposeNew(ctx *alps.Context) error {
 			}
 
 			if draftPath != nil {
-				if err := deleteMessagesWithProvider(p, draftPath.Mailbox, []provider.MessageID{imapUIDFromIMAP(draftPath.Uid)}); err != nil {
+				parsedDraftUid, err := p.ParseMessageID(draftPath.Uid)
+				if err != nil {
+					return err
+				}
+				if err := deleteMessagesWithProvider(p, draftPath.Mailbox, []provider.MessageID{parsedDraftUid}); err != nil {
 					return err
 				}
 			}
@@ -1444,7 +1456,11 @@ func handleComposeNew(ctx *alps.Context) error {
 
 	if inReplyToPath != nil {
 		ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-			return markMessageAnsweredWithProvider(p, inReplyToPath.Mailbox, imapUIDFromIMAP(inReplyToPath.Uid))
+			parsedReplyUid, err := p.ParseMessageID(inReplyToPath.Uid)
+			if err != nil {
+				return err
+			}
+			return markMessageAnsweredWithProvider(p, inReplyToPath.Mailbox, parsedReplyUid)
 		})
 	}
 
@@ -1453,7 +1469,11 @@ func handleComposeNew(ctx *alps.Context) error {
 			return err
 		}
 		if draftPath != nil {
-			if err := deleteMessagesWithProvider(p, draftPath.Mailbox, []provider.MessageID{imapUIDFromIMAP(draftPath.Uid)}); err != nil {
+			parsedDraftUid, err := p.ParseMessageID(draftPath.Uid)
+			if err != nil {
+				return err
+			}
+			if err := deleteMessagesWithProvider(p, draftPath.Mailbox, []provider.MessageID{parsedDraftUid}); err != nil {
 				return err
 			}
 		}
@@ -1576,12 +1596,7 @@ func handleMove(ctx *alps.Context) error {
 		to = formOrQueryParam(ctx, "to")
 	}
 
-	uidList, err := parseUidList(uids)
-	if err != nil {
-		return alps.NewHTTPError(http.StatusBadRequest, err)
-	}
-
-	if len(uidList) == 0 {
+	if len(uids) == 0 {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "No messages selected."})
 	}
 
@@ -1589,14 +1604,16 @@ func handleMove(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusBadRequest, "missing 'to' parameter")
 	}
 
-	fmt.Printf("BULK DEBUG: %d uids received: %v\n", len(uidList), uidList)
-	alpsMsgIDs := make([]provider.MessageID, len(uidList))
-	for i, uid := range uidList {
-		alpsMsgIDs[i] = imapUIDFromIMAP(uid)
-	}
-
 	uidMapping := make(map[string]string)
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		alpsMsgIDs := make([]provider.MessageID, len(uids))
+		for i, uidStr := range uids {
+			uid, err := p.ParseMessageID(uidStr)
+			if err != nil {
+				return err
+			}
+			alpsMsgIDs[i] = uid
+		}
 		// Move messages in bulk
 		mapping, err := moveMessagesWithProvider(p, mboxName, to, alpsMsgIDs)
 		if err != nil {
@@ -1648,12 +1665,7 @@ func handleCopy(ctx *alps.Context) error {
 		to = formOrQueryParam(ctx, "to")
 	}
 
-	uidList, err := parseUidList(uids)
-	if err != nil {
-		return alps.NewHTTPError(http.StatusBadRequest, err)
-	}
-
-	if len(uidList) == 0 {
+	if len(uids) == 0 {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "No messages selected."})
 	}
 
@@ -1661,14 +1673,16 @@ func handleCopy(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusBadRequest, "missing 'to' parameter")
 	}
 
-	fmt.Printf("BULK DEBUG: %d uids received: %v\n", len(uidList), uidList)
-	alpsMsgIDs := make([]provider.MessageID, len(uidList))
-	for i, uid := range uidList {
-		alpsMsgIDs[i] = imapUIDFromIMAP(uid)
-	}
-
 	uidMapping := make(map[string]string)
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		alpsMsgIDs := make([]provider.MessageID, len(uids))
+		for i, uidStr := range uids {
+			uid, err := p.ParseMessageID(uidStr)
+			if err != nil {
+				return err
+			}
+			alpsMsgIDs[i] = uid
+		}
 		// Copy messages in bulk
 		mapping, err := copyMessagesWithProvider(p, mboxName, to, alpsMsgIDs)
 		if err != nil {
@@ -1716,22 +1730,19 @@ func handleDelete(ctx *alps.Context) error {
 		uids = formParams["uids"]
 	}
 
-	uidList, err := parseUidList(uids)
-	if err != nil {
-		return alps.NewHTTPError(http.StatusBadRequest, err)
-	}
-
-	if len(uidList) == 0 {
+	if len(uids) == 0 {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "No messages selected."})
 	}
 
-	fmt.Printf("BULK DEBUG: %d uids received: %v\n", len(uidList), uidList)
-	alpsMsgIDs := make([]provider.MessageID, len(uidList))
-	for i, uid := range uidList {
-		alpsMsgIDs[i] = imapUIDFromIMAP(uid)
-	}
-
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		alpsMsgIDs := make([]provider.MessageID, len(uids))
+		for i, uidStr := range uids {
+			uid, err := p.ParseMessageID(uidStr)
+			if err != nil {
+				return err
+			}
+			alpsMsgIDs[i] = uid
+		}
 		// Delete messages in bulk
 		if err := deleteMessagesWithProvider(p, mboxName, alpsMsgIDs); err != nil {
 			return fmt.Errorf("failed to delete messages: %v", err)
@@ -1800,14 +1811,11 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 
 func handleGetSession(ctx *alps.Context) error {
 	passwordChangeEnabled := false
-	var enabledPlugins []string
+	enabledPlugins := ctx.Server.LoadedPluginNames()
 
-	for name, pluginCfg := range ctx.Server.Options.Plugins {
-		if pluginCfg.Enabled {
-			enabledPlugins = append(enabledPlugins, name)
-			if name == "password" {
-				passwordChangeEnabled = true
-			}
+	for _, name := range enabledPlugins {
+		if name == "password" {
+			passwordChangeEnabled = true
 		}
 	}
 
@@ -1868,9 +1876,8 @@ func handleSetFlags(ctx *alps.Context) error {
 		}
 	}
 
-	uidList, err := parseUidList(uids)
-	if err != nil {
-		return alps.NewHTTPError(http.StatusBadRequest, err)
+	if len(uids) == 0 {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "No messages selected."})
 	}
 
 	var op imap.StoreFlagsOp
@@ -1925,14 +1932,16 @@ func handleSetFlags(ctx *alps.Context) error {
 		alpsFlags[i] = provider.Flag(f)
 	}
 
-	// Convert UIDs to provider.MessageID
-	fmt.Printf("BULK DEBUG: %d uids received: %v\n", len(uidList), uidList)
-	alpsMsgIDs := make([]provider.MessageID, len(uidList))
-	for i, uid := range uidList {
-		alpsMsgIDs[i] = imapUIDFromIMAP(uid)
-	}
-
+	var alpsMsgIDs []provider.MessageID
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		alpsMsgIDs = make([]provider.MessageID, len(uids))
+		for i, uidStr := range uids {
+			uid, err := p.ParseMessageID(uidStr)
+			if err != nil {
+				return err
+			}
+			alpsMsgIDs[i] = uid
+		}
 		return setMessageFlagsWithProvider(p, mboxName, alpsMsgIDs, alpsOp, alpsFlags)
 	})
 	if err != nil {
@@ -1940,7 +1949,7 @@ func handleSetFlags(ctx *alps.Context) error {
 	}
 
 	// Update cached message flags instead of full invalidation
-	for _, uid := range uidList {
+	for _, uid := range alpsMsgIDs {
 		switch op {
 		case imap.StoreFlagsAdd:
 			updateCachedMessageFlags(ctx, mboxName, uid, l, nil)

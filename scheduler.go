@@ -55,12 +55,19 @@ func (s *Scheduler) Start(logger Logger) {
 				s.mu.Unlock()
 
 				for name, job := range jobs {
-					logger.Debugf("Scheduler running job: %s", name)
-					if err := job(); err != nil {
-						logger.Errorf("Scheduler job '%s' error: %v", name, err)
-					} else {
-						logger.Debugf("Scheduler job completed: %s", name)
-					}
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								logger.Errorf("Scheduler job '%s' panicked: %v", name, r)
+							}
+						}()
+						logger.Debugf("Scheduler running job: %s", name)
+						if err := job(); err != nil {
+							logger.Errorf("Scheduler job '%s' error: %v", name, err)
+						} else {
+							logger.Debugf("Scheduler job completed: %s", name)
+						}
+					}()
 				}
 			case <-s.stop:
 				ticker.Stop()

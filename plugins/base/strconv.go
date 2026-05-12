@@ -5,40 +5,17 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-
-	"github.com/emersion/go-imap/v2"
 )
 
-func parseUid(s string) (imap.UID, error) {
-	uid, err := strconv.ParseUint(s, 10, 32)
-	if err != nil {
-		return 0, fmt.Errorf("invalid UID: %v", err)
-	}
-	if uid == 0 {
-		return 0, fmt.Errorf("UID must be non-zero")
-	}
-	return imap.UID(uid), nil
-}
-
-func parseMboxAndUid(mboxString, uidString string) (string, imap.UID, error) {
+func parseMboxAndUidStr(mboxString, uidString string) (string, string, error) {
 	mboxName, err := url.PathUnescape(mboxString)
 	if err != nil {
-		return "", 0, fmt.Errorf("invalid mailbox name: %v", err)
+		return "", "", fmt.Errorf("invalid mailbox name: %v", err)
 	}
-	uid, err := parseUid(uidString)
-	return mboxName, uid, err
-}
-
-func parseUidList(values []string) ([]imap.UID, error) {
-	var uids []imap.UID
-	for _, v := range values {
-		uid, err := parseUid(v)
-		if err != nil {
-			return nil, err
-		}
-		uids = append(uids, uid)
+	if uidString == "" {
+		return "", "", fmt.Errorf("UID must be non-empty")
 	}
-	return uids, nil
+	return mboxName, uidString, nil
 }
 
 func parsePartPath(s string) ([]int, error) {

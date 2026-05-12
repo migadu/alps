@@ -2,6 +2,7 @@ package alps
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -245,6 +246,8 @@ func TestRateLimiter_XForwardedForHandling(t *testing.T) {
 	logger := &mockLogger{}
 	config := DefaultRateLimitConfig()
 	config.IPRequestsPerMinute = 2
+	_, cidr, _ := net.ParseCIDR("10.0.0.1/32")
+	config.TrustedProxies = []*net.IPNet{cidr}
 
 	rl := NewRateLimiter(config, logger, nil)
 	defer rl.Close()
@@ -289,6 +292,10 @@ func TestRateLimiter_XRealIPHandling(t *testing.T) {
 	logger := &mockLogger{}
 	config := DefaultRateLimitConfig()
 	config.IPRequestsPerMinute = 2
+	_, cidr2, _ := net.ParseCIDR("10.0.0.2/32")
+	_, cidr3, _ := net.ParseCIDR("10.0.0.3/32")
+	_, cidr4, _ := net.ParseCIDR("10.0.0.4/32")
+	config.TrustedProxies = []*net.IPNet{cidr2, cidr3, cidr4}
 
 	rl := NewRateLimiter(config, logger, nil)
 	defer rl.Close()

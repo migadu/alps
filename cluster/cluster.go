@@ -130,6 +130,11 @@ func NewCluster(cfg Config) (*Cluster, error) {
 
 	// Start periodic leader check (handles missed events, failure detection)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				cfg.Logger.Error("panic in cluster leader check goroutine", "panic", r)
+			}
+		}()
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 		for {

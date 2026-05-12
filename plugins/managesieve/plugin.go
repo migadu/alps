@@ -13,12 +13,14 @@ type plugin struct {
 }
 
 func newPlugin(srv *alps.Server) (alps.Plugin, error) {
-	u, err := srv.Upstream("managesieves", "managesieve+insecure", "managesieve", "sieve")
-	if _, ok := err.(*alps.NoUpstreamError); ok {
+	cfg := srv.Options.Plugins["managesieve"]
+	if cfg.Upstream == "" {
 		// No upstream configured, disable plugin
 		return nil, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("managesieve: failed to parse upstream server: %v", err)
+	}
+	u, err := alps.ParseUpstreamURL(cfg.Upstream)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse upstream ManageSieve server: %v", err)
 	}
 
 	srv.Logger().Printf("Configured upstream ManageSieve server: %v", u)

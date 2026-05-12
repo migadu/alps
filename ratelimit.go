@@ -11,6 +11,8 @@ import (
 
 // RateLimitConfig holds configuration for rate limiting
 type RateLimitConfig struct {
+	TrustedProxies []*net.IPNet // Trusted proxy IPs/CIDRs for X-Forwarded-For
+
 	// Per-IP limits
 	IPRequestsPerMinute int
 	IPRequestsPerHour   int
@@ -29,6 +31,7 @@ type RateLimitConfig struct {
 // DefaultRateLimitConfig returns sensible defaults
 func DefaultRateLimitConfig() RateLimitConfig {
 	return RateLimitConfig{
+		TrustedProxies:          nil,
 		IPRequestsPerMinute:     5,
 		IPRequestsPerHour:       20,
 		UsernameFailsPerQuarter: 5,
@@ -157,7 +160,7 @@ func (rl *RateLimiter) CheckLoginAllowed(r *http.Request, username string) (bool
 		return true, "", 0 // Rate limiting disabled
 	}
 
-	ip := getClientIP(r)
+	ip := getClientIP(r, rl.config.TrustedProxies)
 	now := time.Now()
 
 	rl.mu.Lock()
@@ -245,7 +248,7 @@ func (rl *RateLimiter) RecordLoginAttempt(r *http.Request, username string, succ
 		return
 	}
 
-	ip := getClientIP(r)
+	ip := getClientIP(r, rl.config.TrustedProxies)
 	now := time.Now()
 
 	rl.mu.Lock()
@@ -352,27 +355,42 @@ func filterTimestamps(timestamps []time.Time, cutoff time.Time) []time.Time {
 }
 
 // getClientIP extracts the real client IP from the request
-// Handles X-Forwarded-For, X-Real-IP headers for proxy scenarios
-func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header (comma-separated list, first is client)
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		ip := strings.TrimSpace(parts[0])
-		if ipWithoutPort, _, err := net.SplitHostPort(ip); err == nil {
-			return ipWithoutPort
-		}
-		return ip
-	}
-
-	// Check X-Real-IP header
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-
-	// Fall back to RemoteAddr
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+// Handles X-Forwarded-For, X-Real-IP headers if remote address is a trusted proxy
+func getClientIP(r *http.Request, trustedProxies []*net.IPNet) string {
+	remoteIPStr, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		remoteIPStr = r.RemoteAddr
 	}
-	return ip
+
+	isTrustedProxy := false
+	if len(trustedProxies) > 0 {
+		remoteIP := net.ParseIP(remoteIPStr)
+		if remoteIP != nil {
+			for _, cidr := range trustedProxies {
+				if cidr.Contains(remoteIP) {
+					isTrustedProxy = true
+					break
+				}
+			}
+		}
+	}
+
+	if isTrustedProxy {
+		// Check X-Forwarded-For header (comma-separated list, first is client)
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			ip := strings.TrimSpace(parts[0])
+			if ipWithoutPort, _, err := net.SplitHostPort(ip); err == nil {
+				return ipWithoutPort
+			}
+			return ip
+		}
+
+		// Check X-Real-IP header
+		if xri := r.Header.Get("X-Real-IP"); xri != "" {
+			return xri
+		}
+	}
+
+	return remoteIPStr
 }

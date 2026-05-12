@@ -1,5 +1,4 @@
 config.toml
-CLAUDE.md
 tmp/*
 vendor/
 build/

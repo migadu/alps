@@ -950,6 +950,14 @@ func (uid IMAPUID) Provider() string {
 	return "imap"
 }
 
+func (p *IMAPProvider) ParseMessageID(id string) (provider.MessageID, error) {
+	uid, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid IMAP UID format: %v", err)
+	}
+	return IMAPUID(uid), nil
+}
+
 // IMAPBodyStructure wraps imap.BodyStructure to implement BodyStructure
 type IMAPBodyStructure struct {
 	imap.BodyStructure

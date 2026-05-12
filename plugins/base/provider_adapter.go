@@ -60,7 +60,8 @@ func providerMessageToIMAP(msg provider.Message) IMAPMessage {
 		SeqNum: msg.SeqNum,
 	}
 	if msg.ID != nil {
-		fetchMsg.UID = imap.UID(msg.ID.(imapprovider.IMAPUID))
+		// Just set a dummy UID so it's not empty, actual ID goes to imapMsg.UID below
+		fetchMsg.UID = 1
 	}
 
 	// Convert flags
@@ -92,6 +93,9 @@ func providerMessageToIMAP(msg provider.Message) IMAPMessage {
 		Mailbox:            msg.Mailbox,
 		HasBimiPotential:   msg.BimiPotential,
 		HasBimiFailed:      msg.BimiFailed,
+	}
+	if msg.ID != nil {
+		imapMsg.AlpsUID = msg.ID.String()
 	}
 	imapMsg.HasAttachments = len(imapMsg.Attachments()) > 0
 
@@ -137,11 +141,6 @@ func providerAddressesToIMAP(addrs []provider.Address) []imap.Address {
 		}
 	}
 	return result
-}
-
-// imapUIDFromIMAP converts imap.UID to imapprovider.IMAPUID
-func imapUIDFromIMAP(uid imap.UID) provider.MessageID {
-	return imapprovider.IMAPUID(uid)
 }
 
 // Wrapper functions that use provider instead of direct IMAP calls

@@ -30,7 +30,6 @@ export class SettingsPage extends LitElement {
   @state() private mobileSidebarOpen = false;
   @state() private username = '';
   @state() private isScrolled = false;
-  @state() private enabledPlugins: string[] = [];
   @state() private sidebarWidth = 250;
   @state() private sidebarCollapsed = false;
   @state() private isSidebarDragging = false;
@@ -200,7 +199,6 @@ export class SettingsPage extends LitElement {
       if (response.ok) {
         const data = await response.json();
         if (data.Username) this.username = data.Username;
-        if (data.EnabledPlugins) this.enabledPlugins = data.EnabledPlugins;
       }
     } catch (e) {
       Logger.error('Failed to fetch username in settings', e);
@@ -393,7 +391,6 @@ export class SettingsPage extends LitElement {
             ${this.i18nStore?.t('settings.categories.webauthn')}
           </alps-category-item>
           ${registry.getSettingsTabs()
-            .filter(tab => this.enabledPlugins.includes(tab.id))
             .map(tab => html`
             <alps-category-item 
               ?active=${this.category === tab.id}
@@ -418,7 +415,7 @@ export class SettingsPage extends LitElement {
             ${this.category === 'appearance' ? this.renderAppearance() : ''}
             ${this.category === 'localization' ? this.renderLocalization() : ''}
             ${registry.getSettingsTabs()
-                .filter(tab => tab.id === this.category && this.enabledPlugins.includes(tab.id))
+                .filter(tab => tab.id === this.category)
                 .map(tab => html`${unsafeHTML(`<${tab.component}></${tab.component}>`)}`)
             }
           `}

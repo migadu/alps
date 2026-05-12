@@ -35,6 +35,7 @@ type MailProvider interface {
 	SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]Message, int, error)
 
 	// Message operations
+	ParseMessageID(id string) (MessageID, error)
 	GetMessageMetadata(mailbox string, id MessageID) (*Message, error)
 	GetMessagePart(mailbox string, id MessageID, partPath []int) (*Message, *message.Entity, error)
 	GetMessagePartRaw(mailbox string, id MessageID, partPath []int, limit int64) (*Message, []byte, []byte, error)

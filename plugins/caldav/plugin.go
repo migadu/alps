@@ -87,12 +87,14 @@ func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session)
 }
 
 func newPlugin(srv *alps.Server) (alps.Plugin, error) {
-	u, err := srv.Upstream("caldavs", "caldav+insecure", "https", "http+insecure")
-	if _, ok := err.(*alps.NoUpstreamError); ok {
+	cfg := srv.Options.Plugins["caldav"]
+	if cfg.Upstream == "" {
 		// No upstream configured, disable plugin
 		return nil, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("caldav: failed to parse upstream CalDAV server: %v", err)
+	}
+	u, err := alps.ParseUpstreamURL(cfg.Upstream)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse upstream CalDAV server: %v", err)
 	}
 
 	switch u.Scheme {

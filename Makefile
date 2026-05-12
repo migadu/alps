@@ -56,3 +56,9 @@ help:
 	@echo "  build-linux    - Cross-compile for Linux amd64"
 	@echo "  clean          - Remove build artifacts"
 	@echo "  test           - Run tests"
+	@echo "  test-coverage  - Run tests and show coverage in HTML"
+
+# Run tests and show coverage
+test-coverage:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out

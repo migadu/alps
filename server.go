@@ -16,6 +16,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/migadu/alps/provider"
 	"github.com/migadu/alps/provider/imap"
+	"github.com/migadu/alps/provider/maildir"
 )
 
 const (
@@ -37,9 +38,7 @@ type Server struct {
 	router  *Router
 	plugins []Plugin
 
-	// maps protocols to URLs (protocol can be empty for auto-discovery)
-	upstreams map[string]*url.URL
-	WebAuthn  *webauthn.WebAuthn // Global WebAuthn instance
+	WebAuthn *webauthn.WebAuthn // Global WebAuthn instance
 
 	imap struct {
 		host     string
@@ -57,18 +56,6 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 	s := &Server{
 		logger:  logger,
 		Options: options,
-	}
-
-	s.upstreams = make(map[string]*url.URL, len(options.Upstreams))
-	for _, upstream := range options.Upstreams {
-		u, err := parseUpstream(upstream)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse upstream %q: %v", upstream, err)
-		}
-		if _, ok := s.upstreams[u.Scheme]; ok {
-			return nil, fmt.Errorf("found two upstream servers for scheme %q", u.Scheme)
-		}
-		s.upstreams[u.Scheme] = u
 	}
 
 	if err := s.parseIMAPUpstream(); err != nil {
@@ -140,25 +127,73 @@ func (s *Server) Close() {
 	}
 }
 
+// LoadedPluginNames returns a list of plugin names that are currently loaded
+func (s *Server) LoadedPluginNames() []string {
+	var names []string
+	for _, p := range s.plugins {
+		names = append(names, p.Name())
+	}
+	return names
+}
+
 // createProviderFactory creates a factory function for mail providers
 func (s *Server) createProviderFactory() provider.AuthenticatedProviderFactory {
 	return func(username, password string) (provider.MailProvider, error) {
-		// Currently only IMAP provider is supported
-		client, err := imap.Connect(s.imap.host, s.imap.tls, s.imap.insecure, s.Options.IMAPTimeout, s.Options.Debug)
-		if err != nil {
-			return nil, err
-		}
+		switch s.Options.Provider.Type {
+		case "maildir":
+			// Parse auth file config
+			authFile := s.Options.Provider.Maildir.AuthPasswdFile
+			if authFile == "" {
+				return nil, fmt.Errorf("maildir provider requires auth_passwd_file")
+			}
 
-		if err := client.Login(username, password).Wait(); err != nil {
-			client.Logout()
-			return nil, AuthError{err}
-		}
+			// Authenticate against dovecot passwd file
+			homeDir, err := maildir.Authenticate(authFile, username, password)
+			if err != nil {
+				return nil, AuthError{err}
+			}
 
-		return imap.NewIMAPProvider(client, s.Options.Debug), nil
+			// Use explicit Maildir path if provided, resolving %u and %d, otherwise use homeDir/Maildir
+			path := s.Options.Provider.Maildir.Path
+			if path != "" {
+				parts := strings.Split(username, "@")
+				domain := ""
+				user := username
+				if len(parts) == 2 {
+					user = parts[0]
+					domain = parts[1]
+				}
+				path = strings.ReplaceAll(path, "%u", user)
+				path = strings.ReplaceAll(path, "%n", username) // Sometimes %n is full username
+				path = strings.ReplaceAll(path, "%d", domain)
+			} else {
+				path = filepath.Join(homeDir, "Maildir")
+			}
+
+			return maildir.NewProvider(path, username), nil
+
+		case "imap", "": // Default is IMAP
+			client, err := imap.Connect(s.imap.host, s.imap.tls, s.imap.insecure, s.Options.IMAPTimeout, s.Options.Debug)
+			if err != nil {
+				return nil, err
+			}
+
+			if err := client.Login(username, password).Wait(); err != nil {
+				client.Logout()
+				return nil, AuthError{err}
+			}
+
+			return imap.NewIMAPProvider(client, s.Options.Debug), nil
+
+		default:
+			return nil, fmt.Errorf("unknown provider type: %s", s.Options.Provider.Type)
+		}
 	}
 }
 
-func parseUpstream(str string) (*url.URL, error) {
+// ParseUpstreamURL parses a connection string into a url.URL.
+// If the string lacks a scheme, it prepends // to ensure correct parsing of the hostname.
+func ParseUpstreamURL(str string) (*url.URL, error) {
 	if !strings.ContainsAny(str, ":/") {
 		// This is a raw domain name, make it an URL with an empty scheme
 		str = "//" + str
@@ -166,37 +201,12 @@ func parseUpstream(str string) (*url.URL, error) {
 	return url.Parse(str)
 }
 
-type NoUpstreamError struct {
-	schemes []string
-}
-
-func (err *NoUpstreamError) Error() string {
-	return fmt.Sprintf("no upstream server configured for schemes %v", err.schemes)
-}
-
-// Upstream retrieves the configured upstream server URL for the provided
-// schemes. If no configured upstream server matches, a *NoUpstreamError is
-// returned. An empty URL.Scheme means that the caller needs to perform
-// auto-discovery with URL.Host.
-func (s *Server) Upstream(schemes ...string) (*url.URL, error) {
-	var urls []*url.URL
-	for _, scheme := range append(schemes, "") {
-		u, ok := s.upstreams[scheme]
-		if ok {
-			urls = append(urls, u)
-		}
-	}
-	if len(urls) == 0 {
-		return nil, &NoUpstreamError{schemes}
-	}
-	if len(urls) > 1 {
-		return nil, fmt.Errorf("multiple upstream servers are configured for schemes %v", schemes)
-	}
-	return urls[0], nil
-}
-
 func (s *Server) parseIMAPUpstream() error {
-	u, err := s.Upstream("imap", "imaps", "imap+insecure")
+	if s.Options.Provider.IMAP.Server == "" {
+		return fmt.Errorf("upstream IMAP server requires a scheme (imaps://, imap://, imap+insecure://), got empty string")
+	}
+
+	u, err := ParseUpstreamURL(s.Options.Provider.IMAP.Server)
 	if err != nil {
 		return fmt.Errorf("failed to parse upstream IMAP server: %v", err)
 	}
@@ -209,6 +219,14 @@ func (s *Server) parseIMAPUpstream() error {
 	case "imaps":
 		s.imap.tls = true
 	case "imap+insecure":
+		s.imap.insecure = true
+	case "imap", "":
+		// default
+	default:
+		return fmt.Errorf("unknown scheme for upstream IMAP server: %v", u.Scheme)
+	}
+
+	if s.Options.Provider.IMAP.Insecure {
 		s.imap.insecure = true
 	}
 
@@ -226,10 +244,11 @@ func (s *Server) parseIMAPUpstream() error {
 }
 
 func (s *Server) parseSMTPUpstream() error {
-	u, err := s.Upstream("smtp", "smtps", "smtp+insecure")
-	if _, ok := err.(*NoUpstreamError); ok {
-		return nil
-	} else if err != nil {
+	if s.Options.SMTP.Server == "" {
+		return fmt.Errorf("no SMTP server configured")
+	}
+	u, err := ParseUpstreamURL(s.Options.SMTP.Server)
+	if err != nil {
 		return fmt.Errorf("failed to parse upstream SMTP server: %v", err)
 	}
 
@@ -241,6 +260,14 @@ func (s *Server) parseSMTPUpstream() error {
 	case "smtps":
 		s.smtp.tls = true
 	case "smtp+insecure":
+		s.smtp.insecure = true
+	case "smtp", "":
+		// default
+	default:
+		return fmt.Errorf("unknown scheme for upstream SMTP server: %v", u.Scheme)
+	}
+
+	if s.Options.SMTP.Insecure {
 		s.smtp.insecure = true
 	}
 
@@ -357,7 +384,7 @@ func handleUnauthenticated(next HandlerFunc, ctx *Context) error {
 }
 
 type Options struct {
-	Upstreams               []string
+	SMTP                    SMTPOptions // SMTP configuration
 	Debug                   bool
 	LoginKey                *fernet.Key
 	EnabledPlugins          []string                // If empty, all plugins are enabled
@@ -379,7 +406,29 @@ type Options struct {
 	SMTPTimeout             time.Duration           // SMTP operation timeout, 0 means use default (30 seconds)
 	WebAuthn                WebAuthnOptions         // WebAuthn configuration
 	Plugins                 map[string]PluginConfig // Generic plugin configuration
+	Provider                ProviderOptions         // Mail provider configuration
 	ClusterBroadcaster      ClusterBroadcaster      // Optional interface for cluster message broadcasting
+}
+
+type ProviderOptions struct {
+	Type    string
+	IMAP    IMAPProviderOptions
+	Maildir MaildirProviderOptions
+}
+
+type IMAPProviderOptions struct {
+	Server   string
+	Insecure bool
+}
+
+type SMTPOptions struct {
+	Server   string
+	Insecure bool
+}
+
+type MaildirProviderOptions struct {
+	Path           string
+	AuthPasswdFile string
 }
 
 type WebAuthnOptions struct {
@@ -474,6 +523,13 @@ func (s *Server) setupMiddleware(router *Router) {
 				return err
 			}
 			s.logger.Debugf("Auth middleware: session OK for %s", ctx.Request.URL.Path)
+
+			// Enforce 2FA verification if required
+			if ctx.Session.Requires2FA() && !ctx.Session.IsAuthenticated2FA() {
+				s.logger.Debugf("Auth middleware: 2FA required but not verified for %s", ctx.Request.URL.Path)
+				return handleUnauthenticated(next, ctx)
+			}
+
 			ctx.Session.ping()
 
 			s.logger.Debugf("Auth middleware: calling handler for %s", ctx.Request.URL.Path)

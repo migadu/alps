@@ -26,6 +26,7 @@ export class AppHeader extends LitElement {
       this.i18nStore?.addEventListener('change', this._handleStoreChange);
     });
     window.addEventListener('hashchange', this._handleHashChange);
+    window.addEventListener('plugins-updated', this._handleStoreChange as EventListener);
     this._handleHashChange();
   }
 
@@ -33,6 +34,7 @@ export class AppHeader extends LitElement {
     super.disconnectedCallback();
     this.i18nStore?.removeEventListener('change', this._handleStoreChange);
     window.removeEventListener('hashchange', this._handleHashChange);
+    window.removeEventListener('plugins-updated', this._handleStoreChange as EventListener);
   }
 
   private _handleStoreChange = () => {

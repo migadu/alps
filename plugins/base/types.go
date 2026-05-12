@@ -61,6 +61,7 @@ func (mbox *MailboxStatus) URL() *url.URL {
 type IMAPMessage struct {
 	*imapclient.FetchMessageBuffer
 
+	AlpsUID          string `json:"UID"`
 	Mailbox          string
 	HasAttachments   bool
 	HasBimiPotential bool
@@ -69,7 +70,7 @@ type IMAPMessage struct {
 
 func (msg *IMAPMessage) URL() *url.URL {
 	return &url.URL{
-		Path: fmt.Sprintf("/message/%v/%v", url.PathEscape(msg.Mailbox), msg.UID),
+		Path: fmt.Sprintf("/message/%v/%v", url.PathEscape(msg.Mailbox), msg.AlpsUID),
 	}
 }
 

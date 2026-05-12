@@ -75,6 +75,7 @@ type Session struct {
 	durationUpdate     chan time.Duration
 	notice             string
 	authenticated2FA   bool          // Set to true after successful 2FA verification
+	requires2FA        bool          // Set to true if 2FA is enabled for this account
 	duration           time.Duration // Effective session duration for this user
 
 	providerLocker sync.Mutex
@@ -147,6 +148,11 @@ func (s *Session) IsAuthenticated2FA() bool {
 	return s.authenticated2FA
 }
 
+// Requires2FA returns whether this session requires 2FA verification.
+func (s *Session) Requires2FA() bool {
+	return s.requires2FA
+}
+
 // DoMail executes a mail operation using the provider. The provider can only
 // be used from inside f.
 func (s *Session) DoMail(f func(provider.MailProvider) error) error {
@@ -170,6 +176,11 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 
 	done := make(chan error, 1)
 	go func(p provider.MailProvider) {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("panic in IMAP operation: %v", r)
+			}
+		}()
 		done <- f(p)
 	}(s.provider)
 
@@ -196,6 +207,11 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 
 		done2 := make(chan error, 1)
 		go func(p provider.MailProvider) {
+			defer func() {
+				if r := recover(); r != nil {
+					done2 <- fmt.Errorf("panic in IMAP operation (retry): %v", r)
+				}
+			}()
 			done2 <- f(p)
 		}(s.provider)
 
@@ -739,11 +755,21 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	// Calculate effective session duration based on user's AutoLogout preference
 	s.duration = sm.calculateSessionDuration(s.Store())
 
+	// Check if 2FA is enabled for this user
+	if enabled, err := CheckWebAuthnEnabled(s.Store()); err == nil && enabled {
+		s.requires2FA = true
+	}
+
 	// Track the session
 	sm.sessions[token] = s
 	sm.userSessions[username] = append(sm.userSessions[username], token)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				sm.logger.Errorf("panic in session timeout goroutine: %v", r)
+			}
+		}()
 		timer := time.NewTimer(s.duration)
 
 		alive := true

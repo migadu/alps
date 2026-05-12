@@ -7,6 +7,11 @@ addr = ":1323"
 # Enable debug logging
 debug = true
 
+# Trust X-Forwarded-For and X-Real-IP headers from specific proxy IPs or CIDR blocks
+# ONLY enable this if ALPS is deployed behind a trusted reverse proxy (like Nginx or HAProxy)
+# If enabled with untrusted IPs, attackers can spoof their IP address to bypass rate limits.
+# trusted_proxies = ["127.0.0.1/32", "::1/128", "10.0.0.0/8"]
+
 # Fernet key for login persistence (optional)
 # Encrypts user credentials in browser cookies to enable "remember me" functionality
 # and session restoration after server restarts.
@@ -175,6 +180,7 @@ lockout_minutes = 15
 #   username_fails_per_hour = 20
 #   lockout_minutes = 5
 
+
 [cache]
 # Cache time-to-live in minutes (default: 10)
 # How long cached data stays valid before expiring
@@ -235,6 +241,7 @@ level = "info"
 # Must include the exact scheme (https://) and no trailing slash
 # origins = ["https://webmail.example.com"]
 
+
 [tls]
 # Enable TLS termination (default: false)
 # enabled = false
@@ -293,13 +300,16 @@ level = "info"
 # Key prefix for certificate storage (default: "")
 # prefix = "alps/"
 
+
 [cluster]
 # Optional - only needed for Let's Encrypt with S3 storage and multiple ALPS nodes
 enabled = false
+# node_id = "node-1"                            # Unique identifier for this node
 # bind = "0.0.0.0"                              # Can be "IP:port" or just "IP" (default: 0.0.0.0)
 # port = 7946                                    # Gossip port, used if not specified in bind (default: 7946)
 # secret_key = "base64-encoded-32-byte-key"    # Generate: openssl rand -base64 32
 # peers = ["node2:7946", "node3:7946"]
+
 
 [provider]
 # Mail provider type (default: "imap")
@@ -309,22 +319,28 @@ type = "imap"
 # Provider-specific options (optional map)
 # options = { "example_key" = "example_value" }
 
-# IMAP Provider Configuration
 [provider.imap]
-# IMAP server URL (optional if using [upstreams.imap])
-# server = "imaps://imap.migadu.com:993"
+# IMAP server URL
+server = "imaps://imap.migadu.com:993"
 
 # Allow insecure connections (default: false)
 # insecure = false
 
-[upstreams]
-# IMAP server
-# Supported schemes: imaps://, imap://, imap+insecure://
-imap = "imaps://imap.migadu.com:993"
+# Maildir Provider Configuration (Local filesystem)
+# [provider.maildir]
+# Path to the base maildir directory for all users
+# path = "/var/mail/virtual"
+#
+# Path to the Dovecot-style passwd file for authentication
+# auth_passwd_file = "/etc/dovecot/users"
 
+[smtp]
 # SMTP server
 # Supported schemes: smtps://, smtp://, smtp+insecure://
-smtp = "smtps://smtp.migadu.com:465"
+server = "smtps://smtp.migadu.com:465"
+
+# Allow insecure connections (default: false)
+# insecure = false
 
 
 # Plugin Configuration
@@ -346,9 +362,6 @@ enabled = true
 # Supported schemes: caldavs://, caldav+insecure://, https://, http+insecure://
 # upstream = "https://caldav.example.com"
 
-# Default view for this plugin (if applicable)
-# default_view = ""
-
 # Plugin-specific options (optional map)
 # options = { "example_key" = "example_value" }
 
@@ -359,9 +372,6 @@ enabled = true
 # CardDAV upstream URL (optional, can use auto-discovery)
 # Supported schemes: carddavs://, carddav+insecure://, https://, http+insecure://
 # upstream = "https://carddav.example.com"
-
-# Default view for this plugin (if applicable)
-# default_view = ""
 
 # Plugin-specific options (optional map)
 # options = { "example_key" = "example_value" }
@@ -378,6 +388,7 @@ enabled = true
 [plugin.gpg]
 # GPG End-to-End Encryption plugin
 enabled = true
+
 
 # Password Change Configuration
 # Allows users to change their password via an external HTTP API
