@@ -66,7 +66,7 @@ In compliance with NLnet's policies and our own project standards, the use of Ge
 
 ## Contributing
 
-Send patches via [GitHub Pull Requests], report bugs on the [issue tracker].
+Send patches via GitHub Pull Requests, report bugs on the issue tracker.
 
 ## Supported by
 
