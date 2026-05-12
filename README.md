@@ -1,7 +1,5 @@
 # [alps]
 
-[![GoDoc](https://godoc.org/github.com/migadu/alps?status.svg)](https://godoc.org/github.com/migadu/alps)
-
 A simple and extensible webmail.
 
 > **Note**: This repository is a continuation of our previous instance hosted at [SourceHut (git.sr.ht/~migadu/alps)](https://git.sr.ht/~migadu/alps).
