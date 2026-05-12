@@ -297,7 +297,7 @@ func registerRoutes(p *plugin) {
 				version = "3.0"
 			}
 			if !addressBook.SupportsAddressData(vcard.MIMEType, version) {
-				return fmt.Errorf("upstream CardDAV server doesn't support vCard %v", version)
+				return fmt.Errorf("CardDAV server doesn't support vCard %v", version)
 			}
 			card.SetValue(vcard.FieldVersion, version)
 		}

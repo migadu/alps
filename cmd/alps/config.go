@@ -172,7 +172,7 @@ type WebAuthnConfig struct {
 
 type PluginConfig struct {
 	Enabled  bool                   `toml:"enabled"`
-	Upstream string                 `toml:"upstream"`
+	Server  string                 `toml:"server"`
 	Options  map[string]interface{} `toml:"options"`
 }
 
@@ -187,15 +187,15 @@ func (c *Config) GetEnabledPlugins() []string {
 	return enabled
 }
 
-// GetPluginUpstreams returns additional upstream servers from plugin configs
-func (c *Config) GetPluginUpstreams() []string {
-	var upstreams []string
+// GetPluginServers returns additional servers from plugin configs
+func (c *Config) GetPluginServers() []string {
+	var servers []string
 	for _, cfg := range c.Plugin {
-		if cfg.Enabled && cfg.Upstream != "" {
-			upstreams = append(upstreams, cfg.Upstream)
+		if cfg.Enabled && cfg.Server != "" {
+			servers = append(servers, cfg.Server)
 		}
 	}
-	return upstreams
+	return servers
 }
 
 // LoadConfig loads configuration from a TOML file
@@ -360,9 +360,9 @@ func (c *Config) ToOptions() (alps.Options, error) {
 		options.Plugins = make(map[string]alps.PluginConfig)
 		for name, cfg := range c.Plugin {
 			options.Plugins[name] = alps.PluginConfig{
-				Enabled:  cfg.Enabled,
-				Upstream: cfg.Upstream,
-				Options:  cfg.Options,
+				Enabled: cfg.Enabled,
+				Server:  cfg.Server,
+				Options: cfg.Options,
 			}
 		}
 	}

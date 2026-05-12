@@ -358,9 +358,9 @@ enabled = true
 [plugin.caldav]
 # CalDAV plugin for calendar support
 enabled = true
-# CalDAV upstream URL (optional, can use auto-discovery)
+# CalDAV server URL (optional, can use auto-discovery)
 # Supported schemes: caldavs://, caldav+insecure://, https://, http+insecure://
-# upstream = "https://caldav.example.com"
+# server = "https://caldav.example.com"
 
 # Plugin-specific options (optional map)
 # options = { "example_key" = "example_value" }
@@ -369,9 +369,9 @@ enabled = true
 [plugin.carddav]
 # CardDAV plugin for contacts support
 enabled = true
-# CardDAV upstream URL (optional, can use auto-discovery)
+# CardDAV server URL (optional, can use auto-discovery)
 # Supported schemes: carddavs://, carddav+insecure://, https://, http+insecure://
-# upstream = "https://carddav.example.com"
+# server = "https://carddav.example.com"
 
 # Plugin-specific options (optional map)
 # options = { "example_key" = "example_value" }
@@ -380,9 +380,9 @@ enabled = true
 [plugin.managesieve]
 # ManageSieve plugin for email filtering
 enabled = true
-# ManageSieve upstream URL (optional, can use auto-discovery via SRV records)
+# ManageSieve server URL (optional, can use auto-discovery via SRV records)
 # Supported schemes: managesieves://, managesieve+insecure://, managesieve://, sieve://
-# upstream = "managesieves://sieve.example.com:4190"
+# server = "managesieves://sieve.example.com:4190"
 
 
 [plugin.gpg]

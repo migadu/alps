@@ -138,7 +138,7 @@ Required when using Let's Encrypt with S3 storage across multiple ALPS nodes.
 
 ---
 
-## 8. Provider & Upstreams
+## 8. Provider & Servers
 Configures the backend mail services.
 
 ### `[provider]`

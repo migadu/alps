@@ -58,10 +58,10 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 		Options: options,
 	}
 
-	if err := s.parseIMAPUpstream(); err != nil {
+	if err := s.parseIMAPServer(); err != nil {
 		return nil, err
 	}
-	if err := s.parseSMTPUpstream(); err != nil {
+	if err := s.parseSMTPServer(); err != nil {
 		return nil, err
 	}
 
@@ -191,9 +191,9 @@ func (s *Server) createProviderFactory() provider.AuthenticatedProviderFactory {
 	}
 }
 
-// ParseUpstreamURL parses a connection string into a url.URL.
+// ParseServerURL parses a connection string into a url.URL.
 // If the string lacks a scheme, it prepends // to ensure correct parsing of the hostname.
-func ParseUpstreamURL(str string) (*url.URL, error) {
+func ParseServerURL(str string) (*url.URL, error) {
 	if !strings.ContainsAny(str, ":/") {
 		// This is a raw domain name, make it an URL with an empty scheme
 		str = "//" + str
@@ -201,18 +201,18 @@ func ParseUpstreamURL(str string) (*url.URL, error) {
 	return url.Parse(str)
 }
 
-func (s *Server) parseIMAPUpstream() error {
+func (s *Server) parseIMAPServer() error {
 	if s.Options.Provider.IMAP.Server == "" {
-		return fmt.Errorf("upstream IMAP server requires a scheme (imaps://, imap://, imap+insecure://), got empty string")
+		return fmt.Errorf("IMAP server requires a scheme (imaps://, imap://, imap+insecure://), got empty string")
 	}
 
-	u, err := ParseUpstreamURL(s.Options.Provider.IMAP.Server)
+	u, err := ParseServerURL(s.Options.Provider.IMAP.Server)
 	if err != nil {
-		return fmt.Errorf("failed to parse upstream IMAP server: %v", err)
+		return fmt.Errorf("failed to parse IMAP server: %v", err)
 	}
 
 	if u.Scheme == "" {
-		return fmt.Errorf("upstream IMAP server requires a scheme (imaps://, imap://, imap+insecure://), got: %v", u.String())
+		return fmt.Errorf("IMAP server requires a scheme (imaps://, imap://, imap+insecure://), got: %v", u.String())
 	}
 
 	switch u.Scheme {
@@ -223,7 +223,7 @@ func (s *Server) parseIMAPUpstream() error {
 	case "imap", "":
 		// default
 	default:
-		return fmt.Errorf("unknown scheme for upstream IMAP server: %v", u.Scheme)
+		return fmt.Errorf("unknown scheme for IMAP server: %v", u.Scheme)
 	}
 
 	if s.Options.Provider.IMAP.Insecure {
@@ -239,21 +239,21 @@ func (s *Server) parseIMAPUpstream() error {
 		}
 	}
 
-	s.logger.Printf("Configured upstream IMAP server: %v", u)
+	s.logger.Printf("Configured IMAP server: %v", u)
 	return nil
 }
 
-func (s *Server) parseSMTPUpstream() error {
+func (s *Server) parseSMTPServer() error {
 	if s.Options.SMTP.Server == "" {
 		return fmt.Errorf("no SMTP server configured")
 	}
-	u, err := ParseUpstreamURL(s.Options.SMTP.Server)
+	u, err := ParseServerURL(s.Options.SMTP.Server)
 	if err != nil {
-		return fmt.Errorf("failed to parse upstream SMTP server: %v", err)
+		return fmt.Errorf("failed to parse SMTP server: %v", err)
 	}
 
 	if u.Scheme == "" {
-		return fmt.Errorf("upstream SMTP server requires a scheme (smtps://, smtp://, smtp+insecure://), got: %v", u.String())
+		return fmt.Errorf("SMTP server requires a scheme (smtps://, smtp://, smtp+insecure://), got: %v", u.String())
 	}
 
 	switch u.Scheme {
@@ -264,7 +264,7 @@ func (s *Server) parseSMTPUpstream() error {
 	case "smtp", "":
 		// default
 	default:
-		return fmt.Errorf("unknown scheme for upstream SMTP server: %v", u.Scheme)
+		return fmt.Errorf("unknown scheme for SMTP server: %v", u.Scheme)
 	}
 
 	if s.Options.SMTP.Insecure {
@@ -280,7 +280,7 @@ func (s *Server) parseSMTPUpstream() error {
 		}
 	}
 
-	s.logger.Printf("Configured upstream SMTP server: %v", u)
+	s.logger.Printf("Configured SMTP server: %v", u)
 	return nil
 }
 
@@ -438,9 +438,9 @@ type WebAuthnOptions struct {
 }
 
 type PluginConfig struct {
-	Enabled  bool                   `toml:"enabled"`
-	Upstream string                 `toml:"upstream"`
-	Options  map[string]interface{} `toml:"options"`
+	Enabled bool                   `toml:"enabled"`
+	Server  string                 `toml:"server"`
+	Options map[string]interface{} `toml:"options"`
 }
 
 // setupMiddleware registers middleware on the router.

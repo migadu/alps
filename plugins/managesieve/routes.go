@@ -20,7 +20,7 @@ func (p *plugin) connectClient(ctx *alps.Context) (*MSClient, error) {
 	username := ctx.Session.Username()
 
 	if p.url == nil {
-		return nil, fmt.Errorf("ManageSieve upstream is not configured")
+		return nil, fmt.Errorf("ManageSieve server is not configured")
 	}
 
 	addr := p.url.Host

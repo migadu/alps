@@ -14,16 +14,16 @@ type plugin struct {
 
 func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	cfg := srv.Options.Plugins["managesieve"]
-	if cfg.Upstream == "" {
-		// No upstream configured, disable plugin
+	if cfg.Server == "" {
+		// No server configured, disable plugin
 		return nil, nil
 	}
-	u, err := alps.ParseUpstreamURL(cfg.Upstream)
+	u, err := alps.ParseServerURL(cfg.Server)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse upstream ManageSieve server: %v", err)
+		return nil, fmt.Errorf("failed to parse ManageSieve server: %v", err)
 	}
 
-	srv.Logger().Printf("Configured upstream ManageSieve server: %v", u)
+	srv.Logger().Printf("Configured ManageSieve server: %v", u)
 
 	p := &plugin{
 		GoPlugin: alps.GoPlugin{Name: "managesieve"},

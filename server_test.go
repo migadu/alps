@@ -10,19 +10,19 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestParseUpstreamURL(t *testing.T) {
-	u, err := ParseUpstreamURL("imap.example.com")
+func TestParseServerURL(t *testing.T) {
+	u, err := ParseServerURL("imap.example.com")
 	assert.NoError(t, err)
 	assert.Equal(t, "imap.example.com", u.Host)
 	assert.Equal(t, "", u.Scheme)
 
-	u, err = ParseUpstreamURL("imaps://imap.example.com:993")
+	u, err = ParseServerURL("imaps://imap.example.com:993")
 	assert.NoError(t, err)
 	assert.Equal(t, "imap.example.com:993", u.Host)
 	assert.Equal(t, "imaps", u.Scheme)
 }
 
-func TestServerUpstreamConfig(t *testing.T) {
+func TestServerPluginConfig(t *testing.T) {
 	logger := &NilLogger{}
 
 	// Test 1: Only domain name with scheme

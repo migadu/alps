@@ -142,7 +142,7 @@ func registerRoutes(p *plugin) {
 </C:mkcalendar>`, req.Name)
 
 		rt := authRoundTripper{
-			upstream: http.DefaultTransport,
+			server: http.DefaultTransport,
 			session:  ctx.Session,
 			debug:    p.debug,
 		}
@@ -218,7 +218,7 @@ func registerRoutes(p *plugin) {
 </D:propertyupdate>`, req.Name)
 
 		rt := authRoundTripper{
-			upstream: http.DefaultTransport,
+			server: http.DefaultTransport,
 			session:  ctx.Session,
 			debug:    p.debug,
 		}

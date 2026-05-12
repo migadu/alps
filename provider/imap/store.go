@@ -22,7 +22,7 @@ func newStore(client *imapclient.Client) (provider.Store, error) {
 		return nil, err
 	}
 	if !warnedTransientStore {
-		log.Print("alps/provider: Upstream IMAP server doesn't support the METADATA extension, using transient store instead")
+		log.Print("alps/provider: IMAP server doesn't support the METADATA extension, using transient store instead")
 		warnedTransientStore = true
 	}
 	return newMemoryStore(), nil

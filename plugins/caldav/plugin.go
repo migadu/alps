@@ -40,7 +40,7 @@ type plugin struct {
 
 func (p *plugin) client(ctx context.Context, session *alps.Session) (*caldav.Client, error) {
 	if p.url == nil {
-		return nil, fmt.Errorf("CalDAV upstream is not configured")
+		return nil, fmt.Errorf("CalDAV server is not configured")
 	}
 	return newClient(p.url, session, p.debug)
 }
@@ -88,13 +88,13 @@ func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session)
 
 func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	cfg := srv.Options.Plugins["caldav"]
-	if cfg.Upstream == "" {
-		// No upstream configured, disable plugin
+	if cfg.Server == "" {
+		// No server configured, disable plugin
 		return nil, nil
 	}
-	u, err := alps.ParseUpstreamURL(cfg.Upstream)
+	u, err := alps.ParseServerURL(cfg.Server)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse upstream CalDAV server: %v", err)
+		return nil, fmt.Errorf("failed to parse CalDAV server: %v", err)
 	}
 
 	switch u.Scheme {
@@ -119,7 +119,7 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 		srv.Logger().Printf("caldav: failed to connect to CalDAV server %q: %v (continuing anyway)", u, err)
 	}
 
-	srv.Logger().Printf("Configured upstream CalDAV server: %v", u)
+	srv.Logger().Printf("Configured CalDAV server: %v", u)
 
 	p := &plugin{
 		GoPlugin:     alps.GoPlugin{Name: "caldav"},

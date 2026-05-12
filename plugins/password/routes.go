@@ -138,7 +138,7 @@ func handlePasswordChange(ctx *alps.Context) error {
 	if resp.StatusCode >= 400 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		ctx.Server.Logger().Errorf("Password change failed, status %d: %s", resp.StatusCode, string(bodyBytes))
-		return ctx.JSON(resp.StatusCode, map[string]string{"error": "Password change rejected by upstream server"})
+		return ctx.JSON(resp.StatusCode, map[string]string{"error": "Password change rejected by server"})
 	}
 
 	// Update the session password
