@@ -3,7 +3,7 @@ package managesieve
 import (
 	"strings"
 
-	"github.com/foxcpp/go-sieve"
+	"github.com/migadu/go-sieve"
 )
 
 // ValidateScript uses the internal go-sieve library to parse the script and

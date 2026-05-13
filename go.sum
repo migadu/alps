@@ -159,8 +159,8 @@ github.com/migadu/go-imap/v2 v2.0.0-20260316134619-b8676c927c75 h1:WchM0Iwhwtysh
 github.com/migadu/go-imap/v2 v2.0.0-20260316134619-b8676c927c75/go.mod h1:NPrus+m0RgwOPTVuxaIay2Sipli9TDC4eRQnZCcUmq4=
 github.com/migadu/go-message v0.0.0-20251204083122-d583d81190da h1:AOv2uDrSq1ly/RkWa46Dt6+Uj3nKyrPBd3AMhZxRSLk=
 github.com/migadu/go-message v0.0.0-20251204083122-d583d81190da/go.mod h1:XpJyL70LwRvq2a8rVbHXikPgKj8+aI0kGdHlg16ibYA=
-github.com/migadu/go-sieve v0.0.0-20260206073348-d47e90518da5 h1:gD6/XE0UKehTaj8+H4YHj4v0NyeRKEm3RxqkRqbrF8s=
-github.com/migadu/go-sieve v0.0.0-20260206073348-d47e90518da5/go.mod h1:XykjlGKeykHsZKfFBDlmJiFbbQT+6Li9iUNNuZQNqxg=
+github.com/migadu/go-sieve v1.0.0 h1:drZVZNgaMAV7DWhr/Yt6TooE+dCM4H3y56OmF+T6mfs=
+github.com/migadu/go-sieve v1.0.0/go.mod h1:acDCLKCYxNSRPgMKUPYPhSpddNj6PerKg8Pwca0tuwo=
 github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
 github.com/modern-go/reflect2 v0.0.0-20180701023420-4b7aa43c6742/go.mod h1:bx2lNnkwVCuqBIxFjflWJWanXIb3RllmbCylyMrvgv0=
