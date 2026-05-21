@@ -69,7 +69,9 @@ export const en = {
       messageSortCriteria: 'Message Sort Criteria',
       messageSortCriteriaDesc: 'Choose whether to sort by the original received date or by folder filing date.',
       sortUid: 'Folder Filing Date',
-      sortDate: 'Received Date'
+      sortDate: 'Received Date',
+      enableThreading: 'Group messages into conversations',
+      themeIframeContent: 'Apply theme to HTML messages content'
     },
     appearance: {
       colorTheme: 'Color Theme',
@@ -324,7 +326,8 @@ export const en = {
     downloadMessage: 'Download message',
     showOriginal: 'Show original',
     verifiedSender: 'Verified Sender',
-    unverifiedSender: 'Unverified Sender'
+    unverifiedSender: 'Unverified Sender',
+    clickToExpand: 'Click to expand message content'
   },
   originalMessage: {
     title: 'Original Message',

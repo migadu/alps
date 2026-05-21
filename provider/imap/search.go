@@ -149,6 +149,16 @@ func prepareIMAPSearch(terms string) *imap.SearchCriteria {
 						criteria.NotFlag = append(criteria.NotFlag, imap.FlagSeen)
 					}
 				}
+			case "header":
+				hParts := strings.SplitN(value, ":", 2)
+				if len(hParts) == 2 {
+					hVal := hParts[1]
+					if len(hVal) >= 2 && hVal[0] == '"' && hVal[len(hVal)-1] == '"' {
+						hVal = hVal[1 : len(hVal)-1]
+					}
+					criteria = searchCriteriaAnd(
+						criteria, searchCriteriaHeader(hParts[0], hVal))
+				}
 			default:
 				continue
 			}

@@ -63,7 +63,9 @@ export const sr = {
       messageSortCriteria: 'Kriterijum za sortiranje poruka',
       messageSortCriteriaDesc: 'Izaberite da li ćete sortirati po originalnom datumu prijema ili po datumu arhiviranja u fasciklu.',
       sortUid: 'Datum arhiviranja u fasciklu',
-      sortDate: 'Datum prijema'
+      sortDate: 'Datum prijema',
+      enableThreading: 'Grupiši poruke u konverzacije',
+      themeIframeContent: 'Primeni temu na HTML sadržaj poruka'
     },
     appearance: {
       colorTheme: 'Tema boja',
@@ -290,7 +292,8 @@ export const sr = {
     downloadMessage: 'Preuzmi poruku',
     showOriginal: 'Prikaži original',
     verifiedSender: 'Verifikovan pošiljalac',
-    unverifiedSender: 'Neverifikovan pošiljalac'
+    unverifiedSender: 'Neverifikovan pošiljalac',
+    clickToExpand: 'Kliknite da proširite sadržaj poruke'
   },
   originalMessage: {
     title: 'Originalna poruka',

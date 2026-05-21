@@ -1,12 +1,13 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { live } from 'lit/directives/live.js';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName } from '../utils/flags';
 import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_TRASH, FOLDER_JUNK, FOLDER_SPAM, FOLDER_ARCHIVE, FOLDER_ARCHIVES } from '../utils/folders';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
-import { renderIcon, formatFullDate, formatSize } from '../utils/ui';
+import { renderIcon, formatFullDate, formatSize, getBimiAvatarUrl } from '../utils/ui';
 import './alps-recipient-pill';
 import './alps-attachment-list';
 import './alps-toolbar';
@@ -25,6 +26,27 @@ import { generateQuote } from '../utils/email-quote';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { Logger } from '../utils/logger';
 import { registry } from '../plugin-registry';
+import { messageOperations } from '../services/message-operations';
+import { applyThemeToIframe as sharedApplyTheme, setupIframeSizing as sharedSetupSizing } from '../utils/reader-utils';
+import './alps-thread-card';
+
+
+interface ThreadMessageItem {
+  message: any;
+  content: string;
+  mimeType: string;
+  loading: boolean;
+  attachments: any[];
+  rawMessageHtml: string;
+  hasHtml: boolean;
+  hasText: boolean;
+  activeBanners: any[];
+  allowRemoteResources: boolean;
+  hasRemoteResources: boolean;
+  isSent: boolean;
+  mailbox: string;
+  expanded: boolean;
+}
 
 @customElement('alps-message-reader')
 export class MessageReader extends LitElement {
@@ -102,7 +124,7 @@ export class MessageReader extends LitElement {
         partPath: a.Path ? a.Path.join('.') : undefined
       })) : [];
 
-      const inReplyTo = (action === 'reply' || action === 'replyAll') ? this.message.Envelope?.MessageId : undefined;
+      const inReplyTo = (action === 'reply' || action === 'replyAll') ? (this.message.Envelope?.MessageID || this.message.Envelope?.MessageId) : undefined;
 
       this.composeStore.openComposer({
         subject,
@@ -182,6 +204,72 @@ export class MessageReader extends LitElement {
   @state() private hasRemoteResources = false;
   @state() private rawMessageHtml = '';
   @state() private isScrolled = false;
+  @state() private threadItems: ThreadMessageItem[] = [];
+  @state() private _isThread = false;
+  private _deferPropertySync = false;
+
+  connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener('external-message-flags-changed', this._handleExternalFlagsChanged);
+    this.updateComplete.then(() => {
+      this.settingsStore?.addEventListener('change', this._handleSettingsChange);
+    });
+  }
+
+  disconnectedCallback() {
+    this.settingsStore?.removeEventListener('change', this._handleSettingsChange);
+    window.removeEventListener('external-message-flags-changed', this._handleExternalFlagsChanged);
+    super.disconnectedCallback();
+  }
+
+  private _handleExternalFlagsChanged = (e: Event) => {
+    const customE = e as CustomEvent;
+    if (!customE.detail) return;
+    const { uids, flag, action } = customE.detail;
+    if (!this.threadItems || this.threadItems.length === 0) return;
+
+    let updated = false;
+    for (let i = 0; i < this.threadItems.length; i++) {
+      const item = this.threadItems[i];
+      if (item.message && uids.includes(String(item.message.UID))) {
+        const oldFlags = item.message.Flags || [];
+        const hasFlag = oldFlags.includes(flag);
+        if (action === 'add' && !hasFlag) {
+          this.threadItems[i] = {
+            ...item,
+            message: {
+              ...item.message,
+              Flags: [...oldFlags, flag]
+            }
+          };
+          updated = true;
+        } else if (action === 'remove' && hasFlag) {
+          this.threadItems[i] = {
+            ...item,
+            message: {
+              ...item.message,
+              Flags: oldFlags.filter((f: string) => f !== flag)
+            }
+          };
+          updated = true;
+        }
+      }
+    }
+
+    if (updated) {
+      this.threadItems = [...this.threadItems];
+      this.requestUpdate();
+      if (this.message && uids.includes(String(this.message.UID))) {
+        const hasFlag = this.message.Flags?.includes(flag);
+        if (action === 'add' && !hasFlag) {
+          this.message.Flags = [...(this.message.Flags || []), flag];
+        } else if (action === 'remove' && hasFlag) {
+          this.message.Flags = this.message.Flags.filter((f: string) => f !== flag);
+        }
+        this.message = { ...this.message };
+      }
+    }
+  };
 
   static styles = [
     popupStyles,
@@ -334,6 +422,8 @@ export class MessageReader extends LitElement {
     .reader-recipients-list {
       line-height: 1.5;
       font-size: 14px;
+      flex: 1;
+      min-width: 0;
     }
 
     alps-recipient-pill:not(:last-child)::after {
@@ -541,6 +631,18 @@ export class MessageReader extends LitElement {
         font-weight: normal;
       }
     }
+
+    .thread-container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 16px;
+    }
+
+    .reader-header.thread-header-grouped {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
   `];
 
   /**
@@ -569,18 +671,47 @@ export class MessageReader extends LitElement {
         this.hasHtml = false;
         this.hasText = false;
         this.activeBanners = [];
+        this.threadItems = [];
       } else {
         const isNewMessage = !oldMessage || oldMessage.UID !== this.message.UID || oldMailbox !== this.mailbox;
 
         if (isNewMessage) {
           this.localPreferredView = null;
           this.fetchMessageBody(this.message, this.message._isAutosaveUpdate);
-        } else if (this.message._isAutosaveUpdate && oldMessage && this.message !== oldMessage) {
-          this.fetchMessageBody(this.message, true);
+        } else {
+          if (this.threadItems && this.threadItems.length > 0) {
+            let updated = false;
+            for (let i = 0; i < this.threadItems.length; i++) {
+              const item = this.threadItems[i];
+              if (item.message && String(item.message.UID) === String(this.message.UID)) {
+                const oldFlags = item.message.Flags || [];
+                const newFlags = this.message.Flags || [];
+                const flagsChanged = oldFlags.length !== newFlags.length || !oldFlags.every((f: string) => newFlags.includes(f));
+                if (flagsChanged) {
+                  this.threadItems[i] = {
+                    ...item,
+                    message: {
+                      ...item.message,
+                      Flags: [...newFlags]
+                    }
+                  };
+                  updated = true;
+                }
+              }
+            }
+            if (updated) {
+              this.threadItems = [...this.threadItems];
+            }
+          }
+          if (this.message._isAutosaveUpdate && oldMessage && this.message !== oldMessage) {
+            this.fetchMessageBody(this.message, true);
+          }
         }
       }
     }
   }
+
+
 
   /**
    * Allows the loading of remote resources (such as tracking pixels or external images)
@@ -599,14 +730,6 @@ export class MessageReader extends LitElement {
     }
   }
 
-  /**
-   * Fetches the full message body (both metadata and raw content) from the backend API.
-   * Utilizes an in-memory cache to prevent redundant requests. Sanitizes HTML content 
-   * to prevent XSS before storing it in the component state for rendering.
-   * 
-   * @param msg The message object containing the UID to fetch.
-   * @param silent If true, skips showing the loading indicator and clearing the current content.
-   */
   private async fetchMessageBody(msg: any, silent = false) {
     if (!silent) {
       this.content = '';
@@ -616,65 +739,295 @@ export class MessageReader extends LitElement {
       this.activeBanners = [];
       this.allowRemoteResources = this.settingsStore?.getState().showRemoteContent === 'always';
       this.hasRemoteResources = false;
+      this.threadItems = [];
     }
+
+    const primaryItem: ThreadMessageItem = {
+      message: msg,
+      content: '',
+      mimeType: '',
+      loading: true,
+      attachments: [],
+      rawMessageHtml: '',
+      hasHtml: false,
+      hasText: false,
+      activeBanners: [],
+      allowRemoteResources: this.allowRemoteResources,
+      hasRemoteResources: false,
+      isSent: (this.mailbox || '').toLowerCase() === this.getSentMailboxName().toLowerCase(),
+      mailbox: this.mailbox,
+      expanded: true
+    };
+
+    const enableThreading = this.settingsStore?.getState()?.enableThreading ?? true;
+
+    // Check if we already know this is part of a thread from the list message envelope or references
+    const inReplyTo = msg.Envelope?.InReplyTo;
+    const refs = msg.References || msg.Envelope?.References;
+    const hasReferences = refs && (Array.isArray(refs) ? refs.length > 0 : refs !== "");
+    const isKnownThread = enableThreading && (!!inReplyTo || !!hasReferences);
+
+    // Build initial search IDs from list message Envelope and References (available immediately)
+    const initialSearchIds = new Set<string>();
+    const ownMessageId = msg.Envelope?.MessageID || msg.Envelope?.MessageId;
+    if (ownMessageId) initialSearchIds.add(ownMessageId);
+    if (inReplyTo) {
+      if (Array.isArray(inReplyTo)) {
+        for (const irt of inReplyTo) { if (irt) initialSearchIds.add(irt); }
+      } else {
+        initialSearchIds.add(inReplyTo);
+      }
+    }
+    if (refs) {
+      if (Array.isArray(refs)) {
+        for (const ref of refs) { if (ref) initialSearchIds.add(ref); }
+      } else {
+        initialSearchIds.add(refs);
+      }
+    }
+
+    if (isKnownThread) {
+      // We know it's a thread — show message immediately in thread card, search in background
+      this._isThread = true;
+      this._deferPropertySync = false;
+      this.threadItems = [primaryItem];
+      this.fetchItemBody(primaryItem).then(() => {
+        if (this.message?.UID !== msg.UID || this.mailbox !== msg.Mailbox) {
+          return;
+        }
+        this.requestUpdate();
+
+        // Search for thread siblings in parallel
+        if (initialSearchIds.size > 0) {
+          this._searchThreadMessages(initialSearchIds).then(async (results) => {
+            if (this.message?.UID !== msg.UID || this.mailbox !== msg.Mailbox) {
+              return;
+            }
+            // Check for extra IDs from References after body fetch
+            const updatedMsg = primaryItem.message;
+            const updatedRefs = updatedMsg.References || updatedMsg.Envelope?.References;
+            if (updatedRefs) {
+              const extraIds = new Set<string>();
+              const refList = Array.isArray(updatedRefs) ? updatedRefs : [updatedRefs];
+              for (const ref of refList) {
+                if (ref && !initialSearchIds.has(ref)) extraIds.add(ref);
+              }
+              if (extraIds.size > 0) {
+                const extraResults = await this._searchThreadMessages(extraIds);
+                if (this.message?.UID !== msg.UID || this.mailbox !== msg.Mailbox) {
+                  return;
+                }
+                results.push(...extraResults);
+              }
+            }
+
+            if (results.length > 0) {
+              this._mergeThreadResults(primaryItem, results);
+            }
+          });
+        }
+      });
+    } else {
+      // No InReplyTo or References — could be a root message with replies, or standalone
+      this._isThread = false;
+      this._deferPropertySync = false;
+      this.threadItems = [primaryItem];
+
+      this.fetchItemBody(primaryItem).then(() => {
+        if (this.message?.UID !== msg.UID || this.mailbox !== msg.Mailbox) {
+          return;
+        }
+        this.requestUpdate();
+
+        // Search for thread replies in background without blocking rendering
+        if (enableThreading && initialSearchIds.size > 0) {
+          this._searchThreadMessages(initialSearchIds).then((results) => {
+            if (this.message?.UID !== msg.UID || this.mailbox !== msg.Mailbox) {
+              return;
+            }
+            if (results.length > 0) {
+              this._mergeThreadResults(primaryItem, results);
+            }
+          });
+        }
+      });
+    }
+  }
+
+  private _mergeThreadResults(primaryItem: ThreadMessageItem, fetchedMessages: any[]) {
+    const updatedMsg = primaryItem.message;
+    fetchedMessages.push(updatedMsg);
+
+    // Deduplicate using Mailbox + UID
+    const existingMap = new Map<string, any>();
+    for (const m of fetchedMessages) {
+      existingMap.set(`${m.Mailbox}-${m.UID}`, m);
+    }
+    const uniqueMessages = Array.from(existingMap.values());
+
+    uniqueMessages.sort((a, b) => {
+      const dateA = a.Envelope?.Date ? new Date(a.Envelope.Date).getTime() : 0;
+      const dateB = b.Envelope?.Date ? new Date(b.Envelope.Date).getTime() : 0;
+      return dateA - dateB;
+    });
+
+    this._isThread = uniqueMessages.length > 1;
+
+    if (uniqueMessages.length > 1) {
+      const sentMailbox = this.getSentMailboxName();
+      this.threadItems = uniqueMessages.map(m => {
+        const isCurrent = String(m.Mailbox) === String(updatedMsg.Mailbox) && String(m.UID) === String(updatedMsg.UID);
+
+        if (isCurrent) {
+          return primaryItem;
+        }
+
+        return {
+          message: m,
+          content: '',
+          mimeType: '',
+          loading: false,
+          attachments: [],
+          rawMessageHtml: '',
+          hasHtml: false,
+          hasText: false,
+          activeBanners: [],
+          allowRemoteResources: this.allowRemoteResources,
+          hasRemoteResources: false,
+          isSent: (this.mailbox || '').toLowerCase() === sentMailbox.toLowerCase() || (m.Mailbox || '').toLowerCase() === sentMailbox.toLowerCase(),
+          mailbox: m.Mailbox || this.mailbox,
+          expanded: false
+        };
+      });
+    } else {
+      this.threadItems = [primaryItem];
+    }
+    this.requestUpdate();
+  }
+
+  private async _searchThreadMessages(searchIds: Set<string>): Promise<any[]> {
+    const fetchedMessages: any[] = [];
+    const sentMailbox = this.getSentMailboxName();
+    const mailboxesToSearch = [this.mailbox];
+    if (this.mailbox.toLowerCase() !== sentMailbox.toLowerCase()) {
+      mailboxesToSearch.push(sentMailbox);
+    }
+
+    try {
+      const fetchPromises: Promise<any>[] = [];
+      for (const mbx of mailboxesToSearch) {
+        for (const id of searchIds) {
+          fetchPromises.push(
+            fetchWithTimeout(`/mailboxes/${encodeURIComponent(mbx)}?query=${encodeURIComponent('header:References:"' + id + '"')}`),
+            fetchWithTimeout(`/mailboxes/${encodeURIComponent(mbx)}?query=${encodeURIComponent('header:Message-ID:"' + id + '"')}`),
+            fetchWithTimeout(`/mailboxes/${encodeURIComponent(mbx)}?query=${encodeURIComponent('header:In-Reply-To:"' + id + '"')}`)
+          );
+        }
+      }
+
+      const responses = await Promise.all(fetchPromises);
+      for (const res of responses) {
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.Messages) {
+            const urlMatch = res.url.match(/\/mailboxes\/([^\?]+)/);
+            const mbxName = urlMatch ? decodeURIComponent(urlMatch[1]) : this.mailbox;
+            data.Messages.forEach((m: any) => m.Mailbox = m.Mailbox || mbxName);
+            fetchedMessages.push(...data.Messages);
+          }
+        }
+      }
+    } catch (e) {
+      Logger.error('Failed to fetch thread messages', e);
+    }
+
+    return fetchedMessages;
+  }
+
+  private updateThreadItemReference(item: ThreadMessageItem) {
+    if (!item.message) return;
+    const idx = this.threadItems.findIndex(i => String(i.message?.UID) === String(item.message?.UID));
+    if (idx !== -1) {
+      // Create a shallow copy to change the reference, reactively updating Lit child components
+      this.threadItems[idx] = { ...item };
+      this.threadItems = [...this.threadItems];
+    }
+  }
+
+  private async fetchItemBody(item: ThreadMessageItem) {
+    if (!item.message) return;
+    const msg = item.message;
+    const mailbox = item.mailbox;
 
     const preferredView = this.localPreferredView || this.settingsStore?.getState()?.preferredView || 'html';
 
     try {
-      const cached = MessageCache.get(this.mailbox, msg.UID.toString(), preferredView);
+      const cached = MessageCache.get(mailbox, msg.UID.toString(), preferredView);
       if (cached) {
-        this.attachments = cached.Attachments || [];
-        this.hasHtml = cached.HasHTML || false;
-        this.hasText = cached.HasText || false;
+        item.attachments = cached.Attachments || [];
+        item.hasHtml = cached.HasHTML || false;
+        item.hasText = cached.HasText || false;
         if (cached.Message) {
-          // Merge cached message with the passed msg to preserve fresh flags from the list
-          this.message = { ...this.message, ...cached.Message, ...msg };
+          item.message = { ...msg, ...cached.Message };
         }
         if (cached.Part) {
-          this.mimeType = cached.Part.MIMEType || cached.Part.MimeType || 'text/plain';
+          item.mimeType = cached.Part.MIMEType || cached.Part.MimeType || 'text/plain';
           if (cached.RawHtml === undefined) {
             if (cached.RawText !== undefined) {
-              this.content = cached.RawText;
-              const payload: any = { content: this.content, isHtml: false, message: this.message, banners: [], i18nStore: this.i18nStore };
+              item.content = cached.RawText;
+              const payload: any = { content: item.content, isHtml: false, message: item.message, banners: [], i18nStore: this.i18nStore };
               const hookResults = await registry.invokeHookAsync('reader:content', payload);
               for (const res of hookResults) {
-                if (res && typeof res === 'string') this.content = res;
+                if (res && typeof res === 'string') item.content = res;
               }
-              this.activeBanners = payload.banners || [];
+              item.activeBanners = payload.banners || [];
               if (payload.isHtml) {
-                this.mimeType = 'text/html';
-                this.hasHtml = true;
-                this.content = sanitizeMessageHTML(this.content, {
-                  mailbox: this.mailbox,
-                  messageUid: this.message?.UID,
-                  allowRemoteResources: this.allowRemoteResources,
-                  messageStructure: this.message?.BodyStructure,
-                  onRemoteResourceBlocked: () => { this.hasRemoteResources = true; }
+                item.mimeType = 'text/html';
+                item.hasHtml = true;
+                item.content = sanitizeMessageHTML(item.content, {
+                  mailbox: mailbox,
+                  messageUid: item.message?.UID,
+                  allowRemoteResources: item.allowRemoteResources,
+                  messageStructure: item.message?.BodyStructure,
+                  onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (String(item.message.UID) === String(this.message?.UID)) this.hasRemoteResources = true; }
                 });
               }
             }
           } else {
-            this.rawMessageHtml = cached.RawHtml;
-            const payload: any = { content: this.rawMessageHtml, isHtml: true, message: this.message, banners: [], i18nStore: this.i18nStore };
+            item.rawMessageHtml = cached.RawHtml;
+            const payload: any = { content: item.rawMessageHtml, isHtml: true, message: item.message, banners: [], i18nStore: this.i18nStore };
             const hookResults = await registry.invokeHookAsync('reader:content', payload);
             for (const res of hookResults) {
-              if (res && typeof res === 'string') this.rawMessageHtml = res;
+              if (res && typeof res === 'string') item.rawMessageHtml = res;
             }
-            this.activeBanners = payload.banners || [];
-            this.content = sanitizeMessageHTML(this.rawMessageHtml, {
-              mailbox: this.mailbox,
-              messageUid: this.message?.UID,
-              allowRemoteResources: this.allowRemoteResources,
-              messageStructure: this.message?.BodyStructure,
-              onRemoteResourceBlocked: () => { this.hasRemoteResources = true; }
+            item.activeBanners = payload.banners || [];
+            item.content = sanitizeMessageHTML(item.rawMessageHtml, {
+              mailbox: mailbox,
+              messageUid: item.message?.UID,
+              allowRemoteResources: item.allowRemoteResources,
+              messageStructure: item.message?.BodyStructure,
+              onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (String(item.message.UID) === String(this.message?.UID)) this.hasRemoteResources = true; }
             });
           }
         }
-        this.loading = false;
+        item.loading = false;
+        if (!this._deferPropertySync && String(item.message.UID) === String(this.message?.UID)) {
+          this.content = item.content;
+          this.mimeType = item.mimeType;
+          this.rawMessageHtml = item.rawMessageHtml;
+          this.attachments = item.attachments;
+          this.hasHtml = item.hasHtml;
+          this.hasText = item.hasText;
+          this.activeBanners = item.activeBanners;
+          this.allowRemoteResources = item.allowRemoteResources;
+          this.hasRemoteResources = item.hasRemoteResources;
+          this.loading = false;
+        }
+        this.updateThreadItemReference(item);
         return;
       }
 
-      const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${msg.UID}?view=${preferredView}`);
+      const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(mailbox)}/messages/${msg.UID}?view=${preferredView}`);
       if (metadataRes.status === 401) {
         window.location.hash = '/login';
         return;
@@ -682,11 +1035,11 @@ export class MessageReader extends LitElement {
       if (!metadataRes.ok) throw new Error('Failed to fetch metadata');
       const data = await metadataRes.json();
 
-      this.attachments = data.Attachments || [];
-      this.hasHtml = !!data.HasHTML;
-      this.hasText = !!data.HasText;
+      item.attachments = data.Attachments || [];
+      item.hasHtml = !!data.HasHTML;
+      item.hasText = !!data.HasText;
       if (data.Message) {
-        this.message = { ...this.message, ...data.Message };
+        item.message = { ...item.message, ...data.Message };
       }
 
       let rawHtml: string | undefined;
@@ -694,72 +1047,323 @@ export class MessageReader extends LitElement {
 
       const part = data.Part;
       if (part) {
-        this.mimeType = part.MIMEType || part.MimeType || 'text/plain';
+        item.mimeType = part.MIMEType || part.MimeType || 'text/plain';
         const partPathStr = Array.isArray(part.Path) ? part.Path.join('.') : part.Path;
-        const rawRes = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`);
+        const rawRes = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`);
         if (rawRes.status === 401) {
           window.location.hash = '/login';
           return;
         }
         if (rawRes.ok) {
-          if (this.mimeType.toLowerCase() === 'text/html') {
+          if (item.mimeType.toLowerCase() === 'text/html') {
             rawHtml = await rawRes.text();
-            this.rawMessageHtml = rawHtml;
-            const payload: any = { content: this.rawMessageHtml, isHtml: true, message: this.message, banners: [], i18nStore: this.i18nStore };
+            item.rawMessageHtml = rawHtml;
+            const payload: any = { content: item.rawMessageHtml, isHtml: true, message: item.message, banners: [], i18nStore: this.i18nStore };
             const hookResults = await registry.invokeHookAsync('reader:content', payload);
             for (const res of hookResults) {
-              if (res && typeof res === 'string') this.rawMessageHtml = res;
+              if (res && typeof res === 'string') item.rawMessageHtml = res;
             }
-            this.activeBanners = payload.banners || [];
+            item.activeBanners = payload.banners || [];
 
-            this.content = sanitizeMessageHTML(this.rawMessageHtml, {
-              mailbox: this.mailbox,
-              messageUid: this.message?.UID,
-              allowRemoteResources: this.allowRemoteResources,
-              messageStructure: this.message?.BodyStructure,
-              onRemoteResourceBlocked: () => { this.hasRemoteResources = true; }
+            item.content = sanitizeMessageHTML(item.rawMessageHtml, {
+              mailbox: mailbox,
+              messageUid: item.message?.UID,
+              allowRemoteResources: item.allowRemoteResources,
+              messageStructure: item.message?.BodyStructure,
+              onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (String(item.message.UID) === String(this.message?.UID)) this.hasRemoteResources = true; }
             });
           } else {
             rawText = await rawRes.text();
-            this.content = rawText;
-            const payload: any = { content: this.content, isHtml: false, message: this.message, banners: [], i18nStore: this.i18nStore };
+            item.content = rawText;
+            const payload: any = { content: item.content, isHtml: false, message: item.message, banners: [], i18nStore: this.i18nStore };
             const hookResults = await registry.invokeHookAsync('reader:content', payload);
             for (const res of hookResults) {
-              if (res && typeof res === 'string') this.content = res;
+              if (res && typeof res === 'string') item.content = res;
             }
-            this.activeBanners = payload.banners || [];
+            item.activeBanners = payload.banners || [];
 
             if (payload.isHtml) {
-              this.mimeType = 'text/html';
-              this.hasHtml = true;
-              this.content = sanitizeMessageHTML(this.content, {
-                mailbox: this.mailbox,
-                messageUid: this.message?.UID,
-                allowRemoteResources: this.allowRemoteResources,
-                messageStructure: this.message?.BodyStructure,
-                onRemoteResourceBlocked: () => { this.hasRemoteResources = true; }
+              item.mimeType = 'text/html';
+              item.hasHtml = true;
+              item.content = sanitizeMessageHTML(item.content, {
+                mailbox: mailbox,
+                messageUid: item.message?.UID,
+                allowRemoteResources: item.allowRemoteResources,
+                messageStructure: item.message?.BodyStructure,
+                onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (String(item.message.UID) === String(this.message?.UID)) this.hasRemoteResources = true; }
               });
             }
           }
         }
       }
 
-      MessageCache.set(this.mailbox, msg.UID.toString(), preferredView, {
+      MessageCache.set(mailbox, msg.UID.toString(), preferredView, {
         Message: data.Message,
         Part: data.Part,
         Attachments: data.Attachments,
         RawHtml: rawHtml,
         RawText: rawText,
-        HasHTML: this.hasHtml,
-        HasText: this.hasText
+        HasHTML: item.hasHtml,
+        HasText: item.hasText
       });
     } catch (e) {
       Logger.error('Failed to fetch message:', e);
-      this.content = 'Error loading message.';
+      item.content = 'Error loading message.';
     } finally {
-      this.loading = false;
+      item.loading = false;
+      if (!this._deferPropertySync && String(item.message.UID) === String(this.message?.UID)) {
+        this.content = item.content;
+        this.mimeType = item.mimeType;
+        this.rawMessageHtml = item.rawMessageHtml;
+        this.attachments = item.attachments;
+        this.hasHtml = item.hasHtml;
+        this.hasText = item.hasText;
+        this.activeBanners = item.activeBanners;
+        this.allowRemoteResources = item.allowRemoteResources;
+        this.hasRemoteResources = item.hasRemoteResources;
+        this.loading = false;
+      }
+      this.updateThreadItemReference(item);
     }
   }
+
+  private getSentMailboxName(): string {
+    if (this.mailboxes && Array.isArray(this.mailboxes)) {
+      for (const mb of this.mailboxes) {
+        const name = mb.Name || mb.Mailbox;
+        if (!name) continue;
+        const attrs = mb.Attrs || [];
+        const hasSentAttr = attrs.some((a: any) => 
+          typeof a === 'string' && (a.toLowerCase() === '\\sent' || a.toLowerCase() === '\\\\sent')
+        );
+        if (hasSentAttr) {
+          return name;
+        }
+      }
+      const sentNames = ['sent', 'sent messages', 'sent items', 'sent-mail'];
+      for (const mb of this.mailboxes) {
+        const name = mb.Name || mb.Mailbox;
+        if (!name) continue;
+        if (sentNames.includes(name.toLowerCase())) {
+          return name;
+        }
+      }
+    }
+    return FOLDER_SENT;
+  }
+
+  private async toggleItemExpansion(item: ThreadMessageItem) {
+    item.expanded = !item.expanded;
+    this.updateThreadItemReference(item);
+
+    if (item.expanded && !item.content && !item.loading) {
+      item.loading = true;
+      this.updateThreadItemReference(item);
+      await this.fetchItemBody(item);
+    }
+  }
+
+  private loadRemoteResourcesForItem(item: ThreadMessageItem) {
+    item.allowRemoteResources = true;
+    if (item.rawMessageHtml) {
+      item.content = sanitizeMessageHTML(item.rawMessageHtml, {
+        mailbox: item.mailbox,
+        messageUid: item.message?.UID,
+        allowRemoteResources: item.allowRemoteResources,
+        messageStructure: item.message?.BodyStructure,
+        onRemoteResourceBlocked: () => { item.hasRemoteResources = true; }
+      });
+      if (item === this.threadItems[0]) {
+        this.content = item.content;
+        this.allowRemoteResources = true;
+      }
+      this.updateThreadItemReference(item);
+    }
+  }
+
+  private async toggleItemStar(item: ThreadMessageItem) {
+    if (!item.message) return;
+    const isStarred = item.message.Flags?.includes(FLAG_FLAGGED);
+    const op = isStarred ? 'remove' : 'add';
+
+    if (isStarred) {
+      item.message.Flags = item.message.Flags.filter((f: string) => f !== FLAG_FLAGGED);
+    } else {
+      item.message.Flags = [...(item.message.Flags || []), FLAG_FLAGGED];
+    }
+    this.updateThreadItemReference(item);
+
+    // Optimistically notify parent page to update flags in list view
+    this.dispatchEvent(new CustomEvent('message-flags-changed', {
+      detail: {
+        uid: String(item.message.UID),
+        flag: FLAG_FLAGGED,
+        action: op
+      },
+      bubbles: true,
+      composed: true
+    }));
+
+    try {
+      const success = await messageOperations.setFlag(item.mailbox, [String(item.message.UID)], [FLAG_FLAGGED], op);
+      if (!success) {
+        if (isStarred) {
+          item.message.Flags = [...(item.message.Flags || []), FLAG_FLAGGED];
+        } else {
+          item.message.Flags = item.message.Flags.filter((f: string) => f !== FLAG_FLAGGED);
+        }
+        this.updateThreadItemReference(item);
+
+        // Revert parent view on failure
+        this.dispatchEvent(new CustomEvent('message-flags-changed', {
+          detail: {
+            uid: String(item.message.UID),
+            flag: FLAG_FLAGGED,
+            action: isStarred ? 'add' : 'remove'
+          },
+          bubbles: true,
+          composed: true
+        }));
+      } else {
+        if (String(item.message.UID) === String(this.message?.UID)) {
+          this.message.Flags = item.message.Flags;
+          this.requestUpdate();
+        }
+      }
+    } catch (err) {
+      Logger.error('Failed to toggle star for thread item', err);
+      if (isStarred) {
+        item.message.Flags = [...(item.message.Flags || []), FLAG_FLAGGED];
+      } else {
+        item.message.Flags = item.message.Flags.filter((f: string) => f !== FLAG_FLAGGED);
+      }
+      this.updateThreadItemReference(item);
+
+      // Revert parent view on failure
+      this.dispatchEvent(new CustomEvent('message-flags-changed', {
+        detail: {
+          uid: String(item.message.UID),
+          flag: FLAG_FLAGGED,
+          action: isStarred ? 'add' : 'remove'
+        },
+        bubbles: true,
+        composed: true
+      }));
+    }
+  }
+
+  private async deleteItem(item: ThreadMessageItem) {
+    if (!item.message) return;
+    const confirmed = confirm(this.i18nStore?.t('messageReader.deleteConfirmSingle') || 'Are you sure you want to permanently delete this message?');
+    if (!confirmed) return;
+
+    try {
+      const success = await messageOperations.deleteMessages(item.mailbox, [String(item.message.UID)]);
+      if (success) {
+        const uidStr = String(item.message.UID);
+        const isFirst = this.threadItems.length > 0 && String(this.threadItems[0].message?.UID) === uidStr;
+        this.threadItems = this.threadItems.filter(i => String(i.message?.UID) !== uidStr);
+        this.requestUpdate();
+
+        if (isFirst) {
+          this.dispatchEvent(new CustomEvent('action', { detail: { action: 'delete' } }));
+        }
+      }
+    } catch (err) {
+      Logger.error('Failed to delete thread item', err);
+    }
+  }
+
+  private async _handleActionForItem(action: string, item: ThreadMessageItem) {
+    if (action === 'reply' || action === 'replyAll' || action === 'forward') {
+      let textBody = '';
+      if (item.mimeType === 'text/plain') {
+        textBody = item.content;
+      } else {
+        try {
+          const textRes = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(item.mailbox)}/messages/${item.message.UID}?view=text`);
+          if (textRes.ok) {
+            const textData = await textRes.json();
+            if (textData.Part && textData.RawText) {
+              textBody = textData.RawText;
+            }
+          }
+        } catch (e) {
+          Logger.error('Failed to fetch text body for quote', e);
+        }
+        if (!textBody && item.rawMessageHtml) {
+          const temp = document.createElement('div');
+          temp.innerHTML = item.rawMessageHtml;
+          textBody = temp.innerText || '';
+        }
+      }
+
+      const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
+      const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
+
+      const { subject, to, cc, quotedText, quotedHtml } = generateQuote(
+        action,
+        item.message,
+        textBody,
+        item.rawMessageHtml,
+        item.hasHtml,
+        dateFormat,
+        hourFormat
+      );
+
+      const attachments = action === 'forward' ? item.attachments.map(a => ({
+        name: a.Filename || 'attachment',
+        size: a.Size || 0,
+        type: a.MIMEType || 'application/octet-stream',
+        partPath: a.Path ? a.Path.join('.') : undefined
+      })) : [];
+
+      const inReplyTo = (action === 'reply' || action === 'replyAll') ? (item.message.Envelope?.MessageID || item.message.Envelope?.MessageId) : undefined;
+
+      this.composeStore.openComposer({
+        subject,
+        to,
+        cc,
+        text: quotedText,
+        html: quotedHtml,
+        format: this.settingsStore?.getState()?.composeFormat || 'html',
+        attachments: attachments,
+        inReplyTo
+      });
+      return;
+    }
+    if (action === 'showPlaintext') {
+      this.localPreferredView = 'text';
+      this.fetchItemBody(item);
+      return;
+    }
+    if (action === 'showHtml') {
+      this.localPreferredView = 'html';
+      this.fetchItemBody(item);
+      return;
+    }
+    if (action === 'print') {
+      const remoteParam = item.allowRemoteResources ? '&remote=1' : '';
+      window.open('#/print?mailbox=' + encodeURIComponent(item.mailbox) + '&uid=' + item.message.UID + remoteParam, '_blank');
+      return;
+    }
+  }
+
+  private applyThemeToIframe(iframe: HTMLIFrameElement) {
+    const themeIframeContent = this.settingsStore?.getState()?.themeIframeContent ?? false;
+    sharedApplyTheme(iframe, themeIframeContent);
+  }
+
+  private applyThemeToAllIframes() {
+    const iframes = this.shadowRoot?.querySelectorAll('iframe.reader-iframe');
+    if (iframes) {
+      iframes.forEach(iframe => this.applyThemeToIframe(iframe as HTMLIFrameElement));
+    }
+  }
+
+  private _handleSettingsChange = () => {
+    this.applyThemeToAllIframes();
+  };
 
   /**
    * Handles the load event of the message content iframe.
@@ -770,58 +1374,8 @@ export class MessageReader extends LitElement {
    */
   private onIframeLoad(e: Event) {
     const iframe = e.target as HTMLIFrameElement;
-    if (!iframe.contentDocument || !iframe.contentDocument.body) return;
-
-    iframe.style.height = '0px';
-    iframe.style.width = '100%';
-
-    // Prevent dropping files inside the iframe from navigating away
-    iframe.contentDocument.addEventListener('dragover', (ev) => ev.preventDefault());
-    iframe.contentDocument.addEventListener('drop', (ev) => ev.preventDefault());
-
-    if ((iframe as any)._ro) {
-      (iframe as any)._ro.disconnect();
-    }
-
-    let parentWidth = 0;
-    const ro = new ResizeObserver((entries) => {
-      let newHeight = 0;
-      let newWidth = 0;
-
-      for (const entry of entries) {
-        if (entry.target === iframe.parentElement) {
-          parentWidth = entry.contentRect.width;
-        } else if (iframe.contentDocument && entry.target === iframe.contentDocument.body) {
-          if (entry.borderBoxSize && entry.borderBoxSize.length > 0) {
-            newHeight = entry.borderBoxSize[0].blockSize;
-            newWidth = entry.borderBoxSize[0].inlineSize;
-          } else {
-            newHeight = entry.contentRect.height + 48;
-            newWidth = entry.contentRect.width + 48;
-          }
-        }
-      }
-
-      if (newHeight > 0) {
-        const currentHeight = parseFloat(iframe.style.height) || 0;
-        if (Math.abs(currentHeight - newHeight) > 2) {
-          iframe.style.height = `${Math.ceil(newHeight)}px`;
-        }
-      }
-
-      if (parentWidth > 0 && newWidth > parentWidth) {
-        const currentWidth = parseFloat(iframe.style.width) || 0;
-        if (Math.abs(currentWidth - newWidth) > 2) {
-          iframe.style.width = `${Math.ceil(newWidth)}px`;
-        }
-      }
-    });
-
-    ro.observe(iframe.contentDocument.body);
-    if (iframe.parentElement) {
-      ro.observe(iframe.parentElement);
-    }
-    (iframe as any)._ro = ro;
+    const themeIframeContent = this.settingsStore?.getState()?.themeIframeContent ?? false;
+    sharedSetupSizing(iframe, themeIframeContent);
   }
 
   /**
@@ -886,8 +1440,25 @@ export class MessageReader extends LitElement {
     });
   }
 
+  private renderThreadCard(item: ThreadMessageItem) {
+    return html`
+      <alps-thread-card
+        .item=${item}
+        .mailbox=${this.mailbox}
+        @toggle-expansion=${(e: CustomEvent) => this.toggleItemExpansion(e.detail.item)}
+        @load-remote-resources=${(e: CustomEvent) => this.loadRemoteResourcesForItem(e.detail.item)}
+        @toggle-star=${(e: CustomEvent) => this.toggleItemStar(e.detail.item)}
+        @delete-item=${(e: CustomEvent) => this.deleteItem(e.detail.item)}
+        @action-for-item=${(e: CustomEvent) => this._handleActionForItem(e.detail.action, e.detail.item)}
+        @edit-draft-for-item=${(e: CustomEvent) => { this.message = e.detail.item.message; this.mailbox = e.detail.item.mailbox; this._handleEditDraft(); }}
+      ></alps-thread-card>
+    `;
+  }
+
   render() {
+
     const isBulk = this.selectedUids && this.selectedUids.size > 0;
+    const enableThreading = this.settingsStore?.getState()?.enableThreading ?? true;
 
     if (!this.message && !isBulk) {
       return html`
@@ -909,15 +1480,14 @@ export class MessageReader extends LitElement {
     const dateStr = msg.Envelope?.Date ? formatFullDate(msg.Envelope.Date, dateFormat, hourFormat) : '';
 
     const domain = sender.Host ? sender.Host.toLowerCase() : '';
-    const freemailDomains = new Set(['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'proton.me', 'protonmail.com', 'live.com', 'msn.com', 'pm.me', 'yandex.ru', 'mail.ru', 'gmx.de', 'web.de', 't-online.de', 'orange.fr', 'free.fr']);
-    const bimiUrl = (domain && !freemailDomains.has(domain)) ? `/bimi/avatar?domain=${encodeURIComponent(domain)}` : '';
+    const bimiUrl = getBimiAvatarUrl(domain);
 
     const mbxLower = (this.mailbox || '').toLowerCase();
     const isArchive = mbxLower === FOLDER_ARCHIVE.toLowerCase() || mbxLower === FOLDER_ARCHIVES.toLowerCase();
     const isJunk = mbxLower === FOLDER_SPAM.toLowerCase() || mbxLower === FOLDER_JUNK.toLowerCase();
     const isTrash = mbxLower === FOLDER_TRASH.toLowerCase();
     const isDrafts = mbxLower === FOLDER_DRAFTS.toLowerCase();
-    const isSent = mbxLower === FOLDER_SENT.toLowerCase();
+    const isSent = mbxLower === this.getSentMailboxName().toLowerCase();
 
     return html`
       <alps-toolbar class="toolbar" ?scrolled=${this.isScrolled}>
@@ -1073,6 +1643,24 @@ export class MessageReader extends LitElement {
             <span>${this.selectedUids.size} ${this.i18nStore?.t('messageReader.messagesSelected')}</span>
           </div>
         </div>
+      ` : (enableThreading && (this.threadItems.length > 1 || this._isThread)) ? html`
+        <div class="reader-body" @scroll=${this.handleScroll}>
+          <div class="reader-header thread-header-grouped">
+            <div class="reader-subject">
+              ${customTags.length > 0 ? html`
+                <div class="tag-pills">
+                  ${customTags.map(tag => html`
+                    <alps-tag .name=${tag.name} .color=${tag.color}></alps-tag>
+                  `)}
+                </div>
+              ` : ''}
+              ${msg.Envelope?.Subject || (this.i18nStore?.t('messageList.noSubject'))}
+            </div>
+          </div>
+          <div class="thread-container">
+            ${this.threadItems.map(item => this.renderThreadCard(item))}
+          </div>
+        </div>
       ` : html`
         <div class="reader-body" @scroll=${this.handleScroll}>
           <div class="reader-header">
@@ -1176,7 +1764,7 @@ export class MessageReader extends LitElement {
               <iframe 
                 class="reader-iframe"
                 sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
-                .srcdoc=${this.content}
+                .srcdoc=${live(this.content)}
                 @load=${this.onIframeLoad}
               ></iframe>
             ` : this.mimeType?.toLowerCase().startsWith('multipart/') ? html`

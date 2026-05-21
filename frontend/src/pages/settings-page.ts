@@ -500,6 +500,14 @@ export class SettingsPage extends LitElement {
           ]}>
           </alps-select>
         </alps-setting-group>
+        <alps-setting-group>
+          <label class="checkbox-label">
+            <input type="checkbox" 
+                   ?checked=${this.settingsState.enableThreading} 
+                   @change=${(e: Event) => this.handleUpdate(e, 'enableThreading')}>
+            ${this.i18nStore?.t('settings.reading.enableThreading')}
+          </label>
+        </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.preferredView')}" description="${this.i18nStore?.t('settings.reading.preferredViewDesc')}">
           <alps-select @change=${(e: Event) => this.handleUpdate(e, 'preferredView')} .value=${this.settingsState.preferredView}
             .options=${[
@@ -507,6 +515,14 @@ export class SettingsPage extends LitElement {
             {value: "text", label: this.i18nStore?.t('settings.reading.plainText') || "text"}
           ]}>
           </alps-select>
+        </alps-setting-group>
+        <alps-setting-group>
+          <label class="checkbox-label">
+            <input type="checkbox" 
+                   ?checked=${this.settingsState.themeIframeContent} 
+                   @change=${(e: Event) => this.handleUpdate(e, 'themeIframeContent')}>
+            ${this.i18nStore?.t('settings.reading.themeIframeContent')}
+          </label>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.showRemoteContent')}">
           <alps-select @change=${(e: Event) => this.handleUpdate(e, 'showRemoteContent')} .value=${this.settingsState.showRemoteContent}

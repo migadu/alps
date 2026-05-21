@@ -43,7 +43,9 @@ export class I18nStore extends EventTarget {
   }
 
   async setLanguage(lang: string) {
-    if (this.language === lang) return;
+    if (this.language === lang) {
+      return;
+    }
     this.language = lang;
     
     try {

@@ -103,3 +103,16 @@ export function formatSize(bytes: number): string {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return Math.round(bytes / Math.pow(k, i)) + ' ' + sizes[i];
 }
+
+export const freemailDomains = new Set([
+  'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com',
+  'me.com', 'mac.com', 'aol.com', 'proton.me', 'protonmail.com',
+  'live.com', 'msn.com', 'pm.me', 'yandex.ru', 'mail.ru',
+  'gmx.de', 'web.de', 't-online.de', 'orange.fr', 'free.fr'
+]);
+
+export function getBimiAvatarUrl(domain: string): string {
+  if (!domain) return '';
+  const d = domain.toLowerCase();
+  return !freemailDomains.has(d) ? `/bimi/avatar?domain=${encodeURIComponent(d)}` : '';
+}

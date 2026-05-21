@@ -93,6 +93,7 @@ func providerMessageToIMAP(msg provider.Message) IMAPMessage {
 		Mailbox:            msg.Mailbox,
 		HasBimiPotential:   msg.BimiPotential,
 		HasBimiFailed:      msg.BimiFailed,
+		References:         msg.References,
 	}
 	if msg.ID != nil {
 		imapMsg.AlpsUID = msg.ID.String()

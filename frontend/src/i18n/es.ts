@@ -63,7 +63,9 @@ export const es = {
       messageSortCriteria: 'Criterio de ordenación de mensajes',
       messageSortCriteriaDesc: 'Elige si ordenar por fecha original de recepción o por fecha de archivo de carpeta.',
       sortUid: 'Fecha de archivo de carpeta',
-      sortDate: 'Fecha de recepción'
+      sortDate: 'Fecha de recepción',
+      enableThreading: 'Agrupar mensajes en conversaciones',
+      themeIframeContent: 'Aplicar tema al contenido de los mensajes HTML'
     },
     appearance: {
       colorTheme: 'Tema de color',
@@ -290,7 +292,8 @@ export const es = {
     downloadMessage: 'Descargar mensaje',
     showOriginal: 'Mostrar original',
     verifiedSender: 'Remitente verificado',
-    unverifiedSender: 'Remitente no verificado'
+    unverifiedSender: 'Remitente no verificado',
+    clickToExpand: 'Clic para expandir el contenido del mensaje'
   },
   originalMessage: {
     title: 'Mensaje original',

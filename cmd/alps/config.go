@@ -171,9 +171,9 @@ type WebAuthnConfig struct {
 }
 
 type PluginConfig struct {
-	Enabled  bool                   `toml:"enabled"`
+	Enabled bool                   `toml:"enabled"`
 	Server  string                 `toml:"server"`
-	Options  map[string]interface{} `toml:"options"`
+	Options map[string]interface{} `toml:"options"`
 }
 
 // GetEnabledPlugins returns a list of plugin names that are enabled

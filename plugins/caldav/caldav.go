@@ -12,9 +12,9 @@ import (
 )
 
 type authRoundTripper struct {
-	server http.RoundTripper
-	session  *alps.Session
-	debug    bool
+	server  http.RoundTripper
+	session *alps.Session
+	debug   bool
 }
 
 func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -41,9 +41,9 @@ func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 
 func newClient(u *url.URL, session *alps.Session, debug bool) (*caldav.Client, error) {
 	rt := authRoundTripper{
-		server: http.DefaultTransport,
-		session:  session,
-		debug:    debug,
+		server:  http.DefaultTransport,
+		session: session,
+		debug:   debug,
 	}
 	return caldav.NewClient(&http.Client{Transport: &rt}, u.String())
 }
