@@ -428,13 +428,18 @@ func (p *IMAPProvider) GetMessageMetadata(mailbox string, id provider.MessageID)
 		HeaderFields: []string{"Authentication-Results"},
 		Peek:         true,
 	}
+	referencesBodySection := &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"References"},
+		Peek:         true,
+	}
 	options := imap.FetchOptions{
 		Envelope:      true,
 		UID:           true,
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
 		Flags:         true,
 		RFC822Size:    true,
-		BodySection:   []*imap.FetchItemBodySection{bodySection},
+		BodySection:   []*imap.FetchItemBodySection{bodySection, referencesBodySection},
 	}
 
 	msgs, err := p.client.Fetch(imap.UIDSetNum(imap.UID(uid)), &options).Collect()
@@ -896,6 +901,19 @@ func (p *IMAPProvider) convertIMAPMessage(msg *imapclient.FetchMessageBuffer, ma
 			converted.BimiFailed = true
 		} else if strings.Contains(lowerStr, "dmarc=pass") || strings.Contains(lowerStr, "bimi=pass") {
 			converted.BimiPotential = true
+		}
+	}
+
+	refSection := &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"References"},
+		Peek:         true,
+	}
+	refBytes := msg.FindBodySection(refSection)
+	if refBytes != nil {
+		h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(refBytes)))
+		if err == nil {
+			converted.References = provider.ParseReferences(h.Get("References"))
 		}
 	}
 

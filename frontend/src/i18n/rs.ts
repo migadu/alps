@@ -63,7 +63,9 @@ export const rs = {
       messageSortCriteria: 'Критеријум за сортирање порука',
       messageSortCriteriaDesc: 'Изаберите да ли ћете сортирати по оригиналном датуму пријема или по датуму архивирања у фасциклу.',
       sortUid: 'Датум архивирања у фасциклу',
-      sortDate: 'Датум пријема'
+      sortDate: 'Датум пријема',
+      enableThreading: 'Групиши поруке у конверзације',
+      themeIframeContent: 'Примени тему на HTML садржај порука'
     },
     appearance: {
       colorTheme: 'Тема боја',
@@ -290,7 +292,8 @@ export const rs = {
     downloadMessage: 'Преузми поруку',
     showOriginal: 'Прикажи оригинал',
     verifiedSender: 'Верификован пошиљалац',
-    unverifiedSender: 'Неверификован пошиљалац'
+    unverifiedSender: 'Неверификован пошиљалац',
+    clickToExpand: 'Кликните да проширите садржај поруке'
   },
   originalMessage: {
     title: 'Оригинална порука',

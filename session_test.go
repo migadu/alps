@@ -17,7 +17,7 @@ func TestSessionManager_PutAndGet(t *testing.T) {
 	// Expectations
 	mockProvider.On("Close").Return(nil)
 	mockProvider.On("GetStore").Return(mockStore, nil)
-	mockStore.On("Get", "settings", mock.Anything).Return(provider.ErrNoStoreEntry)
+	mockStore.On("Get", "base.settings", mock.Anything).Return(provider.ErrNoStoreEntry)
 
 	connectProvider := func(username, password string) (provider.MailProvider, error) {
 		assert.Equal(t, "user@example.com", username)
@@ -72,7 +72,7 @@ func TestSessionManager_Eviction(t *testing.T) {
 
 	mockProvider.On("Close").Return(nil)
 	mockProvider.On("GetStore").Return(mockStore, nil)
-	mockStore.On("Get", "settings", mock.Anything).Return(provider.ErrNoStoreEntry)
+	mockStore.On("Get", "base.settings", mock.Anything).Return(provider.ErrNoStoreEntry)
 
 	connectProvider := func(username, password string) (provider.MailProvider, error) {
 		return mockProvider, nil

@@ -62,7 +62,9 @@ export const pt = {
       messageSortCriteria: 'Critério de Classificação de Mensagens',
       messageSortCriteriaDesc: 'Escolha se deseja classificar pela data de recebimento original ou pela data de arquivamento.',
       sortUid: 'Data de Arquivamento',
-      sortDate: 'Data de Recebimento'
+      sortDate: 'Data de Recebimento',
+      enableThreading: 'Agrupar mensagens em conversas',
+      themeIframeContent: 'Aplicar tema ao conteúdo das mensagens HTML'
     },
     appearance: {
       colorTheme: 'Tema de Cor',
@@ -324,7 +326,8 @@ export const pt = {
     downloadMessage: 'Baixar mensagem',
     showOriginal: 'Mostrar Original',
     verifiedSender: 'Remetente Verificado',
-    unverifiedSender: 'Remetente Não Verificado'
+    unverifiedSender: 'Remetente Não Verificado',
+    clickToExpand: 'Clique para expandir o conteúdo da mensagem'
   },
   originalMessage: {
     title: 'Mensagem Original',

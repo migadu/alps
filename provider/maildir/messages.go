@@ -97,6 +97,7 @@ func (p *Provider) parseMessage(mailbox string, key string, r io.Reader, mdFlags
 	bcc, _ := header.AddressList("Bcc")
 	inReplyTo, _ := header.Text("In-Reply-To")
 	messageId, _ := header.Text("Message-ID")
+	referencesStr, _ := header.Text("References")
 
 	convertAddrs := func(addrs []*mail.Address) []provider.Address {
 		res := make([]provider.Address, len(addrs))
@@ -133,12 +134,18 @@ func (p *Provider) parseMessage(mailbox string, key string, r io.Reader, mdFlags
 	bodyStruct := buildBodyStructure(msg)
 	flags := maildirFlagsToProviderFlags(mdFlags)
 
+	var references []string
+	if referencesStr != "" {
+		references = provider.ParseReferences(referencesStr)
+	}
+
 	return &provider.Message{
 		ID:            MaildirMessageID(key),
 		Mailbox:       mailbox,
 		Flags:         flags,
 		Envelope:      envelope,
 		BodyStructure: &imapprovider.IMAPBodyStructure{BodyStructure: bodyStruct},
+		References:    references,
 	}, nil
 }
 

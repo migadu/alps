@@ -84,6 +84,7 @@ export class AppRoot extends LitElement {
     // Initial auth check to prevent loading mailbox components if we are clearly not logged in
     const isLoggedIn = document.cookie.split(';').some(c => c.trim().startsWith('alps_logged_in=1')) ||
                        document.cookie.split(';').some(c => c.trim().startsWith('alps_has_login_token=1'));
+
     if (!isLoggedIn && !window.location.hash.startsWith('#/login')) {
       window.location.hash = '#/login';
     }
@@ -93,13 +94,15 @@ export class AppRoot extends LitElement {
     this.activeComposers = this.composeStore.getState().activeComposers;
     
     // Initialize auto-logout
-    autoLogoutService.setLogoutTime(this.settingsStore.getState().autoLogout || 0);
+    const autoLogoutTime = this.settingsStore.getState().autoLogout ?? 0;
+    autoLogoutService.setLogoutTime(autoLogoutTime);
     autoLogoutService.onBeforeLogout = async () => {
       await this.composeStore.saveAllDirtyDrafts();
     };
 
     // Initialize language
-    this.i18nStore.setLanguage(this.settingsStore.getState().language || 'en');
+    const initialLang = this.settingsStore.getState().language ?? 'en';
+    this.i18nStore.setLanguage(initialLang);
 
     window.addEventListener('auth-error', this._handleAuthError);
     window.addEventListener('show-toast', this._handleShowToast as EventListener);
@@ -272,8 +275,8 @@ export class AppRoot extends LitElement {
 
   private _handleSettingsChange = () => {
     const settings = this.settingsStore.getState();
-    autoLogoutService.setLogoutTime(settings.autoLogout || 0);
-    this.i18nStore.setLanguage(settings.language || 'en');
+    autoLogoutService.setLogoutTime(settings.autoLogout ?? 0);
+    this.i18nStore.setLanguage(settings.language ?? 'en');
   };
 
   private mailboxPageTemplate = html`<mailbox-page></mailbox-page>`;

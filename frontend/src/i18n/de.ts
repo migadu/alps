@@ -65,7 +65,9 @@ export const de: TranslationDictionary = {
       messageSortCriteria: 'Sortierkriterium für Nachrichten',
       messageSortCriteriaDesc: 'Wählen Sie, ob nach dem ursprünglichen Empfangsdatum oder nach dem Ablagedatum im Ordner sortiert werden soll.',
       sortUid: 'Ablagedatum im Ordner',
-      sortDate: 'Empfangsdatum'
+      sortDate: 'Empfangsdatum',
+      enableThreading: 'Nachrichten in Konversationen gruppieren',
+      themeIframeContent: 'Farbthema auf HTML-Nachrichten anwenden'
     },
     appearance: {
       colorTheme: 'Farbthema',
@@ -292,7 +294,8 @@ export const de: TranslationDictionary = {
     downloadMessage: 'Nachricht herunterladen',
     showOriginal: 'Original anzeigen',
     verifiedSender: 'Verifizierter Absender',
-    unverifiedSender: 'Unverifizierter Absender'
+    unverifiedSender: 'Unverifizierter Absender',
+    clickToExpand: 'Klicken, um den Nachrichteninhalt zu erweitern'
   },
   originalMessage: {
     title: 'Originalnachricht',

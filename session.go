@@ -498,7 +498,7 @@ func (sm *SessionManager) calculateSessionDuration(store provider.Store) time.Du
 	}
 
 	var settings UserSettings
-	err := store.Get("settings", &settings)
+	err := store.Get("base.settings", &settings)
 	if err != nil {
 		sm.logger.Debugf("Using server default session duration (no user settings): %v", sm.sessionDuration)
 		return sm.sessionDuration

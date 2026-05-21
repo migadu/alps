@@ -1021,6 +1021,9 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		if cachedData.HeaderData != nil && cachedData.BodyData != nil {
 			// Full message cached - convert from provider type to IMAP type
 			imapMsg := providerMessageToIMAP(*cachedData.Message)
+			if tempMsg != nil && len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
+				imapMsg.References = tempMsg.References
+			}
 			msg = &imapMsg
 			headerData = cachedData.HeaderData
 			bodyData = cachedData.BodyData
@@ -1062,6 +1065,9 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 			// Convert provider message to IMAP message for display
 			imapMsg := providerMessageToIMAP(*providerMsg)
+			if tempMsg != nil && len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
+				imapMsg.References = tempMsg.References
+			}
 			msg = &imapMsg
 
 			// Fetching body without Peek marks message as \Seen, so update the cached flags
@@ -1090,6 +1096,9 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			if tempMsg != nil {
 				providerMsg.BimiPotential = tempMsg.HasBimiPotential
 				providerMsg.BimiFailed = tempMsg.HasBimiFailed
+				if len(providerMsg.References) == 0 && len(tempMsg.References) > 0 {
+					providerMsg.References = tempMsg.References
+				}
 			}
 
 			// Cache the raw bytes using provider type so we can recreate fresh readers
@@ -1112,6 +1121,9 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			ctx.Server.Logger().Debugf("BIMI debug routes: tempMsg.HasBimiPotential=%v for UID %v", tempMsg.HasBimiPotential, uid)
 			imapMsg.HasBimiPotential = tempMsg.HasBimiPotential
 			imapMsg.HasBimiFailed = tempMsg.HasBimiFailed
+			if len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
+				imapMsg.References = tempMsg.References
+			}
 		}
 		msg = &imapMsg
 
@@ -1968,10 +1980,12 @@ const settingsKey = "base.settings"
 const maxMessagesPerPage = 100
 
 type UIPreferences struct {
-	ThemeMode   string `json:"themeMode,omitempty"`
-	ColorFamily string `json:"colorFamily,omitempty"`
-	LayoutMode  string `json:"layoutMode,omitempty"`
-	DensityMode string `json:"densityMode,omitempty"`
+	ThemeMode          string `json:"themeMode,omitempty"`
+	ColorFamily        string `json:"colorFamily,omitempty"`
+	LayoutMode         string `json:"layoutMode,omitempty"`
+	DensityMode        string `json:"densityMode,omitempty"`
+	EnableThreading    *bool  `json:"enableThreading,omitempty"`
+	ThemeIframeContent *bool  `json:"themeIframeContent,omitempty"`
 }
 
 type Settings struct {
@@ -2040,6 +2054,14 @@ func loadSettings(s provider.Store) (*Settings, error) {
 	}
 	if settings.UI.DensityMode == "" {
 		settings.UI.DensityMode = "compact"
+	}
+	if settings.UI.EnableThreading == nil {
+		trueVal := true
+		settings.UI.EnableThreading = &trueVal
+	}
+	if settings.UI.ThemeIframeContent == nil {
+		falseVal := false
+		settings.UI.ThemeIframeContent = &falseVal
 	}
 	if err := settings.check(); err != nil {
 		return nil, err
@@ -2124,6 +2146,12 @@ func handleSettings(ctx *alps.Context) error {
 				}
 				if req.UI.DensityMode != "" {
 					settings.UI.DensityMode = req.UI.DensityMode
+				}
+				if req.UI.EnableThreading != nil {
+					settings.UI.EnableThreading = req.UI.EnableThreading
+				}
+				if req.UI.ThemeIframeContent != nil {
+					settings.UI.ThemeIframeContent = req.UI.ThemeIframeContent
 				}
 			}
 

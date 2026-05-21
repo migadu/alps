@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { formatDateList, formatSize, getMailboxLabel, renderIcon } from '../utils/ui';
+import { formatDateList, formatSize, getMailboxLabel, renderIcon, getBimiAvatarUrl } from '../utils/ui';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED, getMessageTags } from '../utils/flags';
 import { FOLDER_DRAFTS, FOLDER_SENT } from '../utils/folders';
 import { messageSync } from '../services/message-sync';
@@ -48,6 +48,7 @@ export class MessageList extends LitElement {
   @state() private isAtBottom = false;
   @state() private focusedIndex = -1;
   @state() private showEmptyConfirm = false;
+  private _shouldScrollToTop = false;
 
   static styles = css`
     :host {
@@ -600,6 +601,7 @@ export class MessageList extends LitElement {
         this.selectedMessages = new Set();
         this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
       }
+      this._shouldScrollToTop = true;
     }
 
     if (changedProperties.has('selectedMessage') || changedProperties.has('messages')) {
@@ -664,11 +666,12 @@ export class MessageList extends LitElement {
     if (changedProperties.has('syncing') && this.syncing) {
       this.isSpinning = true;
     }
-    if (changedProperties.has('currentPage') || changedProperties.has('currentMailbox')) {
+    if (this._shouldScrollToTop && (changedProperties.has('messages') || (changedProperties.has('loading') && !this.loading))) {
       const listContent = this.renderRoot.querySelector('.list-content');
       if (listContent) {
         listContent.scrollTop = 0;
       }
+      this._shouldScrollToTop = false;
     }
     const listContent = this.renderRoot.querySelector('.list-content') as HTMLElement;
     if (listContent) {
@@ -968,8 +971,7 @@ export class MessageList extends LitElement {
                   const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
                   const name = c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
                   const domain = c.Host ? c.Host.toLowerCase() : '';
-                  const freemailDomains = new Set(['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'proton.me', 'protonmail.com', 'live.com', 'msn.com', 'pm.me', 'yandex.ru', 'mail.ru', 'gmx.de', 'web.de', 't-online.de', 'orange.fr', 'free.fr']);
-                  const bimiUrl = (domain && !freemailDomains.has(domain)) ? `/bimi/avatar?domain=${encodeURIComponent(domain)}` : '';
+                  const bimiUrl = getBimiAvatarUrl(domain);
                   return html`
                     <div class="avatar-wrapper" style="z-index: ${totalRendered - idx};">
                       <alps-avatar .name=${name} .email=${addr} .size=${avatarSize} .src=${bimiUrl}></alps-avatar>

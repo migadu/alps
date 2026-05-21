@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"time"
 
 	"github.com/emersion/go-message"
@@ -96,6 +97,7 @@ type Message struct {
 	Size          uint32
 	BimiPotential bool
 	BimiFailed    bool
+	References    []string
 }
 
 // MessageID is a provider-specific message identifier
@@ -178,4 +180,21 @@ var ErrNoStoreEntry = fmt.Errorf("provider: no such entry in store")
 type Store interface {
 	Get(key string, out interface{}) error
 	Put(key string, v interface{}) error
+}
+
+var messageIDRegex = regexp.MustCompile(`<([^>]+)>`)
+
+// ParseReferences parses a references string and returns a slice of Message-IDs.
+func ParseReferences(refStr string) []string {
+	matches := messageIDRegex.FindAllStringSubmatch(refStr, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	refs := make([]string, 0, len(matches))
+	for _, m := range matches {
+		if len(m) > 1 {
+			refs = append(refs, m[1])
+		}
+	}
+	return refs
 }

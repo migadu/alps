@@ -1305,6 +1305,7 @@ export class MailboxPage extends LitElement {
               .bulkProcessing=${this.bulkProcessing}
               @close=${() => { this.updateUrl(this.currentMailbox, this.currentPage, null); }}
               @action=${this._handleReaderAction}
+              @message-flags-changed=${(e: CustomEvent) => this.updateLocalMessageFlags([e.detail.uid], e.detail.flag, e.detail.action)}
             ></alps-message-reader>
           </div>
         </div>
