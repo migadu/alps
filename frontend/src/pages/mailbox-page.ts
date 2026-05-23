@@ -1206,9 +1206,7 @@ export class MailboxPage extends LitElement {
           this.selectedUids = new Set();
           this.updateUrl(e.detail.name, 0, null);
         }
-        if (!this.isMobile && !this.sidebarCollapsed) {
-          this.settingsStore.updateSettings({ sidebarCollapsed: true });
-        }
+
         if (this.sidebarCollapsed && !this.isMobile) {
           this.suppressSidebarHover = true;
         }

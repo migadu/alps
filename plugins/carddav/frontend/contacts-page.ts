@@ -885,9 +885,6 @@ export class ContactsPage extends LitElement {
         if (this.isMobile) {
           this.mobileSidebarOpen = false;
         } else {
-          if (!this.sidebarCollapsed) {
-            this.settingsStore?.updateSettings({ sidebarCollapsed: true });
-          }
           this.suppressSidebarHover = true;
         }
       }}
