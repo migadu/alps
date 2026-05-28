@@ -6351,7 +6351,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
             .layoutMode=${e}
             .syncing=${this.isSyncing}
             ?collapsed=${this.sidebarCollapsed&&!this.isMobile&&!this.isSidebarHovered}
-            @select-mailbox=${e=>{this.currentMailbox===e.detail.name?(this.currentPage=0,this.selectedMessage=null,this.filterQuery=``,this.loadingMessages=!0,this.updateUrl(e.detail.name,0,null),N.fetch(this.currentMailbox,this.currentPage,this.filterQuery,!1)):(this.loadingMessages=!0,this.filterQuery=``,this.selectedUids=new Set,this.updateUrl(e.detail.name,0,null)),!this.isMobile&&!this.sidebarCollapsed&&this.settingsStore.updateSettings({sidebarCollapsed:!0}),this.sidebarCollapsed&&!this.isMobile&&(this.suppressSidebarHover=!0),this.isMobile&&(this.mobileSidebarOpen=!1)}}
+            @select-mailbox=${e=>{this.currentMailbox===e.detail.name?(this.currentPage=0,this.selectedMessage=null,this.filterQuery=``,this.loadingMessages=!0,this.updateUrl(e.detail.name,0,null),N.fetch(this.currentMailbox,this.currentPage,this.filterQuery,!1)):(this.loadingMessages=!0,this.filterQuery=``,this.selectedUids=new Set,this.updateUrl(e.detail.name,0,null)),this.sidebarCollapsed&&!this.isMobile&&(this.suppressSidebarHover=!0),this.isMobile&&(this.mobileSidebarOpen=!1)}}
             @toggle-folder=${e=>this.toggleFolder(e.detail.folderName,null)}
             @expand-folder=${e=>{let t=new Set(this.expandedFolders);t.add(e.detail.folderName),this.expandedFolders=t}}
             @compose=${()=>{this.composeStore.openComposer(),this.isMobile&&(this.mobileSidebarOpen=!1)}}
@@ -6620,7 +6620,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
             @create-contact=${this.handleCreateNew}
             @select-category=${e=>{this.filterQuery=``;let t=e.detail.category;t===`All Contacts`?window.location.hash=`/contacts/all`:window.location.hash=`/contacts/${encodeURIComponent(t)}`}}
             @drag-start=${()=>{this.isSidebarDragging=!0,this.suppressSidebarHover=!0}}
-            @drag-end=${()=>{this.isSidebarDragging=!1,this.isMobile?this.mobileSidebarOpen=!1:(this.sidebarCollapsed||this.settingsStore?.updateSettings({sidebarCollapsed:!0}),this.suppressSidebarHover=!0)}}
+            @drag-end=${()=>{this.isSidebarDragging=!1,this.isMobile?this.mobileSidebarOpen=!1:this.suppressSidebarHover=!0}}
             @rename-category=${e=>{this.categoryToRename=e.detail.category}}
             @delete-category=${e=>{this.categoryToDelete=e.detail.category}}
           ></alps-contacts-categories>
