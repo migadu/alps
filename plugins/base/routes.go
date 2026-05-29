@@ -2020,12 +2020,13 @@ const settingsKey = "base.settings"
 const maxMessagesPerPage = 100
 
 type UIPreferences struct {
-	ThemeMode          string `json:"themeMode,omitempty"`
-	ColorFamily        string `json:"colorFamily,omitempty"`
-	LayoutMode         string `json:"layoutMode,omitempty"`
-	DensityMode        string `json:"densityMode,omitempty"`
-	EnableThreading    *bool  `json:"enableThreading,omitempty"`
-	ThemeIframeContent *bool  `json:"themeIframeContent,omitempty"`
+	ThemeMode          string   `json:"themeMode,omitempty"`
+	ColorFamily        string   `json:"colorFamily,omitempty"`
+	LayoutMode         string   `json:"layoutMode,omitempty"`
+	DensityMode        string   `json:"densityMode,omitempty"`
+	EnableThreading    *bool    `json:"enableThreading,omitempty"`
+	ThemeIframeContent *bool    `json:"themeIframeContent,omitempty"`
+	CustomMailboxOrder []string `json:"customMailboxOrder,omitempty"`
 }
 
 type Settings struct {
@@ -2188,6 +2189,9 @@ func handleSettings(ctx *alps.Context) error {
 				}
 				if req.UI.ThemeIframeContent != nil {
 					settings.UI.ThemeIframeContent = req.UI.ThemeIframeContent
+				}
+				if req.UI.CustomMailboxOrder != nil {
+					settings.UI.CustomMailboxOrder = req.UI.CustomMailboxOrder
 				}
 			}
 

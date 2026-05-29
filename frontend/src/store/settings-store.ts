@@ -40,6 +40,7 @@ export interface SettingsState {
   enableThreading: boolean;
   themeIframeContent: boolean;
   hasThreadCapability?: boolean;
+  customMailboxOrder?: string[];
 }
 
 const DEFAULT_SETTINGS: SettingsState = {
@@ -73,7 +74,8 @@ const DEFAULT_SETTINGS: SettingsState = {
   dateFormat: 'YYYY-MM-DD',
   sortOrder: 'desc',
   messageSortCriteria: 'date',
-  maxAttachmentMiB: 32
+  maxAttachmentMiB: 32,
+  customMailboxOrder: []
 };
 
 export class SettingsStore extends EventTarget {
@@ -169,6 +171,7 @@ export class SettingsStore extends EventTarget {
       densityMode: userSettings.densityMode ?? globalSettings.densityMode ?? DEFAULT_SETTINGS.densityMode,
       enableThreading: userSettings.enableThreading ?? globalSettings.enableThreading ?? DEFAULT_SETTINGS.enableThreading,
       themeIframeContent: userSettings.themeIframeContent ?? globalSettings.themeIframeContent ?? DEFAULT_SETTINGS.themeIframeContent,
+      customMailboxOrder: userSettings.customMailboxOrder ?? globalSettings.customMailboxOrder ?? DEFAULT_SETTINGS.customMailboxOrder,
       language: userSettings.language ?? globalSettings.language ?? DEFAULT_SETTINGS.language,
       loginUsername: username
     };
@@ -276,13 +279,20 @@ export class SettingsStore extends EventTarget {
           
           if (s.ui) {
             const ui = s.ui;
-            if (ui.themeMode) updates.themeMode = ui.themeMode as ThemeMode;
-            if (ui.colorFamily) updates.colorFamily = ui.colorFamily;
+            // Only update theme if backend has a non-default value or local storage doesn't have one
+            // This prevents the backend's default "auto" from overriding user's local preference
+            if (ui.themeMode && (ui.themeMode !== 'auto' || !this.state.themeMode || this.state.themeMode === 'auto')) {
+              updates.themeMode = ui.themeMode as ThemeMode;
+            }
+            if (ui.colorFamily && (ui.colorFamily !== 'default' || !this.state.colorFamily || this.state.colorFamily === 'default')) {
+              updates.colorFamily = ui.colorFamily;
+            }
             if (ui.layoutMode) updates.layoutMode = ui.layoutMode as LayoutMode;
             if (ui.densityMode) updates.densityMode = ui.densityMode as DensityMode;
             if (ui.sidebarCollapsed !== undefined) updates.sidebarCollapsed = ui.sidebarCollapsed;
             if (ui.enableThreading !== undefined) updates.enableThreading = ui.enableThreading;
             if (ui.themeIframeContent !== undefined) updates.themeIframeContent = ui.themeIframeContent;
+            if (ui.customMailboxOrder !== undefined) updates.customMailboxOrder = ui.customMailboxOrder;
           }
 
           if (s.check_mail_interval !== undefined && s.check_mail_interval !== 0) updates.checkMailInterval = s.check_mail_interval;
@@ -345,7 +355,8 @@ export class SettingsStore extends EventTarget {
             layoutMode: state.layoutMode,
             sidebarCollapsed: state.sidebarCollapsed,
             enableThreading: state.enableThreading,
-            themeIframeContent: state.themeIframeContent
+            themeIframeContent: state.themeIframeContent,
+            customMailboxOrder: state.customMailboxOrder
           },
           check_mail_interval: Number(state.checkMailInterval) || 0,
           auto_logout: Number(state.autoLogout) || 0,

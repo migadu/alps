@@ -88,8 +88,9 @@ export const popupStyles = css`
 
 @customElement('alps-popup')
 export class AlpsPopup extends LitElement {
-  @property({ type: String }) align: 'left' | 'right' = 'right';
-  @property({ type: String }) position: 'top' | 'bottom' = 'bottom';
+  @property({ type: String }) align: 'left' | 'right' | 'top' | 'bottom' = 'right';
+  @property({ type: String }) position: 'top' | 'bottom' | 'left' | 'right' = 'bottom';
+  @property({ type: String }) triggerOn: 'click' | 'hover' = 'click';
   @property({ type: Boolean, reflect: true, attribute: 'open' }) openState = false;
 
   static styles = css`
@@ -131,10 +132,8 @@ export class AlpsPopup extends LitElement {
       flex-direction: column;
     }
 
-    .popup-content.align-right::before,
-    .popup-content.align-right::after,
-    .popup-content.align-left::before,
-    .popup-content.align-left::after {
+    .popup-content::before,
+    .popup-content::after {
       content: '';
       position: absolute;
       width: 0;
@@ -198,6 +197,35 @@ export class AlpsPopup extends LitElement {
       border-width: 5px 5px 0 5px;
       border-color: var(--bg-primary, #ffffff) transparent transparent transparent;
     }
+
+    /* Horizontal Left Position Arrow (points right, on the right border of popup) */
+    .popup-content.position-left::before {
+      right: -6px;
+      top: var(--arrow-top, 10px);
+      border-width: 6px 0 6px 6px;
+      border-color: transparent transparent transparent var(--border-color, #e5e7eb);
+    }
+    .popup-content.position-left::after {
+      right: -5px;
+      top: calc(var(--arrow-top, 10px) + 1px);
+      border-width: 5px 0 5px 5px;
+      border-color: transparent transparent transparent var(--bg-primary, #ffffff);
+    }
+
+    /* Horizontal Right Position Arrow (points left, on the left border of popup) */
+    .popup-content.position-right::before {
+      left: -6px;
+      top: var(--arrow-top, 10px);
+      border-width: 6px 6px 6px 0;
+      border-color: transparent var(--border-color, #e5e7eb) transparent transparent;
+    }
+    .popup-content.position-right::after {
+      left: -5px;
+      top: calc(var(--arrow-top, 10px) + 1px);
+      border-width: 5px 5px 5px 0;
+      border-color: transparent var(--bg-primary, #ffffff) transparent transparent;
+    }
+
   `;
 
   public open() {
@@ -210,7 +238,11 @@ export class AlpsPopup extends LitElement {
     this.dispatchEvent(new CustomEvent('popup-close', { bubbles: true, composed: true }));
   }
 
-  public toggle(_e: Event) {
+  public toggle(e: Event) {
+    if (this.triggerOn === 'hover') {
+      e.stopPropagation();
+      return;
+    }
     if (this.openState) {
       this.close();
     } else {
@@ -327,76 +359,164 @@ export class AlpsPopup extends LitElement {
     let effectivePosition = this.position;
     let effectiveAlign = this.align;
 
-    if (this.position === 'bottom') {
-      if (rect.bottom + 8 + contentRect.height > window.innerHeight && rect.top - 8 - contentRect.height >= 0) {
-        effectivePosition = 'top';
+    // Reset styles
+    content.style.top = '';
+    content.style.bottom = '';
+    content.style.left = '';
+    content.style.right = '';
+    content.style.removeProperty('--arrow-right');
+    content.style.removeProperty('--arrow-left');
+    content.style.removeProperty('--arrow-top');
+    content.style.removeProperty('--arrow-bottom');
+
+    const isHorizontal = this.position === 'left' || this.position === 'right';
+
+    if (isHorizontal) {
+      // 1. Horizontal Position check & fallback
+      if (this.position === 'right') {
+        if (rect.right + 6 + contentRect.width > window.innerWidth && rect.left - 6 - contentRect.width >= 0) {
+          effectivePosition = 'left';
+        }
+      } else {
+        if (rect.left - 6 - contentRect.width < 0 && rect.right + 6 + contentRect.width <= window.innerWidth) {
+          effectivePosition = 'right';
+        }
       }
+
+      // 2. Vertical Alignment fallback
+      if (this.align === 'top') {
+        if (rect.top + contentRect.height > window.innerHeight && rect.bottom - contentRect.height >= 0) {
+          effectiveAlign = 'bottom';
+        }
+      } else {
+        if (rect.bottom - contentRect.height < 0 && rect.top + contentRect.height <= window.innerHeight) {
+          effectiveAlign = 'top';
+        }
+      }
+
+      // 3. Set horizontal position styles
+      if (effectivePosition === 'right') {
+        content.style.left = `${rect.right + 6}px`;
+        content.style.right = 'auto';
+      } else {
+        content.style.right = `${window.innerWidth - rect.left + 6}px`;
+        content.style.left = 'auto';
+      }
+
+      // 4. Set vertical alignment styles & vertical arrow property
+      const triggerCenterY = rect.top + rect.height / 2;
+      if (effectiveAlign === 'top') {
+        let topOffset = rect.top - 4; // slight offset
+        if (topOffset + contentRect.height > window.innerHeight) {
+          topOffset = window.innerHeight - contentRect.height - 8;
+        }
+        topOffset = Math.max(8, topOffset);
+        content.style.top = `${topOffset}px`;
+        content.style.bottom = 'auto';
+
+        const arrowTop = triggerCenterY - topOffset - 6;
+        content.style.setProperty('--arrow-top', `${Math.max(10, Math.min(contentRect.height - 20, arrowTop))}px`);
+      } else {
+        let bottomOffset = window.innerHeight - rect.bottom - 4;
+        if (bottomOffset + contentRect.height > window.innerHeight) {
+          bottomOffset = window.innerHeight - contentRect.height - 8;
+        }
+        bottomOffset = Math.max(8, bottomOffset);
+        content.style.bottom = `${bottomOffset}px`;
+        content.style.top = 'auto';
+
+        const popupTop = window.innerHeight - bottomOffset - contentRect.height;
+        const arrowTop = triggerCenterY - popupTop - 6;
+        content.style.setProperty('--arrow-top', `${Math.max(10, Math.min(contentRect.height - 20, arrowTop))}px`);
+      }
+
     } else {
-      if (rect.top - 8 - contentRect.height < 0 && rect.bottom + 8 + contentRect.height <= window.innerHeight) {
-        effectivePosition = 'bottom';
+      // Standard vertical positions (top / bottom)
+      if (this.position === 'bottom') {
+        if (rect.bottom + 8 + contentRect.height > window.innerHeight && rect.top - 8 - contentRect.height >= 0) {
+          effectivePosition = 'top';
+        }
+      } else {
+        if (rect.top - 8 - contentRect.height < 0 && rect.bottom + 8 + contentRect.height <= window.innerHeight) {
+          effectivePosition = 'bottom';
+        }
+      }
+
+      if (this.align === 'right') {
+        if (rect.right - contentRect.width < 0 && rect.left + contentRect.width <= window.innerWidth) {
+          effectiveAlign = 'left';
+        }
+      } else {
+        if (rect.left + contentRect.width > window.innerWidth && rect.right - contentRect.width >= 0) {
+          effectiveAlign = 'right';
+        }
+      }
+
+      if (effectivePosition === 'bottom') {
+        content.style.top = `${rect.bottom + 8}px`;
+        content.style.bottom = 'auto';
+      } else {
+        content.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+        content.style.top = 'auto';
+      }
+
+      if (effectiveAlign === 'right') {
+        let rightOffset = window.innerWidth - rect.right;
+        if (rightOffset + contentRect.width > window.innerWidth) {
+          rightOffset = window.innerWidth - contentRect.width - 8;
+        }
+        rightOffset = Math.max(8, rightOffset);
+        content.style.right = `${rightOffset}px`;
+        content.style.left = 'auto';
+
+        const triggerCenter = rect.left + rect.width / 2;
+        const popupRight = window.innerWidth - rightOffset;
+        const arrowRight = popupRight - triggerCenter - 6;
+        content.style.setProperty('--arrow-right', `${Math.max(10, Math.min(contentRect.width - 20, arrowRight))}px`);
+      } else {
+        let leftOffset = rect.left;
+        if (leftOffset + contentRect.width > window.innerWidth) {
+          leftOffset = window.innerWidth - contentRect.width - 8;
+        }
+        leftOffset = Math.max(8, leftOffset);
+        content.style.left = `${leftOffset}px`;
+        content.style.right = 'auto';
+
+        const triggerCenter = rect.left + rect.width / 2;
+        const arrowLeft = triggerCenter - leftOffset - 6;
+        content.style.setProperty('--arrow-left', `${Math.max(10, Math.min(contentRect.width - 20, arrowLeft))}px`);
       }
     }
 
-    if (this.align === 'right') {
-      if (rect.right - contentRect.width < 0 && rect.left + contentRect.width <= window.innerWidth) {
-        effectiveAlign = 'left';
-      }
-    } else {
-      if (rect.left + contentRect.width > window.innerWidth && rect.right - contentRect.width >= 0) {
-        effectiveAlign = 'right';
-      }
-    }
-
-    if (effectivePosition === 'bottom') {
-      content.style.top = `${rect.bottom + 8}px`;
-      content.style.bottom = 'auto';
-    } else {
-      content.style.bottom = `${window.innerHeight - rect.top + 8}px`;
-      content.style.top = 'auto';
-    }
-
-    if (effectiveAlign === 'right') {
-      let rightOffset = window.innerWidth - rect.right;
-      if (rightOffset + contentRect.width > window.innerWidth) {
-        rightOffset = window.innerWidth - contentRect.width - 8;
-      }
-      rightOffset = Math.max(8, rightOffset);
-      content.style.right = `${rightOffset}px`;
-      content.style.left = 'auto';
-
-      // calculate arrow position
-      const triggerCenter = rect.left + rect.width / 2;
-      const popupRight = window.innerWidth - rightOffset;
-      const arrowRight = popupRight - triggerCenter - 6; // -6 for half arrow width
-      content.style.setProperty('--arrow-right', `${Math.max(10, Math.min(contentRect.width - 20, arrowRight))}px`);
-    } else {
-      let leftOffset = rect.left;
-      if (leftOffset + contentRect.width > window.innerWidth) {
-        leftOffset = window.innerWidth - contentRect.width - 8;
-      }
-      leftOffset = Math.max(8, leftOffset);
-      content.style.left = `${leftOffset}px`;
-      content.style.right = 'auto';
-
-      // calculate arrow position
-      const triggerCenter = rect.left + rect.width / 2;
-      const arrowLeft = triggerCenter - leftOffset - 6; // -6 for half arrow width
-      content.style.setProperty('--arrow-left', `${Math.max(10, Math.min(contentRect.width - 20, arrowLeft))}px`);
-    }
-
-    content.classList.remove('position-top', 'position-bottom', 'align-left', 'align-right');
+    content.classList.remove('position-top', 'position-bottom', 'position-left', 'position-right', 'align-left', 'align-right', 'align-top', 'align-bottom');
     content.classList.add(`position-${effectivePosition}`, `align-${effectiveAlign}`);
   }
 
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener('resize', this._handleResize, { passive: true });
+    this.addEventListener('mouseenter', this._handleMouseEnter);
+    this.addEventListener('mouseleave', this._handleMouseLeave);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener('resize', this._handleResize);
+    this.removeEventListener('mouseenter', this._handleMouseEnter);
+    this.removeEventListener('mouseleave', this._handleMouseLeave);
   }
+
+  private _handleMouseEnter = () => {
+    if (this.triggerOn === 'hover') {
+      this.open();
+    }
+  };
+
+  private _handleMouseLeave = () => {
+    if (this.triggerOn === 'hover') {
+      this.close();
+    }
+  };
 
   private _handleResize = () => {
     if (this.openState) {

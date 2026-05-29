@@ -7,7 +7,7 @@ import type { ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { mailboxOperations } from '../services/mailbox-operations';
 import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH } from '../utils/folders';
-import '../store/settings-store';
+import { settingsContext, SettingsStore } from '../store/settings-store';
 import './alps-icon-btn';
 import './ui-prompt';
 import './alps-toolbar';
@@ -26,6 +26,9 @@ export class FolderList extends LitElement {
 
   @consume({ context: i18nContext })
   i18nStore!: I18nStore;
+
+  @consume({ context: settingsContext })
+  settingsStore!: SettingsStore;
 
   @property({ type: Array }) mailboxes: any[] = [];
   @property({ type: String }) currentMailbox = '';
@@ -62,6 +65,9 @@ export class FolderList extends LitElement {
       if (this.i18nStore) {
         this.i18nStore.addEventListener('change', this._handleStoreChange);
       }
+      if (this.settingsStore) {
+        this.settingsStore.addEventListener('change', this._handleStoreChange);
+      }
     });
   }
 
@@ -71,6 +77,7 @@ export class FolderList extends LitElement {
       this.composeStore.removeEventListener('change', this._handleStoreChange);
     }
     this.i18nStore?.removeEventListener('change', this._handleStoreChange);
+    this.settingsStore?.removeEventListener('change', this._handleStoreChange);
   }
 
   private _handleStoreChange = () => {
@@ -118,7 +125,7 @@ export class FolderList extends LitElement {
       align-items: center;
       position: relative;
       height: 36px;
-      padding: 0 8px;
+      padding: 0 4px;
       box-sizing: border-box;
       border-radius: 6px;
       cursor: pointer;
@@ -126,6 +133,7 @@ export class FolderList extends LitElement {
       margin-bottom: 2px;
       user-select: none;
       transition: background 0.15s;
+      gap: 4px;
     }
 
     @media (hover: hover) {
@@ -171,8 +179,7 @@ export class FolderList extends LitElement {
       display: none;
       align-items: center;
       padding-left: 8px;
-      margin-left: auto;
-      margin-right: -4px;
+      margin-left: auto;      
     }
 
     .folder-item.active .folder-actions {
@@ -266,6 +273,31 @@ export class FolderList extends LitElement {
     .icon-archive { color: var(--icon-archive, #8b5cf6); }
     .icon-default { color: var(--icon-default, #9ca3af); }
 
+    /* Submenu trigger styling inside popup trigger slot */
+    .dropdown-item.submenu-trigger {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 8px 16px;
+      box-sizing: border-box;
+    }
+    .dropdown-item.submenu-trigger .trigger-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+    }
+    .dropdown-item.submenu-trigger .caret-icon {
+      margin-left: auto;
+      color: var(--text-muted, #6b7280);
+      display: flex;
+      align-items: center;
+    }
+    .dropdown-item.submenu-trigger .caret-icon svg {
+      width: 12px;
+      height: 12px;
+    }
   `];
 
   private toggleFolder(e: Event | null, folderName: string) {
@@ -302,7 +334,7 @@ export class FolderList extends LitElement {
           delimiter = typeof delim === 'number' ? String.fromCharCode(delim) : (delim || '.');
         }
         name = `${this.parentForNewFolder}${delimiter}${name}`;
-        
+
         this.dispatchEvent(new CustomEvent('expand-folder', {
           detail: { folderName: this.parentForNewFolder }
         }));
@@ -324,14 +356,14 @@ export class FolderList extends LitElement {
         if (this.currentMailbox === oldName) {
           this.selectMailbox(newName);
         }
-        
+
         const undoFn = async () => {
           await mailboxOperations.renameMailbox(newName, oldName);
           if (this.currentMailbox === newName) {
             this.selectMailbox(oldName);
           }
         };
-        
+
         this.dispatchEvent(new CustomEvent('toast', {
           detail: {
             message: this.i18nStore?.t('toast.folderRenamed'),
@@ -356,7 +388,7 @@ export class FolderList extends LitElement {
         if (this.currentMailbox.startsWith(this.mailboxToDelete)) {
           this.selectMailbox(FOLDER_INBOX);
         }
-        
+
         this.dispatchEvent(new CustomEvent('toast', {
           detail: {
             message: this.i18nStore?.t('toast.folderPermanentlyDeleted'),
@@ -379,22 +411,22 @@ export class FolderList extends LitElement {
         const delim = mb.Delimiter || mb.Delim;
         delimiter = typeof delim === 'number' ? String.fromCharCode(delim) : (delim || '.');
       }
-      
+
       const parts = this.mailboxToDelete.split(delimiter);
       const leafName = parts[parts.length - 1];
       const newName = `Trash${delimiter}${leafName}`;
-      
+
       const success = await mailboxOperations.renameMailbox(this.mailboxToDelete, newName);
       if (success) {
         if (this.currentMailbox.startsWith(this.mailboxToDelete)) {
           this.selectMailbox(FOLDER_INBOX);
         }
-        
+
         const oldName = this.mailboxToDelete;
         const undoFn = async () => {
           await mailboxOperations.renameMailbox(newName, oldName);
         };
-        
+
         this.dispatchEvent(new CustomEvent('toast', {
           detail: {
             message: this.i18nStore?.t('toast.folderMovedToTrash'),
@@ -410,6 +442,81 @@ export class FolderList extends LitElement {
     this.showMoveToTrashConfirm = false;
     this.mailboxToDelete = '';
   }
+
+  private moveFolder(folderName: string, direction: 'top' | 'up' | 'down' | 'bottom') {
+    console.log('[moveFolder] Start:', { folderName, direction });
+    const standardOrder = [FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH];
+    const mb = this.mailboxes.find(m => (m.Name || m.Mailbox) === folderName);
+    const delim = mb?.Delimiter || mb?.Delim;
+    const delimiter = typeof delim === 'number' ? String.fromCharCode(delim) : (delim || '.');
+    const parts = folderName.split(delimiter);
+    const parentPath = parts.slice(0, -1).join(delimiter);
+
+    const siblings = this.mailboxes
+      .map(m => m.Name || m.Mailbox || '')
+      .filter(name => {
+        if (standardOrder.includes(name)) return false;
+        const sParts = name.split(delimiter);
+        const sParent = sParts.slice(0, -1).join(delimiter);
+        return sParent === parentPath && sParts.length === parts.length;
+      });
+
+    console.log('[moveFolder] Sibling custom folders found:', siblings);
+
+    const customOrder = [...(this.settingsStore?.getState()?.customMailboxOrder || [])];
+    siblings.sort((a, b) => {
+      const idxA = customOrder.indexOf(a);
+      const idxB = customOrder.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b);
+    });
+
+    console.log('[moveFolder] Sorted siblings:', siblings);
+
+    const currentIndex = siblings.indexOf(folderName);
+    if (currentIndex === -1) {
+      console.error('[moveFolder] Folder not found in siblings!');
+      return;
+    }
+
+    let newIndex = currentIndex;
+    switch (direction) {
+      case 'top':
+        newIndex = 0;
+        break;
+      case 'up':
+        newIndex = Math.max(0, currentIndex - 1);
+        break;
+      case 'down':
+        newIndex = Math.min(siblings.length - 1, currentIndex + 1);
+        break;
+      case 'bottom':
+        newIndex = siblings.length - 1;
+        break;
+    }
+
+    console.log('[moveFolder] Shifting indexes:', { currentIndex, newIndex });
+
+    if (newIndex === currentIndex) {
+      console.log('[moveFolder] No index change needed.');
+      return;
+    }
+
+    siblings.splice(currentIndex, 1);
+    siblings.splice(newIndex, 0, folderName);
+
+    console.log('[moveFolder] New siblings order:', siblings);
+
+    const updatedOrder = customOrder.filter(name => !siblings.includes(name));
+    updatedOrder.push(...siblings);
+
+    console.log('[moveFolder] Final updated customMailboxOrder settings state:', updatedOrder);
+
+    this.settingsStore?.updateSettings({ customMailboxOrder: updatedOrder });
+  }
+
 
   render() {
     const standardOrder = [FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH];
@@ -465,14 +572,55 @@ export class FolderList extends LitElement {
       }
     });
 
+    const customOrder = this.settingsStore?.getState()?.customMailboxOrder || [];
+
     standardNodes.sort((a, b) => standardOrder.indexOf(a.name) - standardOrder.indexOf(b.name));
-    customNodes.sort((a, b) => a.name.localeCompare(b.name));
+    customNodes.sort((a, b) => {
+      const idxA = customOrder.indexOf(a.fullName);
+      const idxB = customOrder.indexOf(b.fullName);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.name.localeCompare(b.name);
+    });
 
     const renderTree = (nodes: TreeNode[], depth: number = 0): TemplateResult[] => {
       return nodes.map(node => {
         const hasChildren = Object.keys(node.children).length > 0;
         const isExpanded = this.expandedFolders.has(node.fullName);
         const isActive = this.currentMailbox === node.fullName;
+        const hasActions = depth > 0 || !standardOrder.includes(node.name);
+
+        let isFirst = false;
+        let isLast = false;
+        if (hasActions) {
+          const delim = node.mb?.Delimiter || node.mb?.Delim;
+          const delimiter = typeof delim === 'number' ? String.fromCharCode(delim) : (delim || '.');
+          const parts = node.fullName.split(delimiter);
+          const parentPath = parts.slice(0, -1).join(delimiter);
+
+          const siblings = this.mailboxes
+            .map(m => m.Name || m.Mailbox || '')
+            .filter(name => {
+              if (standardOrder.includes(name)) return false;
+              const sParts = name.split(delimiter);
+              const sParent = sParts.slice(0, -1).join(delimiter);
+              return sParent === parentPath && sParts.length === parts.length;
+            });
+
+          const customOrder = this.settingsStore?.getState()?.customMailboxOrder || [];
+          siblings.sort((a, b) => {
+            const idxA = customOrder.indexOf(a);
+            const idxB = customOrder.indexOf(b);
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return -1;
+            if (idxB !== -1) return 1;
+            return a.localeCompare(b);
+          });
+
+          isFirst = siblings.indexOf(node.fullName) === 0;
+          isLast = siblings.indexOf(node.fullName) === siblings.length - 1;
+        }
 
         let icon = renderIcon('folder');
         let colorClass = 'icon-default';
@@ -498,7 +646,6 @@ export class FolderList extends LitElement {
           }
         };
 
-        const hasActions = depth > 0 || !standardOrder.includes(node.name);
 
         return html`
           <div 
@@ -511,9 +658,9 @@ export class FolderList extends LitElement {
               icon=${isExpanded ? 'caretDown' : 'caretRight'}
               style="visibility: ${hasChildren ? 'visible' : 'hidden'}; --btn-padding: 2px;" 
               @click=${(e: Event) => {
-                e.stopPropagation();
-                if (hasChildren) this.toggleFolder(e, node.fullName);
-              }}
+            e.stopPropagation();
+            if (hasChildren) this.toggleFolder(e, node.fullName);
+          }}
             ></alps-icon-btn>
             
             <div class="folder-icon ${colorClass}">${icon}</div>
@@ -553,6 +700,64 @@ export class FolderList extends LitElement {
                     ${renderIcon(node.mb?.Subscribed ? 'eyeSlash' : 'eye')} <span class="item-text">${node.mb?.Subscribed ? 'Unsubscribe' : 'Subscribe'}</span>
                   </button>
                   <div class="dropdown-divider"></div>
+                  
+                  <!-- Natively nested Order submenu via extended alps-popup -->
+                  <alps-popup position="right" align="top" triggerOn="hover" @click=${(e: Event) => e.stopPropagation()}>
+                    <button slot="trigger" class="dropdown-item submenu-trigger">
+                      <div class="trigger-label">
+                        ${renderIcon('sortAscending')} <span class="item-text">Order</span>
+                      </div>
+                      <div class="caret-icon">${renderIcon('caretRight')}</div>
+                    </button>
+                    
+                    <button class="dropdown-item" ?disabled=${isFirst} @click=${(e: Event) => {
+              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+              if (popup) popup.close();
+
+              const parentPopup = (e.target as HTMLElement).closest('.folder-actions')?.querySelector('alps-popup') as any;
+              if (parentPopup) parentPopup.close();
+
+              this.moveFolder(node.fullName, 'top');
+            }}>
+                      ${renderIcon('caretDoubleUp')} <span class="item-text">Move to Top</span>
+                    </button>
+                    <button class="dropdown-item" ?disabled=${isFirst} @click=${(e: Event) => {
+              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+              if (popup) popup.close();
+
+              const parentPopup = (e.target as HTMLElement).closest('.folder-actions')?.querySelector('alps-popup') as any;
+              if (parentPopup) parentPopup.close();
+
+              this.moveFolder(node.fullName, 'up');
+            }}>
+                      ${renderIcon('caretUp')} <span class="item-text">Move Up</span>
+                    </button>
+                    <button class="dropdown-item" ?disabled=${isLast} @click=${(e: Event) => {
+              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+              if (popup) popup.close();
+
+              const parentPopup = (e.target as HTMLElement).closest('.folder-actions')?.querySelector('alps-popup') as any;
+              if (parentPopup) parentPopup.close();
+
+              this.moveFolder(node.fullName, 'down');
+            }}>
+                      ${renderIcon('caretDown')} <span class="item-text">Move Down</span>
+                    </button>
+                    <button class="dropdown-item" ?disabled=${isLast} @click=${(e: Event) => {
+              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+              if (popup) popup.close();
+
+              const parentPopup = (e.target as HTMLElement).closest('.folder-actions')?.querySelector('alps-popup') as any;
+              if (parentPopup) parentPopup.close();
+
+              this.moveFolder(node.fullName, 'bottom');
+            }}>
+                      ${renderIcon('caretDoubleDown')} <span class="item-text">Move to Bottom</span>
+                    </button>
+                  </alps-popup>
+
+
+                  <div class="dropdown-divider"></div>
                   <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
@@ -574,7 +779,14 @@ export class FolderList extends LitElement {
           
           ${hasChildren && isExpanded ? html`
             <div class="folder-children">
-              ${renderTree(Object.values(node.children).sort((a, b) => a.name.localeCompare(b.name)), depth + 1)}
+              ${renderTree(Object.values(node.children).sort((a, b) => {
+              const idxA = customOrder.indexOf(a.fullName);
+              const idxB = customOrder.indexOf(b.fullName);
+              if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+              if (idxA !== -1) return -1;
+              if (idxB !== -1) return 1;
+              return a.name.localeCompare(b.name);
+            }), depth + 1)}
             </div>
           ` : ''}
         `;
@@ -608,16 +820,16 @@ export class FolderList extends LitElement {
 
       ${this.showCreatePrompt ? html`
         <ui-prompt
-          title=${this.parentForNewFolder ? 
-            (this.i18nStore?.t('folderList.createSubfolderUnder')?.replace('{folder}', this.parentForNewFolder)) : 
-            this.i18nStore?.t('folderList.createFolder')}
+          title=${this.parentForNewFolder ?
+          (this.i18nStore?.t('folderList.createSubfolderUnder')?.replace('{folder}', this.parentForNewFolder)) :
+          this.i18nStore?.t('folderList.createFolder')}
           confirmText="Create"
           .fields=${[{ id: 'name', label: 'Folder Name', autofocus: true }]}
           @submit=${this.handleCreateSubmit}
           @cancel=${() => {
-            this.showCreatePrompt = false;
-            this.parentForNewFolder = '';
-          }}
+          this.showCreatePrompt = false;
+          this.parentForNewFolder = '';
+        }}
         ></ui-prompt>
       ` : ''}
 
