@@ -90,7 +90,7 @@ export const popupStyles = css`
 export class AlpsPopup extends LitElement {
   @property({ type: String }) align: 'left' | 'right' | 'top' | 'bottom' = 'right';
   @property({ type: String }) position: 'top' | 'bottom' | 'left' | 'right' = 'bottom';
-  @property({ type: String }) triggerOn: 'click' | 'hover' = 'click';
+  @property({ type: String, reflect: true }) triggerOn: 'click' | 'hover' = 'click';
   @property({ type: Boolean, reflect: true, attribute: 'open' }) openState = false;
 
   static styles = css`
@@ -111,6 +111,11 @@ export class AlpsPopup extends LitElement {
       max-width: none;
       max-height: none;
       overflow: visible;
+      pointer-events: none;
+    }
+
+    :host([triggerOn="click"]) .popup-dialog {
+      pointer-events: auto;
     }
 
     .popup-dialog::backdrop {
@@ -119,7 +124,7 @@ export class AlpsPopup extends LitElement {
 
     .popup-content {
       position: absolute;
-      
+      pointer-events: auto;
       z-index: 40010;
       min-width: 160px;
       max-width: 320px;
@@ -328,7 +333,11 @@ export class AlpsPopup extends LitElement {
       const dialog = this.shadowRoot?.querySelector('.popup-dialog') as HTMLDialogElement | null;
       if (this.openState) {
         if (dialog && !dialog.open) {
-          dialog.showModal();
+          if (this.triggerOn === 'hover') {
+            dialog.show();
+          } else {
+            dialog.showModal();
+          }
         }
         this._updatePosition();
       } else {
@@ -492,6 +501,8 @@ export class AlpsPopup extends LitElement {
     content.classList.add(`position-${effectivePosition}`, `align-${effectiveAlign}`);
   }
 
+  private _closeTimeout: any = null;
+
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener('resize', this._handleResize, { passive: true });
@@ -504,17 +515,31 @@ export class AlpsPopup extends LitElement {
     window.removeEventListener('resize', this._handleResize);
     this.removeEventListener('mouseenter', this._handleMouseEnter);
     this.removeEventListener('mouseleave', this._handleMouseLeave);
+    if (this._closeTimeout) {
+      clearTimeout(this._closeTimeout);
+      this._closeTimeout = null;
+    }
   }
 
   private _handleMouseEnter = () => {
     if (this.triggerOn === 'hover') {
+      if (this._closeTimeout) {
+        clearTimeout(this._closeTimeout);
+        this._closeTimeout = null;
+      }
       this.open();
     }
   };
 
   private _handleMouseLeave = () => {
     if (this.triggerOn === 'hover') {
-      this.close();
+      if (this._closeTimeout) {
+        clearTimeout(this._closeTimeout);
+      }
+      this._closeTimeout = setTimeout(() => {
+        this.close();
+        this._closeTimeout = null;
+      }, 300); // 300ms smoothing delay to prevent accidental/flickery hover closures
     }
   };
 

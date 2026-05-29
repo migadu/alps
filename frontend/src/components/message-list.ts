@@ -1187,16 +1187,6 @@ export class MessageList extends LitElement {
             ></alps-icon-btn>
           </div>
 
-          ${this.showEmptyConfirm ? html`
-            <ui-confirm
-              title=${this.i18nStore?.t('messageList.emptyMailboxTitle')?.replace('{folder}', this.currentMailbox) || `Empty ${this.currentMailbox}`}
-              message=${this.i18nStore?.t('messageList.emptyMailboxConfirm')?.replace('{folder}', this.currentMailbox).replace('{count}', String(this.totalMessages)) || `Are you sure you want to permanently delete all ${this.totalMessages} messages in ${this.currentMailbox}? This action cannot be undone.`}
-              confirmText=${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
-              confirmVariant="danger"
-              @confirm=${this.handleEmptyMailbox}
-              @cancel=${() => this.showEmptyConfirm = false}
-            ></ui-confirm>
-          ` : ''}
           <div class="spacer"></div>
           <alps-pagination 
             .currentPage=${this.currentPage} 
@@ -1204,6 +1194,16 @@ export class MessageList extends LitElement {
             .itemsPerPage=${this.messagesPerPage}>
           </alps-pagination>
         </div>
+      ` : ''}
+      ${this.showEmptyConfirm ? html`
+        <ui-confirm
+          title=${this.i18nStore?.t('messageList.emptyMailboxTitle')?.replace('{folder}', this.currentMailbox) || `Empty ${this.currentMailbox}`}
+          message=${this.i18nStore?.t('messageList.emptyMailboxConfirm')?.replace('{folder}', this.currentMailbox).replace('{count}', String(this.totalMessages)) || `Are you sure you want to permanently delete all ${this.totalMessages} messages in ${this.currentMailbox}? This action cannot be undone.`}
+          confirmText=${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
+          .isDanger=${true}
+          @confirm=${this.handleEmptyMailbox}
+          @cancel=${() => this.showEmptyConfirm = false}
+        ></ui-confirm>
       ` : ''}
     `;
   }

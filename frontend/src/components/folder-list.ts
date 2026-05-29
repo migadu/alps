@@ -414,7 +414,25 @@ export class FolderList extends LitElement {
 
       const parts = this.mailboxToDelete.split(delimiter);
       const leafName = parts[parts.length - 1];
-      const newName = `Trash${delimiter}${leafName}`;
+
+      // Find the actual case-sensitive name of the Trash folder if it exists in mailboxes
+      let trashName = 'Trash';
+      const rootTrash = this.mailboxes.find(m => {
+        const name = m.Name || m.Mailbox || '';
+        return name.toLowerCase() === 'trash';
+      });
+      if (rootTrash) {
+        trashName = rootTrash.Name || rootTrash.Mailbox || 'Trash';
+      }
+
+      // Resolve name collisions by appending a suffix if needed
+      let candidateName = `${trashName}${delimiter}${leafName}`;
+      let suffix = 1;
+      while (this.mailboxes.some(m => (m.Name || m.Mailbox) === candidateName)) {
+        candidateName = `${trashName}${delimiter}${leafName} (${suffix})`;
+        suffix++;
+      }
+      const newName = candidateName;
 
       const success = await mailboxOperations.renameMailbox(this.mailboxToDelete, newName);
       if (success) {
