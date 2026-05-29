@@ -171,6 +171,7 @@ export const es = {
     forwarded: 'Reenviado',
     searchResultsFor: 'Resultados de búsqueda para:',
     clearSearch: 'Borrar búsqueda',
+    searchAllMailboxes: 'Buscar en todo',
     totalMessagesIn: '{count} mensajes en total en {folder}',
     deleteAllNow: 'Eliminar todos ahora',
     emptyMailboxTitle: 'Vaciar {folder}',

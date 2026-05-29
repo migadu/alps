@@ -171,6 +171,7 @@ export const rs = {
     forwarded: 'Прослеђено',
     searchResultsFor: 'Резултати претраге за:',
     clearSearch: 'Очисти претрагу',
+    searchAllMailboxes: 'Претражи све',
     totalMessagesIn: 'Укупно {count} порука у {folder}',
     deleteAllNow: 'Обриши све сада',
     emptyMailboxTitle: 'Испразни {folder}',

@@ -634,6 +634,14 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 
 // SearchMessages searches messages in a mailbox
 func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
+	if mailbox == "*" {
+		if p.HasMultiSearchCapability() {
+			return p.searchMultiMessages(query, sortOrder, page, pageSize)
+		}
+		// Fallback to INBOX if MULTISEARCH is not supported
+		mailbox = "INBOX"
+	}
+
 	if err := p.ensureMailboxSelected(mailbox); err != nil {
 		return nil, 0, err
 	}
@@ -1495,4 +1503,102 @@ func (p *IMAPProvider) GetMessageThread(mailbox string, targetUID provider.Messa
 		return nil, err
 	}
 	return []provider.Message{*singleMsg}, nil
+}
+
+func (p *IMAPProvider) HasMultiSearchCapability() bool {
+	if p.client == nil {
+		return false
+	}
+	return p.client.Caps().Has(imap.Cap("MULTISEARCH"))
+}
+
+func (p *IMAPProvider) searchMultiMessages(query string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
+	if p.client == nil {
+		return nil, 0, fmt.Errorf("IMAP client not initialized")
+	}
+
+	searchCriteria := prepareIMAPSearch(query)
+
+	// 1. Get all subscribed mailboxes
+	mailboxes, err := p.ListMailboxes()
+	if err != nil {
+		return nil, 0, err
+	}
+	var mboxNames []string
+	for _, mbox := range mailboxes {
+		mboxNames = append(mboxNames, mbox.Name)
+	}
+
+	if len(mboxNames) == 0 {
+		return nil, 0, nil
+	}
+
+	// 2. Perform UIDMultiSearch
+	results, err := p.client.UIDMultiSearch(mboxNames, searchCriteria, nil).Wait()
+	if err != nil {
+		return nil, 0, fmt.Errorf("UID MULTISEARCH failed: %v", err)
+	}
+
+	var allMsgs []provider.Message
+	for _, data := range results {
+		uids := data.AllUIDs()
+		if len(uids) == 0 {
+			continue
+		}
+
+		// 3. Batch-fetch for this mailbox
+		if err := p.ensureMailboxSelected(data.Mailbox); err != nil {
+			continue
+		}
+
+		var uidSet imap.UIDSet
+		for _, uid := range uids {
+			uidSet.AddNum(imap.UID(uid))
+		}
+
+		fetchOptions := imap.FetchOptions{
+			Flags:         true,
+			Envelope:      true,
+			UID:           true,
+			RFC822Size:    true,
+			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+		}
+
+		imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to fetch messages for %s: %v", data.Mailbox, err)
+		}
+
+		for _, msg := range imapMsgs {
+			allMsgs = append(allMsgs, p.convertIMAPMessage(msg, data.Mailbox))
+		}
+	}
+
+	// 4. Sort globally by envelope date descending (or ascending if requested)
+	sort.Slice(allMsgs, func(i, j int) bool {
+		var dateI, dateJ time.Time
+		if allMsgs[i].Envelope != nil {
+			dateI = allMsgs[i].Envelope.Date
+		}
+		if allMsgs[j].Envelope != nil {
+			dateJ = allMsgs[j].Envelope.Date
+		}
+		if sortOrder == "asc" {
+			return dateI.Before(dateJ)
+		}
+		return dateI.After(dateJ)
+	})
+
+	// 5. Paginate
+	total := len(allMsgs)
+	from := page * pageSize
+	to := from + pageSize
+	if from >= len(allMsgs) {
+		return nil, total, nil
+	}
+	if to > len(allMsgs) {
+		to = len(allMsgs)
+	}
+
+	return allMsgs[from:to], total, nil
 }

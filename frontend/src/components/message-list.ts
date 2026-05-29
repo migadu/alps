@@ -78,6 +78,21 @@ export class MessageList extends LitElement {
       overflow: hidden;
       text-overflow: ellipsis;
     }
+
+    .mailbox-badge {
+      display: inline-flex;
+      align-items: center;
+      background: var(--bg-tertiary, #f3f4f6);
+      color: var(--text-secondary, #4b5563);
+      font-size: 10px;
+      font-weight: 500;
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-color, #e5e7eb);
+      margin-right: 6px;
+      flex-shrink: 0;
+      text-transform: capitalize;
+    }
     
     .list-content {
       flex: 1;
@@ -982,6 +997,9 @@ export class MessageList extends LitElement {
             `)}
           </div>
         ` : ''}
+        ${this.currentMailbox === '*' && msg.Mailbox ? html`
+          <span class="mailbox-badge" title="Folder: ${msg.Mailbox}">${msg.Mailbox}</span>
+        ` : ''}
         <div class="message-subject">
           ${subject}
         </div>
@@ -1069,6 +1087,9 @@ export class MessageList extends LitElement {
               `)}
             </div>
           ` : ''}
+          ${this.currentMailbox === '*' && msg.Mailbox ? html`
+            <span class="mailbox-badge" title="Folder: ${msg.Mailbox}">${msg.Mailbox}</span>
+          ` : ''}
           <div class="message-subject">
             ${subject}
           </div>
@@ -1134,6 +1155,11 @@ export class MessageList extends LitElement {
         ${this.filterQuery ? html`
           <alps-banner>
             <span>${this.i18nStore?.t('messageList.searchResultsFor')} <strong>${this.filterQuery}</strong></span>
+            ${this.currentMailbox !== '*' && this.settingsStore?.getState()?.hasMultiSearchCapability ? html`
+              <alps-button slot="action" variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('search-submit', { detail: { value: this.filterQuery, global: true }, bubbles: true, composed: true }))}>
+                ${this.i18nStore?.t('messageList.searchAllMailboxes') || 'Search All Mailboxes'}
+              </alps-button>
+            ` : ''}
             <alps-button slot="action" variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('clear-search'))}>
               ${this.i18nStore?.t('messageList.clearSearch')}
             </alps-button>

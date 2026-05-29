@@ -212,6 +212,7 @@ export const en = {
     forwarded: 'Forwarded',
     searchResultsFor: 'Search results for:',
     clearSearch: 'Clear search',
+    searchAllMailboxes: 'Search All',
     totalMessagesIn: '{count} total messages in {folder}',
     deleteAllNow: 'Delete All Now',
     emptyMailboxTitle: 'Empty {folder}',

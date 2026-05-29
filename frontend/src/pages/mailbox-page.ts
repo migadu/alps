@@ -1143,7 +1143,8 @@ export class MailboxPage extends LitElement {
         @compose=${() => this.composeStore.openComposer()}
         @search-submit=${(e: CustomEvent) => {
         const newFilter = e.detail.value;
-        this.updateUrl(this.currentMailbox, 0, null, newFilter);
+        const mailbox = e.detail.global ? '*' : this.currentMailbox;
+        this.updateUrl(mailbox, 0, null, newFilter);
       }}
       ></app-header>
       <div class="app-container layout-${effectiveLayoutMode} ${isReadingFull ? 'reading' : ''} ${this.isPaneDragging || this.isSidebarDragging ? 'dragging' : ''} ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isMobile ? 'mobile-view' : ''} ${this.suppressSidebarHover ? 'suppress-sidebar-hover' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
@@ -1282,7 +1283,15 @@ export class MailboxPage extends LitElement {
         const newFilter = this.filterQuery === 'is:unread' ? '' : 'is:unread';
         this.updateUrl(this.currentMailbox, 0, null, newFilter);
       }}
-              @clear-search=${() => this.updateUrl(this.currentMailbox, 0, null, '')}
+              @clear-search=${() => {
+                const targetMailbox = this.currentMailbox === '*' ? FOLDER_INBOX : this.currentMailbox;
+                this.updateUrl(targetMailbox, 0, null, '');
+              }}
+              @search-submit=${(e: CustomEvent) => {
+                const newFilter = e.detail.value;
+                const mailbox = e.detail.global ? '*' : this.currentMailbox;
+                this.updateUrl(mailbox, 0, null, newFilter);
+              }}
               @selection-changed=${(e: CustomEvent) => this.selectedUids = e.detail.selectedUids}
               @toggle-star-message=${this._handleListToggleStar}
             ></alps-message-list>

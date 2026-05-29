@@ -173,6 +173,7 @@ export const de: TranslationDictionary = {
     forwarded: 'Weitergeleitet',
     searchResultsFor: 'Suchergebnisse für:',
     clearSearch: 'Suche löschen',
+    searchAllMailboxes: 'Alle durchsuchen',
     totalMessagesIn: '{count} Nachrichten insgesamt in {folder}',
     deleteAllNow: 'Jetzt alle löschen',
     emptyMailboxTitle: '{folder} leeren',

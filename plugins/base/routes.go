@@ -257,6 +257,39 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 		return nil, alps.NewHTTPError(http.StatusBadRequest, err)
 	}
 
+	if mboxName == "*" {
+		active := &MailboxStatus{
+			StatusData: &imap.StatusData{
+				Mailbox: "*",
+			},
+		}
+
+		var mailboxes []MailboxInfo
+		cacheKey := "mailboxes"
+		if cached, ok := ctx.Session.Cache().Get(cacheKey); ok {
+			mailboxes = cached.([]MailboxInfo)
+		} else {
+			err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+				var err error
+				mailboxes, err = listMailboxesWithProvider(p)
+				if err != nil {
+					return err
+				}
+				ctx.Session.Cache().Set(cacheKey, mailboxes)
+				return nil
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		return &BaseMailboxData{
+			Mailboxes: mailboxes,
+			Inbox:     nil,
+			Mailbox:   active,
+		}, nil
+	}
+
 	statuses := make(map[string]*MailboxStatus)
 	var mailboxes []MailboxInfo
 	var active, inbox *MailboxStatus
@@ -516,8 +549,10 @@ func handleGetMailbox(ctx *alps.Context) error {
 	title := mbox.Name()
 	if title == "INBOX" {
 		title = "Inbox"
+	} else if title == "*" {
+		title = "Search All Mailboxes"
 	}
-	if *mbox.NumUnseen > 0 {
+	if mbox.NumUnseen != nil && *mbox.NumUnseen > 0 {
 		title = fmt.Sprintf("(%d) %s", *mbox.NumUnseen, title)
 	}
 
@@ -2283,6 +2318,7 @@ func handleSettings(ctx *alps.Context) error {
 
 	var mailboxes []MailboxInfo
 	hasThreadCapability := false
+	hasMultiSearchCapability := false
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		mailboxes, err = listMailboxesWithProvider(p)
 		if err != nil {
@@ -2293,6 +2329,12 @@ func handleSettings(ctx *alps.Context) error {
 		}
 		if tc, ok := p.(threadCapable); ok {
 			hasThreadCapability = tc.HasThreadCapability()
+		}
+		type multisearchCapable interface {
+			HasMultiSearchCapability() bool
+		}
+		if mc, ok := p.(multisearchCapable); ok {
+			hasMultiSearchCapability = mc.HasMultiSearchCapability()
 		}
 		return nil
 	})
@@ -2310,11 +2352,12 @@ func handleSettings(ctx *alps.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
-		"Settings":            settings,
-		"Mailboxes":           mailboxes,
-		"AutoLogout":          settings.AutoLogout,
-		"MaxAttachmentMiB":    maxAttachmentMiB,
-		"HasThreadCapability": hasThreadCapability,
+		"Settings":                 settings,
+		"Mailboxes":                mailboxes,
+		"AutoLogout":               settings.AutoLogout,
+		"MaxAttachmentMiB":         maxAttachmentMiB,
+		"HasThreadCapability":      hasThreadCapability,
+		"HasMultiSearchCapability": hasMultiSearchCapability,
 	})
 }
 

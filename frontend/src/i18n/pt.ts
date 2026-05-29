@@ -205,6 +205,7 @@ export const pt = {
     forwarded: 'Encaminhado',
     searchResultsFor: 'Resultados da pesquisa para:',
     clearSearch: 'Limpar pesquisa',
+    searchAllMailboxes: 'Pesquisar tudo',
     totalMessagesIn: '{count} mensagens no total em {folder}',
     deleteAllNow: 'Excluir tudo agora',
     emptyMailboxTitle: 'Esvaziar {folder}',
