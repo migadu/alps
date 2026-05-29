@@ -88,12 +88,23 @@ func providerMessageToIMAP(msg provider.Message) IMAPMessage {
 	size := int64(msg.Size)
 	fetchMsg.RFC822Size = size
 
+	var subMsgs []IMAPMessage
+	if len(msg.SubMessages) > 0 {
+		subMsgs = make([]IMAPMessage, len(msg.SubMessages))
+		for i, sub := range msg.SubMessages {
+			subMsgs[i] = providerMessageToIMAP(sub)
+		}
+	}
+
 	imapMsg := IMAPMessage{
 		FetchMessageBuffer: fetchMsg,
 		Mailbox:            msg.Mailbox,
 		HasBimiPotential:   msg.BimiPotential,
 		HasBimiFailed:      msg.BimiFailed,
 		References:         msg.References,
+		ThreadCount:        msg.ThreadCount,
+		ThreadUIDs:         msg.ThreadUIDs,
+		SubMessages:        subMsgs,
 	}
 	if msg.ID != nil {
 		imapMsg.AlpsUID = msg.ID.String()
@@ -253,4 +264,33 @@ func moveMessagesWithProvider(p provider.MailProvider, srcMailbox, dstMailbox st
 // copyMessagesWithProvider copies multiple messages using the provider
 func copyMessagesWithProvider(p provider.MailProvider, srcMailbox, dstMailbox string, uids []provider.MessageID) (map[provider.MessageID]provider.MessageID, error) {
 	return p.CopyMessages(srcMailbox, dstMailbox, uids)
+}
+
+// getMessageThreadWithProvider gets a message thread using the provider
+func getMessageThreadWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID) ([]IMAPMessage, error) {
+	type threadCapable interface {
+		GetMessageThread(mailbox string, targetUID provider.MessageID) ([]provider.Message, error)
+	}
+
+	var msgs []provider.Message
+	var err error
+	if tc, ok := p.(threadCapable); ok {
+		msgs, err = tc.GetMessageThread(mailbox, uid)
+	} else {
+		var singleMsg *provider.Message
+		singleMsg, err = p.GetMessageMetadata(mailbox, uid)
+		if err == nil {
+			msgs = []provider.Message{*singleMsg}
+		}
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]IMAPMessage, len(msgs))
+	for i, m := range msgs {
+		result[i] = providerMessageToIMAP(m)
+	}
+	return result, nil
 }

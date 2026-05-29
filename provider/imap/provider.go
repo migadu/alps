@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -17,9 +19,11 @@ import (
 )
 
 type IMAPProvider struct {
-	client *imapclient.Client
-	store  provider.Store
-	debug  bool
+	client    *imapclient.Client
+	store     provider.Store
+	debug     bool
+	dateCache map[string]map[uint32]time.Time
+	cacheLock sync.RWMutex
 }
 
 func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
@@ -27,7 +31,12 @@ func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
 		return &IMAPProvider{client: nil, store: nil, debug: debug}
 	}
 	store, _ := newStore(client)
-	return &IMAPProvider{client: client, store: store, debug: debug}
+	return &IMAPProvider{
+		client:    client,
+		store:     store,
+		debug:     debug,
+		dateCache: make(map[string]map[uint32]time.Time),
+	}
 }
 
 // GetStore returns the per-user store for this provider
@@ -264,6 +273,201 @@ func (p *IMAPProvider) ensureMailboxSelected(mboxName string) error {
 	return nil
 }
 
+type ThreadGroup struct {
+	RepUID uint32
+	UIDs   []uint32
+}
+
+func (p *IMAPProvider) sortGroups(mailbox string, groups []ThreadGroup, sortOrder string) error {
+	if len(groups) == 0 {
+		return nil
+	}
+
+	var s struct {
+		MessageSortCriteria string `json:"message_sort_criteria"`
+	}
+	sortCriteria := "date" // Default to date
+	if p.store != nil {
+		if err := p.store.Get("base.settings", &s); err == nil && s.MessageSortCriteria != "" {
+			sortCriteria = s.MessageSortCriteria
+		}
+	}
+
+	if sortCriteria == "date" {
+		// 1. Sort all groups by RepUID first (filing date / sequential proxy)
+		if sortOrder == "asc" {
+			sort.Slice(groups, func(i, j int) bool {
+				return groups[i].RepUID < groups[j].RepUID
+			})
+		} else {
+			sort.Slice(groups, func(i, j int) bool {
+				return groups[i].RepUID > groups[j].RepUID
+			})
+		}
+
+		// 2. Define the sliding window of the newest messages by UID.
+		// For descending, newest are at the beginning. For ascending, they are at the end.
+		windowSize := 1000
+		if len(groups) < windowSize {
+			windowSize = len(groups)
+		}
+
+		var windowGroups []ThreadGroup
+		if sortOrder == "asc" {
+			windowStart := len(groups) - windowSize
+			windowGroups = groups[windowStart:]
+		} else {
+			windowGroups = groups[:windowSize]
+		}
+
+		// 3. Initialize cache
+		p.cacheLock.Lock()
+		if p.dateCache == nil {
+			p.dateCache = make(map[string]map[uint32]time.Time)
+		}
+		mboxCache := p.dateCache[mailbox]
+		if mboxCache == nil {
+			mboxCache = make(map[uint32]time.Time)
+			p.dateCache[mailbox] = mboxCache
+		} else if len(mboxCache) > 10000 {
+			mboxCache = make(map[uint32]time.Time)
+			p.dateCache[mailbox] = mboxCache
+		}
+		p.cacheLock.Unlock()
+
+		// 4. Batch-fetch only for uncached UIDs in the window
+		var uidsToFetch []uint32
+		p.cacheLock.RLock()
+		for _, g := range windowGroups {
+			if _, cached := mboxCache[g.RepUID]; !cached {
+				uidsToFetch = append(uidsToFetch, g.RepUID)
+			}
+		}
+		p.cacheLock.RUnlock()
+
+		if len(uidsToFetch) > 0 {
+			var repUIDSet imap.UIDSet
+			for _, uid := range uidsToFetch {
+				repUIDSet.AddNum(imap.UID(uid))
+			}
+
+			fetchOptions := imap.FetchOptions{
+				Envelope:     true,
+				InternalDate: true,
+			}
+			imapMsgs, err := p.client.Fetch(repUIDSet, &fetchOptions).Collect()
+			if err != nil {
+				return err
+			}
+
+			p.cacheLock.Lock()
+			for _, msg := range imapMsgs {
+				date := time.Time{}
+				if msg.Envelope != nil {
+					date = msg.Envelope.Date
+				}
+				if date.IsZero() {
+					date = msg.InternalDate
+				}
+				mboxCache[uint32(msg.UID)] = date
+			}
+			p.cacheLock.Unlock()
+		}
+
+		// 5. Sort the window in-place chronologically by actual date
+		p.cacheLock.RLock()
+		if sortOrder == "asc" {
+			sort.Slice(windowGroups, func(i, j int) bool {
+				d1 := mboxCache[windowGroups[i].RepUID]
+				d2 := mboxCache[windowGroups[j].RepUID]
+				if d1.Equal(d2) {
+					return windowGroups[i].RepUID < windowGroups[j].RepUID
+				}
+				return d1.Before(d2)
+			})
+		} else {
+			sort.Slice(windowGroups, func(i, j int) bool {
+				d1 := mboxCache[windowGroups[i].RepUID]
+				d2 := mboxCache[windowGroups[j].RepUID]
+				if d1.Equal(d2) {
+					return windowGroups[i].RepUID > windowGroups[j].RepUID
+				}
+				return d1.After(d2)
+			})
+		}
+		p.cacheLock.RUnlock()
+	} else {
+		// Default to UID (Filing Date) sorting for all groups
+		if sortOrder == "asc" {
+			sort.Slice(groups, func(i, j int) bool {
+				return groups[i].RepUID < groups[j].RepUID
+			})
+		} else {
+			sort.Slice(groups, func(i, j int) bool {
+				return groups[i].RepUID > groups[j].RepUID
+			})
+		}
+	}
+
+	return nil
+}
+
+func (p *IMAPProvider) fetchThreadGroups(criteria *imap.SearchCriteria) ([]ThreadGroup, error) {
+	var algo imap.ThreadAlgorithm
+	if p.client.Caps().Has(imap.Cap("THREAD=REFERENCES")) {
+		algo = imap.ThreadReferences
+	} else if p.client.Caps().Has(imap.Cap("THREAD=ORDEREDSUBJECT")) {
+		algo = imap.ThreadOrderedSubject
+	}
+
+	if algo == "" {
+		return nil, fmt.Errorf("threading not supported by server")
+	}
+
+	options := imapclient.ThreadOptions{
+		Algorithm:      algo,
+		SearchCriteria: criteria,
+	}
+	threadTrees, err := p.client.UIDThread(&options).Wait()
+	if err != nil {
+		return nil, fmt.Errorf("UID THREAD failed: %v", err)
+	}
+
+	var groups []ThreadGroup
+
+	var collect func(*imap.ThreadData) []uint32
+	collect = func(t *imap.ThreadData) []uint32 {
+		var uids []uint32
+		uids = append(uids, t.Chain...)
+		for i := range t.SubThreads {
+			uids = append(uids, collect(&t.SubThreads[i])...)
+		}
+		return uids
+	}
+
+	for i := range threadTrees {
+		uids := collect(&threadTrees[i])
+		if len(uids) == 0 {
+			continue
+		}
+
+		// Find representative UID (max UID in the thread)
+		var repUID uint32
+		for _, uid := range uids {
+			if uid > repUID {
+				repUID = uid
+			}
+		}
+
+		groups = append(groups, ThreadGroup{
+			RepUID: repUID,
+			UIDs:   uids,
+		})
+	}
+
+	return groups, nil
+}
+
 // ListMessages returns a paginated list of messages
 func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
 	// A NOOP will ensure we notice any new message
@@ -273,6 +477,105 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 	}
 	if err := noop.Wait(); err != nil {
 		return nil, 0, err
+	}
+
+	var s struct {
+		UI struct {
+			EnableThreading *bool `json:"enableThreading"`
+		} `json:"ui"`
+	}
+	enableThreading := true
+	if p.store != nil {
+		if err := p.store.Get("base.settings", &s); err == nil && s.UI.EnableThreading != nil {
+			enableThreading = *s.UI.EnableThreading
+		}
+	}
+
+	if enableThreading && p.HasThreadCapability() {
+		groups, err := p.fetchThreadGroups(&imap.SearchCriteria{})
+		if err != nil {
+			return nil, 0, err
+		}
+
+		// Sort groups based on criteria and sortOrder
+		if err := p.sortGroups(mailbox, groups, sortOrder); err != nil {
+			return nil, 0, fmt.Errorf("failed to sort thread groups: %v", err)
+		}
+
+		total := len(groups)
+		from := page * pageSize
+		to := from + pageSize
+		if from >= total {
+			return nil, total, nil
+		}
+		if to > total {
+			to = total
+		}
+		paginatedGroups := groups[from:to]
+
+		var allUIDs []uint32
+		for _, g := range paginatedGroups {
+			allUIDs = append(allUIDs, g.UIDs...)
+		}
+
+		var uidSet imap.UIDSet
+		for _, uid := range allUIDs {
+			uidSet.AddNum(imap.UID(uid))
+		}
+
+		fetchOptions := imap.FetchOptions{
+			Flags:         true,
+			Envelope:      true,
+			UID:           true,
+			RFC822Size:    true,
+			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+		}
+
+		imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to fetch representative messages: %v", err)
+		}
+
+		msgMap := make(map[uint32]*imapclient.FetchMessageBuffer)
+		for _, msg := range imapMsgs {
+			msgMap[uint32(msg.UID)] = msg
+		}
+
+		msgs := make([]provider.Message, 0, len(paginatedGroups))
+		for _, g := range paginatedGroups {
+			fetchMsg, ok := msgMap[g.RepUID]
+			if !ok {
+				continue
+			}
+			converted := p.convertIMAPMessage(fetchMsg, mailbox)
+			converted.ThreadCount = len(g.UIDs)
+			converted.ThreadUIDs = make([]string, len(g.UIDs))
+			for idx, u := range g.UIDs {
+				converted.ThreadUIDs[idx] = strconv.FormatUint(uint64(u), 10)
+			}
+
+			// Sort sub-messages in ascending order (chronological) and assign them
+			sort.Slice(g.UIDs, func(i, j int) bool {
+				return g.UIDs[i] < g.UIDs[j]
+			})
+
+			var subMessages []provider.Message
+			for _, uid := range g.UIDs {
+				if uid == g.RepUID {
+					continue
+				}
+				subFetchMsg, ok := msgMap[uid]
+				if !ok {
+					continue
+				}
+				subMessages = append(subMessages, p.convertIMAPMessage(subFetchMsg, mailbox))
+			}
+			converted.SubMessages = subMessages
+
+			msgs = append(msgs, converted)
+		}
+
+		return msgs, total, nil
 	}
 
 	mbox := p.client.Mailbox()
@@ -336,6 +639,105 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 	}
 
 	searchCriteria := prepareIMAPSearch(query)
+
+	var s struct {
+		UI struct {
+			EnableThreading *bool `json:"enableThreading"`
+		} `json:"ui"`
+	}
+	enableThreading := true
+	if p.store != nil {
+		if err := p.store.Get("base.settings", &s); err == nil && s.UI.EnableThreading != nil {
+			enableThreading = *s.UI.EnableThreading
+		}
+	}
+
+	if enableThreading && p.HasThreadCapability() {
+		groups, err := p.fetchThreadGroups(searchCriteria)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		// Sort groups based on criteria and sortOrder
+		if err := p.sortGroups(mailbox, groups, sortOrder); err != nil {
+			return nil, 0, fmt.Errorf("failed to sort thread groups: %v", err)
+		}
+
+		total := len(groups)
+		from := page * pageSize
+		to := from + pageSize
+		if from >= total {
+			return nil, total, nil
+		}
+		if to > total {
+			to = total
+		}
+		paginatedGroups := groups[from:to]
+
+		var allUIDs []uint32
+		for _, g := range paginatedGroups {
+			allUIDs = append(allUIDs, g.UIDs...)
+		}
+
+		var uidSet imap.UIDSet
+		for _, uid := range allUIDs {
+			uidSet.AddNum(imap.UID(uid))
+		}
+
+		fetchOptions := imap.FetchOptions{
+			Flags:         true,
+			Envelope:      true,
+			UID:           true,
+			RFC822Size:    true,
+			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+		}
+
+		imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to fetch representative messages: %v", err)
+		}
+
+		msgMap := make(map[uint32]*imapclient.FetchMessageBuffer)
+		for _, msg := range imapMsgs {
+			msgMap[uint32(msg.UID)] = msg
+		}
+
+		msgs := make([]provider.Message, 0, len(paginatedGroups))
+		for _, g := range paginatedGroups {
+			fetchMsg, ok := msgMap[g.RepUID]
+			if !ok {
+				continue
+			}
+			converted := p.convertIMAPMessage(fetchMsg, mailbox)
+			converted.ThreadCount = len(g.UIDs)
+			converted.ThreadUIDs = make([]string, len(g.UIDs))
+			for idx, u := range g.UIDs {
+				converted.ThreadUIDs[idx] = strconv.FormatUint(uint64(u), 10)
+			}
+
+			// Sort sub-messages in ascending order (chronological) and assign them
+			sort.Slice(g.UIDs, func(i, j int) bool {
+				return g.UIDs[i] < g.UIDs[j]
+			})
+
+			var subMessages []provider.Message
+			for _, uid := range g.UIDs {
+				if uid == g.RepUID {
+					continue
+				}
+				subFetchMsg, ok := msgMap[uid]
+				if !ok {
+					continue
+				}
+				subMessages = append(subMessages, p.convertIMAPMessage(subFetchMsg, mailbox))
+			}
+			converted.SubMessages = subMessages
+
+			msgs = append(msgs, converted)
+		}
+
+		return msgs, total, nil
+	}
 
 	var nums []uint32
 	if !p.client.Caps().Has(imap.CapSort) {
@@ -989,4 +1391,108 @@ func (bs *IMAPBodyStructure) Walk(f func(path []int, part provider.BodyStructure
 	bs.BodyStructure.Walk(func(path []int, part imap.BodyStructure) bool {
 		return f(path, &IMAPBodyStructure{part})
 	})
+}
+
+func (p *IMAPProvider) HasThreadCapability() bool {
+	if p.client == nil {
+		return false
+	}
+	return p.client.Caps().Has(imap.Cap("THREAD=REFERENCES")) ||
+		p.client.Caps().Has(imap.Cap("THREAD=ORDEREDSUBJECT"))
+}
+
+func (p *IMAPProvider) GetMessageThread(mailbox string, targetUID provider.MessageID) ([]provider.Message, error) {
+	if err := p.ensureMailboxSelected(mailbox); err != nil {
+		return nil, err
+	}
+
+	var algo imap.ThreadAlgorithm
+	if p.client != nil && p.client.Caps() != nil {
+		if p.client.Caps().Has(imap.Cap("THREAD=REFERENCES")) {
+			algo = imap.ThreadReferences
+		} else if p.client.Caps().Has(imap.Cap("THREAD=ORDEREDSUBJECT")) {
+			algo = imap.ThreadOrderedSubject
+		}
+	}
+
+	if algo != "" {
+		options := imapclient.ThreadOptions{
+			Algorithm:      algo,
+			SearchCriteria: &imap.SearchCriteria{},
+		}
+		threadTrees, err := p.client.UIDThread(&options).Wait()
+		if err == nil {
+			var collect func(*imap.ThreadData) []uint32
+			collect = func(t *imap.ThreadData) []uint32 {
+				var uids []uint32
+				uids = append(uids, t.Chain...)
+				for i := range t.SubThreads {
+					uids = append(uids, collect(&t.SubThreads[i])...)
+				}
+				return uids
+			}
+
+			targetUIDNum, parseErr := strconv.ParseUint(targetUID.String(), 10, 32)
+			if parseErr == nil {
+				var targetUIDs []uint32
+				for i := range threadTrees {
+					uids := collect(&threadTrees[i])
+					found := false
+					for _, u := range uids {
+						if u == uint32(targetUIDNum) {
+							found = true
+							break
+						}
+					}
+					if found {
+						targetUIDs = uids
+						break
+					}
+				}
+
+				if len(targetUIDs) > 0 {
+					var uidSet imap.UIDSet
+					for _, u := range targetUIDs {
+						uidSet.AddNum(imap.UID(u))
+					}
+
+					fetchOptions := imap.FetchOptions{
+						Envelope:      true,
+						Flags:         true,
+						InternalDate:  true,
+						RFC822Size:    true,
+						BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+					}
+
+					imapMsgs, fetchErr := p.client.Fetch(uidSet, &fetchOptions).Collect()
+					if fetchErr == nil {
+						msgMap := make(map[uint32]*imapclient.FetchMessageBuffer)
+						for _, msg := range imapMsgs {
+							msgMap[uint32(msg.UID)] = msg
+						}
+
+						sort.Slice(targetUIDs, func(i, j int) bool {
+							return targetUIDs[i] < targetUIDs[j]
+						})
+
+						var resultMsgs []provider.Message
+						for _, uid := range targetUIDs {
+							fetchMsg, ok := msgMap[uid]
+							if !ok {
+								continue
+							}
+							resultMsgs = append(resultMsgs, p.convertIMAPMessage(fetchMsg, mailbox))
+						}
+						return resultMsgs, nil
+					}
+				}
+			}
+		}
+	}
+
+	singleMsg, err := p.GetMessageMetadata(mailbox, targetUID)
+	if err != nil {
+		return nil, err
+	}
+	return []provider.Message{*singleMsg}, nil
 }

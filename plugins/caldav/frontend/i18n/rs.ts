@@ -36,6 +36,7 @@ export default {
         time: 'Време',
         addLocation: 'Додај локацију',
         addDescription: 'Додај опис',
+        description: 'Опис',
         moreEvents: '+ још {count}',
         repeat: 'Понављање',
         repeatNone: 'Не понављај',

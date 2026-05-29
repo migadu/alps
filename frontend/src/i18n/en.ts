@@ -70,7 +70,7 @@ export const en = {
       messageSortCriteriaDesc: 'Choose whether to sort by the original received date or by folder filing date.',
       sortUid: 'Folder Filing Date',
       sortDate: 'Received Date',
-      enableThreading: 'Group messages into conversations',
+      enableThreading: 'Use threading',
       themeIframeContent: 'Apply theme to HTML messages content'
     },
     appearance: {

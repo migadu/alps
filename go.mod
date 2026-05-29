@@ -23,7 +23,7 @@ require (
 	github.com/hashicorp/memberlist v0.5.4
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.50.0
-	golang.org/x/text v0.36.0
+	golang.org/x/text v0.37.0
 )
 
 require (
@@ -65,16 +65,16 @@ require (
 	github.com/teambition/rrule-go v1.8.2 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/mod v0.34.0 // indirect
-	golang.org/x/net v0.52.0 // indirect
+	golang.org/x/mod v0.35.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
-	golang.org/x/tools v0.43.0 // indirect
+	golang.org/x/tools v0.44.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/binaryregexp v0.2.0 // indirect
 )
 
-replace github.com/emersion/go-imap/v2 => github.com/migadu/go-imap/v2 v2.0.0-20260316134619-b8676c927c75
+replace github.com/emersion/go-imap/v2 => github.com/migadu/go-imap/v2 v2.0.0-20260526111615-1250e798fcac
 
 replace github.com/emersion/go-smtp => github.com/dejanstrbac/go-smtp v0.0.0-20260313205502-a1dea4f0d630
 

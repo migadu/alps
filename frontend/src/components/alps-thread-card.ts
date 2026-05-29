@@ -160,7 +160,16 @@ export class AlpsThreadCard extends LitElement {
     }
 
     .thread-card.unread {
-      border-left: 3px solid var(--primary, #3b82f6);
+      border-color: rgba(234, 179, 8, 0.4) !important;
+      background: var(--bg-unread, rgba(234, 179, 8, 0.08));
+    }
+
+    .thread-card.unread .thread-card-header {
+      background: var(--bg-unread, rgba(234, 179, 8, 0.08)) !important;
+    }
+
+    .thread-card.unread .thread-card-header:hover {
+      background: var(--bg-unread-hover, rgba(234, 179, 8, 0.12)) !important;
     }
 
     .thread-card-sender.unread {

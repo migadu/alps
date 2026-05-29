@@ -64,7 +64,7 @@ export const it = {
       messageSortCriteriaDesc: 'Scegli se ordinare per data di ricezione originale o per data di archiviazione della cartella.',
       sortUid: 'Data archiviazione cartella',
       sortDate: 'Data di ricezione',
-      enableThreading: 'Raggruppa i messaggi in conversazioni',
+      enableThreading: 'Usa il threading',
       themeIframeContent: 'Applica il tema al contenuto dei messaggi HTML'
     },
     appearance: {

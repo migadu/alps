@@ -187,6 +187,7 @@ export class MessageReader extends LitElement {
 
   @property({ type: String }) mailbox = FOLDER_INBOX;
   @property({ type: Object }) message: any = null;
+  @property({ type: Array }) messages: any[] = [];
   @property({ type: Object }) selectedUids = new Set<string>();
   @property({ type: Boolean }) allSelectedStarred = false;
   @property({ type: Boolean }) allSelectedUnread = false;
@@ -655,6 +656,7 @@ export class MessageReader extends LitElement {
   willUpdate(changedProperties: Map<string, any>) {
     const messageChanged = changedProperties.has('message');
     const mailboxChanged = changedProperties.has('mailbox');
+    const messagesListChanged = changedProperties.has('messages');
 
     if (messageChanged || mailboxChanged) {
       const oldMessage = changedProperties.get('message');
@@ -679,35 +681,17 @@ export class MessageReader extends LitElement {
           this.localPreferredView = null;
           this.fetchMessageBody(this.message, this.message._isAutosaveUpdate);
         } else {
-          if (this.threadItems && this.threadItems.length > 0) {
-            let updated = false;
-            for (let i = 0; i < this.threadItems.length; i++) {
-              const item = this.threadItems[i];
-              if (item.message && String(item.message.UID) === String(this.message.UID)) {
-                const oldFlags = item.message.Flags || [];
-                const newFlags = this.message.Flags || [];
-                const flagsChanged = oldFlags.length !== newFlags.length || !oldFlags.every((f: string) => newFlags.includes(f));
-                if (flagsChanged) {
-                  this.threadItems[i] = {
-                    ...item,
-                    message: {
-                      ...item.message,
-                      Flags: [...newFlags]
-                    }
-                  };
-                  updated = true;
-                }
-              }
-            }
-            if (updated) {
-              this.threadItems = [...this.threadItems];
-            }
-          }
+          // Message is same, but properties updated (e.g. flags), or message list changed.
+          this.resolveThread(this.message);
+
           if (this.message._isAutosaveUpdate && oldMessage && this.message !== oldMessage) {
             this.fetchMessageBody(this.message, true);
           }
         }
       }
+    } else if (messagesListChanged && this.message) {
+      // Message list changed, re-resolve thread synchronously to pick up any replies or changes.
+      this.resolveThread(this.message);
     }
   }
 
@@ -730,6 +714,74 @@ export class MessageReader extends LitElement {
     }
   }
 
+  private resolveThread(msg: any) {
+    if (!msg) return;
+
+    const enableThreading = this.settingsStore?.getState()?.enableThreading ?? true;
+    let threadMessages: any[] = [];
+    let rootMsg: any = null;
+
+    if (enableThreading && this.messages && this.messages.length > 0) {
+      // Find the thread root message that contains msg (either directly or in SubMessages)
+      const found = this.messages.find(m => String(m.UID) === String(msg.UID));
+      if (found) {
+        rootMsg = found;
+      } else {
+        for (const m of this.messages) {
+          if (m.SubMessages && m.SubMessages.find((s: any) => String(s.UID) === String(msg.UID))) {
+            rootMsg = m;
+            break;
+          }
+        }
+      }
+    }
+
+    if (rootMsg) {
+      threadMessages = [rootMsg, ...(rootMsg.SubMessages || [])];
+      threadMessages.sort((a, b) => {
+        const dateA = a.Envelope?.Date ? new Date(a.Envelope.Date).getTime() : 0;
+        const dateB = b.Envelope?.Date ? new Date(b.Envelope.Date).getTime() : 0;
+        return dateA - dateB;
+      });
+    } else {
+      threadMessages = [msg];
+    }
+
+    this._isThread = enableThreading && threadMessages.length > 1;
+
+    const sentMailbox = this.getSentMailboxName();
+    const oldItems = this.threadItems || [];
+
+    this.threadItems = threadMessages.map(m => {
+      const isCurrent = String(m.UID) === String(msg.UID);
+      const existing = oldItems.find(item => String(item.message?.UID) === String(m.UID));
+
+      if (existing) {
+        return {
+          ...existing,
+          message: { ...m, Flags: m.Flags || existing.message.Flags || [] }
+        };
+      }
+
+      return {
+        message: m,
+        content: '',
+        mimeType: '',
+        loading: false,
+        attachments: [],
+        rawMessageHtml: '',
+        hasHtml: false,
+        hasText: false,
+        activeBanners: [],
+        allowRemoteResources: this.allowRemoteResources,
+        hasRemoteResources: false,
+        isSent: (this.mailbox || '').toLowerCase() === sentMailbox.toLowerCase() || (m.Mailbox || '').toLowerCase() === sentMailbox.toLowerCase(),
+        mailbox: m.Mailbox || this.mailbox,
+        expanded: isCurrent
+      };
+    });
+  }
+
   private async fetchMessageBody(msg: any, silent = false) {
     if (!silent) {
       this.content = '';
@@ -742,206 +794,21 @@ export class MessageReader extends LitElement {
       this.threadItems = [];
     }
 
-    const primaryItem: ThreadMessageItem = {
-      message: msg,
-      content: '',
-      mimeType: '',
-      loading: true,
-      attachments: [],
-      rawMessageHtml: '',
-      hasHtml: false,
-      hasText: false,
-      activeBanners: [],
-      allowRemoteResources: this.allowRemoteResources,
-      hasRemoteResources: false,
-      isSent: (this.mailbox || '').toLowerCase() === this.getSentMailboxName().toLowerCase(),
-      mailbox: this.mailbox,
-      expanded: true
-    };
+    this.resolveThread(msg);
 
-    const enableThreading = this.settingsStore?.getState()?.enableThreading ?? true;
-
-    // Check if we already know this is part of a thread from the list message envelope or references
-    const inReplyTo = msg.Envelope?.InReplyTo;
-    const refs = msg.References || msg.Envelope?.References;
-    const hasReferences = refs && (Array.isArray(refs) ? refs.length > 0 : refs !== "");
-    const isKnownThread = enableThreading && (!!inReplyTo || !!hasReferences);
-
-    // Build initial search IDs from list message Envelope and References (available immediately)
-    const initialSearchIds = new Set<string>();
-    const ownMessageId = msg.Envelope?.MessageID || msg.Envelope?.MessageId;
-    if (ownMessageId) initialSearchIds.add(ownMessageId);
-    if (inReplyTo) {
-      if (Array.isArray(inReplyTo)) {
-        for (const irt of inReplyTo) { if (irt) initialSearchIds.add(irt); }
-      } else {
-        initialSearchIds.add(inReplyTo);
-      }
-    }
-    if (refs) {
-      if (Array.isArray(refs)) {
-        for (const ref of refs) { if (ref) initialSearchIds.add(ref); }
-      } else {
-        initialSearchIds.add(refs);
-      }
-    }
-
-    if (isKnownThread) {
-      // We know it's a thread — show message immediately in thread card, search in background
-      this._isThread = true;
+    const primaryItem = this.threadItems.find(item => String(item.message?.UID) === String(msg.UID)) || this.threadItems[0];
+    if (primaryItem) {
+      primaryItem.loading = !silent;
+      primaryItem.expanded = true;
       this._deferPropertySync = false;
-      this.threadItems = [primaryItem];
-      this.fetchItemBody(primaryItem).then(() => {
-        if (this.message?.UID !== msg.UID || this.mailbox !== msg.Mailbox) {
-          return;
-        }
-        this.requestUpdate();
-
-        // Search for thread siblings in parallel
-        if (initialSearchIds.size > 0) {
-          this._searchThreadMessages(initialSearchIds).then(async (results) => {
-            if (this.message?.UID !== msg.UID || this.mailbox !== msg.Mailbox) {
-              return;
-            }
-            // Check for extra IDs from References after body fetch
-            const updatedMsg = primaryItem.message;
-            const updatedRefs = updatedMsg.References || updatedMsg.Envelope?.References;
-            if (updatedRefs) {
-              const extraIds = new Set<string>();
-              const refList = Array.isArray(updatedRefs) ? updatedRefs : [updatedRefs];
-              for (const ref of refList) {
-                if (ref && !initialSearchIds.has(ref)) extraIds.add(ref);
-              }
-              if (extraIds.size > 0) {
-                const extraResults = await this._searchThreadMessages(extraIds);
-                if (this.message?.UID !== msg.UID || this.mailbox !== msg.Mailbox) {
-                  return;
-                }
-                results.push(...extraResults);
-              }
-            }
-
-            if (results.length > 0) {
-              this._mergeThreadResults(primaryItem, results);
-            }
-          });
-        }
-      });
-    } else {
-      // No InReplyTo or References — could be a root message with replies, or standalone
-      this._isThread = false;
-      this._deferPropertySync = false;
-      this.threadItems = [primaryItem];
 
       this.fetchItemBody(primaryItem).then(() => {
         if (this.message?.UID !== msg.UID || this.mailbox !== msg.Mailbox) {
           return;
         }
         this.requestUpdate();
-
-        // Search for thread replies in background without blocking rendering
-        if (enableThreading && initialSearchIds.size > 0) {
-          this._searchThreadMessages(initialSearchIds).then((results) => {
-            if (this.message?.UID !== msg.UID || this.mailbox !== msg.Mailbox) {
-              return;
-            }
-            if (results.length > 0) {
-              this._mergeThreadResults(primaryItem, results);
-            }
-          });
-        }
       });
     }
-  }
-
-  private _mergeThreadResults(primaryItem: ThreadMessageItem, fetchedMessages: any[]) {
-    const updatedMsg = primaryItem.message;
-    fetchedMessages.push(updatedMsg);
-
-    // Deduplicate using Mailbox + UID
-    const existingMap = new Map<string, any>();
-    for (const m of fetchedMessages) {
-      existingMap.set(`${m.Mailbox}-${m.UID}`, m);
-    }
-    const uniqueMessages = Array.from(existingMap.values());
-
-    uniqueMessages.sort((a, b) => {
-      const dateA = a.Envelope?.Date ? new Date(a.Envelope.Date).getTime() : 0;
-      const dateB = b.Envelope?.Date ? new Date(b.Envelope.Date).getTime() : 0;
-      return dateA - dateB;
-    });
-
-    this._isThread = uniqueMessages.length > 1;
-
-    if (uniqueMessages.length > 1) {
-      const sentMailbox = this.getSentMailboxName();
-      this.threadItems = uniqueMessages.map(m => {
-        const isCurrent = String(m.Mailbox) === String(updatedMsg.Mailbox) && String(m.UID) === String(updatedMsg.UID);
-
-        if (isCurrent) {
-          return primaryItem;
-        }
-
-        return {
-          message: m,
-          content: '',
-          mimeType: '',
-          loading: false,
-          attachments: [],
-          rawMessageHtml: '',
-          hasHtml: false,
-          hasText: false,
-          activeBanners: [],
-          allowRemoteResources: this.allowRemoteResources,
-          hasRemoteResources: false,
-          isSent: (this.mailbox || '').toLowerCase() === sentMailbox.toLowerCase() || (m.Mailbox || '').toLowerCase() === sentMailbox.toLowerCase(),
-          mailbox: m.Mailbox || this.mailbox,
-          expanded: false
-        };
-      });
-    } else {
-      this.threadItems = [primaryItem];
-    }
-    this.requestUpdate();
-  }
-
-  private async _searchThreadMessages(searchIds: Set<string>): Promise<any[]> {
-    const fetchedMessages: any[] = [];
-    const sentMailbox = this.getSentMailboxName();
-    const mailboxesToSearch = [this.mailbox];
-    if (this.mailbox.toLowerCase() !== sentMailbox.toLowerCase()) {
-      mailboxesToSearch.push(sentMailbox);
-    }
-
-    try {
-      const fetchPromises: Promise<any>[] = [];
-      for (const mbx of mailboxesToSearch) {
-        for (const id of searchIds) {
-          fetchPromises.push(
-            fetchWithTimeout(`/mailboxes/${encodeURIComponent(mbx)}?query=${encodeURIComponent('header:References:"' + id + '"')}`),
-            fetchWithTimeout(`/mailboxes/${encodeURIComponent(mbx)}?query=${encodeURIComponent('header:Message-ID:"' + id + '"')}`),
-            fetchWithTimeout(`/mailboxes/${encodeURIComponent(mbx)}?query=${encodeURIComponent('header:In-Reply-To:"' + id + '"')}`)
-          );
-        }
-      }
-
-      const responses = await Promise.all(fetchPromises);
-      for (const res of responses) {
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.Messages) {
-            const urlMatch = res.url.match(/\/mailboxes\/([^\?]+)/);
-            const mbxName = urlMatch ? decodeURIComponent(urlMatch[1]) : this.mailbox;
-            data.Messages.forEach((m: any) => m.Mailbox = m.Mailbox || mbxName);
-            fetchedMessages.push(...data.Messages);
-          }
-        }
-      }
-    } catch (e) {
-      Logger.error('Failed to fetch thread messages', e);
-    }
-
-    return fetchedMessages;
   }
 
   private updateThreadItemReference(item: ThreadMessageItem) {

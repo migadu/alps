@@ -37,6 +37,7 @@ func registerRoutes(p *alps.GoPlugin) {
 	p.GET("/mailboxes/{mbox}/messages/{uid}/raw", func(ctx *alps.Context) error {
 		return handleGetPart(ctx, true)
 	})
+	p.GET("/mailboxes/{mbox}/messages/{uid}/thread", handleGetThread)
 	p.DELETE("/mailboxes/{mbox}/messages", handleDelete)
 	p.POST("/mailboxes/{mbox}/empty", handleEmptyMailbox)
 	p.PUT("/mailboxes/{mbox}/messages/move", handleMove)
@@ -546,7 +547,17 @@ func handleGetMailbox(ctx *alps.Context) error {
 	)
 
 	// Build cache key for messages
-	msgCacheKey := fmt.Sprintf("messages:%s:page%d:perpage%d:query%s:sort%s:criteria%s", mbox.Name(), page, messagesPerPage, query, sortOrder, settings.MessageSortCriteria)
+	enableThreading := false
+	if settings.UI.EnableThreading != nil {
+		enableThreading = *settings.UI.EnableThreading
+	} else {
+		if val, ok := ctx.Session.GetData("hasThreadCapability"); ok {
+			if hasCap, ok := val.(bool); ok {
+				enableThreading = hasCap
+			}
+		}
+	}
+	msgCacheKey := fmt.Sprintf("messages:%s:page%d:perpage%d:query%s:sort%s:criteria%s:thread%t", mbox.Name(), page, messagesPerPage, query, sortOrder, settings.MessageSortCriteria, enableThreading)
 
 	// Try to get messages from cache
 	if cached, ok := ctx.Session.Cache().Get(msgCacheKey); ok {
@@ -914,6 +925,35 @@ func handleLogout(ctx *alps.Context) error {
 	}
 	ctx.SetLoginToken("", "", false, false)
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+func handleGetThread(ctx *alps.Context) error {
+	mboxName, uidStr, err := parseMboxAndUidStr(ctx.Param("mbox"), ctx.Param("uid"))
+	if err != nil {
+		return err
+	}
+
+	var msgs []IMAPMessage
+	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		uid, parseErr := p.ParseMessageID(uidStr)
+		if parseErr != nil {
+			return parseErr
+		}
+
+		threadMsgs, threadErr := getMessageThreadWithProvider(p, mboxName, uid)
+		if threadErr != nil {
+			return threadErr
+		}
+		msgs = threadMsgs
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return ctx.JSON(http.StatusOK, map[string]interface{}{
+		"Messages": msgs,
+	})
 }
 
 func handleGetPart(ctx *alps.Context, raw bool) error {
@@ -2055,10 +2095,6 @@ func loadSettings(s provider.Store) (*Settings, error) {
 	if settings.UI.DensityMode == "" {
 		settings.UI.DensityMode = "compact"
 	}
-	if settings.UI.EnableThreading == nil {
-		trueVal := true
-		settings.UI.EnableThreading = &trueVal
-	}
 	if settings.UI.ThemeIframeContent == nil {
 		falseVal := false
 		settings.UI.ThemeIframeContent = &falseVal
@@ -2242,12 +2278,26 @@ func handleSettings(ctx *alps.Context) error {
 	}
 
 	var mailboxes []MailboxInfo
+	hasThreadCapability := false
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		mailboxes, err = listMailboxesWithProvider(p)
-		return err
+		if err != nil {
+			return err
+		}
+		type threadCapable interface {
+			HasThreadCapability() bool
+		}
+		if tc, ok := p.(threadCapable); ok {
+			hasThreadCapability = tc.HasThreadCapability()
+		}
+		return nil
 	})
 	if err != nil {
 		return err
+	}
+
+	if settings.UI.EnableThreading == nil {
+		settings.UI.EnableThreading = &hasThreadCapability
 	}
 
 	maxAttachmentMiB := ctx.Server.Options.MaxAttachmentMiB
@@ -2256,10 +2306,11 @@ func handleSettings(ctx *alps.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
-		"Settings":         settings,
-		"Mailboxes":        mailboxes,
-		"AutoLogout":       settings.AutoLogout,
-		"MaxAttachmentMiB": maxAttachmentMiB,
+		"Settings":            settings,
+		"Mailboxes":           mailboxes,
+		"AutoLogout":          settings.AutoLogout,
+		"MaxAttachmentMiB":    maxAttachmentMiB,
+		"HasThreadCapability": hasThreadCapability,
 	})
 }
 

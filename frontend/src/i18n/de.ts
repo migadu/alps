@@ -66,7 +66,7 @@ export const de: TranslationDictionary = {
       messageSortCriteriaDesc: 'Wählen Sie, ob nach dem ursprünglichen Empfangsdatum oder nach dem Ablagedatum im Ordner sortiert werden soll.',
       sortUid: 'Ablagedatum im Ordner',
       sortDate: 'Empfangsdatum',
-      enableThreading: 'Nachrichten in Konversationen gruppieren',
+      enableThreading: 'Threading verwenden',
       themeIframeContent: 'Farbthema auf HTML-Nachrichten anwenden'
     },
     appearance: {

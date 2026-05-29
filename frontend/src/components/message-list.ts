@@ -48,6 +48,7 @@ export class MessageList extends LitElement {
   @state() private isAtBottom = false;
   @state() private focusedIndex = -1;
   @state() private showEmptyConfirm = false;
+  @state() private collapsedThreads = new Set<string>();
   private _shouldScrollToTop = false;
 
   static styles = css`
@@ -532,12 +533,104 @@ export class MessageList extends LitElement {
       pointer-events: none;
       transition: opacity 0.2s ease-in-out;
     }
+
+    .thread-count-caret-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--border-color, #e5e7eb);
+      color: var(--text-muted, #4b5563);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 8px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    
+    .message-item.unread .thread-count-caret-badge {
+      background: var(--accent-color, #eab308);
+      color: #fff;
+    }
+
+    .caret-col {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      width: 44px;
+      height: 100%;
+      cursor: pointer;
+      color: var(--text-muted);
+      opacity: 0.6;
+      transition: opacity 0.2s, color 0.2s;
+      flex-shrink: 0;
+    }
+    .caret-col:hover {
+      opacity: 1;
+      color: var(--text-color);
+    }
+    .caret-col.empty {
+      cursor: default;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .caret-col svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .message-item.sub-message-item {
+      background: var(--bg-secondary, #fafafa);
+    }
+    .message-item.sub-message-item.first-sub-item {
+      box-shadow: inset rgba(95, 95, 95, 0.1) 0 4px 4px -2px;
+    }
+    .message-item.sub-message-item.last-sub-item {
+      box-shadow: inset rgba(95, 95, 95, 0.1) 0 -4px 4px -2px;
+    }
+    .message-item.sub-message-item.first-sub-item.last-sub-item {
+      box-shadow: inset rgba(95, 95, 95, 0.1) 0 4px 4px -2px,
+                  inset rgba(95, 95, 95, 0.1) 0 -4px 4px -2px;
+    }
+    .message-item.sub-message-item:hover {
+      background: var(--hover-color);
+    }
+    .message-item.sub-message-item.active {
+      background: var(--bg-selected);
+    }
   `;
+
+  private get visibleMessages(): any[] {
+    const list: any[] = [];
+    for (const msg of this.messages || []) {
+      list.push(msg);
+      if (msg.SubMessages && msg.SubMessages.length > 0 && this.isThreadExpanded(String(msg.UID))) {
+        list.push(...msg.SubMessages);
+      }
+    }
+    return list;
+  }
+
+  private isThreadExpanded(uid: string): boolean {
+    return !this.collapsedThreads.has(uid);
+  }
+
+  private toggleThreadCollapse(e: Event, uid: string) {
+    e.stopPropagation();
+    const newSet = new Set(this.collapsedThreads);
+    if (newSet.has(uid)) {
+      newSet.delete(uid);
+    } else {
+      newSet.add(uid);
+    }
+    this.collapsedThreads = newSet;
+  }
 
   private handleSelectAll(e: Event) {
     const checked = (e.target as HTMLInputElement).checked;
     if (checked) {
-      const uids = this.messages.map(m => String(m.UID));
+      const uids = this.visibleMessages.map(m => String(m.UID));
       this.selectedMessages = new Set(uids);
     } else {
       this.selectedMessages = new Set();
@@ -607,7 +700,15 @@ export class MessageList extends LitElement {
     if (changedProperties.has('selectedMessage') || changedProperties.has('messages')) {
       if (changedProperties.has('messages') && this.messages) {
         if (this.selectedMessages.size > 0) {
-          const availableUids = new Set(this.messages.map(m => String(m.UID)));
+          const availableUids = new Set<string>();
+          for (const m of this.messages) {
+            availableUids.add(String(m.UID));
+            if (m.SubMessages) {
+              for (const sub of m.SubMessages) {
+                availableUids.add(String(sub.UID));
+              }
+            }
+          }
           let changed = false;
           const newSet = new Set<string>();
           for (const uid of this.selectedMessages) {
@@ -624,10 +725,13 @@ export class MessageList extends LitElement {
         }
       }
 
-      if (this.selectedMessage && this.messages.length > 0) {
-        const idx = this.messages.findIndex(m => String(m.UID) === String(this.selectedMessage.UID));
-        if (idx !== -1) {
-          this.focusedIndex = idx;
+      if (this.selectedMessage) {
+        const visible = this.visibleMessages;
+        if (visible.length > 0) {
+          const idx = visible.findIndex(m => String(m.UID) === String(this.selectedMessage.UID));
+          if (idx !== -1) {
+            this.focusedIndex = idx;
+          }
         }
       }
     }
@@ -692,11 +796,12 @@ export class MessageList extends LitElement {
   }
 
   private handleKeyDown(e: KeyboardEvent) {
-    if (!this.messages || this.messages.length === 0) return;
+    const visible = this.visibleMessages;
+    if (!visible || visible.length === 0) return;
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      this.focusedIndex = Math.min(this.messages.length - 1, this.focusedIndex + 1);
+      this.focusedIndex = Math.min(visible.length - 1, this.focusedIndex + 1);
       this.scrollToFocused();
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
@@ -704,13 +809,14 @@ export class MessageList extends LitElement {
       this.scrollToFocused();
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (this.focusedIndex >= 0 && this.focusedIndex < this.messages.length) {
-        this.selectMessage(this.messages[this.focusedIndex]);
+      if (this.focusedIndex >= 0 && this.focusedIndex < visible.length) {
+        this.selectMessage(visible[this.focusedIndex]);
       }
     } else if (e.key === ' ') {
       e.preventDefault();
-      if (this.focusedIndex >= 0 && this.focusedIndex < this.messages.length) {
-        const uid = String(this.messages[this.focusedIndex].UID);
+      if (this.focusedIndex >= 0 && this.focusedIndex < visible.length) {
+        const msg = visible[this.focusedIndex];
+        const uid = String(msg.UID);
         const newSet = new Set(this.selectedMessages);
         if (newSet.has(uid)) {
           newSet.delete(uid);
@@ -720,7 +826,7 @@ export class MessageList extends LitElement {
         this.selectedMessages = newSet;
         this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
 
-        this.focusedIndex = Math.min(this.messages.length - 1, this.focusedIndex + 1);
+        this.focusedIndex = Math.min(visible.length - 1, this.focusedIndex + 1);
         this.scrollToFocused();
       }
     }
@@ -759,19 +865,231 @@ export class MessageList extends LitElement {
     });
   }
 
+  private renderMessageItem(msg: any, isSubMessage: boolean = false, isFirstSub: boolean = false, isLastSub: boolean = false) {
+    const isDraftOrSent = this.currentMailbox === FOLDER_DRAFTS || this.currentMailbox === FOLDER_SENT;
+
+    let rawContacts: any[] = [];
+    if (isDraftOrSent) {
+      rawContacts = [...(msg.Envelope?.To || []), ...(msg.Envelope?.Cc || [])];
+      if (!rawContacts.length) rawContacts = msg.Envelope?.From || [];
+    } else {
+      rawContacts = [...(msg.Envelope?.From || []), ...(msg.Envelope?.To || []), ...(msg.Envelope?.Cc || [])];
+    }
+
+    const seenEmails = new Set<string>();
+    let allContacts: any[] = [];
+    for (const c of rawContacts) {
+      const email = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}`.toLowerCase() : '';
+      const key = email || c.Name || 'unknown';
+      if (key !== 'unknown' && !seenEmails.has(key)) {
+        seenEmails.add(key);
+        allContacts.push(c);
+      } else if (key === 'unknown') {
+        allContacts.push(c);
+      }
+    }
+
+    const loginUser = this.settingsStore?.getState()?.loginUsername?.toLowerCase() || '';
+
+    const isSelf = (c: any) => {
+      const email = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}`.toLowerCase() : '';
+      if (loginUser && email === loginUser) return true;
+      return false;
+    };
+
+    if (allContacts.length > 1) {
+      const filtered = allContacts.filter(c => !isSelf(c));
+      if (filtered.length > 0) {
+        allContacts = filtered;
+      }
+    }
+
+    if (!allContacts.length) allContacts = [{}];
+
+    const fallbackKey = isDraftOrSent ? 'messageList.noRecipient' : 'messageList.unknownSender';
+
+    const displayNames = allContacts.map(c => {
+      const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
+      return c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
+    });
+    const senderName = displayNames.join(', ');
+
+    const maxAvatars = 3;
+    const displayAvatars = allContacts.slice(0, maxAvatars);
+    const extraCount = allContacts.length - maxAvatars;
+    const totalRendered = displayAvatars.length + (extraCount > 0 ? 1 : 0);
+
+    const subject = msg.Envelope?.Subject || (this.i18nStore?.t('messageList.noSubject'));
+    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
+    const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
+    const dateStr = msg.Envelope?.Date ? formatDateList(msg.Envelope.Date, dateFormat, hourFormat) : '';
+    const msgSize = msg.RFC822Size || msg.Size;
+    const sizeStr = msgSize ? formatSize(msgSize) : '';
+
+    const isUnseen = !msg.Flags || !msg.Flags.includes(FLAG_SEEN);
+    const isStarred = msg.Flags && msg.Flags.includes(FLAG_FLAGGED);
+    const isAnswered = msg.Flags && msg.Flags.includes(FLAG_ANSWERED);
+    const isForwarded = msg.Flags && msg.Flags.includes(FLAG_FORWARDED);
+
+    const customTags = getMessageTags(msg.Flags, this.i18nStore);
+    const avatarSize = this.densityMode === 'loose' ? 48 : this.densityMode === 'compact' ? 24 : 40;
+
+    const hasSubMessages = msg.SubMessages && msg.SubMessages.length > 0;
+    const expanded = this.isThreadExpanded(String(msg.UID));
+
+    if (this.densityMode === 'ultra-compact') {
+      return html`
+      <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.selectedMessage?.UID === msg.UID) || this.selectedMessages.has(String(msg.UID)) ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
+        ${!this.isMobile ? html`
+          <div class="checkbox-col" @click=${(e: Event) => {
+            e.stopPropagation();
+            const uid = String(msg.UID);
+            const newSet = new Set(this.selectedMessages);
+            if (newSet.has(uid)) newSet.delete(uid);
+            else newSet.add(uid);
+            this.selectedMessages = newSet;
+            this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
+          }}>
+            <input type="checkbox" class="message-checkbox" 
+              .checked=${this.selectedMessages.has(String(msg.UID))}
+              @click=${(e: Event) => e.stopPropagation()}
+              @change=${(e: Event) => this.handleSelectMessage(e, String(msg.UID))}>
+          </div>
+        ` : ''}
+
+        <!-- Caret Toggle Button -->
+        ${!isSubMessage && hasSubMessages ? html`
+          <div class="caret-col" @click=${(e: Event) => this.toggleThreadCollapse(e, String(msg.UID))}>
+            ${renderIcon(expanded ? 'caretDown' : 'caretRight')}
+            <span class="thread-count-caret-badge" title="${msg.ThreadCount} messages">${msg.ThreadCount}</span>
+          </div>
+        ` : isSubMessage ? html`<div class="caret-col empty"></div>` : ''}
+
+        <div class="message-sender">${senderName}</div>
+        <div @click=${(e: Event) => this.toggleStar(e, msg)} class="star-btn ${isStarred ? 'starred' : ''} star-btn-wrapper-ultra">
+          ${renderIcon(isStarred ? 'starFourFill' : 'starFour')}
+        </div>
+        ${isAnswered || isForwarded ? html`
+          <div class="indicators-wrapper-ultra">
+            ${isAnswered ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.replied')}>${renderIcon('arrowBendUpLeft')}</div>` : ''}
+            ${isForwarded ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.forwarded')}>${renderIcon('arrowBendUpRight')}</div>` : ''}
+          </div>
+        ` : ''}
+        ${customTags.length > 0 ? html`
+          <div class="tag-pills">
+            ${customTags.map(tag => html`
+              <alps-tag .name=${tag.name} .color=${tag.color}></alps-tag>
+            `)}
+          </div>
+        ` : ''}
+        <div class="message-subject">
+          ${subject}
+        </div>
+        <div class="message-indicators">
+          <div class="attachment-col">
+            ${msg.HasAttachments ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.hasAttachments')}>${renderIcon('paperclipHorizontal')}</div>` : ''}
+          </div>
+          <div class="message-date">${dateStr}</div>
+        </div>
+      </div>
+      `;
+    }
+
+    return html`
+    <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.selectedMessage?.UID === msg.UID) || this.selectedMessages.has(String(msg.UID)) ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
+      ${!this.isMobile ? html`
+        <div class="checkbox-col" @click=${(e: Event) => {
+          e.stopPropagation();
+          const uid = String(msg.UID);
+          const newSet = new Set(this.selectedMessages);
+          if (newSet.has(uid)) newSet.delete(uid);
+          else newSet.add(uid);
+          this.selectedMessages = newSet;
+          this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
+        }}>
+          <input type="checkbox" class="message-checkbox" 
+            .checked=${this.selectedMessages.has(String(msg.UID))}
+            @click=${(e: Event) => e.stopPropagation()}
+            @change=${(e: Event) => this.handleSelectMessage(e, String(msg.UID))}>
+        </div>
+      ` : ''}
+
+      <!-- Caret Toggle Button -->
+      ${!isSubMessage && hasSubMessages ? html`
+        <div class="caret-col" @click=${(e: Event) => this.toggleThreadCollapse(e, String(msg.UID))}>
+          ${renderIcon(expanded ? 'caretDown' : 'caretRight')}
+          <span class="thread-count-caret-badge" title="${msg.ThreadCount} messages">${msg.ThreadCount}</span>
+        </div>
+      ` : isSubMessage ? html`<div class="caret-col empty"></div>` : ''}
+
+      <div class="avatar-stack">
+        ${displayAvatars.map((c, idx) => {
+          const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
+          const name = c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
+          const domain = c.Host ? c.Host.toLowerCase() : '';
+          const bimiUrl = getBimiAvatarUrl(domain);
+          return html`
+            <div class="avatar-wrapper" style="z-index: ${totalRendered - idx};">
+              <alps-avatar .name=${name} .email=${addr} .size=${avatarSize} .src=${bimiUrl}></alps-avatar>
+            </div>
+          `;
+        })}
+        ${extraCount > 0 ? html`
+          <div class="avatar-wrapper extra-count" style="width: ${avatarSize}px; height: ${avatarSize}px; z-index: 0;">
+            +${extraCount}
+          </div>
+        ` : ''}
+      </div>
+      <div class="message-details">
+        <div class="message-header-row">
+          <div class="message-header-inner">
+            <div class="message-sender">${senderName}</div>
+            <div @click=${(e: Event) => this.toggleStar(e, msg)} class="star-btn ${isStarred ? 'starred' : ''}">
+              ${renderIcon(isStarred ? 'starFourFill' : 'starFour')}
+            </div>
+          </div>
+          <div class="message-indicators">
+            <div class="attachment-col">
+              ${msg.HasAttachments ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.hasAttachments')}>${renderIcon('paperclipHorizontal')}</div>` : ''}
+            </div>
+            <div class="message-date">${dateStr}</div>
+          </div>
+        </div>
+        <div class="message-subject-row">
+          ${isAnswered || isForwarded ? html`
+            <div class="indicators-wrapper">
+              ${isAnswered ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.replied')}>${renderIcon('arrowBendUpLeft')}</div>` : ''}
+              ${isForwarded ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.forwarded')}>${renderIcon('arrowBendUpRight')}</div>` : ''}
+            </div>
+          ` : ''}
+          ${customTags.length > 0 ? html`
+            <div class="tag-pills">
+              ${customTags.map(tag => html`
+                <alps-tag .name=${tag.name} .color=${tag.color}></alps-tag>
+              `)}
+            </div>
+          ` : ''}
+          <div class="message-subject">
+            ${subject}
+          </div>
+          ${sizeStr ? html`<div class="message-size">${sizeStr}</div>` : ''}
+        </div>
+      </div>
+    </div>
+    `;
+  }
+
   private toggleStar(e: Event, msg: any) {
     e.stopPropagation();
     this.dispatchEvent(new CustomEvent('toggle-star-message', { detail: { message: msg } }));
   }
 
   render() {
-    const avatarSize = this.densityMode === 'loose' ? 48 : this.densityMode === 'compact' ? 24 : 40;
-
     return html`
       ${!this.isMobile ? html`
         <alps-toolbar class="list-header" ?scrolled=${this.isScrolled}>
           <input type="checkbox" class="select-all-checkbox" title=${this.i18nStore?.t('messageList.selectAll')}
-            .checked=${this.messages.length > 0 && this.selectedMessages.size === this.messages.length}
+            .checked=${this.messages.length > 0 && this.selectedMessages.size === this.visibleMessages.length}
             @change=${this.handleSelectAll}>
           <alps-icon-btn 
             title=${this.i18nStore?.t('messageList.checkNew')}
@@ -833,193 +1151,11 @@ export class MessageList extends LitElement {
           <alps-loader full-height .text=${this.i18nStore?.t('messageList.loading') || 'Loading...'}></alps-loader>
         ` :
         this.messages.length === 0 ? html`<div class="empty-state">${this.i18nStore?.t('messageList.noMessages')}</div>` :
-          repeat(this.messages, msg => msg.UID, msg => {
-            const isDraftOrSent = this.currentMailbox === FOLDER_DRAFTS || this.currentMailbox === FOLDER_SENT;
-
-            let rawContacts: any[] = [];
-            if (isDraftOrSent) {
-              rawContacts = [...(msg.Envelope?.To || []), ...(msg.Envelope?.Cc || [])];
-              if (!rawContacts.length) rawContacts = msg.Envelope?.From || [];
-            } else {
-              rawContacts = [...(msg.Envelope?.From || []), ...(msg.Envelope?.To || []), ...(msg.Envelope?.Cc || [])];
-            }
-
-            const seenEmails = new Set<string>();
-            let allContacts: any[] = [];
-            for (const c of rawContacts) {
-              const email = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}`.toLowerCase() : '';
-              const key = email || c.Name || 'unknown';
-              if (key !== 'unknown' && !seenEmails.has(key)) {
-                seenEmails.add(key);
-                allContacts.push(c);
-              } else if (key === 'unknown') {
-                allContacts.push(c);
-              }
-            }
-
-            const loginUser = this.settingsStore?.getState()?.loginUsername?.toLowerCase() || '';
-
-            const isSelf = (c: any) => {
-              const email = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}`.toLowerCase() : '';
-              if (loginUser && email === loginUser) return true;
-              return false;
-            };
-
-            if (allContacts.length > 1) {
-              const filtered = allContacts.filter(c => !isSelf(c));
-              if (filtered.length > 0) {
-                allContacts = filtered;
-              }
-            }
-
-            if (!allContacts.length) allContacts = [{}];
-
-            const fallbackKey = isDraftOrSent ? 'messageList.noRecipient' : 'messageList.unknownSender';
-
-            const displayNames = allContacts.map(c => {
-              const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
-              return c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
-            });
-            const senderName = displayNames.join(', ');
-
-            const maxAvatars = 3;
-            const displayAvatars = allContacts.slice(0, maxAvatars);
-            const extraCount = allContacts.length - maxAvatars;
-            const totalRendered = displayAvatars.length + (extraCount > 0 ? 1 : 0);
-
-            const subject = msg.Envelope?.Subject || (this.i18nStore?.t('messageList.noSubject'));
-            const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
-            const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
-            const dateStr = msg.Envelope?.Date ? formatDateList(msg.Envelope.Date, dateFormat, hourFormat) : '';
-            const msgSize = msg.RFC822Size || msg.Size;
-            const sizeStr = msgSize ? formatSize(msgSize) : '';
-
-            const isUnseen = !msg.Flags || !msg.Flags.includes(FLAG_SEEN);
-            const isStarred = msg.Flags && msg.Flags.includes(FLAG_FLAGGED);
-            const isAnswered = msg.Flags && msg.Flags.includes(FLAG_ANSWERED);
-            const isForwarded = msg.Flags && msg.Flags.includes(FLAG_FORWARDED);
-
-            const customTags = getMessageTags(msg.Flags, this.i18nStore);
-
-            if (this.densityMode === 'ultra-compact') {
-              return html`
-              <div class="message-item ${(this.selectedMessages.size === 0 && this.selectedMessage?.UID === msg.UID) || this.selectedMessages.has(String(msg.UID)) ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.messages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
-                ${!this.isMobile ? html`
-                  <div class="checkbox-col" @click=${(e: Event) => {
-                    e.stopPropagation();
-                    const uid = String(msg.UID);
-                    const newSet = new Set(this.selectedMessages);
-                    if (newSet.has(uid)) newSet.delete(uid);
-                    else newSet.add(uid);
-                    this.selectedMessages = newSet;
-                    this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
-                  }}>
-                    <input type="checkbox" class="message-checkbox" 
-                      .checked=${this.selectedMessages.has(String(msg.UID))}
-                      @click=${(e: Event) => e.stopPropagation()}
-                      @change=${(e: Event) => this.handleSelectMessage(e, String(msg.UID))}>
-                  </div>
-                ` : ''}
-                <div class="message-sender">${senderName}</div>
-                <div @click=${(e: Event) => this.toggleStar(e, msg)} class="star-btn ${isStarred ? 'starred' : ''} star-btn-wrapper-ultra">
-                  ${renderIcon(isStarred ? 'starFourFill' : 'starFour')}
-                </div>
-                ${isAnswered || isForwarded ? html`
-                  <div class="indicators-wrapper-ultra">
-                    ${isAnswered ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.replied')}>${renderIcon('arrowBendUpLeft')}</div>` : ''}
-                    ${isForwarded ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.forwarded')}>${renderIcon('arrowBendUpRight')}</div>` : ''}
-                  </div>
-                ` : ''}
-                ${customTags.length > 0 ? html`
-                  <div class="tag-pills">
-                    ${customTags.map(tag => html`
-                      <alps-tag .name=${tag.name} .color=${tag.color}></alps-tag>
-                    `)}
-                  </div>
-                ` : ''}
-                <div class="message-subject">${subject}</div>
-                <div class="message-indicators">
-                  <div class="attachment-col">
-                    ${msg.HasAttachments ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.hasAttachments')}>${renderIcon('paperclipHorizontal')}</div>` : ''}
-                  </div>
-                  <div class="message-date">${dateStr}</div>
-                </div>
-              </div>
-              `;
-            }
-
-            return html`
-            <div class="message-item ${(this.selectedMessages.size === 0 && this.selectedMessage?.UID === msg.UID) || this.selectedMessages.has(String(msg.UID)) ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.messages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
-              ${!this.isMobile ? html`
-                <div class="checkbox-col" @click=${(e: Event) => {
-                  e.stopPropagation();
-                  const uid = String(msg.UID);
-                  const newSet = new Set(this.selectedMessages);
-                  if (newSet.has(uid)) newSet.delete(uid);
-                  else newSet.add(uid);
-                  this.selectedMessages = newSet;
-                  this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
-                }}>
-                  <input type="checkbox" class="message-checkbox" 
-                    .checked=${this.selectedMessages.has(String(msg.UID))}
-                    @click=${(e: Event) => e.stopPropagation()}
-                    @change=${(e: Event) => this.handleSelectMessage(e, String(msg.UID))}>
-                </div>
-              ` : ''}
-              <div class="avatar-stack">
-                ${displayAvatars.map((c, idx) => {
-                  const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
-                  const name = c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
-                  const domain = c.Host ? c.Host.toLowerCase() : '';
-                  const bimiUrl = getBimiAvatarUrl(domain);
-                  return html`
-                    <div class="avatar-wrapper" style="z-index: ${totalRendered - idx};">
-                      <alps-avatar .name=${name} .email=${addr} .size=${avatarSize} .src=${bimiUrl}></alps-avatar>
-                    </div>
-                  `;
-                })}
-                ${extraCount > 0 ? html`
-                  <div class="avatar-wrapper extra-count" style="width: ${avatarSize}px; height: ${avatarSize}px; z-index: 0;">
-                    +${extraCount}
-                  </div>
-                ` : ''}
-              </div>
-              <div class="message-details">
-                <div class="message-header-row">
-                  <div class="message-header-inner">
-                    <div class="message-sender">${senderName}</div>
-                    <div @click=${(e: Event) => this.toggleStar(e, msg)} class="star-btn ${isStarred ? 'starred' : ''}">
-                      ${renderIcon(isStarred ? 'starFourFill' : 'starFour')}
-                    </div>
-                  </div>
-                  <div class="message-indicators">
-                    <div class="attachment-col">
-                      ${msg.HasAttachments ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.hasAttachments')}>${renderIcon('paperclipHorizontal')}</div>` : ''}
-                    </div>
-                    <div class="message-date">${dateStr}</div>
-                  </div>
-                </div>
-                <div class="message-subject-row">
-                  ${isAnswered || isForwarded ? html`
-                    <div class="indicators-wrapper">
-                      ${isAnswered ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.replied')}>${renderIcon('arrowBendUpLeft')}</div>` : ''}
-                      ${isForwarded ? html`<div class="indicator-icon" title=${this.i18nStore?.t('messageList.forwarded')}>${renderIcon('arrowBendUpRight')}</div>` : ''}
-                    </div>
-                  ` : ''}
-                  ${customTags.length > 0 ? html`
-                    <div class="tag-pills">
-                      ${customTags.map(tag => html`
-                        <alps-tag .name=${tag.name} .color=${tag.color}></alps-tag>
-                      `)}
-                    </div>
-                  ` : ''}
-                  <div class="message-subject">${subject}</div>
-                  ${sizeStr ? html`<div class="message-size">${sizeStr}</div>` : ''}
-                </div>
-              </div>
-            </div>
-          `;
-          })}
+          repeat(this.messages, msg => msg.UID, msg => html`
+            ${this.renderMessageItem(msg, false)}
+            ${msg.SubMessages && msg.SubMessages.length > 0 && this.isThreadExpanded(String(msg.UID)) ? 
+              msg.SubMessages.map((subMsg: any, idx: number) => this.renderMessageItem(subMsg, true, idx === 0, idx === msg.SubMessages.length - 1)) : ''}
+          `)}
       </div>
       ${this.isMobile && this.messages.length > 0 ? html`
         <div class="mobile-bottom-header ${this.isAtBottom ? 'at-bottom' : ''}">

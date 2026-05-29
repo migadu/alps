@@ -66,7 +66,10 @@ type IMAPMessage struct {
 	HasAttachments   bool
 	HasBimiPotential bool
 	HasBimiFailed    bool
-	References       []string `json:"References"`
+	References       []string      `json:"References"`
+	ThreadCount      int           `json:"ThreadCount,omitempty"`
+	ThreadUIDs       []string      `json:"ThreadUIDs,omitempty"`
+	SubMessages      []IMAPMessage `json:"SubMessages,omitempty"`
 }
 
 func (msg *IMAPMessage) URL() *url.URL {

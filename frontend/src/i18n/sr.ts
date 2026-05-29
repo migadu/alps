@@ -64,7 +64,7 @@ export const sr = {
       messageSortCriteriaDesc: 'Izaberite da li ćete sortirati po originalnom datumu prijema ili po datumu arhiviranja u fasciklu.',
       sortUid: 'Datum arhiviranja u fasciklu',
       sortDate: 'Datum prijema',
-      enableThreading: 'Grupiši poruke u konverzacije',
+      enableThreading: 'Koristi niti',
       themeIframeContent: 'Primeni temu na HTML sadržaj poruka'
     },
     appearance: {

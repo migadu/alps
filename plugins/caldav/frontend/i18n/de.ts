@@ -36,6 +36,7 @@ export default {
         time: 'Zeit',
         addLocation: 'Ort hinzufügen',
         addDescription: 'Beschreibung hinzufügen',
+        description: 'Beschreibung',
         moreEvents: '+{count} weitere',
         repeat: 'Wiederholen',
         repeatNone: 'Nicht wiederholen',

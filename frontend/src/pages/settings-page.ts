@@ -503,9 +503,15 @@ export class SettingsPage extends LitElement {
         <alps-setting-group>
           <label class="checkbox-label">
             <input type="checkbox" 
-                   ?checked=${this.settingsState.enableThreading} 
+                   ?checked=${this.settingsState.enableThreading && this.settingsState.hasThreadCapability !== false} 
+                   ?disabled=${this.settingsState.hasThreadCapability === false}
                    @change=${(e: Event) => this.handleUpdate(e, 'enableThreading')}>
             ${this.i18nStore?.t('settings.reading.enableThreading')}
+            ${this.settingsState.hasThreadCapability === false ? html`
+              <span style="font-size: 12px; color: var(--text-muted); font-weight: normal; margin-left: 4px;">
+                (Not supported by your mail server)
+              </span>
+            ` : ''}
           </label>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.preferredView')}" description="${this.i18nStore?.t('settings.reading.preferredViewDesc')}">

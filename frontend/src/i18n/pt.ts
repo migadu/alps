@@ -63,7 +63,7 @@ export const pt = {
       messageSortCriteriaDesc: 'Escolha se deseja classificar pela data de recebimento original ou pela data de arquivamento.',
       sortUid: 'Data de Arquivamento',
       sortDate: 'Data de Recebimento',
-      enableThreading: 'Agrupar mensagens em conversas',
+      enableThreading: 'Usar tópicos de conversa',
       themeIframeContent: 'Aplicar tema ao conteúdo das mensagens HTML'
     },
     appearance: {

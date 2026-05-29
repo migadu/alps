@@ -64,7 +64,7 @@ export const fr = {
       messageSortCriteriaDesc: 'Choisissez de trier par date de réception originale ou par date de classement dans le dossier.',
       sortUid: 'Date de classement dans le dossier',
       sortDate: 'Date de réception',
-      enableThreading: 'Grouper les messages en conversations',
+      enableThreading: 'Utiliser le fil de discussion',
       themeIframeContent: 'Appliquer le thème au contenu des messages HTML'
     },
     appearance: {

@@ -39,6 +39,7 @@ export interface SettingsState {
   maxAttachmentMiB: number;
   enableThreading: boolean;
   themeIframeContent: boolean;
+  hasThreadCapability?: boolean;
 }
 
 const DEFAULT_SETTINGS: SettingsState = {
@@ -261,6 +262,13 @@ export class SettingsStore extends EventTarget {
         
         if (data.MaxAttachmentMiB !== undefined) {
           updates.maxAttachmentMiB = data.MaxAttachmentMiB;
+        }
+
+        if (data.HasThreadCapability !== undefined) {
+          updates.hasThreadCapability = data.HasThreadCapability;
+          if (data.HasThreadCapability === false) {
+            updates.enableThreading = false;
+          }
         }
 
         if (data && data.Settings) {

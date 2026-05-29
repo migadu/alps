@@ -1295,6 +1295,7 @@ export class MailboxPage extends LitElement {
               .mailboxes=${this.mailboxes}
               .mailbox=${this.currentMailbox}
               .message=${this.selectedMessage}
+              .messages=${this.messages}
               .layoutMode=${effectiveLayoutMode}
               .selectedUids=${this.selectedUids}
               .allSelectedStarred=${this.allSelectedStarred}

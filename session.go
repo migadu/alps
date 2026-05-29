@@ -172,6 +172,12 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 			s.Close()
 			return fmt.Errorf("failed to connect to mail provider: %v", err)
 		}
+		type threadCapable interface {
+			HasThreadCapability() bool
+		}
+		if tc, ok := s.provider.(threadCapable); ok {
+			s.SetData("hasThreadCapability", tc.HasThreadCapability())
+		}
 	}
 
 	done := make(chan error, 1)

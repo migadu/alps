@@ -64,7 +64,7 @@ export const rs = {
       messageSortCriteriaDesc: 'Изаберите да ли ћете сортирати по оригиналном датуму пријема или по датуму архивирања у фасциклу.',
       sortUid: 'Датум архивирања у фасциклу',
       sortDate: 'Датум пријема',
-      enableThreading: 'Групиши поруке у конверзације',
+      enableThreading: 'Користи нити',
       themeIframeContent: 'Примени тему на HTML садржај порука'
     },
     appearance: {

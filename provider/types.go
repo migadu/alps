@@ -98,6 +98,9 @@ type Message struct {
 	BimiPotential bool
 	BimiFailed    bool
 	References    []string
+	ThreadCount   int       `json:"ThreadCount,omitempty"`
+	ThreadUIDs    []string  `json:"ThreadUIDs,omitempty"`
+	SubMessages   []Message `json:"SubMessages,omitempty"`
 }
 
 // MessageID is a provider-specific message identifier

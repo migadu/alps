@@ -64,7 +64,7 @@ export const es = {
       messageSortCriteriaDesc: 'Elige si ordenar por fecha original de recepción o por fecha de archivo de carpeta.',
       sortUid: 'Fecha de archivo de carpeta',
       sortDate: 'Fecha de recepción',
-      enableThreading: 'Agrupar mensajes en conversaciones',
+      enableThreading: 'Usar hilos de conversación',
       themeIframeContent: 'Aplicar tema al contenido de los mensajes HTML'
     },
     appearance: {
