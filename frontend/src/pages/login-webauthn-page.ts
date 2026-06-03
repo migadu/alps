@@ -3,7 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { authenticateCredential, isWebAuthnSupported } from '../utils/webauthn-utils';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
-import { clearSessionSettings } from '../store/settings-store';
+
 
 import '../components/alps-auth-card';
 
@@ -119,17 +119,8 @@ export class LoginWebAuthnPage extends LitElement {
 
         // Complete the login flow
         setTimeout(() => {
-          // Clear any stored data from previous session
-          clearSessionSettings();
-          sessionStorage.clear();
-          
-          // Force a clean reload to the inbox without triggering the SPA router first
-          // This prevents a race condition where the router initiates a fetch that
-          // gets immediately aborted by the reload (causing a NetworkError flash).
-          const url = new URL(window.location.href);
-          url.searchParams.set('_t', Date.now().toString());
-          url.hash = '#/';
-          window.location.replace(url.toString());
+          window.dispatchEvent(new CustomEvent('user-logged-in'));
+          window.location.hash = '/mailbox/INBOX';
         }, 1000);
       } else {
         throw new Error(this.i18nStore?.t('webauthn.errors.verification_failed'));
