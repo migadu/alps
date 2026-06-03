@@ -19,6 +19,8 @@ type Logger interface {
 	Infof(format string, args ...interface{})
 	Error(i ...interface{})
 	Errorf(format string, args ...interface{})
+	Warn(i ...interface{})
+	Warnf(format string, args ...interface{})
 	Fatal(i ...interface{})
 	Fatalf(format string, args ...interface{})
 	SetLevel(level slog.Level)
@@ -161,6 +163,14 @@ func (l *logger) Error(i ...interface{}) {
 
 func (l *logger) Errorf(format string, args ...interface{}) {
 	l.slog.Error(fmt.Sprintf(format, args...))
+}
+
+func (l *logger) Warn(i ...interface{}) {
+	l.slog.Warn(fmt.Sprint(i...))
+}
+
+func (l *logger) Warnf(format string, args ...interface{}) {
+	l.slog.Warn(fmt.Sprintf(format, args...))
 }
 
 func (l *logger) Fatal(i ...interface{}) {

@@ -349,8 +349,8 @@ func handleVerifyBegin(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusUnauthorized, "invalid 2FA session")
 	}
 
-	// Load user credentials from IMAP METADATA
-	creds, err := loadCredentials(session.Store())
+	// Load user credentials from IMAP METADATA (strict mode for verification)
+	creds, err := loadCredentialsForVerification(session.Store())
 	if err != nil {
 		return fmt.Errorf("failed to load credentials: %v", err)
 	}
@@ -413,9 +413,10 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		return fmt.Errorf("failed to unmarshal session: %v", err)
 	}
 
-	// Load credentials
-	creds, err := loadCredentials(session.Store())
+	// Load credentials (strict mode for verification)
+	creds, err := loadCredentialsForVerification(session.Store())
 	if err != nil {
+		ctx.Server.Logger().Errorf("WebAuthn verify: failed to load credentials for user %s: %v", session.Username(), err)
 		return fmt.Errorf("failed to load credentials: %v", err)
 	}
 
@@ -432,6 +433,7 @@ func handleVerifyFinish(ctx *alps.Context) error {
 
 	// Success! Mark session as authenticated with 2FA
 	session.SetAuthenticated2FA(true)
+	ctx.Server.Logger().Debugf("WebAuthn verify: successfully authenticated user %s with 2FA", session.Username())
 
 	// Clear session data and 2FA cookies
 	if err := clearSessionData(session); err != nil {
@@ -468,20 +470,29 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		})
 	}
 
-	// Set the real session cookie
+	// Update session cookie to reflect the 2FA authenticated state
+	// This is necessary to ensure the session persists correctly
 	ctx.SetSessionWithExpiry(session, persistent)
 
 	// Set login token for session restoration after server restart
-	// Retrieve credentials that were stored during initial login
-	var credentials map[string]string
-	if err := session.Store().Get("2fa_login_credentials", &credentials); err == nil {
-		username := credentials["username"]
-		password := credentials["password"]
-		if username != "" && password != "" {
-			ctx.SetLoginToken(username, password, true, persistent)
+	// Retrieve credentials that were stored during initial login from session memory
+	if credData, ok := session.GetData("2fa_login_credentials"); ok {
+		if credentials, ok := credData.(map[string]string); ok {
+			username := credentials["username"]
+			password := credentials["password"]
+			if username != "" && password != "" {
+				ctx.SetLoginToken(username, password, true, persistent)
+				ctx.Server.Logger().Debugf("WebAuthn verify: updated login token for user %s", username)
+			} else {
+				ctx.Server.Logger().Warnf("WebAuthn verify: stored credentials empty for session")
+			}
+		} else {
+			ctx.Server.Logger().Warnf("WebAuthn verify: stored credentials have wrong type")
 		}
-		// Clear stored credentials by overwriting with empty map
-		session.Store().Put("2fa_login_credentials", map[string]string{})
+		// Clear stored credentials from session memory
+		session.SetData("2fa_login_credentials", nil)
+	} else {
+		ctx.Server.Logger().Warnf("WebAuthn verify: no stored credentials found in session")
 	}
 
 	ctx.Response.Header().Set("Content-Type", "application/json")
@@ -503,7 +514,7 @@ func IsEnabled(store provider.Store) (bool, error) {
 
 // BeginLogin starts WebAuthn authentication for a user
 func BeginLogin(server *alps.Server, username string, session *alps.Session) (*protocol.CredentialAssertion, error) {
-	creds, err := loadCredentials(session.Store())
+	creds, err := loadCredentialsForVerification(session.Store())
 	if err != nil {
 		return nil, err
 	}
@@ -546,8 +557,8 @@ func FinishLogin(server *alps.Server, session *alps.Session, response *http.Requ
 		return err
 	}
 
-	// Load credentials
-	creds, err := loadCredentials(session.Store())
+	// Load credentials (strict mode for verification)
+	creds, err := loadCredentialsForVerification(session.Store())
 	if err != nil {
 		return err
 	}

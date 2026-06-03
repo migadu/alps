@@ -119,12 +119,17 @@ export class LoginWebAuthnPage extends LitElement {
 
         // Complete the login flow
         setTimeout(() => {
-          window.location.hash = '#/';
           // Clear any stored data from previous session
           clearSessionSettings();
           sessionStorage.clear();
-          // Reload to ensure a completely clean state (crucial for account switching)
-          window.location.reload();
+          
+          // Force a clean reload to the inbox without triggering the SPA router first
+          // This prevents a race condition where the router initiates a fetch that
+          // gets immediately aborted by the reload (causing a NetworkError flash).
+          const url = new URL(window.location.href);
+          url.searchParams.set('_t', Date.now().toString());
+          url.hash = '#/';
+          window.location.replace(url.toString());
         }, 1000);
       } else {
         throw new Error(this.i18nStore?.t('webauthn.errors.verification_failed'));

@@ -929,14 +929,13 @@ func handleLogin(ctx *alps.Context) error {
 				})
 			}
 
-			// Store credentials temporarily for login token creation after 2FA verification
+			// Store credentials temporarily in session memory for login token creation after 2FA verification
 			// This enables session restoration after server restart for 2FA users
-			if err := s.Store().Put("2fa_login_credentials", map[string]string{
+			// Using session memory instead of IMAP METADATA to avoid logging passwords
+			s.SetData("2fa_login_credentials", map[string]string{
 				"username": username,
 				"password": password,
-			}); err != nil {
-				ctx.Server.Logger().Printf("Failed to store 2FA login credentials: %v", err)
-			}
+			})
 
 			return ctx.JSON(http.StatusOK, map[string]interface{}{"requires_2fa": true})
 		}
@@ -2475,13 +2474,12 @@ func handleSwitchAccount(ctx *alps.Context) error {
 			MaxAge:   300, // 5 minutes
 		})
 
-		// Store credentials for login token creation after 2FA verification
-		if err := newSession.Store().Put("2fa_login_credentials", map[string]string{
+		// Store credentials in session memory for login token creation after 2FA verification
+		// Using session memory instead of IMAP METADATA to avoid logging passwords
+		newSession.SetData("2fa_login_credentials", map[string]string{
 			"username": targetUsername,
 			"password": password,
-		}); err != nil {
-			ctx.Server.Logger().Printf("Failed to store 2FA login credentials: %v", err)
-		}
+		})
 
 		// Close the old session
 		ctx.Session.Close()
