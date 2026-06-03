@@ -193,10 +193,6 @@ func (c *Context) SetSessionWithExpiry(s *Session, persistent bool) {
 		cookie.MaxAge = -1
 		frontendCookie.Expires = aLongTimeAgo
 		frontendCookie.MaxAge = -1
-
-		// Clear legacy orphaned cookies
-		c.SetCookie(&http.Cookie{Name: cookieName, Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
-		c.SetCookie(&http.Cookie{Name: "alps_logged_in", Value: "", Path: "/", HttpOnly: false, MaxAge: -1})
 	}
 	c.SetCookie(&cookie)
 	c.SetCookie(&frontendCookie)
@@ -235,10 +231,6 @@ func (c *Context) SetLoginToken(username, password string, verified2FA bool, per
 		cookie.MaxAge = -1
 		frontendCookie.Expires = aLongTimeAgo
 		frontendCookie.MaxAge = -1
-
-		// Clear legacy orphaned cookies
-		c.SetCookie(&http.Cookie{Name: loginTokenCookieName, Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
-		c.SetCookie(&http.Cookie{Name: "alps_has_login_token", Value: "", Path: "/", HttpOnly: false, MaxAge: -1})
 
 		c.SetCookie(&cookie)
 		c.SetCookie(&frontendCookie)

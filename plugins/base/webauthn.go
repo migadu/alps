@@ -440,8 +440,7 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		return fmt.Errorf("failed to clear session: %v", err)
 	}
 
-	// Clear pending 2FA cookie (legacy and new)
-	ctx.SetCookie(&http.Cookie{Name: "alps_2fa_pending", Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
+	// Clear pending 2FA cookie
 	ctx.SetCookie(&http.Cookie{
 		Name:     "alps_2fa_pending",
 		Value:    "",
@@ -458,7 +457,6 @@ func handleVerifyFinish(ctx *alps.Context) error {
 
 	// Clear remember cookie
 	if rememberCookie != nil {
-		ctx.SetCookie(&http.Cookie{Name: "alps_2fa_remember", Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
 		ctx.SetCookie(&http.Cookie{
 			Name:     "alps_2fa_remember",
 			Value:    "",
