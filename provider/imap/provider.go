@@ -18,6 +18,18 @@ import (
 	"github.com/migadu/alps/provider"
 )
 
+const (
+	// MaxMessagesForThreading represents the threshold for disabling the IMAP THREAD and SORT 
+	// algorithms. Threading massive mailboxes (> 10k messages) causes severe O(N) performance 
+	// degradation on the IMAP server (high CPU/RAM usage), massive network payloads (1MB+), 
+	// and backend bottlenecks, essentially acting as an accidental DoS.
+	MaxMessagesForThreading = 10000
+)
+
+func isMailboxMassive(mbox *imapclient.SelectedMailbox) bool {
+	return mbox != nil && mbox.NumMessages > MaxMessagesForThreading
+}
+
 type IMAPProvider struct {
 	client    *imapclient.Client
 	store     provider.Store
@@ -496,6 +508,11 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 		}
 	}
 
+	mbox := p.client.Mailbox()
+	if isMailboxMassive(mbox) {
+		enableThreading = false
+	}
+
 	if enableThreading && p.HasThreadCapability() {
 		groups, err := p.fetchThreadGroups(&imap.SearchCriteria{})
 		if err != nil {
@@ -583,7 +600,7 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 		return msgs, total, nil
 	}
 
-	mbox := p.client.Mailbox()
+	mbox = p.client.Mailbox()
 	total := int(mbox.NumMessages)
 
 	var from, to int
@@ -623,7 +640,9 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 
 	msgs := make([]provider.Message, 0, len(imapMsgs))
 	for _, msg := range imapMsgs {
-		msgs = append(msgs, p.convertIMAPMessage(msg, mailbox))
+		converted := p.convertIMAPMessage(msg, mailbox)
+		converted.ThreadUIDs = []string{converted.ID.String()}
+		msgs = append(msgs, converted)
 	}
 
 	// Reverse list of messages if descending
@@ -651,6 +670,13 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		return nil, 0, err
 	}
 
+	mbox := p.client.Mailbox()
+	if isMailboxMassive(mbox) && query == "" {
+		// Fast path for massive mailboxes without a search query.
+		// Avoid the massive IMAP SORT response by falling back to sequential listing.
+		return p.ListMessages(mailbox, sortOrder, page, pageSize)
+	}
+
 	searchCriteria := prepareIMAPSearch(query)
 
 	var s struct {
@@ -663,6 +689,11 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		if err := p.store.Get("base.settings", &s); err == nil && s.UI.EnableThreading != nil {
 			enableThreading = *s.UI.EnableThreading
 		}
+	}
+
+	mbox = p.client.Mailbox()
+	if isMailboxMassive(mbox) {
+		enableThreading = false
 	}
 
 	if enableThreading && p.HasThreadCapability() {

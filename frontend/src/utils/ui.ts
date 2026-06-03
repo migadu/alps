@@ -116,3 +116,17 @@ export function getBimiAvatarUrl(domain: string): string {
   const d = domain.toLowerCase();
   return !freemailDomains.has(d) ? `/bimi/avatar?domain=${encodeURIComponent(d)}` : '';
 }
+
+/**
+ * Calculates the absolute minimum width a flex container needs to display its inflexible contents.
+ * It forces the container to 0 width, letting flex layout compress flexible items, 
+ * and reads the scrollWidth of the remaining unshrinkable items.
+ */
+export function getFlexContainerMinWidth(container: HTMLElement): number {
+  if (!container) return 0;
+  const origWidth = container.style.width;
+  container.style.width = '0px';
+  const scrollW = container.scrollWidth;
+  container.style.width = origWidth;
+  return scrollW;
+}

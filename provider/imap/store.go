@@ -111,11 +111,12 @@ func (s *imapStore) Get(key string, out interface{}) error {
 	}
 	entries := data.Entries
 	v, ok := entries[s.key(key)]
-	if !ok || v == nil {
+	if !ok || v == nil || len(*v) == 0 || string(*v) == "NIL" {
 		return provider.ErrNoStoreEntry
 	}
 	if err := json.Unmarshal(*v, out); err != nil {
-		return fmt.Errorf("provider/imap: failed to unmarshal IMAP store entry %q: %v", key, err)
+		log.Printf("provider/imap: ignoring invalid store entry %q (err: %v)", key, err)
+		return provider.ErrNoStoreEntry
 	}
 	// Store the dereferenced value in cache, not the pointer
 	return s.cache.Put(key, reflect.ValueOf(out).Elem().Interface())

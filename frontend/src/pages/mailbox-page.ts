@@ -18,6 +18,7 @@ import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_SPAM, FOLDER_TRASH, F
 import type { LayoutMode, DensityMode } from '../store/settings-store';
 import '../components/alps-initial-loader';
 import { Logger } from '../utils/logger';
+import { getFlexContainerMinWidth } from '../utils/ui';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
@@ -238,8 +239,33 @@ export class MailboxPage extends LitElement {
   @state() private mobileSidebarOpen = false;
 
   @state() private bulkProcessing = false;
+  @state() private computedMinListWidth = MESSAGE_LIST_WIDTH_MIN;
 
   private _mql = window.matchMedia('(max-width: 768px)');
+
+  private updateComputedMinWidth() {
+    let minW = MESSAGE_LIST_WIDTH_MIN;
+    const msgList = this.shadowRoot?.querySelector('.message-list-pane alps-message-list') as any;
+    
+    if (msgList) {
+      const header = msgList.shadowRoot?.querySelector('.list-header') as HTMLElement;
+      if (header) {
+        const scrollW = getFlexContainerMinWidth(header);
+        
+        // Use the calculated generic minimum width (with a small 2px safety buffer)
+        minW = Math.max(MESSAGE_LIST_WIDTH_MIN, scrollW + 2);
+      }
+    }
+    
+    if (minW !== this.computedMinListWidth) {
+      this.computedMinListWidth = minW;
+      const sidebarW = (this.sidebarCollapsed && !this.isMobile) ? SIDEBAR_WIDTH_COLLAPSED : this.sidebarWidth;
+      // Adjust resizer position to respect the new min width if it currently violates it
+      if (this.resizerPositionX - sidebarW < minW) {
+        this.resizerPositionX = sidebarW + minW;
+      }
+    }
+  }
 
   private showGlobalToast(message: string, actionLabel = '', actionFn?: () => void, duration = 3000) {
     window.dispatchEvent(new CustomEvent('show-toast', {
@@ -249,7 +275,7 @@ export class MailboxPage extends LitElement {
 
   private get effectiveListWidth() {
     const sidebarW = (this.sidebarCollapsed && !this.isMobile) ? SIDEBAR_WIDTH_COLLAPSED : this.sidebarWidth;
-    return Math.max(MESSAGE_LIST_WIDTH_MIN, this.resizerPositionX - sidebarW);
+    return Math.max(this.computedMinListWidth, this.resizerPositionX - sidebarW);
   }
 
   private get allSelectedStarred() {
@@ -336,6 +362,13 @@ export class MailboxPage extends LitElement {
     messageSync.removeEventListener('mailbox-not-found', this.handleMailboxNotFound as EventListener);
     window.removeEventListener('draft-autosaved', this.handleDraftAutosaved as EventListener);
     messageSync.stop();
+  }
+
+  protected updated(changedProperties: Map<string | number | symbol, unknown>): void {
+    super.updated(changedProperties);
+    if (changedProperties.has('sidebarCollapsed') || changedProperties.has('layoutMode') || changedProperties.has('currentMailbox') || changedProperties.has('isMobile') || changedProperties.has('mailboxes')) {
+      setTimeout(() => this.updateComputedMinWidth(), 0);
+    }
   }
 
   private handleDraftAutosaved = (e: CustomEvent) => {
@@ -611,11 +644,14 @@ export class MailboxPage extends LitElement {
   private startResize = (e: MouseEvent) => {
     e.preventDefault();
     this.isPaneDragging = true;
+    
+    // Ensure we have the latest width before drag
+    this.updateComputedMinWidth();
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       if (this.layoutMode === 'vertical') {
         const sidebarW = this.sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : this.sidebarWidth;
-        const newX = Math.max(sidebarW + MESSAGE_LIST_WIDTH_MIN, Math.min(moveEvent.clientX, window.innerWidth - MESSAGE_READER_WIDTH_MIN));
+        const newX = Math.max(sidebarW + this.computedMinListWidth, Math.min(moveEvent.clientX, window.innerWidth - MESSAGE_READER_WIDTH_MIN));
         this.resizerPositionX = newX;
       } else if (this.layoutMode === 'horizontal') {
         this.listHeight = Math.max(HORIZONTAL_LIST_HEIGHT_MIN, Math.min(moveEvent.clientY - HEADER_HEIGHT, window.innerHeight - HORIZONTAL_LIST_HEIGHT_MIN));

@@ -17,7 +17,7 @@ import (
 	"github.com/migadu/alps"
 )
 
-var scriptRegex = regexp.MustCompile(`(?i)<script[\s\S]*?</script>|on[a-z]+="[^"]*"|on[a-z]+='[^']*'|on[a-z]+=[^\s>]+|javascript:`)
+var scriptRegex = regexp.MustCompile(`(?i)<script[\s\S]*?</script>|\bon[a-z]+="[^"]*"|\bon[a-z]+='[^']*'|\bon[a-z]+=[^\s>]+|javascript:`)
 
 func sanitizeSVG(raw []byte) []byte {
 	return scriptRegex.ReplaceAll(raw, []byte(""))
