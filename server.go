@@ -495,7 +495,11 @@ func (s *Server) setupMiddleware(router *Router) {
 					// Restore session with original persistence setting
 					ctx.Session = session
 					ctx.SetSessionWithExpiry(session, persistent)
-					// Clear any stale 2FA cookies from previous login attempts
+					// Clear legacy cookies (without SameSite/Secure) to clean up orphaned cookies
+					ctx.SetCookie(&http.Cookie{Name: "alps_2fa_pending", Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
+					ctx.SetCookie(&http.Cookie{Name: "alps_2fa_remember", Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
+					
+					// Clear correctly configured cookies
 					ctx.SetCookie(&http.Cookie{
 						Name:     "alps_2fa_pending",
 						Value:    "",
