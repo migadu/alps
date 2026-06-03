@@ -50,6 +50,9 @@ func (p *IMAPProvider) GetStore() (provider.Store, error) {
 // Close closes the IMAP connection
 func (p *IMAPProvider) Close() error {
 	if p.client != nil {
+		if err := p.client.Logout().Wait(); err != nil {
+			// ignore logout errors, we just want to flush
+		}
 		return p.client.Close()
 	}
 	return nil
@@ -1309,10 +1312,10 @@ func (p *IMAPProvider) convertIMAPMessage(msg *imapclient.FetchMessageBuffer, ma
 			fmt.Printf("BIMI debug: Auth-Results for %d: %q\n", msg.UID, string(b))
 		}
 		lowerStr := strings.ToLower(string(b))
-		if strings.Contains(lowerStr, "dmarc=fail") || strings.Contains(lowerStr, "dkim=fail") || strings.Contains(lowerStr, "spf=fail") || strings.Contains(lowerStr, "dkim=hardfail") || strings.Contains(lowerStr, "spf=hardfail") {
-			converted.BimiFailed = true
-		} else if strings.Contains(lowerStr, "dmarc=pass") || strings.Contains(lowerStr, "bimi=pass") {
+		if strings.Contains(lowerStr, "dmarc=pass") || strings.Contains(lowerStr, "bimi=pass") {
 			converted.BimiPotential = true
+		} else if strings.Contains(lowerStr, "dmarc=fail") || strings.Contains(lowerStr, "dkim=fail") || strings.Contains(lowerStr, "spf=fail") || strings.Contains(lowerStr, "dkim=hardfail") || strings.Contains(lowerStr, "spf=hardfail") {
+			converted.BimiFailed = true
 		}
 	}
 
@@ -1469,12 +1472,25 @@ func (p *IMAPProvider) GetMessageThread(mailbox string, targetUID provider.Messa
 						uidSet.AddNum(imap.UID(u))
 					}
 
+					bodySection := &imap.FetchItemBodySection{
+						Specifier:    imap.PartSpecifierHeader,
+						HeaderFields: []string{"Authentication-Results"},
+						Peek:         true,
+					}
+					referencesBodySection := &imap.FetchItemBodySection{
+						Specifier:    imap.PartSpecifierHeader,
+						HeaderFields: []string{"References"},
+						Peek:         true,
+					}
 					fetchOptions := imap.FetchOptions{
 						Envelope:      true,
 						Flags:         true,
 						InternalDate:  true,
 						RFC822Size:    true,
 						BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+						BodySection: []*imap.FetchItemBodySection{
+							bodySection, referencesBodySection,
+						},
 					}
 
 					imapMsgs, fetchErr := p.client.Fetch(uidSet, &fetchOptions).Collect()
@@ -1561,12 +1577,25 @@ func (p *IMAPProvider) searchMultiMessages(query string, sortOrder string, page,
 			uidSet.AddNum(imap.UID(uid))
 		}
 
+		bodySection := &imap.FetchItemBodySection{
+			Specifier:    imap.PartSpecifierHeader,
+			HeaderFields: []string{"Authentication-Results"},
+			Peek:         true,
+		}
+		referencesBodySection := &imap.FetchItemBodySection{
+			Specifier:    imap.PartSpecifierHeader,
+			HeaderFields: []string{"References"},
+			Peek:         true,
+		}
 		fetchOptions := imap.FetchOptions{
 			Flags:         true,
 			Envelope:      true,
 			UID:           true,
 			RFC822Size:    true,
 			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+			BodySection: []*imap.FetchItemBodySection{
+				bodySection, referencesBodySection,
+			},
 		}
 
 		imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()

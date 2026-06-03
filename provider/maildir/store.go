@@ -74,7 +74,11 @@ func (s *Store) Put(key string, v interface{}) error {
 		return err
 	}
 
-	data[key] = v
+	if v == nil {
+		delete(data, key)
+	} else {
+		data[key] = v
+	}
 
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {

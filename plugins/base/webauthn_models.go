@@ -86,6 +86,9 @@ func loadCredentialsInternal(store provider.Store, strict bool) (*UserCredential
 }
 
 func saveCredentials(store provider.Store, creds *UserCredentials) error {
+	if creds == nil || (len(creds.Credentials) == 0 && !creds.TrustLinkedAccounts) {
+		return store.Put("webauthn", nil)
+	}
 	return store.Put("webauthn", creds)
 }
 

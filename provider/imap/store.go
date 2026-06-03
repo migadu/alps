@@ -65,6 +65,13 @@ func (s *memoryStore) Get(key string, out interface{}) error {
 
 func (s *memoryStore) Put(key string, v interface{}) error {
 	s.locker.Lock()
+	defer s.locker.Unlock()
+
+	if v == nil {
+		delete(s.entries, key)
+		return nil
+	}
+
 	// Always store the dereferenced value so Get can assign it correctly
 	val := reflect.ValueOf(v)
 	if val.Kind() == reflect.Ptr {
@@ -72,7 +79,6 @@ func (s *memoryStore) Put(key string, v interface{}) error {
 	} else {
 		s.entries[key] = v
 	}
-	s.locker.Unlock()
 	return nil
 }
 
@@ -116,14 +122,27 @@ func (s *imapStore) Get(key string, out interface{}) error {
 }
 
 func (s *imapStore) Put(key string, v interface{}) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return fmt.Errorf("provider/imap: failed to marshal IMAP store entry %q: %v", key, err)
+	var bPtr *[]byte
+	if v != nil {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Errorf("provider/imap: failed to marshal IMAP store entry %q: %v", key, err)
+		}
+		bPtr = &b
 	}
-	entries := map[string]*[]byte{s.key(key): &b}
+	entries := map[string]*[]byte{s.key(key): bPtr}
 	if err := s.client.SetMetadata("", entries).Wait(); err != nil {
 		return fmt.Errorf("provider/imap: failed to put IMAP store entry %q: %v", key, err)
 	}
 
+	if v == nil {
+		return s.cache.Put(key, nil)
+	}
+
+	// Store the fresh value in cache
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Ptr {
+		return s.cache.Put(key, val.Elem().Interface())
+	}
 	return s.cache.Put(key, v)
 }

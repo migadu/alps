@@ -682,6 +682,15 @@ export class MessageReader extends LitElement {
           this.fetchMessageBody(this.message, this.message._isAutosaveUpdate);
         } else {
           // Message is same, but properties updated (e.g. flags), or message list changed.
+          // The parent might pass down a list-level message that lacks BIMI state, so preserve it.
+          if (oldMessage) {
+            if (oldMessage.HasBimiPotential && !this.message.HasBimiPotential) {
+              this.message = { ...this.message, HasBimiPotential: true };
+            }
+            if (oldMessage.HasBimiFailed && !this.message.HasBimiFailed) {
+              this.message = { ...this.message, HasBimiFailed: true };
+            }
+          }
           this.resolveThread(this.message);
 
           if (this.message._isAutosaveUpdate && oldMessage && this.message !== oldMessage) {
@@ -757,9 +766,12 @@ export class MessageReader extends LitElement {
       const existing = oldItems.find(item => String(item.message?.UID) === String(m.UID));
 
       if (existing) {
+        const mergedMessage = { ...m, Flags: m.Flags || existing.message.Flags || [] };
+        if (existing.message.HasBimiPotential) mergedMessage.HasBimiPotential = true;
+        if (existing.message.HasBimiFailed) mergedMessage.HasBimiFailed = true;
         return {
           ...existing,
-          message: { ...m, Flags: m.Flags || existing.message.Flags || [] }
+          message: mergedMessage
         };
       }
 
@@ -889,6 +901,7 @@ export class MessageReader extends LitElement {
           this.allowRemoteResources = item.allowRemoteResources;
           this.hasRemoteResources = item.hasRemoteResources;
           this.loading = false;
+          this.message = { ...this.message, ...item.message };
         }
         this.updateThreadItemReference(item);
         return;
@@ -989,6 +1002,7 @@ export class MessageReader extends LitElement {
         this.allowRemoteResources = item.allowRemoteResources;
         this.hasRemoteResources = item.hasRemoteResources;
         this.loading = false;
+        this.message = { ...this.message, ...item.message };
       }
       this.updateThreadItemReference(item);
     }

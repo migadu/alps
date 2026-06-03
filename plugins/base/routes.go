@@ -68,7 +68,7 @@ func registerRoutes(p *alps.GoPlugin) {
 	p.GET("/settings/2fa", handleSetupPage)
 	p.POST("/settings/2fa/begin", handleSetupBegin)
 	p.POST("/settings/2fa/finish", handleSetupFinish)
-	p.POST("/settings/2fa/credential/{id}/delete", handleDisable)
+	p.POST("/settings/2fa/credential/{id}/delete", handleDeleteCredential)
 	p.POST("/settings/2fa/trust-linked-accounts", handleLinkedAccountsTrust)
 	p.POST("/webauthn/verify/begin", handleVerifyBegin)
 	p.POST("/webauthn/verify/finish", handleVerifyFinish)
@@ -1097,8 +1097,12 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		if cachedData.HeaderData != nil && cachedData.BodyData != nil {
 			// Full message cached - convert from provider type to IMAP type
 			imapMsg := providerMessageToIMAP(*cachedData.Message)
-			if tempMsg != nil && len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
-				imapMsg.References = tempMsg.References
+			if tempMsg != nil {
+				imapMsg.HasBimiPotential = tempMsg.HasBimiPotential
+				imapMsg.HasBimiFailed = tempMsg.HasBimiFailed
+				if len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
+					imapMsg.References = tempMsg.References
+				}
 			}
 			msg = &imapMsg
 			headerData = cachedData.HeaderData
@@ -1141,8 +1145,12 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 			// Convert provider message to IMAP message for display
 			imapMsg := providerMessageToIMAP(*providerMsg)
-			if tempMsg != nil && len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
-				imapMsg.References = tempMsg.References
+			if tempMsg != nil {
+				imapMsg.HasBimiPotential = tempMsg.HasBimiPotential
+				imapMsg.HasBimiFailed = tempMsg.HasBimiFailed
+				if len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
+					imapMsg.References = tempMsg.References
+				}
 			}
 			msg = &imapMsg
 
