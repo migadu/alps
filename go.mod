@@ -74,7 +74,7 @@ require (
 	rsc.io/binaryregexp v0.2.0 // indirect
 )
 
-replace github.com/emersion/go-imap/v2 => github.com/migadu/go-imap/v2 v2.0.0-20260526111615-1250e798fcac
+replace github.com/emersion/go-imap/v2 => github.com/migadu/go-imap/v2 v2.0.0-20260603124338-ad7f004f352b
 
 replace github.com/emersion/go-smtp => github.com/dejanstrbac/go-smtp v0.0.0-20260313205502-a1dea4f0d630
 

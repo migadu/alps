@@ -235,7 +235,7 @@ func main() {
 	}
 	writeTimeout := options.WriteTimeout
 	if writeTimeout == 0 {
-		writeTimeout = 30 * time.Second
+		writeTimeout = 60 * time.Second
 	}
 	idleTimeout := options.IdleTimeout
 	if idleTimeout == 0 {

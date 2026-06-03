@@ -414,7 +414,9 @@ func (p *IMAPProvider) sortGroups(mailbox string, groups []ThreadGroup, sortOrde
 
 func (p *IMAPProvider) fetchThreadGroups(criteria *imap.SearchCriteria) ([]ThreadGroup, error) {
 	var algo imap.ThreadAlgorithm
-	if p.client.Caps().Has(imap.Cap("THREAD=REFERENCES")) {
+	if p.client.Caps().Has(imap.Cap("THREAD=REFS")) {
+		algo = imap.ThreadAlgorithm("REFS")
+	} else if p.client.Caps().Has(imap.Cap("THREAD=REFERENCES")) {
 		algo = imap.ThreadReferences
 	} else if p.client.Caps().Has(imap.Cap("THREAD=ORDEREDSUBJECT")) {
 		algo = imap.ThreadOrderedSubject
@@ -1405,7 +1407,8 @@ func (p *IMAPProvider) HasThreadCapability() bool {
 	if p.client == nil {
 		return false
 	}
-	return p.client.Caps().Has(imap.Cap("THREAD=REFERENCES")) ||
+	return p.client.Caps().Has(imap.Cap("THREAD=REFS")) ||
+		p.client.Caps().Has(imap.Cap("THREAD=REFERENCES")) ||
 		p.client.Caps().Has(imap.Cap("THREAD=ORDEREDSUBJECT"))
 }
 
@@ -1416,7 +1419,9 @@ func (p *IMAPProvider) GetMessageThread(mailbox string, targetUID provider.Messa
 
 	var algo imap.ThreadAlgorithm
 	if p.client != nil && p.client.Caps() != nil {
-		if p.client.Caps().Has(imap.Cap("THREAD=REFERENCES")) {
+		if p.client.Caps().Has(imap.Cap("THREAD=REFS")) {
+			algo = imap.ThreadAlgorithm("REFS")
+		} else if p.client.Caps().Has(imap.Cap("THREAD=REFERENCES")) {
 			algo = imap.ThreadReferences
 		} else if p.client.Caps().Has(imap.Cap("THREAD=ORDEREDSUBJECT")) {
 			algo = imap.ThreadOrderedSubject
