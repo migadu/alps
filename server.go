@@ -501,6 +501,8 @@ func (s *Server) setupMiddleware(router *Router) {
 						Value:    "",
 						Path:     "/",
 						HttpOnly: true,
+						SameSite: http.SameSiteStrictMode,
+						Secure:   ctx.IsTLS(),
 						MaxAge:   -1,
 					})
 					ctx.SetCookie(&http.Cookie{
@@ -508,6 +510,8 @@ func (s *Server) setupMiddleware(router *Router) {
 						Value:    "",
 						Path:     "/",
 						HttpOnly: true,
+						SameSite: http.SameSiteStrictMode,
+						Secure:   ctx.IsTLS(),
 						MaxAge:   -1,
 					})
 					// Continue with restored session

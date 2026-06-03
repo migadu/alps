@@ -2,6 +2,7 @@ package alpsbase
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/migadu/alps"
@@ -58,10 +59,19 @@ func (u *webauthnUser) WebAuthnCredentials() []webauthn.Credential {
 func loadCredentials(store provider.Store) (*UserCredentials, error) {
 	var creds UserCredentials
 	err := store.Get("webauthn", &creds)
-	if err == provider.ErrNoStoreEntry {
-		return &UserCredentials{Credentials: []CredentialInfo{}}, nil
+	if err != nil {
+		if err == provider.ErrNoStoreEntry {
+			return &UserCredentials{Credentials: []CredentialInfo{}}, nil
+		}
+		// Be resilient to corrupted data (e.g., JSON unmarshal errors) so users can still
+		// access the settings page and re-register to overwrite the corrupted data.
+		errStr := err.Error()
+		if strings.Contains(errStr, "unmarshal") || strings.Contains(errStr, "invalid character") {
+			return &UserCredentials{Credentials: []CredentialInfo{}}, nil
+		}
+		return nil, err
 	}
-	return &creds, err
+	return &creds, nil
 }
 
 func saveCredentials(store provider.Store, creds *UserCredentials) error {
