@@ -119,8 +119,9 @@ export class LoginWebAuthnPage extends LitElement {
 
         // Complete the login flow
         setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('user-logged-in'));
-          window.location.hash = '/mailbox/INBOX';
+          // The cookies are set, we need to reload the page to ensure the app recognizes them
+          // Redirect directly to inbox to avoid going back to login
+          window.location.href = '/#/mailbox/INBOX';
         }, 1000);
       } else {
         throw new Error(this.i18nStore?.t('webauthn.errors.verification_failed'));
