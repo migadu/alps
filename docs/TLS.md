@@ -70,7 +70,7 @@ provider = "letsencrypt"
 email = "admin@example.com"             # Important for expiration notices
 domains = ["webmail.example.com"]       # Domains to request certificates for
 default_domain = "webmail.example.com"  # Fallback for SNI-less clients
-storage_provider = "local"              # (Optional/Implied) Use local file cache
+storage_provider = "file"               # Use local file cache
 cache_dir = "cert-cache"                # Directory to store certificates
 acme_http_addr = ":80"                  # Address to listen on for HTTP-01 challenges
 ```
