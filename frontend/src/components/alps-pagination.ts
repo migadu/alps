@@ -31,18 +31,19 @@ export class AlpsPagination extends LitElement {
 
   static styles = css`
     :host {
-      display: block;
+      display: flex;
+      flex: 1;
+      min-width: 0;
     }
 
     .pagination-container {
       display: flex;
+      flex: 1;
       align-items: center;
-      justify-content: space-between;
       background: var(--bg-color);
       font-size: 13px;
       color: var(--text-muted);
-      flex-shrink: 0;
-      gap: 12px;
+      min-width: 0;
     }
 
     .pagination-controls {
@@ -52,8 +53,10 @@ export class AlpsPagination extends LitElement {
     }
 
     .pagination-text {
+      margin: 0 auto;
       white-space: nowrap;
       overflow: hidden;
+      text-overflow: ellipsis;
       min-width: 0;
     }
 
@@ -77,8 +80,8 @@ export class AlpsPagination extends LitElement {
 
     return html`
       <div class="pagination-container">
-        <div class="pagination-text" title="${this.totalItems > 0 ? `${startIdx} - ${endIdx} ${this.i18nStore?.t('pagination.of')} ${this.totalItems}` : (this.i18nStore?.t('pagination.zeroMessages'))}">
-          ${this.totalItems > 0 ? html`${startIdx} - ${endIdx} ${this.i18nStore?.t('pagination.of')} ${this.totalItems}` : (this.i18nStore?.t('pagination.zeroMessages'))}
+        <div class="pagination-text" title="${this.totalItems > 0 ? `${startIdx}-${endIdx}/${this.totalItems}` : (this.i18nStore?.t('pagination.zeroMessages'))}">
+          ${this.totalItems > 0 ? html`${startIdx}-${endIdx}/${this.totalItems}` : (this.i18nStore?.t('pagination.zeroMessages'))}
         </div>
         <div class="pagination-controls">
           <alps-icon-btn 

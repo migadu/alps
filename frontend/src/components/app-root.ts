@@ -62,6 +62,7 @@ export class AppRoot extends LitElement {
     :host {
       display: block;
       height: 100vh;
+      height: 100dvh;
       width: 100vw;
     }
 

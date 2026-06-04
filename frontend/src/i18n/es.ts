@@ -265,6 +265,7 @@ export const es = {
     forward: 'Reenviar',
     to: 'Para:',
     cc: 'Cc:',
+    date: 'Fecha:',
     undisclosed: 'Oculto',
     loadingMessage: 'Cargando mensaje...',
     remoteContentWarning: 'Este mensaje contiene contenido remoto. Por tu privacidad, ha sido bloqueado.',
@@ -342,7 +343,6 @@ export const es = {
   pagination: {
     previousPage: 'Página anterior',
     nextPage: 'Página siguiente',
-    of: 'de',
     zeroMessages: '0 mensajes'
   },
   toast: {

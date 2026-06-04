@@ -313,6 +313,19 @@ export class AlpsThreadCard extends LitElement {
       background-color: var(--border-color);
       margin: 4px 0;
     }
+
+    .mobile-only {
+      display: none;
+    }
+
+    @media (max-width: 768px) {
+      .thread-card.expanded .thread-card-date {
+        display: none;
+      }
+      .mobile-only {
+        display: flex;
+      }
+    }
   `;
 
   private onIframeLoad(e: Event) {
@@ -389,6 +402,9 @@ export class AlpsThreadCard extends LitElement {
     }
 
     const msg = this.item.message || {};
+    const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
+    const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
+    const dateStr = msg.Envelope?.Date ? formatFullDate(msg.Envelope.Date, dateFormat, hourFormat) : '';
 
     return html`
       <div class="reader-meta">
@@ -410,6 +426,13 @@ export class AlpsThreadCard extends LitElement {
               </div>
             </div>
           ` : ''}
+          
+          <div class="reader-recipients mobile-only" style="margin-top: 4px;">
+            <span class="reader-recipients-label">${this.i18nStore?.t('messageReader.date') || 'Date:'}</span>
+            <div class="reader-recipients-list">
+              <span style="color: var(--text-primary);">${dateStr}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -477,7 +500,7 @@ export class AlpsThreadCard extends LitElement {
     const isUnread = !msg.Flags?.includes(FLAG_SEEN);
 
     const fallbackSnippet = msg.Snippet || '';
-    const clickToExpandText = this.i18nStore?.t('messageReader.clickToExpand') || 'Click to expand message content';
+    const clickToExpandText = window.innerWidth <= 768 ? '' : (this.i18nStore?.t('messageReader.clickToExpand') || 'Click to expand message content');
     const snippet = this.item.expanded ? '' : extractSnippet(this.item.content, this.item.mimeType, fallbackSnippet, clickToExpandText);
 
     return html`

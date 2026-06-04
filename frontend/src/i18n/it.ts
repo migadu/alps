@@ -265,6 +265,7 @@ export const it = {
     forward: 'Inoltra',
     to: 'A:',
     cc: 'Cc:',
+    date: 'Data:',
     undisclosed: 'Non divulgato',
     loadingMessage: 'Caricamento messaggio...',
     remoteContentWarning: 'Questo messaggio contiene contenuti remoti. Per la tua privacy, sono stati bloccati.',
@@ -342,7 +343,6 @@ export const it = {
   pagination: {
     previousPage: 'Pagina precedente',
     nextPage: 'Pagina successiva',
-    of: 'di',
     zeroMessages: '0 messaggi'
   },
   toast: {

@@ -299,6 +299,7 @@ export const pt = {
     forward: 'Encaminhar',
     to: 'Para:',
     cc: 'Cc:',
+    date: 'Data:',
     undisclosed: 'Destinatários Ocultos',
     loadingMessage: 'Carregando mensagem...',
     remoteContentWarning: 'Esta mensagem contém conteúdo remoto. Para sua privacidade, foi bloqueado.',
@@ -374,9 +375,8 @@ export const pt = {
     profileOptions: 'Opções de Perfil'
   },
   pagination: {
-    previousPage: 'Página Anterior',
-    nextPage: 'Próxima Página',
-    of: 'de',
+    previousPage: 'Página anterior',
+    nextPage: 'Próxima página',
     zeroMessages: '0 mensagens'
   },
   toast: {

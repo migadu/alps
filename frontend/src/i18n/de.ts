@@ -267,6 +267,7 @@ export const de: TranslationDictionary = {
     forward: 'Weiterleiten',
     to: 'An:',
     cc: 'Cc:',
+    date: 'Datum:',
     undisclosed: 'Verborgene Empfänger',
     loadingMessage: 'Nachricht wird geladen...',
     remoteContentWarning: 'Diese Nachricht enthält externe Inhalte. Aus Datenschutzgründen wurden diese blockiert.',
@@ -344,7 +345,6 @@ export const de: TranslationDictionary = {
   pagination: {
     previousPage: 'Vorherige Seite',
     nextPage: 'Nächste Seite',
-    of: 'von',
     zeroMessages: '0 Nachrichten'
   },
   toast: {

@@ -611,10 +611,7 @@ export class MessageReader extends LitElement {
       .mobile-date-container {
         display: flex;
         flex-direction: column;
-        align-items: flex-end;
-        float: right;
-        margin-left: 12px;
-        margin-top: 5px;
+        margin-top: 4px;
       }
 
       .mobile-date {
@@ -1566,10 +1563,7 @@ export class MessageReader extends LitElement {
                 `)}
               </div>
             ` : ''}
-            <div class="mobile-date-container">
-              <div class="reader-date mobile-date">${dateStr}</div>
-              ${msg.RFC822Size ? html`<div class="reader-size mobile-size">${formatSize(msg.RFC822Size)}</div>` : ''}
-            </div>
+
             ${msg.Envelope?.Subject || (this.i18nStore?.t('messageList.noSubject'))}
           </div>
           <div class="reader-meta">
@@ -1616,6 +1610,14 @@ export class MessageReader extends LitElement {
                   </div>
                 </div>
               ` : ''}
+              
+              <div class="reader-recipients mobile-only">
+                <span class="reader-recipients-label">${this.i18nStore?.t('messageReader.date') || 'Date:'}</span>
+                <div class="reader-recipients-list mobile-date-container" style="flex-direction: row; align-items: baseline; gap: 8px; margin-top: 0;">
+                  <span class="reader-date mobile-date" style="color: var(--text-primary);">${dateStr}</span>
+                  ${msg.RFC822Size ? html`<span class="reader-size mobile-size">(${formatSize(msg.RFC822Size)})</span>` : ''}
+                </div>
+              </div>
             </div>
           </div>
         </div>

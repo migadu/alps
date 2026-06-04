@@ -80,6 +80,10 @@ export class AlpsHeader extends LitElement {
       margin: 0 24px;
     }
 
+    :host([ismobile]) .center-section {
+      margin: 0 8px;
+    }
+
     .right-section {
       display: flex;
       align-items: center;

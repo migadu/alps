@@ -265,6 +265,7 @@ export const fr = {
     forward: 'Transférer',
     to: 'À :',
     cc: 'Cc :',
+    date: 'Date :',
     undisclosed: 'Non divulgué',
     loadingMessage: 'Chargement du message...',
     remoteContentWarning: 'Ce message contient du contenu distant. Pour votre confidentialité, il a été bloqué.',
@@ -342,7 +343,6 @@ export const fr = {
   pagination: {
     previousPage: 'Page précédente',
     nextPage: 'Page suivante',
-    of: 'sur',
     zeroMessages: '0 message'
   },
   toast: {

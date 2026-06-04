@@ -299,6 +299,7 @@ export const en = {
     forward: 'Forward',
     to: 'To:',
     cc: 'Cc:',
+    date: 'Date:',
     undisclosed: 'Undisclosed',
     loadingMessage: 'Loading message...',
     remoteContentWarning: 'This message contains remote content. For your privacy, it has been blocked.',
@@ -376,7 +377,6 @@ export const en = {
   pagination: {
     previousPage: 'Previous page',
     nextPage: 'Next page',
-    of: 'of',
     zeroMessages: '0 messages'
   },
   toast: {

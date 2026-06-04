@@ -265,7 +265,8 @@ export const rs = {
     forward: 'Проследи',
     to: 'За:',
     cc: 'Cc:',
-    undisclosed: 'Сакривено',
+    date: 'Датум:',
+    undisclosed: 'Скривено',
     loadingMessage: 'Учитавање поруке...',
     remoteContentWarning: 'Ова порука садржи удаљени садржај. Ради ваше приватности, блокиран је.',
     loadRemoteContent: 'Учитај удаљени садржај',
@@ -342,7 +343,6 @@ export const rs = {
   pagination: {
     previousPage: 'Претходна страница',
     nextPage: 'Следећа страница',
-    of: 'од',
     zeroMessages: '0 порука'
   },
   toast: {

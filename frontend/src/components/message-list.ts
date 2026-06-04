@@ -360,8 +360,9 @@ export class MessageList extends LitElement {
       color: var(--text-muted);
     }
 
-    .spacer {
+    alps-pagination {
       flex: 1;
+      min-width: 0;
     }
 
     .loading-state {
@@ -1159,12 +1160,10 @@ export class MessageList extends LitElement {
             icon="envelopeUnread"
             ?active=${this.filterQuery === 'is:unread'}
           ></alps-icon-btn>
-          <div class="spacer"></div>
           ${this.sidebarCollapsed ? html`
             <div class="current-mailbox-label">
               ${getMailboxLabel(this.currentMailbox, this.i18nStore)}
             </div>
-            <div class="spacer"></div>
           ` : ''}
           <alps-pagination 
             .currentPage=${this.currentPage} 
@@ -1207,44 +1206,46 @@ export class MessageList extends LitElement {
       </div>
       ${this.isMobile && this.messages.length > 0 ? html`
         <div class="mobile-bottom-header ${this.isAtBottom ? 'at-bottom' : ''}">
-          <div class="mobile-bottom-actions">
-            <input type="checkbox" class="select-all-checkbox" title=${this.i18nStore?.t('messageList.selectAll')}
-              .checked=${this.messages.length > 0 && this.selectedMessages.size === this.visibleMessages.length}
-              @change=${this.handleSelectAll}
-              style="margin-right: 8px;">
-            <alps-icon-btn 
-              title=${this.i18nStore?.t('messageList.checkNew')}
-              @click=${() => this.dispatchEvent(new CustomEvent('refresh'))}
-              @animationiteration=${this.handleSpinIteration}
-              ?spinning=${this.isSpinning}
-              icon="arrowsClockwise"
-            ></alps-icon-btn>
-            <div class="header-divider"></div>
-            <alps-icon-btn 
-              title=${this.sortOrder === 'asc' ? (this.i18nStore?.t('messageList.sortDesc')) : (this.i18nStore?.t('messageList.sortAsc'))}
-              @click=${() => this.dispatchEvent(new CustomEvent('toggle-sort'))} 
-              icon=${this.sortOrder === 'asc' ? 'sortAscending' : 'sortDescending'}
-            ></alps-icon-btn>
-            <alps-icon-btn 
-              @click=${() => this.dispatchEvent(new CustomEvent('toggle-filter-starred'))} 
-              title=${this.i18nStore?.t('messageList.filterStarred')}
-              icon=${this.filterQuery === 'is:starred' ? 'starFourFill' : 'starFour'}
-              ?active=${this.filterQuery === 'is:starred'}
-            ></alps-icon-btn>
-            <alps-icon-btn 
-              @click=${() => this.dispatchEvent(new CustomEvent('toggle-filter-unread'))} 
-              title=${this.i18nStore?.t('messageList.filterUnread')}
-              icon="envelopeUnread"
-              ?active=${this.filterQuery === 'is:unread'}
-            ></alps-icon-btn>
-          </div>
+          ${this.selectedMessages.size > 0 ? html`
+            <slot name="mobile-bulk-actions"></slot>
+          ` : html`
+            <div class="mobile-bottom-actions">
+              <input type="checkbox" class="select-all-checkbox" title=${this.i18nStore?.t('messageList.selectAll')}
+                .checked=${this.messages.length > 0 && this.selectedMessages.size === this.visibleMessages.length}
+                @change=${this.handleSelectAll}>
+              <alps-icon-btn 
+                title=${this.i18nStore?.t('messageList.checkNew')}
+                @click=${() => this.dispatchEvent(new CustomEvent('refresh'))}
+                @animationiteration=${this.handleSpinIteration}
+                ?spinning=${this.isSpinning}
+                icon="arrowsClockwise"
+              ></alps-icon-btn>
+              <div class="header-divider"></div>
+              <alps-icon-btn 
+                title=${this.sortOrder === 'asc' ? (this.i18nStore?.t('messageList.sortDesc')) : (this.i18nStore?.t('messageList.sortAsc'))}
+                @click=${() => this.dispatchEvent(new CustomEvent('toggle-sort'))} 
+                icon=${this.sortOrder === 'asc' ? 'sortAscending' : 'sortDescending'}
+              ></alps-icon-btn>
+              <alps-icon-btn 
+                @click=${() => this.dispatchEvent(new CustomEvent('toggle-filter-starred'))} 
+                title=${this.i18nStore?.t('messageList.filterStarred')}
+                icon=${this.filterQuery === 'is:starred' ? 'starFourFill' : 'starFour'}
+                ?active=${this.filterQuery === 'is:starred'}
+              ></alps-icon-btn>
+              <alps-icon-btn 
+                @click=${() => this.dispatchEvent(new CustomEvent('toggle-filter-unread'))} 
+                title=${this.i18nStore?.t('messageList.filterUnread')}
+                icon="envelopeUnread"
+                ?active=${this.filterQuery === 'is:unread'}
+              ></alps-icon-btn>
+            </div>
 
-          <div class="spacer"></div>
-          <alps-pagination 
-            .currentPage=${this.currentPage} 
-            .totalItems=${this.totalMessages} 
-            .itemsPerPage=${this.messagesPerPage}>
-          </alps-pagination>
+            <alps-pagination 
+              .currentPage=${this.currentPage} 
+              .totalItems=${this.totalMessages} 
+              .itemsPerPage=${this.messagesPerPage}>
+            </alps-pagination>
+          `}
         </div>
       ` : ''}
       ${this.showEmptyConfirm ? html`

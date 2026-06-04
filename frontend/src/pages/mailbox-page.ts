@@ -70,17 +70,12 @@ export class MailboxPage extends LitElement {
       display: flex;
       flex-direction: column;
       height: 100vh;
+      height: 100dvh;
       width: 100vw;
       background-color: var(--bg-primary);
       color: var(--text-primary);
       overflow: hidden;
       font-size: 14px;
-    }
-    
-    svg {
-      width: 1em;
-      height: 1em;
-      fill: currentColor;
     }
     
     /* Layout Configurations */
@@ -111,6 +106,30 @@ export class MailboxPage extends LitElement {
     .layout-full .message-reader-pane { flex: 1; min-width: 0; }
     .layout-full.reading .message-list-pane { display: none; }
     .layout-full:not(.reading) .message-reader-pane { display: none; }
+
+    .desktop-sidebar.open {
+      display: flex;
+    }
+
+    .mobile-bulk-actions-container {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+    }
+
+    .header-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--border-color);
+      margin: 0 4px;
+    }
+
+    .mobile-bulk-actions-count {
+      font-weight: 600;
+      margin-left: 8px;
+      margin-right: auto;
+    }
 
     .pane {
       display: flex;
@@ -1330,7 +1349,27 @@ export class MailboxPage extends LitElement {
               }}
               @selection-changed=${(e: CustomEvent) => this.selectedUids = e.detail.selectedUids}
               @toggle-star-message=${this._handleListToggleStar}
-            ></alps-message-list>
+            >
+              <div slot="mobile-bulk-actions" class="mobile-bulk-actions-container">
+                <alps-icon-btn title=${this.i18nStore?.t('general.cancel') || 'Cancel'} @click=${() => { this.selectedUids = new Set(); this.requestUpdate(); }} icon="arrowLeft"></alps-icon-btn>
+                <span class="mobile-bulk-actions-count">${this.selectedUids.size}</span>
+                ${!['trash', 'drafts', 'archive'].includes(this.currentMailbox.toLowerCase()) ? html`
+                  <alps-icon-btn title=${this.i18nStore?.t('messageReader.archive')} @click=${() => this._handleReaderAction(new CustomEvent('action', {detail: {action: 'archive'}}))} icon="archiveBox"></alps-icon-btn>
+                ` : ''}
+                <alps-icon-btn title=${this.i18nStore?.t('messageReader.delete')} @click=${() => this._handleReaderAction(new CustomEvent('action', {detail: {action: 'delete'}}))} icon="trash"></alps-icon-btn>
+                <div class="header-divider"></div>
+                <alps-icon-btn title=${this.allSelectedUnread ? this.i18nStore?.t('messageReader.markRead') : this.i18nStore?.t('messageReader.markUnread')} @click=${() => this._handleReaderAction(new CustomEvent('action', {detail: {action: 'markUnread'}}))} icon=${this.allSelectedUnread ? 'envelopeOpen' : 'envelopeUnread'}></alps-icon-btn>
+                <alps-icon-btn title=${this.i18nStore?.t('messageReader.star')} @click=${() => this._handleReaderAction(new CustomEvent('action', {detail: {action: 'star'}}))} icon=${this.allSelectedStarred ? 'starFourFill' : 'starFour'}></alps-icon-btn>
+                <div class="header-divider"></div>
+                <alps-folder-selector-popup
+                  .mailboxes=${this.mailboxes}
+                  .currentMailbox=${this.currentMailbox}
+                  @folder-selected=${(e: CustomEvent) => this._handleReaderAction(new CustomEvent('action', {detail: {action: e.detail.isMove ? 'moveTo' : 'copyTo', folder: e.detail.folderName}}))}
+                >
+                  <alps-icon-btn slot="trigger" title=${this.i18nStore?.t('messageReader.moveTo')} icon="folderOpen"></alps-icon-btn>
+                </alps-folder-selector-popup>
+              </div>
+            </alps-message-list>
           </div>
           ${effectiveLayoutMode !== 'full' ? html`
             <div class="resizer ${this.isPaneDragging ? 'dragging' : ''}" @mousedown=${this.startResize}></div>

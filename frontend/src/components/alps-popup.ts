@@ -556,7 +556,7 @@ export class AlpsPopup extends LitElement {
       </div>
       
       <dialog class="popup-dialog" 
-        @pointerdown=${this._handleDialogClick} 
+        @click=${this._handleDialogClick} 
         @contextmenu=${this._handleDialogClick} 
         @close=${this._handleDialogClose}
         @keydown=${this._handleDialogKeydown}>
