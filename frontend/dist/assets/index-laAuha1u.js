@@ -3677,6 +3677,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
       font-weight: 500;
       background: var(--bg-secondary, #f3f4f6) !important;
       border-radius: 50%;
+      box-sizing: content-box;
     }
 
     .attachment-col {
@@ -3967,8 +3968,8 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
     .message-item.sub-message-item.active {
       background: var(--bg-selected);
     }
-  `}get visibleMessages(){let e=[];for(let t of this.messages||[])e.push(t),t.SubMessages&&t.SubMessages.length>0&&this.isThreadExpanded(String(t.UID))&&e.push(...t.SubMessages);return e}isThreadExpanded(e){return this.expandedThreads.has(e)}toggleThreadCollapse(e,t){e.stopPropagation();let n=new Set(this.expandedThreads);n.has(t)?n.delete(t):n.add(t),this.expandedThreads=n}handleSelectAll(e){if(e.target.checked){let e=this.visibleMessages.map(e=>String(e.UID));this.selectedMessages=new Set(e)}else this.selectedMessages=new Set;this.dispatchEvent(new CustomEvent(`selection-changed`,{detail:{selectedUids:this.selectedMessages}}))}handleSelectMessage(e,t){e.stopPropagation();let n=e.target.checked,r=new Set(this.selectedMessages);n?r.add(t):r.delete(t),this.selectedMessages=r,this.dispatchEvent(new CustomEvent(`selection-changed`,{detail:{selectedUids:this.selectedMessages}}))}connectedCallback(){super.connectedCallback(),N.addEventListener(`sync-start`,this.handleSyncStart),N.addEventListener(`sync-success`,this.handleSyncEnd),N.addEventListener(`sync-error`,this.handleSyncEnd),this.updateComplete.then(()=>{this.i18nStore?.addEventListener(`change`,this._handleStoreChange)})}disconnectedCallback(){super.disconnectedCallback(),N.removeEventListener(`sync-start`,this.handleSyncStart),N.removeEventListener(`sync-success`,this.handleSyncEnd),N.removeEventListener(`sync-error`,this.handleSyncEnd),this.i18nStore?.removeEventListener(`change`,this._handleStoreChange)}willUpdate(e){if(super.willUpdate(e),(e.has(`currentMailbox`)||e.has(`currentPage`)||e.has(`filterQuery`)||e.has(`sortOrder`))&&(this.selectedMessages.size>0&&(this.selectedMessages=new Set,this.dispatchEvent(new CustomEvent(`selection-changed`,{detail:{selectedUids:this.selectedMessages}}))),this._shouldScrollToTop=!0),e.has(`selectedMessage`)||e.has(`messages`)){if(e.has(`messages`)&&this.messages&&this.selectedMessages.size>0){let e=new Set;for(let t of this.messages)if(e.add(String(t.UID)),t.SubMessages)for(let n of t.SubMessages)e.add(String(n.UID));let t=!1,n=new Set;for(let r of this.selectedMessages)e.has(r)?n.add(r):t=!0;t&&(this.selectedMessages=n,this.dispatchEvent(new CustomEvent(`selection-changed`,{detail:{selectedUids:this.selectedMessages}})))}if(this.selectedMessage){if(this.messages){let e=!1,t=new Set(this.expandedThreads);for(let n of this.messages)if(n.SubMessages&&n.SubMessages.some(e=>String(e.UID)===String(this.selectedMessage.UID))){let r=String(n.UID);t.has(r)||(t.add(r),e=!0)}e&&(this.expandedThreads=t)}let e=this.visibleMessages;if(e.length>0){let t=e.findIndex(e=>String(e.UID)===String(this.selectedMessage.UID));t!==-1&&(this.focusedIndex=t)}}}}checkScrollState(e){if(!e)return;let t=e.scrollTop>0;this.isScrolled!==t&&(this.isScrolled=t,this.dispatchEvent(new CustomEvent(`list-scrolled`,{detail:{scrolled:t}})));let n=e.scrollHeight<=e.clientHeight||Math.ceil(e.scrollTop+e.clientHeight)>=e.scrollHeight;this.isAtBottom!==n&&(this.isAtBottom=n)}updated(e){if(super.updated(e),e.has(`densityMode`)&&(this.classList.remove(`density-loose`,`density-normal`,`density-compact`,`density-ultra-compact`),this.classList.add(`density-${this.densityMode}`)),e.has(`syncing`)&&this.syncing&&(this.isSpinning=!0),e.has(`selectedMessage`)&&this.selectedMessage&&setTimeout(()=>{let e=this.renderRoot.querySelector(`.list-content`)?.querySelector(`.message-item.active`);e&&e.scrollIntoView({behavior:`smooth`,block:`center`})},50),this._shouldScrollToTop&&(e.has(`messages`)||e.has(`loading`)&&!this.loading)){let e=this.renderRoot.querySelector(`.list-content`);e&&(e.scrollTop=0),this._shouldScrollToTop=!1}let t=this.renderRoot.querySelector(`.list-content`);t&&requestAnimationFrame(()=>{this.checkScrollState(t)})}selectMessage(e){this.selectedMessages.size>0&&(this.selectedMessages=new Set,this.dispatchEvent(new CustomEvent(`selection-changed`,{detail:{selectedUids:this.selectedMessages}}))),this.dispatchEvent(new CustomEvent(`select-message`,{detail:{message:e}}))}handleKeyDown(e){let t=this.visibleMessages;if(!(!t||t.length===0)){if(e.key===`ArrowDown`)e.preventDefault(),this.focusedIndex=Math.min(t.length-1,this.focusedIndex+1),this.scrollToFocused();else if(e.key===`ArrowUp`)e.preventDefault(),this.focusedIndex=Math.max(0,this.focusedIndex-1),this.scrollToFocused();else if(e.key===`Enter`)e.preventDefault(),this.focusedIndex>=0&&this.focusedIndex<t.length&&this.selectMessage(t[this.focusedIndex]);else if(e.key===` `&&(e.preventDefault(),this.focusedIndex>=0&&this.focusedIndex<t.length)){let e=t[this.focusedIndex],n=String(e.UID),r=new Set(this.selectedMessages);r.has(n)?r.delete(n):r.add(n),this.selectedMessages=r,this.dispatchEvent(new CustomEvent(`selection-changed`,{detail:{selectedUids:this.selectedMessages}})),this.focusedIndex=Math.min(t.length-1,this.focusedIndex+1),this.scrollToFocused()}}}async handleEmptyMailbox(){this.showEmptyConfirm=!1,this.dispatchEvent(new CustomEvent(`toast`,{detail:{type:`info`,message:this.i18nStore?.t(`messageList.emptyingMailbox`)||`Emptying mailbox...`},bubbles:!0,composed:!0})),await nn.emptyMailbox(this.currentMailbox)?this.dispatchEvent(new CustomEvent(`toast`,{detail:{type:`success`,message:this.i18nStore?.t(`messageList.mailboxEmptied`)||`Mailbox emptied successfully.`},bubbles:!0,composed:!0})):this.dispatchEvent(new CustomEvent(`toast`,{detail:{type:`error`,message:this.i18nStore?.t(`messageList.emptyMailboxFailed`)||`Failed to empty mailbox. Make sure it is Trash or Junk.`},bubbles:!0,composed:!0}))}scrollToFocused(){this.updateComplete.then(()=>{let e=this.renderRoot.querySelector(`.message-item.focused`);e&&e.scrollIntoView({block:`nearest`})})}renderMessageItem(e,t=!1,n=!1,r=!1){let i=this.currentMailbox===`Drafts`||this.currentMailbox===`Sent`,a=[];i?(a=[...e.Envelope?.To||[],...e.Envelope?.Cc||[]],a.length||(a=e.Envelope?.From||[])):a=[...e.Envelope?.From||[],...e.Envelope?.To||[],...e.Envelope?.Cc||[]];let o=new Set,c=[];for(let e of a){let t=(e.Mailbox&&e.Host?`${e.Mailbox}@${e.Host}`.toLowerCase():``)||e.Name||`unknown`;t!==`unknown`&&!o.has(t)?(o.add(t),c.push(e)):t===`unknown`&&c.push(e)}let l=this.settingsStore?.getState()?.loginUsername?.toLowerCase()||``,u=e=>{let t=e.Mailbox&&e.Host?`${e.Mailbox}@${e.Host}`.toLowerCase():``;return!!(l&&t===l)};if(c.length>1){let e=c.filter(e=>!u(e));e.length>0&&(c=e)}c.length||(c=[{}]);let d=i?`messageList.noRecipient`:`messageList.unknownSender`,f=c.map(e=>{let t=e.Mailbox&&e.Host?`${e.Mailbox}@${e.Host}`:``;return e.Name||t||this.i18nStore?.t(d)||this.i18nStore?.t(`messageList.unknown`)}).join(`, `),p=c.slice(0,3),m=c.length-3,h=p.length+ +(m>0),g=e.Envelope?.Subject||this.i18nStore?.t(`messageList.noSubject`),_=this.settingsStore?.getState()?.dateFormat||`YYYY-MM-DD`,v=String(this.settingsStore?.getState()?.hourFormat||`12`),ee=e.Envelope?.Date?Ke(e.Envelope.Date,_,v):``,te=e.RFC822Size||e.Size,ne=te?Ye(te):``,re=!e.Flags||!e.Flags.includes(`\\Seen`),ie=e.Flags&&e.Flags.includes(`\\Flagged`),ae=e.Flags&&e.Flags.includes(`\\Answered`),oe=e.Flags&&e.Flags.includes(`$Forwarded`),se=Vt(e.Flags,this.i18nStore),ce=this.densityMode===`loose`?48:this.densityMode===`compact`?24:40,le=e.SubMessages&&e.SubMessages.length>0,ue=this.isThreadExpanded(String(e.UID));return this.densityMode===`ultra-compact`?s`
-      <div class="message-item ${t?`sub-message-item`:``} ${n?`first-sub-item`:``} ${r?`last-sub-item`:``} ${this.selectedMessages.size===0&&this.selectedMessage?.UID===e.UID||this.selectedMessages.has(String(e.UID))?`active`:``} ${re?`unread`:``} ${ie?`starred`:``} ${this.focusedIndex===this.visibleMessages.indexOf(e)?`focused`:``}" @click=${()=>this.selectMessage(e)}>
+  `}get visibleMessages(){let e=[];for(let t of this.messages||[])e.push(t),t.SubMessages&&t.SubMessages.length>0&&this.isThreadExpanded(String(t.UID))&&e.push(...t.SubMessages);return e}isThreadExpanded(e){return this.expandedThreads.has(e)}toggleThreadCollapse(e,t){e.stopPropagation();let n=new Set(this.expandedThreads);n.has(t)?n.delete(t):n.add(t),this.expandedThreads=n}handleSelectAll(e){if(e.target.checked){let e=this.visibleMessages.map(e=>String(e.UID));this.selectedMessages=new Set(e)}else this.selectedMessages=new Set;this.dispatchEvent(new CustomEvent(`selection-changed`,{detail:{selectedUids:this.selectedMessages}}))}handleSelectMessage(e,t){e.stopPropagation();let n=e.target.checked,r=new Set(this.selectedMessages);n?r.add(t):r.delete(t),this.selectedMessages=r,this.dispatchEvent(new CustomEvent(`selection-changed`,{detail:{selectedUids:this.selectedMessages}}))}connectedCallback(){super.connectedCallback(),N.addEventListener(`sync-start`,this.handleSyncStart),N.addEventListener(`sync-success`,this.handleSyncEnd),N.addEventListener(`sync-error`,this.handleSyncEnd),this.updateComplete.then(()=>{this.i18nStore?.addEventListener(`change`,this._handleStoreChange)})}disconnectedCallback(){super.disconnectedCallback(),N.removeEventListener(`sync-start`,this.handleSyncStart),N.removeEventListener(`sync-success`,this.handleSyncEnd),N.removeEventListener(`sync-error`,this.handleSyncEnd),this.i18nStore?.removeEventListener(`change`,this._handleStoreChange)}willUpdate(e){if(super.willUpdate(e),(e.has(`currentMailbox`)||e.has(`currentPage`)||e.has(`filterQuery`)||e.has(`sortOrder`))&&(this.selectedMessages.size>0&&(this.selectedMessages=new Set,this.dispatchEvent(new CustomEvent(`selection-changed`,{detail:{selectedUids:this.selectedMessages}}))),this._shouldScrollToTop=!0),e.has(`selectedMessage`)||e.has(`messages`)){if(e.has(`messages`)&&this.messages&&this.selectedMessages.size>0){let e=new Set;for(let t of this.messages)if(e.add(String(t.UID)),t.SubMessages)for(let n of t.SubMessages)e.add(String(n.UID));let t=!1,n=new Set;for(let r of this.selectedMessages)e.has(r)?n.add(r):t=!0;t&&(this.selectedMessages=n,this.dispatchEvent(new CustomEvent(`selection-changed`,{detail:{selectedUids:this.selectedMessages}})))}if(this.selectedMessage){if(this.messages){let e=!1,t=new Set(this.expandedThreads);for(let n of this.messages)if(n.SubMessages&&n.SubMessages.some(e=>String(e.UID)===String(this.selectedMessage.UID))){let r=String(n.UID);t.has(r)||(t.add(r),e=!0)}e&&(this.expandedThreads=t)}let e=this.visibleMessages;if(e.length>0){let t=e.findIndex(e=>String(e.UID)===String(this.selectedMessage.UID));t!==-1&&(this.focusedIndex=t)}}}}checkScrollState(e){if(!e)return;let t=e.scrollTop>0;this.isScrolled!==t&&(this.isScrolled=t,this.dispatchEvent(new CustomEvent(`list-scrolled`,{detail:{scrolled:t}})));let n=e.scrollHeight<=e.clientHeight||Math.ceil(e.scrollTop+e.clientHeight)>=e.scrollHeight;this.isAtBottom!==n&&(this.isAtBottom=n)}updated(e){if(super.updated(e),e.has(`densityMode`)&&(this.classList.remove(`density-loose`,`density-normal`,`density-compact`,`density-ultra-compact`),this.classList.add(`density-${this.densityMode}`)),e.has(`syncing`)&&this.syncing&&(this.isSpinning=!0),e.has(`selectedMessage`)&&this.selectedMessage&&setTimeout(()=>{let e=this.renderRoot.querySelector(`.list-content`)?.querySelector(`.message-item.active`);e&&e.scrollIntoView({behavior:`smooth`,block:`center`})},50),this._shouldScrollToTop&&(e.has(`messages`)||e.has(`loading`)&&!this.loading)){let e=this.renderRoot.querySelector(`.list-content`);e&&(e.scrollTop=0),this._shouldScrollToTop=!1}let t=this.renderRoot.querySelector(`.list-content`);t&&requestAnimationFrame(()=>{this.checkScrollState(t)})}selectMessage(e){this.selectedMessages.size>0&&(this.selectedMessages=new Set,this.dispatchEvent(new CustomEvent(`selection-changed`,{detail:{selectedUids:this.selectedMessages}}))),this.dispatchEvent(new CustomEvent(`select-message`,{detail:{message:e}}))}handleKeyDown(e){let t=this.visibleMessages;if(!(!t||t.length===0)){if(e.key===`ArrowDown`)e.preventDefault(),this.focusedIndex=Math.min(t.length-1,this.focusedIndex+1),this.scrollToFocused();else if(e.key===`ArrowUp`)e.preventDefault(),this.focusedIndex=Math.max(0,this.focusedIndex-1),this.scrollToFocused();else if(e.key===`Enter`)e.preventDefault(),this.focusedIndex>=0&&this.focusedIndex<t.length&&this.selectMessage(t[this.focusedIndex]);else if(e.key===` `&&(e.preventDefault(),this.focusedIndex>=0&&this.focusedIndex<t.length)){let e=t[this.focusedIndex],n=String(e.UID),r=new Set(this.selectedMessages);r.has(n)?r.delete(n):r.add(n),this.selectedMessages=r,this.dispatchEvent(new CustomEvent(`selection-changed`,{detail:{selectedUids:this.selectedMessages}})),this.focusedIndex=Math.min(t.length-1,this.focusedIndex+1),this.scrollToFocused()}}}async handleEmptyMailbox(){this.showEmptyConfirm=!1,this.dispatchEvent(new CustomEvent(`toast`,{detail:{type:`info`,message:this.i18nStore?.t(`messageList.emptyingMailbox`)||`Emptying mailbox...`},bubbles:!0,composed:!0})),await nn.emptyMailbox(this.currentMailbox)?this.dispatchEvent(new CustomEvent(`toast`,{detail:{type:`success`,message:this.i18nStore?.t(`messageList.mailboxEmptied`)||`Mailbox emptied successfully.`},bubbles:!0,composed:!0})):this.dispatchEvent(new CustomEvent(`toast`,{detail:{type:`error`,message:this.i18nStore?.t(`messageList.emptyMailboxFailed`)||`Failed to empty mailbox. Make sure it is Trash or Junk.`},bubbles:!0,composed:!0}))}scrollToFocused(){this.updateComplete.then(()=>{let e=this.renderRoot.querySelector(`.message-item.focused`);e&&e.scrollIntoView({block:`nearest`})})}renderMessageItem(e,t=!1,n=!1,r=!1){let i=this.currentMailbox===`Drafts`||this.currentMailbox===`Sent`,a=[];i?(a=[...e.Envelope?.To||[],...e.Envelope?.Cc||[]],a.length||(a=e.Envelope?.From||[])):a=[...e.Envelope?.From||[],...e.Envelope?.To||[],...e.Envelope?.Cc||[]];let o=new Set,c=[];for(let e of a){let t=(e.Mailbox&&e.Host?`${e.Mailbox}@${e.Host}`.toLowerCase():``)||e.Name||`unknown`;t!==`unknown`&&!o.has(t)?(o.add(t),c.push(e)):t===`unknown`&&c.push(e)}let l=this.settingsStore?.getState()?.loginUsername?.toLowerCase()||``,u=e=>{let t=e.Mailbox&&e.Host?`${e.Mailbox}@${e.Host}`.toLowerCase():``;return!!(l&&t===l)};if(c.length>1){let e=c.filter(e=>!u(e));e.length>0&&(c=e)}c.length||(c=[{}]);let d=i?`messageList.noRecipient`:`messageList.unknownSender`,f=c.map(e=>{let t=e.Mailbox&&e.Host?`${e.Mailbox}@${e.Host}`:``;return e.Name||t||this.i18nStore?.t(d)||this.i18nStore?.t(`messageList.unknown`)}).join(`, `),p=this.isMobile?1:3,m=c.slice(0,p),h=c.length-p,g=m.length+ +(h>0),_=e.Envelope?.Subject||this.i18nStore?.t(`messageList.noSubject`),v=this.settingsStore?.getState()?.dateFormat||`YYYY-MM-DD`,ee=String(this.settingsStore?.getState()?.hourFormat||`12`),te=e.Envelope?.Date?Ke(e.Envelope.Date,v,ee):``,ne=e.RFC822Size||e.Size,re=ne?Ye(ne):``,ie=!e.Flags||!e.Flags.includes(`\\Seen`),ae=e.Flags&&e.Flags.includes(`\\Flagged`),oe=e.Flags&&e.Flags.includes(`\\Answered`),se=e.Flags&&e.Flags.includes(`$Forwarded`),ce=Vt(e.Flags,this.i18nStore),le=this.densityMode===`loose`?48:this.densityMode===`compact`?24:40,ue=e.SubMessages&&e.SubMessages.length>0,y=this.isThreadExpanded(String(e.UID));return this.densityMode===`ultra-compact`?s`
+      <div class="message-item ${t?`sub-message-item`:``} ${n?`first-sub-item`:``} ${r?`last-sub-item`:``} ${this.selectedMessages.size===0&&this.selectedMessage?.UID===e.UID||this.selectedMessages.has(String(e.UID))?`active`:``} ${ie?`unread`:``} ${ae?`starred`:``} ${this.focusedIndex===this.visibleMessages.indexOf(e)?`focused`:``}" @click=${()=>this.selectMessage(e)}>
         <div class="checkbox-col" @click=${t=>{t.stopPropagation();let n=String(e.UID),r=new Set(this.selectedMessages);r.has(n)?r.delete(n):r.add(n),this.selectedMessages=r,this.dispatchEvent(new CustomEvent(`selection-changed`,{detail:{selectedUids:this.selectedMessages}}))}}>
           <input type="checkbox" class="message-checkbox" 
             .checked=${this.selectedMessages.has(String(e.UID))}
@@ -3977,26 +3978,26 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
         </div>
 
         <!-- Caret Toggle Button -->
-        ${!t&&le?s`
+        ${!t&&ue?s`
           <div class="caret-col" @click=${t=>this.toggleThreadCollapse(t,String(e.UID))}>
-            ${T(ue?`caretDown`:`caretRight`)}
+            ${T(y?`caretDown`:`caretRight`)}
             <span class="thread-count-caret-badge" title="${e.ThreadCount} messages">${e.ThreadCount}</span>
           </div>
         `:t?s`<div class="caret-col empty"></div>`:``}
 
         <div class="message-sender">${f}</div>
-        <div @click=${t=>this.toggleStar(t,e)} class="star-btn ${ie?`starred`:``} star-btn-wrapper-ultra">
-          ${T(ie?`starFourFill`:`starFour`)}
+        <div @click=${t=>this.toggleStar(t,e)} class="star-btn ${ae?`starred`:``} star-btn-wrapper-ultra">
+          ${T(ae?`starFourFill`:`starFour`)}
         </div>
-        ${ae||oe?s`
+        ${oe||se?s`
           <div class="indicators-wrapper-ultra">
-            ${ae?s`<div class="indicator-icon" title=${this.i18nStore?.t(`messageList.replied`)}>${T(`arrowBendUpLeft`)}</div>`:``}
-            ${oe?s`<div class="indicator-icon" title=${this.i18nStore?.t(`messageList.forwarded`)}>${T(`arrowBendUpRight`)}</div>`:``}
+            ${oe?s`<div class="indicator-icon" title=${this.i18nStore?.t(`messageList.replied`)}>${T(`arrowBendUpLeft`)}</div>`:``}
+            ${se?s`<div class="indicator-icon" title=${this.i18nStore?.t(`messageList.forwarded`)}>${T(`arrowBendUpRight`)}</div>`:``}
           </div>
         `:``}
-        ${se.length>0?s`
+        ${ce.length>0?s`
           <div class="tag-pills">
-            ${se.map(e=>s`
+            ${ce.map(e=>s`
               <alps-tag .name=${e.name} .color=${e.color}></alps-tag>
             `)}
           </div>
@@ -4005,17 +4006,17 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
           <span class="mailbox-badge" title="Folder: ${e.Mailbox}">${e.Mailbox}</span>
         `:``}
         <div class="message-subject">
-          ${g}
+          ${_}
         </div>
         <div class="message-indicators">
           <div class="attachment-col">
             ${e.HasAttachments?s`<div class="indicator-icon" title=${this.i18nStore?.t(`messageList.hasAttachments`)}>${T(`paperclipHorizontal`)}</div>`:``}
           </div>
-          <div class="message-date">${ee}</div>
+          <div class="message-date">${te}</div>
         </div>
       </div>
       `:s`
-    <div class="message-item ${t?`sub-message-item`:``} ${n?`first-sub-item`:``} ${r?`last-sub-item`:``} ${this.selectedMessages.size===0&&this.selectedMessage?.UID===e.UID||this.selectedMessages.has(String(e.UID))?`active`:``} ${re?`unread`:``} ${ie?`starred`:``} ${this.focusedIndex===this.visibleMessages.indexOf(e)?`focused`:``}" @click=${()=>this.selectMessage(e)}>
+    <div class="message-item ${t?`sub-message-item`:``} ${n?`first-sub-item`:``} ${r?`last-sub-item`:``} ${this.selectedMessages.size===0&&this.selectedMessage?.UID===e.UID||this.selectedMessages.has(String(e.UID))?`active`:``} ${ie?`unread`:``} ${ae?`starred`:``} ${this.focusedIndex===this.visibleMessages.indexOf(e)?`focused`:``}" @click=${()=>this.selectMessage(e)}>
       <div class="checkbox-col" @click=${t=>{t.stopPropagation();let n=String(e.UID),r=new Set(this.selectedMessages);r.has(n)?r.delete(n):r.add(n),this.selectedMessages=r,this.dispatchEvent(new CustomEvent(`selection-changed`,{detail:{selectedUids:this.selectedMessages}}))}}>
         <input type="checkbox" class="message-checkbox" 
           .checked=${this.selectedMessages.has(String(e.UID))}
@@ -4024,22 +4025,22 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
       </div>
 
       <!-- Caret Toggle Button -->
-      ${!t&&le?s`
+      ${!t&&ue?s`
         <div class="caret-col" @click=${t=>this.toggleThreadCollapse(t,String(e.UID))}>
-          ${T(ue?`caretDown`:`caretRight`)}
+          ${T(y?`caretDown`:`caretRight`)}
           <span class="thread-count-caret-badge" title="${e.ThreadCount} messages">${e.ThreadCount}</span>
         </div>
       `:t?s`<div class="caret-col empty"></div>`:``}
 
       <div class="avatar-stack">
-        ${p.map((e,t)=>{let n=e.Mailbox&&e.Host?`${e.Mailbox}@${e.Host}`:``,r=e.Name||n||this.i18nStore?.t(d)||this.i18nStore?.t(`messageList.unknown`),i=Ze(e.Host?e.Host.toLowerCase():``);return s`
-            <div class="avatar-wrapper" style="z-index: ${h-t};">
-              <alps-avatar .name=${r} .email=${n} .size=${ce} .src=${i}></alps-avatar>
+        ${m.map((e,t)=>{let n=e.Mailbox&&e.Host?`${e.Mailbox}@${e.Host}`:``,r=e.Name||n||this.i18nStore?.t(d)||this.i18nStore?.t(`messageList.unknown`),i=Ze(e.Host?e.Host.toLowerCase():``);return s`
+            <div class="avatar-wrapper" style="z-index: ${g-t};">
+              <alps-avatar .name=${r} .email=${n} .size=${le} .src=${i}></alps-avatar>
             </div>
           `})}
-        ${m>0?s`
-          <div class="avatar-wrapper extra-count" style="width: ${ce}px; height: ${ce}px; z-index: 0;">
-            +${m}
+        ${h>0?s`
+          <div class="avatar-wrapper extra-count" style="width: ${le}px; height: ${le}px; z-index: 0;">
+            +${h}
           </div>
         `:``}
       </div>
@@ -4047,27 +4048,27 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
         <div class="message-header-row">
           <div class="message-header-inner">
             <div class="message-sender">${f}</div>
-            <div @click=${t=>this.toggleStar(t,e)} class="star-btn ${ie?`starred`:``}">
-              ${T(ie?`starFourFill`:`starFour`)}
+            <div @click=${t=>this.toggleStar(t,e)} class="star-btn ${ae?`starred`:``}">
+              ${T(ae?`starFourFill`:`starFour`)}
             </div>
           </div>
           <div class="message-indicators">
             <div class="attachment-col">
               ${e.HasAttachments?s`<div class="indicator-icon" title=${this.i18nStore?.t(`messageList.hasAttachments`)}>${T(`paperclipHorizontal`)}</div>`:``}
             </div>
-            <div class="message-date">${ee}</div>
+            <div class="message-date">${te}</div>
           </div>
         </div>
         <div class="message-subject-row">
-          ${ae||oe?s`
+          ${oe||se?s`
             <div class="indicators-wrapper">
-              ${ae?s`<div class="indicator-icon" title=${this.i18nStore?.t(`messageList.replied`)}>${T(`arrowBendUpLeft`)}</div>`:``}
-              ${oe?s`<div class="indicator-icon" title=${this.i18nStore?.t(`messageList.forwarded`)}>${T(`arrowBendUpRight`)}</div>`:``}
+              ${oe?s`<div class="indicator-icon" title=${this.i18nStore?.t(`messageList.replied`)}>${T(`arrowBendUpLeft`)}</div>`:``}
+              ${se?s`<div class="indicator-icon" title=${this.i18nStore?.t(`messageList.forwarded`)}>${T(`arrowBendUpRight`)}</div>`:``}
             </div>
           `:``}
-          ${se.length>0?s`
+          ${ce.length>0?s`
             <div class="tag-pills">
-              ${se.map(e=>s`
+              ${ce.map(e=>s`
                 <alps-tag .name=${e.name} .color=${e.color}></alps-tag>
               `)}
             </div>
@@ -4076,9 +4077,9 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
             <span class="mailbox-badge" title="Folder: ${e.Mailbox}">${e.Mailbox}</span>
           `:``}
           <div class="message-subject">
-            ${g}
+            ${_}
           </div>
-          ${ne?s`<div class="message-size">${ne}</div>`:``}
+          ${re?s`<div class="message-size">${re}</div>`:``}
         </div>
       </div>
     </div>
@@ -6090,6 +6091,10 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
 
       .toolbar-separator.mobile-only {
         display: block;
+      }
+
+      .reader-recipients.mobile-only {
+        display: flex;
       }
 
       .desktop-attachments {

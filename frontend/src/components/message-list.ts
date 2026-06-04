@@ -325,6 +325,7 @@ export class MessageList extends LitElement {
       font-weight: 500;
       background: var(--bg-secondary, #f3f4f6) !important;
       border-radius: 50%;
+      box-sizing: content-box;
     }
 
     .attachment-col {
@@ -956,7 +957,7 @@ export class MessageList extends LitElement {
     });
     const senderName = displayNames.join(', ');
 
-    const maxAvatars = 3;
+    const maxAvatars = this.isMobile ? 1 : 3;
     const displayAvatars = allContacts.slice(0, maxAvatars);
     const extraCount = allContacts.length - maxAvatars;
     const totalRendered = displayAvatars.length + (extraCount > 0 ? 1 : 0);

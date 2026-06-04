@@ -587,6 +587,10 @@ export class MessageReader extends LitElement {
         display: block;
       }
 
+      .reader-recipients.mobile-only {
+        display: flex;
+      }
+
       .desktop-attachments {
         display: none;
       }
