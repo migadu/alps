@@ -52,6 +52,7 @@ export class AlpsThreadCard extends LitElement {
   static styles = css`
     :host {
       display: block;
+      scroll-margin-top: 32px;
     }
 
     .thread-card {

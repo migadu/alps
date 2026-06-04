@@ -653,6 +653,18 @@ export class MessageReader extends LitElement {
    * 
    * @param changedProperties Map of properties that changed and their previous values.
    */
+  updated(changedProperties: Map<string, any>) {
+    if (changedProperties.has('message') && this.message) {
+      setTimeout(() => {
+        const cardId = `thread-card-${this.message?.UID}`;
+        const el = this.shadowRoot?.getElementById(cardId);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 50);
+    }
+  }
+
   willUpdate(changedProperties: Map<string, any>) {
     const messageChanged = changedProperties.has('message');
     const mailboxChanged = changedProperties.has('mailbox');
@@ -1324,6 +1336,7 @@ export class MessageReader extends LitElement {
   private renderThreadCard(item: ThreadMessageItem) {
     return html`
       <alps-thread-card
+        id="thread-card-${item.message?.UID}"
         .item=${item}
         .mailbox=${this.mailbox}
         @toggle-expansion=${(e: CustomEvent) => this.toggleItemExpansion(e.detail.item)}

@@ -48,7 +48,7 @@ export class MessageList extends LitElement {
   @state() private isAtBottom = false;
   @state() private focusedIndex = -1;
   @state() private showEmptyConfirm = false;
-  @state() private collapsedThreads = new Set<string>();
+  @state() private expandedThreads = new Set<string>();
   private _shouldScrollToTop = false;
 
   static styles = css`
@@ -628,18 +628,18 @@ export class MessageList extends LitElement {
   }
 
   private isThreadExpanded(uid: string): boolean {
-    return !this.collapsedThreads.has(uid);
+    return this.expandedThreads.has(uid);
   }
 
   private toggleThreadCollapse(e: Event, uid: string) {
     e.stopPropagation();
-    const newSet = new Set(this.collapsedThreads);
+    const newSet = new Set(this.expandedThreads);
     if (newSet.has(uid)) {
       newSet.delete(uid);
     } else {
       newSet.add(uid);
     }
-    this.collapsedThreads = newSet;
+    this.expandedThreads = newSet;
   }
 
   private handleSelectAll(e: Event) {
@@ -741,6 +741,23 @@ export class MessageList extends LitElement {
       }
 
       if (this.selectedMessage) {
+        if (this.messages) {
+          let expandedChanged = false;
+          const newSet = new Set(this.expandedThreads);
+          for (const m of this.messages) {
+            if (m.SubMessages && m.SubMessages.some((s: any) => String(s.UID) === String(this.selectedMessage.UID))) {
+              const uid = String(m.UID);
+              if (!newSet.has(uid)) {
+                newSet.add(uid);
+                expandedChanged = true;
+              }
+            }
+          }
+          if (expandedChanged) {
+            this.expandedThreads = newSet;
+          }
+        }
+
         const visible = this.visibleMessages;
         if (visible.length > 0) {
           const idx = visible.findIndex(m => String(m.UID) === String(this.selectedMessage.UID));
@@ -784,6 +801,15 @@ export class MessageList extends LitElement {
     }
     if (changedProperties.has('syncing') && this.syncing) {
       this.isSpinning = true;
+    }
+    if (changedProperties.has('selectedMessage') && this.selectedMessage) {
+      setTimeout(() => {
+        const listContent = this.renderRoot.querySelector('.list-content');
+        const activeItem = listContent?.querySelector('.message-item.active');
+        if (activeItem) {
+          activeItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 50);
     }
     if (this._shouldScrollToTop && (changedProperties.has('messages') || (changedProperties.has('loading') && !this.loading))) {
       const listContent = this.renderRoot.querySelector('.list-content');
@@ -955,22 +981,20 @@ export class MessageList extends LitElement {
     if (this.densityMode === 'ultra-compact') {
       return html`
       <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.selectedMessage?.UID === msg.UID) || this.selectedMessages.has(String(msg.UID)) ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
-        ${!this.isMobile ? html`
-          <div class="checkbox-col" @click=${(e: Event) => {
-            e.stopPropagation();
-            const uid = String(msg.UID);
-            const newSet = new Set(this.selectedMessages);
-            if (newSet.has(uid)) newSet.delete(uid);
-            else newSet.add(uid);
-            this.selectedMessages = newSet;
-            this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
-          }}>
-            <input type="checkbox" class="message-checkbox" 
-              .checked=${this.selectedMessages.has(String(msg.UID))}
-              @click=${(e: Event) => e.stopPropagation()}
-              @change=${(e: Event) => this.handleSelectMessage(e, String(msg.UID))}>
-          </div>
-        ` : ''}
+        <div class="checkbox-col" @click=${(e: Event) => {
+          e.stopPropagation();
+          const uid = String(msg.UID);
+          const newSet = new Set(this.selectedMessages);
+          if (newSet.has(uid)) newSet.delete(uid);
+          else newSet.add(uid);
+          this.selectedMessages = newSet;
+          this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
+        }}>
+          <input type="checkbox" class="message-checkbox" 
+            .checked=${this.selectedMessages.has(String(msg.UID))}
+            @click=${(e: Event) => e.stopPropagation()}
+            @change=${(e: Event) => this.handleSelectMessage(e, String(msg.UID))}>
+        </div>
 
         <!-- Caret Toggle Button -->
         ${!isSubMessage && hasSubMessages ? html`
@@ -1015,22 +1039,20 @@ export class MessageList extends LitElement {
 
     return html`
     <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.selectedMessage?.UID === msg.UID) || this.selectedMessages.has(String(msg.UID)) ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
-      ${!this.isMobile ? html`
-        <div class="checkbox-col" @click=${(e: Event) => {
-          e.stopPropagation();
-          const uid = String(msg.UID);
-          const newSet = new Set(this.selectedMessages);
-          if (newSet.has(uid)) newSet.delete(uid);
-          else newSet.add(uid);
-          this.selectedMessages = newSet;
-          this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
-        }}>
-          <input type="checkbox" class="message-checkbox" 
-            .checked=${this.selectedMessages.has(String(msg.UID))}
-            @click=${(e: Event) => e.stopPropagation()}
-            @change=${(e: Event) => this.handleSelectMessage(e, String(msg.UID))}>
-        </div>
-      ` : ''}
+      <div class="checkbox-col" @click=${(e: Event) => {
+        e.stopPropagation();
+        const uid = String(msg.UID);
+        const newSet = new Set(this.selectedMessages);
+        if (newSet.has(uid)) newSet.delete(uid);
+        else newSet.add(uid);
+        this.selectedMessages = newSet;
+        this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
+      }}>
+        <input type="checkbox" class="message-checkbox" 
+          .checked=${this.selectedMessages.has(String(msg.UID))}
+          @click=${(e: Event) => e.stopPropagation()}
+          @change=${(e: Event) => this.handleSelectMessage(e, String(msg.UID))}>
+      </div>
 
       <!-- Caret Toggle Button -->
       ${!isSubMessage && hasSubMessages ? html`
@@ -1186,6 +1208,10 @@ export class MessageList extends LitElement {
       ${this.isMobile && this.messages.length > 0 ? html`
         <div class="mobile-bottom-header ${this.isAtBottom ? 'at-bottom' : ''}">
           <div class="mobile-bottom-actions">
+            <input type="checkbox" class="select-all-checkbox" title=${this.i18nStore?.t('messageList.selectAll')}
+              .checked=${this.messages.length > 0 && this.selectedMessages.size === this.visibleMessages.length}
+              @change=${this.handleSelectAll}
+              style="margin-right: 8px;">
             <alps-icon-btn 
               title=${this.i18nStore?.t('messageList.checkNew')}
               @click=${() => this.dispatchEvent(new CustomEvent('refresh'))}
