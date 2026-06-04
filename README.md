@@ -2,8 +2,6 @@
 
 A simple and extensible webmail.
 
-> **Note**: This repository is a continuation of our previous instance hosted at [SourceHut (git.sr.ht/~migadu/alps)](https://git.sr.ht/~migadu/alps).
-
 ## Requirements
 
 - **Go**: Version 1.25.0 or later is required (for building/development).
@@ -64,7 +62,7 @@ In compliance with NLnet's policies and our own project standards, the use of Ge
 
 ## Contributing
 
-Send patches via GitHub Pull Requests, report bugs on the issue tracker.
+Send patches and/or GitHub Pull Requests, report bugs on the issue tracker.
 
 ## Supported by
 
