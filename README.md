@@ -22,8 +22,6 @@ Run the alps backend server:
 
     go run ./cmd/alps -config config.toml
 
-See [docs/CLI.md](docs/CLI.md) for more information on the CLI options.
-
 ### Frontend Interface
 
 The webmail interface is a single-page application. The compiled frontend assets (including all plugins) are checked into the repository under `frontend/dist` and are embedded directly into the Go binary (`//go:embed all:frontend/dist`). 
