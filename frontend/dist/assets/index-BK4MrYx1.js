@@ -7881,6 +7881,17 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
       font-size: 14px;
       line-height: 1.5;
     }
+
+    @media (max-width: 640px) {
+      :host {
+        background: var(--bg-primary, #ffffff);
+      }
+      
+      .card {
+        border: none;
+        box-shadow: none;
+      }
+    }
   `}render(){return s`
       <div class="card">
         ${this.icon?s`
@@ -8065,7 +8076,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
             <div class="input-wrapper has-left-icon">
               <span class="icon-left">${T(`at`)}</span>
               <input 
-                type="email" 
+                type="text" 
                 id="username" 
                 name="username"
                 class="native-input"

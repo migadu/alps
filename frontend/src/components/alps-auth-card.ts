@@ -57,6 +57,17 @@ export class AlpsAuthCard extends LitElement {
       font-size: 14px;
       line-height: 1.5;
     }
+
+    @media (max-width: 640px) {
+      :host {
+        background: var(--bg-primary, #ffffff);
+      }
+      
+      .card {
+        border: none;
+        box-shadow: none;
+      }
+    }
   `;
 
   @property({ type: String }) icon = '';

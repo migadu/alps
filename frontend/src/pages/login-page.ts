@@ -314,7 +314,7 @@ export class LoginPage extends LitElement {
             <div class="input-wrapper has-left-icon">
               <span class="icon-left">${renderIcon('at')}</span>
               <input 
-                type="email" 
+                type="text" 
                 id="username" 
                 name="username"
                 class="native-input"
