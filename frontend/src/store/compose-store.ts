@@ -4,9 +4,11 @@ import { Logger } from '../utils/logger';
 
 const isBlockedAddress = (addr: string): boolean => {
   let rawEmail = addr.trim();
-  const match = rawEmail.match(/^.*?<([^>]+)>$/);
-  if (match && match[1]) {
-    rawEmail = match[1];
+  if (rawEmail.endsWith('>')) {
+    const startObj = rawEmail.lastIndexOf('<');
+    if (startObj !== -1) {
+      rawEmail = rawEmail.substring(startObj + 1, rawEmail.length - 1);
+    }
   }
   const lowerEmail = rawEmail.toLowerCase();
   return lowerEmail.startsWith('noreply') || 

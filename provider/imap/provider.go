@@ -19,9 +19,9 @@ import (
 )
 
 const (
-	// MaxMessagesForThreading represents the threshold for disabling the IMAP THREAD and SORT 
-	// algorithms. Threading massive mailboxes (> 10k messages) causes severe O(N) performance 
-	// degradation on the IMAP server (high CPU/RAM usage), massive network payloads (1MB+), 
+	// MaxMessagesForThreading represents the threshold for disabling the IMAP THREAD and SORT
+	// algorithms. Threading massive mailboxes (> 10k messages) causes severe O(N) performance
+	// degradation on the IMAP server (high CPU/RAM usage), massive network payloads (1MB+),
 	// and backend bottlenecks, essentially acting as an accidental DoS.
 	MaxMessagesForThreading = 10000
 )

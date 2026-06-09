@@ -271,56 +271,6 @@ func (la LinkedAccount) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// check2FAEnabled checks if a user has WebAuthn 2FA enabled.
-// This is the same check used in the login flow.
-func check2FAEnabled(store provider.Store) (bool, error) {
-	var data map[string]interface{}
-
-	if err := store.Get("webauthn", &data); err != nil {
-		if err == provider.ErrNoStoreEntry {
-			return false, nil
-		}
-		return false, err
-	}
-
-	enabled, ok := data["enabled"].(bool)
-	if !ok {
-		return false, nil
-	}
-
-	return enabled, nil
-}
-
-// linkedAccountsToJSON converts LinkedAccounts to JSON with passwords intact.
-// This bypasses the custom MarshalJSON that strips passwords for security.
-func linkedAccountsToJSON(accounts *LinkedAccounts) ([]byte, error) {
-	type linkedAccountInternal struct {
-		Username    string    `json:"username"`
-		PasswordEnc string    `json:"password_enc"`
-		DisplayName string    `json:"display_name,omitempty"`
-		IMAPServer  string    `json:"imap_server,omitempty"`
-		AddedAt     time.Time `json:"added_at"`
-	}
-	type linkedAccountsInternal struct {
-		Accounts []linkedAccountInternal `json:"accounts"`
-	}
-
-	internal := linkedAccountsInternal{
-		Accounts: make([]linkedAccountInternal, len(accounts.Accounts)),
-	}
-	for i, acc := range accounts.Accounts {
-		internal.Accounts[i] = linkedAccountInternal{
-			Username:    acc.Username,
-			PasswordEnc: acc.PasswordEnc,
-			DisplayName: acc.DisplayName,
-			IMAPServer:  acc.IMAPServer,
-			AddedAt:     acc.AddedAt,
-		}
-	}
-
-	return json.Marshal(internal)
-}
-
 // getLinkedAccountsViaStore reads linked accounts directly from a Store.
 // This is used to read another account's linked accounts during bidirectional linking.
 func getLinkedAccountsViaStore(store provider.Store) (*LinkedAccounts, error) {

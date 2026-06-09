@@ -33,9 +33,11 @@ export class AlpsAddressInput extends LitElement {
 
   private _isBlockedAddress(email: string): boolean {
     let rawEmail = email.trim();
-    const match = rawEmail.match(/^.*?<([^>]+)>$/);
-    if (match && match[1]) {
-      rawEmail = match[1];
+    if (rawEmail.endsWith('>')) {
+      const startObj = rawEmail.lastIndexOf('<');
+      if (startObj !== -1) {
+        rawEmail = rawEmail.substring(startObj + 1, rawEmail.length - 1);
+      }
     }
     const lowerEmail = rawEmail.toLowerCase();
     return lowerEmail.startsWith('noreply') || 
@@ -53,10 +55,15 @@ export class AlpsAddressInput extends LitElement {
   }
 
   private _displayAddr(addr: string) {
-    const match = addr.match(/^(.*?)\s*<([^>]+)>$/);
-    if (match && match[1]) {
-      const name = match[1].replace(/^["']|["']$/g, '').trim();
-      return name || match[2];
+    const trimmed = addr.trim();
+    if (trimmed.endsWith('>')) {
+      const startObj = trimmed.lastIndexOf('<');
+      if (startObj !== -1) {
+        const namePart = trimmed.substring(0, startObj).trim();
+        const emailPart = trimmed.substring(startObj + 1, trimmed.length - 1);
+        const name = namePart.replace(/^["']|["']$/g, '').trim();
+        return name || emailPart;
+      }
     }
     return addr;
   }

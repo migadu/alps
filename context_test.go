@@ -139,9 +139,10 @@ func TestContextSetSession(t *testing.T) {
 
 	var sessionCookie, loggedInCookie *http.Cookie
 	for _, cookie := range cookies {
-		if cookie.Name == "alps_session" {
+		switch cookie.Name {
+		case "alps_session":
 			sessionCookie = cookie
-		} else if cookie.Name == "alps_logged_in" {
+		case "alps_logged_in":
 			loggedInCookie = cookie
 		}
 	}

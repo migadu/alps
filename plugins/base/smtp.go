@@ -195,6 +195,48 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) (int64, error) {
 		return cw.n, nil
 	}
 
+	if len(msg.Attachments) == 0 && hasHTML {
+		h.Set("Content-Type", "multipart/alternative")
+		mw, err := message.CreateWriter(cw, h.Header)
+		if err != nil {
+			return cw.n, fmt.Errorf("failed to create mail writer: %v", err)
+		}
+
+		var textHeader message.Header
+		textHeader.Set("Content-Type", "text/plain; charset=utf-8")
+		textHeader.Set("Content-Disposition", "inline")
+		tw, err := mw.CreatePart(textHeader)
+		if err != nil {
+			return cw.n, fmt.Errorf("failed to create text part: %v", err)
+		}
+		if _, err := io.WriteString(tw, msg.Text); err != nil {
+			return cw.n, fmt.Errorf("failed to write text part: %v", err)
+		}
+		if err := tw.Close(); err != nil {
+			return cw.n, fmt.Errorf("failed to close text part: %v", err)
+		}
+
+		var htmlHeader message.Header
+		htmlHeader.Set("Content-Type", "text/html; charset=utf-8")
+		htmlHeader.Set("Content-Disposition", "inline")
+		hw, err := mw.CreatePart(htmlHeader)
+		if err != nil {
+			return cw.n, fmt.Errorf("failed to create html part: %v", err)
+		}
+		if _, err := io.WriteString(hw, msg.HTML); err != nil {
+			return cw.n, fmt.Errorf("failed to write html part: %v", err)
+		}
+		if err := hw.Close(); err != nil {
+			return cw.n, fmt.Errorf("failed to close html part: %v", err)
+		}
+
+		if err := mw.Close(); err != nil {
+			return cw.n, fmt.Errorf("failed to close mail writer: %v", err)
+		}
+
+		return cw.n, nil
+	}
+
 	mw, err := mail.CreateWriter(cw, h)
 	if err != nil {
 		return cw.n, fmt.Errorf("failed to create mail writer: %v", err)
