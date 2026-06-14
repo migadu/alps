@@ -233,9 +233,36 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 	return err
 }
 
+// smtpMaxAttempts is the number of times DoSMTP tries an operation before
+// giving up. The SMTP relay is trusted, so transient failures (connection
+// drops, temporary 4xx responses) are worth retrying.
+const smtpMaxAttempts = 3
+
 // DoSMTP executes an SMTP operation on this session. The SMTP client can only
 // be used from inside f.
+//
+// Each attempt uses a fresh connection, so f must be safe to call more than
+// once. Authentication failures are not retried, since re-dialing will not fix
+// bad credentials.
 func (s *Session) DoSMTP(f func(*smtp.Client) error) error {
+	var err error
+	for attempt := 1; attempt <= smtpMaxAttempts; attempt++ {
+		err = s.doSMTP(f)
+		if err == nil {
+			return nil
+		}
+		if _, ok := err.(AuthError); ok {
+			return err
+		}
+		if attempt < smtpMaxAttempts {
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
+	}
+	return fmt.Errorf("SMTP operation failed after %d attempts: %v", smtpMaxAttempts, err)
+}
+
+// doSMTP performs a single SMTP attempt: dial, authenticate, run f, quit.
+func (s *Session) doSMTP(f func(*smtp.Client) error) error {
 	c, err := s.manager.dialSMTP()
 	if err != nil {
 		return err

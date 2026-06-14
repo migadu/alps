@@ -21,7 +21,7 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { Logger } from '../utils/logger';
 import { registry } from '../plugin-registry';
-const UNDO_TOAST_TIMEOUT_MS = 10000;
+const UNDO_TOAST_TIMEOUT_MS = 5000;
 
 @customElement('alps-floating-composer')
 export class AlpsFloatingComposer extends LitElement {
@@ -501,6 +501,7 @@ export class AlpsFloatingComposer extends LitElement {
 
     try {
       let undoFn: (() => void) | undefined;
+      let sendNowFn: (() => void) | undefined;
       const sendPromise = new Promise<boolean>((resolve) => {
         let timeoutId = window.setTimeout(() => {
           resolve(true);
@@ -510,6 +511,10 @@ export class AlpsFloatingComposer extends LitElement {
           window.clearTimeout(timeoutId);
           resolve(false);
         };
+        sendNowFn = () => {
+          window.clearTimeout(timeoutId);
+          resolve(true);
+        };
       });
 
       window.dispatchEvent(new CustomEvent('show-toast', {
@@ -518,6 +523,10 @@ export class AlpsFloatingComposer extends LitElement {
           actionLabel: this.i18nStore?.t('composer.undo'),
           actionFn: () => {
             if (undoFn) undoFn();
+          },
+          // Dismissing the toast (X) skips the remaining delay and sends now.
+          dismissFn: () => {
+            if (sendNowFn) sendNowFn();
           },
           duration: UNDO_TOAST_TIMEOUT_MS
         }

@@ -31,6 +31,7 @@ interface ToastItem {
   message: string;
   actionLabel?: string;
   actionFn?: () => void;
+  dismissFn?: () => void;
   timeout: number;
   show: boolean;
 }
@@ -241,6 +242,7 @@ export class AppRoot extends LitElement {
       message: e.detail.message,
       actionLabel: e.detail.actionLabel || '',
       actionFn: e.detail.actionFn,
+      dismissFn: e.detail.dismissFn,
       timeout: e.detail.duration || DEFAULT_TOAST_TIMEOUT_MS,
       show: false,
     };
@@ -351,6 +353,7 @@ export class AppRoot extends LitElement {
             .message=${toast.message}
             .actionLabel=${toast.actionLabel}
             .onAction=${toast.actionFn}
+            .onDismiss=${toast.dismissFn}
             .timeout=${toast.timeout}
             @dismiss=${() => this._handleDismissToast(toast.id)}
           ></alps-toast>

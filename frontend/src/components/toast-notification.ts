@@ -13,6 +13,10 @@ export class AlpsToast extends LitElement {
   @property({ type: String }) message = '';
   @property({ type: String }) actionLabel = '';
   @property({ type: Object }) onAction?: () => void;
+  // Invoked when the toast is genuinely dismissed (X button or auto-timeout),
+  // as opposed to the undo action. Lets the opener proceed immediately instead
+  // of waiting out the remaining timeout.
+  @property({ type: Object }) onDismiss?: () => void;
   @property({ type: Number }) timeout = 0;
 
   private _timer: ReturnType<typeof setTimeout> | null = null;
@@ -31,10 +35,18 @@ export class AlpsToast extends LitElement {
     }
   }
 
+  // Genuine dismissal: X button or auto-timeout. Runs the dismiss handler
+  // before closing so the opener can act immediately.
   private dismiss() {
+    if (this.onDismiss) this.onDismiss();
+    this.close();
+  }
+
+  private close() {
     this.show = false;
     this.dispatchEvent(new CustomEvent('dismiss'));
     this.onAction = undefined;
+    this.onDismiss = undefined;
   }
 
   private handleAction() {
@@ -43,7 +55,8 @@ export class AlpsToast extends LitElement {
     } else {
       this.dispatchEvent(new CustomEvent('action'));
     }
-    this.dismiss();
+    // Close without firing onDismiss: the action already decided the outcome.
+    this.close();
   }
 
   static styles = css`
