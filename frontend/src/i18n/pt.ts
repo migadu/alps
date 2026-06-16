@@ -163,7 +163,10 @@ export const pt = {
     loginFailed: 'Falha no login. Verifique suas credenciais.',
     networkError: 'Ocorreu um erro de rede. Tente novamente.',
     pleaseWait: 'Por favor, aguarde',
-    wait: 'Aguarde'
+    wait: 'Aguarde',
+    signedOut: 'Você foi desconectado.',
+    sessionExpired: 'A sua sessão expirou. Inicie sessão novamente.',
+    inactivitySignedOut: 'Você foi desconectado por inatividade.'
   },
   folderList: {
     compose: 'Escrever',

@@ -1,6 +1,7 @@
 import { MessageCache } from '../utils/message-cache';
 import { Logger } from '../utils/logger';
 import { clearSessionSettings } from '../store/settings-store';
+import { setLoginNotice } from '../utils/login-notice';
 
 class AutoLogoutService {
   private events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
@@ -101,6 +102,7 @@ class AutoLogoutService {
       MessageCache.clear();
       clearSessionSettings();
       window.dispatchEvent(new CustomEvent('session-cleared'));
+      setLoginNotice('inactivitySignedOut');
       window.location.hash = '#/login';
       
       // Optionally reset so if they log back in it can re-attach

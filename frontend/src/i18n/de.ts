@@ -131,7 +131,10 @@ export const de: TranslationDictionary = {
     loginFailed: 'Anmeldung fehlgeschlagen. Bitte überprüfen Sie Ihre Anmeldedaten.',
     networkError: 'Netzwerkfehler aufgetreten. Bitte versuchen Sie es erneut.',
     pleaseWait: 'Bitte warten',
-    wait: 'Warten'
+    wait: 'Warten',
+    signedOut: 'Sie wurden abgemeldet.',
+    sessionExpired: 'Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.',
+    inactivitySignedOut: 'Sie wurden wegen Inaktivität abgemeldet.'
   },
   folderList: {
     compose: 'Verfassen',

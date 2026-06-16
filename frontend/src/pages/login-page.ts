@@ -4,6 +4,7 @@ import { consume } from '@lit/context';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
+import { takeLoginNotice, type LoginNotice } from '../utils/login-notice';
 
 import '../components/alps-auth-card';
 import '../components/alps-input';
@@ -113,6 +114,21 @@ export class LoginPage extends LitElement {
       text-align: center;
     }
 
+    .notice-container {
+      border-radius: var(--radius-md, 6px);
+      padding: 8px 12px;
+      margin-bottom: 24px;
+      background: var(--bg-tertiary, rgba(0, 0, 0, 0.04));
+      border: 1px solid var(--border-color, #e5e7eb);
+    }
+
+    .notice-text {
+      color: var(--text-secondary, #4b5563);
+      font-size: 14px;
+      margin: 0;
+      text-align: center;
+    }
+
     @keyframes shake {
       10%, 90% { transform: translate3d(-1px, 0, 0); }
       20%, 80% { transform: translate3d(2px, 0, 0); }
@@ -168,6 +184,7 @@ export class LoginPage extends LitElement {
     }
   `;
 
+  @state() private notice: LoginNotice | null = null;
   @state() private username = '';
   @state() private password = '';
   @state() private rememberMe = false;
@@ -187,6 +204,7 @@ export class LoginPage extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this.notice = takeLoginNotice();
     this.updateComplete.then(() => {
       this.i18nStore?.addEventListener('change', this._handleI18nChange);
     });
@@ -297,7 +315,13 @@ export class LoginPage extends LitElement {
         icon="edelweiss" 
         title="Alps" 
         subtitle="${this.i18nStore?.t('login.subtitle')}">
-        
+
+        ${this.notice && !this.error ? html`
+          <div class="notice-container">
+            <p class="notice-text">${this.i18nStore?.t(`login.${this.notice}`)}</p>
+          </div>
+        ` : ''}
+
         ${this.error ? html`
           <div class="error-container">
             <p class="error-text">

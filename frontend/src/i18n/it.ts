@@ -129,7 +129,10 @@ export const it = {
     loginFailed: 'Accesso fallito. Controlla le tue credenziali.',
     networkError: 'Si è verificato un errore di rete. Riprova.',
     pleaseWait: 'Attendere prego',
-    wait: 'Attendi'
+    wait: 'Attendi',
+    signedOut: 'Sei stato disconnesso.',
+    sessionExpired: "La tua sessione è scaduta. Effettua di nuovo l'accesso.",
+    inactivitySignedOut: 'Sei stato disconnesso per inattività.'
   },
   folderList: {
     compose: 'Componi',

@@ -129,7 +129,10 @@ export const es = {
     loginFailed: 'Error de inicio de sesión. Por favor, verifique sus credenciales.',
     networkError: 'Ocurrió un error de red. Por favor, inténtelo de nuevo.',
     pleaseWait: 'Por favor espere',
-    wait: 'Esperar'
+    wait: 'Esperar',
+    signedOut: 'Has cerrado sesión.',
+    sessionExpired: 'Tu sesión ha expirado. Por favor, inicia sesión de nuevo.',
+    inactivitySignedOut: 'Has cerrado sesión por inactividad.'
   },
   folderList: {
     compose: 'Redactar',

@@ -170,7 +170,10 @@ export const en = {
     loginFailed: 'Login failed. Please check your credentials.',
     networkError: 'Network error occurred. Please try again.',
     pleaseWait: 'Please wait',
-    wait: 'Wait'
+    wait: 'Wait',
+    signedOut: 'You have been signed out.',
+    sessionExpired: 'Your session has expired. Please sign in again.',
+    inactivitySignedOut: "You've been signed out due to inactivity."
   },
   folderList: {
     compose: 'Compose',

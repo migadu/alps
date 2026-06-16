@@ -129,7 +129,10 @@ export const sr = {
     loginFailed: 'Prijavljivanje nije uspelo. Proverite svoje podatke.',
     networkError: 'Došlo je do greške na mreži. Pokušajte ponovo.',
     pleaseWait: 'Molimo sačekajte',
-    wait: 'Sačekaj'
+    wait: 'Sačekaj',
+    signedOut: 'Odjavljeni ste.',
+    sessionExpired: 'Vaša sesija je istekla. Prijavite se ponovo.',
+    inactivitySignedOut: 'Odjavljeni ste zbog neaktivnosti.'
   },
   folderList: {
     compose: 'Napiši',

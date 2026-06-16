@@ -129,7 +129,10 @@ export const fr = {
     loginFailed: 'Échec de la connexion. Veuillez vérifier vos identifiants.',
     networkError: "Une erreur de réseau s'est produite. Veuillez réessayer.",
     pleaseWait: 'Veuillez patienter',
-    wait: 'Patienter'
+    wait: 'Patienter',
+    signedOut: 'Vous avez été déconnecté.',
+    sessionExpired: 'Votre session a expiré. Veuillez vous reconnecter.',
+    inactivitySignedOut: "Vous avez été déconnecté pour cause d'inactivité."
   },
   folderList: {
     compose: 'Nouveau message',

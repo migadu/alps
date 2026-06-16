@@ -5,6 +5,7 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { clearSessionSettings } from '../store/settings-store';
+import { setLoginNotice } from '../utils/login-notice';
 import './user-profile-menu';
 import './alps-icon-btn';
 import { Logger } from '../utils/logger';
@@ -109,6 +110,7 @@ export class AlpsHeader extends LitElement {
       MessageCache.clear();
       clearSessionSettings();
       window.dispatchEvent(new CustomEvent('session-cleared'));
+      setLoginNotice('signedOut');
       window.location.hash = '#/login'; // Return to login page
     } catch (err) {
       Logger.error('Failed to sign out', err);
