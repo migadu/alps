@@ -152,6 +152,49 @@ func (c *MSClient) Authenticate(saslClient sasl.Client) error {
 	}
 }
 
+// Script describes a single server-side Sieve script.
+type Script struct {
+	Name   string
+	Active bool
+}
+
+// ListScripts returns all scripts on the server (RFC 5804 LISTSCRIPTS),
+// marking which one (if any) is currently active.
+func (c *MSClient) ListScripts() ([]Script, error) {
+	if err := c.sendCommand("LISTSCRIPTS"); err != nil {
+		return nil, err
+	}
+
+	var scripts []Script
+	for {
+		line, err := c.readLine()
+		if err != nil {
+			return nil, err
+		}
+
+		if strings.HasPrefix(line, "OK") {
+			return scripts, nil
+		}
+		if strings.HasPrefix(line, "NO") || strings.HasPrefix(line, "BYE") {
+			return nil, fmt.Errorf("LISTSCRIPTS error: %s", line)
+		}
+
+		// Each line is a script name (quoted string or literal) optionally
+		// followed by the ACTIVE flag: "catchall" ACTIVE
+		parts, err := c.parseStringList(line)
+		if err != nil || len(parts) == 0 {
+			continue
+		}
+		s := Script{Name: parts[0]}
+		for _, p := range parts[1:] {
+			if strings.EqualFold(p, "ACTIVE") {
+				s.Active = true
+			}
+		}
+		scripts = append(scripts, s)
+	}
+}
+
 func (c *MSClient) PutScript(name, content string) error {
 	cmd := fmt.Sprintf("PUTSCRIPT %q {%d+}\r\n%s", name, len(content), content)
 	if err := c.sendCommand(cmd); err != nil {

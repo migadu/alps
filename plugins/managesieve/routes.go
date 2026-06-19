@@ -12,8 +12,23 @@ import (
 	"github.com/migadu/alps"
 )
 
+// defaultScriptName is the name alps uses when creating a script for an
+// account that has none yet. When a script already exists, alps edits that
+// one in place rather than creating a separate script.
+const defaultScriptName = "alps-filters"
+
 type ScriptPayload struct {
 	Content string `json:"content"`
+}
+
+// activeScript returns the name of the currently active script, or "" if none.
+func activeScript(scripts []Script) string {
+	for _, s := range scripts {
+		if s.Active {
+			return s.Name
+		}
+	}
+	return ""
 }
 
 func (p *plugin) connectClient(ctx *alps.Context) (*MSClient, error) {
@@ -63,7 +78,20 @@ func (p *plugin) handleGetScript(ctx *alps.Context) error {
 	}
 	defer c.Close()
 
-	content, err := c.GetScript("alps-filters")
+	scripts, err := c.ListScripts()
+	if err != nil {
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to list scripts: " + err.Error()})
+	}
+
+	// Load the currently active script, whatever its name. This surfaces
+	// filters created outside alps (e.g. an existing "catchall") instead of
+	// showing "No rules defined". If nothing is active there's nothing to show.
+	name := activeScript(scripts)
+	if name == "" {
+		return ctx.JSON(http.StatusOK, map[string]string{"content": ""})
+	}
+
+	content, err := c.GetScript(name)
 	if err != nil {
 		if strings.Contains(err.Error(), "script not found") {
 			return ctx.JSON(http.StatusOK, map[string]string{"content": ""})
@@ -105,13 +133,25 @@ func (p *plugin) handlePutScript(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Sieve script: " + err.Error()})
 	}
 
+	// Edit the currently active script in place rather than creating a
+	// separate one. Only fall back to the default name when the account has
+	// no active script yet.
+	scripts, err := c.ListScripts()
+	if err != nil {
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to list scripts: " + err.Error()})
+	}
+	name := activeScript(scripts)
+	if name == "" {
+		name = defaultScriptName
+	}
+
 	// Upload the script
-	if err := c.PutScript("alps-filters", payload.Content); err != nil {
+	if err := c.PutScript(name, payload.Content); err != nil {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to upload script: " + err.Error()})
 	}
 
 	// Activate it
-	if err := c.SetActive("alps-filters"); err != nil {
+	if err := c.SetActive(name); err != nil {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to activate script: " + err.Error()})
 	}
 
