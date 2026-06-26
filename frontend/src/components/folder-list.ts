@@ -46,6 +46,7 @@ export class FolderList extends LitElement {
   @state() private mailboxToDelete = '';
   @state() private parentForNewFolder = '';
   @state() private activeKebabMenu: string | null = null;
+  private primaryFullNames = new Set<string>();
 
   willUpdate(changedProperties: Map<string, any>) {
     super.willUpdate(changedProperties);
@@ -463,7 +464,6 @@ export class FolderList extends LitElement {
 
   private moveFolder(folderName: string, direction: 'top' | 'up' | 'down' | 'bottom') {
     console.log('[moveFolder] Start:', { folderName, direction });
-    const standardOrder = [FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH];
     const mb = this.mailboxes.find(m => (m.Name || m.Mailbox) === folderName);
     const delim = mb?.Delimiter || mb?.Delim;
     const delimiter = typeof delim === 'number' ? String.fromCharCode(delim) : (delim || '.');
@@ -473,7 +473,7 @@ export class FolderList extends LitElement {
     const siblings = this.mailboxes
       .map(m => m.Name || m.Mailbox || '')
       .filter(name => {
-        if (standardOrder.includes(name)) return false;
+        if (this.primaryFullNames.has(name)) return false;
         const sParts = name.split(delimiter);
         const sParent = sParts.slice(0, -1).join(delimiter);
         return sParent === parentPath && sParts.length === parts.length;
@@ -537,7 +537,18 @@ export class FolderList extends LitElement {
 
 
   render() {
-    const standardOrder = [FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH];
+    // A special-mailbox "slot" can be claimed by an IMAP special-use attribute
+    // (authoritative) or, as a fallback, by a well-known name. Several names map
+    // to the same slot (Archive/Archives, Spam/Junk); each slot is collapsed to a
+    // single primary entry below so the same special mailbox is never shown twice.
+    const specialSlots: { attr: string; names: string[]; display: { icon: string; colorClass: string; label: string } }[] = [
+      { attr: '\\inbox', names: [FOLDER_INBOX], display: { icon: 'tray', colorClass: 'icon-inbox', label: this.i18nStore?.t('folderList.inbox') } },
+      { attr: '\\drafts', names: [FOLDER_DRAFTS], display: { icon: 'fileText', colorClass: 'icon-drafts', label: this.i18nStore?.t('folderList.drafts') } },
+      { attr: '\\sent', names: [FOLDER_SENT], display: { icon: 'paperPlaneTilt', colorClass: 'icon-sent', label: this.i18nStore?.t('folderList.sent') } },
+      { attr: '\\archive', names: [FOLDER_ARCHIVE, FOLDER_ARCHIVES], display: { icon: 'archiveBox', colorClass: 'icon-archive', label: this.i18nStore?.t('folderList.archive') } },
+      { attr: '\\junk', names: [FOLDER_JUNK, FOLDER_SPAM], display: { icon: 'warningDiamond', colorClass: 'icon-spam', label: this.i18nStore?.t('folderList.junk') } },
+      { attr: '\\trash', names: [FOLDER_TRASH], display: { icon: 'trash', colorClass: 'icon-trash', label: this.i18nStore?.t('folderList.trash') } },
+    ];
     const stdMap: Record<string, { icon: string, colorClass: string, label: string }> = {
       [FOLDER_INBOX]: { icon: 'tray', colorClass: 'icon-inbox', label: this.i18nStore?.t('folderList.inbox') },
       [FOLDER_DRAFTS]: { icon: 'fileText', colorClass: 'icon-drafts', label: this.i18nStore?.t('folderList.drafts') },
@@ -549,7 +560,7 @@ export class FolderList extends LitElement {
       [FOLDER_TRASH]: { icon: 'trash', colorClass: 'icon-trash', label: this.i18nStore?.t('folderList.trash') }
     };
 
-    type TreeNode = { name: string; fullName: string; mb?: any; children: Record<string, TreeNode> };
+    type TreeNode = { name: string; fullName: string; mb?: any; children: Record<string, TreeNode>; primary?: { icon: string; colorClass: string; label: string } };
     const root: Record<string, TreeNode> = {};
 
     this.mailboxes.forEach(mb => {
@@ -579,20 +590,78 @@ export class FolderList extends LitElement {
       }
     });
 
-    const standardNodes: TreeNode[] = [];
+    const normalizedAttrs = (node: TreeNode): string[] =>
+      (node.mb?.Attrs || []).map((a: any) => (typeof a === 'string' ? a.toLowerCase() : ''));
+    // Tolerate both single- (\Sent) and double-escaped (\\Sent) attribute forms.
+    const hasSlotAttr = (node: TreeNode, attr: string): boolean => {
+      const attrs = normalizedAttrs(node);
+      return attrs.includes(attr) || attrs.includes('\\' + attr);
+    };
+    const slotIndexForNode = (node: TreeNode): number => {
+      const attrs = normalizedAttrs(node);
+      // Special-use attribute is authoritative.
+      for (let i = 0; i < specialSlots.length; i++) {
+        const s = specialSlots[i];
+        if (attrs.includes(s.attr) || attrs.includes('\\' + s.attr)) return i;
+      }
+      // Name fallback only for real, selectable mailboxes — never for synthetic
+      // parents (e.g. "Archives" when only "Archives/2025" exists) or \Noselect
+      // placeholders, which must not masquerade as a primary special mailbox.
+      const selectable = !!node.mb && !attrs.includes('\\noselect') && !attrs.includes('\\nonexistent');
+      if (selectable) {
+        for (let i = 0; i < specialSlots.length; i++) {
+          if (specialSlots[i].names.includes(node.name)) return i;
+        }
+      }
+      return -1;
+    };
+
+    const standardBySlot = new Map<number, TreeNode>();
     const customNodes: TreeNode[] = [];
 
     Object.values(root).forEach(node => {
-      if (standardOrder.includes(node.name)) {
-        standardNodes.push(node);
+      const idx = slotIndexForNode(node);
+      if (idx < 0) {
+        customNodes.push(node);
+        return;
+      }
+      const existing = standardBySlot.get(idx);
+      if (!existing) {
+        standardBySlot.set(idx, node);
+        return;
+      }
+      // Two mailboxes claim the same slot: keep the one carrying the real
+      // special-use attribute, else the higher-priority name. The loser is
+      // demoted to a regular folder rather than duplicating the primary.
+      const slotDef = specialSlots[idx];
+      const nodeAttr = hasSlotAttr(node, slotDef.attr);
+      const existingAttr = hasSlotAttr(existing, slotDef.attr);
+      const nodeRank = slotDef.names.indexOf(node.name);
+      const existingRank = slotDef.names.indexOf(existing.name);
+      const nodeWins =
+        (nodeAttr && !existingAttr) ||
+        (nodeAttr === existingAttr &&
+          nodeRank !== -1 &&
+          (existingRank === -1 || nodeRank < existingRank));
+      if (nodeWins) {
+        standardBySlot.set(idx, node);
+        customNodes.push(existing);
       } else {
         customNodes.push(node);
       }
     });
 
+    const standardNodes: TreeNode[] = [];
+    for (let i = 0; i < specialSlots.length; i++) {
+      const node = standardBySlot.get(i);
+      if (!node) continue;
+      node.primary = stdMap[node.name] || specialSlots[i].display;
+      standardNodes.push(node);
+    }
+    this.primaryFullNames = new Set(standardNodes.map(n => n.fullName));
+
     const customOrder = this.settingsStore?.getState()?.customMailboxOrder || [];
 
-    standardNodes.sort((a, b) => standardOrder.indexOf(a.name) - standardOrder.indexOf(b.name));
     customNodes.sort((a, b) => {
       const idxA = customOrder.indexOf(a.fullName);
       const idxB = customOrder.indexOf(b.fullName);
@@ -607,7 +676,7 @@ export class FolderList extends LitElement {
         const hasChildren = Object.keys(node.children).length > 0;
         const isExpanded = this.expandedFolders.has(node.fullName);
         const isActive = this.currentMailbox === node.fullName;
-        const hasActions = depth > 0 || !standardOrder.includes(node.name);
+        const hasActions = depth > 0 || !node.primary;
 
         let isFirst = false;
         let isLast = false;
@@ -620,7 +689,7 @@ export class FolderList extends LitElement {
           const siblings = this.mailboxes
             .map(m => m.Name || m.Mailbox || '')
             .filter(name => {
-              if (standardOrder.includes(name)) return false;
+              if (this.primaryFullNames.has(name)) return false;
               const sParts = name.split(delimiter);
               const sParent = sParts.slice(0, -1).join(delimiter);
               return sParent === parentPath && sParts.length === parts.length;
@@ -644,10 +713,10 @@ export class FolderList extends LitElement {
         let colorClass = 'icon-default';
         let label = node.name;
 
-        if (depth === 0 && stdMap[node.name]) {
-          icon = renderIcon(stdMap[node.name].icon);
-          colorClass = stdMap[node.name].colorClass;
-          label = stdMap[node.name].label;
+        if (node.primary) {
+          icon = renderIcon(node.primary.icon);
+          colorClass = node.primary.colorClass;
+          label = node.primary.label;
         }
 
         const unseenCount = node.mb?.Unseen || 0;
