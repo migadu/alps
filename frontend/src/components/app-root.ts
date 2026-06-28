@@ -112,7 +112,7 @@ export class AppRoot extends LitElement {
     window.addEventListener('beforeunload', this._handleBeforeUnload);
     window.addEventListener('online', this._handleOnlineEvent);
     window.addEventListener('offline', this._handleOfflineEvent);
-    window.addEventListener('network-error', this._handleOfflineEvent);
+    window.addEventListener('network-error', this._handleNetworkError);
     window.addEventListener('dragover', this._handleGlobalDragOver);
     window.addEventListener('drop', this._handleGlobalDrop);
     window.addEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
@@ -154,7 +154,7 @@ export class AppRoot extends LitElement {
     window.removeEventListener('beforeunload', this._handleBeforeUnload);
     window.removeEventListener('online', this._handleOnlineEvent);
     window.removeEventListener('offline', this._handleOfflineEvent);
-    window.removeEventListener('network-error', this._handleOfflineEvent);
+    window.removeEventListener('network-error', this._handleNetworkError);
     window.removeEventListener('dragover', this._handleGlobalDragOver);
     window.removeEventListener('drop', this._handleGlobalDrop);
     window.removeEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
@@ -195,6 +195,27 @@ export class AppRoot extends LitElement {
       this._stopOfflineCountdown();
     } else {
       this._handleOfflineEvent();
+    }
+  };
+
+  private _verifyingNetworkError = false;
+
+  // The synthetic 'network-error' event fires whenever a single request fails
+  // (502/503/504, timeout, or interrupted fetch). That is not proof the browser
+  // is offline: a submission such as sign-in or saving a Sieve script can briefly
+  // busy the upstream IMAP/ManageSieve session and make a concurrent request fail
+  // transiently. Confirm with a lightweight probe before showing the modal so we
+  // don't flash "disconnected" on these false positives. The browser's native
+  // 'offline' event is authoritative and still bypasses this check.
+  private _handleNetworkError = async () => {
+    if (this.isOffline || this._verifyingNetworkError) return;
+    this._verifyingNetworkError = true;
+    try {
+      if (!(await this._verifyConnectivity())) {
+        this._handleOfflineEvent();
+      }
+    } finally {
+      this._verifyingNetworkError = false;
     }
   };
 
