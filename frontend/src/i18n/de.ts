@@ -262,6 +262,7 @@ export const de: TranslationDictionary = {
   messageReader: {
     tags: 'Schlagwörter',
     removeAllTags: 'Alle Schlagwörter entfernen',
+    removeTag: 'Schlagwort entfernen',
     selectMessage: 'Wählen Sie eine Nachricht zum Lesen aus',
     messagesSelected: 'Nachrichten ausgewählt',
     back: 'Zurück',

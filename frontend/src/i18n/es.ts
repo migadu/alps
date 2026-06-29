@@ -260,6 +260,7 @@ export const es = {
   messageReader: {
     tags: 'Etiquetas',
     removeAllTags: 'Eliminar todas las etiquetas',
+    removeTag: 'Eliminar etiqueta',
     selectMessage: 'Seleccione un mensaje para leer',
     messagesSelected: 'mensajes seleccionados',
     back: 'Volver',

@@ -294,6 +294,7 @@ export const en = {
   messageReader: {
     tags: 'Tags',
     removeAllTags: 'Remove all tags',
+    removeTag: 'Remove tag',
     selectMessage: 'Select a message to read',
     messagesSelected: 'messages selected',
     back: 'Back',

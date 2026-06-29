@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { live } from 'lit/directives/live.js';
-import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName } from '../utils/flags';
+import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName, getRemovableTags } from '../utils/flags';
 import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_TRASH, FOLDER_JUNK, FOLDER_SPAM, FOLDER_ARCHIVE, FOLDER_ARCHIVES } from '../utils/folders';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
@@ -172,8 +172,24 @@ export class MessageReader extends LitElement {
 
   private _handleRemoveAllTags() {
     this._closePopup();
-    const allLabels = ['$label1', '$label2', '$label3', '$label4', '$label5'];
-    this.dispatchEvent(new CustomEvent('action', { detail: { action: 'removeTag', tags: allLabels } }));
+    const isBulk = this.selectedUids.size > 1 && !this.message;
+
+    let tags: string[];
+    if (isBulk) {
+      // Union of removable keywords across all selected messages.
+      const set = new Set<string>();
+      for (const m of this.messages) {
+        if (this.selectedUids.has(String(m.UID))) {
+          for (const t of getRemovableTags(m.Flags)) set.add(t);
+        }
+      }
+      tags = [...set];
+    } else {
+      tags = getRemovableTags(this.message?.Flags);
+    }
+
+    if (tags.length === 0) return;
+    this.dispatchEvent(new CustomEvent('action', { detail: { action: 'removeTag', tags } }));
   }
 
   @state()
@@ -280,7 +296,12 @@ export class MessageReader extends LitElement {
       flex-direction: column;
       height: 100%;
     }
-    
+
+    .tags-popup .dropdown-item.active svg {
+      margin-left: auto;
+      color: var(--text-secondary, #9ca3af);
+    }
+
     .toolbar {
       padding: 0 16px;
       gap: 12px;
@@ -1367,6 +1388,13 @@ export class MessageReader extends LitElement {
 
     const msg = this.message || {};
     const customTags = getMessageTags(msg.Flags, this.i18nStore);
+    // Keywords present on a single open message that aren't one of the predefined
+    // labels (already toggled above) — e.g. stray $NotJunk/NotJunk left by other
+    // clients. Listed in the tags popup so they can be removed individually.
+    const PREDEFINED_LABELS = new Set(['$label1', '$label2', '$label3', '$label4', '$label5']);
+    const otherTags = (isBulk || !this.message)
+      ? []
+      : getRemovableTags(msg.Flags).filter(t => !PREDEFINED_LABELS.has(t.toLowerCase()));
     const sender = msg.Envelope?.From?.[0] || {};
     const senderAddress = sender.Mailbox && sender.Host ? `${sender.Mailbox}@${sender.Host}` : '';
     const senderName = sender.Name || senderAddress || (this.i18nStore?.t('messageList.unknownSender'));
@@ -1433,6 +1461,16 @@ export class MessageReader extends LitElement {
               </button>
             `;
     })}
+          ${otherTags.length ? html`
+            <div class="dropdown-divider"></div>
+            ${otherTags.map(tag => html`
+              <button class="dropdown-item active" title=${this.i18nStore?.t('messageReader.removeTag')} @click=${() => this._handleTag(tag)}>
+                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${getTagColor(tag)};margin-right:12px;opacity:0.9;"></span>
+                <span class="item-text">${getTagName(tag, this.i18nStore)}</span>
+                ${renderIcon('x')}
+              </button>
+            `)}
+          ` : ''}
           <div class="dropdown-divider"></div>
           <button class="dropdown-item text-danger" @click=${() => this._handleRemoveAllTags()}>
             <span class="item-text">${this.i18nStore?.t('messageReader.removeAllTags')}</span>

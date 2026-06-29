@@ -294,6 +294,7 @@ export const pt = {
   messageReader: {
     tags: 'Etiquetas',
     removeAllTags: 'Remover todas as etiquetas',
+    removeTag: 'Remover etiqueta',
     selectMessage: 'Selecione uma mensagem para ler',
     messagesSelected: 'mensagens selecionadas',
     back: 'Voltar',

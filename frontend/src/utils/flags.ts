@@ -9,6 +9,10 @@ export const FLAG_FORWARDED = '$Forwarded';
 export const FLAG_MDNSENT = '$MDNSent';
 export const FLAG_JUNK = 'Junk';
 export const FLAG_NONJUNK = 'NonJunk';
+export const FLAG_NOTJUNK = 'NotJunk';
+export const FLAG_JUNK_STD = '$Junk';
+export const FLAG_NOTJUNK_STD = '$NotJunk';
+export const FLAG_PHISHING = '$Phishing';
 export const FLAG_SUBMITPENDING = '$SubmitPending';
 export const FLAG_SUBMITTED = '$Submitted';
 
@@ -32,7 +36,8 @@ export function getMessageTags(flags: string[] | undefined, i18nStore?: any): Me
   
   const ignoredFlags = new Set([
     FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_DELETED, FLAG_DRAFT, 
-    FLAG_FORWARDED, FLAG_MDNSENT, FLAG_JUNK, FLAG_NONJUNK, FLAG_SUBMITPENDING, FLAG_SUBMITTED
+    FLAG_FORWARDED, FLAG_MDNSENT, FLAG_JUNK, FLAG_NONJUNK, FLAG_NOTJUNK,
+    FLAG_JUNK_STD, FLAG_NOTJUNK_STD, FLAG_PHISHING, FLAG_SUBMITPENDING, FLAG_SUBMITTED
   ].map(f => f.toLowerCase()));
 
   const tags: MessageTag[] = [];
@@ -56,6 +61,22 @@ export function getMessageTags(flags: string[] | undefined, i18nStore?: any): Me
     if (!aIsPredef && bIsPredef) return 1;
     return a.id.localeCompare(b.id);
   });
+}
+
+// Functional keywords that carry protocol meaning and must survive a
+// "remove all tags" action (their removal has invisible side effects, e.g.
+// re-prompting for read receipts or losing forwarded/submit state).
+const PROTECTED_KEYWORDS = new Set(
+  [FLAG_FORWARDED, FLAG_MDNSENT, FLAG_SUBMITPENDING, FLAG_SUBMITTED].map(f => f.toLowerCase())
+);
+
+// Returns every keyword on a message that "remove all tags" should clear:
+// anything that isn't an IMAP system flag (\-prefixed) and isn't a protected
+// functional keyword. This covers user labels ($label1-5) as well as stray
+// keywords other clients/spam filters leave behind (Junk, NotJunk, $NotJunk, ...).
+export function getRemovableTags(flags: string[] | undefined): string[] {
+  if (!flags) return [];
+  return flags.filter(f => !f.startsWith('\\') && !PROTECTED_KEYWORDS.has(f.toLowerCase()));
 }
 
 export function getTagName(flag: string, i18nStore?: any): string {

@@ -260,6 +260,7 @@ export const rs = {
   messageReader: {
     tags: 'Ознаке',
     removeAllTags: 'Уклони све ознаке',
+    removeTag: 'Уклони ознаку',
     selectMessage: 'Изаберите поруку за читање',
     messagesSelected: 'изабраних порука',
     back: 'Назад',
