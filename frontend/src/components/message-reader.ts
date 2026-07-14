@@ -829,6 +829,12 @@ export class MessageReader extends LitElement {
   }
 
   private async fetchMessageBody(msg: any, silent = false) {
+    if (msg) {
+      msg._isAutosaveUpdate = false;
+    }
+    if (this.message) {
+      this.message._isAutosaveUpdate = false;
+    }
     if (!silent) {
       this.content = '';
       this.mimeType = '';
@@ -1306,15 +1312,30 @@ export class MessageReader extends LitElement {
    * Prepares the current message to be edited as a draft.
    * Gathers the draft's content, recipients, and attachments, then opens the composer pre-filled with this data.
    */
-  private async _handleEditDraft() {
-    if (!this.message) return;
+  private async _handleEditDraft(item?: any) {
+    const isItem = item && !(item instanceof Event);
+    const msg = isItem ? item.message : this.message;
+    const mailbox = isItem ? item.mailbox : this.mailbox;
+    if (!msg) return;
+
+    // If we're editing a specific thread item, make sure its body has been loaded
+    if (isItem && item && !item.content && !item.loading) {
+      item.loading = true;
+      this.updateThreadItemReference(item);
+      await this.fetchItemBody(item);
+    }
+
+    const content = isItem && item ? item.content : this.content;
+    const mimeType = isItem && item ? item.mimeType : this.mimeType;
+    const rawMessageHtml = isItem && item ? item.rawMessageHtml : this.rawMessageHtml;
+    const itemAttachments = isItem && item ? item.attachments : this.attachments;
 
     let textBody = '';
-    if (this.mimeType === 'text/plain') {
-      textBody = this.content;
+    if (mimeType === 'text/plain') {
+      textBody = content;
     } else {
       try {
-        const textRes = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${this.message.UID}?view=text`);
+        const textRes = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(mailbox)}/messages/${msg.UID}?view=text`);
         if (textRes.ok) {
           const textData = await textRes.json();
           if (textData.Part && textData.RawText) {
@@ -1327,12 +1348,12 @@ export class MessageReader extends LitElement {
 
       if (!textBody) {
         const temp = document.createElement('div');
-        temp.innerHTML = this.rawMessageHtml;
+        temp.innerHTML = rawMessageHtml;
         textBody = temp.innerText || '';
       }
     }
 
-    const attachments = this.attachments.map(a => ({
+    const attachments = (itemAttachments || []).map((a: any) => ({
       name: a.Filename || 'attachment',
       size: a.Size || 0,
       type: a.MIMEType || 'application/octet-stream',
@@ -1342,14 +1363,14 @@ export class MessageReader extends LitElement {
     const formatAddrs = (addrs: any[]) => addrs ? addrs.map(a => a.Name ? `${a.Name} <${a.Mailbox}@${a.Host}>` : `${a.Mailbox}@${a.Host}`) : [];
 
     this.composeStore.openComposer({
-      draftUid: this.message.UID.toString(),
-      draftMailbox: this.mailbox,
-      subject: this.message.Envelope?.Subject || '',
-      to: formatAddrs(this.message.Envelope?.To),
-      cc: formatAddrs(this.message.Envelope?.Cc),
-      bcc: formatAddrs(this.message.Envelope?.Bcc),
+      draftUid: msg.UID.toString(),
+      draftMailbox: mailbox,
+      subject: msg.Envelope?.Subject || '',
+      to: formatAddrs(msg.Envelope?.To),
+      cc: formatAddrs(msg.Envelope?.Cc),
+      bcc: formatAddrs(msg.Envelope?.Bcc),
       text: textBody,
-      html: this.rawMessageHtml,
+      html: rawMessageHtml,
       format: this.settingsStore?.getState()?.composeFormat || 'html',
       attachments: attachments
     });
@@ -1366,7 +1387,7 @@ export class MessageReader extends LitElement {
         @toggle-star=${(e: CustomEvent) => this.toggleItemStar(e.detail.item)}
         @delete-item=${(e: CustomEvent) => this.deleteItem(e.detail.item)}
         @action-for-item=${(e: CustomEvent) => this._handleActionForItem(e.detail.action, e.detail.item)}
-        @edit-draft-for-item=${(e: CustomEvent) => { this.message = e.detail.item.message; this.mailbox = e.detail.item.mailbox; this._handleEditDraft(); }}
+        @edit-draft-for-item=${(e: CustomEvent) => { this._handleEditDraft(e.detail.item); }}
       ></alps-thread-card>
     `;
   }

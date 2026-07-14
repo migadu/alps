@@ -1177,7 +1177,7 @@ export class MessageList extends LitElement {
         ${this.filterQuery ? html`
           <alps-banner>
             <span>${this.i18nStore?.t('messageList.searchResultsFor')} <strong>${this.filterQuery}</strong></span>
-            ${this.currentMailbox !== '*' && this.settingsStore?.getState()?.hasMultiSearchCapability ? html`
+            ${this.currentMailbox !== '*' && this.settingsStore?.getState()?.hasESearchCapability ? html`
               <alps-button slot="action" variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('search-submit', { detail: { value: this.filterQuery, global: true }, bubbles: true, composed: true }))}>
                 ${this.i18nStore?.t('messageList.searchAllMailboxes') || 'Search All Mailboxes'}
               </alps-button>

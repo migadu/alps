@@ -659,10 +659,10 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 // SearchMessages searches messages in a mailbox
 func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
 	if mailbox == "*" {
-		if p.HasMultiSearchCapability() {
-			return p.searchMultiMessages(query, sortOrder, page, pageSize)
+		if p.HasESearchCapability() {
+			return p.searchESearchMessages(query, sortOrder, page, pageSize)
 		}
-		// Fallback to INBOX if MULTISEARCH is not supported
+		// Fallback to INBOX if ESEARCH/MULTISEARCH is not supported
 		mailbox = "INBOX"
 	}
 
@@ -1557,38 +1557,27 @@ func (p *IMAPProvider) GetMessageThread(mailbox string, targetUID provider.Messa
 	return []provider.Message{*singleMsg}, nil
 }
 
-func (p *IMAPProvider) HasMultiSearchCapability() bool {
+func (p *IMAPProvider) HasESearchCapability() bool {
 	if p.client == nil {
 		return false
 	}
-	return p.client.Caps().Has(imap.Cap("MULTISEARCH"))
+	return p.client.Caps().Has(imap.CapMultiSearch)
 }
 
-func (p *IMAPProvider) searchMultiMessages(query string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
+func (p *IMAPProvider) searchESearchMessages(query string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
 	if p.client == nil {
 		return nil, 0, fmt.Errorf("IMAP client not initialized")
 	}
 
 	searchCriteria := prepareIMAPSearch(query)
 
-	// 1. Get all subscribed mailboxes
-	mailboxes, err := p.ListMailboxes()
-	if err != nil {
-		return nil, 0, err
-	}
-	var mboxNames []string
-	for _, mbox := range mailboxes {
-		mboxNames = append(mboxNames, mbox.Name)
-	}
+	// 1. Use ESEARCH (RFC 7377) to search all subscribed mailboxes
+	source := &imap.SearchSource{Subscribed: true}
 
-	if len(mboxNames) == 0 {
-		return nil, 0, nil
-	}
-
-	// 2. Perform UIDMultiSearch
-	results, err := p.client.UIDMultiSearch(mboxNames, searchCriteria, nil).Wait()
+	// 2. Perform ESEARCH
+	results, err := p.client.MultiSearch(source, searchCriteria, nil).Wait()
 	if err != nil {
-		return nil, 0, fmt.Errorf("UID MULTISEARCH failed: %v", err)
+		return nil, 0, fmt.Errorf("ESEARCH failed: %v", err)
 	}
 
 	var allMsgs []provider.Message

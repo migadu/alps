@@ -40,7 +40,7 @@ export interface SettingsState {
   enableThreading: boolean;
   themeIframeContent: boolean;
   hasThreadCapability?: boolean;
-  hasMultiSearchCapability?: boolean;
+  hasESearchCapability?: boolean;
   customMailboxOrder?: string[];
 }
 
@@ -275,8 +275,8 @@ export class SettingsStore extends EventTarget {
           }
         }
 
-        if (data.HasMultiSearchCapability !== undefined) {
-          updates.hasMultiSearchCapability = data.HasMultiSearchCapability;
+        if (data.HasESearchCapability !== undefined) {
+          updates.hasESearchCapability = data.HasESearchCapability;
         }
 
         if (data && data.Settings) {

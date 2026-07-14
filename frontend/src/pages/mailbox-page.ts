@@ -397,6 +397,7 @@ export class MailboxPage extends LitElement {
       let found = false;
 
       if (oldUid) {
+        // Search top-level messages first
         const idx = this.messages.findIndex(m => String(m.UID) === String(oldUid));
         if (idx !== -1) {
           const updated = [...this.messages];
@@ -428,6 +429,52 @@ export class MailboxPage extends LitElement {
               currentHash = currentHash.replace(`uid=${oldUid}`, `uid=${parsedNewUid}`);
             }
             window.history.replaceState(null, '', currentHash);
+          }
+        } else {
+          // Search in SubMessages of all messages (threads)
+          for (let i = 0; i < this.messages.length; i++) {
+            const parent = this.messages[i];
+            if (parent.SubMessages) {
+              const subIdx = parent.SubMessages.findIndex((sm: any) => String(sm.UID) === String(oldUid));
+              if (subIdx !== -1) {
+                const updatedSubMessages = [...parent.SubMessages];
+                updatedSubMessages[subIdx] = {
+                  ...updatedSubMessages[subIdx],
+                  UID: parsedNewUid,
+                  Size: size || updatedSubMessages[subIdx].Size,
+                  RFC822Size: size || updatedSubMessages[subIdx].RFC822Size,
+                  HasAttachments: hasAttachments,
+                  _isAutosaveUpdate: true,
+                  Envelope: {
+                    ...updatedSubMessages[subIdx].Envelope,
+                    Subject: subject || updatedSubMessages[subIdx].Envelope?.Subject || '(No subject)'
+                  }
+                };
+
+                const updatedMessages = [...this.messages];
+                updatedMessages[i] = {
+                  ...parent,
+                  SubMessages: updatedSubMessages
+                };
+                this.messages = updatedMessages;
+                found = true;
+
+                // Preserve active message selection if we were viewing this sub-message draft
+                if (this.selectedMessage && String(this.selectedMessage.UID) === String(oldUid)) {
+                  this.selectedMessage = updatedSubMessages[subIdx];
+                  this.targetUid = String(parsedNewUid);
+
+                  let currentHash = window.location.hash;
+                  if (currentHash.includes(`/${oldUid}`)) {
+                    currentHash = currentHash.replace(`/${oldUid}`, `/${parsedNewUid}`);
+                  } else if (currentHash.includes(`uid=${oldUid}`)) {
+                    currentHash = currentHash.replace(`uid=${oldUid}`, `uid=${parsedNewUid}`);
+                  }
+                  window.history.replaceState(null, '', currentHash);
+                }
+                break;
+              }
+            }
           }
         }
       }

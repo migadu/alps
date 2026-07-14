@@ -2327,7 +2327,7 @@ func handleSettings(ctx *alps.Context) error {
 
 	var mailboxes []MailboxInfo
 	hasThreadCapability := false
-	hasMultiSearchCapability := false
+	hasESearchCapability := false
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		mailboxes, err = listMailboxesWithProvider(p)
 		if err != nil {
@@ -2339,11 +2339,11 @@ func handleSettings(ctx *alps.Context) error {
 		if tc, ok := p.(threadCapable); ok {
 			hasThreadCapability = tc.HasThreadCapability()
 		}
-		type multisearchCapable interface {
-			HasMultiSearchCapability() bool
+		type esearchCapable interface {
+			HasESearchCapability() bool
 		}
-		if mc, ok := p.(multisearchCapable); ok {
-			hasMultiSearchCapability = mc.HasMultiSearchCapability()
+		if ec, ok := p.(esearchCapable); ok {
+			hasESearchCapability = ec.HasESearchCapability()
 		}
 		return nil
 	})
@@ -2361,12 +2361,12 @@ func handleSettings(ctx *alps.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
-		"Settings":                 settings,
-		"Mailboxes":                mailboxes,
-		"AutoLogout":               settings.AutoLogout,
-		"MaxAttachmentMiB":         maxAttachmentMiB,
-		"HasThreadCapability":      hasThreadCapability,
-		"HasMultiSearchCapability": hasMultiSearchCapability,
+		"Settings":             settings,
+		"Mailboxes":            mailboxes,
+		"AutoLogout":           settings.AutoLogout,
+		"MaxAttachmentMiB":     maxAttachmentMiB,
+		"HasThreadCapability":  hasThreadCapability,
+		"HasESearchCapability": hasESearchCapability,
 	})
 }
 
