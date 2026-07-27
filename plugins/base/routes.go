@@ -1634,29 +1634,6 @@ func handleCancelAttachment(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, nil)
 }
 
-func unwrapIMAPAddressList(addrs []imap.Address) []string {
-	l := make([]string, len(addrs))
-	for i, addr := range addrs {
-		l[i] = unwrapIMAPAddress(addr)
-	}
-	return l
-}
-
-func unwrapIMAPAddress(addr imap.Address) string {
-	address := addr.Addr()
-	if addr.Name != "" {
-		address = fmt.Sprintf("%q <%s>", addr.Name, address)
-	}
-	return address
-}
-
-func formatMsgIDList(l []string) string {
-	if len(l) == 0 {
-		return ""
-	}
-	return "<" + strings.Join(l, ">, <") + ">"
-}
-
 func formOrQueryParam(ctx *alps.Context, k string) string {
 	if v := ctx.FormValue(k); v != "" {
 		return v
@@ -1957,7 +1934,7 @@ func handleSetFlags(ctx *alps.Context) error {
 		}
 
 		uids = formParams["uids"]
-		flags, _ = formParams["flags"]
+		flags = formParams["flags"]
 		if len(flags) == 0 {
 			flagsStr := ctx.QueryParam("to")
 			if flagsStr == "" {
