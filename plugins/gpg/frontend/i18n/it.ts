@@ -39,6 +39,7 @@ export default {
     importFailed: 'Importazione fallita: {error}',
     importFailedTitle: 'Importazione fallita',
     passphraseMismatch: 'Le passphrase non corrispondono. Riprova.',
-    missingPublicKeys: 'Impossibile crittografare: Chiavi pubbliche mancanti per:\n{keys}'
+    missingPublicKeys: 'Impossibile crittografare: Chiavi pubbliche mancanti per:\n{keys}',
+    attachmentsNotEncryptable: 'Gli allegati non possono essere crittografati con PGP inline e verrebbero inviati non crittografati. Rimuovi gli allegati o disattiva la crittografia per inviarli.'
   }
 };

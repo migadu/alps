@@ -39,6 +39,7 @@ export default {
     importFailed: 'Import fehlgeschlagen: {error}',
     importFailedTitle: 'Import fehlgeschlagen',
     passphraseMismatch: 'Passphrasen stimmen nicht überein. Bitte versuchen Sie es erneut.',
-    missingPublicKeys: 'Verschlüsseln nicht möglich: Fehlende öffentliche Schlüssel für:\n{keys}'
+    missingPublicKeys: 'Verschlüsseln nicht möglich: Fehlende öffentliche Schlüssel für:\n{keys}',
+    attachmentsNotEncryptable: 'Anhänge können mit Inline-PGP nicht verschlüsselt werden und würden unverschlüsselt gesendet. Entfernen Sie die Anhänge oder deaktivieren Sie die Verschlüsselung, um sie zu senden.'
   }
 };

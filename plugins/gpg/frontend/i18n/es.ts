@@ -39,6 +39,7 @@ export default {
     importFailed: 'Importación fallida: {error}',
     importFailedTitle: 'Importación fallida',
     passphraseMismatch: 'Las contraseñas no coinciden. Por favor, inténtelo de nuevo.',
-    missingPublicKeys: 'No se puede cifrar: Faltan claves públicas para:\n{keys}'
+    missingPublicKeys: 'No se puede cifrar: Faltan claves públicas para:\n{keys}',
+    attachmentsNotEncryptable: 'Los archivos adjuntos no se pueden cifrar con PGP en línea y se enviarían sin cifrar. Elimine los archivos adjuntos o desactive el cifrado para enviarlos.'
   }
 };

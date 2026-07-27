@@ -39,6 +39,7 @@ export default {
     importFailed: 'Import failed: {error}',
     importFailedTitle: 'Import Failed',
     passphraseMismatch: 'Passphrases do not match. Please try again.',
-    missingPublicKeys: 'Cannot encrypt: Missing public keys for:\n{keys}'
+    missingPublicKeys: 'Cannot encrypt: Missing public keys for:\n{keys}',
+    attachmentsNotEncryptable: 'Attachments cannot be encrypted with inline PGP and would be sent unencrypted. Remove the attachments, or turn off encryption to send them.'
   }
 };
