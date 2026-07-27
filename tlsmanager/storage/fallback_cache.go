@@ -16,25 +16,44 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
-// certNotAfter parses a PEM cert+key bundle (as stored by autocert) and returns
-// the leaf certificate's expiry. ok is false when the data holds no parseable
-// certificate (e.g. account keys or challenge tokens).
-func certNotAfter(pemData []byte) (t time.Time, ok bool) {
+// certValidity parses a PEM cert+key bundle (as stored by autocert) and returns
+// the leaf certificate's validity window. ok is false when the data holds no
+// parseable certificate (e.g. account keys or challenge tokens).
+func certValidity(pemData []byte) (notBefore, notAfter time.Time, ok bool) {
 	rest := pemData
 	for {
 		var block *pem.Block
 		block, rest = pem.Decode(rest)
 		if block == nil {
-			return time.Time{}, false
+			return time.Time{}, time.Time{}, false
 		}
 		if block.Type == "CERTIFICATE" {
 			cert, err := x509.ParseCertificate(block.Bytes)
 			if err != nil {
-				return time.Time{}, false
+				return time.Time{}, time.Time{}, false
 			}
-			return cert.NotAfter, true
+			return cert.NotBefore, cert.NotAfter, true
 		}
 	}
+}
+
+// certNotAfter parses a PEM cert+key bundle (as stored by autocert) and returns
+// the leaf certificate's expiry. ok is false when the data holds no parseable
+// certificate (e.g. account keys or challenge tokens).
+func certNotAfter(pemData []byte) (t time.Time, ok bool) {
+	_, notAfter, ok := certValidity(pemData)
+	return notAfter, ok
+}
+
+// renewalThreshold mirrors autocert's renewal window: min(lifetime/3, 30 days)
+// before expiry (see acme/autocert/renewal.go). A cert inside this window is
+// one the leader may already have renewed, so followers re-check S3 for it.
+func renewalThreshold(notBefore, notAfter time.Time) time.Duration {
+	threshold := notAfter.Sub(notBefore) / 3
+	if maxThreshold := 30 * 24 * time.Hour; threshold > maxThreshold {
+		threshold = maxThreshold
+	}
+	return threshold
 }
 
 // isChallengeToken reports whether an autocert cache key is an ephemeral ACME
@@ -66,7 +85,34 @@ type FallbackCache struct {
 	lastS3Check      time.Time     // When did we last check S3?
 	checkInterval    time.Duration // How often to retry S3 after failure (default 30s)
 	consecutiveFails int           // Consecutive S3 failure count (protected by s3Mu)
+
+	// Freshness revalidation: when a locally cached cert is inside its renewal
+	// window, Get re-checks S3 (throttled per key) and adopts a newer cert if
+	// the cluster leader has renewed it. This is the deterministic replacement
+	// for push-invalidation: it converges within revalidateEvery of a leader
+	// renewal, weeks before the old cert expires.
+	revalMu         sync.Mutex           // Protects lastRevalidate
+	lastRevalidate  map[string]time.Time // Per-key last S3 revalidation attempt
+	revalidateEvery time.Duration        // Min interval between per-key revalidations (default 1h)
+
+	// Challenge-token read throttle: token Gets are S3-only (see Get), and an
+	// unauthenticated tls-alpn-01 ClientHello would otherwise amplify 1:1
+	// into billable S3 GETs. Results (hits AND misses) are reused for a
+	// second; real CA validation probes arrive well after the token is
+	// published, so the added staleness is negligible.
+	tokenMu      sync.Mutex
+	tokenResults map[string]tokenResult
 }
+
+// tokenResult is a briefly cached challenge-token read result.
+type tokenResult struct {
+	data []byte
+	err  error
+	at   time.Time
+}
+
+// tokenResultTTL bounds S3 reads per token key to ~1/second.
+const tokenResultTTL = time.Second
 
 // NewFallbackCache creates a new two-tier cache with S3 as primary.
 // Returns S3-only cache with a warning if fallback directory cannot be created.
@@ -81,13 +127,35 @@ func NewFallbackCache(localDir string, s3Cache *S3Cache, logger *slog.Logger) *F
 	}
 
 	return &FallbackCache{
-		primary:       s3Cache,                     // S3 is source of truth
-		fallback:      autocert.DirCache(localDir), // Local is cache for speed
-		fallbackDir:   localDir,
-		logger:        logger,
-		s3Available:   true,             // Assume S3 is available initially
-		checkInterval: 30 * time.Second, // Retry S3 after 30s on failure
+		primary:         s3Cache,                     // S3 is source of truth
+		fallback:        autocert.DirCache(localDir), // Local is cache for speed
+		fallbackDir:     localDir,
+		logger:          logger,
+		s3Available:     true,             // Assume S3 is available initially
+		checkInterval:   30 * time.Second, // Retry S3 after 30s on failure
+		lastRevalidate:  make(map[string]time.Time),
+		revalidateEvery: time.Hour,
+		tokenResults:    make(map[string]tokenResult),
 	}
+}
+
+// S3Healthy reports whether an S3 operation is currently worth attempting.
+// Callers such as the cert warmer use this to defer ACME issuance while
+// certificates cannot be replicated to the cluster. This deliberately shares
+// isS3Available's retry-window semantics: after checkInterval it reports true
+// again so callers probe S3 rather than staying suppressed forever — the
+// breaker state itself only flips back on an actual successful operation,
+// which on a quiet node might otherwise never happen.
+func (f *FallbackCache) S3Healthy() bool {
+	return f.isS3Available()
+}
+
+// SetRetryInterval adjusts how long the circuit breaker waits before letting
+// S3 operations be retried after a failure.
+func (f *FallbackCache) SetRetryInterval(d time.Duration) {
+	f.s3Mu.Lock()
+	defer f.s3Mu.Unlock()
+	f.checkInterval = d
 }
 
 // isS3Available checks if S3 should be tried based on recent failures.
@@ -151,14 +219,23 @@ func (f *FallbackCache) markS3Available() {
 // Get retrieves a certificate, trying local cache first (fast), then S3 (slow).
 // This ensures TLS handshakes are fast when certificates are already cached locally.
 // S3 operations have a 5-second timeout to prevent blocking TLS handshakes.
+//
+// Challenge tokens bypass the local tier entirely: the tls-alpn-01 key
+// ("domain+token") is FIXED per domain, so a local copy cached during one
+// validation would shadow the fresh token the leader writes at the next
+// renewal, permanently breaking cross-node ALPN validation.
 func (f *FallbackCache) Get(ctx context.Context, key string) ([]byte, error) {
+	if isChallengeToken(key) {
+		return f.getChallengeToken(ctx, key)
+	}
+
 	f.logger.Debug("FallbackCache: Get certificate (checking local cache first)", "name", key)
 
 	// STEP 1: Try local cache first (FAST - no network call)
 	data, err := f.fallback.Get(ctx, key)
 	if err == nil {
 		f.logger.Debug("FallbackCache: certificate found in local cache", "name", key)
-		return data, nil
+		return f.maybeRevalidate(ctx, key, data), nil
 	}
 
 	// Not in local cache or error reading
@@ -219,9 +296,188 @@ func (f *FallbackCache) Get(ctx context.Context, key string) ([]byte, error) {
 	return nil, autocert.ErrCacheMiss
 }
 
+// getChallengeToken reads an ACME challenge token from S3 only. Tokens are
+// written seconds before Let's Encrypt validates and deleted right after, so
+// the local tier is never authoritative for them (see Get for why caching the
+// fixed "domain+token" key locally is actively harmful). Results are reused
+// for tokenResultTTL to keep unauthenticated probes from amplifying into
+// unbounded S3 reads.
+func (f *FallbackCache) getChallengeToken(ctx context.Context, key string) ([]byte, error) {
+	f.tokenMu.Lock()
+	if r, ok := f.tokenResults[key]; ok && time.Since(r.at) < tokenResultTTL {
+		f.tokenMu.Unlock()
+		return r.data, r.err
+	}
+	// Claim the slot before releasing the lock so concurrent probes for the
+	// same key reuse this read's outcome instead of racing to S3.
+	f.tokenResults[key] = tokenResult{err: autocert.ErrCacheMiss, at: time.Now()}
+	f.tokenMu.Unlock()
+
+	data, err := f.fetchChallengeToken(ctx, key)
+
+	f.tokenMu.Lock()
+	f.tokenResults[key] = tokenResult{data: data, err: err, at: time.Now()}
+	// Drop stale entries so the map stays bounded by recently probed keys.
+	for k, r := range f.tokenResults {
+		if time.Since(r.at) >= tokenResultTTL {
+			delete(f.tokenResults, k)
+		}
+	}
+	f.tokenMu.Unlock()
+
+	return data, err
+}
+
+func (f *FallbackCache) fetchChallengeToken(ctx context.Context, key string) ([]byte, error) {
+	if !f.isS3Available() {
+		f.logger.Warn("FallbackCache: S3 unavailable (circuit breaker), cannot serve challenge token", "name", key)
+		return nil, autocert.ErrCacheMiss
+	}
+
+	s3Ctx, s3Cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer s3Cancel()
+
+	data, err := f.primary.Get(s3Ctx, key)
+	if err == nil {
+		f.markS3Available()
+		return data, nil
+	}
+	if err == autocert.ErrCacheMiss {
+		return nil, autocert.ErrCacheMiss
+	}
+	f.logger.Warn("FallbackCache: S3 Get failed for challenge token", "name", key, "error", err)
+	f.markS3Unavailable()
+	return nil, autocert.ErrCacheMiss
+}
+
+// maybeRevalidate returns the freshest available bundle for a locally cached
+// certificate. When the local cert is inside its renewal window (the only
+// period during which the cluster leader may have published a newer cert to
+// S3), it re-checks S3 at most once per revalidateEvery per key and adopts the
+// S3 copy if its expiry is later. Outside the window, or on any S3 problem, the
+// local copy is returned unchanged — this path must never fail a handshake that
+// the local cert could serve.
+func (f *FallbackCache) maybeRevalidate(ctx context.Context, key string, local []byte) []byte {
+	notBefore, notAfter, ok := certValidity(local)
+	if !ok {
+		// Not a certificate bundle (account key etc.) — nothing to revalidate.
+		return local
+	}
+	if time.Until(notAfter) >= renewalThreshold(notBefore, notAfter) {
+		return local // Not yet in the renewal window; leader cannot have renewed.
+	}
+
+	// Check the breaker BEFORE consuming the hourly revalidation slot: a
+	// throttle stamp recorded while S3 is unreachable would suppress the
+	// actual revalidation for a full revalidateEvery after S3 recovers.
+	if !f.isS3Available() {
+		return local
+	}
+
+	f.revalMu.Lock()
+	last, seen := f.lastRevalidate[key]
+	if seen && time.Since(last) < f.revalidateEvery {
+		f.revalMu.Unlock()
+		return local
+	}
+	f.lastRevalidate[key] = time.Now()
+	f.revalMu.Unlock()
+
+	s3Ctx, s3Cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer s3Cancel()
+
+	s3Data, err := f.primary.Get(s3Ctx, key)
+	if err != nil {
+		if err != autocert.ErrCacheMiss {
+			f.logger.Warn("FallbackCache: S3 revalidation failed - serving local certificate", "name", key, "error", err)
+			f.markS3Unavailable()
+		}
+		return local
+	}
+	f.markS3Available()
+
+	s3NotAfter, ok := certNotAfter(s3Data)
+	if !ok || !s3NotAfter.After(notAfter) {
+		return local // S3 copy is not newer.
+	}
+
+	// Fetch-then-swap: persist the newer cert locally BEFORE serving it, so a
+	// crash between the two cannot leave the local tier ahead of what we return.
+	f.logger.Info("FallbackCache: adopted renewed certificate from S3",
+		"name", key, "local_expiry", notAfter, "s3_expiry", s3NotAfter)
+	if putErr := f.fallback.Put(ctx, key, s3Data); putErr != nil {
+		f.logger.Warn("FallbackCache: failed to persist renewed certificate locally", "name", key, "error", putErr)
+	}
+	return s3Data
+}
+
+// RefreshFromS3 bypasses the local tier and fetches a key directly from S3,
+// persisting it locally on success. Cluster followers use this on a hard local
+// miss to pick up a certificate the leader has just published; the plain Get
+// path cannot serve this case because it prefers the local copy.
+func (f *FallbackCache) RefreshFromS3(ctx context.Context, key string) ([]byte, error) {
+	if !f.isS3Available() {
+		return nil, autocert.ErrCacheMiss
+	}
+
+	s3Ctx, s3Cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer s3Cancel()
+
+	data, err := f.primary.Get(s3Ctx, key)
+	if err != nil {
+		if err != autocert.ErrCacheMiss {
+			f.logger.Warn("FallbackCache: RefreshFromS3 failed", "name", key, "error", err)
+			f.markS3Unavailable()
+		}
+		return nil, autocert.ErrCacheMiss
+	}
+	f.markS3Available()
+
+	if !isChallengeToken(key) {
+		if putErr := f.fallback.Put(ctx, key, data); putErr != nil {
+			f.logger.Warn("FallbackCache: failed to persist refreshed certificate locally", "name", key, "error", putErr)
+		}
+	}
+	return data, nil
+}
+
 // Put stores a certificate, trying S3 first (source of truth), then falling back to local cache.
 // Matches mizu architecture: S3 is primary storage, local is fallback for resilience.
+//
+// Challenge tokens go to S3 only: they exist so that OTHER nodes can serve the
+// validation, a local-only copy is useless for that, and a stale local copy
+// under the fixed "domain+token" key breaks future validations.
+//
+// NOTE: autocert IGNORES errors from challenge-token Puts (putHTTPToken and
+// putCertToken) — a failed publish does not abort or defer the ACME flow; the
+// issuance proceeds with the token held only in the issuing node's memory, and
+// validation then succeeds only if the CA's probe happens to land on this
+// node. The error return and the loud log below are the observable signal; the
+// cert warmer additionally defers whole warm passes while S3 is unhealthy to
+// shrink this window.
 func (f *FallbackCache) Put(ctx context.Context, key string, data []byte) error {
+	if isChallengeToken(key) {
+		// A fresh token supersedes any briefly cached read result for its key
+		// (a miss cached moments before this publish must not be served to
+		// the CA's validation probe).
+		defer func() {
+			f.tokenMu.Lock()
+			delete(f.tokenResults, key)
+			f.tokenMu.Unlock()
+		}()
+
+		if !f.isS3Available() {
+			return fmt.Errorf("S3 unavailable - cannot publish challenge token %q for cluster-wide validation", key)
+		}
+		if err := f.primary.Put(ctx, key, data); err != nil {
+			f.logger.Warn("FallbackCache: failed to publish challenge token to S3 - validation may fail", "name", key, "error", err)
+			f.markS3Unavailable()
+			return err
+		}
+		f.markS3Available()
+		return nil
+	}
+
 	var s3Err error
 
 	// Try S3 first if available (source of truth)
@@ -292,6 +548,8 @@ func (f *FallbackCache) syncToS3(key string, data []byte) {
 }
 
 // Delete removes a certificate from both S3 and fallback cache.
+// For challenge tokens the local delete also covers legacy copies cached by
+// earlier versions that still wrote tokens to the local tier.
 func (f *FallbackCache) Delete(ctx context.Context, key string) error {
 	var s3Err error
 

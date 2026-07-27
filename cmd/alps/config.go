@@ -154,6 +154,8 @@ type LetsEncryptConfig struct {
 	CacheDir            string          `toml:"cache_dir"`             // Directory for local file cache
 	SyncIntervalMinutes int             `toml:"sync_interval_minutes"` // Interval for syncing local cache to S3
 	ACMEHTTPAddr        string          `toml:"acme_http_addr"`        // Address for HTTP-01 challenges (default: ":80")
+	DirectoryURL        string          `toml:"directory_url"`         // ACME directory URL; empty = Let's Encrypt production. Non-production URLs get an isolated, namespaced cert store.
+	WarmRSACerts        bool            `toml:"warm_rsa_certs"`        // Also pre-issue legacy RSA certificates (default: ECDSA only)
 	S3                  S3StorageConfig `toml:"s3"`
 }
 

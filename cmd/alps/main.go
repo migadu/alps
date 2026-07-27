@@ -147,12 +147,16 @@ func main() {
 			Logger:        slog.Default(),
 		})
 		if err != nil {
-			logger.Errorf("failed to initialize cluster (falling back to single-node mode): %v", err)
-			clusterMgr = nil
-		} else {
-			defer clusterMgr.Shutdown()
-			options.ClusterBroadcaster = clusterMgr
+			// Fatal, not a silent single-node fallback: with clustering
+			// configured, a node without a leadership signal would treat
+			// itself as a standalone instance — including issuing Let's
+			// Encrypt certificates ungated and writing to the shared cert
+			// store. A fleet-wide config error (e.g. missing secret key)
+			// would then turn EVERY node into an independent issuer.
+			logger.Fatalf("failed to initialize cluster (clustering is enabled in config, refusing to run ungated): %v", err)
 		}
+		defer clusterMgr.Shutdown()
+		options.ClusterBroadcaster = clusterMgr
 	}
 
 	s, err := alps.New(logger, &options)
@@ -194,6 +198,10 @@ func main() {
 		tlsCfg, err := buildTLSConfig(config.TLS)
 		if err != nil {
 			logger.Fatalf("Failed to build TLS config: %v", err)
+		}
+
+		if err := validateClusterTLS(config.Cluster.Enabled, tlsCfg); err != nil {
+			logger.Fatalf("%v", err)
 		}
 
 		// Create slog logger from alps logger for TLS manager
@@ -292,6 +300,18 @@ func main() {
 	s.Close()
 }
 
+// validateClusterTLS rejects configurations where clustered nodes would have
+// no shared certificate source. Clustered Let's Encrypt requires S3 storage:
+// with "file" storage each node has a private cert directory the leader never
+// writes to, so followers have no certificate source at all.
+func validateClusterTLS(clusterEnabled bool, tlsCfg *tlsmanager.Config) error {
+	if clusterEnabled && tlsCfg.Provider == tlsmanager.ProviderLetsEncrypt &&
+		tlsCfg.LetsEncrypt != nil && tlsCfg.LetsEncrypt.StorageProvider != "s3" {
+		return fmt.Errorf("TLS letsencrypt storage_provider must be \"s3\" when clustering is enabled (got %q): file storage is node-local and cannot be shared across the cluster", tlsCfg.LetsEncrypt.StorageProvider)
+	}
+	return nil
+}
+
 // buildTLSConfig converts the config file TLS config to tlsmanager.Config
 func buildTLSConfig(cfg TLSConfig) (*tlsmanager.Config, error) {
 	tlsCfg := &tlsmanager.Config{
@@ -312,14 +332,20 @@ func buildTLSConfig(cfg TLSConfig) (*tlsmanager.Config, error) {
 
 	// Build Let's Encrypt config if using that provider
 	if tlsCfg.Provider == tlsmanager.ProviderLetsEncrypt {
+		storageProvider := cfg.LetsEncrypt.StorageProvider
+		if storageProvider == "" {
+			storageProvider = "s3" // Documented default
+		}
 		tlsCfg.LetsEncrypt = &tlsmanager.LetsEncryptConfig{
 			Email:               cfg.LetsEncrypt.Email,
 			Domains:             cfg.LetsEncrypt.Domains,
 			DefaultDomain:       cfg.LetsEncrypt.DefaultDomain,
-			StorageProvider:     cfg.LetsEncrypt.StorageProvider,
+			StorageProvider:     storageProvider,
 			CacheDir:            cfg.LetsEncrypt.CacheDir,
 			SyncIntervalMinutes: cfg.LetsEncrypt.SyncIntervalMinutes,
 			ACMEHTTPAddr:        cfg.LetsEncrypt.ACMEHTTPAddr,
+			DirectoryURL:        cfg.LetsEncrypt.DirectoryURL,
+			WarmRSACerts:        cfg.LetsEncrypt.WarmRSACerts,
 			S3: tlsmanager.S3Config{
 				Endpoint:  cfg.LetsEncrypt.S3.Endpoint,
 				Bucket:    cfg.LetsEncrypt.S3.Bucket,
