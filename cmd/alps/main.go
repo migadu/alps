@@ -138,12 +138,13 @@ func main() {
 		}
 
 		clusterMgr, err = cluster.NewCluster(cluster.Config{
-			NodeName:  nodeID,
-			BindAddr:  config.Cluster.GetBindAddr(),
-			BindPort:  config.Cluster.GetBindPort(),
-			Peers:     config.Cluster.Peers,
-			SecretKey: secretKey,
-			Logger:    slog.Default(),
+			NodeName:      nodeID,
+			BindAddr:      config.Cluster.GetBindAddr(),
+			BindPort:      config.Cluster.GetBindPort(),
+			Peers:         config.Cluster.Peers,
+			SecretKey:     secretKey,
+			AllowInsecure: config.Cluster.AllowInsecure,
+			Logger:        slog.Default(),
 		})
 		if err != nil {
 			logger.Errorf("failed to initialize cluster (falling back to single-node mode): %v", err)

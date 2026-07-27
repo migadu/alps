@@ -318,7 +318,12 @@ enabled = false
 # bind = "0.0.0.0"                              # Can be "IP:port" or just "IP" (default: 0.0.0.0)
 # port = 7946                                    # Gossip port, used if not specified in bind (default: 7946)
 # secret_key = "base64-encoded-32-byte-key"    # Generate: openssl rand -base64 32
-# peers = ["node2:7946", "node3:7946"]
+# A secret_key is REQUIRED: without it, gossip is unencrypted and unauthenticated,
+# letting anyone with reach of the gossip port forge rate-limit events (lock out or
+# unlock arbitrary accounts) and hijack leader election. To run without encryption on
+# a fully trusted/private network, you must explicitly opt in:
+# allow_insecure = false                        # Set true to permit keyless (insecure) gossip
+# peers = ["node2:7946", "node3:7946"]           # List ALL internal peers so right-to-left XFF and rejoin work
 
 
 [provider]
