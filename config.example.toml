@@ -396,7 +396,11 @@ enabled = true
 # ManageSieve plugin for email filtering
 enabled = true
 # ManageSieve server URL (optional, can use auto-discovery via SRV records)
-# Supported schemes: managesieves://, managesieve+insecure://, managesieve://, sieve://
+# Supported schemes: managesieves://, managesieve://, sieve://, managesieve+insecure://
+# TLS is required: the connection must be upgraded via STARTTLS before the
+# account password is sent. If the server does not offer STARTTLS the connection
+# is refused. Use managesieve+insecure:// only for a trusted/local server without
+# TLS — it permits cleartext authentication and skips certificate verification.
 # server = "managesieves://sieve.example.com:4190"
 
 
