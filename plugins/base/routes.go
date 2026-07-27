@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-message"
@@ -1634,29 +1635,6 @@ func handleCancelAttachment(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, nil)
 }
 
-func unwrapIMAPAddressList(addrs []imap.Address) []string {
-	l := make([]string, len(addrs))
-	for i, addr := range addrs {
-		l[i] = unwrapIMAPAddress(addr)
-	}
-	return l
-}
-
-func unwrapIMAPAddress(addr imap.Address) string {
-	address := addr.Addr()
-	if addr.Name != "" {
-		address = fmt.Sprintf("%q <%s>", addr.Name, address)
-	}
-	return address
-}
-
-func formatMsgIDList(l []string) string {
-	if len(l) == 0 {
-		return ""
-	}
-	return "<" + strings.Join(l, ">, <") + ">"
-}
-
 func formOrQueryParam(ctx *alps.Context, k string) string {
 	if v := ctx.FormValue(k); v != "" {
 		return v
@@ -1957,7 +1935,7 @@ func handleSetFlags(ctx *alps.Context) error {
 		}
 
 		uids = formParams["uids"]
-		flags, _ = formParams["flags"]
+		flags = formParams["flags"]
 		if len(flags) == 0 {
 			flagsStr := ctx.QueryParam("to")
 			if flagsStr == "" {
@@ -2539,11 +2517,18 @@ func handleProxy(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusBadRequest, "invalid url")
 	}
 
-	resp, err := http.Get(u.String())
+	// Fetch through the egress-safe client: attacker-influenced URL, so block
+	// internal/metadata addresses, bound with timeouts, and cap redirects.
+	client := newSafeHTTPClient(20 * time.Second)
+	resp, err := client.Get(u.String())
 	if err != nil {
-		return err
+		return alps.NewHTTPError(http.StatusBadGateway, "failed to fetch resource")
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return alps.NewHTTPError(http.StatusBadGateway, "failed to fetch resource")
+	}
 
 	mediaType, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	if err != nil {
@@ -2570,6 +2555,14 @@ func handleProxy(ctx *alps.Context) error {
 		}
 		ctx.Response.Header().Set("Content-Length", strconv.Itoa(size))
 	}
+
+	// The upstream body is untrusted. Proxied content is only ever consumed as a
+	// subresource (img/link/font) from inside the sandboxed message iframe, so
+	// prevent it from being rendered as an active document if fetched directly:
+	// SVGs with inline scripts must not execute in this origin.
+	ctx.Response.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	ctx.Response.Header().Set("X-Content-Type-Options", "nosniff")
+	ctx.Response.Header().Set("Content-Disposition", "attachment")
 
 	lr := io.LimitedReader{R: resp.Body, N: int64(maxSize)}
 	return ctx.Stream(http.StatusOK, mediaType, &lr)

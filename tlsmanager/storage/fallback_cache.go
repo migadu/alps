@@ -3,6 +3,8 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,6 +15,33 @@ import (
 
 	"golang.org/x/crypto/acme/autocert"
 )
+
+// certNotAfter parses a PEM cert+key bundle (as stored by autocert) and returns
+// the leaf certificate's expiry. ok is false when the data holds no parseable
+// certificate (e.g. account keys or challenge tokens).
+func certNotAfter(pemData []byte) (t time.Time, ok bool) {
+	rest := pemData
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			return time.Time{}, false
+		}
+		if block.Type == "CERTIFICATE" {
+			cert, err := x509.ParseCertificate(block.Bytes)
+			if err != nil {
+				return time.Time{}, false
+			}
+			return cert.NotAfter, true
+		}
+	}
+}
+
+// isChallengeToken reports whether an autocert cache key is an ephemeral ACME
+// challenge token (http-01 or tls-alpn-01) rather than a certificate.
+func isChallengeToken(name string) bool {
+	return strings.HasSuffix(name, "+http-01") || strings.HasSuffix(name, "+token")
+}
 
 // FallbackCache implements a two-tier cache system:
 // - Primary: S3 (source of truth, shared across cluster)
@@ -180,10 +209,14 @@ func (f *FallbackCache) Get(ctx context.Context, key string) ([]byte, error) {
 		return nil, autocert.ErrCacheMiss
 	}
 
-	// S3 error (timeout or other error) - mark as unavailable
-	f.logger.Warn("FallbackCache: S3 Get failed (marking S3 unavailable)", "name", key, "error", err)
+	// S3 error (timeout or other error) - mark as unavailable and report a cache
+	// miss. autocert treats any non-ErrCacheMiss error from Get as fatal for the
+	// handshake (it does NOT fall through to certificate issuance), so returning
+	// the raw transport error would abort handshakes for uncached domains that
+	// could otherwise have triggered issuance. This matches the breaker-open path.
+	f.logger.Warn("FallbackCache: S3 Get failed (treating as cache miss)", "name", key, "error", err)
 	f.markS3Unavailable()
-	return nil, err
+	return nil, autocert.ErrCacheMiss
 }
 
 // Put stores a certificate, trying S3 first (source of truth), then falling back to local cache.
@@ -346,8 +379,25 @@ func (f *FallbackCache) SyncAllToS3(ctx context.Context) error {
 				skipped++
 				continue
 			}
-			// Different certificate - need to sync
-			f.logger.Debug("certificate differs in S3, syncing", "name", name)
+			// Contents differ. For certificate bundles, do NOT blindly overwrite
+			// S3 with the local copy: a byte difference does not tell us which is
+			// newer, and pushing a stale local cert over a freshly-renewed S3 cert
+			// (e.g. this node restarted with a pre-renewal cert on disk) resurrects
+			// the old cert cluster-wide. Compare expiry: if S3 is newer, adopt it
+			// locally (so this node stops serving the stale cert) and leave S3 alone.
+			if localExp, ok := certNotAfter(data); ok {
+				if s3Exp, ok2 := certNotAfter(s3Data); ok2 && s3Exp.After(localExp) {
+					f.logger.Info("S3 certificate is newer than local — refreshing local, not overwriting S3",
+						"name", name, "local_expiry", localExp, "s3_expiry", s3Exp)
+					if putErr := f.fallback.Put(ctx, name, s3Data); putErr != nil {
+						f.logger.Warn("failed to refresh local certificate from S3", "name", name, "error", putErr)
+					}
+					skipped++
+					continue
+				}
+			}
+			// Local is newer (or not a comparable certificate) - sync it up.
+			f.logger.Debug("certificate differs in S3, syncing local up", "name", name)
 		} else if err != autocert.ErrCacheMiss {
 			// Transient S3 error (timeout, network, etc.) - skip this cert.
 			// Do NOT re-upload: we can't confirm the cert is missing vs S3 being unreachable.
@@ -360,8 +410,9 @@ func (f *FallbackCache) SyncAllToS3(ctx context.Context) error {
 
 		// If this is an ephemeral ACME challenge token that is missing in S3, it was
 		// likely completed and deleted by the cluster leader. Instead of resurrecting
-		// it in S3, clean up our local orphaned copy.
-		if err == autocert.ErrCacheMiss && strings.HasSuffix(name, "+token") {
+		// it in S3, clean up our local orphaned copy. This must cover http-01 tokens
+		// (<token>+http-01), the challenge type used here, not just tls-alpn (+token).
+		if err == autocert.ErrCacheMiss && isChallengeToken(name) {
 			f.logger.Info("cleaning up orphaned challenge token from local cache", "name", name)
 			if delErr := f.fallback.Delete(ctx, name); delErr != nil {
 				f.logger.Warn("failed to delete orphaned token from local cache", "name", name, "error", delErr)

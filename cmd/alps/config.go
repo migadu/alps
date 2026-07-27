@@ -26,12 +26,13 @@ type Config struct {
 }
 
 type ClusterConfig struct {
-	Enabled   bool     `toml:"enabled"`
-	NodeID    string   `toml:"node_id"`
-	Bind      string   `toml:"bind"`       // e.g., "0.0.0.0" or "0.0.0.0:7946"
-	Port      int      `toml:"port"`       // default: 7946
-	SecretKey string   `toml:"secret_key"` // base64 encoded 32-byte key
-	Peers     []string `toml:"peers"`      // List of peer addresses
+	Enabled       bool     `toml:"enabled"`
+	NodeID        string   `toml:"node_id"`
+	Bind          string   `toml:"bind"`           // e.g., "0.0.0.0" or "0.0.0.0:7946"
+	Port          int      `toml:"port"`           // default: 7946
+	SecretKey     string   `toml:"secret_key"`     // base64 encoded 32-byte key
+	AllowInsecure bool     `toml:"allow_insecure"` // permit running without secret_key (unencrypted gossip)
+	Peers         []string `toml:"peers"`          // List of peer addresses
 }
 
 // GetBindAddr returns just the IP address part of Bind, or 0.0.0.0 if empty.
@@ -342,7 +343,7 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	}
 
 	// Override rate limiting config from config file
-	if c.Server.RateLimit.Enabled != nil && *c.Server.RateLimit.Enabled == false {
+	if c.Server.RateLimit.Enabled != nil && !*c.Server.RateLimit.Enabled {
 		options.RateLimitEnabled = false
 		options.RateLimitConfig = nil
 	} else {

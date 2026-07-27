@@ -236,16 +236,6 @@ func deleteMailboxWithProvider(p provider.MailProvider, name string) error {
 	return p.DeleteMailbox(name)
 }
 
-// getMessagePartWithDataWithProvider gets a message part with data using the provider
-func getMessagePartWithDataWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, partPath []int) (*IMAPMessage, []byte, []byte, error) {
-	msg, _, headerData, bodyData, err := p.GetMessagePartWithData(mailbox, uid, partPath)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	imapMsg := providerMessageToIMAP(*msg)
-	return &imapMsg, headerData, bodyData, nil
-}
-
 // setMessageFlagsWithProvider sets message flags using the provider
 func setMessageFlagsWithProvider(p provider.MailProvider, mailbox string, uids []provider.MessageID, op provider.FlagOp, flags []provider.Flag) error {
 	flagOp := provider.FlagOperation{

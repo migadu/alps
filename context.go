@@ -6,6 +6,7 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/fernet/fernet-go"
@@ -150,6 +151,26 @@ func (c *Context) IsTLS() bool {
 	return c.Request.TLS != nil
 }
 
+// isEffectiveHTTPS reports whether the browser's connection is HTTPS, accounting
+// for a trusted TLS-terminating reverse proxy that forwards plain HTTP with
+// X-Forwarded-Proto. Cookie Secure flags must reflect the browser-facing scheme,
+// not the (possibly plaintext) hop between the proxy and alps — otherwise the
+// session cookie and the login-token cookie (which carries the fernet-encrypted
+// password) would be set without Secure in the recommended proxy deployment.
+// Forwarded headers are only honored when the immediate peer is a configured
+// trusted proxy, mirroring the CSRF middleware.
+func (c *Context) isEffectiveHTTPS() bool {
+	if c.IsTLS() {
+		return true
+	}
+	if isRequestFromTrustedProxy(c) {
+		if proto := firstForwardedValue(c.Request.Header.Get("X-Forwarded-Proto")); proto != "" {
+			return strings.EqualFold(proto, "https")
+		}
+	}
+	return false
+}
+
 // Logger returns the server logger.
 func (c *Context) Logger() Logger {
 	return c.Server.logger
@@ -169,14 +190,14 @@ func (c *Context) SetSessionWithExpiry(s *Session, persistent bool) {
 		Path:     "/", // Important: cookie must be valid for all paths
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   c.IsTLS(),
+		Secure:   c.isEffectiveHTTPS(),
 	}
 	frontendCookie := http.Cookie{
 		Name:     "alps_logged_in",
 		Path:     "/",
 		HttpOnly: false,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   c.IsTLS(),
+		Secure:   c.isEffectiveHTTPS(),
 	}
 
 	if s != nil {
@@ -210,7 +231,7 @@ func (c *Context) SetLoginToken(username, password string, verified2FA bool, per
 		Name:     loginTokenCookieName,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   c.IsTLS(),
+		Secure:   c.isEffectiveHTTPS(),
 		Path:     "/",
 	}
 	frontendCookie := http.Cookie{
@@ -218,7 +239,7 @@ func (c *Context) SetLoginToken(username, password string, verified2FA bool, per
 		Path:     "/",
 		HttpOnly: false,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   c.IsTLS(),
+		Secure:   c.isEffectiveHTTPS(),
 	}
 
 	if persistent {

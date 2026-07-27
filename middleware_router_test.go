@@ -6,9 +6,44 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/stretchr/testify/assert"
 )
+
+// TestSecurityHeadersAppliedToStaticAssets verifies that baseline security
+// headers reach every response, including static files served via StaticFS.
+// StaticFS registers its handler directly on the mux, bypassing the Use/Pre
+// middleware chain, so headers set only there would never reach the SPA shell
+// or JS/CSS bundles — the document where CSP actually matters.
+func TestSecurityHeadersAppliedToStaticAssets(t *testing.T) {
+	server := &Server{logger: &NilLogger{}}
+	router := NewRouter(server)
+
+	router.GET("/api/thing", func(ctx *Context) error {
+		return ctx.String(http.StatusOK, "ok")
+	})
+	router.StaticFS("", http.FS(fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<!doctype html>")},
+		"app.js":     &fstest.MapFile{Data: []byte("console.log(1)")},
+	}))
+
+	for _, path := range []string{"/api/thing", "/", "/app.js"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code)
+			assert.NotEmpty(t, w.Header().Get("Content-Security-Policy"),
+				"CSP must be set on %q, including static assets", path)
+			assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"),
+				"nosniff must be set on %q", path)
+			assert.Equal(t, "off", w.Header().Get("X-DNS-Prefetch-Control"),
+				"DNS-prefetch header must be set on %q", path)
+		})
+	}
+}
 
 // encodeURIComponentJS mimics JavaScript's encodeURIComponent: it percent-encodes
 // every byte except the unreserved set A-Za-z0-9 and -_.!~*'(). Notably it uses

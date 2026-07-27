@@ -52,13 +52,22 @@ func (p *plugin) connectClient(ctx *alps.Context) (*MSClient, error) {
 		c.SetDebug(os.Stdout)
 	}
 
-	// Upgrade to TLS if supported
+	// Upgrade to TLS before authenticating. Credentials are sent as SASL PLAIN,
+	// so a plaintext connection would disclose the account password. Require
+	// STARTTLS unless the operator explicitly opted into insecure mode; do not
+	// silently fall back to cleartext just because the (unauthenticated,
+	// spoofable) capability list omits STARTTLS — that is a downgrade attack.
 	if _, ok := c.capabilities["STARTTLS"]; ok {
 		host, _, _ := strings.Cut(addr, ":")
-		if err := c.StartTLS(&tls.Config{ServerName: host}); err != nil {
+		if err := c.StartTLS(&tls.Config{ServerName: host, InsecureSkipVerify: p.insecure}); err != nil {
 			c.Close()
 			return nil, fmt.Errorf("STARTTLS failed: %w", err)
 		}
+	} else if !p.insecure {
+		c.Close()
+		return nil, fmt.Errorf("ManageSieve server does not offer STARTTLS; refusing to send credentials over an unencrypted connection (use the managesieve+insecure:// scheme to override)")
+	} else {
+		ctx.Server.Logger().Printf("WARNING: ManageSieve connecting without TLS (insecure scheme); credentials are sent in cleartext")
 	}
 
 	// Authenticate

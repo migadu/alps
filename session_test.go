@@ -1,6 +1,10 @@
 package alps
 
 import (
+	"context"
+	"errors"
+	"mime/multipart"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,6 +13,122 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
+
+// TestDoMailWithContext_ConnectFailureIsIdentifiable verifies that a failed
+// (re)connect surfaces an error that handleError can act on: errors.As must
+// still recover the underlying AuthError (so %w wrapping did not hide it), and
+// errors.Is must match ErrMailProviderUnavailable so the user is logged out
+// instead of looping on 500s.
+func TestDoMailWithContext_ConnectFailureIsIdentifiable(t *testing.T) {
+	authCause := errors.New("invalid credentials")
+	connectProvider := func(username, password string) (provider.MailProvider, error) {
+		return nil, AuthError{cause: authCause}
+	}
+	sm := newSessionManager(
+		connectProvider, nil, &NilLogger{},
+		0, false, nil, 30*time.Minute, time.Hour, 0, 0, 0, 0, 0,
+	)
+	s := &Session{manager: sm, closed: make(chan struct{}), username: "u", password: "p"}
+
+	err := s.DoMailWithContext(context.Background(), func(p provider.MailProvider) error { return nil })
+	assert.Error(t, err)
+
+	var authErr AuthError
+	assert.True(t, errors.As(err, &authErr), "AuthError must survive %%w wrapping so errors.As matches")
+	assert.True(t, errors.Is(err, ErrMailProviderUnavailable), "sentinel must be joined so handleError logs out")
+}
+
+// TestSession_CloseIsIdempotent verifies that Close can be called repeatedly and
+// concurrently without panicking on a double close of the signalling channel.
+func TestSession_CloseIsIdempotent(t *testing.T) {
+	sm := &SessionManager{
+		sessions:     make(map[string]*Session),
+		userSessions: make(map[string][]string),
+	}
+	s := &Session{manager: sm, closed: make(chan struct{})}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.Close()
+		}()
+	}
+	wg.Wait()
+	s.Close() // once more, still safe
+
+	select {
+	case <-s.closed:
+	default:
+		t.Fatal("closed channel should be closed after Close()")
+	}
+}
+
+// TestSession_ExpiryReleasesAttachments verifies that a session expiring
+// naturally (timer fires) releases its composer attachments and returns their
+// bytes to the global budget — previously only the logout/eviction path did
+// this, so idle-expired sessions permanently inflated the global budget.
+func TestSession_ExpiryReleasesAttachments(t *testing.T) {
+	mockProvider := &provider.MockProvider{}
+	mockStore := &provider.MockStore{}
+	mockProvider.On("Close").Return(nil)
+	mockProvider.On("GetStore").Return(mockStore, nil)
+	mockStore.On("Get", mock.Anything, mock.Anything).Return(provider.ErrNoStoreEntry)
+
+	connectProvider := func(username, password string) (provider.MailProvider, error) {
+		return mockProvider, nil
+	}
+	var loginKey fernet.Key
+	loginKey.Generate()
+
+	sm := newSessionManager(
+		connectProvider,
+		nil,
+		&NilLogger{},
+		10*time.Minute,
+		false,
+		&loginKey,
+		200*time.Millisecond, // short session duration → quick natural expiry
+		24*time.Hour,
+		100,
+		10,
+		32,
+		128,
+		1024,
+	)
+
+	session, err := sm.Put("user@example.com", "pass")
+	assert.NoError(t, err)
+
+	// Attach a composer attachment and account for it in the global budget,
+	// well before the 200ms timer can fire.
+	form := &multipart.Form{Value: map[string][]string{}, File: map[string][]*multipart.FileHeader{}}
+	session.attachmentsLocker.Lock()
+	session.attachments["att1"] = &Attachment{
+		ComposerID: "c1",
+		File:       &multipart.FileHeader{Size: 4096},
+		Form:       form,
+		CreatedAt:  time.Now(),
+	}
+	session.attachmentsLocker.Unlock()
+	sm.globalAttachmentSize.Add(4096)
+	token := session.Token()
+
+	// Wait for the session to expire naturally.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, gerr := sm.Get(token); gerr == ErrSessionExpired {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	_, err = sm.Get(token)
+	assert.Equal(t, ErrSessionExpired, err, "expired session must be removed from the manager")
+	assert.Equal(t, int64(0), sm.globalAttachmentSize.Load(),
+		"natural expiry must release the attachment's global budget")
+}
 
 func TestSessionManager_PutAndGet(t *testing.T) {
 	mockProvider := &provider.MockProvider{}

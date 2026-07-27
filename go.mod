@@ -2,6 +2,8 @@ module github.com/migadu/alps
 
 go 1.25.0
 
+toolchain go1.26.5
+
 require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/aws/aws-sdk-go-v2 v1.41.7
@@ -22,8 +24,8 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/memberlist v0.5.4
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/crypto v0.50.0
-	golang.org/x/text v0.37.0
+	golang.org/x/crypto v0.53.0
+	golang.org/x/text v0.39.0
 )
 
 require (
@@ -65,11 +67,11 @@ require (
 	github.com/teambition/rrule-go v1.8.2 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/mod v0.35.0 // indirect
-	golang.org/x/net v0.53.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
-	golang.org/x/tools v0.44.0 // indirect
+	golang.org/x/mod v0.37.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/tools v0.47.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/binaryregexp v0.2.0 // indirect
 )

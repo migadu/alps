@@ -27,7 +27,7 @@ import { composeContext, ComposeStore } from '../store/compose-store';
 import { Logger } from '../utils/logger';
 import { registry } from '../plugin-registry';
 import { messageOperations } from '../services/message-operations';
-import { applyThemeToIframe as sharedApplyTheme, setupIframeSizing as sharedSetupSizing } from '../utils/reader-utils';
+import { applyThemeToIframe as sharedApplyTheme, setupIframeSizing as sharedSetupSizing, htmlToPlainText } from '../utils/reader-utils';
 import './alps-thread-card';
 
 
@@ -98,9 +98,7 @@ export class MessageReader extends LitElement {
           Logger.error('Failed to fetch text body for quote', e);
         }
         if (!textBody && this.rawMessageHtml) {
-          const temp = document.createElement('div');
-          temp.innerHTML = this.rawMessageHtml;
-          textBody = temp.innerText || '';
+          textBody = htmlToPlainText(this.rawMessageHtml);
         }
       }
 
@@ -1213,9 +1211,7 @@ export class MessageReader extends LitElement {
           Logger.error('Failed to fetch text body for quote', e);
         }
         if (!textBody && item.rawMessageHtml) {
-          const temp = document.createElement('div');
-          temp.innerHTML = item.rawMessageHtml;
-          textBody = temp.innerText || '';
+          textBody = htmlToPlainText(item.rawMessageHtml);
         }
       }
 
@@ -1347,9 +1343,7 @@ export class MessageReader extends LitElement {
       }
 
       if (!textBody) {
-        const temp = document.createElement('div');
-        temp.innerHTML = rawMessageHtml;
-        textBody = temp.innerText || '';
+        textBody = htmlToPlainText(rawMessageHtml);
       }
     }
 

@@ -2,6 +2,7 @@ package password
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -52,6 +53,16 @@ func handlePasswordChange(ctx *alps.Context) error {
 
 	if req.OldPassword == "" || req.Password == "" {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Old and new password are required"})
+	}
+
+	// Verify the supplied current password against the authenticated session
+	// before contacting the backend. Without this, a hijacked or CSRF'd (but
+	// authenticated) session could set a new password without proving knowledge
+	// of the current one — the backend only enforces old_password if the
+	// deployment's payload_mapping happens to forward it. Constant-time compare
+	// to avoid leaking the password via response timing.
+	if subtle.ConstantTimeCompare([]byte(req.OldPassword), []byte(ctx.Session.Password())) != 1 {
+		return ctx.JSON(http.StatusForbidden, map[string]string{"error": "Current password is incorrect"})
 	}
 
 	username := ctx.Session.Username()
