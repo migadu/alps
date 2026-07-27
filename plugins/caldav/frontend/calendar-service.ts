@@ -1,3 +1,5 @@
+import { encodePathParam } from '../../../frontend/src/utils/fetch-utils';
+
 export interface CalendarData {
     name: string;
     description: string;
@@ -82,7 +84,7 @@ class CalendarService {
     }
 
     async renameCalendar(path: string, name: string): Promise<{ ok: string }> {
-        const encodedPath = encodeURIComponent(path);
+        const encodedPath = encodePathParam(path);
         const response = await fetch(`/calendar/calendars/${encodedPath}`, {
             method: 'PATCH',
             headers: {
@@ -97,7 +99,7 @@ class CalendarService {
     }
 
     async deleteCalendar(path: string): Promise<{ ok: string }> {
-        const encodedPath = encodeURIComponent(path);
+        const encodedPath = encodePathParam(path);
         const response = await fetch(`/calendar/calendars/${encodedPath}`, {
             method: 'DELETE'
         });
@@ -122,7 +124,7 @@ class CalendarService {
     }
 
     async updateEvent(path: string, event: Omit<EventData, 'uid' | 'path'>): Promise<{ ok: string, path: string }> {
-        const encodedPath = encodeURIComponent(path);
+        const encodedPath = encodePathParam(path);
         const response = await fetch(`/calendar/events/${encodedPath}/edit`, {
             method: 'POST',
             headers: {
@@ -137,7 +139,7 @@ class CalendarService {
     }
 
     async deleteEvent(path: string): Promise<{ ok: string }> {
-        const encodedPath = encodeURIComponent(path);
+        const encodedPath = encodePathParam(path);
         const response = await fetch(`/calendar/events/${encodedPath}`, {
             method: 'DELETE'
         });
