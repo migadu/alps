@@ -101,6 +101,45 @@ export function setupIframeSizing(iframe: HTMLIFrameElement, themeIframeContent:
   (iframe as any)._ro = ro;
 }
 
+// htmlToPlainText extracts readable text from an HTML string using an inert
+// DOMParser document. Unlike assigning to a live element's innerHTML, a
+// DOMParser'd document is never inserted into the page, so it does NOT trigger
+// resource loads (e.g. <img src> firing onerror/onload) — important because the
+// input is untrusted message HTML. Block elements and <br> become newlines to
+// approximate innerText for quoting replies/forwards.
+export function htmlToPlainText(html: string): string {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('script, style, noscript, head, template').forEach(el => el.remove());
+
+  const blockTags = new Set([
+    'p', 'div', 'br', 'tr', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'blockquote', 'section', 'article', 'header', 'footer', 'pre', 'table',
+    'ul', 'ol',
+  ]);
+
+  let out = '';
+  const walk = (node: Node) => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        out += child.textContent || '';
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        const el = child as Element;
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'br') {
+          out += '\n';
+          continue;
+        }
+        walk(el);
+        if (blockTags.has(tag)) out += '\n';
+      }
+    }
+  };
+  if (doc.body) walk(doc.body);
+
+  return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export function extractSnippet(content: string, mimeType: string, fallbackSnippet: string, clickToExpandText: string): string {
   if (!content) {
     return fallbackSnippet || clickToExpandText;
