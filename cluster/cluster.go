@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"sort"
 	"sync"
 	"time"
@@ -40,12 +41,13 @@ type Cluster struct {
 
 // Config holds configuration for creating a cluster.
 type Config struct {
-	NodeName  string   // This node's name (defaults to hostname, determines leader order)
-	BindAddr  string   // Address to bind to (e.g., "0.0.0.0")
-	BindPort  int      // Port to bind to for memberlist (default: 7946)
-	Peers     []string // Other cluster nodes to connect to (e.g., ["node1:7946", "node2:7946"])
-	SecretKey []byte   // 32-byte encryption key for gossip protocol (AES-256)
-	Logger    *slog.Logger
+	NodeName      string   // This node's name (defaults to hostname, determines leader order)
+	BindAddr      string   // Address to bind to (e.g., "0.0.0.0")
+	BindPort      int      // Port to bind to for memberlist (default: 7946)
+	Peers         []string // Other cluster nodes to connect to (e.g., ["node1:7946", "node2:7946"])
+	SecretKey     []byte   // 32-byte encryption key for gossip protocol (AES-256)
+	AllowInsecure bool     // Permit running without a SecretKey (unencrypted, unauthenticated gossip)
+	Logger        *slog.Logger
 }
 
 // NewCluster creates a new cluster instance with memberlist and leader election.
@@ -72,16 +74,23 @@ func NewCluster(cfg Config) (*Cluster, error) {
 		mlConfig.BindPort = cfg.BindPort
 	}
 
-	// Set advertise address - use bind address as advertise address
-	// This allows memberlist to work with public IPs or when bind is 0.0.0.0
-	if cfg.BindAddr != "" {
+	// Advertise a concrete address to peers only when we bind to a specific IP.
+	// Binding to 0.0.0.0 / :: (or empty) means "all interfaces"; advertising that
+	// literally makes peers try to reach us at an unspecified address and mark us
+	// suspect/dead, so membership never forms. Leaving AdvertiseAddr empty lets
+	// memberlist auto-detect a routable private IP. A hostname (ParseIP == nil)
+	// is likewise left to auto-detection since AdvertiseAddr expects an IP.
+	if ip := net.ParseIP(cfg.BindAddr); ip != nil && !ip.IsUnspecified() {
 		mlConfig.AdvertiseAddr = cfg.BindAddr
 	}
 	if cfg.BindPort > 0 {
 		mlConfig.AdvertisePort = cfg.BindPort
 	}
 
-	// Enable gossip encryption if secret key is provided
+	// Enable gossip encryption if secret key is provided. Both cluster consumers
+	// (rate-limit events, leader election for cert issuance) are security
+	// sensitive, so refuse to run unencrypted/unauthenticated unless the operator
+	// explicitly opted in.
 	if len(cfg.SecretKey) > 0 {
 		if len(cfg.SecretKey) != 32 {
 			return nil, fmt.Errorf("secret key must be exactly 32 bytes, got %d", len(cfg.SecretKey))
@@ -90,8 +99,10 @@ func NewCluster(cfg Config) (*Cluster, error) {
 		mlConfig.GossipVerifyIncoming = true
 		mlConfig.GossipVerifyOutgoing = true
 		cfg.Logger.Info("gossip encryption enabled (AES-256)")
+	} else if !cfg.AllowInsecure {
+		return nil, fmt.Errorf("cluster secret_key is required: without it gossip is unencrypted and unauthenticated, allowing forged rate-limit events (arbitrary account lockout / lockout clearing) and leader hijacking; set cluster.secret_key, or set cluster.allow_insecure = true to run without encryption on a fully trusted network")
 	} else {
-		cfg.Logger.Warn("gossip encryption DISABLED - cluster communication is INSECURE")
+		cfg.Logger.Warn("gossip encryption DISABLED (allow_insecure set) - cluster communication is INSECURE")
 	}
 
 	// Set event delegate for membership changes (triggers leader recalculation)
@@ -117,12 +128,15 @@ func NewCluster(cfg Config) (*Cluster, error) {
 	}
 	cluster.leaderMtx.Unlock()
 
-	// Join peers if provided
+	// Join peers if provided. This is best-effort at startup (peers may not be up
+	// yet); rejoinLoop below periodically retries so a failed initial join or a
+	// healed network partition does not leave this node as a permanent singleton
+	// (which would make it its own leader and independently request LE certs).
 	if len(cfg.Peers) > 0 {
-		_, err := ml.Join(cfg.Peers)
-		if err != nil {
+		if _, err := ml.Join(cfg.Peers); err != nil {
 			cfg.Logger.Warn("failed to join some peers (may be first node)", "error", err)
 		}
+		go cluster.rejoinLoop(cfg.Peers)
 	}
 
 	// Initialize leader election
@@ -158,6 +172,35 @@ func NewCluster(cfg Config) (*Cluster, error) {
 		"is_leader", cluster.IsLeader())
 
 	return cluster, nil
+}
+
+// rejoinLoop periodically re-attempts to join the configured peers whenever this
+// node appears isolated (only itself in the member list). memberlist never merges
+// two disjoint clusters on its own — someone must call Join again — so without
+// this a failed startup join or a partition heals into permanent split-brain,
+// with every partition electing its own leader.
+func (c *Cluster) rejoinLoop(peers []string) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Error("panic in cluster rejoin goroutine", "panic", r)
+		}
+	}()
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-ticker.C:
+			if c.ml != nil && c.ml.NumMembers() <= 1 {
+				if _, err := c.ml.Join(peers); err != nil {
+					c.logger.Debug("cluster rejoin attempt failed", "error", err)
+				} else {
+					c.logger.Info("cluster rejoined peers", "members", c.ml.NumMembers())
+				}
+			}
+		}
+	}
 }
 
 // IsLeader returns true if this node is the cluster leader.
