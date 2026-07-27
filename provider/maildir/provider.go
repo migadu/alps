@@ -42,13 +42,12 @@ func (p *Provider) ListMailboxes() ([]provider.Mailbox, error) {
 
 	// Add INBOX
 	inbox := p.getDir("INBOX")
-	inboxUnseen, _ := inbox.UnseenCount()
 	inboxMsgs, _ := getAllMessages(inbox)
 	mailboxes = append(mailboxes, provider.Mailbox{
 		Name:       "INBOX",
 		Delimiter:  '.',
 		Total:      len(inboxMsgs),
-		Unseen:     inboxUnseen,
+		Unseen:     countUnseen(inboxMsgs),
 		Subscribed: true,
 	})
 
@@ -69,14 +68,13 @@ func (p *Provider) ListMailboxes() ([]provider.Mailbox, error) {
 
 		folderName := strings.TrimPrefix(entry.Name(), ".")
 		dir := p.getDir(folderName)
-		unseen, _ := dir.UnseenCount()
 		msgs, _ := getAllMessages(dir)
 
 		mailboxes = append(mailboxes, provider.Mailbox{
 			Name:       folderName,
 			Delimiter:  '.',
 			Total:      len(msgs),
-			Unseen:     unseen,
+			Unseen:     countUnseen(msgs),
 			Subscribed: true, // Assume all are subscribed for now
 		})
 	}
@@ -86,10 +84,6 @@ func (p *Provider) ListMailboxes() ([]provider.Mailbox, error) {
 
 func (p *Provider) GetMailboxStatus(name string) (*provider.MailboxStatus, error) {
 	dir := p.getDir(name)
-	unseen, err := dir.UnseenCount()
-	if err != nil {
-		return nil, err
-	}
 	msgs, err := getAllMessages(dir)
 	if err != nil {
 		return nil, err
@@ -98,8 +92,26 @@ func (p *Provider) GetMailboxStatus(name string) (*provider.MailboxStatus, error
 	return &provider.MailboxStatus{
 		Name:        name,
 		NumMessages: uint32(len(msgs)),
-		NumUnseen:   uint32(unseen),
+		NumUnseen:   uint32(countUnseen(msgs)),
 	}, nil
+}
+
+// mailboxNameForType maps a special-use mailbox type to its canonical folder name.
+func mailboxNameForType(mboxType provider.MailboxType) (string, error) {
+	switch mboxType {
+	case provider.MailboxTypeSent:
+		return "Sent", nil
+	case provider.MailboxTypeDrafts:
+		return "Drafts", nil
+	case provider.MailboxTypeTrash:
+		return "Trash", nil
+	case provider.MailboxTypeJunk:
+		return "Junk", nil
+	case provider.MailboxTypeArchive:
+		return "Archive", nil
+	default:
+		return "", fmt.Errorf("unknown mailbox type %v", mboxType)
+	}
 }
 
 func (p *Provider) FindMailboxByType(mboxType provider.MailboxType) (*provider.Mailbox, error) {
@@ -108,20 +120,9 @@ func (p *Provider) FindMailboxByType(mboxType provider.MailboxType) (*provider.M
 		return nil, err
 	}
 
-	var targetName string
-	switch mboxType {
-	case provider.MailboxTypeSent:
-		targetName = "Sent"
-	case provider.MailboxTypeDrafts:
-		targetName = "Drafts"
-	case provider.MailboxTypeTrash:
-		targetName = "Trash"
-	case provider.MailboxTypeJunk:
-		targetName = "Junk"
-	case provider.MailboxTypeArchive:
-		targetName = "Archive"
-	default:
-		return nil, fmt.Errorf("unknown mailbox type")
+	targetName, err := mailboxNameForType(mboxType)
+	if err != nil {
+		return nil, err
 	}
 
 	for _, m := range mailboxes {
