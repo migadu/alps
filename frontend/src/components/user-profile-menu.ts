@@ -186,7 +186,10 @@ export class UserProfileMenu extends LitElement {
          if (overlayDiv) overlayDiv.style.opacity = '0';
          setTimeout(() => overlayContainer.remove(), 300);
       } else {
-         clearSessionSettings();
+         // Keep the auth detection cookies: the switch response already installed a
+         // valid session for the new account. Clearing them would make the reloaded
+         // SPA think it is logged out and redirect to the login page.
+         clearSessionSettings(false);
          sessionStorage.clear();
          window.location.reload();
       }
