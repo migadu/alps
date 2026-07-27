@@ -1,6 +1,8 @@
 package alps
 
 import (
+	"context"
+	"errors"
 	"mime/multipart"
 	"sync"
 	"testing"
@@ -11,6 +13,30 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
+
+// TestDoMailWithContext_ConnectFailureIsIdentifiable verifies that a failed
+// (re)connect surfaces an error that handleError can act on: errors.As must
+// still recover the underlying AuthError (so %w wrapping did not hide it), and
+// errors.Is must match ErrMailProviderUnavailable so the user is logged out
+// instead of looping on 500s.
+func TestDoMailWithContext_ConnectFailureIsIdentifiable(t *testing.T) {
+	authCause := errors.New("invalid credentials")
+	connectProvider := func(username, password string) (provider.MailProvider, error) {
+		return nil, AuthError{cause: authCause}
+	}
+	sm := newSessionManager(
+		connectProvider, nil, &NilLogger{},
+		0, false, nil, 30*time.Minute, time.Hour, 0, 0, 0, 0, 0,
+	)
+	s := &Session{manager: sm, closed: make(chan struct{}), username: "u", password: "p"}
+
+	err := s.DoMailWithContext(context.Background(), func(p provider.MailProvider) error { return nil })
+	assert.Error(t, err)
+
+	var authErr AuthError
+	assert.True(t, errors.As(err, &authErr), "AuthError must survive %%w wrapping so errors.As matches")
+	assert.True(t, errors.Is(err, ErrMailProviderUnavailable), "sentinel must be joined so handleError logs out")
+}
 
 // TestSession_CloseIsIdempotent verifies that Close can be called repeatedly and
 // concurrently without panicking on a double close of the signalling channel.

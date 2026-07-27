@@ -612,8 +612,8 @@ func (s *Server) handleError(err error, ctx *Context) {
 	if errors.As(err, &authErr) {
 		s.logger.Debugf("Authentication error detected, logging out user")
 		shouldLogout = true
-	} else if strings.Contains(err.Error(), "failed to re-connect to IMAP server") {
-		s.logger.Debugf("IMAP reconnection failed, logging out user")
+	} else if errors.Is(err, ErrMailProviderUnavailable) {
+		s.logger.Debugf("Mail provider connection lost, logging out user")
 		shouldLogout = true
 	}
 
