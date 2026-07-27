@@ -3,6 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import '../components/alps-icon-btn';
 import '../components/alps-loader';
 import { fetchWithTimeout } from '../utils/fetch-utils';
+import { encodeMailboxPath } from '../utils/folders';
 import { parseEmailHeaders, type ParsedHeaders } from '../utils/email-parser';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -168,7 +169,7 @@ export class OriginalMessagePage extends LitElement {
   private async fetchOriginal() {
     try {
       this.loading = true;
-      const res = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${this.uid}/raw?limit=${this.MAX_DISPLAY_SIZE}`);
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailbox)}/messages/${this.uid}/raw?limit=${this.MAX_DISPLAY_SIZE}`);
       if (!res.ok) {
         if (res.status === 401) {
           window.location.hash = '#/login';
@@ -235,7 +236,7 @@ export class OriginalMessagePage extends LitElement {
       `;
     }
 
-    const downloadUrl = `/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${this.uid}/raw`;
+    const downloadUrl = `/mailboxes/${encodeMailboxPath(this.mailbox)}/messages/${this.uid}/raw`;
 
     return html`
       <div class="container">

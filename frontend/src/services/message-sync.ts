@@ -1,5 +1,5 @@
 import { fetchWithTimeout } from '../utils/fetch-utils';
-import { FOLDER_INBOX } from '../utils/folders';
+import { FOLDER_INBOX, encodeMailboxPath } from '../utils/folders';
 import { Logger } from '../utils/logger';
 
 export interface MailboxData {
@@ -76,7 +76,7 @@ export class MessageSyncService extends EventTarget {
     const startTime = Date.now();
 
     try {
-      let url = `/mailboxes/${encodeURIComponent(mailbox)}?page=${page}`;
+      let url = `/mailboxes/${encodeMailboxPath(mailbox)}?page=${page}`;
       if (query) url += `&query=${encodeURIComponent(query)}`;
       if (checkStatus) url += `&refresh=true`;
 
@@ -126,9 +126,9 @@ export class MessageSyncService extends EventTarget {
       if (this.currentMailbox !== FOLDER_INBOX) {
         await fetchWithTimeout(`/mailboxes/${FOLDER_INBOX}/status`).catch(() => {});
       }
-      await fetchWithTimeout(`/mailboxes/${encodeURIComponent(this.currentMailbox)}/status`);
+      await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.currentMailbox)}/status`);
 
-      let url = `/mailboxes/${encodeURIComponent(this.currentMailbox)}?page=${this.currentPage}`;
+      let url = `/mailboxes/${encodeMailboxPath(this.currentMailbox)}?page=${this.currentPage}`;
       if (this.currentQuery) url += `&query=${encodeURIComponent(this.currentQuery)}`;
 
       const response = await fetchWithTimeout(url);
