@@ -63,15 +63,3 @@ In compliance with NLnet's policies and our own project standards, the use of Ge
 ## Contributing
 
 Send patches and/or GitHub Pull Requests, report bugs on the issue tracker.
-
-## Supported by
-
-<p align="left">
-  <a href="https://nlnet.nl/">
-    <img src="https://nlnet.nl/logo/banner.svg" alt="NLnet foundation logo" height="50" />
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://migadu.com/">
-    <img src="https://migadu.com/svg/logo.svg" alt="Migadu logo" height="50" />
-  </a>
-</p>
