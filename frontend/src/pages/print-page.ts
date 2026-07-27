@@ -1,5 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import type { PropertyValues } from 'lit';
+import { live } from 'lit/directives/live.js';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { encodeMailboxPath } from '../utils/folders';
 import { MessageCache } from '../utils/message-cache';
@@ -30,6 +31,7 @@ export class PrintPage extends LitElement {
   @state() private mimeType: string = 'text/plain';
   @state() private hasRemoteResources = false;
   @state() private allowRemoteResources = false;
+  private printTriggered = false;
 
   static styles = css`
     :host {
@@ -84,6 +86,12 @@ export class PrintPage extends LitElement {
     }
     .print-body {
       font-size: 14px;
+    }
+    .print-iframe {
+      width: 100%;
+      border: none;
+      overflow: visible;
+      display: block;
     }
     .loading-state, .error-state {
       display: flex;
@@ -278,6 +286,8 @@ export class PrintPage extends LitElement {
 
   private loadRemoteResources() {
     this.allowRemoteResources = true;
+    // Allow the re-rendered iframe to re-trigger printing once remote content loads.
+    this.printTriggered = false;
     if (this.rawMessageHtml) {
       this.content = sanitizeMessageHTML(this.rawMessageHtml, {
         mailbox: this.mailbox,
@@ -290,10 +300,33 @@ export class PrintPage extends LitElement {
   }
 
   updated(changedProperties: PropertyValues) {
-    if (changedProperties.has('content') && this.content) {
+    // HTML bodies are rendered inside a sandboxed iframe and print is triggered
+    // from its load handler (once it is laid out). Only auto-print non-HTML
+    // content from here.
+    if (changedProperties.has('content') && this.content &&
+        this.mimeType?.toLowerCase() !== 'text/html') {
       setTimeout(() => {
         window.print();
       }, 500);
+    }
+  }
+
+  // Renders untrusted message HTML inside a sandboxed iframe (no allow-scripts),
+  // mirroring the message reader, so active content in mail HTML cannot execute
+  // in the app origin. Sizes the frame to its content and prints once laid out.
+  private onPrintIframeLoad(e: Event) {
+    const iframe = e.target as HTMLIFrameElement;
+    try {
+      const doc = iframe.contentDocument;
+      if (doc && doc.body) {
+        iframe.style.height = `${doc.body.scrollHeight}px`;
+      }
+    } catch {
+      // cross-origin access should not happen for srcdoc; ignore defensively
+    }
+    if (!this.printTriggered) {
+      this.printTriggered = true;
+      setTimeout(() => window.print(), 300);
     }
   }
 
@@ -340,7 +373,12 @@ export class PrintPage extends LitElement {
 
     let bodyTemplate;
     if (this.mimeType?.toLowerCase() === 'text/html') {
-      bodyTemplate = html`<div .innerHTML=${this.content}></div>`;
+      bodyTemplate = html`<iframe
+        class="print-iframe"
+        sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+        .srcdoc=${live(this.content)}
+        @load=${this.onPrintIframeLoad}
+      ></iframe>`;
     } else if (this.mimeType?.toLowerCase().startsWith('multipart/')) {
       bodyTemplate = html`<div style="font-style: italic; color: #666;">${this.i18nStore?.t('messageReader.noReadableText')}</div>`;
     } else {
