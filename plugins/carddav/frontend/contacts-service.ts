@@ -1,4 +1,4 @@
-import { fetchWithTimeout } from '../../../frontend/src/utils/fetch-utils';
+import { fetchWithTimeout, encodePathParam } from '../../../frontend/src/utils/fetch-utils';
 
 export interface ContactPayload {
   name?: string;
@@ -27,7 +27,7 @@ class ContactsService {
   }
 
   async fetchContact(path: string) {
-    const res = await fetchWithTimeout(`/contacts/${encodeURIComponent(path)}`);
+    const res = await fetchWithTimeout(`/contacts/${encodePathParam(path)}`);
     if (!res.ok) {
       throw new Error(`Failed to fetch contact: ${res.statusText}`);
     }
@@ -47,7 +47,7 @@ class ContactsService {
   }
 
   async updateContact(path: string, payload: ContactPayload) {
-    const res = await fetchWithTimeout(`/contacts/${encodeURIComponent(path)}/edit`, {
+    const res = await fetchWithTimeout(`/contacts/${encodePathParam(path)}/edit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -59,7 +59,7 @@ class ContactsService {
   }
 
   async deleteContact(path: string) {
-    const res = await fetchWithTimeout(`/contacts/${encodeURIComponent(path)}`, {
+    const res = await fetchWithTimeout(`/contacts/${encodePathParam(path)}`, {
       method: 'DELETE'
     });
     if (!res.ok) {
