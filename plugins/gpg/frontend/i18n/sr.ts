@@ -39,6 +39,7 @@ export default {
     importFailed: 'Uvoz nije uspeo: {error}',
     importFailedTitle: 'Uvoz Nije Uspeo',
     passphraseMismatch: 'Lozinke se ne poklapaju. Pokušajte ponovo.',
-    missingPublicKeys: 'Nije moguće kriptovati poruku: Nedostaju javni ključevi za:\n{keys}'
+    missingPublicKeys: 'Nije moguće kriptovati poruku: Nedostaju javni ključevi za:\n{keys}',
+    attachmentsNotEncryptable: 'Prilozi se ne mogu kriptovati inline PGP-om i bili bi poslati nekriptovani. Uklonite priloge ili isključite kriptovanje da biste ih poslali.'
   }
 };

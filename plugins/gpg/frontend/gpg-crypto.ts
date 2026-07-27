@@ -40,17 +40,24 @@ function promptForPassphrase(errorMsg?: string, i18nStore?: any): Promise<string
     });
 }
 
+// The decrypted private key is held only in memory for the lifetime of the
+// page (this is an SPA, so it survives navigation but not a full reload). It is
+// deliberately NOT persisted to sessionStorage: any XSS in this origin — or a
+// malicious extension — could otherwise read the unlocked key straight out of
+// storage, nullifying the passphrase protection on the at-rest key.
 let cachedPrivateKey: any = null;
+
+// clearCachedPrivateKey forgets the in-memory decrypted key (used by "purge"
+// and lock actions). Also drops any legacy value persisted by older versions.
+export function clearCachedPrivateKey(): void {
+    cachedPrivateKey = null;
+    try {
+        sessionStorage.removeItem('gpg_private_key');
+    } catch (e) { /* ignore */ }
+}
 
 async function getPrivateKey(openpgp: any, i18nStore?: any): Promise<any> {
     if (cachedPrivateKey) return cachedPrivateKey;
-
-    // Try to get from session storage first
-    const stored = sessionStorage.getItem('gpg_private_key');
-    if (stored) {
-        cachedPrivateKey = await openpgp.readPrivateKey({ armoredKey: stored });
-        return cachedPrivateKey;
-    }
 
     // Fetch from server
     const res = await fetchWithTimeout('/gpg/keys');
@@ -73,7 +80,6 @@ async function getPrivateKey(openpgp: any, i18nStore?: any): Promise<any> {
                     passphrase: pass
                 });
                 cachedPrivateKey = decryptedKey;
-                sessionStorage.setItem('gpg_private_key', decryptedKey.armor());
                 return cachedPrivateKey;
             } catch (e: any) {
                 errorMsg = 'Incorrect passphrase: ' + e.message;
@@ -91,6 +97,16 @@ async function getPrivateKey(openpgp: any, i18nStore?: any): Promise<any> {
 export async function handlePresend(payload: any) {
     const { instance, formData, composer } = payload;
     if (!instance.encryptGpg) return formData; // Do nothing if not encrypting
+
+    // Inline PGP encrypts only the message body; attachments travel as separate
+    // form fields and would be sent (and stored in Sent) in cleartext. Refuse to
+    // send rather than silently leak them under the guise of an encrypted message.
+    const hasAttachments = !!(formData.get('attachment-uuids') || formData.get('prev_attachments'));
+    if (hasAttachments) {
+        const msg = composer?.i18nStore?.t('gpg.attachmentsNotEncryptable') as string;
+        alert(msg || 'Attachments cannot be encrypted with inline PGP and would be sent unencrypted. Remove the attachments, or turn off encryption to send them.');
+        return false; // Abort send
+    }
 
     try {
         // @ts-ignore

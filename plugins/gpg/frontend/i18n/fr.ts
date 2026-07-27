@@ -39,6 +39,7 @@ export default {
     importFailed: 'Échec de l\'importation: {error}',
     importFailedTitle: 'Échec de l\'importation',
     passphraseMismatch: 'Les mots de passe ne correspondent pas. Veuillez réessayer.',
-    missingPublicKeys: 'Impossible de chiffrer: Clés publiques manquantes pour:\n{keys}'
+    missingPublicKeys: 'Impossible de chiffrer: Clés publiques manquantes pour:\n{keys}',
+    attachmentsNotEncryptable: 'Les pièces jointes ne peuvent pas être chiffrées avec PGP en ligne et seraient envoyées non chiffrées. Supprimez les pièces jointes ou désactivez le chiffrement pour les envoyer.'
   }
 };

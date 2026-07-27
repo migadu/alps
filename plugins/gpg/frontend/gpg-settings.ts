@@ -10,6 +10,7 @@ import '../../../frontend/src/components/alps-setting-group';
 import '../../../frontend/src/components/ui-prompt';
 import '../../../frontend/src/components/ui-confirm';
 import '../../../frontend/src/components/ui-modal';
+import { clearCachedPrivateKey } from './gpg-crypto';
 
 @customElement('alps-gpg-settings')
 export class AlpsGpgSettings extends LitElement {
@@ -270,7 +271,7 @@ export class AlpsGpgSettings extends LitElement {
         this.showPurgeConfirm = false;
         await fetchWithTimeout('/gpg/keys', { method: 'DELETE' });
         this.keyring = null;
-        sessionStorage.removeItem('gpg_private_key');
+        clearCachedPrivateKey();
         this.loading = false;
     }
 
