@@ -69,21 +69,22 @@ export function setupIframeSizing(iframe: HTMLIFrameElement, themeIframeContent:
     (iframe as any)._ro.disconnect();
   }
 
-  let parentWidth = 0;
+  // The iframe stays locked to its container's width (100%). We only sync its
+  // height to the content so the whole page scrolls as one. We deliberately do
+  // NOT grow the iframe to the content's width: emails with fixed-width layouts
+  // or wide tables would otherwise blow the iframe out past the viewport,
+  // producing an enormous, broken-looking message. Content wider than the pane
+  // scrolls horizontally inside the iframe instead (see html-sanitizer body
+  // overflow-x).
   const ro = new ResizeObserver((entries) => {
     let newHeight = 0;
-    let newWidth = 0;
 
     for (const entry of entries) {
-      if (entry.target === iframe.parentElement) {
-        parentWidth = entry.contentRect.width;
-      } else if (iframe.contentDocument && entry.target === iframe.contentDocument.body) {
+      if (iframe.contentDocument && entry.target === iframe.contentDocument.body) {
         if (entry.borderBoxSize && entry.borderBoxSize.length > 0) {
           newHeight = entry.borderBoxSize[0].blockSize;
-          newWidth = entry.borderBoxSize[0].inlineSize;
         } else {
           newHeight = entry.contentRect.height + 48;
-          newWidth = entry.contentRect.width + 48;
         }
       }
     }
@@ -94,19 +95,9 @@ export function setupIframeSizing(iframe: HTMLIFrameElement, themeIframeContent:
         iframe.style.height = `${Math.ceil(newHeight)}px`;
       }
     }
-
-    if (parentWidth > 0 && newWidth > parentWidth) {
-      const currentWidth = parseFloat(iframe.style.width) || 0;
-      if (Math.abs(currentWidth - newWidth) > 2) {
-        iframe.style.width = `${Math.ceil(newWidth)}px`;
-      }
-    }
   });
 
   ro.observe(iframe.contentDocument.body);
-  if (iframe.parentElement) {
-    ro.observe(iframe.parentElement);
-  }
   (iframe as any)._ro = ro;
 }
 

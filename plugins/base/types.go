@@ -165,6 +165,17 @@ func (msg *IMAPMessage) Attachments() []IMAPPartNode {
 			return true
 		}
 
+		// message/rfc822 (and other message/* parts) are embedded/forwarded
+		// messages. They can never be rendered as an inline body — TextPart and
+		// HTMLPart only match text/* parts, and the body-structure walk does not
+		// descend into them — so always surface them as attachments, even when a
+		// client marks them "inline" or omits both a filename and a Content-ID
+		// (common when forwarding a message as an attachment).
+		if strings.EqualFold(singlePart.Type, "message") {
+			attachments = append(attachments, *newIMAPPartNode(msg, path, singlePart))
+			return true
+		}
+
 		// Skip parts that are the primary text or HTML body
 		if textPart != nil && pathsEqual(path, textPart.Path) {
 			return true
@@ -283,6 +294,26 @@ func newIMAPPartNode(msg *IMAPMessage, path []int, part imap.BodyStructure) *IMA
 	}
 	if singlePart, ok := part.(*imap.BodyStructureSinglePart); ok {
 		node.Filename = singlePart.Filename()
+		// Forwarded messages (message/rfc822) frequently carry no filename. Fall
+		// back to the embedded message's subject so the attachment shows a
+		// meaningful name instead of an "unknown attachment" placeholder.
+		if node.Filename == "" && singlePart.MessageRFC822 != nil && singlePart.MessageRFC822.Envelope != nil {
+			if subject := strings.TrimSpace(singlePart.MessageRFC822.Envelope.Subject); subject != "" {
+				clean := strings.Map(func(r rune) rune {
+					if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' || r == ' ' {
+						return r
+					}
+					return '_'
+				}, subject)
+				clean = strings.TrimSpace(clean)
+				if len(clean) > 100 {
+					clean = clean[:100]
+				}
+				if clean != "" {
+					node.Filename = clean + ".eml"
+				}
+			}
+		}
 		node.Params = singlePart.Params
 		node.Size = singlePart.Size
 		if strings.EqualFold(singlePart.Encoding, "base64") {

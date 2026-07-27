@@ -1726,7 +1726,7 @@ export class MessageReader extends LitElement {
                 .srcdoc=${live(this.content)}
                 @load=${this.onIframeLoad}
               ></iframe>
-            ` : this.mimeType?.toLowerCase().startsWith('multipart/') ? html`
+            ` : this.mimeType?.toLowerCase().startsWith('multipart/') || !this.content ? html`
               <div class="reader-empty-body">
                 ${this.i18nStore?.t('messageReader.noReadableText')}
               </div>
