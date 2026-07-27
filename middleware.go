@@ -1,6 +1,7 @@
 package alps
 
 import (
+	"net"
 	"net/http"
 	"strings"
 )
@@ -25,17 +26,37 @@ func CSRFMiddleware(next HandlerFunc) HandlerFunc {
 			return next(ctx)
 		}
 
-		// Get expected origin from request host
+		// Get expected origin from the request. When alps runs behind a trusted
+		// TLS-terminating reverse proxy, the proxy forwards over plain HTTP, so the
+		// scheme/host as seen by alps do not match what the browser sees. Honor the
+		// standard X-Forwarded-Proto / X-Forwarded-Host headers, but only when the
+		// immediate peer is a configured trusted proxy (otherwise they are spoofable).
 		scheme := "https"
 		if !ctx.IsTLS() {
 			scheme = "http"
 		}
-		expectedOrigin := scheme + "://" + ctx.Request.Host
+		host := ctx.Request.Host
+		if isRequestFromTrustedProxy(ctx) {
+			if proto := firstForwardedValue(ctx.Request.Header.Get("X-Forwarded-Proto")); proto != "" {
+				scheme = proto
+			}
+			if fwdHost := firstForwardedValue(ctx.Request.Header.Get("X-Forwarded-Host")); fwdHost != "" {
+				host = fwdHost
+			}
+		}
+		expectedOrigin := scheme + "://" + host
+
+		// Additional origins explicitly trusted via config (trusted_origins). Useful
+		// when the deployment cannot set forwarded headers or lists trusted proxies.
+		var trustedOrigins []string
+		if ctx.Server.Options != nil {
+			trustedOrigins = ctx.Server.Options.TrustedOrigins
+		}
 
 		// Check Origin header first (preferred, sent by modern browsers for POST/PUT/DELETE)
 		origin := ctx.Request.Header.Get("Origin")
 		if origin != "" {
-			if !originMatches(origin, expectedOrigin) {
+			if !originMatches(origin, expectedOrigin) && !originInList(origin, trustedOrigins) {
 				// Allow localhost origins in development (common with Vite dev server proxy)
 				if isLocalhostOrigin(origin) && isLocalhostOrigin(expectedOrigin) {
 					ctx.Server.Logger().Printf("CSRF: Allowing localhost origin mismatch in development: got %q, expected %q", origin, expectedOrigin)
@@ -50,7 +71,7 @@ func CSRFMiddleware(next HandlerFunc) HandlerFunc {
 		// Fallback to Referer header (older browsers, or when Origin is stripped)
 		referer := ctx.Request.Header.Get("Referer")
 		if referer != "" {
-			if !refererMatches(referer, expectedOrigin) {
+			if !refererMatches(referer, expectedOrigin) && !refererInList(referer, trustedOrigins) {
 				ctx.Server.Logger().Printf("CSRF: Referer mismatch: got %q, expected %q", referer, expectedOrigin)
 				return NewHTTPError(http.StatusForbidden, "Invalid referer")
 			}
@@ -87,6 +108,71 @@ func refererMatches(referer, expectedOrigin string) bool {
 	// Referer includes the full URL, so we just check if it starts with the expected origin
 	return strings.HasPrefix(strings.ToLower(referer), strings.ToLower(expectedOrigin)+"/") ||
 		strings.EqualFold(referer, expectedOrigin)
+}
+
+// originInList reports whether origin is present in the configured trusted-origins
+// allowlist. The allowlist is already normalized to lowercase without a trailing slash.
+func originInList(origin string, trustedOrigins []string) bool {
+	if len(trustedOrigins) == 0 {
+		return false
+	}
+	normalized := strings.TrimRight(strings.ToLower(origin), "/")
+	for _, trusted := range trustedOrigins {
+		if normalized == trusted {
+			return true
+		}
+	}
+	return false
+}
+
+// refererInList reports whether the referer originates from one of the configured
+// trusted origins.
+func refererInList(referer string, trustedOrigins []string) bool {
+	if len(trustedOrigins) == 0 {
+		return false
+	}
+	lower := strings.ToLower(referer)
+	for _, trusted := range trustedOrigins {
+		if lower == trusted || strings.HasPrefix(lower, trusted+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// firstForwardedValue returns the first value of a possibly comma-separated
+// forwarded header (e.g. "X-Forwarded-Proto: https, http"), trimmed of whitespace.
+func firstForwardedValue(header string) string {
+	if header == "" {
+		return ""
+	}
+	if i := strings.IndexByte(header, ','); i >= 0 {
+		header = header[:i]
+	}
+	return strings.TrimSpace(header)
+}
+
+// isRequestFromTrustedProxy reports whether the immediate peer (TCP RemoteAddr)
+// is one of the configured trusted proxies. Only then may forwarded headers be
+// trusted, since any client can otherwise set them.
+func isRequestFromTrustedProxy(ctx *Context) bool {
+	if ctx.Server == nil || ctx.Server.Options == nil || len(ctx.Server.Options.TrustedProxies) == 0 {
+		return false
+	}
+	remoteIPStr, _, err := net.SplitHostPort(ctx.Request.RemoteAddr)
+	if err != nil {
+		remoteIPStr = ctx.Request.RemoteAddr
+	}
+	remoteIP := net.ParseIP(remoteIPStr)
+	if remoteIP == nil {
+		return false
+	}
+	for _, cidr := range ctx.Server.Options.TrustedProxies {
+		if cidr.Contains(remoteIP) {
+			return true
+		}
+	}
+	return false
 }
 
 // Router wraps http.ServeMux and provides middleware support.
