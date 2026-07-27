@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -399,6 +400,8 @@ type Options struct {
 	MaxGlobalAttachmentMiB  int                     // Max global attachment size in MiB
 	RateLimitConfig         *RateLimitConfig        // Rate limiting config, nil = use defaults
 	RateLimitEnabled        bool                    // If false, rate limiting is disabled
+	TrustedProxies          []*net.IPNet            // Proxy IPs/CIDRs whose X-Forwarded-Proto/Host headers are trusted (e.g. for CSRF origin computation behind a TLS-terminating reverse proxy)
+	TrustedOrigins          []string                // Additional origins accepted by the CSRF check (e.g. "https://webmail.example.com"), normalized to lowercase without a trailing slash
 	ReadTimeout             time.Duration           // HTTP read timeout, 0 means use default (10 seconds)
 	WriteTimeout            time.Duration           // HTTP write timeout, 0 means use default (30 seconds)
 	IdleTimeout             time.Duration           // HTTP idle timeout, 0 means use default (120 seconds)

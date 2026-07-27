@@ -77,7 +77,8 @@ type ServerConfig struct {
 	Debug                   bool            `toml:"debug"`
 	LoginKey                string          `toml:"login_key"`
 	TempDir                 string          `toml:"temp_dir"`
-	TrustedProxies          []string        `toml:"trusted_proxies"`            // Trust X-Forwarded-For headers from these proxy IPs/CIDRs
+	TrustedProxies          []string        `toml:"trusted_proxies"`            // Trust X-Forwarded-For/Proto/Host headers from these proxy IPs/CIDRs
+	TrustedOrigins          []string        `toml:"trusted_origins"`            // Extra origins accepted by the CSRF check, e.g. "https://webmail.example.com" (for TLS-terminating reverse proxies)
 	SessionMinutes          int             `toml:"session_minutes"`            // Session timeout in minutes (default: 30)
 	MaxSessionMinutes       int             `toml:"max_session_minutes"`        // Maximum session duration users can set (0 = no limit)
 	MaxSessions             int             `toml:"max_sessions"`               // Maximum total concurrent sessions (0 = unlimited, default: 10000)
@@ -273,6 +274,20 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	rlConfig.TrustedProxies = trustedProxies
 
 	options.RateLimitConfig = &rlConfig
+
+	// Trusted proxies are also used by the CSRF middleware to decide whether to
+	// honor X-Forwarded-Proto / X-Forwarded-Host when computing the expected origin.
+	options.TrustedProxies = trustedProxies
+
+	// Normalize the explicit CSRF trusted origins allowlist (lowercase, no trailing slash).
+	for _, origin := range c.Server.TrustedOrigins {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			continue
+		}
+		origin = strings.TrimRight(strings.ToLower(origin), "/")
+		options.TrustedOrigins = append(options.TrustedOrigins, origin)
+	}
 
 	// Set cache config (default to enabled with 10 minute TTL)
 	options.CacheEnabled = true

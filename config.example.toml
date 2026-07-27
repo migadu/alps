@@ -7,10 +7,20 @@ addr = ":1323"
 # Enable debug logging
 debug = true
 
-# Trust X-Forwarded-For and X-Real-IP headers from specific proxy IPs or CIDR blocks
+# Trust X-Forwarded-For, X-Real-IP, X-Forwarded-Proto and X-Forwarded-Host headers
+# from specific proxy IPs or CIDR blocks.
 # ONLY enable this if ALPS is deployed behind a trusted reverse proxy (like Nginx or HAProxy)
 # If enabled with untrusted IPs, attackers can spoof their IP address to bypass rate limits.
+# When the immediate peer is listed here, ALPS also uses X-Forwarded-Proto/X-Forwarded-Host
+# to compute the expected Origin for the CSRF check. This is the recommended way to run ALPS
+# behind a TLS-terminating reverse proxy (proxy speaks HTTPS to the browser, HTTP to ALPS).
 # trusted_proxies = ["127.0.0.1/32", "::1/128", "10.0.0.0/8"]
+
+# Additional origins accepted by the CSRF check, in addition to the one ALPS computes
+# from the request (or from the forwarded headers above). Use this when your proxy does
+# not (or cannot) set X-Forwarded-Proto/Host, or as an explicit override. The browser's
+# Origin header must match one of these exactly (scheme + host [+ port]).
+# trusted_origins = ["https://webmail.example.com"]
 
 # Fernet key for login persistence (optional)
 # Encrypts user credentials in browser cookies to enable "remember me" functionality
