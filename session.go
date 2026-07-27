@@ -91,6 +91,9 @@ type Session struct {
 	memoryData     map[string]interface{}
 
 	lastAccess atomic.Int64 // stores unix nano for LRU eviction
+
+	closeOnce    sync.Once // guards close(s.closed)
+	teardownOnce sync.Once // guards releasing attachments/provider/cache
 }
 
 type Attachment struct {
@@ -292,23 +295,47 @@ func (s *Session) SetHTTPBasicAuth(req *http.Request) {
 	req.SetBasicAuth(s.username, s.password)
 }
 
-// Close destroys the session. This can be used to log the user out.
+// teardown releases every resource the session owns: composer attachments (and
+// their global-budget accounting), the mail provider connection, and the cache.
+// It is idempotent and safe to call from multiple goroutines — only the first
+// call does the work — so every exit path (logout, eviction, natural expiry)
+// can call it without risking a double free or a leaked resource. Previously
+// each exit path cleaned up a different subset, which is how expiring sessions
+// leaked their attachments and permanently inflated the global budget.
+func (s *Session) teardown() {
+	s.teardownOnce.Do(func() {
+		s.attachmentsLocker.Lock()
+		for _, f := range s.attachments {
+			f.Form.RemoveAll()
+			s.manager.globalAttachmentSize.Add(-f.File.Size)
+		}
+		s.attachments = make(map[string]*Attachment)
+		s.attachmentsLocker.Unlock()
+
+		s.providerLocker.Lock()
+		if s.provider != nil {
+			s.provider.Close()
+			s.provider = nil
+		}
+		s.providerLocker.Unlock()
+
+		if s.cache != nil {
+			s.cache.Close()
+		}
+	})
+}
+
+// Close destroys the session. This can be used to log the user out. It signals
+// the timeout goroutine to exit, which then runs teardown() to release the
+// session's resources. Teardown is deliberately left to the goroutine (which
+// runs it before taking sm.locker) so that closing the provider — potentially
+// blocking on an in-flight mail operation — never happens while a caller holds
+// sm.locker (e.g. eviction), which would stall every other session. Close is
+// safe to call more than once and from multiple goroutines concurrently.
 func (s *Session) Close() {
-	s.attachmentsLocker.Lock()
-	defer s.attachmentsLocker.Unlock()
-
-	for _, f := range s.attachments {
-		f.Form.RemoveAll()
-		s.manager.globalAttachmentSize.Add(-f.File.Size)
-	}
-	s.attachments = make(map[string]*Attachment)
-
-	select {
-	case <-s.closed:
-		// This space is intentionally left blank
-	default:
+	s.closeOnce.Do(func() {
 		close(s.closed)
-	}
+	})
 }
 
 // Puts an attachment and returns a generated UUID
@@ -519,7 +546,18 @@ func newSessionManager(connectProviderFunc provider.AuthenticatedProviderFactory
 }
 
 func (sm *SessionManager) Close() {
+	// Snapshot the sessions under the lock, then close them without holding it.
+	// Each Close() wakes the session's timeout goroutine, which removes itself
+	// from sm.sessions under the same lock; iterating the live map here would be
+	// a concurrent map iteration/write and crash the process during shutdown.
+	sm.locker.Lock()
+	sessions := make([]*Session, 0, len(sm.sessions))
 	for _, s := range sm.sessions {
+		sessions = append(sessions, s)
+	}
+	sm.locker.Unlock()
+
+	for _, s := range sessions {
 		s.Close()
 	}
 }
@@ -804,20 +842,21 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 			}
 		}()
 		timer := time.NewTimer(s.duration)
+		defer timer.Stop()
 
 		alive := true
 		for alive {
 			select {
 			case <-s.pings:
-				if !timer.Stop() {
-					<-timer.C
-				}
+				// Go 1.23+ timer channels are unbuffered and Stop guarantees no
+				// stale value is delivered afterwards, so the old drain pattern
+				// (`if !timer.Stop() { <-timer.C }`) is unnecessary and can now
+				// deadlock if the timer fires as a ping arrives.
+				timer.Stop()
 				timer.Reset(s.duration)
 			case newDuration := <-s.durationUpdate:
 				s.duration = newDuration
-				if !timer.Stop() {
-					<-timer.C
-				}
+				timer.Stop()
 				timer.Reset(s.duration)
 			case <-timer.C:
 				alive = false
@@ -826,18 +865,9 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 			}
 		}
 
-		timer.Stop()
-
-		s.providerLocker.Lock()
-		if s.provider != nil {
-			s.provider.Close()
-		}
-		s.providerLocker.Unlock()
-
-		// Unregister cache from global cleanup manager
-		if s.cache != nil {
-			s.cache.Close()
-		}
+		// Release all resources (attachments — including natural expiry, which
+		// previously leaked them — the provider connection, and the cache).
+		s.teardown()
 
 		sm.locker.Lock()
 		sm.removeSession(token)
