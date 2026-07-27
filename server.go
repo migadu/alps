@@ -449,17 +449,9 @@ type PluginConfig struct {
 // setupMiddleware registers middleware on the router.
 // This is called both during initial setup and during reload.
 func (s *Server) setupMiddleware(router *Router) {
-	// Security headers middleware
-	router.Use(func(next HandlerFunc) HandlerFunc {
-		return func(ctx *Context) error {
-			// `style-src 'unsafe-inline'` is required for e-mails with embedded stylesheets
-			// `img-src data:` and `font-src data:` are required for placeholder resources in sandboxed iframes
-			ctx.Response.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'")
-			// DNS prefetching has privacy implications
-			ctx.Response.Header().Set("X-DNS-Prefetch-Control", "off")
-			return next(ctx)
-		}
-	})
+	// Baseline security headers (CSP, nosniff, DNS-prefetch) are applied to every
+	// response in Router.ServeHTTP so they also cover static assets (the SPA shell
+	// and JS/CSS bundles) served directly on the mux, which bypass this chain.
 
 	// CSRF protection middleware (validates Origin/Referer for state-changing requests)
 	router.Use(CSRFMiddleware)
