@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import type { PropertyValues } from 'lit';
 import { fetchWithTimeout } from '../utils/fetch-utils';
+import { encodeMailboxPath } from '../utils/folders';
 import { MessageCache } from '../utils/message-cache';
 import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
@@ -168,7 +169,7 @@ export class PrintPage extends LitElement {
         return;
       }
 
-      const res = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${this.uid}`);
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailbox)}/messages/${this.uid}`);
       if (!res.ok) {
         if (res.status === 401) {
           window.location.hash = '#/login';
@@ -256,7 +257,7 @@ export class PrintPage extends LitElement {
       return;
     }
 
-    const rawRes = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${this.uid}/raw?part=${partPath}`);
+    const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailbox)}/messages/${this.uid}/raw?part=${partPath}`);
     if (!rawRes.ok) throw new Error('Failed to fetch message body');
 
     if (this.mimeType.toLowerCase() === 'text/html') {

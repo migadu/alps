@@ -3,7 +3,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
-import { FOLDER_INBOX } from '../utils/folders';
+import { FOLDER_INBOX, encodeMailboxPath } from '../utils/folders';
 import './alps-attachment-pill';
 
 @customElement('alps-attachment-list')
@@ -53,7 +53,7 @@ export class AttachmentList extends LitElement {
 
     this.attachments.forEach((att, index) => {
       const partPathStr = Array.isArray(att.Path) ? att.Path.join('.') : att.Path;
-      const downloadUrl = `/mailboxes/${encodeURIComponent(mbox)}/messages/${this.messageUid}/raw?part=${partPathStr}`;
+      const downloadUrl = `/mailboxes/${encodeMailboxPath(mbox)}/messages/${this.messageUid}/raw?part=${partPathStr}`;
 
       setTimeout(() => {
         const a = document.createElement('a');
@@ -252,7 +252,7 @@ export class AttachmentList extends LitElement {
             mbox = decodeURIComponent(hashMatch[1]);
           }
         }
-        downloadUrl = `/mailboxes/${encodeURIComponent(mbox)}/messages/${this.messageUid}/raw?part=${partPathStr}`;
+        downloadUrl = `/mailboxes/${encodeMailboxPath(mbox)}/messages/${this.messageUid}/raw?part=${partPathStr}`;
       }
 
       return html`

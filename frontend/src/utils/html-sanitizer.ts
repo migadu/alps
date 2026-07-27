@@ -1,4 +1,5 @@
 import * as cssParser from 'css';
+import { encodeMailboxPath } from './folders';
 
 export interface SanitizeOptions {
   mailbox: string;
@@ -156,7 +157,7 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
 
   const style = doc.createElement('style');
   style.textContent = `
-    body { margin: 0; padding: 24px; box-sizing: border-box; font: 14px -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif; overflow-x: hidden; word-wrap: break-word; background-color: #ffffff; color: #000000; }
+    body { margin: 0; padding: 24px; box-sizing: border-box; font: 14px -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif; overflow-x: auto; word-wrap: break-word; background-color: #ffffff; color: #000000; }
     @media (max-width: 768px) { body { padding: 16px !important; } }
     html:not(.x), body:not(.x) { height: auto !important; }
     p:first-child { margin-top: 0; }
@@ -178,7 +179,7 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
       if (options.messageStructure) {
         const partPath = findPartPathByCID(options.messageStructure, cid);
         if (partPath) {
-          img.src = `/mailboxes/${encodeURIComponent(options.mailbox)}/messages/${options.messageUid}/raw?part=${partPath}`;
+          img.src = `/mailboxes/${encodeMailboxPath(options.mailbox)}/messages/${options.messageUid}/raw?part=${partPath}`;
         }
       }
     } else if (src.toLowerCase().startsWith('http://') || src.toLowerCase().startsWith('https://')) {

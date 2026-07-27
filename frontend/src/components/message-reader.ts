@@ -2,7 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { live } from 'lit/directives/live.js';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName, getRemovableTags } from '../utils/flags';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_TRASH, FOLDER_JUNK, FOLDER_SPAM, FOLDER_ARCHIVE, FOLDER_ARCHIVES } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
@@ -87,7 +87,7 @@ export class MessageReader extends LitElement {
         textBody = this.content;
       } else {
         try {
-          const textRes = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(this.mailbox)}/messages/${this.message.UID}?view=text`);
+          const textRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailbox)}/messages/${this.message.UID}?view=text`);
           if (textRes.ok) {
             const textData = await textRes.json();
             if (textData.Part && textData.RawText) {
@@ -947,7 +947,7 @@ export class MessageReader extends LitElement {
         return;
       }
 
-      const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(mailbox)}/messages/${msg.UID}?view=${preferredView}`);
+      const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}?view=${preferredView}`);
       if (metadataRes.status === 401) {
         window.location.hash = '/login';
         return;
@@ -969,7 +969,7 @@ export class MessageReader extends LitElement {
       if (part) {
         item.mimeType = part.MIMEType || part.MimeType || 'text/plain';
         const partPathStr = Array.isArray(part.Path) ? part.Path.join('.') : part.Path;
-        const rawRes = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`);
+        const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`);
         if (rawRes.status === 401) {
           window.location.hash = '/login';
           return;
@@ -1202,7 +1202,7 @@ export class MessageReader extends LitElement {
         textBody = item.content;
       } else {
         try {
-          const textRes = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(item.mailbox)}/messages/${item.message.UID}?view=text`);
+          const textRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(item.mailbox)}/messages/${item.message.UID}?view=text`);
           if (textRes.ok) {
             const textData = await textRes.json();
             if (textData.Part && textData.RawText) {
@@ -1335,7 +1335,7 @@ export class MessageReader extends LitElement {
       textBody = content;
     } else {
       try {
-        const textRes = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(mailbox)}/messages/${msg.UID}?view=text`);
+        const textRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}?view=text`);
         if (textRes.ok) {
           const textData = await textRes.json();
           if (textData.Part && textData.RawText) {
@@ -1426,11 +1426,15 @@ export class MessageReader extends LitElement {
     const domain = sender.Host ? sender.Host.toLowerCase() : '';
     const bimiUrl = getBimiAvatarUrl(domain);
 
+    // Classify the current mailbox by IMAP special-use attribute (with a name
+    // fallback) so Gmail's "[Gmail]/Trash", "[Gmail]/Spam", etc. show the correct
+    // toolbar actions. See issue #4. (isSent keeps its own richer name matching.)
     const mbxLower = (this.mailbox || '').toLowerCase();
-    const isArchive = mbxLower === FOLDER_ARCHIVE.toLowerCase() || mbxLower === FOLDER_ARCHIVES.toLowerCase();
-    const isJunk = mbxLower === FOLDER_SPAM.toLowerCase() || mbxLower === FOLDER_JUNK.toLowerCase();
-    const isTrash = mbxLower === FOLDER_TRASH.toLowerCase();
-    const isDrafts = mbxLower === FOLDER_DRAFTS.toLowerCase();
+    const currentRole = mailboxRoleByName(this.mailbox || '', this.mailboxes);
+    const isArchive = currentRole === 'archive';
+    const isJunk = currentRole === 'junk';
+    const isTrash = currentRole === 'trash';
+    const isDrafts = currentRole === 'drafts';
     const isSent = mbxLower === this.getSentMailboxName().toLowerCase();
 
     return html`
@@ -1539,7 +1543,7 @@ export class MessageReader extends LitElement {
             </button>
             ` : ''}
             <button class="dropdown-item" @click=${() => this._handleAction('delete')}>
-              ${renderIcon('trash')} <span class="item-text">${this.message?.Flags?.includes(FLAG_DRAFT) || this.mailbox === FOLDER_DRAFTS ? (this.i18nStore?.t('messageReader.discardDraft')) : (this.i18nStore?.t('messageReader.delete'))}</span>
+              ${renderIcon('trash')} <span class="item-text">${this.message?.Flags?.includes(FLAG_DRAFT) || this.mailbox === FOLDER_DRAFTS || mailboxRoleByName(this.mailbox || '', this.mailboxes) === 'drafts' ? (this.i18nStore?.t('messageReader.discardDraft')) : (this.i18nStore?.t('messageReader.delete'))}</span>
             </button>
             <alps-folder-selector-popup
               class="folder-selector"
@@ -1726,7 +1730,7 @@ export class MessageReader extends LitElement {
                 .srcdoc=${live(this.content)}
                 @load=${this.onIframeLoad}
               ></iframe>
-            ` : this.mimeType?.toLowerCase().startsWith('multipart/') ? html`
+            ` : this.mimeType?.toLowerCase().startsWith('multipart/') || !this.content ? html`
               <div class="reader-empty-body">
                 ${this.i18nStore?.t('messageReader.noReadableText')}
               </div>

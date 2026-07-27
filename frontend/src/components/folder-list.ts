@@ -6,7 +6,7 @@ import { composeContext } from '../store/compose-store';
 import type { ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { mailboxOperations } from '../services/mailbox-operations';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRole, findMailboxNameByRole } from '../utils/folders';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import './alps-icon-btn';
 import './ui-prompt';
@@ -416,15 +416,9 @@ export class FolderList extends LitElement {
       const parts = this.mailboxToDelete.split(delimiter);
       const leafName = parts[parts.length - 1];
 
-      // Find the actual case-sensitive name of the Trash folder if it exists in mailboxes
-      let trashName = 'Trash';
-      const rootTrash = this.mailboxes.find(m => {
-        const name = m.Name || m.Mailbox || '';
-        return name.toLowerCase() === 'trash';
-      });
-      if (rootTrash) {
-        trashName = rootTrash.Name || rootTrash.Mailbox || 'Trash';
-      }
+      // Resolve the actual Trash mailbox by IMAP special-use attribute (e.g.
+      // Gmail's "[Gmail]/Trash"), falling back to a folder named "Trash". See issue #4.
+      const trashName = findMailboxNameByRole('trash', this.mailboxes, 'Trash');
 
       // Resolve name collisions by appending a suffix if needed
       let candidateName = `${trashName}${delimiter}${leafName}`;
@@ -849,7 +843,9 @@ export class FolderList extends LitElement {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
               this.mailboxToDelete = node.fullName;
-              if (node.fullName.toLowerCase().startsWith('trash')) {
+              // The Trash folder itself (by special-use attribute or name) is deleted
+              // outright; other folders offer move-to-trash. See issue #4.
+              if (mailboxRole(node.mb) === 'trash' || node.fullName.toLowerCase().startsWith('trash')) {
                 this.showDeleteConfirm = true;
               } else {
                 this.showMoveToTrashConfirm = true;

@@ -28,6 +28,9 @@ export class MessageList extends LitElement {
 
   @property({ type: Array }) messages: any[] = [];
   @property({ type: String }) currentMailbox = '';
+  // Special-use role of the current mailbox ('drafts'|'sent'|...), resolved by the
+  // parent from IMAP attributes so Gmail's "[Gmail]/Sent Mail" etc. are recognized.
+  @property({ type: String }) currentMailboxRole = '';
   @property({ type: Boolean }) loading = false;
   @property({ type: Object }) selectedMessage: any = null;
   @property({ type: String }) layoutMode = 'vertical';
@@ -909,7 +912,8 @@ export class MessageList extends LitElement {
   }
 
   private renderMessageItem(msg: any, isSubMessage: boolean = false, isFirstSub: boolean = false, isLastSub: boolean = false) {
-    const isDraftOrSent = this.currentMailbox === FOLDER_DRAFTS || this.currentMailbox === FOLDER_SENT;
+    const isDraftOrSent = this.currentMailboxRole === 'drafts' || this.currentMailboxRole === 'sent'
+      || this.currentMailbox === FOLDER_DRAFTS || this.currentMailbox === FOLDER_SENT;
 
     let rawContacts: any[] = [];
     if (isDraftOrSent) {

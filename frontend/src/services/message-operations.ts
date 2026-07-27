@@ -1,6 +1,7 @@
 import { messageSync } from './message-sync';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { FLAG_FLAGGED, FLAG_SEEN } from '../utils/flags';
+import { encodeMailboxPath } from '../utils/folders';
 import { Logger } from '../utils/logger';
 
 export class MessageOperationsService extends EventTarget {
@@ -10,7 +11,7 @@ export class MessageOperationsService extends EventTarget {
    */
   async setFlag(mailbox: string, uids: string[], flags: string[], action: 'add' | 'remove' | 'set'): Promise<boolean> {
     try {
-      const res = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(mailbox)}/messages/flag`, {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/flag`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -101,7 +102,7 @@ export class MessageOperationsService extends EventTarget {
   async deleteMessages(mailbox: string, uids: string[]): Promise<boolean> {
     if (!uids || uids.length === 0) return false;
     try {
-      const res = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(mailbox)}/messages`, {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uids })
@@ -128,7 +129,7 @@ export class MessageOperationsService extends EventTarget {
   async moveMessages(mailbox: string, uids: string[], to: string): Promise<{ success: boolean, uidMapping?: Record<string, string> }> {
     if (!uids || uids.length === 0) return { success: false };
     try {
-      const res = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(mailbox)}/messages/move`, {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/move`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uids, to })
@@ -156,7 +157,7 @@ export class MessageOperationsService extends EventTarget {
   async copyMessages(mailbox: string, uids: string[], to: string): Promise<{ success: boolean }> {
     if (!uids || uids.length === 0) return { success: false };
     try {
-      const res = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(mailbox)}/messages/copy`, {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/copy`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uids, to })

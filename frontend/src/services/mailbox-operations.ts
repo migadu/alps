@@ -1,5 +1,6 @@
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { messageSync } from './message-sync';
+import { encodeMailboxPath } from '../utils/folders';
 import { Logger } from '../utils/logger';
 
 export class MailboxOperationsService extends EventTarget {
@@ -35,7 +36,7 @@ export class MailboxOperationsService extends EventTarget {
 
   async renameMailbox(oldName: string, newName: string): Promise<boolean> {
     try {
-      const res = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(oldName)}/rename`, {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(oldName)}/rename`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ new_name: newName })
@@ -60,7 +61,7 @@ export class MailboxOperationsService extends EventTarget {
 
   async deleteMailbox(name: string): Promise<boolean> {
     try {
-      const res = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(name)}`, {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(name)}`, {
         method: 'DELETE'
       });
       
@@ -83,7 +84,7 @@ export class MailboxOperationsService extends EventTarget {
 
   async emptyMailbox(name: string): Promise<boolean> {
     try {
-      const res = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(name)}/empty`, {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(name)}/empty`, {
         method: 'POST'
       });
       
@@ -106,7 +107,7 @@ export class MailboxOperationsService extends EventTarget {
 
   async subscribeMailbox(name: string): Promise<boolean> {
     try {
-      const res = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(name)}/subscribe`, {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(name)}/subscribe`, {
         method: 'PUT'
       });
       
@@ -129,7 +130,7 @@ export class MailboxOperationsService extends EventTarget {
 
   async unsubscribeMailbox(name: string): Promise<boolean> {
     try {
-      const res = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(name)}/unsubscribe`, {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(name)}/unsubscribe`, {
         method: 'PUT'
       });
       

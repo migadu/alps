@@ -14,7 +14,7 @@ import { messageOperations } from '../services/message-operations';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
-import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_SPAM, FOLDER_TRASH, FOLDER_DRAFTS } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxPath, mailboxRoleByName, findMailboxNameByRole } from '../utils/folders';
 import type { LayoutMode, DensityMode } from '../store/settings-store';
 import '../components/alps-initial-loader';
 import { Logger } from '../utils/logger';
@@ -813,7 +813,7 @@ export class MailboxPage extends LitElement {
     // fetch its metadata directly from the backend so the reader can still display it.
     if (!msg && this.messages.length > 0) {
       try {
-        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeURIComponent(this.currentMailbox)}/messages/${currentTargetUid}`);
+        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.currentMailbox)}/messages/${currentTargetUid}`);
         if (metadataRes.ok) {
           const data = await metadataRes.json();
           if (data.Message) {
@@ -986,13 +986,18 @@ export class MailboxPage extends LitElement {
           }
         }
       } else if (action === 'delete' || action === 'archive' || action === 'reportSpam' || action === 'notSpam') {
-        const isTrash = this.currentMailbox.toLowerCase() === FOLDER_TRASH.toLowerCase();
-        const isDrafts = this.currentMailbox.toLowerCase() === FOLDER_DRAFTS.toLowerCase();
-        const isSpam = this.currentMailbox.toLowerCase() === FOLDER_JUNK.toLowerCase() || this.currentMailbox.toLowerCase() === FOLDER_SPAM.toLowerCase();
+        // Classify the current mailbox by IMAP special-use attribute (falling back
+        // to well-known names) so Gmail's "[Gmail]/Trash" etc. are recognized.
+        const currentRole = mailboxRoleByName(this.currentMailbox, this.mailboxes);
+        const isTrash = currentRole === 'trash';
+        const isDrafts = currentRole === 'drafts';
+        const isSpam = currentRole === 'junk';
         let moveResult: { success: boolean, uidMapping?: Record<string, string> } = { success: false };
-        let destinationFolder = FOLDER_TRASH;
-        if (action === 'archive') destinationFolder = FOLDER_ARCHIVE;
-        if (action === 'reportSpam') destinationFolder = FOLDER_JUNK;
+        // Resolve move destinations to the actual special-use mailbox (e.g. Gmail's
+        // "[Gmail]/Trash") rather than a hardcoded English name. See issue #4.
+        let destinationFolder = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
+        if (action === 'archive') destinationFolder = findMailboxNameByRole('archive', this.mailboxes, FOLDER_ARCHIVE);
+        if (action === 'reportSpam') destinationFolder = findMailboxNameByRole('junk', this.mailboxes, FOLDER_JUNK);
         if (action === 'notSpam') destinationFolder = FOLDER_INBOX;
 
         if (action === 'delete' && (isTrash || isDrafts || isSpam)) {
@@ -1154,7 +1159,7 @@ export class MailboxPage extends LitElement {
         }
       } else if (action === 'downloadMessage' && !isBulk) {
         const uid = currentMsg.UID;
-        const url = `/mailboxes/${encodeURIComponent(this.currentMailbox)}/messages/${uid}/raw`;
+        const url = `/mailboxes/${encodeMailboxPath(this.currentMailbox)}/messages/${uid}/raw`;
 
         const a = document.createElement('a');
         a.href = url;
@@ -1346,6 +1351,7 @@ export class MailboxPage extends LitElement {
             <alps-message-list
               .messages=${this.messages}
               .currentMailbox=${this.currentMailbox}
+              .currentMailboxRole=${mailboxRoleByName(this.currentMailbox, this.mailboxes) || ''}
               .sidebarCollapsed=${this.sidebarCollapsed && !this.isMobile}
               .loading=${this.loadingMessages}
               .selectedMessage=${this.selectedMessage}
