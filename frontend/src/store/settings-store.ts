@@ -421,7 +421,13 @@ export class SettingsStore extends EventTarget {
 
 export const settingsContext = createContext<SettingsStore>('settings-store');
 
-export function clearSessionSettings() {
+// clearSessionSettings resets cached per-account settings to defaults (preserving
+// cross-account UI preferences). By default it also clears the client-side auth
+// detection cookies, which is what logout / session-expiry callers want. Account
+// switching must pass clearAuthCookies=false: the switch response already installed
+// a valid session for the new account, and deleting alps_logged_in / alps_has_login_token
+// here would make the reloaded SPA believe it is logged out and bounce to #/login.
+export function clearSessionSettings(clearAuthCookies: boolean = true) {
   const stored = localStorage.getItem('alps_settings');
   if (stored) {
     try {
@@ -441,6 +447,10 @@ export function clearSessionSettings() {
       Logger.error('Failed to clear and preserve global settings', e);
       localStorage.removeItem('alps_settings');
     }
+  }
+
+  if (!clearAuthCookies) {
+    return;
   }
 
   // Clear client-side authentication cookies to avoid loop requests on session expiry/restart
