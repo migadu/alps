@@ -26,7 +26,7 @@ export class AlpsGpgSettings extends LitElement {
 
     @state() private viewState: 'default' | 'import' = 'default';
     @state() private showPassphrasePrompt = false;
-    @state() private passphrasePromptMode: 'lock' | 'confirm' = 'lock';
+    @state() private passphrasePromptMode: 'lock' | 'confirm' | 'unlock' = 'lock';
     @state() private showPurgeConfirm = false;
     private resolvePassphrase: ((pass: string | null) => void) | null = null;
 
@@ -101,7 +101,7 @@ export class AlpsGpgSettings extends LitElement {
         }
     }
 
-    private promptForPassphrase(mode: 'lock' | 'confirm' = 'lock'): Promise<string | null> {
+    private promptForPassphrase(mode: 'lock' | 'confirm' | 'unlock' = 'lock'): Promise<string | null> {
         this.passphrasePromptMode = mode;
         this.showPassphrasePrompt = true;
         return new Promise((resolve) => {
@@ -205,15 +205,36 @@ export class AlpsGpgSettings extends LitElement {
             
             // Validate public key
             await openpgp.readKey({ armoredKey: this.pubKeyInput });
-            // Validate private key
+            // Parse private key (succeeds even if the key is passphrase-protected)
             privateKeyObj = await openpgp.readPrivateKey({ armoredKey: this.privKeyInput });
         } catch (e: any) {
             this.importing = false;
             this.importError = this.i18nStore?.t('gpg.importFailed', { error: e.message }) as string;
             return;
         }
-        
+
         this.importing = false;
+
+        // A standard `gpg --armor --export-secret-keys` export is still encrypted
+        // with the key's existing passphrase. Decrypt it first, otherwise the
+        // re-encryption below fails with "Key packet is already encrypted".
+        if (!privateKeyObj.isDecrypted()) {
+            let currentPass = await this.promptForPassphrase('unlock');
+            while (currentPass !== null) {
+                try {
+                    privateKeyObj = await openpgp.decryptKey({
+                        privateKey: privateKeyObj,
+                        passphrase: currentPass
+                    });
+                    break;
+                } catch {
+                    await this.showErrorDialog(this.i18nStore?.t('gpg.importIncorrectPassphrase') as string);
+                    currentPass = await this.promptForPassphrase('unlock');
+                }
+            }
+            // User cancelled the unlock prompt.
+            if (!privateKeyObj.isDecrypted()) return;
+        }
 
         const pass = await this.getConfirmedPassphrase();
         if (!pass) return;
@@ -296,14 +317,16 @@ export class AlpsGpgSettings extends LitElement {
 
             ${this.showPassphrasePrompt ? html`
                 <ui-prompt
-                    title="${this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.passphraseConfirmTitle') : this.i18nStore?.t('gpg.passphraseSetTitle')}"
-                    confirmText="${this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.confirm') : this.i18nStore?.t('gpg.lock')}"
+                    title="${this.passphrasePromptMode === 'unlock' ? this.i18nStore?.t('gpg.passphraseRequired') : this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.passphraseConfirmTitle') : this.i18nStore?.t('gpg.passphraseSetTitle')}"
+                    confirmText="${this.passphrasePromptMode === 'unlock' ? this.i18nStore?.t('gpg.unlock') : this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.confirm') : this.i18nStore?.t('gpg.lock')}"
                     cancelText="${this.i18nStore?.t('general.cancel')}"
                     .fields=${[
                         {
                             id: 'passphrase',
-                            label: this.passphrasePromptMode === 'confirm' 
-                                ? this.i18nStore?.t('gpg.passphraseConfirmPrompt') 
+                            label: this.passphrasePromptMode === 'unlock'
+                                ? this.i18nStore?.t('gpg.passphrasePrompt')
+                                : this.passphrasePromptMode === 'confirm'
+                                ? this.i18nStore?.t('gpg.passphraseConfirmPrompt')
                                 : this.i18nStore?.t('gpg.passphraseLockPrompt'),
                             type: 'password',
                             placeholder: this.i18nStore?.t('gpg.passphrase'),
