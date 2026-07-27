@@ -469,7 +469,7 @@ export class AlpsThreadCard extends LitElement {
               .srcdoc=${live(this.item.content)}
               @load=${this.onIframeLoad}
             ></iframe>
-          ` : this.item.mimeType?.toLowerCase().startsWith('multipart/') ? html`
+          ` : this.item.mimeType?.toLowerCase().startsWith('multipart/') || !this.item.content ? html`
             <div class="reader-empty-body">
               ${this.i18nStore?.t('messageReader.noReadableText')}
             </div>
