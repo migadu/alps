@@ -342,7 +342,7 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	}
 
 	// Override rate limiting config from config file
-	if c.Server.RateLimit.Enabled != nil && *c.Server.RateLimit.Enabled == false {
+	if c.Server.RateLimit.Enabled != nil && !*c.Server.RateLimit.Enabled {
 		options.RateLimitEnabled = false
 		options.RateLimitConfig = nil
 	} else {
