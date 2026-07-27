@@ -1,6 +1,8 @@
 package alpscaldav
 
 import (
+	"bytes"
+	"encoding/xml"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -13,6 +15,30 @@ import (
 	"github.com/google/uuid"
 	"github.com/migadu/alps"
 )
+
+// resolveDAVPath returns the URL path to use for a DAV object href. DAV servers
+// return absolute hrefs (a full URL, or a path rooted at the server such as
+// "/dav/calendars/..."), which already include any endpoint base path and must
+// be used as-is. Only a relative href is joined onto the configured endpoint's
+// base path. path.Join-ing an absolute href onto the base double-prefixes it
+// (e.g. "/dav/dav/calendars/...") and 404s on any endpoint not mounted at "/".
+func resolveDAVPath(base *url.URL, href string) string {
+	if u, err := url.Parse(href); err == nil && u.IsAbs() {
+		return u.Path
+	}
+	if strings.HasPrefix(href, "/") {
+		return href
+	}
+	return path.Join(base.Path, href)
+}
+
+// xmlEscape returns s escaped for inclusion in XML character data.
+func xmlEscape(s string) string {
+	var b bytes.Buffer
+	// xml.EscapeText only fails if the writer fails; a bytes.Buffer never does.
+	_ = xml.EscapeText(&b, []byte(s))
+	return b.String()
+}
 
 type CalendarData struct {
 	Name        string `json:"name"`
@@ -127,7 +153,7 @@ func registerRoutes(p *plugin) {
 		newPath := path.Join(homeSet, newID) + "/"
 
 		targetURL := *p.url
-		targetURL.Path = path.Join(targetURL.Path, newPath)
+		targetURL.Path = resolveDAVPath(p.url, newPath)
 		if !strings.HasSuffix(targetURL.Path, "/") {
 			targetURL.Path += "/"
 		}
@@ -139,7 +165,7 @@ func registerRoutes(p *plugin) {
       <D:displayname>%s</D:displayname>
     </D:prop>
   </D:set>
-</C:mkcalendar>`, req.Name)
+</C:mkcalendar>`, xmlEscape(req.Name))
 
 		rt := authRoundTripper{
 			server:  http.DefaultTransport,
@@ -203,7 +229,7 @@ func registerRoutes(p *plugin) {
 		}
 
 		targetURL := *p.url
-		targetURL.Path = path.Join(targetURL.Path, calPath)
+		targetURL.Path = resolveDAVPath(p.url, calPath)
 		if !strings.HasSuffix(targetURL.Path, "/") {
 			targetURL.Path += "/"
 		}
@@ -215,7 +241,7 @@ func registerRoutes(p *plugin) {
       <D:displayname>%s</D:displayname>
     </D:prop>
   </D:set>
-</D:propertyupdate>`, req.Name)
+</D:propertyupdate>`, xmlEscape(req.Name))
 
 		rt := authRoundTripper{
 			server:  http.DefaultTransport,

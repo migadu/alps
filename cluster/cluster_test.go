@@ -11,12 +11,40 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
+// TestNewCluster_RejectsKeylessWithoutOptIn verifies that a cluster refuses to
+// start with unencrypted gossip unless the operator explicitly opts in, and that
+// AllowInsecure permits it.
+func TestNewCluster_RejectsKeylessWithoutOptIn(t *testing.T) {
+	_, err := NewCluster(Config{
+		NodeName: "insecure-default",
+		BindAddr: "127.0.0.1",
+		BindPort: 17960,
+		Logger:   testLogger(),
+	})
+	if err == nil {
+		t.Fatal("expected NewCluster to reject keyless mode without AllowInsecure")
+	}
+
+	c, err := NewCluster(Config{
+		NodeName:      "insecure-optin",
+		BindAddr:      "127.0.0.1",
+		BindPort:      17961,
+		AllowInsecure: true,
+		Logger:        testLogger(),
+	})
+	if err != nil {
+		t.Fatalf("AllowInsecure should permit keyless mode: %v", err)
+	}
+	c.Shutdown()
+}
+
 func TestLeaderElection_SingleNode(t *testing.T) {
 	c, err := NewCluster(Config{
-		NodeName: "alpha",
-		BindAddr: "127.0.0.1",
-		BindPort: 17946,
-		Logger:   testLogger(),
+		NodeName:      "alpha",
+		BindAddr:      "127.0.0.1",
+		BindPort:      17946,
+		AllowInsecure: true,
+		Logger:        testLogger(),
 	})
 	if err != nil {
 		t.Fatalf("failed to create cluster: %v", err)
@@ -38,10 +66,11 @@ func TestLeaderElection_SingleNode(t *testing.T) {
 func TestLeaderElection_TwoNodes(t *testing.T) {
 	// Node "alpha" should become leader (lexicographically smallest)
 	c1, err := NewCluster(Config{
-		NodeName: "alpha",
-		BindAddr: "127.0.0.1",
-		BindPort: 17947,
-		Logger:   testLogger(),
+		NodeName:      "alpha",
+		BindAddr:      "127.0.0.1",
+		BindPort:      17947,
+		AllowInsecure: true,
+		Logger:        testLogger(),
 	})
 	if err != nil {
 		t.Fatalf("failed to create node1: %v", err)
@@ -49,11 +78,12 @@ func TestLeaderElection_TwoNodes(t *testing.T) {
 	defer c1.Shutdown()
 
 	c2, err := NewCluster(Config{
-		NodeName: "beta",
-		BindAddr: "127.0.0.1",
-		BindPort: 17948,
-		Peers:    []string{"127.0.0.1:17947"},
-		Logger:   testLogger(),
+		NodeName:      "beta",
+		BindAddr:      "127.0.0.1",
+		BindPort:      17948,
+		Peers:         []string{"127.0.0.1:17947"},
+		AllowInsecure: true,
+		Logger:        testLogger(),
 	})
 	if err != nil {
 		t.Fatalf("failed to create node2: %v", err)
@@ -87,21 +117,23 @@ func TestLeaderElection_TwoNodes(t *testing.T) {
 
 func TestLeaderElection_Failover(t *testing.T) {
 	c1, err := NewCluster(Config{
-		NodeName: "alpha",
-		BindAddr: "127.0.0.1",
-		BindPort: 17949,
-		Logger:   testLogger(),
+		NodeName:      "alpha",
+		BindAddr:      "127.0.0.1",
+		BindPort:      17949,
+		AllowInsecure: true,
+		Logger:        testLogger(),
 	})
 	if err != nil {
 		t.Fatalf("failed to create node1: %v", err)
 	}
 
 	c2, err := NewCluster(Config{
-		NodeName: "beta",
-		BindAddr: "127.0.0.1",
-		BindPort: 17950,
-		Peers:    []string{"127.0.0.1:17949"},
-		Logger:   testLogger(),
+		NodeName:      "beta",
+		BindAddr:      "127.0.0.1",
+		BindPort:      17950,
+		Peers:         []string{"127.0.0.1:17949"},
+		AllowInsecure: true,
+		Logger:        testLogger(),
 	})
 	if err != nil {
 		t.Fatalf("failed to create node2: %v", err)
@@ -129,10 +161,11 @@ func TestLeaderElection_Failover(t *testing.T) {
 
 func TestHealthStatus(t *testing.T) {
 	c, err := NewCluster(Config{
-		NodeName: "health-test",
-		BindAddr: "127.0.0.1",
-		BindPort: 17951,
-		Logger:   testLogger(),
+		NodeName:      "health-test",
+		BindAddr:      "127.0.0.1",
+		BindPort:      17951,
+		AllowInsecure: true,
+		Logger:        testLogger(),
 	})
 	if err != nil {
 		t.Fatalf("failed to create cluster: %v", err)

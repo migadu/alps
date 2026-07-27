@@ -51,6 +51,10 @@ func generateToken() (string, error) {
 var (
 	ErrSessionExpired      = errors.New("session expired")
 	ErrAttachmentCacheSize = errors.New("Attachments on session exceed maximum file size")
+	// ErrMailProviderUnavailable marks errors where the session's mail provider
+	// connection could not be (re-)established. handleError treats it as a signal
+	// to log the user out rather than looping on 500s.
+	ErrMailProviderUnavailable = errors.New("mail provider unavailable")
 )
 
 // AuthError wraps an authentication error.
@@ -91,6 +95,9 @@ type Session struct {
 	memoryData     map[string]interface{}
 
 	lastAccess atomic.Int64 // stores unix nano for LRU eviction
+
+	closeOnce    sync.Once // guards close(s.closed)
+	teardownOnce sync.Once // guards releasing attachments/provider/cache
 }
 
 type Attachment struct {
@@ -108,9 +115,16 @@ func (s *Session) ping() {
 	}
 }
 
-// UpdateDuration dynamically updates the session's timeout duration.
+// UpdateDuration dynamically updates the session's timeout duration. The send is
+// non-blocking: if the session is already closed, or an update is still pending
+// in the single-slot channel, the update is dropped rather than blocking (and
+// permanently leaking) the calling request goroutine.
 func (s *Session) UpdateDuration(d time.Duration) {
-	s.durationUpdate <- d
+	select {
+	case s.durationUpdate <- d:
+	case <-s.closed:
+	default:
+	}
 }
 
 // Username returns the session's username.
@@ -170,7 +184,10 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 		s.provider, err = s.manager.connectProvider(s.username, s.password)
 		if err != nil {
 			s.Close()
-			return fmt.Errorf("failed to connect to mail provider: %v", err)
+			// Wrap with %w so errors.As can still recover an AuthError (bad
+			// credentials), and join the sentinel so handleError logs the user
+			// out on a dead connection instead of looping on 500s.
+			return fmt.Errorf("failed to connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, err))
 		}
 		type threadCapable interface {
 			HasThreadCapability() bool
@@ -193,9 +210,13 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 	var err error
 	select {
 	case <-ctx.Done():
-		s.provider.Close()
+		// The operation goroutine may still be using the provider. Detach it and
+		// close only after f() has returned, otherwise we would close the client
+		// out from under an in-flight command (a use-after-close race). done is
+		// buffered, so f's send never blocks even though we have returned.
+		closeProviderAfter(s.provider, done)
 		s.provider = nil
-		return fmt.Errorf("context cancelled, closed provider: %v", ctx.Err())
+		return fmt.Errorf("context cancelled: %w", ctx.Err())
 	case err = <-done:
 	}
 
@@ -208,7 +229,7 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 		s.provider, reErr = s.manager.connectProvider(s.username, s.password)
 		if reErr != nil {
 			s.Close()
-			return fmt.Errorf("failed to re-connect to mail provider: %v", reErr)
+			return fmt.Errorf("failed to re-connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, reErr))
 		}
 
 		done2 := make(chan error, 1)
@@ -223,14 +244,27 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 
 		select {
 		case <-ctx.Done():
-			s.provider.Close()
+			closeProviderAfter(s.provider, done2)
 			s.provider = nil
-			return fmt.Errorf("context cancelled during retry, closed provider: %v", ctx.Err())
+			return fmt.Errorf("context cancelled during retry: %w", ctx.Err())
 		case err = <-done2:
 		}
 	}
 
 	return err
+}
+
+// closeProviderAfter closes p once the pending operation (whose result lands on
+// done) has finished, so the provider is never closed while a command is still
+// in flight on it. The goroutine exits as soon as done is signalled.
+func closeProviderAfter(p provider.MailProvider, done <-chan error) {
+	if p == nil {
+		return
+	}
+	go func() {
+		<-done
+		p.Close()
+	}()
 }
 
 // smtpMaxAttempts is the number of times DoSMTP tries an operation before
@@ -292,23 +326,47 @@ func (s *Session) SetHTTPBasicAuth(req *http.Request) {
 	req.SetBasicAuth(s.username, s.password)
 }
 
-// Close destroys the session. This can be used to log the user out.
+// teardown releases every resource the session owns: composer attachments (and
+// their global-budget accounting), the mail provider connection, and the cache.
+// It is idempotent and safe to call from multiple goroutines — only the first
+// call does the work — so every exit path (logout, eviction, natural expiry)
+// can call it without risking a double free or a leaked resource. Previously
+// each exit path cleaned up a different subset, which is how expiring sessions
+// leaked their attachments and permanently inflated the global budget.
+func (s *Session) teardown() {
+	s.teardownOnce.Do(func() {
+		s.attachmentsLocker.Lock()
+		for _, f := range s.attachments {
+			f.Form.RemoveAll()
+			s.manager.globalAttachmentSize.Add(-f.File.Size)
+		}
+		s.attachments = make(map[string]*Attachment)
+		s.attachmentsLocker.Unlock()
+
+		s.providerLocker.Lock()
+		if s.provider != nil {
+			s.provider.Close()
+			s.provider = nil
+		}
+		s.providerLocker.Unlock()
+
+		if s.cache != nil {
+			s.cache.Close()
+		}
+	})
+}
+
+// Close destroys the session. This can be used to log the user out. It signals
+// the timeout goroutine to exit, which then runs teardown() to release the
+// session's resources. Teardown is deliberately left to the goroutine (which
+// runs it before taking sm.locker) so that closing the provider — potentially
+// blocking on an in-flight mail operation — never happens while a caller holds
+// sm.locker (e.g. eviction), which would stall every other session. Close is
+// safe to call more than once and from multiple goroutines concurrently.
 func (s *Session) Close() {
-	s.attachmentsLocker.Lock()
-	defer s.attachmentsLocker.Unlock()
-
-	for _, f := range s.attachments {
-		f.Form.RemoveAll()
-		s.manager.globalAttachmentSize.Add(-f.File.Size)
-	}
-	s.attachments = make(map[string]*Attachment)
-
-	select {
-	case <-s.closed:
-		// This space is intentionally left blank
-	default:
+	s.closeOnce.Do(func() {
 		close(s.closed)
-	}
+	})
 }
 
 // Puts an attachment and returns a generated UUID
@@ -519,7 +577,18 @@ func newSessionManager(connectProviderFunc provider.AuthenticatedProviderFactory
 }
 
 func (sm *SessionManager) Close() {
+	// Snapshot the sessions under the lock, then close them without holding it.
+	// Each Close() wakes the session's timeout goroutine, which removes itself
+	// from sm.sessions under the same lock; iterating the live map here would be
+	// a concurrent map iteration/write and crash the process during shutdown.
+	sm.locker.Lock()
+	sessions := make([]*Session, 0, len(sm.sessions))
 	for _, s := range sm.sessions {
+		sessions = append(sessions, s)
+	}
+	sm.locker.Unlock()
+
+	for _, s := range sessions {
 		s.Close()
 	}
 }
@@ -717,6 +786,37 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	// and will be closed when the session is closed. Closing it here would leave
 	// the session with a dead connection.
 
+	var cache *Cache
+	if sm.cacheEnabled {
+		cache = NewCache(sm.cacheTTL)
+	} else {
+		// Create a dummy cache with 1 second TTL to effectively disable caching
+		cache = NewCache(1 * time.Second)
+	}
+
+	s := &Session{
+		manager:        sm,
+		closed:         make(chan struct{}),
+		pings:          make(chan struct{}, 5),
+		durationUpdate: make(chan time.Duration, 1),
+		provider:       p,
+		username:       username,
+		password:       password,
+		attachments:    make(map[string]*Attachment),
+		cache:          cache,
+		duration:       sm.sessionDuration, // updated from user settings below
+	}
+	s.lastAccess.Store(time.Now().UnixNano())
+
+	// Read the user's settings (auto-logout duration, 2FA) BEFORE taking the
+	// manager lock: these go through the session's provider as IMAP round trips,
+	// and holding sm.locker across them would serialize every login and block
+	// all other sessions' requests on one user's network latency.
+	s.duration = sm.calculateSessionDuration(s.Store())
+	if enabled, err := CheckWebAuthnEnabled(s.Store()); err == nil && enabled {
+		s.requires2FA = true
+	}
+
 	sm.locker.Lock()
 	defer sm.locker.Unlock()
 
@@ -743,6 +843,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 		token, err = generateToken()
 		if err != nil {
 			p.Close() // Clean up provider on error
+			cache.Close()
 			return nil, fmt.Errorf("failed to generate session token: %w", err)
 		}
 
@@ -759,39 +860,11 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	// If we exhausted all retries, something is seriously wrong
 	if _, exists := sm.sessions[token]; exists {
 		p.Close() // Clean up provider on error
+		cache.Close()
 		return nil, fmt.Errorf("failed to generate unique session token after %d attempts (possible RNG failure or token space exhaustion)", maxTokenRetries)
 	}
 
-	var cache *Cache
-	if sm.cacheEnabled {
-		cache = NewCache(sm.cacheTTL)
-	} else {
-		// Create a dummy cache with 1 second TTL to effectively disable caching
-		cache = NewCache(1 * time.Second)
-	}
-
-	s := &Session{
-		manager:        sm,
-		closed:         make(chan struct{}),
-		pings:          make(chan struct{}, 5),
-		durationUpdate: make(chan time.Duration, 1),
-		provider:       p,
-		username:       username,
-		password:       password,
-		token:          token,
-		attachments:    make(map[string]*Attachment),
-		cache:          cache,
-		duration:       sm.sessionDuration, // Will be updated after reading user settings
-	}
-	s.lastAccess.Store(time.Now().UnixNano())
-
-	// Calculate effective session duration based on user's AutoLogout preference
-	s.duration = sm.calculateSessionDuration(s.Store())
-
-	// Check if 2FA is enabled for this user
-	if enabled, err := CheckWebAuthnEnabled(s.Store()); err == nil && enabled {
-		s.requires2FA = true
-	}
+	s.token = token
 
 	// Track the session
 	sm.sessions[token] = s
@@ -804,20 +877,21 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 			}
 		}()
 		timer := time.NewTimer(s.duration)
+		defer timer.Stop()
 
 		alive := true
 		for alive {
 			select {
 			case <-s.pings:
-				if !timer.Stop() {
-					<-timer.C
-				}
+				// Go 1.23+ timer channels are unbuffered and Stop guarantees no
+				// stale value is delivered afterwards, so the old drain pattern
+				// (`if !timer.Stop() { <-timer.C }`) is unnecessary and can now
+				// deadlock if the timer fires as a ping arrives.
+				timer.Stop()
 				timer.Reset(s.duration)
 			case newDuration := <-s.durationUpdate:
 				s.duration = newDuration
-				if !timer.Stop() {
-					<-timer.C
-				}
+				timer.Stop()
 				timer.Reset(s.duration)
 			case <-timer.C:
 				alive = false
@@ -826,18 +900,9 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 			}
 		}
 
-		timer.Stop()
-
-		s.providerLocker.Lock()
-		if s.provider != nil {
-			s.provider.Close()
-		}
-		s.providerLocker.Unlock()
-
-		// Unregister cache from global cleanup manager
-		if s.cache != nil {
-			s.cache.Close()
-		}
+		// Release all resources (attachments — including natural expiry, which
+		// previously leaked them — the provider connection, and the cache).
+		s.teardown()
 
 		sm.locker.Lock()
 		sm.removeSession(token)

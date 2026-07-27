@@ -64,7 +64,8 @@ func handleBIMIAvatar(ctx *alps.Context) error {
 
 	if data, err := os.ReadFile(cacheFile); err == nil {
 		ctx.Response.Header().Set("Content-Type", "image/svg+xml")
-		ctx.Response.Header().Set("Content-Security-Policy", "default-src 'none'")
+		ctx.Response.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+		ctx.Response.Header().Set("X-Content-Type-Options", "nosniff")
 		return ctx.Stream(http.StatusOK, "image/svg+xml", bytes.NewReader(data))
 	}
 
@@ -91,7 +92,10 @@ func handleBIMIAvatar(ctx *alps.Context) error {
 		return bimiNotFound(ctx, "BIMI avatar not found")
 	}
 
-	client := http.Client{Timeout: 5 * time.Second}
+	// The l= URL comes from the queried domain's DNS record, i.e. attacker
+	// influenced: fetch through the egress-safe client so it cannot be pointed
+	// at internal/metadata addresses (SSRF), and cap the body size.
+	client := newSafeHTTPClient(5 * time.Second)
 	resp, err := client.Get(bimiURL)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		os.WriteFile(negCacheFile, []byte(""), 0644)
@@ -99,7 +103,8 @@ func handleBIMIAvatar(ctx *alps.Context) error {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	const maxBIMISize = 1 * 1024 * 1024 // 1 MiB cap
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBIMISize))
 	if err != nil {
 		os.WriteFile(negCacheFile, []byte(""), 0644)
 		return bimiNotFound(ctx, "BIMI avatar not found")
@@ -109,7 +114,8 @@ func handleBIMIAvatar(ctx *alps.Context) error {
 	os.WriteFile(cacheFile, sanitized, 0644)
 
 	ctx.Response.Header().Set("Content-Type", "image/svg+xml")
-	ctx.Response.Header().Set("Content-Security-Policy", "default-src 'none'")
+	ctx.Response.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	ctx.Response.Header().Set("X-Content-Type-Options", "nosniff")
 	return ctx.Stream(http.StatusOK, "image/svg+xml", bytes.NewReader(sanitized))
 }
 

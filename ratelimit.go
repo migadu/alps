@@ -354,8 +354,30 @@ func filterTimestamps(timestamps []time.Time, cutoff time.Time) []time.Time {
 	return filtered
 }
 
-// getClientIP extracts the real client IP from the request
-// Handles X-Forwarded-For, X-Real-IP headers if remote address is a trusted proxy
+// isTrustedProxyIP reports whether ip falls within one of the configured
+// trusted-proxy CIDRs.
+func isTrustedProxyIP(ip net.IP, trustedProxies []*net.IPNet) bool {
+	if ip == nil {
+		return false
+	}
+	for _, cidr := range trustedProxies {
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// getClientIP extracts the real client IP from the request.
+//
+// X-Forwarded-For is a list appended to by each proxy in the chain, so the
+// LEFT entries are client-supplied and spoofable while the RIGHT entries were
+// added by our own infrastructure. We therefore only consult forwarded headers
+// when the immediate peer is a trusted proxy, and we walk X-Forwarded-For from
+// right to left, skipping our own trusted-proxy hops, and return the first
+// address that is not a trusted proxy — the closest client we can vouch for.
+// Taking the leftmost entry (as before) let a client set an arbitrary IP to
+// dodge per-IP limits or lock out a victim's IP.
 func getClientIP(r *http.Request, trustedProxies []*net.IPNet) string {
 	remoteIPStr, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -364,30 +386,38 @@ func getClientIP(r *http.Request, trustedProxies []*net.IPNet) string {
 
 	isTrustedProxy := false
 	if len(trustedProxies) > 0 {
-		remoteIP := net.ParseIP(remoteIPStr)
-		if remoteIP != nil {
-			for _, cidr := range trustedProxies {
-				if cidr.Contains(remoteIP) {
-					isTrustedProxy = true
-					break
-				}
-			}
-		}
+		isTrustedProxy = isTrustedProxyIP(net.ParseIP(remoteIPStr), trustedProxies)
 	}
 
 	if isTrustedProxy {
-		// Check X-Forwarded-For header (comma-separated list, first is client)
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			parts := strings.Split(xff, ",")
-			ip := strings.TrimSpace(parts[0])
-			if ipWithoutPort, _, err := net.SplitHostPort(ip); err == nil {
-				return ipWithoutPort
+			for i := len(parts) - 1; i >= 0; i-- {
+				candidate := strings.TrimSpace(parts[i])
+				if candidate == "" {
+					continue
+				}
+				if host, _, err := net.SplitHostPort(candidate); err == nil {
+					candidate = host
+				}
+				ip := net.ParseIP(candidate)
+				if ip == nil {
+					// An unparseable rightmost hop cannot be verified; stop rather
+					// than trusting anything further left (which is client-supplied).
+					break
+				}
+				if isTrustedProxyIP(ip, trustedProxies) {
+					continue // our own proxy hop; keep walking left
+				}
+				return candidate // first non-proxy from the right = real client
 			}
-			return ip
 		}
 
-		// Check X-Real-IP header
-		if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		// X-Real-IP is set by the trusted proxy to a single client address.
+		if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+			if host, _, err := net.SplitHostPort(xri); err == nil {
+				return host
+			}
 			return xri
 		}
 	}

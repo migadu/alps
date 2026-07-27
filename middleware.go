@@ -275,8 +275,27 @@ func (r *Router) wrapHandler(h HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// setSecurityHeaders applies baseline security headers to every response.
+// It runs here, at the single request choke point, rather than as Use/Pre
+// middleware because static file handlers (StaticFS/Static) are registered
+// directly on the mux and bypass the middleware chain — so the SPA shell and
+// all JS/CSS bundles would otherwise be served with no CSP at all. Handlers may
+// still override these with a stricter policy after dispatch (e.g. the BIMI and
+// /proxy endpoints set `default-src 'none'`); Set() replaces, so the stricter
+// value wins.
+func setSecurityHeaders(h http.Header) {
+	// `style-src 'unsafe-inline'` is required for e-mails with embedded stylesheets.
+	// `img-src`/`font-src data:` are required for placeholder resources in sandboxed iframes.
+	h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'")
+	// DNS prefetching has privacy implications.
+	h.Set("X-DNS-Prefetch-Control", "off")
+	// Never allow browsers to MIME-sniff a response away from its declared type.
+	h.Set("X-Content-Type-Options", "nosniff")
+}
+
 // ServeHTTP implements http.Handler.
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	setSecurityHeaders(w.Header())
 	r.mux.ServeHTTP(w, req)
 }
 

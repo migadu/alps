@@ -16,19 +16,6 @@ func searchCriteriaHeader(k, v string) *imap.SearchCriteria {
 	}
 }
 
-func searchCriteriaOr(criteria ...*imap.SearchCriteria) *imap.SearchCriteria {
-	if criteria[0] == nil {
-		criteria = criteria[1:]
-	}
-	or := criteria[0]
-	for _, c := range criteria[1:] {
-		or = &imap.SearchCriteria{
-			Or: [][2]imap.SearchCriteria{{*or, *c}},
-		}
-	}
-	return or
-}
-
 func searchCriteriaAnd(criteria ...*imap.SearchCriteria) *imap.SearchCriteria {
 	if criteria[0] == nil {
 		criteria = criteria[1:]

@@ -1,4 +1,4 @@
-.PHONY: all clean build install build-freebsd build-linux help
+.PHONY: all clean build build-frontend install build-freebsd build-linux help test test-coverage
 
 # Binary names
 ALPS_BINARY ?= build/alps

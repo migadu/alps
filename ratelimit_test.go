@@ -290,6 +290,77 @@ func TestRateLimiter_XForwardedForHandling(t *testing.T) {
 	}
 }
 
+// TestRateLimiter_XForwardedForSpoofResistant verifies that a client cannot
+// escape per-IP limits by prepending a forged X-Forwarded-For entry. The proxy
+// appends the real client IP on the right; getClientIP must walk right-to-left
+// past trusted-proxy hops and return that real IP, ignoring the spoofed left
+// entries — so every attempt lands in the same bucket regardless of the forged
+// value.
+func TestRateLimiter_XForwardedForSpoofResistant(t *testing.T) {
+	logger := &mockLogger{}
+	config := DefaultRateLimitConfig()
+	config.IPRequestsPerMinute = 2
+	// Two internal proxies in the chain, both trusted.
+	_, edge, _ := net.ParseCIDR("10.0.0.1/32")
+	_, inner, _ := net.ParseCIDR("10.0.0.2/32")
+	config.TrustedProxies = []*net.IPNet{edge, inner}
+
+	rl := NewRateLimiter(config, logger, nil)
+	defer rl.Close()
+
+	// Each request forges a *different* leftmost XFF entry but is really the same
+	// client (203.0.113.50), appended by the inner proxy 10.0.0.2, then by the
+	// edge proxy 10.0.0.1 (the direct peer).
+	makeReq := func(spoof string) *http.Request {
+		req := httptest.NewRequest("POST", "/session", nil)
+		req.RemoteAddr = "10.0.0.1:12345" // edge proxy (trusted)
+		req.Header.Set("X-Forwarded-For", spoof+", 203.0.113.50, 10.0.0.2")
+		return req
+	}
+
+	req1 := makeReq("1.2.3.4")
+	req2 := makeReq("5.6.7.8")
+	req3 := makeReq("9.10.11.12")
+
+	if allowed, _, _ := rl.CheckLoginAllowed(req1, "user@example.com"); !allowed {
+		t.Fatal("first request should be allowed")
+	}
+	rl.RecordLoginAttempt(req1, "user@example.com", false)
+
+	if allowed, _, _ := rl.CheckLoginAllowed(req2, "user@example.com"); !allowed {
+		t.Fatal("second request should be allowed")
+	}
+	rl.RecordLoginAttempt(req2, "user@example.com", false)
+
+	// Despite different forged left entries, all three resolve to 203.0.113.50,
+	// so the third exceeds the per-minute cap.
+	if allowed, _, _ := rl.CheckLoginAllowed(req3, "user@example.com"); allowed {
+		t.Error("third request should be rate limited: spoofed XFF must not create a fresh IP bucket")
+	}
+
+	// Sanity: getClientIP resolves the real appended client, not the spoof.
+	if got := getClientIP(req1, config.TrustedProxies); got != "203.0.113.50" {
+		t.Errorf("getClientIP = %q, want 203.0.113.50 (real client, not spoofed left entry)", got)
+	}
+}
+
+// TestRateLimiter_XForwardedForUntrustedPeerIgnored verifies that when the
+// direct peer is NOT a trusted proxy, forwarded headers are ignored entirely
+// and the peer's real address is used.
+func TestRateLimiter_XForwardedForUntrustedPeerIgnored(t *testing.T) {
+	config := DefaultRateLimitConfig()
+	_, trusted, _ := net.ParseCIDR("10.0.0.1/32")
+	config.TrustedProxies = []*net.IPNet{trusted}
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "198.51.100.9:5555" // arbitrary client, not a trusted proxy
+	req.Header.Set("X-Forwarded-For", "203.0.113.50")
+
+	if got := getClientIP(req, config.TrustedProxies); got != "198.51.100.9" {
+		t.Errorf("getClientIP = %q, want 198.51.100.9 (forged XFF from untrusted peer must be ignored)", got)
+	}
+}
+
 func TestRateLimiter_XRealIPHandling(t *testing.T) {
 	logger := &mockLogger{}
 	config := DefaultRateLimitConfig()

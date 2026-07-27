@@ -1,8 +1,10 @@
 package alps
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +13,54 @@ import (
 	"github.com/fernet/fernet-go"
 	"github.com/stretchr/testify/assert"
 )
+
+// TestContext_CookieSecureReflectsForwardedProto verifies that the cookie Secure
+// flag reflects the browser-facing scheme: HTTPS directly, or HTTP forwarded as
+// https by a trusted proxy — but never a spoofed X-Forwarded-Proto from an
+// untrusted peer.
+func TestContext_CookieSecureReflectsForwardedProto(t *testing.T) {
+	_, privateNet, _ := net.ParseCIDR("10.0.0.0/8")
+	trustedServer := &Server{Options: &Options{TrustedProxies: []*net.IPNet{privateNet}}}
+	noProxyServer := &Server{Options: &Options{}}
+
+	newCtx := func(server *Server, isTLS bool, remoteAddr, xfp string) *Context {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = remoteAddr
+		if isTLS {
+			req.TLS = &tls.ConnectionState{}
+		}
+		if xfp != "" {
+			req.Header.Set("X-Forwarded-Proto", xfp)
+		}
+		return NewContext(httptest.NewRecorder(), req, server)
+	}
+
+	cases := []struct {
+		name       string
+		ctx        *Context
+		wantSecure bool
+	}{
+		{"direct TLS", newCtx(noProxyServer, true, "1.2.3.4:9", ""), true},
+		{"plain HTTP, no proxy", newCtx(noProxyServer, false, "1.2.3.4:9", ""), false},
+		{"trusted proxy forwards https", newCtx(trustedServer, false, "10.0.0.5:9", "https"), true},
+		{"trusted proxy forwards http", newCtx(trustedServer, false, "10.0.0.5:9", "http"), false},
+		{"untrusted peer spoofs https", newCtx(trustedServer, false, "203.0.113.9:9", "https"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.wantSecure, tc.ctx.isEffectiveHTTPS())
+		})
+	}
+
+	// End-to-end: the session cookie must carry Secure behind a trusted https proxy.
+	c := newCtx(trustedServer, false, "10.0.0.5:9", "https")
+	c.SetSession(&Session{token: "tok"})
+	for _, ck := range c.Response.(*httptest.ResponseRecorder).Result().Cookies() {
+		if ck.Name == cookieName {
+			assert.True(t, ck.Secure, "session cookie must be Secure behind an https-terminating trusted proxy")
+		}
+	}
+}
 
 func TestContextSetGet(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)

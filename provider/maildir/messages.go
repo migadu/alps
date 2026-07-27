@@ -161,6 +161,28 @@ func getAllMessages(dir maildir.Dir) ([]*maildir.Message, error) {
 	return msgs, err
 }
 
+// countUnseen returns the number of messages that do not carry the \Seen flag.
+// go-maildir's UnseenCount counts files in new/ (the "recently delivered" set),
+// but getAllMessages empties new/ by moving those files to cur/, so after the
+// first listing UnseenCount would always report 0. IMAP's NumUnseen means "no
+// \Seen flag", so count that directly.
+func countUnseen(msgs []*maildir.Message) int {
+	n := 0
+	for _, m := range msgs {
+		seen := false
+		for _, fl := range m.Flags() {
+			if fl == maildir.FlagSeen {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			n++
+		}
+	}
+	return n
+}
+
 func (p *Provider) ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
 	dir := p.getDir(mailbox)
 	msgs, err := getAllMessages(dir)
@@ -169,7 +191,7 @@ func (p *Provider) ListMessages(mailbox string, sortOrder string, page, pageSize
 	}
 
 	sort.Slice(msgs, func(i, j int) bool {
-		if sortOrder == "date-asc" {
+		if sortOrder == "asc" {
 			return msgs[i].Key() < msgs[j].Key()
 		}
 		return msgs[i].Key() > msgs[j].Key()
@@ -251,7 +273,7 @@ func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page,
 	}
 
 	sort.Slice(matchedMsgs, func(i, j int) bool {
-		if sortOrder == "date-asc" {
+		if sortOrder == "asc" {
 			return matchedMsgs[i].Key() < matchedMsgs[j].Key()
 		}
 		return matchedMsgs[i].Key() > matchedMsgs[j].Key()
@@ -494,7 +516,27 @@ func (p *Provider) MarkAnswered(mailbox string, id provider.MessageID) error {
 }
 
 func (p *Provider) AppendMessage(mailbox string, msg provider.OutgoingMessageWriter, mboxType provider.MailboxType) (*provider.Mailbox, provider.MessageID, uint32, error) {
+	// The adapter passes an empty mailbox and selects the destination by type
+	// (Sent/Drafts/...), matching the IMAP backend. Resolve it here — the old
+	// code ignored mboxType entirely and delivered everything to INBOX.
+	if mailbox == "" {
+		if mbox, err := p.FindMailboxByType(mboxType); err == nil && mbox != nil {
+			mailbox = mbox.Name
+		} else {
+			name, nerr := mailboxNameForType(mboxType)
+			if nerr != nil {
+				return nil, nil, 0, nerr
+			}
+			mailbox = name
+		}
+	}
+
 	dir := p.getDir(mailbox)
+	// Ensure the destination maildir exists (creates tmp/new/cur); a Sent or
+	// Drafts folder may not have been created yet.
+	if err := dir.Init(); err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to initialize maildir %q: %w", mailbox, err)
+	}
 
 	delivery, err := maildir.NewDelivery(string(dir))
 	if err != nil {
@@ -507,12 +549,15 @@ func (p *Provider) AppendMessage(mailbox string, msg provider.OutgoingMessageWri
 		return nil, nil, 0, err
 	}
 
-	err = delivery.Close()
-	if err != nil {
+	if err := delivery.Close(); err != nil {
 		return nil, nil, 0, err
 	}
 
-	return nil, nil, uint32(size), nil
+	// go-maildir's Delivery does not expose the resulting message key, so we
+	// return an empty MessageID; callers treat the subsequent metadata fetch as
+	// best-effort. Crucially, the mailbox is non-nil (the adapter dereferences
+	// it), which previously panicked.
+	return &provider.Mailbox{Name: mailbox, Delimiter: '.', Subscribed: true}, MaildirMessageID(""), uint32(size), nil
 }
 
 func (p *Provider) DeleteMessages(mailbox string, ids []provider.MessageID) error {
