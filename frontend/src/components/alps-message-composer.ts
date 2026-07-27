@@ -275,7 +275,11 @@ export class AlpsMessageComposer extends LitElement {
 
   updated(changedProperties: PropertyValues) {
     if (changedProperties.has('isSending') && this.editor) {
-      this.editor.setEditable(!this.isSending);
+      // Pass emitUpdate=false: TipTap v3's setEditable emits an "update" event by
+      // default, which fires onUpdate. In plaintext mode that would overwrite the
+      // user's text with the editor's stale, HTML-derived content right before the
+      // message is assembled for sending. See GitHub issue #6.
+      this.editor.setEditable(!this.isSending, false);
     }
     if (changedProperties.has('format')) {
       const oldFormat = changedProperties.get('format');
@@ -321,6 +325,12 @@ export class AlpsMessageComposer extends LitElement {
       ],
       content: this.htmlText || (this.format === 'html' ? this.text.split('\n').map(line => `<p>${line}</p>`).join('') : this.text),
       onUpdate: ({ editor }) => {
+        // The TipTap editor is only the source of truth in HTML mode. In plaintext
+        // mode the <textarea> owns the content, so ignore editor updates there;
+        // otherwise a programmatic editor update (e.g. setEditable(false) on send)
+        // would clobber the user's plaintext with stale, HTML-derived text.
+        // See GitHub issue #6.
+        if (this.format !== 'html') return;
         this.htmlText = editor.getHTML();
         this.text = editor.getText();
         this.dispatchEvent(new CustomEvent('text-changed', {
