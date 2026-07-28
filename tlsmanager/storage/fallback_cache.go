@@ -263,19 +263,14 @@ func (f *FallbackCache) Get(ctx context.Context, key string) ([]byte, error) {
 		f.logger.Info("FallbackCache: certificate found in S3 - syncing to local cache", "name", key)
 		f.markS3Available()
 
-		// Store in local cache for future fast access (async to avoid blocking)
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					f.logger.Error("panic syncing to local cache", "panic", r)
-				}
-			}()
-			if putErr := f.fallback.Put(context.Background(), key, data); putErr != nil {
-				f.logger.Warn("FallbackCache: failed to sync certificate to local cache", "name", key, "error", putErr)
-			} else {
-				f.logger.Debug("FallbackCache: certificate synced to local cache", "name", key)
-			}
-		}()
+		// Store in local cache for future fast access. Synchronous on
+		// purpose: a local disk write is negligible next to the S3 fetch
+		// that just completed, and a detached goroutine could interleave
+		// with concurrent Deletes/Puts and resurrect bytes that were just
+		// superseded.
+		if putErr := f.fallback.Put(ctx, key, data); putErr != nil {
+			f.logger.Warn("FallbackCache: failed to sync certificate to local cache", "name", key, "error", putErr)
+		}
 
 		return data, nil
 	}

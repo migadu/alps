@@ -8,12 +8,36 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
-// ClusterAwareCache wraps an autocert.Cache and only allows the cluster leader
-// to write new certificates. All nodes can read certificates from the cache.
+// acmeAccountKeys are the cache keys autocert uses for the shared ACME account
+// key (current and legacy names). They always pass through the leader gate:
+// absorbing an account-key write is a hard issuance error in autocert, and a
+// follower running the escape hatch must be able to (re)use the shared account
+// instead of registering a fresh ACME account per issuance.
+var acmeAccountKeys = map[string]bool{
+	"acme_account+key": true,
+	"acme_account.key": true,
+}
+
+// ClusterAwareCache wraps an autocert.Cache and only persists certificate
+// writes from the cluster leader. All nodes can read from the cache.
 //
-// This prevents race conditions with Let's Encrypt when multiple nodes
-// simultaneously request certificates for the same domain, which could trigger
-// Let's Encrypt rate limits.
+// This is defense-in-depth behind the issuance-level gating in the TLS
+// manager: even if a non-leader ends up running the autocert issuance path
+// (escape hatch, renewal timers armed before a demotion, a future bug), its
+// certificates never reach the shared store.
+//
+// Non-leader certificate writes are ABSORBED (logged, dropped, nil error)
+// rather than rejected: autocert's renewal path treats a failed Cache.Put as
+// a failed renewal and re-runs the FULL ACME issuance on a 30-60 minute
+// backoff, so an error-returning gate turns a demoted ex-leader with armed
+// renewal timers into a duplicate-issuance loop that exhausts Let's Encrypt's
+// duplicate-certificate limit. Absorbing lets the renewal complete (in-memory
+// only, one issuance at most); the node adopts the real leader's certificate
+// from the shared store at its next renewal check.
+//
+// Challenge tokens and the ACME account key always pass through: tokens must
+// be readable by whichever node the CA's validation probe lands on, and both
+// are prerequisites for any node that legitimately issues.
 type ClusterAwareCache struct {
 	underlying autocert.Cache
 	isLeaderF  func() bool
@@ -53,19 +77,28 @@ func (c *ClusterAwareCache) Get(ctx context.Context, name string) ([]byte, error
 	return data, nil
 }
 
-// Put stores a certificate in the cache (only leader can write).
-// Non-leader nodes will return an error to prevent duplicate Let's Encrypt requests.
+// Put stores a certificate in the cache. Only the cluster leader's
+// certificate writes are persisted; challenge tokens and the ACME account key
+// pass through from any node (see the type comment for the full rationale).
 func (c *ClusterAwareCache) Put(ctx context.Context, name string, data []byte) error {
 	isLeader := c.isLeaderF()
 
+	// Tokens must be published by whichever node runs a validation (leader
+	// normally; a follower under the escape hatch), and account-key writes
+	// error out issuance entirely if blocked.
+	if isChallengeToken(name) || acmeAccountKeys[name] {
+		c.logger.Info("cluster cache: storing ACME operational key", "name", name, "is_leader", isLeader)
+		return c.underlying.Put(ctx, name, data)
+	}
+
 	c.logger.Info("cluster cache: Put certificate request", "name", name, "is_leader", isLeader)
 
-	// Check if this node is the cluster leader
 	if !isLeader {
-		// Non-leader nodes should not write certificates
-		// This prevents race conditions with Let's Encrypt
-		c.logger.Warn("cluster cache: certificate request BLOCKED - not cluster leader (leader will handle it)", "name", name)
-		return fmt.Errorf("only cluster leader can request new certificates")
+		// Absorb, do NOT error: an error here makes autocert's renewal loop
+		// re-run full ACME issuance every 30-60 minutes (see type comment).
+		// The certificate stays in this node's autocert memory only.
+		c.logger.Warn("cluster cache: absorbing certificate write from non-leader (not persisted to shared store)", "name", name)
+		return nil
 	}
 
 	c.logger.Info("cluster cache: cluster leader storing certificate", "name", name)
@@ -79,16 +112,21 @@ func (c *ClusterAwareCache) Put(ctx context.Context, name string, data []byte) e
 	return nil
 }
 
-// Delete removes a certificate from the cache (only leader can delete).
+// Delete removes a certificate from the cache. Non-leader certificate deletes
+// are absorbed; challenge-token deletes pass through from any node (autocert
+// cleans up its own token right after validation, wherever it ran).
 func (c *ClusterAwareCache) Delete(ctx context.Context, name string) error {
 	isLeader := c.isLeaderF()
 
 	c.logger.Debug("cluster cache: Delete certificate request", "name", name, "is_leader", isLeader)
 
-	// Check if this node is the cluster leader
+	if isChallengeToken(name) {
+		return c.underlying.Delete(ctx, name)
+	}
+
 	if !isLeader {
-		c.logger.Debug("cluster cache: skipping certificate delete (not cluster leader)", "name", name)
-		return fmt.Errorf("only cluster leader can delete certificates")
+		c.logger.Debug("cluster cache: absorbing certificate delete from non-leader", "name", name)
+		return nil
 	}
 
 	c.logger.Info("cluster cache: cluster leader deleting certificate", "name", name)
