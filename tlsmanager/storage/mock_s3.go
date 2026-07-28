@@ -12,10 +12,11 @@ import (
 // MockS3Client implements the S3 operations needed for testing
 // It uses an in-memory map to store data
 type MockS3Client struct {
-	Storage map[string][]byte
-	GetErr  error
-	PutErr  error
-	DelErr  error
+	Storage  map[string][]byte
+	GetErr   error
+	PutErr   error
+	DelErr   error
+	GetCalls int // Number of GetObject invocations
 }
 
 // NewMockS3Client creates a new mock S3 client with empty storage
@@ -26,6 +27,7 @@ func NewMockS3Client() *MockS3Client {
 }
 
 func (m *MockS3Client) GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	m.GetCalls++
 	if m.GetErr != nil {
 		return nil, m.GetErr
 	}

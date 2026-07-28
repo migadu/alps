@@ -2,12 +2,14 @@ package tlsmanager
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 
 	"github.com/migadu/alps/tlsmanager/storage"
@@ -50,6 +53,8 @@ type LetsEncryptConfig struct {
 	CacheDir            string // Directory for local file cache
 	SyncIntervalMinutes int    // Interval for syncing local cache to S3
 	ACMEHTTPAddr        string // Address for HTTP-01 challenge handler (e.g., ":8080")
+	DirectoryURL        string // ACME directory URL; empty = Let's Encrypt production. When set to a non-production URL the certificate store is automatically namespaced so staging certs can never poison the production cache.
+	WarmRSACerts        bool   // Also pre-issue the legacy RSA certificate flavor (default: ECDSA only)
 	S3                  S3Config
 }
 
@@ -71,6 +76,9 @@ type Manager struct {
 	defaultDomain   string                  // Default domain for SNI-less connections
 	syncWorker      *storage.CertSyncWorker // Periodic S3 sync worker (nil if not using S3)
 	tlsConfig       *tls.Config             // Cached TLS config
+	fallbackCache   *storage.FallbackCache  // Retained for follower refresh / warmer S3-health checks (nil unless S3 storage)
+	isLeader        func() bool             // Cluster leadership; nil in single-instance mode
+	warmer          *certWarmer             // Proactive issuance/renewal loop (nil unless Let's Encrypt)
 }
 
 // NewManager creates a new TLS manager.
@@ -94,6 +102,26 @@ func NewManager(cfg *Config, logger *slog.Logger, isLeaderF ...func() bool) (*Ma
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", cfg.Provider)
 	}
+}
+
+// namespacedStorageConfig isolates the certificate store when a non-production
+// ACME directory (e.g. Let's Encrypt staging) is configured. Certs are keyed by
+// bare domain name and every node treats the store as source of truth, so a
+// staging cert in the production store would be served cluster-wide. The local
+// dir and S3 prefix are suffixed with a hash of the directory URL, making
+// cross-poisoning impossible by construction rather than operator discipline.
+func namespacedStorageConfig(cfg LetsEncryptConfig) (LetsEncryptConfig, bool) {
+	if cfg.DirectoryURL == "" || cfg.DirectoryURL == autocert.DefaultACMEDirectory {
+		return cfg, false
+	}
+	sum := sha256.Sum256([]byte(cfg.DirectoryURL))
+	suffix := fmt.Sprintf("acme-%x", sum[:4])
+	if cfg.CacheDir == "" {
+		cfg.CacheDir = "cert-cache"
+	}
+	cfg.CacheDir += "-" + suffix
+	cfg.S3.Prefix = path.Join(cfg.S3.Prefix, suffix)
+	return cfg, true
 }
 
 func (m *Manager) initFileProvider() error {
@@ -125,24 +153,33 @@ func (m *Manager) initAutocert(isLeaderF ...func() bool) error {
 		return errors.New("email required")
 	}
 
+	storageCfg, namespaced := namespacedStorageConfig(*cfg)
+	if namespaced {
+		m.logger.Warn("using non-default ACME directory - certificate store namespaced to keep it isolated from production",
+			"directory_url", cfg.DirectoryURL,
+			"cache_dir", storageCfg.CacheDir,
+			"s3_prefix", storageCfg.S3.Prefix)
+	}
+
 	var cache autocert.Cache
 	var syncWorker *storage.CertSyncWorker
 
 	switch cfg.StorageProvider {
 	case "s3":
 		// Create S3 cache
-		s3Cache, err := createS3Cache(context.Background(), *cfg, m.logger)
+		s3Cache, err := createS3Cache(context.Background(), storageCfg, m.logger)
 		if err != nil {
 			return err
 		}
 
 		// Create fallback cache (local file + S3) for hybrid storage
-		cacheDir := cfg.CacheDir
+		cacheDir := storageCfg.CacheDir
 		if cacheDir == "" {
 			cacheDir = "cert-cache" // Default local cache directory
 		}
 		fallbackCache := storage.NewFallbackCache(cacheDir, s3Cache, m.logger)
 		cache = fallbackCache
+		m.fallbackCache = fallbackCache
 
 		// Start periodic sync worker
 		syncInterval := time.Duration(cfg.SyncIntervalMinutes) * time.Minute
@@ -152,7 +189,7 @@ func (m *Manager) initAutocert(isLeaderF ...func() bool) error {
 		syncWorker = storage.NewCertSyncWorker(fallbackCache, syncInterval, m.logger)
 		syncWorker.Start()
 
-		prefixInfo := cfg.S3.Prefix
+		prefixInfo := storageCfg.S3.Prefix
 		if prefixInfo == "" {
 			prefixInfo = "(none - bucket root)"
 		}
@@ -164,7 +201,7 @@ func (m *Manager) initAutocert(isLeaderF ...func() bool) error {
 
 	case "file":
 		// Use autocert.DirCache for local filesystem storage only
-		cacheDir := cfg.CacheDir
+		cacheDir := storageCfg.CacheDir
 		if cacheDir == "" {
 			cacheDir = "cert-cache"
 		}
@@ -184,12 +221,16 @@ func (m *Manager) initAutocert(isLeaderF ...func() bool) error {
 	} else {
 		m.logger.Info("TLS running in single-instance mode (no cluster leader election)")
 	}
+	m.isLeader = leaderFunc
 
 	autocertMgr := &autocert.Manager{
 		Prompt:     autocert.AcceptTOS,
 		HostPolicy: autocert.HostWhitelist(cfg.Domains...),
 		Cache:      cache,
 		Email:      cfg.Email,
+	}
+	if cfg.DirectoryURL != "" {
+		autocertMgr.Client = &acme.Client{DirectoryURL: cfg.DirectoryURL}
 	}
 
 	// Determine default domain for SNI-less connections
@@ -249,6 +290,13 @@ func (m *Manager) initAutocert(isLeaderF ...func() bool) error {
 
 	m.tlsConfig = baseTLSConfig
 
+	// Proactively issue/renew certificates for all configured domains so the
+	// shared store is always populated regardless of which node receives
+	// traffic. In a cluster only the leader runs warm passes; in
+	// single-instance mode the sole node does.
+	m.warmer = newCertWarmer(m, cfg.Domains, cfg.WarmRSACerts)
+	m.warmer.Start()
+
 	m.logger.Info("TLS manager initialized",
 		"domains", cfg.Domains,
 		"email", cfg.Email,
@@ -283,6 +331,9 @@ func (m *Manager) Close() error {
 		return nil
 	}
 
+	if m.warmer != nil {
+		m.warmer.Stop()
+	}
 	if m.syncWorker != nil {
 		m.logger.Info("stopping certificate sync worker")
 		m.syncWorker.Stop(10 * time.Second)

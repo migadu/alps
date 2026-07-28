@@ -290,6 +290,24 @@ level = "info"
 # Your proxy should forward /.well-known/acme-challenge/* to this address.
 # acme_http_addr = ":8080"
 
+# ACME directory URL (default: Let's Encrypt production).
+# Set to the Let's Encrypt staging directory to test certificate issuance
+# without burning production rate limits:
+#   directory_url = "https://acme-staging-v02.api.letsencrypt.org/directory"
+# When a non-production directory is configured, the local cache directory and
+# S3 prefix are automatically namespaced (suffix derived from the URL) so
+# staging certificates can never be served from, or overwrite, the production
+# certificate store.
+# directory_url = ""
+
+# Also pre-issue the legacy RSA certificate flavor alongside ECDSA
+# (default: false). Only needed if you must support very old clients that
+# cannot do ECDSA; doubles the number of certificates issued per domain.
+# Upgrade note: deployments whose cached certificates are RSA-only (issued
+# historically by handshakes from non-ECDSA clients) will obtain one new
+# ECDSA certificate per domain on the first warm pass after upgrading.
+# warm_rsa_certs = false
+
 [tls.letsencrypt.s3]
 # S3 storage configuration for certificates
 # Uses autocert with S3 storage as the primary source of truth.
@@ -312,7 +330,15 @@ level = "info"
 
 
 [cluster]
-# Optional - only needed for Let's Encrypt with S3 storage and multiple ALPS nodes
+# Optional - only needed for Let's Encrypt with S3 storage and multiple ALPS nodes.
+# Notes when enabled:
+#  - TLS letsencrypt storage_provider must be "s3" (enforced at startup);
+#    file storage is node-local and cannot be shared across the cluster.
+#  - A cluster initialization failure is fatal. Nodes do NOT silently fall
+#    back to single-node mode, since an ungated node would issue Let's
+#    Encrypt certificates on its own.
+#  - When deploying new versions, restart the current cluster leader first
+#    (leadership is pinned to the lexicographically smallest node_id).
 enabled = false
 # node_id = "node-1"                            # Unique identifier for this node
 # bind = "0.0.0.0"                              # Can be "IP:port" or just "IP" (default: 0.0.0.0)
