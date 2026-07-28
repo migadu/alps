@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -79,6 +80,19 @@ type Manager struct {
 	fallbackCache   *storage.FallbackCache  // Retained for follower refresh / warmer S3-health checks (nil unless S3 storage)
 	isLeader        func() bool             // Cluster leadership; nil in single-instance mode
 	warmer          *certWarmer             // Proactive issuance/renewal loop (nil unless Let's Encrypt)
+
+	// Follower-path state (cluster mode): memoized parsed certificates and
+	// hard-miss tracking for the escape hatch. leaderIssue is the full
+	// autocert path a follower falls back to when the leader has published
+	// nothing for followerEscapeThreshold; followerLastEscape rate-limits
+	// those attempts. warmRSA mirrors LetsEncryptConfig.WarmRSACerts: the
+	// escape hatch only fires for flavors the leader is expected to publish.
+	followerMu         sync.Mutex
+	followerCerts      map[string]*followerCertEntry
+	followerFirstMiss  map[string]time.Time
+	followerLastEscape map[string]time.Time
+	leaderIssue        func(*tls.ClientHelloInfo) (*tls.Certificate, error)
+	warmRSA            bool
 }
 
 // NewManager creates a new TLS manager.
@@ -248,8 +262,10 @@ func (m *Manager) initAutocert(isLeaderF ...func() bool) error {
 	baseTLSConfig := autocertMgr.TLSConfig()
 	baseTLSConfig.MinVersion = tls.VersionTLS12
 
-	// Wrap GetCertificate with enhanced logging and SNI handling
+	// Wrap GetCertificate with enhanced logging, SNI handling, and cluster
+	// issuance gating.
 	originalGetCert := baseTLSConfig.GetCertificate
+	m.leaderIssue = originalGetCert
 	baseTLSConfig.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		serverName := hello.ServerName
 
@@ -280,6 +296,23 @@ func (m *Manager) initAutocert(isLeaderF ...func() bool) error {
 		modifiedHello := *hello
 		modifiedHello.ServerName = serverName
 
+		// ACME tls-alpn-01 validation probes must reach autocert on EVERY
+		// node — leader or follower. autocert tries this challenge type
+		// first, the CA's probe can land on any node behind the load
+		// balancer, and serving it is a pure read of the challenge cert
+		// from the shared cache (never an issuance).
+		if isALPNChallengeHello(hello) {
+			m.logger.Debug("TLS: serving tls-alpn-01 challenge handshake", "domain", serverName)
+			return originalGetCert(&modifiedHello)
+		}
+
+		// Cluster followers never initiate ACME issuance. They serve from
+		// the shared store the leader populates; on a sustained hard miss
+		// the escape hatch in followerGetCertificate issues locally.
+		if m.isLeader != nil && !m.isLeader() {
+			return m.followerGetCertificate(&modifiedHello, serverName)
+		}
+
 		cert, err := originalGetCert(&modifiedHello)
 		if err != nil {
 			m.logger.Error("TLS: failed to get certificate", "server_name", serverName, "error", err)
@@ -294,6 +327,7 @@ func (m *Manager) initAutocert(isLeaderF ...func() bool) error {
 	// shared store is always populated regardless of which node receives
 	// traffic. In a cluster only the leader runs warm passes; in
 	// single-instance mode the sole node does.
+	m.warmRSA = cfg.WarmRSACerts
 	m.warmer = newCertWarmer(m, cfg.Domains, cfg.WarmRSACerts)
 	m.warmer.Start()
 
