@@ -329,6 +329,52 @@ func TestCSRFMiddlewareBehindProxy(t *testing.T) {
 	}
 }
 
+// TestCSRFMismatchHint checks the operator-facing diagnostic attached to a
+// rejection: a plain cross-site request must not get a misconfiguration hint,
+// while the two proxy misconfigurations must say what to change.
+func TestCSRFMismatchHint(t *testing.T) {
+	newCtx := func(remoteAddr string, trustedProxies []*net.IPNet, headers map[string]string) *Context {
+		req := httptest.NewRequest(http.MethodPost, "/", nil)
+		req.Host = "example.com"
+		req.RemoteAddr = remoteAddr
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		server := &Server{logger: &NilLogger{}, Options: &Options{TrustedProxies: trustedProxies}}
+		return NewContext(httptest.NewRecorder(), req, server)
+	}
+	private := []*net.IPNet{mustCIDR("10.0.0.0/8")}
+
+	t.Run("genuine cross-site request gets no hint", func(t *testing.T) {
+		ctx := newCtx("203.0.113.7:5000", private, nil)
+		assert.Empty(t, csrfMismatchHint(ctx, "https://evil.com", "https://example.com"))
+	})
+
+	t.Run("scheme-only mismatch from untrusted peer points at trusted_proxies", func(t *testing.T) {
+		ctx := newCtx("203.0.113.7:5000", private, nil)
+		hint := csrfMismatchHint(ctx, "https://example.com", "http://example.com")
+		assert.Contains(t, hint, "trusted_proxies")
+		assert.Contains(t, hint, "203.0.113.7")
+	})
+
+	t.Run("scheme-only mismatch from trusted peer points at X-Forwarded-Proto", func(t *testing.T) {
+		ctx := newCtx("10.0.0.5:5000", private, nil)
+		hint := csrfMismatchHint(ctx, "https://example.com", "http://example.com")
+		assert.Contains(t, hint, "X-Forwarded-Proto")
+	})
+
+	t.Run("referer form is recognized as scheme-only", func(t *testing.T) {
+		ctx := newCtx("10.0.0.5:5000", private, nil)
+		assert.NotEmpty(t, csrfMismatchHint(ctx, "https://example.com/mailbox", "http://example.com"))
+	})
+
+	t.Run("forwarded headers from untrusted peer are called out", func(t *testing.T) {
+		ctx := newCtx("203.0.113.7:5000", private, map[string]string{"X-Forwarded-Proto": "https"})
+		hint := csrfMismatchHint(ctx, "https://other.example.com", "http://example.com")
+		assert.Contains(t, hint, "not in trusted_proxies")
+	})
+}
+
 func TestFirstForwardedValue(t *testing.T) {
 	assert.Equal(t, "https", firstForwardedValue("https"))
 	assert.Equal(t, "https", firstForwardedValue("https, http"))
