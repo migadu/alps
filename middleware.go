@@ -1,8 +1,10 @@
 package alps
 
 import (
+	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -97,24 +99,37 @@ func originMatches(origin, expected string) bool {
 
 // csrfMismatchHint returns a short, actionable suffix for the rejection log when
 // the mismatch looks like a reverse-proxy misconfiguration rather than an actual
-// cross-site request. Both shapes below are configuration errors an operator can
-// fix, and the bare "got X, expected Y" line does not say how.
+// cross-site request. Each shape below is a configuration error an operator can
+// fix, and the bare "got X, expected Y" line does not say how. The hint goes to
+// the log only, never into the HTTP response.
 func csrfMismatchHint(ctx *Context, got, expectedOrigin string) string {
-	// The browser is on HTTPS but alps derived HTTP for the same host: a
-	// TLS-terminating proxy that is not forwarding (or is not trusted for)
-	// X-Forwarded-Proto.
-	gotHost := strings.TrimPrefix(strings.ToLower(got), "https://")
-	expectedHost := strings.TrimPrefix(strings.ToLower(expectedOrigin), "http://")
-	if strings.HasPrefix(strings.ToLower(got), "https://") &&
-		strings.HasPrefix(strings.ToLower(expectedOrigin), "http://") &&
-		(gotHost == expectedHost || strings.HasPrefix(gotHost, expectedHost+"/")) {
-		if !isRequestFromTrustedProxy(ctx) {
-			return " (scheme differs and the peer " + peerIP(ctx) + " is not in trusted_proxies;" +
-				" behind a TLS-terminating proxy, forward X-Forwarded-Proto and list the proxy in" +
-				" trusted_proxies, or set trusted_origins)"
+	gotURL, errGot := url.Parse(strings.ToLower(got))
+	expURL, errExp := url.Parse(strings.ToLower(expectedOrigin))
+	if errGot == nil && errExp == nil && gotURL.Host != "" && expURL.Host != "" {
+		// The browser is on HTTPS but alps derived HTTP for the same host: a
+		// TLS-terminating proxy that is not forwarding (or is not trusted for)
+		// X-Forwarded-Proto.
+		if gotURL.Scheme == "https" && expURL.Scheme == "http" && gotURL.Host == expURL.Host {
+			if !isRequestFromTrustedProxy(ctx) {
+				return " (scheme differs and the peer " + peerIP(ctx) + " is not in trusted_proxies;" +
+					" behind a TLS-terminating proxy, forward X-Forwarded-Proto and list the proxy in" +
+					" trusted_proxies, or set trusted_origins)"
+			}
+			if xfp := firstForwardedValue(ctx.Request.Header.Get("X-Forwarded-Proto")); xfp != "" {
+				return fmt.Sprintf(" (scheme differs; the trusted proxy forwards X-Forwarded-Proto %q"+
+					" instead of \"https\": fix it, or set trusted_origins)", xfp)
+			}
+			return " (scheme differs; the trusted proxy is not sending X-Forwarded-Proto:" +
+				" set it, or set trusted_origins)"
 		}
-		return " (scheme differs; the trusted proxy is not sending X-Forwarded-Proto:" +
-			" set it, or set trusted_origins)"
+
+		// Same scheme and hostname but a different (or missing) port: a proxy that
+		// strips the port when forwarding the host (e.g. nginx's $host).
+		if gotURL.Scheme == expURL.Scheme && gotURL.Hostname() == expURL.Hostname() &&
+			gotURL.Port() != expURL.Port() {
+			return " (hosts differ only by port; forward the browser-facing host with its port" +
+				" — e.g. nginx $http_host, not $host — or set trusted_origins)"
+		}
 	}
 
 	// Forwarded headers arrived but were ignored because the peer is untrusted —

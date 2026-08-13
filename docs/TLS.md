@@ -172,10 +172,10 @@ frontend https-in
     bind :443 ssl crt /etc/haproxy/certs/webmail.example.com.pem
     mode http
 
-    option forwardfor                                          # X-Forwarded-For
+    option forwardfor                                           # X-Forwarded-For
     http-request set-header X-Forwarded-Proto https             # required
-    http-request set-header X-Forwarded-Host %[req.hdr(host)]
-    http-request set-header X-Real-IP %[src]
+    http-request set-header X-Forwarded-Host  %[req.hdr(host)]
+    http-request set-header X-Real-IP         %[src]
 
     default_backend alps
 

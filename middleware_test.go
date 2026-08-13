@@ -360,7 +360,24 @@ func TestCSRFMismatchHint(t *testing.T) {
 	t.Run("scheme-only mismatch from trusted peer points at X-Forwarded-Proto", func(t *testing.T) {
 		ctx := newCtx("10.0.0.5:5000", private, nil)
 		hint := csrfMismatchHint(ctx, "https://example.com", "http://example.com")
-		assert.Contains(t, hint, "X-Forwarded-Proto")
+		assert.Contains(t, hint, "not sending X-Forwarded-Proto")
+	})
+
+	t.Run("trusted peer forwarding a wrong proto value is named", func(t *testing.T) {
+		ctx := newCtx("10.0.0.5:5000", private, map[string]string{"X-Forwarded-Proto": "http"})
+		hint := csrfMismatchHint(ctx, "https://example.com", "http://example.com")
+		assert.Contains(t, hint, `forwards X-Forwarded-Proto "http"`)
+	})
+
+	t.Run("port-only mismatch points at port-stripping proxy", func(t *testing.T) {
+		ctx := newCtx("10.0.0.5:5000", private, nil)
+		hint := csrfMismatchHint(ctx, "https://example.com:8443", "https://example.com")
+		assert.Contains(t, hint, "differ only by port")
+	})
+
+	t.Run("different hostname on same scheme gets no port hint", func(t *testing.T) {
+		ctx := newCtx("203.0.113.7:5000", private, nil)
+		assert.Empty(t, csrfMismatchHint(ctx, "https://evil.com:8443", "https://example.com"))
 	})
 
 	t.Run("referer form is recognized as scheme-only", func(t *testing.T) {

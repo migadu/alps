@@ -78,8 +78,11 @@ func TestCookieSecureUsesEffectiveHTTPS(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
+			// Skip everything that isn't first-party source: build output, the
+			// frontend, vendored deps, and scratch dirs that may hold stale .go
+			// files (air builds into tmp/).
 			switch d.Name() {
-			case "node_modules", "dist", "frontend", "build", ".git":
+			case "node_modules", "dist", "frontend", "build", ".git", "tmp", "cert-cache", "vendor":
 				return fs.SkipDir
 			}
 			return nil
