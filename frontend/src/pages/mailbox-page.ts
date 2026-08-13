@@ -53,14 +53,19 @@ export class MailboxPage extends LitElement {
 
   private unlockAudio = () => {
     if (this.audioUnlocked) return;
-    this.notificationSound.volume = 0;
+    // Mute rather than zero the volume: iOS ignores assignments to
+    // HTMLMediaElement.volume, so the unlock play() was audible there.
+    this.notificationSound.muted = true;
     this.notificationSound.play().then(() => {
       this.notificationSound.pause();
       this.notificationSound.currentTime = 0;
-      this.notificationSound.volume = 1;
       this.audioUnlocked = true;
-    }).catch(() => {});
-    
+    }).catch(() => {}).finally(() => {
+      // Restore even when play() rejects, so a failed unlock doesn't
+      // leave real notifications silenced.
+      this.notificationSound.muted = false;
+    });
+
     document.removeEventListener('click', this.unlockAudio);
     document.removeEventListener('keydown', this.unlockAudio);
   };
