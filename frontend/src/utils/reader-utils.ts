@@ -56,7 +56,6 @@ export function applyThemeToIframe(iframe: HTMLIFrameElement, themeIframeContent
 export function setupIframeSizing(iframe: HTMLIFrameElement, themeIframeContent: boolean): void {
   if (!iframe.contentDocument || !iframe.contentDocument.body) return;
 
-  iframe.style.height = '0px';
   iframe.style.width = '100%';
 
   // Prevent dropping files inside the iframe from navigating away
@@ -69,6 +68,8 @@ export function setupIframeSizing(iframe: HTMLIFrameElement, themeIframeContent:
     (iframe as any)._ro.disconnect();
   }
 
+  const doc = iframe.contentDocument;
+
   // The iframe stays locked to its container's width (100%). We only sync its
   // height to the content so the whole page scrolls as one. We deliberately do
   // NOT grow the iframe to the content's width: emails with fixed-width layouts
@@ -76,28 +77,33 @@ export function setupIframeSizing(iframe: HTMLIFrameElement, themeIframeContent:
   // producing an enormous, broken-looking message. Content wider than the pane
   // scrolls horizontally inside the iframe instead (see html-sanitizer body
   // overflow-x).
-  const ro = new ResizeObserver((entries) => {
-    let newHeight = 0;
-
-    for (const entry of entries) {
-      if (iframe.contentDocument && entry.target === iframe.contentDocument.body) {
-        if (entry.borderBoxSize && entry.borderBoxSize.length > 0) {
-          newHeight = entry.borderBoxSize[0].blockSize;
-        } else {
-          newHeight = entry.contentRect.height + 48;
-        }
-      }
-    }
-
+  //
+  // We measure scrollHeight rather than ResizeObserver's borderBoxSize/
+  // contentRect. Message HTML can set an explicit height on <html>/<body>
+  // (often via an inline `!important` style, which beats our injected
+  // override stylesheet regardless of its specificity) while its real
+  // content overflows visibly well past that box. borderBoxSize/contentRect
+  // only report the box's own (possibly bogus, tiny) size, whereas
+  // scrollHeight reflects the full overflowed content. We take the max of
+  // <html> and <body> since either one can end up being the constrained one.
+  const measure = () => {
+    if (!iframe.contentDocument) return;
+    const html = iframe.contentDocument.documentElement;
+    const body = iframe.contentDocument.body;
+    const newHeight = Math.max(html?.scrollHeight || 0, body?.scrollHeight || 0);
     if (newHeight > 0) {
       const currentHeight = parseFloat(iframe.style.height) || 0;
       if (Math.abs(currentHeight - newHeight) > 2) {
         iframe.style.height = `${Math.ceil(newHeight)}px`;
       }
     }
-  });
+  };
 
-  ro.observe(iframe.contentDocument.body);
+  measure();
+
+  const ro = new ResizeObserver(() => measure());
+  ro.observe(doc.body);
+  ro.observe(doc.documentElement);
   (iframe as any)._ro = ro;
 }
 
