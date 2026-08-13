@@ -1,8 +1,10 @@
 package alps
 
 import (
+	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -62,7 +64,7 @@ func CSRFMiddleware(next HandlerFunc) HandlerFunc {
 					ctx.Server.Logger().Printf("CSRF: Allowing localhost origin mismatch in development: got %q, expected %q", origin, expectedOrigin)
 					return next(ctx)
 				}
-				ctx.Server.Logger().Printf("CSRF: Origin mismatch: got %q, expected %q", origin, expectedOrigin)
+				ctx.Server.Logger().Printf("CSRF: Origin mismatch: got %q, expected %q%s", origin, expectedOrigin, csrfMismatchHint(ctx, origin, expectedOrigin))
 				return NewHTTPError(http.StatusForbidden, "Invalid origin")
 			}
 			return next(ctx)
@@ -72,7 +74,7 @@ func CSRFMiddleware(next HandlerFunc) HandlerFunc {
 		referer := ctx.Request.Header.Get("Referer")
 		if referer != "" {
 			if !refererMatches(referer, expectedOrigin) && !refererInList(referer, trustedOrigins) {
-				ctx.Server.Logger().Printf("CSRF: Referer mismatch: got %q, expected %q", referer, expectedOrigin)
+				ctx.Server.Logger().Printf("CSRF: Referer mismatch: got %q, expected %q%s", referer, expectedOrigin, csrfMismatchHint(ctx, referer, expectedOrigin))
 				return NewHTTPError(http.StatusForbidden, "Invalid referer")
 			}
 			return next(ctx)
@@ -93,6 +95,60 @@ func CSRFMiddleware(next HandlerFunc) HandlerFunc {
 // originMatches checks if the origin header matches the expected origin.
 func originMatches(origin, expected string) bool {
 	return strings.EqualFold(origin, expected)
+}
+
+// csrfMismatchHint returns a short, actionable suffix for the rejection log when
+// the mismatch looks like a reverse-proxy misconfiguration rather than an actual
+// cross-site request. Each shape below is a configuration error an operator can
+// fix, and the bare "got X, expected Y" line does not say how. The hint goes to
+// the log only, never into the HTTP response.
+func csrfMismatchHint(ctx *Context, got, expectedOrigin string) string {
+	gotURL, errGot := url.Parse(strings.ToLower(got))
+	expURL, errExp := url.Parse(strings.ToLower(expectedOrigin))
+	if errGot == nil && errExp == nil && gotURL.Host != "" && expURL.Host != "" {
+		// The browser is on HTTPS but alps derived HTTP for the same host: a
+		// TLS-terminating proxy that is not forwarding (or is not trusted for)
+		// X-Forwarded-Proto.
+		if gotURL.Scheme == "https" && expURL.Scheme == "http" && gotURL.Host == expURL.Host {
+			if !isRequestFromTrustedProxy(ctx) {
+				return " (scheme differs and the peer " + peerIP(ctx) + " is not in trusted_proxies;" +
+					" behind a TLS-terminating proxy, forward X-Forwarded-Proto and list the proxy in" +
+					" trusted_proxies, or set trusted_origins)"
+			}
+			if xfp := firstForwardedValue(ctx.Request.Header.Get("X-Forwarded-Proto")); xfp != "" {
+				return fmt.Sprintf(" (scheme differs; the trusted proxy forwards X-Forwarded-Proto %q"+
+					" instead of \"https\": fix it, or set trusted_origins)", xfp)
+			}
+			return " (scheme differs; the trusted proxy is not sending X-Forwarded-Proto:" +
+				" set it, or set trusted_origins)"
+		}
+
+		// Same scheme and hostname but a different (or missing) port: a proxy that
+		// strips the port when forwarding the host (e.g. nginx's $host).
+		if gotURL.Scheme == expURL.Scheme && gotURL.Hostname() == expURL.Hostname() &&
+			gotURL.Port() != expURL.Port() {
+			return " (hosts differ only by port; forward the browser-facing host with its port" +
+				" — e.g. nginx $http_host, not $host — or set trusted_origins)"
+		}
+	}
+
+	// Forwarded headers arrived but were ignored because the peer is untrusted —
+	// the usual cause is a trusted_proxies list that omits the proxy's real address.
+	if !isRequestFromTrustedProxy(ctx) &&
+		(ctx.Request.Header.Get("X-Forwarded-Proto") != "" || ctx.Request.Header.Get("X-Forwarded-Host") != "") {
+		return " (X-Forwarded-* headers ignored: peer " + peerIP(ctx) + " is not in trusted_proxies)"
+	}
+
+	return ""
+}
+
+// peerIP returns the immediate peer's IP for diagnostics, falling back to the
+// raw RemoteAddr when it is not in host:port form.
+func peerIP(ctx *Context) string {
+	if host, _, err := net.SplitHostPort(ctx.Request.RemoteAddr); err == nil {
+		return host
+	}
+	return ctx.Request.RemoteAddr
 }
 
 // isLocalhostOrigin checks if an origin is localhost (for development).

@@ -913,7 +913,7 @@ func handleLogin(ctx *alps.Context) error {
 				Path:     "/",
 				HttpOnly: true,
 				SameSite: http.SameSiteStrictMode,
-				Secure:   ctx.IsTLS(),
+				Secure:   ctx.IsEffectiveHTTPS(),
 				MaxAge:   300, // 5 minutes
 			})
 
@@ -925,7 +925,7 @@ func handleLogin(ctx *alps.Context) error {
 					Path:     "/",
 					HttpOnly: true,
 					SameSite: http.SameSiteStrictMode,
-					Secure:   ctx.IsTLS(),
+					Secure:   ctx.IsEffectiveHTTPS(),
 					MaxAge:   300, // 5 minutes
 				})
 			}
@@ -2456,7 +2456,7 @@ func handleSwitchAccount(ctx *alps.Context) error {
 			Path:     "/",
 			HttpOnly: true,
 			SameSite: http.SameSiteStrictMode,
-			Secure:   ctx.IsTLS(),
+			Secure:   ctx.IsEffectiveHTTPS(),
 			MaxAge:   300, // 5 minutes
 		})
 

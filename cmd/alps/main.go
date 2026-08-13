@@ -175,6 +175,12 @@ func main() {
 
 	if config.WebAuthn.RPID != "" {
 		rpID = config.WebAuthn.RPID
+	} else {
+		// WebAuthn is bound to the browser-facing hostname and cannot be derived
+		// from forwarded headers, so a proxied deployment that leaves this unset
+		// silently falls back to localhost and fails in the browser at enrolment.
+		logger.Warnf("WebAuthn: [webauthn] rpid is unset, defaulting to %q — 2FA will not work "+
+			"unless served from localhost; set rpid and origins to your public hostname", rpID)
 	}
 	if config.WebAuthn.RPDisplayName != "" {
 		rpDisplayName = config.WebAuthn.RPDisplayName

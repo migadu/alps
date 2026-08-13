@@ -151,15 +151,17 @@ func (c *Context) IsTLS() bool {
 	return c.Request.TLS != nil
 }
 
-// isEffectiveHTTPS reports whether the browser's connection is HTTPS, accounting
+// IsEffectiveHTTPS reports whether the browser's connection is HTTPS, accounting
 // for a trusted TLS-terminating reverse proxy that forwards plain HTTP with
 // X-Forwarded-Proto. Cookie Secure flags must reflect the browser-facing scheme,
 // not the (possibly plaintext) hop between the proxy and alps — otherwise the
-// session cookie and the login-token cookie (which carries the fernet-encrypted
-// password) would be set without Secure in the recommended proxy deployment.
-// Forwarded headers are only honored when the immediate peer is a configured
-// trusted proxy, mirroring the CSRF middleware.
-func (c *Context) isEffectiveHTTPS() bool {
+// session cookie, the login-token cookie (which carries the fernet-encrypted
+// password) and the 2FA cookies would be set without Secure in the recommended
+// proxy deployment. Forwarded headers are only honored when the immediate peer is
+// a configured trusted proxy, mirroring the CSRF middleware.
+//
+// Always prefer this over IsTLS when deciding a cookie's Secure flag.
+func (c *Context) IsEffectiveHTTPS() bool {
 	if c.IsTLS() {
 		return true
 	}
@@ -190,14 +192,14 @@ func (c *Context) SetSessionWithExpiry(s *Session, persistent bool) {
 		Path:     "/", // Important: cookie must be valid for all paths
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   c.isEffectiveHTTPS(),
+		Secure:   c.IsEffectiveHTTPS(),
 	}
 	frontendCookie := http.Cookie{
 		Name:     "alps_logged_in",
 		Path:     "/",
 		HttpOnly: false,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   c.isEffectiveHTTPS(),
+		Secure:   c.IsEffectiveHTTPS(),
 	}
 
 	if s != nil {
@@ -231,7 +233,7 @@ func (c *Context) SetLoginToken(username, password string, verified2FA bool, per
 		Name:     loginTokenCookieName,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   c.isEffectiveHTTPS(),
+		Secure:   c.IsEffectiveHTTPS(),
 		Path:     "/",
 	}
 	frontendCookie := http.Cookie{
@@ -239,7 +241,7 @@ func (c *Context) SetLoginToken(username, password string, verified2FA bool, per
 		Path:     "/",
 		HttpOnly: false,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   c.isEffectiveHTTPS(),
+		Secure:   c.IsEffectiveHTTPS(),
 	}
 
 	if persistent {

@@ -447,7 +447,7 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   ctx.IsTLS(),
+		Secure:   ctx.IsEffectiveHTTPS(),
 		MaxAge:   -1,
 	})
 
@@ -463,7 +463,7 @@ func handleVerifyFinish(ctx *alps.Context) error {
 			Path:     "/",
 			HttpOnly: true,
 			SameSite: http.SameSiteStrictMode,
-			Secure:   ctx.IsTLS(),
+			Secure:   ctx.IsEffectiveHTTPS(),
 			MaxAge:   -1,
 		})
 	}

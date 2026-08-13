@@ -3,10 +3,14 @@ package alps
 import (
 	"crypto/tls"
 	"encoding/json"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -48,7 +52,7 @@ func TestContext_CookieSecureReflectsForwardedProto(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.wantSecure, tc.ctx.isEffectiveHTTPS())
+			assert.Equal(t, tc.wantSecure, tc.ctx.IsEffectiveHTTPS())
 		})
 	}
 
@@ -60,6 +64,41 @@ func TestContext_CookieSecureReflectsForwardedProto(t *testing.T) {
 			assert.True(t, ck.Secure, "session cookie must be Secure behind an https-terminating trusted proxy")
 		}
 	}
+}
+
+// TestCookieSecureUsesEffectiveHTTPS guards every cookie in the tree, including
+// the ones set from the plugin packages (the 2FA cookies used to get this wrong).
+// IsTLS only describes the proxy-to-alps hop, so a cookie whose Secure flag is
+// derived from it silently loses Secure behind a TLS-terminating reverse proxy.
+func TestCookieSecureUsesEffectiveHTTPS(t *testing.T) {
+	badSecure := regexp.MustCompile(`Secure:\s*\w+\.IsTLS\(\)`)
+
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			// Skip everything that isn't first-party source: build output, the
+			// frontend, vendored deps, and scratch dirs that may hold stale .go
+			// files (air builds into tmp/).
+			switch d.Name() {
+			case "node_modules", "dist", "frontend", "build", ".git", "tmp", "cert-cache", "vendor":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		assert.NotRegexp(t, badSecure, string(src),
+			"%s: derive a cookie's Secure flag from Context.IsEffectiveHTTPS, not IsTLS", path)
+		return nil
+	})
+	assert.NoError(t, err)
 }
 
 func TestContextSetGet(t *testing.T) {
