@@ -385,10 +385,23 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 							ctx.Server.Logger().Debugf("Cache MISS for status:%s (via LIST-STATUS)", mbox.Name())
 						}
 					} else if statusesToFetch[mbox.Name()] || mbox.Subscribed {
+						// Non-selectable folders (e.g. Gmail's "[Gmail]"
+						// container) never get a status via LIST-STATUS and
+						// reject an explicit STATUS with NO [NONEXISTENT].
+						if mbox.HasAttr(string(imap.MailboxAttrNoSelect)) ||
+							mbox.HasAttr(string(imap.MailboxAttrNonExistent)) {
+							continue
+						}
 						// Server doesn't support LIST-STATUS, need individual STATUS command
 						status, err := getMailboxStatusWithProvider(p, mbox.Name())
 						if err != nil {
-							return err
+							if statusesToFetch[mbox.Name()] {
+								return err
+							}
+							// A sidebar folder's STATUS failure must not take
+							// down the whole mailbox view.
+							ctx.Server.Logger().Errorf("Failed to get status for mailbox %q: %v", mbox.Name(), err)
+							continue
 						}
 						statuses[mbox.Name()] = status
 						ctx.Session.Cache().Set("status:"+mbox.Name(), status)
