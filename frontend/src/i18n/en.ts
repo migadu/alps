@@ -106,7 +106,8 @@ export const en = {
       serbian: 'Српски',
       serbianLatin: 'Srpski (Latinica)',
       french: 'Français',
-      portuguese: 'Português'
+      portuguese: 'Português',
+      danish: 'Dansk'
     }
   },
   linkedAccounts: {
