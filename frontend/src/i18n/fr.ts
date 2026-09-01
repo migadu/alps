@@ -100,7 +100,8 @@ export const fr = {
       serbian: 'Српски (Ћирилица)',
       serbianLatin: 'Srpski (Latinica)',
       french: 'Français',
-      portuguese: 'Português'
+      portuguese: 'Português',
+      danish: 'Dansk'
     },
   },
   linkedAccounts: {
