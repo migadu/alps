@@ -269,6 +269,7 @@ export const de: TranslationDictionary = {
     reply: 'Antworten',
     replyAll: 'Allen antworten',
     forward: 'Weiterleiten',
+    from: 'Von:',
     to: 'An:',
     cc: 'Cc:',
     date: 'Datum:',

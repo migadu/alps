@@ -267,6 +267,7 @@ export const rs = {
     reply: 'Одговори',
     replyAll: 'Одговори свима',
     forward: 'Проследи',
+    from: 'Од:',
     to: 'За:',
     cc: 'Cc:',
     date: 'Датум:',

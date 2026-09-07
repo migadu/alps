@@ -267,6 +267,7 @@ export const sr = {
     reply: 'Odgovori',
     replyAll: 'Odgovori svima',
     forward: 'Prosledi',
+    from: 'Od:',
     to: 'Za:',
     cc: 'Cc:',
     date: 'Datum:',

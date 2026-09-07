@@ -514,6 +514,14 @@ export class SettingsPage extends LitElement {
             ` : ''}
           </label>
         </alps-setting-group>
+        <alps-setting-group>
+          <label class="checkbox-label">
+            <input type="checkbox" 
+                   ?checked=${this.settingsState.enableAvatars} 
+                   @change=${(e: Event) => this.handleUpdate(e, 'enableAvatars')}>
+            ${this.i18nStore?.t('settings.reading.enableAvatars')}
+          </label>
+        </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.preferredView')}" description="${this.i18nStore?.t('settings.reading.preferredViewDesc')}">
           <alps-select @change=${(e: Event) => this.handleUpdate(e, 'preferredView')} .value=${this.settingsState.preferredView}
             .options=${[

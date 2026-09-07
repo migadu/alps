@@ -376,6 +376,16 @@ export class MessageReader extends LitElement {
       gap: 16px;
     }
 
+    .reader-sender-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-color);
+      width: 40px;
+      text-align: right;
+      line-height: 1.5;
+      flex-shrink: 0;
+    }
+
     .avatar-container {
       position: relative;
       display: inline-flex;
@@ -1419,6 +1429,7 @@ export class MessageReader extends LitElement {
 
     const domain = sender.Host ? sender.Host.toLowerCase() : '';
     const bimiUrl = getBimiAvatarUrl(domain);
+    const enableAvatars = this.settingsStore?.getState()?.enableAvatars ?? true;
 
     // Classify the current mailbox by IMAP special-use attribute (with a name
     // fallback) so Gmail's "[Gmail]/Trash", "[Gmail]/Spam", etc. show the correct
@@ -1630,18 +1641,22 @@ export class MessageReader extends LitElement {
           <div class="reader-meta">
             <div class="reader-sender-block">
               <div class="reader-sender-left">
-                <div class="avatar-container">
-                  <alps-avatar .name=${senderName} .email=${senderAddress} .size=${40} .src=${bimiUrl}></alps-avatar>
-                  ${msg.HasBimiPotential ? html`
-                    <div class="bimi-badge" title="${this.i18nStore?.t('messageReader.verifiedSender')}">
-                      ${renderIcon('verifiedBadge')}
-                    </div>
-                  ` : msg.HasBimiFailed ? html`
-                    <div class="bimi-badge bimi-failed-badge" title="${this.i18nStore?.t('messageReader.unverifiedSender')}">
-                      ${renderIcon('authFailedBadge')}
-                    </div>
-                  ` : ''}
-                </div>
+                ${enableAvatars ? html`
+                  <div class="avatar-container">
+                    <alps-avatar .name=${senderName} .email=${senderAddress} .size=${40} .src=${bimiUrl}></alps-avatar>
+                    ${msg.HasBimiPotential ? html`
+                      <div class="bimi-badge" title="${this.i18nStore?.t('messageReader.verifiedSender')}">
+                        ${renderIcon('verifiedBadge')}
+                      </div>
+                    ` : msg.HasBimiFailed ? html`
+                      <div class="bimi-badge bimi-failed-badge" title="${this.i18nStore?.t('messageReader.unverifiedSender')}">
+                        ${renderIcon('authFailedBadge')}
+                      </div>
+                    ` : ''}
+                  </div>`
+                  :
+                  html `<span class="reader-sender-label">${this.i18nStore?.t('messageReader.from')}</span>`
+                }
                 <div class="reader-sender-info">
                   ${sender.Name && sender.Name !== senderAddress ? html`<span class="reader-sender-name">${sender.Name}</span>` : ''}
                   ${senderAddress ? html`<alps-recipient-pill address="${senderAddress}"></alps-recipient-pill>` : html`<span class="reader-sender-name">${senderName}</span>`}

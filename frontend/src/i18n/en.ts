@@ -71,6 +71,7 @@ export const en = {
       sortUid: 'Folder Filing Date',
       sortDate: 'Received Date',
       enableThreading: 'Use threading',
+      enableAvatars: 'Use avatars',
       themeIframeContent: 'Apply theme to HTML messages content'
     },
     appearance: {
@@ -301,6 +302,7 @@ export const en = {
     reply: 'Reply',
     replyAll: 'Reply All',
     forward: 'Forward',
+    from: 'From:',
     to: 'To:',
     cc: 'Cc:',
     date: 'Date:',

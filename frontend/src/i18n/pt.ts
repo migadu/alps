@@ -301,6 +301,7 @@ export const pt = {
     reply: 'Responder',
     replyAll: 'Responder a Todos',
     forward: 'Encaminhar',
+    from: 'De:',
     to: 'Para:',
     cc: 'Cc:',
     date: 'Data:',

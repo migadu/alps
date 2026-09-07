@@ -980,6 +980,7 @@ export class MessageList extends LitElement {
 
     const customTags = getMessageTags(msg.Flags, this.i18nStore);
     const avatarSize = this.densityMode === 'loose' ? 48 : this.densityMode === 'compact' ? 24 : 40;
+    const enableAvatars = this.settingsStore?.getState()?.enableAvatars ?? true;
 
     const hasSubMessages = msg.SubMessages && msg.SubMessages.length > 0;
     const expanded = this.isThreadExpanded(String(msg.UID));
@@ -1068,24 +1069,25 @@ export class MessageList extends LitElement {
         </div>
       ` : isSubMessage ? html`<div class="caret-col empty"></div>` : ''}
 
-      <div class="avatar-stack">
-        ${displayAvatars.map((c, idx) => {
-          const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
-          const name = c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
-          const domain = c.Host ? c.Host.toLowerCase() : '';
-          const bimiUrl = getBimiAvatarUrl(domain);
-          return html`
-            <div class="avatar-wrapper" style="z-index: ${totalRendered - idx};">
-              <alps-avatar .name=${name} .email=${addr} .size=${avatarSize} .src=${bimiUrl}></alps-avatar>
+      ${enableAvatars ? html`
+        <div class="avatar-stack">
+          ${displayAvatars.map((c, idx) => {
+            const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
+            const name = c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
+            const domain = c.Host ? c.Host.toLowerCase() : '';
+            const bimiUrl = getBimiAvatarUrl(domain);
+            return html`
+              <div class="avatar-wrapper" style="z-index: ${totalRendered - idx};">
+                <alps-avatar .name=${name} .email=${addr} .size=${avatarSize} .src=${bimiUrl}></alps-avatar>
+              </div>
+            `;
+          })}
+          ${extraCount > 0 ? html`
+            <div class="avatar-wrapper extra-count" style="width: ${avatarSize}px; height: ${avatarSize}px; z-index: 0;">
+              +${extraCount}
             </div>
-          `;
-        })}
-        ${extraCount > 0 ? html`
-          <div class="avatar-wrapper extra-count" style="width: ${avatarSize}px; height: ${avatarSize}px; z-index: 0;">
-            +${extraCount}
-          </div>
-        ` : ''}
-      </div>
+          ` : ''}
+        </div>` : ''}
       <div class="message-details">
         <div class="message-header-row">
           <div class="message-header-inner">

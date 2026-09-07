@@ -267,6 +267,7 @@ export const fr = {
     reply: 'Répondre',
     replyAll: 'Répondre à tous',
     forward: 'Transférer',
+    from: 'De:',
     to: 'À :',
     cc: 'Cc :',
     date: 'Date :',

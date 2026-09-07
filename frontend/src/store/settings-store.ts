@@ -38,6 +38,7 @@ export interface SettingsState {
   loginUsername?: string;
   maxAttachmentMiB: number;
   enableThreading: boolean;
+  enableAvatars: boolean;
   themeIframeContent: boolean;
   hasThreadCapability?: boolean;
   hasESearchCapability?: boolean;
@@ -51,6 +52,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   densityMode: 'compact',
   sidebarCollapsed: false,
   enableThreading: true,
+  enableAvatars: true,
   themeIframeContent: false,
   
   checkMailInterval: 5,
@@ -171,6 +173,7 @@ export class SettingsStore extends EventTarget {
       layoutMode: userSettings.layoutMode ?? globalSettings.layoutMode ?? DEFAULT_SETTINGS.layoutMode,
       densityMode: userSettings.densityMode ?? globalSettings.densityMode ?? DEFAULT_SETTINGS.densityMode,
       enableThreading: userSettings.enableThreading ?? globalSettings.enableThreading ?? DEFAULT_SETTINGS.enableThreading,
+      enableAvatars: userSettings.enableAvatars ?? globalSettings.enableAvatars ?? DEFAULT_SETTINGS.enableAvatars,
       themeIframeContent: userSettings.themeIframeContent ?? globalSettings.themeIframeContent ?? DEFAULT_SETTINGS.themeIframeContent,
       customMailboxOrder: userSettings.customMailboxOrder ?? globalSettings.customMailboxOrder ?? DEFAULT_SETTINGS.customMailboxOrder,
       language: userSettings.language ?? globalSettings.language ?? DEFAULT_SETTINGS.language,
@@ -200,6 +203,7 @@ export class SettingsStore extends EventTarget {
       layoutMode: this.state.layoutMode,
       densityMode: this.state.densityMode,
       enableThreading: this.state.enableThreading,
+      enableAvatars: this.state.enableAvatars,
       themeIframeContent: this.state.themeIframeContent
     };
     localStorage.setItem('alps_settings', JSON.stringify(globalSettings));
@@ -296,6 +300,7 @@ export class SettingsStore extends EventTarget {
             if (ui.densityMode) updates.densityMode = ui.densityMode as DensityMode;
             if (ui.sidebarCollapsed !== undefined) updates.sidebarCollapsed = ui.sidebarCollapsed;
             if (ui.enableThreading !== undefined) updates.enableThreading = ui.enableThreading;
+            if (ui.enableAvatars !== undefined) updates.enableAvatars = ui.enableAvatars;
             if (ui.themeIframeContent !== undefined) updates.themeIframeContent = ui.themeIframeContent;
             if (ui.customMailboxOrder !== undefined) updates.customMailboxOrder = ui.customMailboxOrder;
           }
@@ -360,6 +365,7 @@ export class SettingsStore extends EventTarget {
             layoutMode: state.layoutMode,
             sidebarCollapsed: state.sidebarCollapsed,
             enableThreading: state.enableThreading,
+            enableAvatars: state.enableAvatars,
             themeIframeContent: state.themeIframeContent,
             customMailboxOrder: state.customMailboxOrder
           },
@@ -440,6 +446,7 @@ export function clearSessionSettings(clearAuthCookies: boolean = true) {
       if (parsed.layoutMode) preserved.layoutMode = parsed.layoutMode;
       if (parsed.densityMode) preserved.densityMode = parsed.densityMode;
       if (parsed.enableThreading !== undefined) preserved.enableThreading = parsed.enableThreading;
+      if (parsed.enableAvatars !== undefined) preserved.enableAvatars = parsed.enableAvatars;
       if (parsed.themeIframeContent !== undefined) preserved.themeIframeContent = parsed.themeIframeContent;
       
       localStorage.setItem('alps_settings', JSON.stringify(preserved));
