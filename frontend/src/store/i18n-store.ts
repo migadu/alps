@@ -40,18 +40,36 @@ export class I18nStore extends EventTarget {
 
   constructor() {
     super();
+    // The initial value matters as much as the changes: a session that never
+    // switches language still needs the document to say which one it is in.
+    this.applyDocumentLanguage();
+  }
+
+  /** Kept in one place so the initial value and every change agree. */
+  private applyDocumentLanguage(): void {
+    document.documentElement.lang = this.getIntlLanguage();
   }
 
   async setLanguage(lang: string) {
     if (this.language === lang) {
       return;
     }
+    // Set BEFORE the await, so a concurrent call for the same language
+    // short-circuits above instead of loading the chunk twice — and so a LATER
+    // call for a different language wins: the fence after the load drops this
+    // call's result if `language` has moved on by the time its chunk arrives.
+    // Without it the dictionary is whichever chunk resolved LAST, which need
+    // not be the one last asked for, and the document attribute set below would
+    // then disagree with the text on screen. Two calls is the normal case, not
+    // a rare one: app-root calls this at boot and again when settings resolve.
     this.language = lang;
-    
+
+    // Built into a LOCAL and committed after the fence, rather than assigned to
+    // `this.dictionary` as it goes: a superseded call must not leave a
+    // half-merged dictionary behind on its way to being discarded.
+    let dictionary: TranslationDictionary = en;
     try {
-      if (lang === 'en') {
-        this.dictionary = en;
-      } else {
+      if (lang !== 'en') {
         let newDict: any = {};
         const locales = import.meta.glob(['../i18n/*.ts', '!../i18n/en.ts']);
         const importFn = locales[`../i18n/${lang}.ts`];
@@ -70,20 +88,41 @@ export class I18nStore extends EventTarget {
             }
         }
         
-        const pluginModules = await Promise.all(pluginPromises);
-        for (const module of pluginModules) {
+        // allSettled, not all: one plugin whose locale chunk fails to load — a
+        // network blip on a lazy import, a syntax error in one dictionary —
+        // rejected here, and the outer catch then abandoned the ENTIRE language
+        // change. So a single broken translation file meant nobody could switch
+        // language at all, rather than one feature staying in English.
+        const settled = await Promise.allSettled(pluginPromises);
+        for (const outcome of settled) {
+            if (outcome.status === 'rejected') {
+                Logger.error('Failed to load a plugin dictionary', outcome.reason);
+                continue;
+            }
+            const module = outcome.value;
             const pluginDict = module.default || (module as any)[lang] || {};
             newDict = deepMerge(newDict, pluginDict);
         }
 
-        this.dictionary = newDict;
+        dictionary = newDict;
       }
     } catch (e) {
       Logger.error(`Failed to load language module for ${lang}`, e);
-      // Fallback to English if missing
-      this.dictionary = en;
+      // English TEXT — but the language the user chose is still the language
+      // the page reports, so a failed chunk does not also mis-announce the UI.
+      dictionary = en;
     }
 
+    if (this.language !== lang) return;
+    this.dictionary = dictionary;
+
+    // The DOCUMENT's language, not just the dictionary's. `index.html` ships
+    // `lang="en"` and nothing ever moved it, so a user reading alps in German
+    // had every word announced by an English speech synthesiser — and
+    // hyphenation, quotation marks and the spell-checker all followed the wrong
+    // rules too. `getIntlLanguage` already resolved the BCP-47 tag for this,
+    // including sr-Latn / sr-Cyrl; it just had no caller.
+    this.applyDocumentLanguage();
     this.dispatchEvent(new CustomEvent('change'));
   }
 
