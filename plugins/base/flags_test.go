@@ -29,3 +29,35 @@ func TestIsValidIMAPKeyword(t *testing.T) {
 		t.Error("an over-long keyword should be refused")
 	}
 }
+
+// The hierarchy delimiter is per-mailbox in IMAP, so the child test asks only
+// that SOMETHING non-alphanumeric follows the prefix — enough to admit every
+// delimiter a server might report while still refusing `Trashcan` under `Trash`.
+func TestIsAtOrUnderMailbox(t *testing.T) {
+	under := [][2]string{
+		{"Trash", "Trash"},
+		{"trash", "Trash"}, // IMAP names are compared case-insensitively here
+		{"Trash/Old", "Trash"},
+		{"Trash.Old", "Trash"},
+		{"[Gmail]/Trash/Old", "[Gmail]/Trash"},
+	}
+	for _, c := range under {
+		if !isAtOrUnderMailbox(c[0], c[1]) {
+			t.Errorf("%q should be at or under %q", c[0], c[1])
+		}
+	}
+
+	notUnder := [][2]string{
+		{"Trashcan", "Trash"},
+		{"Trash notes", "Trashy"},
+		{"Archive", "Trash"},
+		{"Tra", "Trash"},
+		{"", "Trash"},
+		{"Trash", ""},
+	}
+	for _, c := range notUnder {
+		if isAtOrUnderMailbox(c[0], c[1]) {
+			t.Errorf("%q should NOT be at or under %q", c[0], c[1])
+		}
+	}
+}

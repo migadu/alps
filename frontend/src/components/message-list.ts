@@ -911,6 +911,32 @@ export class MessageList extends LitElement {
     });
   }
 
+  /**
+   * Is the folder on screen one whose whole contents may be discarded?
+   *
+   * By ROLE, resolved from the IMAP special-use attribute upstream in
+   * mailbox-page and handed down as `currentMailboxRole`. This used to be
+   * `/^(trash|junk|spam|deleted items)$/i` against the folder's NAME, which the
+   * rest of this codebase goes out of its way not to do — `mailboxRole()`
+   * carries a comment about Gmail's `[Gmail]/Trash` for exactly this reason.
+   *
+   * The name test failed in both directions. On Gmail, or any server with
+   * localized folder names (Papierkorb, Corbeille, Otpad), the role is right and
+   * the name is not, so the banner never appeared and the user could not empty
+   * their trash from the list at all. And a user's own folder happening to be
+   * called "Spam" got a "Delete All Now" button for messages the server would
+   * then refuse to delete — handleEmptyMailbox does resolve the role properly.
+   *
+   * The English names stay as a fallback for servers that advertise no
+   * special-use attributes, which is the same shape `renderMessageItem` uses
+   * just below and what `mailboxRoleByName` falls back to itself.
+   */
+  private get isDiscardableFolder(): boolean {
+    if (this.currentMailboxRole === 'trash' || this.currentMailboxRole === 'junk') return true;
+    if (this.currentMailboxRole) return false;
+    return /^(trash|junk|spam|deleted items)$/i.test(this.currentMailbox);
+  }
+
   private renderMessageItem(msg: any, isSubMessage: boolean = false, isFirstSub: boolean = false, isLastSub: boolean = false) {
     const isDraftOrSent = this.currentMailboxRole === 'drafts' || this.currentMailboxRole === 'sent'
       || this.currentMailbox === FOLDER_DRAFTS || this.currentMailbox === FOLDER_SENT;
@@ -1191,7 +1217,7 @@ export class MessageList extends LitElement {
             </alps-button>
           </alps-banner>
         ` : ''}
-        ${!this.filterQuery && /^(trash|junk|spam|deleted items)$/i.test(this.currentMailbox) && this.totalMessages > 0 ? html`
+        ${!this.filterQuery && this.isDiscardableFolder && this.totalMessages > 0 ? html`
           <alps-banner variant="warning">
             <span>${this.i18nStore?.t('messageList.totalMessagesIn')?.replace('{count}', String(this.totalMessages)).replace('{folder}', this.currentMailbox) || `${this.totalMessages} total messages in ${this.currentMailbox}`}</span>
             <alps-button slot="action" variant="normal" ?disabled=${this.selectedMessages.size > 0} @click=${() => this.showEmptyConfirm = true}>

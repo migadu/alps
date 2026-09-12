@@ -3,6 +3,7 @@ package alpsbase
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -739,10 +740,16 @@ func handleRenameMailbox(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "New name is required"})
 	}
 
-	isMoveToTrash := strings.HasPrefix(strings.ToLower(req.NewName), "trash")
-
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		if isMoveToTrash {
+		// "Is this rename a move into Trash?" resolved by IMAP special-use,
+		// not by testing whether the new name starts with the English word
+		// "trash". The frontend already resolves the real Trash folder by
+		// attribute — see findMailboxNameByRole and the issue #4 comment it
+		// carries — so the two halves of one feature disagreed: on Gmail, where
+		// Trash is `[Gmail]/Trash`, the unsubscribe that is supposed to
+		// accompany the move never happened, and a user's own folder named
+		// "Trash notes" got it when it should not have.
+		if isMoveIntoTrash(p, req.NewName) {
 			_ = unsubscribeMailboxWithProvider(p, mboxName)
 		}
 		return renameMailboxWithProvider(p, mboxName, req.NewName)
@@ -1877,13 +1884,20 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 		}
 
 		if !isSpamOrTrash {
-			return fmt.Errorf("emptying is only allowed for Trash and Junk mailboxes")
+			return errEmptyNotAllowed
 		}
 
 		return p.EmptyMailbox(mboxName)
 	})
 	if err != nil {
-		return fmt.Errorf("failed to empty mailbox: %v", err)
+		// A refusal is the user asking for something this endpoint does not do,
+		// not a server fault. It used to come back as a 500 whose body repeated
+		// the internal message verbatim — the same shape the folder verbs were
+		// corrected out of in 6cdf808.
+		if errors.Is(err, errEmptyNotAllowed) {
+			return ctx.JSON(http.StatusForbidden, map[string]string{"error": "not_discardable"})
+		}
+		return respondMailboxError(ctx, "empty mailbox", err)
 	}
 
 	// Invalidate cache for the mailbox
@@ -2098,6 +2112,62 @@ func handleSetFlags(ctx *alps.Context) error {
 // but a keyword still travels into a STORE command, so anything carrying an
 // atom-special or a control character is refused rather than escaped. RFC 3501
 // ATOM-CHAR: printable ASCII minus (){ %*"\ and ].
+// errEmptyNotAllowed marks the one refusal handleEmptyMailbox makes of its own
+// accord, so the HTTP layer can answer 403 instead of relaying it as a 500.
+var errEmptyNotAllowed = errors.New("emptying is only allowed for Trash and Junk mailboxes")
+
+// isMoveIntoTrash reports whether `name` is the Trash mailbox or sits beneath
+// it, with Trash identified by its \Trash special-use attribute and only
+// falling back to the English name when the server advertises none.
+func isMoveIntoTrash(p provider.MailProvider, name string) bool {
+	mailboxes, err := p.ListMailboxes()
+	if err != nil {
+		// Unknown rather than false would be more honest, but the only
+		// consequence of guessing wrong here is a missed unsubscribe, and the
+		// English name is the best guess available.
+		return strings.HasPrefix(strings.ToLower(name), "trash")
+	}
+
+	trash := ""
+	for _, mb := range mailboxes {
+		for _, attr := range mb.Attributes {
+			if strings.EqualFold(attr, string(imap.MailboxAttrTrash)) {
+				trash = mb.Name
+				break
+			}
+		}
+		if trash != "" {
+			break
+		}
+	}
+	if trash == "" {
+		return strings.HasPrefix(strings.ToLower(name), "trash")
+	}
+
+	return isAtOrUnderMailbox(name, trash)
+}
+
+// isAtOrUnderMailbox reports whether `name` IS `parent` or sits beneath it.
+//
+// The child test requires a SEPARATOR after the prefix, so `Trashcan` does not
+// count as being under `Trash` — the same prefix bug fixed on the frontend in
+// abdc8bb. The IMAP hierarchy delimiter is per-mailbox (`.`, `/`, `[Gmail]/`),
+// so rather than hardcode one, any non-alphanumeric character counts.
+func isAtOrUnderMailbox(name, parent string) bool {
+	if parent == "" || name == "" {
+		return false
+	}
+	if strings.EqualFold(name, parent) {
+		return true
+	}
+	if len(name) <= len(parent) || !strings.EqualFold(name[:len(parent)], parent) {
+		return false
+	}
+	next := name[len(parent)]
+	isAlnum := (next >= '0' && next <= '9') || (next >= 'A' && next <= 'Z') || (next >= 'a' && next <= 'z')
+	return !isAlnum
+}
+
 func isValidIMAPKeyword(s string) bool {
 	if s == "" || len(s) > 255 {
 		return false
