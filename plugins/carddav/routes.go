@@ -384,12 +384,25 @@ func registerRoutes(p *plugin) {
 	p.POST("/contacts/{path}/edit", updateContact)
 
 	p.DELETE("/contacts/{path}", func(ctx *alps.Context) error {
-		path, err := parseObjectPath(ctx.Param("path"))
+		rawPath, err := parseObjectPath(ctx.Param("path"))
 		if err != nil {
 			return err
 		}
 
-		c, err := p.client(ctx.Request.Context(), ctx.Session)
+		// clientWithAddressBook rather than client: the guard below needs the
+		// collection this object must live in, and RemoveAll deletes children,
+		// so an unconstrained path turns "delete one contact" into "delete the
+		// address book".
+		c, addressBook, err := p.clientWithAddressBook(ctx.Request.Context(), ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		collection := ""
+		if addressBook != nil {
+			collection = addressBook.Path
+		}
+		path, err := requireObjectPath(rawPath, collection)
 		if err != nil {
 			return err
 		}

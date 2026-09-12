@@ -289,7 +289,14 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		c, _, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		c, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		// Must BE one of the user's calendars. RemoveAll takes children with it,
+		// so an unconstrained path here deletes whatever collection it names.
+		calPath, err = requireCalendarPath(calPath, calendars)
 		if err != nil {
 			return err
 		}
@@ -522,7 +529,14 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		c, _, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		c, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		// Must be INSIDE one of them: this route deletes an event, and RemoveAll
+		// would just as happily delete the calendar holding it.
+		path, err = requireCalendarObjectPath(path, calendars)
 		if err != nil {
 			return err
 		}
