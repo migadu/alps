@@ -218,6 +218,7 @@ export const pt = {
     emptyMailboxFailed: 'Falha ao esvaziar a caixa de correio. Certifique-se de que é Lixeira ou Lixo Eletrônico.'
   },
   composer: {
+    attachmentsTooLarge: 'Os anexos excedem o tamanho máximo permitido.',
     draftSaveFailedKeepOpen: 'Não foi possível salvar este rascunho — a janela permanece aberta para não perder nada',
     attachmentsWait: 'Por favor, aguarde o envio dos anexos terminar antes de enviar.',
     sending: 'A mensagem está sendo enviada...',

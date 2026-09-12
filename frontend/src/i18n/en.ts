@@ -225,6 +225,7 @@ export const en = {
     emptyMailboxFailed: 'Failed to empty mailbox. Make sure it is Trash or Junk.'
   },
   composer: {
+    attachmentsTooLarge: 'Attachments exceed the maximum allowed size.',
     draftSaveFailedKeepOpen: 'Could not save this draft — the window stays open so nothing is lost',
     attachmentsWait: 'Please wait for attachments to finish uploading before sending.',
     sending: 'Message is being sent...',

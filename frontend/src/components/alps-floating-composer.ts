@@ -621,6 +621,13 @@ export class AlpsFloatingComposer extends LitElement {
     });
   }
 
+  /** attachment-utils is not a component, so the translation is resolved here
+   * and handed down. */
+  private _attachmentsTooLarge(): string {
+    return this.i18nStore?.t('composer.attachmentsTooLarge')
+      || 'Attachments exceed the maximum allowed size.';
+  }
+
   private _handleAttachClick() {
     const maxBytes = (this.settingsStore?.getState()?.maxAttachmentMiB || 32) * 1024 * 1024;
     const currentBytes = (this.instance.attachments || []).reduce((sum, a) => sum + (a.size || 0), 0);
@@ -629,7 +636,8 @@ export class AlpsFloatingComposer extends LitElement {
       this.instance.id,
       maxBytes,
       currentBytes,
-      ...this._getUploadCallbacks()
+      ...this._getUploadCallbacks(),
+      this._attachmentsTooLarge()
     );
   }
 
@@ -642,7 +650,8 @@ export class AlpsFloatingComposer extends LitElement {
       this.instance.id,
       maxBytes,
       currentBytes,
-      ...this._getUploadCallbacks()
+      ...this._getUploadCallbacks(),
+      this._attachmentsTooLarge()
     );
   }
 

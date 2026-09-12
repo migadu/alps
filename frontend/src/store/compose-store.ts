@@ -1,6 +1,7 @@
 import { createContext } from '@lit/context';
 import { messageOperations } from '../services/message-operations';
 import { activeUsername, readUserSettings } from './settings-store';
+import { abortUploads } from '../utils/attachment-utils';
 import { Logger } from '../utils/logger';
 
 /**
@@ -129,6 +130,10 @@ export class ComposeStore extends EventTarget {
     }
     const key = this.username ? draftsKeyFor(this.username) : null;
     this.username = null;
+    // An upload still streaming would otherwise finish (or 401) into a composer
+    // that no longer exists, and deposit its bytes in a server-side session that
+    // is being torn down.
+    for (const c of this.state.activeComposers) abortUploads(c.attachments || []);
     this.state.activeComposers = [];
     this.notify();
     if (key) {
