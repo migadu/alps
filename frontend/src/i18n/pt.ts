@@ -386,6 +386,12 @@ export const pt = {
   toast: {
     draftDiscarded: 'Rascunho descartado',
     folderRenamed: 'Pasta renomeada',
+    folderCreated: 'Pasta criada',
+    folderExists: 'Já existe uma pasta com esse nome',
+    folderCreateFailed: 'Não foi possível criar a pasta',
+    folderRenameFailed: 'Não foi possível renomear a pasta',
+    folderDeleteFailed: 'Não foi possível excluir a pasta',
+    folderUndoFailed: 'Não foi possível desfazer',
     folderMovedToTrash: 'Pasta movida para a Lixeira',
     folderPermanentlyDeleted: 'Pasta excluída permanentemente',
     messagePermanentlyDeleted: 'Mensagem excluída permanentemente',

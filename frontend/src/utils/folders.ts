@@ -109,3 +109,35 @@ export function findMailboxNameByRole(role: MailboxRole, mailboxes: any[], fallb
   const mb = (mailboxes || []).find(m => mailboxRole(m) === role);
   return mb ? (mb.Name || mb.Mailbox || fallback) : fallback;
 }
+
+/**
+ * Is `name` a folder nested under `parent`?
+ *
+ * A bare `name.startsWith(parent)` is what the folder verbs used, and it is
+ * wrong in the direction that costs the user their place: deleting `Arch` also
+ * matched `Archive`, so the view navigated away from a folder that still
+ * exists, and renaming `Work` dragged `Workshop` with it.
+ *
+ * The next character after the prefix has to be a SEPARATOR, and the separator
+ * is per-mailbox in IMAP — `.` on Dovecot, `/` on some servers, `[Gmail]/…` on
+ * Gmail — so rather than hardcode one, anything that is not alphanumeric counts.
+ * That is deliberately loose: it admits every delimiter a server might report
+ * while still refusing the `Archive`/`Arch` case this exists for.
+ *
+ * Pass `delimiter` when the caller knows it, and the test is exact.
+ */
+export function isDescendantMailbox(name: string, parent: string, delimiter?: string): boolean {
+  if (!name || !parent || name === parent) return false;
+  if (!name.startsWith(parent)) return false;
+  const rest = name.slice(parent.length);
+  if (delimiter) return rest.startsWith(delimiter);
+  return /^[^A-Za-z0-9]/.test(rest);
+}
+
+/**
+ * `name` is `parent` itself, or nested under it — the question the folder verbs
+ * are actually asking when they decide whether the view has to move.
+ */
+export function isSelfOrDescendantMailbox(name: string, parent: string, delimiter?: string): boolean {
+  return name === parent || isDescendantMailbox(name, parent, delimiter);
+}

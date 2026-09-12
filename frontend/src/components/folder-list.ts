@@ -6,7 +6,7 @@ import { composeContext } from '../store/compose-store';
 import type { ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { mailboxOperations } from '../services/mailbox-operations';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRole, findMailboxNameByRole } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRole, findMailboxNameByRole, isSelfOrDescendantMailbox } from '../utils/folders';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import './alps-icon-btn';
 import './ui-prompt';
@@ -324,7 +324,7 @@ export class FolderList extends LitElement {
     this.showCreatePrompt = true;
   }
 
-  private handleCreateSubmit(e: CustomEvent) {
+  private async handleCreateSubmit(e: CustomEvent) {
     let name = e.detail.name;
     if (name) {
       if (this.parentForNewFolder) {
@@ -340,10 +340,27 @@ export class FolderList extends LitElement {
           detail: { folderName: this.parentForNewFolder }
         }));
       }
-      mailboxOperations.createMailbox(name);
+      // The result was discarded entirely: creating a folder that already
+      // exists, or any server refusal, closed the prompt and said nothing.
+      const outcome = await mailboxOperations.createMailbox(name);
+      if (outcome === 'exists') {
+        this.toast(this.i18nStore?.t('toast.folderExists'), 'A folder with that name already exists', { type: 'error' });
+      } else if (outcome === 'failed') {
+        this.toast(this.i18nStore?.t('toast.folderCreateFailed'), 'Could not create the folder', { type: 'error' });
+      }
     }
     this.showCreatePrompt = false;
     this.parentForNewFolder = '';
+  }
+
+  /** One place to raise a toast, so every folder verb can report its outcome
+   * instead of only its success. */
+  private toast(message: string | undefined, fallback: string, extra: Record<string, unknown> = {}) {
+    this.dispatchEvent(new CustomEvent('toast', {
+      detail: { message: message || fallback, duration: 4000, ...extra },
+      bubbles: true,
+      composed: true
+    }));
   }
 
   private async handleRenameSubmit(e: CustomEvent) {
@@ -352,16 +369,24 @@ export class FolderList extends LitElement {
       const oldName = this.mailboxToRename;
       this.showRenamePrompt = false;
       this.mailboxToRename = '';
-      const success = await mailboxOperations.renameMailbox(oldName, newName);
-      if (success) {
-        if (this.currentMailbox === oldName) {
-          this.selectMailbox(newName);
+      const outcome = await mailboxOperations.renameMailbox(oldName, newName);
+      if (outcome === 'exists') {
+        this.toast(this.i18nStore?.t('toast.folderExists'), 'A folder with that name already exists', { type: 'error' });
+      } else if (outcome === 'failed') {
+        this.toast(this.i18nStore?.t('toast.folderRenameFailed'), 'Could not rename the folder', { type: 'error' });
+      } else {
+        if (isSelfOrDescendantMailbox(this.currentMailbox, oldName)) {
+          this.selectMailbox(newName + this.currentMailbox.slice(oldName.length));
         }
 
         const undoFn = async () => {
-          await mailboxOperations.renameMailbox(newName, oldName);
-          if (this.currentMailbox === newName) {
-            this.selectMailbox(oldName);
+          const undone = await mailboxOperations.renameMailbox(newName, oldName);
+          if (undone !== 'ok') {
+            this.toast(this.i18nStore?.t('toast.folderUndoFailed'), 'Could not undo that', { type: 'error' });
+            return;
+          }
+          if (isSelfOrDescendantMailbox(this.currentMailbox, newName)) {
+            this.selectMailbox(oldName + this.currentMailbox.slice(newName.length));
           }
         };
 
@@ -386,7 +411,9 @@ export class FolderList extends LitElement {
     if (this.mailboxToDelete) {
       const success = await mailboxOperations.deleteMailbox(this.mailboxToDelete);
       if (success) {
-        if (this.currentMailbox.startsWith(this.mailboxToDelete)) {
+        // `startsWith` alone also matched a sibling that merely shares a prefix,
+        // so deleting `Arch` navigated away from `Archive`.
+        if (isSelfOrDescendantMailbox(this.currentMailbox, this.mailboxToDelete)) {
           this.selectMailbox(FOLDER_INBOX);
         }
 
@@ -398,6 +425,8 @@ export class FolderList extends LitElement {
           bubbles: true,
           composed: true
         }));
+      } else {
+        this.toast(this.i18nStore?.t('toast.folderDeleteFailed'), 'Could not delete the folder', { type: 'error' });
       }
     }
     this.showDeleteConfirm = false;
@@ -429,15 +458,20 @@ export class FolderList extends LitElement {
       }
       const newName = candidateName;
 
-      const success = await mailboxOperations.renameMailbox(this.mailboxToDelete, newName);
-      if (success) {
-        if (this.currentMailbox.startsWith(this.mailboxToDelete)) {
+      const outcome = await mailboxOperations.renameMailbox(this.mailboxToDelete, newName);
+      if (outcome !== 'ok') {
+        this.toast(this.i18nStore?.t('toast.folderRenameFailed'), 'Could not rename the folder', { type: 'error' });
+      } else {
+        // Same prefix guard as the permanent delete above.
+        if (isSelfOrDescendantMailbox(this.currentMailbox, this.mailboxToDelete, delimiter)) {
           this.selectMailbox(FOLDER_INBOX);
         }
 
         const oldName = this.mailboxToDelete;
         const undoFn = async () => {
-          await mailboxOperations.renameMailbox(newName, oldName);
+          if (await mailboxOperations.renameMailbox(newName, oldName) !== 'ok') {
+            this.toast(this.i18nStore?.t('toast.folderUndoFailed'), 'Could not undo that', { type: 'error' });
+          }
         };
 
         this.dispatchEvent(new CustomEvent('toast', {

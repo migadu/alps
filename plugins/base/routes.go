@@ -696,7 +696,7 @@ func handleNewMailbox(ctx *alps.Context) error {
 	})
 
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return respondMailboxError(ctx, "create mailbox", err)
 	}
 
 	// Invalidate mailbox list cache
@@ -715,7 +715,7 @@ func handleDeleteMailbox(ctx *alps.Context) error {
 		return deleteMailboxWithProvider(p, mboxName)
 	})
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return respondMailboxError(ctx, "delete mailbox", err)
 	}
 
 	// Invalidate mailbox list cache
@@ -748,7 +748,7 @@ func handleRenameMailbox(ctx *alps.Context) error {
 		return renameMailboxWithProvider(p, mboxName, req.NewName)
 	})
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return respondMailboxError(ctx, "rename mailbox", err)
 	}
 
 	invalidateMailboxCache(ctx)
@@ -765,7 +765,7 @@ func handleSubscribeMailbox(ctx *alps.Context) error {
 		return subscribeMailboxWithProvider(p, mboxName)
 	})
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return respondMailboxError(ctx, "subscribe mailbox", err)
 	}
 
 	invalidateMailboxCache(ctx)
@@ -782,11 +782,7 @@ func handleUnsubscribeMailbox(ctx *alps.Context) error {
 		return unsubscribeMailboxWithProvider(p, mboxName)
 	})
 	if err != nil {
-		ctx.Server.Logger().Errorf("IMAP unsubscribe failed for %s: %v", mboxName, err)
-	}
-
-	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return respondMailboxError(ctx, "unsubscribe mailbox "+mboxName, err)
 	}
 
 	invalidateMailboxCache(ctx)

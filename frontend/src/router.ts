@@ -3,7 +3,21 @@
 export class Router {
   private routes: Record<string, () => unknown>;
   private fallback: () => unknown;
-  currentPath: string;
+
+  /**
+   * The path the browser is on RIGHT NOW.
+   *
+   * Read from the hash on every access rather than cached at construction and
+   * refreshed on `hashchange`, because a cache loses a race the app actually
+   * runs. Assigning `location.hash` changes the URL synchronously but the
+   * event is a TASK, while a Lit update is a MICROTASK — so the logged-out
+   * redirect issued in `app-root`'s `connectedCallback` was invisible to the
+   * very next render, which then mounted the mailbox the redirect existed to
+   * avoid (and fired every authenticated read on it against no session).
+   */
+  get currentPath(): string {
+    return this.getHashPath();
+  }
 
   constructor(
     routes: Record<string, () => unknown>,
@@ -12,12 +26,8 @@ export class Router {
   ) {
     this.routes = routes;
     this.fallback = fallback;
-    this.currentPath = this.getHashPath();
 
-    window.addEventListener('hashchange', () => {
-      this.currentPath = this.getHashPath();
-      onChange();
-    });
+    window.addEventListener('hashchange', () => onChange());
   }
 
   private getHashPath() {
