@@ -126,7 +126,7 @@ func registerRoutes(p *plugin) {
 			Name string `json:"name"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+			return ctx.RespondBindError(err)
 		}
 		if req.Name == "" {
 			return alps.NewHTTPError(http.StatusBadRequest, "Calendar name is required")
@@ -212,7 +212,7 @@ func registerRoutes(p *plugin) {
 			Name string `json:"name"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+			return ctx.RespondBindError(err)
 		}
 		if req.Name == "" {
 			return alps.NewHTTPError(http.StatusBadRequest, "Calendar name is required")
@@ -413,7 +413,7 @@ func registerRoutes(p *plugin) {
 	updateEvent := func(ctx *alps.Context) error {
 		var req EventData
 		if err := ctx.BindJSON(&req); err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+			return ctx.RespondBindError(err)
 		}
 
 		// Empty for create, where there is no {path}; url.PathUnescape("") gives

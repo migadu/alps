@@ -753,7 +753,7 @@ func handleRenameMailbox(ctx *alps.Context) error {
 		NewName string `json:"new_name"`
 	}
 	if err := ctx.BindJSON(&req); err != nil {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+		return ctx.RespondBindError(err)
 	}
 	if req.NewName == "" {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "New name is required"})
@@ -874,7 +874,7 @@ func handleLogin(ctx *alps.Context) error {
 			RememberMe string `json:"remember-me"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid json"})
+			return ctx.RespondBindError(err)
 		}
 		username = req.Username
 		password = req.Password
@@ -1732,7 +1732,7 @@ func handleMove(ctx *alps.Context) error {
 			To   string   `json:"to"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
-			return alps.NewHTTPError(http.StatusBadRequest, err)
+			return ctx.RespondBindError(err)
 		}
 		uids = req.Uids
 		to = req.To
@@ -1801,7 +1801,7 @@ func handleCopy(ctx *alps.Context) error {
 			To   string   `json:"to"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
-			return alps.NewHTTPError(http.StatusBadRequest, err)
+			return ctx.RespondBindError(err)
 		}
 		uids = req.Uids
 		to = req.To
@@ -1868,7 +1868,7 @@ func handleDelete(ctx *alps.Context) error {
 			Uids []string `json:"uids"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
-			return alps.NewHTTPError(http.StatusBadRequest, err)
+			return ctx.RespondBindError(err)
 		}
 		uids = req.Uids
 	} else {
@@ -2005,7 +2005,7 @@ func handleSetFlags(ctx *alps.Context) error {
 			Action string   `json:"action"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
-			return alps.NewHTTPError(http.StatusBadRequest, err)
+			return ctx.RespondBindError(err)
 		}
 		uids = req.Uids
 		flags = req.Flags
@@ -2389,7 +2389,7 @@ func handleSettings(ctx *alps.Context) error {
 				MessageSortCriteria *string `json:"message_sort_criteria"`
 			}
 			if err := ctx.BindJSON(&req); err != nil {
-				return alps.NewHTTPError(http.StatusBadRequest, err)
+				return ctx.RespondBindError(err)
 			}
 			if req.MessagesPerPage != nil && *req.MessagesPerPage != 0 {
 				settings.MessagesPerPage = *req.MessagesPerPage

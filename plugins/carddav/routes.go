@@ -240,7 +240,7 @@ func registerRoutes(p *plugin) {
 	updateContact := func(ctx *alps.Context) error {
 		var req ContactData
 		if err := ctx.BindJSON(&req); err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+			return ctx.RespondBindError(err)
 		}
 
 		// The empty case is /contacts/create, where there is no {path} at all and

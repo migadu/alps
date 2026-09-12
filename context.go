@@ -2,6 +2,7 @@ package alps
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"mime/multipart"
@@ -97,10 +98,57 @@ func (c *Context) JSON(code int, i interface{}) error {
 	return enc.Encode(i)
 }
 
-// BindJSON parses the request body as JSON into the provided interface.
+// MaxJSONBodyBytes caps a JSON request body.
+//
+// Generous for every shape that actually arrives here — a WebAuthn attestation
+// and a settings blob are kilobytes; the largest is a carddav ContactData whose
+// Avatar is a base64 data URI — and small enough that sixteen endpoints cannot
+// be used to exhaust memory.
+const MaxJSONBodyBytes = 1 << 20 // 1 MiB
+
+// ErrBodyTooLarge reports whether err came from a body exceeding its cap,
+// rather than from malformed JSON. The two deserve different status codes.
+func ErrBodyTooLarge(err error) bool {
+	var maxErr *http.MaxBytesError
+	return errors.As(err, &maxErr)
+}
+
+// BindJSON parses the request body as JSON into the provided interface, reading
+// at most MaxJSONBodyBytes.
+//
+// The cap is HERE rather than at the call sites because this is the only place
+// every JSON endpoint passes through, and none of the sixteen had one: each
+// decoded straight off an unbounded Request.Body, so a single POST of a
+// multi-gigabyte body was an out-of-memory on any of them. The attachment and
+// managesieve paths were bounded individually; the generic path never was.
+//
+// MaxBytesReader rather than a Content-Length check: a chunked request carries
+// no declared length, so the header is a hint and only a capped READ is a gate.
 func (c *Context) BindJSON(v interface{}) error {
+	return c.BindJSONLimit(v, MaxJSONBodyBytes)
+}
+
+// BindJSONLimit is BindJSON with an explicit cap, for an endpoint that has
+// reason to accept more or less than the default.
+func (c *Context) BindJSONLimit(v interface{}, limit int64) error {
 	defer c.Request.Body.Close()
+	c.Request.Body = http.MaxBytesReader(c.Response, c.Request.Body, limit)
 	return json.NewDecoder(c.Request.Body).Decode(v)
+}
+
+// RespondBindError writes the refusal a BindJSON failure deserves.
+//
+// One helper because the sixteen call sites answered the same failure four
+// different ways — `{"error": "Invalid JSON payload"}`, `{"error": "invalid
+// json"}`, `{"error": "invalid request"}`, and a bare HTTPError wrapping the
+// decoder's own message — so a client could not recognise the condition it was
+// in. Nothing in the frontend read any of those strings, which is what makes
+// unifying them safe.
+func (c *Context) RespondBindError(err error) error {
+	if ErrBodyTooLarge(err) {
+		return c.JSON(http.StatusRequestEntityTooLarge, map[string]string{"error": "payload_too_large"})
+	}
+	return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid_json"})
 }
 
 // String sends a string response.

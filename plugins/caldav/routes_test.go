@@ -30,10 +30,10 @@ func TestResolveDAVPath(t *testing.T) {
 
 func TestXMLEscape(t *testing.T) {
 	cases := map[string]string{
-		"Me & You":                 "Me &amp; You",
+		"Me & You":                  "Me &amp; You",
 		"<script>alert(1)</script>": "&lt;script&gt;alert(1)&lt;/script&gt;",
-		"plain":                    "plain",
-		`a"b`:                      "a&#34;b",
+		"plain":                     "plain",
+		`a"b`:                       "a&#34;b",
 	}
 	for in, want := range cases {
 		if got := xmlEscape(in); got != want {

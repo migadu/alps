@@ -44,7 +44,7 @@ func handlePasswordChange(ctx *alps.Context) error {
 	var req PasswordChangeRequest
 	if strings.HasPrefix(ctx.Request.Header.Get("Content-Type"), "application/json") {
 		if err := ctx.BindJSON(&req); err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+			return ctx.RespondBindError(err)
 		}
 	} else {
 		req.OldPassword = ctx.FormValue("old_password")

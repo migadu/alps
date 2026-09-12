@@ -38,7 +38,7 @@ func registerRoutes(p *alps.GoPlugin) {
 
 		var req Keyring
 		if err := ctx.BindJSON(&req); err != nil {
-			return alps.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("invalid request: %v", err))
+			return ctx.RespondBindError(err)
 		}
 
 		if err := ctx.Session.Store().Put("gpg_keys", req); err != nil {

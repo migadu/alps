@@ -307,3 +307,76 @@ func (l *NilLogger) Fatalf(format string, v ...interface{}) {}
 func (l *NilLogger) Warn(i ...interface{})                  {}
 func (l *NilLogger) Warnf(format string, v ...interface{})  {}
 func (l *NilLogger) SetLevel(level slog.Level)              {}
+
+// A body over the cap must fail the READ, not be decoded and refused after the
+// fact — that is the whole point of MaxBytesReader over a Content-Length check,
+// since a chunked request declares no length at all.
+func TestBindJSON_RefusesABodyOverTheCap(t *testing.T) {
+	// Well-formed JSON, so anything that fails here failed on size.
+	body := `{"note":"` + strings.Repeat("a", 4096) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	c := NewContext(rec, req, &Server{})
+
+	var payload struct {
+		Note string `json:"note"`
+	}
+	err := c.BindJSONLimit(&payload, 1024)
+	if err == nil {
+		t.Fatal("expected an oversize body to be refused")
+	}
+	if !ErrBodyTooLarge(err) {
+		t.Fatalf("expected a size error, got %v", err)
+	}
+	if payload.Note != "" {
+		t.Fatal("an oversize body must not be decoded")
+	}
+
+	if err := c.RespondBindError(err); err != nil {
+		t.Fatalf("RespondBindError: %v", err)
+	}
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413", rec.Code)
+	}
+}
+
+// Malformed JSON inside the cap is a different condition and must not be
+// reported as 413 — a client that shrinks its body would never get past it.
+func TestBindJSON_MalformedIsNotTooLarge(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"note":`))
+	rec := httptest.NewRecorder()
+	c := NewContext(rec, req, &Server{})
+
+	var payload struct{}
+	err := c.BindJSON(&payload)
+	if err == nil {
+		t.Fatal("expected malformed JSON to fail")
+	}
+	if ErrBodyTooLarge(err) {
+		t.Fatal("malformed JSON must not be reported as oversize")
+	}
+	if err := c.RespondBindError(err); err != nil {
+		t.Fatalf("RespondBindError: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+// A body at the cap still decodes — the guard must not cost the largest
+// legitimate payload (a carddav Avatar data URI) its request.
+func TestBindJSON_AcceptsABodyInsideTheCap(t *testing.T) {
+	note := strings.Repeat("a", 512)
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"note":"`+note+`"}`))
+	c := NewContext(httptest.NewRecorder(), req, &Server{})
+
+	var payload struct {
+		Note string `json:"note"`
+	}
+	if err := c.BindJSONLimit(&payload, 1024); err != nil {
+		t.Fatalf("a body inside the cap must decode: %v", err)
+	}
+	if payload.Note != note {
+		t.Fatal("decoded value does not match")
+	}
+}
