@@ -26,6 +26,23 @@ export async function fetchWithTimeout(url: RequestInfo | URL, options: RequestI
     if (response.status === 502 || response.status === 503 || response.status === 504) {
       window.dispatchEvent(new CustomEvent('network-error'));
     }
+    // An expired session, announced once here rather than at every call site.
+    //
+    // The mail services each handle their own 401 and will dispatch this a
+    // second time; app-root's handler is idempotent, so that is harmless. What
+    // it fixes is the PLUGINS: not one line in caldav, carddav, gpg,
+    // managesieve or password mentioned 401 or `auth-error`. A session expiring
+    // while the user was on Calendar or Contacts produced a generic "Failed to
+    // fetch events", over and over, with no sign-out and no explanation —
+    // while the same expiry on the mail tab returned them to the login screen
+    // immediately.
+    //
+    // NOT for the login endpoint, which answers 401 for a wrong password;
+    // login-page deliberately uses bare `fetch` and must keep doing so, or a
+    // failed sign-in would raise a session-expired notice over its own error.
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent('auth-error'));
+    }
     return response;
   } catch (error) {
     if (error instanceof TypeError || (error as Error).name === 'AbortError') {

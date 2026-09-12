@@ -1,4 +1,4 @@
-import { encodePathParam } from '../../../frontend/src/utils/fetch-utils';
+import { encodePathParam, fetchWithTimeout } from '../../../frontend/src/utils/fetch-utils';
 
 export interface CalendarData {
     name: string;
@@ -48,7 +48,7 @@ export function isAllDayEvent(startStr: string, endStr: string): boolean {
 
 class CalendarService {
     async fetchCalendars(): Promise<{ calendars: CalendarData[] }> {
-        const response = await fetch('/calendar/calendars');
+        const response = await fetchWithTimeout('/calendar/calendars');
         if (!response.ok) {
             throw new Error('Failed to fetch calendars');
         }
@@ -62,7 +62,7 @@ class CalendarService {
         if (query) {
             params.append('query', query);
         }
-        const response = await fetch(`/calendar/events?${params.toString()}`);
+        const response = await fetchWithTimeout(`/calendar/events?${params.toString()}`);
         if (!response.ok) {
             throw new Error('Failed to fetch events');
         }
@@ -70,7 +70,7 @@ class CalendarService {
     }
 
     async createCalendar(name: string): Promise<{ ok: string, path: string }> {
-        const response = await fetch('/calendar/calendars', {
+        const response = await fetchWithTimeout('/calendar/calendars', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -85,7 +85,7 @@ class CalendarService {
 
     async renameCalendar(path: string, name: string): Promise<{ ok: string }> {
         const encodedPath = encodePathParam(path);
-        const response = await fetch(`/calendar/calendars/${encodedPath}`, {
+        const response = await fetchWithTimeout(`/calendar/calendars/${encodedPath}`, {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json'
@@ -100,7 +100,7 @@ class CalendarService {
 
     async deleteCalendar(path: string): Promise<{ ok: string }> {
         const encodedPath = encodePathParam(path);
-        const response = await fetch(`/calendar/calendars/${encodedPath}`, {
+        const response = await fetchWithTimeout(`/calendar/calendars/${encodedPath}`, {
             method: 'DELETE'
         });
         if (!response.ok) {
@@ -110,7 +110,7 @@ class CalendarService {
     }
 
     async createEvent(event: Omit<EventData, 'uid' | 'path'>): Promise<{ ok: string, path: string }> {
-        const response = await fetch('/calendar/events', {
+        const response = await fetchWithTimeout('/calendar/events', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -125,7 +125,7 @@ class CalendarService {
 
     async updateEvent(path: string, event: Omit<EventData, 'uid' | 'path'>): Promise<{ ok: string, path: string }> {
         const encodedPath = encodePathParam(path);
-        const response = await fetch(`/calendar/events/${encodedPath}/edit`, {
+        const response = await fetchWithTimeout(`/calendar/events/${encodedPath}/edit`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -140,7 +140,7 @@ class CalendarService {
 
     async deleteEvent(path: string): Promise<{ ok: string }> {
         const encodedPath = encodePathParam(path);
-        const response = await fetch(`/calendar/events/${encodedPath}`, {
+        const response = await fetchWithTimeout(`/calendar/events/${encodedPath}`, {
             method: 'DELETE'
         });
         if (!response.ok) {

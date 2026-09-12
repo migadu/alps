@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '../../../frontend/src/utils/fetch-utils';
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
@@ -50,7 +51,7 @@ export class PasswordSettings extends LitElement {
 
 		this.isSubmitting = true;
 		try {
-			const response = await fetch('/password/change', {
+			const response = await fetchWithTimeout('/password/change', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
