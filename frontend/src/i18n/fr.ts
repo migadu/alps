@@ -1,5 +1,6 @@
 export const fr = {
   settings: {
+    saveFailed: 'Impossible d’enregistrer ce réglage — il pourrait ne pas survivre à la déconnexion',
     title: 'Paramètres',
     categories: {
       general: 'Général',

@@ -1,5 +1,6 @@
 export const it = {
   settings: {
+    saveFailed: 'Impossibile salvare questa impostazione — potrebbe non sopravvivere alla disconnessione',
     title: 'Impostazioni',
     categories: {
       general: 'Generale',

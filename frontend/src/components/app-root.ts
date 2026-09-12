@@ -92,6 +92,11 @@ export class AppRoot extends LitElement {
       window.location.hash = '#/login';
     }
 
+    // The settings store reports a failed save as a toast and needs the active
+    // dictionary to do it. It is not a component, so it cannot consume the Lit
+    // context the rest of the app reads i18n through.
+    this.settingsStore.setI18n(this.i18nStore);
+
     this.composeStore.addEventListener('change', this._handleComposeChange);
     this.settingsStore.addEventListener('change', this._handleSettingsChange);
     this.activeComposers = this.composeStore.getState().activeComposers;

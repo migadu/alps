@@ -1,5 +1,6 @@
 export const sr = {
   settings: {
+    saveFailed: 'Nije moguće sačuvati to podešavanje — možda neće preživeti odjavu',
     title: 'Podešavanja',
     categories: {
       general: 'Opšte',

@@ -1,5 +1,6 @@
 export const rs = {
   settings: {
+    saveFailed: 'Није могуће сачувати то подешавање — можда неће преживети одјаву',
     title: 'Подешавања',
     categories: {
       general: 'Опште',

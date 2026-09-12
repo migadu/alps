@@ -361,10 +361,48 @@ export class SettingsStore extends EventTarget {
     }
   }
 
+  /**
+   * Serializes the settings PUT, and always ends on the latest state.
+   *
+   * `updateSettings` calls this on EVERY change, and the whole record is sent
+   * each time. Toggling quickly, or dragging a slider, therefore put several
+   * full-state writes in flight at once — and the last response is not
+   * necessarily the last request, so the server could settle on an older state
+   * than the one on screen. The user then sees their change applied locally
+   * (local state and localStorage are updated first) while the next sign-in
+   * from another browser hands back the value they thought they had replaced.
+   *
+   * One request at a time. A change arriving mid-flight sets `savePending`
+   * rather than racing, and the trailing save reads `this.state` fresh when it
+   * runs, so intermediate values are coalesced away and the final write is
+   * always the current one.
+   */
+  private saveInFlight = false;
+  private savePending = false;
+
   private async _saveBackendSettings(state: SettingsState) {
     if (!this.initialFetchCompleted) {
       return;
     }
+    if (this.saveInFlight) {
+      this.savePending = true;
+      return;
+    }
+    this.saveInFlight = true;
+    try {
+      await this._putBackendSettings(state);
+    } finally {
+      this.saveInFlight = false;
+      if (this.savePending) {
+        this.savePending = false;
+        // Fresh read, not the `state` captured above: that argument is the
+        // value as of an edit several keystrokes ago.
+        void this._saveBackendSettings(this.state);
+      }
+    }
+  }
+
+  private async _putBackendSettings(state: SettingsState) {
     try {
       const response = await fetch('/settings', {
         method: 'PUT',
@@ -405,10 +443,53 @@ export class SettingsStore extends EventTarget {
       
       if (response.status === 401) {
         window.dispatchEvent(new CustomEvent('auth-error'));
+        return;
+      }
+
+      // `response.ok` was never consulted. A 400, a 413 or a 500 passed through
+      // here in silence, so a setting the server refused stayed switched on in
+      // the UI — local state and localStorage having been written first — until
+      // the next sign-in somewhere else handed back the old value with no
+      // explanation. The one write in this app the user watches most closely
+      // was also the only one that could fail without saying so.
+      if (!response.ok) {
+        Logger.error('Failed to save backend settings', response.status);
+        this.reportSaveFailure();
       }
     } catch (e) {
       Logger.error('Failed to save backend settings', e);
+      this.reportSaveFailure();
     }
+  }
+
+  /** Announced on the window rather than returned, because `updateSettings` is
+   * called from a dozen controls that do not await it. */
+  private reportSaveFailure() {
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: {
+        message: this.translate('settings.saveFailed', 'Could not save that setting — it may not survive signing out'),
+        duration: 6000
+      }
+    }));
+  }
+
+  /**
+   * The I18nStore, handed in by app-root at boot.
+   *
+   * alps provides stores through Lit context, which a store that is not a
+   * component cannot consume — the same constraint that made
+   * `attachment-utils` take its refusal string as a parameter. An explicit
+   * setter is the honest version: no module-level singleton, and the fallback
+   * below is a real fallback rather than the only path.
+   */
+  private i18n: { t(key: string): string } | null = null;
+
+  setI18n(store: { t(key: string): string }) {
+    this.i18n = store;
+  }
+
+  private translate(key: string, fallback: string): string {
+    return this.i18n?.t(key) || fallback;
   }
 
   private applyTheme() {

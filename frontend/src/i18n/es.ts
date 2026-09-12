@@ -1,5 +1,6 @@
 export const es = {
   settings: {
+    saveFailed: 'No se pudo guardar ese ajuste: puede que no se conserve al cerrar sesión',
     title: 'Configuración',
     categories: {
       general: 'General',

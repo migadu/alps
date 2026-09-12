@@ -2,6 +2,7 @@ import type { TranslationDictionary } from './en';
 
 export const de: TranslationDictionary = {
   settings: {
+    saveFailed: 'Diese Einstellung konnte nicht gespeichert werden — sie überlebt das Abmelden möglicherweise nicht',
     title: 'Einstellungen',
     categories: {
       general: 'Allgemein',

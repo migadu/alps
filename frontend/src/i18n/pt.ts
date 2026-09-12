@@ -1,5 +1,6 @@
 export const pt = {
   settings: {
+    saveFailed: 'Não foi possível salvar essa configuração — ela pode não sobreviver ao encerramento da sessão',
     title: 'Configurações',
     categories: {
       general: 'Geral',

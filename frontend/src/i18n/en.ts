@@ -7,6 +7,7 @@ export const en = {
     later: 'Later',
   },
   settings: {
+    saveFailed: 'Could not save that setting — it may not survive signing out',
     title: 'Settings',
     categories: {
       general: 'General',
