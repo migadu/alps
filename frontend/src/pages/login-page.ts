@@ -281,7 +281,17 @@ export class LoginPage extends LitElement {
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
+      // Guarded. A reverse proxy's HTML 502, a WAF's plain-text 429, or an
+      // empty body all throw here, and the bare `await response.json()` sent
+      // that straight to the catch below — which reports a NETWORK error for a
+      // request that completed, and in the 429 case loses `retry_after` and the
+      // rate-limit message with it.
+      let data: any = {};
+      try {
+        data = (await response.json()) ?? {};
+      } catch {
+        data = {};
+      }
 
       if (response.ok) {
         if (data.requires_2fa) {
@@ -293,9 +303,15 @@ export class LoginPage extends LitElement {
         }
       } else {
         // Check if this is a rate limiting error (HTTP 429)
-        if (response.status === 429 && data.retry_after) {
+        if (response.status === 429) {
           this.error = data.error || this.i18nStore?.t('login.tooManyAttempts');
-          this.startRetryCountdown(data.retry_after);
+          // A 429 without a parsable `retry_after` is still a 429. Falling
+          // through to the generic branch showed "login failed", which reads as
+          // "wrong password" and invites the retry the server just refused.
+          const retryAfter = Number(data.retry_after)
+            || Number(response.headers.get('Retry-After'))
+            || 60;
+          this.startRetryCountdown(retryAfter);
         } else {
           this.error = data.error || this.i18nStore?.t('login.loginFailed');
           this.isRateLimited = false;

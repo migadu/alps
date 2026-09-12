@@ -86,7 +86,17 @@ export class ComposeStore extends EventTarget {
     } catch { /* storage blocked; nothing to remove from */ }
 
     window.addEventListener('session-cleared', this.handleSessionCleared);
+    // BOTH events, and the second is the one that actually carries the answer.
+    //
+    // `user-logged-in` fires the moment POST /session returns, and the identity
+    // is not known then: the settings store is only just starting its own
+    // `/settings` fetch, and `alps_active_user` is written when that lands. So
+    // adopting on `user-logged-in` alone read a null username and stopped
+    // there — drafts were neither restored on sign-in nor persisted for the
+    // rest of the session, because `saveDrafts` returns early without one, and
+    // nothing else re-ran this until a page reload.
     window.addEventListener('user-logged-in', this.adoptSession);
+    window.addEventListener('alps-active-user-changed', this.adoptSession);
     this.adoptSession();
   }
 

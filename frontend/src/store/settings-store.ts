@@ -204,7 +204,15 @@ export class SettingsStore extends EventTarget {
       localStorage.setItem(`alps_settings_${username}`, JSON.stringify(this.state));
       // And the pointer that lets `readUserSettings` find this record.
       try {
+        const previous = localStorage.getItem(ACTIVE_USER_KEY);
         localStorage.setItem(ACTIVE_USER_KEY, username);
+        if (previous !== username) {
+          // Announced, because the identity is only known once `/settings` has
+          // answered — which is AFTER `user-logged-in` fires. Anything keyed on
+          // the signed-in user has to learn it here or not at all; see
+          // compose-store's adoptSession.
+          window.dispatchEvent(new CustomEvent('alps-active-user-changed'));
+        }
       } catch (e) {
         Logger.error('Failed to record the active user', e);
       }
