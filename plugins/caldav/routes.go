@@ -416,11 +416,29 @@ func registerRoutes(p *plugin) {
 			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
 		}
 
-		calendarObjectPath, _ := parseObjectPath(ctx.Param("path")) // Will be empty for create
+		// Empty for create, where there is no {path}; url.PathUnescape("") gives
+		// "" with no error. So a non-nil error is a malformed path, and it was
+		// discarded outright by the `_`. The empty result then reads as "this is
+		// a create" everywhere below, so editing an event through a malformed
+		// path silently made a SECOND event rather than reporting anything.
+		calendarObjectPath, err := parseObjectPath(ctx.Param("path"))
+		if err != nil {
+			return err
+		}
 
 		c, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
 		if err != nil {
 			return err
+		}
+
+		// An edit reads the object at this path and writes it back through
+		// PutCalendarObject. Unconstrained, that writes an iCalendar over
+		// whatever the path names.
+		if calendarObjectPath != "" {
+			calendarObjectPath, err = requireCalendarObjectPath(calendarObjectPath, calendars)
+			if err != nil {
+				return err
+			}
 		}
 
 		var co *caldav.CalendarObject
@@ -508,6 +526,12 @@ func registerRoutes(p *plugin) {
 			}
 			if targetCal == nil && len(calendars) > 0 {
 				targetCal = &calendars[0]
+			}
+			// With no calendars at all, targetCal is still nil and the line
+			// below dereferenced it — a nil panic rather than an error, for an
+			// account the server simply has nothing provisioned for yet.
+			if targetCal == nil {
+				return alps.NewHTTPError(http.StatusConflict, "no calendar available to create the event in")
 			}
 
 			p = path.Join(targetCal.Path, newID.String()+".ics")
