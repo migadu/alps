@@ -196,7 +196,8 @@ export const fr = {
     attachmentsWait: 'Veuillez attendre que le téléchargement des pièces jointes soit terminé avant d\'envoyer.',
     sending: 'Envoi du message en cours...',
     undo: 'Annuler',
-    sendError: 'Échec de l\'envoi du message : {error}'
+    sendError: 'Échec de l\'envoi du message : {error}',
+    presendFailed: 'Une extension de sécurité n\'a pas pu traiter ce message, il n\'a donc pas été envoyé.'
   },
   messageComposer: {
     fontSize: 'Taille de la police',

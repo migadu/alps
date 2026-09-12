@@ -196,7 +196,8 @@ export const it = {
     attachmentsWait: 'Attendi il caricamento degli allegati prima di inviare.',
     sending: 'Invio messaggio in corso...',
     undo: 'Annulla',
-    sendError: 'Errore durante l\'invio del messaggio: {error}'
+    sendError: 'Errore durante l\'invio del messaggio: {error}',
+    presendFailed: 'Un plugin di sicurezza non ha potuto elaborare questo messaggio, che non è stato inviato.'
   },
   messageComposer: {
     fontSize: 'Dimensione carattere',

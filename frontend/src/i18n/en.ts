@@ -237,7 +237,8 @@ export const en = {
     attachmentsWait: 'Please wait for attachments to finish uploading before sending.',
     sending: 'Message is being sent...',
     undo: 'Undo',
-    sendError: 'Failed to send message: {error}'
+    sendError: 'Failed to send message: {error}',
+    presendFailed: 'A security plugin could not process this message, so it was not sent.'
   },
   messageComposer: {
     fontSize: 'Font Size',

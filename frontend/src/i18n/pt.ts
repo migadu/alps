@@ -230,7 +230,8 @@ export const pt = {
     attachmentsWait: 'Por favor, aguarde o envio dos anexos terminar antes de enviar.',
     sending: 'A mensagem está sendo enviada...',
     undo: 'Desfazer',
-    sendError: 'Falha ao enviar mensagem: {error}'
+    sendError: 'Falha ao enviar mensagem: {error}',
+    presendFailed: 'Um plugin de segurança não conseguiu processar esta mensagem, por isso não foi enviada.'
   },
   messageComposer: {
     fontSize: 'Tamanho da fonte',

@@ -7,7 +7,9 @@ import './contacts-list';
 
 registry.registerRoute({
     path: '/contacts/*',
-    component: 'contacts-page'
+    component: 'contacts-page',
+    // As caldav: the tab was gated, the route was not.
+    pluginId: 'carddav'
 });
 
 registry.registerNavTab({
@@ -41,7 +43,7 @@ registry.registerHook('composer:send', async ({ recipients }: { recipients: stri
             console.error('Failed to auto-save contact', e);
         }
     }
-});
+}, 'carddav');
 
 registry.registerHook('composer:suggest', async ({ query }: { query: string }) => {
     try {
@@ -55,4 +57,4 @@ registry.registerHook('composer:suggest', async ({ query }: { query: string }) =
         console.error('Failed to fetch contact suggestions', e);
         return [];
     }
-});
+}, 'carddav');

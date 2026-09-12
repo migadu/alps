@@ -1,4 +1,5 @@
 import { html, css, LitElement } from 'lit';
+import { renderIcon } from '../utils/ui';
 import { customElement, state } from 'lit/decorators.js';
 import { Router } from '../router';
 import { registry } from '../plugin-registry';
@@ -61,6 +62,22 @@ export class AppRoot extends LitElement {
   private offlineInterval: number | null = null;
 
   static styles = css`
+    /* The offline modal's glyph. It was a hand-written <use> pointing at the
+       sprite with its OWN cache-busting query — ?v=7, where renderIcon uses
+       ?v=11 — so the browser treated it as a second 64 KB resource that nothing
+       else in the app ever requests. Which made the one icon shown BECAUSE the
+       network is down the one icon guaranteed not to be in cache: a fresh
+       fetch, while offline, that cannot succeed. */
+    .offline-icon {
+      color: var(--text-muted, #9ca3af);
+      margin-bottom: 16px;
+    }
+    .offline-icon .icon {
+      width: 48px;
+      height: 48px;
+      fill: currentColor;
+    }
+
     :host {
       display: block;
       height: 100vh;
@@ -396,9 +413,7 @@ export class AppRoot extends LitElement {
       ${this.isOffline ? html`
         <ui-modal title=${this.i18nStore.t('offline.title')} .dismissible=${false} width="400px">
           <div style="text-align: center; padding: 16px 0;">
-            <svg style="width: 48px; height: 48px; color: var(--text-muted, #9ca3af); margin-bottom: 16px; fill: currentColor;">
-              <use href="/assets/icons/sprite.svg?v=7#wifiSlash"></use>
-            </svg>
+            <div class="offline-icon">${renderIcon('wifiSlash')}</div>
             <div style="font-weight: 500; font-size: 16px; margin-bottom: 8px; color: var(--text-primary, #111827);">
               ${this.i18nStore.t('offline.description')}
             </div>

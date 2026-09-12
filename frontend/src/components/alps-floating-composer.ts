@@ -615,8 +615,18 @@ export class AlpsFloatingComposer extends LitElement {
       const currentInstance = this.composeStore.getComposer(this.instance.id) || this.instance;
       let finalFormData = this._buildFormData(currentInstance);
 
-      const presendResults = await registry.invokeHookAsync('composer:presend', { composer: this, formData: finalFormData, instance: currentInstance });
-      let abortSend = false;
+      // invokeHookSettled, NOT invokeHookAsync: a presend hook that throws has
+      // not approved this send, it has failed to decide — and the only safe
+      // reading of that is to stop. GPG's handlePresend returns the ENCRYPTED
+      // FormData; if its rejection were swallowed, `finalFormData` would still
+      // be the plaintext one built above and the message would go out in the
+      // clear. (Under the old bare `Promise.all` the rejection propagated to
+      // this method's catch, which aborted the send — so switching that to
+      // allSettled without this would have turned a loud failure into a silent
+      // plaintext send.)
+      const { results: presendResults, failed: presendFailed } =
+        await registry.invokeHookSettled('composer:presend', { composer: this, formData: finalFormData, instance: currentInstance });
+      let abortSend = presendFailed > 0;
       for (const res of presendResults) {
         if (res instanceof FormData) finalFormData = res;
         else if (res === false) abortSend = true;
@@ -625,6 +635,13 @@ export class AlpsFloatingComposer extends LitElement {
       if (abortSend) {
         this.composeStore.updateComposer(this.instance.id, { isSending: false, minimized: false });
         this.composeStore.bringComposerToFront(this.instance.id);
+        // A hook that threw refused nothing on purpose, so say so — an aborted
+        // send with no explanation reads as the button not working.
+        if (presendFailed > 0) {
+          window.dispatchEvent(new CustomEvent('show-toast', {
+            detail: { message: this.i18nStore?.t('composer.presendFailed'), duration: 5000 }
+          }));
+        }
         return;
       }
 

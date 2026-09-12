@@ -130,9 +130,23 @@ export class I18nStore extends EventTarget {
     return this.language;
   }
 
+  /**
+   * The BCP-47 tag for the active language.
+   *
+   * The two Serbian codes are alps's OWN, and they are the opposite way round
+   * from what the tag names suggest: settings-page offers `rs` under the label
+   * `serbian` ("Српски") and `sr` under `serbianLatin` ("Srpski (Latinica)"),
+   * and the dictionaries match — rs.ts is 96% Cyrillic, sr.ts is 99% Latin.
+   *
+   * This mapped them the other way, which cost nothing while the method had no
+   * callers. Wiring it to `<html lang>` and `Intl.PluralRules` is what made it
+   * matter: it would have stamped `sr-Latn` on the Cyrillic dictionary and
+   * `sr-Cyrl` on the Latin one, telling a screen reader to read Cyrillic text
+   * with Latin rules.
+   */
   getIntlLanguage() {
-    if (this.language === 'rs') return 'sr-Latn';
-    if (this.language === 'sr') return 'sr-Cyrl';
+    if (this.language === 'rs') return 'sr-Cyrl';
+    if (this.language === 'sr') return 'sr-Latn';
     return this.language;
   }
 

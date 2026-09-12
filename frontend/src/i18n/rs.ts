@@ -196,7 +196,8 @@ export const rs = {
     attachmentsWait: 'Молимо сачекајте да се прилози учитају пре слања.',
     sending: 'Слање поруке...',
     undo: 'Опозови',
-    sendError: 'Грешка при слању поруке: {error}'
+    sendError: 'Грешка при слању поруке: {error}',
+    presendFailed: 'Безбедносни додатак није могао да обради ову поруку, па она није послата.'
   },
   messageComposer: {
     fontSize: 'Величина фонта',

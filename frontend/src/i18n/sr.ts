@@ -196,7 +196,8 @@ export const sr = {
     attachmentsWait: 'Molimo sačekajte da se prilozi učitaju pre slanja.',
     sending: 'Slanje poruke...',
     undo: 'Opozovi',
-    sendError: 'Greška pri slanju poruke: {error}'
+    sendError: 'Greška pri slanju poruke: {error}',
+    presendFailed: 'Bezbednosni dodatak nije mogao da obradi ovu poruku, pa ona nije poslata.'
   },
   messageComposer: {
     fontSize: 'Veličina fonta',

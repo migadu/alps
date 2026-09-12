@@ -27,8 +27,8 @@ registry.registerHook('composer:toolbar', (payload: any) => {
             }}>
         </alps-icon-btn>
     `;
-});
+}, 'gpg');
 
 // Register Crypto Hooks
-registry.registerHook('composer:presend', handlePresend);
-registry.registerHook('reader:content', handleReaderContent);
+registry.registerHook('composer:presend', handlePresend, 'gpg');
+registry.registerHook('reader:content', handleReaderContent, 'gpg');

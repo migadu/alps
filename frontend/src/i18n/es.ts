@@ -196,7 +196,8 @@ export const es = {
     attachmentsWait: 'Espera a que los archivos adjuntos terminen de cargarse antes de enviar.',
     sending: 'Enviando mensaje...',
     undo: 'Deshacer',
-    sendError: 'Error al enviar el mensaje: {error}'
+    sendError: 'Error al enviar el mensaje: {error}',
+    presendFailed: 'Un complemento de seguridad no pudo procesar este mensaje, por lo que no se envió.'
   },
   messageComposer: {
     fontSize: 'Tamaño de fuente',

@@ -198,7 +198,8 @@ export const de: TranslationDictionary = {
     attachmentsWait: 'Bitte warten Sie, bis die Anhänge hochgeladen sind, bevor Sie senden.',
     sending: 'Nachricht wird gesendet...',
     undo: 'Rückgängig',
-    sendError: 'Nachricht konnte nicht gesendet werden: {error}'
+    sendError: 'Nachricht konnte nicht gesendet werden: {error}',
+    presendFailed: 'Ein Sicherheits-Plugin konnte diese Nachricht nicht verarbeiten, daher wurde sie nicht gesendet.'
   },
   messageComposer: {
     fontSize: 'Schriftgröße',
