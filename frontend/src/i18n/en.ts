@@ -423,7 +423,11 @@ export const en = {
     messageCopiedToFolder: 'Message copied to {folder}',
     messagesCopiedToFolder: '{count} messages copied to {folder}',
     draftsDiscarded: '{count} drafts discarded',
-    messagesPermanentlyDeleted: '{count} messages permanently deleted'
+    messagesPermanentlyDeleted: '{count} messages permanently deleted',
+    undoFailed: 'Could not undo that',
+    messageDeleteFailed: 'The message could not be deleted',
+    moveFailed: 'Could not move that',
+    copyFailed: 'Could not copy that'
   },
   mailboxPage: {
     mailboxNotFound: 'Mailbox not found',

@@ -423,7 +423,11 @@ export const pt = {
     messageCopiedToFolder: 'Mensagem copiada para {folder}',
     messagesCopiedToFolder: '{count} mensagens copiadas para {folder}',
     draftsDiscarded: '{count} rascunhos descartados',
-    messagesPermanentlyDeleted: '{count} mensagens excluídas permanentemente'
+    messagesPermanentlyDeleted: '{count} mensagens excluídas permanentemente',
+    undoFailed: 'Não foi possível desfazer',
+    messageDeleteFailed: 'Não foi possível eliminar a mensagem',
+    moveFailed: 'Não foi possível mover',
+    copyFailed: 'Não foi possível copiar'
   },
   mailboxPage: {
     mailboxNotFound: 'Caixa de correio não encontrada',

@@ -160,8 +160,8 @@ export class MessageOperationsService {
   /**
    * Permanently deletes multiple messages.
    */
-  async deleteMessages(mailbox: string, uids: string[]): Promise<boolean> {
-    if (!uids || uids.length === 0) return false;
+  async deleteMessagesResult(mailbox: string, uids: string[]): Promise<DeleteResult> {
+    if (!uids || uids.length === 0) return { ok: false, reason: 'empty' };
     let deleted = 0;
     try {
       for (const chunk of chunkUids(uids)) {
@@ -170,30 +170,42 @@ export class MessageOperationsService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ uids: chunk })
         });
-        if (this.isAuthError(res)) return false;
+        if (this.isAuthError(res)) return { ok: false, reason: 'auth' };
         if (!res.ok) {
           Logger.error('Failed to delete messages', res.status, await readErrorBody(res));
           // A mid-walk failure follows chunks that ALREADY committed, so the
           // list on screen is wrong either way and has to be re-read.
           if (deleted > 0) messageSync.sync();
-          return false;
+          return { ok: false, reason: 'failed' };
         }
         deleted += chunk.length;
       }
       messageSync.sync();
-      return true;
+      return { ok: true };
     } catch (err) {
       Logger.error('Failed to delete messages', err);
       if (deleted > 0) messageSync.sync();
-      return false;
+      return { ok: false, reason: 'failed' };
     }
+  }
+
+  /**
+   * The boolean form, which every existing caller reads — deliberately NOT
+   * widened to an object. `if (await deleteMessages(...))` is how four call
+   * sites branch, and an object is always truthy: widening this would have made
+   * every failed delete read as a success, with no type error anywhere (review
+   * doc, recurring pattern #6). A caller that needs to know WHY a delete failed
+   * — to stay quiet on an expired session — uses deleteMessagesResult instead.
+   */
+  async deleteMessages(mailbox: string, uids: string[]): Promise<boolean> {
+    return (await this.deleteMessagesResult(mailbox, uids)).ok;
   }
 
   /**
    * Moves multiple messages to another mailbox.
    */
-  async moveMessages(mailbox: string, uids: string[], to: string): Promise<{ success: boolean, uidMapping?: Record<string, string> }> {
-    if (!uids || uids.length === 0) return { success: false };
+  async moveMessages(mailbox: string, uids: string[], to: string): Promise<MoveResult> {
+    if (!uids || uids.length === 0) return { success: false, reason: 'empty' };
     let moved = 0;
     const uidMapping: Record<string, string> = {};
     try {
@@ -203,11 +215,11 @@ export class MessageOperationsService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ uids: chunk, to })
         });
-        if (this.isAuthError(res)) return { success: false };
+        if (this.isAuthError(res)) return { success: false, reason: 'auth' };
         if (!res.ok) {
           Logger.error('Failed to move messages', res.status, await readErrorBody(res));
           if (moved > 0) messageSync.sync();
-          return { success: false };
+          return { success: false, reason: 'failed' };
         }
         // Read the body BEFORE the sync. The sync used to be kicked off first,
         // which put a fetch in flight against the mailbox we were still parsing
@@ -221,15 +233,15 @@ export class MessageOperationsService {
     } catch (err) {
       Logger.error('Failed to move messages', err);
       if (moved > 0) messageSync.sync();
-      return { success: false };
+      return { success: false, reason: 'failed' };
     }
   }
 
   /**
    * Copies multiple messages to another mailbox.
    */
-  async copyMessages(mailbox: string, uids: string[], to: string): Promise<{ success: boolean }> {
-    if (!uids || uids.length === 0) return { success: false };
+  async copyMessages(mailbox: string, uids: string[], to: string): Promise<MoveResult> {
+    if (!uids || uids.length === 0) return { success: false, reason: 'empty' };
     let copied = 0;
     try {
       for (const chunk of chunkUids(uids)) {
@@ -238,11 +250,11 @@ export class MessageOperationsService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ uids: chunk, to })
         });
-        if (this.isAuthError(res)) return { success: false };
+        if (this.isAuthError(res)) return { success: false, reason: 'auth' };
         if (!res.ok) {
           Logger.error('Failed to copy messages', res.status, await readErrorBody(res));
           if (copied > 0) messageSync.sync();
-          return { success: false };
+          return { success: false, reason: 'failed' };
         }
         copied += chunk.length;
       }
@@ -251,7 +263,7 @@ export class MessageOperationsService {
     } catch (err) {
       Logger.error('Failed to copy messages', err);
       if (copied > 0) messageSync.sync();
-      return { success: false };
+      return { success: false, reason: 'failed' };
     }
   }
 
@@ -342,6 +354,22 @@ export interface FlagResult {
   applied?: number;
   /** The keywords the server would not store, when it said so. */
   rejected?: string[];
+}
+
+/** A move, and why it did not happen. `reason` is additive: `success` means
+ * exactly what it always did, so existing `if (result.success)` callers are
+ * unaffected. `auth` matters because isAuthError has already sent the user to
+ * the login screen — a failure toast then would flash over it. */
+export interface MoveResult {
+  success: boolean;
+  uidMapping?: Record<string, string>;
+  reason?: 'empty' | 'auth' | 'failed';
+}
+
+/** As MoveResult, for deletes — shaped like FlagResult above. */
+export interface DeleteResult {
+  ok: boolean;
+  reason?: 'empty' | 'auth' | 'failed';
 }
 
 export const messageOperations = new MessageOperationsService();

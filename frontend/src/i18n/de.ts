@@ -391,7 +391,11 @@ export const de: TranslationDictionary = {
     messageCopiedToFolder: 'Nachricht nach {folder} kopiert',
     messagesCopiedToFolder: '{count} Nachrichten nach {folder} kopiert',
     draftsDiscarded: '{count} Entwürfe verworfen',
-    messagesPermanentlyDeleted: '{count} Nachrichten endgültig gelöscht'
+    messagesPermanentlyDeleted: '{count} Nachrichten endgültig gelöscht',
+    undoFailed: 'Rückgängig machen fehlgeschlagen',
+    messageDeleteFailed: 'Die Nachricht konnte nicht gelöscht werden',
+    moveFailed: 'Verschieben fehlgeschlagen',
+    copyFailed: 'Kopieren fehlgeschlagen'
   },
   mailboxPage: {
     mailboxNotFound: 'Postfach nicht gefunden',

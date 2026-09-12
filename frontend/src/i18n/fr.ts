@@ -389,7 +389,11 @@ export const fr = {
     messageCopiedToFolder: 'Message copié vers {folder}',
     messagesCopiedToFolder: '{count} messages copiés vers {folder}',
     draftsDiscarded: '{count} brouillons supprimés',
-    messagesPermanentlyDeleted: '{count} messages définitivement supprimés'
+    messagesPermanentlyDeleted: '{count} messages définitivement supprimés',
+    undoFailed: 'Impossible d’annuler',
+    messageDeleteFailed: 'Le message n\'a pas pu être supprimé',
+    moveFailed: 'Impossible de déplacer',
+    copyFailed: 'Impossible de copier'
   },
   mailboxPage: {
     mailboxNotFound: 'Boîte de réception introuvable',

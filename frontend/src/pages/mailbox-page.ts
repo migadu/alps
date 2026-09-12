@@ -10,7 +10,7 @@ import '../components/alps-sidebar';
 import { consume } from '@lit/context';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { messageSync } from '../services/message-sync';
-import { messageOperations, type FlagResult } from '../services/message-operations';
+import { messageOperations, type FlagResult, type MoveResult } from '../services/message-operations';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
@@ -304,6 +304,17 @@ export class MailboxPage extends LitElement {
    * help, so it gets its own message rather than the generic "try again". A 401
    * is already announced through `auth-error` and needs no toast of its own.
    */
+  /**
+   * Says a message action did not happen. Archive, move, copy, undo and permanent
+   * delete all branched on success with NO else — and their services catch
+   * internally and never throw, so the catches beside them were unreachable for a
+   * refusal. The user clicked, the server said no, and nothing on screen said so.
+   * Callers stay quiet on `auth`, which the shell answers with the login screen.
+   */
+  private reportActionFailed(key: string, fallback: string) {
+    this.showGlobalToast(this.i18nStore?.t(key) || fallback, '', undefined, 4000);
+  }
+
   private reportFlagFailure(result: FlagResult) {
     if (result.reason === 'auth') return;
     const key = result.reason === 'unsupported' ? 'toast.tagNotSupported' : 'toast.flagChangeFailed';
@@ -1064,7 +1075,7 @@ export class MailboxPage extends LitElement {
         const isTrash = currentRole === 'trash';
         const isDrafts = currentRole === 'drafts';
         const isSpam = currentRole === 'junk';
-        let moveResult: { success: boolean, uidMapping?: Record<string, string> } = { success: false };
+        let moveResult: MoveResult = { success: false };
         // Resolve move destinations to the actual special-use mailbox (e.g. Gmail's
         // "[Gmail]/Trash") rather than a hardcoded English name. See issue #4.
         let destinationFolder = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
@@ -1135,9 +1146,12 @@ export class MailboxPage extends LitElement {
                     this.selectedUids = newUids;
                     this.requestUpdate();
                   }
+                } else if (revertResult.reason !== 'auth') {
+                  this.reportActionFailed('toast.undoFailed', 'Could not undo that');
                 }
               } catch (err) {
                 Logger.error("Undo failed", err);
+                this.reportActionFailed('toast.undoFailed', 'Could not undo that');
               }
             };
           } else if (!isBulk && moveResult.uidMapping?.[String(currentMsg.UID)]) {
@@ -1152,13 +1166,18 @@ export class MailboxPage extends LitElement {
                   } else {
                     this.updateUrl(originalMailbox, page, null);
                   }
+                } else if (revertResult.reason !== 'auth') {
+                  this.reportActionFailed('toast.undoFailed', 'Could not undo that');
                 }
               } catch (err) {
                 Logger.error("Undo failed", err);
+                this.reportActionFailed('toast.undoFailed', 'Could not undo that');
               }
             };
           }
           this.showGlobalToast(toastMessage, undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
+        } else if (moveResult.reason !== 'auth') {
+          this.reportActionFailed('toast.moveFailed', 'Could not move that');
         }
       } else if (action === 'moveTo' || action === 'copyTo') {
         const destinationFolder = e.detail.folder;
@@ -1166,7 +1185,7 @@ export class MailboxPage extends LitElement {
 
         const isMove = action === 'moveTo';
 
-        let result: { success: boolean, uidMapping?: Record<string, string> } = { success: false };
+        let result: MoveResult = { success: false };
         if (isMove) {
           if (isBulk) result = await messageOperations.moveMessages(this.currentMailbox, uidsArray, destinationFolder);
           else result = await messageOperations.moveMessages(this.currentMailbox, [String(currentMsg.UID)], destinationFolder);
@@ -1204,9 +1223,12 @@ export class MailboxPage extends LitElement {
                     this.selectedUids = newUids;
                     this.requestUpdate();
                   }
+                } else if (revertResult.reason !== 'auth') {
+                  this.reportActionFailed('toast.undoFailed', 'Could not undo that');
                 }
               } catch (err) {
                 Logger.error("Undo failed", err);
+                this.reportActionFailed('toast.undoFailed', 'Could not undo that');
               }
             };
           } else if (!isBulk && isMove && result.uidMapping?.[String(currentMsg.UID)]) {
@@ -1221,13 +1243,19 @@ export class MailboxPage extends LitElement {
                   } else {
                     this.updateUrl(originalMailbox, page, null);
                   }
+                } else if (revertResult.reason !== 'auth') {
+                  this.reportActionFailed('toast.undoFailed', 'Could not undo that');
                 }
               } catch (err) {
                 Logger.error("Undo failed", err);
+                this.reportActionFailed('toast.undoFailed', 'Could not undo that');
               }
             };
           }
           this.showGlobalToast(toastMessage, undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
+        } else if (result.reason !== 'auth') {
+          if (isMove) this.reportActionFailed('toast.moveFailed', 'Could not move that');
+          else this.reportActionFailed('toast.copyFailed', 'Could not copy that');
         }
       } else if (action === 'downloadMessage' && !isBulk) {
         const uid = currentMsg.UID;
@@ -1257,14 +1285,12 @@ export class MailboxPage extends LitElement {
     const { isBulk, uidsArray, currentMsgUid, isDrafts } = details;
     if (isBulk) this.bulkProcessing = true;
     try {
-      let success = false;
-      if (isBulk) {
-        success = await messageOperations.deleteMessages(this.currentMailbox, uidsArray);
-      } else {
-        success = await messageOperations.deleteMessages(this.currentMailbox, [String(currentMsgUid)]);
-      }
+      const deleteResult = await messageOperations.deleteMessagesResult(
+        this.currentMailbox,
+        isBulk ? uidsArray : [String(currentMsgUid)],
+      );
 
-      if (success) {
+      if (deleteResult.ok) {
         if (isBulk) {
           this.selectedUids = new Set();
           this.selectedMessage = null;
@@ -1282,6 +1308,8 @@ export class MailboxPage extends LitElement {
           toastMessage = isBulk ? this.i18nStore?.t('toast.messagesPermanentlyDeleted', { count: uidsArray.length }) : (this.i18nStore?.t('toast.messagePermanentlyDeleted'));
         }
         this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
+      } else if (deleteResult.reason !== 'auth') {
+        this.reportActionFailed('toast.messageDeleteFailed', 'The message could not be deleted');
       }
     } finally {
       if (isBulk) this.bulkProcessing = false;

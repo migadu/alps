@@ -389,7 +389,11 @@ export const rs = {
     messageCopiedToFolder: 'Порука копирана у {folder}',
     messagesCopiedToFolder: '{count} порука копирано у {folder}',
     draftsDiscarded: '{count} нацрта одбачено',
-    messagesPermanentlyDeleted: '{count} порука трајно обрисано'
+    messagesPermanentlyDeleted: '{count} порука трајно обрисано',
+    undoFailed: 'Није могуће поништити',
+    messageDeleteFailed: 'Порука није могла бити обрисана',
+    moveFailed: 'Није могуће преместити',
+    copyFailed: 'Није могуће копирати'
   },
   mailboxPage: {
     mailboxNotFound: 'Сандуче није пронађено',

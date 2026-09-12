@@ -389,7 +389,11 @@ export const es = {
     messageCopiedToFolder: 'Mensaje copiado a {folder}',
     messagesCopiedToFolder: '{count} mensajes copiados a {folder}',
     draftsDiscarded: '{count} borradores descartados',
-    messagesPermanentlyDeleted: '{count} mensajes eliminados permanentemente'
+    messagesPermanentlyDeleted: '{count} mensajes eliminados permanentemente',
+    undoFailed: 'No se pudo deshacer',
+    messageDeleteFailed: 'No se pudo eliminar el mensaje',
+    moveFailed: 'No se pudo mover',
+    copyFailed: 'No se pudo copiar'
   },
   mailboxPage: {
     mailboxNotFound: 'Buzón no encontrado',

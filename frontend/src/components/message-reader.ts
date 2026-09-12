@@ -1198,14 +1198,27 @@ export class MessageReader extends LitElement {
     }
   }
 
+  /**
+   * A delete of one message in a thread that did not happen. Nothing used to say
+   * so, from either side: deleteMessages catches internally and never throws, so
+   * the catch below was unreachable for a refusal, and `if (success)` had no
+   * else. The row simply stayed, unexplained. Quiet on `auth`, which the shell
+   * already answers with the login screen.
+   */
+  private reportDeleteFailed() {
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: { message: this.i18nStore?.t('toast.messageDeleteFailed'), duration: 5000 }
+    }));
+  }
+
   private async deleteItem(item: ThreadMessageItem) {
     if (!item.message) return;
     const confirmed = confirm(this.i18nStore?.t('messageReader.deleteConfirmSingle') || 'Are you sure you want to permanently delete this message?');
     if (!confirmed) return;
 
     try {
-      const success = await messageOperations.deleteMessages(item.mailbox, [String(item.message.UID)]);
-      if (success) {
+      const result = await messageOperations.deleteMessagesResult(item.mailbox, [String(item.message.UID)]);
+      if (result.ok) {
         const uidStr = String(item.message.UID);
         const isFirst = this.threadItems.length > 0 && String(this.threadItems[0].message?.UID) === uidStr;
         this.threadItems = this.threadItems.filter(i => String(i.message?.UID) !== uidStr);
@@ -1214,9 +1227,12 @@ export class MessageReader extends LitElement {
         if (isFirst) {
           this.dispatchEvent(new CustomEvent('action', { detail: { action: 'delete' } }));
         }
+      } else if (result.reason !== 'auth') {
+        this.reportDeleteFailed();
       }
     } catch (err) {
       Logger.error('Failed to delete thread item', err);
+      this.reportDeleteFailed();
     }
   }
 
