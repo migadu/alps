@@ -103,6 +103,25 @@ func mailboxInfoToStatus(mbox MailboxInfo) *MailboxStatus {
 }
 
 // invalidateMailboxCache clears cached mailbox data for a session.
+// invalidateMailboxTree drops every cached entry for a mailbox AND anything
+// beneath it, for operations that change which mailboxes exist.
+//
+// Create, delete and rename passed no names at all, so only the "mailboxes"
+// list was cleared and every `status:`, `messages:` and `message:` entry for the
+// affected folder survived. Keys are per NAME, so those stale entries are not
+// merely wasted memory: delete `Work` and create a new `Work`, or rename one
+// away and reuse the name, and `messages:Work:0` is served from the cache —
+// the new, empty folder shows the old folder's mail.
+//
+// The whole message cache goes rather than a prefix, because a prefix over
+// mailbox names is the `Archive`/`Arch` trap this review has now fixed three
+// times, and getting it wrong HERE means serving one folder's mail under
+// another's name. These three operations are rare and the cache refills on the
+// next read, so precision buys nothing worth that risk.
+func invalidateMailboxTree(ctx *alps.Context) {
+	ctx.Session.Cache().Clear()
+}
+
 func invalidateMailboxCache(ctx *alps.Context, mailboxNames ...string) {
 	cache := ctx.Session.Cache()
 
@@ -700,8 +719,9 @@ func handleNewMailbox(ctx *alps.Context) error {
 		return respondMailboxError(ctx, "create mailbox", err)
 	}
 
-	// Invalidate mailbox list cache
-	invalidateMailboxCache(ctx)
+	// A brand-new mailbox may be reusing the name of one that was deleted or
+	// renamed while this session's cache still holds its pages.
+	invalidateMailboxTree(ctx)
 	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "mailbox": name})
 }
 
@@ -719,8 +739,7 @@ func handleDeleteMailbox(ctx *alps.Context) error {
 		return respondMailboxError(ctx, "delete mailbox", err)
 	}
 
-	// Invalidate mailbox list cache
-	invalidateMailboxCache(ctx)
+	invalidateMailboxTree(ctx)
 	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
 }
 
@@ -758,7 +777,7 @@ func handleRenameMailbox(ctx *alps.Context) error {
 		return respondMailboxError(ctx, "rename mailbox", err)
 	}
 
-	invalidateMailboxCache(ctx)
+	invalidateMailboxTree(ctx)
 	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
 }
 
