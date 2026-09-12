@@ -22,6 +22,22 @@ type ScriptPayload struct {
 }
 
 // activeScript returns the name of the currently active script, or "" if none.
+// sieveError logs what actually happened and answers with a stable slug.
+//
+// Every 500 in this file returned err.Error() in the body. For connectClient
+// that renders the ManageSieve host, port and TLS failure verbatim; for the rest
+// it relays the server's own protocol response. Neither is something the user
+// can act on, and both describe the deployment to anyone who can reach the web
+// UI — the shape 6cdf808 corrected for the mailbox verbs.
+//
+// The script VALIDATION errors are deliberately left as they are: those are
+// produced locally by go-sieve against content the user just typed, and they
+// are the whole point of the editor.
+func sieveError(ctx *alps.Context, op string, err error) error {
+	ctx.Server.Logger().Printf("managesieve: failed to %s: %v", op, err)
+	return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "sieve_unavailable"})
+}
+
 func activeScript(scripts []Script) string {
 	for _, s := range scripts {
 		if s.Active {
@@ -83,13 +99,13 @@ func (p *plugin) connectClient(ctx *alps.Context) (*MSClient, error) {
 func (p *plugin) handleGetScript(ctx *alps.Context) error {
 	c, err := p.connectClient(ctx)
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return sieveError(ctx, "connect to the sieve server", err)
 	}
 	defer c.Close()
 
 	scripts, err := c.ListScripts()
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to list scripts: " + err.Error()})
+		return sieveError(ctx, "list scripts", err)
 	}
 
 	// Load the currently active script, whatever its name. This surfaces
@@ -105,13 +121,22 @@ func (p *plugin) handleGetScript(ctx *alps.Context) error {
 		if strings.Contains(err.Error(), "script not found") {
 			return ctx.JSON(http.StatusOK, map[string]string{"content": ""})
 		}
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get script: " + err.Error()})
+		return sieveError(ctx, "get script", err)
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]string{"content": content})
 }
 
+// The largest Sieve script this endpoint will read. Real filter sets are a few
+// kilobytes; the ManageSieve server enforces its own MAXSCRIPTSIZE on top. The
+// point of the cap here is that json.Decode on an unbounded body buffers
+// whatever is sent before anything gets to judge it — the same gap 6fd59a1
+// closed on the attachment and compose routes.
+const maxScriptBytes = 1 << 20
+
 func (p *plugin) handlePutScript(ctx *alps.Context) error {
+	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, maxScriptBytes)
+
 	var payload ScriptPayload
 	if err := json.NewDecoder(ctx.Request.Body).Decode(&payload); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request payload"})
@@ -119,7 +144,7 @@ func (p *plugin) handlePutScript(ctx *alps.Context) error {
 
 	c, err := p.connectClient(ctx)
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return sieveError(ctx, "connect to the sieve server", err)
 	}
 	defer c.Close()
 
@@ -130,7 +155,7 @@ func (p *plugin) handlePutScript(ctx *alps.Context) error {
 	if strings.TrimSpace(payload.Content) == "" {
 		// Deactivate script if empty
 		if err := c.SetActive(""); err != nil {
-			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to deactivate script: " + err.Error()})
+			return sieveError(ctx, "deactivate script", err)
 		}
 		// Optionally delete it
 
@@ -147,7 +172,7 @@ func (p *plugin) handlePutScript(ctx *alps.Context) error {
 	// no active script yet.
 	scripts, err := c.ListScripts()
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to list scripts: " + err.Error()})
+		return sieveError(ctx, "list scripts", err)
 	}
 	name := activeScript(scripts)
 	if name == "" {
@@ -156,18 +181,20 @@ func (p *plugin) handlePutScript(ctx *alps.Context) error {
 
 	// Upload the script
 	if err := c.PutScript(name, payload.Content); err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to upload script: " + err.Error()})
+		return sieveError(ctx, "upload script", err)
 	}
 
 	// Activate it
 	if err := c.SetActive(name); err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to activate script: " + err.Error()})
+		return sieveError(ctx, "activate script", err)
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]string{"message": "Script saved and activated successfully"})
 }
 
 func (p *plugin) handleValidate(ctx *alps.Context) error {
+	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, maxScriptBytes)
+
 	var payload ScriptPayload
 	if err := json.NewDecoder(ctx.Request.Body).Decode(&payload); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request payload"})
@@ -175,7 +202,7 @@ func (p *plugin) handleValidate(ctx *alps.Context) error {
 
 	c, err := p.connectClient(ctx)
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return sieveError(ctx, "connect to the sieve server", err)
 	}
 	defer c.Close()
 
