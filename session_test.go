@@ -260,3 +260,47 @@ func TestSession_CalculateDuration(t *testing.T) {
 	zero := 0
 	assert.Equal(t, 2*time.Hour, sm.CalculateSessionDurationForVal(&zero))
 }
+
+// The idle window bounds inactivity; the absolute deadline bounds USE. A ping
+// may push the idle window forward, but never past the cap — otherwise a token
+// being kept warm (which this app's own front end does every five minutes)
+// never expires.
+func TestSession_NextTimeoutIsClampedByAbsoluteDeadline(t *testing.T) {
+	s := &Session{duration: 30 * time.Minute}
+
+	// No cap configured: the idle window is the whole answer.
+	assert.Equal(t, 30*time.Minute, s.nextTimeout())
+
+	// Cap further out than the idle window: the idle window still wins.
+	s.absoluteDeadline = time.Now().Add(2 * time.Hour)
+	assert.Equal(t, 30*time.Minute, s.nextTimeout())
+
+	// Cap nearer than the idle window: the remainder of the cap wins, so a ping
+	// cannot extend the session past it.
+	s.absoluteDeadline = time.Now().Add(5 * time.Minute)
+	d := s.nextTimeout()
+	assert.Greater(t, d, 4*time.Minute)
+	assert.LessOrEqual(t, d, 5*time.Minute)
+
+	// Cap already passed: non-positive, which the timeout goroutine reads as
+	// "end the session" rather than resetting the timer.
+	s.absoluteDeadline = time.Now().Add(-time.Second)
+	assert.LessOrEqual(t, s.nextTimeout(), time.Duration(0))
+}
+
+// A cap configured BELOW the idle window would silently redefine the idle
+// window as the shorter of the two — a misconfiguration that reads as
+// "sessions last 30 minutes of inactivity" everywhere while behaving otherwise.
+func TestSessionManager_AbsoluteDeadlineIsFlooredAtTheIdleWindow(t *testing.T) {
+	start := time.Now()
+
+	sm := &SessionManager{sessionDuration: time.Hour, absoluteSessionDuration: 10 * time.Minute}
+	assert.Equal(t, start.Add(time.Hour), sm.absoluteDeadlineFrom(start))
+
+	sm = &SessionManager{sessionDuration: 30 * time.Minute, absoluteSessionDuration: 7 * 24 * time.Hour}
+	assert.Equal(t, start.Add(7*24*time.Hour), sm.absoluteDeadlineFrom(start))
+
+	// Explicitly disabled: the zero time, which nextTimeout reads as "no cap".
+	sm = &SessionManager{sessionDuration: 30 * time.Minute, absoluteSessionDuration: -1}
+	assert.True(t, sm.absoluteDeadlineFrom(start).IsZero())
+}
