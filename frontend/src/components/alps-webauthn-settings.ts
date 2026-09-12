@@ -60,7 +60,7 @@ export class AlpsWebauthnSettings extends LitElement {
             fill: currentColor;
         }
         .cred-list { margin-top: 16px; }
-        .alert { padding: 12px; border-radius: 6px; background: rgba(220, 38, 38, 0.1); color: var(--danger-color); margin-bottom: 12px; }
+        .alert { padding: 12px; border-radius: 6px; background: rgba(220, 38, 38, 0.1); color: var(--error, #ef4444); margin-bottom: 12px; }
         .empty-state {
             color: var(--text-muted);
             font-style: italic;

@@ -18,22 +18,27 @@ export class LoginWebAuthnPage extends LitElement {
       text-align: center;
     }
     
+    /* The theme defines --error / --success / --accent-color. There has never
+       been a --color-* family, nor any -muted variant, so every declaration in
+       this block resolved to nothing: the status banner on the second-factor
+       screen — the element that tells the user whether their security key
+       worked — rendered with no background, no border and inherited text. */
     .status.error {
-      background: var(--color-error-muted);
-      color: var(--color-error);
-      border: 1px solid var(--color-error-muted);
+      background: color-mix(in srgb, var(--error, #ef4444) 12%, transparent);
+      color: var(--error, #ef4444);
+      border: 1px solid color-mix(in srgb, var(--error, #ef4444) 30%, transparent);
     }
     
     .status.info {
-      background: var(--color-info-muted);
-      color: var(--color-info);
-      border: 1px solid var(--color-info-muted);
+      background: color-mix(in srgb, var(--accent-color, #2563eb) 12%, transparent);
+      color: var(--accent-color, #2563eb);
+      border: 1px solid color-mix(in srgb, var(--accent-color, #2563eb) 30%, transparent);
     }
     
     .status.success {
-      background: var(--color-success-muted);
-      color: var(--color-success);
-      border: 1px solid var(--color-success-muted);
+      background: color-mix(in srgb, var(--success, #16a34a) 12%, transparent);
+      color: var(--success, #16a34a);
+      border: 1px solid color-mix(in srgb, var(--success, #16a34a) 30%, transparent);
     }
     
 

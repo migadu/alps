@@ -3296,7 +3296,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
       display: flex;
       flex: 1;
       align-items: center;
-      background: var(--bg-color);
+      background: var(--bg-primary, #ffffff);
       font-size: 13px;
       color: var(--text-muted);
       min-width: 0;
@@ -8365,7 +8365,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
             fill: currentColor;
         }
         .cred-list { margin-top: 16px; }
-        .alert { padding: 12px; border-radius: 6px; background: rgba(220, 38, 38, 0.1); color: var(--danger-color); margin-bottom: 12px; }
+        .alert { padding: 12px; border-radius: 6px; background: rgba(220, 38, 38, 0.1); color: var(--error, #ef4444); margin-bottom: 12px; }
         .empty-state {
             color: var(--text-muted);
             font-style: italic;
@@ -9155,22 +9155,27 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
       text-align: center;
     }
     
+    /* The theme defines --error / --success / --accent-color. There has never
+       been a --color-* family, nor any -muted variant, so every declaration in
+       this block resolved to nothing: the status banner on the second-factor
+       screen — the element that tells the user whether their security key
+       worked — rendered with no background, no border and inherited text. */
     .status.error {
-      background: var(--color-error-muted);
-      color: var(--color-error);
-      border: 1px solid var(--color-error-muted);
+      background: color-mix(in srgb, var(--error, #ef4444) 12%, transparent);
+      color: var(--error, #ef4444);
+      border: 1px solid color-mix(in srgb, var(--error, #ef4444) 30%, transparent);
     }
     
     .status.info {
-      background: var(--color-info-muted);
-      color: var(--color-info);
-      border: 1px solid var(--color-info-muted);
+      background: color-mix(in srgb, var(--accent-color, #2563eb) 12%, transparent);
+      color: var(--accent-color, #2563eb);
+      border: 1px solid color-mix(in srgb, var(--accent-color, #2563eb) 30%, transparent);
     }
     
     .status.success {
-      background: var(--color-success-muted);
-      color: var(--color-success);
-      border: 1px solid var(--color-success-muted);
+      background: color-mix(in srgb, var(--success, #16a34a) 12%, transparent);
+      color: var(--success, #16a34a);
+      border: 1px solid color-mix(in srgb, var(--success, #16a34a) 30%, transparent);
     }
     
 
