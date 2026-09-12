@@ -740,3 +740,16 @@ func TestRateLimiter_ClusterEventTimestampsAreClamped(t *testing.T) {
 		t.Error("a stale cluster event should not create an entry")
 	}
 }
+
+// Server.Close calls three teardowns and the other two are already guarded, so
+// this one has to tolerate a second call too.
+func TestRateLimiter_CloseIsIdempotent(t *testing.T) {
+	rl := NewRateLimiter(RateLimitConfig{}, NewLogger(), nil)
+	rl.Close()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("second Close panicked: %v", r)
+		}
+	}()
+	rl.Close()
+}

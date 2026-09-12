@@ -85,6 +85,7 @@ type RateLimiter struct {
 	// Cleanup ticker
 	cleanupTicker *time.Ticker
 	cleanupDone   chan struct{}
+	closeOnce     sync.Once // guards close(cleanupDone)
 }
 
 // NewRateLimiter creates a new rate limiter with the given configuration
@@ -106,10 +107,18 @@ func NewRateLimiter(config RateLimitConfig, logger Logger, broadcaster ClusterBr
 	return rl
 }
 
-// Close stops the rate limiter cleanup goroutine
+// Close stops the rate limiter cleanup goroutine.
+//
+// Guarded, because close of an already-closed channel panics. Server.Close
+// calls three teardowns — Sessions.Close, RateLimiter.Close, Scheduler.Stop —
+// and the other two already use a sync.Once for exactly this. So Server.Close
+// was non-idempotent solely because of this one, which is the opposite of what
+// reading it suggests.
 func (rl *RateLimiter) Close() {
-	close(rl.cleanupDone)
-	rl.cleanupTicker.Stop()
+	rl.closeOnce.Do(func() {
+		close(rl.cleanupDone)
+		rl.cleanupTicker.Stop()
+	})
 }
 
 // cleanupLoop periodically removes old entries to prevent memory leaks
@@ -117,11 +126,32 @@ func (rl *RateLimiter) cleanupLoop() {
 	for {
 		select {
 		case <-rl.cleanupTicker.C:
-			rl.cleanup()
+			rl.cleanupSafely()
 		case <-rl.cleanupDone:
 			return
 		}
 	}
+}
+
+// cleanupSafely runs one sweep with its own recover.
+//
+// This loop had no recover AT ALL, so a panic in cleanup took the goroutine
+// with it and the maps it prunes then grew without bound — and they are keyed
+// by client IP and by username, filled from unauthenticated login attempts.
+// The rate limiter itself keeps working; only the eviction stops, which is the
+// shape that hides longest.
+//
+// Sixth of the seven background loops in alps to get this wrong; see the review
+// doc. Only scheduler.go placed it correctly.
+func (rl *RateLimiter) cleanupSafely() {
+	defer func() {
+		if r := recover(); r != nil {
+			if rl.logger != nil {
+				rl.logger.Errorf("panic in rate limiter cleanup - continuing: %v", r)
+			}
+		}
+	}()
+	rl.cleanup()
 }
 
 // cleanup removes expired entries from all maps
