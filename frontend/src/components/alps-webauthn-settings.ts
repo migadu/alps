@@ -177,7 +177,7 @@ export class AlpsWebauthnSettings extends LitElement {
     }
 
     render() {
-        if (this.loading) return html`<div>Loading...</div>`;
+        if (this.loading) return html`<div>${this.i18nStore?.t('settings.loading')}</div>`;
 
         return html`
             ${this.showNamePrompt ? html`
@@ -235,7 +235,7 @@ export class AlpsWebauthnSettings extends LitElement {
                             <div class="setting-row">
                                 <div style="display: flex; align-items: center; gap: 8px;">
                                     <div class="icon-container">${renderIcon('fingerprint')}</div>
-                                    <strong>${c.Name || 'Security Key'}</strong>
+                                    <strong>${c.Name || this.i18nStore?.t('webauthn.settings.unnamed_key')}</strong>
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 16px;">
                                     <div style="font-size: 13px; color: var(--text-muted);">${this.i18nStore?.t('webauthn.settings.added')} ${new Date(c.AddedAt).toLocaleString()}</div>

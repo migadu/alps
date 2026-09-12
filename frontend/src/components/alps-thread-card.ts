@@ -572,7 +572,7 @@ export class AlpsThreadCard extends LitElement {
             <alps-icon-btn
               style="--icon-size: 16px; --btn-padding: 4px;"
               icon=${this.item.expanded ? 'caretUp' : 'caretDown'}
-              title=${this.item.expanded ? 'Collapse' : 'Expand'}
+              title=${this.item.expanded ? this.i18nStore?.t('general.collapse') : this.i18nStore?.t('general.expand')}
             ></alps-icon-btn>
           </div>
         </div>

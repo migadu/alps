@@ -70,7 +70,7 @@ export class PasswordSettings extends LitElement {
 				window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: data.error || 'Failed to change password.', timeout: 3000 } }));
 			}
 		} catch (e) {
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Network error occurred.', timeout: 3000 } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore?.t('login.networkError'), timeout: 3000 } }));
 		} finally {
 			this.isSubmitting = false;
 		}

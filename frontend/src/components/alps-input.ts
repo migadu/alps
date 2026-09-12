@@ -1,9 +1,18 @@
 import { LitElement, html, css } from 'lit';
+import { i18nContext, I18nStore } from '../store/i18n-store';
+import { consume } from '@lit/context';
 import { customElement, property, state } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
 
 @customElement('alps-input')
 export class AlpsInput extends LitElement {
+  // Consumed rather than passed in, as alps-pagination does: this primitive is
+  // used from many places, and its own labels were English in every locale.
+  @consume({ context: i18nContext })
+  i18nStore!: I18nStore;
+
+  private _handleI18nChange = () => this.requestUpdate();
+
   @property({ type: String }) type = 'text';
   @property({ type: String }) value = '';
   @property({ type: String }) placeholder = '';
@@ -155,6 +164,16 @@ export class AlpsInput extends LitElement {
     if (input) input.focus();
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    this.i18nStore?.addEventListener('change', this._handleI18nChange);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.i18nStore?.removeEventListener('change', this._handleI18nChange);
+  }
+
   render() {
     const isPasswordType = this.type === 'password';
     const currentType = isPasswordType && this.showPassword ? 'text' : this.type;
@@ -186,7 +205,7 @@ export class AlpsInput extends LitElement {
             type="button" 
             class="action-btn" 
             @click=${this.togglePassword}
-            title=${this.showPassword ? 'Hide password' : 'Show password'}
+            title=${this.showPassword ? (this.i18nStore?.t('general.hidePassword') || 'Hide password') : (this.i18nStore?.t('general.showPassword') || 'Show password')}
             tabindex="-1"
           >
             ${renderIcon(this.showPassword ? 'eyeSlash' : 'eye')}
@@ -196,7 +215,7 @@ export class AlpsInput extends LitElement {
             type="button" 
             class="action-btn" 
             @click=${this.handleClear}
-            title="Clear"
+            title=${this.i18nStore?.t('general.clear') || 'Clear'}
             tabindex="-1"
           >
             ${renderIcon('x')}

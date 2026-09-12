@@ -66,7 +66,8 @@ export const it = {
       sortUid: 'Data archiviazione cartella',
       sortDate: 'Data di ricezione',
       enableThreading: 'Usa il threading',
-      themeIframeContent: 'Applica il tema al contenuto dei messaggi HTML'
+      themeIframeContent: 'Applica il tema al contenuto dei messaggi HTML',
+      threadingNotSupported: "Non supportato dal tuo server di posta"
     },
     appearance: {
       colorTheme: 'Tema colori',
@@ -158,7 +159,14 @@ export const it = {
     moveToTrash: 'Sposta nel cestino',
     moveToTrashConfirm: 'Sei sicuro di voler spostare "{folder}" nel Cestino?',
     createSubfolder: 'Crea sottocartella',
-    createSubfolderUnder: 'Crea sottocartella in "{folder}"'
+    createSubfolderUnder: 'Crea sottocartella in "{folder}"',
+    subscribe: "Sottoscrivi",
+    unsubscribe: "Annulla sottoscrizione",
+    order: "Ordine",
+    moveToTop: "Sposta in cima",
+    moveUp: "Sposta su",
+    moveDown: "Sposta giù",
+    moveToBottom: "Sposta in fondo"
   },
   search: {
     placeholder: 'Cerca nella posta',
@@ -419,7 +427,15 @@ export const it = {
     cancel: 'Annulla',
     save: 'Salva',
     optional: 'Opzionale',
-    delete: 'Elimina'
+    delete: 'Elimina',
+    clear: "Cancella",
+    showPassword: "Mostra password",
+    hidePassword: "Nascondi password",
+    previous: "Precedente",
+    next: "Successivo",
+    expand: "Espandi",
+    collapse: "Comprimi",
+    notFound: "Pagina non trovata"
   },
   webauthn: {
     title: 'Verifica della chiave di sicurezza',
@@ -453,7 +469,8 @@ export const it = {
       keys_title: 'Chiavi di sicurezza',
       noKeys: 'Nessuna chiave registrata.',
       added: 'Aggiunto',
-      remove_btn: 'Rimuovi'
+      remove_btn: 'Rimuovi',
+      unnamed_key: "Chiave di sicurezza"
     }
   }
 };

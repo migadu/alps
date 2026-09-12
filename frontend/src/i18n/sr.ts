@@ -66,7 +66,8 @@ export const sr = {
       sortUid: 'Datum arhiviranja u fasciklu',
       sortDate: 'Datum prijema',
       enableThreading: 'Koristi niti',
-      themeIframeContent: 'Primeni temu na HTML sadržaj poruka'
+      themeIframeContent: 'Primeni temu na HTML sadržaj poruka',
+      threadingNotSupported: "Vaš server pošte ovo ne podržava"
     },
     appearance: {
       colorTheme: 'Tema boja',
@@ -158,7 +159,14 @@ export const sr = {
     moveToTrash: 'Premesti u otpad',
     moveToTrashConfirm: 'Da li ste sigurni da želite da premestite "{folder}" u Otpad?',
     createSubfolder: 'Napravi potfasciklu',
-    createSubfolderUnder: 'Napravi potfasciklu u "{folder}"'
+    createSubfolderUnder: 'Napravi potfasciklu u "{folder}"',
+    subscribe: "Pretplati se",
+    unsubscribe: "Otkaži pretplatu",
+    order: "Redosled",
+    moveToTop: "Pomeri na vrh",
+    moveUp: "Pomeri nagore",
+    moveDown: "Pomeri nadole",
+    moveToBottom: "Pomeri na dno"
   },
   search: {
     placeholder: 'Pretraži poštu',
@@ -419,7 +427,15 @@ export const sr = {
     cancel: 'Otkaži',
     save: 'Sačuvaj',
     optional: 'Opciono',
-    delete: 'Obriši'
+    delete: 'Obriši',
+    clear: "Obriši",
+    showPassword: "Prikaži lozinku",
+    hidePassword: "Sakrij lozinku",
+    previous: "Nazad",
+    next: "Napred",
+    expand: "Proširi",
+    collapse: "Skupi",
+    notFound: "Stranica nije pronađena"
   },
   webauthn: {
     title: 'Verifikacija bezbednosnog ključa',
@@ -453,7 +469,8 @@ export const sr = {
       keys_title: 'Bezbednosni ključevi',
       noKeys: 'Nema registrovanih ključeva.',
       added: 'Dodato',
-      remove_btn: 'Ukloni'
+      remove_btn: 'Ukloni',
+      unnamed_key: "Bezbednosni ključ"
     }
   }
 };

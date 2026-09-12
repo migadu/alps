@@ -66,7 +66,8 @@ export const fr = {
       sortUid: 'Date de classement dans le dossier',
       sortDate: 'Date de réception',
       enableThreading: 'Utiliser le fil de discussion',
-      themeIframeContent: 'Appliquer le thème au contenu des messages HTML'
+      themeIframeContent: 'Appliquer le thème au contenu des messages HTML',
+      threadingNotSupported: "Non pris en charge par votre serveur de messagerie"
     },
     appearance: {
       colorTheme: 'Thème de couleur',
@@ -158,7 +159,14 @@ export const fr = {
     moveToTrash: 'Déplacer vers la corbeille',
     moveToTrashConfirm: 'Êtes-vous sûr de vouloir déplacer "{folder}" vers la corbeille ?',
     createSubfolder: 'Créer un sous-dossier',
-    createSubfolderUnder: 'Créer un sous-dossier sous "{folder}"'
+    createSubfolderUnder: 'Créer un sous-dossier sous "{folder}"',
+    subscribe: "S’abonner",
+    unsubscribe: "Se désabonner",
+    order: "Ordre",
+    moveToTop: "Placer en haut",
+    moveUp: "Monter",
+    moveDown: "Descendre",
+    moveToBottom: "Placer en bas"
   },
   search: {
     placeholder: 'Rechercher des messages',
@@ -419,7 +427,15 @@ export const fr = {
     cancel: 'Annuler',
     save: 'Enregistrer',
     optional: 'Facultatif',
-    delete: 'Supprimer'
+    delete: 'Supprimer',
+    clear: "Effacer",
+    showPassword: "Afficher le mot de passe",
+    hidePassword: "Masquer le mot de passe",
+    previous: "Précédent",
+    next: "Suivant",
+    expand: "Développer",
+    collapse: "Réduire",
+    notFound: "Page introuvable"
   },
   webauthn: {
     title: 'Vérification de la clé de sécurité',
@@ -453,7 +469,8 @@ export const fr = {
       keys_title: 'Clés de sécurité',
       noKeys: 'Aucune clé enregistrée.',
       added: 'Ajouté',
-      remove_btn: 'Supprimer'
+      remove_btn: 'Supprimer',
+      unnamed_key: "Clé de sécurité"
     }
   }
 };

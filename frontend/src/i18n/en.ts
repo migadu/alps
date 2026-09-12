@@ -72,7 +72,8 @@ export const en = {
       sortUid: 'Folder Filing Date',
       sortDate: 'Received Date',
       enableThreading: 'Use threading',
-      themeIframeContent: 'Apply theme to HTML messages content'
+      themeIframeContent: 'Apply theme to HTML messages content',
+      threadingNotSupported: "Not supported by your mail server"
     },
     appearance: {
       colorTheme: 'Color Theme',
@@ -155,7 +156,8 @@ export const en = {
       keys_title: 'Security Keys',
       noKeys: 'No registered keys.',
       added: 'Added',
-      remove_btn: 'Remove'
+      remove_btn: 'Remove',
+      unnamed_key: "Security Key"
     }
   },
   print: {
@@ -199,7 +201,14 @@ export const en = {
     moveToTrash: 'Move to Trash',
     moveToTrashConfirm: 'Are you sure you want to move "{folder}" to the Trash?',
     createSubfolder: 'Create subfolder',
-    createSubfolderUnder: 'Create Subfolder under "{folder}"'
+    createSubfolderUnder: 'Create Subfolder under "{folder}"',
+    subscribe: "Subscribe",
+    unsubscribe: "Unsubscribe",
+    order: "Order",
+    moveToTop: "Move to Top",
+    moveUp: "Move Up",
+    moveDown: "Move Down",
+    moveToBottom: "Move to Bottom"
   },
   search: {
     placeholder: 'Search mail',
@@ -453,7 +462,15 @@ export const en = {
     cancel: 'Cancel',
     save: 'Save',
     optional: 'Optional',
-    delete: 'Delete'
+    delete: 'Delete',
+    clear: "Clear",
+    showPassword: "Show password",
+    hidePassword: "Hide password",
+    previous: "Previous",
+    next: "Next",
+    expand: "Expand",
+    collapse: "Collapse",
+    notFound: "Page not found"
   }
 };
 

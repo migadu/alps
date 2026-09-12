@@ -66,7 +66,8 @@ export const rs = {
       sortUid: 'Датум архивирања у фасциклу',
       sortDate: 'Датум пријема',
       enableThreading: 'Користи нити',
-      themeIframeContent: 'Примени тему на HTML садржај порука'
+      themeIframeContent: 'Примени тему на HTML садржај порука',
+      threadingNotSupported: "Ваш сервер поште ово не подржава"
     },
     appearance: {
       colorTheme: 'Тема боја',
@@ -158,7 +159,14 @@ export const rs = {
     moveToTrash: 'Премести у отпад',
     moveToTrashConfirm: 'Да ли сте сигурни да желите да преместите "{folder}" у Отпад?',
     createSubfolder: 'Направи потфасциклу',
-    createSubfolderUnder: 'Направи потфасциклу у "{folder}"'
+    createSubfolderUnder: 'Направи потфасциклу у "{folder}"',
+    subscribe: "Претплати се",
+    unsubscribe: "Откажи претплату",
+    order: "Редослед",
+    moveToTop: "Помери на врх",
+    moveUp: "Помери нагоре",
+    moveDown: "Помери надоле",
+    moveToBottom: "Помери на дно"
   },
   search: {
     placeholder: 'Претражи пошту',
@@ -419,7 +427,15 @@ export const rs = {
     cancel: 'Откажи',
     save: 'Сачувај',
     optional: 'Опционо',
-    delete: 'Обриши'
+    delete: 'Обриши',
+    clear: "Обриши",
+    showPassword: "Прикажи лозинку",
+    hidePassword: "Сакриј лозинку",
+    previous: "Назад",
+    next: "Напред",
+    expand: "Прошири",
+    collapse: "Скупи",
+    notFound: "Страница није пронађена"
   },
   webauthn: {
     title: 'Верификација безбедносног кључа',
@@ -453,7 +469,8 @@ export const rs = {
       keys_title: 'Безбедносни кључеви',
       noKeys: 'Нема регистрованих кључева.',
       added: 'Додато',
-      remove_btn: 'Уклони'
+      remove_btn: 'Уклони',
+      unnamed_key: "Безбедносни кључ"
     }
   }
 };

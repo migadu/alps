@@ -373,7 +373,7 @@ export class AppRoot extends LitElement {
 
   private router = new Router(
     this.getRoutes(),
-    () => html`<div>404 Not Found</div>`,
+    () => html`<div>404 — ${this.i18nStore.t('general.notFound')}</div>`,
     () => this.requestUpdate()
   );
 

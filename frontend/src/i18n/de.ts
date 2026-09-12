@@ -55,7 +55,7 @@ export const de: TranslationDictionary = {
       plainText: 'Reiner Text',
       alwaysAsk: 'Immer fragen',
       alwaysLoad: 'Immer laden',
-      richText: 'Rich Text (HTML)',
+      richText: "Formatierter Text (HTML)",
       markReadTimeout: 'Als gelesen markieren',
       markReadImmediately: 'Sofort',
       markRead1s: 'Nach 1 Sekunde',
@@ -68,7 +68,8 @@ export const de: TranslationDictionary = {
       sortUid: 'Ablagedatum im Ordner',
       sortDate: 'Empfangsdatum',
       enableThreading: 'Threading verwenden',
-      themeIframeContent: 'Farbthema auf HTML-Nachrichten anwenden'
+      themeIframeContent: 'Farbthema auf HTML-Nachrichten anwenden',
+      threadingNotSupported: "Von Ihrem Mailserver nicht unterstützt"
     },
     appearance: {
       colorTheme: 'Farbthema',
@@ -81,7 +82,7 @@ export const de: TranslationDictionary = {
       listDensityDesc: 'Passen Sie den Abstand und die Kompaktheit der Nachrichtenliste an.',
       light: 'Hell',
       dark: 'Dunkel',
-      systemAuto: 'System Auto',
+      systemAuto: "Automatisch (System)",
       vertical: 'Vertikal (3 Bereiche)',
       horizontal: 'Horizontal (Oben/Unten)',
       fullScreen: 'Vollbild (Liste beim Lesen ausblenden)',
@@ -160,7 +161,14 @@ export const de: TranslationDictionary = {
     moveToTrash: 'In den Papierkorb verschieben',
     moveToTrashConfirm: 'Sind Sie sicher, dass Sie "{folder}" in den Papierkorb verschieben möchten?',
     createSubfolder: 'Unterordner erstellen',
-    createSubfolderUnder: 'Unterordner unter "{folder}" erstellen'
+    createSubfolderUnder: 'Unterordner unter "{folder}" erstellen',
+    subscribe: "Abonnieren",
+    unsubscribe: "Abbestellen",
+    order: "Reihenfolge",
+    moveToTop: "Ganz nach oben",
+    moveUp: "Nach oben",
+    moveDown: "Nach unten",
+    moveToBottom: "Ganz nach unten"
   },
   search: {
     placeholder: 'E-Mails durchsuchen',
@@ -421,7 +429,15 @@ export const de: TranslationDictionary = {
     cancel: 'Abbrechen',
     save: 'Speichern',
     optional: 'Optional',
-    delete: 'Löschen'
+    delete: 'Löschen',
+    clear: "Leeren",
+    showPassword: "Passwort anzeigen",
+    hidePassword: "Passwort verbergen",
+    previous: "Zurück",
+    next: "Weiter",
+    expand: "Aufklappen",
+    collapse: "Zuklappen",
+    notFound: "Seite nicht gefunden"
   },
   webauthn: {
     title: 'Sicherheitsschlüssel-Überprüfung',
@@ -455,7 +471,8 @@ export const de: TranslationDictionary = {
       keys_title: 'Sicherheitsschlüssel',
       noKeys: 'Keine registrierten Schlüssel.',
       added: 'Hinzugefügt',
-      remove_btn: 'Entfernen'
+      remove_btn: 'Entfernen',
+      unnamed_key: "Sicherheitsschlüssel"
     }
   }
 };

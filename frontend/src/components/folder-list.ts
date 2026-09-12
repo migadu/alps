@@ -824,7 +824,7 @@ export class FolderList extends LitElement {
               if (node.mb?.Subscribed) mailboxOperations.unsubscribeMailbox(node.fullName);
               else mailboxOperations.subscribeMailbox(node.fullName);
             }}>
-                    ${renderIcon(node.mb?.Subscribed ? 'eyeSlash' : 'eye')} <span class="item-text">${node.mb?.Subscribed ? 'Unsubscribe' : 'Subscribe'}</span>
+                    ${renderIcon(node.mb?.Subscribed ? 'eyeSlash' : 'eye')} <span class="item-text">${node.mb?.Subscribed ? this.i18nStore?.t('folderList.unsubscribe') : this.i18nStore?.t('folderList.subscribe')}</span>
                   </button>
                   <div class="dropdown-divider"></div>
                   
@@ -832,7 +832,7 @@ export class FolderList extends LitElement {
                   <alps-popup position="right" align="top" triggerOn="hover" @click=${(e: Event) => e.stopPropagation()}>
                     <button slot="trigger" class="dropdown-item submenu-trigger">
                       <div class="trigger-label">
-                        ${renderIcon('sortAscending')} <span class="item-text">Order</span>
+                        ${renderIcon('sortAscending')} <span class="item-text">${this.i18nStore?.t('folderList.order')}</span>
                       </div>
                       <div class="caret-icon">${renderIcon('caretRight')}</div>
                     </button>
@@ -846,7 +846,7 @@ export class FolderList extends LitElement {
 
               this.moveFolder(node.fullName, 'top');
             }}>
-                      ${renderIcon('caretDoubleUp')} <span class="item-text">Move to Top</span>
+                      ${renderIcon('caretDoubleUp')} <span class="item-text">${this.i18nStore?.t('folderList.moveToTop')}</span>
                     </button>
                     <button class="dropdown-item" ?disabled=${isFirst} @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
@@ -857,7 +857,7 @@ export class FolderList extends LitElement {
 
               this.moveFolder(node.fullName, 'up');
             }}>
-                      ${renderIcon('caretUp')} <span class="item-text">Move Up</span>
+                      ${renderIcon('caretUp')} <span class="item-text">${this.i18nStore?.t('folderList.moveUp')}</span>
                     </button>
                     <button class="dropdown-item" ?disabled=${isLast} @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
@@ -868,7 +868,7 @@ export class FolderList extends LitElement {
 
               this.moveFolder(node.fullName, 'down');
             }}>
-                      ${renderIcon('caretDown')} <span class="item-text">Move Down</span>
+                      ${renderIcon('caretDown')} <span class="item-text">${this.i18nStore?.t('folderList.moveDown')}</span>
                     </button>
                     <button class="dropdown-item" ?disabled=${isLast} @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
@@ -879,7 +879,7 @@ export class FolderList extends LitElement {
 
               this.moveFolder(node.fullName, 'bottom');
             }}>
-                      ${renderIcon('caretDoubleDown')} <span class="item-text">Move to Bottom</span>
+                      ${renderIcon('caretDoubleDown')} <span class="item-text">${this.i18nStore?.t('folderList.moveToBottom')}</span>
                     </button>
                   </alps-popup>
 

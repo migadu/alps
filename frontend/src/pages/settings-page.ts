@@ -509,7 +509,7 @@ export class SettingsPage extends LitElement {
             ${this.i18nStore?.t('settings.reading.enableThreading')}
             ${this.settingsState.hasThreadCapability === false ? html`
               <span style="font-size: 12px; color: var(--text-muted); font-weight: normal; margin-left: 4px;">
-                (Not supported by your mail server)
+                (${this.i18nStore?.t('settings.reading.threadingNotSupported')})
               </span>
             ` : ''}
           </label>

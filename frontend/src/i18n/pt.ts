@@ -52,7 +52,7 @@ export const pt = {
       plainText: 'Texto Simples',
       alwaysAsk: 'Sempre perguntar',
       alwaysLoad: 'Sempre carregar',
-      richText: 'Rich Text (HTML)',
+      richText: "Texto formatado (HTML)",
       markReadTimeout: 'Marcar como Lido',
       markReadImmediately: 'Imediatamente',
       markRead1s: 'Após 1 segundo',
@@ -65,7 +65,8 @@ export const pt = {
       sortUid: 'Data de Arquivamento',
       sortDate: 'Data de Recebimento',
       enableThreading: 'Usar tópicos de conversa',
-      themeIframeContent: 'Aplicar tema ao conteúdo das mensagens HTML'
+      themeIframeContent: 'Aplicar tema ao conteúdo das mensagens HTML',
+      threadingNotSupported: "Não suportado pelo seu servidor de e-mail"
     },
     appearance: {
       colorTheme: 'Tema de Cor',
@@ -148,7 +149,8 @@ export const pt = {
       keys_title: 'Chaves de Segurança',
       noKeys: 'Nenhuma chave registrada.',
       added: 'Adicionada',
-      remove_btn: 'Remover'
+      remove_btn: 'Remover',
+      unnamed_key: "Chave de segurança"
     }
   },
   print: {
@@ -192,7 +194,14 @@ export const pt = {
     moveToTrash: 'Mover para a Lixeira',
     moveToTrashConfirm: 'Tem certeza de que deseja mover "{folder}" para a Lixeira?',
     createSubfolder: 'Criar subpasta',
-    createSubfolderUnder: 'Criar Subpasta em "{folder}"'
+    createSubfolderUnder: 'Criar Subpasta em "{folder}"',
+    subscribe: "Assinar",
+    unsubscribe: "Cancelar assinatura",
+    order: "Ordem",
+    moveToTop: "Mover para o topo",
+    moveUp: "Mover para cima",
+    moveDown: "Mover para baixo",
+    moveToBottom: "Mover para o final"
   },
   search: {
     placeholder: 'Pesquisar e-mails',
@@ -453,7 +462,15 @@ export const pt = {
     cancel: 'Cancelar',
     save: 'Salvar',
     optional: 'Opcional',
-    delete: 'Excluir'
+    delete: 'Excluir',
+    clear: "Limpar",
+    showPassword: "Mostrar senha",
+    hidePassword: "Ocultar senha",
+    previous: "Anterior",
+    next: "Próximo",
+    expand: "Expandir",
+    collapse: "Recolher",
+    notFound: "Página não encontrada"
   }
 };
 
