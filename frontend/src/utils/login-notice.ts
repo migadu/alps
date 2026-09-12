@@ -8,7 +8,8 @@ export type LoginNotice =
   | 'signedOut'
   | 'signedOutDraftsLost'
   | 'sessionExpired'
-  | 'inactivitySignedOut';
+  | 'inactivitySignedOut'
+  | 'inactivitySignedOutDraftsLost';
 
 export function setLoginNotice(notice: LoginNotice) {
   try {

@@ -134,7 +134,8 @@ export const it = {
     signedOut: 'Sei stato disconnesso.',
     signedOutDraftsLost: 'La sessione è stata chiusa. Alcune bozze non inviate non sono state salvate e sono andate perse.',
     sessionExpired: "La tua sessione è scaduta. Effettua di nuovo l'accesso.",
-    inactivitySignedOut: 'Sei stato disconnesso per inattività.'
+    inactivitySignedOut: 'Sei stato disconnesso per inattività.',
+    inactivitySignedOutDraftsLost: "Sei stato disconnesso per inattività. Alcune bozze non inviate non sono state salvate e sono andate perse."
   },
   folderList: {
     compose: 'Componi',

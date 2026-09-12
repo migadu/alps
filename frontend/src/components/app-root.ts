@@ -121,9 +121,9 @@ export class AppRoot extends LitElement {
     // Initialize auto-logout
     const autoLogoutTime = this.settingsStore.getState().autoLogout ?? 0;
     autoLogoutService.setLogoutTime(autoLogoutTime);
-    autoLogoutService.onBeforeLogout = async () => {
-      await this.composeStore.saveAllDirtyDrafts();
-    };
+    // Returns the count, so auto-logout can say drafts were lost exactly as the
+    // Sign Out button does. The wrapper used to await it and discard the answer.
+    autoLogoutService.onBeforeLogout = () => this.composeStore.saveAllDirtyDrafts();
 
     // Initialize language
     const initialLang = this.settingsStore.getState().language ?? 'en';
@@ -195,7 +195,14 @@ export class AppRoot extends LitElement {
   private _handleAuthError = () => {
     sessionStorage.clear();
     clearSessionSettings();
-    window.dispatchEvent(new CustomEvent('session-cleared'));
+    // An EXPIRY, not a sign-out, and the two must not be the same event. This
+    // dispatched the bare sign-out signal, so compose-store deleted every unsent
+    // draft from storage the moment any request came back 401 — including the
+    // send the user had just pressed, whose message was destroyed before
+    // sendDraft returned. 7487097 closed that loss on the boot redirect; this was
+    // the same loss through the door left open. Sign-out and idle auto-logout
+    // still dispatch it bare, and still clear.
+    window.dispatchEvent(new CustomEvent('session-cleared', { detail: { reason: 'expired' } }));
     setLoginNotice('sessionExpired');
     window.location.hash = '#/login';
   };

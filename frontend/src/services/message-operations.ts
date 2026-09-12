@@ -119,16 +119,6 @@ export class MessageOperationsService {
     return message;
   }
 
-  /**
-   * Marks a message as unread by removing the \Seen flag.
-   */
-  async markAsUnread(mailbox: string, message: any): Promise<boolean> {
-    const uid = message?.UID;
-    if (!uid) return false;
-    
-    const { ok } = await this.setFlag(mailbox, [String(uid)], [FLAG_SEEN], 'remove');
-    return ok;
-  }
 
   /**
    * Marks a message as read by adding the \Seen flag.

@@ -175,7 +175,8 @@ export const en = {
     signedOut: 'You have been signed out.',
     signedOutDraftsLost: 'You have been signed out. Some unsent drafts could not be saved and were lost.',
     sessionExpired: 'Your session has expired. Please sign in again.',
-    inactivitySignedOut: "You've been signed out due to inactivity."
+    inactivitySignedOut: "You've been signed out due to inactivity.",
+    inactivitySignedOutDraftsLost: "You've been signed out due to inactivity. Some unsent drafts could not be saved and were lost."
   },
   folderList: {
     compose: 'Compose',

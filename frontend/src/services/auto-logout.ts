@@ -69,7 +69,8 @@ class AutoLogoutService {
   private lastSync: number = 0;
   private lastPing: number = Date.now();
   private checkInterval: ReturnType<typeof setInterval> | null = null;
-  public onBeforeLogout?: () => Promise<void>;
+  /** Resolves with how many dirty drafts could NOT be saved, when it knows. */
+  public onBeforeLogout?: () => Promise<{ failed: number } | undefined>;
 
   public setLogoutTime(minutes: number) {
     const wasActive = this.logoutMinutes > 0;
@@ -240,9 +241,10 @@ class AutoLogoutService {
     this.clearInterval();
     this.detachEvents();
 
+    let draftsLost = 0;
     if (this.onBeforeLogout) {
       try {
-        await this.onBeforeLogout();
+        draftsLost = (await this.onBeforeLogout())?.failed ?? 0;
       } catch (err) {
         Logger.error('Failed to run onBeforeLogout hook', err);
       }
@@ -254,7 +256,10 @@ class AutoLogoutService {
       // Ahead of the request, not after it: the login page is mounted by the
       // cookie going away and reads its notice exactly once, so a notice set
       // after a slow DELETE races that read and shows nothing.
-      setLoginNotice('inactivitySignedOut');
+      // The same distinction the Sign Out button makes: a draft that could not be
+      // saved is gone once the session ends, so say so. This always reported plain
+      // inactivity and threw the count away.
+      setLoginNotice(draftsLost > 0 ? 'inactivitySignedOutDraftsLost' : 'inactivitySignedOut');
 
       // The network call is the only step here that can fail, and its failure
       // must not carry away the local ones. One 500, or a tab that is offline

@@ -420,8 +420,9 @@ export class AlpsFloatingComposer extends LitElement {
         // problem and the returned answer was discarded entirely. A draft the
         // server would not delete stays in Drafts while the user watches the
         // window close on it.
-        const deleted = await messageOperations.deleteMessages(this.instance.draftMailbox, [String(this.instance.draftUid)]);
-        if (!deleted) this._toastDiscardFailed();
+        const deleted = await messageOperations.deleteMessagesResult(this.instance.draftMailbox, [String(this.instance.draftUid)]);
+        // Quiet on `auth`: the shell is already showing the login screen.
+        if (!deleted.ok && deleted.reason !== 'auth') this._toastDiscardFailed();
       } catch (e) {
         Logger.error('Failed to delete draft', e);
         this._toastDiscardFailed();
@@ -645,7 +646,17 @@ export class AlpsFloatingComposer extends LitElement {
         return;
       }
 
-      await messageOperations.sendDraft(finalFormData);
+      // sendDraft THROWS for a refusal, which the catch below reports — but it
+      // RETURNS false for a 401, and that answer was discarded. So an expired
+      // session ran the composer:send hook (carddav saved every recipient as a
+      // contact for a message that never went out) and closed the window. The
+      // message itself is kept by compose-store on expiry; this must not act as
+      // though it was sent.
+      const sent = await messageOperations.sendDraft(finalFormData);
+      if (!sent) {
+        this.composeStore.updateComposer(this.instance.id, { isSending: false });
+        return;
+      }
 
       registry.invokeHook('composer:send', { recipients: allTo });
 

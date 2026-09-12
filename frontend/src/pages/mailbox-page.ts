@@ -991,15 +991,21 @@ export class MailboxPage extends LitElement {
   }
 
   private async _doMarkAsRead(msg: any) {
-    if (this.selectedMessage?.UID === msg.UID) {
-      this.selectedMessage = await messageOperations.markAsRead(this.currentMailbox, msg);
-      this.updateLocalMessageFlags([String(this.selectedMessage.UID)], FLAG_SEEN, 'add');
-    } else {
-      const newMsg = await messageOperations.markAsRead(this.currentMailbox, msg);
-      if (newMsg && newMsg.UID) {
-        this.updateLocalMessageFlags([String(newMsg.UID)], FLAG_SEEN, 'add');
-      }
-    }
+    // markAsRead returns the message UNCHANGED when the write fails, and both
+    // branches here painted the row as read regardless — so any open whose flag
+    // write failed showed a message as read that the server still held unread,
+    // until the next sync quietly flipped it back. The answer is in the flags.
+    //
+    // Not reported: this runs on OPEN, and in a folder the user cannot write to
+    // every open would fail and toast. It just must not paint.
+    //
+    // Selection is checked AFTER the await. It was checked before, so a user who
+    // moved to another message while this was in flight had the old message
+    // written back over their new selection.
+    const updated = await messageOperations.markAsRead(this.currentMailbox, msg);
+    if (!updated?.Flags?.includes(FLAG_SEEN)) return;
+    if (this.selectedMessage?.UID === msg.UID) this.selectedMessage = updated;
+    this.updateLocalMessageFlags([String(updated.UID)], FLAG_SEEN, 'add');
   }
 
   private async _handleReaderAction(e: CustomEvent) {
@@ -1055,13 +1061,18 @@ export class MailboxPage extends LitElement {
             this.reportFlagFailure(seen);
           }
         } else {
-          const isUnread = !currentMsg?.Flags || !currentMsg.Flags.includes(FLAG_SEEN);
-          if (isUnread) {
-            this.selectedMessage = await messageOperations.markAsRead(this.currentMailbox, currentMsg);
-            this.updateLocalMessageFlags([String(this.selectedMessage.UID)], FLAG_SEEN, 'add');
-          } else {
-            const success = await messageOperations.markAsUnread(this.currentMailbox, currentMsg);
-            if (success) {
+          // setFlag, not markAsRead/markAsUnread: those hid the FlagResult, so the read
+          // branch painted the row read even when the write failed, and the unread
+          // branch said nothing when it did. The bulk branch above already did this.
+          if (currentMsg?.UID) {
+            const isUnread = !currentMsg.Flags || !currentMsg.Flags.includes(FLAG_SEEN);
+            const seen = await messageOperations.setFlag(this.currentMailbox, [String(currentMsg.UID)], [FLAG_SEEN], isUnread ? 'add' : 'remove');
+            if (!seen.ok) {
+              this.reportFlagFailure(seen);
+            } else if (isUnread) {
+              this.selectedMessage = { ...currentMsg, Flags: [...(currentMsg.Flags || []), FLAG_SEEN] };
+              this.updateLocalMessageFlags([String(currentMsg.UID)], FLAG_SEEN, 'add');
+            } else {
               this.updateLocalMessageFlags([String(currentMsg.UID)], FLAG_SEEN, 'remove');
               this.selectedMessage = null;
               this.updateUrl(this.currentMailbox, this.currentPage, null);

@@ -134,7 +134,8 @@ export const fr = {
     signedOut: 'Vous avez été déconnecté.',
     signedOutDraftsLost: 'Vous avez été déconnecté. Certains brouillons non envoyés n’ont pas pu être enregistrés et ont été perdus.',
     sessionExpired: 'Votre session a expiré. Veuillez vous reconnecter.',
-    inactivitySignedOut: "Vous avez été déconnecté pour cause d'inactivité."
+    inactivitySignedOut: "Vous avez été déconnecté pour cause d'inactivité.",
+    inactivitySignedOutDraftsLost: "Vous avez été déconnecté pour cause d'inactivité. Certains brouillons non envoyés n’ont pas pu être enregistrés et ont été perdus."
   },
   folderList: {
     compose: 'Nouveau message',

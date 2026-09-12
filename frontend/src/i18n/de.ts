@@ -136,7 +136,8 @@ export const de: TranslationDictionary = {
     signedOut: 'Sie wurden abgemeldet.',
     signedOutDraftsLost: 'Sie wurden abgemeldet. Einige ungesendete Entwürfe konnten nicht gespeichert werden und gingen verloren.',
     sessionExpired: 'Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.',
-    inactivitySignedOut: 'Sie wurden wegen Inaktivität abgemeldet.'
+    inactivitySignedOut: 'Sie wurden wegen Inaktivität abgemeldet.',
+    inactivitySignedOutDraftsLost: "Sie wurden wegen Inaktivität abgemeldet. Einige ungesendete Entwürfe konnten nicht gespeichert werden und gingen verloren."
   },
   folderList: {
     compose: 'Verfassen',

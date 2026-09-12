@@ -134,7 +134,8 @@ export const rs = {
     signedOut: 'Одјављени сте.',
     signedOutDraftsLost: 'Одјављени сте. Неке непослате скице није било могуће сачувати и изгубљене су.',
     sessionExpired: 'Ваша сесија је истекла. Пријавите се поново.',
-    inactivitySignedOut: 'Одјављени сте због неактивности.'
+    inactivitySignedOut: 'Одјављени сте због неактивности.',
+    inactivitySignedOutDraftsLost: "Одјављени сте због неактивности. Неке непослате скице није било могуће сачувати и изгубљене су."
   },
   folderList: {
     compose: 'Напиши',

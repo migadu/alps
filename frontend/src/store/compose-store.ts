@@ -120,7 +120,8 @@ export class ComposeStore extends EventTarget {
   };
 
   /**
-   * Sign-out: the drafts leave the screen AND the disk.
+   * Sign-out: the drafts leave the screen AND the disk. Expiry — a
+   * `session-cleared` carrying `reason: 'expired'` — the screen only.
    *
    * Cancelling the debounced writer is not tidiness — it is the difference
    * between erasing and appearing to. A save armed moments before the logout
@@ -133,12 +134,21 @@ export class ComposeStore extends EventTarget {
    * abort before emptying the composers, on precisely the locked-down or shared
    * machine where it matters.
    */
-  private handleSessionCleared = () => {
+  private handleSessionCleared = (event?: Event) => {
     if (this.saveTimeout !== null) {
       window.clearTimeout(this.saveTimeout);
       this.saveTimeout = null;
     }
-    const key = this.username ? draftsKeyFor(this.username) : null;
+    // An expired session is the same user, about to sign back in — not a
+    // departure. Drafts are keyed by username, so keeping them cannot hand them to
+    // anyone else on this browser; deleting them was simply data loss. Flush what
+    // is on screen FIRST, while the identity is still known, so edits inside the
+    // debounce window survive too — for a send interrupted by the 401 that is the
+    // whole message. loadDrafts already drops half-finished uploads and resets
+    // isSending on the way back in.
+    const expired = (event as CustomEvent | undefined)?.detail?.reason === 'expired';
+    if (expired) this.saveDrafts();
+    const key = this.username && !expired ? draftsKeyFor(this.username) : null;
     this.username = null;
     // An upload still streaming would otherwise finish (or 401) into a composer
     // that no longer exists, and deposit its bytes in a server-side session that
@@ -352,9 +362,10 @@ export class ComposeStore extends EventTarget {
       // the Drafts folder while the user has been shown it disappearing, and
       // they find it again only by going to look.
       void messageOperations
-        .deleteMessages(composer.draftMailbox, [String(composer.draftUid)])
-        .then(ok => {
-          if (!ok) this.reportDiscardFailed();
+        .deleteMessagesResult(composer.draftMailbox, [String(composer.draftUid)])
+        .then(result => {
+          // Quiet on `auth`: the shell is already showing the login screen.
+          if (!result.ok && result.reason !== 'auth') this.reportDiscardFailed();
         });
     }
     this.closeComposer(id);

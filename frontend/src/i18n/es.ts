@@ -134,7 +134,8 @@ export const es = {
     signedOut: 'Has cerrado sesión.',
     signedOutDraftsLost: 'Se ha cerrado tu sesión. Algunos borradores sin enviar no se pudieron guardar y se perdieron.',
     sessionExpired: 'Tu sesión ha expirado. Por favor, inicia sesión de nuevo.',
-    inactivitySignedOut: 'Has cerrado sesión por inactividad.'
+    inactivitySignedOut: 'Has cerrado sesión por inactividad.',
+    inactivitySignedOutDraftsLost: "Has cerrado sesión por inactividad. Algunos borradores sin enviar no se pudieron guardar y se perdieron."
   },
   folderList: {
     compose: 'Redactar',
