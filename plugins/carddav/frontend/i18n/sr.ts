@@ -1,5 +1,11 @@
 export default {
   contacts: {
+    deleteFailed: '{failed} od {total} kontakata nije moglo biti obrisano.',
+    categoryRenameFailed: '{failed} od {total} kontakata nije moglo biti ažurirano, kategorija je samo delimično preimenovana.',
+    categoryDeleteFailed: '{failed} od {total} kontakata nije moglo biti ažurirano, kategorija je samo delimično uklonjena.',
+    categoryUpdateFailed: '{failed} od {total} kontakata nije moglo biti ažurirano.',
+    saveFailed: 'Kontakt nije mogao biti sačuvan.',
+    starFailed: 'Kontakt nije mogao biti ažuriran.',
     unnamedContact: 'Neimenovani kontakt',
     title: 'Kontakti',
     allContacts: 'Svi kontakti',

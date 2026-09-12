@@ -207,6 +207,9 @@ export class CalendarEventModal extends LitElement {
             this.dispatchEvent(new CustomEvent('saved'));
         } catch (e) {
             console.error('Failed to save event', e);
+            window.dispatchEvent(new CustomEvent('show-toast', {
+                detail: { message: this.i18nStore?.t('calendar.saveEventFailed'), duration: 5000 }
+            }));
         } finally {
             this.isSaving = false;
         }

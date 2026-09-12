@@ -380,6 +380,15 @@ export class CalendarPage extends LitElement {
         }
     }
 
+    /** Says a write failed. Deleting a calendar, deleting an event and saving a
+     * calendar all reported failure to the console only, so the UI went on
+     * showing the state the user had asked for. */
+    private reportFailure(key: string) {
+        window.dispatchEvent(new CustomEvent('show-toast', {
+            detail: { message: this.i18nStore?.t(key), duration: 5000 }
+        }));
+    }
+
     private parseHash() {
         const hash = window.location.hash;
         if (!hash.startsWith('#/calendar')) return false;
@@ -670,6 +679,7 @@ export class CalendarPage extends LitElement {
             }
         } catch (err) {
             console.error('Failed to delete calendar', err);
+            this.reportFailure('calendar.deleteCalendarFailed');
         }
     }
 
@@ -683,6 +693,7 @@ export class CalendarPage extends LitElement {
             await this.fetchData();
         } catch (err) {
             console.error('Failed to delete event', err);
+            this.reportFailure('calendar.deleteEventFailed');
         }
     }
 
@@ -709,6 +720,7 @@ export class CalendarPage extends LitElement {
             await this.fetchData();
         } catch (err) {
             console.error('Failed to save calendar', err);
+            this.reportFailure('calendar.saveCalendarFailed');
         }
     }
 

@@ -452,6 +452,7 @@ export class ContactsPage extends LitElement {
       }
     } catch (err) {
       console.error('Failed to toggle star:', err);
+      this.reportFailure('contacts.starFailed');
       // Revert optimistic update
       if (isStarred) {
         contact.categories.push(CATEGORY_FAVORITES);
@@ -544,10 +545,13 @@ export class ContactsPage extends LitElement {
           const categories = contact.categories.map((c: string) => c === oldName ? newName : c);
           return { ...contact, categories };
         });
-        await contactsService.bulkUpdateContacts(contactsToModify);
+        const { total, failed } = await contactsService.bulkUpdateContacts(contactsToModify);
         this.fetchContacts();
+        if (failed > 0) this.reportFailure('contacts.categoryRenameFailed', { failed, total });
       } catch (e) {
         console.error('Error renaming category', e);
+        this.fetchContacts();
+        this.reportFailure('contacts.categoryRenameFailed', { failed: 1, total: 1 });
       } finally {
         this.saving = false;
       }
@@ -577,10 +581,13 @@ export class ContactsPage extends LitElement {
           const categories = contact.categories.filter((c: string) => c !== oldName);
           return { ...contact, categories };
         });
-        await contactsService.bulkUpdateContacts(contactsToModify);
+        const { total, failed } = await contactsService.bulkUpdateContacts(contactsToModify);
         this.fetchContacts();
+        if (failed > 0) this.reportFailure('contacts.categoryDeleteFailed', { failed, total });
       } catch (e) {
         console.error('Error deleting category', e);
+        this.fetchContacts();
+        this.reportFailure('contacts.categoryDeleteFailed', { failed: 1, total: 1 });
       } finally {
         this.saving = false;
       }
@@ -634,6 +641,7 @@ export class ContactsPage extends LitElement {
       delete this.selectedContact.isTemporary;
     } catch (e) {
       console.error('Error saving contact', e);
+      this.reportFailure('contacts.saveFailed');
     } finally {
       this.saving = false;
     }
@@ -677,12 +685,30 @@ export class ContactsPage extends LitElement {
 
       this.contacts = [...this.contacts]; // Trigger re-render immediately
 
-      await contactsService.bulkUpdateContacts(contactsToModify);
+      const { total, failed } = await contactsService.bulkUpdateContacts(contactsToModify);
+      if (failed > 0) {
+        // The rows were already repainted as starred; re-read so the ones that
+        // did not take revert rather than lingering as a lie.
+        this.fetchContacts();
+        this.reportFailure('contacts.starFailed', { failed, total });
+      }
     } catch (e) {
       console.error('Error toggling star', e);
+      this.reportFailure('contacts.starFailed');
     } finally {
       this.saving = false;
     }
+  }
+
+  /**
+   * Says a write failed. Every failure in this page was a console.error the
+   * user never saw — a starred contact that did not star, a category rename
+   * that did not happen — so the UI simply showed the state it had hoped for.
+   */
+  private reportFailure(key: string, params?: Record<string, any>) {
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: { message: this.i18nStore?.t(key, params), duration: 5000 }
+    }));
   }
 
   private handleDelete() {
@@ -694,17 +720,24 @@ export class ContactsPage extends LitElement {
     this.saving = true;
     try {
       const pathsToDelete = this.selectedContacts.size > 1 ? Array.from(this.selectedContacts) as string[] : [this.selectedContact?.path].filter(Boolean) as string[];
-      await contactsService.bulkDeleteContacts(pathsToDelete);
+      const { total, failed } = await contactsService.bulkDeleteContacts(pathsToDelete);
 
       this.selectedContact = null;
       if (this.selectedContacts.size > 1) {
         this.selectedContacts = new Set();
       }
       this.isEditing = false;
+      // Unconditionally, and no longer only on the success path: a partial
+      // failure used to throw past this, leaving every deleted contact still
+      // drawn in a list that no longer matched the server.
       this.fetchContacts();
+      if (failed > 0) {
+        this.reportFailure('contacts.deleteFailed', { failed, total });
+      }
     } catch (e) {
       console.error('Error deleting contacts', e);
-      alert('Failed to delete one or more contacts');
+      this.fetchContacts();
+      this.reportFailure('contacts.deleteFailed', { failed: 1, total: 1 });
     } finally {
       this.saving = false;
     }
@@ -750,8 +783,12 @@ export class ContactsPage extends LitElement {
         return payload;
       }).filter(Boolean);
 
-      await contactsService.bulkUpdateContacts(contactsToModify);
+      const { total, failed } = await contactsService.bulkUpdateContacts(contactsToModify);
       this.contacts = [...this.contacts]; // Trigger re-render
+      if (failed > 0) {
+        this.fetchContacts();
+        this.reportFailure('contacts.categoryUpdateFailed', { failed, total });
+      }
 
       if (this.selectedContact && this.selectedContacts.size <= 1 && this.selectedCategory !== '') {
         const hasCategory = this.selectedContact.categories?.includes(this.selectedCategory);
@@ -768,6 +805,7 @@ export class ContactsPage extends LitElement {
       }
     } catch (e) {
       console.error('Error updating categories', e);
+      this.reportFailure('contacts.categoryUpdateFailed');
     } finally {
       this.saving = false;
     }

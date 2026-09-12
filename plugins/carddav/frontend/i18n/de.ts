@@ -1,5 +1,11 @@
 export default {
   contacts: {
+    deleteFailed: '{failed} von {total} Kontakten konnten nicht gelöscht werden.',
+    categoryRenameFailed: '{failed} von {total} Kontakten konnten nicht aktualisiert werden, die Kategorie wurde nur teilweise umbenannt.',
+    categoryDeleteFailed: '{failed} von {total} Kontakten konnten nicht aktualisiert werden, die Kategorie wurde nur teilweise entfernt.',
+    categoryUpdateFailed: '{failed} von {total} Kontakten konnten nicht aktualisiert werden.',
+    saveFailed: 'Der Kontakt konnte nicht gespeichert werden.',
+    starFailed: 'Der Kontakt konnte nicht aktualisiert werden.',
     unnamedContact: 'Unbenannter Kontakt',
     title: 'Kontakte',
     allContacts: 'Alle Kontakte',
