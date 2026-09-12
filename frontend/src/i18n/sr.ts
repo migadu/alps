@@ -184,6 +184,7 @@ export const sr = {
     emptyMailboxFailed: 'Nije moguće isprazniti sanduče. Proverite da li je Otpad ili Nepoželjna pošta.'
   },
   composer: {
+    draftSaveFailedKeepOpen: 'Nije moguće sačuvati ovu skicu — prozor ostaje otvoren da se ništa ne izgubi',
     attachmentsWait: 'Molimo sačekajte da se prilozi učitaju pre slanja.',
     sending: 'Slanje poruke...',
     undo: 'Opozovi',

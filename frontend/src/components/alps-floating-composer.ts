@@ -5,6 +5,7 @@ import { composeContext } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
 import { messageOperations } from '../services/message-operations';
+import { readUserSettings } from '../store/settings-store';
 import { messageSync } from '../services/message-sync';
 import './alps-address-input.js';
 import './alps-message-composer.js';
@@ -128,9 +129,18 @@ export class AlpsFloatingComposer extends LitElement {
     }, 3000); // 3 seconds auto-save
   }
 
-  private async _saveDraft() {
+  /**
+   * Saves the draft.
+   *
+   * Returns whether the message is SAFE — either stored on the server, or so
+   * empty there is nothing to store. `false` means a save was attempted and did
+   * not land, which is the one case where closing the window would destroy what
+   * the user wrote. See `_handleCloseClick`.
+   */
+  private async _saveDraft(): Promise<boolean> {
     const currentInstance = this.composeStore.getComposer(this.instance.id) || this.instance;
-    if (currentInstance.isSending || this.isSaving) return;
+    // A save is already in flight; closing now would race it.
+    if (currentInstance.isSending || this.isSaving) return false;
 
     // Check if we have anything to save
     const hasRecipient = (currentInstance.to?.length || 0) > 0 || (currentInstance.cc?.length || 0) > 0 || (currentInstance.bcc?.length || 0) > 0;
@@ -138,7 +148,7 @@ export class AlpsFloatingComposer extends LitElement {
     const textIsJustInitial = currentInstance.text?.trim() === currentInstance.initialText?.trim();
     const hasContent = !textIsJustInitial || (currentInstance.subject?.trim().length || 0) > 0 || hasAttachments;
     if (!hasRecipient && !hasContent) {
-      return;
+      return true; // nothing to lose
     }
 
     this.isSaving = true;
@@ -168,7 +178,9 @@ export class AlpsFloatingComposer extends LitElement {
       }
 
       if (!this.isConnected) {
-        return;
+        // The element went away mid-save. Whether the message is safe is still
+        // decided by the server's answer, not by whether we are still on screen.
+        return !!result;
       }
 
       if (result) {
@@ -195,6 +207,7 @@ export class AlpsFloatingComposer extends LitElement {
           this._scheduleAutoSave();
         }
       }
+      return !!result;
     } finally {
       this.isSaving = false;
     }
@@ -207,20 +220,18 @@ export class AlpsFloatingComposer extends LitElement {
     let bcc = [...(currentInstance.bcc || [])];
     
     let replyToSetting = '';
-    try {
-      const storedSettings = localStorage.getItem('alps_settings');
-      if (storedSettings) {
-        const parsed = JSON.parse(storedSettings);
-        if (parsed.bccMyself && parsed.loginUsername) {
-          if (!bcc.includes(parsed.loginUsername)) {
-            bcc.push(parsed.loginUsername);
-          }
-        }
-        if (parsed.replyTo) {
-          replyToSetting = parsed.replyTo;
-        }
+    // `readUserSettings`, not a hand-parse of `alps_settings`: that key holds
+    // only theme and layout values, so `bccMyself`, `loginUsername` and
+    // `replyTo` were all undefined here and both settings were inert.
+    {
+      const parsed = readUserSettings();
+      if (parsed.bccMyself && parsed.loginUsername && !bcc.includes(parsed.loginUsername)) {
+        bcc.push(parsed.loginUsername);
       }
-    } catch (e) {}
+      if (parsed.replyTo) {
+        replyToSetting = parsed.replyTo;
+      }
+    }
 
     const text = currentInstance.text || '';
     const subject = (currentInstance.subject || '').trim();
@@ -304,15 +315,33 @@ export class AlpsFloatingComposer extends LitElement {
     });
   }
 
-  private _handleCloseClick() {
+  private async _handleCloseClick() {
     const hasUploading = (this.instance.attachments || []).some(a => a.uploading);
     if (hasUploading) {
       this.composeStore.updateComposer(this.instance.id, { closing: true } as any);
       return;
     }
 
+    // AWAITED, and the close is conditional on it.
+    //
+    // This used to fire the save and close in the same tick. `closeComposer`
+    // drops the composer from state and immediately persists the reduced list,
+    // so a save that then failed — offline, a 500, a full mailbox — left the
+    // message gone from the screen AND gone from localStorage, having never
+    // reached the server. Total, silent loss of what the user wrote, on the
+    // gesture they use to put a message aside for later.
     if (this.instance.dirty) {
-      this._saveDraft();
+      const saved = await this._saveDraft();
+      if (!saved) {
+        window.dispatchEvent(new CustomEvent('show-toast', {
+          detail: {
+            message: this.i18nStore?.t('composer.draftSaveFailedKeepOpen')
+              || 'Could not save this draft — the window stays open so nothing is lost',
+            duration: 6000
+          }
+        }));
+        return;
+      }
     }
     this.composeStore.closeComposer(this.instance.id);
   }

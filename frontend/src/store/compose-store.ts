@@ -1,6 +1,22 @@
 import { createContext } from '@lit/context';
 import { messageOperations } from '../services/message-operations';
+import { activeUsername, readUserSettings } from './settings-store';
 import { Logger } from '../utils/logger';
+
+/**
+ * Where a user's unsent drafts are kept, scoped to WHOSE they are.
+ *
+ * They were kept under one shared `alps_compose_drafts` key, and nothing
+ * removed it at sign-out — so the next person to sign in on this browser, or
+ * the next linked account switched into, had the previous user's unsent
+ * message restored into their composer: recipients, subject and body. Same
+ * shape the settings store already uses for its per-user record.
+ */
+const draftsKeyFor = (username: string) => `alps_compose_drafts_${username}`;
+
+/** The pre-scoping key. Read once, to delete: its contents cannot be attributed
+ * to anyone, and handing them to whoever signs in next is the bug being fixed. */
+const LEGACY_DRAFTS_KEY = 'alps_compose_drafts';
 
 const isBlockedAddress = (addr: string): boolean => {
   let rawEmail = addr.trim();
@@ -56,14 +72,77 @@ export class ComposeStore extends EventTarget {
   
   private saveTimeout: number | null = null;
 
+  /** Whose drafts are currently loaded. `null` before sign-in, and again after
+   * sign-out — in which case nothing is persisted at all, rather than persisted
+   * somewhere shared. */
+  private username: string | null = null;
+
   constructor() {
     super();
-    this.state.activeComposers = this.loadDrafts();
+    // Unattributable, so it is removed rather than adopted.
+    try {
+      localStorage.removeItem(LEGACY_DRAFTS_KEY);
+    } catch { /* storage blocked; nothing to remove from */ }
+
+    window.addEventListener('session-cleared', this.handleSessionCleared);
+    window.addEventListener('user-logged-in', this.adoptSession);
+    this.adoptSession();
   }
 
-  private loadDrafts(): ComposerInstance[] {
+  /**
+   * Loads the signed-in user's drafts, and carries across anything opened
+   * before we knew who they were.
+   *
+   * Only for the anonymous-to-known transition: a second identity signing in
+   * must not inherit the first's windows, which is the whole point of the
+   * scoping.
+   */
+  private adoptSession = () => {
+    const username = activeUsername();
+    if (username === this.username) return;
+
+    const carried = this.username === null ? this.state.activeComposers : [];
+    this.username = username;
+    const restored = username ? this.loadDrafts(username) : [];
+    this.state.activeComposers = username ? [...restored, ...carried] : [];
+    this.notify();
+  };
+
+  /**
+   * Sign-out: the drafts leave the screen AND the disk.
+   *
+   * Cancelling the debounced writer is not tidiness — it is the difference
+   * between erasing and appearing to. A save armed moments before the logout
+   * would otherwise fire afterwards and write the composers straight back out,
+   * restoring on disk exactly what this just removed.
+   *
+   * In-memory state is cleared BEFORE touching storage, because a browser with
+   * site data blocked throws on the localStorage ACCESS rather than on the
+   * operation — so the one path whose job is to leave nothing behind would
+   * abort before emptying the composers, on precisely the locked-down or shared
+   * machine where it matters.
+   */
+  private handleSessionCleared = () => {
+    if (this.saveTimeout !== null) {
+      window.clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    const key = this.username ? draftsKeyFor(this.username) : null;
+    this.username = null;
+    this.state.activeComposers = [];
+    this.notify();
+    if (key) {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {
+        Logger.error('Failed to clear compose drafts', e);
+      }
+    }
+  };
+
+  private loadDrafts(username: string): ComposerInstance[] {
     try {
-      const stored = localStorage.getItem('alps_compose_drafts');
+      const stored = localStorage.getItem(draftsKeyFor(username));
       if (stored) {
         const drafts: ComposerInstance[] = JSON.parse(stored);
         // Sanitize drafts: remove attachments that were interrupted during upload
@@ -85,8 +164,11 @@ export class ComposeStore extends EventTarget {
   }
 
   private saveDrafts() {
+    // No identity, no key that could safely be written — so nothing is
+    // persisted, rather than persisted where the next user would find it.
+    if (!this.username) return;
     try {
-      localStorage.setItem('alps_compose_drafts', JSON.stringify(this.state.activeComposers));
+      localStorage.setItem(draftsKeyFor(this.username), JSON.stringify(this.state.activeComposers));
     } catch (e) {
       Logger.error('Failed to save compose drafts to localStorage', e);
     }
@@ -146,18 +228,17 @@ export class ComposeStore extends EventTarget {
     
     let defaultFormat: 'html' | 'text' = 'html';
     let signature = '';
-    try {
-      const storedSettings = localStorage.getItem('alps_settings');
-      if (storedSettings) {
-        const parsed = JSON.parse(storedSettings);
-        if (parsed.composeFormat === 'text') {
-          defaultFormat = 'text';
-        }
-        if (parsed.signature) {
-          signature = parsed.signature;
-        }
-      }
-    } catch (e) {}
+    // Through the store's own reader. Parsing `alps_settings` by hand here
+    // could never find these: that key holds only the seven theme/layout values
+    // the settings store calls `globalSettings`, so `composeFormat` and
+    // `signature` were both always undefined and both settings were inert.
+    const userSettings = readUserSettings();
+    if (userSettings.composeFormat === 'text') {
+      defaultFormat = 'text';
+    }
+    if (userSettings.signature) {
+      signature = userSettings.signature;
+    }
 
     let initialText = initialData?.text || '';
     let initialHtml = initialData?.html || '';
@@ -275,20 +356,20 @@ export class ComposeStore extends EventTarget {
         const formData = new FormData();
         let bcc = [...(composer.bcc || [])];
         let replyToSetting = '';
-        try {
-          const storedSettings = localStorage.getItem('alps_settings');
-          if (storedSettings) {
-            const parsed = JSON.parse(storedSettings);
-            if (parsed.bccMyself && parsed.loginUsername) {
-              if (!bcc.includes(parsed.loginUsername)) {
-                bcc.push(parsed.loginUsername);
-              }
-            }
-            if (parsed.replyTo) {
-              replyToSetting = parsed.replyTo;
-            }
+        {
+          // Same correction as the composer defaults above: `bccMyself`,
+          // `loginUsername` and `replyTo` all live in the per-user record, never
+          // in `alps_settings`, so "BCC myself" and a custom Reply-To silently
+          // did nothing on every message sent.
+          const sendSettings = readUserSettings();
+          const self = sendSettings.loginUsername;
+          if (sendSettings.bccMyself && self && !bcc.includes(self)) {
+            bcc.push(self);
           }
-        } catch (e) {}
+          if (sendSettings.replyTo) {
+            replyToSetting = sendSettings.replyTo;
+          }
+        }
 
         formData.append('to', (composer.to || []).join(', '));
         formData.append('cc', (composer.cc || []).join(', '));

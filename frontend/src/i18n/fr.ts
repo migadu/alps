@@ -184,6 +184,7 @@ export const fr = {
     emptyMailboxFailed: 'Échec du vidage de la boîte aux lettres. Assurez-vous qu\'il s\'agit de la Corbeille ou des Indésirables.'
   },
   composer: {
+    draftSaveFailedKeepOpen: 'Impossible d’enregistrer ce brouillon — la fenêtre reste ouverte pour ne rien perdre',
     attachmentsWait: 'Veuillez attendre que le téléchargement des pièces jointes soit terminé avant d\'envoyer.',
     sending: 'Envoi du message en cours...',
     undo: 'Annuler',

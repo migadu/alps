@@ -184,6 +184,7 @@ export const es = {
     emptyMailboxFailed: 'No se pudo vaciar el buzón. Asegúrate de que sea Papelera o Correo no deseado.'
   },
   composer: {
+    draftSaveFailedKeepOpen: 'No se pudo guardar este borrador: la ventana permanece abierta para no perder nada',
     attachmentsWait: 'Espera a que los archivos adjuntos terminen de cargarse antes de enviar.',
     sending: 'Enviando mensaje...',
     undo: 'Deshacer',

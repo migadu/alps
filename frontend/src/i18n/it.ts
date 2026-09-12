@@ -184,6 +184,7 @@ export const it = {
     emptyMailboxFailed: 'Impossibile svuotare la casella di posta. Assicurati che sia Cestino o Posta indesiderata.'
   },
   composer: {
+    draftSaveFailedKeepOpen: 'Impossibile salvare questa bozza — la finestra resta aperta per non perdere nulla',
     attachmentsWait: 'Attendi il caricamento degli allegati prima di inviare.',
     sending: 'Invio messaggio in corso...',
     undo: 'Annulla',

@@ -2,6 +2,18 @@ import { createContext } from '@lit/context';
 import { THEME_BUNDLES } from './themes';
 import { Logger } from '../utils/logger';
 
+/**
+ * Where the signed-in username is recorded for code that needs it before, or
+ * outside, the settings store instance.
+ *
+ * The per-user settings live under `alps_settings_${username}`, which is
+ * unreadable without already knowing the username — and the username itself is
+ * one of the fields inside it. This key breaks that circle. It holds an address
+ * the user typed into this browser themselves; nothing secret.
+ */
+const ACTIVE_USER_KEY = 'alps_active_user';
+
+
 export type ThemeMode = 'light' | 'dark' | 'auto';
 export type LayoutMode = 'vertical' | 'horizontal' | 'full';
 export type DensityMode = 'loose' | 'normal' | 'compact' | 'ultra-compact';
@@ -190,6 +202,12 @@ export class SettingsStore extends EventTarget {
     if (username) {
       // Save full settings to user-specific key
       localStorage.setItem(`alps_settings_${username}`, JSON.stringify(this.state));
+      // And the pointer that lets `readUserSettings` find this record.
+      try {
+        localStorage.setItem(ACTIVE_USER_KEY, username);
+      } catch (e) {
+        Logger.error('Failed to record the active user', e);
+      }
     }
     
     // Always save a minimized public dictionary (theme/language only) to global key for pre-login UI
@@ -421,6 +439,49 @@ export class SettingsStore extends EventTarget {
 
 export const settingsContext = createContext<SettingsStore>('settings-store');
 
+export function activeUsername(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_USER_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The settings that actually apply right now.
+ *
+ * Callers outside this module used to hand-parse `localStorage['alps_settings']`
+ * for fields like `signature`, `composeFormat`, `bccMyself` and `replyTo` — and
+ * that key has held only the seven theme/layout values of `globalSettings`
+ * since settings were split per user. Every one of those reads resolved to
+ * `undefined` and fell back to a default, so four settings the UI offers, the
+ * backend stores and this store loads had no effect whatsoever.
+ *
+ * Reads the per-user record first and falls back to the global one, which is
+ * still the right answer before anyone has signed in.
+ */
+export function readUserSettings(): Partial<SettingsState> {
+  const global = (() => {
+    try {
+      const raw = localStorage.getItem('alps_settings');
+      return raw ? (JSON.parse(raw) as Partial<SettingsState>) : {};
+    } catch {
+      return {};
+    }
+  })();
+
+  const username = activeUsername();
+  if (!username) return global;
+
+  try {
+    const raw = localStorage.getItem(`alps_settings_${username}`);
+    if (!raw) return global;
+    return { ...global, ...(JSON.parse(raw) as Partial<SettingsState>) };
+  } catch {
+    return global;
+  }
+}
+
 // clearSessionSettings resets cached per-account settings to defaults (preserving
 // cross-account UI preferences). By default it also clears the client-side auth
 // detection cookies, which is what logout / session-expiry callers want. Account
@@ -447,6 +508,18 @@ export function clearSessionSettings(clearAuthCookies: boolean = true) {
       Logger.error('Failed to clear and preserve global settings', e);
       localStorage.removeItem('alps_settings');
     }
+  }
+
+  // The per-user record and the pointer to it go with the session. Leaving them
+  // meant the next person to use this browser had the previous user's address
+  // and preferences sitting in storage — and, before the compose store was
+  // scoped, their unsent drafts alongside.
+  try {
+    const username = localStorage.getItem(ACTIVE_USER_KEY);
+    if (username) localStorage.removeItem(`alps_settings_${username}`);
+    localStorage.removeItem(ACTIVE_USER_KEY);
+  } catch (e) {
+    Logger.error('Failed to clear the per-user settings record', e);
   }
 
   if (!clearAuthCookies) {
