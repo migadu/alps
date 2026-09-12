@@ -402,12 +402,29 @@ export class AlpsFloatingComposer extends LitElement {
     this._performDiscard(type);
   }
 
+  private _toastDiscardFailed() {
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: {
+        message: this.i18nStore?.t('composer.discardFailed')
+          || 'The draft could not be deleted from the server and is still in Drafts.',
+        duration: 5000
+      }
+    }));
+  }
+
   private async _performDiscard(type: 'close' | 'delete' | null) {
     if (type === 'delete' && this.instance.draftUid && this.instance.draftMailbox) {
       try {
-        await messageOperations.deleteMessages(this.instance.draftMailbox, [String(this.instance.draftUid)]);
+        // `deleteMessages` reports a refusal by RETURNING false; it only throws
+        // on a network error, so the catch below was the smaller half of the
+        // problem and the returned answer was discarded entirely. A draft the
+        // server would not delete stays in Drafts while the user watches the
+        // window close on it.
+        const deleted = await messageOperations.deleteMessages(this.instance.draftMailbox, [String(this.instance.draftUid)]);
+        if (!deleted) this._toastDiscardFailed();
       } catch (e) {
         Logger.error('Failed to delete draft', e);
+        this._toastDiscardFailed();
       }
     }
 

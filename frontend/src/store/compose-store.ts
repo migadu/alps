@@ -337,15 +337,47 @@ export class ComposeStore extends EventTarget {
   discardDraft(id: string) {
     const composer = this.state.activeComposers.find(c => c.id === id);
     if (composer && composer.draftUid && composer.draftMailbox) {
-      // Import and call messageOperations without waiting, so the UI closes immediately
-      messageOperations.deleteMessages(composer.draftMailbox!, [String(composer.draftUid)]);
+      // Deliberately not awaited, so the window closes at once. But the result
+      // is no longer thrown away: a refused delete leaves the draft sitting in
+      // the Drafts folder while the user has been shown it disappearing, and
+      // they find it again only by going to look.
+      void messageOperations
+        .deleteMessages(composer.draftMailbox, [String(composer.draftUid)])
+        .then(ok => {
+          if (!ok) this.reportDiscardFailed();
+        });
     }
     this.closeComposer(id);
   }
 
+  /** Announced on the window: this store has no i18n context, and the toast
+   * host does, so the key is resolved there. */
+  private reportDiscardFailed() {
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: { i18nKey: 'composer.discardFailed', duration: 5000 }
+    }));
+  }
+
+  /**
+   * Takes the composer windows off the screen WITHOUT touching what is on disk.
+   *
+   * The only caller is `login-page`'s connectedCallback, which runs every time
+   * the login screen mounts — including on an ordinary boot redirect, when
+   * `app-root` finds no auth cookie and sends the browser to `#/login`. That
+   * redirect dispatches no `session-cleared`, so this store still knows whose
+   * drafts it holds.
+   *
+   * It used to call `saveDrafts()` here, which then wrote the emptied list over
+   * that user's stored drafts. So a session cookie quietly expiring was enough
+   * to destroy every unsent draft the user had: they reload, get bounced to the
+   * login screen, sign back in, and the composers are gone.
+   *
+   * Persisting is the sign-out path's job, and it already does it properly —
+   * `handleSessionCleared` removes the key outright, after aborting uploads.
+   * Here, memory only.
+   */
   clearAllComposers() {
     this.state = { ...this.state, activeComposers: [] };
-    this.saveDrafts();
     this.notify();
   }
 

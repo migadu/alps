@@ -190,6 +190,7 @@ export const it = {
     emptyMailboxFailed: 'Impossibile svuotare la casella di posta. Assicurati che sia Cestino o Posta indesiderata.'
   },
   composer: {
+    discardFailed: 'Non è stato possibile eliminare la bozza dal server ed è ancora nelle bozze.',
     attachmentsTooLarge: 'Gli allegati superano la dimensione massima consentita.',
     draftSaveFailedKeepOpen: 'Impossibile salvare questa bozza — la finestra resta aperta per non perdere nulla',
     attachmentsWait: 'Attendi il caricamento degli allegati prima di inviare.',

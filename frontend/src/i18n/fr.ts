@@ -190,6 +190,7 @@ export const fr = {
     emptyMailboxFailed: 'Échec du vidage de la boîte aux lettres. Assurez-vous qu\'il s\'agit de la Corbeille ou des Indésirables.'
   },
   composer: {
+    discardFailed: 'Le brouillon n’a pas pu être supprimé du serveur et se trouve toujours dans les brouillons.',
     attachmentsTooLarge: 'Les pièces jointes dépassent la taille maximale autorisée.',
     draftSaveFailedKeepOpen: 'Impossible d’enregistrer ce brouillon — la fenêtre reste ouverte pour ne rien perdre',
     attachmentsWait: 'Veuillez attendre que le téléchargement des pièces jointes soit terminé avant d\'envoyer.',

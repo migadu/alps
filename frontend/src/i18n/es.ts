@@ -190,6 +190,7 @@ export const es = {
     emptyMailboxFailed: 'No se pudo vaciar el buzón. Asegúrate de que sea Papelera o Correo no deseado.'
   },
   composer: {
+    discardFailed: 'No se pudo eliminar el borrador del servidor y sigue en Borradores.',
     attachmentsTooLarge: 'Los archivos adjuntos superan el tamaño máximo permitido.',
     draftSaveFailedKeepOpen: 'No se pudo guardar este borrador: la ventana permanece abierta para no perder nada',
     attachmentsWait: 'Espera a que los archivos adjuntos terminen de cargarse antes de enviar.',

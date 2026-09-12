@@ -267,7 +267,12 @@ export class AppRoot extends LitElement {
     const id = ++this.toastIdCounter;
     const newToast: ToastItem = {
       id,
-      message: e.detail.message,
+      // `i18nKey` lets a caller that has no i18n context of its own — a store,
+      // a plain module — name the string instead of resolving it. Resolved
+      // here, where the dictionary is.
+      message: e.detail.message
+        ?? (e.detail.i18nKey ? this.i18nStore?.t(e.detail.i18nKey) : undefined)
+        ?? '',
       actionLabel: e.detail.actionLabel || '',
       actionFn: e.detail.actionFn,
       dismissFn: e.detail.dismissFn,

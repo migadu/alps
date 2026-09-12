@@ -192,6 +192,7 @@ export const de: TranslationDictionary = {
     emptyMailboxFailed: 'Postfach konnte nicht geleert werden. Stellen Sie sicher, dass es sich um Papierkorb oder Spam handelt.'
   },
   composer: {
+    discardFailed: 'Der Entwurf konnte nicht vom Server gelöscht werden und liegt weiterhin in den Entwürfen.',
     attachmentsTooLarge: 'Die Anhänge überschreiten die maximal zulässige Größe.',
     draftSaveFailedKeepOpen: 'Entwurf konnte nicht gespeichert werden — das Fenster bleibt offen, damit nichts verloren geht',
     attachmentsWait: 'Bitte warten Sie, bis die Anhänge hochgeladen sind, bevor Sie senden.',

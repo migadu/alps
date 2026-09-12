@@ -224,6 +224,7 @@ export const pt = {
     emptyMailboxFailed: 'Falha ao esvaziar a caixa de correio. Certifique-se de que é Lixeira ou Lixo Eletrônico.'
   },
   composer: {
+    discardFailed: 'Não foi possível excluir o rascunho do servidor e ele ainda está em Rascunhos.',
     attachmentsTooLarge: 'Os anexos excedem o tamanho máximo permitido.',
     draftSaveFailedKeepOpen: 'Não foi possível salvar este rascunho — a janela permanece aberta para não perder nada',
     attachmentsWait: 'Por favor, aguarde o envio dos anexos terminar antes de enviar.',
