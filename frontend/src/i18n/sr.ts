@@ -157,7 +157,11 @@ export const sr = {
     createSubfolder: 'Napravi potfasciklu',
     createSubfolderUnder: 'Napravi potfasciklu u "{folder}"'
   },
+  search: {
+    placeholder: 'Pretraži poštu',
+  },
   messageList: {
+    menu: 'Meni',
     selectAll: 'Izaberi sve poruke',
     checkNew: 'Proveri nove poruke',
     sortDesc: 'Sortiraj opadajuće po datumu',
@@ -260,6 +264,7 @@ export const sr = {
     unknownError: 'Nepoznata greška'
   },
   messageReader: {
+    moreOptions: 'Više opcija',
     tags: 'Oznake',
     removeAllTags: 'Ukloni sve oznake',
     removeTag: 'Ukloni oznaku',
@@ -430,14 +435,14 @@ export const sr = {
       begin_failed: 'Nije uspelo pokretanje autentifikacije.',
       invalid_options: 'Primljene su nevažeće opcije autentifikacije.',
       verification_failed: 'Verifikacija nije uspela. Pokušajte ponovo.',
-      register_failed: 'Дошло је до грешке приликом регистрације безбедносног кључа. Покушајте поново.',
+      register_failed: 'Došlo je do greške prilikom registracije bezbednosnog ključa. Pokušajte ponovo.',
       remove_failed: 'Nije uspelo uklanjanje bezbednosnog ključa.',
       general: 'Došlo je do greške.',
     },
     settings: {
       group_desc: 'Zaštitite svoj nalog hardverskim bezbednosnim ključem ili biometrijom.',
       keys_title: 'Bezbednosni ključevi',
-      noKeys: 'Нема регистрованих кључева.',
+      noKeys: 'Nema registrovanih ključeva.',
       added: 'Dodato',
       remove_btn: 'Ukloni'
     }

@@ -159,7 +159,11 @@ export const de: TranslationDictionary = {
     createSubfolder: 'Unterordner erstellen',
     createSubfolderUnder: 'Unterordner unter "{folder}" erstellen'
   },
+  search: {
+    placeholder: 'E-Mails durchsuchen',
+  },
   messageList: {
+    menu: 'Menü',
     selectAll: 'Alle Nachrichten auswählen',
     checkNew: 'Nach neuen Nachrichten suchen',
     sortDesc: 'Nach Datum absteigend sortieren',
@@ -262,6 +266,7 @@ export const de: TranslationDictionary = {
     unknownError: 'Unbekannter Fehler'
   },
   messageReader: {
+    moreOptions: 'Weitere Optionen',
     tags: 'Schlagwörter',
     removeAllTags: 'Alle Schlagwörter entfernen',
     removeTag: 'Schlagwort entfernen',

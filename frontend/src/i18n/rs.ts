@@ -157,7 +157,11 @@ export const rs = {
     createSubfolder: 'Направи потфасциклу',
     createSubfolderUnder: 'Направи потфасциклу у "{folder}"'
   },
+  search: {
+    placeholder: 'Претражи пошту',
+  },
   messageList: {
+    menu: 'Мени',
     selectAll: 'Изабери све поруке',
     checkNew: 'Провери нове поруке',
     sortDesc: 'Сортирај опадајуће по датуму',
@@ -260,6 +264,7 @@ export const rs = {
     unknownError: 'Непозната грешка'
   },
   messageReader: {
+    moreOptions: 'Више опција',
     tags: 'Ознаке',
     removeAllTags: 'Уклони све ознаке',
     removeTag: 'Уклони ознаку',
@@ -430,14 +435,14 @@ export const rs = {
       begin_failed: 'Није успело покретање аутентификације.',
       invalid_options: 'Примљене су неважеће опције аутентификације.',
       verification_failed: 'Верификација није успела. Покушајте поново.',
-      register_failed: 'Došlo je do greške prilikom registracije bezbednosnog ključa. Pokušajte ponovo.',
+      register_failed: 'Дошло је до грешке приликом регистрације безбедносног кључа. Покушајте поново.',
       remove_failed: 'Није успело уклањање безбедносног кључа.',
       general: 'Дошло је до грешке.',
     },
     settings: {
       group_desc: 'Заштитите свој налог хардверским безбедносним кључем или биометријом.',
       keys_title: 'Безбедносни кључеви',
-      noKeys: 'Nema registrovanih ključeva.',
+      noKeys: 'Нема регистрованих кључева.',
       added: 'Додато',
       remove_btn: 'Уклони'
     }

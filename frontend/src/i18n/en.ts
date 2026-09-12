@@ -198,7 +198,11 @@ export const en = {
     createSubfolder: 'Create subfolder',
     createSubfolderUnder: 'Create Subfolder under "{folder}"'
   },
+  search: {
+    placeholder: 'Search mail',
+  },
   messageList: {
+    menu: 'Menu',
     selectAll: 'Select all messages',
     checkNew: 'Check for new messages',
     sortDesc: 'Sort descending by date',
@@ -294,6 +298,7 @@ export const en = {
     unknownError: 'Unknown error'
   },
   messageReader: {
+    moreOptions: 'More options',
     tags: 'Tags',
     removeAllTags: 'Remove all tags',
     removeTag: 'Remove tag',

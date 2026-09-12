@@ -191,7 +191,11 @@ export const pt = {
     createSubfolder: 'Criar subpasta',
     createSubfolderUnder: 'Criar Subpasta em "{folder}"'
   },
+  search: {
+    placeholder: 'Pesquisar e-mails',
+  },
   messageList: {
+    menu: 'Menu',
     selectAll: 'Selecionar todas as mensagens',
     checkNew: 'Verificar novas mensagens',
     sortDesc: 'Classificar por data decrescente',
@@ -294,6 +298,7 @@ export const pt = {
     unknownError: 'Erro desconhecido'
   },
   messageReader: {
+    moreOptions: 'Mais opções',
     tags: 'Etiquetas',
     removeAllTags: 'Remover todas as etiquetas',
     removeTag: 'Remover etiqueta',

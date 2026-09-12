@@ -157,7 +157,11 @@ export const es = {
     createSubfolder: 'Crear subcarpeta',
     createSubfolderUnder: 'Crear subcarpeta en "{folder}"'
   },
+  search: {
+    placeholder: 'Buscar correo',
+  },
   messageList: {
+    menu: 'Menú',
     selectAll: 'Seleccionar todos los mensajes',
     checkNew: 'Comprobar mensajes nuevos',
     sortDesc: 'Ordenar descendente por fecha',
@@ -260,6 +264,7 @@ export const es = {
     unknownError: 'Error desconocido'
   },
   messageReader: {
+    moreOptions: 'Más opciones',
     tags: 'Etiquetas',
     removeAllTags: 'Eliminar todas las etiquetas',
     removeTag: 'Eliminar etiqueta',

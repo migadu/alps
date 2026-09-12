@@ -157,7 +157,11 @@ export const fr = {
     createSubfolder: 'Créer un sous-dossier',
     createSubfolderUnder: 'Créer un sous-dossier sous "{folder}"'
   },
+  search: {
+    placeholder: 'Rechercher des messages',
+  },
   messageList: {
+    menu: 'Menu',
     selectAll: 'Sélectionner tous les messages',
     checkNew: 'Vérifier les nouveaux messages',
     sortDesc: 'Trier par date décroissante',
@@ -260,6 +264,7 @@ export const fr = {
     unknownError: 'Erreur inconnue'
   },
   messageReader: {
+    moreOptions: 'Plus d\u2019options',
     tags: 'Étiquettes',
     removeAllTags: 'Supprimer toutes les étiquettes',
     removeTag: 'Supprimer l\'étiquette',

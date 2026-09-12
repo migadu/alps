@@ -157,7 +157,11 @@ export const it = {
     createSubfolder: 'Crea sottocartella',
     createSubfolderUnder: 'Crea sottocartella in "{folder}"'
   },
+  search: {
+    placeholder: 'Cerca nella posta',
+  },
   messageList: {
+    menu: 'Menu',
     selectAll: 'Seleziona tutti i messaggi',
     checkNew: 'Controlla nuovi messaggi',
     sortDesc: 'Ordina decrescente per data',
@@ -260,6 +264,7 @@ export const it = {
     unknownError: 'Errore sconosciuto'
   },
   messageReader: {
+    moreOptions: 'Altre opzioni',
     tags: 'Etichette',
     removeAllTags: 'Rimuovi tutte le etichette',
     removeTag: 'Rimuovi etichetta',
