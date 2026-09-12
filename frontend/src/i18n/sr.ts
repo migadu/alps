@@ -132,6 +132,7 @@ export const sr = {
     pleaseWait: 'Molimo sačekajte',
     wait: 'Sačekaj',
     signedOut: 'Odjavljeni ste.',
+    signedOutDraftsLost: 'Odjavljeni ste. Neke neposlate skice nije bilo moguće sačuvati i izgubljene su.',
     sessionExpired: 'Vaša sesija je istekla. Prijavite se ponovo.',
     inactivitySignedOut: 'Odjavljeni ste zbog neaktivnosti.'
   },

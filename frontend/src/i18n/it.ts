@@ -132,6 +132,7 @@ export const it = {
     pleaseWait: 'Attendere prego',
     wait: 'Attendi',
     signedOut: 'Sei stato disconnesso.',
+    signedOutDraftsLost: 'La sessione è stata chiusa. Alcune bozze non inviate non sono state salvate e sono andate perse.',
     sessionExpired: "La tua sessione è scaduta. Effettua di nuovo l'accesso.",
     inactivitySignedOut: 'Sei stato disconnesso per inattività.'
   },

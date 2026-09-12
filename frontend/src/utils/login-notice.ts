@@ -4,7 +4,11 @@
 
 const STORAGE_KEY = 'alps-login-notice';
 
-export type LoginNotice = 'signedOut' | 'sessionExpired' | 'inactivitySignedOut';
+export type LoginNotice =
+  | 'signedOut'
+  | 'signedOutDraftsLost'
+  | 'sessionExpired'
+  | 'inactivitySignedOut';
 
 export function setLoginNotice(notice: LoginNotice) {
   try {

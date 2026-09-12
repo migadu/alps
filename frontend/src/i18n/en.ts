@@ -173,6 +173,7 @@ export const en = {
     pleaseWait: 'Please wait',
     wait: 'Wait',
     signedOut: 'You have been signed out.',
+    signedOutDraftsLost: 'You have been signed out. Some unsent drafts could not be saved and were lost.',
     sessionExpired: 'Your session has expired. Please sign in again.',
     inactivitySignedOut: "You've been signed out due to inactivity."
   },

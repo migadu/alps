@@ -102,19 +102,49 @@ export class AlpsHeader extends LitElement {
   }
 
   private async handleSignOut() {
+    // Every step that can fail is isolated, because none of their failures is a
+    // reason to stay signed in.
+    //
+    // This used to be one try block with the network call in the middle of it,
+    // so a `DELETE /session` that threw — offline, or the server down — skipped
+    // the cache wipe, the settings wipe, the `session-cleared` event, the notice
+    // and the redirect. The user clicked Sign Out, watched nothing happen, and
+    // was left sitting in a mailbox that still had their mail cached. On a
+    // shared machine they may well walk away believing they signed out, which
+    // is the outcome this button exists to prevent.
+    //
+    // The same fix auto-logout got in 6cdf808; this is the path a user takes
+    // deliberately, and it was missed there.
+    let draftsLost = 0;
     try {
       if (this.composeStore) {
-        await this.composeStore.saveAllDirtyDrafts();
+        draftsLost = (await this.composeStore.saveAllDirtyDrafts()).failed;
       }
-      await fetch('/session', { method: 'DELETE' });
-      MessageCache.clear();
-      clearSessionSettings();
-      window.dispatchEvent(new CustomEvent('session-cleared'));
-      setLoginNotice('signedOut');
-      window.location.hash = '#/login'; // Return to login page
     } catch (err) {
-      Logger.error('Failed to sign out', err);
+      Logger.error('Could not save drafts before signing out', err);
     }
+
+    // Ahead of the request: the login page is mounted by the redirect below and
+    // reads its notice exactly once, so a notice set after a slow DELETE loses
+    // the race.
+    //
+    // A draft that could not be saved is gone — the session ending takes the
+    // local copy with it — so say so rather than let the user discover an empty
+    // Drafts folder later.
+    setLoginNotice(draftsLost > 0 ? 'signedOutDraftsLost' : 'signedOut');
+
+    try {
+      await fetch('/session', { method: 'DELETE' });
+    } catch (err) {
+      Logger.error('Sign-out request failed; ending the session locally anyway', err);
+    }
+
+    MessageCache.clear();
+    clearSessionSettings();
+    // compose-store listens for this and clears the drafts, aborting any upload
+    // still in flight.
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    window.location.hash = '#/login'; // Return to login page
   }
 
   render() {

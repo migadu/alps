@@ -134,6 +134,7 @@ export const de: TranslationDictionary = {
     pleaseWait: 'Bitte warten',
     wait: 'Warten',
     signedOut: 'Sie wurden abgemeldet.',
+    signedOutDraftsLost: 'Sie wurden abgemeldet. Einige ungesendete Entwürfe konnten nicht gespeichert werden und gingen verloren.',
     sessionExpired: 'Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.',
     inactivitySignedOut: 'Sie wurden wegen Inaktivität abgemeldet.'
   },

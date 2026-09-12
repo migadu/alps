@@ -349,7 +349,29 @@ export class ComposeStore extends EventTarget {
     this.notify();
   }
 
-  async saveAllDirtyDrafts() {
+  /**
+   * Saves every dirty composer, and reports how many could NOT be saved.
+   *
+   * The result used to be discarded and `activeComposers` emptied regardless:
+   *
+   *     await messageOperations.saveDraft(formData);   // result ignored
+   *     …
+   *     this.state = { ...this.state, activeComposers: [] };
+   *     this.saveDrafts();
+   *
+   * The only caller is sign-out, which then dispatches `session-cleared` and
+   * deletes the drafts key outright. So a draft that failed to reach the server
+   * — offline, a 500, a full mailbox — was destroyed in the same breath, from
+   * the screen, from localStorage and from the server all at once, silently.
+   * This is the third place this exact mistake lived; the other two were the
+   * close button (e85d153) and the deferred close (63c1515).
+   *
+   * A local session that is ending cannot keep the draft, so the honest answer
+   * is not to silently keep going: the count travels back and the caller tells
+   * the user on the login screen they are about to land on.
+   */
+  async saveAllDirtyDrafts(): Promise<{ failed: number }> {
+    let failed = 0;
     const dirtyComposers = this.state.activeComposers.filter(c => c.dirty);
     if (dirtyComposers.length > 0) {
       for (const composer of dirtyComposers) {
@@ -399,12 +421,13 @@ export class ComposeStore extends EventTarget {
         if (composer.draftMailbox) formData.append('draft_mailbox', composer.draftMailbox);
         if (composer.draftUid) formData.append('draft_uid', composer.draftUid);
 
-        await messageOperations.saveDraft(formData);
+        if (!(await messageOperations.saveDraft(formData))) failed++;
       }
     }
     this.state = { ...this.state, activeComposers: [] };
     this.saveDrafts();
     this.notify();
+    return { failed };
   }
 
   bringComposerToFront(id: string) {

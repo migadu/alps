@@ -132,6 +132,7 @@ export const fr = {
     pleaseWait: 'Veuillez patienter',
     wait: 'Patienter',
     signedOut: 'Vous avez été déconnecté.',
+    signedOutDraftsLost: 'Vous avez été déconnecté. Certains brouillons non envoyés n’ont pas pu être enregistrés et ont été perdus.',
     sessionExpired: 'Votre session a expiré. Veuillez vous reconnecter.',
     inactivitySignedOut: "Vous avez été déconnecté pour cause d'inactivité."
   },

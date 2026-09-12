@@ -166,6 +166,7 @@ export const pt = {
     pleaseWait: 'Por favor, aguarde',
     wait: 'Aguarde',
     signedOut: 'Você foi desconectado.',
+    signedOutDraftsLost: 'Você saiu da sua conta. Alguns rascunhos não enviados não puderam ser salvos e foram perdidos.',
     sessionExpired: 'A sua sessão expirou. Inicie sessão novamente.',
     inactivitySignedOut: 'Você foi desconectado por inatividade.'
   },
