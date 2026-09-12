@@ -43,7 +43,18 @@ func DefaultRateLimitConfig() RateLimitConfig {
 
 // rateLimitEntry tracks requests in a time window
 type rateLimitEntry struct {
-	timestamps  []time.Time
+	// Every attempt, successful or not. Drives the short burst window.
+	timestamps []time.Time
+	// FAILED attempts only. Drives the hourly rule and the lockout it arms.
+	//
+	// Separate from timestamps because a lockout keyed on total attempts
+	// punishes the wrong people: behind a NAT, a CGNAT or an office egress
+	// address, twenty SUCCESSFUL logins in an hour are twenty colleagues
+	// signing in, and locking that IP out for fifteen minutes takes the whole
+	// office offline while doing nothing to a brute-forcer who has not yet hit
+	// the limit. The asymmetry was already visible in RecordLoginAttempt: a
+	// success cleared the USERNAME's counter and left the IP's untouched.
+	failures    []time.Time
 	lockedUntil time.Time
 }
 
@@ -129,6 +140,7 @@ func (rl *RateLimiter) cleanup() {
 			delete(rl.ipMap, ip)
 		} else {
 			entry.timestamps = filterTimestamps(entry.timestamps, cutoff)
+			entry.failures = filterTimestamps(entry.failures, cutoff)
 		}
 	}
 
@@ -177,8 +189,10 @@ func (rl *RateLimiter) CheckLoginAllowed(r *http.Request, username string) (bool
 	// Check 2: IP-based rate limiting
 	ipEntry := rl.getOrCreateEntry(rl.ipMap, ip)
 
-	// Debug logging
-	rl.logger.Printf("Rate limit check: IP=%s, username=%s, total_attempts=%d", ip, username, len(ipEntry.timestamps))
+	// Debugf, not Printf: this ran on EVERY login check and put the attempted
+	// username and client IP into the ordinary log at info level — two lines per
+	// attempt, one of them already labelled "Debug logging".
+	rl.logger.Debugf("Rate limit check: IP=%s, username=%s, total_attempts=%d", ip, username, len(ipEntry.timestamps))
 
 	// Check if IP is locked out
 	if now.Before(ipEntry.lockedUntil) {
@@ -189,21 +203,22 @@ func (rl *RateLimiter) CheckLoginAllowed(r *http.Request, username string) (bool
 	// Check per-minute limit
 	if rl.config.IPRequestsPerMinute > 0 {
 		recentMinute := filterTimestamps(ipEntry.timestamps, now.Add(-1*time.Minute))
-		rl.logger.Printf("Rate limit check: IP=%s, recent_minute=%d/%d", ip, len(recentMinute), rl.config.IPRequestsPerMinute)
+		rl.logger.Debugf("Rate limit check: IP=%s, recent_minute=%d/%d", ip, len(recentMinute), rl.config.IPRequestsPerMinute)
 		if len(recentMinute) >= rl.config.IPRequestsPerMinute {
 			rl.logger.Printf("Rate limit: IP %s exceeded per-minute limit (%d/%d)", ip, len(recentMinute), rl.config.IPRequestsPerMinute)
 			return false, "Too many login attempts, please wait a minute", 1 * time.Minute
 		}
 	}
 
-	// Check per-hour limit
+	// Check per-hour limit — FAILURES only; see rateLimitEntry.failures.
 	if rl.config.IPRequestsPerHour > 0 {
-		recentHour := filterTimestamps(ipEntry.timestamps, now.Add(-1*time.Hour))
+		recentHour := filterTimestamps(ipEntry.failures, now.Add(-1*time.Hour))
 		if len(recentHour) >= rl.config.IPRequestsPerHour {
 			// Lock out for configured duration
 			ipEntry.lockedUntil = now.Add(rl.config.LockoutDuration)
 			ipEntry.timestamps = nil
-			rl.logger.Printf("IP %s locked out for %v after %d attempts in 1 hour", ip, rl.config.LockoutDuration, len(recentHour))
+			ipEntry.failures = nil
+			rl.logger.Printf("IP %s locked out for %v after %d failed attempts in 1 hour", ip, rl.config.LockoutDuration, len(recentHour))
 			return false, "Too many login attempts, please try again later", rl.config.LockoutDuration
 		}
 	}
@@ -260,12 +275,22 @@ func (rl *RateLimiter) RecordLoginAttempt(r *http.Request, username string, succ
 	// Always record IP attempt
 	ipEntry := rl.getOrCreateEntry(rl.ipMap, ip)
 	ipEntry.timestamps = append(ipEntry.timestamps, now)
-	rl.logger.Printf("Rate limit: Recorded login attempt for IP=%s, success=%v, total_attempts=%d", ip, success, len(ipEntry.timestamps))
+	if !success {
+		ipEntry.failures = append(ipEntry.failures, now)
+	}
+	rl.logger.Debugf("Rate limit: Recorded login attempt for IP=%s, success=%v, total_attempts=%d", ip, success, len(ipEntry.timestamps))
 
 	// Only record failed attempts for username rate limiting
 	if !success && username != "" {
 		userEntry := rl.getOrCreateEntry(rl.userMap, username)
 		userEntry.timestamps = append(userEntry.timestamps, now)
+	}
+
+	// A success clears the IP's failure run too, matching what has always
+	// happened for the username just below: the point of the hourly rule is to
+	// stop a guessing run, and a correct password ends one.
+	if success {
+		ipEntry.failures = nil
 	}
 
 	// If login succeeded, clear the username's failed attempts
@@ -309,13 +334,38 @@ func (rl *RateLimiter) HandleClusterMessage(data []byte) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
+	// The peer's clock is not ours to trust.
+	//
+	// event.Timestamp was appended verbatim, and every ageing-out test in this
+	// file is `after(cutoff)`. A node whose clock runs fast — or a peer sending
+	// whatever it likes — therefore writes timestamps that NEVER age out: not
+	// out of the per-minute window, not out of the hourly one, and not out of
+	// cleanup(), whose own test is `timestamps[last].Before(cutoff)`. The
+	// result is an IP or an account locked out permanently, by a clock.
+	//
+	// Clamped to now, which is what a live event means anyway. A stale one is
+	// dropped: it cannot change any window it is already outside of.
+	now := time.Now()
+	ts := event.Timestamp
+	if ts.After(now) {
+		ts = now
+	}
+	if ts.Before(now.Add(-2 * time.Hour)) {
+		return
+	}
+
 	// Record global attempt
-	rl.globalTS = append(rl.globalTS, event.Timestamp)
+	rl.globalTS = append(rl.globalTS, ts)
 
 	// Record IP attempt
 	if event.IP != "" {
 		ipEntry := rl.getOrCreateEntry(rl.ipMap, event.IP)
-		ipEntry.timestamps = append(ipEntry.timestamps, event.Timestamp)
+		ipEntry.timestamps = append(ipEntry.timestamps, ts)
+		if event.Success {
+			ipEntry.failures = nil
+		} else {
+			ipEntry.failures = append(ipEntry.failures, ts)
+		}
 	}
 
 	// Record or clear username attempt
@@ -326,7 +376,7 @@ func (rl *RateLimiter) HandleClusterMessage(data []byte) {
 			userEntry.timestamps = nil
 			userEntry.lockedUntil = time.Time{}
 		} else {
-			userEntry.timestamps = append(userEntry.timestamps, event.Timestamp)
+			userEntry.timestamps = append(userEntry.timestamps, ts)
 		}
 	}
 }
