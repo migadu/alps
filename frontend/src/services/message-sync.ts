@@ -118,7 +118,6 @@ export class MessageSyncService extends EventTarget {
       if (this.currentFetchId !== fetchId) return; // Prevent race conditions
 
       if (response.status === 401) {
-        this.dispatchEvent(new CustomEvent('auth-error'));
         window.dispatchEvent(new CustomEvent('auth-error'));
         return;
       }
@@ -181,7 +180,6 @@ export class MessageSyncService extends EventTarget {
       if (this.currentFetchId !== fetchId) return;
 
       if (response.status === 401) {
-        this.dispatchEvent(new CustomEvent('auth-error'));
         window.dispatchEvent(new CustomEvent('auth-error'));
         return;
       }

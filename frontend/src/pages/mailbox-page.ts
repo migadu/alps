@@ -940,6 +940,22 @@ export class MailboxPage extends LitElement {
         }
         this.selectedMessage = { ...this.selectedMessage };
       }
+
+      // Tell the reader, which keeps its OWN copy of each message in
+      // `threadItems` and cannot see this one.
+      //
+      // message-reader has carried a complete handler for this event since
+      // before the fork — it patches every thread item's flags and the open
+      // message with it — and nothing has ever dispatched it. So the
+      // reader→list direction worked (the reader bubbles
+      // `message-flags-changed` to its parent) while list→reader did not:
+      // starring or marking read from the message list left the open
+      // conversation's cards showing the previous state until something forced
+      // a re-fetch. The detail shape below is exactly this method's parameters,
+      // which is how the handler was written to be called.
+      window.dispatchEvent(new CustomEvent('external-message-flags-changed', {
+        detail: { uids, flag, action }
+      }));
     }
   }
 

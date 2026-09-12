@@ -18,14 +18,22 @@ import { Logger } from '../utils/logger';
  */
 export type MailboxMutation = 'ok' | 'exists' | 'failed';
 
-export class MailboxOperationsService extends EventTarget {
+/**
+ * NOT an EventTarget.
+ *
+ * It extended one and dispatched `auth-error` on itself beside every
+ * `window.dispatchEvent` of the same name — and nothing has ever called
+ * `addEventListener` on this service. Only `messageSync` has real
+ * subscribers. The window dispatch is what app-root actually hears, so the
+ * self-dispatches were inert and the base class was there to support them.
+ */
+export class MailboxOperationsService {
 
   /** Maps the backend's slug-and-status answer onto {@link MailboxMutation}.
    * `already_exists` comes from `respondMailboxError` in the Go handlers, which
    * reads it off IMAP's `[ALREADYEXISTS]` response code. */
   private async classify(res: Response, what: string): Promise<MailboxMutation> {
     if (res.status === 401) {
-      this.dispatchEvent(new CustomEvent('auth-error'));
       window.dispatchEvent(new CustomEvent('auth-error'));
       return 'failed';
     }
@@ -105,7 +113,6 @@ export class MailboxOperationsService extends EventTarget {
       });
       
       if (res.status === 401) {
-        this.dispatchEvent(new CustomEvent('auth-error'));
         window.dispatchEvent(new CustomEvent('auth-error'));
         return false;
       }
@@ -128,7 +135,6 @@ export class MailboxOperationsService extends EventTarget {
       });
       
       if (res.status === 401) {
-        this.dispatchEvent(new CustomEvent('auth-error'));
         window.dispatchEvent(new CustomEvent('auth-error'));
         return false;
       }
@@ -151,7 +157,6 @@ export class MailboxOperationsService extends EventTarget {
       });
       
       if (res.status === 401) {
-        this.dispatchEvent(new CustomEvent('auth-error'));
         window.dispatchEvent(new CustomEvent('auth-error'));
         return false;
       }

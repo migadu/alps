@@ -39,12 +39,20 @@ async function readErrorBody(res: Response): Promise<Record<string, any>> {
   }
 }
 
-export class MessageOperationsService extends EventTarget {
+/**
+ * NOT an EventTarget.
+ *
+ * It extended one and dispatched `auth-error` on itself beside every
+ * `window.dispatchEvent` of the same name — and nothing has ever called
+ * `addEventListener` on this service. Only `messageSync` has real
+ * subscribers. The window dispatch is what app-root actually hears, so the
+ * self-dispatches were inert and the base class was there to support them.
+ */
+export class MessageOperationsService {
   /** True when the response was a 401; also announces it. Every verb in this
    * file repeated these four lines. */
   private isAuthError(res: Response): boolean {
     if (res.status !== 401) return false;
-    this.dispatchEvent(new CustomEvent('auth-error'));
     window.dispatchEvent(new CustomEvent('auth-error'));
     return true;
   }
@@ -275,7 +283,6 @@ export class MessageOperationsService extends EventTarget {
         body: formData
       });
       if (res.status === 401) {
-        this.dispatchEvent(new CustomEvent('auth-error'));
         window.dispatchEvent(new CustomEvent('auth-error'));
         return null;
       }
@@ -301,7 +308,6 @@ export class MessageOperationsService extends EventTarget {
         body: formData
       });
       if (res.status === 401) {
-        this.dispatchEvent(new CustomEvent('auth-error'));
         window.dispatchEvent(new CustomEvent('auth-error'));
         return false;
       }
