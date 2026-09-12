@@ -2604,6 +2604,16 @@ func handleRemoveAccount(ctx *alps.Context) error {
 	}
 
 	err = ctx.Session.RemoveLinkedAccount(username)
+	if errors.Is(err, alps.ErrReverseLinkNotCleared) {
+		// The link IS gone from this account — reporting a failure would invite a
+		// retry that cannot help. But this user's credential is still stored in
+		// the other mailbox, and they are entitled to know that rather than be
+		// told it all went fine.
+		return ctx.JSON(http.StatusOK, map[string]interface{}{
+			"ok":      true,
+			"warning": "reverse_link_not_cleared",
+		})
+	}
 	if err != nil {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to remove account: %v", err)})
 	}

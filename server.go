@@ -390,14 +390,14 @@ func handleUnauthenticated(next HandlerFunc, ctx *Context) error {
 }
 
 type Options struct {
-	SMTP                    SMTPOptions // SMTP configuration
-	Debug                   bool
-	LoginKey                *fernet.Key
-	EnabledPlugins          []string                // If empty, all plugins are enabled
-	CacheTTL                time.Duration           // Cache TTL, 0 means use default (10 minutes)
-	CacheEnabled            bool                    // If false, caching is disabled
-	SessionDuration         time.Duration           // Session timeout, 0 means use default (30 minutes)
-	MaxSessionDuration      time.Duration           // Maximum session duration users can set, 0 means no limit
+	SMTP               SMTPOptions // SMTP configuration
+	Debug              bool
+	LoginKey           *fernet.Key
+	EnabledPlugins     []string      // If empty, all plugins are enabled
+	CacheTTL           time.Duration // Cache TTL, 0 means use default (10 minutes)
+	CacheEnabled       bool          // If false, caching is disabled
+	SessionDuration    time.Duration // Session timeout, 0 means use default (30 minutes)
+	MaxSessionDuration time.Duration // Maximum session duration users can set, 0 means no limit
 	// How long a session may live no matter how much it is used. 0 means use
 	// the default (7 days); negative disables the cap entirely, which leaves
 	// sessions sliding forever — see defaultAbsoluteSessionDuration.

@@ -65,6 +65,12 @@ func (s *Session) DecryptPassword(encrypted string) (string, error) {
 	return string(decrypted), nil
 }
 
+// ErrReverseLinkNotCleared reports that an account was unlinked locally but this
+// account's stored credential could not be removed from the other side. The
+// unlink itself succeeded; the credential is still sitting in the other
+// mailbox's METADATA.
+var ErrReverseLinkNotCleared = errors.New("linked account removed, but the credential stored in the other account could not be cleared")
+
 // GetLinkedAccounts retrieves all linked accounts from METADATA.
 func (s *Session) GetLinkedAccounts() (*LinkedAccounts, error) {
 	var accounts LinkedAccounts
@@ -210,32 +216,60 @@ func (s *Session) RemoveLinkedAccount(username string) error {
 		return err
 	}
 
-	// Best effort: try to remove the reverse link from the target account
-	// If this fails, we don't return an error since the primary removal succeeded
-	password, err := s.DecryptPassword(removedAccount.PasswordEnc)
-	if err == nil {
-		targetSession, err := s.manager.Put(username, password)
-		if err == nil {
-			defer targetSession.Close()
-			targetStore := targetSession.Store()
-
-			targetAccounts, err := getLinkedAccountsViaStore(targetStore)
-			if err == nil {
-				// Remove current account from target's list
-				newTargetAccounts := make([]LinkedAccount, 0, len(targetAccounts.Accounts))
-				for _, acc := range targetAccounts.Accounts {
-					if acc.Username != s.username {
-						newTargetAccounts = append(newTargetAccounts, acc)
-					}
-				}
-				targetAccounts.Accounts = newTargetAccounts
-
-				// Save to target account's METADATA (ignore errors)
-				_ = setLinkedAccountsViaStore(targetStore, targetAccounts)
-			}
-		}
+	// The reverse link is best effort, but its failure is REPORTED.
+	//
+	// Linking A to B stores A's encrypted password in B's IMAP METADATA (see
+	// AddLinkedAccount). Unlinking therefore has to take it back out of B, and
+	// every step that can stop it — decrypting the stored credential,
+	// authenticating to B with it, reading B's METADATA, writing it back — used
+	// to be swallowed by an `if err == nil` or a `_ =`.
+	//
+	// So if B's password had since changed, or B was unreachable, or the write
+	// was refused, A's credential stayed in B's mailbox indefinitely and A was
+	// told the account had been removed. A credential outliving the relationship
+	// that justified it is exactly what the user believes this button prevents.
+	//
+	// Still not an error return: the forward removal DID succeed, and failing
+	// the call would invite a retry that cannot help. The caller gets a
+	// distinguishable sentinel so it can say what is actually true.
+	if err := s.removeReverseLink(username, removedAccount.PasswordEnc); err != nil {
+		s.manager.logger.Printf("linked accounts: removed %s locally but could not clear the reverse link: %v", username, err)
+		return ErrReverseLinkNotCleared
 	}
 
+	return nil
+}
+
+// removeReverseLink deletes this account's entry from the target's METADATA.
+func (s *Session) removeReverseLink(username, encryptedPassword string) error {
+	password, err := s.DecryptPassword(encryptedPassword)
+	if err != nil {
+		return fmt.Errorf("decrypt stored credential: %w", err)
+	}
+
+	targetSession, err := s.manager.Put(username, password)
+	if err != nil {
+		return fmt.Errorf("sign in to %s: %w", username, err)
+	}
+	defer targetSession.Close()
+
+	targetStore := targetSession.Store()
+	targetAccounts, err := getLinkedAccountsViaStore(targetStore)
+	if err != nil {
+		return fmt.Errorf("read linked accounts of %s: %w", username, err)
+	}
+
+	newTargetAccounts := make([]LinkedAccount, 0, len(targetAccounts.Accounts))
+	for _, acc := range targetAccounts.Accounts {
+		if acc.Username != s.username {
+			newTargetAccounts = append(newTargetAccounts, acc)
+		}
+	}
+	targetAccounts.Accounts = newTargetAccounts
+
+	if err := setLinkedAccountsViaStore(targetStore, targetAccounts); err != nil {
+		return fmt.Errorf("write linked accounts of %s: %w", username, err)
+	}
 	return nil
 }
 
