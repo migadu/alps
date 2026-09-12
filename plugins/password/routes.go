@@ -164,6 +164,18 @@ func handlePasswordChange(ctx *alps.Context) error {
 		ctx.SetLoginToken(username, req.Password, verified2FA, persistent)
 	}
 
+	// Every account this one is linked to stores this account's password,
+	// encrypted, in its own METADATA — and the change just made all of those
+	// stale. Switching back from any of them would be rejected with the old
+	// password, silently.
+	if failed := ctx.Session.RefreshLinkedCredentials(req.Password); failed > 0 {
+		return ctx.JSON(http.StatusOK, map[string]interface{}{
+			"message": "Password successfully changed",
+			"warning": "linked_accounts_not_refreshed",
+			"count":   failed,
+		})
+	}
+
 	return ctx.JSON(http.StatusOK, map[string]string{"message": "Password successfully changed"})
 }
 

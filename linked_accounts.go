@@ -273,6 +273,88 @@ func (s *Session) removeReverseLink(username, encryptedPassword string) error {
 	return nil
 }
 
+// RefreshLinkedCredentials re-encrypts this account's password into every
+// account it is linked to, after the password has changed.
+//
+// Linking stores each side's credential in the OTHER side's METADATA, and
+// nothing refreshed those on a password change. The consequences compound:
+//
+//   - Switching from a linked account BACK to this one decrypts the old
+//     password and is rejected. The feature silently stops working in that
+//     direction, with nothing saying why.
+//   - The superseded password stays stored indefinitely, which is the concern
+//     RemoveLinkedAccount's warning exists for — and this is what makes it
+//     routine rather than hypothetical.
+//   - Unlinking needs to authenticate to the other account with the credential
+//     stored HERE, which is unaffected — but the other side's attempt to clean
+//     up ITS copy needs the stale one. So a password change is precisely what
+//     makes the cleanup in d2780b8 fail.
+//
+// Best effort per account: one unreachable peer must not stop the rest, and the
+// password has already been changed by the time this runs. Returns how many
+// could not be updated so the caller can say so.
+func (s *Session) RefreshLinkedCredentials(newPassword string) (failed int) {
+	accounts, err := s.GetLinkedAccounts()
+	if err != nil {
+		s.manager.logger.Printf("linked accounts: cannot list accounts to refresh credentials: %v", err)
+		return 0
+	}
+
+	newEncrypted, err := s.EncryptPassword(newPassword)
+	if err != nil {
+		s.manager.logger.Printf("linked accounts: cannot encrypt the new password: %v", err)
+		return len(accounts.Accounts)
+	}
+
+	for _, acc := range accounts.Accounts {
+		if err := s.refreshOne(acc, newEncrypted); err != nil {
+			s.manager.logger.Printf("linked accounts: could not refresh this account's credential in %s: %v", acc.Username, err)
+			failed++
+		}
+	}
+	return failed
+}
+
+func (s *Session) refreshOne(acc LinkedAccount, newEncrypted string) error {
+	// The peer's own password, which this account stores and which the password
+	// change did not touch.
+	peerPassword, err := s.DecryptPassword(acc.PasswordEnc)
+	if err != nil {
+		return fmt.Errorf("decrypt stored credential: %w", err)
+	}
+
+	peerSession, err := s.manager.Put(acc.Username, peerPassword)
+	if err != nil {
+		return fmt.Errorf("sign in: %w", err)
+	}
+	defer peerSession.Close()
+
+	peerStore := peerSession.Store()
+	peerAccounts, err := getLinkedAccountsViaStore(peerStore)
+	if err != nil {
+		return fmt.Errorf("read linked accounts: %w", err)
+	}
+
+	updated := false
+	for i := range peerAccounts.Accounts {
+		if peerAccounts.Accounts[i].Username == s.username {
+			peerAccounts.Accounts[i].PasswordEnc = newEncrypted
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		// No reverse entry to refresh. Not an error: the other side may have
+		// unlinked already.
+		return nil
+	}
+
+	if err := setLinkedAccountsViaStore(peerStore, peerAccounts); err != nil {
+		return fmt.Errorf("write linked accounts: %w", err)
+	}
+	return nil
+}
+
 // GetLinkedAccountCredentials retrieves and decrypts credentials for a linked account.
 func (s *Session) GetLinkedAccountCredentials(username string) (password string, err error) {
 	accounts, err := s.GetLinkedAccounts()
