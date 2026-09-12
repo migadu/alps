@@ -355,6 +355,8 @@ export const de: TranslationDictionary = {
     messagePermanentlyDeleted: 'Nachricht endgültig gelöscht',
     draftDiscarded: 'Entwurf verworfen',
     folderRenamed: 'Ordner umbenannt',
+    tagNotSupported: 'Dieses Schlagwort wird von diesem Mailserver nicht unterstützt',
+    flagChangeFailed: 'Nachrichten konnten nicht aktualisiert werden',
     folderCreated: 'Ordner erstellt',
     folderExists: 'Ein Ordner mit diesem Namen existiert bereits',
     folderCreateFailed: 'Ordner konnte nicht erstellt werden',

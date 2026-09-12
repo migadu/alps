@@ -10,7 +10,7 @@ import '../components/alps-sidebar';
 import { consume } from '@lit/context';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { messageSync } from '../services/message-sync';
-import { messageOperations } from '../services/message-operations';
+import { messageOperations, type FlagResult } from '../services/message-operations';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
@@ -295,6 +295,22 @@ export class MailboxPage extends LitElement {
     window.dispatchEvent(new CustomEvent('show-toast', {
       detail: { message, actionLabel, actionFn, duration }
     }));
+  }
+
+  /**
+   * Says why a flag write did not happen.
+   *
+   * `unsupported` is the server declining the keyword itself — retrying cannot
+   * help, so it gets its own message rather than the generic "try again". A 401
+   * is already announced through `auth-error` and needs no toast of its own.
+   */
+  private reportFlagFailure(result: FlagResult) {
+    if (result.reason === 'auth') return;
+    const key = result.reason === 'unsupported' ? 'toast.tagNotSupported' : 'toast.flagChangeFailed';
+    const fallback = result.reason === 'unsupported'
+      ? 'That tag is not supported by this mail server'
+      : 'Could not update the messages';
+    this.showGlobalToast(this.i18nStore?.t(key) || fallback, '', undefined, 4000);
   }
 
   private get effectiveListWidth() {
@@ -914,7 +930,7 @@ export class MailboxPage extends LitElement {
     this.updateLocalMessageFlags([String(msg.UID)], FLAG_FLAGGED, action);
 
     try {
-      const success = await messageOperations.setFlag(this.currentMailbox, [String(msg.UID)], [FLAG_FLAGGED], action);
+      const { ok: success } = await messageOperations.setFlag(this.currentMailbox, [String(msg.UID)], [FLAG_FLAGGED], action);
       if (!success) {
         // Revert on failure
         this.updateLocalMessageFlags([String(msg.UID)], FLAG_FLAGGED, isStarred ? 'add' : 'remove');
@@ -953,8 +969,14 @@ export class MailboxPage extends LitElement {
       if (action === 'star') {
         if (isBulk) {
           const op = this.allSelectedStarred ? 'remove' : 'add';
-          await messageOperations.setFlag(this.currentMailbox, uidsArray, [FLAG_FLAGGED], op);
-          this.updateLocalMessageFlags(uidsArray, FLAG_FLAGGED, op);
+          // The result used to be discarded and the paint applied regardless, so
+          // a refused write showed as done until the next sync silently undid it.
+          const starred = await messageOperations.setFlag(this.currentMailbox, uidsArray, [FLAG_FLAGGED], op);
+          if (starred.ok) {
+            this.updateLocalMessageFlags(uidsArray, FLAG_FLAGGED, op);
+          } else {
+            this.reportFlagFailure(starred);
+          }
         } else {
           this.selectedMessage = await messageOperations.toggleStar(this.currentMailbox, this.selectedMessage);
           this.updateLocalMessageFlags([String(this.selectedMessage.UID)], FLAG_FLAGGED, this.selectedMessage.Flags?.includes(FLAG_FLAGGED) ? 'add' : 'remove');
@@ -963,19 +985,26 @@ export class MailboxPage extends LitElement {
         const tags = e.detail.tags || (e.detail.folder ? [e.detail.folder] : []);
         if (!tags || tags.length === 0) return;
         const op = action === 'addTag' ? 'add' : 'remove';
-        if (isBulk) {
-          await messageOperations.setFlag(this.currentMailbox, uidsArray, tags, op);
-          for (const t of tags) this.updateLocalMessageFlags(uidsArray, t, op);
+        // Tags are the path this matters most on: the backend stores only
+        // `$label1`..`$label5` and used to answer 200 OK for anything else, so a
+        // tag it would never keep was painted here and quietly erased later.
+        const targets = isBulk ? uidsArray : [String(currentMsg.UID)];
+        const tagged = await messageOperations.setFlag(this.currentMailbox, targets, tags, op);
+        if (tagged.ok) {
+          for (const t of tags) this.updateLocalMessageFlags(targets, t, op);
         } else {
-          await messageOperations.setFlag(this.currentMailbox, [String(currentMsg.UID)], tags, op);
-          for (const t of tags) this.updateLocalMessageFlags([String(currentMsg.UID)], t, op);
+          this.reportFlagFailure(tagged);
         }
         this.requestUpdate();
       } else if (action === 'markUnread') {
         if (isBulk) {
           const op = this.allSelectedUnread ? 'add' : 'remove';
-          await messageOperations.setFlag(this.currentMailbox, uidsArray, [FLAG_SEEN], op);
-          this.updateLocalMessageFlags(uidsArray, FLAG_SEEN, op);
+          const seen = await messageOperations.setFlag(this.currentMailbox, uidsArray, [FLAG_SEEN], op);
+          if (seen.ok) {
+            this.updateLocalMessageFlags(uidsArray, FLAG_SEEN, op);
+          } else {
+            this.reportFlagFailure(seen);
+          }
         } else {
           const isUnread = !currentMsg?.Flags || !currentMsg.Flags.includes(FLAG_SEEN);
           if (isUnread) {

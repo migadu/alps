@@ -387,6 +387,8 @@ export const en = {
     messagePermanentlyDeleted: 'Message permanently deleted',
     draftDiscarded: 'Draft discarded',
     folderRenamed: 'Folder renamed',
+    tagNotSupported: 'That tag is not supported by this mail server',
+    flagChangeFailed: 'Could not update the messages',
     folderCreated: 'Folder created',
     folderExists: 'A folder with that name already exists',
     folderCreateFailed: 'Could not create the folder',

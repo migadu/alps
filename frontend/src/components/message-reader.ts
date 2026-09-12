@@ -1124,7 +1124,7 @@ export class MessageReader extends LitElement {
     }));
 
     try {
-      const success = await messageOperations.setFlag(item.mailbox, [String(item.message.UID)], [FLAG_FLAGGED], op);
+      const { ok: success } = await messageOperations.setFlag(item.mailbox, [String(item.message.UID)], [FLAG_FLAGGED], op);
       if (!success) {
         if (isStarred) {
           item.message.Flags = [...(item.message.Flags || []), FLAG_FLAGGED];

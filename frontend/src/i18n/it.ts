@@ -353,6 +353,8 @@ export const it = {
     messagePermanentlyDeleted: 'Messaggio eliminato definitivamente',
     draftDiscarded: 'Bozza scartata',
     folderRenamed: 'Cartella rinominata',
+    tagNotSupported: 'Questo server di posta non supporta quel tag',
+    flagChangeFailed: 'Impossibile aggiornare i messaggi',
     folderCreated: 'Cartella creata',
     folderExists: 'Esiste già una cartella con quel nome',
     folderCreateFailed: 'Impossibile creare la cartella',

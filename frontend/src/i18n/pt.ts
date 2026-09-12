@@ -386,6 +386,8 @@ export const pt = {
   toast: {
     draftDiscarded: 'Rascunho descartado',
     folderRenamed: 'Pasta renomeada',
+    tagNotSupported: 'Este servidor de e-mail não suporta essa etiqueta',
+    flagChangeFailed: 'Não foi possível atualizar as mensagens',
     folderCreated: 'Pasta criada',
     folderExists: 'Já existe uma pasta com esse nome',
     folderCreateFailed: 'Não foi possível criar a pasta',

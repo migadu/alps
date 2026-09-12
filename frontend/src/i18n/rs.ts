@@ -353,6 +353,8 @@ export const rs = {
     messagePermanentlyDeleted: 'Порука трајно обрисана',
     draftDiscarded: 'Радна верзија одбачена',
     folderRenamed: 'Фасцикла преименована',
+    tagNotSupported: 'Овај мејл сервер не подржава ту ознаку',
+    flagChangeFailed: 'Није могуће ажурирати поруке',
     folderCreated: 'Фасцикла је креирана',
     folderExists: 'Фасцикла са тим именом већ постоји',
     folderCreateFailed: 'Није могуће креирати фасциклу',

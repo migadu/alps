@@ -353,6 +353,8 @@ export const sr = {
     messagePermanentlyDeleted: 'Poruka trajno obrisana',
     draftDiscarded: 'Radna verzija odbačena',
     folderRenamed: 'Fascikla preimenovana',
+    tagNotSupported: 'Ovaj mejl server ne podržava tu oznaku',
+    flagChangeFailed: 'Nije moguće ažurirati poruke',
     folderCreated: 'Fascikla je kreirana',
     folderExists: 'Fascikla sa tim imenom već postoji',
     folderCreateFailed: 'Nije moguće kreirati fasciklu',

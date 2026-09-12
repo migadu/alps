@@ -1975,7 +1975,19 @@ func handleSetFlags(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusBadRequest, "invalid 'action' value")
 	}
 
+	if len(uids) > maxFlagUIDs {
+		// One STORE per gesture is the point of this endpoint, but an unbounded
+		// list is a request the IMAP session may not survive — and the client
+		// has no way to learn that from a timeout. Refuse with a number it can
+		// chunk by; the frontend splits at the same constant.
+		return ctx.JSON(http.StatusRequestEntityTooLarge, map[string]any{
+			"error": "too_many_messages",
+			"max":   maxFlagUIDs,
+		})
+	}
+
 	var l []imap.Flag
+	var rejected []string
 	for _, s := range flags {
 		lower := strings.ToLower(s)
 		switch lower {
@@ -1989,13 +2001,24 @@ func handleSetFlags(ctx *alps.Context) error {
 			l = append(l, imap.Flag(lower)) // enforce lowercase for Thunderbird labels
 		default:
 			// restrict creation of unsupported labels
-			continue
+			rejected = append(rejected, s)
 		}
 	}
 
-	// If flags were provided but all were filtered out, just return success
-	if len(l) == 0 && len(flags) > 0 {
-		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
+	// A request whose flags were ALL filtered out used to answer 200 OK.
+	//
+	// Nothing was written, and the client had just been told it succeeded — so
+	// the UI kept whatever it painted optimistically until the next sync quietly
+	// took it back, with no error anywhere in between. An unsupported keyword is
+	// the caller's mistake and has to read as one.
+	if len(l) == 0 {
+		if len(flags) == 0 {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "missing_flags"})
+		}
+		return ctx.JSON(http.StatusBadRequest, map[string]any{
+			"error":    "unsupported_flags",
+			"rejected": rejected,
+		})
 	}
 
 	// Convert IMAP flag op to alps flag op
@@ -2049,6 +2072,11 @@ func handleSetFlags(ctx *alps.Context) error {
 
 const settingsKey = "base.settings"
 const maxMessagesPerPage = 100
+
+// The largest UID list a single flag/delete/move/copy request may carry. The
+// frontend chunks at the same number, so an ordinary selection is still one
+// round trip and only a select-everything gesture is split.
+const maxFlagUIDs = 500
 
 type UIPreferences struct {
 	ThemeMode          string   `json:"themeMode,omitempty"`

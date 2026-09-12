@@ -353,6 +353,8 @@ export const es = {
     messagePermanentlyDeleted: 'Mensaje eliminado de forma permanente',
     draftDiscarded: 'Borrador descartado',
     folderRenamed: 'Carpeta renombrada',
+    tagNotSupported: 'Este servidor de correo no admite esa etiqueta',
+    flagChangeFailed: 'No se pudieron actualizar los mensajes',
     folderCreated: 'Carpeta creada',
     folderExists: 'Ya existe una carpeta con ese nombre',
     folderCreateFailed: 'No se pudo crear la carpeta',

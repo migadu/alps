@@ -353,6 +353,8 @@ export const fr = {
     messagePermanentlyDeleted: 'Message définitivement supprimé',
     draftDiscarded: 'Brouillon ignoré',
     folderRenamed: 'Dossier renommé',
+    tagNotSupported: 'Ce serveur de messagerie ne prend pas en charge cette étiquette',
+    flagChangeFailed: 'Impossible de mettre à jour les messages',
     folderCreated: 'Dossier créé',
     folderExists: 'Un dossier portant ce nom existe déjà',
     folderCreateFailed: 'Impossible de créer le dossier',
