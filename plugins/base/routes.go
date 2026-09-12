@@ -1363,7 +1363,19 @@ type messagePath struct {
 	Uid     string
 }
 
+// The largest body POST /messages will read. Attachments do not travel in it —
+// they are uploaded separately to /attachments and referenced here by UUID — so
+// this bounds message text, HTML and headers, where 32 MiB is already far more
+// than any real message. The number matches the one Context.FormParams passes to
+// ParseMultipartForm, which is an in-MEMORY threshold rather than a limit: above
+// it Go streams to a temp file and keeps going, so without this the intent
+// expressed there was not actually enforced anywhere.
+const maxComposeBodyBytes = 32 << 20
+
 func handleComposeNew(ctx *alps.Context) error {
+	// Before the first FormValue, which is what triggers parsing.
+	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, maxComposeBodyBytes)
+
 	saveAsDraft := ctx.FormValue("save_as_draft") != ""
 
 	fromAddr := ctx.FormValue("from")
@@ -1606,6 +1618,24 @@ func handleComposeNew(ctx *alps.Context) error {
 }
 
 func handleComposeAttachment(ctx *alps.Context) error {
+	// Bound the REQUEST, not just what we keep.
+	//
+	// ReadForm's argument is the in-memory threshold, not a limit: everything
+	// above 32 KiB streams to a temp file, with no ceiling. PutAttachment then
+	// checks the per-composer, per-session and global budgets — but by then the
+	// bytes are already on the server's disk, and only `form.RemoveAll()` takes
+	// them off again. So an authenticated user could write an arbitrarily large
+	// body into the temp directory before anything refused it, and several
+	// concurrent uploads multiplied that: the limits this server advertises
+	// governed retention and not intake.
+	//
+	// The cap is the per-composer budget plus a MiB of slack for multipart
+	// framing and field names, since one request can legitimately carry several
+	// files for a composer that is still empty. MaxBytesReader makes the read
+	// itself fail once the body passes it.
+	limit := ctx.Server.Sessions.MaxAttachmentSize() + (1 << 20)
+	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, limit)
+
 	reader, err := ctx.Request.MultipartReader()
 	if err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{
@@ -1614,6 +1644,16 @@ func handleComposeAttachment(ctx *alps.Context) error {
 	}
 	form, err := reader.ReadForm(32 << 10) // 32 KB - force attachments to temp dir on disk
 	if err != nil {
+		// A body over the cap lands here, as does a malformed one. The former is
+		// the user's attachments being too large, which is what the client's own
+		// over-budget message says, so answer with the size status rather than a
+		// generic 400.
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			return ctx.JSON(http.StatusRequestEntityTooLarge, map[string]string{
+				"error": "Your attachments exceed the maximum file size. Remove some and try again.",
+			})
+		}
 		return ctx.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Invalid request",
 		})

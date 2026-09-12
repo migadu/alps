@@ -385,6 +385,14 @@ func (s *Session) Close() {
 	})
 }
 
+// MaxAttachmentSize is the per-composer attachment budget in bytes, after
+// defaults have been applied. Exposed so the HTTP layer can bound the REQUEST
+// as well as what it keeps: PutAttachment can only refuse an upload that has
+// already been read to disk.
+func (sm *SessionManager) MaxAttachmentSize() int64 {
+	return sm.maxAttachmentSize
+}
+
 // Puts an attachment and returns a generated UUID
 func (s *Session) PutAttachment(composerID string, in *multipart.FileHeader,
 	form *multipart.Form) (string, error) {
