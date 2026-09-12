@@ -339,13 +339,31 @@ func (c *Cluster) NotifyUpdate(node *memberlist.Node) {
 
 func (c *Cluster) NodeMeta(limit int) []byte { return nil }
 
+// NotifyMsg receives a user-data message from a peer.
+//
+// memberlist's Delegate contract is explicit about two things here, and this
+// used to honour neither:
+//
+//   - "Care should be taken that this method does not block, since doing so
+//     would block the entire UDP packet receive loop." The only handler is
+//     RateLimiter.HandleClusterMessage, which takes the rate limiter's mutex —
+//     the same mutex every login check holds. Under login load the gossip
+//     receive loop stalled behind it, and a stalled receive loop is how a
+//     healthy node starts looking dead to its peers.
+//   - "the byte slice may be modified after the call returns, so it should be
+//     copied if needed." Handing the live buffer to a goroutine makes that a
+//     real race rather than a theoretical one, so the copy comes first.
 func (c *Cluster) NotifyMsg(data []byte) {
 	c.msgMtx.RLock()
 	handler := c.msgHandler
 	c.msgMtx.RUnlock()
-	if handler != nil {
-		handler(data)
+	if handler == nil {
+		return
 	}
+
+	buf := make([]byte, len(data))
+	copy(buf, data)
+	go handler(buf)
 }
 
 func (c *Cluster) GetBroadcasts(overhead, limit int) [][]byte {
