@@ -744,14 +744,32 @@ export class MessageReader extends LitElement {
    */
   private loadRemoteResources() {
     this.allowRemoteResources = true;
-    if (this.rawMessageHtml) {
+    // Guarded on `this.message`, not just the HTML. The banner this runs from
+    // renders only alongside an open message, so it is true today — but that is
+    // a promise about a render arm kept in another method, and the sanitizer
+    // builds every `cid:` image URL out of this UID: broken, it silently mints
+    // `/messages/undefined/raw?part=…` for each inline image.
+    if (this.message && this.rawMessageHtml) {
+      // Reset BEFORE re-sanitizing, so the count reflects this pass. Left at
+      // `true` from the blocked pass, the "load remote content" banner stayed
+      // on screen after the user had already loaded it.
+      this.hasRemoteResources = false;
       this.content = sanitizeMessageHTML(this.rawMessageHtml, {
         mailbox: this.mailbox,
-        messageUid: this.message?.UID,
+        messageUid: this.message.UID,
         allowRemoteResources: this.allowRemoteResources,
-        messageStructure: this.message?.BodyStructure,
+        messageStructure: this.message.BodyStructure,
         onRemoteResourceBlocked: () => { this.hasRemoteResources = true; }
       });
+      // Keep the conversation card for this message in step, or it goes on
+      // showing the blocked copy behind the pane that just unblocked.
+      const item = this.threadItems.find(entry => String(entry.message?.UID) === String(this.message.UID));
+      if (item) {
+        item.allowRemoteResources = true;
+        item.content = this.content;
+        item.hasRemoteResources = this.hasRemoteResources;
+        this.updateThreadItemReference(item);
+      }
     }
   }
 
@@ -1084,17 +1102,26 @@ export class MessageReader extends LitElement {
 
   private loadRemoteResourcesForItem(item: ThreadMessageItem) {
     item.allowRemoteResources = true;
-    if (item.rawMessageHtml) {
+    if (item.message && item.rawMessageHtml) {
+      item.hasRemoteResources = false;
       item.content = sanitizeMessageHTML(item.rawMessageHtml, {
         mailbox: item.mailbox,
-        messageUid: item.message?.UID,
+        messageUid: item.message.UID,
         allowRemoteResources: item.allowRemoteResources,
-        messageStructure: item.message?.BodyStructure,
+        messageStructure: item.message.BodyStructure,
         onRemoteResourceBlocked: () => { item.hasRemoteResources = true; }
       });
-      if (item === this.threadItems[0]) {
+      // The OPEN message, not `threadItems[0]`.
+      //
+      // Those are the same thing only when the message being read happens to be
+      // first in its conversation. Otherwise loading remote content on the open
+      // card updated the card and left the reader's own copy blocked, with its
+      // banner still up — and, worse, a card that was NOT open could push its
+      // content into the reader by being first.
+      if (String(item.message.UID) === String(this.message?.UID)) {
         this.content = item.content;
         this.allowRemoteResources = true;
+        this.hasRemoteResources = item.hasRemoteResources;
       }
       this.updateThreadItemReference(item);
     }
