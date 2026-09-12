@@ -1986,6 +1986,19 @@ func handleSetFlags(ctx *alps.Context) error {
 		})
 	}
 
+	// The whitelist governs CREATION, not removal.
+	//
+	// That is what the original comment on the default branch said — "restrict
+	// creation of unsupported labels" — but the filter ran for every action,
+	// removal included. So a message carrying a keyword this list does not know
+	// (`Junk`, `NotJunk`, `$Phishing` — what other clients and spam filters
+	// leave behind) could never have it taken off: the UI's "remove all tags"
+	// sends exactly those, gathered by getRemovableTags, and they were dropped
+	// on the floor. A mixed list was worse than useless, since the recognised
+	// half succeeded and reported success for the whole request.
+	//
+	// Removing a keyword cannot create anything, so on a delete every
+	// syntactically valid keyword is accepted.
 	var l []imap.Flag
 	var rejected []string
 	for _, s := range flags {
@@ -2000,9 +2013,22 @@ func handleSetFlags(ctx *alps.Context) error {
 		case "$label1", "$label2", "$label3", "$label4", "$label5":
 			l = append(l, imap.Flag(lower)) // enforce lowercase for Thunderbird labels
 		default:
-			// restrict creation of unsupported labels
+			if op == imap.StoreFlagsDel && isValidIMAPKeyword(s) {
+				l = append(l, imap.Flag(s))
+				continue
+			}
 			rejected = append(rejected, s)
 		}
+	}
+
+	// All or nothing on the recognised ones too. Filtering silently meant
+	// "add $label1 and Junk" applied half the request and answered 200, so the
+	// client had no way to learn that half of what it asked for did not happen.
+	if len(rejected) > 0 {
+		return ctx.JSON(http.StatusBadRequest, map[string]any{
+			"error":    "unsupported_flags",
+			"rejected": rejected,
+		})
 	}
 
 	// A request whose flags were ALL filtered out used to answer 200 OK.
@@ -2011,14 +2037,10 @@ func handleSetFlags(ctx *alps.Context) error {
 	// the UI kept whatever it painted optimistically until the next sync quietly
 	// took it back, with no error anywhere in between. An unsupported keyword is
 	// the caller's mistake and has to read as one.
+	// Only reachable with an empty request now: anything unrecognised has
+	// already been refused above.
 	if len(l) == 0 {
-		if len(flags) == 0 {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "missing_flags"})
-		}
-		return ctx.JSON(http.StatusBadRequest, map[string]any{
-			"error":    "unsupported_flags",
-			"rejected": rejected,
-		})
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "missing_flags"})
 	}
 
 	// Convert IMAP flag op to alps flag op
@@ -2068,6 +2090,28 @@ func handleSetFlags(ctx *alps.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
+}
+
+// isValidIMAPKeyword reports whether s can be sent as an IMAP flag atom.
+//
+// Only consulted on removal, where the whitelist is deliberately not applied —
+// but a keyword still travels into a STORE command, so anything carrying an
+// atom-special or a control character is refused rather than escaped. RFC 3501
+// ATOM-CHAR: printable ASCII minus (){ %*"\ and ].
+func isValidIMAPKeyword(s string) bool {
+	if s == "" || len(s) > 255 {
+		return false
+	}
+	for _, r := range s {
+		if r < 0x21 || r > 0x7e {
+			return false
+		}
+		switch r {
+		case '(', ')', '{', '}', '%', '*', '"', '\\', ']':
+			return false
+		}
+	}
+	return true
 }
 
 const settingsKey = "base.settings"

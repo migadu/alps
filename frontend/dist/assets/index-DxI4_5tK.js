@@ -2825,7 +2825,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
           ${O(`edelweiss`)}
         </div>
       </div>
-    `,t);let n=t.querySelector(`#switch-account-overlay`);requestAnimationFrame(()=>{requestAnimationFrame(()=>{n&&(n.style.opacity=`1`)})}),await new Promise(e=>setTimeout(e,300));try{(await this.linkedAccountsStore.switchAccount(e)).requires_2fa?(window.location.hash=`#/login/webauthn`,n&&(n.style.opacity=`0`),setTimeout(()=>t.remove(),300)):(Fe(!1),sessionStorage.clear(),window.location.reload())}catch(e){n&&(n.style.opacity=`0`),setTimeout(()=>t.remove(),300),window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:e.message||this.i18nStore?.t(`linkedAccounts.switchError`),duration:5e3}}))}}render(){let e=this.settingsStore?.getState().name||this.username;return s`
+    `,t);let n=t.querySelector(`#switch-account-overlay`);requestAnimationFrame(()=>{requestAnimationFrame(()=>{n&&(n.style.opacity=`1`)})}),await new Promise(e=>setTimeout(e,300));try{(await this.linkedAccountsStore.switchAccount(e)).requires_2fa?(Fe(!1),sessionStorage.clear(),window.location.hash=`#/login/webauthn`,n&&(n.style.opacity=`0`),setTimeout(()=>t.remove(),300)):(Fe(!1),sessionStorage.clear(),window.location.reload())}catch(e){n&&(n.style.opacity=`0`),setTimeout(()=>t.remove(),300),window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:e.message||this.i18nStore?.t(`linkedAccounts.switchError`),duration:5e3}}))}}render(){let e=this.settingsStore?.getState().name||this.username;return s`
       <div class="user-profile">
         <div class="user-info">
           <alps-avatar .name=${e} .size=${28}></alps-avatar>

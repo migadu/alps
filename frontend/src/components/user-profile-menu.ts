@@ -181,6 +181,18 @@ export class UserProfileMenu extends LitElement {
     try {
       const response = await this.linkedAccountsStore.switchAccount(username);
       if (response.requires_2fa) {
+         // The same teardown the non-2FA branch does below, and for the same
+         // reason: the switch has already left this account behind.
+         //
+         // It was missing here, so the MORE security-conscious path was the
+         // leaky one. sessionStorage still held the previous account's cached
+         // message bodies, keyed only by mailbox and UID — and `INBOX` plus UID
+         // 1 exists in every account, so after the second factor completed, the
+         // new account's inbox could render the old account's message. The
+         // per-user settings pointer likewise still named the old account, so
+         // the compose store would restore THEIR drafts.
+         clearSessionSettings(false);
+         sessionStorage.clear();
          window.location.hash = '#/login/webauthn';
          // Remove overlay so webauthn page is visible
          if (overlayDiv) overlayDiv.style.opacity = '0';
