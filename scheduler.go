@@ -14,6 +14,7 @@ type Scheduler struct {
 	jobs     map[string]JobFunc
 	interval time.Duration
 	stop     chan struct{}
+	stopOnce sync.Once // guards close(stop)
 }
 
 // NewScheduler creates a new job scheduler with the given tick interval.
@@ -78,6 +79,14 @@ func (s *Scheduler) Start(logger Logger) {
 }
 
 // Stop halts the scheduler loop.
+//
+// Guarded, because `close` of an already-closed channel panics and Server.Close
+// is the kind of method that gets called twice — from a shutdown path and from a
+// deferred cleanup, or from a reload that races a signal. Session.Close solved
+// exactly this with a sync.Once and says so in a comment; this had the same
+// shape and no guard.
 func (s *Scheduler) Stop() {
-	close(s.stop)
+	s.stopOnce.Do(func() {
+		close(s.stop)
+	})
 }

@@ -126,3 +126,12 @@ func TestGlobalCleanupSingleGoroutine(t *testing.T) {
 		c.Close()
 	}
 }
+
+// Stop must tolerate being called more than once: Server.Close is reachable
+// from a shutdown path and from deferred cleanup, and `close` of a closed
+// channel panics.
+func TestScheduler_StopIsIdempotent(t *testing.T) {
+	s := NewScheduler(time.Hour)
+	s.Stop()
+	s.Stop() // would panic without the guard
+}

@@ -43,13 +43,6 @@ func (m *cacheCleanupManager) cleanupLoop() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	defer func() {
-		if r := recover(); r != nil {
-			// Panic occurred, but don't crash the server.
-			// Ideally we would restart the loop, but this is a fatal cache error.
-		}
-	}()
-
 	for {
 		select {
 		case <-ticker.C:
@@ -60,12 +53,34 @@ func (m *cacheCleanupManager) cleanupLoop() {
 
 			// Clean each cache
 			for _, c := range caches {
-				c.cleanupExpired()
+				c.cleanupExpiredSafely()
 			}
 		case <-m.stop:
 			return
 		}
 	}
+}
+
+// cleanupExpiredSafely runs one cache's sweep with its own recover.
+//
+// The recover used to be a single `defer` on cleanupLoop itself, OUTSIDE the
+// for. A panic in any one cache's sweep therefore unwound the whole loop and
+// the goroutine returned — permanently, because startGlobalCleanup is guarded
+// by a sync.Once and can never start a replacement.
+//
+// The old comment called that "a fatal cache error", which understates it: the
+// loop is process-wide and shared by every session's cache, so one bad entry in
+// one user's cache stopped expiry for EVERY user. Nothing would then ever be
+// evicted — Get returns (nil, false) for an expired entry but does not remove
+// it — so the leak is unbounded and silent, on a cache holding message bodies.
+//
+// Per-cache recovery keeps one bad sweep from ending the loop, and the next
+// tick simply tries again.
+func (c *Cache) cleanupExpiredSafely() {
+	defer func() {
+		_ = recover() // a panicking sweep must not take the shared loop with it
+	}()
+	c.cleanupExpired()
 }
 
 // register adds a cache to the cleanup manager
