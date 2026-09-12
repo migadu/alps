@@ -315,6 +315,33 @@ export class AlpsFloatingComposer extends LitElement {
     });
   }
 
+  /**
+   * Completes a close that was deferred while an upload finished.
+   *
+   * `_handleCloseClick` sets `closing: true` and returns when attachments are
+   * still in flight; this runs when the last one settles. It used to be
+   * `this._saveDraft().then(() => closeComposer(...))` — closing regardless of
+   * whether the save landed, which is the message-loss bug e85d153 fixed on the
+   * close button itself and missed here, on the path a user takes precisely
+   * when their message has attachments worth waiting for.
+   */
+  private async _finishDeferredClose() {
+    if (await this._saveDraft()) {
+      this.composeStore.closeComposer(this.instance.id);
+      return;
+    }
+    // Take the window back out of its closing state, or it stays on screen
+    // with no way to complete the gesture.
+    this.composeStore.updateComposer(this.instance.id, { closing: false } as any);
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: {
+        message: this.i18nStore?.t('composer.draftSaveFailedKeepOpen')
+          || 'Could not save this draft — the window stays open so nothing is lost',
+        duration: 6000
+      }
+    }));
+  }
+
   private async _handleCloseClick() {
     const hasUploading = (this.instance.attachments || []).some(a => a.uploading);
     if (hasUploading) {
@@ -704,9 +731,7 @@ export class AlpsFloatingComposer extends LitElement {
           const latestComposer = this.composeStore.getComposer(this.instance.id);
           const stillUploading = (latestComposer?.attachments || []).some(a => a.uploading);
           if (latestComposer?.closing && !stillUploading) {
-            this._saveDraft().then(() => {
-              this.composeStore.closeComposer(this.instance.id);
-            });
+            void this._finishDeferredClose();
           } else {
             this._saveDraft();
           }
@@ -727,11 +752,17 @@ export class AlpsFloatingComposer extends LitElement {
         const latestComposer = this.composeStore.getComposer(this.instance.id);
         const stillUploading = (latestComposer?.attachments || []).some(a => a.uploading);
         if (latestComposer?.closing && !stillUploading) {
-          this._saveDraft().then(() => {
-            this.composeStore.closeComposer(this.instance.id);
-          });
+          void this._finishDeferredClose();
         } else if (!latestComposer?.closing) {
-          alert(this.i18nStore?.t('floatingComposer.uploadFailed', { error: err.message || this.i18nStore?.t('floatingComposer.unknownError') }));
+          // A toast, not `alert()`. This file already raises toasts for every
+          // other failure, and a modal native dialog blocks the composer the
+          // user is still working in.
+          window.dispatchEvent(new CustomEvent('show-toast', {
+            detail: {
+              message: this.i18nStore?.t('floatingComposer.uploadFailed', { error: err.message || this.i18nStore?.t('floatingComposer.unknownError') }),
+              duration: 6000
+            }
+          }));
         }
       }
     ];

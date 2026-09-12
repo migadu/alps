@@ -313,6 +313,28 @@ export class MailboxPage extends LitElement {
     this.showGlobalToast(this.i18nStore?.t(key) || fallback, '', undefined, 4000);
   }
 
+  /**
+   * Does an Archive action make sense in the folder on screen?
+   *
+   * By ROLE. This was `!['trash','drafts','archive'].includes(name.toLowerCase())`,
+   * an English-name test for the mobile bulk-actions bar — while message-reader
+   * gates the SAME button with `mailboxRoleByName` and a comment citing issue
+   * #4. Two renderings of one button in one app, disagreeing about what folder
+   * they are in.
+   *
+   * On Gmail or a localized server the name test failed open: the Archive
+   * button appeared inside the Archive folder (archiving into itself) and in
+   * Trash and Drafts. It also failed closed for a user's own folder that
+   * happens to be called "Archive".
+   */
+  private get canArchiveHere(): boolean {
+    const role = mailboxRoleByName(this.currentMailbox, this.mailboxes);
+    if (role) return role !== 'trash' && role !== 'drafts' && role !== 'archive';
+    // No special-use attributes advertised: the names are the best available
+    // answer, which is what mailboxRoleByName falls back to itself.
+    return !['trash', 'drafts', 'archive'].includes(this.currentMailbox.toLowerCase());
+  }
+
   private get effectiveListWidth() {
     const sidebarW = (this.sidebarCollapsed && !this.isMobile) ? SIDEBAR_WIDTH_COLLAPSED : this.sidebarWidth;
     return Math.max(this.computedMinListWidth, this.resizerPositionX - sidebarW);
@@ -1440,7 +1462,7 @@ export class MailboxPage extends LitElement {
               <div slot="mobile-bulk-actions" class="mobile-bulk-actions-container">
                 <alps-icon-btn title=${this.i18nStore?.t('general.cancel') || 'Cancel'} @click=${() => { this.selectedUids = new Set(); this.requestUpdate(); }} icon="arrowLeft"></alps-icon-btn>
                 <span class="mobile-bulk-actions-count">${this.selectedUids.size}</span>
-                ${!['trash', 'drafts', 'archive'].includes(this.currentMailbox.toLowerCase()) ? html`
+                ${this.canArchiveHere ? html`
                   <alps-icon-btn title=${this.i18nStore?.t('messageReader.archive')} @click=${() => this._handleReaderAction(new CustomEvent('action', {detail: {action: 'archive'}}))} icon="archiveBox"></alps-icon-btn>
                 ` : ''}
                 <alps-icon-btn title=${this.i18nStore?.t('messageReader.delete')} @click=${() => this._handleReaderAction(new CustomEvent('action', {detail: {action: 'delete'}}))} icon="trash"></alps-icon-btn>
