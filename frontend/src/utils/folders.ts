@@ -141,3 +141,18 @@ export function isDescendantMailbox(name: string, parent: string, delimiter?: st
 export function isSelfOrDescendantMailbox(name: string, parent: string, delimiter?: string): boolean {
   return name === parent || isDescendantMailbox(name, parent, delimiter);
 }
+
+/**
+ * The hierarchy delimiter the SERVER reported for this mailbox, or `''`.
+ *
+ * IMAP hands the delimiter back per mailbox on LIST, and it is not the same
+ * everywhere — `.` on Dovecot, `/` on several others, and Gmail's `[Gmail]/…`.
+ * `folder-list` has always read it (`mb.Delimiter || mb.Delim`) to build the
+ * tree; this puts the same lookup where non-tree callers can reach it, so the
+ * sidebar and the header can stop disagreeing about where a name is split.
+ */
+export function mailboxDelimiter(name: string, mailboxes: any[] = []): string {
+  if (!name) return '';
+  const mb = mailboxes.find(m => (m.Name || m.Mailbox) === name);
+  return mb?.Delimiter || mb?.Delim || '';
+}

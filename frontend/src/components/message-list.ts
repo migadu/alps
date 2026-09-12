@@ -28,6 +28,8 @@ export class MessageList extends LitElement {
 
   @property({ type: Array }) messages: any[] = [];
   @property({ type: String }) currentMailbox = '';
+  /** As in `app-header` — the delimiter the server reported for this mailbox. */
+  @property({ type: String }) currentMailboxDelimiter = '';
   // Special-use role of the current mailbox ('drafts'|'sent'|...), resolved by the
   // parent from IMAP attributes so Gmail's "[Gmail]/Sent Mail" etc. are recognized.
   @property({ type: String }) currentMailboxRole = '';
@@ -1193,7 +1195,7 @@ export class MessageList extends LitElement {
           ></alps-icon-btn>
           ${this.sidebarCollapsed ? html`
             <div class="current-mailbox-label">
-              ${getMailboxLabel(this.currentMailbox, this.i18nStore)}
+              ${getMailboxLabel(this.currentMailbox, this.i18nStore, this.currentMailboxDelimiter)}
             </div>
           ` : ''}
           <alps-pagination 

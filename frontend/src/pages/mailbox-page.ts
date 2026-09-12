@@ -14,7 +14,7 @@ import { messageOperations, type FlagResult } from '../services/message-operatio
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
-import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxPath, mailboxRoleByName, findMailboxNameByRole } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxPath, mailboxRoleByName, findMailboxNameByRole, mailboxDelimiter } from '../utils/folders';
 import type { LayoutMode, DensityMode } from '../store/settings-store';
 import '../components/alps-initial-loader';
 import { Logger } from '../utils/logger';
@@ -1316,6 +1316,7 @@ export class MailboxPage extends LitElement {
         .username=${this.username}
         .isMobile=${this.isMobile}
         .currentMailbox=${this.currentMailbox}
+        .currentMailboxDelimiter=${mailboxDelimiter(this.currentMailbox, this.mailboxes)}
         .searchQuery=${this.filterQuery}
         .scrolled=${this.listScrolled}
         @toggle-sidebar=${() => this.mobileSidebarOpen = !this.mobileSidebarOpen}
@@ -1424,6 +1425,7 @@ export class MailboxPage extends LitElement {
               .messages=${this.messages}
               .currentMailbox=${this.currentMailbox}
               .currentMailboxRole=${mailboxRoleByName(this.currentMailbox, this.mailboxes) || ''}
+              .currentMailboxDelimiter=${mailboxDelimiter(this.currentMailbox, this.mailboxes)}
               .sidebarCollapsed=${this.sidebarCollapsed && !this.isMobile}
               .loading=${this.loadingMessages}
               .selectedMessage=${this.selectedMessage}

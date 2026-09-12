@@ -79,7 +79,7 @@ export function formatFullDate(dateInput: string | Date, dateFormatStr: string =
   return `${datePart} ${timePart}`;
 }
 
-export function getMailboxLabel(name: string, i18nStore?: I18nStore): string {
+export function getMailboxLabel(name: string, i18nStore?: I18nStore, delimiter?: string): string {
   if (!name) return '';
   const stdMap: Record<string, string | undefined> = {
     [FOLDER_INBOX]: i18nStore?.t('folderList.inbox'),
@@ -92,16 +92,45 @@ export function getMailboxLabel(name: string, i18nStore?: I18nStore): string {
     [FOLDER_TRASH]: i18nStore?.t('folderList.trash')
   };
   if (stdMap[name]) return stdMap[name] as string;
-  const parts = name.split(/[.\/]/);
+  // Split on the delimiter the SERVER reported, when the caller knows it.
+  //
+  // This split on `[.\/]` unconditionally, which is a guess at two of the
+  // several delimiters IMAP allows — and it is wrong in both directions. On a
+  // `/`-delimited server a folder legitimately named "Invoices v1.2" was drawn
+  // whole in the sidebar (which has always used `mb.Delimiter`) and truncated
+  // to "2" in the header and the search placeholder: the same folder, two
+  // different names, in the same app. The loose split stays as the fallback for
+  // callers that cannot reach the mailbox list.
+  const parts = delimiter ? name.split(delimiter) : name.split(/[.\/]/);
   return parts[parts.length - 1] || name;
 }
 
+const SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+
+/**
+ * A byte count as a short human string.
+ *
+ * The unit list used to stop at `GB` and the index was used unclamped, so
+ * anything at or above a terabyte read `1 undefined` — reachable on a quota
+ * line, where TB mailboxes are ordinary. The same unchecked index produced
+ * `NaN undefined` for a negative count and `512 undefined` for a fractional
+ * one, because `Math.log` of those lands outside the array in both directions.
+ *
+ * The carry matters too: 1048575 B is `log`-wise still in the KB band, but
+ * rounds to 1024 — printed as `1024 KB` rather than `1 MB`. Re-stepping after
+ * the rounding is what keeps the mantissa under 1024.
+ */
 export function formatSize(bytes: number): string {
-  if (!bytes || bytes === 0) return '0 B';
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return Math.round(bytes / Math.pow(k, i)) + ' ' + sizes[i];
+  const raw = Math.floor(Math.log(bytes) / Math.log(k));
+  let i = Math.min(Math.max(raw, 0), SIZE_UNITS.length - 1);
+  let value = Math.round(bytes / Math.pow(k, i));
+  if (value >= k && i < SIZE_UNITS.length - 1) {
+    value = Math.round(value / k);
+    i++;
+  }
+  return `${value} ${SIZE_UNITS[i]}`;
 }
 
 export const freemailDomains = new Set([
