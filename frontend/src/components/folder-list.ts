@@ -39,6 +39,8 @@ export class FolderList extends LitElement {
   @state() private isScrolled = false;
 
   @state() private showCreatePrompt = false;
+  /** True while the create request is out; disables the prompt's buttons. */
+  @state() private promptBusy = false;
   @state() private showRenamePrompt = false;
   @state() private mailboxToRename = '';
   @state() private showDeleteConfirm = false;
@@ -326,6 +328,11 @@ export class FolderList extends LitElement {
 
   private async handleCreateSubmit(e: CustomEvent) {
     let name = e.detail.name;
+    // The prompt stays mounted across the await below — abdc8bb made this
+    // handler async and left the dialog live while the request was out, so the
+    // confirm button could be pressed again and create the folder twice.
+    this.promptBusy = true;
+    try {
     if (name) {
       if (this.parentForNewFolder) {
         const parentMb = this.mailboxes.find(m => (m.Name || m.Mailbox) === this.parentForNewFolder);
@@ -349,8 +356,11 @@ export class FolderList extends LitElement {
         this.toast(this.i18nStore?.t('toast.folderCreateFailed'), 'Could not create the folder', { type: 'error' });
       }
     }
-    this.showCreatePrompt = false;
-    this.parentForNewFolder = '';
+    } finally {
+      this.promptBusy = false;
+      this.showCreatePrompt = false;
+      this.parentForNewFolder = '';
+    }
   }
 
   /** One place to raise a toast, so every folder verb can report its outcome
@@ -367,6 +377,8 @@ export class FolderList extends LitElement {
     const newName = e.detail.name;
     if (newName && this.mailboxToRename) {
       const oldName = this.mailboxToRename;
+      // Taken down before the request here, so there is no double-submit window
+      // to guard — unlike the create path above.
       this.showRenamePrompt = false;
       this.mailboxToRename = '';
       const outcome = await mailboxOperations.renameMailbox(oldName, newName);
@@ -941,6 +953,7 @@ export class FolderList extends LitElement {
           (this.i18nStore?.t('folderList.createSubfolderUnder')?.replace('{folder}', this.parentForNewFolder)) :
           this.i18nStore?.t('folderList.createFolder')}
           confirmText="Create"
+          .busy=${this.promptBusy}
           .fields=${[{ id: 'name', label: 'Folder Name', autofocus: true }]}
           @submit=${this.handleCreateSubmit}
           @cancel=${() => {
