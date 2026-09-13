@@ -160,7 +160,11 @@ export class MessageReader extends LitElement {
 
   private _handleTag(tag: string) {
     this._closePopup();
-    const isBulk = this.selectedUids.size > 1 && !this.message;
+    // The operand the toolbar is drawn for. render() shows the bulk toolbar, with
+    // the checked rows' common tags, as soon as any row is checked, and the page
+    // applies the action to those rows; deciding from the open message until MORE
+    // than one was checked meant a click on a single checked row could do nothing.
+    const isBulk = this.selectedUids.size > 0;
     const hasTag = isBulk
       ? this.commonTags?.some(f => f.toLowerCase() === tag.toLowerCase())
       : this.message?.Flags?.some((f: string) => f.toLowerCase() === tag.toLowerCase());
@@ -170,7 +174,7 @@ export class MessageReader extends LitElement {
 
   private _handleRemoveAllTags() {
     this._closePopup();
-    const isBulk = this.selectedUids.size > 1 && !this.message;
+    const isBulk = this.selectedUids.size > 0; // the same operand as _handleTag
 
     let tags: string[];
     if (isBulk) {
