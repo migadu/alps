@@ -299,16 +299,21 @@ export class PrintPage extends LitElement {
     }
   }
 
-  updated(changedProperties: PropertyValues) {
+  updated(_changedProperties: PropertyValues) {
     // HTML bodies are rendered inside a sandboxed iframe and print is triggered
     // from its load handler (once it is laid out). Only auto-print non-HTML
     // content from here.
-    if (changedProperties.has('content') && this.content &&
-        this.mimeType?.toLowerCase() !== 'text/html') {
-      setTimeout(() => {
-        window.print();
-      }, 500);
-    }
+    //
+    // Gated on the page being READY, not on a non-empty body. A message with no
+    // readable text part keeps `content` at '' (never truthy, and never changing
+    // either), so its page rendered its headers and the print dialog simply never
+    // opened, with nothing on screen to say why.
+    if (this.loading || this.error || !this.message) return;
+    if (this.mimeType?.toLowerCase() === 'text/html') return;
+    if (this.printTriggered) return;
+    this.printTriggered = true;
+    // A print tab closed inside the delay has nothing left to print.
+    setTimeout(() => { if (this.isConnected) window.print(); }, 500);
   }
 
   // Renders untrusted message HTML inside a sandboxed iframe (no allow-scripts),
@@ -326,7 +331,7 @@ export class PrintPage extends LitElement {
     }
     if (!this.printTriggered) {
       this.printTriggered = true;
-      setTimeout(() => window.print(), 300);
+      setTimeout(() => { if (this.isConnected) window.print(); }, 300);
     }
   }
 
