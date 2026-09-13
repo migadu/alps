@@ -453,13 +453,12 @@ export class ContactsPage extends LitElement {
     } catch (err) {
       console.error('Failed to toggle star:', err);
       this.reportFailure('contacts.starFailed');
-      // Revert optimistic update
-      if (isStarred) {
-        contact.categories.push(CATEGORY_FAVORITES);
-      } else {
-        contact.categories = contact.categories.filter((c: string) => c !== CATEGORY_FAVORITES);
-      }
-      this.requestUpdate();
+      // Revert by putting the card's own categories back into the list. This
+      // used to edit `contact`, the object the optimistic update had already
+      // replaced in `this.contacts`, so the refused star stayed painted; and for
+      // a contact with no categories the revert itself threw.
+      const original = contact.categories;
+      this.contacts = this.contacts.map((c: any) => c.path === contact.path ? { ...c, categories: original } : c);
     }
   }
 
@@ -517,6 +516,17 @@ export class ContactsPage extends LitElement {
     this.isEditing = true;
   }
 
+  /**
+   * Every card carrying `category`, across the whole address book. During a
+   * search `this.contacts` holds only the results, so renaming or deleting a
+   * category from a search rewrote those cards and left every other card on the
+   * old name, with both names then listed in the sidebar.
+   */
+  private async cardsCarrying(category: string): Promise<any[]> {
+    const cards = this.filterQuery ? ((await contactsService.fetchContacts()).contacts || []) : this.contacts;
+    return cards.filter((c: any) => c.categories?.includes(category));
+  }
+
   private async handleRenameCategorySubmit(e: CustomEvent) {
     const newName = e.detail.name?.trim();
     if (!newName || !this.categoryToRename || newName === this.categoryToRename) {
@@ -537,7 +547,14 @@ export class ContactsPage extends LitElement {
       window.location.hash = `/contacts/${encodeURIComponent(newName)}`;
     }
 
-    const contactsToUpdate = this.contacts.filter(c => c.categories?.includes(oldName));
+    let contactsToUpdate: any[];
+    try {
+      contactsToUpdate = await this.cardsCarrying(oldName);
+    } catch (e) {
+      console.error('Could not read the address book for a category change', e);
+      this.reportFailure('contacts.categoryRenameFailed', { failed: 1, total: 1 });
+      return;
+    }
     if (contactsToUpdate.length > 0) {
       this.saving = true;
       try {
@@ -573,7 +590,14 @@ export class ContactsPage extends LitElement {
       window.location.hash = `/contacts/all`;
     }
 
-    const contactsToUpdate = this.contacts.filter(c => c.categories?.includes(oldName));
+    let contactsToUpdate: any[];
+    try {
+      contactsToUpdate = await this.cardsCarrying(oldName);
+    } catch (e) {
+      console.error('Could not read the address book for a category change', e);
+      this.reportFailure('contacts.categoryDeleteFailed', { failed: 1, total: 1 });
+      return;
+    }
     if (contactsToUpdate.length > 0) {
       this.saving = true;
       try {
