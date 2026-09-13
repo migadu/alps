@@ -1131,8 +1131,12 @@ export class AlpsFloatingComposer extends LitElement {
       .content {
         display: flex !important;
       }
-      .header-actions alps-icon-btn[title="Minimize"],
-      .header-actions alps-icon-btn[title="Expand"] {
+      /* By class, not by title: the titles are translated, so a selector on the
+         English title matched only in English, and on a phone in any other
+         language the full-screen composer kept minimize and expand buttons it
+         has no use for. */
+      .header-actions .minimize-btn,
+      .header-actions .expand-btn {
         display: none;
       }
     }
@@ -1279,11 +1283,13 @@ export class AlpsFloatingComposer extends LitElement {
           <div class="header-actions">
             ${this.isSaving ? html`<span class="saving-indicator">${this.i18nStore?.t('floatingComposer.saving')}</span>` : (this.instance.draftUid && !this.instance.dirty) ? html`<span class="saving-indicator">${this.i18nStore?.t('floatingComposer.autosaved')}</span>` : ''}
             <alps-icon-btn 
+              class="minimize-btn"
               title="${this.instance.minimized ? this.i18nStore?.t('floatingComposer.restore') : this.i18nStore?.t('floatingComposer.minimize')}" 
               icon="${this.instance.minimized ? 'caretUp' : 'composerMinimize'}"
               @click=${(e: Event) => { e.stopPropagation(); this._toggleMinimize(); }}>
             </alps-icon-btn>
             <alps-icon-btn 
+              class="expand-btn"
               title="${this.instance.expanded ? this.i18nStore?.t('floatingComposer.restore') : this.i18nStore?.t('floatingComposer.expand')}" 
               icon="${this.instance.expanded ? 'arrowsInSimple' : 'arrowsOutSimple'}"
               @click=${(e: Event) => { e.stopPropagation(); this._toggleExpand(); }}>
