@@ -552,7 +552,6 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 			UID:           true,
 			RFC822Size:    true,
 			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
-			BodySection:   []*imap.FetchItemBodySection{authResultsSection()},
 		}
 
 		imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
@@ -598,6 +597,7 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 
 			msgs = append(msgs, converted)
 		}
+		p.attachAuthVerdicts(msgs)
 
 		return msgs, total, nil
 	}
@@ -634,7 +634,6 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 		UID:           true,
 		RFC822Size:    true,
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
-		BodySection:   []*imap.FetchItemBodySection{authResultsSection()},
 	}
 	imapMsgs, err := p.client.Fetch(seqSet, &options).Collect()
 	if err != nil {
@@ -655,6 +654,7 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 			msgs[i], msgs[opp] = msgs[opp], msgs[i]
 		}
 	}
+	p.attachAuthVerdicts(msgs)
 
 	return msgs, total, nil
 }
@@ -737,7 +737,6 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 			UID:           true,
 			RFC822Size:    true,
 			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
-			BodySection:   []*imap.FetchItemBodySection{authResultsSection()},
 		}
 
 		imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
@@ -783,6 +782,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 
 			msgs = append(msgs, converted)
 		}
+		p.attachAuthVerdicts(msgs)
 
 		return msgs, total, nil
 	}
@@ -841,7 +841,6 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		UID:           true,
 		RFC822Size:    true,
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
-		BodySection:   []*imap.FetchItemBodySection{authResultsSection()},
 	}
 	results, err := p.client.Fetch(seqSet, &options).Collect()
 	if err != nil {
@@ -864,6 +863,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		}
 	}
 
+	p.attachAuthVerdicts(validMsgs)
 	return validMsgs, total, nil
 }
 
@@ -1308,14 +1308,60 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 	return uidMapping, nil
 }
 
-// authResultsSection fetches the Authentication-Results fields. The list and
-// search fetches ask for it as well as the single-message fetch, so a list row
-// carries the same verdict the reader does.
+// authResultsSection fetches the Authentication-Results fields.
 func authResultsSection() *imap.FetchItemBodySection {
 	return &imap.FetchItemBodySection{
 		Specifier:    imap.PartSpecifierHeader,
 		HeaderFields: []string{"Authentication-Results"},
 		Peek:         true,
+	}
+}
+
+// attachAuthVerdicts sets BimiPotential and BimiFailed on listed rows, from a
+// fetch of their Authentication-Results fields alone.
+//
+// It is a fetch of its own, for the rows only. The list fetch asks for
+// envelope, flags and structure, which a server answers from its index; a
+// header field it usually reads from each stored message. Asked in the list
+// fetch, that read covered every message of every thread on a threaded page,
+// hundreds per page, and the inbox timed out. A thread's earlier messages get
+// no verdict here: their rows draw initials, and the reader fetches the
+// verdict when one is opened.
+//
+// A failed fetch leaves the rows without a verdict rather than failing the
+// list: a logo is not worth the page.
+func (p *IMAPProvider) attachAuthVerdicts(msgs []provider.Message) {
+	var uids imap.UIDSet
+	for _, m := range msgs {
+		if uid, ok := m.ID.(IMAPUID); ok {
+			uids.AddNum(imap.UID(uid))
+		}
+	}
+	if len(uids) == 0 {
+		return
+	}
+	fetched, err := p.client.Fetch(uids, &imap.FetchOptions{
+		UID:         true,
+		BodySection: []*imap.FetchItemBodySection{authResultsSection()},
+	}).Collect()
+	if err != nil {
+		if p.debug {
+			fmt.Printf("auth verdicts: fetch failed: %v\n", err)
+		}
+		return
+	}
+	fields := make(map[imap.UID][]byte, len(fetched))
+	for _, f := range fetched {
+		fields[f.UID] = f.FindBodySection(authResultsSection())
+	}
+	for i := range msgs {
+		uid, ok := msgs[i].ID.(IMAPUID)
+		if !ok {
+			continue
+		}
+		if b := fields[imap.UID(uid)]; b != nil {
+			msgs[i].BimiPotential, msgs[i].BimiFailed = authVerdict(b, p.authservIDs)
+		}
 	}
 }
 
