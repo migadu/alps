@@ -4,6 +4,7 @@ import { formatDateList, formatSize, getMailboxLabel, renderIcon, bimiAvatarUrlF
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED, getMessageTags } from '../utils/flags';
 import { messageSync } from '../services/message-sync';
 import { mailboxOperations } from '../services/mailbox-operations';
+import { fetchAuthVerdicts, type AuthVerdict } from '../services/auth-verdicts';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -55,6 +56,15 @@ export class MessageList extends LitElement {
   @state() private focusedIndex = -1;
   @state() private showEmptyConfirm = false;
   @state() private expandedThreads = new Set<string>();
+  // Verdicts for the earlier messages of expanded threads in the current
+  // mailbox, by UID. The list carries a verdict only for each thread's latest
+  // message, because a server reads the header from each stored message; the
+  // rest are asked for when their thread is open, asked again whenever the
+  // list reloads, and dropped when the mailbox changes, so an answer does not
+  // outlive the listing it was given for.
+  @state() private threadVerdicts = new Map<string, AuthVerdict>();
+  private threadVerdictsKey = '';
+  private threadVerdictsRequest = 0;
   private _shouldScrollToTop = false;
 
   static styles = css`
@@ -640,6 +650,39 @@ export class MessageList extends LitElement {
     return list;
   }
 
+  /**
+   * Asks for the verdicts of the earlier messages of every expanded thread,
+   * when the set of them changed or the list reloaded.
+   */
+  private async refreshThreadVerdicts(reloaded: boolean) {
+    const mailbox = this.currentMailbox;
+    const uids: string[] = [];
+    for (const msg of this.messages || []) {
+      if (!msg?.SubMessages?.length || !this.isThreadExpanded(String(msg.UID))) continue;
+      for (const sub of msg.SubMessages) uids.push(String(sub.UID));
+    }
+    const key = `${mailbox}\n${uids.join(',')}`;
+    if (!reloaded && key === this.threadVerdictsKey) return;
+    this.threadVerdictsKey = key;
+    const request = ++this.threadVerdictsRequest;
+    if (!mailbox || uids.length === 0) return;
+    try {
+      const verdicts = await fetchAuthVerdicts(mailbox, uids);
+      if (request !== this.threadVerdictsRequest || mailbox !== this.currentMailbox) return;
+      this.threadVerdicts = verdicts;
+    } catch {
+      // The earlier messages keep their initials rather than an answer that
+      // may belong to an older listing.
+      if (request === this.threadVerdictsRequest) this.threadVerdicts = new Map();
+    }
+  }
+
+  /** msg with the verdict asked for when its thread was expanded, if there is one. */
+  private withThreadVerdict(msg: any): any {
+    const verdict = this.threadVerdicts.get(String(msg?.UID));
+    return verdict ? { ...msg, ...verdict } : msg;
+  }
+
   private isThreadExpanded(uid: string): boolean {
     return this.expandedThreads.has(uid);
   }
@@ -714,6 +757,10 @@ export class MessageList extends LitElement {
 
   willUpdate(changedProperties: Map<string, any>) {
     super.willUpdate(changedProperties);
+    if (changedProperties.has('currentMailbox')) {
+      this.threadVerdicts = new Map();
+      this.threadVerdictsKey = '';
+    }
     if (changedProperties.has('currentMailbox') ||
       changedProperties.has('currentPage') ||
       changedProperties.has('filterQuery') ||
@@ -808,6 +855,9 @@ export class MessageList extends LitElement {
 
   updated(changedProperties: Map<string, any>) {
     super.updated(changedProperties);
+    if (changedProperties.has('messages') || changedProperties.has('expandedThreads') || changedProperties.has('currentMailbox')) {
+      this.refreshThreadVerdicts(changedProperties.has('messages'));
+    }
     if (changedProperties.has('densityMode')) {
       this.classList.remove('density-loose', 'density-normal', 'density-compact', 'density-ultra-compact');
       this.classList.add(`density-${this.densityMode}`);
@@ -1111,7 +1161,7 @@ export class MessageList extends LitElement {
         ${displayAvatars.map((c, idx) => {
           const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
           const name = c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
-          const bimiUrl = bimiAvatarUrlFor(msg, c);
+          const bimiUrl = bimiAvatarUrlFor(this.withThreadVerdict(msg), c);
           return html`
             <div class="avatar-wrapper" style="z-index: ${totalRendered - idx};">
               <alps-avatar .name=${name} .email=${addr} .size=${avatarSize} .src=${bimiUrl}></alps-avatar>
