@@ -403,6 +403,20 @@ export class ContactsPage extends LitElement {
     }
   }
 
+  /**
+   * What a toolbar gesture (delete, star, category) acts on: the ticked contacts
+   * whenever any are ticked, and the open contact only when none are. This used to
+   * switch at MORE than one, while contact-view replaces the open card with "1
+   * contacts selected" as soon as one box is ticked, and ticking does not close the
+   * open contact. So with a single box ticked, Delete removed the contact that had
+   * just left the screen, not the one the banner said was selected.
+   */
+  private get gestureTargets(): string[] {
+    return this.selectedContacts.size > 0
+      ? Array.from(this.selectedContacts)
+      : [this.selectedContact?.path].filter(Boolean) as string[];
+  }
+
   private get allSelectedStarred() {
     if (this.selectedContacts.size === 0) return false;
     for (const path of this.selectedContacts) {
@@ -676,7 +690,7 @@ export class ContactsPage extends LitElement {
   }
 
   private async handleToggleStarEvent() {
-    const pathsToUpdate = this.selectedContacts.size > 1 ? Array.from(this.selectedContacts) : [this.selectedContact?.path].filter(Boolean);
+    const pathsToUpdate = this.gestureTargets;
     if (pathsToUpdate.length === 0) return;
 
     const isStarred = pathsToUpdate.length > 1 
@@ -743,11 +757,11 @@ export class ContactsPage extends LitElement {
     this.showDeleteConfirm = false;
     this.saving = true;
     try {
-      const pathsToDelete = this.selectedContacts.size > 1 ? Array.from(this.selectedContacts) as string[] : [this.selectedContact?.path].filter(Boolean) as string[];
+      const pathsToDelete = this.gestureTargets;
       const { total, failed } = await contactsService.bulkDeleteContacts(pathsToDelete);
 
       this.selectedContact = null;
-      if (this.selectedContacts.size > 1) {
+      if (this.selectedContacts.size > 0) {
         this.selectedContacts = new Set();
       }
       this.isEditing = false;
@@ -777,7 +791,7 @@ export class ContactsPage extends LitElement {
       localStorage.setItem('contacts_categories_cache', JSON.stringify(this.addedCategories));
     }
 
-    const pathsToUpdate = this.selectedContacts.size > 1 ? Array.from(this.selectedContacts) : [this.selectedContact?.path].filter(Boolean);
+    const pathsToUpdate = this.gestureTargets;
     if (pathsToUpdate.length === 0) return;
 
     this.saving = true;

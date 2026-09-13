@@ -276,7 +276,8 @@ export class AlpsContactView extends LitElement {
   }
 
   private get isStarred() {
-    if (this.selectedCount > 1) {
+    // The banner's threshold: from the first tick the toolbar is about the ticked contacts.
+    if (this.selectedCount > 0) {
       return this.allSelectedStarred;
     }
     return this.contact?.categories?.includes(CATEGORY_FAVORITES) || false;
