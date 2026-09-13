@@ -765,8 +765,14 @@ export class FolderList extends LitElement {
             return a.localeCompare(b);
           });
 
-          isFirst = siblings.indexOf(node.fullName) === 0;
-          isLast = siblings.indexOf(node.fullName) === siblings.length - 1;
+          // A row that is not among the real siblings (a path segment with no
+          // mailbox of its own, drawn only because a deeper folder is named
+          // through it) cannot be reordered: moveFolder finds it at -1 and returns.
+          // Its bounds used to come out as neither first nor last, so all four
+          // Order items were enabled and did nothing.
+          const index = siblings.indexOf(node.fullName);
+          isFirst = index <= 0;
+          isLast = index === -1 || index === siblings.length - 1;
         }
 
         let icon = renderIcon('folder');
