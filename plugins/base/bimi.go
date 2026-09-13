@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -41,6 +42,32 @@ func bimiNotFound(ctx *alps.Context, msg string) error {
 	})
 }
 
+// bimiUnavailable answers a lookup or fetch that got no answer: the same 404 the
+// avatar already falls back from, but not cacheable, so the browser asks again
+// instead of keeping a day of "no logo" from one timeout.
+func bimiUnavailable(ctx *alps.Context, msg string) error {
+	ctx.Response.Header().Set("Cache-Control", "no-store")
+	return bimiNotFound(ctx, msg)
+}
+
+// lookupBIMITXT and fetchBIMILogo are the network, as variables so a test can
+// stand in for DNS and the logo host.
+var (
+	lookupBIMITXT = net.LookupTXT
+
+	// The l= URL comes from the queried domain's DNS record, i.e. attacker
+	// influenced: fetch through the egress-safe client so it cannot be pointed
+	// at internal/metadata addresses (SSRF).
+	fetchBIMILogo = func(url string) (*http.Response, error) {
+		return newSafeHTTPClient(5 * time.Second).Get(url)
+	}
+)
+
+// bimiRetryAfter is how long a lookup or fetch that got no answer is left
+// before the next request tries again. Short, because the failure says nothing
+// about the domain; not zero, so a resolver outage is not a lookup per avatar.
+const bimiRetryAfter = 5 * time.Minute
+
 func handleBIMIAvatar(ctx *alps.Context) error {
 	ctx.Response.Header().Set("Cache-Control", "public, max-age=86400")
 
@@ -76,46 +103,72 @@ func handleBIMIAvatar(ctx *alps.Context) error {
 		return ctx.Stream(http.StatusOK, "image/svg+xml", bytes.NewReader(data))
 	}
 
-	txts, err := net.LookupTXT(fmt.Sprintf("%s._bimi.%s", selector, domain))
+	retryFile := filepath.Join(cacheDir, hash+".retry")
+	if info, err := os.Stat(retryFile); err == nil && time.Since(info.ModTime()) < bimiRetryAfter {
+		return bimiUnavailable(ctx, "BIMI avatar unavailable (retry later)")
+	}
+
+	// Only an answer goes in the negative cache, which cleanup keeps for a
+	// week: no such name, no record, a record without an https logo, a refused
+	// address, a 4xx from the logo host. A timeout, a resolver or network
+	// failure, or a 5xx is not an answer, and was cached as one, so a single
+	// blip hid a sender's logo for up to seven days.
+	notFound := func() error {
+		os.Remove(retryFile)
+		os.WriteFile(negCacheFile, []byte(""), 0644)
+		return bimiNotFound(ctx, "BIMI avatar not found")
+	}
+	retryLater := func(msg string) error {
+		os.WriteFile(retryFile, []byte(""), 0644)
+		return bimiUnavailable(ctx, msg)
+	}
+
+	txts, err := lookupBIMITXT(fmt.Sprintf("%s._bimi.%s", selector, domain))
+	var dnsErr *net.DNSError
+	if err != nil && !(errors.As(err, &dnsErr) && dnsErr.IsNotFound) {
+		return retryLater("BIMI lookup failed")
+	}
 	var bimiURL string
-	if err == nil {
-		for _, txt := range txts {
-			if strings.HasPrefix(txt, "v=BIMI1;") {
-				parts := strings.Split(txt, ";")
-				for _, p := range parts {
-					p = strings.TrimSpace(p)
-					if strings.HasPrefix(p, "l=") {
-						bimiURL = strings.TrimPrefix(p, "l=")
-						break
-					}
+	for _, txt := range txts {
+		if strings.HasPrefix(txt, "v=BIMI1;") {
+			parts := strings.Split(txt, ";")
+			for _, p := range parts {
+				p = strings.TrimSpace(p)
+				if strings.HasPrefix(p, "l=") {
+					bimiURL = strings.TrimPrefix(p, "l=")
+					break
 				}
-				break
 			}
+			break
 		}
 	}
 
 	if bimiURL == "" || !strings.HasPrefix(bimiURL, "https://") {
-		os.WriteFile(negCacheFile, []byte(""), 0644)
-		return bimiNotFound(ctx, "BIMI avatar not found")
+		return notFound()
 	}
 
-	// The l= URL comes from the queried domain's DNS record, i.e. attacker
-	// influenced: fetch through the egress-safe client so it cannot be pointed
-	// at internal/metadata addresses (SSRF), and cap the body size.
-	client := newSafeHTTPClient(5 * time.Second)
-	resp, err := client.Get(bimiURL)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		os.WriteFile(negCacheFile, []byte(""), 0644)
-		return bimiNotFound(ctx, "BIMI avatar not found")
+	resp, err := fetchBIMILogo(bimiURL)
+	if err != nil {
+		if errors.Is(err, errBlockedAddress) {
+			return notFound()
+		}
+		return retryLater("BIMI logo fetch failed")
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		switch {
+		case resp.StatusCode >= 500, resp.StatusCode == http.StatusTooManyRequests, resp.StatusCode == http.StatusRequestTimeout:
+			return retryLater("BIMI logo host unavailable")
+		}
+		return notFound()
+	}
 
 	const maxBIMISize = 1 * 1024 * 1024 // 1 MiB cap
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBIMISize))
 	if err != nil {
-		os.WriteFile(negCacheFile, []byte(""), 0644)
-		return bimiNotFound(ctx, "BIMI avatar not found")
+		return retryLater("BIMI logo fetch failed")
 	}
+	os.Remove(retryFile)
 
 	sanitized := sanitizeSVG(body)
 	os.WriteFile(cacheFile, sanitized, 0644)
