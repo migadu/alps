@@ -3,7 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { CATEGORY_ALL_CONTACTS, CATEGORY_FAVORITES } from './constants';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
-import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
+import { activeUsername, settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
 import '../../../frontend/src/components/app-header';
 import '../../../frontend/src/components/alps-input';
 import '../../../frontend/src/components/alps-button';
@@ -20,6 +20,11 @@ import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { MailboxPage } from '../../../frontend/src/pages/mailbox-page';
 import { MessageList } from '../../../frontend/src/components/message-list';
 import { contactsService } from './contacts-service';
+
+/** Where the categories this user created, with no one filed into them yet, are kept. */
+const categoriesKeyFor = (username: string) => `alps_contacts_categories_${username}`;
+/** The pre-scoping, browser-wide key: read by no one now, only deleted. */
+const LEGACY_CATEGORIES_KEY = 'contacts_categories_cache';
 
 @customElement('contacts-page')
 export class ContactsPage extends LitElement {
@@ -259,14 +264,8 @@ export class ContactsPage extends LitElement {
     super.connectedCallback();
     this.showInitialLoader = !(window as any).alpsAppLoaded;
     this.classList.add('density-compact');
-    const savedCats = localStorage.getItem('contacts_categories_cache');
-    if (savedCats) {
-      try {
-        this.addedCategories = JSON.parse(savedCats);
-      } catch (e) {
-        // ignore
-      }
-    }
+    this.loadAddedCategories();
+    window.addEventListener('alps-active-user-changed', this.loadAddedCategories);
     this.fetchContacts();
     window.addEventListener('resize', this._handleWindowResize);
     window.addEventListener('hashchange', this._handleHashChange);
@@ -283,12 +282,45 @@ export class ContactsPage extends LitElement {
     super.disconnectedCallback();
     window.removeEventListener('resize', this._handleWindowResize);
     window.removeEventListener('hashchange', this._handleHashChange);
+    window.removeEventListener('alps-active-user-changed', this.loadAddedCategories);
     if (this.settingsStore) {
       this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     }
     if (this.syncIntervalTimer) {
       clearInterval(this.syncIntervalTimer);
       this.syncIntervalTimer = null;
+    }
+  }
+
+  /**
+   * A category created with no one filed into it exists nowhere on the server, so
+   * the page remembers it, per user. These were kept under one browser-wide key,
+   * written by every account on the browser and cleared by nothing, so one user's
+   * category names appeared in the next user's sidebar.
+   *
+   * Re-read when the signed-in user becomes known or changes: the identity is
+   * recorded only once /settings answers, which can be after this page mounts.
+   */
+  private loadAddedCategories = () => {
+    try {
+      // The unscoped key cannot be attributed to anyone, so it is deleted rather
+      // than migrated, as compose-store does with the unscoped drafts.
+      localStorage.removeItem(LEGACY_CATEGORIES_KEY);
+      const username = activeUsername();
+      const saved = username ? JSON.parse(localStorage.getItem(categoriesKeyFor(username)) || '[]') : [];
+      this.addedCategories = Array.isArray(saved) ? saved : [];
+    } catch {
+      this.addedCategories = [];
+    }
+  };
+
+  private saveAddedCategories() {
+    const username = activeUsername();
+    if (!username) return;
+    try {
+      localStorage.setItem(categoriesKeyFor(username), JSON.stringify(this.addedCategories));
+    } catch {
+      // Storage unavailable: the categories last as long as this page.
     }
   }
 
@@ -508,7 +540,7 @@ export class ContactsPage extends LitElement {
     if (name) {
       if (!this.addedCategories.includes(name)) {
         this.addedCategories = [...this.addedCategories, name];
-        localStorage.setItem('contacts_categories_cache', JSON.stringify(this.addedCategories));
+        this.saveAddedCategories();
       }
     }
     this.showCreatePrompt = false;
@@ -553,7 +585,7 @@ export class ContactsPage extends LitElement {
 
     if (this.addedCategories.includes(oldName)) {
       this.addedCategories = this.addedCategories.map(c => c === oldName ? newName : c);
-      localStorage.setItem('contacts_categories_cache', JSON.stringify(this.addedCategories));
+      this.saveAddedCategories();
     }
 
     if (this.selectedCategory === oldName) {
@@ -596,7 +628,7 @@ export class ContactsPage extends LitElement {
 
     if (this.addedCategories.includes(oldName)) {
       this.addedCategories = this.addedCategories.filter(c => c !== oldName);
-      localStorage.setItem('contacts_categories_cache', JSON.stringify(this.addedCategories));
+      this.saveAddedCategories();
     }
 
     if (this.selectedCategory === oldName) {
@@ -788,7 +820,7 @@ export class ContactsPage extends LitElement {
     }
     if (cat && !this.addedCategories.includes(cat)) {
       this.addedCategories = [...this.addedCategories, cat];
-      localStorage.setItem('contacts_categories_cache', JSON.stringify(this.addedCategories));
+      this.saveAddedCategories();
     }
 
     const pathsToUpdate = this.gestureTargets;
