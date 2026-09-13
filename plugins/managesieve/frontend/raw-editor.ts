@@ -153,11 +153,15 @@ export class RawEditor extends LitElement {
 
 	private async save() {
 		this.isSaving = true;
+		// What was SENT, captured before the round trip. Recording this.script once
+		// the PUT landed marked anything typed while it was in flight as saved: Save
+		// went back to disabled, and those characters never reached the server.
+		const sent = this.script;
 		try {
-			await managesieveService.saveScript(this.script, 'PUT');
-			this.initialScript = this.script;
-			this.isDirty = false;
-			const msgKey = this.script.trim() === '' ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
+			await managesieveService.saveScript(sent, 'PUT');
+			this.initialScript = sent;
+			this.isDirty = this.script !== sent;
+			const msgKey = sent.trim() === '' ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), timeout: 3000 } }));
 		} catch (e: any) {
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: e.message || this.i18nStore.t('managesieve.toast.networkError'), timeout: 5000, type: 'error' } }));
