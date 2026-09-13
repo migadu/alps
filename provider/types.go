@@ -214,6 +214,7 @@ type AuthVerdict struct {
 // logos beyond the verdicts its listings carry.
 type AuthVerdictProvider interface {
 	// AuthVerdicts returns the verdicts of the messages among ids that exist in
-	// mailbox, keyed by the ID's String().
-	AuthVerdicts(mailbox string, ids []MessageID) (map[string]AuthVerdict, error)
+	// mailbox, keyed by the ID's String(), and a scope naming what those IDs
+	// referred to: the same ID under a different scope is a different message.
+	AuthVerdicts(mailbox string, ids []MessageID) (verdicts map[string]AuthVerdict, scope string, err error)
 }

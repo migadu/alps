@@ -1,33 +1,52 @@
 /**
- * The earlier messages of an expanded thread: the list carries no verdict for
- * them, so the list asks, and draws a logo only where the answer allows one.
+ * Verdicts arrive after the list: listings carry none, because a mail server
+ * reads the header from each stored message. The list asks in batches, one
+ * request at a time, only about messages that could show a logo, and once.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, click, mount, shadow, shadowAll, update, waitFor } from './helpers/dom';
+import { VERDICT_BATCH, type AuthVerdict } from '../src/services/auth-verdicts';
 import '../src/components/message-list';
 
-const brand = { Name: 'Brand', Mailbox: 'news', Host: 'brand.test' };
+const TAG = 'alps-message-list';
 const LOGO = '/bimi/avatar?domain=brand.test';
+const pass: AuthVerdict = { HasBimiPotential: true, HasBimiFailed: false };
+const fail: AuthVerdict = { HasBimiPotential: false, HasBimiFailed: true };
 
-const row = (uid: string, extra: Record<string, unknown> = {}) => ({
-  UID: uid,
+const sender = (host = 'brand.test') => ({ Name: 'Brand', Mailbox: 'news', Host: host });
+const row = (uid: number | string, extra: Record<string, unknown> = {}, from: unknown[] = [sender()]) => ({
+  UID: String(uid),
   Flags: ['\\Seen'],
-  Envelope: { From: [brand], To: [], Cc: [], Subject: 'launch', Date: '2026-09-01T10:00:00Z' },
+  Envelope: { From: from, To: [], Cc: [], Subject: `message ${uid}`, Date: '2026-09-01T10:00:00Z' },
   ...extra,
 });
-
-const thread = () =>
-  row('3', { HasBimiPotential: true, ThreadCount: 3, ThreadUIDs: ['1', '2', '3'], SubMessages: [row('1'), row('2')] });
+const rows = (n: number) => Array.from({ length: n }, (_, i) => row(i + 1));
 
 const avatarSrcs = (el: HTMLElement) => shadowAll(el, 'alps-avatar').map((a) => (a as unknown as { src: string }).src);
+const logos = (el: HTMLElement) => avatarSrcs(el).filter(Boolean).length;
 
-function stubVerdicts(verdicts: Record<string, { HasBimiPotential: boolean; HasBimiFailed: boolean }>) {
-  const calls: string[] = [];
+/** Stands in for the verdicts endpoint; every other request answers empty. */
+function verdictServer(verdict: (uid: string) => AuthVerdict | undefined = (uid) => (Number(uid) % 2 ? pass : fail), scope = () => '1') {
+  const asked: string[][] = [];
+  let inFlight = 0;
+  let maxInFlight = 0;
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-    if (String(url).includes('/verdicts')) calls.push(String(url));
-    return new Response(JSON.stringify({ Verdicts: verdicts }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const u = new URL(String(url), 'http://alps.test');
+    if (!u.pathname.endsWith('/verdicts')) return new Response('{}', { status: 200 });
+    const uids = u.searchParams.get('uids')!.split(',');
+    asked.push(uids);
+    inFlight++;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise((r) => setTimeout(r, 2));
+    inFlight--;
+    const Verdicts: Record<string, AuthVerdict> = {};
+    for (const uid of uids) {
+      const v = verdict(uid);
+      if (v) Verdicts[uid] = v;
+    }
+    return new Response(JSON.stringify({ Verdicts, Scope: scope() }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }));
-  return calls;
+  return { asked, maxInFlight: () => maxInFlight };
 }
 
 afterEach(() => {
@@ -36,46 +55,101 @@ afterEach(() => {
   cleanup();
 });
 
-describe('verdicts for the earlier messages of a thread', () => {
-  it('asks nothing for a collapsed thread', async () => {
-    const calls = stubVerdicts({});
-    const el = await mount('alps-message-list', { messages: [thread()], currentMailbox: 'INBOX', totalMessages: 1 });
-    await new Promise((r) => setTimeout(r, 20));
-    expect(calls).toEqual([]);
-    expect(avatarSrcs(el)).toEqual([LOGO]);
+describe('verdicts after the list', () => {
+  it('shows the list first, then asks in batches, one request at a time', async () => {
+    const server = verdictServer();
+    const el = await mount(TAG, { messages: rows(25), currentMailbox: 'INBOX', totalMessages: 25 });
+    expect(avatarSrcs(el)).toEqual(Array(25).fill(''));
+
+    await waitFor(() => server.asked.flat().length === 25 && logos(el) === 13, 'every verdict answered');
+
+    expect(server.asked.map((b) => b.length)).toEqual([VERDICT_BATCH, VERDICT_BATCH, 25 - 2 * VERDICT_BATCH]);
+    expect(server.maxInFlight()).toBe(1);
+    expect(avatarSrcs(el)).toEqual(Array.from({ length: 25 }, (_, i) => ((i + 1) % 2 ? LOGO : '')));
   });
 
-  it('asks when the thread is expanded, and draws a logo only for a message that passed', async () => {
-    const calls = stubVerdicts({
-      '1': { HasBimiPotential: true, HasBimiFailed: false },
-      '2': { HasBimiPotential: false, HasBimiFailed: true },
+  it('a reload while verdicts are being asked for waits its turn', async () => {
+    const server = verdictServer();
+    const el = await mount(TAG, { messages: rows(25), currentMailbox: 'INBOX', totalMessages: 25 });
+    await update(el, { messages: rows(30), totalMessages: 30 });
+
+    await waitFor(() => server.asked.flat().length === 30, 'every message asked about');
+    expect(server.maxInFlight()).toBe(1);
+    expect(new Set(server.asked.flat()).size).toBe(30);
+  });
+
+  it('asks nothing about a message that could not show a logo', async () => {
+    const server = verdictServer();
+    await mount(TAG, {
+      messages: [
+        row(1, {}, [sender('gmail.com')]),
+        row(2, {}, [sender(), { Mailbox: 'other', Host: 'brand.test' }]),
+        row(3, {}, [{ Name: 'No address' }]),
+      ],
+      currentMailbox: 'INBOX',
+      totalMessages: 3,
     });
-    const el = await mount('alps-message-list', { messages: [thread()], currentMailbox: 'INBOX', totalMessages: 1 });
-
-    click(shadow(el, '.caret-col'));
-    await waitFor(() => avatarSrcs(el).length === 3 && avatarSrcs(el).filter(Boolean).length === 2, 'the expanded thread with its verdicts');
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toContain('/verdicts?uids=1,2');
-    const srcs = avatarSrcs(el);
-    expect(srcs[0]).toBe(LOGO);
-    expect(srcs.slice(1).sort()).toEqual(['', LOGO]);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(server.asked).toEqual([]);
   });
 
-  it('asks again when the list reloads, and keeps no answer for another mailbox', async () => {
-    const calls = stubVerdicts({ '1': { HasBimiPotential: true, HasBimiFailed: false }, '2': { HasBimiPotential: true, HasBimiFailed: false } });
-    const el = await mount('alps-message-list', { messages: [thread()], currentMailbox: 'INBOX', totalMessages: 1 });
+  it('a reload asks only about new messages, and keeps the answers it has meanwhile', async () => {
+    const server = verdictServer();
+    const el = await mount(TAG, { messages: rows(3), currentMailbox: 'INBOX', totalMessages: 3 });
+    await waitFor(() => logos(el) === 2, 'the first answers');
+
+    await update(el, { messages: rows(5), totalMessages: 5 });
+    expect(logos(el)).toBe(2);
+    await waitFor(() => server.asked.flat().length === 5 && logos(el) === 3, 'the new messages answered');
+    expect(server.asked[server.asked.length - 1]).toEqual(['4', '5']);
+  });
+
+  it("starts over when the mailbox's UIDs name other messages", async () => {
+    let scope = 'A';
+    const server = verdictServer(() => (scope === 'A' ? pass : fail), () => scope);
+    const el = await mount(TAG, { messages: rows(2), currentMailbox: 'INBOX', totalMessages: 2 });
+    await waitFor(() => logos(el) === 2, "scope A's answers");
+
+    scope = 'B';
+    await update(el, { messages: rows(3), totalMessages: 3 });
+    await waitFor(() => server.asked.length === 3 && logos(el) === 0, "scope B's answers for every message");
+    expect(server.asked[1]).toEqual(['3']);
+    expect([...server.asked[2]].sort()).toEqual(['1', '2']);
+  });
+
+  it("asks about an expanded thread's earlier messages when it is expanded", async () => {
+    const server = verdictServer((uid) => (uid === '2' ? fail : pass));
+    const thread = row(3, { ThreadCount: 3, ThreadUIDs: ['1', '2', '3'], SubMessages: [row(1), row(2)] });
+    const el = await mount(TAG, { messages: [thread], currentMailbox: 'INBOX', totalMessages: 1 });
+    await waitFor(() => logos(el) === 1, "the thread row's answer");
+    expect(server.asked).toEqual([['3']]);
+
     click(shadow(el, '.caret-col'));
-    await waitFor(() => calls.length === 1 && avatarSrcs(el).filter(Boolean).length === 3, 'the first answer');
+    await waitFor(() => avatarSrcs(el).length === 3 && logos(el) === 2, 'the expanded thread with its answers');
+    expect(server.asked).toEqual([['3'], ['1', '2']]);
+    expect(avatarSrcs(el)[0]).toBe(LOGO);
+    expect(avatarSrcs(el).slice(1).sort()).toEqual(['', LOGO]);
+  });
 
-    await update(el, { messages: [thread()] });
-    await waitFor(() => calls.length === 2, 'a second request after the reload');
+  it("keeps no answer for another mailbox while that mailbox's request is open", async () => {
+    verdictServer(() => pass);
+    const el = await mount(TAG, { messages: rows(1), currentMailbox: 'INBOX', totalMessages: 1 });
+    await waitFor(() => logos(el) === 1, "INBOX's answer");
 
-    // Archive's answer never arrives: until it does, its rows must not wear
-    // INBOX's.
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})));
-    await update(el, { currentMailbox: 'Archive', messages: [thread()] });
-    expect(avatarSrcs(el)).toHaveLength(3);
-    expect(avatarSrcs(el).filter(Boolean)).toHaveLength(1);
+    await update(el, { currentMailbox: 'Archive', messages: rows(1) });
+    expect(avatarSrcs(el)).toEqual(['']);
+  });
+
+  it('a failed request leaves initials, and the next reload asks again', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 403 })));
+    const el = await mount(TAG, { messages: rows(1), currentMailbox: 'INBOX', totalMessages: 1 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(avatarSrcs(el)).toEqual(['']);
+
+    const server = verdictServer(() => pass);
+    await update(el, { messages: rows(1) });
+    await waitFor(() => logos(el) === 1, 'the answer after the reload');
+    expect(server.asked).toEqual([['1']]);
   });
 });

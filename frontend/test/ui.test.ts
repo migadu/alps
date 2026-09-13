@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   bimiAvatarUrlFor,
+  mayShowBimiLogo,
   formatDateList,
   formatFullDate,
   formatSize,
@@ -92,6 +93,28 @@ describe('getBimiAvatarUrl', () => {
     expect(getBimiAvatarUrl('acme.corp')).toBe('/bimi/avatar?domain=acme.corp');
     expect(getBimiAvatarUrl('GitHub.com')).toBe('/bimi/avatar?domain=github.com');
     expect(getBimiAvatarUrl('a&b.test')).toBe('/bimi/avatar?domain=a%26b.test');
+  });
+});
+
+describe('mayShowBimiLogo', () => {
+  const at = (Host: string) => ({ Mailbox: 'news', Host });
+
+  it('is yes for a single From at a domain a logo is asked for', () => {
+    expect(mayShowBimiLogo({ Envelope: { From: [at('brand.test')] } })).toBe(true);
+  });
+
+  it('is no for freemail, several From addresses, none, or an incomplete address', () => {
+    for (const msg of [
+      { Envelope: { From: [at('gmail.com')] } },
+      { Envelope: { From: [at('brand.test'), at('other.test')] } },
+      { Envelope: { From: [] } },
+      { Envelope: { From: [{ Host: 'brand.test' }] } },
+      { Envelope: { From: [{ Mailbox: 'news' }] } },
+      { Envelope: {} },
+      null,
+    ]) {
+      expect(mayShowBimiLogo(msg), JSON.stringify(msg)).toBe(false);
+    }
   });
 });
 

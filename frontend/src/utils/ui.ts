@@ -157,6 +157,17 @@ export function getBimiAvatarUrl(domain: string): string {
  * beside any address of that brand named in To or Cc. A message with several
  * From addresses gets none: DMARC gives no verdict for it.
  */
+/**
+ * Whether bimiAvatarUrlFor could draw a logo for msg once its verdict is known:
+ * a single From address, at a domain a logo is asked for at all. The message
+ * list asks the mail server for verdicts only where the answer could change
+ * what is drawn.
+ */
+export function mayShowBimiLogo(msg: any): boolean {
+  const from = msg?.Envelope?.From;
+  return Array.isArray(from) && from.length === 1 && !!from[0]?.Mailbox && getBimiAvatarUrl(from[0]?.Host || '') !== '';
+}
+
 export function bimiAvatarUrlFor(msg: any, contact: any): string {
   if (!msg?.HasBimiPotential) return '';
   const from = msg.Envelope?.From;

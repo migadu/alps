@@ -72,6 +72,7 @@ func newIMAPTestServer(t *testing.T, messages ...string) *testServer {
 }
 
 type verdictsPage struct {
+	Scope    string
 	Verdicts map[string]struct {
 		HasBimiPotential bool
 		HasBimiFailed    bool
@@ -91,6 +92,9 @@ func TestHTTP_AuthVerdicts(t *testing.T) {
 	r.json(t, &page)
 	if len(page.Verdicts) != 2 || !page.Verdicts["1"].HasBimiPotential || page.Verdicts["2"].HasBimiPotential || !page.Verdicts["2"].HasBimiFailed {
 		t.Fatalf("verdicts %+v; want 1 passed, 2 failed, 99 absent", page.Verdicts)
+	}
+	if page.Scope == "" {
+		t.Fatal("no scope with the verdicts")
 	}
 
 	r = s.do("GET", "/mailboxes/INBOX/verdicts", nil)

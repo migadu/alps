@@ -605,7 +605,6 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 
 			msgs = append(msgs, converted)
 		}
-		p.attachAuthVerdicts(mailbox, msgs)
 
 		return msgs, total, nil
 	}
@@ -662,7 +661,6 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 			msgs[i], msgs[opp] = msgs[opp], msgs[i]
 		}
 	}
-	p.attachAuthVerdicts(mailbox, msgs)
 
 	return msgs, total, nil
 }
@@ -790,7 +788,6 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 
 			msgs = append(msgs, converted)
 		}
-		p.attachAuthVerdicts(mailbox, msgs)
 
 		return msgs, total, nil
 	}
@@ -871,7 +868,6 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		}
 	}
 
-	p.attachAuthVerdicts(mailbox, validMsgs)
 	return validMsgs, total, nil
 }
 
@@ -1339,11 +1335,17 @@ const maxCachedVerdicts = 10000
 // AuthVerdicts returns the verdicts of the messages among ids in mailbox:
 // from the session cache where it has them, and from one fetch of the rest's
 // Authentication-Results fields. A server usually reads a header field from
-// each stored message, so each message is read once per session.
-func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (map[string]provider.AuthVerdict, error) {
+// each stored message, so each message is read once per session. Listings
+// carry no verdicts for the same reason: for older mail a server answered
+// that header a third of a second per message.
+//
+// The scope is the mailbox's UIDVALIDITY: the same UID under another scope
+// is another message.
+func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (map[string]provider.AuthVerdict, string, error) {
 	if err := p.ensureMailboxSelected(mailbox); err != nil {
-		return nil, err
+		return nil, "", err
 	}
+	scope := strconv.FormatUint(uint64(p.selectedUIDValidity), 10)
 
 	p.verdictLock.Lock()
 	if p.verdicts == nil {
@@ -1369,7 +1371,7 @@ func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (m
 	}
 	p.verdictLock.Unlock()
 	if len(missing) == 0 {
-		return verdicts, nil
+		return verdicts, scope, nil
 	}
 
 	fetched, err := p.client.Fetch(missing, &imap.FetchOptions{
@@ -1377,7 +1379,7 @@ func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (m
 		BodySection: []*imap.FetchItemBodySection{authResultsSection()},
 	}).Collect()
 	if err != nil {
-		return verdicts, err
+		return verdicts, scope, err
 	}
 	p.verdictLock.Lock()
 	defer p.verdictLock.Unlock()
@@ -1389,42 +1391,7 @@ func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (m
 		cache.byUID[f.UID] = v
 		verdicts[IMAPUID(f.UID).String()] = v
 	}
-	return verdicts, nil
-}
-
-// attachAuthVerdicts sets BimiPotential and BimiFailed on listed rows.
-//
-// The verdicts come from AuthVerdicts, not the list fetch. The list fetch asks
-// for envelope, flags and structure, which a server answers from its index;
-// asked for the header too, it read every message of every thread on a
-// threaded page, hundreds per page, and the inbox timed out. A thread's
-// earlier messages are not rows: the frontend asks for theirs when the thread
-// is expanded.
-//
-// A failed fetch leaves the rows without a verdict rather than failing the
-// list: a logo is not worth the page.
-func (p *IMAPProvider) attachAuthVerdicts(mailbox string, msgs []provider.Message) {
-	ids := make([]provider.MessageID, 0, len(msgs))
-	for _, m := range msgs {
-		if m.ID != nil {
-			ids = append(ids, m.ID)
-		}
-	}
-	if len(ids) == 0 {
-		return
-	}
-	verdicts, err := p.AuthVerdicts(mailbox, ids)
-	if err != nil && p.debug {
-		fmt.Printf("auth verdicts: %v\n", err)
-	}
-	for i := range msgs {
-		if msgs[i].ID == nil {
-			continue
-		}
-		if v, ok := verdicts[msgs[i].ID.String()]; ok {
-			msgs[i].BimiPotential, msgs[i].BimiFailed = v.BimiPotential, v.BimiFailed
-		}
-	}
+	return verdicts, scope, nil
 }
 
 // WithAuthservIDs sets the authserv-ids of the receiving mail servers whose

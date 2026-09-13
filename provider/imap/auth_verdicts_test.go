@@ -36,18 +36,23 @@ func TestAuthVerdictsReadsEachMessageOnce(t *testing.T) {
 		"3": {},
 	}
 
+	scopes := map[string]bool{}
 	for round, wantReads := range []int{3, 0} {
 		before := len(s.traffic.String())
-		got, err := p.AuthVerdicts("INBOX", ids)
+		got, scope, err := p.AuthVerdicts("INBOX", ids)
 		if err != nil {
 			t.Fatal(err)
 		}
+		scopes[scope] = true
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("round %d: verdicts %+v, want %+v", round+1, got, want)
 		}
 		if reads := len(headerReads.FindAllString(s.traffic.String()[before:], -1)); reads != wantReads {
 			t.Fatalf("round %d: %d Authentication-Results reads, want %d", round+1, reads, wantReads)
 		}
+	}
+	if len(scopes) != 1 || scopes[""] {
+		t.Fatalf("scopes %v; want one non-empty scope for both rounds", scopes)
 	}
 }
 
@@ -66,7 +71,7 @@ func TestAuthVerdictsStartOverWhenUIDValidityChanges(t *testing.T) {
 
 	create()
 	appendTo(t, c, "Archive", brandMessage("passed", passedResults))
-	got, err := p.AuthVerdicts("Archive", uid1)
+	got, before, err := p.AuthVerdicts("Archive", uid1)
 	if err != nil || !got["1"].BimiPotential {
 		t.Fatalf("verdicts %+v, err %v; want UID 1 passed", got, err)
 	}
@@ -79,9 +84,12 @@ func TestAuthVerdictsStartOverWhenUIDValidityChanges(t *testing.T) {
 	}
 	create()
 	appendTo(t, c, "Archive", brandMessage("forged", forgedResults))
-	got, err = p.AuthVerdicts("Archive", uid1)
+	got, after, err := p.AuthVerdicts("Archive", uid1)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if after == before {
+		t.Fatalf("scope %q both before and after the mailbox was recreated", after)
 	}
 	if got["1"].BimiPotential || !got["1"].BimiFailed {
 		t.Fatalf("UID 1 of the recreated mailbox answered %+v, the verdict of the deleted mailbox's UID 1", got["1"])

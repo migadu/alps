@@ -116,77 +116,55 @@ const (
 // Authentication-Results fields.
 var headerReads = regexp.MustCompile(`(?i)\* \d+ FETCH \([^\r\n]*BODY\[HEADER\.FIELDS`)
 
-// The list and search fetches asked for no Authentication-Results, so a
-// listed row never carried a verdict and the list could not tell a message
-// that passed DMARC from one that did not.
-func TestListedRowsCarryTheReceiversVerdict(t *testing.T) {
-	p := memIMAP(t, &memServer{}, brandMessage("passed", passedResults), brandMessage("forged", forgedResults))
-
-	listed, _, err := p.ListMessages("INBOX", "", 0, 50)
-	if err != nil {
-		t.Fatal(err)
-	}
-	searched, _, err := p.SearchMessages("INBOX", "", "", 0, 50)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for how, msgs := range map[string][]provider.Message{"listed": listed, "searched": searched} {
-		potential := map[string]bool{}
-		for _, m := range msgs {
-			if m.Envelope != nil {
-				potential[m.Envelope.Subject] = m.BimiPotential
-			}
-		}
-		if len(potential) != 2 || !potential["passed"] || potential["forged"] {
-			t.Errorf("%s: DMARC pass by subject %v, want passed=true forged=false", how, potential)
-		}
-	}
-}
-
-// A threaded page fetches every message of every thread on it. Asking that
-// fetch for Authentication-Results too, a header a server reads from each
-// stored message rather than its index, made hundreds of reads per page on a
-// threaded inbox, and the page timed out. The verdict is read for the listed
-// rows alone, and once per session: the search that follows reads none.
-func TestThreadedListReadsTheVerdictOnlyForListedRows(t *testing.T) {
-	s := &memServer{
-		caps:    imap.CapSet{imap.CapIMAP4rev1: {}, imap.Cap("THREAD=REFERENCES"): {}},
-		threads: []imap.ThreadData{{Chain: []uint32{1, 2, 3}}, {Chain: []uint32{4}}},
-	}
-	p := memIMAP(t, s,
+// Listings read no Authentication-Results. A server reads that header from
+// each stored message rather than its index, and for older mail it answered
+// one message at a time, seconds per page, while holding the session's
+// connection. The frontend asks for verdicts after the list shows.
+func TestListingsReadNoAuthenticationResults(t *testing.T) {
+	messages := []string{
 		brandMessage("launch", passedResults),
 		brandMessage("Re: launch", passedResults),
 		brandMessage("Re: launch, again", passedResults),
 		brandMessage("forged", forgedResults),
-	)
-
-	cases := []struct {
-		how   string
-		list  func() ([]provider.Message, int, error)
-		reads int
-	}{
-		{"listed", func() ([]provider.Message, int, error) { return p.ListMessages("INBOX", "", 0, 50) }, 2},
-		{"searched", func() ([]provider.Message, int, error) { return p.SearchMessages("INBOX", "", "", 0, 50) }, 0},
 	}
-	for _, c := range cases {
-		before := len(s.traffic.String())
-		rows, _, err := c.list()
-		if err != nil {
-			t.Fatalf("%s: %v", c.how, err)
-		}
-		reads := headerReads.FindAllString(s.traffic.String()[before:], -1)
-
-		potential := map[string]bool{}
-		subMessages := 0
-		for _, r := range rows {
-			potential[r.Envelope.Subject] = r.BimiPotential
-			subMessages += len(r.SubMessages)
-		}
-		if len(rows) != 2 || subMessages != 2 || !potential["Re: launch, again"] || potential["forged"] {
-			t.Errorf("%s: %d rows, %d earlier thread messages, DMARC pass by subject %v; want 2 rows, 2 earlier messages, the thread's latest passed and forged not", c.how, len(rows), subMessages, potential)
-		}
-		if len(reads) != c.reads {
-			t.Errorf("%s: %d Authentication-Results reads for %d rows, want %d", c.how, len(reads), len(rows), c.reads)
-		}
+	servers := []struct {
+		name       string
+		server     *memServer
+		rows, subs int
+	}{
+		{"flat", &memServer{}, 4, 0},
+		{"threaded", &memServer{
+			caps:    imap.CapSet{imap.CapIMAP4rev1: {}, imap.Cap("THREAD=REFERENCES"): {}},
+			threads: []imap.ThreadData{{Chain: []uint32{1, 2, 3}}, {Chain: []uint32{4}}},
+		}, 2, 2},
+	}
+	for _, srv := range servers {
+		t.Run(srv.name, func(t *testing.T) {
+			p := memIMAP(t, srv.server, messages...)
+			listings := []struct {
+				how  string
+				list func() ([]provider.Message, int, error)
+			}{
+				{"listed", func() ([]provider.Message, int, error) { return p.ListMessages("INBOX", "", 0, 50) }},
+				{"searched", func() ([]provider.Message, int, error) { return p.SearchMessages("INBOX", "", "", 0, 50) }},
+			}
+			for _, l := range listings {
+				before := len(srv.server.traffic.String())
+				rows, _, err := l.list()
+				if err != nil {
+					t.Fatalf("%s: %v", l.how, err)
+				}
+				subs := 0
+				for _, r := range rows {
+					subs += len(r.SubMessages)
+				}
+				if len(rows) != srv.rows || subs != srv.subs {
+					t.Errorf("%s: %d rows and %d earlier thread messages, want %d and %d", l.how, len(rows), subs, srv.rows, srv.subs)
+				}
+				if reads := len(headerReads.FindAllString(srv.server.traffic.String()[before:], -1)); reads != 0 {
+					t.Errorf("%s: %d Authentication-Results reads, want none", l.how, reads)
+				}
+			}
+		})
 	}
 }
