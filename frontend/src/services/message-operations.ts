@@ -1,6 +1,6 @@
 import { messageSync } from './message-sync';
 import { fetchWithTimeout } from '../utils/fetch-utils';
-import { FLAG_FLAGGED, FLAG_SEEN } from '../utils/flags';
+import { FLAG_SEEN } from '../utils/flags';
 import { encodeMailboxPath } from '../utils/folders';
 import { Logger } from '../utils/logger';
 
@@ -94,29 +94,6 @@ export class MessageOperationsService {
       Logger.error('Failed to set flag', err);
       return { ok: false, reason: 'failed', applied };
     }
-  }
-
-  /**
-   * Toggles the starred state of a message and returns the updated message object.
-   */
-  async toggleStar(mailbox: string, message: any): Promise<any> {
-    const uid = message?.UID;
-    if (!uid) return message;
-    
-    const isStarred = message.Flags?.includes(FLAG_FLAGGED);
-    const flagAction = isStarred ? 'remove' : 'add';
-    
-    const { ok: success } = await this.setFlag(mailbox, [String(uid)], [FLAG_FLAGGED], flagAction);
-    if (success) {
-      const newMsg = { ...message };
-      if (isStarred) {
-        newMsg.Flags = newMsg.Flags.filter((f: string) => f !== FLAG_FLAGGED);
-      } else {
-        newMsg.Flags = [...(newMsg.Flags || []), FLAG_FLAGGED];
-      }
-      return newMsg;
-    }
-    return message;
   }
 
 

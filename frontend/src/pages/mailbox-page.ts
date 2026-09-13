@@ -1015,10 +1015,12 @@ export class MailboxPage extends LitElement {
     this.updateLocalMessageFlags([String(msg.UID)], FLAG_FLAGGED, action);
 
     try {
-      const { ok: success } = await messageOperations.setFlag(this.currentMailbox, [String(msg.UID)], [FLAG_FLAGGED], action);
-      if (!success) {
-        // Revert on failure
+      const result = await messageOperations.setFlag(this.currentMailbox, [String(msg.UID)], [FLAG_FLAGGED], action);
+      if (!result.ok) {
+        // Revert on failure, and say so: a star that flicks back on its own reads
+        // as a misclick, and the toolbar's star reports the same refusal.
         this.updateLocalMessageFlags([String(msg.UID)], FLAG_FLAGGED, isStarred ? 'add' : 'remove');
+        this.reportFlagFailure(result);
       }
     } catch (err) {
       // Revert on failure
@@ -1068,9 +1070,17 @@ export class MailboxPage extends LitElement {
           } else {
             this.reportFlagFailure(starred);
           }
-        } else {
-          this.selectedMessage = await messageOperations.toggleStar(this.currentMailbox, this.selectedMessage);
-          this.updateLocalMessageFlags([String(this.selectedMessage.UID)], FLAG_FLAGGED, this.selectedMessage.Flags?.includes(FLAG_FLAGGED) ? 'add' : 'remove');
+        } else if (currentMsg?.UID) {
+          // setFlag, not toggleStar: that returned the message unchanged on a
+          // refusal, so the star stayed as it was and nothing said why, while the
+          // bulk branch above reports the same refusal.
+          const op = currentMsg.Flags?.includes(FLAG_FLAGGED) ? 'remove' : 'add';
+          const starred = await messageOperations.setFlag(this.currentMailbox, [String(currentMsg.UID)], [FLAG_FLAGGED], op);
+          if (starred.ok) {
+            this.updateLocalMessageFlags([String(currentMsg.UID)], FLAG_FLAGGED, op);
+          } else {
+            this.reportFlagFailure(starred);
+          }
         }
       } else if (action === 'addTag' || action === 'removeTag') {
         const tags = e.detail.tags || (e.detail.folder ? [e.detail.folder] : []);
