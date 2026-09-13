@@ -3,7 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { calendarService, getCalendarColor } from './calendar-service';
+import { calendarService, getCalendarColor, weekStart } from './calendar-service';
 import type { CalendarData, EventData } from './calendar-service';
 import { sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar';
@@ -418,16 +418,19 @@ export class CalendarPage extends LitElement {
             } else if (this.viewMode === 'month') {
                 const [y, m] = dateStr.split('-');
                 if (y && m) {
-                    newDate.setFullYear(parseInt(y, 10));
-                    newDate.setMonth(parseInt(m, 10) - 1);
-                    newDate.setDate(1);
+                    // Constructed, not set field by field. setMonth on the 29th–31st
+                    // rolls into the following month when the target month is
+                    // shorter — January 31 becomes "April 31", which is May 1 —
+                    // before setDate(1) runs, so a link to April opened May on the
+                    // last days of a long month.
+                    newDate = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
                 }
             } else {
                 const [y, m, d] = dateStr.split('-');
                 if (y && m && d) {
-                    newDate.setFullYear(parseInt(y, 10));
-                    newDate.setMonth(parseInt(m, 10) - 1);
-                    newDate.setDate(parseInt(d, 10));
+                    // As above: set field by field from the 31st, February 15
+                    // became March 15.
+                    newDate = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
                 }
             }
             
@@ -529,8 +532,7 @@ export class CalendarPage extends LitElement {
                 start.setDate(start.getDate() - 14);
                 end.setDate(end.getDate() + 14);
             } else if (this.viewMode === 'week') {
-                start = new Date(this.currentDate);
-                start.setDate(start.getDate() - start.getDay() + 1); // Monday
+                start = weekStart(this.currentDate);
                 end = new Date(start);
                 end.setDate(start.getDate() + 7);
             } else {
@@ -640,8 +642,43 @@ export class CalendarPage extends LitElement {
         await this.fetchData();
     }
 
+    /** Does the period currently on screen include `date`? */
+    private viewShows(date: Date): boolean {
+        const anchor = this.currentDate;
+        if (this.viewMode === 'year') return date.getFullYear() === anchor.getFullYear();
+        if (this.viewMode === 'month') {
+            return date.getFullYear() === anchor.getFullYear() && date.getMonth() === anchor.getMonth();
+        }
+        if (this.viewMode === 'week') {
+            const start = weekStart(anchor);
+            const end = new Date(start);
+            end.setDate(start.getDate() + 7);
+            return date >= start && date < end;
+        }
+        return date.toDateString() === anchor.toDateString();
+    }
+
+    /**
+     * The day a view switch lands on.
+     *
+     * In month and year view `currentDate` is not a day the user chose: those
+     * hashes carry no day-of-month, so parseHash anchors it to the 1st. Handing
+     * that anchor straight to Day view opened the 1st of the month while the user
+     * was looking at the CURRENT month — on first visit too, since #/calendar
+     * redirects to this month. Today wins whenever the period being left contains
+     * it; otherwise the anchor stands, so switching to Day from a month the user
+     * navigated to keeps that month instead of jumping back to now.
+     */
+    private dayForViewSwitch(mode: ViewMode): Date {
+        if (mode === 'day' || mode === 'week') {
+            const today = new Date();
+            if (this.viewShows(today)) return today;
+        }
+        return this.currentDate;
+    }
+
     private setViewMode(mode: ViewMode) {
-        this.navigate(mode, this.currentDate);
+        this.navigate(mode, this.dayForViewSwitch(mode));
     }
 
     private handleDateSelected(date: Date) {

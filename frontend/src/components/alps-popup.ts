@@ -519,6 +519,15 @@ export class AlpsPopup extends LitElement {
       clearTimeout(this._closeTimeout);
       this._closeTimeout = null;
     }
+    // Being torn down is not a close. updated() only acts when openState
+    // CHANGES, so an element removed while open never runs its close branch:
+    // the dialog leaves the top layer with the element, but openState stays
+    // true, and an instance that comes back believes it is still open and never
+    // calls show()/showModal() again — a menu that cannot be opened. Closing
+    // here makes teardown and state agree however it is reached.
+    const dialog = this.shadowRoot?.querySelector('.popup-dialog') as HTMLDialogElement | null;
+    if (dialog?.open) dialog.close();
+    this.openState = false;
   }
 
   private _handleMouseEnter = () => {

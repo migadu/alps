@@ -616,14 +616,22 @@ export class MailboxPage extends LitElement {
       for (const mb of data.Mailboxes) {
         const mbName = mb.Name || mb.Mailbox;
         const oldMb = this.mailboxes.find((m: any) => (m.Name || m.Mailbox) === mbName);
-        const prevTotal = oldMb ? oldMb.Total : undefined;
-        
-        if (prevTotal !== undefined && mb.Total !== undefined && mb.Total > prevTotal) {
-          if (!isInitialLoad && background) {
+        // New mail is BOTH counts rising: the total and the unseen. Either alone is a
+        // false positive. The total alone rang for the user's own moves and copies —
+        // archive fifty messages and the next background sync chimed, because
+        // Archive's total went up — and for another client appending read mail. The
+        // unseen alone would ring for the user marking a message unread. The smaller
+        // rise is the count, so a copy of 200 messages carrying 3 unread says 3. Still
+        // a heuristic: an arrival offset by a delete between polls is missed.
+        if (oldMb && !isInitialLoad && background
+          && mb.Total !== undefined && oldMb.Total !== undefined
+          && mb.Unseen !== undefined && oldMb.Unseen !== undefined) {
+          const arrived = Math.min(mb.Total - oldMb.Total, mb.Unseen - oldMb.Unseen);
+          if (arrived > 0) {
             soundTriggered = true;
             if (mbName.toUpperCase() === 'INBOX') {
               notificationTriggered = true;
-              totalNewInboxMessages += (mb.Total - prevTotal);
+              totalNewInboxMessages += arrived;
             }
           }
         }

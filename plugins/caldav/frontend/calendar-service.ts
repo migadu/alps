@@ -150,4 +150,23 @@ class CalendarService {
     }
 }
 
+/**
+ * The Monday that begins `date`'s week, at midnight.
+ *
+ * Shared because the page and the week view must agree on it: the week view
+ * draws seven days from here, and the page fetches the events for that window.
+ * The page computed it as `getDate() - getDay() + 1`, which reads a SUNDAY
+ * (`getDay() === 0`) as the Monday AFTER it, while the week view corrected for
+ * Sunday in a private copy — so on Sundays the page fetched next week's events
+ * for the week the grid was drawing, and the day the user was looking at showed
+ * none. The window also began at whatever time of day the page had loaded, so a
+ * load at 14:00 left Monday morning outside the fetch.
+ */
+export function weekStart(date: Date): Date {
+    const start = new Date(date);
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+    start.setHours(0, 0, 0, 0);
+    return start;
+}
+
 export const calendarService = new CalendarService();

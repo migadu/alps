@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit';
+import { weekStart } from './calendar-service';
 import { customElement, property } from 'lit/decorators.js';
 import type { EventData } from './calendar-service';
 import './calendar-time-grid';
@@ -18,10 +19,8 @@ export class CalendarWeekView extends LitElement {
 
     private getWeekDays() {
         const days = [];
-        const current = new Date(this.date);
-        let dayOfWeek = current.getDay();
-        if (dayOfWeek === 0) dayOfWeek = 7;
-        current.setDate(current.getDate() - (dayOfWeek - 1));
+        // The same Monday the page fetches from — see weekStart.
+        const current = weekStart(this.date);
 
         for (let i = 0; i < 7; i++) {
             days.push(new Date(current));

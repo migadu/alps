@@ -203,6 +203,26 @@ export class FolderList extends LitElement {
       display: flex;
     }
 
+    /* The lock-up guard, keyed on the menu's own state. A click-triggered
+       alps-popup opens with dialog.showModal(), which makes the whole document
+       inert until it closes. If the container of that still-open dialog is then
+       display: none, the user gets an INVISIBLE modal: nothing on screen, every
+       click dead, only Escape gets out. Two routes reached it:
+
+       1. Specificity. .folder-item.active .folder-actions is (0,3,0) and
+          .folder-actions.popup-open is (0,2,0), so on the SELECTED folder the
+          open rule lost. Hover held the container open until the modal opened,
+          but hover does not reach a modal dialog's ancestors.
+       2. A desynced marker. .popup-open mirrors activeKebabMenu, and the nested
+          Order submenu's popup-close bubbled (composed) to the outer kebab's
+          handler and cleared it while the outer menu was still open.
+
+       :has() reads the popup's reflected open attribute, which cannot desync,
+       and (0,3,1) outranks every display: none above. */
+    .folder-item .folder-actions:has(alps-popup[open]) {
+      display: flex;
+    }
+
     .folder-actions:focus-within ~ .folder-badge,
     .folder-actions.popup-open ~ .folder-badge {
       display: none;
@@ -835,7 +855,20 @@ export class FolderList extends LitElement {
                   <div class="dropdown-divider"></div>
                   
                   <!-- Natively nested Order submenu via extended alps-popup -->
-                  <alps-popup position="right" align="top" triggerOn="hover" @click=${(e: Event) => e.stopPropagation()}>
+                  <!--
+                    Open and close are stopped as well as the click: they are
+                    dispatched {bubbles, composed}, so this submenu's popup-close
+                    reached the OUTER kebab's @popup-close and cleared
+                    activeKebabMenu while the outer menu was still open.
+                  -->
+                  <alps-popup
+                    position="right"
+                    align="top"
+                    triggerOn="hover"
+                    @click=${(e: Event) => e.stopPropagation()}
+                    @popup-open=${(e: Event) => e.stopPropagation()}
+                    @popup-close=${(e: Event) => e.stopPropagation()}
+                  >
                     <button slot="trigger" class="dropdown-item submenu-trigger">
                       <div class="trigger-label">
                         ${renderIcon('sortAscending')} <span class="item-text">${this.i18nStore?.t('folderList.order')}</span>
