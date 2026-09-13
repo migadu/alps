@@ -94,6 +94,13 @@ const DEFAULT_SETTINGS: SettingsState = {
 export class SettingsStore extends EventTarget {
   private state: SettingsState;
   private initialFetchCompleted = false;
+  /** The last read of the server record failed, so saving stays blocked until a
+   * read succeeds; see _saveBackendSettings. */
+  private settingsReadFailed = false;
+  private rereadInFlight = false;
+  /** Keys changed in this browser while the record could not be read. A re-read
+   * keeps these over the server's values, then saves them. */
+  private keysChangedUnread = new Set<string>();
 
   constructor() {
     super();
@@ -109,6 +116,8 @@ export class SettingsStore extends EventTarget {
 
     window.addEventListener('session-cleared', () => {
       this.initialFetchCompleted = false;
+      this.settingsReadFailed = false;
+      this.keysChangedUnread.clear();
       this.state = this.loadSettings();
       this.applyTheme();
       this.notify();
@@ -262,6 +271,9 @@ export class SettingsStore extends EventTarget {
     delete backendUpdates.loginUsername;
     
     if (Object.keys(backendUpdates).length > 0) {
+      if (this.settingsReadFailed) {
+        for (const key of Object.keys(backendUpdates)) this.keysChangedUnread.add(key);
+      }
       return this._saveBackendSettings(this.state);
     }
   }
@@ -279,6 +291,7 @@ export class SettingsStore extends EventTarget {
     }
 
     let needBackendSave = false;
+    let readOk = false;
 
     try {
       const response = await fetch('/settings');
@@ -288,6 +301,7 @@ export class SettingsStore extends EventTarget {
       }
       if (response.ok) {
         const data = await response.json();
+        readOk = true;
         const updates: Partial<SettingsState> = {};
         
         if (data.MaxAttachmentMiB !== undefined) {
@@ -350,6 +364,12 @@ export class SettingsStore extends EventTarget {
             needBackendSave = true;
           }
 
+          // What was changed here while the record could not be read wins over
+          // the server's copy of those keys; everything else is the server's.
+          for (const key of this.keysChangedUnread) {
+            delete (updates as Record<string, unknown>)[key];
+          }
+
           if (Object.keys(updates).length > 0) {
             this.state = { ...this.state, ...updates };
             this.saveSettings();
@@ -361,7 +381,18 @@ export class SettingsStore extends EventTarget {
     } catch (e) {
       Logger.error('Failed to fetch backend settings', e);
     } finally {
-      this.initialFetchCompleted = true;
+      // Only a record actually READ unblocks saving. This was set on every exit,
+      // failures included, and a save sends the WHOLE record: after one failed
+      // read at sign-in (a 500, a moment offline) the next toggle PUT this
+      // browser's state over every setting the account had saved elsewhere, and
+      // on a browser that had never seen the account that state was the defaults.
+      this.initialFetchCompleted = readOk;
+      this.settingsReadFailed = !readOk;
+    }
+
+    if (readOk && this.keysChangedUnread.size > 0) {
+      this.keysChangedUnread.clear();
+      needBackendSave = true;
     }
 
     if (needBackendSave) {
@@ -390,6 +421,19 @@ export class SettingsStore extends EventTarget {
 
   private async _saveBackendSettings(state: SettingsState) {
     if (!this.initialFetchCompleted) {
+      // A PUT replaces the whole record, so nothing is sent before the record has
+      // been read. If that read failed, a change is the moment to try it again; a
+      // successful re-read folds the server's values in and saves the result
+      // itself.
+      if (this.settingsReadFailed && !this.rereadInFlight) {
+        this.rereadInFlight = true;
+        try {
+          await this._fetchBackendSettings();
+        } finally {
+          this.rereadInFlight = false;
+        }
+        if (!this.initialFetchCompleted) this.reportSaveFailure();
+      }
       return;
     }
     if (this.saveInFlight) {
