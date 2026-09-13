@@ -987,7 +987,12 @@ export class MessageList extends LitElement {
 
     if (!allContacts.length) allContacts = [{}];
 
-    const fallbackKey = isDraftOrSent ? 'messageList.noRecipient' : 'messageList.unknownSender';
+    // The reader's noRecipients string, which every locale defines. The list used
+    // a noRecipient key of its own that no locale defines, and t() answers a
+    // missing path with the path itself, so a draft with no recipients was listed
+    // under the raw key. An audit of literal t() calls cannot see a key that
+    // reaches t() through a variable, as this one does.
+    const fallbackKey = isDraftOrSent ? 'messageReader.noRecipients' : 'messageList.unknownSender';
 
     const displayNames = allContacts.map(c => {
       const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
