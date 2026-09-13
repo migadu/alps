@@ -1908,6 +1908,37 @@ func handleDelete(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
 }
 
+// mayEmptyMailbox reports whether name is a Trash or Junk mailbox, the only two
+// this endpoint empties, and emptying is permanent.
+//
+// By special-use attribute first. The name fallback is for servers that
+// advertise no roles, so it applies only to a role no mailbox has claimed: it
+// used to accept any mailbox called trash, junk, spam or deleted items, so on a
+// server whose \Trash is "Deleted Items" a user's own folder named "Trash" could
+// be emptied. The frontend has offered Empty by role only since c5e0f81; this is
+// the check that holds for a request that did not come from that button.
+func mayEmptyMailbox(name string, mailboxes []provider.Mailbox) bool {
+	trashClaimed, junkClaimed := false, false
+	for _, mb := range mailboxes {
+		for _, attr := range mb.Attributes {
+			isTrash := strings.EqualFold(attr, string(imap.MailboxAttrTrash))
+			isJunk := strings.EqualFold(attr, string(imap.MailboxAttrJunk))
+			if mb.Name == name && (isTrash || isJunk) {
+				return true
+			}
+			trashClaimed = trashClaimed || isTrash
+			junkClaimed = junkClaimed || isJunk
+		}
+	}
+	switch strings.ToLower(name) {
+	case "trash", "deleted items":
+		return !trashClaimed
+	case "junk", "spam":
+		return !junkClaimed
+	}
+	return false
+}
+
 func handleEmptyMailbox(ctx *alps.Context) error {
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
@@ -1921,28 +1952,7 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 			return fmt.Errorf("failed to list mailboxes for validation: %v", err)
 		}
 
-		isSpamOrTrash := false
-		for _, mb := range mailboxes {
-			if mb.Name == mboxName {
-				for _, attr := range mb.Attributes {
-					if strings.EqualFold(attr, string(imap.MailboxAttrTrash)) || strings.EqualFold(attr, string(imap.MailboxAttrJunk)) {
-						isSpamOrTrash = true
-						break
-					}
-				}
-				break
-			}
-		}
-
-		// Fallback check by name if attributes are missing
-		if !isSpamOrTrash {
-			lowerName := strings.ToLower(mboxName)
-			if lowerName == "trash" || lowerName == "junk" || lowerName == "spam" || lowerName == "deleted items" {
-				isSpamOrTrash = true
-			}
-		}
-
-		if !isSpamOrTrash {
+		if !mayEmptyMailbox(mboxName, mailboxes) {
 			return errEmptyNotAllowed
 		}
 
