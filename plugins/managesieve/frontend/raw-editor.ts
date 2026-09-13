@@ -141,10 +141,16 @@ export class RawEditor extends LitElement {
 
 	private async validate() {
 		this.isValidating = true;
+		// The verdict is about the text that was SENT. If the script was edited while
+		// the check was in flight, a toast would vouch for, or blame, text the server
+		// never saw, so a late verdict is dropped.
+		const sent = this.script;
 		try {
-			await managesieveService.validateScript(this.script);
+			await managesieveService.validateScript(sent);
+			if (this.script !== sent) return;
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t('managesieve.toast.valid'), timeout: 3000 } }));
 		} catch (e: any) {
+			if (this.script !== sent) return;
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: e.message || this.i18nStore.t('managesieve.toast.networkError'), timeout: 5000, type: 'error' } }));
 		} finally {
 			this.isValidating = false;
