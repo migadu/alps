@@ -60,6 +60,11 @@ describe('what "remove all tags" clears', () => {
     expect(getRemovableTags(['$mdnsent', '$FORWARDED'])).toEqual([]);
   });
 
+  it('keeps the phishing warning, in any case', () => {
+    expect(getRemovableTags(['$Phishing', '$label1'])).toEqual(['$label1']);
+    expect(getRemovableTags(['$phishing', '$PHISHING', 'receipts'])).toEqual(['receipts']);
+  });
+
   it('answers empty for no flags', () => {
     expect(getRemovableTags(undefined)).toEqual([]);
   });
