@@ -45,6 +45,8 @@ export class MailboxPage extends LitElement {
   i18nStore!: I18nStore;
 
   @state() private showDeleteConfirm = false;
+  /** The last foreground listing failed; cleared when the next one starts. */
+  @state() private listLoadFailed = false;
   @state() private pendingDeleteDetails: any = null;
 
   private markReadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -605,11 +607,13 @@ export class MailboxPage extends LitElement {
     this.isSyncing = true;
     if (!detail.background) {
       this.loadingMessages = true;
+      this.listLoadFailed = false;
     }
   };
 
   private handleSyncSuccess = (e: Event) => {
     this.isSyncing = false;
+    this.listLoadFailed = false;
     const { data, background } = (e as CustomEvent).detail;
 
     if (data.Username) {
@@ -747,6 +751,10 @@ export class MailboxPage extends LitElement {
     const { background } = (e as CustomEvent).detail;
     if (!background) {
       this.loadingMessages = false;
+      // Said, rather than left to the list's empty branch: with no messages and
+      // no spinner it painted "No messages", a claim about a folder this client
+      // had just failed to read, with nothing offered to try again.
+      this.listLoadFailed = true;
     }
   };
 
@@ -1499,6 +1507,7 @@ export class MailboxPage extends LitElement {
               .filterQuery=${this.filterQuery}
               .sortOrder=${this.sortOrder}
               .syncing=${this.isSyncing}
+              .loadFailed=${this.listLoadFailed}
               @refresh=${() => {
         this.currentPage = 0;
 

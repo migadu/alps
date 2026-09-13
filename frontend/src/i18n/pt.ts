@@ -215,6 +215,8 @@ export const pt = {
     filterStarred: 'Filtrar por favoritos',
     filterUnread: 'Filtrar por não lidos',
     noMessages: 'Nenhuma mensagem',
+    loadError: 'Não foi possível carregar esta pasta.',
+    loadErrorRetry: 'Tentar novamente',
     loading: 'Carregando...',
     unknownSender: 'Remetente Desconhecido',
     unknown: 'Desconhecido',

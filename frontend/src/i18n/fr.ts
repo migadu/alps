@@ -180,6 +180,8 @@ export const fr = {
     filterStarred: 'Filtrer par favoris',
     filterUnread: 'Filtrer par non lus',
     noMessages: 'Aucun message',
+    loadError: 'Impossible de charger ce dossier.',
+    loadErrorRetry: 'Réessayer',
     loading: 'Chargement...',
     unknownSender: 'Expéditeur inconnu',
     unknown: 'Inconnu',

@@ -180,6 +180,8 @@ export const es = {
     filterStarred: 'Filtrar por destacados',
     filterUnread: 'Filtrar por no leídos',
     noMessages: 'No hay mensajes',
+    loadError: 'No se pudo cargar esta carpeta.',
+    loadErrorRetry: 'Reintentar',
     loading: 'Cargando...',
     unknownSender: 'Remitente desconocido',
     unknown: 'Desconocido',

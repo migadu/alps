@@ -180,6 +180,8 @@ export const it = {
     filterStarred: 'Filtra per speciali',
     filterUnread: 'Filtra per non letti',
     noMessages: 'Nessun messaggio',
+    loadError: 'Impossibile caricare questa cartella.',
+    loadErrorRetry: 'Riprova',
     loading: 'Caricamento...',
     unknownSender: 'Mittente sconosciuto',
     unknown: 'Sconosciuto',

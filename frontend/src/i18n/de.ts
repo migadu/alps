@@ -182,6 +182,8 @@ export const de: TranslationDictionary = {
     filterStarred: 'Nach markierten filtern',
     filterUnread: 'Nach ungelesenen filtern',
     noMessages: 'Keine Nachrichten',
+    loadError: 'Dieser Ordner konnte nicht geladen werden.',
+    loadErrorRetry: 'Erneut versuchen',
     loading: 'Wird geladen...',
     unknownSender: 'Unbekannter Absender',
     unknown: 'Unbekannt',

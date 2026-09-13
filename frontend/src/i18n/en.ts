@@ -222,6 +222,8 @@ export const en = {
     filterStarred: 'Filter by starred',
     filterUnread: 'Filter by unread',
     noMessages: 'No messages',
+    loadError: 'Could not load this folder.',
+    loadErrorRetry: 'Try again',
     loading: 'Loading...',
     unknownSender: 'Unknown Sender',
     unknown: 'Unknown',

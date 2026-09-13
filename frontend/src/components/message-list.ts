@@ -47,6 +47,8 @@ export class MessageList extends LitElement {
 
   @property({ type: Object }) selectedMessages = new Set<string>();
   @property({ type: Boolean }) syncing = false;
+  /** The last listing failed: say so, rather than claim the folder is empty. */
+  @property({ type: Boolean }) loadFailed = false;
   @state() private isSpinning = false;
   @state() private isScrolled = false;
   @state() private isAtBottom = false;
@@ -363,6 +365,11 @@ export class MessageList extends LitElement {
       justify-content: center;
       height: 100%;
       color: var(--text-muted);
+    }
+
+    .empty-state.load-error {
+      flex-direction: column;
+      gap: 12px;
     }
 
     alps-pagination {
@@ -1229,6 +1236,12 @@ export class MessageList extends LitElement {
         ${this.loading && this.messages.length === 0 ? html`
           <alps-loader full-height .text=${this.i18nStore?.t('messageList.loading') || 'Loading...'}></alps-loader>
         ` :
+        this.messages.length === 0 && this.loadFailed ? html`<div class="empty-state load-error">
+          <div>${this.i18nStore?.t('messageList.loadError')}</div>
+          <alps-button variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('refresh'))}>
+            ${this.i18nStore?.t('messageList.loadErrorRetry')}
+          </alps-button>
+        </div>` :
         this.messages.length === 0 ? html`<div class="empty-state">${this.i18nStore?.t('messageList.noMessages')}</div>` :
           repeat(this.messages, msg => msg.UID, msg => html`
             ${this.renderMessageItem(msg, false)}

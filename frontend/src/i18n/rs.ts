@@ -180,6 +180,8 @@ export const rs = {
     filterStarred: 'Филтрирај по означеним',
     filterUnread: 'Филтрирај по непрочитаним',
     noMessages: 'Нема порука',
+    loadError: 'Није могуће учитати ову фасциклу.',
+    loadErrorRetry: 'Покушај поново',
     loading: 'Учитавање...',
     unknownSender: 'Непознат пошиљалац',
     unknown: 'Непознато',
