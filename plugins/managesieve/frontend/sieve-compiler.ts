@@ -155,8 +155,14 @@ export class SieveCompiler {
 		}
 		
 		if (field === 'body') {
-			// Body extension required in reality, but simplified for now
-			return `body :text :${c.operator === 'contains' ? 'contains' : 'is'} ${sieveString(c.value)}`;
+			// The editor offers all four text operators for Body, and this read
+			// only `contains`: `not_contains` and `not_is` both compiled to a
+			// positive `:is`. A rule meant as "body does not contain X" became
+			// "body is exactly X" — inverted, and almost never matching — with
+			// nothing on screen to say so. `require ["body"]` is added in compile().
+			const negate = c.operator === 'not_contains' || c.operator === 'not_is' ? 'not ' : '';
+			const match = c.operator === 'is' || c.operator === 'not_is' ? ':is' : ':contains';
+			return `${negate}body :text ${match} ${sieveString(c.value)}`;
 		}
 		
 		// Header match
