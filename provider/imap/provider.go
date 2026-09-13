@@ -35,8 +35,14 @@ type IMAPProvider struct {
 	store       provider.Store
 	debug       bool
 	authservIDs []string
-	dateCache   map[string]map[uint32]time.Time
-	cacheLock   sync.RWMutex
+
+	// selectedUIDValidity is the UIDVALIDITY the selected mailbox was
+	// selected with; ensureMailboxSelected is the only place that selects.
+	selectedUIDValidity uint32
+	verdictLock         sync.Mutex
+	verdicts            map[string]*mailboxVerdicts
+	dateCache           map[string]map[uint32]time.Time
+	cacheLock           sync.RWMutex
 }
 
 func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
@@ -282,9 +288,11 @@ func (p *IMAPProvider) UnsubscribeMailbox(name string) error {
 // ensureMailboxSelected ensures the mailbox is selected
 func (p *IMAPProvider) ensureMailboxSelected(mboxName string) error {
 	if mbox := p.client.Mailbox(); mbox == nil || mbox.Name != mboxName {
-		if _, err := p.client.Select(mboxName, nil).Wait(); err != nil {
+		data, err := p.client.Select(mboxName, nil).Wait()
+		if err != nil {
 			return fmt.Errorf("failed to select mailbox: %v", err)
 		}
+		p.selectedUIDValidity = data.UIDValidity
 	}
 	return nil
 }
@@ -597,7 +605,7 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 
 			msgs = append(msgs, converted)
 		}
-		p.attachAuthVerdicts(msgs)
+		p.attachAuthVerdicts(mailbox, msgs)
 
 		return msgs, total, nil
 	}
@@ -654,7 +662,7 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 			msgs[i], msgs[opp] = msgs[opp], msgs[i]
 		}
 	}
-	p.attachAuthVerdicts(msgs)
+	p.attachAuthVerdicts(mailbox, msgs)
 
 	return msgs, total, nil
 }
@@ -782,7 +790,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 
 			msgs = append(msgs, converted)
 		}
-		p.attachAuthVerdicts(msgs)
+		p.attachAuthVerdicts(mailbox, msgs)
 
 		return msgs, total, nil
 	}
@@ -863,7 +871,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		}
 	}
 
-	p.attachAuthVerdicts(validMsgs)
+	p.attachAuthVerdicts(mailbox, validMsgs)
 	return validMsgs, total, nil
 }
 
@@ -1317,50 +1325,104 @@ func authResultsSection() *imap.FetchItemBodySection {
 	}
 }
 
-// attachAuthVerdicts sets BimiPotential and BimiFailed on listed rows, from a
-// fetch of their Authentication-Results fields alone.
-//
-// It is a fetch of its own, for the rows only. The list fetch asks for
-// envelope, flags and structure, which a server answers from its index; a
-// header field it usually reads from each stored message. Asked in the list
-// fetch, that read covered every message of every thread on a threaded page,
-// hundreds per page, and the inbox timed out. A thread's earlier messages get
-// no verdict here: their rows draw initials, and the reader fetches the
-// verdict when one is opened.
-//
-// A failed fetch leaves the rows without a verdict rather than failing the
-// list: a logo is not worth the page.
-func (p *IMAPProvider) attachAuthVerdicts(msgs []provider.Message) {
-	var uids imap.UIDSet
-	for _, m := range msgs {
-		if uid, ok := m.ID.(IMAPUID); ok {
-			uids.AddNum(imap.UID(uid))
+// mailboxVerdicts caches one mailbox's verdicts for the session. A message's
+// headers never change under one UIDVALIDITY, so an entry holds until the
+// mailbox's UIDVALIDITY does.
+type mailboxVerdicts struct {
+	uidValidity uint32
+	byUID       map[imap.UID]provider.AuthVerdict
+}
+
+// maxCachedVerdicts bounds one mailbox's cache; past it the cache starts over.
+const maxCachedVerdicts = 10000
+
+// AuthVerdicts returns the verdicts of the messages among ids in mailbox:
+// from the session cache where it has them, and from one fetch of the rest's
+// Authentication-Results fields. A server usually reads a header field from
+// each stored message, so each message is read once per session.
+func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (map[string]provider.AuthVerdict, error) {
+	if err := p.ensureMailboxSelected(mailbox); err != nil {
+		return nil, err
+	}
+
+	p.verdictLock.Lock()
+	if p.verdicts == nil {
+		p.verdicts = make(map[string]*mailboxVerdicts)
+	}
+	cache := p.verdicts[mailbox]
+	if cache == nil || cache.uidValidity != p.selectedUIDValidity || len(cache.byUID) > maxCachedVerdicts {
+		cache = &mailboxVerdicts{uidValidity: p.selectedUIDValidity, byUID: make(map[imap.UID]provider.AuthVerdict)}
+		p.verdicts[mailbox] = cache
+	}
+	verdicts := make(map[string]provider.AuthVerdict, len(ids))
+	var missing imap.UIDSet
+	for _, id := range ids {
+		uid, ok := id.(IMAPUID)
+		if !ok {
+			continue
+		}
+		if v, ok := cache.byUID[imap.UID(uid)]; ok {
+			verdicts[uid.String()] = v
+		} else {
+			missing.AddNum(imap.UID(uid))
 		}
 	}
-	if len(uids) == 0 {
-		return
+	p.verdictLock.Unlock()
+	if len(missing) == 0 {
+		return verdicts, nil
 	}
-	fetched, err := p.client.Fetch(uids, &imap.FetchOptions{
+
+	fetched, err := p.client.Fetch(missing, &imap.FetchOptions{
 		UID:         true,
 		BodySection: []*imap.FetchItemBodySection{authResultsSection()},
 	}).Collect()
 	if err != nil {
-		if p.debug {
-			fmt.Printf("auth verdicts: fetch failed: %v\n", err)
+		return verdicts, err
+	}
+	p.verdictLock.Lock()
+	defer p.verdictLock.Unlock()
+	for _, f := range fetched {
+		var v provider.AuthVerdict
+		if b := f.FindBodySection(authResultsSection()); b != nil {
+			v.BimiPotential, v.BimiFailed = authVerdict(b, p.authservIDs)
 		}
+		cache.byUID[f.UID] = v
+		verdicts[IMAPUID(f.UID).String()] = v
+	}
+	return verdicts, nil
+}
+
+// attachAuthVerdicts sets BimiPotential and BimiFailed on listed rows.
+//
+// The verdicts come from AuthVerdicts, not the list fetch. The list fetch asks
+// for envelope, flags and structure, which a server answers from its index;
+// asked for the header too, it read every message of every thread on a
+// threaded page, hundreds per page, and the inbox timed out. A thread's
+// earlier messages are not rows: the frontend asks for theirs when the thread
+// is expanded.
+//
+// A failed fetch leaves the rows without a verdict rather than failing the
+// list: a logo is not worth the page.
+func (p *IMAPProvider) attachAuthVerdicts(mailbox string, msgs []provider.Message) {
+	ids := make([]provider.MessageID, 0, len(msgs))
+	for _, m := range msgs {
+		if m.ID != nil {
+			ids = append(ids, m.ID)
+		}
+	}
+	if len(ids) == 0 {
 		return
 	}
-	fields := make(map[imap.UID][]byte, len(fetched))
-	for _, f := range fetched {
-		fields[f.UID] = f.FindBodySection(authResultsSection())
+	verdicts, err := p.AuthVerdicts(mailbox, ids)
+	if err != nil && p.debug {
+		fmt.Printf("auth verdicts: %v\n", err)
 	}
 	for i := range msgs {
-		uid, ok := msgs[i].ID.(IMAPUID)
-		if !ok {
+		if msgs[i].ID == nil {
 			continue
 		}
-		if b := fields[imap.UID(uid)]; b != nil {
-			msgs[i].BimiPotential, msgs[i].BimiFailed = authVerdict(b, p.authservIDs)
+		if v, ok := verdicts[msgs[i].ID.String()]; ok {
+			msgs[i].BimiPotential, msgs[i].BimiFailed = v.BimiPotential, v.BimiFailed
 		}
 	}
 }

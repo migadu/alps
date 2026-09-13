@@ -201,3 +201,19 @@ func ParseReferences(refStr string) []string {
 	}
 	return refs
 }
+
+// AuthVerdict is a message's authentication verdict, as its receiving server
+// recorded it.
+type AuthVerdict struct {
+	BimiPotential bool // DMARC passed, so a brand logo may be shown
+	BimiFailed    bool // DMARC, DKIM or SPF failed
+}
+
+// AuthVerdictProvider is implemented by a provider that can read messages'
+// authentication verdicts on request. A provider without it shows no brand
+// logos beyond the verdicts its listings carry.
+type AuthVerdictProvider interface {
+	// AuthVerdicts returns the verdicts of the messages among ids that exist in
+	// mailbox, keyed by the ID's String().
+	AuthVerdicts(mailbox string, ids []MessageID) (map[string]AuthVerdict, error)
+}

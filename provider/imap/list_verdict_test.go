@@ -147,7 +147,7 @@ func TestListedRowsCarryTheReceiversVerdict(t *testing.T) {
 // fetch for Authentication-Results too, a header a server reads from each
 // stored message rather than its index, made hundreds of reads per page on a
 // threaded inbox, and the page timed out. The verdict is read for the listed
-// rows alone.
+// rows alone, and once per session: the search that follows reads none.
 func TestThreadedListReadsTheVerdictOnlyForListedRows(t *testing.T) {
 	s := &memServer{
 		caps:    imap.CapSet{imap.CapIMAP4rev1: {}, imap.Cap("THREAD=REFERENCES"): {}},
@@ -161,11 +161,12 @@ func TestThreadedListReadsTheVerdictOnlyForListedRows(t *testing.T) {
 	)
 
 	cases := []struct {
-		how  string
-		list func() ([]provider.Message, int, error)
+		how   string
+		list  func() ([]provider.Message, int, error)
+		reads int
 	}{
-		{"listed", func() ([]provider.Message, int, error) { return p.ListMessages("INBOX", "", 0, 50) }},
-		{"searched", func() ([]provider.Message, int, error) { return p.SearchMessages("INBOX", "", "", 0, 50) }},
+		{"listed", func() ([]provider.Message, int, error) { return p.ListMessages("INBOX", "", 0, 50) }, 2},
+		{"searched", func() ([]provider.Message, int, error) { return p.SearchMessages("INBOX", "", "", 0, 50) }, 0},
 	}
 	for _, c := range cases {
 		before := len(s.traffic.String())
@@ -184,8 +185,8 @@ func TestThreadedListReadsTheVerdictOnlyForListedRows(t *testing.T) {
 		if len(rows) != 2 || subMessages != 2 || !potential["Re: launch, again"] || potential["forged"] {
 			t.Errorf("%s: %d rows, %d earlier thread messages, DMARC pass by subject %v; want 2 rows, 2 earlier messages, the thread's latest passed and forged not", c.how, len(rows), subMessages, potential)
 		}
-		if len(reads) != len(rows) {
-			t.Errorf("%s: %d Authentication-Results reads for %d rows", c.how, len(reads), len(rows))
+		if len(reads) != c.reads {
+			t.Errorf("%s: %d Authentication-Results reads for %d rows, want %d", c.how, len(reads), len(rows), c.reads)
 		}
 	}
 }
