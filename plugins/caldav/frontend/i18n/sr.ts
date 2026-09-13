@@ -4,6 +4,7 @@ export default {
       deleteEventFailed: 'Događaj nije mogao biti obrisan.',
       saveCalendarFailed: 'Kalendar nije mogao biti sačuvan.',
       saveEventFailed: 'Događaj nije mogao biti sačuvan.',
+      loadFailed: 'Nije moguće učitati kalendar. Proverite vezu i pokušajte ponovo.',
         months: { '0': 'Јануар', '1': 'Фебруар', '2': 'Март', '3': 'Април', '4': 'Мај', '5': 'Јун', '6': 'Јул', '7': 'Август', '8': 'Септембар', '9': 'Октобар', '10': 'Новембар', '11': 'Децембар' },
         monthsShort: { '0': 'Јан', '1': 'Феб', '2': 'Мар', '3': 'Апр', '4': 'Мај', '5': 'Јун', '6': 'Јул', '7': 'Авг', '8': 'Сеп', '9': 'Окт', '10': 'Нов', '11': 'Дец' },
         days: { '0': 'Недеља', '1': 'Понедељак', '2': 'Уторак', '3': 'Среда', '4': 'Четвртак', '5': 'Петак', '6': 'Субота' },

@@ -51,7 +51,6 @@ export class CalendarPage extends LitElement {
     @state() viewMode: ViewMode = 'month';
     @state() loading = true;
     @state() isSpinning = false;
-    @state() error = '';
 
     @state() modalOpen = false;
     @state() selectedEvent?: EventData;
@@ -516,7 +515,6 @@ export class CalendarPage extends LitElement {
     private async fetchData() {
         this.loading = true;
         this.isSpinning = true;
-        this.error = '';
         try {
             const calRes = await calendarService.fetchCalendars();
             
@@ -593,7 +591,9 @@ export class CalendarPage extends LitElement {
             }
         } catch (e) {
             console.error(e);
-            this.error = 'Failed to load calendar data.';
+            // Said, not stored: `error` was written here and rendered nowhere, so a
+            // calendar that failed to load simply showed no events.
+            this.reportFailure('calendar.loadFailed');
         } finally {
             this.loading = false;
         }
