@@ -17,7 +17,14 @@ import (
 	"github.com/migadu/alps"
 )
 
-var scriptRegex = regexp.MustCompile(`(?i)<script[\s\S]*?</script>|\bon[a-z]+="[^"]*"|\bon[a-z]+='[^']*'|\bon[a-z]+=[^\s>]+|javascript:`)
+// scriptRegex removes script from a fetched BIMI logo. It is the layer under
+// the sandboxing CSP and nosniff the avatar is served with, not the only one.
+//
+// A script element can be self-closing (`<script href="…"/>`) or left
+// unclosed, and an attribute may have whitespace around its `=`; the earlier
+// pattern matched only `<script>…</script>` and `on…="…"` written tight, so
+// `onload = "…"` and a self-closing script passed through untouched.
+var scriptRegex = regexp.MustCompile(`(?i)<script\b[^>]*/>|<script\b[\s\S]*?</script\s*>|<script\b[^>]*>|\bon[a-z]+\s*=\s*"[^"]*"|\bon[a-z]+\s*=\s*'[^']*'|\bon[a-z]+\s*=\s*[^\s>"']+|javascript\s*:`)
 
 func sanitizeSVG(raw []byte) []byte {
 	return scriptRegex.ReplaceAll(raw, []byte(""))
