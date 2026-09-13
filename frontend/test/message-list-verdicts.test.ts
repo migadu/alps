@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, click, mount, shadow, shadowAll, update, waitFor } from './helpers/dom';
 import { VERDICT_BATCH, type AuthVerdict } from '../src/services/auth-verdicts';
+import { encodeMailboxPath } from '../src/utils/folders';
 import '../src/components/message-list';
 
 const TAG = 'alps-message-list';
@@ -26,27 +27,30 @@ const avatarSrcs = (el: HTMLElement) => shadowAll(el, 'alps-avatar').map((a) => 
 const logos = (el: HTMLElement) => avatarSrcs(el).filter(Boolean).length;
 
 /** Stands in for the verdicts endpoint; every other request answers empty. */
-function verdictServer(verdict: (uid: string) => AuthVerdict | undefined = (uid) => (Number(uid) % 2 ? pass : fail), scope = () => '1') {
+function verdictServer(verdict: (uid: string, mailbox: string) => AuthVerdict | undefined = (uid) => (Number(uid) % 2 ? pass : fail), scope = () => '1') {
   const asked: string[][] = [];
+  const mailboxes: string[] = [];
   let inFlight = 0;
   let maxInFlight = 0;
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const u = new URL(String(url), 'http://alps.test');
     if (!u.pathname.endsWith('/verdicts')) return new Response('{}', { status: 200 });
     const uids = u.searchParams.get('uids')!.split(',');
+    const mailbox = u.pathname.split('/')[2];
     asked.push(uids);
+    mailboxes.push(mailbox);
     inFlight++;
     maxInFlight = Math.max(maxInFlight, inFlight);
     await new Promise((r) => setTimeout(r, 2));
     inFlight--;
     const Verdicts: Record<string, AuthVerdict> = {};
     for (const uid of uids) {
-      const v = verdict(uid);
+      const v = verdict(uid, mailbox);
       if (v) Verdicts[uid] = v;
     }
     return new Response(JSON.stringify({ Verdicts, Scope: scope() }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }));
-  return { asked, maxInFlight: () => maxInFlight };
+  return { asked, mailboxes, maxInFlight: () => maxInFlight };
 }
 
 afterEach(() => {
@@ -76,6 +80,37 @@ describe('verdicts after the list', () => {
     await waitFor(() => server.asked.flat().length === 30, 'every message asked about');
     expect(server.maxInFlight()).toBe(1);
     expect(new Set(server.asked.flat()).size).toBe(30);
+  });
+
+  it("does not ask about the previous folder's rows while the new folder's list loads", async () => {
+    const server = verdictServer(() => pass);
+    const inbox = rows(2).map((m) => ({ ...m, Mailbox: 'INBOX' }));
+    const el = await mount(TAG, { messages: inbox, currentMailbox: 'INBOX', totalMessages: 2 });
+    await waitFor(() => logos(el) === 2, "INBOX's answers");
+
+    await update(el, { currentMailbox: 'Archive' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(server.asked).toHaveLength(1);
+    expect(avatarSrcs(el)).toEqual(['', '']);
+
+    const archive = [row(7), row(8)].map((m) => ({ ...m, Mailbox: 'Archive' }));
+    await update(el, { messages: archive, totalMessages: 2 });
+    await waitFor(() => server.asked.length === 2 && logos(el) === 2, "Archive's answers");
+    expect(server.mailboxes).toEqual([encodeMailboxPath('INBOX'), encodeMailboxPath('Archive')]);
+    expect(server.asked[1]).toEqual(['7', '8']);
+  });
+
+  it('asks a search across mailboxes about each message in its own mailbox', async () => {
+    const server = verdictServer((_uid, mailbox) => (mailbox === encodeMailboxPath('INBOX') ? pass : fail));
+    const el = await mount(TAG, {
+      messages: [{ ...row(1), Mailbox: 'INBOX' }, { ...row(2), Mailbox: 'Lists/Brand news' }],
+      currentMailbox: '*',
+      totalMessages: 2,
+    });
+    await waitFor(() => server.asked.length === 2, 'both mailboxes asked');
+    expect([...server.mailboxes].sort()).toEqual([encodeMailboxPath('INBOX'), encodeMailboxPath('Lists/Brand news')].sort());
+    await waitFor(() => logos(el) === 1, "the INBOX message's logo");
+    expect(avatarSrcs(el)).toEqual([LOGO, '']);
   });
 
   it('asks nothing about a message that could not show a logo', async () => {

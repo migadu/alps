@@ -56,17 +56,17 @@ export class MessageList extends LitElement {
   @state() private focusedIndex = -1;
   @state() private showEmptyConfirm = false;
   @state() private expandedThreads = new Set<string>();
-  // Verdicts for listed messages and the earlier messages of expanded threads
-  // in the current mailbox, by UID, as answered under verdictScope. Listings
+  // Verdicts for listed messages and the earlier messages of expanded threads,
+  // keyed by mailbox and UID, as answered under that mailbox's scope. Listings
   // carry none: a mail server reads the header from each stored message, and
   // for older mail that took seconds per page. They are asked for after the
   // list shows, a batch at a time and one request at a time so other requests
   // reach the mail server in between, only for messages that could show a
   // logo, and once each: a reload asks only about messages not asked about.
-  // A new scope means the mailbox's UIDs name other messages, and every
-  // answer is dropped.
+  // A new scope means the mailbox's UIDs name other messages, and that
+  // mailbox's answers are dropped.
   @state() private verdicts = new Map<string, AuthVerdict>();
-  private verdictScope = '';
+  private verdictScopes = new Map<string, string>();
   private verdictsAsked = new Set<string>();
   private verdictGeneration = 0;
   private verdictsRunning = false;
@@ -660,8 +660,17 @@ export class MessageList extends LitElement {
   private resetVerdicts() {
     this.verdicts = new Map();
     this.verdictsAsked = new Set();
-    this.verdictScope = '';
+    this.verdictScopes = new Map();
     this.verdictGeneration++;
+  }
+
+  /** The mailbox a listed message is in: its own, since a search across mailboxes lists several. */
+  private mailboxOf(msg: any): string {
+    return typeof msg?.Mailbox === 'string' && msg.Mailbox ? msg.Mailbox : this.currentMailbox;
+  }
+
+  private verdictKey(mailbox: string, uid: string): string {
+    return `${mailbox}\u0000${uid}`;
   }
 
   /** Asks about the messages not asked about yet; one run at a time. */
@@ -683,55 +692,81 @@ export class MessageList extends LitElement {
   }
 
   private async askVerdicts() {
-    const mailbox = this.currentMailbox;
-    if (!mailbox) return;
+    const shown = this.currentMailbox;
+    if (!shown) return;
     const generation = this.verdictGeneration;
-    const current = () => mailbox === this.currentMailbox && generation === this.verdictGeneration;
+    const current = () => shown === this.currentMailbox && generation === this.verdictGeneration;
 
-    const wanted: string[] = [];
+    // Each message is asked about in its own mailbox. A row from another
+    // mailbox than the one shown belongs to the previous folder, still on
+    // screen until the new folder's list arrives, and asking the new folder
+    // about its UID would answer for a different message.
+    const byMailbox = new Map<string, string[]>();
     const consider = (msg: any) => {
       const uid = msg?.UID == null ? '' : String(msg.UID);
-      if (uid && !this.verdictsAsked.has(uid) && mayShowBimiLogo(msg)) {
-        this.verdictsAsked.add(uid);
-        wanted.push(uid);
-      }
+      const mailbox = this.mailboxOf(msg);
+      if (!uid || (shown !== '*' && mailbox !== shown)) return;
+      const key = this.verdictKey(mailbox, uid);
+      if (this.verdictsAsked.has(key) || !mayShowBimiLogo(msg)) return;
+      this.verdictsAsked.add(key);
+      if (!byMailbox.has(mailbox)) byMailbox.set(mailbox, []);
+      byMailbox.get(mailbox)!.push(uid);
     };
     for (const msg of this.messages || []) {
       consider(msg);
       if (msg?.SubMessages?.length && this.isThreadExpanded(String(msg.UID))) msg.SubMessages.forEach(consider);
     }
 
-    for (let i = 0; i < wanted.length; i += VERDICT_BATCH) {
-      const batch = wanted.slice(i, i + VERDICT_BATCH);
+    const queue: { mailbox: string; uid: string }[] = [];
+    for (const [mailbox, uids] of byMailbox) for (const uid of uids) queue.push({ mailbox, uid });
+    const unask = (from: number) => {
+      for (const q of queue.slice(from)) this.verdictsAsked.delete(this.verdictKey(q.mailbox, q.uid));
+    };
+
+    let i = 0;
+    while (i < queue.length) {
+      const mailbox = queue[i].mailbox;
+      let j = i;
+      while (j < queue.length && j - i < VERDICT_BATCH && queue[j].mailbox === mailbox) j++;
+      const batch = queue.slice(i, j).map((q) => q.uid);
+
       let answer;
       try {
         answer = await fetchAuthVerdicts(mailbox, batch);
       } catch {
         // The rows keep their initials, and the next reload asks again.
-        if (current()) for (const uid of wanted.slice(i)) this.verdictsAsked.delete(uid);
+        if (current()) unask(i);
         return;
       }
       if (!current()) return;
-      if (answer.scope && this.verdictScope && answer.scope !== this.verdictScope) {
-        // The mailbox's UIDs now name other messages, so every earlier answer
-        // was for a message that is gone. Keep this one and ask again.
-        this.resetVerdicts();
-        this.verdictScope = answer.scope;
-        for (const uid of batch) this.verdictsAsked.add(uid);
-        this.verdicts = new Map(answer.verdicts);
+
+      const next = new Map(this.verdicts);
+      const known = this.verdictScopes.get(mailbox);
+      let startOver = false;
+      if (answer.scope && known && answer.scope !== known) {
+        // The mailbox's UIDs now name other messages, so its earlier answers
+        // were for messages that are gone. Keep this answer and ask again.
+        const prefix = this.verdictKey(mailbox, '');
+        for (const key of [...next.keys()]) if (key.startsWith(prefix)) next.delete(key);
+        for (const key of [...this.verdictsAsked]) if (key.startsWith(prefix)) this.verdictsAsked.delete(key);
+        for (const uid of batch) this.verdictsAsked.add(this.verdictKey(mailbox, uid));
+        unask(j);
+        startOver = true;
+      }
+      if (answer.scope) this.verdictScopes.set(mailbox, answer.scope);
+      for (const [uid, verdict] of answer.verdicts) next.set(this.verdictKey(mailbox, uid), verdict);
+      this.verdicts = next;
+      if (startOver) {
         this.verdictsRerun = true;
         return;
       }
-      if (answer.scope) this.verdictScope = answer.scope;
-      const next = new Map(this.verdicts);
-      for (const [uid, verdict] of answer.verdicts) next.set(uid, verdict);
-      this.verdicts = next;
+      i = j;
     }
   }
 
   /** msg with the verdict answered for it, if one has arrived. */
   private withVerdict(msg: any): any {
-    const verdict = this.verdicts.get(String(msg?.UID));
+    const verdict = this.verdicts.get(this.verdictKey(this.mailboxOf(msg), String(msg?.UID)));
     return verdict ? { ...msg, ...verdict } : msg;
   }
 
