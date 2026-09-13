@@ -3,6 +3,7 @@ package imap
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net"
 	"regexp"
 	"sync"
@@ -49,6 +50,18 @@ type threadedSession struct {
 
 func (s *threadedSession) Thread(ctx context.Context, numKind imapserver.NumKind, algorithm imap.ThreadAlgorithm, charset string, criteria *imap.SearchCriteria) ([]imap.ThreadData, error) {
 	return s.threads, nil
+}
+
+// Sort passes SORT through to the in-memory server's session, which embedding
+// the Session interface alone would hide.
+func (s *threadedSession) Sort(ctx context.Context, kind imapserver.NumKind, sortCriteria []imap.SortCriterion, charset string, searchCriteria *imap.SearchCriteria, options *imap.SortOptions) (*imap.SortData, error) {
+	sorter, ok := s.Session.(interface {
+		Sort(context.Context, imapserver.NumKind, []imap.SortCriterion, string, *imap.SearchCriteria, *imap.SortOptions) (*imap.SortData, error)
+	})
+	if !ok {
+		return nil, errors.New("the in-memory session cannot sort")
+	}
+	return sorter.Sort(ctx, kind, sortCriteria, charset, searchCriteria, options)
 }
 
 // memIMAP serves the account with messages in INBOX and returns a provider

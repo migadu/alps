@@ -344,6 +344,14 @@ func (p *IMAPProvider) sortGroups(mailbox string, groups []ThreadGroup, sortOrde
 			windowGroups = groups[:windowSize]
 		}
 
+		// A server with SORT orders the window by date itself. RFC 5256's DATE
+		// key is the Date header, else the internal date: the fallback the
+		// envelope fetch below applies. That fetch, one envelope per thread,
+		// took most of a second for a large inbox.
+		if p.client.Caps().Has(imap.CapSort) && p.sortWindowByDate(windowGroups, sortOrder) {
+			return nil
+		}
+
 		// 3. Initialize cache
 		p.cacheLock.Lock()
 		if p.dateCache == nil {
@@ -434,6 +442,41 @@ func (p *IMAPProvider) sortGroups(mailbox string, groups []ThreadGroup, sortOrde
 	}
 
 	return nil
+}
+
+// sortWindowByDate orders groups by their representative message's date with
+// the server's SORT, newest first unless sortOrder is "asc", and reports
+// whether the server answered. Messages with the same date keep the server's
+// order, which RFC 5256 breaks by sequence number; a group the server did not
+// return goes last.
+func (p *IMAPProvider) sortWindowByDate(groups []ThreadGroup, sortOrder string) bool {
+	var reps imap.UIDSet
+	for _, g := range groups {
+		reps.AddNum(imap.UID(g.RepUID))
+	}
+	data, err := p.client.UIDSort(&imapclient.SortOptions{
+		SearchCriteria: &imap.SearchCriteria{UID: []imap.UIDSet{reps}},
+		SortCriteria:   []imap.SortCriterion{{Key: imap.SortKeyDate, Reverse: sortOrder != "asc"}},
+	}).Wait()
+	if err != nil {
+		if p.debug {
+			fmt.Printf("thread sort: SORT failed, fetching envelopes instead: %v\n", err)
+		}
+		return false
+	}
+	position := make(map[uint32]int, len(data.UIDs))
+	for i, uid := range data.UIDs {
+		position[uint32(uid)] = i
+	}
+	sort.SliceStable(groups, func(i, j int) bool {
+		pi, iok := position[groups[i].RepUID]
+		pj, jok := position[groups[j].RepUID]
+		if iok != jok {
+			return iok
+		}
+		return pi < pj
+	})
+	return true
 }
 
 func (p *IMAPProvider) fetchThreadGroups(criteria *imap.SearchCriteria) ([]ThreadGroup, error) {
