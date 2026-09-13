@@ -681,7 +681,10 @@ export class MailboxPage extends LitElement {
           window.focus();
           notification.close();
           if (this.currentMailbox !== 'INBOX') {
-            this.updateUrl('INBOX', 0, null);
+            // Explicitly no search. updateUrl carries the current one forward by
+            // default, which is right within a folder and wrong on a switch to the
+            // Inbox: a search typed elsewhere would hide the mail being announced.
+            this.updateUrl('INBOX', 0, null, '');
           } else {
             this.currentPage = 0;
             messageSync.fetch(this.currentMailbox, 0, this.filterQuery, false);
@@ -697,7 +700,8 @@ export class MailboxPage extends LitElement {
         this.i18nStore?.t('mailboxPage.newMessagesInInbox'), 
         this.i18nStore?.t('mailboxPage.open'), 
         () => {
-          this.updateUrl('INBOX', 0, null);
+          // No search carried over, as in the notification's click above.
+          this.updateUrl('INBOX', 0, null, '');
         }, 
         5000
       );
@@ -915,7 +919,10 @@ export class MailboxPage extends LitElement {
       if (this.selectedMessage?.UID !== msg.UID) {
         this.selectedMessage = msg;
         if (this.layoutMode === 'full') {
-          this.expandedFolders.clear();
+          // A new Set, not clear(): this is @state and bound to the folder list,
+          // and Lit compares by identity, so clearing in place re-rendered
+          // nothing and the folders stayed drawn open over an empty set.
+          this.expandedFolders = new Set();
         }
         this._scheduleMarkAsRead(msg);
       }
