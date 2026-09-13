@@ -2,7 +2,6 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { formatDateList, formatSize, getMailboxLabel, renderIcon, getBimiAvatarUrl } from '../utils/ui';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED, getMessageTags } from '../utils/flags';
-import { FOLDER_DRAFTS, FOLDER_SENT } from '../utils/folders';
 import { messageSync } from '../services/message-sync';
 import { mailboxOperations } from '../services/mailbox-operations';
 import { consume } from '@lit/context';
@@ -929,19 +928,19 @@ export class MessageList extends LitElement {
    * called "Spam" got a "Delete All Now" button for messages the server would
    * then refuse to delete — handleEmptyMailbox does resolve the role properly.
    *
-   * The English names stay as a fallback for servers that advertise no
-   * special-use attributes, which is the same shape `renderMessageItem` uses
-   * just below and what `mailboxRoleByName` falls back to itself.
+   * The English names are a fallback for servers that advertise no special-use
+   * attributes, and that fallback lives in one place — `mailboxRoleByName`, which
+   * only guesses a role by name when the server has not assigned it. A second
+   * name test here would re-open the override it now prevents.
    */
   private get isDiscardableFolder(): boolean {
-    if (this.currentMailboxRole === 'trash' || this.currentMailboxRole === 'junk') return true;
-    if (this.currentMailboxRole) return false;
-    return /^(trash|junk|spam|deleted items)$/i.test(this.currentMailbox);
+    return this.currentMailboxRole === 'trash' || this.currentMailboxRole === 'junk';
   }
 
   private renderMessageItem(msg: any, isSubMessage: boolean = false, isFirstSub: boolean = false, isLastSub: boolean = false) {
-    const isDraftOrSent = this.currentMailboxRole === 'drafts' || this.currentMailboxRole === 'sent'
-      || this.currentMailbox === FOLDER_DRAFTS || this.currentMailbox === FOLDER_SENT;
+    // Role only. OR-ing the names in here let a user folder called "Sent" show
+    // recipients even where the server's own Sent is "[Gmail]/Sent Mail".
+    const isDraftOrSent = this.currentMailboxRole === 'drafts' || this.currentMailboxRole === 'sent';
 
     let rawContacts: any[] = [];
     if (isDraftOrSent) {

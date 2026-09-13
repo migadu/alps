@@ -388,19 +388,43 @@ export const de: TranslationDictionary = {
     undo: 'Rückgängig',
     dismiss: 'Schließen',
     messageMovedToArchive: 'Nachricht ins Archiv verschoben',
-    messagesMovedToArchive: '{count} Nachrichten ins Archiv verschoben',
+    messagesMovedToArchive: {
+      one: "{count} Nachricht ins Archiv verschoben",
+      other: "{count} Nachrichten ins Archiv verschoben"
+    },
     messageMovedToSpam: 'Nachricht in Spam verschoben',
-    messagesMovedToSpam: '{count} Nachrichten in Spam verschoben',
+    messagesMovedToSpam: {
+      one: "{count} Nachricht in Spam verschoben",
+      other: "{count} Nachrichten in Spam verschoben"
+    },
     messageMovedToInbox: 'Nachricht in Posteingang verschoben',
-    messagesMovedToInbox: '{count} Nachrichten in Posteingang verschoben',
+    messagesMovedToInbox: {
+      one: "{count} Nachricht in Posteingang verschoben",
+      other: "{count} Nachrichten in Posteingang verschoben"
+    },
     messageMovedToTrash: 'Nachricht in Papierkorb verschoben',
-    messagesMovedToTrash: '{count} Nachrichten in Papierkorb verschoben',
+    messagesMovedToTrash: {
+      one: "{count} Nachricht in Papierkorb verschoben",
+      other: "{count} Nachrichten in Papierkorb verschoben"
+    },
     messageMovedToFolder: 'Nachricht nach {folder} verschoben',
-    messagesMovedToFolder: '{count} Nachrichten nach {folder} verschoben',
+    messagesMovedToFolder: {
+      one: "{count} Nachricht nach {folder} verschoben",
+      other: "{count} Nachrichten nach {folder} verschoben"
+    },
     messageCopiedToFolder: 'Nachricht nach {folder} kopiert',
-    messagesCopiedToFolder: '{count} Nachrichten nach {folder} kopiert',
-    draftsDiscarded: '{count} Entwürfe verworfen',
-    messagesPermanentlyDeleted: '{count} Nachrichten endgültig gelöscht',
+    messagesCopiedToFolder: {
+      one: "{count} Nachricht nach {folder} kopiert",
+      other: "{count} Nachrichten nach {folder} kopiert"
+    },
+    draftsDiscarded: {
+      one: "{count} Entwurf verworfen",
+      other: "{count} Entwürfe verworfen"
+    },
+    messagesPermanentlyDeleted: {
+      one: "{count} Nachricht endgültig gelöscht",
+      other: "{count} Nachrichten endgültig gelöscht"
+    },
     undoFailed: 'Rückgängig machen fehlgeschlagen',
     messageDeleteFailed: 'Die Nachricht konnte nicht gelöscht werden',
     moveFailed: 'Verschieben fehlgeschlagen',
@@ -410,7 +434,10 @@ export const de: TranslationDictionary = {
     mailboxNotFound: 'Postfach nicht gefunden',
     newMessages: 'Neue Nachrichten',
     newMessagesSingleBody: 'Sie haben 1 neue Nachricht',
-    newMessagesMultiBody: 'Sie haben {count} neue Nachrichten',
+    newMessagesMultiBody: {
+      one: "Sie haben {count} neue Nachricht",
+      other: "Sie haben {count} neue Nachrichten"
+    },
     newMessagesInInbox: 'Neue Nachrichten im Posteingang',
     newMessagesAvailable: 'Neue Nachrichten verfügbar',
     open: 'Öffnen',

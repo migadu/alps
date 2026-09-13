@@ -150,6 +150,50 @@ export class I18nStore extends EventTarget {
     return this.language;
   }
 
+  /**
+   * Cached per language — constructing one is not free and `t()` runs on every
+   * render of every component.
+   */
+  private pluralRules: Intl.PluralRules | null = null;
+  private pluralRulesFor = '';
+
+  /**
+   * Which CLDR plural form a count takes in the ACTIVE language.
+   *
+   * English and German have two (one/other); Serbian has three, and its
+   * boundaries are not where an English speaker expects: `one` covers 1, 21, 31
+   * — anything ending in 1 but not 11 — and `few` covers 2–4, 22–24. A single
+   * string written in the plural was right for 5 and wrong for 1 and for 2.
+   * Intl.PluralRules knows every one of those rules; it needs the right tag,
+   * which is why this goes through getIntlLanguage (corrected for alps's own
+   * Serbian codes in e72417c).
+   */
+  private pluralForm(count: number): string {
+    const lang = this.getIntlLanguage();
+    if (this.pluralRulesFor !== lang || !this.pluralRules) {
+      this.pluralRules = new Intl.PluralRules(lang);
+      this.pluralRulesFor = lang;
+    }
+    return this.pluralRules.select(count);
+  }
+
+  /**
+   * A plural entry is an object of forms rather than a string. Pick the form for
+   * params.count, falling back to `other` for a form the locale does not spell
+   * out (es/fr/it/pt `many` reads the same as `other`).
+   *
+   * Without a numeric count, `other` — not the object. Otherwise the lookup
+   * below finds no string, falls through English the same way, and hands the
+   * caller the KEY, so a call site that forgot to pass the count would render
+   * "toast.draftsDiscarded" rather than a wrongly-numbered sentence.
+   */
+  private pickPluralForm(entry: any, params?: Record<string, any>): any {
+    if (!entry || typeof entry !== 'object') return entry;
+    const form = typeof params?.count === 'number' ? this.pluralForm(params.count) : 'other';
+    const picked = entry[form] ?? entry.other;
+    return typeof picked === 'string' ? picked : entry;
+  }
+
   t(key: string, params?: Record<string, any>): string {
     const keys = key.split('.');
     let result: any = this.dictionary;
@@ -160,6 +204,7 @@ export class I18nStore extends EventTarget {
       }
       result = result[k];
     }
+    result = this.pickPluralForm(result, params);
     
     if (typeof result !== 'string') {
       // Fallback to English
@@ -170,6 +215,7 @@ export class I18nStore extends EventTarget {
         }
         enResult = enResult[k];
       }
+      enResult = this.pickPluralForm(enResult, params);
       result = typeof enResult === 'string' ? enResult : key;
     }
     

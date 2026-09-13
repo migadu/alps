@@ -421,19 +421,43 @@ export const en = {
     undo: 'Undo',
     dismiss: 'Dismiss',
     messageMovedToArchive: 'Message moved to Archive',
-    messagesMovedToArchive: '{count} messages moved to Archive',
+    messagesMovedToArchive: {
+      one: "{count} message moved to Archive",
+      other: "{count} messages moved to Archive"
+    },
     messageMovedToSpam: 'Message moved to Spam',
-    messagesMovedToSpam: '{count} messages moved to Spam',
+    messagesMovedToSpam: {
+      one: "{count} message moved to Spam",
+      other: "{count} messages moved to Spam"
+    },
     messageMovedToInbox: 'Message moved to Inbox',
-    messagesMovedToInbox: '{count} messages moved to Inbox',
+    messagesMovedToInbox: {
+      one: "{count} message moved to Inbox",
+      other: "{count} messages moved to Inbox"
+    },
     messageMovedToTrash: 'Message moved to Trash',
-    messagesMovedToTrash: '{count} messages moved to Trash',
+    messagesMovedToTrash: {
+      one: "{count} message moved to Trash",
+      other: "{count} messages moved to Trash"
+    },
     messageMovedToFolder: 'Message moved to {folder}',
-    messagesMovedToFolder: '{count} messages moved to {folder}',
+    messagesMovedToFolder: {
+      one: "{count} message moved to {folder}",
+      other: "{count} messages moved to {folder}"
+    },
     messageCopiedToFolder: 'Message copied to {folder}',
-    messagesCopiedToFolder: '{count} messages copied to {folder}',
-    draftsDiscarded: '{count} drafts discarded',
-    messagesPermanentlyDeleted: '{count} messages permanently deleted',
+    messagesCopiedToFolder: {
+      one: "{count} message copied to {folder}",
+      other: "{count} messages copied to {folder}"
+    },
+    draftsDiscarded: {
+      one: "{count} draft discarded",
+      other: "{count} drafts discarded"
+    },
+    messagesPermanentlyDeleted: {
+      one: "{count} message permanently deleted",
+      other: "{count} messages permanently deleted"
+    },
     undoFailed: 'Could not undo that',
     messageDeleteFailed: 'The message could not be deleted',
     moveFailed: 'Could not move that',
@@ -443,7 +467,10 @@ export const en = {
     mailboxNotFound: 'Mailbox not found',
     newMessages: 'New Messages',
     newMessagesSingleBody: 'You have 1 new message',
-    newMessagesMultiBody: 'You have {count} new messages',
+    newMessagesMultiBody: {
+      one: "You have {count} new message",
+      other: "You have {count} new messages"
+    },
     newMessagesInInbox: 'New messages in Inbox',
     newMessagesAvailable: 'New messages available',
     open: 'Open',

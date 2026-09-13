@@ -339,11 +339,11 @@ export class MailboxPage extends LitElement {
    * happens to be called "Archive".
    */
   private get canArchiveHere(): boolean {
+    // mailboxRoleByName is the one name fallback, and only for roles the server has
+    // not assigned. The unconditional name list that followed here would have
+    // undone that for any folder called "Archive", "Drafts" or "Trash".
     const role = mailboxRoleByName(this.currentMailbox, this.mailboxes);
-    if (role) return role !== 'trash' && role !== 'drafts' && role !== 'archive';
-    // No special-use attributes advertised: the names are the best available
-    // answer, which is what mailboxRoleByName falls back to itself.
-    return !['trash', 'drafts', 'archive'].includes(this.currentMailbox.toLowerCase());
+    return role !== 'trash' && role !== 'drafts' && role !== 'archive';
   }
 
   private get effectiveListWidth() {
@@ -644,7 +644,7 @@ export class MailboxPage extends LitElement {
       const title = this.i18nStore?.t('mailboxPage.newMessages');
       let body = totalNewInboxMessages === 1
         ? (this.i18nStore?.t('mailboxPage.newMessagesSingleBody'))
-        : ((this.i18nStore?.t('mailboxPage.newMessagesMultiBody')).replace('{count}', String(totalNewInboxMessages)));
+        : (this.i18nStore?.t('mailboxPage.newMessagesMultiBody', { count: totalNewInboxMessages }));
 
       try {
         const notification = new Notification(title, {

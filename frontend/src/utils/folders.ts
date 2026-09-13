@@ -58,6 +58,9 @@ const NAME_TO_ROLE: Record<string, MailboxRole> = {
   [FOLDER_SPAM.toLowerCase()]: 'junk',
   [FOLDER_JUNK.toLowerCase()]: 'junk',
   [FOLDER_TRASH.toLowerCase()]: 'trash',
+  // Exchange's Trash. Was a private regex in message-list's isDiscardableFolder,
+  // which meant the Delete All banner knew this name and nothing else did.
+  'deleted items': 'trash',
 };
 
 /**
@@ -71,7 +74,7 @@ const NAME_TO_ROLE: Record<string, MailboxRole> = {
  * See GitHub issue #4 (secondary). Returns null when the mailbox is not special
  * (or is a \Noselect / \NonExistent placeholder).
  */
-export function mailboxRole(mb: any): MailboxRole | null {
+export function mailboxRole(mb: any, advertised?: Set<MailboxRole>): MailboxRole | null {
   if (!mb) return null;
   const attrs: any[] = Array.isArray(mb.Attrs) ? mb.Attrs : [];
   const lowerAttrs = attrs.map(a => (typeof a === 'string' ? a.toLowerCase() : ''));
@@ -84,7 +87,13 @@ export function mailboxRole(mb: any): MailboxRole | null {
     return null;
   }
   const name: string = mb.Name || mb.Mailbox || '';
-  return NAME_TO_ROLE[name.toLowerCase()] ?? null;
+  const byName = NAME_TO_ROLE[name.toLowerCase()] ?? null;
+  // A name is a guess, and only for a role the server has not assigned itself.
+  // This used to answer by name for ANY mailbox lacking an attribute, even when
+  // another mailbox carried that very attribute — so beside a \Trash called
+  // "Papierkorb", a leftover folder called "Trash" was trash as well, and
+  // findMailboxNameByRole returned whichever the server happened to list first.
+  return byName && advertised?.has(byName) ? null : byName;
 }
 
 /**
@@ -94,9 +103,11 @@ export function mailboxRole(mb: any): MailboxRole | null {
  */
 export function mailboxRoleByName(name: string, mailboxes: any[] = []): MailboxRole | null {
   if (!name) return null;
+  const advertised = advertisedRoles(mailboxes);
   const mb = (mailboxes || []).find(m => (m?.Name || m?.Mailbox) === name);
-  if (mb) return mailboxRole(mb);
-  return NAME_TO_ROLE[name.toLowerCase()] ?? null;
+  if (mb) return mailboxRole(mb, advertised);
+  const byName = NAME_TO_ROLE[name.toLowerCase()] ?? null;
+  return byName && advertised.has(byName) ? null : byName;
 }
 
 /**
@@ -106,8 +117,29 @@ export function mailboxRoleByName(name: string, mailboxes: any[] = []): MailboxR
  * caller can still attempt a move/copy against the conventional name.
  */
 export function findMailboxNameByRole(role: MailboxRole, mailboxes: any[], fallback: string): string {
-  const mb = (mailboxes || []).find(m => mailboxRole(m) === role);
+  const advertised = advertisedRoles(mailboxes);
+  const mb = (mailboxes || []).find(m => mailboxRole(m, advertised) === role);
   return mb ? (mb.Name || mb.Mailbox || fallback) : fallback;
+}
+
+/**
+ * The roles this server assigns itself, by special-use attribute (RFC 6154).
+ *
+ * Per ROLE, not per server: a server that advertises \Sent and \Trash but no
+ * \Junk still gets "Spam" recognised by name, while no folder can be Trash by
+ * name once one carries \Trash. \Inbox is left out — INBOX is reserved by name
+ * in IMAP itself, and a server marking it says nothing about the other roles.
+ */
+export function advertisedRoles(mailboxes: any[] = []): Set<MailboxRole> {
+  const roles = new Set<MailboxRole>();
+  for (const mb of mailboxes || []) {
+    const attrs: any[] = Array.isArray(mb?.Attrs) ? mb.Attrs : [];
+    for (const a of attrs) {
+      const role = typeof a === 'string' ? ATTR_TO_ROLE[a.toLowerCase()] : undefined;
+      if (role && role !== 'inbox') roles.add(role);
+    }
+  }
+  return roles;
 }
 
 /**

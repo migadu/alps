@@ -2,7 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { live } from 'lit/directives/live.js';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName, getRemovableTags } from '../utils/flags';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
@@ -1580,7 +1580,7 @@ export class MessageReader extends LitElement {
             </button>
             ` : ''}
             <button class="dropdown-item" @click=${() => this._handleAction('delete')}>
-              ${renderIcon('trash')} <span class="item-text">${this.message?.Flags?.includes(FLAG_DRAFT) || this.mailbox === FOLDER_DRAFTS || mailboxRoleByName(this.mailbox || '', this.mailboxes) === 'drafts' ? (this.i18nStore?.t('messageReader.discardDraft')) : (this.i18nStore?.t('messageReader.delete'))}</span>
+              ${renderIcon('trash')} <span class="item-text">${this.message?.Flags?.includes(FLAG_DRAFT) || mailboxRoleByName(this.mailbox || '', this.mailboxes) === 'drafts' ? (this.i18nStore?.t('messageReader.discardDraft')) : (this.i18nStore?.t('messageReader.delete'))}</span>
             </button>
             <alps-folder-selector-popup
               class="folder-selector"

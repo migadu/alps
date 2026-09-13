@@ -386,19 +386,51 @@ export const sr = {
     undo: 'Opozovi',
     dismiss: 'Odbaci',
     messageMovedToArchive: 'Poruka premeštena u Arhivu',
-    messagesMovedToArchive: '{count} poruka premešteno u Arhivu',
+    messagesMovedToArchive: {
+      one: "{count} poruka premeštena u Arhivu",
+      few: "{count} poruke premeštene u Arhivu",
+      other: "{count} poruka premešteno u Arhivu"
+    },
     messageMovedToSpam: 'Poruka premeštena u Nepoželjne',
-    messagesMovedToSpam: '{count} poruka premešteno u Nepoželjne',
+    messagesMovedToSpam: {
+      one: "{count} poruka premeštena u Nepoželjne",
+      few: "{count} poruke premeštene u Nepoželjne",
+      other: "{count} poruka premešteno u Nepoželjne"
+    },
     messageMovedToInbox: 'Poruka premeštena u Prijemno',
-    messagesMovedToInbox: '{count} poruka premešteno u Prijemno',
+    messagesMovedToInbox: {
+      one: "{count} poruka premeštena u Prijemno",
+      few: "{count} poruke premeštene u Prijemno",
+      other: "{count} poruka premešteno u Prijemno"
+    },
     messageMovedToTrash: 'Poruka premeštena u Smeće',
-    messagesMovedToTrash: '{count} poruka premešteno u Smeće',
+    messagesMovedToTrash: {
+      one: "{count} poruka premeštena u Smeće",
+      few: "{count} poruke premeštene u Smeće",
+      other: "{count} poruka premešteno u Smeće"
+    },
     messageMovedToFolder: 'Poruka premeštena u {folder}',
-    messagesMovedToFolder: '{count} poruka premešteno u {folder}',
+    messagesMovedToFolder: {
+      one: "{count} poruka premeštena u {folder}",
+      few: "{count} poruke premeštene u {folder}",
+      other: "{count} poruka premešteno u {folder}"
+    },
     messageCopiedToFolder: 'Poruka kopirana u {folder}',
-    messagesCopiedToFolder: '{count} poruka kopirano u {folder}',
-    draftsDiscarded: '{count} nacrta odbačeno',
-    messagesPermanentlyDeleted: '{count} poruka trajno obrisano',
+    messagesCopiedToFolder: {
+      one: "{count} poruka kopirana u {folder}",
+      few: "{count} poruke kopirane u {folder}",
+      other: "{count} poruka kopirano u {folder}"
+    },
+    draftsDiscarded: {
+      one: "{count} nacrt odbačen",
+      few: "{count} nacrta odbačena",
+      other: "{count} nacrta odbačeno"
+    },
+    messagesPermanentlyDeleted: {
+      one: "{count} poruka trajno obrisana",
+      few: "{count} poruke trajno obrisane",
+      other: "{count} poruka trajno obrisano"
+    },
     undoFailed: 'Nije moguće poništiti',
     messageDeleteFailed: 'Poruka nije mogla biti obrisana',
     moveFailed: 'Nije moguće premestiti',
@@ -408,7 +440,11 @@ export const sr = {
     mailboxNotFound: 'Sanduče nije pronađeno',
     newMessages: 'Nove poruke',
     newMessagesSingleBody: 'Imate 1 novu poruku',
-    newMessagesMultiBody: 'Imate {count} novih poruka',
+    newMessagesMultiBody: {
+      one: "Imate {count} novu poruku",
+      few: "Imate {count} nove poruke",
+      other: "Imate {count} novih poruka"
+    },
     newMessagesInInbox: 'Nove poruke u Prijemnom sandučetu',
     newMessagesAvailable: 'Nove poruke su dostupne',
     open: 'Otvori',

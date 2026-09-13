@@ -6,7 +6,7 @@ import { composeContext } from '../store/compose-store';
 import type { ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { mailboxOperations } from '../services/mailbox-operations';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRole, findMailboxNameByRole, isSelfOrDescendantMailbox } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox } from '../utils/folders';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import './alps-icon-btn';
 import './ui-prompt';
@@ -889,9 +889,17 @@ export class FolderList extends LitElement {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
               this.mailboxToDelete = node.fullName;
-              // The Trash folder itself (by special-use attribute or name) is deleted
-              // outright; other folders offer move-to-trash. See issue #4.
-              if (mailboxRole(node.mb) === 'trash' || node.fullName.toLowerCase().startsWith('trash')) {
+              // Trash itself, or a folder already inside it, is deleted outright; any
+              // other folder is offered move-to-trash. See issue #4.
+              //
+              // By role and by real location, never by a name prefix. The prefix ran
+              // even when the server named its own Trash, so a user's "Trash receipts"
+              // or "Trashcan" was treated as Trash: Delete offered only permanent
+              // deletion, never the move. It also stood in for "inside Trash", which
+              // the resolved Trash name and the server's delimiter answer exactly.
+              const trashName = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
+              if (mailboxRoleByName(node.fullName, this.mailboxes) === 'trash'
+                || isSelfOrDescendantMailbox(node.fullName, trashName, node.mb?.Delimiter || node.mb?.Delim)) {
                 this.showDeleteConfirm = true;
               } else {
                 this.showMoveToTrashConfirm = true;

@@ -386,19 +386,51 @@ export const rs = {
     undo: 'Опозови',
     dismiss: 'Одбаци',
     messageMovedToArchive: 'Порука премештена у Архиву',
-    messagesMovedToArchive: '{count} порука премештено у Архиву',
+    messagesMovedToArchive: {
+      one: "{count} порука премештена у Архиву",
+      few: "{count} поруке премештене у Архиву",
+      other: "{count} порука премештено у Архиву"
+    },
     messageMovedToSpam: 'Порука премештена у Непожељне',
-    messagesMovedToSpam: '{count} порука премештено у Непожељне',
+    messagesMovedToSpam: {
+      one: "{count} порука премештена у Непожељне",
+      few: "{count} поруке премештене у Непожељне",
+      other: "{count} порука премештено у Непожељне"
+    },
     messageMovedToInbox: 'Порука премештена у Пријемно',
-    messagesMovedToInbox: '{count} порука премештено у Пријемно',
+    messagesMovedToInbox: {
+      one: "{count} порука премештена у Пријемно",
+      few: "{count} поруке премештене у Пријемно",
+      other: "{count} порука премештено у Пријемно"
+    },
     messageMovedToTrash: 'Порука премештена у Смеће',
-    messagesMovedToTrash: '{count} порука премештено у Смеће',
+    messagesMovedToTrash: {
+      one: "{count} порука премештена у Смеће",
+      few: "{count} поруке премештене у Смеће",
+      other: "{count} порука премештено у Смеће"
+    },
     messageMovedToFolder: 'Порука премештена у {folder}',
-    messagesMovedToFolder: '{count} порука премештено у {folder}',
+    messagesMovedToFolder: {
+      one: "{count} порука премештена у {folder}",
+      few: "{count} поруке премештене у {folder}",
+      other: "{count} порука премештено у {folder}"
+    },
     messageCopiedToFolder: 'Порука копирана у {folder}',
-    messagesCopiedToFolder: '{count} порука копирано у {folder}',
-    draftsDiscarded: '{count} нацрта одбачено',
-    messagesPermanentlyDeleted: '{count} порука трајно обрисано',
+    messagesCopiedToFolder: {
+      one: "{count} порука копирана у {folder}",
+      few: "{count} поруке копиране у {folder}",
+      other: "{count} порука копирано у {folder}"
+    },
+    draftsDiscarded: {
+      one: "{count} нацрт одбачен",
+      few: "{count} нацрта одбачена",
+      other: "{count} нацрта одбачено"
+    },
+    messagesPermanentlyDeleted: {
+      one: "{count} порука трајно обрисана",
+      few: "{count} поруке трајно обрисане",
+      other: "{count} порука трајно обрисано"
+    },
     undoFailed: 'Није могуће поништити',
     messageDeleteFailed: 'Порука није могла бити обрисана',
     moveFailed: 'Није могуће преместити',
@@ -408,7 +440,11 @@ export const rs = {
     mailboxNotFound: 'Сандуче није пронађено',
     newMessages: 'Нове поруке',
     newMessagesSingleBody: 'Имате 1 нову поруку',
-    newMessagesMultiBody: 'Имате {count} нових порука',
+    newMessagesMultiBody: {
+      one: "Имате {count} нову поруку",
+      few: "Имате {count} нове поруке",
+      other: "Имате {count} нових порука"
+    },
     newMessagesInInbox: 'Нове поруке у Пријемном сандучету',
     newMessagesAvailable: 'Нове поруке су доступне',
     open: 'Отвори',

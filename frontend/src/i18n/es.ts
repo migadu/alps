@@ -386,19 +386,43 @@ export const es = {
     undo: 'Deshacer',
     dismiss: 'Ocultar',
     messageMovedToArchive: 'Mensaje movido a Archivo',
-    messagesMovedToArchive: '{count} mensajes movidos a Archivo',
+    messagesMovedToArchive: {
+      one: "{count} mensaje movido a Archivo",
+      other: "{count} mensajes movidos a Archivo"
+    },
     messageMovedToSpam: 'Mensaje movido a Spam',
-    messagesMovedToSpam: '{count} mensajes movidos a Spam',
+    messagesMovedToSpam: {
+      one: "{count} mensaje movido a Spam",
+      other: "{count} mensajes movidos a Spam"
+    },
     messageMovedToInbox: 'Mensaje movido a Recibidos',
-    messagesMovedToInbox: '{count} mensajes movidos a Recibidos',
+    messagesMovedToInbox: {
+      one: "{count} mensaje movido a Recibidos",
+      other: "{count} mensajes movidos a Recibidos"
+    },
     messageMovedToTrash: 'Mensaje movido a Papelera',
-    messagesMovedToTrash: '{count} mensajes movidos a Papelera',
+    messagesMovedToTrash: {
+      one: "{count} mensaje movido a Papelera",
+      other: "{count} mensajes movidos a Papelera"
+    },
     messageMovedToFolder: 'Mensaje movido a {folder}',
-    messagesMovedToFolder: '{count} mensajes movidos a {folder}',
+    messagesMovedToFolder: {
+      one: "{count} mensaje movido a {folder}",
+      other: "{count} mensajes movidos a {folder}"
+    },
     messageCopiedToFolder: 'Mensaje copiado a {folder}',
-    messagesCopiedToFolder: '{count} mensajes copiados a {folder}',
-    draftsDiscarded: '{count} borradores descartados',
-    messagesPermanentlyDeleted: '{count} mensajes eliminados permanentemente',
+    messagesCopiedToFolder: {
+      one: "{count} mensaje copiado a {folder}",
+      other: "{count} mensajes copiados a {folder}"
+    },
+    draftsDiscarded: {
+      one: "{count} borrador descartado",
+      other: "{count} borradores descartados"
+    },
+    messagesPermanentlyDeleted: {
+      one: "{count} mensaje eliminado permanentemente",
+      other: "{count} mensajes eliminados permanentemente"
+    },
     undoFailed: 'No se pudo deshacer',
     messageDeleteFailed: 'No se pudo eliminar el mensaje',
     moveFailed: 'No se pudo mover',
@@ -408,7 +432,10 @@ export const es = {
     mailboxNotFound: 'Buzón no encontrado',
     newMessages: 'Mensajes nuevos',
     newMessagesSingleBody: 'Tienes 1 mensaje nuevo',
-    newMessagesMultiBody: 'Tienes {count} mensajes nuevos',
+    newMessagesMultiBody: {
+      one: "Tienes {count} mensaje nuevo",
+      other: "Tienes {count} mensajes nuevos"
+    },
     newMessagesInInbox: 'Nuevos mensajes en la Bandeja de entrada',
     newMessagesAvailable: 'Nuevos mensajes disponibles',
     open: 'Abrir',

@@ -421,19 +421,43 @@ export const pt = {
     undo: 'Desfazer',
     dismiss: 'Fechar',
     messageMovedToArchive: 'Mensagem movida para Arquivo',
-    messagesMovedToArchive: '{count} mensagens movidas para Arquivo',
+    messagesMovedToArchive: {
+      one: "{count} mensagem movida para Arquivo",
+      other: "{count} mensagens movidas para Arquivo"
+    },
     messageMovedToSpam: 'Mensagem movida para Spam',
-    messagesMovedToSpam: '{count} mensagens movidas para Spam',
+    messagesMovedToSpam: {
+      one: "{count} mensagem movida para Spam",
+      other: "{count} mensagens movidas para Spam"
+    },
     messageMovedToInbox: 'Mensagem movida para Entrada',
-    messagesMovedToInbox: '{count} mensagens movidas para Entrada',
+    messagesMovedToInbox: {
+      one: "{count} mensagem movida para Entrada",
+      other: "{count} mensagens movidas para Entrada"
+    },
     messageMovedToTrash: 'Mensagem movida para Lixeira',
-    messagesMovedToTrash: '{count} mensagens movidas para Lixeira',
+    messagesMovedToTrash: {
+      one: "{count} mensagem movida para Lixeira",
+      other: "{count} mensagens movidas para Lixeira"
+    },
     messageMovedToFolder: 'Mensagem movida para {folder}',
-    messagesMovedToFolder: '{count} mensagens movidas para {folder}',
+    messagesMovedToFolder: {
+      one: "{count} mensagem movida para {folder}",
+      other: "{count} mensagens movidas para {folder}"
+    },
     messageCopiedToFolder: 'Mensagem copiada para {folder}',
-    messagesCopiedToFolder: '{count} mensagens copiadas para {folder}',
-    draftsDiscarded: '{count} rascunhos descartados',
-    messagesPermanentlyDeleted: '{count} mensagens excluídas permanentemente',
+    messagesCopiedToFolder: {
+      one: "{count} mensagem copiada para {folder}",
+      other: "{count} mensagens copiadas para {folder}"
+    },
+    draftsDiscarded: {
+      one: "{count} rascunho descartado",
+      other: "{count} rascunhos descartados"
+    },
+    messagesPermanentlyDeleted: {
+      one: "{count} mensagem excluída permanentemente",
+      other: "{count} mensagens excluídas permanentemente"
+    },
     undoFailed: 'Não foi possível desfazer',
     messageDeleteFailed: 'Não foi possível eliminar a mensagem',
     moveFailed: 'Não foi possível mover',
@@ -443,7 +467,10 @@ export const pt = {
     mailboxNotFound: 'Caixa de correio não encontrada',
     newMessages: 'Novas mensagens',
     newMessagesSingleBody: 'Você tem 1 nova mensagem',
-    newMessagesMultiBody: 'Você tem {count} novas mensagens',
+    newMessagesMultiBody: {
+      one: "Você tem {count} nova mensagem",
+      other: "Você tem {count} novas mensagens"
+    },
     newMessagesInInbox: 'Novas mensagens na Caixa de Entrada',
     newMessagesAvailable: 'Novas mensagens disponíveis',
     open: 'Abrir',

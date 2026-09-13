@@ -386,19 +386,43 @@ export const it = {
     undo: 'Annulla',
     dismiss: 'Ignora',
     messageMovedToArchive: 'Messaggio spostato in Archivio',
-    messagesMovedToArchive: '{count} messaggi spostati in Archivio',
+    messagesMovedToArchive: {
+      one: "{count} messaggio spostato in Archivio",
+      other: "{count} messaggi spostati in Archivio"
+    },
     messageMovedToSpam: 'Messaggio spostato in Spam',
-    messagesMovedToSpam: '{count} messaggi spostati in Spam',
+    messagesMovedToSpam: {
+      one: "{count} messaggio spostato in Spam",
+      other: "{count} messaggi spostati in Spam"
+    },
     messageMovedToInbox: 'Messaggio spostato in Posta in arrivo',
-    messagesMovedToInbox: '{count} messaggi spostati in Posta in arrivo',
+    messagesMovedToInbox: {
+      one: "{count} messaggio spostato in Posta in arrivo",
+      other: "{count} messaggi spostati in Posta in arrivo"
+    },
     messageMovedToTrash: 'Messaggio spostato nel Cestino',
-    messagesMovedToTrash: '{count} messaggi spostati nel Cestino',
+    messagesMovedToTrash: {
+      one: "{count} messaggio spostato nel Cestino",
+      other: "{count} messaggi spostati nel Cestino"
+    },
     messageMovedToFolder: 'Messaggio spostato in {folder}',
-    messagesMovedToFolder: '{count} messaggi spostati in {folder}',
+    messagesMovedToFolder: {
+      one: "{count} messaggio spostato in {folder}",
+      other: "{count} messaggi spostati in {folder}"
+    },
     messageCopiedToFolder: 'Messaggio copiato in {folder}',
-    messagesCopiedToFolder: '{count} messaggi copiati in {folder}',
-    draftsDiscarded: '{count} bozze eliminate',
-    messagesPermanentlyDeleted: '{count} messaggi eliminati definitivamente',
+    messagesCopiedToFolder: {
+      one: "{count} messaggio copiato in {folder}",
+      other: "{count} messaggi copiati in {folder}"
+    },
+    draftsDiscarded: {
+      one: "{count} bozza eliminata",
+      other: "{count} bozze eliminate"
+    },
+    messagesPermanentlyDeleted: {
+      one: "{count} messaggio eliminato definitivamente",
+      other: "{count} messaggi eliminati definitivamente"
+    },
     undoFailed: 'Impossibile annullare',
     messageDeleteFailed: 'Non è stato possibile eliminare il messaggio',
     moveFailed: 'Impossibile spostare',
@@ -408,7 +432,10 @@ export const it = {
     mailboxNotFound: 'Casella di posta non trovata',
     newMessages: 'Nuovi messaggi',
     newMessagesSingleBody: 'Hai 1 nuovo messaggio',
-    newMessagesMultiBody: 'Hai {count} nuovi messaggi',
+    newMessagesMultiBody: {
+      one: "Hai {count} nuovo messaggio",
+      other: "Hai {count} nuovi messaggi"
+    },
     newMessagesInInbox: 'Nuovi messaggi nella Posta in arrivo',
     newMessagesAvailable: 'Nuovi messaggi disponibili',
     open: 'Apri',
