@@ -152,6 +152,7 @@ export const rs = {
     delete: 'Обриши',
     createFolder: 'Направи фасциклу',
     renameFolder: 'Преименуј фасциклу',
+    folderName: 'Назив фасцикле',
     deleteFolder: 'Обриши фасциклу',
     deleteFolderConfirm: 'Да ли сте сигурни да желите да обришете "{folder}"? Све поруке унутра биће трајно обрисане.',
     expandSidebar: 'Прошири бочну траку',

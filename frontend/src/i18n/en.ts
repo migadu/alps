@@ -194,6 +194,7 @@ export const en = {
     delete: 'Delete',
     createFolder: 'Create Folder',
     renameFolder: 'Rename Folder',
+    folderName: 'Folder name',
     deleteFolder: 'Delete Folder',
     deleteFolderConfirm: 'Are you sure you want to delete "{folder}"? All messages inside will be permanently deleted.',
     expandSidebar: 'Expand sidebar',

@@ -187,6 +187,7 @@ export const pt = {
     delete: 'Excluir',
     createFolder: 'Criar Pasta',
     renameFolder: 'Renomear Pasta',
+    folderName: 'Nome da pasta',
     deleteFolder: 'Excluir Pasta',
     deleteFolderConfirm: 'Tem certeza de que deseja excluir "{folder}"? Todas as mensagens serão excluídas permanentemente.',
     expandSidebar: 'Expandir barra lateral',

@@ -154,6 +154,7 @@ export const de: TranslationDictionary = {
     delete: 'Löschen',
     createFolder: 'Ordner erstellen',
     renameFolder: 'Ordner umbenennen',
+    folderName: 'Ordnername',
     deleteFolder: 'Ordner löschen',
     deleteFolderConfirm: 'Möchten Sie "{folder}" wirklich löschen? Alle darin enthaltenen Nachrichten werden endgültig gelöscht.',
     expandSidebar: 'Seitenleiste einblenden',

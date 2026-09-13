@@ -1,4 +1,6 @@
 import { LitElement, html, css } from 'lit';
+import { consume } from '@lit/context';
+import { i18nContext, I18nStore } from '../store/i18n-store';
 import { customElement, property, state } from 'lit/decorators.js';
 import { modalButtonStyles } from './ui-modal';
 import './alps-button';
@@ -15,10 +17,15 @@ export interface PromptField {
 
 @customElement('ui-prompt')
 export class UIPrompt extends LitElement {
+  // Consumed for the button fallbacks: this dialog is used from many places, and
+  // wherever a caller passed no text its buttons were English in every locale.
+  @consume({ context: i18nContext })
+  i18nStore!: I18nStore;
+
   @property({ type: String }) title: string = 'Prompt';
   @property({ type: Array }) fields: PromptField[] = [];
-  @property({ type: String }) confirmText: string = 'Apply';
-  @property({ type: String }) cancelText: string = 'Cancel';
+  @property({ type: String }) confirmText: string = '';
+  @property({ type: String }) cancelText: string = '';
   /**
    * Set by the owner while it acts on a submit.
    *
@@ -158,8 +165,8 @@ export class UIPrompt extends LitElement {
           `)}
         </div>
         
-        <alps-button slot="actions" variant="text" ?disabled=${this.busy} @click=${this._handleCancel}>${this.cancelText}</alps-button>
-        <alps-button slot="actions" variant="normal" ?disabled=${this.busy || this.submitted} @click=${this._handleSubmit}>${this.confirmText}</alps-button>
+        <alps-button slot="actions" variant="text" ?disabled=${this.busy} @click=${this._handleCancel}>${this.cancelText || this.i18nStore?.t('general.cancel') || 'Cancel'}</alps-button>
+        <alps-button slot="actions" variant="normal" ?disabled=${this.busy || this.submitted} @click=${this._handleSubmit}>${this.confirmText || this.i18nStore?.t('general.save') || 'Save'}</alps-button>
       </ui-modal>
     `;
   }

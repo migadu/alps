@@ -152,6 +152,7 @@ export const fr = {
     delete: 'Supprimer',
     createFolder: 'Créer un dossier',
     renameFolder: 'Renommer le dossier',
+    folderName: 'Nom du dossier',
     deleteFolder: 'Supprimer le dossier',
     deleteFolderConfirm: 'Êtes-vous sûr de vouloir supprimer "{folder}" ? Tous les messages qu\'il contient seront définitivement supprimés.',
     expandSidebar: 'Développer la barre latérale',

@@ -1005,9 +1005,9 @@ export class FolderList extends LitElement {
           title=${this.parentForNewFolder ?
           (this.i18nStore?.t('folderList.createSubfolderUnder')?.replace('{folder}', this.parentForNewFolder)) :
           this.i18nStore?.t('folderList.createFolder')}
-          confirmText="Create"
+          confirmText=${this.i18nStore?.t('folderList.createFolder')}
           .busy=${this.promptBusy}
-          .fields=${[{ id: 'name', label: 'Folder Name', autofocus: true }]}
+          .fields=${[{ id: 'name', label: this.i18nStore?.t('folderList.folderName') || 'Folder name', autofocus: true }]}
           @submit=${this.handleCreateSubmit}
           @cancel=${() => {
           this.showCreatePrompt = false;
@@ -1019,8 +1019,8 @@ export class FolderList extends LitElement {
       ${this.showRenamePrompt ? html`
         <ui-prompt
           title="${this.i18nStore?.t('folderList.renameFolder')}"
-          confirmText="Rename"
-          .fields=${[{ id: 'name', label: 'New Name', autofocus: true, value: this.mailboxToRename }]}
+          confirmText=${this.i18nStore?.t('folderList.rename')}
+          .fields=${[{ id: 'name', label: this.i18nStore?.t('folderList.folderName') || 'Folder name', autofocus: true, value: this.mailboxToRename }]}
           @submit=${this.handleRenameSubmit}
           @cancel=${() => this.showRenamePrompt = false}
         ></ui-prompt>
@@ -1041,7 +1041,7 @@ export class FolderList extends LitElement {
         <ui-confirm
           title="${this.i18nStore?.t('folderList.deleteFolder')}"
           message=${this.i18nStore?.t('folderList.deleteFolderConfirm')?.replace('{folder}', this.mailboxToDelete)}
-          confirmText="Delete"
+          confirmText=${this.i18nStore?.t('folderList.delete')}
           isDanger=${true}
           @confirm=${this.handleDeleteConfirm}
           @cancel=${() => this.showDeleteConfirm = false}

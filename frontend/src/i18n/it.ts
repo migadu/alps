@@ -152,6 +152,7 @@ export const it = {
     delete: 'Elimina',
     createFolder: 'Crea cartella',
     renameFolder: 'Rinomina cartella',
+    folderName: 'Nome della cartella',
     deleteFolder: 'Elimina cartella',
     deleteFolderConfirm: 'Sei sicuro di voler eliminare "{folder}"? Tutti i messaggi all\'interno verranno eliminati definitivamente.',
     expandSidebar: 'Espandi barra laterale',

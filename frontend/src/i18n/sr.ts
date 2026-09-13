@@ -152,6 +152,7 @@ export const sr = {
     delete: 'Obriši',
     createFolder: 'Napravi fasciklu',
     renameFolder: 'Preimenuj fasciklu',
+    folderName: 'Naziv fascikle',
     deleteFolder: 'Obriši fasciklu',
     deleteFolderConfirm: 'Da li ste sigurni da želite da obrišete "{folder}"? Sve poruke unutra biće trajno obrisane.',
     expandSidebar: 'Proširi bočnu traku',
