@@ -1232,7 +1232,7 @@ export class MessageList extends LitElement {
         ` : ''}
         ${!this.filterQuery && this.isDiscardableFolder && this.totalMessages > 0 ? html`
           <alps-banner variant="warning">
-            <span>${this.i18nStore?.t('messageList.totalMessagesIn')?.replace('{count}', String(this.totalMessages)).replace('{folder}', this.currentMailbox) || `${this.totalMessages} total messages in ${this.currentMailbox}`}</span>
+            <span>${this.i18nStore?.t('messageList.totalMessagesIn', { count: this.totalMessages, folder: this.currentMailbox }) || `${this.totalMessages} total messages in ${this.currentMailbox}`}</span>
             <alps-button slot="action" variant="normal" ?disabled=${this.selectedMessages.size > 0} @click=${() => this.showEmptyConfirm = true}>
               ${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
             </alps-button>
@@ -1300,8 +1300,8 @@ export class MessageList extends LitElement {
       ` : ''}
       ${this.showEmptyConfirm ? html`
         <ui-confirm
-          title=${this.i18nStore?.t('messageList.emptyMailboxTitle')?.replace('{folder}', this.currentMailbox) || `Empty ${this.currentMailbox}`}
-          message=${this.i18nStore?.t('messageList.emptyMailboxConfirm')?.replace('{folder}', this.currentMailbox).replace('{count}', String(this.totalMessages)) || `Are you sure you want to permanently delete all ${this.totalMessages} messages in ${this.currentMailbox}? This action cannot be undone.`}
+          title=${this.i18nStore?.t('messageList.emptyMailboxTitle', { folder: this.currentMailbox }) || `Empty ${this.currentMailbox}`}
+          message=${this.i18nStore?.t('messageList.emptyMailboxConfirm', { folder: this.currentMailbox, count: this.totalMessages }) || `Are you sure you want to permanently delete all ${this.totalMessages} messages in ${this.currentMailbox}? This action cannot be undone.`}
           confirmText=${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
           .isDanger=${true}
           @confirm=${this.handleEmptyMailbox}

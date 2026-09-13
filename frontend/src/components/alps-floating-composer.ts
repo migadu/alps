@@ -676,7 +676,7 @@ export class AlpsFloatingComposer extends LitElement {
       this._bringToFront();
       window.dispatchEvent(new CustomEvent('show-toast', {
         detail: {
-          message: this.i18nStore?.t('composer.sendError')?.replace('{error}', err.message),
+          message: this.i18nStore?.t('composer.sendError', { error: err.message }),
           duration: 5000
         }
       }));

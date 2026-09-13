@@ -1003,7 +1003,7 @@ export class FolderList extends LitElement {
       ${this.showCreatePrompt ? html`
         <ui-prompt
           title=${this.parentForNewFolder ?
-          (this.i18nStore?.t('folderList.createSubfolderUnder')?.replace('{folder}', this.parentForNewFolder)) :
+          this.i18nStore?.t('folderList.createSubfolderUnder', { folder: this.parentForNewFolder }) :
           this.i18nStore?.t('folderList.createFolder')}
           confirmText=${this.i18nStore?.t('folderList.createFolder')}
           .busy=${this.promptBusy}
@@ -1029,7 +1029,7 @@ export class FolderList extends LitElement {
       ${this.showMoveToTrashConfirm ? html`
         <ui-confirm
           title=${this.i18nStore?.t('folderList.moveToTrash')}
-          message=${this.i18nStore?.t('folderList.moveToTrashConfirm')?.replace('{folder}', this.mailboxToDelete)}
+          message=${this.i18nStore?.t('folderList.moveToTrashConfirm', { folder: this.mailboxToDelete })}
           confirmText=${this.i18nStore?.t('folderList.moveToTrash')}
           isDanger=${false}
           @confirm=${this.handleMoveToTrashConfirm}
@@ -1040,7 +1040,7 @@ export class FolderList extends LitElement {
       ${this.showDeleteConfirm ? html`
         <ui-confirm
           title="${this.i18nStore?.t('folderList.deleteFolder')}"
-          message=${this.i18nStore?.t('folderList.deleteFolderConfirm')?.replace('{folder}', this.mailboxToDelete)}
+          message=${this.i18nStore?.t('folderList.deleteFolderConfirm', { folder: this.mailboxToDelete })}
           confirmText=${this.i18nStore?.t('folderList.delete')}
           isDanger=${true}
           @confirm=${this.handleDeleteConfirm}
