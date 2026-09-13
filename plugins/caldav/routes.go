@@ -56,6 +56,7 @@ type EventData struct {
 	CalendarPath string `json:"calendarPath"`
 	Location     string `json:"location,omitempty"`
 	RRule        string `json:"rrule,omitempty"`
+	AllDay       bool   `json:"allDay"`
 }
 
 func parseObjectPath(s string) (string, error) {
@@ -93,11 +94,64 @@ func extractEventData(co *caldav.CalendarObject) (EventData, error) {
 		Description:  description,
 		Location:     location,
 		RRule:        rrule,
+		AllDay:       eventIsAllDay(&event),
 		Start:        start.Format(time.RFC3339),
 		End:          end.Format(time.RFC3339),
 		Path:         co.Path,
 		CalendarPath: "", // populated later
 	}, nil
+}
+
+// eventIsAllDay reports whether an event is date-based ("all day") rather than
+// timed.
+//
+// It is the server's to say, from the property itself, because the client cannot
+// tell: Start and End reach it as RFC 3339 instants, and the frontend used to
+// guess all-day from a UTC-midnight suffix. That guess is why the write path
+// stored all-day events as UTC-midnight DATE-TIMEs, which every other CalDAV
+// client reads as a timed event starting at midnight UTC: the evening before,
+// anywhere west of Greenwich.
+//
+// A VALUE=DATE start is all-day by definition, and so is a start with no VALUE
+// parameter but a date's length, which is how go-ical's own DateTime reads it.
+// The UTC-midnight pair is still accepted so that the events alps has already
+// written in that shape keep showing as all-day; a timed event that genuinely
+// runs from one UTC midnight to another is misread exactly as it was before.
+func eventIsAllDay(event *ical.Event) bool {
+	start := event.Props.Get(ical.PropDateTimeStart)
+	if start == nil {
+		return false
+	}
+	switch start.ValueType() {
+	case ical.ValueDate:
+		return true
+	case ical.ValueDefault:
+		if len(start.Value) == len("20060102") {
+			return true
+		}
+	}
+	end := event.Props.Get(ical.PropDateTimeEnd)
+	return end != nil && isUTCMidnight(start.Value) && isUTCMidnight(end.Value)
+}
+
+func isUTCMidnight(value string) bool {
+	return len(value) == len("20060102T150405Z") && strings.HasSuffix(value, "T000000Z")
+}
+
+// setEventTimes writes DTSTART and DTEND, as DATE values for an all-day event.
+//
+// The all-day date is the UTC calendar date of the instant the client sent,
+// which the frontend builds as UTC midnight of the day the user picked. Both
+// setters replace the property whole, so switching an event between all-day and
+// timed leaves no stale VALUE or TZID parameter behind.
+func setEventTimes(event *ical.Event, start, end time.Time, allDay bool) {
+	if allDay {
+		event.Props.SetDate(ical.PropDateTimeStart, start.UTC())
+		event.Props.SetDate(ical.PropDateTimeEnd, end.UTC())
+		return
+	}
+	event.Props.SetDateTime(ical.PropDateTimeStart, start)
+	event.Props.SetDateTime(ical.PropDateTimeEnd, end)
 }
 
 func registerRoutes(p *plugin) {
@@ -472,8 +526,7 @@ func registerRoutes(p *plugin) {
 
 		event.Props.SetDateTime(ical.PropDateTimeStamp, time.Now())
 		event.Props.SetText(ical.PropSummary, req.Summary)
-		event.Props.SetDateTime(ical.PropDateTimeStart, start)
-		event.Props.SetDateTime(ical.PropDateTimeEnd, end)
+		setEventTimes(event, start, end, req.AllDay)
 		event.Props.Del(ical.PropDuration)
 
 		if req.Description != "" {

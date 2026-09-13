@@ -133,7 +133,7 @@ export class CalendarMonthView extends LitElement {
     private getEventsForDate(date: Date, includeAllDay: boolean) {
         if (!this.events) return [];
         return this.events.filter(e => {
-            const isAllDay = isAllDayEvent(e.start, e.end);
+            const isAllDay = isAllDayEvent(e);
             if (includeAllDay !== isAllDay) return false;
 
             const dayStart = new Date(date);
@@ -161,7 +161,7 @@ export class CalendarMonthView extends LitElement {
 
     private handleCellClick(date: Date) {
         this.dispatchEvent(new CustomEvent('create-event', {
-            detail: { date },
+            detail: { date, allDay: true },
             bubbles: true,
             composed: true
         }));
@@ -195,7 +195,7 @@ export class CalendarMonthView extends LitElement {
                                 ${dayEvents.slice(0, 4).map(e => html`
                                     <alps-popup align="left" position="bottom" style="width: 100%; display: block;" @click=${(ev: Event) => ev.stopPropagation()}>
                                         <div slot="trigger"
-                                            class="event-chip ${isAllDayEvent(e.start, e.end) ? 'all-day' : ''}" 
+                                            class="event-chip ${isAllDayEvent(e) ? 'all-day' : ''}" 
                                             style=${e.color ? `background-color: ${e.color}` : ''}
                                             title="${e.summary || (this.i18nStore?.t('calendar.noTitle'))}">
                                             ${e.summary || (this.i18nStore?.t('calendar.noTitle'))}

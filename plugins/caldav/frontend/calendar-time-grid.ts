@@ -229,7 +229,7 @@ export class CalendarTimeGrid extends LitElement {
     private getEventsForDate(date: Date, includeAllDay: boolean) {
         if (!this.events) return [];
         return this.events.filter(e => {
-            const isAllDay = isAllDayEvent(e.start, e.end);
+            const isAllDay = isAllDayEvent(e);
             if (includeAllDay !== isAllDay) return false;
 
             const dayStart = new Date(date);
@@ -265,7 +265,10 @@ export class CalendarTimeGrid extends LitElement {
         newDate.setHours(hour, 0, 0, 0);
 
         this.dispatchEvent(new CustomEvent('create-event', {
-            detail: { date: newDate },
+            // The intent is stated rather than left to the editor, which read any
+            // midnight as a day-cell click: the top (00:00) row of the week and
+            // day grids opened the all-day form.
+            detail: { date: newDate, allDay: false },
             bubbles: true,
             composed: true
         }));
@@ -276,7 +279,7 @@ export class CalendarTimeGrid extends LitElement {
         newDate.setHours(0, 0, 0, 0);
 
         this.dispatchEvent(new CustomEvent('create-event', {
-            detail: { date: newDate },
+            detail: { date: newDate, allDay: true },
             bubbles: true,
             composed: true
         }));

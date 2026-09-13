@@ -3,6 +3,7 @@ import { customElement, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import type { EventData } from './calendar-service';
+import { isAllDayEvent } from './calendar-service';
 import './calendar-event-preview';
 
 @customElement('calendar-list-view')
@@ -128,8 +129,14 @@ export class CalendarListView extends LitElement {
         return html`
             <div class="list-container">
                 ${sortedEvents.map(event => {
-                    const startDate = new Date(event.start);
-                    const isAllDay = event.start.length === 10 || event.end.length === 10;
+                    // The server's own flag. The length-10 test never matched: every
+                    // event arrives as a full RFC 3339 instant, so an all-day event
+                    // was listed as timed, at midnight UTC in local time, under the
+                    // previous day's date anywhere west of UTC.
+                    const isAllDay = isAllDayEvent(event);
+                    const startDate = isAllDay
+                        ? new Date(event.start.split('T')[0] + 'T00:00:00')
+                        : new Date(event.start);
                     
                     return html`
                         <alps-popup align="left" position="bottom" style="width: 100%; display: block;" @click=${(ev: Event) => ev.stopPropagation()}>

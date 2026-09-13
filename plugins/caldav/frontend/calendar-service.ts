@@ -18,6 +18,8 @@ export interface EventData {
     color?: string;
     location?: string;
     rrule?: string;
+    /** Stated by the server from the event's own DTSTART; see isAllDayEvent. */
+    allDay?: boolean;
 }
 
 const CALENDAR_COLORS = [
@@ -40,10 +42,18 @@ export function getCalendarColor(identifier: string): string {
     return CALENDAR_COLORS[index];
 }
 
-export function isAllDayEvent(startStr: string, endStr: string): boolean {
-    const isStartAllDay = startStr.endsWith('T00:00:00Z') || startStr.endsWith('T00:00:00.000Z') || startStr.length === 10;
-    const isEndAllDay = endStr.endsWith('T00:00:00Z') || endStr.endsWith('T00:00:00.000Z') || endStr.length === 10;
-    return isStartAllDay && isEndAllDay;
+/**
+ * Whether an event is all-day, as the SERVER says.
+ *
+ * This used to be guessed from the strings: both ends at UTC midnight meant
+ * all-day. For the guess to hold, the editor saved all-day events as UTC-midnight
+ * date-times, which every other CalDAV client shows as a timed event starting at
+ * midnight UTC (the evening before, anywhere west of it). The backend now writes
+ * DATE values and reports `allDay` from the property itself, still recognising
+ * the UTC-midnight events saved before.
+ */
+export function isAllDayEvent(event: Pick<EventData, 'allDay'>): boolean {
+    return event.allDay === true;
 }
 
 class CalendarService {

@@ -119,7 +119,7 @@ export class CalendarMiniMonth extends LitElement {
         dayEnd.setHours(23,59,59,999);
 
         return this.events.some(e => {
-            const isAllDay = isAllDayEvent(e.start, e.end);
+            const isAllDay = isAllDayEvent(e);
 
             if (isAllDay) {
                 const startStr = e.start.split('T')[0];

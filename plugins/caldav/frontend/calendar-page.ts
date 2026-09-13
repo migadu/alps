@@ -56,6 +56,7 @@ export class CalendarPage extends LitElement {
     @state() modalOpen = false;
     @state() selectedEvent?: EventData;
     @state() initialDate?: Date;
+    @state() initialAllDay?: boolean;
     @state() private activeCalendars: Set<string> = new Set();
     @state() searchQuery = '';
 
@@ -617,15 +618,17 @@ export class CalendarPage extends LitElement {
         this.navigate(mode, d);
     }
 
-    private openCreateModal(date?: Date) {
+    private openCreateModal(date?: Date, allDay?: boolean) {
         this.selectedEvent = undefined;
         this.initialDate = date;
+        this.initialAllDay = allDay;
         this.modalOpen = true;
     }
 
     private openEditModal(event: EventData) {
         this.selectedEvent = event;
         this.initialDate = undefined;
+        this.initialAllDay = undefined;
         this.modalOpen = true;
     }
 
@@ -633,12 +636,14 @@ export class CalendarPage extends LitElement {
         this.modalOpen = false;
         this.selectedEvent = undefined;
         this.initialDate = undefined;
+        this.initialAllDay = undefined;
     }
 
     private async handleModalSaved() {
         this.modalOpen = false;
         this.selectedEvent = undefined;
         this.initialDate = undefined;
+        this.initialAllDay = undefined;
         await this.fetchData();
     }
 
@@ -948,7 +953,7 @@ export class CalendarPage extends LitElement {
                             <calendar-month-view 
                                 .date=${this.currentDate} 
                                 .events=${visibleEvents}
-                                @create-event=${(e: CustomEvent) => this.openCreateModal(e.detail.date)}
+                                @create-event=${(e: CustomEvent) => this.openCreateModal(e.detail.date, e.detail.allDay)}
                                 @edit-event=${(e: CustomEvent) => this.openEditModal(e.detail.event)}
                                 @delete-event=${(e: CustomEvent) => this.eventToDelete = e.detail.event}
                             ></calendar-month-view>
@@ -957,7 +962,7 @@ export class CalendarPage extends LitElement {
                             <calendar-week-view 
                                 .date=${this.currentDate} 
                                 .events=${visibleEvents}
-                                @create-event=${(e: CustomEvent) => this.openCreateModal(e.detail.date)}
+                                @create-event=${(e: CustomEvent) => this.openCreateModal(e.detail.date, e.detail.allDay)}
                                 @edit-event=${(e: CustomEvent) => this.openEditModal(e.detail.event)}
                                 @delete-event=${(e: CustomEvent) => this.eventToDelete = e.detail.event}
                             ></calendar-week-view>
@@ -966,7 +971,7 @@ export class CalendarPage extends LitElement {
                                 <calendar-day-view 
                                     .date=${this.currentDate} 
                                     .events=${visibleEvents}
-                                    @create-event=${(e: CustomEvent) => this.openCreateModal(e.detail.date)}
+                                    @create-event=${(e: CustomEvent) => this.openCreateModal(e.detail.date, e.detail.allDay)}
                                     @edit-event=${(e: CustomEvent) => this.openEditModal(e.detail.event)}
                                     @delete-event=${(e: CustomEvent) => this.eventToDelete = e.detail.event}
                                 ></calendar-day-view>
@@ -997,6 +1002,7 @@ export class CalendarPage extends LitElement {
                 .open=${this.modalOpen}
                 .event=${this.selectedEvent}
                 .initialDate=${this.initialDate}
+                .initialAllDay=${this.initialAllDay}
                 .calendars=${this.calendars}
                 @close=${this.handleModalClose}
                 @saved=${this.handleModalSaved}
