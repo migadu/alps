@@ -130,8 +130,9 @@ type MaildirProviderConfig struct {
 }
 
 type IMAPProviderConfig struct {
-	Server   string `toml:"server"`   // Server URL (e.g., "imaps://imap.example.com:993")
-	Insecure bool   `toml:"insecure"` // Allow insecure connections
+	Server      string   `toml:"server"`       // Server URL (e.g., "imaps://imap.example.com:993")
+	Insecure    bool     `toml:"insecure"`     // Allow insecure connections
+	AuthservIDs []string `toml:"authserv_ids"` // Receiving servers whose Authentication-Results are trusted (e.g., ["mx.example.com"])
 }
 
 type SMTPConfig struct {
@@ -397,8 +398,9 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	}
 
 	options.Provider.IMAP = alps.IMAPProviderOptions{
-		Server:   c.Provider.IMAP.Server,
-		Insecure: c.Provider.IMAP.Insecure,
+		Server:      c.Provider.IMAP.Server,
+		Insecure:    c.Provider.IMAP.Insecure,
+		AuthservIDs: c.Provider.IMAP.AuthservIDs,
 	}
 
 	// Validation

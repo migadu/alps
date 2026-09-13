@@ -380,6 +380,13 @@ server = "imaps://imap.migadu.com:993"
 # Allow insecure connections (default: false)
 # insecure = false
 
+# Authserv-ids of the receiving mail servers whose Authentication-Results
+# header is trusted for a message's DMARC verdict, which decides whether a
+# sender's BIMI logo is shown (default: empty, meaning the topmost header).
+# Set it when your mail server stamps Authentication-Results: without it, a
+# message the server did not stamp is judged by a header its sender wrote.
+# authserv_ids = ["mx.example.com"]
+
 # Maildir Provider Configuration (Local filesystem)
 # [provider.maildir]
 # Path to the base maildir directory for all users

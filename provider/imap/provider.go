@@ -31,11 +31,12 @@ func isMailboxMassive(mbox *imapclient.SelectedMailbox) bool {
 }
 
 type IMAPProvider struct {
-	client    *imapclient.Client
-	store     provider.Store
-	debug     bool
-	dateCache map[string]map[uint32]time.Time
-	cacheLock sync.RWMutex
+	client      *imapclient.Client
+	store       provider.Store
+	debug       bool
+	authservIDs []string
+	dateCache   map[string]map[uint32]time.Time
+	cacheLock   sync.RWMutex
 }
 
 func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
@@ -1318,18 +1319,40 @@ func authResultsSection() *imap.FetchItemBodySection {
 	}
 }
 
+// WithAuthservIDs sets the authserv-ids of the receiving mail servers whose
+// Authentication-Results fields are trusted as the verdict (see authVerdict).
+// They are matched in any case; blank ones are dropped.
+func (p *IMAPProvider) WithAuthservIDs(ids []string) *IMAPProvider {
+	p.authservIDs = nil
+	for _, id := range ids {
+		if id = strings.ToLower(strings.TrimSpace(id)); id != "" {
+			p.authservIDs = append(p.authservIDs, id)
+		}
+	}
+	return p
+}
+
 // authVerdict reads the receiving server's verdict from a block of
-// Authentication-Results fields: the first field only. A receiver prepends its
-// own, so any field below it arrived with the message and says whatever the
-// sender wrote. Matching "dmarc=pass" anywhere in the block let a forged field
-// below the real one, a comment, or a header.from value that merely contains
-// the words mark a spoof as passing, and that verdict decides whether a brand
-// logo is drawn.
+// Authentication-Results fields. A receiver prepends its own field, so any
+// field below it arrived with the message and says whatever the sender wrote.
+// Matching "dmarc=pass" anywhere in the block let a forged field below the
+// real one, a comment, or a header.from value that merely contains the words
+// mark a spoof as passing, and that verdict decides whether a brand logo is
+// drawn.
+//
+// With trusted authserv-ids, the verdict is the topmost field one of them
+// wrote, and a message none of them stamped has none. Without them it is the
+// topmost field, which is the sender's own when the receiving server adds no
+// field at all.
 //
 // potential is a dmarc (or bimi) pass; failed is a failing dmarc, dkim or spf
 // result, and a pass wins over it.
-func authVerdict(raw []byte) (potential, failed bool) {
-	resinfos := strings.Split(firstHeaderValue(raw), ";")
+func authVerdict(raw []byte, trusted []string) (potential, failed bool) {
+	value, ok := receiverField(raw, trusted)
+	if !ok {
+		return false, false
+	}
+	resinfos := strings.Split(value, ";")
 	for _, resinfo := range resinfos[1:] {
 		fields := strings.Fields(strings.ToLower(resinfo))
 		if len(fields) == 0 {
@@ -1353,21 +1376,46 @@ func authVerdict(raw []byte) (potential, failed bool) {
 	return potential, failed
 }
 
-// firstHeaderValue returns the unfolded value of the first field in a header
-// block, such as a HEADER.FIELDS fetch returns, or "" when the block has none.
-func firstHeaderValue(raw []byte) string {
-	lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
-	_, value, ok := strings.Cut(lines[0], ":")
-	if !ok {
-		return ""
-	}
-	for _, line := range lines[1:] {
-		if line == "" || (line[0] != ' ' && line[0] != '\t') {
-			break
+// receiverField returns the value of the topmost Authentication-Results field
+// whose authserv-id is trusted, or of the topmost field when none are.
+func receiverField(raw []byte, trusted []string) (string, bool) {
+	for _, value := range headerValues(raw) {
+		if len(trusted) == 0 {
+			return value, true
 		}
-		value += " " + line
+		id, _, _ := strings.Cut(value, ";")
+		fields := strings.Fields(strings.ToLower(id))
+		if len(fields) == 0 {
+			continue
+		}
+		for _, t := range trusted {
+			if fields[0] == t {
+				return value, true
+			}
+		}
 	}
-	return value
+	return "", false
+}
+
+// headerValues returns the unfolded values of the fields in a header block,
+// such as a HEADER.FIELDS fetch returns, in order.
+func headerValues(raw []byte) []string {
+	var values []string
+	for _, line := range strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n") {
+		switch {
+		case line == "":
+			return values
+		case line[0] == ' ' || line[0] == '\t':
+			if len(values) > 0 {
+				values[len(values)-1] += " " + line
+			}
+		default:
+			if _, value, ok := strings.Cut(line, ":"); ok {
+				values = append(values, value)
+			}
+		}
+	}
+	return values
 }
 
 // Helper function to convert IMAP message to alps.Message
@@ -1403,7 +1451,7 @@ func (p *IMAPProvider) convertIMAPMessage(msg *imapclient.FetchMessageBuffer, ma
 		if p.debug {
 			fmt.Printf("BIMI debug: Auth-Results for %d: %q\n", msg.UID, string(b))
 		}
-		converted.BimiPotential, converted.BimiFailed = authVerdict(b)
+		converted.BimiPotential, converted.BimiFailed = authVerdict(b, p.authservIDs)
 	}
 
 	refSection := &imap.FetchItemBodySection{

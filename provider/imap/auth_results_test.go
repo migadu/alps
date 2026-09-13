@@ -45,3 +45,34 @@ func TestConvertIMAPMessageReadsOnlyTheReceiversVerdict(t *testing.T) {
 		t.Fatalf("a fetch without the section: potential=%v failed=%v", got.BimiPotential, got.BimiFailed)
 	}
 }
+
+func TestConvertIMAPMessageTrustsOnlyTheConfiguredReceiver(t *testing.T) {
+	forgedAbove := "Authentication-Results: brand.test; dmarc=pass header.from=brand.test\r\nAuthentication-Results: mx.test; dmarc=fail header.from=brand.test\r\n\r\n"
+	cases := []struct {
+		name              string
+		block             string
+		potential, failed bool
+	}{
+		{"a forged field above the receiver's", forgedAbove, false, true},
+		{"the receiver's pass, with a version, in any case", "Authentication-Results: MX.Test 1; dmarc=pass header.from=brand.test\r\n\r\n", true, false},
+		{"a folded field from the receiver", "Authentication-Results: brand.test; dmarc=fail\r\nAuthentication-Results:\r\n mx.test;\r\n\tdmarc=pass\r\n\r\n", true, false},
+		{"the topmost of the receiver's fields", "Authentication-Results: mx.test; dmarc=fail\r\nAuthentication-Results: mx.test; dmarc=pass\r\n\r\n", false, true},
+		{"no field from the receiver", "Authentication-Results: brand.test; dmarc=pass header.from=brand.test\r\n\r\n", false, false},
+		{"an id that only starts like the receiver's", "Authentication-Results: mx.test.brand.test; dmarc=pass\r\n\r\n", false, false},
+	}
+	p := (&IMAPProvider{}).WithAuthservIDs([]string{" MX.test ", ""})
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := p.convertIMAPMessage(authResultsFetch(c.block), "INBOX")
+			if got.BimiPotential != c.potential || got.BimiFailed != c.failed {
+				t.Fatalf("potential=%v failed=%v, want potential=%v failed=%v", got.BimiPotential, got.BimiFailed, c.potential, c.failed)
+			}
+		})
+	}
+
+	// Without configured ids the topmost field is read, forged or not: the gap
+	// the setting closes.
+	if got := (&IMAPProvider{}).convertIMAPMessage(authResultsFetch(forgedAbove), "INBOX"); !got.BimiPotential {
+		t.Fatal("without authserv-ids the topmost field should be read")
+	}
+}

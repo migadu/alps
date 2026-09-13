@@ -189,7 +189,7 @@ func (s *Server) createProviderFactory() provider.AuthenticatedProviderFactory {
 				return nil, AuthError{err}
 			}
 
-			return imap.NewIMAPProvider(client, s.Options.Debug), nil
+			return imap.NewIMAPProvider(client, s.Options.Debug).WithAuthservIDs(s.Options.Provider.IMAP.AuthservIDs), nil
 
 		default:
 			return nil, fmt.Errorf("unknown provider type: %s", s.Options.Provider.Type)
@@ -431,6 +431,10 @@ type ProviderOptions struct {
 type IMAPProviderOptions struct {
 	Server   string
 	Insecure bool
+	// Authserv-ids of the receiving mail servers whose Authentication-Results
+	// fields are trusted for a message's DMARC verdict. Empty means the topmost
+	// field.
+	AuthservIDs []string
 }
 
 type SMTPOptions struct {
