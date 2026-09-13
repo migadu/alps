@@ -34,7 +34,10 @@ export default {
     cancel: 'Abbrechen',
     noContacts: 'Keine Kontakte gefunden',
     selectContact: 'Wählen Sie einen Kontakt aus, um Details anzuzeigen',
-    selectedContacts: '{count} Kontakte ausgewählt',
+    selectedContacts: {
+      one: '{count} Kontakt ausgewählt',
+      other: '{count} Kontakte ausgewählt'
+    },
     clearSelection: 'Auswahl aufheben',
     selectAll: 'Alle auswählen',
     clearSearch: 'Suche löschen',

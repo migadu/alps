@@ -34,7 +34,11 @@ export default {
     cancel: 'Otkaži',
     noContacts: 'Nema pronađenih kontakata',
     selectContact: 'Izaberite kontakt za prikaz detalja',
-    selectedContacts: '{count} kontakata izabrano',
+    selectedContacts: {
+      one: '{count} kontakt izabran',
+      few: '{count} kontakta izabrana',
+      other: '{count} kontakata izabrano'
+    },
     clearSelection: 'Očisti izbor',
     selectAll: 'Izaberi sve',
     clearSearch: 'Očisti pretragu',

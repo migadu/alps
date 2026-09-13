@@ -34,7 +34,11 @@ export default {
     cancel: 'Откажи',
     noContacts: 'Нема пронађених контаката',
     selectContact: 'Изаберите контакт за приказ детаља',
-    selectedContacts: '{count} контаката изабрано',
+    selectedContacts: {
+      one: '{count} контакт изабран',
+      few: '{count} контакта изабрана',
+      other: '{count} контаката изабрано'
+    },
     clearSelection: 'Очисти избор',
     selectAll: 'Изабери све',
     clearSearch: 'Очисти претрагу',
