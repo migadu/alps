@@ -19,6 +19,7 @@ var errBlockedAddress = errors.New("destination address is not permitted")
 var extraBlockedCIDRs = func() []*net.IPNet {
 	var nets []*net.IPNet
 	for _, cidr := range []string{
+		"0.0.0.0/8",     // "this network"; Linux connects 0.0.0.0 to the local host
 		"100.64.0.0/10", // RFC 6598 carrier-grade NAT
 		"192.0.0.0/24",  // IETF protocol assignments
 		"198.18.0.0/15", // RFC 2544 benchmarking
