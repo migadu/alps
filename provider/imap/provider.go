@@ -551,6 +551,7 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 			UID:           true,
 			RFC822Size:    true,
 			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+			BodySection:   []*imap.FetchItemBodySection{authResultsSection()},
 		}
 
 		imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
@@ -632,6 +633,7 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 		UID:           true,
 		RFC822Size:    true,
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+		BodySection:   []*imap.FetchItemBodySection{authResultsSection()},
 	}
 	imapMsgs, err := p.client.Fetch(seqSet, &options).Collect()
 	if err != nil {
@@ -734,6 +736,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 			UID:           true,
 			RFC822Size:    true,
 			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+			BodySection:   []*imap.FetchItemBodySection{authResultsSection()},
 		}
 
 		imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
@@ -837,6 +840,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		UID:           true,
 		RFC822Size:    true,
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+		BodySection:   []*imap.FetchItemBodySection{authResultsSection()},
 	}
 	results, err := p.client.Fetch(seqSet, &options).Collect()
 	if err != nil {
@@ -1303,6 +1307,69 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 	return uidMapping, nil
 }
 
+// authResultsSection fetches the Authentication-Results fields. The list and
+// search fetches ask for it as well as the single-message fetch, so a list row
+// carries the same verdict the reader does.
+func authResultsSection() *imap.FetchItemBodySection {
+	return &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"Authentication-Results"},
+		Peek:         true,
+	}
+}
+
+// authVerdict reads the receiving server's verdict from a block of
+// Authentication-Results fields: the first field only. A receiver prepends its
+// own, so any field below it arrived with the message and says whatever the
+// sender wrote. Matching "dmarc=pass" anywhere in the block let a forged field
+// below the real one, a comment, or a header.from value that merely contains
+// the words mark a spoof as passing, and that verdict decides whether a brand
+// logo is drawn.
+//
+// potential is a dmarc (or bimi) pass; failed is a failing dmarc, dkim or spf
+// result, and a pass wins over it.
+func authVerdict(raw []byte) (potential, failed bool) {
+	resinfos := strings.Split(firstHeaderValue(raw), ";")
+	for _, resinfo := range resinfos[1:] {
+		fields := strings.Fields(strings.ToLower(resinfo))
+		if len(fields) == 0 {
+			continue
+		}
+		method, result, ok := strings.Cut(fields[0], "=")
+		if !ok {
+			continue
+		}
+		switch {
+		case (method == "dmarc" || method == "bimi") && result == "pass":
+			potential = true
+		case method == "dmarc" && result == "fail",
+			(method == "dkim" || method == "spf") && (result == "fail" || result == "hardfail"):
+			failed = true
+		}
+	}
+	if potential {
+		failed = false
+	}
+	return potential, failed
+}
+
+// firstHeaderValue returns the unfolded value of the first field in a header
+// block, such as a HEADER.FIELDS fetch returns, or "" when the block has none.
+func firstHeaderValue(raw []byte) string {
+	lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
+	_, value, ok := strings.Cut(lines[0], ":")
+	if !ok {
+		return ""
+	}
+	for _, line := range lines[1:] {
+		if line == "" || (line[0] != ' ' && line[0] != '\t') {
+			break
+		}
+		value += " " + line
+	}
+	return value
+}
+
 // Helper function to convert IMAP message to alps.Message
 func (p *IMAPProvider) convertIMAPMessage(msg *imapclient.FetchMessageBuffer, mailbox string) provider.Message {
 	size := uint32(0)
@@ -1332,22 +1399,11 @@ func (p *IMAPProvider) convertIMAPMessage(msg *imapclient.FetchMessageBuffer, ma
 		converted.BodyStructure = &IMAPBodyStructure{msg.BodyStructure}
 	}
 
-	bodySection := &imap.FetchItemBodySection{
-		Specifier:    imap.PartSpecifierHeader,
-		HeaderFields: []string{"Authentication-Results"},
-		Peek:         true,
-	}
-	b := msg.FindBodySection(bodySection)
-	if b != nil {
+	if b := msg.FindBodySection(authResultsSection()); b != nil {
 		if p.debug {
 			fmt.Printf("BIMI debug: Auth-Results for %d: %q\n", msg.UID, string(b))
 		}
-		lowerStr := strings.ToLower(string(b))
-		if strings.Contains(lowerStr, "dmarc=pass") || strings.Contains(lowerStr, "bimi=pass") {
-			converted.BimiPotential = true
-		} else if strings.Contains(lowerStr, "dmarc=fail") || strings.Contains(lowerStr, "dkim=fail") || strings.Contains(lowerStr, "spf=fail") || strings.Contains(lowerStr, "dkim=hardfail") || strings.Contains(lowerStr, "spf=hardfail") {
-			converted.BimiFailed = true
-		}
+		converted.BimiPotential, converted.BimiFailed = authVerdict(b)
 	}
 
 	refSection := &imap.FetchItemBodySection{
