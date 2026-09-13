@@ -15,35 +15,61 @@ import (
 
 const bimiLogo = `<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps"><title>Brand</title></svg>`
 
-var bimiRecord = []string{"v=BIMI1; l=https://logo.brand.test/brand.svg; a="}
+var (
+	dmarcReject = []string{"v=DMARC1; p=reject; rua=mailto:dmarc@brand.test"}
+	bimiRecord  = []string{"v=BIMI1; l=https://logo.brand.test/brand.svg; a="}
+)
+
+type lookupFunc func(string) ([]string, error)
+type fetchFunc func(string) (*http.Response, error)
+
+// answers routes a lookup of a _dmarc name to dmarc and any other to bimi.
+func answers(dmarc, bimi lookupFunc) lookupFunc {
+	return func(name string) ([]string, error) {
+		if strings.HasPrefix(name, "_dmarc.") {
+			return dmarc(name)
+		}
+		return bimi(name)
+	}
+}
+
+func records(txt ...string) lookupFunc {
+	return func(string) ([]string, error) { return txt, nil }
+}
+
+func dnsFails(err *net.DNSError) lookupFunc {
+	return func(string) ([]string, error) { return nil, err }
+}
 
 func logoResponse(status int, body string) *http.Response {
 	return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{}}
 }
 
+func logo(string) (*http.Response, error) { return logoResponse(http.StatusOK, bimiLogo), nil }
+
 // bimiNetwork stands in for DNS and the logo host for one test, gives the
 // avatar cache a directory of its own, and counts the lookups made.
 type bimiNetwork struct {
-	lookup  func(string) ([]string, error)
-	fetch   func(string) (*http.Response, error)
+	lookup  lookupFunc
+	fetch   fetchFunc
 	lookups int
 }
 
 func stubBIMINetwork(t *testing.T, n *bimiNetwork) {
 	t.Helper()
 	t.Setenv("TMPDIR", t.TempDir())
-	oldLookup, oldFetch := lookupBIMITXT, fetchBIMILogo
-	lookupBIMITXT = func(name string) ([]string, error) {
+	oldLookup, oldFetch := lookupTXT, fetchBIMILogo
+	lookupTXT = func(name string) ([]string, error) {
 		n.lookups++
 		return n.lookup(name)
 	}
 	fetchBIMILogo = func(url string) (*http.Response, error) { return n.fetch(url) }
-	t.Cleanup(func() { lookupBIMITXT, fetchBIMILogo = oldLookup, oldFetch })
+	t.Cleanup(func() { lookupTXT, fetchBIMILogo = oldLookup, oldFetch })
 }
 
 func healthy(n *bimiNetwork) {
-	n.lookup = func(string) ([]string, error) { return bimiRecord, nil }
-	n.fetch = func(string) (*http.Response, error) { return logoResponse(http.StatusOK, bimiLogo), nil }
+	n.lookup = answers(records(dmarcReject...), records(bimiRecord...))
+	n.fetch = logo
 }
 
 // ageAvatarCache moves every cached entry d into the past.
@@ -62,56 +88,81 @@ func ageAvatarCache(t *testing.T, d time.Duration) {
 	}
 }
 
-func TestHTTP_BIMIAvatarServesAndCachesALogo(t *testing.T) {
-	n := &bimiNetwork{}
-	healthy(n)
-	stubBIMINetwork(t, n)
-	s := newTestServer(t)
-	s.login()
-
-	for i := 0; i < 2; i++ {
-		r := s.do("GET", "/bimi/avatar?domain=brand.test", nil)
-		s.expect(r, http.StatusOK)
-		if got := r.header.Get("Content-Type"); got != "image/svg+xml" {
-			t.Fatalf("Content-Type %q", got)
+func TestDMARCPolicy(t *testing.T) {
+	cases := []struct {
+		txts []string
+		want string
+	}{
+		{[]string{"v=DMARC1; p=reject"}, "reject"},
+		{[]string{"v=spf1 -all", "v=DMARC1;p=Quarantine; pct=100"}, "quarantine"},
+		{[]string{"v=DMARC1; p = reject"}, "reject"},
+		{[]string{"v=DMARC1; p=none; sp=reject"}, "none"},
+		{[]string{"v=DMARC1; pct=100; sp=reject"}, ""},
+		{[]string{"v=DMARC2; p=reject"}, ""},
+		{[]string{"p=reject"}, ""},
+		{nil, ""},
+	}
+	for _, c := range cases {
+		if got := dmarcPolicy(c.txts); got != c.want {
+			t.Errorf("dmarcPolicy(%q) = %q, want %q", c.txts, got, c.want)
 		}
 	}
-	if n.lookups != 1 {
-		t.Fatalf("%d lookups for two requests, want 1", n.lookups)
+}
+
+func TestHTTP_BIMIAvatarServesAndCachesALogo(t *testing.T) {
+	for _, policy := range []string{"reject", "quarantine"} {
+		t.Run(policy, func(t *testing.T) {
+			n := &bimiNetwork{fetch: logo}
+			n.lookup = answers(records("v=DMARC1; p="+policy), records(bimiRecord...))
+			stubBIMINetwork(t, n)
+			s := newTestServer(t)
+			s.login()
+
+			for i := 0; i < 2; i++ {
+				r := s.do("GET", "/bimi/avatar?domain=brand.test", nil)
+				s.expect(r, http.StatusOK)
+				if got := r.header.Get("Content-Type"); got != "image/svg+xml" {
+					t.Fatalf("Content-Type %q", got)
+				}
+			}
+			if n.lookups != 2 {
+				t.Fatalf("%d lookups for two requests, want 2 (DMARC and BIMI, once)", n.lookups)
+			}
+		})
 	}
 }
 
 func TestHTTP_BIMIAvatarRemembersOnlyAnswers(t *testing.T) {
-	record := func(txt ...string) func(string) ([]string, error) {
-		return func(string) ([]string, error) { return txt, nil }
-	}
-	dnsFails := func(err *net.DNSError) func(string) ([]string, error) {
-		return func(string) ([]string, error) { return nil, err }
-	}
-	logo := func(string) (*http.Response, error) { return logoResponse(http.StatusOK, bimiLogo), nil }
-	status := func(code int) func(string) (*http.Response, error) {
+	status := func(code int) fetchFunc {
 		return func(string) (*http.Response, error) { return logoResponse(code, ""), nil }
 	}
-	fetchFails := func(err error) func(string) (*http.Response, error) {
+	fetchFails := func(err error) fetchFunc {
 		return func(string) (*http.Response, error) { return nil, err }
 	}
+	timeout := &net.DNSError{Err: "i/o timeout", Name: "brand.test", IsTimeout: true}
+	notFound := &net.DNSError{Err: "no such host", Name: "brand.test", IsNotFound: true}
+	dmarc, bimi := records(dmarcReject...), records(bimiRecord...)
 
 	cases := []struct {
 		name      string
-		lookup    func(string) ([]string, error)
-		fetch     func(string) (*http.Response, error)
+		lookup    lookupFunc
+		fetch     fetchFunc
 		transient bool
 	}{
-		{"a DNS timeout", dnsFails(&net.DNSError{Err: "i/o timeout", Name: "default._bimi.brand.test", IsTimeout: true}), logo, true},
-		{"a resolver failure", dnsFails(&net.DNSError{Err: "server misbehaving", Name: "default._bimi.brand.test", IsTemporary: true}), logo, true},
-		{"an unreachable logo host", record(bimiRecord...), fetchFails(&net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}), true},
-		{"a 503 from the logo host", record(bimiRecord...), status(http.StatusServiceUnavailable), true},
-		{"a 429 from the logo host", record(bimiRecord...), status(http.StatusTooManyRequests), true},
-		{"no such name", dnsFails(&net.DNSError{Err: "no such host", Name: "default._bimi.brand.test", IsNotFound: true}), logo, false},
-		{"no BIMI record", record("v=spf1 -all"), logo, false},
-		{"a logo over plain http", record("v=BIMI1; l=http://logo.brand.test/brand.svg"), logo, false},
-		{"a 404 from the logo host", record(bimiRecord...), status(http.StatusNotFound), false},
-		{"a refused address", record(bimiRecord...), fetchFails(fmt.Errorf("dial tcp 10.0.0.1:443: %w", errBlockedAddress)), false},
+		{"a DMARC lookup timeout", answers(dnsFails(timeout), bimi), logo, true},
+		{"a BIMI lookup timeout", answers(dmarc, dnsFails(timeout)), logo, true},
+		{"a resolver failure", answers(dmarc, dnsFails(&net.DNSError{Err: "server misbehaving", Name: "brand.test", IsTemporary: true})), logo, true},
+		{"an unreachable logo host", answers(dmarc, bimi), fetchFails(&net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}), true},
+		{"a 503 from the logo host", answers(dmarc, bimi), status(http.StatusServiceUnavailable), true},
+		{"a 429 from the logo host", answers(dmarc, bimi), status(http.StatusTooManyRequests), true},
+		{"a DMARC policy of none", answers(records("v=DMARC1; p=none; rua=mailto:d@brand.test"), bimi), logo, false},
+		{"no DMARC record", answers(records("v=spf1 -all"), bimi), logo, false},
+		{"no DMARC name", answers(dnsFails(notFound), bimi), logo, false},
+		{"no BIMI name", answers(dmarc, dnsFails(notFound)), logo, false},
+		{"no BIMI record", answers(dmarc, records("v=spf1 -all")), logo, false},
+		{"a logo over plain http", answers(dmarc, records("v=BIMI1; l=http://logo.brand.test/brand.svg")), logo, false},
+		{"a 404 from the logo host", answers(dmarc, bimi), status(http.StatusNotFound), false},
+		{"a refused address", answers(dmarc, bimi), fetchFails(fmt.Errorf("dial tcp 10.0.0.1:443: %w", errBlockedAddress)), false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -128,10 +179,11 @@ func TestHTTP_BIMIAvatarRemembersOnlyAnswers(t *testing.T) {
 
 			// Either way the next request does not go straight back to the
 			// network.
+			lookups := n.lookups
 			healthy(n)
 			s.expect(s.do("GET", "/bimi/avatar?domain=brand.test", nil), http.StatusNotFound)
-			if n.lookups != 1 {
-				t.Fatalf("%d lookups, want 1", n.lookups)
+			if n.lookups != lookups {
+				t.Fatalf("%d lookups after the first request, %d after the second", lookups, n.lookups)
 			}
 
 			// Past the retry window, a failure that was not an answer is

@@ -50,10 +50,10 @@ func bimiUnavailable(ctx *alps.Context, msg string) error {
 	return bimiNotFound(ctx, msg)
 }
 
-// lookupBIMITXT and fetchBIMILogo are the network, as variables so a test can
+// lookupTXT and fetchBIMILogo are the network, as variables so a test can
 // stand in for DNS and the logo host.
 var (
-	lookupBIMITXT = net.LookupTXT
+	lookupTXT = net.LookupTXT
 
 	// The l= URL comes from the queried domain's DNS record, i.e. attacker
 	// influenced: fetch through the egress-safe client so it cannot be pointed
@@ -62,6 +62,35 @@ var (
 		return newSafeHTTPClient(5 * time.Second).Get(url)
 	}
 )
+
+// txtRecords looks up name's TXT records. No such name is an answer, and comes
+// back as no records; any other failure is not, and comes back as an error.
+func txtRecords(name string) ([]string, error) {
+	txts, err := lookupTXT(name)
+	var dnsErr *net.DNSError
+	if err != nil && errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+		return nil, nil
+	}
+	return txts, err
+}
+
+// dmarcPolicy returns the p= tag of the first DMARC record among txts,
+// lower-cased, or "" when there is none.
+func dmarcPolicy(txts []string) string {
+	for _, txt := range txts {
+		record := strings.TrimSpace(txt)
+		if !strings.HasPrefix(record, "v=DMARC1;") && !strings.HasPrefix(record, "v=DMARC1 ") {
+			continue
+		}
+		for _, tag := range strings.Split(record, ";") {
+			name, value, ok := strings.Cut(tag, "=")
+			if ok && strings.TrimSpace(name) == "p" {
+				return strings.ToLower(strings.TrimSpace(value))
+			}
+		}
+	}
+	return ""
+}
 
 // bimiRetryAfter is how long a lookup or fetch that got no answer is left
 // before the next request tries again. Short, because the failure says nothing
@@ -109,8 +138,8 @@ func handleBIMIAvatar(ctx *alps.Context) error {
 	}
 
 	// Only an answer goes in the negative cache, which cleanup keeps for a
-	// week: no such name, no record, a record without an https logo, a refused
-	// address, a 4xx from the logo host. A timeout, a resolver or network
+	// week: no enforcing DMARC policy, no such name, no record, a record
+	// without an https logo, a refused address, a 4xx from the logo host. A timeout, a resolver or network
 	// failure, or a 5xx is not an answer, and was cached as one, so a single
 	// blip hid a sender's logo for up to seven days.
 	notFound := func() error {
@@ -123,9 +152,21 @@ func handleBIMIAvatar(ctx *alps.Context) error {
 		return bimiUnavailable(ctx, msg)
 	}
 
-	txts, err := lookupBIMITXT(fmt.Sprintf("%s._bimi.%s", selector, domain))
-	var dnsErr *net.DNSError
-	if err != nil && !(errors.As(err, &dnsErr) && dnsErr.IsNotFound) {
+	// BIMI requires the sender domain to enforce DMARC. Under p=none, mail
+	// that fails DMARC in the domain's name is still delivered, and a domain
+	// that allows that gets no logo. There is no organizational-domain
+	// fallback: mail from news.brand.example gets a logo only if that exact
+	// name publishes a policy, which fails toward no logo.
+	dmarcTXT, err := txtRecords("_dmarc." + domain)
+	if err != nil {
+		return retryLater("DMARC lookup failed")
+	}
+	if policy := dmarcPolicy(dmarcTXT); policy != "quarantine" && policy != "reject" {
+		return notFound()
+	}
+
+	txts, err := txtRecords(fmt.Sprintf("%s._bimi.%s", selector, domain))
+	if err != nil {
 		return retryLater("BIMI lookup failed")
 	}
 	var bimiURL string
