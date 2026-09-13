@@ -52,13 +52,28 @@ export class UIPrompt extends LitElement {
     `
   ];
 
+  /** The field ids and initial values that `values` was last seeded from. */
+  private seededFrom: string | null = null;
+
   willUpdate(changedProperties: Map<string, any>) {
+    // Re-seeded only when the fields' ids or initial values actually differ.
+    // Every owner passes `.fields=${[{ … }]}` inline, a new array on each of its
+    // renders, and Lit compares properties by identity, so seeding on every
+    // `fields` change reset what the user had typed whenever the owner re-rendered
+    // for any reason. The folder list does on every mailbox poll, so a folder name
+    // being typed could vanish mid-word.
     if (changedProperties.has('fields')) {
-      const initialValues: Record<string, string> = {};
-      for (const f of this.fields) {
-        initialValues[f.id] = f.value || '';
+      // NUL and SOH as separators: neither occurs in an id or an initial value,
+      // so two different field sets cannot produce the same seed.
+      const seed = this.fields.map(f => `${f.id}\u0000${f.value ?? ''}`).join('\u0001');
+      if (seed !== this.seededFrom) {
+        this.seededFrom = seed;
+        const initialValues: Record<string, string> = {};
+        for (const f of this.fields) {
+          initialValues[f.id] = f.value || '';
+        }
+        this.values = initialValues;
       }
-      this.values = initialValues;
     }
   }
 
