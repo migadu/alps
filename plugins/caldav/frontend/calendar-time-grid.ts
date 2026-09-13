@@ -364,8 +364,12 @@ export class CalendarTimeGrid extends LitElement {
                                             const renderEnd = end > dayEnd ? dayEnd : end;
 
                                             const top = (renderStart.getHours() * 48) + (renderStart.getMinutes() / 60 * 48);
-                                            const durationMinutes = (renderEnd.getTime() - renderStart.getTime()) / 1000 / 60;
-                                            let height = (durationMinutes / 60) * 48;
+                                            // Both ends read off the wall clock, like the hour lines behind
+                                            // them. Elapsed time is not wall-clock distance on a DST day: an
+                                            // 01:00-04:00 event on a spring-forward Sunday is two real hours,
+                                            // so a height from milliseconds stopped at the 03:00 line.
+                                            const bottom = (renderEnd.getHours() * 48) + (renderEnd.getMinutes() / 60 * 48);
+                                            let height = bottom - top;
                                             
                                             // Ensure minimum height for visibility, but don't overflow bottom
                                             if (height < 20) height = 20;
