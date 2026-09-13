@@ -526,7 +526,9 @@ export class CalendarPage extends LitElement {
 
             if (this.viewMode === 'year') {
                 start = new Date(year, 0, 1);
-                end = new Date(year, 11, 31);
+                // The start of the day AFTER the last one drawn, as the week arm
+                // does. Ending at 31 December 00:00 dropped that day's timed events.
+                end = new Date(year + 1, 0, 1);
             } else if (this.viewMode === 'month') {
                 start = new Date(year, month, 1);
                 end = new Date(year, month + 1, 0);
@@ -604,12 +606,16 @@ export class CalendarPage extends LitElement {
     };
 
     private changeDate(offset: number, forceMode?: string) {
-        const d = new Date(this.currentDate);
+        let d = new Date(this.currentDate);
         const mode = (forceMode || this.viewMode) as ViewMode;
-        if (mode === 'year') {
-            d.setFullYear(d.getFullYear() + offset);
-        } else if (mode === 'month') {
-            d.setMonth(d.getMonth() + offset);
+        if (mode === 'year' || mode === 'month') {
+            // Constructed, with the day clamped to the target month. setMonth and
+            // setFullYear keep the day of the month, and a day the target month
+            // does not have rolls into the month after it: "next" from 31 January
+            // opened March, and "previous" from 31 March stayed in March.
+            const months = mode === 'year' ? offset * 12 : offset;
+            const lastDay = new Date(d.getFullYear(), d.getMonth() + months + 1, 0).getDate();
+            d = new Date(d.getFullYear(), d.getMonth() + months, Math.min(d.getDate(), lastDay));
         } else if (mode === 'week') {
             d.setDate(d.getDate() + (offset * 7));
         } else {
@@ -716,7 +722,11 @@ export class CalendarPage extends LitElement {
             await calendarService.deleteCalendar(calendar.path);
             this.calendars = this.calendars.filter(c => c.path !== calendar.path);
             if (this.activeCalendars.has(calendar.path)) {
-                this.activeCalendars.delete(calendar.path);
+                // A new Set: this is @state, and Lit compares by identity, so a
+                // delete in place is invisible to anything bound to it.
+                const next = new Set(this.activeCalendars);
+                next.delete(calendar.path);
+                this.activeCalendars = next;
                 await this.fetchData();
             }
         } catch (err) {

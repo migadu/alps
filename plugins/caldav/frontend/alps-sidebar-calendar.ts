@@ -51,9 +51,10 @@ export class AlpsSidebarCalendar extends LitElement {
     }
 
     private changeMonth(delta: number) {
-        const newDate = new Date(this.viewDate);
-        newDate.setMonth(newDate.getMonth() + delta);
-        this.viewDate = newDate;
+        // The 1st, not the selected day: the view shows a month, and setMonth on
+        // the 31st rolls a shorter target month into the next one, so the arrow
+        // skipped February from 31 January and did nothing from 31 March.
+        this.viewDate = new Date(this.viewDate.getFullYear(), this.viewDate.getMonth() + delta, 1);
     }
 
     render() {
