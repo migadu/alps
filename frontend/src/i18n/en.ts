@@ -461,7 +461,9 @@ export const en = {
     undoFailed: 'Could not undo that',
     messageDeleteFailed: 'The message could not be deleted',
     moveFailed: 'Could not move that',
-    copyFailed: 'Could not copy that'
+    copyFailed: 'Could not copy that',
+    subscribeFailed: "Could not subscribe",
+    unsubscribeFailed: "Could not unsubscribe"
   },
   mailboxPage: {
     mailboxNotFound: 'Mailbox not found',

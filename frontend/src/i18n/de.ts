@@ -428,7 +428,9 @@ export const de: TranslationDictionary = {
     undoFailed: 'Rückgängig machen fehlgeschlagen',
     messageDeleteFailed: 'Die Nachricht konnte nicht gelöscht werden',
     moveFailed: 'Verschieben fehlgeschlagen',
-    copyFailed: 'Kopieren fehlgeschlagen'
+    copyFailed: 'Kopieren fehlgeschlagen',
+    subscribeFailed: "Abonnieren fehlgeschlagen",
+    unsubscribeFailed: "Abbestellen fehlgeschlagen"
   },
   mailboxPage: {
     mailboxNotFound: 'Postfach nicht gefunden',

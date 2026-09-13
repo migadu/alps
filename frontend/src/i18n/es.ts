@@ -426,7 +426,9 @@ export const es = {
     undoFailed: 'No se pudo deshacer',
     messageDeleteFailed: 'No se pudo eliminar el mensaje',
     moveFailed: 'No se pudo mover',
-    copyFailed: 'No se pudo copiar'
+    copyFailed: 'No se pudo copiar',
+    subscribeFailed: "No se pudo suscribir",
+    unsubscribeFailed: "No se pudo cancelar la suscripción"
   },
   mailboxPage: {
     mailboxNotFound: 'Buzón no encontrado',

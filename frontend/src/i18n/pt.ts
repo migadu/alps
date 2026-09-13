@@ -461,7 +461,9 @@ export const pt = {
     undoFailed: 'Não foi possível desfazer',
     messageDeleteFailed: 'Não foi possível eliminar a mensagem',
     moveFailed: 'Não foi possível mover',
-    copyFailed: 'Não foi possível copiar'
+    copyFailed: 'Não foi possível copiar',
+    subscribeFailed: "Não foi possível assinar",
+    unsubscribeFailed: "Não foi possível cancelar a assinatura"
   },
   mailboxPage: {
     mailboxNotFound: 'Caixa de correio não encontrada',

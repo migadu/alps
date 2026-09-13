@@ -128,47 +128,31 @@ export class MailboxOperationsService {
     }
   }
 
-  async subscribeMailbox(name: string): Promise<boolean> {
+  /**
+   * Subscribes or unsubscribes a folder, and says whether it happened.
+   *
+   * These were two boolean methods whose only caller — the folder menu — fired
+   * them and never read the answer, so a refused (un)subscribe changed nothing
+   * on screen and said nothing. `auth` is named so the caller can stay quiet
+   * while the shell shows the login screen, as every other report does.
+   */
+  async setSubscribed(name: string, subscribed: boolean): Promise<{ ok: boolean; reason?: 'auth' | 'failed' }> {
+    const verb = subscribed ? 'subscribe' : 'unsubscribe';
     try {
-      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(name)}/subscribe`, {
-        method: 'PUT'
-      });
-      
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(name)}/${verb}`, { method: 'PUT' });
       if (res.status === 401) {
         window.dispatchEvent(new CustomEvent('auth-error'));
-        return false;
+        return { ok: false, reason: 'auth' };
       }
-      
       if (res.ok) {
         messageSync.sync();
-        return true;
+        return { ok: true };
       }
-      return false;
+      Logger.error(`Failed to ${verb} mailbox`, res.status);
+      return { ok: false, reason: 'failed' };
     } catch (err) {
-      Logger.error('Failed to subscribe mailbox', err);
-      return false;
-    }
-  }
-
-  async unsubscribeMailbox(name: string): Promise<boolean> {
-    try {
-      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(name)}/unsubscribe`, {
-        method: 'PUT'
-      });
-      
-      if (res.status === 401) {
-        window.dispatchEvent(new CustomEvent('auth-error'));
-        return false;
-      }
-      
-      if (res.ok) {
-        messageSync.sync();
-        return true;
-      }
-      return false;
-    } catch (err) {
-      Logger.error('Failed to unsubscribe mailbox', err);
-      return false;
+      Logger.error(`Failed to ${verb} mailbox`, err);
+      return { ok: false, reason: 'failed' };
     }
   }
 }

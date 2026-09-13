@@ -821,8 +821,14 @@ export class FolderList extends LitElement {
                   <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
-              if (node.mb?.Subscribed) mailboxOperations.unsubscribeMailbox(node.fullName);
-              else mailboxOperations.subscribeMailbox(node.fullName);
+              // The answer used to be discarded: a refused (un)subscribe changed nothing
+              // on screen and said nothing. Quiet on `auth`, which the shell answers.
+              const subscribing = !node.mb?.Subscribed;
+              void mailboxOperations.setSubscribed(node.fullName, subscribing).then(result => {
+                if (result.ok || result.reason === 'auth') return;
+                if (subscribing) this.toast(this.i18nStore?.t('toast.subscribeFailed'), 'Could not subscribe');
+                else this.toast(this.i18nStore?.t('toast.unsubscribeFailed'), 'Could not unsubscribe');
+              });
             }}>
                     ${renderIcon(node.mb?.Subscribed ? 'eyeSlash' : 'eye')} <span class="item-text">${node.mb?.Subscribed ? this.i18nStore?.t('folderList.unsubscribe') : this.i18nStore?.t('folderList.subscribe')}</span>
                   </button>

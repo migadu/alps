@@ -426,7 +426,9 @@ export const fr = {
     undoFailed: 'Impossible d’annuler',
     messageDeleteFailed: 'Le message n\'a pas pu être supprimé',
     moveFailed: 'Impossible de déplacer',
-    copyFailed: 'Impossible de copier'
+    copyFailed: 'Impossible de copier',
+    subscribeFailed: "Impossible de s’abonner",
+    unsubscribeFailed: "Impossible de se désabonner"
   },
   mailboxPage: {
     mailboxNotFound: 'Boîte de réception introuvable',

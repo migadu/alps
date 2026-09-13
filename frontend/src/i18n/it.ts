@@ -426,7 +426,9 @@ export const it = {
     undoFailed: 'Impossibile annullare',
     messageDeleteFailed: 'Non è stato possibile eliminare il messaggio',
     moveFailed: 'Impossibile spostare',
-    copyFailed: 'Impossibile copiare'
+    copyFailed: 'Impossibile copiare',
+    subscribeFailed: "Impossibile sottoscrivere",
+    unsubscribeFailed: "Impossibile annullare la sottoscrizione"
   },
   mailboxPage: {
     mailboxNotFound: 'Casella di posta non trovata',

@@ -434,7 +434,9 @@ export const rs = {
     undoFailed: 'Није могуће поништити',
     messageDeleteFailed: 'Порука није могла бити обрисана',
     moveFailed: 'Није могуће преместити',
-    copyFailed: 'Није могуће копирати'
+    copyFailed: 'Није могуће копирати',
+    subscribeFailed: "Претплата није успела",
+    unsubscribeFailed: "Отказивање претплате није успело"
   },
   mailboxPage: {
     mailboxNotFound: 'Сандуче није пронађено',
