@@ -7,7 +7,7 @@ import { fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
-import { renderIcon, formatFullDate, formatSize, getBimiAvatarUrl } from '../utils/ui';
+import { renderIcon, formatFullDate, formatSize, bimiAvatarUrlFor } from '../utils/ui';
 import './alps-recipient-pill';
 import './alps-attachment-list';
 import './alps-toolbar';
@@ -1474,8 +1474,7 @@ export class MessageReader extends LitElement {
     const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
     const dateStr = msg.Envelope?.Date ? formatFullDate(msg.Envelope.Date, dateFormat, hourFormat) : '';
 
-    const domain = sender.Host ? sender.Host.toLowerCase() : '';
-    const bimiUrl = getBimiAvatarUrl(domain);
+    const bimiUrl = bimiAvatarUrlFor(msg, sender);
 
     // Classify the current mailbox by IMAP special-use attribute (with a name
     // fallback) so Gmail's "[Gmail]/Trash", "[Gmail]/Spam", etc. show the correct

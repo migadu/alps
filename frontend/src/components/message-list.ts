@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { formatDateList, formatSize, getMailboxLabel, renderIcon, getBimiAvatarUrl } from '../utils/ui';
+import { formatDateList, formatSize, getMailboxLabel, renderIcon, bimiAvatarUrlFor } from '../utils/ui';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED, getMessageTags } from '../utils/flags';
 import { messageSync } from '../services/message-sync';
 import { mailboxOperations } from '../services/mailbox-operations';
@@ -1111,8 +1111,7 @@ export class MessageList extends LitElement {
         ${displayAvatars.map((c, idx) => {
           const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
           const name = c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
-          const domain = c.Host ? c.Host.toLowerCase() : '';
-          const bimiUrl = getBimiAvatarUrl(domain);
+          const bimiUrl = bimiAvatarUrlFor(msg, c);
           return html`
             <div class="avatar-wrapper" style="z-index: ${totalRendered - idx};">
               <alps-avatar .name=${name} .email=${addr} .size=${avatarSize} .src=${bimiUrl}></alps-avatar>

@@ -6,7 +6,7 @@ import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
-import { renderIcon, formatFullDate, getBimiAvatarUrl } from '../utils/ui';
+import { renderIcon, formatFullDate, bimiAvatarUrlFor } from '../utils/ui';
 import { extractSnippet, setupIframeSizing } from '../utils/reader-utils';
 
 import './alps-recipient-pill';
@@ -493,8 +493,7 @@ export class AlpsThreadCard extends LitElement {
     const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
     const dateStr = msg.Envelope?.Date ? formatFullDate(msg.Envelope.Date, dateFormat, hourFormat) : '';
 
-    const domain = sender.Host ? sender.Host.toLowerCase() : '';
-    const bimiUrl = getBimiAvatarUrl(domain);
+    const bimiUrl = bimiAvatarUrlFor(msg, sender);
 
     const isStarred = msg.Flags?.includes(FLAG_FLAGGED);
     const isUnread = !msg.Flags?.includes(FLAG_SEEN);

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  bimiAvatarUrlFor,
   formatDateList,
   formatFullDate,
   formatSize,
@@ -8,6 +9,7 @@ import {
   getBimiAvatarUrl,
   getMailboxLabel,
 } from '../src/utils/ui';
+import { readSources } from './helpers/sources';
 
 describe('formatSize', () => {
   it('reads a non-positive, NaN or infinite count as 0 B', () => {
@@ -90,6 +92,58 @@ describe('getBimiAvatarUrl', () => {
     expect(getBimiAvatarUrl('acme.corp')).toBe('/bimi/avatar?domain=acme.corp');
     expect(getBimiAvatarUrl('GitHub.com')).toBe('/bimi/avatar?domain=github.com');
     expect(getBimiAvatarUrl('a&b.test')).toBe('/bimi/avatar?domain=a%26b.test');
+  });
+});
+
+describe('bimiAvatarUrlFor', () => {
+  const ada = { Name: 'Ada', Mailbox: 'ada', Host: 'Brand.Test' };
+  const bob = { Mailbox: 'bob', Host: 'other.test' };
+  const passed = (from: any[] = [ada]) => ({ HasBimiPotential: true, Envelope: { From: from, To: [bob] } });
+
+  it('draws the logo beside the From of a message that passed DMARC', () => {
+    expect(bimiAvatarUrlFor(passed(), ada)).toBe('/bimi/avatar?domain=brand.test');
+    expect(bimiAvatarUrlFor(passed(), { Mailbox: 'ADA', Host: 'brand.test' })).toBe('/bimi/avatar?domain=brand.test');
+  });
+
+  it('draws none for a message that did not pass', () => {
+    for (const msg of [
+      { Envelope: { From: [ada] } },
+      { HasBimiPotential: false, Envelope: { From: [ada] } },
+      { HasBimiFailed: true, Envelope: { From: [ada] } },
+      null,
+      undefined,
+    ]) {
+      expect(bimiAvatarUrlFor(msg, ada), JSON.stringify(msg)).toBe('');
+    }
+  });
+
+  it('draws none beside a recipient, or another address at the brand', () => {
+    expect(bimiAvatarUrlFor(passed([bob]), ada)).toBe('');
+    expect(bimiAvatarUrlFor(passed(), bob)).toBe('');
+    expect(bimiAvatarUrlFor(passed(), { Mailbox: 'support', Host: 'brand.test' })).toBe('');
+    expect(bimiAvatarUrlFor(passed(), {})).toBe('');
+  });
+
+  it('draws none for several From addresses, or none', () => {
+    expect(bimiAvatarUrlFor(passed([ada, bob]), ada)).toBe('');
+    expect(bimiAvatarUrlFor(passed([]), ada)).toBe('');
+    expect(bimiAvatarUrlFor({ HasBimiPotential: true }, ada)).toBe('');
+  });
+
+  it('is the only way a component asks for a logo', () => {
+    const sources = readSources();
+    const direct = Object.keys(sources).filter(
+      (path) => path !== 'src/utils/ui.ts' && /\bgetBimiAvatarUrl\s*\(/.test(sources[path]),
+    );
+    expect(direct).toEqual([]);
+    for (const path of ['src/components/message-list.ts', 'src/components/message-reader.ts', 'src/components/alps-thread-card.ts']) {
+      expect(sources[path], path).toMatch(/\bbimiAvatarUrlFor\(/);
+    }
+  });
+
+  it('still asks for nothing from a freemail domain', () => {
+    const gmail = { Mailbox: 'ada', Host: 'gmail.com' };
+    expect(bimiAvatarUrlFor(passed([gmail]), gmail)).toBe('');
   });
 });
 

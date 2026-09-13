@@ -147,6 +147,27 @@ export function getBimiAvatarUrl(domain: string): string {
 }
 
 /**
+ * The BIMI logo URL for one contact of one message, or '' when the message has
+ * not earned a logo beside that contact.
+ *
+ * A BIMI logo is a trust mark, not decoration. It belongs only beside the From
+ * address of a message the receiving server passed under DMARC
+ * (`HasBimiPotential`, read from the receiver's own Authentication-Results).
+ * Asking by domain alone drew a real brand's logo beside a forged From, and
+ * beside any address of that brand named in To or Cc. A message with several
+ * From addresses gets none: DMARC gives no verdict for it.
+ */
+export function bimiAvatarUrlFor(msg: any, contact: any): string {
+  if (!msg?.HasBimiPotential) return '';
+  const from = msg.Envelope?.From;
+  if (!Array.isArray(from) || from.length !== 1) return '';
+  const address = (c: any) => (c?.Mailbox && c?.Host ? `${c.Mailbox}@${c.Host}`.toLowerCase() : '');
+  const sender = address(from[0]);
+  if (!sender || sender !== address(contact)) return '';
+  return getBimiAvatarUrl(from[0].Host);
+}
+
+/**
  * Calculates the absolute minimum width a flex container needs to display its inflexible contents.
  * It forces the container to 0 width, letting flex layout compress flexible items, 
  * and reads the scrollWidth of the remaining unshrinkable items.
