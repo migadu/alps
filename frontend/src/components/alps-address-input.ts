@@ -150,8 +150,12 @@ export class AlpsAddressInput extends LitElement {
         this._addAddress(inputVal);
       }
     } else if ((e.key === ' ' || e.key === ',') && inputVal) {
-      e.preventDefault();
+      // Only when it commits. A space or comma that does not end an address is
+      // part of one: `Ada Lovelace <ada@example.com>` is typed with spaces and
+      // `"Lovelace, Ada" <ada@example.com>` with a comma, and both were swallowed
+      // while the text so far was not yet a valid address.
       if (this._isValidEmail(inputVal)) {
+        e.preventDefault();
         this._addAddress(inputVal);
       }
     } else if (e.key === 'Backspace' && !this.inputText && this.addresses.length > 0) {
