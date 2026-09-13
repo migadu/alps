@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
-import { composeContext } from '../store/compose-store';
+import { bareAddress, composeContext } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
 import { messageOperations } from '../services/message-operations';
@@ -225,8 +225,12 @@ export class AlpsFloatingComposer extends LitElement {
     // `replyTo` were all undefined here and both settings were inert.
     {
       const parsed = readUserSettings();
-      if (parsed.bccMyself && parsed.loginUsername && !bcc.includes(parsed.loginUsername)) {
-        bcc.push(parsed.loginUsername);
+      const self = parsed.loginUsername;
+      // Compared as addresses: a pill can hold `"Me" <me@…>` or another case, and
+      // an exact string match added the sender to Bcc a second time.
+      const mine = self ? bareAddress(self) : '';
+      if (parsed.bccMyself && self && !bcc.some(addr => bareAddress(addr) === mine)) {
+        bcc.push(self);
       }
       if (parsed.replyTo) {
         replyToSetting = parsed.replyTo;

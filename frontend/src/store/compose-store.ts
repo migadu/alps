@@ -19,7 +19,10 @@ const draftsKeyFor = (username: string) => `alps_compose_drafts_${username}`;
  * to anyone, and handing them to whoever signs in next is the bug being fixed. */
 const LEGACY_DRAFTS_KEY = 'alps_compose_drafts';
 
-const isBlockedAddress = (addr: string): boolean => {
+/** The mailbox inside a recipient pill, lower-cased: `"Me" <me@example.com>` and
+ * `ME@example.com` are both `me@example.com`. For comparing two spellings of one
+ * address, which an exact string match cannot do. */
+export const bareAddress = (addr: string): string => {
   let rawEmail = addr.trim();
   if (rawEmail.endsWith('>')) {
     const startObj = rawEmail.lastIndexOf('<');
@@ -27,7 +30,11 @@ const isBlockedAddress = (addr: string): boolean => {
       rawEmail = rawEmail.substring(startObj + 1, rawEmail.length - 1);
     }
   }
-  const lowerEmail = rawEmail.toLowerCase();
+  return rawEmail.trim().toLowerCase();
+};
+
+const isBlockedAddress = (addr: string): boolean => {
+  const lowerEmail = bareAddress(addr);
   return lowerEmail.startsWith('noreply') || 
          lowerEmail.startsWith('no-reply') || 
          lowerEmail.startsWith('mailer-daemon');
@@ -443,7 +450,7 @@ export class ComposeStore extends EventTarget {
           // did nothing on every message sent.
           const sendSettings = readUserSettings();
           const self = sendSettings.loginUsername;
-          if (sendSettings.bccMyself && self && !bcc.includes(self)) {
+          if (sendSettings.bccMyself && self && !bcc.some(addr => bareAddress(addr) === bareAddress(self))) {
             bcc.push(self);
           }
           if (sendSettings.replyTo) {
