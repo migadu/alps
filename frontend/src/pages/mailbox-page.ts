@@ -48,22 +48,34 @@ export class MailboxPage extends LitElement {
   @state() private pendingDeleteDetails: any = null;
 
   private markReadTimer: ReturnType<typeof setTimeout> | null = null;
-  private notificationSound = new Audio('/assets/notify.wav');
+  /**
+   * Built on first use, never at construction. `new Audio(src)` starts fetching
+   * at once, and this chime is ~400 kB of uncompressed WAV, downloaded on every
+   * mailbox load for a sound that only plays when mail arrives. The autoplay
+   * policy already wants the first play() inside a user gesture, which is where
+   * unlockAudio builds it.
+   */
+  private notificationSound: HTMLAudioElement | null = null;
+
+  private chime(): HTMLAudioElement {
+    return (this.notificationSound ??= new Audio('/assets/notify.wav'));
+  }
   private audioUnlocked = false;
 
   private unlockAudio = () => {
     if (this.audioUnlocked) return;
     // Mute rather than zero the volume: iOS ignores assignments to
     // HTMLMediaElement.volume, so the unlock play() was audible there.
-    this.notificationSound.muted = true;
-    this.notificationSound.play().then(() => {
-      this.notificationSound.pause();
-      this.notificationSound.currentTime = 0;
+    const sound = this.chime();
+    sound.muted = true;
+    sound.play().then(() => {
+      sound.pause();
+      sound.currentTime = 0;
       this.audioUnlocked = true;
     }).catch(() => {}).finally(() => {
       // Restore even when play() rejects, so a failed unlock doesn't
       // leave real notifications silenced.
-      this.notificationSound.muted = false;
+      sound.muted = false;
     });
 
     document.removeEventListener('click', this.unlockAudio);
@@ -640,8 +652,9 @@ export class MailboxPage extends LitElement {
     }
 
     if (soundTriggered && this.settingsStore.getState().soundNotifications) {
-      this.notificationSound.currentTime = 0;
-      this.notificationSound.play().catch(e => {
+      const sound = this.chime();
+      sound.currentTime = 0;
+      sound.play().catch(e => {
         if (e.name !== 'NotAllowedError') {
           Logger.error('Failed to play sound notification:', e);
         }
