@@ -803,7 +803,17 @@ export class MessageReader extends LitElement {
         return dateA - dateB;
       });
     } else {
-      threadMessages = [msg];
+      // The root is not in the list, and that is no reason to collapse a
+      // conversation already on screen. This runs again on every list change —
+      // a background poll, new mail sliding the thread onto the next page — and
+      // rebuilding from [msg] there shrank an open, loaded conversation to its
+      // one opened message while it was being read. A different message, or
+      // threading switched off, still starts from [msg].
+      const loaded = enableThreading && this.threadItems.length > 1 &&
+        this.threadItems.some(item => String(item.message?.UID) === String(msg.UID))
+        ? this.threadItems.map(item => item.message)
+        : null;
+      threadMessages = loaded ?? [msg];
     }
 
     this._isThread = enableThreading && threadMessages.length > 1;
