@@ -89,7 +89,9 @@ export const de: TranslationDictionary = {
       loose: 'Locker',
       normal: 'Normal',
       compact: 'Kompakt',
-      ultraCompact: 'Ultra-Kompakt'
+      ultraCompact: 'Ultra-Kompakt',
+      showSenderAvatars: 'Absender-Avatare anzeigen',
+      showSenderAvatarsDesc: 'Bilder und Initialen neben Absendern in der Nachrichtenliste und der Leseansicht. Ob ein Absender verifiziert ist, wird in jedem Fall angezeigt.'
     },
     localization: {
       language: 'Sprache',
@@ -325,6 +327,7 @@ export const de: TranslationDictionary = {
     showOriginal: 'Original anzeigen',
     verifiedSender: 'Verifizierter Absender',
     unverifiedSender: 'Unverifizierter Absender',
+    senderUnverifiedWarning: 'Ihr Mailserver konnte diesen Absender nicht verifizieren. Die Nachricht stammt möglicherweise nicht von dem, der sie zu senden vorgibt. Seien Sie daher vorsichtig mit Links und Anhängen.',
     clickToExpand: 'Klicken, um den Nachrichteninhalt zu erweitern'
   },
   originalMessage: {

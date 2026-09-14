@@ -93,7 +93,9 @@ export const en = {
       loose: 'Loose',
       normal: 'Normal',
       compact: 'Compact',
-      ultraCompact: 'Ultra Compact'
+      ultraCompact: 'Ultra Compact',
+      showSenderAvatars: 'Show sender avatars',
+      showSenderAvatarsDesc: 'Pictures and initials beside senders in the message list and reader. Whether a sender is verified is shown either way.'
     },
     localization: {
       language: 'Language',
@@ -358,6 +360,7 @@ export const en = {
     showOriginal: 'Show original',
     verifiedSender: 'Verified Sender',
     unverifiedSender: 'Unverified Sender',
+    senderUnverifiedWarning: 'Your mail server could not verify this sender. The message may not be from who it claims to be, so be careful with its links and attachments.',
     clickToExpand: 'Click to expand message content'
   },
   originalMessage: {

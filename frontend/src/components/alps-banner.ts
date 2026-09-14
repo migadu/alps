@@ -29,6 +29,11 @@ export class AlpsBanner extends LitElement {
       box-shadow: rgba(95, 95, 95, 0.1) 0 4px 4px -2px;
     }
 
+    .banner.warning {
+      border-left: 3px solid var(--warning, #f59e0b);
+      padding-left: 13px;
+    }
+
     .content {
       display: flex;
       align-items: center;

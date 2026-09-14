@@ -18,6 +18,7 @@ import './alps-folder-selector-popup';
 import './alps-icon-btn';
 import './alps-button';
 import './alps-avatar';
+import './alps-sender-auth-badge';
 import './alps-tag';
 import './alps-banner';
 import { MessageCache } from '../utils/message-cache';
@@ -381,38 +382,22 @@ export class MessageReader extends LitElement {
     }
 
     .avatar-container {
-      position: relative;
       display: inline-flex;
-    }
-
-    .bimi-badge {
-      position: absolute;
-      bottom: -2px;
-      right: -2px;
-      color: var(--success, #10b981);
-      background: var(--bg-primary, #ffffff);
-      border-radius: 50%;
-      width: 16px;
-      height: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 0 0 1px var(--bg-primary, #ffffff);
-    }
-
-    .bimi-badge.bimi-failed-badge {
-      color: var(--error, #ef4444);
-    }
-
-    .bimi-badge svg {
-      width: 16px;
-      height: 16px;
+      flex-shrink: 0;
     }
 
     .reader-sender-info {
       display: flex;
       flex-direction: column;
       gap: 2px;
+      min-width: 0;
+    }
+
+    .reader-sender-line {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px 8px;
     }
 
     .reader-sender-name {
@@ -1427,12 +1412,18 @@ export class MessageReader extends LitElement {
     });
   }
 
+  /** Whether senders get a picture here. Their verification is drawn either way. */
+  private get showSenderAvatars(): boolean {
+    return this.settingsStore?.getState()?.showSenderAvatars ?? true;
+  }
+
   private renderThreadCard(item: ThreadMessageItem) {
     return html`
       <alps-thread-card
         id="thread-card-${item.message?.UID}"
         .item=${item}
         .mailbox=${this.mailbox}
+        .showSenderAvatars=${this.showSenderAvatars}
         @toggle-expansion=${(e: CustomEvent) => this.toggleItemExpansion(e.detail.item)}
         @load-remote-resources=${(e: CustomEvent) => this.loadRemoteResourcesForItem(e.detail.item)}
         @toggle-star=${(e: CustomEvent) => this.toggleItemStar(e.detail.item)}
@@ -1686,21 +1677,24 @@ export class MessageReader extends LitElement {
           <div class="reader-meta">
             <div class="reader-sender-block">
               <div class="reader-sender-left">
-                <div class="avatar-container">
-                  <alps-avatar .name=${senderName} .email=${senderAddress} .size=${40} .src=${bimiUrl}></alps-avatar>
-                  ${msg.HasBimiPotential ? html`
-                    <div class="bimi-badge" title="${this.i18nStore?.t('messageReader.verifiedSender')}">
-                      ${renderIcon('verifiedBadge')}
-                    </div>
-                  ` : msg.HasBimiFailed ? html`
-                    <div class="bimi-badge bimi-failed-badge" title="${this.i18nStore?.t('messageReader.unverifiedSender')}">
-                      ${renderIcon('authFailedBadge')}
-                    </div>
-                  ` : ''}
-                </div>
+                ${this.showSenderAvatars ? html`
+                  <div class="avatar-container">
+                    <alps-avatar .name=${senderName} .email=${senderAddress} .size=${40} .src=${bimiUrl}></alps-avatar>
+                  </div>
+                ` : ''}
                 <div class="reader-sender-info">
-                  ${sender.Name && sender.Name !== senderAddress ? html`<span class="reader-sender-name">${sender.Name}</span>` : ''}
-                  ${senderAddress ? html`<alps-recipient-pill address="${senderAddress}"></alps-recipient-pill>` : html`<span class="reader-sender-name">${senderName}</span>`}
+                  ${sender.Name && sender.Name !== senderAddress ? html`
+                    <div class="reader-sender-line">
+                      <span class="reader-sender-name">${sender.Name}</span>
+                      <alps-sender-auth-badge ?verified=${!!msg.HasBimiPotential} ?failed=${!!msg.HasBimiFailed}></alps-sender-auth-badge>
+                    </div>
+                    ${senderAddress ? html`<alps-recipient-pill address="${senderAddress}"></alps-recipient-pill>` : html`<span class="reader-sender-name">${senderName}</span>`}
+                  ` : html`
+                    <div class="reader-sender-line">
+                      ${senderAddress ? html`<alps-recipient-pill address="${senderAddress}"></alps-recipient-pill>` : html`<span class="reader-sender-name">${senderName}</span>`}
+                      <alps-sender-auth-badge ?verified=${!!msg.HasBimiPotential} ?failed=${!!msg.HasBimiFailed}></alps-sender-auth-badge>
+                    </div>
+                  `}
                 </div>
               </div>
               <div class="desktop-date-container">
@@ -1756,6 +1750,11 @@ export class MessageReader extends LitElement {
           </div>
         ` : html`
           <div class="message-content">
+          ${msg.HasBimiFailed ? html`
+            <alps-banner variant="warning">
+              <span>${this.i18nStore?.t('messageReader.senderUnverifiedWarning')}</span>
+            </alps-banner>
+          ` : ''}
           ${this.activeBanners && this.activeBanners.length > 0 ? html`
             ${this.activeBanners.map((banner: any) => banner)}
           ` : ''}

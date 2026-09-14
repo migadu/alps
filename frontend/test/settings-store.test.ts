@@ -88,6 +88,23 @@ describe('signing in', () => {
     expect(store.getState().enableThreading).toBe(false);
   });
 
+  it('applies the account\'s choice about sender avatars, and saves it with the rest', async () => {
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', ui: { showSenderAvatars: false } } }),
+      'PUT /settings': () => json(200, {}),
+    });
+    const store = new SettingsStore();
+    expect(store.getState().showSenderAvatars).toBe(true);
+    await vi.waitFor(() => expect(store.getState().showSenderAvatars).toBe(false));
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+
+    await store.updateSettings({ showSenderAvatars: true });
+    const put = calls.find((c) => c.key === 'PUT /settings')!.body;
+    expect(put.ui.showSenderAvatars).toBe(true);
+  });
+
   it('sends the shell to sign-in when there is no session at all', async () => {
     const authErrors = record('auth-error');
     const calls = serve({});
@@ -197,14 +214,14 @@ describe('local records', () => {
   });
 
   it('forgets the account on sign-out but keeps the look of the page', () => {
-    localStorage.setItem('alps_settings', JSON.stringify({ themeMode: 'dark', language: 'fr', layoutMode: 'full', signature: 'should not be here' }));
+    localStorage.setItem('alps_settings', JSON.stringify({ themeMode: 'dark', language: 'fr', layoutMode: 'full', showSenderAvatars: false, signature: 'should not be here' }));
     localStorage.setItem('alps_active_user', USER);
     localStorage.setItem(`alps_settings_${USER}`, JSON.stringify({ signature: 'Ada' }));
     signedIn();
     document.cookie = 'alps_has_login_token=1; path=/';
 
     clearSessionSettings();
-    expect(JSON.parse(localStorage.getItem('alps_settings')!)).toEqual({ themeMode: 'dark', language: 'fr', layoutMode: 'full' });
+    expect(JSON.parse(localStorage.getItem('alps_settings')!)).toEqual({ themeMode: 'dark', language: 'fr', layoutMode: 'full', showSenderAvatars: false });
     expect(localStorage.getItem('alps_active_user')).toBeNull();
     expect(localStorage.getItem(`alps_settings_${USER}`)).toBeNull();
     expect(document.cookie).not.toContain('alps_logged_in=1');

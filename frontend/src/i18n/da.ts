@@ -95,7 +95,9 @@ export const da: TranslationDictionary = {
       loose: 'Luftig',
       normal: 'Normal',
       compact: 'Kompakt',
-      ultraCompact: 'Ultrakompakt'
+      ultraCompact: 'Ultrakompakt',
+      showSenderAvatars: 'Vis afsenderavatarer',
+      showSenderAvatarsDesc: 'Billeder og initialer ved afsendere i beskedlisten og læseruden. Om en afsender er bekræftet, vises under alle omstændigheder.'
     },
     localization: {
       language: 'Sprog',
@@ -360,6 +362,7 @@ export const da: TranslationDictionary = {
     showOriginal: 'Vis original',
     verifiedSender: 'Bekræftet afsender',
     unverifiedSender: 'Ubekræftet afsender',
+    senderUnverifiedWarning: 'Din mailserver kunne ikke bekræfte afsenderen. Beskeden er muligvis ikke fra den, den udgiver sig for at være, så vær forsigtig med links og vedhæftede filer.',
     clickToExpand: 'Klik for at udvide beskedindholdet'
   },
   originalMessage: {

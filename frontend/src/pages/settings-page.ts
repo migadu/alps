@@ -612,6 +612,15 @@ export class SettingsPage extends LitElement {
           ]}>
           </alps-select>
         </alps-setting-group>
+
+        <alps-setting-group description="${this.i18nStore?.t('settings.appearance.showSenderAvatarsDesc')}">
+          <label class="checkbox-label">
+            <input type="checkbox"
+                   ?checked=${this.settingsState.showSenderAvatars}
+                   @change=${(e: Event) => this.handleUpdate(e, 'showSenderAvatars')}>
+            ${this.i18nStore?.t('settings.appearance.showSenderAvatars')}
+          </label>
+        </alps-setting-group>
     `;
   }
 

@@ -87,7 +87,9 @@ export const fr = {
       loose: 'Large',
       normal: 'Normal',
       compact: 'Compact',
-      ultraCompact: 'Ultra compact'
+      ultraCompact: 'Ultra compact',
+      showSenderAvatars: 'Afficher les avatars des expéditeurs',
+      showSenderAvatarsDesc: 'Images et initiales à côté des expéditeurs dans la liste des messages et le lecteur. La vérification de l\'expéditeur est affichée dans tous les cas.'
     },
     localization: {
       language: 'Langue',
@@ -323,6 +325,7 @@ export const fr = {
     showOriginal: 'Afficher l\'original',
     verifiedSender: 'Expéditeur vérifié',
     unverifiedSender: 'Expéditeur non vérifié',
+    senderUnverifiedWarning: 'Votre serveur de messagerie n\'a pas pu vérifier cet expéditeur. Le message ne vient peut-être pas de qui il prétend être, soyez donc prudent avec ses liens et ses pièces jointes.',
     clickToExpand: 'Cliquer pour développer le contenu du message'
   },
   originalMessage: {

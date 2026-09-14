@@ -266,6 +266,7 @@ export class MailboxPage extends LitElement {
   @state() private isSidebarHovered = false;
   private hoverTimeout: any = null;
   @state() private densityMode: DensityMode = 'compact';
+  @state() private showSenderAvatars = true;
   @state() private isSyncing = false;
   @state() private sidebarCollapsed = false;
   @state() private suppressSidebarHover = false;
@@ -586,6 +587,7 @@ export class MailboxPage extends LitElement {
     const state = this.settingsStore.getState();
     this.layoutMode = state.layoutMode;
     this.densityMode = state.densityMode;
+    this.showSenderAvatars = state.showSenderAvatars ?? true;
     this.sortOrder = state.sortOrder || 'desc';
 
     if (this.sidebarCollapsed !== state.sidebarCollapsed) {
@@ -1521,6 +1523,7 @@ export class MailboxPage extends LitElement {
               .totalMessages=${this.totalMessages}
               .messagesPerPage=${this.messagesPerPage}
               .densityMode=${this.densityMode}
+              .showSenderAvatars=${this.showSenderAvatars}
               .filterQuery=${this.filterQuery}
               .sortOrder=${this.sortOrder}
               .syncing=${this.isSyncing}

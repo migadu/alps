@@ -87,7 +87,9 @@ export const es = {
       loose: 'Amplio',
       normal: 'Normal',
       compact: 'Compacto',
-      ultraCompact: 'Ultracompacto'
+      ultraCompact: 'Ultracompacto',
+      showSenderAvatars: 'Mostrar avatares de remitentes',
+      showSenderAvatarsDesc: 'Imágenes e iniciales junto a los remitentes en la lista de mensajes y en el lector. La verificación del remitente se muestra en cualquier caso.'
     },
     localization: {
       language: 'Idioma',
@@ -323,6 +325,7 @@ export const es = {
     showOriginal: 'Mostrar original',
     verifiedSender: 'Remitente verificado',
     unverifiedSender: 'Remitente no verificado',
+    senderUnverifiedWarning: 'Tu servidor de correo no pudo verificar este remitente. Puede que el mensaje no sea de quien dice ser, así que ten cuidado con sus enlaces y archivos adjuntos.',
     clickToExpand: 'Clic para expandir el contenido del mensaje'
   },
   originalMessage: {

@@ -87,7 +87,9 @@ export const rs = {
       loose: 'Широко',
       normal: 'Нормално',
       compact: 'Компактно',
-      ultraCompact: 'Ултра компактно'
+      ultraCompact: 'Ултра компактно',
+      showSenderAvatars: 'Прикажи аватаре пошиљалаца',
+      showSenderAvatarsDesc: 'Слике и иницијали поред пошиљалаца у листи порука и у читачу. Да ли је пошиљалац верификован, приказује се у сваком случају.'
     },
     localization: {
       language: 'Језик',
@@ -323,6 +325,7 @@ export const rs = {
     showOriginal: 'Прикажи оригинал',
     verifiedSender: 'Верификован пошиљалац',
     unverifiedSender: 'Неверификован пошиљалац',
+    senderUnverifiedWarning: 'Ваш сервер поште није могао да верификује овог пошиљаоца. Порука можда није од онога за кога се представља, зато будите опрезни са везама и прилозима.',
     clickToExpand: 'Кликните да проширите садржај поруке'
   },
   originalMessage: {

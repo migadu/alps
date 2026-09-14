@@ -45,6 +45,8 @@ export class MessageList extends LitElement {
   @property({ type: String }) sortOrder = 'desc';
 
   @property({ type: String }) densityMode: 'loose' | 'normal' | 'compact' | 'ultra-compact' = 'compact';
+  /** Off, rows draw no avatars, and no verdicts are asked for: a verdict only picks an avatar's logo. */
+  @property({ type: Boolean }) showSenderAvatars = true;
 
   @property({ type: Object }) selectedMessages = new Set<string>();
   @property({ type: Boolean }) syncing = false;
@@ -691,9 +693,14 @@ export class MessageList extends LitElement {
     }
   }
 
+  /** Whether rows draw avatars: a verdict picks an avatar's logo and nothing else. */
+  private get drawsAvatars(): boolean {
+    return this.showSenderAvatars && this.densityMode !== 'ultra-compact';
+  }
+
   private async askVerdicts() {
     const shown = this.currentMailbox;
-    if (!shown) return;
+    if (!shown || !this.drawsAvatars) return;
     const generation = this.verdictGeneration;
     const current = () => shown === this.currentMailbox && generation === this.verdictGeneration;
 
@@ -949,6 +956,7 @@ export class MessageList extends LitElement {
   updated(changedProperties: Map<string, any>) {
     super.updated(changedProperties);
     if (changedProperties.has('messages') || changedProperties.has('expandedThreads') || changedProperties.has('currentMailbox') ||
+      changedProperties.has('showSenderAvatars') || changedProperties.has('densityMode') ||
       (changedProperties.has('loading') && !this.loading)) {
       this.refreshVerdicts();
     }
@@ -1251,23 +1259,25 @@ export class MessageList extends LitElement {
         </div>
       ` : isSubMessage ? html`<div class="caret-col empty"></div>` : ''}
 
-      <div class="avatar-stack">
-        ${displayAvatars.map((c, idx) => {
-          const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
-          const name = c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
-          const bimiUrl = bimiAvatarUrlFor(this.withVerdict(msg), c);
-          return html`
-            <div class="avatar-wrapper" style="z-index: ${totalRendered - idx};">
-              <alps-avatar .name=${name} .email=${addr} .size=${avatarSize} .src=${bimiUrl}></alps-avatar>
+      ${this.showSenderAvatars ? html`
+        <div class="avatar-stack">
+          ${displayAvatars.map((c, idx) => {
+            const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
+            const name = c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
+            const bimiUrl = bimiAvatarUrlFor(this.withVerdict(msg), c);
+            return html`
+              <div class="avatar-wrapper" style="z-index: ${totalRendered - idx};">
+                <alps-avatar .name=${name} .email=${addr} .size=${avatarSize} .src=${bimiUrl}></alps-avatar>
+              </div>
+            `;
+          })}
+          ${extraCount > 0 ? html`
+            <div class="avatar-wrapper extra-count" style="width: ${avatarSize}px; height: ${avatarSize}px; z-index: 0;">
+              +${extraCount}
             </div>
-          `;
-        })}
-        ${extraCount > 0 ? html`
-          <div class="avatar-wrapper extra-count" style="width: ${avatarSize}px; height: ${avatarSize}px; z-index: 0;">
-            +${extraCount}
-          </div>
-        ` : ''}
-      </div>
+          ` : ''}
+        </div>
+      ` : ''}
       <div class="message-details">
         <div class="message-header-row">
           <div class="message-header-inner">
