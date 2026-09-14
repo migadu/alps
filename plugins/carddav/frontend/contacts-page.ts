@@ -730,6 +730,11 @@ export class ContactsPage extends LitElement {
       : (this.contacts.find((c: any) => c.path === pathsToUpdate[0])?.categories?.includes(CATEGORY_FAVORITES) || false);
 
     this.saving = true;
+    // Taken before the optimistic paint, so a refusal of every card has
+    // something true to go back to without asking the server, which may be
+    // exactly what cannot be reached.
+    const previousContacts = this.contacts.map((c: any) => ({ ...c }));
+    const previousSelected = this.selectedContact ? { ...this.selectedContact } : null;
     try {
       const contactsToModify = pathsToUpdate.map((path) => {
         const contactIndex = this.contacts.findIndex((c: any) => c.path === path);
@@ -755,11 +760,18 @@ export class ContactsPage extends LitElement {
 
       this.contacts = [...this.contacts]; // Trigger re-render immediately
 
-      const { total, failed } = await contactsService.bulkUpdateContacts(contactsToModify);
+      const { total, done, failed } = await contactsService.bulkUpdateContacts(contactsToModify);
       if (failed > 0) {
-        // The rows were already repainted as starred; re-read so the ones that
-        // did not take revert rather than lingering as a lie.
-        this.fetchContacts();
+        if (done === 0) {
+          // Nothing was written, so the snapshot is the truth: both panes go
+          // back at once. A re-read would leave the star lit until it answered,
+          // and for good when it failed too, as it does offline.
+          this.contacts = previousContacts;
+          this.selectedContact = previousSelected;
+        } else {
+          // Some cards took the change, and the snapshot would un-star them.
+          this.fetchContacts();
+        }
         this.reportFailure('contacts.starFailed', { failed, total });
       }
     } catch (e) {
@@ -790,17 +802,20 @@ export class ContactsPage extends LitElement {
     this.saving = true;
     try {
       const pathsToDelete = this.gestureTargets;
-      const { total, failed } = await contactsService.bulkDeleteContacts(pathsToDelete);
+      const { total, done, failed } = await contactsService.bulkDeleteContacts(pathsToDelete);
 
-      this.selectedContact = null;
-      if (this.selectedContacts.size > 0) {
-        this.selectedContacts = new Set();
+      // Only when something went. The outcome is a count, not which cards, so
+      // after any deletion the selection cannot be trimmed to the survivors and
+      // the list is re-read. A delete that removed nothing (offline, say)
+      // leaves every card there, and the selection the user built stays too.
+      if (done > 0) {
+        this.selectedContact = null;
+        if (this.selectedContacts.size > 0) {
+          this.selectedContacts = new Set();
+        }
+        this.isEditing = false;
+        this.fetchContacts();
       }
-      this.isEditing = false;
-      // Unconditionally, and no longer only on the success path: a partial
-      // failure used to throw past this, leaving every deleted contact still
-      // drawn in a list that no longer matched the server.
-      this.fetchContacts();
       if (failed > 0) {
         this.reportFailure('contacts.deleteFailed', { failed, total });
       }

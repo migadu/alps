@@ -20,6 +20,8 @@ export interface ContactPayload {
  * of them the server refused. */
 export interface BulkOutcome {
   total: number;
+  /** How many were written; with `failed`, tells a refusal of every card from a partial run. */
+  done: number;
   failed: number;
 }
 
@@ -31,7 +33,7 @@ function summarize(settled: PromiseSettledResult<unknown>[]): BulkOutcome {
       console.error('Bulk contact operation failed for one item', outcome.reason);
     }
   }
-  return { total: settled.length, failed };
+  return { total: settled.length, done: settled.length - failed, failed };
 }
 
 class ContactsService {
