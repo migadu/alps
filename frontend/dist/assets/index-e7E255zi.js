@@ -1513,7 +1513,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
                 <div class="card-label">${this.i18nStore?.t(`calendar.notes`)}</div>
                 <div class="description-text">${e.description}</div>
             </div>`:``}
-        `}};k([g({context:C})],Ft.prototype,`i18nStore`,void 0),k([o({type:Object})],Ft.prototype,`event`,void 0),Ft=k([m(`calendar-event-preview`)],Ft);var It=class extends d{constructor(...e){super(...e),this.days=[],this.events=[],this.scrolled=!1}static{this.styles=n`
+        `}};k([g({context:C})],Ft.prototype,`i18nStore`,void 0),k([o({type:Object})],Ft.prototype,`event`,void 0),Ft=k([m(`calendar-event-preview`)],Ft);var It=class extends d{constructor(...e){super(...e),this.days=[],this.events=[],this.scrolled=!1,this.now=new Date}connectedCallback(){super.connectedCallback(),this.now=new Date,this.nowTimer=window.setInterval(()=>{this.now=new Date},6e4)}disconnectedCallback(){super.disconnectedCallback(),this.nowTimer!==void 0&&(clearInterval(this.nowTimer),this.nowTimer=void 0)}static{this.styles=n`
         :host {
             display: flex;
             flex-direction: column;
@@ -1720,14 +1720,36 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
         .event-chip:hover {
             opacity: 1;
         }
-    `}getEventsForDate(e,t){return this.events?this.events.filter(n=>{let r=Ue(n);if(t!==r)return!1;let i=new Date(e);i.setHours(0,0,0,0);let a=new Date(e);if(a.setHours(23,59,59,999),r){let e=n.start.split(`T`)[0],t=n.end.split(`T`)[0],r=new Date(e+`T00:00:00`),a=new Date(t+`T00:00:00`);return r<=i&&a>i}else{let e=new Date(n.start),t=new Date(n.end);return t.getTime()===i.getTime()&&e.getTime()<t.getTime()?!1:e<=a&&t>=i}}):[]}handleColumnClick(e,t){let n=e.currentTarget.getBoundingClientRect(),r=e.clientY-n.top,i=Math.floor(r/48),a=new Date(t);a.setHours(i,0,0,0),this.dispatchEvent(new CustomEvent(`create-event`,{detail:{date:a,allDay:!1},bubbles:!0,composed:!0}))}handleAllDayCellClick(e){let t=new Date(e);t.setHours(0,0,0,0),this.dispatchEvent(new CustomEvent(`create-event`,{detail:{date:t,allDay:!0},bubbles:!0,composed:!0}))}handleScroll(e){let t=e.target;this.scrolled=t.scrollTop>0}render(){let e=Array.from({length:24},(e,t)=>t),t=new Date;return t.setHours(0,0,0,0),s`
+
+        .now-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            border-top: 2px solid var(--error, #ef4444);
+            /* Above the event popups (z-index 5), so an event cannot bury it. */
+            z-index: 6;
+            pointer-events: none;
+        }
+        .now-line::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            /* The padding box starts below the 2px border, so -5px centers the
+               8px dot on the line. */
+            top: -5px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--error, #ef4444);
+        }
+    `}getEventsForDate(e,t){return this.events?this.events.filter(n=>{let r=Ue(n);if(t!==r)return!1;let i=new Date(e);i.setHours(0,0,0,0);let a=new Date(e);if(a.setHours(23,59,59,999),r){let e=n.start.split(`T`)[0],t=n.end.split(`T`)[0],r=new Date(e+`T00:00:00`),a=new Date(t+`T00:00:00`);return r<=i&&a>i}else{let e=new Date(n.start),t=new Date(n.end);return t.getTime()===i.getTime()&&e.getTime()<t.getTime()?!1:e<=a&&t>=i}}):[]}handleColumnClick(e,t){let n=e.currentTarget.getBoundingClientRect(),r=e.clientY-n.top,i=Math.floor(r/48),a=new Date(t);a.setHours(i,0,0,0),this.dispatchEvent(new CustomEvent(`create-event`,{detail:{date:a,allDay:!1},bubbles:!0,composed:!0}))}handleAllDayCellClick(e){let t=new Date(e);t.setHours(0,0,0,0),this.dispatchEvent(new CustomEvent(`create-event`,{detail:{date:t,allDay:!0},bubbles:!0,composed:!0}))}handleScroll(e){let t=e.target;this.scrolled=t.scrollTop>0}render(){let e=Array.from({length:24},(e,t)=>t),t=new Date(this.now);return t.setHours(0,0,0,0),s`
             <div class="time-grid-container">
                 <div class="time-grid-scroll" @scroll=${this.handleScroll}>
                     <div class="header-wrapper ${this.scrolled?`scrolled`:``}">
                         <div class="time-grid-header">
                             <div class="time-axis-spacer"></div>
                             <div class="time-grid-days">
-                                ${this.days.map(e=>{let n=e.getTime()===t.getTime();return s`
+                                ${this.days.map(e=>{let n=e.getFullYear()===t.getFullYear()&&e.getMonth()===t.getMonth()&&e.getDate()===t.getDate();return s`
                                         <div class="time-grid-day-header">
                                             <span class="time-grid-day-name">${this.i18nStore?.t(`calendar.daysShort.${e.getDay()}`)}</span>
                                             <span class="time-grid-day-number ${n?`today`:``}">${e.getDate()}</span>
@@ -1765,9 +1787,12 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
                             `)}
                         </div>
                         <div class="time-grid-columns">
-                            ${this.days.map(e=>{let t=this.getEventsForDate(e,!1),n=new Date(e);n.setHours(0,0,0,0);let r=new Date(e);return r.setHours(23,59,59,999),s`
+                            ${this.days.map(e=>{let n=this.getEventsForDate(e,!1),r=new Date(e);r.setHours(0,0,0,0);let i=new Date(e);return i.setHours(23,59,59,999),s`
                                     <div class="time-column" @click=${t=>this.handleColumnClick(t,e)} style="cursor: pointer;">
-                                        ${t.map(e=>{let t=new Date(e.start),i=new Date(e.end),a=t<n?n:t,o=i>r?r:i,c=a.getHours()*48+a.getMinutes()/60*48,l=o.getHours()*48+o.getMinutes()/60*48-c;return l<20&&(l=20),c+l>1152&&(l=1152-c),s`
+                                        ${r.getTime()===t.getTime()?s`
+                                            <div class="now-line" style="top: ${(this.now.getHours()+this.now.getMinutes()/60)*48}px"></div>
+                                        `:``}
+                                        ${n.map(e=>{let t=new Date(e.start),n=new Date(e.end),a=t<r?r:t,o=n>i?i:n,c=a.getHours()*48+a.getMinutes()/60*48,l=o.getHours()*48+o.getMinutes()/60*48-c;return l<20&&(l=20),c+l>1152&&(l=1152-c),s`
                                                 <alps-popup 
                                                     class="time-event-popup"
                                                     align="left" position="bottom" 
@@ -1788,7 +1813,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
                     </div>
                 </div>
             </div>
-        `}};k([g({context:C})],It.prototype,`i18nStore`,void 0),k([o({type:Array})],It.prototype,`days`,void 0),k([o({type:Array})],It.prototype,`events`,void 0),k([a()],It.prototype,`scrolled`,void 0),It=k([m(`calendar-time-grid`)],It);var Lt=class extends d{constructor(...e){super(...e),this.events=[]}static{this.styles=n`
+        `}};k([g({context:C})],It.prototype,`i18nStore`,void 0),k([o({type:Array})],It.prototype,`days`,void 0),k([o({type:Array})],It.prototype,`events`,void 0),k([a()],It.prototype,`scrolled`,void 0),k([a()],It.prototype,`now`,void 0),It=k([m(`calendar-time-grid`)],It);var Lt=class extends d{constructor(...e){super(...e),this.events=[]}static{this.styles=n`
         :host {
             display: flex;
             height: 100%;

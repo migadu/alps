@@ -16,6 +16,25 @@ export class CalendarTimeGrid extends LitElement {
     @property({ type: Array }) days: Date[] = [];
     @property({ type: Array }) events: EventData[] = [];
     @state() private scrolled = false;
+    /** The clock behind the now-line. It also decides which column is today,
+     *  so the line cannot sit in a column the header no longer marks. */
+    @state() private now = new Date();
+
+    private nowTimer?: number;
+
+    connectedCallback() {
+        super.connectedCallback();
+        this.now = new Date();
+        this.nowTimer = window.setInterval(() => { this.now = new Date(); }, 60_000);
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        if (this.nowTimer !== undefined) {
+            clearInterval(this.nowTimer);
+            this.nowTimer = undefined;
+        }
+    }
 
     static styles = css`
         :host {
@@ -224,6 +243,28 @@ export class CalendarTimeGrid extends LitElement {
         .event-chip:hover {
             opacity: 1;
         }
+
+        .now-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            border-top: 2px solid var(--error, #ef4444);
+            /* Above the event popups (z-index 5), so an event cannot bury it. */
+            z-index: 6;
+            pointer-events: none;
+        }
+        .now-line::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            /* The padding box starts below the 2px border, so -5px centers the
+               8px dot on the line. */
+            top: -5px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--error, #ef4444);
+        }
     `;
 
     private getEventsForDate(date: Date, includeAllDay: boolean) {
@@ -295,7 +336,7 @@ export class CalendarTimeGrid extends LitElement {
 
     render() {
         const hours = Array.from({length: 24}, (_, i) => i);
-        const today = new Date();
+        const today = new Date(this.now);
         today.setHours(0,0,0,0);
 
         return html`
@@ -306,7 +347,7 @@ export class CalendarTimeGrid extends LitElement {
                             <div class="time-axis-spacer"></div>
                             <div class="time-grid-days">
                                 ${this.days.map(d => {
-                                    const isToday = d.getTime() === today.getTime();
+                                    const isToday = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
                                     return html`
                                         <div class="time-grid-day-header">
                                             <span class="time-grid-day-name">${this.i18nStore?.t(`calendar.daysShort.${d.getDay()}`)}</span>
@@ -355,9 +396,13 @@ export class CalendarTimeGrid extends LitElement {
                                 dayStart.setHours(0,0,0,0);
                                 const dayEnd = new Date(d);
                                 dayEnd.setHours(23,59,59,999);
+                                const isToday = dayStart.getTime() === today.getTime();
 
                                 return html`
                                     <div class="time-column" @click=${(e: MouseEvent) => this.handleColumnClick(e, d)} style="cursor: pointer;">
+                                        ${isToday ? html`
+                                            <div class="now-line" style="top: ${(this.now.getHours() + this.now.getMinutes() / 60) * 48}px"></div>
+                                        ` : ''}
                                         ${timedEvents.map(e => {
                                             const start = new Date(e.start);
                                             const end = new Date(e.end);
