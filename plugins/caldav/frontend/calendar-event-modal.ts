@@ -257,7 +257,7 @@ export class CalendarEventModal extends LitElement {
                         <alps-select
                             .value=${this.calendarPath}
                             .options=${this.calendars.map(c => ({ value: c.path, label: c.name }))}
-                            @change=${(e: any) => this.calendarPath = e.detail.value}
+                            @change=${(e: Event) => { this.calendarPath = (e.target as HTMLSelectElement).value; }}
                             ?disabled=${!!this.event}
                         ></alps-select>
                     </div>

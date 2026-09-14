@@ -960,7 +960,7 @@ import{n as e,r as t}from"./rolldown-runtime-S-ySWqyJ.js";import{_ as n,a as r,c
                         <alps-select
                             .value=${this.calendarPath}
                             .options=${this.calendars.map(e=>({value:e.path,label:e.name}))}
-                            @change=${e=>this.calendarPath=e.detail.value}
+                            @change=${e=>{this.calendarPath=e.target.value}}
                             ?disabled=${!!this.event}
                         ></alps-select>
                     </div>
