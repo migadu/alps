@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { escapeHtml, sanitizeQuotedHTML } from '../src/utils/html-sanitizer';
-import { formatAddrs, generateQuote } from '../src/utils/email-quote';
+import { QUOTE_ATTRIBUTE, formatAddrs, generateQuote } from '../src/utils/email-quote';
 
 const parse = (html: string) => new DOMParser().parseFromString(html, 'text/html');
 
@@ -144,6 +144,16 @@ describe('generateQuote', () => {
     expect(doc.querySelector('script')).toBeNull();
     expect(doc.querySelector('img')?.getAttribute('onerror')).toBeNull();
     expect(doc.querySelector('img')?.getAttribute('src')).toBe('https://cdn.test/a.png');
+  });
+
+  it('marks an HTML quote for the composer to keep whole, and nothing else', () => {
+    for (const type of ['reply', 'forward'] as const) {
+      const marked = parse(generateQuote(type, message(), 'body', '<p>quoted body</p>', true).quotedHtml).querySelectorAll(`[${QUOTE_ATTRIBUTE}]`);
+      expect(marked, type).toHaveLength(1);
+      expect(marked[0].textContent, type).toContain('quoted body');
+    }
+    // A text body quoted as HTML is paragraphs and breaks, which the editor keeps.
+    expect(generateQuote('reply', message(), 'body', null, false).quotedHtml).not.toContain(QUOTE_ATTRIBUTE);
   });
 
   it('escapes a text body before turning its lines into breaks', () => {

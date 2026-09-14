@@ -1,6 +1,12 @@
 import { formatFullDate } from './ui';
 import { escapeHtml, sanitizeQuotedHTML } from './html-sanitizer';
 
+/**
+ * Marks the element that holds a quoted original. The composer keeps what is
+ * inside it as one block instead of passing it through its editor's schema.
+ */
+export const QUOTE_ATTRIBUTE = 'data-alps-quote';
+
 export function formatAddrs(addrs: any[]): string[] {
   if (!addrs) return [];
   return addrs.map(a => a.Name ? `${a.Name} <${a.Mailbox}@${a.Host}>` : `${a.Mailbox}@${a.Host}`);
@@ -71,13 +77,18 @@ export function generateQuote(
   // under our user's name. Scripts and `on*` handlers ride out the same way.
   const safeHtml = hasHtml && rawMessageHtml ? sanitizeQuotedHTML(rawMessageHtml) : '';
 
+  // The HTML quote is marked so the composer can hold it as one piece. Its
+  // editor drops every tag and style it has no node or mark for — tables,
+  // fonts, colours, images — so a quote loaded as ordinary content went out
+  // with its layout gone. The mark stays in the sent and saved HTML, which is
+  // what lets a reopened draft keep the quote whole too.
   let quotedHtml = '';
   if (safeHtml) {
     if (type === 'forward') {
       const toStrs = escapeHtml(formatAddrs(message?.Envelope?.To).join(', '));
-      quotedHtml = `<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">---------- Forwarded message ---------<br>From: ${eSenderName} &lt;${eSenderAddress}&gt;<br>Date: ${eDate}<br>Subject: ${eSubject}<br>To: ${toStrs}<br></div><br>${safeHtml}</div>`;
+      quotedHtml = `<br><br><div class="gmail_quote" ${QUOTE_ATTRIBUTE}><div dir="ltr" class="gmail_attr">---------- Forwarded message ---------<br>From: ${eSenderName} &lt;${eSenderAddress}&gt;<br>Date: ${eDate}<br>Subject: ${eSubject}<br>To: ${toStrs}<br></div><br>${safeHtml}</div>`;
     } else {
-      quotedHtml = `<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On ${eDate}, ${eSenderName} wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${safeHtml}</blockquote></div>`;
+      quotedHtml = `<br><br><div class="gmail_quote" ${QUOTE_ATTRIBUTE}><div dir="ltr" class="gmail_attr">On ${eDate}, ${eSenderName} wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${safeHtml}</blockquote></div>`;
     }
   } else {
     // The plain-text fallback is HTML too, so the body needs escaping before its

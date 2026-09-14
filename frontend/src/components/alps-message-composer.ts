@@ -4,7 +4,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { ref, createRef } from 'lit/directives/ref.js';
 import type { Ref } from 'lit/directives/ref.js';
 import type { Attachment } from '../utils/attachment-utils';
-import { Editor, Extension } from '@tiptap/core';
+import { Editor, Extension, Node as TiptapNode } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
 import { TextStyle } from '@tiptap/extension-text-style';
@@ -18,6 +18,10 @@ import { BubbleMenu } from '@tiptap/extension-bubble-menu';
 import { getMarkRange } from '@tiptap/core';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
+import { readUserSettings } from '../store/settings-store';
+import { QUOTE_ATTRIBUTE } from '../utils/email-quote';
+import { sanitizeMessageHTML, sanitizeQuotedHTML } from '../utils/html-sanitizer';
+import { htmlToPlainText, setupIframeSizing } from '../utils/reader-utils';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -26,6 +30,98 @@ declare module '@tiptap/core' {
       outdent: () => ReturnType;
     };
   }
+}
+
+/** Carries a quoted original through editor.getHTML(); see QuotedMessage. */
+const QUOTE_SLOT_ATTRIBUTE = 'data-alps-quote-slot';
+
+/**
+ * The original message in a reply or forward, held as one block the editor
+ * does not look inside.
+ *
+ * Mail is laid out with tables, fonts, inline styles and images, and the
+ * editor's schema has no node or mark for most of that. ProseMirror drops what
+ * it cannot represent, so a quote loaded as ordinary content lost its
+ * formatting as soon as the composer opened. Held as the markup generateQuote
+ * built, it goes out as it came in, and can still be selected and deleted.
+ *
+ * That markup never becomes live DOM in this page. The quoting sanitizer
+ * leaves remote image addresses as the sender wrote them, for the recipient,
+ * and an image created in this document fetches its source even while
+ * detached: a read receipt the reader's remote-content block exists to refuse.
+ * So the quote is shown in a sandboxed frame through the display sanitizer,
+ * and renderHTML carries it as an attribute value that serializeEditorHtml
+ * expands in an inert document.
+ */
+const QuotedMessage = TiptapNode.create({
+  name: 'quotedMessage',
+  group: 'block',
+  atom: true,
+  draggable: false,
+
+  addAttributes() {
+    return { html: { default: '', rendered: false } };
+  },
+
+  parseHTML() {
+    // Sanitized again on the way in, because a draft reopened from the server
+    // was not necessarily built by generateQuote.
+    const quoted = (html: string) => {
+      const safe = sanitizeQuotedHTML(html);
+      return safe ? { html: safe } : false;
+    };
+    return [
+      // A quote as generateQuote marks it, which includes a saved draft.
+      { tag: `div[${QUOTE_ATTRIBUTE}]`, getAttrs: (el) => quoted(el.outerHTML) },
+      // This node as renderHTML writes it, which is what a copy puts on the clipboard.
+      { tag: `div[${QUOTE_SLOT_ATTRIBUTE}]`, getAttrs: (el) => quoted(el.getAttribute(QUOTE_SLOT_ATTRIBUTE) || '') },
+    ];
+  },
+
+  renderHTML({ node }) {
+    return ['div', { [QUOTE_SLOT_ATTRIBUTE]: node.attrs.html }];
+  },
+
+  // The text/plain part of the message is editor.getText(), and a leaf node
+  // contributes nothing to it without this.
+  renderText({ node }) {
+    return htmlToPlainText(node.attrs.html);
+  },
+
+  addNodeView() {
+    return ({ node }) => {
+      const dom = document.createElement('div');
+      dom.className = 'quoted-message';
+      dom.contentEditable = 'false';
+
+      const frame = document.createElement('iframe');
+      // No scripts. Same origin only so the frame can be sized to its content.
+      frame.setAttribute('sandbox', 'allow-same-origin');
+      frame.srcdoc = sanitizeMessageHTML(node.attrs.html, { mailbox: '', messageUid: '', allowRemoteResources: false });
+      const themed = !!readUserSettings().themeIframeContent;
+      frame.addEventListener('load', () => setupIframeSizing(frame, themed));
+      dom.appendChild(frame);
+
+      return { dom, ignoreMutation: () => true };
+    };
+  },
+});
+
+/**
+ * The editor's HTML with each quoted original written back in its place.
+ *
+ * Whatever is saved or sent must come from here rather than editor.getHTML(),
+ * which leaves a quote inside the attribute renderHTML put it in. A DOMParser
+ * document is inert, so the quote's images load nothing while it is expanded.
+ */
+function serializeEditorHtml(editor: Editor): string {
+  const html = editor.getHTML();
+  if (!html.includes(QUOTE_SLOT_ATTRIBUTE)) return html;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  for (const slot of Array.from(doc.querySelectorAll(`[${QUOTE_SLOT_ATTRIBUTE}]`))) {
+    slot.outerHTML = slot.getAttribute(QUOTE_SLOT_ATTRIBUTE) || '';
+  }
+  return doc.body.innerHTML;
 }
 
 const FontSize = Extension.create({
@@ -287,7 +383,7 @@ export class AlpsMessageComposer extends LitElement {
         if (this.editor && this.editor.getText() !== this.text) {
           const contentStr = this.text.split('\n').map(line => `<p>${line}</p>`).join('');
           this.editor.commands.setContent(contentStr);
-          this.htmlText = this.editor.getHTML();
+          this.htmlText = serializeEditorHtml(this.editor);
         }
       } else if (oldFormat === 'html' && this.format === 'text') {
         if (this.editor) {
@@ -312,6 +408,7 @@ export class AlpsMessageComposer extends LitElement {
         Color,
         FontSize,
         Indent,
+        QuotedMessage,
         BubbleMenu.configure({
           element: this.bubbleMenuRef.value,
           options: {
@@ -331,7 +428,7 @@ export class AlpsMessageComposer extends LitElement {
         // would clobber the user's plaintext with stale, HTML-derived text.
         // See GitHub issue #6.
         if (this.format !== 'html') return;
-        this.htmlText = editor.getHTML();
+        this.htmlText = serializeEditorHtml(editor);
         this.text = editor.getText();
         this.dispatchEvent(new CustomEvent('text-changed', {
           detail: { text: this.text, html: this.htmlText },
@@ -405,7 +502,7 @@ export class AlpsMessageComposer extends LitElement {
 
     this.text = textarea.value;
     if (this.editor && !this.editor.isDestroyed) {
-      this.htmlText = this.editor.getHTML();
+      this.htmlText = serializeEditorHtml(this.editor);
     }
 
     this.dispatchEvent(new CustomEvent('text-changed', {
@@ -427,7 +524,7 @@ export class AlpsMessageComposer extends LitElement {
       textarea.setRangeText(emoji, start, end, 'end');
       this.text = textarea.value;
       if (this.editor && !this.editor.isDestroyed) {
-        this.htmlText = this.editor.getHTML();
+        this.htmlText = serializeEditorHtml(this.editor);
       }
       this.dispatchEvent(new CustomEvent('text-changed', {
         detail: { text: this.text, html: this.htmlText },
@@ -535,6 +632,22 @@ export class AlpsMessageComposer extends LitElement {
       margin: 0 0 1em 0;
       padding-left: 1em;
       color: var(--text-muted, #6b7280);
+    }
+
+    .editor-container .ProseMirror .quoted-message {
+      margin: 0 0 1em 0;
+    }
+
+    .editor-container .ProseMirror .quoted-message iframe {
+      display: block;
+      width: 100%;
+      border: none;
+      /* Clicks land on the block instead, so it can be selected and deleted. */
+      pointer-events: none;
+    }
+
+    .editor-container .ProseMirror .quoted-message.ProseMirror-selectednode {
+      outline: 2px solid var(--accent-color);
     }
 
     .bubble-menu-container {
