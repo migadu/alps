@@ -375,7 +375,8 @@ export const fr = {
   navigation: {
     messages: 'Messages',
     contacts: 'Contacts',
-    calendar: 'Calendrier'
+    calendar: 'Calendrier',
+    tasks: 'Tâches'
   },
   userMenu: {
     settings: 'Paramètres',

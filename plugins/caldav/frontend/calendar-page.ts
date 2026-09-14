@@ -3,7 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { calendarService, getCalendarColor, weekStart } from './calendar-service';
+import { calendarService, getCalendarColor, holdsEvents, weekStart } from './calendar-service';
 import type { CalendarData, EventData } from './calendar-service';
 import { sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar';
@@ -581,7 +581,7 @@ export class CalendarPage extends LitElement {
                 color: ev.color || getCalendarColor(ev.calendarPath || ev.path)
             }));
 
-            this.calendars = calRes.calendars.map((c: any) => ({
+            this.calendars = calRes.calendars.filter(holdsEvents).map((c: any) => ({
                 ...c,
                 color: c.color || getCalendarColor(c.path)
             }));

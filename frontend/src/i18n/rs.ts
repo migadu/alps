@@ -375,7 +375,8 @@ export const rs = {
   navigation: {
     messages: 'Поруке',
     contacts: 'Контакти',
-    calendar: 'Календар'
+    calendar: 'Календар',
+    tasks: 'Задаци'
   },
   userMenu: {
     settings: 'Подешавања',

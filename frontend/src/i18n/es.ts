@@ -375,7 +375,8 @@ export const es = {
   navigation: {
     messages: 'Mensajes',
     contacts: 'Contactos',
-    calendar: 'Calendario'
+    calendar: 'Calendario',
+    tasks: 'Tareas'
   },
   userMenu: {
     settings: 'Configuración',

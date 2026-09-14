@@ -410,7 +410,8 @@ export const pt = {
   navigation: {
     messages: 'Mensagens',
     contacts: 'Contatos',
-    calendar: 'Calendário'
+    calendar: 'Calendário',
+    tasks: 'Tarefas'
   },
   userMenu: {
     settings: 'Configurações',

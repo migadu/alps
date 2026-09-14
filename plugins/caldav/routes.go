@@ -46,6 +46,9 @@ type CalendarData struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Path        string `json:"path"`
+	// The components the calendar accepts, as the server states them; none
+	// stated means all. Lets the calendar page leave out a task-only list.
+	Components []string `json:"components,omitempty"`
 }
 
 type EventData struct {
@@ -202,6 +205,7 @@ func registerRoutes(p *plugin) {
 				Name:        calendar.Name,
 				Description: calendar.Description,
 				Path:        calendar.Path,
+				Components:  calendar.SupportedComponentSet,
 			})
 		}
 
@@ -471,6 +475,9 @@ func registerRoutes(p *plugin) {
 		var events []EventData
 		qLower := strings.ToLower(queryStr)
 		for _, calendar := range calendars {
+			if !holdsComponent(calendar, ical.CompEvent) {
+				continue
+			}
 			calendarObjects, err := c.QueryCalendar(ctx.Request.Context(), calendar.Path, &query)
 			if err != nil {
 				continue // Skip if this specific calendar fails to query
@@ -618,8 +625,15 @@ func registerRoutes(p *plugin) {
 					}
 				}
 			}
-			if targetCal == nil && len(calendars) > 0 {
-				targetCal = &calendars[0]
+			if targetCal == nil {
+				// The first that takes events. A task-only list (Apple keeps
+				// Reminders in such calendars) refuses them.
+				for i := range calendars {
+					if holdsComponent(calendars[i], ical.CompEvent) {
+						targetCal = &calendars[i]
+						break
+					}
+				}
 			}
 			// With no calendars at all, targetCal is still nil and the line
 			// below dereferenced it — a nil panic rather than an error, for an
@@ -641,7 +655,7 @@ func registerRoutes(p *plugin) {
 	p.POST("/calendar/events", updateEvent)
 	p.POST("/calendar/events/{path}/edit", updateEvent)
 
-	p.DELETE("/calendar/events/{path}", func(ctx *alps.Context) error {
+	deleteObject := func(ctx *alps.Context) error {
 		path, err := parseObjectPath(ctx.Param("path"))
 		if err != nil {
 			return err
@@ -664,5 +678,12 @@ func registerRoutes(p *plugin) {
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
-	})
+	}
+
+	p.DELETE("/calendar/events/{path}", deleteObject)
+	// A task is removed as an event is: one object inside one of the user's
+	// calendars.
+	p.DELETE("/calendar/tasks/{path}", deleteObject)
+
+	registerTaskRoutes(p)
 }

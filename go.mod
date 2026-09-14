@@ -64,7 +64,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/teambition/rrule-go v1.8.2 // indirect
+	github.com/teambition/rrule-go v1.8.2
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/mod v0.37.0 // indirect

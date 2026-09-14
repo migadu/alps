@@ -377,7 +377,8 @@ export const de: TranslationDictionary = {
   navigation: {
     messages: 'Nachrichten',
     contacts: 'Kontakte',
-    calendar: 'Kalender'
+    calendar: 'Kalender',
+    tasks: 'Aufgaben'
   },
   userMenu: {
     settings: 'Einstellungen',

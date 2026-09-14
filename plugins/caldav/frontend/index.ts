@@ -1,5 +1,6 @@
 import { registry } from '../../../frontend/src/plugin-registry';
 import './calendar-page';
+import './tasks-page';
 
 registry.registerRoute({
     path: '/calendar/*',
@@ -15,4 +16,20 @@ registry.registerNavTab({
     labelKey: 'navigation.calendar',
     icon: 'calendar',
     order: 20
+});
+
+// Tasks are the VTODOs in the same calendars, so they belong to this plugin:
+// with caldav disabled there is nothing to list them from.
+registry.registerRoute({
+    path: '/tasks/*',
+    component: 'tasks-page',
+    pluginId: 'caldav'
+});
+
+registry.registerNavTab({
+    id: 'tasks',
+    pluginId: 'caldav',
+    labelKey: 'navigation.tasks',
+    icon: 'checkCircle',
+    order: 30
 });

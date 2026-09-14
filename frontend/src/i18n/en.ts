@@ -410,7 +410,8 @@ export const en = {
   navigation: {
     messages: 'Messages',
     contacts: 'Contacts',
-    calendar: 'Calendar'
+    calendar: 'Calendar',
+    tasks: 'Tasks'
   },
   userMenu: {
     settings: 'Settings',

@@ -375,7 +375,8 @@ export const sr = {
   navigation: {
     messages: 'Poruke',
     contacts: 'Kontakti',
-    calendar: 'Kalendar'
+    calendar: 'Kalendar',
+    tasks: 'Zadaci'
   },
   userMenu: {
     settings: 'Podešavanja',

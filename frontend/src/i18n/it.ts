@@ -375,7 +375,8 @@ export const it = {
   navigation: {
     messages: 'Messaggi',
     contacts: 'Contatti',
-    calendar: 'Calendario'
+    calendar: 'Calendario',
+    tasks: 'Attività'
   },
   userMenu: {
     settings: 'Impostazioni',

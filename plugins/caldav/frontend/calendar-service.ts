@@ -5,6 +5,19 @@ export interface CalendarData {
     description: string;
     path: string;
     color?: string;
+    /** The components the calendar takes, as its server states them; none stated means all. */
+    components?: string[];
+}
+
+/**
+ * Whether a calendar takes events.
+ *
+ * A server can keep tasks in calendars of their own (Apple's Reminders lists
+ * are such calendars). Listed on the calendar page they showed no events, and
+ * an event saved into one was refused.
+ */
+export function holdsEvents(calendar: Pick<CalendarData, 'components'>): boolean {
+    return !calendar.components?.length || calendar.components.some(component => component.toUpperCase() === 'VEVENT');
 }
 
 export interface EventData {

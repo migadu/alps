@@ -55,6 +55,10 @@ type memCalendars struct {
 	// withholdETag answers PUTs with no ETag, as RFC 4791 lets a server do
 	// when it stored something other than what it was sent.
 	withholdETag bool
+	// calendars replaces the one "Work" calendar, when set.
+	calendars []caldav.Calendar
+	// queried records every collection a REPORT asked about.
+	queried []string
 }
 
 func (b *memCalendars) CurrentUserPrincipal(context.Context) (string, error) { return "/ada/", nil }
@@ -65,6 +69,9 @@ func (b *memCalendars) CreateCalendar(context.Context, *caldav.Calendar) error {
 }
 
 func (b *memCalendars) ListCalendars(context.Context) ([]caldav.Calendar, error) {
+	if b.calendars != nil {
+		return b.calendars, nil
+	}
 	return []caldav.Calendar{{Path: testCalendar, Name: "Work", SupportedComponentSet: []string{"VEVENT", "VTODO"}}}, nil
 }
 
@@ -102,6 +109,9 @@ func (b *memCalendars) ListCalendarObjects(_ context.Context, p string, _ *calda
 }
 
 func (b *memCalendars) QueryCalendarObjects(ctx context.Context, p string, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
+	b.mu.Lock()
+	b.queried = append(b.queried, p)
+	b.mu.Unlock()
 	all, err := b.ListCalendarObjects(ctx, p, nil)
 	if err != nil {
 		return nil, err
