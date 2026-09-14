@@ -342,7 +342,9 @@ func (r *Router) wrapHandler(h HandlerFunc) http.HandlerFunc {
 func setSecurityHeaders(h http.Header) {
 	// `style-src 'unsafe-inline'` is required for e-mails with embedded stylesheets.
 	// `img-src`/`font-src data:` are required for placeholder resources in sandboxed iframes.
-	h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'")
+	// `frame-src blob:` lets the attachment preview show a PDF it fetched itself: the
+	// part is served as a download, which a frame pointed at its URL would save.
+	h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; frame-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'")
 	// DNS prefetching has privacy implications.
 	h.Set("X-DNS-Prefetch-Control", "off")
 	// Never allow browsers to MIME-sniff a response away from its declared type.

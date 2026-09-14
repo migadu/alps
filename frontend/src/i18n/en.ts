@@ -389,7 +389,22 @@ export const en = {
     actionCopy: 'Copy to'
   },
   attachment: {
-    remove: 'Remove'
+    remove: 'Remove',
+    preview: 'Preview',
+    download: 'Download',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    rotate: 'Rotate',
+    fitToScreen: 'Fit to screen',
+    previous: 'Previous',
+    next: 'Next',
+    copyContent: 'Copy content',
+    copied: 'Copied!',
+    openInNewTab: 'Open in new tab',
+    cannotPreview: 'No preview available for this file type',
+    loadingPreview: 'Loading preview...',
+    errorLoading: 'Failed to load preview',
+    close: 'Close'
   },
 
   navigation: {

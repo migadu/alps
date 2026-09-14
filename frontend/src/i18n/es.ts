@@ -354,7 +354,22 @@ export const es = {
     actionCopy: 'Copiar a'
   },
   attachment: {
-    remove: 'Eliminar'
+    remove: 'Eliminar',
+    preview: 'Vista previa',
+    download: 'Descargar',
+    zoomIn: 'Acercar',
+    zoomOut: 'Alejar',
+    rotate: 'Girar',
+    fitToScreen: 'Ajustar a la pantalla',
+    previous: 'Anterior',
+    next: 'Siguiente',
+    copyContent: 'Copiar contenido',
+    copied: '¡Copiado!',
+    openInNewTab: 'Abrir en nueva pestaña',
+    cannotPreview: 'No hay vista previa disponible para este tipo de archivo',
+    loadingPreview: 'Cargando vista previa...',
+    errorLoading: 'Error al cargar la vista previa',
+    close: 'Cerrar'
   },
 
   navigation: {

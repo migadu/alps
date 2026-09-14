@@ -37,6 +37,8 @@ func TestSecurityHeadersAppliedToStaticAssets(t *testing.T) {
 			assert.Equal(t, http.StatusOK, w.Code)
 			assert.NotEmpty(t, w.Header().Get("Content-Security-Policy"),
 				"CSP must be set on %q, including static assets", path)
+			assert.Contains(t, w.Header().Get("Content-Security-Policy"), "frame-src 'self' blob:",
+				"the attachment preview frames PDFs from blob: URLs on %q", path)
 			assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"),
 				"nosniff must be set on %q", path)
 			assert.Equal(t, "off", w.Header().Get("X-DNS-Prefetch-Control"),

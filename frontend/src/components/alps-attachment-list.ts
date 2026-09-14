@@ -3,7 +3,8 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
-import { FOLDER_INBOX, encodeMailboxPath } from '../utils/folders';
+import { FOLDER_INBOX } from '../utils/folders';
+import { attachmentPartUrl } from '../utils/attachment-url';
 import './alps-attachment-pill';
 
 @customElement('alps-attachment-list')
@@ -35,6 +36,23 @@ export class AttachmentList extends LitElement {
     this.requestUpdate();
   };
 
+  /** The mailbox the message is in, read from the URL when none was passed. */
+  private get resolvedMailbox(): string {
+    if (this.mailbox) return this.mailbox;
+    const hashMatch = window.location.hash.match(/^#\/mailbox\/([^/]+)/);
+    return hashMatch ? decodeURIComponent(hashMatch[1]) : FOLDER_INBOX;
+  }
+
+  /**
+   * Asks the app to open the preview. It is mounted by app-root rather than
+   * here, so the overlay is not clipped by the reader pane it would sit in.
+   */
+  private _openPreview(index: number) {
+    window.dispatchEvent(new CustomEvent('open-attachment-preview', {
+      detail: { attachments: this.attachments, mailbox: this.resolvedMailbox, messageUid: this.messageUid, index },
+    }));
+  }
+
   private toggleAttachments() {
     this.attachmentsExpanded = !this.attachmentsExpanded;
   }
@@ -43,17 +61,10 @@ export class AttachmentList extends LitElement {
     e.stopPropagation();
     if (!this.attachments || this.attachments.length === 0 || !this.messageUid) return;
 
-    let mbox = this.mailbox || FOLDER_INBOX;
-    if (!this.mailbox) {
-      const hashMatch = window.location.hash.match(/^#\/mailbox\/([^/]+)/);
-      if (hashMatch) {
-        mbox = decodeURIComponent(hashMatch[1]);
-      }
-    }
-
+    const mbox = this.resolvedMailbox;
     this.attachments.forEach((att, index) => {
-      const partPathStr = Array.isArray(att.Path) ? att.Path.join('.') : att.Path;
-      const downloadUrl = `/mailboxes/${encodeMailboxPath(mbox)}/messages/${this.messageUid}/raw?part=${partPathStr}`;
+      const downloadUrl = attachmentPartUrl(mbox, this.messageUid, att);
+      if (!downloadUrl) return;
 
       setTimeout(() => {
         const a = document.createElement('a');
@@ -241,19 +252,8 @@ export class AttachmentList extends LitElement {
         </div>
         <div class="attachments-wrapper ${this.attachmentsExpanded ? 'expanded' : ''}">
           <div class="attachments-list">
-            ${this.attachments.map(att => {
-      let downloadUrl = '';
-      if (this.messageUid) {
-        const partPathStr = Array.isArray(att.Path) ? att.Path.join('.') : att.Path;
-        let mbox = this.mailbox || FOLDER_INBOX;
-        if (!this.mailbox) {
-          const hashMatch = window.location.hash.match(/^#\/mailbox\/([^/]+)/);
-          if (hashMatch) {
-            mbox = decodeURIComponent(hashMatch[1]);
-          }
-        }
-        downloadUrl = `/mailboxes/${encodeMailboxPath(mbox)}/messages/${this.messageUid}/raw?part=${partPathStr}`;
-      }
+            ${this.attachments.map((att, index) => {
+      const downloadUrl = this.messageUid ? attachmentPartUrl(this.resolvedMailbox, this.messageUid, att) : '';
 
       return html`
                 <alps-attachment-pill
@@ -262,6 +262,10 @@ export class AttachmentList extends LitElement {
                   .fallbackName=${this.i18nStore?.t('messageReader.unknownAttachment')}
                   .removable=${this.removable}
                   .compact=${this.composerMode}
+                  @preview-attachment=${(e: CustomEvent) => {
+        e.stopPropagation();
+        this._openPreview(index);
+      }}
                 ></alps-attachment-pill>
               `;
     })}

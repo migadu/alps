@@ -17,6 +17,7 @@ import { provide } from '@lit/context';
 import './alps-floating-composer';
 import './toast-notification';
 import './ui-modal';
+import './alps-attachment-preview';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import type { ComposerInstance } from '../store/compose-store';
 import { settingsContext, SettingsStore } from '../store/settings-store';
@@ -55,6 +56,7 @@ export class AppRoot extends LitElement {
   @state() private activeComposers: ComposerInstance[] = [];
 
   @state() private toasts: ToastItem[] = [];
+  @state() private attachmentPreview: { attachments: any[]; mailbox: string; messageUid: string; index: number } | null = null;
   private toastIdCounter = 0;
 
   @state() private isOffline: boolean = !navigator.onLine;
@@ -138,6 +140,7 @@ export class AppRoot extends LitElement {
     window.addEventListener('dragover', this._handleGlobalDragOver);
     window.addEventListener('drop', this._handleGlobalDrop);
     window.addEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
+    window.addEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
 
     if (this.isOffline) {
       this._handleOfflineEvent();
@@ -148,6 +151,12 @@ export class AppRoot extends LitElement {
       this._fetchSessionData();
     }
   }
+
+  private _handleOpenAttachmentPreview = (e: CustomEvent) => {
+    const { attachments, mailbox, messageUid, index } = e.detail ?? {};
+    if (!Array.isArray(attachments) || attachments.length === 0) return;
+    this.attachmentPreview = { attachments, mailbox, messageUid, index: index ?? 0 };
+  };
 
   private _handlePluginsUpdated = () => {
     this.requestUpdate();
@@ -173,6 +182,7 @@ export class AppRoot extends LitElement {
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     window.removeEventListener('auth-error', this._handleAuthError);
     window.removeEventListener('show-toast', this._handleShowToast as EventListener);
+    window.removeEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
     window.removeEventListener('beforeunload', this._handleBeforeUnload);
     window.removeEventListener('online', this._handleOnlineEvent);
     window.removeEventListener('offline', this._handleOfflineEvent);
@@ -416,6 +426,16 @@ export class AppRoot extends LitElement {
           ></alps-toast>
         `)}
       </div>
+
+      ${this.attachmentPreview ? html`
+        <alps-attachment-preview
+          .attachments=${this.attachmentPreview.attachments}
+          .mailbox=${this.attachmentPreview.mailbox}
+          .messageUid=${this.attachmentPreview.messageUid}
+          .activeIndex=${this.attachmentPreview.index}
+          @close=${() => { this.attachmentPreview = null; }}
+        ></alps-attachment-preview>
+      ` : ''}
 
       ${this.isOffline ? html`
         <ui-modal title=${this.i18nStore.t('offline.title')} .dismissible=${false} width="400px">

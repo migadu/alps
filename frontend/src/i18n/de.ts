@@ -356,7 +356,22 @@ export const de: TranslationDictionary = {
     actionCopy: 'Kopieren nach:'
   },
   attachment: {
-    remove: 'Entfernen'
+    remove: 'Entfernen',
+    preview: 'Vorschau',
+    download: 'Herunterladen',
+    zoomIn: 'Vergrößern',
+    zoomOut: 'Verkleinern',
+    rotate: 'Drehen',
+    fitToScreen: 'An Bildschirm anpassen',
+    previous: 'Vorheriges',
+    next: 'Nächstes',
+    copyContent: 'Inhalt kopieren',
+    copied: 'Kopiert!',
+    openInNewTab: 'In neuem Tab öffnen',
+    cannotPreview: 'Keine Vorschau für diesen Dateityp verfügbar',
+    loadingPreview: 'Vorschau wird geladen...',
+    errorLoading: 'Fehler beim Laden der Vorschau',
+    close: 'Schließen'
   },
 
   navigation: {

@@ -389,7 +389,22 @@ export const pt = {
     actionCopy: 'Copiar para'
   },
   attachment: {
-    remove: 'Remover'
+    remove: 'Remover',
+    preview: 'Pré-visualizar',
+    download: 'Baixar',
+    zoomIn: 'Aumentar zoom',
+    zoomOut: 'Diminuir zoom',
+    rotate: 'Girar',
+    fitToScreen: 'Ajustar à tela',
+    previous: 'Anterior',
+    next: 'Próximo',
+    copyContent: 'Copiar conteúdo',
+    copied: 'Copiado!',
+    openInNewTab: 'Abrir em nova aba',
+    cannotPreview: 'Nenhuma pré-visualização disponível para este tipo de arquivo',
+    loadingPreview: 'Carregando pré-visualização...',
+    errorLoading: 'Falha ao carregar pré-visualização',
+    close: 'Fechar'
   },
 
   navigation: {

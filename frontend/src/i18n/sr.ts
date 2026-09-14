@@ -354,7 +354,22 @@ export const sr = {
     actionCopy: 'Kopiraj u'
   },
   attachment: {
-    remove: 'Ukloni'
+    remove: 'Ukloni',
+    preview: 'Pregled',
+    download: 'Preuzmi',
+    zoomIn: 'Uvećaj',
+    zoomOut: 'Umanji',
+    rotate: 'Rotiraj',
+    fitToScreen: 'Prilagodi ekranu',
+    previous: 'Prethodno',
+    next: 'Sledeće',
+    copyContent: 'Kopiraj sadržaj',
+    copied: 'Kopirano!',
+    openInNewTab: 'Otvori u novoj kartici',
+    cannotPreview: 'Pregled nije dostupan za ovaj tip datoteke',
+    loadingPreview: 'Učitavanje pregleda...',
+    errorLoading: 'Greška pri učitavanju pregleda',
+    close: 'Zatvori'
   },
 
   navigation: {

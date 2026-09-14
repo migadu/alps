@@ -1,6 +1,7 @@
-import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { LitElement, html, css, type PropertyValues } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
 import { renderIcon, formatSize } from '../utils/ui';
+import { getAttachmentTypeInfo, type AttachmentTypeInfo } from '../utils/attachment-type';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 
@@ -14,6 +15,14 @@ export class AttachmentPill extends LitElement {
 
   @property({ type: Boolean }) removable = false;
   @property({ type: Boolean, reflect: true }) compact = false;
+
+  @state() private imgError = false;
+
+  /** A pill is reused for another attachment when its list re-renders, and an
+   * image that failed to load for the previous one says nothing about this one. */
+  protected willUpdate(changed: PropertyValues): void {
+    if (changed.has('attachment')) this.imgError = false;
+  }
 
   static styles = css`
     .attachment-chip {
@@ -120,7 +129,91 @@ export class AttachmentPill extends LitElement {
       width: 14px;
       height: 14px;
     }
+
+    .attachment-chip { cursor: pointer; }
+
+    .attachment-thumb {
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      position: relative;
+      z-index: 1;
+    }
+    .attachment-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .attachment-icon.typed {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    :host([compact]) .attachment-thumb,
+    :host([compact]) .attachment-icon.typed {
+      width: 18px;
+      height: 18px;
+    }
+    .preview-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3px;
+      border-radius: 4px;
+      position: relative;
+      z-index: 1;
+    }
+    .preview-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-secondary);
+    }
+    .preview-btn .icon {
+      width: 14px;
+      height: 14px;
+    }
   `;
+
+  /** The name the pill shows. A stored part says Filename, a composer entry filename. */
+  private get name(): string {
+    const a = this.attachment;
+    return a.Filename || a.filename || a.name || this.fallbackName;
+  }
+
+  private typeInfo(): AttachmentTypeInfo {
+    const a = this.attachment;
+    return getAttachmentTypeInfo(a.MIMEType || a.contentType || a.type, this.name);
+  }
+
+  /**
+   * Opens the preview instead of downloading, for a stored attachment the
+   * preview can show. A composer entry has no stored bytes to show, and a
+   * type the preview cannot draw keeps the download the link already is.
+   */
+  private _handlePreview(e: Event) {
+    if (this.removable || !this.downloadUrl || !this.typeInfo().isPreviewable) return;
+    e.preventDefault();
+    // The button sits inside the link, and both call this.
+    e.stopPropagation();
+    this.dispatchEvent(new CustomEvent('preview-attachment', {
+      bubbles: true,
+      composed: true,
+      detail: { attachment: this.attachment },
+    }));
+  }
 
   private _handleRemove(e: Event) {
     e.preventDefault();
@@ -134,16 +227,34 @@ export class AttachmentPill extends LitElement {
 
   render() {
     if (!this.attachment) return html``;
-    const name = this.attachment.Filename || this.attachment.filename || this.attachment.name || this.fallbackName;
+    const name = this.name;
     const size = this.attachment.Size || this.attachment.size || 0;
     const uploading = this.attachment.uploading;
     const progress = this.attachment.progress || 0;
+    const info = this.typeInfo();
+    const previewable = !this.removable && !!this.downloadUrl && info.isPreviewable;
+    // A thumbnail only for a stored image: a composer entry has no URL to draw from.
+    const thumb = info.isImage && this.downloadUrl && !this.imgError;
 
     const content = html`
       ${uploading ? html`<div class="progress-bar" style="width: ${progress}%"></div>` : ''}
-      <div class="attachment-icon">${renderIcon('paperclipHorizontal')}</div>
+      ${thumb ? html`
+        <div class="attachment-thumb">
+          <img src="${this.downloadUrl}" alt="" loading="lazy" @error=${() => { this.imgError = true; }} />
+        </div>
+      ` : html`
+        <div
+          class="attachment-icon typed ${info.themeClass}"
+          style="${info.color ? `color: ${info.color}; background: color-mix(in srgb, ${info.color} 12%, transparent)` : ''}"
+        >${renderIcon(info.icon)}</div>
+      `}
       <span class="attachment-name">${name}</span>
       <span class="attachment-size">${uploading ? `${progress}% of ${formatSize(size)}` : formatSize(size)}</span>
+      ${previewable ? html`
+        <button class="preview-btn" @click=${this._handlePreview} title="${this.i18nStore?.t('attachment.preview')}">
+          ${renderIcon('eye')}
+        </button>
+      ` : ''}
       ${this.removable ? html`
         <button class="remove-btn" @click=${this._handleRemove} title="${this.i18nStore?.t('attachment.remove')}">
           ${renderIcon('x')}
@@ -153,7 +264,7 @@ export class AttachmentPill extends LitElement {
 
     if (this.downloadUrl) {
       return html`
-        <a href="${this.downloadUrl}" download="${name}" class="attachment-chip" title="${name}">
+        <a href="${this.downloadUrl}" download="${name}" class="attachment-chip" title="${name}" @click=${this._handlePreview}>
           ${content}
         </a>
       `;

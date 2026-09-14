@@ -354,7 +354,22 @@ export const fr = {
     actionCopy: 'Copier vers'
   },
   attachment: {
-    remove: 'Supprimer'
+    remove: 'Supprimer',
+    preview: 'Aperçu',
+    download: 'Télécharger',
+    zoomIn: 'Zoom avant',
+    zoomOut: 'Zoom arrière',
+    rotate: 'Faire pivoter',
+    fitToScreen: 'Ajuster à l’écran',
+    previous: 'Précédent',
+    next: 'Suivant',
+    copyContent: 'Copier le contenu',
+    copied: 'Copié !',
+    openInNewTab: 'Ouvrir dans un nouvel onglet',
+    cannotPreview: 'Aucun aperçu disponible pour ce type de fichier',
+    loadingPreview: 'Chargement de l’aperçu...',
+    errorLoading: 'Échec du chargement de l’aperçu',
+    close: 'Fermer'
   },
 
   navigation: {
