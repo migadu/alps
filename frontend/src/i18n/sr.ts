@@ -354,13 +354,29 @@ export const sr = {
     actionCopy: 'Kopiraj u'
   },
   attachment: {
-    remove: 'Ukloni'
+    remove: 'Ukloni',
+    preview: 'Pregled',
+    download: 'Preuzmi',
+    zoomIn: 'Uvećaj',
+    zoomOut: 'Umanji',
+    rotate: 'Rotiraj',
+    fitToScreen: 'Prilagodi ekranu',
+    previous: 'Prethodno',
+    next: 'Sledeće',
+    copyContent: 'Kopiraj sadržaj',
+    copied: 'Kopirano!',
+    openInNewTab: 'Otvori u novoj kartici',
+    cannotPreview: 'Pregled nije dostupan za ovaj tip datoteke',
+    loadingPreview: 'Učitavanje pregleda...',
+    errorLoading: 'Greška pri učitavanju pregleda',
+    close: 'Zatvori'
   },
 
   navigation: {
     messages: 'Poruke',
     contacts: 'Kontakti',
-    calendar: 'Kalendar'
+    calendar: 'Kalendar',
+    tasks: 'Zadaci'
   },
   userMenu: {
     settings: 'Podešavanja',
@@ -462,6 +478,10 @@ export const sr = {
     title: 'Veza je prekinuta',
     description: 'Mrežna veza je prekinuta',
     tryingAgain: 'Pokušaj ponovo za {seconds} sekundi...'
+  },
+  update: {
+    available: 'Dostupna je nova verzija.',
+    reload: 'Osveži'
   },
   general: {
     error: 'Greška',

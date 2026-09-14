@@ -5,6 +5,7 @@ export default {
     categoryDeleteFailed: 'Non è stato possibile aggiornare {failed} contatti su {total}, la categoria è stata rimossa solo in parte.',
     categoryUpdateFailed: 'Non è stato possibile aggiornare {failed} contatti su {total}.',
     saveFailed: 'Non è stato possibile salvare il contatto.',
+    saveConflict: 'Il contatto è stato modificato su un altro dispositivo, quindi la modifica non è stata salvata. Annulla la modifica per vedere l\'ultima versione.',
     starFailed: 'Non è stato possibile aggiornare il contatto.',
     unnamedContact: 'Contatto senza nome',
     title: 'Contatti',

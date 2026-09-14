@@ -170,7 +170,7 @@ export class AppHeader extends LitElement {
           icon="magnifyingGlass"
           ?clearable=${true}
           .value=${this.searchQuery}
-          .placeholder=${this.currentTab === 'contacts' ? (this.i18nStore?.t('contacts.title') || 'Contacts') : this.currentTab === 'calendar' ? (this.i18nStore?.t('calendar.title') || 'Search Calendar') : (this.currentMailbox ? getMailboxLabel(this.currentMailbox, this.i18nStore, this.currentMailboxDelimiter) : (this.i18nStore?.t('search.placeholder')))}
+          .placeholder=${this.currentTab === 'contacts' ? (this.i18nStore?.t('contacts.title') || 'Contacts') : this.currentTab === 'calendar' ? (this.i18nStore?.t('calendar.title') || 'Search Calendar') : this.currentTab === 'tasks' ? this.i18nStore?.t('tasks.title') : (this.currentMailbox ? getMailboxLabel(this.currentMailbox, this.i18nStore, this.currentMailboxDelimiter) : (this.i18nStore?.t('search.placeholder')))}
           @keydown=${(e: KeyboardEvent) => {
             if (e.key === 'Enter') {
               e.preventDefault();

@@ -924,7 +924,7 @@ export class MessageReader extends LitElement {
           if (cached.RawHtml === undefined) {
             if (cached.RawText !== undefined) {
               item.content = cached.RawText;
-              const payload: any = { content: item.content, isHtml: false, message: item.message, banners: [], i18nStore: this.i18nStore };
+              const payload: any = { content: item.content, isHtml: false, message: item.message, mailbox, banners: [], i18nStore: this.i18nStore };
               const hookResults = await registry.invokeHookAsync('reader:content', payload);
               for (const res of hookResults) {
                 if (res && typeof res === 'string') item.content = res;
@@ -944,7 +944,7 @@ export class MessageReader extends LitElement {
             }
           } else {
             item.rawMessageHtml = cached.RawHtml;
-            const payload: any = { content: item.rawMessageHtml, isHtml: true, message: item.message, banners: [], i18nStore: this.i18nStore };
+            const payload: any = { content: item.rawMessageHtml, isHtml: true, message: item.message, mailbox, banners: [], i18nStore: this.i18nStore };
             const hookResults = await registry.invokeHookAsync('reader:content', payload);
             for (const res of hookResults) {
               if (res && typeof res === 'string') item.rawMessageHtml = res;
@@ -1008,7 +1008,7 @@ export class MessageReader extends LitElement {
           if (item.mimeType.toLowerCase() === 'text/html') {
             rawHtml = await rawRes.text();
             item.rawMessageHtml = rawHtml;
-            const payload: any = { content: item.rawMessageHtml, isHtml: true, message: item.message, banners: [], i18nStore: this.i18nStore };
+            const payload: any = { content: item.rawMessageHtml, isHtml: true, message: item.message, mailbox, banners: [], i18nStore: this.i18nStore };
             const hookResults = await registry.invokeHookAsync('reader:content', payload);
             for (const res of hookResults) {
               if (res && typeof res === 'string') item.rawMessageHtml = res;
@@ -1025,7 +1025,7 @@ export class MessageReader extends LitElement {
           } else {
             rawText = await rawRes.text();
             item.content = rawText;
-            const payload: any = { content: item.content, isHtml: false, message: item.message, banners: [], i18nStore: this.i18nStore };
+            const payload: any = { content: item.content, isHtml: false, message: item.message, mailbox, banners: [], i18nStore: this.i18nStore };
             const hookResults = await registry.invokeHookAsync('reader:content', payload);
             for (const res of hookResults) {
               if (res && typeof res === 'string') item.content = res;

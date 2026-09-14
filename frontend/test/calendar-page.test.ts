@@ -122,3 +122,15 @@ describe('switching view', () => {
     expect(window.location.hash).toBe('#/calendar/day/2024-09-17');
   });
 });
+
+describe('the Today button', () => {
+  it('opens today in Day view, whatever view is on screen', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 14, 10, 0));
+    for (const [date, mode] of [[new Date(2025, 0, 5), 'month'], [new Date(2024, 5, 1), 'year'], [new Date(2026, 8, 7), 'week'], [new Date(2026, 1, 2), 'day']] as const) {
+      window.location.hash = '';
+      call(page(date, mode), 'goToToday');
+      expect(window.location.hash).toBe('#/calendar/day/2026-09-14');
+    }
+  });
+});

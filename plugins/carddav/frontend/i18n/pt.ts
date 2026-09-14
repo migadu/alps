@@ -5,6 +5,7 @@ export default {
     categoryDeleteFailed: 'Não foi possível atualizar {failed} de {total} contactos, a categoria foi removida apenas parcialmente.',
     categoryUpdateFailed: 'Não foi possível atualizar {failed} de {total} contactos.',
     saveFailed: 'Não foi possível guardar o contacto.',
+    saveConflict: 'O contacto foi alterado noutro dispositivo, por isso a sua alteração não foi guardada. Cancele a edição para ver a versão mais recente.',
     starFailed: 'Não foi possível atualizar o contacto.',
     unnamedContact: 'Contato sem nome',
     title: 'Contatos',

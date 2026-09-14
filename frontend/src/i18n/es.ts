@@ -354,13 +354,29 @@ export const es = {
     actionCopy: 'Copiar a'
   },
   attachment: {
-    remove: 'Eliminar'
+    remove: 'Eliminar',
+    preview: 'Vista previa',
+    download: 'Descargar',
+    zoomIn: 'Acercar',
+    zoomOut: 'Alejar',
+    rotate: 'Girar',
+    fitToScreen: 'Ajustar a la pantalla',
+    previous: 'Anterior',
+    next: 'Siguiente',
+    copyContent: 'Copiar contenido',
+    copied: '¡Copiado!',
+    openInNewTab: 'Abrir en nueva pestaña',
+    cannotPreview: 'No hay vista previa disponible para este tipo de archivo',
+    loadingPreview: 'Cargando vista previa...',
+    errorLoading: 'Error al cargar la vista previa',
+    close: 'Cerrar'
   },
 
   navigation: {
     messages: 'Mensajes',
     contacts: 'Contactos',
-    calendar: 'Calendario'
+    calendar: 'Calendario',
+    tasks: 'Tareas'
   },
   userMenu: {
     settings: 'Configuración',
@@ -453,6 +469,10 @@ export const es = {
     title: 'Conexión perdida',
     description: 'Se ha perdido la conexión de red',
     tryingAgain: 'Reintentando en {seconds} segundos...'
+  },
+  update: {
+    available: 'Hay una nueva versión disponible.',
+    reload: 'Recargar'
   },
   general: {
     error: 'Error',

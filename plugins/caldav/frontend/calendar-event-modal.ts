@@ -2,12 +2,15 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
-import { calendarService, isAllDayEvent } from './calendar-service';
+import { addressOfPerson, calendarService, isAllDayEvent, personFromAddress, tellsSomeone } from './calendar-service';
+import { isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
 import type { EventData, CalendarData } from './calendar-service';
 import '../../../frontend/src/components/ui-modal';
 import '../../../frontend/src/components/alps-input';
 import '../../../frontend/src/components/alps-select';
 import '../../../frontend/src/components/alps-button';
+import '../../../frontend/src/components/alps-address-input';
+import '../../../frontend/src/components/ui-confirm';
 import { modalButtonStyles } from '../../../frontend/src/components/ui-modal';
 
 @customElement('calendar-event-modal')
@@ -22,6 +25,8 @@ export class CalendarEventModal extends LitElement {
     @property({ type: Boolean }) initialAllDay?: boolean;
     @property({ type: Array }) calendars: CalendarData[] = [];
     @property({ type: Boolean }) open = false;
+    /** Who tells the guests about a change: the calendar server, or alps by email. */
+    @property({ type: String }) scheduling: 'server' | 'email' = 'email';
 
     @state() summary = '';
     @state() location = '';
@@ -35,6 +40,10 @@ export class CalendarEventModal extends LitElement {
     @state() isSaving = false;
     @state() rruleFreq = '';
     @state() originalRRule = '';
+    /** The guest list, as the address field spells it. */
+    @state() attendees: string[] = [];
+    /** Asking whether to email the guests the changes. */
+    @state() askNotify = false;
 
     static styles = [
         modalButtonStyles,
@@ -84,6 +93,8 @@ export class CalendarEventModal extends LitElement {
         if (changedProperties.has('open') && this.open) {
             const pad = (n: number) => n.toString().padStart(2, '0');
             
+            this.askNotify = false;
+            this.attendees = (this.event?.attendees ?? []).map(addressOfPerson);
             if (this.event) {
                 this.summary = this.event.summary || '';
                 this.location = this.event.location || '';
@@ -166,26 +177,45 @@ export class CalendarEventModal extends LitElement {
         this.dispatchEvent(new CustomEvent('close'));
     }
 
+    /** The form's start and end, as the server takes them. */
+    private formTimes(): { startISO: string; endISO: string } {
+        if (this.isAllDay) {
+            const endD = new Date(`${this.endDate}T00:00:00.000Z`);
+            endD.setUTCDate(endD.getUTCDate() + 1);
+            return { startISO: `${this.startDate}T00:00:00.000Z`, endISO: endD.toISOString() };
+        }
+        return {
+            startISO: new Date(`${this.startDate}T${this.startTime || '00:00'}`).toISOString(),
+            endISO: new Date(`${this.endDate}T${this.endTime || '00:00'}`).toISOString(),
+        };
+    }
+
+    /** Someone else's meeting: its guest list is its organizer's. */
+    private get invited(): boolean {
+        return this.event?.role === 'attendee';
+    }
+
     private async handleSave() {
         if (!this.summary.trim() || !this.startDate || !this.endDate) return;
+        // A change to a meeting that already has guests is theirs to hear about
+        // or not; a new meeting's guests are invited, which is what adding them
+        // asked for.
+        // An event that is over, and stays over, tells nobody: moved to a time
+        // still to come, it is news again.
+        const staysOver = !!this.event?.ended && new Date(this.formTimes().endISO) <= new Date();
+        if (this.event?.path && !this.invited && tellsSomeone({ ...this.event, ended: staysOver }, this.scheduling)) {
+            this.askNotify = true;
+            return;
+        }
+        await this.save();
+    }
 
+    private async save(notify?: boolean) {
+        this.askNotify = false;
         this.isSaving = true;
 
         try {
-            let startISO: string;
-            let endISO: string;
-
-            if (this.isAllDay) {
-                startISO = `${this.startDate}T00:00:00.000Z`;
-                const endD = new Date(`${this.endDate}T00:00:00.000Z`);
-                endD.setUTCDate(endD.getUTCDate() + 1);
-                endISO = endD.toISOString();
-            } else {
-                const startD = new Date(`${this.startDate}T${this.startTime || '00:00'}`);
-                const endD = new Date(`${this.endDate}T${this.endTime || '00:00'}`);
-                startISO = startD.toISOString();
-                endISO = endD.toISOString();
-            }
+            const { startISO, endISO } = this.formTimes();
 
             let rruleStr: string | undefined = undefined;
             if (this.rruleFreq === 'CUSTOM') {
@@ -202,21 +232,38 @@ export class CalendarEventModal extends LitElement {
                 end: endISO,
                 allDay: this.isAllDay,
                 calendarPath: this.calendarPath,
-                rrule: rruleStr
+                rrule: rruleStr,
+                // The version this editor opened; see EventData.etag.
+                etag: this.event?.etag,
+                // Left out for someone else's meeting, whose list stays as it is.
+                attendees: this.invited
+                    ? undefined
+                    : this.attendees.map(personFromAddress).filter((p): p is NonNullable<typeof p> => p !== null),
+                notify,
+                lang: this.i18nStore?.getLanguage?.()
             };
 
-            if (this.event && this.event.path) {
-                await calendarService.updateEvent(this.event.path, payload);
-            } else {
-                await calendarService.createEvent(payload);
-            }
+            const saved = this.event && this.event.path
+                ? await calendarService.updateEvent(this.event.path, payload)
+                : await calendarService.createEvent(payload);
 
+            if (saved?.sendFailed) {
+                window.dispatchEvent(new CustomEvent('show-toast', {
+                    detail: { message: this.i18nStore?.t('invitations.notTold'), duration: 8000 }
+                }));
+            }
             this.open = false;
             this.dispatchEvent(new CustomEvent('saved'));
         } catch (e) {
             console.error('Failed to save event', e);
+            // Refused rather than failed: the event was saved elsewhere while
+            // this editor was open. "Could not be saved" invites pressing Save
+            // again; the page re-reads instead, so reopening shows what the
+            // other device wrote, and the typed edit stays here until closed.
+            const conflict = isVersionConflict(e);
+            if (conflict) this.dispatchEvent(new CustomEvent('conflict'));
             window.dispatchEvent(new CustomEvent('show-toast', {
-                detail: { message: this.i18nStore?.t('calendar.saveEventFailed'), duration: 5000 }
+                detail: { message: this.i18nStore?.t(conflict ? 'calendar.saveConflict' : 'calendar.saveEventFailed'), duration: 8000 }
             }));
         } finally {
             this.isSaving = false;
@@ -248,11 +295,26 @@ export class CalendarEventModal extends LitElement {
                         <alps-select
                             .value=${this.calendarPath}
                             .options=${this.calendars.map(c => ({ value: c.path, label: c.name }))}
-                            @change=${(e: any) => this.calendarPath = e.detail.value}
+                            @change=${(e: Event) => { this.calendarPath = (e.target as HTMLSelectElement).value; }}
                             ?disabled=${!!this.event}
                         ></alps-select>
                     </div>
                 ` : ''}
+
+                ${this.invited ? html`
+                    <div class="form-group organized-by">
+                        ${this.i18nStore?.t('invitations.organizedBy', { name: this.event?.organizer?.name || this.event?.organizer?.email || '' })}
+                    </div>
+                ` : html`
+                    <div class="form-group">
+                        <label>${this.i18nStore?.t('invitations.guests')}</label>
+                        <alps-address-input
+                            class="guests"
+                            .addresses=${this.attendees}
+                            @addresses-changed=${(e: CustomEvent) => { this.attendees = e.detail.addresses; }}
+                        ></alps-address-input>
+                    </div>
+                `}
 
                 <div class="form-row">
                     <div class="form-group">
@@ -344,6 +406,18 @@ export class CalendarEventModal extends LitElement {
                     </alps-button>
                 </div>
             </ui-modal>
+
+            ${this.askNotify ? html`
+                <ui-confirm
+                    title=${this.i18nStore?.t('invitations.notifyTitle')}
+                    message=${this.i18nStore?.t('invitations.notifyChanges')}
+                    confirmText=${this.i18nStore?.t('invitations.send')}
+                    secondaryText=${this.i18nStore?.t('invitations.dontSend')}
+                    @confirm=${() => this.save(true)}
+                    @secondary=${() => this.save(false)}
+                    @cancel=${() => { this.askNotify = false; }}
+                ></ui-confirm>
+            ` : ''}
         `;
     }
 }

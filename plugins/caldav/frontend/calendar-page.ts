@@ -3,7 +3,8 @@ import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { calendarService, getCalendarColor, weekStart } from './calendar-service';
+import { calendarService, taskTellsSomeone, tellsSomeone, getCalendarColor, holdsEvents, taskChips, weekStart } from './calendar-service';
+import { tasksService, type TaskData } from './tasks-service';
 import type { CalendarData, EventData } from './calendar-service';
 import { sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar';
@@ -12,6 +13,7 @@ import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-toolbar';
 import '../../../frontend/src/components/alps-create-button';
 import './calendar-event-modal';
+import './task-modal';
 import { RRule } from 'rrule';
 
 // Import our modular view components
@@ -25,6 +27,7 @@ import './alps-sidebar-calendar';
 import '../../../frontend/src/components/alps-nav-buttons';
 import '../../../frontend/src/components/ui-prompt';
 import '../../../frontend/src/components/ui-confirm';
+import { isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
 import '../../../frontend/src/components/alps-popup';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
@@ -36,6 +39,25 @@ const SIDEBAR_WIDTH_MIN = 150;
 const SIDEBAR_WIDTH_MAX = 500;
 
 const SIDEBAR_COLLAPSE_THRESHOLD = 120;
+
+const SHOW_TASKS_KEY = 'alps.calendar.showTasks';
+
+/** Whether tasks are drawn on the calendar: on unless switched off here. */
+function readShowTasks(): boolean {
+    try {
+        return localStorage.getItem(SHOW_TASKS_KEY) !== 'false';
+    } catch {
+        return true;
+    }
+}
+
+function writeShowTasks(show: boolean) {
+    try {
+        localStorage.setItem(SHOW_TASKS_KEY, String(show));
+    } catch {
+        // Storage refused (a private window): the choice lasts this visit.
+    }
+}
 
 @customElement('calendar-page')
 export class CalendarPage extends LitElement {
@@ -57,6 +79,9 @@ export class CalendarPage extends LitElement {
     @state() initialDate?: Date;
     @state() initialAllDay?: boolean;
     @state() private activeCalendars: Set<string> = new Set();
+    @state() private showTasks = readShowTasks();
+    @state() private taskModalOpen = false;
+    @state() private editingTask?: TaskData;
     @state() searchQuery = '';
 
     @state() private sidebarWidth = 250;
@@ -72,6 +97,8 @@ export class CalendarPage extends LitElement {
     @state() private promptTarget: any = null;
     @state() private calendarToDelete: any = null;
     @state() private eventToDelete: any = null;
+    /** Who tells guests about changes, as the calendar listing says: the server, or alps by email. */
+    @state() private scheduling: 'server' | 'email' = 'email';
     @state() private activeKebabMenu: string | null = null;
     private hoverTimeout: any = null;
     @state() private suppressSidebarHover = false;
@@ -515,8 +542,19 @@ export class CalendarPage extends LitElement {
     private async fetchData() {
         this.loading = true;
         this.isSpinning = true;
+        // Alongside the events, and apart from them: tasks that fail to load
+        // leave the calendar's own events on screen, and say so separately.
+        // Not during a search, whose results are events.
+        const tasksLoad = this.showTasks && !this.searchQuery
+            ? tasksService.fetchTasks('active').catch(err => {
+                console.error('Failed to load tasks for the calendar', err);
+                this.reportFailure('tasks.loadFailed');
+                return null;
+            })
+            : Promise.resolve(null);
         try {
             const calRes = await calendarService.fetchCalendars();
+            this.scheduling = calRes.scheduling === 'server' ? 'server' : 'email';
             
             let start, end;
             const year = this.currentDate.getFullYear();
@@ -576,12 +614,13 @@ export class CalendarPage extends LitElement {
                 }
             }
 
-            this.events = expandedEvents.map(ev => ({
+            const tasks = (await tasksLoad)?.tasks ?? [];
+            this.events = [...expandedEvents, ...taskChips(tasks)].map(ev => ({
                 ...ev,
                 color: ev.color || getCalendarColor(ev.calendarPath || ev.path)
             }));
 
-            this.calendars = calRes.calendars.map((c: any) => ({
+            this.calendars = calRes.calendars.filter(holdsEvents).map((c: any) => ({
                 ...c,
                 color: c.color || getCalendarColor(c.path)
             }));
@@ -632,6 +671,11 @@ export class CalendarPage extends LitElement {
     }
 
     private openEditModal(event: EventData) {
+        if (event.task) {
+            this.editingTask = event.task;
+            this.taskModalOpen = true;
+            return;
+        }
         this.selectedEvent = event;
         this.initialDate = undefined;
         this.initialAllDay = undefined;
@@ -688,6 +732,17 @@ export class CalendarPage extends LitElement {
         return this.currentDate;
     }
 
+    /**
+     * The Today button: today's own day, in Day view.
+     *
+     * Today in the view already on screen only moved a month or a year to the
+     * period holding today, where today is one cell among many and still has
+     * to be found; the button is asked for a day.
+     */
+    private goToToday() {
+        this.navigate('day', new Date());
+    }
+
     private setViewMode(mode: ViewMode) {
         this.navigate(mode, this.dayForViewSwitch(mode));
     }
@@ -735,18 +790,72 @@ export class CalendarPage extends LitElement {
         }
     }
 
-    private async _executeDeleteEvent() {
+    private async _executeDeleteEvent(notify = true) {
         if (!this.eventToDelete) return;
         const event = this.eventToDelete;
         this.eventToDelete = null;
 
         try {
-            await calendarService.deleteEvent(event.path);
+            if (event.task) {
+                const removed = await tasksService.deleteTask(event.task.path, { notify, lang: this.i18nStore?.getLanguage?.() });
+                if (removed?.sendFailed) this.reportFailure('invitations.notTold');
+            } else {
+                const removed = await calendarService.deleteEvent(event.path, { notify, lang: this.i18nStore?.getLanguage?.() });
+                if (removed?.sendFailed) this.reportFailure('invitations.notTold');
+            }
             await this.fetchData();
         } catch (err) {
             console.error('Failed to delete event', err);
-            this.reportFailure('calendar.deleteEventFailed');
+            this.reportFailure(event.task ? 'tasks.deleteFailed' : 'calendar.deleteEventFailed');
         }
+    }
+
+    /**
+     * Whether an event, or a task's chip, is drawn.
+     *
+     * A task in a calendar listed here follows that calendar's box as its events
+     * do. A task in a list that holds only tasks has no box here, and follows
+     * the Tasks switch alone.
+     */
+    private isShown(event: EventData): boolean {
+        if (!event.task) return this.activeCalendars.has(event.calendarPath);
+        return this.showTasks && (!this.calendars.some(c => c.path === event.calendarPath) || this.activeCalendars.has(event.calendarPath));
+    }
+
+    private toggleTasks() {
+        this.showTasks = !this.showTasks;
+        writeShowTasks(this.showTasks);
+        void this.fetchData();
+    }
+
+    /** Answers an invitation from its event in the calendar. */
+    private async respondToEvent(event: EventData, status: string) {
+        try {
+            const saved = await calendarService.respondToEvent(event, status, this.i18nStore?.getLanguage?.());
+            if (saved.sendFailed) this.reportFailure('invitations.sendFailed');
+            await this.fetchData();
+        } catch (err) {
+            console.error('Failed to answer the invitation', err);
+            const conflict = isVersionConflict(err);
+            this.reportFailure(conflict ? 'invitations.changedElsewhere' : 'invitations.answerFailed');
+            if (conflict) await this.fetchData();
+        }
+    }
+
+    private async completeTask(task: TaskData) {
+        try {
+            const saved = await tasksService.completeTask(task.path, true, this.i18nStore?.getLanguage?.());
+            if (saved?.sendFailed) this.reportFailure('invitations.notTold');
+            await this.fetchData();
+        } catch (err) {
+            console.error('Failed to update task', err);
+            this.reportFailure('tasks.completeFailed');
+        }
+    }
+
+    private closeTaskModal() {
+        this.taskModalOpen = false;
+        this.editingTask = undefined;
     }
 
     private toggleCalendar(path: string) {
@@ -798,7 +907,7 @@ export class CalendarPage extends LitElement {
             title = monthName;
         }
 
-        const visibleEvents = this.events.filter(e => this.activeCalendars.has(e.calendarPath));
+        const visibleEvents = this.events.filter(e => this.isShown(e));
 
         return html`
             <app-header 
@@ -895,6 +1004,12 @@ export class CalendarPage extends LitElement {
                                             </div>
                                         </div>
                                     `)}
+                                    <div class="calendar-item tasks-toggle" @click=${this.toggleTasks}>
+                                        <div class="calendar-checkbox ${this.showTasks ? 'checked' : ''}" style="--cal-color: var(--text-secondary, #4b5563)">
+                                            ${this.showTasks ? renderIcon('check') : ''}
+                                        </div>
+                                        <span>${this.i18nStore?.t('tasks.title')}</span>
+                                    </div>
                                 </div>
 
                                 <alps-sidebar-calendar
@@ -938,13 +1053,13 @@ export class CalendarPage extends LitElement {
                             <alps-nav-buttons 
                                 label="${this.i18nStore?.t('calendar.today')}"
                                 @previous=${() => this.changeDate(-1)}
-                                @center=${() => { this.navigate(this.viewMode, new Date()); }}
+                                @center=${() => this.goToToday()}
                                 @next=${() => this.changeDate(1)}
                             ></alps-nav-buttons>
                         </div>
                     </div>
 
-                    <div class="calendar-body">
+                    <div class="calendar-body" @complete-task=${(e: CustomEvent) => void this.completeTask(e.detail.task)} @respond-event=${(e: CustomEvent) => void this.respondToEvent(e.detail.event, e.detail.status)}>
                         ${this.searchQuery ? html`
                             <calendar-list-view
                                 .events=${visibleEvents}
@@ -1008,6 +1123,19 @@ export class CalendarPage extends LitElement {
                 </div>
             </div>
 
+            <task-modal
+                .open=${this.taskModalOpen}
+                .task=${this.editingTask}
+                .scheduling=${this.scheduling}
+                @close=${this.closeTaskModal}
+                @saved=${() => { this.closeTaskModal(); void this.fetchData(); }}
+                @conflict=${this.fetchData}
+                @delete=${(e: CustomEvent) => {
+                    this.closeTaskModal();
+                    this.eventToDelete = { ...e.detail.task, task: e.detail.task };
+                }}
+            ></task-modal>
+
             <calendar-event-modal
                 .open=${this.modalOpen}
                 .event=${this.selectedEvent}
@@ -1016,6 +1144,7 @@ export class CalendarPage extends LitElement {
                 .calendars=${this.calendars}
                 @close=${this.handleModalClose}
                 @saved=${this.handleModalSaved}
+                @conflict=${this.fetchData}
             ></calendar-event-modal>
 
             ${this.promptOpen ? html`
@@ -1038,13 +1167,27 @@ export class CalendarPage extends LitElement {
                 ></ui-confirm>
             ` : ''}
 
-            ${this.eventToDelete ? html`
+            ${this.eventToDelete && (this.eventToDelete.task ? taskTellsSomeone(this.eventToDelete.task, this.scheduling) : tellsSomeone(this.eventToDelete, this.scheduling)) ? html`
+                <ui-confirm
+                    class="delete-meeting"
+                    title="${this.i18nStore?.t(this.eventToDelete.task ? 'tasks.deleteTask' : 'calendar.deleteEvent')}"
+                    message="${this.i18nStore?.t(this.eventToDelete.task
+                        ? (this.eventToDelete.task.role === 'organizer' ? 'tasks.deleteTellAssignees' : 'tasks.deleteTellAssigner')
+                        : (this.eventToDelete.role === 'organizer' ? 'invitations.deleteTellGuests' : 'invitations.deleteTellOrganizer'))}"
+                    confirmText="${this.i18nStore?.t('invitations.deleteAndTell')}"
+                    secondaryText="${this.i18nStore?.t('invitations.deleteOnly')}"
+                    isDanger
+                    @confirm=${() => this._executeDeleteEvent(true)}
+                    @secondary=${() => this._executeDeleteEvent(false)}
+                    @cancel=${() => this.eventToDelete = null}
+                ></ui-confirm>
+            ` : this.eventToDelete ? html`
                 <ui-confirm
                     title="${this.i18nStore?.t('calendar.deleteEvent')}"
                     message="Are you sure you want to delete this event?"
                     confirmText="${this.i18nStore?.t('calendar.delete')}"
                     isDanger
-                    @confirm=${this._executeDeleteEvent}
+                    @confirm=${() => this._executeDeleteEvent()}
                     @cancel=${() => this.eventToDelete = null}
                 ></ui-confirm>
             ` : ''}

@@ -389,13 +389,29 @@ export const en = {
     actionCopy: 'Copy to'
   },
   attachment: {
-    remove: 'Remove'
+    remove: 'Remove',
+    preview: 'Preview',
+    download: 'Download',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    rotate: 'Rotate',
+    fitToScreen: 'Fit to screen',
+    previous: 'Previous',
+    next: 'Next',
+    copyContent: 'Copy content',
+    copied: 'Copied!',
+    openInNewTab: 'Open in new tab',
+    cannotPreview: 'No preview available for this file type',
+    loadingPreview: 'Loading preview...',
+    errorLoading: 'Failed to load preview',
+    close: 'Close'
   },
 
   navigation: {
     messages: 'Messages',
     contacts: 'Contacts',
-    calendar: 'Calendar'
+    calendar: 'Calendar',
+    tasks: 'Tasks'
   },
   userMenu: {
     settings: 'Settings',
@@ -488,6 +504,10 @@ export const en = {
     title: 'Connection Lost',
     description: 'Network connectivity lost',
     tryingAgain: 'Trying again in {seconds} seconds...'
+  },
+  update: {
+    available: 'A new version is available.',
+    reload: 'Reload'
   },
   general: {
     error: 'Error',

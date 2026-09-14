@@ -37,12 +37,50 @@ func TestSecurityHeadersAppliedToStaticAssets(t *testing.T) {
 			assert.Equal(t, http.StatusOK, w.Code)
 			assert.NotEmpty(t, w.Header().Get("Content-Security-Policy"),
 				"CSP must be set on %q, including static assets", path)
+			assert.Contains(t, w.Header().Get("Content-Security-Policy"), "frame-src 'self' blob:",
+				"the attachment preview frames PDFs from blob: URLs on %q", path)
 			assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"),
 				"nosniff must be set on %q", path)
 			assert.Equal(t, "off", w.Header().Get("X-DNS-Prefetch-Control"),
 				"DNS-prefetch header must be set on %q", path)
 		})
 	}
+}
+
+// TestBuildNamedOnEveryAnswer: the frontend a tab loaded is named on every
+// answer, so a tab left open across an upgrade can tell that reloading would
+// bring it different code.
+func TestBuildNamedOnEveryAnswer(t *testing.T) {
+	dist := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(`<script src="/assets/index-a1.js"></script>`)},
+		"app.js":     &fstest.MapFile{Data: []byte("console.log(1)")},
+	}
+	router := NewRouter(&Server{logger: &NilLogger{}})
+	router.GET("/api/thing", func(ctx *Context) error {
+		return ctx.String(http.StatusOK, "ok")
+	})
+	router.StaticFS("", http.FS(dist))
+	router.build = frontendBuild(dist)
+
+	for _, path := range []string{"/api/thing", "/", "/app.js", "/missing"} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		assert.Equal(t, router.build, w.Header().Get(BuildHeader), path)
+	}
+	assert.Len(t, router.build, 16)
+
+	// Another bundle is another build; the same page is the same build.
+	rebuilt := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte(`<script src="/assets/index-b2.js"></script>`)}}
+	assert.NotEqual(t, router.build, frontendBuild(rebuilt))
+	assert.Equal(t, router.build, frontendBuild(fstest.MapFS{"index.html": dist["index.html"]}))
+
+	// Without a frontend there is nothing to name, and silence says so.
+	assert.Empty(t, frontendBuild(fstest.MapFS{}))
+	bare := NewRouter(&Server{logger: &NilLogger{}})
+	w := httptest.NewRecorder()
+	bare.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
+	_, named := w.Header()[BuildHeader]
+	assert.False(t, named)
 }
 
 // encodeURIComponentJS mimics JavaScript's encodeURIComponent: it percent-encodes

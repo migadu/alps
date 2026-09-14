@@ -34,8 +34,11 @@ type plugin struct {
 	alps.GoPlugin
 	url          *url.URL
 	homeSetCache map[string]string
-	cacheMutex   sync.RWMutex
-	debug        bool
+	// accounts caches what the server says about scheduling, per user; see
+	// schedulingAccount.
+	accounts   map[string]*schedulingAccount
+	cacheMutex sync.RWMutex
+	debug      bool
 }
 
 func (p *plugin) client(ctx context.Context, session *alps.Session) (*caldav.Client, error) {
@@ -43,6 +46,12 @@ func (p *plugin) client(ctx context.Context, session *alps.Session) (*caldav.Cli
 		return nil, fmt.Errorf("CalDAV server is not configured")
 	}
 	return newClient(p.url, session, p.debug)
+}
+
+// httpClient authenticates as the session, for the requests go-webdav's client
+// has no method for.
+func (p *plugin) httpClient(session *alps.Session) *http.Client {
+	return &http.Client{Transport: &authRoundTripper{server: http.DefaultTransport, session: session, debug: p.debug}}
 }
 
 func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session) (*caldav.Client, []caldav.Calendar, error) {
@@ -125,6 +134,7 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 		GoPlugin:     alps.GoPlugin{Name: "caldav"},
 		url:          u,
 		homeSetCache: make(map[string]string),
+		accounts:     make(map[string]*schedulingAccount),
 		debug:        srv.Options.Debug,
 	}
 

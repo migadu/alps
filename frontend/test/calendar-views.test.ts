@@ -223,3 +223,32 @@ describe('list view', () => {
     expect(shadowAll(empty, '.no-results')[0].textContent?.trim()).toBe(i18n.t('calendar.noResults'));
   });
 });
+
+describe('declined invitations', () => {
+  const declined = (over: Partial<EventData>) => event({ summary: 'Declined', role: 'attendee', status: 'declined', ...over });
+  const accepted = (over: Partial<EventData>) => event({ summary: 'Accepted', role: 'attendee', status: 'accepted', ...over });
+  const marked = (els: Element[]) => Object.fromEntries(els.map((e) => [e.textContent?.trim(), e.classList.contains('declined')]));
+
+  it('stay in view in every calendar view, but read as not happening', async () => {
+    inZone('Europe/Belgrade');
+    const timed = [
+      declined({ uid: 'd', start: '2024-09-10T10:00:00', end: '2024-09-10T11:00:00' }),
+      accepted({ uid: 'a', start: '2024-09-10T12:00:00', end: '2024-09-10T13:00:00' }),
+    ];
+    const allDay = [
+      declined({ uid: 'dd', summary: 'Declined day', allDay: true, start: '2024-09-10T00:00:00Z', end: '2024-09-11T00:00:00Z' }),
+      accepted({ uid: 'ad', summary: 'Accepted day', allDay: true, start: '2024-09-10T00:00:00Z', end: '2024-09-11T00:00:00Z' }),
+    ];
+
+    const month = await mount('calendar-month-view', { date: new Date(2024, 8, 10), events: [...timed, ...allDay], i18nStore: i18n });
+    expect(marked(shadowAll(month, '.event-chip'))).toEqual({ 'Declined': true, 'Accepted': false, 'Declined day': true, 'Accepted day': false });
+
+    const grid = await mount('calendar-time-grid', { days: [new Date(2024, 8, 10)], events: [...timed, ...allDay], i18nStore: i18n });
+    expect(marked(shadowAll(grid, '.time-event'))).toEqual({ 'Declined': true, 'Accepted': false });
+    expect(marked(shadowAll(grid, '.event-chip'))).toEqual({ 'Declined day': true, 'Accepted day': false });
+
+    const list = await mount('calendar-list-view', { events: timed, i18nStore: i18n });
+    expect(shadowAll(list, '.event-item').map((e) => [e.querySelector('.event-title')?.textContent?.trim(), e.classList.contains('declined')]))
+      .toEqual([['Declined', true], ['Accepted', false]]);
+  });
+});

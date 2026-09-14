@@ -356,13 +356,29 @@ export const de: TranslationDictionary = {
     actionCopy: 'Kopieren nach:'
   },
   attachment: {
-    remove: 'Entfernen'
+    remove: 'Entfernen',
+    preview: 'Vorschau',
+    download: 'Herunterladen',
+    zoomIn: 'Vergrößern',
+    zoomOut: 'Verkleinern',
+    rotate: 'Drehen',
+    fitToScreen: 'An Bildschirm anpassen',
+    previous: 'Vorheriges',
+    next: 'Nächstes',
+    copyContent: 'Inhalt kopieren',
+    copied: 'Kopiert!',
+    openInNewTab: 'In neuem Tab öffnen',
+    cannotPreview: 'Keine Vorschau für diesen Dateityp verfügbar',
+    loadingPreview: 'Vorschau wird geladen...',
+    errorLoading: 'Fehler beim Laden der Vorschau',
+    close: 'Schließen'
   },
 
   navigation: {
     messages: 'Nachrichten',
     contacts: 'Kontakte',
-    calendar: 'Kalender'
+    calendar: 'Kalender',
+    tasks: 'Aufgaben'
   },
   userMenu: {
     settings: 'Einstellungen',
@@ -455,6 +471,10 @@ export const de: TranslationDictionary = {
     title: 'Verbindung verloren',
     description: 'Netzwerkverbindung unterbrochen',
     tryingAgain: 'Nächster Versuch in {seconds} Sekunden...'
+  },
+  update: {
+    available: 'Eine neue Version ist verfügbar.',
+    reload: 'Neu laden'
   },
   general: {
     error: 'Fehler',

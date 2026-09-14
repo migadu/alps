@@ -17,6 +17,7 @@ import { provide } from '@lit/context';
 import './alps-floating-composer';
 import './toast-notification';
 import './ui-modal';
+import './alps-attachment-preview';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import type { ComposerInstance } from '../store/compose-store';
 import { settingsContext, SettingsStore } from '../store/settings-store';
@@ -25,8 +26,11 @@ import { linkedAccountsContext, linkedAccountsStore } from '../store/linked-acco
 import { autoLogoutService } from '../services/auto-logout';
 import { clearSessionSettings } from '../store/settings-store';
 import { setLoginNotice } from '../utils/login-notice';
+import { applyUpdate, registerBusyProbe, UPDATE_AVAILABLE_EVENT } from '../services/app-update';
 
 const DEFAULT_TOAST_TIMEOUT_MS = 3000;
+/** Long enough to be read and acted on; the automatic paths catch a missed one. */
+const UPDATE_TOAST_MS = 15000;
 
 interface ToastItem {
   id: number;
@@ -55,6 +59,7 @@ export class AppRoot extends LitElement {
   @state() private activeComposers: ComposerInstance[] = [];
 
   @state() private toasts: ToastItem[] = [];
+  @state() private attachmentPreview: { attachments: any[]; mailbox: string; messageUid: string; index: number } | null = null;
   private toastIdCounter = 0;
 
   @state() private isOffline: boolean = !navigator.onLine;
@@ -138,6 +143,11 @@ export class AppRoot extends LitElement {
     window.addEventListener('dragover', this._handleGlobalDragOver);
     window.addEventListener('drop', this._handleGlobalDrop);
     window.addEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
+    window.addEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
+    window.addEventListener(UPDATE_AVAILABLE_EVENT, this._handleUpdateAvailable);
+    // A reload waits while a composer is open. Asked of this element because
+    // the composers render inside its shadow root, out of a document query's reach.
+    registerBusyProbe(() => this.composeStore.getState().activeComposers.length > 0);
 
     if (this.isOffline) {
       this._handleOfflineEvent();
@@ -148,6 +158,12 @@ export class AppRoot extends LitElement {
       this._fetchSessionData();
     }
   }
+
+  private _handleOpenAttachmentPreview = (e: CustomEvent) => {
+    const { attachments, mailbox, messageUid, index } = e.detail ?? {};
+    if (!Array.isArray(attachments) || attachments.length === 0) return;
+    this.attachmentPreview = { attachments, mailbox, messageUid, index: index ?? 0 };
+  };
 
   private _handlePluginsUpdated = () => {
     this.requestUpdate();
@@ -173,6 +189,7 @@ export class AppRoot extends LitElement {
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     window.removeEventListener('auth-error', this._handleAuthError);
     window.removeEventListener('show-toast', this._handleShowToast as EventListener);
+    window.removeEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
     window.removeEventListener('beforeunload', this._handleBeforeUnload);
     window.removeEventListener('online', this._handleOnlineEvent);
     window.removeEventListener('offline', this._handleOfflineEvent);
@@ -180,6 +197,8 @@ export class AppRoot extends LitElement {
     window.removeEventListener('dragover', this._handleGlobalDragOver);
     window.removeEventListener('drop', this._handleGlobalDrop);
     window.removeEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
+    window.removeEventListener(UPDATE_AVAILABLE_EVENT, this._handleUpdateAvailable);
+    registerBusyProbe(null);
     this._stopOfflineCountdown();
   }
 
@@ -329,6 +348,18 @@ export class AppRoot extends LitElement {
     }
   };
 
+  /** A newer build is served: offered through the same toast as everything else. */
+  private _handleUpdateAvailable = () => {
+    this._handleShowToast(new CustomEvent('show-toast', {
+      detail: {
+        i18nKey: 'update.available',
+        actionLabel: this.i18nStore?.t('update.reload'),
+        actionFn: applyUpdate,
+        duration: UPDATE_TOAST_MS,
+      },
+    }));
+  };
+
   private _handleComposeChange = () => {
     this.activeComposers = this.composeStore.getState().activeComposers;
   };
@@ -416,6 +447,16 @@ export class AppRoot extends LitElement {
           ></alps-toast>
         `)}
       </div>
+
+      ${this.attachmentPreview ? html`
+        <alps-attachment-preview
+          .attachments=${this.attachmentPreview.attachments}
+          .mailbox=${this.attachmentPreview.mailbox}
+          .messageUid=${this.attachmentPreview.messageUid}
+          .activeIndex=${this.attachmentPreview.index}
+          @close=${() => { this.attachmentPreview = null; }}
+        ></alps-attachment-preview>
+      ` : ''}
 
       ${this.isOffline ? html`
         <ui-modal title=${this.i18nStore.t('offline.title')} .dismissible=${false} width="400px">

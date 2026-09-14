@@ -3,6 +3,7 @@ package alpscaldav
 import (
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -14,6 +15,8 @@ import (
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/google/uuid"
 	"github.com/migadu/alps"
+	"github.com/migadu/alps/internal/davsave"
+	"github.com/migadu/alps/internal/itip"
 )
 
 // resolveDAVPath returns the URL path to use for a DAV object href. DAV servers
@@ -44,6 +47,9 @@ type CalendarData struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Path        string `json:"path"`
+	// The components the calendar accepts, as the server states them; none
+	// stated means all. Lets the calendar page leave out a task-only list.
+	Components []string `json:"components,omitempty"`
 }
 
 type EventData struct {
@@ -57,6 +63,35 @@ type EventData struct {
 	Location     string `json:"location,omitempty"`
 	RRule        string `json:"rrule,omitempty"`
 	AllDay       bool   `json:"allDay"`
+	// The version this was read at. An edit sends it back, and is refused
+	// with 412 if the event has been saved elsewhere since.
+	ETag string `json:"etag,omitempty"`
+	// Organizer and Attendees are who a meeting involves. Role is the user's
+	// part in it: "organizer", "attendee", or "" for an event of their own.
+	// Status is their answer, when they are an attendee.
+	Organizer *Person  `json:"organizer,omitempty"`
+	Attendees []Person `json:"attendees,omitempty"`
+	Role      string   `json:"role,omitempty"`
+	Status    string   `json:"status,omitempty"`
+	// Ended reports that the event is over, the whole series for one that
+	// repeats: nobody is told of a change to it, or asked to answer it.
+	Ended bool `json:"ended,omitempty"`
+}
+
+// eventRequest is what the event editor sends.
+type eventRequest struct {
+	EventData
+	// Notify says whether to tell the guests about the change. Unsaid is
+	// yes; a server that schedules tells them regardless.
+	Notify *bool `json:"notify"`
+	// Lang is the language to write the messages' readable text in.
+	Lang string `json:"lang"`
+}
+
+// eventSaved is what a save or delete of an event answers.
+type eventSaved struct {
+	OK string `json:"ok"`
+	Saved
 }
 
 func parseObjectPath(s string) (string, error) {
@@ -69,11 +104,11 @@ func parseObjectPath(s string) (string, error) {
 }
 
 func extractEventData(co *caldav.CalendarObject) (EventData, error) {
-	events := co.Data.Events()
-	if len(events) == 0 {
+	master := itip.Master(co.Data)
+	if master == nil || master.Name != ical.CompEvent {
 		return EventData{}, fmt.Errorf("no event in calendar object")
 	}
-	event := events[0]
+	event := ical.Event{Component: master}
 
 	summary, _ := event.Props.Text(ical.PropSummary)
 	description, _ := event.Props.Text(ical.PropDescription)
@@ -85,8 +120,10 @@ func extractEventData(co *caldav.CalendarObject) (EventData, error) {
 		rrule = prop.Value
 	}
 
-	start, _ := event.DateTimeStart(time.UTC)
-	end, _ := event.DateTimeEnd(time.UTC)
+	// Through the calendar's own VTIMEZONEs: a meeting from Outlook names its
+	// zone the Windows way, which DateTimeStart cannot read, and it came out
+	// as the year 1.
+	start, end, _, _ := itemTimes(co.Data, event.Component)
 
 	return EventData{
 		UID:          uid,
@@ -95,10 +132,11 @@ func extractEventData(co *caldav.CalendarObject) (EventData, error) {
 		Location:     location,
 		RRule:        rrule,
 		AllDay:       eventIsAllDay(&event),
-		Start:        start.Format(time.RFC3339),
-		End:          end.Format(time.RFC3339),
+		Start:        start.UTC().Format(time.RFC3339),
+		End:          end.UTC().Format(time.RFC3339),
 		Path:         co.Path,
 		CalendarPath: "", // populated later
+		ETag:         co.ETag,
 	}, nil
 }
 
@@ -154,9 +192,38 @@ func setEventTimes(event *ical.Event, start, end time.Time, allDay bool) {
 	event.Props.SetDateTime(ical.PropDateTimeEnd, end)
 }
 
+// errChangedElsewhere answers a save made against a version that is no longer
+// the stored one: most often the user's own phone saved the object while it
+// was open here.
+var errChangedElsewhere = alps.NewHTTPError(http.StatusPreconditionFailed, "changed elsewhere since it was opened")
+
+// putCalendar writes cal to objectPath, conditional on etag when there is one,
+// and returns the ETag of the version written.
+func (p *plugin) putCalendar(ctx *alps.Context, c *caldav.Client, objectPath string, cal *ical.Calendar, etag string) (string, error) {
+	var buf bytes.Buffer
+	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
+		return "", fmt.Errorf("failed to encode calendar object: %v", err)
+	}
+	newETag, err := davsave.Put(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.url, objectPath), ical.MIMEType, buf.Bytes(), etag)
+	if errors.Is(err, davsave.ErrConflict) {
+		return "", errChangedElsewhere
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to put calendar object: %v", err)
+	}
+	if newETag == "" {
+		// Withheld (see davsave.Put). Read back, or the next save from the same
+		// editor would carry no version to be checked against.
+		if fresh, err := c.GetCalendarObject(ctx.Request.Context(), objectPath); err == nil {
+			newETag = fresh.ETag
+		}
+	}
+	return newETag, nil
+}
+
 func registerRoutes(p *plugin) {
 	p.GET("/calendar/calendars", func(ctx *alps.Context) error {
-		_, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		c, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
 		if err != nil {
 			return err
 		}
@@ -167,11 +234,14 @@ func registerRoutes(p *plugin) {
 				Name:        calendar.Name,
 				Description: calendar.Description,
 				Path:        calendar.Path,
+				Components:  calendar.SupportedComponentSet,
 			})
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]interface{}{
 			"calendars": calDatas,
+			// Who sends invitations and replies: "server" or "email".
+			"scheduling": p.scheduling(ctx, c).mode(),
 		})
 	})
 
@@ -406,23 +476,10 @@ func registerRoutes(p *plugin) {
 		}
 
 		query := caldav.CalendarQuery{
-			CompRequest: caldav.CalendarCompRequest{
-				Name:  "VCALENDAR",
-				Props: []string{"VERSION"},
-				Comps: []caldav.CalendarCompRequest{{
-					Name: "VEVENT",
-					Props: []string{
-						"SUMMARY",
-						"DESCRIPTION",
-						"LOCATION",
-						"UID",
-						"DTSTART",
-						"DTEND",
-						"DURATION",
-						"RRULE",
-					},
-				}},
-			},
+			// Whole objects. An event's times are read through the calendar's
+			// VTIMEZONEs, which a request naming only VEVENT properties leaves
+			// out, and who a meeting involves is in properties it left out too.
+			CompRequest: caldav.CalendarCompRequest{Name: "VCALENDAR", AllProps: true, AllComps: true},
 			CompFilter: caldav.CompFilter{
 				Name: "VCALENDAR",
 				Comps: []caldav.CompFilter{{
@@ -434,8 +491,13 @@ func registerRoutes(p *plugin) {
 		}
 
 		var events []EventData
+		acct := p.scheduling(ctx, c)
+		listedAt := clock()
 		qLower := strings.ToLower(queryStr)
 		for _, calendar := range calendars {
+			if !holdsComponent(calendar, ical.CompEvent) {
+				continue
+			}
 			calendarObjects, err := c.QueryCalendar(ctx.Request.Context(), calendar.Path, &query)
 			if err != nil {
 				continue // Skip if this specific calendar fails to query
@@ -453,6 +515,8 @@ func registerRoutes(p *plugin) {
 							}
 						}
 						eventData.CalendarPath = calendar.Path
+						eventData.Organizer, eventData.Attendees, eventData.Role, eventData.Status = meetingOf(itip.Master(co.Data), acct).people()
+						eventData.Ended = ended(co.Data, listedAt)
 						events = append(events, eventData)
 					}
 				}
@@ -465,7 +529,7 @@ func registerRoutes(p *plugin) {
 	})
 
 	updateEvent := func(ctx *alps.Context) error {
-		var req EventData
+		var req eventRequest
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
 		}
@@ -496,12 +560,20 @@ func registerRoutes(p *plugin) {
 		}
 
 		var co *caldav.CalendarObject
+		var before *ical.Calendar
 		var event *ical.Event
 		if calendarObjectPath != "" {
 			co, err = c.GetCalendarObject(ctx.Request.Context(), calendarObjectPath)
 			if err != nil {
 				return fmt.Errorf("failed to get CalDAV event: %v", err)
 			}
+			// Compared here as well as sent as If-Match below, because they
+			// cover different spans: If-Match only the moment between this read
+			// and the write, this the whole time the editor was open.
+			if req.ETag != "" && !davsave.Same(req.ETag, co.ETag) {
+				return errChangedElsewhere
+			}
+			before = itip.Clone(co.Data)
 			events := co.Data.Events()
 			if len(events) != 1 {
 				return fmt.Errorf("expected exactly one event, got %d", len(events))
@@ -556,14 +628,29 @@ func registerRoutes(p *plugin) {
 			event.Props.SetText(ical.PropUID, newID.String())
 		}
 
-		cal := ical.NewCalendar()
-		cal.Props.SetText(ical.PropProductID, "-//migadu//alps//EN")
-		cal.Props.SetText(ical.PropVersion, "2.0")
-		cal.Children = append(cal.Children, event.Component)
-
-		var p string
+		// An edit writes back the object it read, with the event changed in it:
+		// what else the object holds, the VTIMEZONEs its times are written in
+		// above all, stays.
+		var cal *ical.Calendar
 		if co != nil {
-			p = co.Path
+			cal = co.Data
+		} else {
+			cal = ical.NewCalendar()
+			cal.Props.SetText(ical.PropProductID, "-//migadu//alps//EN")
+			cal.Props.SetText(ical.PropVersion, "2.0")
+			cal.Children = append(cal.Children, event.Component)
+		}
+
+		guests, err := partiesOf(req.Attendees)
+		if err != nil {
+			return err
+		}
+		acct := p.scheduling(ctx, c)
+		letters, from := organize(acct, before, cal, guests, req.Attendees != nil, time.Now())
+
+		var objectPath, baseETag string
+		if co != nil {
+			objectPath, baseETag = co.Path, co.ETag
 			// Optional: support moving events to different calendar if req.CalendarPath is provided and different from current parent
 			// But skipping for now unless specifically required.
 		} else {
@@ -577,8 +664,15 @@ func registerRoutes(p *plugin) {
 					}
 				}
 			}
-			if targetCal == nil && len(calendars) > 0 {
-				targetCal = &calendars[0]
+			if targetCal == nil {
+				// The first that takes events. A task-only list (Apple keeps
+				// Reminders in such calendars) refuses them.
+				for i := range calendars {
+					if holdsComponent(calendars[i], ical.CompEvent) {
+						targetCal = &calendars[i]
+						break
+					}
+				}
 			}
 			// With no calendars at all, targetCal is still nil and the line
 			// below dereferenced it — a nil panic rather than an error, for an
@@ -587,20 +681,23 @@ func registerRoutes(p *plugin) {
 				return alps.NewHTTPError(http.StatusConflict, "no calendar available to create the event in")
 			}
 
-			p = path.Join(targetCal.Path, newID.String()+".ics")
+			objectPath = path.Join(targetCal.Path, newID.String()+".ics")
 		}
-		co, err = c.PutCalendarObject(ctx.Request.Context(), p, cal)
+		etag, err := p.putCalendar(ctx, c, objectPath, cal, baseETag)
 		if err != nil {
-			return fmt.Errorf("failed to put calendar object: %v", err)
+			return err
 		}
-
-		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "path": co.Path})
+		saved := eventSaved{OK: "true", Saved: Saved{Path: objectPath, ETag: etag}}
+		if req.Notify == nil || *req.Notify {
+			saved.Sent, saved.SendFailed = p.tell(ctx, acct, from, req.Lang, letters)
+		}
+		return ctx.JSON(http.StatusOK, saved)
 	}
 
 	p.POST("/calendar/events", updateEvent)
 	p.POST("/calendar/events/{path}/edit", updateEvent)
 
-	p.DELETE("/calendar/events/{path}", func(ctx *alps.Context) error {
+	deleteObject := func(ctx *alps.Context) error {
 		path, err := parseObjectPath(ctx.Param("path"))
 		if err != nil {
 			return err
@@ -618,10 +715,98 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		if err := c.RemoveAll(ctx.Request.Context(), path); err != nil {
+		// Read first, for who removing it tells: see departure.
+		var letters []letter
+		var from string
+		var header http.Header
+		var acct *schedulingAccount
+		if co, err := c.GetCalendarObject(ctx.Request.Context(), path); err == nil && itip.Master(co.Data) != nil {
+			acct = p.scheduling(ctx, c)
+			letters, from, header = departure(acct, co.Data, ctx.QueryParam("notify") != "0", time.Now())
+		}
+
+		if header != nil {
+			err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.url, path), "", header)
+		} else {
+			err = c.RemoveAll(ctx.Request.Context(), path)
+		}
+		if err != nil {
 			return fmt.Errorf("failed to delete calendar object: %v", err)
 		}
 
-		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
-	})
+		saved := eventSaved{OK: "true"}
+		if acct != nil {
+			saved.Sent, saved.SendFailed = p.tell(ctx, acct, from, ctx.QueryParam("lang"), letters)
+		}
+		return ctx.JSON(http.StatusOK, saved)
+	}
+
+	p.DELETE("/calendar/events/{path}", deleteObject)
+	// A task is removed as an event is: one object inside one of the user's
+	// calendars.
+	p.DELETE("/calendar/tasks/{path}", deleteObject)
+
+	// Answering an invitation already in the calendar, as the reader answers
+	// one in a message.
+	p.POST("/calendar/events/{path}/respond", p.respondToCopy)
+	p.POST("/calendar/tasks/{path}/respond", p.respondToCopy)
+
+	registerTaskRoutes(p)
+	registerInvitationRoutes(p)
+}
+
+// respondToCopy answers, from the calendar, an invitation it holds: the
+// answer goes into the copy, and to the organizer.
+func (p *plugin) respondToCopy(ctx *alps.Context) error {
+	var req struct {
+		Status string `json:"status"`
+		ETag   string `json:"etag"`
+		Lang   string `json:"lang"`
+	}
+	if err := ctx.BindJSON(&req); err != nil {
+		return ctx.RespondBindError(err)
+	}
+	status, ok := answerStatuses[req.Status]
+	if !ok {
+		return alps.NewHTTPError(http.StatusBadRequest, "unknown answer")
+	}
+	objectPath, err := parseObjectPath(ctx.Param("path"))
+	if err != nil {
+		return err
+	}
+	c, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+	if err != nil {
+		return err
+	}
+	if objectPath, err = requireCalendarObjectPath(objectPath, calendars); err != nil {
+		return err
+	}
+	co, err := c.GetCalendarObject(ctx.Request.Context(), objectPath)
+	if err != nil {
+		return fmt.Errorf("failed to get calendar object: %v", err)
+	}
+	if req.ETag != "" && !davsave.Same(req.ETag, co.ETag) {
+		return errChangedElsewhere
+	}
+	master := itip.Master(co.Data)
+	if master == nil {
+		return alps.NewHTTPError(http.StatusBadRequest, "not an event or a task")
+	}
+	if ended(co.Data, clock()) {
+		return errEventOver
+	}
+	acct := p.scheduling(ctx, c)
+	m := meetingOf(master, acct)
+	if m.role != "attendee" || m.organizer == nil {
+		return alps.NewHTTPError(http.StatusConflict, "you are not invited to this")
+	}
+	cal := itip.Clone(co.Data)
+	itip.Answer(cal, m.me, status)
+	etag, err := p.putCalendar(ctx, c, objectPath, cal, co.ETag)
+	if err != nil {
+		return err
+	}
+	saved, _ := p.sendReply(ctx, acct, cal, m.me, req.Lang)
+	saved.Path, saved.ETag = objectPath, etag
+	return ctx.JSON(http.StatusOK, saved)
 }

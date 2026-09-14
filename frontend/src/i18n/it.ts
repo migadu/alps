@@ -354,13 +354,29 @@ export const it = {
     actionCopy: 'Copia in'
   },
   attachment: {
-    remove: 'Rimuovi'
+    remove: 'Rimuovi',
+    preview: 'Anteprima',
+    download: 'Scarica',
+    zoomIn: 'Ingrandisci',
+    zoomOut: 'Rimpicciolisci',
+    rotate: 'Ruota',
+    fitToScreen: 'Adatta allo schermo',
+    previous: 'Precedente',
+    next: 'Successivo',
+    copyContent: 'Copia contenuto',
+    copied: 'Copiato!',
+    openInNewTab: 'Apri in una nuova scheda',
+    cannotPreview: 'Nessuna anteprima disponibile per questo tipo di file',
+    loadingPreview: 'Caricamento anteprima...',
+    errorLoading: 'Impossibile caricare l’anteprima',
+    close: 'Chiudi'
   },
 
   navigation: {
     messages: 'Messaggi',
     contacts: 'Contatti',
-    calendar: 'Calendario'
+    calendar: 'Calendario',
+    tasks: 'Attività'
   },
   userMenu: {
     settings: 'Impostazioni',
@@ -453,6 +469,10 @@ export const it = {
     title: 'Connessione persa',
     description: 'Connessione di rete persa',
     tryingAgain: 'Nuovo tentativo in {seconds} secondi...'
+  },
+  update: {
+    available: 'È disponibile una nuova versione.',
+    reload: 'Ricarica'
   },
   general: {
     error: 'Errore',

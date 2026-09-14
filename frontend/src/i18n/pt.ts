@@ -389,13 +389,29 @@ export const pt = {
     actionCopy: 'Copiar para'
   },
   attachment: {
-    remove: 'Remover'
+    remove: 'Remover',
+    preview: 'Pré-visualizar',
+    download: 'Baixar',
+    zoomIn: 'Aumentar zoom',
+    zoomOut: 'Diminuir zoom',
+    rotate: 'Girar',
+    fitToScreen: 'Ajustar à tela',
+    previous: 'Anterior',
+    next: 'Próximo',
+    copyContent: 'Copiar conteúdo',
+    copied: 'Copiado!',
+    openInNewTab: 'Abrir em nova aba',
+    cannotPreview: 'Nenhuma pré-visualização disponível para este tipo de arquivo',
+    loadingPreview: 'Carregando pré-visualização...',
+    errorLoading: 'Falha ao carregar pré-visualização',
+    close: 'Fechar'
   },
 
   navigation: {
     messages: 'Mensagens',
     contacts: 'Contatos',
-    calendar: 'Calendário'
+    calendar: 'Calendário',
+    tasks: 'Tarefas'
   },
   userMenu: {
     settings: 'Configurações',
@@ -488,6 +504,10 @@ export const pt = {
     title: 'Conexão Perdida',
     description: 'A conexão de rede foi perdida',
     tryingAgain: 'Tentando novamente em {seconds} segundos...'
+  },
+  update: {
+    available: 'Está disponível uma nova versão.',
+    reload: 'Recarregar'
   },
   general: {
     error: 'Erro',

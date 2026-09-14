@@ -5,6 +5,9 @@ import '../../../frontend/src/components/alps-icon-btn';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { isAllDayEvent } from './calendar-service';
+import { dueOf, type TaskData } from './tasks-service';
+import { statusKey } from './calendar-invitation-banner';
+import '../../../frontend/src/components/alps-button';
 
 @customElement('calendar-event-preview')
 export class CalendarEventPreview extends LitElement {
@@ -125,6 +128,38 @@ export class CalendarEventPreview extends LitElement {
             font-size: 13px;
             color: var(--text-secondary, #4b5563);
         }
+
+        .people {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            font-size: 13px;
+            color: var(--text-primary, #111827);
+        }
+
+        .people li {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            line-height: 1.6;
+        }
+
+        .people .status {
+            color: var(--text-muted, #9ca3af);
+            white-space: nowrap;
+        }
+
+        .answers {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+        }
+
+        .answers alps-button {
+            --btn-padding: 4px 10px;
+            --btn-font-size: 12px;
+        }
     `;
 
     private formatEventDate(event: EventData) {
@@ -180,8 +215,117 @@ export class CalendarEventPreview extends LitElement {
         }, 10);
     }
 
+    /** Ticks off the task a chip stands for; the calendar page does the writing. */
+    private handleComplete(ev: Event) {
+        ev.stopPropagation();
+        const popup = this.closest('alps-popup') as any;
+        if (popup) popup.close();
+
+        setTimeout(() => {
+            this.dispatchEvent(new CustomEvent('complete-task', {
+                detail: { task: this.event.task },
+                bubbles: true,
+                composed: true
+            }));
+        }, 10);
+    }
+
+    /** Answers an invitation the calendar holds; the calendar page does the writing. */
+    private handleRespond(ev: Event, status: string) {
+        ev.stopPropagation();
+        const popup = this.closest('alps-popup') as any;
+        if (popup) popup.close();
+
+        setTimeout(() => {
+            this.dispatchEvent(new CustomEvent('respond-event', {
+                detail: { event: this.event, status },
+                bubbles: true,
+                composed: true
+            }));
+        }, 10);
+    }
+
+    /**
+     * Whether an invitation can still be answered: not once the event is over,
+     * nor from an occurrence already past, since an answer is for the whole
+     * series and belongs with one still to come.
+     */
+    private answerable(e: EventData): boolean {
+        return !e.ended && new Date(e.end) > new Date();
+    }
+
+    /** Who a meeting involves, and the user's own answer when they are invited. */
+    private renderMeeting(e: EventData) {
+        if (!e.organizer && !e.attendees?.length) return '';
+        const t = (key: string) => this.i18nStore?.t(key);
+        const name = (p: { name?: string; email: string }) => p.name || p.email;
+        const answer = (status: string, label: string) => html`
+            <alps-button
+                class="answer-${status}"
+                variant=${e.status === status ? 'primary' : 'normal'}
+                aria-pressed=${e.status === status ? 'true' : 'false'}
+                @click=${(ev: Event) => this.handleRespond(ev, status)}
+            >${t(label)}</alps-button>
+        `;
+        return html`
+            <div class="card meeting">
+                ${e.organizer ? html`
+                    <div class="card-label">${t('invitations.organizer')}</div>
+                    <div class="description-text">${name(e.organizer)}</div>
+                ` : ''}
+                ${e.attendees?.length ? html`
+                    <div class="card-label">${t('invitations.guests')}</div>
+                    <ul class="people">
+                        ${e.attendees.map(a => html`<li><span>${name(a)}</span><span class="status">${t(`invitations.statuses.${statusKey(a.status)}`)}</span></li>`)}
+                    </ul>
+                ` : ''}
+                ${e.role === 'attendee' ? html`
+                    <div class="card-label">${t('invitations.yourAnswer')}</div>
+                    ${this.answerable(e) ? html`
+                        <div class="answers">
+                            ${answer('accepted', 'invitations.accept')}
+                            ${answer('tentative', 'invitations.maybe')}
+                            ${answer('declined', 'invitations.decline')}
+                        </div>
+                    ` : html`<div class="description-text answer-status">${t(`invitations.statuses.${statusKey(e.status)}`)}</div>`}
+                ` : ''}
+            </div>
+        `;
+    }
+
+    private renderTask(task: TaskData) {
+        const e = this.event;
+        const due = dueOf(task);
+        return html`
+            <div class="header">
+                <div class="title-container">
+                    <div class="color-dot" style="background-color: ${e.color || 'var(--accent-color, #2563eb)'}"></div>
+                    <h3 class="title">${task.title || (this.i18nStore?.t('tasks.untitled'))}</h3>
+                </div>
+                <div style="display: flex; gap: 4px;">
+                    <alps-icon-btn class="complete-btn" icon="checkCircle" title=${this.i18nStore?.t('tasks.markDone')} @click=${this.handleComplete}></alps-icon-btn>
+                    <alps-icon-btn class="edit-btn" icon="pen" title=${this.i18nStore?.t('tasks.editTask')} @click=${this.handleEdit}></alps-icon-btn>
+                    <alps-icon-btn class="delete-btn" icon="trash" title=${this.i18nStore?.t('tasks.deleteTask')} @click=${this.handleDelete} style="color: var(--error, #ef4444);"></alps-icon-btn>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-label">${this.i18nStore?.t('tasks.due')}</div>
+                <div class="date-primary">${this.formatEventDate(e)}</div>
+                ${due && !task.allDay ? html`<div class="date-secondary">${due.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>` : ''}
+            </div>
+
+            ${task.description ? html`
+            <div class="card">
+                <div class="card-label">${this.i18nStore?.t('tasks.notes')}</div>
+                <div class="description-text">${task.description}</div>
+            </div>` : ''}
+        `;
+    }
+
     render() {
         if (!this.event) return html``;
+        if (this.event.task) return this.renderTask(this.event.task);
 
         const e = this.event;
         return html`
@@ -200,6 +344,8 @@ export class CalendarEventPreview extends LitElement {
                 <div class="date-primary">${this.formatEventDate(e)}</div>
                 <div class="date-secondary">${this.formatEventTimeRange(e)}</div>
             </div>
+
+            ${this.renderMeeting(e)}
 
             ${e.location ? html`
             <div class="card">

@@ -5,6 +5,7 @@ export default {
     categoryDeleteFailed: '{failed} od {total} kontakata nije moglo biti ažurirano, kategorija je samo delimično uklonjena.',
     categoryUpdateFailed: '{failed} od {total} kontakata nije moglo biti ažurirano.',
     saveFailed: 'Kontakt nije mogao biti sačuvan.',
+    saveConflict: 'Kontakt je izmenjen na drugom uređaju, pa vaša izmena nije sačuvana. Otkažite izmenu da biste videli najnoviju verziju.',
     starFailed: 'Kontakt nije mogao biti ažuriran.',
     unnamedContact: 'Neimenovani kontakt',
     title: 'Kontakti',
