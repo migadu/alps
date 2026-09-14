@@ -27,6 +27,7 @@ import './alps-sidebar-calendar';
 import '../../../frontend/src/components/alps-nav-buttons';
 import '../../../frontend/src/components/ui-prompt';
 import '../../../frontend/src/components/ui-confirm';
+import { isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
 import '../../../frontend/src/components/alps-popup';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
@@ -822,6 +823,20 @@ export class CalendarPage extends LitElement {
         void this.fetchData();
     }
 
+    /** Answers an invitation from its event in the calendar. */
+    private async respondToEvent(event: EventData, status: string) {
+        try {
+            const saved = await calendarService.respondToEvent(event, status, this.i18nStore?.getLanguage?.());
+            if (saved.sendFailed) this.reportFailure('invitations.sendFailed');
+            await this.fetchData();
+        } catch (err) {
+            console.error('Failed to answer the invitation', err);
+            const conflict = isVersionConflict(err);
+            this.reportFailure(conflict ? 'invitations.changedElsewhere' : 'invitations.answerFailed');
+            if (conflict) await this.fetchData();
+        }
+    }
+
     private async completeTask(task: TaskData) {
         try {
             await tasksService.completeTask(task.path, true);
@@ -1038,7 +1053,7 @@ export class CalendarPage extends LitElement {
                         </div>
                     </div>
 
-                    <div class="calendar-body" @complete-task=${(e: CustomEvent) => void this.completeTask(e.detail.task)}>
+                    <div class="calendar-body" @complete-task=${(e: CustomEvent) => void this.completeTask(e.detail.task)} @respond-event=${(e: CustomEvent) => void this.respondToEvent(e.detail.event, e.detail.status)}>
                         ${this.searchQuery ? html`
                             <calendar-list-view
                                 .events=${visibleEvents}

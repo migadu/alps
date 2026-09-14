@@ -47,6 +47,13 @@ export class CalendarListView extends LitElement {
             gap: 16px;
         }
 
+        /* An invitation the user declined stays in view, so it can be taken
+           back, but reads as not happening. */
+        .event-item.declined .event-title {
+            opacity: 0.55;
+            text-decoration: line-through;
+        }
+
         .event-item:hover {
             background-color: var(--bg-tertiary, #f3f4f6);
         }
@@ -140,7 +147,7 @@ export class CalendarListView extends LitElement {
                     
                     return html`
                         <alps-popup align="left" position="bottom" style="width: 100%; display: block;" @click=${(ev: Event) => ev.stopPropagation()}>
-                            <div slot="trigger" class="event-item">
+                            <div slot="trigger" class="event-item ${event.status === 'declined' ? 'declined' : ''}">
                                 <div class="event-date">
                                     <span class="date-day">${startDate.getDate()}</span>
                                     <span class="date-month">${this.i18nStore?.t(`calendar.monthsShort.${startDate.getMonth()}`)} ${startDate.getFullYear()}</span>

@@ -201,20 +201,42 @@ type harness struct {
 	url    string
 	client *http.Client
 	dav    *memCalendars
+	// mailDir is the user's maildir.
+	mailDir string
+}
+
+type harnessOptions struct {
+	// smtp is the submission server; none reachable when empty.
+	smtp string
+	// wrap stands in front of the CalDAV server, to say or record what
+	// go-webdav's own handler does not.
+	wrap func(http.Handler) http.Handler
 }
 
 func newHarness(t *testing.T) *harness {
+	return startHarness(t, harnessOptions{})
+}
+
+func startHarness(t *testing.T, o harnessOptions) *harness {
 	t.Helper()
 	dav := &memCalendars{objects: map[string]caldav.CalendarObject{}}
-	davServer := httptest.NewServer(&caldav.Handler{Backend: dav})
+	var handler http.Handler = &caldav.Handler{Backend: dav}
+	if o.wrap != nil {
+		handler = o.wrap(handler)
+	}
+	davServer := httptest.NewServer(handler)
 	t.Cleanup(davServer.Close)
+	if o.smtp == "" {
+		o.smtp = "smtp://127.0.0.1:1"
+	}
 
 	base := t.TempDir()
 	passwd := filepath.Join(base, "passwd")
 	if err := os.WriteFile(passwd, []byte(testUser+":{PLAIN}"+testPassword+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := maildir.NewProvider(filepath.Join(base, "ada"), testUser).CreateMailbox("INBOX"); err != nil {
+	mailDir := filepath.Join(base, "ada")
+	if err := maildir.NewProvider(mailDir, testUser).CreateMailbox("INBOX"); err != nil {
 		t.Fatal(err)
 	}
 	var key fernet.Key
@@ -227,7 +249,7 @@ func newHarness(t *testing.T) *harness {
 			IMAP:    alps.IMAPProviderOptions{Server: "imap://127.0.0.1:1"},
 			Maildir: alps.MaildirProviderOptions{Path: filepath.Join(base, "%u"), AuthPasswdFile: passwd},
 		},
-		SMTP:     alps.SMTPOptions{Server: "smtp://127.0.0.1:1"},
+		SMTP:     alps.SMTPOptions{Server: o.smtp},
 		LoginKey: &key,
 		Plugins:  map[string]alps.PluginConfig{"caldav": {Server: davServer.URL}},
 	}
@@ -242,7 +264,7 @@ func newHarness(t *testing.T) *harness {
 	})
 
 	jar, _ := cookiejar.New(nil)
-	h := &harness{t: t, url: ts.URL, client: &http.Client{Jar: jar}, dav: dav}
+	h := &harness{t: t, url: ts.URL, client: &http.Client{Jar: jar}, dav: dav, mailDir: mailDir}
 	h.expect(h.do("POST", "/session", map[string]string{"username": testUser, "password": testPassword}), http.StatusOK)
 	return h
 }

@@ -98,6 +98,13 @@ export class CalendarMonthView extends LitElement {
             box-shadow: 0 1px 2px rgba(0,0,0,0.1);
             opacity: 0.9;
         }
+        /* An invitation the user declined stays in view, so it can be taken
+           back, but reads as not happening. */
+        .declined {
+            opacity: 0.55;
+            text-decoration: line-through;
+        }
+
         .event-chip:hover {
             opacity: 1;
         }
@@ -215,7 +222,7 @@ export class CalendarMonthView extends LitElement {
                                 ${dayEvents.slice(0, 4).map(e => html`
                                     <alps-popup align="left" position="bottom" style="width: 100%; display: block;" @click=${(ev: Event) => ev.stopPropagation()}>
                                         <div slot="trigger"
-                                            class="event-chip ${isAllDayEvent(e) ? 'all-day' : ''} ${e.task ? 'task' : ''}" 
+                                            class="event-chip ${isAllDayEvent(e) ? 'all-day' : ''} ${e.task ? 'task' : ''} ${e.status === 'declined' ? 'declined' : ''}" 
                                             style=${e.task ? `border-color: ${e.color}` : e.color ? `background-color: ${e.color}` : ''}
                                             title="${e.summary || (this.i18nStore?.t('calendar.noTitle'))}">
                                             ${e.task ? renderIcon('checkCircle') : ''}${e.summary || (this.i18nStore?.t('calendar.noTitle'))}

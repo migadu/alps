@@ -1,5 +1,6 @@
 import { encodePathParam, fetchWithTimeout, HttpStatusError } from '../../../frontend/src/utils/fetch-utils';
 import { dueOf, isClosed, type TaskData } from './tasks-service';
+import type { InvitationPerson, SavedInvitation } from './invitation-service';
 
 export interface CalendarData {
     name: string;
@@ -39,6 +40,13 @@ export interface EventData {
     etag?: string;
     /** Set when this is not an event but a task drawn on the calendar; see taskChips. */
     task?: TaskData;
+    /** Who a meeting involves. */
+    organizer?: InvitationPerson;
+    attendees?: InvitationPerson[];
+    /** The user's part in a meeting: 'organizer', 'attendee', or none for an event of their own. */
+    role?: 'organizer' | 'attendee' | '';
+    /** The user's answer, when they are an attendee. */
+    status?: string;
 }
 
 /** What a save answers: where the event is, and the version now stored. */
@@ -170,6 +178,20 @@ class CalendarService {
         });
         if (!response.ok) {
             throw new HttpStatusError(response.status, 'Failed to update event');
+        }
+        return response.json();
+    }
+
+    /** Answers, from the calendar, an invitation it holds; the server mails the organizer unless the calendar server does. */
+    async respondToEvent(event: Pick<EventData, 'path' | 'etag' | 'task'>, status: string, lang?: string): Promise<SavedInvitation> {
+        const kind = event.task ? 'tasks' : 'events';
+        const response = await fetchWithTimeout(`/calendar/${kind}/${encodePathParam(event.path)}/respond`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status, etag: event.etag, lang }),
+        });
+        if (!response.ok) {
+            throw new HttpStatusError(response.status, 'Failed to answer the invitation');
         }
         return response.json();
     }
