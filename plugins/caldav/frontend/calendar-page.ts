@@ -688,6 +688,17 @@ export class CalendarPage extends LitElement {
         return this.currentDate;
     }
 
+    /**
+     * The Today button: today's own day, in Day view.
+     *
+     * Today in the view already on screen only moved a month or a year to the
+     * period holding today, where today is one cell among many and still has
+     * to be found; the button is asked for a day.
+     */
+    private goToToday() {
+        this.navigate('day', new Date());
+    }
+
     private setViewMode(mode: ViewMode) {
         this.navigate(mode, this.dayForViewSwitch(mode));
     }
@@ -938,7 +949,7 @@ export class CalendarPage extends LitElement {
                             <alps-nav-buttons 
                                 label="${this.i18nStore?.t('calendar.today')}"
                                 @previous=${() => this.changeDate(-1)}
-                                @center=${() => { this.navigate(this.viewMode, new Date()); }}
+                                @center=${() => this.goToToday()}
                                 @next=${() => this.changeDate(1)}
                             ></alps-nav-buttons>
                         </div>
