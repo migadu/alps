@@ -725,6 +725,13 @@ export class MessageList extends LitElement {
 
     let i = 0;
     while (i < queue.length) {
+      // A folder's list is loading. Its request waits behind every verdict
+      // request sent before it, so nothing more is sent until the list has
+      // arrived; the rest is asked for then.
+      if (this.loading) {
+        unask(i);
+        return;
+      }
       const mailbox = queue[i].mailbox;
       let j = i;
       while (j < queue.length && j - i < VERDICT_BATCH && queue[j].mailbox === mailbox) j++;
@@ -941,7 +948,8 @@ export class MessageList extends LitElement {
 
   updated(changedProperties: Map<string, any>) {
     super.updated(changedProperties);
-    if (changedProperties.has('messages') || changedProperties.has('expandedThreads') || changedProperties.has('currentMailbox')) {
+    if (changedProperties.has('messages') || changedProperties.has('expandedThreads') || changedProperties.has('currentMailbox') ||
+      (changedProperties.has('loading') && !this.loading)) {
       this.refreshVerdicts();
     }
     if (changedProperties.has('densityMode')) {

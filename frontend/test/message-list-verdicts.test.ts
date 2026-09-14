@@ -26,8 +26,12 @@ const rows = (n: number) => Array.from({ length: n }, (_, i) => row(i + 1));
 const avatarSrcs = (el: HTMLElement) => shadowAll(el, 'alps-avatar').map((a) => (a as unknown as { src: string }).src);
 const logos = (el: HTMLElement) => avatarSrcs(el).filter(Boolean).length;
 
-/** Stands in for the verdicts endpoint; every other request answers empty. */
-function verdictServer(verdict: (uid: string, mailbox: string) => AuthVerdict | undefined = (uid) => (Number(uid) % 2 ? pass : fail), scope = () => '1') {
+/** Stands in for the verdicts endpoint; every other request answers empty. `hold` delays each answer. */
+function verdictServer(
+  verdict: (uid: string, mailbox: string) => AuthVerdict | undefined = (uid) => (Number(uid) % 2 ? pass : fail),
+  scope = () => '1',
+  hold: () => Promise<void> = () => Promise.resolve(),
+) {
   const asked: string[][] = [];
   const mailboxes: string[] = [];
   let inFlight = 0;
@@ -42,6 +46,7 @@ function verdictServer(verdict: (uid: string, mailbox: string) => AuthVerdict | 
     inFlight++;
     maxInFlight = Math.max(maxInFlight, inFlight);
     await new Promise((r) => setTimeout(r, 2));
+    await hold();
     inFlight--;
     const Verdicts: Record<string, AuthVerdict> = {};
     for (const uid of uids) {
@@ -87,6 +92,36 @@ describe('verdicts after the list', () => {
     await waitFor(() => server.asked.flat().length === 30, 'every message asked about');
     expect(server.maxInFlight()).toBe(1);
     expect(new Set(server.asked.flat()).size).toBe(30);
+  });
+
+  it("asks nothing while a folder's list is loading, and asks once it has loaded", async () => {
+    const server = verdictServer();
+    const el = await mount(TAG, { messages: rows(2), currentMailbox: 'INBOX', totalMessages: 2, loading: true });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(server.asked).toEqual([]);
+
+    await update(el, { loading: false });
+    await waitFor(() => server.asked.flat().length === 2 && logos(el) === 1, 'the answers once the list loaded');
+  });
+
+  it('a list requested while verdicts are asked for waits for one batch, and the rest follows it', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    const server = verdictServer(() => pass, () => '1', () => held);
+    const n = 3 * VERDICT_BATCH;
+    const el = await mount(TAG, { messages: rows(n), currentMailbox: 'INBOX', totalMessages: n });
+    await waitFor(() => server.asked.length === 1, 'the first batch asked');
+
+    await update(el, { loading: true });
+    release();
+    await waitFor(() => logos(el) === VERDICT_BATCH, "the first batch's answers");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(server.asked).toHaveLength(1);
+
+    await update(el, { loading: false });
+    await waitFor(() => server.asked.flat().length === n && logos(el) === n, 'the rest once the list loaded');
+    expect(new Set(server.asked.flat()).size).toBe(n);
+    expect(server.maxInFlight()).toBe(1);
   });
 
   it("does not ask about the previous folder's rows while the new folder's list loads", async () => {
