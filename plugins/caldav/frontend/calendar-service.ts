@@ -1,4 +1,5 @@
 import { encodePathParam, fetchWithTimeout, HttpStatusError } from '../../../frontend/src/utils/fetch-utils';
+import { dueOf, isClosed, type TaskData } from './tasks-service';
 
 export interface CalendarData {
     name: string;
@@ -36,6 +37,8 @@ export interface EventData {
     /** The version the event was read at. Sent back with an edit, which the
      * server refuses (412) if the event was saved elsewhere since. */
     etag?: string;
+    /** Set when this is not an event but a task drawn on the calendar; see taskChips. */
+    task?: TaskData;
 }
 
 /** What a save answers: where the event is, and the version now stored. */
@@ -181,6 +184,38 @@ class CalendarService {
         }
         return response.json();
     }
+}
+
+const ymd = (date: Date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+/**
+ * The open tasks that have a due date, as chips for the calendar.
+ *
+ * A chip sits in the all-day row of its due date whether or not the task has
+ * a due time: a deadline is a moment, not a span to draw across the hours. A
+ * repeating task shows once, on the date it is due now; ticked off, it moves
+ * to its next.
+ */
+export function taskChips(tasks: TaskData[]): EventData[] {
+    const chips: EventData[] = [];
+    for (const task of tasks) {
+        const due = dueOf(task);
+        if (!due || isClosed(task)) continue;
+        const next = new Date(due.getFullYear(), due.getMonth(), due.getDate() + 1);
+        chips.push({
+            uid: task.uid,
+            summary: task.title,
+            // The views read an all-day start's date part as a date here.
+            start: `${ymd(due)}T00:00:00Z`,
+            end: `${ymd(next)}T00:00:00Z`,
+            allDay: true,
+            path: task.path,
+            calendarPath: task.calendarPath,
+            task,
+        });
+    }
+    return chips;
 }
 
 /**

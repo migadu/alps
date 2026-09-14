@@ -402,6 +402,7 @@ describe('the calendar page', () => {
             ],
         });
         vi.spyOn(calendarService, 'fetchEvents').mockResolvedValue({ events: [] });
+        vi.spyOn(tasksService, 'fetchTasks').mockResolvedValue({ tasks: [], calendars: [], failedCalendars: 0 });
         const el = await mount<El>('calendar-page');
         await vi.waitFor(() => expect(el.calendars.map((c: { name: string }) => c.name)).toEqual(['Work', 'Unstated']));
     });

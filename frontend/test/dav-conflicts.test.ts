@@ -12,6 +12,7 @@ import '../../plugins/caldav/frontend/calendar-page';
 import '../../plugins/carddav/frontend/contact-view';
 import { contactsService } from '../../plugins/carddav/frontend/contacts-service';
 import { calendarService } from '../../plugins/caldav/frontend/calendar-service';
+import { tasksService } from '../../plugins/caldav/frontend/tasks-service';
 import { CATEGORY_FAVORITES } from '../../plugins/carddav/frontend/constants';
 import { HttpStatusError, isVersionConflict, encodePathParam } from '../src/utils/fetch-utils';
 import { cleanup, mount, record } from './helpers/dom';
@@ -264,6 +265,7 @@ describe('the calendar page', () => {
   it('re-reads the calendar when the editor reports a refused save', async () => {
     vi.spyOn(calendarService, 'fetchCalendars').mockResolvedValue({ calendars: [{ name: 'Work', description: '', path: '/cal/work/' }] });
     const events = vi.spyOn(calendarService, 'fetchEvents').mockResolvedValue({ events: [] });
+    vi.spyOn(tasksService, 'fetchTasks').mockResolvedValue({ tasks: [], calendars: [], failedCalendars: 0 });
     const page = await mount<Page>('calendar-page');
     await vi.waitFor(() => expect(events).toHaveBeenCalledTimes(1));
 

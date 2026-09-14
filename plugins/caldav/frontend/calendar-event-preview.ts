@@ -5,6 +5,7 @@ import '../../../frontend/src/components/alps-icon-btn';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { isAllDayEvent } from './calendar-service';
+import { dueOf, type TaskData } from './tasks-service';
 
 @customElement('calendar-event-preview')
 export class CalendarEventPreview extends LitElement {
@@ -180,8 +181,54 @@ export class CalendarEventPreview extends LitElement {
         }, 10);
     }
 
+    /** Ticks off the task a chip stands for; the calendar page does the writing. */
+    private handleComplete(ev: Event) {
+        ev.stopPropagation();
+        const popup = this.closest('alps-popup') as any;
+        if (popup) popup.close();
+
+        setTimeout(() => {
+            this.dispatchEvent(new CustomEvent('complete-task', {
+                detail: { task: this.event.task },
+                bubbles: true,
+                composed: true
+            }));
+        }, 10);
+    }
+
+    private renderTask(task: TaskData) {
+        const e = this.event;
+        const due = dueOf(task);
+        return html`
+            <div class="header">
+                <div class="title-container">
+                    <div class="color-dot" style="background-color: ${e.color || 'var(--accent-color, #2563eb)'}"></div>
+                    <h3 class="title">${task.title || (this.i18nStore?.t('tasks.untitled'))}</h3>
+                </div>
+                <div style="display: flex; gap: 4px;">
+                    <alps-icon-btn class="complete-btn" icon="checkCircle" title=${this.i18nStore?.t('tasks.markDone')} @click=${this.handleComplete}></alps-icon-btn>
+                    <alps-icon-btn class="edit-btn" icon="pen" title=${this.i18nStore?.t('tasks.editTask')} @click=${this.handleEdit}></alps-icon-btn>
+                    <alps-icon-btn class="delete-btn" icon="trash" title=${this.i18nStore?.t('tasks.deleteTask')} @click=${this.handleDelete} style="color: var(--error, #ef4444);"></alps-icon-btn>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-label">${this.i18nStore?.t('tasks.due')}</div>
+                <div class="date-primary">${this.formatEventDate(e)}</div>
+                ${due && !task.allDay ? html`<div class="date-secondary">${due.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>` : ''}
+            </div>
+
+            ${task.description ? html`
+            <div class="card">
+                <div class="card-label">${this.i18nStore?.t('tasks.notes')}</div>
+                <div class="description-text">${task.description}</div>
+            </div>` : ''}
+        `;
+    }
+
     render() {
         if (!this.event) return html``;
+        if (this.event.task) return this.renderTask(this.event.task);
 
         const e = this.event;
         return html`

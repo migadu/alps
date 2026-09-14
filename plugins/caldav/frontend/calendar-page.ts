@@ -3,7 +3,8 @@ import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { calendarService, getCalendarColor, holdsEvents, weekStart } from './calendar-service';
+import { calendarService, getCalendarColor, holdsEvents, taskChips, weekStart } from './calendar-service';
+import { tasksService, type TaskData } from './tasks-service';
 import type { CalendarData, EventData } from './calendar-service';
 import { sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar';
@@ -12,6 +13,7 @@ import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-toolbar';
 import '../../../frontend/src/components/alps-create-button';
 import './calendar-event-modal';
+import './task-modal';
 import { RRule } from 'rrule';
 
 // Import our modular view components
@@ -37,6 +39,25 @@ const SIDEBAR_WIDTH_MAX = 500;
 
 const SIDEBAR_COLLAPSE_THRESHOLD = 120;
 
+const SHOW_TASKS_KEY = 'alps.calendar.showTasks';
+
+/** Whether tasks are drawn on the calendar: on unless switched off here. */
+function readShowTasks(): boolean {
+    try {
+        return localStorage.getItem(SHOW_TASKS_KEY) !== 'false';
+    } catch {
+        return true;
+    }
+}
+
+function writeShowTasks(show: boolean) {
+    try {
+        localStorage.setItem(SHOW_TASKS_KEY, String(show));
+    } catch {
+        // Storage refused (a private window): the choice lasts this visit.
+    }
+}
+
 @customElement('calendar-page')
 export class CalendarPage extends LitElement {
     @consume({ context: i18nContext })
@@ -57,6 +78,9 @@ export class CalendarPage extends LitElement {
     @state() initialDate?: Date;
     @state() initialAllDay?: boolean;
     @state() private activeCalendars: Set<string> = new Set();
+    @state() private showTasks = readShowTasks();
+    @state() private taskModalOpen = false;
+    @state() private editingTask?: TaskData;
     @state() searchQuery = '';
 
     @state() private sidebarWidth = 250;
@@ -515,6 +539,16 @@ export class CalendarPage extends LitElement {
     private async fetchData() {
         this.loading = true;
         this.isSpinning = true;
+        // Alongside the events, and apart from them: tasks that fail to load
+        // leave the calendar's own events on screen, and say so separately.
+        // Not during a search, whose results are events.
+        const tasksLoad = this.showTasks && !this.searchQuery
+            ? tasksService.fetchTasks('active').catch(err => {
+                console.error('Failed to load tasks for the calendar', err);
+                this.reportFailure('tasks.loadFailed');
+                return null;
+            })
+            : Promise.resolve(null);
         try {
             const calRes = await calendarService.fetchCalendars();
             
@@ -576,7 +610,8 @@ export class CalendarPage extends LitElement {
                 }
             }
 
-            this.events = expandedEvents.map(ev => ({
+            const tasks = (await tasksLoad)?.tasks ?? [];
+            this.events = [...expandedEvents, ...taskChips(tasks)].map(ev => ({
                 ...ev,
                 color: ev.color || getCalendarColor(ev.calendarPath || ev.path)
             }));
@@ -632,6 +667,11 @@ export class CalendarPage extends LitElement {
     }
 
     private openEditModal(event: EventData) {
+        if (event.task) {
+            this.editingTask = event.task;
+            this.taskModalOpen = true;
+            return;
+        }
         this.selectedEvent = event;
         this.initialDate = undefined;
         this.initialAllDay = undefined;
@@ -752,12 +792,49 @@ export class CalendarPage extends LitElement {
         this.eventToDelete = null;
 
         try {
-            await calendarService.deleteEvent(event.path);
+            if (event.task) {
+                await tasksService.deleteTask(event.task.path);
+            } else {
+                await calendarService.deleteEvent(event.path);
+            }
             await this.fetchData();
         } catch (err) {
             console.error('Failed to delete event', err);
-            this.reportFailure('calendar.deleteEventFailed');
+            this.reportFailure(event.task ? 'tasks.deleteFailed' : 'calendar.deleteEventFailed');
         }
+    }
+
+    /**
+     * Whether an event, or a task's chip, is drawn.
+     *
+     * A task in a calendar listed here follows that calendar's box as its events
+     * do. A task in a list that holds only tasks has no box here, and follows
+     * the Tasks switch alone.
+     */
+    private isShown(event: EventData): boolean {
+        if (!event.task) return this.activeCalendars.has(event.calendarPath);
+        return this.showTasks && (!this.calendars.some(c => c.path === event.calendarPath) || this.activeCalendars.has(event.calendarPath));
+    }
+
+    private toggleTasks() {
+        this.showTasks = !this.showTasks;
+        writeShowTasks(this.showTasks);
+        void this.fetchData();
+    }
+
+    private async completeTask(task: TaskData) {
+        try {
+            await tasksService.completeTask(task.path, true);
+            await this.fetchData();
+        } catch (err) {
+            console.error('Failed to update task', err);
+            this.reportFailure('tasks.completeFailed');
+        }
+    }
+
+    private closeTaskModal() {
+        this.taskModalOpen = false;
+        this.editingTask = undefined;
     }
 
     private toggleCalendar(path: string) {
@@ -809,7 +886,7 @@ export class CalendarPage extends LitElement {
             title = monthName;
         }
 
-        const visibleEvents = this.events.filter(e => this.activeCalendars.has(e.calendarPath));
+        const visibleEvents = this.events.filter(e => this.isShown(e));
 
         return html`
             <app-header 
@@ -906,6 +983,12 @@ export class CalendarPage extends LitElement {
                                             </div>
                                         </div>
                                     `)}
+                                    <div class="calendar-item tasks-toggle" @click=${this.toggleTasks}>
+                                        <div class="calendar-checkbox ${this.showTasks ? 'checked' : ''}" style="--cal-color: var(--text-secondary, #4b5563)">
+                                            ${this.showTasks ? renderIcon('check') : ''}
+                                        </div>
+                                        <span>${this.i18nStore?.t('tasks.title')}</span>
+                                    </div>
                                 </div>
 
                                 <alps-sidebar-calendar
@@ -955,7 +1038,7 @@ export class CalendarPage extends LitElement {
                         </div>
                     </div>
 
-                    <div class="calendar-body">
+                    <div class="calendar-body" @complete-task=${(e: CustomEvent) => void this.completeTask(e.detail.task)}>
                         ${this.searchQuery ? html`
                             <calendar-list-view
                                 .events=${visibleEvents}
@@ -1018,6 +1101,18 @@ export class CalendarPage extends LitElement {
                     ` : ''}
                 </div>
             </div>
+
+            <task-modal
+                .open=${this.taskModalOpen}
+                .task=${this.editingTask}
+                @close=${this.closeTaskModal}
+                @saved=${() => { this.closeTaskModal(); void this.fetchData(); }}
+                @conflict=${this.fetchData}
+                @delete=${(e: CustomEvent) => {
+                    this.closeTaskModal();
+                    this.eventToDelete = { ...e.detail.task, task: e.detail.task };
+                }}
+            ></task-modal>
 
             <calendar-event-modal
                 .open=${this.modalOpen}

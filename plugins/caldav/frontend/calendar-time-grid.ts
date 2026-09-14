@@ -1,3 +1,4 @@
+import { renderIcon } from '../../../frontend/src/utils/ui';
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { EventData } from './calendar-service';
@@ -243,6 +244,25 @@ export class CalendarTimeGrid extends LitElement {
         .event-chip:hover {
             opacity: 1;
         }
+        /* A task's chip: outlined in its calendar's colour, marked with a check,
+           so it does not read as an all-day event. Doubled to outrank the
+           all-day chip's own background. */
+        .event-chip.event-chip.task {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background-color: var(--bg-primary, #ffffff);
+            color: var(--text-primary, #111827);
+            border: 1px solid;
+            border-left-width: 3px;
+            box-shadow: none;
+        }
+        .event-chip.task svg {
+            flex-shrink: 0;
+            width: 12px;
+            height: 12px;
+            fill: currentColor;
+        }
 
         .now-line {
             position: absolute;
@@ -368,10 +388,10 @@ export class CalendarTimeGrid extends LitElement {
                                             ${allDayEvents.map(e => html`
                                                 <alps-popup align="left" position="bottom" style="width: 100%; display: block;" @click=${(ev: Event) => ev.stopPropagation()}>
                                                     <div slot="trigger"
-                                                        class="event-chip" 
-                                                        style=${e.color ? `background-color: ${e.color}` : ''}
+                                                        class="event-chip ${e.task ? 'task' : ''}" 
+                                                        style=${e.task ? `border-color: ${e.color}` : e.color ? `background-color: ${e.color}` : ''}
                                                         title="${e.summary || (this.i18nStore?.t('calendar.noTitle'))}">
-                                                        ${e.summary || (this.i18nStore?.t('calendar.noTitle'))}
+                                                        ${e.task ? renderIcon('checkCircle') : ''}${e.summary || (this.i18nStore?.t('calendar.noTitle'))}
                                                     </div>
                                                     <calendar-event-preview .event=${e}></calendar-event-preview>
                                                 </alps-popup>
