@@ -67,9 +67,16 @@ describe('verdicts after the list', () => {
 
     await waitFor(() => server.asked.flat().length === 25 && logos(el) === 13, 'every verdict answered');
 
-    expect(server.asked.map((b) => b.length)).toEqual([VERDICT_BATCH, VERDICT_BATCH, 25 - 2 * VERDICT_BATCH]);
+    const batches = Array.from({ length: Math.ceil(25 / VERDICT_BATCH) }, (_, i) => Math.min(VERDICT_BATCH, 25 - i * VERDICT_BATCH));
+    expect(server.asked.map((b) => b.length)).toEqual(batches);
     expect(server.maxInFlight()).toBe(1);
     expect(avatarSrcs(el)).toEqual(Array.from({ length: 25 }, (_, i) => ((i + 1) % 2 ? LOGO : '')));
+  });
+
+  it('asks in batches small enough that opening a folder waits about a second', () => {
+    // A batch of older messages can take about a third of a second per message
+    // on the mail server, and a folder opened meanwhile waits for it.
+    expect(VERDICT_BATCH).toBeLessThanOrEqual(3);
   });
 
   it('a reload while verdicts are being asked for waits its turn', async () => {

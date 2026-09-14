@@ -19,9 +19,10 @@ export const VERDICT_CHUNK = 200;
  * How many UIDs the message list asks about per request. A mail server may
  * read each message's header from storage one at a time, about a third of a
  * second each for older mail, and a request holds the session's connection to
- * the mail server while it runs; small batches let other requests through.
+ * the mail server while it runs: opening a folder waits for the batch already
+ * asked. Three keeps that wait near a second.
  */
-export const VERDICT_BATCH = 10;
+export const VERDICT_BATCH = 3;
 
 /**
  * The receiving server's authentication verdicts for messages, keyed by UID.
