@@ -7,8 +7,12 @@ import '../../../frontend/src/components/ui-modal';
 import '../../../frontend/src/components/alps-input';
 import '../../../frontend/src/components/alps-select';
 import '../../../frontend/src/components/alps-button';
+import '../../../frontend/src/components/alps-address-input';
+import '../../../frontend/src/components/ui-confirm';
 import { modalButtonStyles } from '../../../frontend/src/components/ui-modal';
 import { dueOf, tasksService } from './tasks-service';
+import { addressOfPerson, personFromAddress, taskTellsSomeone } from './calendar-service';
+import { statusKey } from './calendar-invitation-banner';
 import type { TaskData, TaskInput, TaskList, TaskStatus } from './tasks-service';
 
 const PRESETS = ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as const;
@@ -41,6 +45,8 @@ export class TaskModal extends LitElement {
     @property({ type: Array }) lists: TaskList[] = [];
     /** Where a new task goes unless another list is picked. */
     @property({ type: String }) defaultList = '';
+    /** Who tells assignees about a change: the calendar server, or alps by email. */
+    @property({ type: String }) scheduling: 'server' | 'email' = 'email';
 
     @state() title = '';
     @state() description = '';
@@ -53,6 +59,10 @@ export class TaskModal extends LitElement {
     @state() repeat = '';
     @state() calendarPath = '';
     @state() saving = false;
+    /** Whom the task is assigned to, as the address field spells them. */
+    @state() attendees: string[] = [];
+    /** Asking whether to email the assignees the changes. */
+    @state() askNotify = false;
 
     private originalRRule = '';
     /** The due fields as the task opened, to tell an untouched due date. */
@@ -157,6 +167,13 @@ export class TaskModal extends LitElement {
             if (!this.allDay) this.dueTime = `${pad(due.getHours())}:${pad(due.getMinutes())}`;
         }
         this.openedDue = { date: this.dueDate, time: this.dueTime, allDay: this.allDay };
+        this.attendees = (task?.attendees ?? []).map(addressOfPerson);
+        this.askNotify = false;
+    }
+
+    /** A task someone else assigned: whom it is assigned to is theirs to say. */
+    private get assignedToUser(): boolean {
+        return this.task?.role === 'attendee';
     }
 
     /** The form as the server takes it. */
@@ -206,12 +223,36 @@ export class TaskModal extends LitElement {
 
     async handleSave() {
         if (this.saving || !this.title.trim() || !this.calendarPath) return;
+        // As in the event editor: a change to a task already assigned is the
+        // assignees' to hear about or not; a new assignment is sent.
+        if (this.task?.role === 'organizer' && taskTellsSomeone(this.task, this.scheduling)) {
+            this.askNotify = true;
+            return;
+        }
+        await this.save();
+    }
+
+    private async save(notify?: boolean) {
+        this.askNotify = false;
         this.saving = true;
         try {
             const created = !this.task;
+            const input: TaskInput = {
+                ...this.input(),
+                attendees: this.assignedToUser
+                    ? undefined
+                    : this.attendees.map(personFromAddress).filter((p): p is NonNullable<typeof p> => p !== null),
+                notify,
+                lang: this.i18nStore?.getLanguage?.(),
+            };
             const saved = this.task
-                ? await tasksService.updateTask(this.task.path, this.input())
-                : await tasksService.createTask(this.input());
+                ? await tasksService.updateTask(this.task.path, input)
+                : await tasksService.createTask(input);
+            if (saved?.sendFailed) {
+                window.dispatchEvent(new CustomEvent('show-toast', {
+                    detail: { message: this.i18nStore?.t('invitations.notTold'), duration: 8000 },
+                }));
+            }
             this.open = false;
             this.dispatchEvent(new CustomEvent('saved', { detail: { task: saved, created } }));
         } catch (e) {
@@ -394,12 +435,25 @@ export class TaskModal extends LitElement {
                     ></textarea>
                 </div>
 
-                ${task?.organizer || task?.attendees?.length ? html`
+                ${this.assignedToUser ? html`
                     <div class="assigned">
-                        ${task.organizer ? html`<div><span class="label">${t('tasks.assignedBy')}:</span> ${task.organizer}</div>` : ''}
-                        ${task.attendees?.length ? html`<div><span class="label">${t('tasks.assignedTo')}:</span> ${task.attendees.join(', ')}</div>` : ''}
+                        <div><span class="label">${t('tasks.assignedBy')}:</span> ${task?.organizer?.name || task?.organizer?.email || ''}</div>
                     </div>
-                ` : ''}
+                ` : html`
+                    <div class="form-group">
+                        <label>${t('tasks.assignTo')}</label>
+                        <alps-address-input
+                            class="assignees"
+                            .addresses=${this.attendees}
+                            @addresses-changed=${(e: CustomEvent) => { this.attendees = e.detail.addresses; }}
+                        ></alps-address-input>
+                    </div>
+                    ${task?.role === 'organizer' && task.attendees?.length ? html`
+                        <div class="assigned answers">
+                            ${task.attendees.map(a => html`<div>${a.name || a.email}: ${t(`invitations.statuses.${statusKey(a.status)}`)}</div>`)}
+                        </div>
+                    ` : ''}
+                `}
 
                 <div slot="actions" class="actions">
                     ${task ? html`
@@ -417,6 +471,18 @@ export class TaskModal extends LitElement {
                     >${t('general.save')}</alps-button>
                 </div>
             </ui-modal>
+
+            ${this.askNotify ? html`
+                <ui-confirm
+                    title=${t('invitations.notifyTitle')}
+                    message=${t('tasks.notifyChanges')}
+                    confirmText=${t('invitations.send')}
+                    secondaryText=${t('invitations.dontSend')}
+                    @confirm=${() => this.save(true)}
+                    @secondary=${() => this.save(false)}
+                    @cancel=${() => { this.askNotify = false; }}
+                ></ui-confirm>
+            ` : ''}
         `;
     }
 }

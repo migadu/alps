@@ -98,6 +98,10 @@ export default {
         completeFailed: 'The task could not be updated.',
         deleteFailed: 'The task could not be deleted.',
         createListFailed: 'The list could not be created.',
+        assignTo: 'Assign to',
+        notifyChanges: 'The people this task is assigned to can be sent the changes.',
+        deleteTellAssignees: 'The people this task is assigned to can be told it is cancelled.',
+        deleteTellAssigner: 'Whoever assigned this task can be told you will not do it.',
         groups: {
             overdue: 'Overdue',
             today: 'Today',

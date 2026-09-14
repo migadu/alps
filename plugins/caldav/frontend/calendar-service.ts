@@ -91,6 +91,11 @@ export function addressOfPerson(person: InvitationPerson): string {
     return name ? `"${name}" <${person.email}>` : person.email;
 }
 
+/** Whether saving or removing a task emails anyone; see tellsSomeone. */
+export function taskTellsSomeone(task: Pick<TaskData, 'role' | 'attendees' | 'answer'> | undefined | null, scheduling: string | undefined): boolean {
+    return !!task && tellsSomeone({ role: task.role, attendees: task.attendees, status: task.answer }, scheduling);
+}
+
 /**
  * Whether saving or removing an event emails anyone, which alps does itself
  * only when the server does not schedule: a meeting the user organizes, or an

@@ -11,7 +11,7 @@ import '../../../frontend/src/components/alps-icon-btn';
 import '../../../frontend/src/components/ui-prompt';
 import '../../../frontend/src/components/ui-confirm';
 import { renderIcon } from '../../../frontend/src/utils/ui';
-import { calendarService, getCalendarColor } from './calendar-service';
+import { taskTellsSomeone, calendarService, getCalendarColor } from './calendar-service';
 import { formatDue, inSmartList, intlLocale, isClosed, scopeOf, tasksService } from './tasks-service';
 import type { SmartList, TaskData, TaskList, TaskScope } from './tasks-service';
 import './tasks-list';
@@ -60,6 +60,8 @@ export class TasksPage extends LitElement {
     @state() modalOpen = false;
     @state() editingTask?: TaskData;
     @state() taskToDelete: TaskData | null = null;
+    /** Who tells assignees about changes, as the listing says: the server, or alps by email. */
+    @state() scheduling: 'server' | 'email' = 'email';
     @state() private isSpinning = false;
     @state() private listPromptOpen = false;
     @state() private sidebarWidth = SIDEBAR_WIDTH_DEFAULT;
@@ -320,6 +322,7 @@ export class TasksPage extends LitElement {
             this.lists = listing.calendars.map(list => ({ ...list, color: getCalendarColor(list.path) }));
             this.tasks = listing.tasks.map(task => ({ ...task, color: getCalendarColor(task.calendarPath) }));
             this.loadedScope = scope;
+            this.scheduling = listing.scheduling === 'server' ? 'server' : 'email';
             this.settling = new Set();
             if (listing.failedCalendars > 0) this.toast('tasks.someListsFailed');
         } catch (e) {
@@ -365,8 +368,10 @@ export class TasksPage extends LitElement {
         this.settling = new Set(this.settling).add(task.path);
         this.replaceTask(task.path, { ...task, status: done ? 'completed' : 'needs-action' });
         try {
-            const saved = await tasksService.completeTask(task.path, done);
+            const saved = await tasksService.completeTask(task.path, done, this.i18nStore?.getLanguage?.());
             this.replaceTask(task.path, saved);
+            // On a task assigned to the user the tick was their answer.
+            if (saved.sendFailed) this.toast('invitations.notTold');
             if (done && !isClosed(saved)) {
                 // It repeats: ticked off, it moved to its next occurrence instead.
                 this.toast('tasks.movedToNext', { date: this.formatDue(saved) });
@@ -404,12 +409,13 @@ export class TasksPage extends LitElement {
         }
     }
 
-    async confirmDelete() {
+    async confirmDelete(notify = true) {
         const task = this.taskToDelete;
         if (!task) return;
         this.taskToDelete = null;
         try {
-            await tasksService.deleteTask(task.path);
+            const removed = await tasksService.deleteTask(task.path, { notify, lang: this.i18nStore?.getLanguage?.() });
+            if (removed?.sendFailed) this.toast('invitations.notTold');
             this.mutationEpoch++;
             this.tasks = this.tasks.filter(t => t.path !== task.path);
         } catch (e) {
@@ -624,6 +630,7 @@ export class TasksPage extends LitElement {
                 .task=${this.editingTask}
                 .lists=${this.lists}
                 .defaultList=${defaultList}
+                .scheduling=${this.scheduling}
                 @close=${() => this.closeModal()}
                 @saved=${this.handleSaved}
                 @conflict=${() => void this.fetchTasks()}
@@ -642,7 +649,19 @@ export class TasksPage extends LitElement {
                 ></ui-prompt>
             ` : ''}
 
-            ${this.taskToDelete ? html`
+            ${this.taskToDelete && taskTellsSomeone(this.taskToDelete, this.scheduling) ? html`
+                <ui-confirm
+                    class="delete-assigned"
+                    title=${t('tasks.deleteTask')}
+                    message=${t(this.taskToDelete.role === 'organizer' ? 'tasks.deleteTellAssignees' : 'tasks.deleteTellAssigner')}
+                    confirmText=${t('invitations.deleteAndTell')}
+                    secondaryText=${t('invitations.deleteOnly')}
+                    isDanger
+                    @confirm=${() => void this.confirmDelete(true)}
+                    @secondary=${() => void this.confirmDelete(false)}
+                    @cancel=${() => { this.taskToDelete = null; }}
+                ></ui-confirm>
+            ` : this.taskToDelete ? html`
                 <ui-confirm
                     title=${t('tasks.deleteTask')}
                     message=${t('tasks.deleteTaskConfirm')}

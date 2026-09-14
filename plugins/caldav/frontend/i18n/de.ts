@@ -98,6 +98,10 @@ export default {
         completeFailed: 'Die Aufgabe konnte nicht aktualisiert werden.',
         deleteFailed: 'Die Aufgabe konnte nicht gelöscht werden.',
         createListFailed: 'Die Liste konnte nicht erstellt werden.',
+        assignTo: 'Zuweisen an',
+        notifyChanges: 'Die Personen, denen diese Aufgabe zugewiesen ist, können über die Änderungen informiert werden.',
+        deleteTellAssignees: 'Die Personen, denen diese Aufgabe zugewiesen ist, können darüber informiert werden, dass sie abgesagt ist.',
+        deleteTellAssigner: 'Wer Ihnen diese Aufgabe zugewiesen hat, kann darüber informiert werden, dass Sie sie nicht erledigen.',
         groups: {
             overdue: 'Überfällig',
             today: 'Heute',

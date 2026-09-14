@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/internal/davsave"
+	"github.com/migadu/alps/internal/itip"
 	"github.com/teambition/rrule-go"
 )
 
@@ -42,15 +43,24 @@ type TaskData struct {
 	Completed string `json:"completed,omitempty"`
 	// PercentComplete is 0 to 100, Priority RFC 5545's 1 (highest) to 9, with
 	// 0 for none.
-	PercentComplete int      `json:"percentComplete,omitempty"`
-	Priority        int      `json:"priority,omitempty"`
-	RRule           string   `json:"rrule,omitempty"`
-	Organizer       string   `json:"organizer,omitempty"`
-	Attendees       []string `json:"attendees,omitempty"`
-	Path            string   `json:"path"`
-	CalendarPath    string   `json:"calendarPath"`
+	PercentComplete int    `json:"percentComplete,omitempty"`
+	Priority        int    `json:"priority,omitempty"`
+	RRule           string `json:"rrule,omitempty"`
+	// Organizer and Attendees are who a task is assigned by and to. Role is
+	// the user's part in that, "organizer" or "attendee", and Answer their
+	// own answer when it was assigned to them.
+	Organizer    *Person  `json:"organizer,omitempty"`
+	Attendees    []Person `json:"attendees,omitempty"`
+	Role         string   `json:"role,omitempty"`
+	Answer       string   `json:"answer,omitempty"`
+	Path         string   `json:"path"`
+	CalendarPath string   `json:"calendarPath"`
 	// The version this was read at; see EventData.ETag.
 	ETag string `json:"etag,omitempty"`
+	// Sent and SendFailed answer a write that may have emailed someone; see
+	// Saved.
+	Sent       bool `json:"sent,omitempty"`
+	SendFailed bool `json:"sendFailed,omitempty"`
 }
 
 // TaskInput is what the task editor sends: every field it has, each time.
@@ -65,6 +75,13 @@ type TaskInput struct {
 	RRule           string `json:"rrule"`
 	CalendarPath    string `json:"calendarPath"`
 	ETag            string `json:"etag"`
+	// Attendees are whom the task is assigned to; left out, it stays assigned
+	// as it is.
+	Attendees []Person `json:"attendees"`
+	// Notify says whether to tell them, or the organizer, about the change.
+	// Unsaid is yes.
+	Notify *bool  `json:"notify"`
+	Lang   string `json:"lang"`
 }
 
 // parse validates the input and returns its due instant.
@@ -282,12 +299,6 @@ func extractTask(co *caldav.CalendarObject) (TaskData, error) {
 	task.Priority = intProp(todo, ical.PropPriority)
 	if prop := todo.Props.Get(ical.PropRecurrenceRule); prop != nil {
 		task.RRule = prop.Value
-	}
-	if prop := todo.Props.Get(ical.PropOrganizer); prop != nil {
-		task.Organizer = calendarAddress(prop.Value)
-	}
-	for _, prop := range todo.Props[ical.PropAttendee] {
-		task.Attendees = append(task.Attendees, calendarAddress(prop.Value))
 	}
 	return task, nil
 }
@@ -514,14 +525,55 @@ func taskInScope(status, scope string) bool {
 	return true
 }
 
+// withPeople fills in who a task is assigned by and to, seen from the user.
+func (task *TaskData) withPeople(todo *ical.Component, acct *schedulingAccount) {
+	task.Organizer, task.Attendees, task.Role, task.Answer = meetingOf(todo, acct).people()
+}
+
 // respondTask answers with a task as it was just written.
-func (p *plugin) respondTask(ctx *alps.Context, calendars []caldav.Calendar, objectPath, etag string, cal *ical.Calendar) error {
+func (p *plugin) respondTask(ctx *alps.Context, calendars []caldav.Calendar, acct *schedulingAccount, objectPath, etag string, cal *ical.Calendar, saved Saved) error {
 	task, err := extractTask(&caldav.CalendarObject{Path: objectPath, ETag: etag, Data: cal})
 	if err != nil {
 		return err
 	}
 	task.CalendarPath = calendarHolding(objectPath, calendars)
+	task.withPeople(masterTask(cal), acct)
+	task.Sent, task.SendFailed = saved.Sent, saved.SendFailed
 	return ctx.JSON(http.StatusOK, task)
+}
+
+// progress records, on a task assigned to the user, their own progress as
+// their answer: COMPLETED once it is done, ACCEPTED when it is opened again.
+// It returns their address when the answer changed, which the organizer is
+// then to hear.
+func progress(cal *ical.Calendar, todo *ical.Component, acct *schedulingAccount, wasDone bool) string {
+	m := meetingOf(todo, acct)
+	done := taskStatus(todo) == taskCompleted
+	if m.role != "attendee" || m.organizer == nil || done == wasDone {
+		return ""
+	}
+	status := itip.Accepted
+	if done {
+		status = itip.Completed
+	}
+	itip.Answer(cal, m.me, status)
+	return m.me
+}
+
+// assigneesDone reports whether everyone a task of the user's is assigned to
+// has answered that they completed it.
+func assigneesDone(todo *ical.Component, acct *schedulingAccount) bool {
+	n := 0
+	for _, a := range itip.Attendees(todo) {
+		if acct.owns(a.Address) {
+			continue
+		}
+		if a.Status != itip.Completed {
+			return false
+		}
+		n++
+	}
+	return n > 0
 }
 
 // openTask reads the task object a request's {path} names, within the user's
@@ -572,6 +624,7 @@ func registerTaskRoutes(p *plugin) {
 			},
 		}
 
+		acct := p.scheduling(ctx, c)
 		tasks := []TaskData{}
 		lists := []CalendarData{}
 		failed := 0
@@ -593,6 +646,7 @@ func registerTaskRoutes(p *plugin) {
 					continue
 				}
 				task.CalendarPath = calendar.Path
+				task.withPeople(masterTask(objects[i].Data), acct)
 				tasks = append(tasks, task)
 			}
 		}
@@ -601,6 +655,7 @@ func registerTaskRoutes(p *plugin) {
 			"tasks":           tasks,
 			"calendars":       lists,
 			"failedCalendars": failed,
+			"scheduling":      acct.mode(),
 		})
 	})
 
@@ -632,6 +687,12 @@ func registerTaskRoutes(p *plugin) {
 			return alps.NewHTTPError(http.StatusConflict, "no calendar available to add the task to")
 		}
 
+		assignees, err := partiesOf(in.Attendees)
+		if err != nil {
+			return err
+		}
+		acct := p.scheduling(ctx, c)
+
 		now := time.Now()
 		id := uuid.New().String()
 		todo := ical.NewComponent(ical.CompToDo)
@@ -643,13 +704,18 @@ func registerTaskRoutes(p *plugin) {
 		cal.Props.SetText(ical.PropProductID, "-//migadu//alps//EN")
 		cal.Props.SetText(ical.PropVersion, "2.0")
 		cal.Children = append(cal.Children, todo)
+		letters, from := organize(acct, nil, cal, assignees, in.Attendees != nil, now)
 
 		objectPath := path.Join(target.Path, id+".ics")
 		etag, err := p.putCalendar(ctx, c, objectPath, cal, "")
 		if err != nil {
 			return err
 		}
-		return p.respondTask(ctx, calendars, objectPath, etag, cal)
+		var saved Saved
+		if in.Notify == nil || *in.Notify {
+			saved.Sent, saved.SendFailed = p.tell(ctx, acct, from, in.Lang, letters)
+		}
+		return p.respondTask(ctx, calendars, acct, objectPath, etag, cal, saved)
 	})
 
 	p.POST("/calendar/tasks/{path}/edit", func(ctx *alps.Context) error {
@@ -671,22 +737,47 @@ func registerTaskRoutes(p *plugin) {
 		if in.ETag != "" && !davsave.Same(in.ETag, co.ETag) {
 			return errChangedElsewhere
 		}
-		applyTask(todo, in, due, time.Now())
+		assignees, err := partiesOf(in.Attendees)
+		if err != nil {
+			return err
+		}
+		acct := p.scheduling(ctx, c)
+		now := time.Now()
+		before := itip.Clone(co.Data)
+		wasDone := taskStatus(todo) == taskCompleted
+		applyTask(todo, in, due, now)
+		letters, from := organize(acct, before, co.Data, assignees, in.Attendees != nil, now)
+		// An assignee who finished, or reopened, the task in the editor: see
+		// progress.
+		me := progress(co.Data, todo, acct, wasDone)
 
 		etag, err := p.putCalendar(ctx, c, co.Path, co.Data, co.ETag)
 		if err != nil {
 			return err
 		}
-		return p.respondTask(ctx, calendars, co.Path, etag, co.Data)
+		var saved Saved
+		if in.Notify == nil || *in.Notify {
+			if me != "" {
+				saved, _ = p.sendReply(ctx, acct, co.Data, me, in.Lang)
+			} else {
+				saved.Sent, saved.SendFailed = p.tell(ctx, acct, from, in.Lang, letters)
+			}
+		}
+		return p.respondTask(ctx, calendars, acct, co.Path, etag, co.Data, saved)
 	})
 
 	// Ticking a task off, or back on. A field gesture rather than a form save,
 	// like a star on a contact: it has no opinion about the rest of the task,
 	// so a task saved elsewhere since it was read is read again and ticked
 	// once more. A second refusal in a row is reported.
+	//
+	// On a task assigned to the user the tick is also their answer, and goes
+	// to the organizer. On one they assigned it is their own record, and
+	// mails nobody.
 	p.POST("/calendar/tasks/{path}/complete", func(ctx *alps.Context) error {
 		var req struct {
-			Done bool `json:"done"`
+			Done bool   `json:"done"`
+			Lang string `json:"lang"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
@@ -697,9 +788,12 @@ func registerTaskRoutes(p *plugin) {
 			if err != nil {
 				return err
 			}
+			acct := p.scheduling(ctx, c)
+			wasDone := taskStatus(todo) == taskCompleted
 			if err := completeTask(todo, req.Done, time.Now()); err != nil {
 				return err
 			}
+			me := progress(co.Data, todo, acct, wasDone)
 			etag, err := p.putCalendar(ctx, c, co.Path, co.Data, co.ETag)
 			if err == errChangedElsewhere && attempt == 1 {
 				continue
@@ -707,7 +801,11 @@ func registerTaskRoutes(p *plugin) {
 			if err != nil {
 				return err
 			}
-			return p.respondTask(ctx, calendars, co.Path, etag, co.Data)
+			var saved Saved
+			if me != "" {
+				saved, _ = p.sendReply(ctx, acct, co.Data, me, req.Lang)
+			}
+			return p.respondTask(ctx, calendars, acct, co.Path, etag, co.Data, saved)
 		}
 	})
 }

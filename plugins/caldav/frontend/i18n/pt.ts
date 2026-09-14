@@ -98,6 +98,10 @@ export default {
         completeFailed: 'Não foi possível atualizar a tarefa.',
         deleteFailed: 'Não foi possível eliminar a tarefa.',
         createListFailed: 'Não foi possível criar a lista.',
+        assignTo: 'Atribuir a',
+        notifyChanges: 'Pode enviar as alterações às pessoas a quem esta tarefa está atribuída.',
+        deleteTellAssignees: 'Pode avisar as pessoas a quem esta tarefa está atribuída de que foi cancelada.',
+        deleteTellAssigner: 'Pode avisar quem lhe atribuiu esta tarefa de que não a vai fazer.',
         groups: {
             overdue: 'Em atraso',
             today: 'Hoje',

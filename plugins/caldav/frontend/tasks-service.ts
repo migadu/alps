@@ -6,6 +6,7 @@
  * has no field for, so the page deals in flat rows and flat inputs.
  */
 import { encodePathParam, fetchWithTimeout, HttpStatusError } from '../../../frontend/src/utils/fetch-utils';
+import type { InvitationPerson } from './invitation-service';
 
 /** The four statuses RFC 5545 defines for a task. */
 export type TaskStatus = 'needs-action' | 'in-process' | 'completed' | 'cancelled';
@@ -24,8 +25,16 @@ export interface TaskData {
     /** RFC 5545: 1 (highest) to 9, and 0 or absent for none. */
     priority?: number;
     rrule?: string;
-    organizer?: string;
-    attendees?: string[];
+    /** Who assigned the task, and to whom. */
+    organizer?: InvitationPerson;
+    attendees?: InvitationPerson[];
+    /** The user's part: 'organizer' when they assigned it, 'attendee' when it was assigned to them. */
+    role?: 'organizer' | 'attendee' | '';
+    /** The user's own answer, on a task assigned to them. */
+    answer?: string;
+    /** On the answer to a write: the change was emailed, or saved but could not be. */
+    sent?: boolean;
+    sendFailed?: boolean;
     path: string;
     calendarPath: string;
     /** The version this was read at; an edit is refused (412) once it has moved. */
@@ -46,6 +55,11 @@ export interface TaskInput {
     rrule: string;
     calendarPath: string;
     etag?: string;
+    /** Whom the task is assigned to; left out, it stays assigned as it is. */
+    attendees?: InvitationPerson[];
+    /** Whether to tell them about the change; unsaid is yes. */
+    notify?: boolean;
+    lang?: string;
 }
 
 /** A calendar that takes tasks. */
@@ -61,6 +75,8 @@ export interface TaskListing {
     calendars: TaskList[];
     /** How many lists could not be read, so the page can say its view is partial. */
     failedCalendars: number;
+    /** Who tells assignees about changes: the calendar server, or alps by email. */
+    scheduling?: 'server' | 'email';
 }
 
 /** Which half of the tasks a listing is for: work to do, or work done with. */
@@ -223,6 +239,7 @@ class TasksService {
             tasks: body.tasks ?? [],
             calendars: body.calendars ?? [],
             failedCalendars: body.failedCalendars ?? 0,
+            scheduling: body.scheduling,
         };
     }
 
@@ -238,15 +255,20 @@ class TasksService {
      * Ticks a task off, or back on. A repeating task ticked off moves to its
      * next occurrence and stays open; the answer is the task as now stored.
      */
-    completeTask(path: string, done: boolean): Promise<TaskData> {
-        return this.send(`/calendar/tasks/${encodePathParam(path)}/complete`, { done }, 'Failed to update task');
+    completeTask(path: string, done: boolean, lang?: string): Promise<TaskData> {
+        return this.send(`/calendar/tasks/${encodePathParam(path)}/complete`, { done, lang }, 'Failed to update task');
     }
 
-    async deleteTask(path: string): Promise<void> {
-        const response = await fetchWithTimeout(`/calendar/tasks/${encodePathParam(path)}`, { method: 'DELETE' });
+    async deleteTask(path: string, options: { notify?: boolean; lang?: string } = {}): Promise<{ sent?: boolean; sendFailed?: boolean }> {
+        const params = new URLSearchParams();
+        if (options.notify === false) params.set('notify', '0');
+        if (options.lang) params.set('lang', options.lang);
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetchWithTimeout(`/calendar/tasks/${encodePathParam(path)}${query}`, { method: 'DELETE' });
         if (!response.ok) {
             throw new HttpStatusError(response.status, 'Failed to delete task');
         }
+        return response.json().catch(() => ({}));
     }
 
     private async send(url: string, body: unknown, failure: string): Promise<TaskData> {

@@ -816,6 +816,12 @@ func registerInvitationRoutes(p *plugin) {
 			if _, err := itip.ApplyReply(cal, inv.msg.cal); err != nil {
 				return alps.NewHTTPError(http.StatusConflict, err.Error())
 			}
+			// A task everyone it was assigned to has finished is finished.
+			if todo := itip.Master(cal); todo.Name == ical.CompToDo && taskStatus(todo) != taskCompleted && assigneesDone(todo, inv.acct) {
+				if err := completeTask(todo, true, now); err != nil {
+					return err
+				}
+			}
 			if saved.ETag, err = p.putCalendar(ctx, inv.c, inv.copy.Path, cal, inv.copy.ETag); err != nil {
 				return err
 			}

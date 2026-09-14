@@ -3,7 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { calendarService, tellsSomeone, getCalendarColor, holdsEvents, taskChips, weekStart } from './calendar-service';
+import { calendarService, taskTellsSomeone, tellsSomeone, getCalendarColor, holdsEvents, taskChips, weekStart } from './calendar-service';
 import { tasksService, type TaskData } from './tasks-service';
 import type { CalendarData, EventData } from './calendar-service';
 import { sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
@@ -797,7 +797,8 @@ export class CalendarPage extends LitElement {
 
         try {
             if (event.task) {
-                await tasksService.deleteTask(event.task.path);
+                const removed = await tasksService.deleteTask(event.task.path, { notify, lang: this.i18nStore?.getLanguage?.() });
+                if (removed?.sendFailed) this.reportFailure('invitations.notTold');
             } else {
                 const removed = await calendarService.deleteEvent(event.path, { notify, lang: this.i18nStore?.getLanguage?.() });
                 if (removed?.sendFailed) this.reportFailure('invitations.notTold');
@@ -843,7 +844,8 @@ export class CalendarPage extends LitElement {
 
     private async completeTask(task: TaskData) {
         try {
-            await tasksService.completeTask(task.path, true);
+            const saved = await tasksService.completeTask(task.path, true, this.i18nStore?.getLanguage?.());
+            if (saved?.sendFailed) this.reportFailure('invitations.notTold');
             await this.fetchData();
         } catch (err) {
             console.error('Failed to update task', err);
@@ -1124,6 +1126,7 @@ export class CalendarPage extends LitElement {
             <task-modal
                 .open=${this.taskModalOpen}
                 .task=${this.editingTask}
+                .scheduling=${this.scheduling}
                 @close=${this.closeTaskModal}
                 @saved=${() => { this.closeTaskModal(); void this.fetchData(); }}
                 @conflict=${this.fetchData}
@@ -1164,11 +1167,13 @@ export class CalendarPage extends LitElement {
                 ></ui-confirm>
             ` : ''}
 
-            ${this.eventToDelete && !this.eventToDelete.task && tellsSomeone(this.eventToDelete, this.scheduling) ? html`
+            ${this.eventToDelete && (this.eventToDelete.task ? taskTellsSomeone(this.eventToDelete.task, this.scheduling) : tellsSomeone(this.eventToDelete, this.scheduling)) ? html`
                 <ui-confirm
                     class="delete-meeting"
-                    title="${this.i18nStore?.t('calendar.deleteEvent')}"
-                    message="${this.i18nStore?.t(this.eventToDelete.role === 'organizer' ? 'invitations.deleteTellGuests' : 'invitations.deleteTellOrganizer')}"
+                    title="${this.i18nStore?.t(this.eventToDelete.task ? 'tasks.deleteTask' : 'calendar.deleteEvent')}"
+                    message="${this.i18nStore?.t(this.eventToDelete.task
+                        ? (this.eventToDelete.task.role === 'organizer' ? 'tasks.deleteTellAssignees' : 'tasks.deleteTellAssigner')
+                        : (this.eventToDelete.role === 'organizer' ? 'invitations.deleteTellGuests' : 'invitations.deleteTellOrganizer'))}"
                     confirmText="${this.i18nStore?.t('invitations.deleteAndTell')}"
                     secondaryText="${this.i18nStore?.t('invitations.deleteOnly')}"
                     isDanger

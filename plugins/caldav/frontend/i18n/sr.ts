@@ -98,6 +98,10 @@ export default {
         completeFailed: 'Zadatak nije mogao biti ažuriran.',
         deleteFailed: 'Zadatak nije mogao biti obrisan.',
         createListFailed: 'Lista nije mogla biti napravljena.',
+        assignTo: 'Dodeli',
+        notifyChanges: 'Osobama kojima je ovaj zadatak dodeljen možete poslati izmene.',
+        deleteTellAssignees: 'Osobama kojima je ovaj zadatak dodeljen možete javiti da je otkazan.',
+        deleteTellAssigner: 'Onome ko vam je dodelio ovaj zadatak možete javiti da ga nećete uraditi.',
         groups: {
             overdue: 'Istekao rok',
             today: 'Danas',

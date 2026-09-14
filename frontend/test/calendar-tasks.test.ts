@@ -129,7 +129,7 @@ describe('the calendar page', () => {
         const deleteTask = vi.spyOn(tasksService, 'deleteTask').mockResolvedValue();
         const deleteEvent = vi.spyOn(calendarService, 'deleteEvent');
         await el._executeDeleteEvent();
-        expect(deleteTask).toHaveBeenCalledWith(rent.path);
+        expect(deleteTask).toHaveBeenCalledWith(rent.path, { notify: true, lang: 'en' });
         expect(deleteEvent).not.toHaveBeenCalled();
     });
 
@@ -141,7 +141,7 @@ describe('the calendar page', () => {
         shadow(el, '.calendar-body').dispatchEvent(new CustomEvent('complete-task', { detail: { task: rent }, bubbles: true, composed: true }));
 
         await vi.waitFor(() => expect(events.mock.calls.length).toBe(before + 1));
-        expect(complete).toHaveBeenCalledWith(rent.path, true);
+        expect(complete).toHaveBeenCalledWith(rent.path, true, 'en');
     });
 });
 

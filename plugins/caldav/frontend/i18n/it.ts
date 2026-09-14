@@ -98,6 +98,10 @@ export default {
         completeFailed: 'Non è stato possibile aggiornare l\'attività.',
         deleteFailed: 'Non è stato possibile eliminare l\'attività.',
         createListFailed: 'Non è stato possibile creare l\'elenco.',
+        assignTo: 'Assegna a',
+        notifyChanges: 'Puoi inviare le modifiche alle persone a cui è assegnata questa attività.',
+        deleteTellAssignees: 'Puoi avvisare le persone a cui è assegnata questa attività che è stata annullata.',
+        deleteTellAssigner: 'Puoi avvisare chi ti ha assegnato questa attività che non la farai.',
         groups: {
             overdue: 'In ritardo',
             today: 'Oggi',

@@ -98,6 +98,10 @@ export default {
         completeFailed: 'No se pudo actualizar la tarea.',
         deleteFailed: 'No se pudo eliminar la tarea.',
         createListFailed: 'No se pudo crear la lista.',
+        assignTo: 'Asignar a',
+        notifyChanges: 'Puedes enviar los cambios a las personas a las que está asignada esta tarea.',
+        deleteTellAssignees: 'Puedes avisar a las personas a las que está asignada esta tarea de que se ha cancelado.',
+        deleteTellAssigner: 'Puedes avisar a quien te asignó esta tarea de que no la harás.',
         groups: {
             overdue: 'Vencidas',
             today: 'Hoy',

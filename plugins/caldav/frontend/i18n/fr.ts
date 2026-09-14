@@ -98,6 +98,10 @@ export default {
         completeFailed: 'La tâche n\'a pas pu être mise à jour.',
         deleteFailed: 'La tâche n\'a pas pu être supprimée.',
         createListFailed: 'La liste n\'a pas pu être créée.',
+        assignTo: 'Attribuer à',
+        notifyChanges: 'Les personnes à qui cette tâche est attribuée peuvent recevoir les modifications.',
+        deleteTellAssignees: 'Les personnes à qui cette tâche est attribuée peuvent être informées de son annulation.',
+        deleteTellAssigner: 'La personne qui vous a attribué cette tâche peut être informée que vous ne la ferez pas.',
         groups: {
             overdue: 'En retard',
             today: 'Aujourd\'hui',
