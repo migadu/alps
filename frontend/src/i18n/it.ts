@@ -470,6 +470,10 @@ export const it = {
     description: 'Connessione di rete persa',
     tryingAgain: 'Nuovo tentativo in {seconds} secondi...'
   },
+  update: {
+    available: 'È disponibile una nuova versione.',
+    reload: 'Ricarica'
+  },
   general: {
     error: 'Errore',
     cancel: 'Annulla',

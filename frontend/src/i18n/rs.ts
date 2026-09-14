@@ -479,6 +479,10 @@ export const rs = {
     description: 'Мрежна веза је прекинута',
     tryingAgain: 'Покушај поново за {seconds} секунди...'
   },
+  update: {
+    available: 'Доступна је нова верзија.',
+    reload: 'Освежи'
+  },
   general: {
     error: 'Грешка',
     cancel: 'Откажи',

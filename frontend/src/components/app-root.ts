@@ -26,8 +26,11 @@ import { linkedAccountsContext, linkedAccountsStore } from '../store/linked-acco
 import { autoLogoutService } from '../services/auto-logout';
 import { clearSessionSettings } from '../store/settings-store';
 import { setLoginNotice } from '../utils/login-notice';
+import { applyUpdate, registerBusyProbe, UPDATE_AVAILABLE_EVENT } from '../services/app-update';
 
 const DEFAULT_TOAST_TIMEOUT_MS = 3000;
+/** Long enough to be read and acted on; the automatic paths catch a missed one. */
+const UPDATE_TOAST_MS = 15000;
 
 interface ToastItem {
   id: number;
@@ -141,6 +144,10 @@ export class AppRoot extends LitElement {
     window.addEventListener('drop', this._handleGlobalDrop);
     window.addEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
     window.addEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
+    window.addEventListener(UPDATE_AVAILABLE_EVENT, this._handleUpdateAvailable);
+    // A reload waits while a composer is open. Asked of this element because
+    // the composers render inside its shadow root, out of a document query's reach.
+    registerBusyProbe(() => this.composeStore.getState().activeComposers.length > 0);
 
     if (this.isOffline) {
       this._handleOfflineEvent();
@@ -190,6 +197,8 @@ export class AppRoot extends LitElement {
     window.removeEventListener('dragover', this._handleGlobalDragOver);
     window.removeEventListener('drop', this._handleGlobalDrop);
     window.removeEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
+    window.removeEventListener(UPDATE_AVAILABLE_EVENT, this._handleUpdateAvailable);
+    registerBusyProbe(null);
     this._stopOfflineCountdown();
   }
 
@@ -337,6 +346,18 @@ export class AppRoot extends LitElement {
       e.preventDefault();
       return 'You have a message currently sending. Are you sure you want to leave?';
     }
+  };
+
+  /** A newer build is served: offered through the same toast as everything else. */
+  private _handleUpdateAvailable = () => {
+    this._handleShowToast(new CustomEvent('show-toast', {
+      detail: {
+        i18nKey: 'update.available',
+        actionLabel: this.i18nStore?.t('update.reload'),
+        actionFn: applyUpdate,
+        duration: UPDATE_TOAST_MS,
+      },
+    }));
   };
 
   private _handleComposeChange = () => {

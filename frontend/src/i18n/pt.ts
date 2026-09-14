@@ -505,6 +505,10 @@ export const pt = {
     description: 'A conexão de rede foi perdida',
     tryingAgain: 'Tentando novamente em {seconds} segundos...'
   },
+  update: {
+    available: 'Está disponível uma nova versão.',
+    reload: 'Recarregar'
+  },
   general: {
     error: 'Erro',
     cancel: 'Cancelar',

@@ -47,6 +47,42 @@ func TestSecurityHeadersAppliedToStaticAssets(t *testing.T) {
 	}
 }
 
+// TestBuildNamedOnEveryAnswer: the frontend a tab loaded is named on every
+// answer, so a tab left open across an upgrade can tell that reloading would
+// bring it different code.
+func TestBuildNamedOnEveryAnswer(t *testing.T) {
+	dist := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte(`<script src="/assets/index-a1.js"></script>`)},
+		"app.js":     &fstest.MapFile{Data: []byte("console.log(1)")},
+	}
+	router := NewRouter(&Server{logger: &NilLogger{}})
+	router.GET("/api/thing", func(ctx *Context) error {
+		return ctx.String(http.StatusOK, "ok")
+	})
+	router.StaticFS("", http.FS(dist))
+	router.build = frontendBuild(dist)
+
+	for _, path := range []string{"/api/thing", "/", "/app.js", "/missing"} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		assert.Equal(t, router.build, w.Header().Get(BuildHeader), path)
+	}
+	assert.Len(t, router.build, 16)
+
+	// Another bundle is another build; the same page is the same build.
+	rebuilt := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte(`<script src="/assets/index-b2.js"></script>`)}}
+	assert.NotEqual(t, router.build, frontendBuild(rebuilt))
+	assert.Equal(t, router.build, frontendBuild(fstest.MapFS{"index.html": dist["index.html"]}))
+
+	// Without a frontend there is nothing to name, and silence says so.
+	assert.Empty(t, frontendBuild(fstest.MapFS{}))
+	bare := NewRouter(&Server{logger: &NilLogger{}})
+	w := httptest.NewRecorder()
+	bare.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
+	_, named := w.Header()[BuildHeader]
+	assert.False(t, named)
+}
+
 // encodeURIComponentJS mimics JavaScript's encodeURIComponent: it percent-encodes
 // every byte except the unreserved set A-Za-z0-9 and -_.!~*'(). Notably it uses
 // %20 for spaces (unlike url.QueryEscape which uses "+"), matching what the

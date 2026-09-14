@@ -505,6 +505,10 @@ export const en = {
     description: 'Network connectivity lost',
     tryingAgain: 'Trying again in {seconds} seconds...'
   },
+  update: {
+    available: 'A new version is available.',
+    reload: 'Reload'
+  },
   general: {
     error: 'Error',
     cancel: 'Cancel',

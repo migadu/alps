@@ -470,6 +470,10 @@ export const fr = {
     description: 'Connexion réseau interrompue',
     tryingAgain: 'Nouvel essai dans {seconds} secondes...'
   },
+  update: {
+    available: 'Une nouvelle version est disponible.',
+    reload: 'Recharger'
+  },
   general: {
     error: 'Erreur',
     cancel: 'Annuler',

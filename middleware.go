@@ -1,7 +1,10 @@
 package alps
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -237,6 +240,9 @@ type Router struct {
 	server      *Server
 	middlewares []Middleware
 	preware     []Middleware
+	// The frontend this router serves, named on every answer; empty when
+	// there is none to name.
+	build string
 }
 
 // NewRouter creates a new Router.
@@ -331,6 +337,23 @@ func (r *Router) wrapHandler(h HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// BuildHeader names the frontend build on every answer.
+const BuildHeader = "X-Alps-Build"
+
+// frontendBuild names the frontend in fsys by the content of its index.html,
+// which references every bundle by a hash of its content. It changes exactly
+// when reloading the page would load different code, and a server upgrade that
+// leaves the frontend alone does not ask anyone to reload. Empty without an
+// index.html.
+func frontendBuild(fsys fs.FS) string {
+	index, err := fs.ReadFile(fsys, "index.html")
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(index)
+	return hex.EncodeToString(sum[:8])
+}
+
 // setSecurityHeaders applies baseline security headers to every response.
 // It runs here, at the single request choke point, rather than as Use/Pre
 // middleware because static file handlers (StaticFS/Static) are registered
@@ -354,6 +377,12 @@ func setSecurityHeaders(h http.Header) {
 // ServeHTTP implements http.Handler.
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	setSecurityHeaders(w.Header())
+	if r.build != "" {
+		// A tab left open for days finds out here that the frontend it is
+		// running is no longer the one being served. It rides on calls the
+		// app already makes, so noticing costs no request of its own.
+		w.Header().Set(BuildHeader, r.build)
+	}
 	r.mux.ServeHTTP(w, req)
 }
 

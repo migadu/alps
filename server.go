@@ -338,6 +338,7 @@ func (s *Server) loadPlugins() error {
 		return fmt.Errorf("failed to get frontend/dist sub-filesystem: %v", err)
 	}
 	router.StaticFS("", http.FS(distFS))
+	router.build = frontendBuild(distFS)
 
 	s.router = router
 	s.plugins = plugins

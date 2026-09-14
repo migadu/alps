@@ -470,6 +470,10 @@ export const es = {
     description: 'Se ha perdido la conexión de red',
     tryingAgain: 'Reintentando en {seconds} segundos...'
   },
+  update: {
+    available: 'Hay una nueva versión disponible.',
+    reload: 'Recargar'
+  },
   general: {
     error: 'Error',
     cancel: 'Cancelar',

@@ -472,6 +472,10 @@ export const de: TranslationDictionary = {
     description: 'Netzwerkverbindung unterbrochen',
     tryingAgain: 'Nächster Versuch in {seconds} Sekunden...'
   },
+  update: {
+    available: 'Eine neue Version ist verfügbar.',
+    reload: 'Neu laden'
+  },
   general: {
     error: 'Fehler',
     cancel: 'Abbrechen',

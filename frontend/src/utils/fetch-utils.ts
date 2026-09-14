@@ -1,3 +1,5 @@
+import { noteVersion } from '../services/app-update';
+
 /**
  * Encodes a value for use as a single path segment in a backend URL when the
  * value may itself contain the `/` character — e.g. an IMAP mailbox name like
@@ -127,5 +129,8 @@ export async function fetchWithTimeout(url: RequestInfo | URL, options: RequestI
     if (response.status === 401) {
       window.dispatchEvent(new CustomEvent('auth-error'));
     }
+  // Every API answer names the build the server serves. The dev server runs
+  // the code being edited, whatever build the backend embeds, so it never asks.
+  if (!import.meta.env.DEV) noteVersion(response);
   return response;
 }

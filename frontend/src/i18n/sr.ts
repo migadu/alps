@@ -479,6 +479,10 @@ export const sr = {
     description: 'Mrežna veza je prekinuta',
     tryingAgain: 'Pokušaj ponovo za {seconds} sekundi...'
   },
+  update: {
+    available: 'Dostupna je nova verzija.',
+    reload: 'Osveži'
+  },
   general: {
     error: 'Greška',
     cancel: 'Otkaži',
