@@ -51,11 +51,15 @@ func parseAddressList(s string) []string {
 	l := strings.Split(s, ",")
 	ret := make([]string, 0, len(l))
 	for _, addr := range l {
+		// Trimmed BEFORE the empty check: "a@example.com, " splits into a
+		// second entry of one space, which used to be kept as an empty
+		// recipient.
+		addr = strings.TrimSpace(addr)
 		if addr == "" {
 			continue
 		}
 
-		ret = append(ret, strings.TrimSpace(addr))
+		ret = append(ret, addr)
 	}
 
 	return ret

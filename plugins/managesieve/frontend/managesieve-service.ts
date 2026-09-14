@@ -15,11 +15,15 @@ class ManageSieveService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: script })
     });
-    const data = await res.json();
+    // The body is read only once the status says it is ours to read. This parsed
+    // it first, so a proxy's HTML 502 threw a SyntaxError and the user was shown
+    // "Unexpected token '<'" in place of the failure — the defect sendDraft in
+    // message-operations already guards against. Success parses as before.
     if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
       throw new Error(data.error || 'Failed to save script');
     }
-    return data;
+    return res.json();
   }
 
   async validateScript(script: string) {
@@ -28,11 +32,16 @@ class ManageSieveService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: script })
     });
-    const data = await res.json();
+    // As saveScript above: the body is read only once the status says it is
+    // ours. A 400 with a JSON body is an ordinary "this script is invalid"
+    // answer and its `error` is still what the user sees; only a body that is
+    // not JSON — a proxy's HTML 502 — now falls back to 'Validation failed'
+    // instead of surfacing a SyntaxError.
     if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
       throw new Error(data.error || 'Validation failed');
     }
-    return data;
+    return res.json();
   }
 
   async fetchFolders() {

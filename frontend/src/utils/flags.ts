@@ -66,8 +66,13 @@ export function getMessageTags(flags: string[] | undefined, i18nStore?: any): Me
 // Functional keywords that carry protocol meaning and must survive a
 // "remove all tags" action (their removal has invisible side effects, e.g.
 // re-prompting for read receipts or losing forwarded/submit state).
+//
+// $Phishing is the server's or filter's warning that a message impersonates
+// someone. It is not a label the user chose, and a bulk "remove all tags" that
+// looks like tidying must not silently erase the one marker saying a message
+// is dangerous.
 const PROTECTED_KEYWORDS = new Set(
-  [FLAG_FORWARDED, FLAG_MDNSENT, FLAG_SUBMITPENDING, FLAG_SUBMITTED].map(f => f.toLowerCase())
+  [FLAG_FORWARDED, FLAG_MDNSENT, FLAG_PHISHING, FLAG_SUBMITPENDING, FLAG_SUBMITTED].map(f => f.toLowerCase())
 );
 
 // Returns every keyword on a message that "remove all tags" should clear:

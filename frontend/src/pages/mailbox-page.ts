@@ -10,11 +10,11 @@ import '../components/alps-sidebar';
 import { consume } from '@lit/context';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { messageSync } from '../services/message-sync';
-import { messageOperations } from '../services/message-operations';
+import { messageOperations, type FlagResult, type MoveResult } from '../services/message-operations';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
-import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxPath, mailboxRoleByName, findMailboxNameByRole } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxPath, mailboxRoleByName, findMailboxNameByRole, mailboxDelimiter } from '../utils/folders';
 import type { LayoutMode, DensityMode } from '../store/settings-store';
 import '../components/alps-initial-loader';
 import { Logger } from '../utils/logger';
@@ -45,25 +45,39 @@ export class MailboxPage extends LitElement {
   i18nStore!: I18nStore;
 
   @state() private showDeleteConfirm = false;
+  /** The last foreground listing failed; cleared when the next one starts. */
+  @state() private listLoadFailed = false;
   @state() private pendingDeleteDetails: any = null;
 
   private markReadTimer: ReturnType<typeof setTimeout> | null = null;
-  private notificationSound = new Audio('/assets/notify.wav');
+  /**
+   * Built on first use, never at construction. `new Audio(src)` starts fetching
+   * at once, and this chime is ~400 kB of uncompressed WAV, downloaded on every
+   * mailbox load for a sound that only plays when mail arrives. The autoplay
+   * policy already wants the first play() inside a user gesture, which is where
+   * unlockAudio builds it.
+   */
+  private notificationSound: HTMLAudioElement | null = null;
+
+  private chime(): HTMLAudioElement {
+    return (this.notificationSound ??= new Audio('/assets/notify.wav'));
+  }
   private audioUnlocked = false;
 
   private unlockAudio = () => {
     if (this.audioUnlocked) return;
     // Mute rather than zero the volume: iOS ignores assignments to
     // HTMLMediaElement.volume, so the unlock play() was audible there.
-    this.notificationSound.muted = true;
-    this.notificationSound.play().then(() => {
-      this.notificationSound.pause();
-      this.notificationSound.currentTime = 0;
+    const sound = this.chime();
+    sound.muted = true;
+    sound.play().then(() => {
+      sound.pause();
+      sound.currentTime = 0;
       this.audioUnlocked = true;
     }).catch(() => {}).finally(() => {
       // Restore even when play() rejects, so a failed unlock doesn't
       // leave real notifications silenced.
-      this.notificationSound.muted = false;
+      sound.muted = false;
     });
 
     document.removeEventListener('click', this.unlockAudio);
@@ -295,6 +309,55 @@ export class MailboxPage extends LitElement {
     window.dispatchEvent(new CustomEvent('show-toast', {
       detail: { message, actionLabel, actionFn, duration }
     }));
+  }
+
+  /**
+   * Says why a flag write did not happen.
+   *
+   * `unsupported` is the server declining the keyword itself — retrying cannot
+   * help, so it gets its own message rather than the generic "try again". A 401
+   * is already announced through `auth-error` and needs no toast of its own.
+   */
+  /**
+   * Says a message action did not happen. Archive, move, copy, undo and permanent
+   * delete all branched on success with NO else — and their services catch
+   * internally and never throw, so the catches beside them were unreachable for a
+   * refusal. The user clicked, the server said no, and nothing on screen said so.
+   * Callers stay quiet on `auth`, which the shell answers with the login screen.
+   */
+  private reportActionFailed(key: string, fallback: string) {
+    this.showGlobalToast(this.i18nStore?.t(key) || fallback, '', undefined, 4000);
+  }
+
+  private reportFlagFailure(result: FlagResult) {
+    if (result.reason === 'auth') return;
+    const key = result.reason === 'unsupported' ? 'toast.tagNotSupported' : 'toast.flagChangeFailed';
+    const fallback = result.reason === 'unsupported'
+      ? 'That tag is not supported by this mail server'
+      : 'Could not update the messages';
+    this.showGlobalToast(this.i18nStore?.t(key) || fallback, '', undefined, 4000);
+  }
+
+  /**
+   * Does an Archive action make sense in the folder on screen?
+   *
+   * By ROLE. This was `!['trash','drafts','archive'].includes(name.toLowerCase())`,
+   * an English-name test for the mobile bulk-actions bar — while message-reader
+   * gates the SAME button with `mailboxRoleByName` and a comment citing issue
+   * #4. Two renderings of one button in one app, disagreeing about what folder
+   * they are in.
+   *
+   * On Gmail or a localized server the name test failed open: the Archive
+   * button appeared inside the Archive folder (archiving into itself) and in
+   * Trash and Drafts. It also failed closed for a user's own folder that
+   * happens to be called "Archive".
+   */
+  private get canArchiveHere(): boolean {
+    // mailboxRoleByName is the one name fallback, and only for roles the server has
+    // not assigned. The unconditional name list that followed here would have
+    // undone that for any folder called "Archive", "Drafts" or "Trash".
+    const role = mailboxRoleByName(this.currentMailbox, this.mailboxes);
+    return role !== 'trash' && role !== 'drafts' && role !== 'archive';
   }
 
   private get effectiveListWidth() {
@@ -544,11 +607,13 @@ export class MailboxPage extends LitElement {
     this.isSyncing = true;
     if (!detail.background) {
       this.loadingMessages = true;
+      this.listLoadFailed = false;
     }
   };
 
   private handleSyncSuccess = (e: Event) => {
     this.isSyncing = false;
+    this.listLoadFailed = false;
     const { data, background } = (e as CustomEvent).detail;
 
     if (data.Username) {
@@ -567,14 +632,22 @@ export class MailboxPage extends LitElement {
       for (const mb of data.Mailboxes) {
         const mbName = mb.Name || mb.Mailbox;
         const oldMb = this.mailboxes.find((m: any) => (m.Name || m.Mailbox) === mbName);
-        const prevTotal = oldMb ? oldMb.Total : undefined;
-        
-        if (prevTotal !== undefined && mb.Total !== undefined && mb.Total > prevTotal) {
-          if (!isInitialLoad && background) {
+        // New mail is BOTH counts rising: the total and the unseen. Either alone is a
+        // false positive. The total alone rang for the user's own moves and copies —
+        // archive fifty messages and the next background sync chimed, because
+        // Archive's total went up — and for another client appending read mail. The
+        // unseen alone would ring for the user marking a message unread. The smaller
+        // rise is the count, so a copy of 200 messages carrying 3 unread says 3. Still
+        // a heuristic: an arrival offset by a delete between polls is missed.
+        if (oldMb && !isInitialLoad && background
+          && mb.Total !== undefined && oldMb.Total !== undefined
+          && mb.Unseen !== undefined && oldMb.Unseen !== undefined) {
+          const arrived = Math.min(mb.Total - oldMb.Total, mb.Unseen - oldMb.Unseen);
+          if (arrived > 0) {
             soundTriggered = true;
             if (mbName.toUpperCase() === 'INBOX') {
               notificationTriggered = true;
-              totalNewInboxMessages += (mb.Total - prevTotal);
+              totalNewInboxMessages += arrived;
             }
           }
         }
@@ -583,8 +656,9 @@ export class MailboxPage extends LitElement {
     }
 
     if (soundTriggered && this.settingsStore.getState().soundNotifications) {
-      this.notificationSound.currentTime = 0;
-      this.notificationSound.play().catch(e => {
+      const sound = this.chime();
+      sound.currentTime = 0;
+      sound.play().catch(e => {
         if (e.name !== 'NotAllowedError') {
           Logger.error('Failed to play sound notification:', e);
         }
@@ -595,7 +669,7 @@ export class MailboxPage extends LitElement {
       const title = this.i18nStore?.t('mailboxPage.newMessages');
       let body = totalNewInboxMessages === 1
         ? (this.i18nStore?.t('mailboxPage.newMessagesSingleBody'))
-        : ((this.i18nStore?.t('mailboxPage.newMessagesMultiBody')).replace('{count}', String(totalNewInboxMessages)));
+        : (this.i18nStore?.t('mailboxPage.newMessagesMultiBody', { count: totalNewInboxMessages }));
 
       try {
         const notification = new Notification(title, {
@@ -607,7 +681,10 @@ export class MailboxPage extends LitElement {
           window.focus();
           notification.close();
           if (this.currentMailbox !== 'INBOX') {
-            this.updateUrl('INBOX', 0, null);
+            // Explicitly no search. updateUrl carries the current one forward by
+            // default, which is right within a folder and wrong on a switch to the
+            // Inbox: a search typed elsewhere would hide the mail being announced.
+            this.updateUrl('INBOX', 0, null, '');
           } else {
             this.currentPage = 0;
             messageSync.fetch(this.currentMailbox, 0, this.filterQuery, false);
@@ -623,7 +700,8 @@ export class MailboxPage extends LitElement {
         this.i18nStore?.t('mailboxPage.newMessagesInInbox'), 
         this.i18nStore?.t('mailboxPage.open'), 
         () => {
-          this.updateUrl('INBOX', 0, null);
+          // No search carried over, as in the notification's click above.
+          this.updateUrl('INBOX', 0, null, '');
         }, 
         5000
       );
@@ -677,6 +755,10 @@ export class MailboxPage extends LitElement {
     const { background } = (e as CustomEvent).detail;
     if (!background) {
       this.loadingMessages = false;
+      // Said, rather than left to the list's empty branch: with no messages and
+      // no spinner it painted "No messages", a claim about a folder this client
+      // had just failed to read, with nothing offered to try again.
+      this.listLoadFailed = true;
     }
   };
 
@@ -837,7 +919,10 @@ export class MailboxPage extends LitElement {
       if (this.selectedMessage?.UID !== msg.UID) {
         this.selectedMessage = msg;
         if (this.layoutMode === 'full') {
-          this.expandedFolders.clear();
+          // A new Set, not clear(): this is @state and bound to the folder list,
+          // and Lit compares by identity, so clearing in place re-rendered
+          // nothing and the folders stayed drawn open over an empty set.
+          this.expandedFolders = new Set();
         }
         this._scheduleMarkAsRead(msg);
       }
@@ -902,6 +987,22 @@ export class MailboxPage extends LitElement {
         }
         this.selectedMessage = { ...this.selectedMessage };
       }
+
+      // Tell the reader, which keeps its OWN copy of each message in
+      // `threadItems` and cannot see this one.
+      //
+      // message-reader has carried a complete handler for this event since
+      // before the fork — it patches every thread item's flags and the open
+      // message with it — and nothing has ever dispatched it. So the
+      // reader→list direction worked (the reader bubbles
+      // `message-flags-changed` to its parent) while list→reader did not:
+      // starring or marking read from the message list left the open
+      // conversation's cards showing the previous state until something forced
+      // a re-fetch. The detail shape below is exactly this method's parameters,
+      // which is how the handler was written to be called.
+      window.dispatchEvent(new CustomEvent('external-message-flags-changed', {
+        detail: { uids, flag, action }
+      }));
     }
   }
 
@@ -914,10 +1015,12 @@ export class MailboxPage extends LitElement {
     this.updateLocalMessageFlags([String(msg.UID)], FLAG_FLAGGED, action);
 
     try {
-      const success = await messageOperations.setFlag(this.currentMailbox, [String(msg.UID)], [FLAG_FLAGGED], action);
-      if (!success) {
-        // Revert on failure
+      const result = await messageOperations.setFlag(this.currentMailbox, [String(msg.UID)], [FLAG_FLAGGED], action);
+      if (!result.ok) {
+        // Revert on failure, and say so: a star that flicks back on its own reads
+        // as a misclick, and the toolbar's star reports the same refusal.
         this.updateLocalMessageFlags([String(msg.UID)], FLAG_FLAGGED, isStarred ? 'add' : 'remove');
+        this.reportFlagFailure(result);
       }
     } catch (err) {
       // Revert on failure
@@ -926,15 +1029,21 @@ export class MailboxPage extends LitElement {
   }
 
   private async _doMarkAsRead(msg: any) {
-    if (this.selectedMessage?.UID === msg.UID) {
-      this.selectedMessage = await messageOperations.markAsRead(this.currentMailbox, msg);
-      this.updateLocalMessageFlags([String(this.selectedMessage.UID)], FLAG_SEEN, 'add');
-    } else {
-      const newMsg = await messageOperations.markAsRead(this.currentMailbox, msg);
-      if (newMsg && newMsg.UID) {
-        this.updateLocalMessageFlags([String(newMsg.UID)], FLAG_SEEN, 'add');
-      }
-    }
+    // markAsRead returns the message UNCHANGED when the write fails, and both
+    // branches here painted the row as read regardless — so any open whose flag
+    // write failed showed a message as read that the server still held unread,
+    // until the next sync quietly flipped it back. The answer is in the flags.
+    //
+    // Not reported: this runs on OPEN, and in a folder the user cannot write to
+    // every open would fail and toast. It just must not paint.
+    //
+    // Selection is checked AFTER the await. It was checked before, so a user who
+    // moved to another message while this was in flight had the old message
+    // written back over their new selection.
+    const updated = await messageOperations.markAsRead(this.currentMailbox, msg);
+    if (!updated?.Flags?.includes(FLAG_SEEN)) return;
+    if (this.selectedMessage?.UID === msg.UID) this.selectedMessage = updated;
+    this.updateLocalMessageFlags([String(updated.UID)], FLAG_SEEN, 'add');
   }
 
   private async _handleReaderAction(e: CustomEvent) {
@@ -953,37 +1062,63 @@ export class MailboxPage extends LitElement {
       if (action === 'star') {
         if (isBulk) {
           const op = this.allSelectedStarred ? 'remove' : 'add';
-          await messageOperations.setFlag(this.currentMailbox, uidsArray, [FLAG_FLAGGED], op);
-          this.updateLocalMessageFlags(uidsArray, FLAG_FLAGGED, op);
-        } else {
-          this.selectedMessage = await messageOperations.toggleStar(this.currentMailbox, this.selectedMessage);
-          this.updateLocalMessageFlags([String(this.selectedMessage.UID)], FLAG_FLAGGED, this.selectedMessage.Flags?.includes(FLAG_FLAGGED) ? 'add' : 'remove');
+          // The result used to be discarded and the paint applied regardless, so
+          // a refused write showed as done until the next sync silently undid it.
+          const starred = await messageOperations.setFlag(this.currentMailbox, uidsArray, [FLAG_FLAGGED], op);
+          if (starred.ok) {
+            this.updateLocalMessageFlags(uidsArray, FLAG_FLAGGED, op);
+          } else {
+            this.reportFlagFailure(starred);
+          }
+        } else if (currentMsg?.UID) {
+          // setFlag, not toggleStar: that returned the message unchanged on a
+          // refusal, so the star stayed as it was and nothing said why, while the
+          // bulk branch above reports the same refusal.
+          const op = currentMsg.Flags?.includes(FLAG_FLAGGED) ? 'remove' : 'add';
+          const starred = await messageOperations.setFlag(this.currentMailbox, [String(currentMsg.UID)], [FLAG_FLAGGED], op);
+          if (starred.ok) {
+            this.updateLocalMessageFlags([String(currentMsg.UID)], FLAG_FLAGGED, op);
+          } else {
+            this.reportFlagFailure(starred);
+          }
         }
       } else if (action === 'addTag' || action === 'removeTag') {
         const tags = e.detail.tags || (e.detail.folder ? [e.detail.folder] : []);
         if (!tags || tags.length === 0) return;
         const op = action === 'addTag' ? 'add' : 'remove';
-        if (isBulk) {
-          await messageOperations.setFlag(this.currentMailbox, uidsArray, tags, op);
-          for (const t of tags) this.updateLocalMessageFlags(uidsArray, t, op);
+        // Tags are the path this matters most on: the backend stores only
+        // `$label1`..`$label5` and used to answer 200 OK for anything else, so a
+        // tag it would never keep was painted here and quietly erased later.
+        const targets = isBulk ? uidsArray : [String(currentMsg.UID)];
+        const tagged = await messageOperations.setFlag(this.currentMailbox, targets, tags, op);
+        if (tagged.ok) {
+          for (const t of tags) this.updateLocalMessageFlags(targets, t, op);
         } else {
-          await messageOperations.setFlag(this.currentMailbox, [String(currentMsg.UID)], tags, op);
-          for (const t of tags) this.updateLocalMessageFlags([String(currentMsg.UID)], t, op);
+          this.reportFlagFailure(tagged);
         }
         this.requestUpdate();
       } else if (action === 'markUnread') {
         if (isBulk) {
           const op = this.allSelectedUnread ? 'add' : 'remove';
-          await messageOperations.setFlag(this.currentMailbox, uidsArray, [FLAG_SEEN], op);
-          this.updateLocalMessageFlags(uidsArray, FLAG_SEEN, op);
-        } else {
-          const isUnread = !currentMsg?.Flags || !currentMsg.Flags.includes(FLAG_SEEN);
-          if (isUnread) {
-            this.selectedMessage = await messageOperations.markAsRead(this.currentMailbox, currentMsg);
-            this.updateLocalMessageFlags([String(this.selectedMessage.UID)], FLAG_SEEN, 'add');
+          const seen = await messageOperations.setFlag(this.currentMailbox, uidsArray, [FLAG_SEEN], op);
+          if (seen.ok) {
+            this.updateLocalMessageFlags(uidsArray, FLAG_SEEN, op);
           } else {
-            const success = await messageOperations.markAsUnread(this.currentMailbox, currentMsg);
-            if (success) {
+            this.reportFlagFailure(seen);
+          }
+        } else {
+          // setFlag, not markAsRead/markAsUnread: those hid the FlagResult, so the read
+          // branch painted the row read even when the write failed, and the unread
+          // branch said nothing when it did. The bulk branch above already did this.
+          if (currentMsg?.UID) {
+            const isUnread = !currentMsg.Flags || !currentMsg.Flags.includes(FLAG_SEEN);
+            const seen = await messageOperations.setFlag(this.currentMailbox, [String(currentMsg.UID)], [FLAG_SEEN], isUnread ? 'add' : 'remove');
+            if (!seen.ok) {
+              this.reportFlagFailure(seen);
+            } else if (isUnread) {
+              this.selectedMessage = { ...currentMsg, Flags: [...(currentMsg.Flags || []), FLAG_SEEN] };
+              this.updateLocalMessageFlags([String(currentMsg.UID)], FLAG_SEEN, 'add');
+            } else {
               this.updateLocalMessageFlags([String(currentMsg.UID)], FLAG_SEEN, 'remove');
               this.selectedMessage = null;
               this.updateUrl(this.currentMailbox, this.currentPage, null);
@@ -997,7 +1132,7 @@ export class MailboxPage extends LitElement {
         const isTrash = currentRole === 'trash';
         const isDrafts = currentRole === 'drafts';
         const isSpam = currentRole === 'junk';
-        let moveResult: { success: boolean, uidMapping?: Record<string, string> } = { success: false };
+        let moveResult: MoveResult = { success: false };
         // Resolve move destinations to the actual special-use mailbox (e.g. Gmail's
         // "[Gmail]/Trash") rather than a hardcoded English name. See issue #4.
         let destinationFolder = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
@@ -1068,9 +1203,12 @@ export class MailboxPage extends LitElement {
                     this.selectedUids = newUids;
                     this.requestUpdate();
                   }
+                } else if (revertResult.reason !== 'auth') {
+                  this.reportActionFailed('toast.undoFailed', 'Could not undo that');
                 }
               } catch (err) {
                 Logger.error("Undo failed", err);
+                this.reportActionFailed('toast.undoFailed', 'Could not undo that');
               }
             };
           } else if (!isBulk && moveResult.uidMapping?.[String(currentMsg.UID)]) {
@@ -1085,13 +1223,18 @@ export class MailboxPage extends LitElement {
                   } else {
                     this.updateUrl(originalMailbox, page, null);
                   }
+                } else if (revertResult.reason !== 'auth') {
+                  this.reportActionFailed('toast.undoFailed', 'Could not undo that');
                 }
               } catch (err) {
                 Logger.error("Undo failed", err);
+                this.reportActionFailed('toast.undoFailed', 'Could not undo that');
               }
             };
           }
           this.showGlobalToast(toastMessage, undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
+        } else if (moveResult.reason !== 'auth') {
+          this.reportActionFailed('toast.moveFailed', 'Could not move that');
         }
       } else if (action === 'moveTo' || action === 'copyTo') {
         const destinationFolder = e.detail.folder;
@@ -1099,7 +1242,7 @@ export class MailboxPage extends LitElement {
 
         const isMove = action === 'moveTo';
 
-        let result: { success: boolean, uidMapping?: Record<string, string> } = { success: false };
+        let result: MoveResult = { success: false };
         if (isMove) {
           if (isBulk) result = await messageOperations.moveMessages(this.currentMailbox, uidsArray, destinationFolder);
           else result = await messageOperations.moveMessages(this.currentMailbox, [String(currentMsg.UID)], destinationFolder);
@@ -1137,9 +1280,12 @@ export class MailboxPage extends LitElement {
                     this.selectedUids = newUids;
                     this.requestUpdate();
                   }
+                } else if (revertResult.reason !== 'auth') {
+                  this.reportActionFailed('toast.undoFailed', 'Could not undo that');
                 }
               } catch (err) {
                 Logger.error("Undo failed", err);
+                this.reportActionFailed('toast.undoFailed', 'Could not undo that');
               }
             };
           } else if (!isBulk && isMove && result.uidMapping?.[String(currentMsg.UID)]) {
@@ -1154,13 +1300,19 @@ export class MailboxPage extends LitElement {
                   } else {
                     this.updateUrl(originalMailbox, page, null);
                   }
+                } else if (revertResult.reason !== 'auth') {
+                  this.reportActionFailed('toast.undoFailed', 'Could not undo that');
                 }
               } catch (err) {
                 Logger.error("Undo failed", err);
+                this.reportActionFailed('toast.undoFailed', 'Could not undo that');
               }
             };
           }
           this.showGlobalToast(toastMessage, undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
+        } else if (result.reason !== 'auth') {
+          if (isMove) this.reportActionFailed('toast.moveFailed', 'Could not move that');
+          else this.reportActionFailed('toast.copyFailed', 'Could not copy that');
         }
       } else if (action === 'downloadMessage' && !isBulk) {
         const uid = currentMsg.UID;
@@ -1190,14 +1342,12 @@ export class MailboxPage extends LitElement {
     const { isBulk, uidsArray, currentMsgUid, isDrafts } = details;
     if (isBulk) this.bulkProcessing = true;
     try {
-      let success = false;
-      if (isBulk) {
-        success = await messageOperations.deleteMessages(this.currentMailbox, uidsArray);
-      } else {
-        success = await messageOperations.deleteMessages(this.currentMailbox, [String(currentMsgUid)]);
-      }
+      const deleteResult = await messageOperations.deleteMessagesResult(
+        this.currentMailbox,
+        isBulk ? uidsArray : [String(currentMsgUid)],
+      );
 
-      if (success) {
+      if (deleteResult.ok) {
         if (isBulk) {
           this.selectedUids = new Set();
           this.selectedMessage = null;
@@ -1215,6 +1365,8 @@ export class MailboxPage extends LitElement {
           toastMessage = isBulk ? this.i18nStore?.t('toast.messagesPermanentlyDeleted', { count: uidsArray.length }) : (this.i18nStore?.t('toast.messagePermanentlyDeleted'));
         }
         this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
+      } else if (deleteResult.reason !== 'auth') {
+        this.reportActionFailed('toast.messageDeleteFailed', 'The message could not be deleted');
       }
     } finally {
       if (isBulk) this.bulkProcessing = false;
@@ -1249,6 +1401,7 @@ export class MailboxPage extends LitElement {
         .username=${this.username}
         .isMobile=${this.isMobile}
         .currentMailbox=${this.currentMailbox}
+        .currentMailboxDelimiter=${mailboxDelimiter(this.currentMailbox, this.mailboxes)}
         .searchQuery=${this.filterQuery}
         .scrolled=${this.listScrolled}
         @toggle-sidebar=${() => this.mobileSidebarOpen = !this.mobileSidebarOpen}
@@ -1357,6 +1510,7 @@ export class MailboxPage extends LitElement {
               .messages=${this.messages}
               .currentMailbox=${this.currentMailbox}
               .currentMailboxRole=${mailboxRoleByName(this.currentMailbox, this.mailboxes) || ''}
+              .currentMailboxDelimiter=${mailboxDelimiter(this.currentMailbox, this.mailboxes)}
               .sidebarCollapsed=${this.sidebarCollapsed && !this.isMobile}
               .loading=${this.loadingMessages}
               .selectedMessage=${this.selectedMessage}
@@ -1370,6 +1524,7 @@ export class MailboxPage extends LitElement {
               .filterQuery=${this.filterQuery}
               .sortOrder=${this.sortOrder}
               .syncing=${this.isSyncing}
+              .loadFailed=${this.listLoadFailed}
               @refresh=${() => {
         this.currentPage = 0;
 
@@ -1411,7 +1566,7 @@ export class MailboxPage extends LitElement {
               <div slot="mobile-bulk-actions" class="mobile-bulk-actions-container">
                 <alps-icon-btn title=${this.i18nStore?.t('general.cancel') || 'Cancel'} @click=${() => { this.selectedUids = new Set(); this.requestUpdate(); }} icon="arrowLeft"></alps-icon-btn>
                 <span class="mobile-bulk-actions-count">${this.selectedUids.size}</span>
-                ${!['trash', 'drafts', 'archive'].includes(this.currentMailbox.toLowerCase()) ? html`
+                ${this.canArchiveHere ? html`
                   <alps-icon-btn title=${this.i18nStore?.t('messageReader.archive')} @click=${() => this._handleReaderAction(new CustomEvent('action', {detail: {action: 'archive'}}))} icon="archiveBox"></alps-icon-btn>
                 ` : ''}
                 <alps-icon-btn title=${this.i18nStore?.t('messageReader.delete')} @click=${() => this._handleReaderAction(new CustomEvent('action', {detail: {action: 'delete'}}))} icon="trash"></alps-icon-btn>

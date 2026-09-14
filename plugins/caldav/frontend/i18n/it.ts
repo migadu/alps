@@ -1,5 +1,10 @@
 export default {
     calendar: {
+      deleteCalendarFailed: 'Non è stato possibile eliminare il calendario.',
+      deleteEventFailed: 'Non è stato possibile eliminare l\'evento.',
+      saveCalendarFailed: 'Non è stato possibile salvare il calendario.',
+      saveEventFailed: 'Non è stato possibile salvare l\'evento.',
+      loadFailed: 'Impossibile caricare il calendario. Controlla la connessione e riprova.',
         months: { '0': 'Gennaio', '1': 'Febbraio', '2': 'Marzo', '3': 'Aprile', '4': 'Maggio', '5': 'Giugno', '6': 'Luglio', '7': 'Agosto', '8': 'Settembre', '9': 'Ottobre', '10': 'Novembre', '11': 'Dicembre' },
         monthsShort: { '0': 'Gen', '1': 'Feb', '2': 'Mar', '3': 'Apr', '4': 'Mag', '5': 'Giu', '6': 'Lug', '7': 'Ago', '8': 'Set', '9': 'Ott', '10': 'Nov', '11': 'Dic' },
         days: { '0': 'Domenica', '1': 'Lunedì', '2': 'Martedì', '3': 'Mercoledì', '4': 'Giovedì', '5': 'Venerdì', '6': 'Sabato' },

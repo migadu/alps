@@ -144,11 +144,6 @@ func NewCluster(cfg Config) (*Cluster, error) {
 
 	// Start periodic leader check (handles missed events, failure detection)
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				cfg.Logger.Error("panic in cluster leader check goroutine", "panic", r)
-			}
-		}()
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -156,7 +151,7 @@ func NewCluster(cfg Config) (*Cluster, error) {
 			case <-cluster.done:
 				return
 			case <-ticker.C:
-				cluster.updateLeader()
+				cluster.updateLeaderSafely()
 			}
 		}
 	}()
@@ -174,17 +169,30 @@ func NewCluster(cfg Config) (*Cluster, error) {
 	return cluster, nil
 }
 
+// updateLeaderSafely recalculates leadership with its own recover.
+//
+// As tryRejoin below: the recover was on the goroutine, outside the for, so one
+// panic reading memberlist state ended leader election permanently. A node that
+// was leader would then stay leader in its own view forever, and a node that
+// should have been promoted never would — so certificate issuance either never
+// hands over, or is done by two nodes at once. This loop exists precisely to
+// catch the membership changes the event delegate missed; it has to outlive a
+// bad tick.
+func (c *Cluster) updateLeaderSafely() {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Error("panic in cluster leader check - continuing", "panic", r)
+		}
+	}()
+	c.updateLeader()
+}
+
 // rejoinLoop periodically re-attempts to join the configured peers whenever this
 // node appears isolated (only itself in the member list). memberlist never merges
 // two disjoint clusters on its own — someone must call Join again — so without
 // this a failed startup join or a partition heals into permanent split-brain,
 // with every partition electing its own leader.
 func (c *Cluster) rejoinLoop(peers []string) {
-	defer func() {
-		if r := recover(); r != nil {
-			c.logger.Error("panic in cluster rejoin goroutine", "panic", r)
-		}
-	}()
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -192,13 +200,37 @@ func (c *Cluster) rejoinLoop(peers []string) {
 		case <-c.done:
 			return
 		case <-ticker.C:
-			if c.ml != nil && c.ml.NumMembers() <= 1 {
-				if _, err := c.ml.Join(peers); err != nil {
-					c.logger.Debug("cluster rejoin attempt failed", "error", err)
-				} else {
-					c.logger.Info("cluster rejoined peers", "members", c.ml.NumMembers())
-				}
-			}
+			c.tryRejoin(peers)
+		}
+	}
+}
+
+// tryRejoin is one rejoin attempt, with its own recover.
+//
+// The recover was a single defer on rejoinLoop itself, OUTSIDE the for, so a
+// panic inside memberlist's Join unwound the loop and the goroutine returned
+// for good. Nothing restarts it.
+//
+// That one is not merely a stalled retry. This loop is the ONLY way a node that
+// failed its initial join, or that got partitioned, ever gets back — the initial
+// Join is best-effort by design and this is the retry. And a node alone in the
+// cluster considers ITSELF leader, because leadership is the lexicographically
+// smallest member name and it is the only member it can see. So a node whose
+// rejoin loop has died is permanently isolated AND permanently convinced it is
+// the leader — which means it warms certificates on its own, against the real
+// leader doing the same, which is the duplicate ACME issuance the warmer's
+// leadership check exists to prevent.
+func (c *Cluster) tryRejoin(peers []string) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Error("panic in cluster rejoin attempt - continuing", "panic", r)
+		}
+	}()
+	if c.ml != nil && c.ml.NumMembers() <= 1 {
+		if _, err := c.ml.Join(peers); err != nil {
+			c.logger.Debug("cluster rejoin attempt failed", "error", err)
+		} else {
+			c.logger.Info("cluster rejoined peers", "members", c.ml.NumMembers())
 		}
 	}
 }
@@ -339,13 +371,31 @@ func (c *Cluster) NotifyUpdate(node *memberlist.Node) {
 
 func (c *Cluster) NodeMeta(limit int) []byte { return nil }
 
+// NotifyMsg receives a user-data message from a peer.
+//
+// memberlist's Delegate contract is explicit about two things here, and this
+// used to honour neither:
+//
+//   - "Care should be taken that this method does not block, since doing so
+//     would block the entire UDP packet receive loop." The only handler is
+//     RateLimiter.HandleClusterMessage, which takes the rate limiter's mutex —
+//     the same mutex every login check holds. Under login load the gossip
+//     receive loop stalled behind it, and a stalled receive loop is how a
+//     healthy node starts looking dead to its peers.
+//   - "the byte slice may be modified after the call returns, so it should be
+//     copied if needed." Handing the live buffer to a goroutine makes that a
+//     real race rather than a theoretical one, so the copy comes first.
 func (c *Cluster) NotifyMsg(data []byte) {
 	c.msgMtx.RLock()
 	handler := c.msgHandler
 	c.msgMtx.RUnlock()
-	if handler != nil {
-		handler(data)
+	if handler == nil {
+		return
 	}
+
+	buf := make([]byte, len(data))
+	copy(buf, data)
+	go handler(buf)
 }
 
 func (c *Cluster) GetBroadcasts(overhead, limit int) [][]byte {

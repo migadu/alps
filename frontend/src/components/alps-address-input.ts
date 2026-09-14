@@ -13,6 +13,7 @@ export class AlpsAddressInput extends LitElement {
   @state() private suggestions: { name: string, address: string }[] = [];
   @state() private focusedSuggestionIndex = -1;
   private _suggestionTimeout: number | null = null;
+  private _suggestionSeq = 0;
 
   public focus() {
     const input = this.shadowRoot?.querySelector('input');
@@ -68,21 +69,40 @@ export class AlpsAddressInput extends LitElement {
     return addr;
   }
 
+  /** Invalidates any lookup still debouncing or in flight, so it cannot land. */
+  private _cancelSuggestions() {
+    if (this._suggestionTimeout !== null) {
+      window.clearTimeout(this._suggestionTimeout);
+      this._suggestionTimeout = null;
+    }
+    this._suggestionSeq++;
+  }
+
   private _handleInput(e: Event) {
     const target = e.target as HTMLInputElement;
     this.inputText = target.value;
 
-    if (this._suggestionTimeout !== null) {
-      window.clearTimeout(this._suggestionTimeout);
-    }
+    this._cancelSuggestions();
 
     if (this.inputText.trim().length > 1) {
+      // Sequenced. A slow lookup for "al" must not land AFTER the one for
+      // "alice" and replace its results, and nothing may land once the user has
+      // moved on — arrowed into the list, picked an address, dismissed it. Each
+      // landing also reset the highlighted suggestion, so a lookup finishing
+      // mid-navigation threw the user's selection away; and one finishing after
+      // an address was picked reopened the dropdown. The ticket is taken at the
+      // keystroke, so a lookup still waiting out its debounce is superseded too.
+      const seq = this._suggestionSeq;
+      const query = this.inputText.trim();
       this._suggestionTimeout = window.setTimeout(async () => {
+        this._suggestionTimeout = null;
         try {
-          const results = await registry.invokeHookAsync('composer:suggest', { query: this.inputText.trim() });
+          const results = await registry.invokeHookAsync('composer:suggest', { query });
+          if (seq !== this._suggestionSeq) return;
           this.suggestions = results.flat();
           this.focusedSuggestionIndex = -1;
         } catch (err) {
+          if (seq !== this._suggestionSeq) return;
           console.error('Failed to get suggestions', err);
           this.suggestions = [];
           this.focusedSuggestionIndex = -1;
@@ -100,20 +120,24 @@ export class AlpsAddressInput extends LitElement {
     if (this.suggestions.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
+        this._cancelSuggestions();
         this.focusedSuggestionIndex = Math.min(this.focusedSuggestionIndex + 1, this.suggestions.length - 1);
         return;
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
+        this._cancelSuggestions();
         this.focusedSuggestionIndex = Math.max(this.focusedSuggestionIndex - 1, -1);
         return;
       } else if (e.key === 'Enter' && this.focusedSuggestionIndex >= 0) {
         e.preventDefault();
+        this._cancelSuggestions();
         const s = this.suggestions[this.focusedSuggestionIndex];
         const addr = s.name ? '"' + s.name + '" <' + s.address + '>' : s.address;
         this._addAddress(addr);
         return;
       } else if (e.key === 'Escape') {
         e.preventDefault();
+        this._cancelSuggestions();
         this.suggestions = [];
         this.focusedSuggestionIndex = -1;
         return;
@@ -126,8 +150,12 @@ export class AlpsAddressInput extends LitElement {
         this._addAddress(inputVal);
       }
     } else if ((e.key === ' ' || e.key === ',') && inputVal) {
-      e.preventDefault();
+      // Only when it commits. A space or comma that does not end an address is
+      // part of one: `Ada Lovelace <ada@example.com>` is typed with spaces and
+      // `"Lovelace, Ada" <ada@example.com>` with a comma, and both were swallowed
+      // while the text so far was not yet a valid address.
       if (this._isValidEmail(inputVal)) {
+        e.preventDefault();
         this._addAddress(inputVal);
       }
     } else if (e.key === 'Backspace' && !this.inputText && this.addresses.length > 0) {
@@ -143,6 +171,7 @@ export class AlpsAddressInput extends LitElement {
       this._notifyChange();
     }
     this.inputText = '';
+    this._cancelSuggestions();
     this.suggestions = [];
     this.focusedSuggestionIndex = -1;
     

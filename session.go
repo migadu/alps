@@ -23,6 +23,17 @@ import (
 
 const defaultSessionDuration = 30 * time.Minute
 
+// How long a session may live no matter how much it is used, when
+// AbsoluteSessionDuration is not configured.
+//
+// The idle window alone bounds nothing: every request resets it, and this app's
+// own front end pings /session every five minutes while a tab is open. So a
+// token that has been captured and is being kept warm never expires, and the
+// user is never asked to authenticate again. A mail tab is the extreme
+// long-lived tab, which is why the idle window is generous — and exactly why it
+// needs a ceiling that use cannot push back.
+const defaultAbsoluteSessionDuration = 7 * 24 * time.Hour
+
 // isNetworkError checks if an error is a network connection error
 func isNetworkError(err error) bool {
 	if err == nil {
@@ -80,7 +91,12 @@ type Session struct {
 	notice             string
 	authenticated2FA   bool          // Set to true after successful 2FA verification
 	requires2FA        bool          // Set to true if 2FA is enabled for this account
-	duration           time.Duration // Effective session duration for this user
+	duration           time.Duration // Effective idle window for this user
+
+	// The wall-clock instant past which this session ends no matter how much it
+	// is used. Fixed at login and never moved — see SessionManager's
+	// absoluteSessionDuration for why an idle window alone is not enough.
+	absoluteDeadline time.Time
 
 	providerLocker sync.Mutex
 	provider       provider.MailProvider // protected by locker, can be nil
@@ -369,6 +385,14 @@ func (s *Session) Close() {
 	})
 }
 
+// MaxAttachmentSize is the per-composer attachment budget in bytes, after
+// defaults have been applied. Exposed so the HTTP layer can bound the REQUEST
+// as well as what it keeps: PutAttachment can only refuse an upload that has
+// already been read to disk.
+func (sm *SessionManager) MaxAttachmentSize() int64 {
+	return sm.maxAttachmentSize
+}
+
 // Puts an attachment and returns a generated UUID
 func (s *Session) PutAttachment(composerID string, in *multipart.FileHeader,
 	form *multipart.Form) (string, error) {
@@ -524,6 +548,7 @@ type SessionManager struct {
 	loginKey                 *fernet.Key // for encrypting linked account passwords
 	sessionDuration          time.Duration
 	maxSessionDuration       time.Duration
+	absoluteSessionDuration  time.Duration
 	maxSessions              int   // Maximum total sessions (0 = unlimited)
 	maxSessionsPerUser       int   // Maximum sessions per username (0 = unlimited)
 	maxAttachmentSize        int64 // Max attachment size per composer in bytes
@@ -568,6 +593,7 @@ func newSessionManager(connectProviderFunc provider.AuthenticatedProviderFactory
 		loginKey:                 loginKey,
 		sessionDuration:          sessionDuration,
 		maxSessionDuration:       maxSessionDuration,
+		absoluteSessionDuration:  defaultAbsoluteSessionDuration,
 		maxSessions:              maxSessions,
 		maxSessionsPerUser:       maxSessionsPerUser,
 		maxAttachmentSize:        int64(maxAttachmentMiB) << 20,
@@ -634,6 +660,41 @@ func (sm *SessionManager) CalculateSessionDurationForVal(autoLogout *int) time.D
 
 	sm.logger.Debugf("Using user's AutoLogout setting: %v", userDuration)
 	return userDuration
+}
+
+// absoluteDeadlineFrom returns the instant a session created at `start` must
+// end, or the zero time when no cap is configured.
+//
+// Floored at the idle window, because a cap BELOW it would silently redefine
+// the idle window as the shorter of the two — a misconfiguration that reads as
+// "sessions last 30 minutes of inactivity" everywhere while behaving as
+// something else entirely.
+func (sm *SessionManager) absoluteDeadlineFrom(start time.Time) time.Time {
+	if sm.absoluteSessionDuration <= 0 {
+		return time.Time{}
+	}
+	d := sm.absoluteSessionDuration
+	if sm.sessionDuration > d {
+		d = sm.sessionDuration
+	}
+	return start.Add(d)
+}
+
+// nextTimeout is how long the timeout goroutine should wait before ending the
+// session: the idle window, or whatever is left of the absolute cap, whichever
+// comes first. A non-positive result means the cap has already passed.
+func (s *Session) nextTimeout() time.Duration {
+	if s.absoluteDeadline.IsZero() {
+		return s.duration
+	}
+	remaining := time.Until(s.absoluteDeadline)
+	if remaining <= 0 {
+		return 0
+	}
+	if remaining < s.duration {
+		return remaining
+	}
+	return s.duration
 }
 
 func (sm *SessionManager) connectProvider(username, password string) (provider.MailProvider, error) {
@@ -806,6 +867,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 		cache:          cache,
 		duration:       sm.sessionDuration, // updated from user settings below
 	}
+	s.absoluteDeadline = sm.absoluteDeadlineFrom(time.Now())
 	s.lastAccess.Store(time.Now().UnixNano())
 
 	// Read the user's settings (auto-logout duration, 2FA) BEFORE taking the
@@ -876,8 +938,22 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 				sm.logger.Errorf("panic in session timeout goroutine: %v", r)
 			}
 		}()
-		timer := time.NewTimer(s.duration)
+		timer := time.NewTimer(s.nextTimeout())
 		defer timer.Stop()
+
+		// Every reset goes through nextTimeout, so a ping can push the idle
+		// window forward but never past the absolute deadline. Without this the
+		// timer was reset to the full idle window on each ping and the session
+		// slid indefinitely.
+		rearm := func() bool {
+			d := s.nextTimeout()
+			timer.Stop()
+			if d <= 0 {
+				return false
+			}
+			timer.Reset(d)
+			return true
+		}
 
 		alive := true
 		for alive {
@@ -887,12 +963,10 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 				// stale value is delivered afterwards, so the old drain pattern
 				// (`if !timer.Stop() { <-timer.C }`) is unnecessary and can now
 				// deadlock if the timer fires as a ping arrives.
-				timer.Stop()
-				timer.Reset(s.duration)
+				alive = rearm()
 			case newDuration := <-s.durationUpdate:
 				s.duration = newDuration
-				timer.Stop()
-				timer.Reset(s.duration)
+				alive = rearm()
 			case <-timer.C:
 				alive = false
 			case <-s.closed:

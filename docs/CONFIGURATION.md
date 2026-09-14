@@ -153,6 +153,7 @@ Configures the backend mail services.
 | :--- | :--- | :--- | :--- |
 | `server` | String | None | Direct URL to IMAP server (e.g. `"imaps://imap.example.com:993"`). |
 | `insecure` | Boolean | `false` | Allow connections without strict TLS validation. |
+| `authserv_ids` | Array | `[]` | Authserv-ids of the receiving mail servers whose `Authentication-Results` header is trusted for a message's DMARC verdict, which decides whether a sender's BIMI logo is shown (e.g. `["mx.example.com"]`). Matched in any case. Empty means the topmost header is read, so a message the server did not stamp is judged by a header its sender wrote. |
 
 ### `[provider.maildir]`
 | Option | Type | Default | Description |

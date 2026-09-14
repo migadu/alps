@@ -17,6 +17,9 @@ export class CalendarEventModal extends LitElement {
 
     @property({ type: Object }) event?: EventData;
     @property({ type: Object }) initialDate?: Date;
+    /** What the click that opened the editor meant, when the view knows: a day
+     * cell or the all-day strip says true, a time slot says false. */
+    @property({ type: Boolean }) initialAllDay?: boolean;
     @property({ type: Array }) calendars: CalendarData[] = [];
     @property({ type: Boolean }) open = false;
 
@@ -86,7 +89,7 @@ export class CalendarEventModal extends LitElement {
                 this.location = this.event.location || '';
                 this.description = this.event.description || '';
                 this.calendarPath = this.event.calendarPath || (this.calendars.length > 0 ? this.calendars[0].path : '');
-                const isAllDay = isAllDayEvent(this.event.start, this.event.end);
+                const isAllDay = isAllDayEvent(this.event);
                 this.isAllDay = isAllDay;
                 
                 if (this.event.rrule) {
@@ -128,8 +131,12 @@ export class CalendarEventModal extends LitElement {
                 this.calendarPath = this.calendars.length > 0 ? this.calendars[0].path : '';
                 const start = this.initialDate ? new Date(this.initialDate) : new Date();
                 
-                // If initialDate has a 00:00:00 time, assume user clicked on a day or month view cell
-                const isFullDayClick = this.initialDate && start.getHours() === 0 && start.getMinutes() === 0;
+                // Stated by the view that was clicked. A midnight start is only the
+                // fallback for a caller that does not say; read on its own, it made
+                // the 00:00 row of the week and day grids open the all-day form.
+                const isFullDayClick = this.initialAllDay !== undefined
+                    ? this.initialAllDay
+                    : this.initialDate && start.getHours() === 0 && start.getMinutes() === 0;
                 
                 if (isFullDayClick) {
                     this.isAllDay = true;
@@ -193,6 +200,7 @@ export class CalendarEventModal extends LitElement {
                 description: this.description,
                 start: startISO,
                 end: endISO,
+                allDay: this.isAllDay,
                 calendarPath: this.calendarPath,
                 rrule: rruleStr
             };
@@ -207,6 +215,9 @@ export class CalendarEventModal extends LitElement {
             this.dispatchEvent(new CustomEvent('saved'));
         } catch (e) {
             console.error('Failed to save event', e);
+            window.dispatchEvent(new CustomEvent('show-toast', {
+                detail: { message: this.i18nStore?.t('calendar.saveEventFailed'), duration: 5000 }
+            }));
         } finally {
             this.isSaving = false;
         }

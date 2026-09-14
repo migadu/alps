@@ -3,7 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { calendarService, getCalendarColor } from './calendar-service';
+import { calendarService, getCalendarColor, weekStart } from './calendar-service';
 import type { CalendarData, EventData } from './calendar-service';
 import { sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar';
@@ -51,11 +51,11 @@ export class CalendarPage extends LitElement {
     @state() viewMode: ViewMode = 'month';
     @state() loading = true;
     @state() isSpinning = false;
-    @state() error = '';
 
     @state() modalOpen = false;
     @state() selectedEvent?: EventData;
     @state() initialDate?: Date;
+    @state() initialAllDay?: boolean;
     @state() private activeCalendars: Set<string> = new Set();
     @state() searchQuery = '';
 
@@ -380,6 +380,15 @@ export class CalendarPage extends LitElement {
         }
     }
 
+    /** Says a write failed. Deleting a calendar, deleting an event and saving a
+     * calendar all reported failure to the console only, so the UI went on
+     * showing the state the user had asked for. */
+    private reportFailure(key: string) {
+        window.dispatchEvent(new CustomEvent('show-toast', {
+            detail: { message: this.i18nStore?.t(key), duration: 5000 }
+        }));
+    }
+
     private parseHash() {
         const hash = window.location.hash;
         if (!hash.startsWith('#/calendar')) return false;
@@ -409,16 +418,19 @@ export class CalendarPage extends LitElement {
             } else if (this.viewMode === 'month') {
                 const [y, m] = dateStr.split('-');
                 if (y && m) {
-                    newDate.setFullYear(parseInt(y, 10));
-                    newDate.setMonth(parseInt(m, 10) - 1);
-                    newDate.setDate(1);
+                    // Constructed, not set field by field. setMonth on the 29th–31st
+                    // rolls into the following month when the target month is
+                    // shorter — January 31 becomes "April 31", which is May 1 —
+                    // before setDate(1) runs, so a link to April opened May on the
+                    // last days of a long month.
+                    newDate = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
                 }
             } else {
                 const [y, m, d] = dateStr.split('-');
                 if (y && m && d) {
-                    newDate.setFullYear(parseInt(y, 10));
-                    newDate.setMonth(parseInt(m, 10) - 1);
-                    newDate.setDate(parseInt(d, 10));
+                    // As above: set field by field from the 31st, February 15
+                    // became March 15.
+                    newDate = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
                 }
             }
             
@@ -503,7 +515,6 @@ export class CalendarPage extends LitElement {
     private async fetchData() {
         this.loading = true;
         this.isSpinning = true;
-        this.error = '';
         try {
             const calRes = await calendarService.fetchCalendars();
             
@@ -513,15 +524,16 @@ export class CalendarPage extends LitElement {
 
             if (this.viewMode === 'year') {
                 start = new Date(year, 0, 1);
-                end = new Date(year, 11, 31);
+                // The start of the day AFTER the last one drawn, as the week arm
+                // does. Ending at 31 December 00:00 dropped that day's timed events.
+                end = new Date(year + 1, 0, 1);
             } else if (this.viewMode === 'month') {
                 start = new Date(year, month, 1);
                 end = new Date(year, month + 1, 0);
                 start.setDate(start.getDate() - 14);
                 end.setDate(end.getDate() + 14);
             } else if (this.viewMode === 'week') {
-                start = new Date(this.currentDate);
-                start.setDate(start.getDate() - start.getDay() + 1); // Monday
+                start = weekStart(this.currentDate);
                 end = new Date(start);
                 end.setDate(start.getDate() + 7);
             } else {
@@ -579,7 +591,9 @@ export class CalendarPage extends LitElement {
             }
         } catch (e) {
             console.error(e);
-            this.error = 'Failed to load calendar data.';
+            // Said, not stored: `error` was written here and rendered nowhere, so a
+            // calendar that failed to load simply showed no events.
+            this.reportFailure('calendar.loadFailed');
         } finally {
             this.loading = false;
         }
@@ -592,12 +606,16 @@ export class CalendarPage extends LitElement {
     };
 
     private changeDate(offset: number, forceMode?: string) {
-        const d = new Date(this.currentDate);
+        let d = new Date(this.currentDate);
         const mode = (forceMode || this.viewMode) as ViewMode;
-        if (mode === 'year') {
-            d.setFullYear(d.getFullYear() + offset);
-        } else if (mode === 'month') {
-            d.setMonth(d.getMonth() + offset);
+        if (mode === 'year' || mode === 'month') {
+            // Constructed, with the day clamped to the target month. setMonth and
+            // setFullYear keep the day of the month, and a day the target month
+            // does not have rolls into the month after it: "next" from 31 January
+            // opened March, and "previous" from 31 March stayed in March.
+            const months = mode === 'year' ? offset * 12 : offset;
+            const lastDay = new Date(d.getFullYear(), d.getMonth() + months + 1, 0).getDate();
+            d = new Date(d.getFullYear(), d.getMonth() + months, Math.min(d.getDate(), lastDay));
         } else if (mode === 'week') {
             d.setDate(d.getDate() + (offset * 7));
         } else {
@@ -606,15 +624,17 @@ export class CalendarPage extends LitElement {
         this.navigate(mode, d);
     }
 
-    private openCreateModal(date?: Date) {
+    private openCreateModal(date?: Date, allDay?: boolean) {
         this.selectedEvent = undefined;
         this.initialDate = date;
+        this.initialAllDay = allDay;
         this.modalOpen = true;
     }
 
     private openEditModal(event: EventData) {
         this.selectedEvent = event;
         this.initialDate = undefined;
+        this.initialAllDay = undefined;
         this.modalOpen = true;
     }
 
@@ -622,17 +642,54 @@ export class CalendarPage extends LitElement {
         this.modalOpen = false;
         this.selectedEvent = undefined;
         this.initialDate = undefined;
+        this.initialAllDay = undefined;
     }
 
     private async handleModalSaved() {
         this.modalOpen = false;
         this.selectedEvent = undefined;
         this.initialDate = undefined;
+        this.initialAllDay = undefined;
         await this.fetchData();
     }
 
+    /** Does the period currently on screen include `date`? */
+    private viewShows(date: Date): boolean {
+        const anchor = this.currentDate;
+        if (this.viewMode === 'year') return date.getFullYear() === anchor.getFullYear();
+        if (this.viewMode === 'month') {
+            return date.getFullYear() === anchor.getFullYear() && date.getMonth() === anchor.getMonth();
+        }
+        if (this.viewMode === 'week') {
+            const start = weekStart(anchor);
+            const end = new Date(start);
+            end.setDate(start.getDate() + 7);
+            return date >= start && date < end;
+        }
+        return date.toDateString() === anchor.toDateString();
+    }
+
+    /**
+     * The day a view switch lands on.
+     *
+     * In month and year view `currentDate` is not a day the user chose: those
+     * hashes carry no day-of-month, so parseHash anchors it to the 1st. Handing
+     * that anchor straight to Day view opened the 1st of the month while the user
+     * was looking at the CURRENT month — on first visit too, since #/calendar
+     * redirects to this month. Today wins whenever the period being left contains
+     * it; otherwise the anchor stands, so switching to Day from a month the user
+     * navigated to keeps that month instead of jumping back to now.
+     */
+    private dayForViewSwitch(mode: ViewMode): Date {
+        if (mode === 'day' || mode === 'week') {
+            const today = new Date();
+            if (this.viewShows(today)) return today;
+        }
+        return this.currentDate;
+    }
+
     private setViewMode(mode: ViewMode) {
-        this.navigate(mode, this.currentDate);
+        this.navigate(mode, this.dayForViewSwitch(mode));
     }
 
     private handleDateSelected(date: Date) {
@@ -665,11 +722,16 @@ export class CalendarPage extends LitElement {
             await calendarService.deleteCalendar(calendar.path);
             this.calendars = this.calendars.filter(c => c.path !== calendar.path);
             if (this.activeCalendars.has(calendar.path)) {
-                this.activeCalendars.delete(calendar.path);
+                // A new Set: this is @state, and Lit compares by identity, so a
+                // delete in place is invisible to anything bound to it.
+                const next = new Set(this.activeCalendars);
+                next.delete(calendar.path);
+                this.activeCalendars = next;
                 await this.fetchData();
             }
         } catch (err) {
             console.error('Failed to delete calendar', err);
+            this.reportFailure('calendar.deleteCalendarFailed');
         }
     }
 
@@ -683,6 +745,7 @@ export class CalendarPage extends LitElement {
             await this.fetchData();
         } catch (err) {
             console.error('Failed to delete event', err);
+            this.reportFailure('calendar.deleteEventFailed');
         }
     }
 
@@ -709,6 +772,7 @@ export class CalendarPage extends LitElement {
             await this.fetchData();
         } catch (err) {
             console.error('Failed to save calendar', err);
+            this.reportFailure('calendar.saveCalendarFailed');
         }
     }
 
@@ -899,7 +963,7 @@ export class CalendarPage extends LitElement {
                             <calendar-month-view 
                                 .date=${this.currentDate} 
                                 .events=${visibleEvents}
-                                @create-event=${(e: CustomEvent) => this.openCreateModal(e.detail.date)}
+                                @create-event=${(e: CustomEvent) => this.openCreateModal(e.detail.date, e.detail.allDay)}
                                 @edit-event=${(e: CustomEvent) => this.openEditModal(e.detail.event)}
                                 @delete-event=${(e: CustomEvent) => this.eventToDelete = e.detail.event}
                             ></calendar-month-view>
@@ -908,7 +972,7 @@ export class CalendarPage extends LitElement {
                             <calendar-week-view 
                                 .date=${this.currentDate} 
                                 .events=${visibleEvents}
-                                @create-event=${(e: CustomEvent) => this.openCreateModal(e.detail.date)}
+                                @create-event=${(e: CustomEvent) => this.openCreateModal(e.detail.date, e.detail.allDay)}
                                 @edit-event=${(e: CustomEvent) => this.openEditModal(e.detail.event)}
                                 @delete-event=${(e: CustomEvent) => this.eventToDelete = e.detail.event}
                             ></calendar-week-view>
@@ -917,7 +981,7 @@ export class CalendarPage extends LitElement {
                                 <calendar-day-view 
                                     .date=${this.currentDate} 
                                     .events=${visibleEvents}
-                                    @create-event=${(e: CustomEvent) => this.openCreateModal(e.detail.date)}
+                                    @create-event=${(e: CustomEvent) => this.openCreateModal(e.detail.date, e.detail.allDay)}
                                     @edit-event=${(e: CustomEvent) => this.openEditModal(e.detail.event)}
                                     @delete-event=${(e: CustomEvent) => this.eventToDelete = e.detail.event}
                                 ></calendar-day-view>
@@ -948,6 +1012,7 @@ export class CalendarPage extends LitElement {
                 .open=${this.modalOpen}
                 .event=${this.selectedEvent}
                 .initialDate=${this.initialDate}
+                .initialAllDay=${this.initialAllDay}
                 .calendars=${this.calendars}
                 @close=${this.handleModalClose}
                 @saved=${this.handleModalSaved}

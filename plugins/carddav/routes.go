@@ -240,18 +240,39 @@ func registerRoutes(p *plugin) {
 	updateContact := func(ctx *alps.Context) error {
 		var req ContactData
 		if err := ctx.BindJSON(&req); err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+			return ctx.RespondBindError(err)
 		}
 
+		// The empty case is /contacts/create, where there is no {path} at all and
+		// url.PathUnescape("") returns "" with no error. A non-nil error here is
+		// therefore a genuinely malformed path, and it was DISCARDED — the
+		// comment said so and then did nothing. addressObjectPath was left "",
+		// which every branch below reads as "this is a create", so editing a
+		// contact through a malformed path silently made a second one instead.
+		// The stale err was then shadowed on the next line and gone.
 		addressObjectPath, err := parseObjectPath(ctx.Param("path"))
 		if err != nil {
-			// For /contacts/create, path is empty which parseObjectPath might fail on if not handled.
-			// Actually parseObjectPath doesn't fail on empty param if ctx.Param("path") is just empty string.
+			return err
 		}
 
 		c, addressBook, err := p.clientWithAddressBook(ctx.Request.Context(), ctx.Session)
 		if err != nil {
 			return err
+		}
+
+		// An edit addresses an existing object, and the object it addresses is
+		// then written back through PutAddressObject. Unconstrained, that writes
+		// a vCard over whatever the path names — including an object in another
+		// collection the DAV server lets this user touch.
+		if addressObjectPath != "" {
+			collection := ""
+			if addressBook != nil {
+				collection = addressBook.Path
+			}
+			addressObjectPath, err = requireObjectPath(addressObjectPath, collection)
+			if err != nil {
+				return err
+			}
 		}
 
 		// Deduplication check for new contacts
@@ -384,12 +405,25 @@ func registerRoutes(p *plugin) {
 	p.POST("/contacts/{path}/edit", updateContact)
 
 	p.DELETE("/contacts/{path}", func(ctx *alps.Context) error {
-		path, err := parseObjectPath(ctx.Param("path"))
+		rawPath, err := parseObjectPath(ctx.Param("path"))
 		if err != nil {
 			return err
 		}
 
-		c, err := p.client(ctx.Request.Context(), ctx.Session)
+		// clientWithAddressBook rather than client: the guard below needs the
+		// collection this object must live in, and RemoveAll deletes children,
+		// so an unconstrained path turns "delete one contact" into "delete the
+		// address book".
+		c, addressBook, err := p.clientWithAddressBook(ctx.Request.Context(), ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		collection := ""
+		if addressBook != nil {
+			collection = addressBook.Path
+		}
+		path, err := requireObjectPath(rawPath, collection)
 		if err != nil {
 			return err
 		}

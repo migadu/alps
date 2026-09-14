@@ -3,6 +3,15 @@
 :root {
   /* Colors - Light Theme Default */
   --bg-primary: #ffffff;
+
+  /* Declared here as well as in .theme-dark, which is where it lived alone.
+     A token defined in only one theme leaves the other relying on whatever
+     fallback each component happens to write — and ui-modal's is
+     rgba(255,255,255,0.8), a value that appears nowhere in this file. The two
+     were free to drift, and nothing would have said so. The light value below
+     preserves exactly what light mode renders today; whether a near-white scrim
+     over a white page is the right look is a design question, not a fix. */
+  --modal-backdrop: rgba(255, 255, 255, 0.8);
   --bg-secondary: #f9fafb;
   --bg-tertiary: #f3f4f6;
   --bg-selected: #eff6ff;

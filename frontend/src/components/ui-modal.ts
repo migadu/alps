@@ -108,6 +108,25 @@ export class UIModal extends LitElement {
     }
   }
 
+  /**
+   * Escape, on a native <dialog>.
+   *
+   * `showModal()` gives us Escape-to-close for free, and that bypassed
+   * `dismissible` entirely — which only ever guarded the backdrop click. So a
+   * modal declaring itself non-dismissible could still be dismissed: the
+   * offline modal in app-root exists to block interaction while the connection
+   * is down, and Escape took it off the screen; the calendar event modal sets
+   * `?dismissible=${!this.isSaving}` and could be closed mid-save.
+   *
+   * The native `cancel` event is the only place to stop it, and it fires on the
+   * dialog element — not to be confused with the `cancel` CustomEvent this
+   * component dispatches on ITSELF, which is a different event on a different
+   * target.
+   */
+  private _handleEscape = (e: Event) => {
+    if (!this.dismissible) e.preventDefault();
+  };
+
   private _handleDialogClose = () => {
     this.dispatchEvent(new CustomEvent('cancel', { bubbles: true, composed: true }));
   };
@@ -126,7 +145,7 @@ export class UIModal extends LitElement {
 
   render() {
     return html`
-      <dialog class="modal-dialog" @pointerdown=${this._handleOverlayClick} @close=${this._handleDialogClose}>
+      <dialog class="modal-dialog" @pointerdown=${this._handleOverlayClick} @cancel=${this._handleEscape} @close=${this._handleDialogClose}>
         <div class="modal-card" style="width: ${this.width};" @pointerdown=${(e: Event) => e.stopPropagation()}>
           <slot name="header">
             ${this.title ? html`<h3 class="modal-title ${this.isDanger ? 'danger' : ''}">${this.title}</h3>` : ''}

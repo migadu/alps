@@ -1,6 +1,7 @@
 package alps
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net"
 	"net/http"
@@ -630,4 +631,125 @@ func TestDistributedRateLimiter(t *testing.T) {
 	if !cleared {
 		t.Error("Successful login broadcast should clear user failures on Node B")
 	}
+}
+
+// Twenty successful logins in an hour from one address are twenty colleagues
+// behind a NAT, not a brute-force run. Locking that IP out takes the office
+// offline and stops nothing.
+func TestRateLimiter_SuccessfulLoginsDoNotLockOutTheIP(t *testing.T) {
+	logger := &mockLogger{}
+	config := RateLimitConfig{
+		IPRequestsPerMinute:     0, // not under test
+		IPRequestsPerHour:       5,
+		UsernameFailsPerQuarter: 100,
+		UsernameFailsPerHour:    100,
+		GlobalRequestsPerSecond: 1000,
+		LockoutDuration:         10 * time.Minute,
+	}
+	rl := NewRateLimiter(config, logger, nil)
+	defer rl.Close()
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.9:54321"
+
+	for i := 0; i < 20; i++ {
+		if allowed, reason, _ := rl.CheckLoginAllowed(req, "colleague@example.com"); !allowed {
+			t.Fatalf("successful login %d was refused: %s", i+1, reason)
+		}
+		rl.RecordLoginAttempt(req, "colleague@example.com", true)
+	}
+}
+
+// A correct password ends a guessing run, so it clears the IP's failure streak
+// — the same thing that has always happened for the username.
+func TestRateLimiter_SuccessClearsTheIPFailureStreak(t *testing.T) {
+	logger := &mockLogger{}
+	config := RateLimitConfig{
+		IPRequestsPerHour:       5,
+		UsernameFailsPerQuarter: 100,
+		UsernameFailsPerHour:    100,
+		GlobalRequestsPerSecond: 1000,
+		LockoutDuration:         10 * time.Minute,
+	}
+	rl := NewRateLimiter(config, logger, nil)
+	defer rl.Close()
+
+	req := httptest.NewRequest("POST", "/session", nil)
+	req.RemoteAddr = "10.0.0.10:54321"
+
+	for i := 0; i < 4; i++ {
+		rl.RecordLoginAttempt(req, "user@example.com", false)
+	}
+	rl.RecordLoginAttempt(req, "user@example.com", true)
+
+	for i := 0; i < 4; i++ {
+		if allowed, reason, _ := rl.CheckLoginAllowed(req, "user@example.com"); !allowed {
+			t.Fatalf("attempt %d after a success was refused: %s", i+1, reason)
+		}
+		rl.RecordLoginAttempt(req, "user@example.com", false)
+	}
+}
+
+// Every ageing-out test in this file is `after(cutoff)`, so a peer timestamp in
+// the future never leaves any window — the IP or account it names would be
+// locked out permanently, by a clock.
+func TestRateLimiter_ClusterEventTimestampsAreClamped(t *testing.T) {
+	logger := &mockLogger{}
+	config := RateLimitConfig{
+		IPRequestsPerMinute:     3,
+		IPRequestsPerHour:       100,
+		UsernameFailsPerQuarter: 100,
+		UsernameFailsPerHour:    100,
+		GlobalRequestsPerSecond: 1000,
+		LockoutDuration:         10 * time.Minute,
+	}
+	rl := NewRateLimiter(config, logger, nil)
+	defer rl.Close()
+
+	future := time.Now().Add(48 * time.Hour)
+	for i := 0; i < 3; i++ {
+		data, err := json.Marshal(RateLimitEvent{IP: "10.0.0.11", Username: "u@example.com", Timestamp: future})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rl.HandleClusterMessage(data)
+	}
+
+	rl.mu.Lock()
+	entry := rl.ipMap["10.0.0.11"]
+	rl.mu.Unlock()
+	if entry == nil {
+		t.Fatal("expected the cluster event to be recorded")
+	}
+	for _, ts := range entry.timestamps {
+		if ts.After(time.Now().Add(time.Minute)) {
+			t.Fatalf("a peer timestamp survived unclamped: %v", ts)
+		}
+	}
+
+	// A stale event changes no window it is already outside of, so it is dropped.
+	stale, err := json.Marshal(RateLimitEvent{IP: "10.0.0.12", Timestamp: time.Now().Add(-72 * time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rl.HandleClusterMessage(stale)
+	rl.mu.Lock()
+	_, exists := rl.ipMap["10.0.0.12"]
+	rl.mu.Unlock()
+	if exists {
+		t.Error("a stale cluster event should not create an entry")
+	}
+}
+
+// Server.Close calls three teardowns and the other two are already guarded, so
+// this one has to tolerate a second call too.
+func TestRateLimiter_CloseIsIdempotent(t *testing.T) {
+	rl := NewRateLimiter(RateLimitConfig{}, NewLogger(), nil)
+	rl.Close()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("second Close panicked: %v", r)
+		}
+	}()
+	rl.Close()
 }

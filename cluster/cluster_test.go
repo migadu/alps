@@ -207,3 +207,46 @@ func TestDecodeSecretKey(t *testing.T) {
 		t.Error("expected error for wrong key length")
 	}
 }
+
+// memberlist's Delegate contract requires NotifyMsg not to block the UDP
+// receive loop, and warns that the byte slice may be reused after the call
+// returns. Both matter here: the only handler takes the rate limiter's mutex,
+// which every login check also holds.
+func TestNotifyMsg_DoesNotBlockAndCopies(t *testing.T) {
+	c := &Cluster{}
+
+	release := make(chan struct{})
+	got := make(chan []byte, 1)
+	c.SetMessageHandler(func(msg []byte) {
+		<-release // a handler that blocks, as the real one can under lock contention
+		got <- msg
+	})
+
+	data := []byte("hello")
+	done := make(chan struct{})
+	go func() {
+		c.NotifyMsg(data)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("NotifyMsg blocked on the handler; the UDP receive loop would stall")
+	}
+
+	// memberlist is free to reuse the buffer the moment NotifyMsg returns.
+	for i := range data {
+		data[i] = 'x'
+	}
+	close(release)
+
+	select {
+	case msg := <-got:
+		if string(msg) != "hello" {
+			t.Fatalf("handler saw %q — the buffer was not copied", msg)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler never ran")
+	}
+}

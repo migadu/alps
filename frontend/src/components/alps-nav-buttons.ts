@@ -1,9 +1,18 @@
 import { LitElement, html, css } from 'lit';
+import { i18nContext, I18nStore } from '../store/i18n-store';
+import { consume } from '@lit/context';
 import { customElement, property } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
 
 @customElement('alps-nav-buttons')
 export class AlpsNavButtons extends LitElement {
+    // Consumed rather than passed in, as alps-pagination does: this primitive is
+    // used from many places, and its own labels were English in every locale.
+    @consume({ context: i18nContext })
+    i18nStore!: I18nStore;
+
+    private _handleI18nChange = () => this.requestUpdate();
+
     @property({ type: String }) label = 'Today';
 
     static styles = css`
@@ -72,16 +81,26 @@ export class AlpsNavButtons extends LitElement {
         this.dispatchEvent(new CustomEvent('center', { bubbles: true, composed: true }));
     }
 
+    connectedCallback() {
+        super.connectedCallback();
+        this.i18nStore?.addEventListener('change', this._handleI18nChange);
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        this.i18nStore?.removeEventListener('change', this._handleI18nChange);
+    }
+
     render() {
         return html`
             <div class="nav-buttons">
-                <button @click=${this.handlePrevious} aria-label="Previous">
+                <button @click=${this.handlePrevious} aria-label=${this.i18nStore?.t('general.previous') || 'Previous'}>
                     ${renderIcon('caretLeft')}
                 </button>
                 <button @click=${this.handleCenter}>
                     ${this.label}
                 </button>
-                <button @click=${this.handleNext} aria-label="Next">
+                <button @click=${this.handleNext} aria-label=${this.i18nStore?.t('general.next') || 'Next'}>
                     ${renderIcon('caretRight')}
                 </button>
             </div>

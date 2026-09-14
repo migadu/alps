@@ -1,4 +1,5 @@
 import { formatFullDate } from './ui';
+import { escapeHtml, sanitizeQuotedHTML } from './html-sanitizer';
 
 export function formatAddrs(addrs: any[]): string[] {
   if (!addrs) return [];
@@ -53,16 +54,37 @@ export function generateQuote(
 
   const quotedText = `\n\n${quoteHeader}\n` + textBody.split('\n').map(line => `> ${line}`).join('\n');
 
+  // Everything below builds HTML out of values the SENDER controls: the display
+  // name, the address, the subject, the recipient list, and the body itself.
+  // They were interpolated raw, so a display name of `<img src=x onerror=…>`
+  // — or simply one containing `<` — was injected into the draft the user is
+  // about to send.
+  const eSenderName = escapeHtml(senderName);
+  const eSenderAddress = escapeHtml(senderAddress);
+  const eSubject = escapeHtml(originalSubject);
+  const eDate = escapeHtml(dateStr);
+
+  // The message body is quoted through a sanitizer that removes what executes
+  // or fetches on the RECIPIENT's behalf. Without it, replying makes our user a
+  // carrier: the reader blocks remote images so the sender cannot learn the mail
+  // was read, and quoting the pixel unmodified re-arms it in the outgoing copy,
+  // under our user's name. Scripts and `on*` handlers ride out the same way.
+  const safeHtml = hasHtml && rawMessageHtml ? sanitizeQuotedHTML(rawMessageHtml) : '';
+
   let quotedHtml = '';
-  if (hasHtml && rawMessageHtml) {
+  if (safeHtml) {
     if (type === 'forward') {
-      const toStrs = formatAddrs(message?.Envelope?.To).join(', ');
-      quotedHtml = `<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">---------- Forwarded message ---------<br>From: ${senderName} &lt;${senderAddress}&gt;<br>Date: ${dateStr}<br>Subject: ${originalSubject}<br>To: ${toStrs}<br></div><br>${rawMessageHtml}</div>`;
+      const toStrs = escapeHtml(formatAddrs(message?.Envelope?.To).join(', '));
+      quotedHtml = `<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">---------- Forwarded message ---------<br>From: ${eSenderName} &lt;${eSenderAddress}&gt;<br>Date: ${eDate}<br>Subject: ${eSubject}<br>To: ${toStrs}<br></div><br>${safeHtml}</div>`;
     } else {
-      quotedHtml = `<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On ${dateStr}, ${senderName} wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${rawMessageHtml}</blockquote></div>`;
+      quotedHtml = `<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On ${eDate}, ${eSenderName} wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${safeHtml}</blockquote></div>`;
     }
   } else {
-    quotedHtml = `<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">${quoteHeader.replace(/\n/g, '<br>')}<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${textBody.replace(/\n/g, '<br>')}</blockquote></div>`;
+    // The plain-text fallback is HTML too, so the body needs escaping before its
+    // newlines become `<br>` — `textBody` is not markup and must not become any.
+    const escapedHeader = escapeHtml(quoteHeader).replace(/\n/g, '<br>');
+    const escapedBody = escapeHtml(textBody).replace(/\n/g, '<br>');
+    quotedHtml = `<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">${escapedHeader}<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${escapedBody}</blockquote></div>`;
   }
 
   return { subject, to, cc, quotedText, quotedHtml };

@@ -31,11 +31,18 @@ func isMailboxMassive(mbox *imapclient.SelectedMailbox) bool {
 }
 
 type IMAPProvider struct {
-	client    *imapclient.Client
-	store     provider.Store
-	debug     bool
-	dateCache map[string]map[uint32]time.Time
-	cacheLock sync.RWMutex
+	client      *imapclient.Client
+	store       provider.Store
+	debug       bool
+	authservIDs []string
+
+	// selectedUIDValidity is the UIDVALIDITY the selected mailbox was
+	// selected with; ensureMailboxSelected is the only place that selects.
+	selectedUIDValidity uint32
+	verdictLock         sync.Mutex
+	verdicts            map[string]*mailboxVerdicts
+	dateCache           map[string]map[uint32]time.Time
+	cacheLock           sync.RWMutex
 }
 
 func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
@@ -281,9 +288,11 @@ func (p *IMAPProvider) UnsubscribeMailbox(name string) error {
 // ensureMailboxSelected ensures the mailbox is selected
 func (p *IMAPProvider) ensureMailboxSelected(mboxName string) error {
 	if mbox := p.client.Mailbox(); mbox == nil || mbox.Name != mboxName {
-		if _, err := p.client.Select(mboxName, nil).Wait(); err != nil {
+		data, err := p.client.Select(mboxName, nil).Wait()
+		if err != nil {
 			return fmt.Errorf("failed to select mailbox: %v", err)
 		}
+		p.selectedUIDValidity = data.UIDValidity
 	}
 	return nil
 }
@@ -333,6 +342,14 @@ func (p *IMAPProvider) sortGroups(mailbox string, groups []ThreadGroup, sortOrde
 			windowGroups = groups[windowStart:]
 		} else {
 			windowGroups = groups[:windowSize]
+		}
+
+		// A server with SORT orders the window by date itself. RFC 5256's DATE
+		// key is the Date header, else the internal date: the fallback the
+		// envelope fetch below applies. That fetch, one envelope per thread,
+		// took most of a second for a large inbox.
+		if p.client.Caps().Has(imap.CapSort) && p.sortWindowByDate(windowGroups, sortOrder) {
+			return nil
 		}
 
 		// 3. Initialize cache
@@ -425,6 +442,41 @@ func (p *IMAPProvider) sortGroups(mailbox string, groups []ThreadGroup, sortOrde
 	}
 
 	return nil
+}
+
+// sortWindowByDate orders groups by their representative message's date with
+// the server's SORT, newest first unless sortOrder is "asc", and reports
+// whether the server answered. Messages with the same date keep the server's
+// order, which RFC 5256 breaks by sequence number; a group the server did not
+// return goes last.
+func (p *IMAPProvider) sortWindowByDate(groups []ThreadGroup, sortOrder string) bool {
+	var reps imap.UIDSet
+	for _, g := range groups {
+		reps.AddNum(imap.UID(g.RepUID))
+	}
+	data, err := p.client.UIDSort(&imapclient.SortOptions{
+		SearchCriteria: &imap.SearchCriteria{UID: []imap.UIDSet{reps}},
+		SortCriteria:   []imap.SortCriterion{{Key: imap.SortKeyDate, Reverse: sortOrder != "asc"}},
+	}).Wait()
+	if err != nil {
+		if p.debug {
+			fmt.Printf("thread sort: SORT failed, fetching envelopes instead: %v\n", err)
+		}
+		return false
+	}
+	position := make(map[uint32]int, len(data.UIDs))
+	for i, uid := range data.UIDs {
+		position[uint32(uid)] = i
+	}
+	sort.SliceStable(groups, func(i, j int) bool {
+		pi, iok := position[groups[i].RepUID]
+		pj, jok := position[groups[j].RepUID]
+		if iok != jok {
+			return iok
+		}
+		return pi < pj
+	})
+	return true
 }
 
 func (p *IMAPProvider) fetchThreadGroups(criteria *imap.SearchCriteria) ([]ThreadGroup, error) {
@@ -1303,6 +1355,187 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 	return uidMapping, nil
 }
 
+// authResultsSection fetches the Authentication-Results fields.
+func authResultsSection() *imap.FetchItemBodySection {
+	return &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"Authentication-Results"},
+		Peek:         true,
+	}
+}
+
+// mailboxVerdicts caches one mailbox's verdicts for the session. A message's
+// headers never change under one UIDVALIDITY, so an entry holds until the
+// mailbox's UIDVALIDITY does.
+type mailboxVerdicts struct {
+	uidValidity uint32
+	byUID       map[imap.UID]provider.AuthVerdict
+}
+
+// maxCachedVerdicts bounds one mailbox's cache; past it the cache starts over.
+const maxCachedVerdicts = 10000
+
+// AuthVerdicts returns the verdicts of the messages among ids in mailbox:
+// from the session cache where it has them, and from one fetch of the rest's
+// Authentication-Results fields. A server usually reads a header field from
+// each stored message, so each message is read once per session. Listings
+// carry no verdicts for the same reason: for older mail a server answered
+// that header a third of a second per message.
+//
+// The scope is the mailbox's UIDVALIDITY: the same UID under another scope
+// is another message.
+func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (map[string]provider.AuthVerdict, string, error) {
+	if err := p.ensureMailboxSelected(mailbox); err != nil {
+		return nil, "", err
+	}
+	scope := strconv.FormatUint(uint64(p.selectedUIDValidity), 10)
+
+	p.verdictLock.Lock()
+	if p.verdicts == nil {
+		p.verdicts = make(map[string]*mailboxVerdicts)
+	}
+	cache := p.verdicts[mailbox]
+	if cache == nil || cache.uidValidity != p.selectedUIDValidity || len(cache.byUID) > maxCachedVerdicts {
+		cache = &mailboxVerdicts{uidValidity: p.selectedUIDValidity, byUID: make(map[imap.UID]provider.AuthVerdict)}
+		p.verdicts[mailbox] = cache
+	}
+	verdicts := make(map[string]provider.AuthVerdict, len(ids))
+	var missing imap.UIDSet
+	for _, id := range ids {
+		uid, ok := id.(IMAPUID)
+		if !ok {
+			continue
+		}
+		if v, ok := cache.byUID[imap.UID(uid)]; ok {
+			verdicts[uid.String()] = v
+		} else {
+			missing.AddNum(imap.UID(uid))
+		}
+	}
+	p.verdictLock.Unlock()
+	if len(missing) == 0 {
+		return verdicts, scope, nil
+	}
+
+	fetched, err := p.client.Fetch(missing, &imap.FetchOptions{
+		UID:         true,
+		BodySection: []*imap.FetchItemBodySection{authResultsSection()},
+	}).Collect()
+	if err != nil {
+		return verdicts, scope, err
+	}
+	p.verdictLock.Lock()
+	defer p.verdictLock.Unlock()
+	for _, f := range fetched {
+		var v provider.AuthVerdict
+		if b := f.FindBodySection(authResultsSection()); b != nil {
+			v.BimiPotential, v.BimiFailed = authVerdict(b, p.authservIDs)
+		}
+		cache.byUID[f.UID] = v
+		verdicts[IMAPUID(f.UID).String()] = v
+	}
+	return verdicts, scope, nil
+}
+
+// WithAuthservIDs sets the authserv-ids of the receiving mail servers whose
+// Authentication-Results fields are trusted as the verdict (see authVerdict).
+// They are matched in any case; blank ones are dropped.
+func (p *IMAPProvider) WithAuthservIDs(ids []string) *IMAPProvider {
+	p.authservIDs = nil
+	for _, id := range ids {
+		if id = strings.ToLower(strings.TrimSpace(id)); id != "" {
+			p.authservIDs = append(p.authservIDs, id)
+		}
+	}
+	return p
+}
+
+// authVerdict reads the receiving server's verdict from a block of
+// Authentication-Results fields. A receiver prepends its own field, so any
+// field below it arrived with the message and says whatever the sender wrote.
+// Matching "dmarc=pass" anywhere in the block let a forged field below the
+// real one, a comment, or a header.from value that merely contains the words
+// mark a spoof as passing, and that verdict decides whether a brand logo is
+// drawn.
+//
+// With trusted authserv-ids, the verdict is the topmost field one of them
+// wrote, and a message none of them stamped has none. Without them it is the
+// topmost field, which is the sender's own when the receiving server adds no
+// field at all.
+//
+// potential is a dmarc (or bimi) pass; failed is a failing dmarc, dkim or spf
+// result, and a pass wins over it.
+func authVerdict(raw []byte, trusted []string) (potential, failed bool) {
+	value, ok := receiverField(raw, trusted)
+	if !ok {
+		return false, false
+	}
+	resinfos := strings.Split(value, ";")
+	for _, resinfo := range resinfos[1:] {
+		fields := strings.Fields(strings.ToLower(resinfo))
+		if len(fields) == 0 {
+			continue
+		}
+		method, result, ok := strings.Cut(fields[0], "=")
+		if !ok {
+			continue
+		}
+		switch {
+		case (method == "dmarc" || method == "bimi") && result == "pass":
+			potential = true
+		case method == "dmarc" && result == "fail",
+			(method == "dkim" || method == "spf") && (result == "fail" || result == "hardfail"):
+			failed = true
+		}
+	}
+	if potential {
+		failed = false
+	}
+	return potential, failed
+}
+
+// receiverField returns the value of the topmost Authentication-Results field
+// whose authserv-id is trusted, or of the topmost field when none are.
+func receiverField(raw []byte, trusted []string) (string, bool) {
+	for _, value := range headerValues(raw) {
+		if len(trusted) == 0 {
+			return value, true
+		}
+		id, _, _ := strings.Cut(value, ";")
+		fields := strings.Fields(strings.ToLower(id))
+		if len(fields) == 0 {
+			continue
+		}
+		for _, t := range trusted {
+			if fields[0] == t {
+				return value, true
+			}
+		}
+	}
+	return "", false
+}
+
+// headerValues returns the unfolded values of the fields in a header block,
+// such as a HEADER.FIELDS fetch returns, in order.
+func headerValues(raw []byte) []string {
+	var values []string
+	for _, line := range strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n") {
+		switch {
+		case line == "":
+			return values
+		case line[0] == ' ' || line[0] == '\t':
+			if len(values) > 0 {
+				values[len(values)-1] += " " + line
+			}
+		default:
+			if _, value, ok := strings.Cut(line, ":"); ok {
+				values = append(values, value)
+			}
+		}
+	}
+	return values
+}
+
 // Helper function to convert IMAP message to alps.Message
 func (p *IMAPProvider) convertIMAPMessage(msg *imapclient.FetchMessageBuffer, mailbox string) provider.Message {
 	size := uint32(0)
@@ -1332,22 +1565,11 @@ func (p *IMAPProvider) convertIMAPMessage(msg *imapclient.FetchMessageBuffer, ma
 		converted.BodyStructure = &IMAPBodyStructure{msg.BodyStructure}
 	}
 
-	bodySection := &imap.FetchItemBodySection{
-		Specifier:    imap.PartSpecifierHeader,
-		HeaderFields: []string{"Authentication-Results"},
-		Peek:         true,
-	}
-	b := msg.FindBodySection(bodySection)
-	if b != nil {
+	if b := msg.FindBodySection(authResultsSection()); b != nil {
 		if p.debug {
 			fmt.Printf("BIMI debug: Auth-Results for %d: %q\n", msg.UID, string(b))
 		}
-		lowerStr := strings.ToLower(string(b))
-		if strings.Contains(lowerStr, "dmarc=pass") || strings.Contains(lowerStr, "bimi=pass") {
-			converted.BimiPotential = true
-		} else if strings.Contains(lowerStr, "dmarc=fail") || strings.Contains(lowerStr, "dkim=fail") || strings.Contains(lowerStr, "spf=fail") || strings.Contains(lowerStr, "dkim=hardfail") || strings.Contains(lowerStr, "spf=hardfail") {
-			converted.BimiFailed = true
-		}
+		converted.BimiPotential, converted.BimiFailed = authVerdict(b, p.authservIDs)
 	}
 
 	refSection := &imap.FetchItemBodySection{

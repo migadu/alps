@@ -3,7 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { CATEGORY_ALL_CONTACTS, CATEGORY_FAVORITES } from './constants';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
-import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
+import { activeUsername, settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
 import '../../../frontend/src/components/app-header';
 import '../../../frontend/src/components/alps-input';
 import '../../../frontend/src/components/alps-button';
@@ -20,6 +20,11 @@ import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { MailboxPage } from '../../../frontend/src/pages/mailbox-page';
 import { MessageList } from '../../../frontend/src/components/message-list';
 import { contactsService } from './contacts-service';
+
+/** Where the categories this user created, with no one filed into them yet, are kept. */
+const categoriesKeyFor = (username: string) => `alps_contacts_categories_${username}`;
+/** The pre-scoping, browser-wide key: read by no one now, only deleted. */
+const LEGACY_CATEGORIES_KEY = 'contacts_categories_cache';
 
 @customElement('contacts-page')
 export class ContactsPage extends LitElement {
@@ -259,14 +264,8 @@ export class ContactsPage extends LitElement {
     super.connectedCallback();
     this.showInitialLoader = !(window as any).alpsAppLoaded;
     this.classList.add('density-compact');
-    const savedCats = localStorage.getItem('contacts_categories_cache');
-    if (savedCats) {
-      try {
-        this.addedCategories = JSON.parse(savedCats);
-      } catch (e) {
-        // ignore
-      }
-    }
+    this.loadAddedCategories();
+    window.addEventListener('alps-active-user-changed', this.loadAddedCategories);
     this.fetchContacts();
     window.addEventListener('resize', this._handleWindowResize);
     window.addEventListener('hashchange', this._handleHashChange);
@@ -283,12 +282,45 @@ export class ContactsPage extends LitElement {
     super.disconnectedCallback();
     window.removeEventListener('resize', this._handleWindowResize);
     window.removeEventListener('hashchange', this._handleHashChange);
+    window.removeEventListener('alps-active-user-changed', this.loadAddedCategories);
     if (this.settingsStore) {
       this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     }
     if (this.syncIntervalTimer) {
       clearInterval(this.syncIntervalTimer);
       this.syncIntervalTimer = null;
+    }
+  }
+
+  /**
+   * A category created with no one filed into it exists nowhere on the server, so
+   * the page remembers it, per user. These were kept under one browser-wide key,
+   * written by every account on the browser and cleared by nothing, so one user's
+   * category names appeared in the next user's sidebar.
+   *
+   * Re-read when the signed-in user becomes known or changes: the identity is
+   * recorded only once /settings answers, which can be after this page mounts.
+   */
+  private loadAddedCategories = () => {
+    try {
+      // The unscoped key cannot be attributed to anyone, so it is deleted rather
+      // than migrated, as compose-store does with the unscoped drafts.
+      localStorage.removeItem(LEGACY_CATEGORIES_KEY);
+      const username = activeUsername();
+      const saved = username ? JSON.parse(localStorage.getItem(categoriesKeyFor(username)) || '[]') : [];
+      this.addedCategories = Array.isArray(saved) ? saved : [];
+    } catch {
+      this.addedCategories = [];
+    }
+  };
+
+  private saveAddedCategories() {
+    const username = activeUsername();
+    if (!username) return;
+    try {
+      localStorage.setItem(categoriesKeyFor(username), JSON.stringify(this.addedCategories));
+    } catch {
+      // Storage unavailable: the categories last as long as this page.
     }
   }
 
@@ -403,6 +435,20 @@ export class ContactsPage extends LitElement {
     }
   }
 
+  /**
+   * What a toolbar gesture (delete, star, category) acts on: the ticked contacts
+   * whenever any are ticked, and the open contact only when none are. This used to
+   * switch at MORE than one, while contact-view replaces the open card with "1
+   * contacts selected" as soon as one box is ticked, and ticking does not close the
+   * open contact. So with a single box ticked, Delete removed the contact that had
+   * just left the screen, not the one the banner said was selected.
+   */
+  private get gestureTargets(): string[] {
+    return this.selectedContacts.size > 0
+      ? Array.from(this.selectedContacts)
+      : [this.selectedContact?.path].filter(Boolean) as string[];
+  }
+
   private get allSelectedStarred() {
     if (this.selectedContacts.size === 0) return false;
     for (const path of this.selectedContacts) {
@@ -452,13 +498,13 @@ export class ContactsPage extends LitElement {
       }
     } catch (err) {
       console.error('Failed to toggle star:', err);
-      // Revert optimistic update
-      if (isStarred) {
-        contact.categories.push(CATEGORY_FAVORITES);
-      } else {
-        contact.categories = contact.categories.filter((c: string) => c !== CATEGORY_FAVORITES);
-      }
-      this.requestUpdate();
+      this.reportFailure('contacts.starFailed');
+      // Revert by putting the card's own categories back into the list. This
+      // used to edit `contact`, the object the optimistic update had already
+      // replaced in `this.contacts`, so the refused star stayed painted; and for
+      // a contact with no categories the revert itself threw.
+      const original = contact.categories;
+      this.contacts = this.contacts.map((c: any) => c.path === contact.path ? { ...c, categories: original } : c);
     }
   }
 
@@ -494,7 +540,7 @@ export class ContactsPage extends LitElement {
     if (name) {
       if (!this.addedCategories.includes(name)) {
         this.addedCategories = [...this.addedCategories, name];
-        localStorage.setItem('contacts_categories_cache', JSON.stringify(this.addedCategories));
+        this.saveAddedCategories();
       }
     }
     this.showCreatePrompt = false;
@@ -516,6 +562,17 @@ export class ContactsPage extends LitElement {
     this.isEditing = true;
   }
 
+  /**
+   * Every card carrying `category`, across the whole address book. During a
+   * search `this.contacts` holds only the results, so renaming or deleting a
+   * category from a search rewrote those cards and left every other card on the
+   * old name, with both names then listed in the sidebar.
+   */
+  private async cardsCarrying(category: string): Promise<any[]> {
+    const cards = this.filterQuery ? ((await contactsService.fetchContacts()).contacts || []) : this.contacts;
+    return cards.filter((c: any) => c.categories?.includes(category));
+  }
+
   private async handleRenameCategorySubmit(e: CustomEvent) {
     const newName = e.detail.name?.trim();
     if (!newName || !this.categoryToRename || newName === this.categoryToRename) {
@@ -528,7 +585,7 @@ export class ContactsPage extends LitElement {
 
     if (this.addedCategories.includes(oldName)) {
       this.addedCategories = this.addedCategories.map(c => c === oldName ? newName : c);
-      localStorage.setItem('contacts_categories_cache', JSON.stringify(this.addedCategories));
+      this.saveAddedCategories();
     }
 
     if (this.selectedCategory === oldName) {
@@ -536,7 +593,14 @@ export class ContactsPage extends LitElement {
       window.location.hash = `/contacts/${encodeURIComponent(newName)}`;
     }
 
-    const contactsToUpdate = this.contacts.filter(c => c.categories?.includes(oldName));
+    let contactsToUpdate: any[];
+    try {
+      contactsToUpdate = await this.cardsCarrying(oldName);
+    } catch (e) {
+      console.error('Could not read the address book for a category change', e);
+      this.reportFailure('contacts.categoryRenameFailed', { failed: 1, total: 1 });
+      return;
+    }
     if (contactsToUpdate.length > 0) {
       this.saving = true;
       try {
@@ -544,10 +608,13 @@ export class ContactsPage extends LitElement {
           const categories = contact.categories.map((c: string) => c === oldName ? newName : c);
           return { ...contact, categories };
         });
-        await contactsService.bulkUpdateContacts(contactsToModify);
+        const { total, failed } = await contactsService.bulkUpdateContacts(contactsToModify);
         this.fetchContacts();
+        if (failed > 0) this.reportFailure('contacts.categoryRenameFailed', { failed, total });
       } catch (e) {
         console.error('Error renaming category', e);
+        this.fetchContacts();
+        this.reportFailure('contacts.categoryRenameFailed', { failed: 1, total: 1 });
       } finally {
         this.saving = false;
       }
@@ -561,7 +628,7 @@ export class ContactsPage extends LitElement {
 
     if (this.addedCategories.includes(oldName)) {
       this.addedCategories = this.addedCategories.filter(c => c !== oldName);
-      localStorage.setItem('contacts_categories_cache', JSON.stringify(this.addedCategories));
+      this.saveAddedCategories();
     }
 
     if (this.selectedCategory === oldName) {
@@ -569,7 +636,14 @@ export class ContactsPage extends LitElement {
       window.location.hash = `/contacts/all`;
     }
 
-    const contactsToUpdate = this.contacts.filter(c => c.categories?.includes(oldName));
+    let contactsToUpdate: any[];
+    try {
+      contactsToUpdate = await this.cardsCarrying(oldName);
+    } catch (e) {
+      console.error('Could not read the address book for a category change', e);
+      this.reportFailure('contacts.categoryDeleteFailed', { failed: 1, total: 1 });
+      return;
+    }
     if (contactsToUpdate.length > 0) {
       this.saving = true;
       try {
@@ -577,10 +651,13 @@ export class ContactsPage extends LitElement {
           const categories = contact.categories.filter((c: string) => c !== oldName);
           return { ...contact, categories };
         });
-        await contactsService.bulkUpdateContacts(contactsToModify);
+        const { total, failed } = await contactsService.bulkUpdateContacts(contactsToModify);
         this.fetchContacts();
+        if (failed > 0) this.reportFailure('contacts.categoryDeleteFailed', { failed, total });
       } catch (e) {
         console.error('Error deleting category', e);
+        this.fetchContacts();
+        this.reportFailure('contacts.categoryDeleteFailed', { failed: 1, total: 1 });
       } finally {
         this.saving = false;
       }
@@ -634,6 +711,7 @@ export class ContactsPage extends LitElement {
       delete this.selectedContact.isTemporary;
     } catch (e) {
       console.error('Error saving contact', e);
+      this.reportFailure('contacts.saveFailed');
     } finally {
       this.saving = false;
     }
@@ -644,7 +722,7 @@ export class ContactsPage extends LitElement {
   }
 
   private async handleToggleStarEvent() {
-    const pathsToUpdate = this.selectedContacts.size > 1 ? Array.from(this.selectedContacts) : [this.selectedContact?.path].filter(Boolean);
+    const pathsToUpdate = this.gestureTargets;
     if (pathsToUpdate.length === 0) return;
 
     const isStarred = pathsToUpdate.length > 1 
@@ -677,12 +755,30 @@ export class ContactsPage extends LitElement {
 
       this.contacts = [...this.contacts]; // Trigger re-render immediately
 
-      await contactsService.bulkUpdateContacts(contactsToModify);
+      const { total, failed } = await contactsService.bulkUpdateContacts(contactsToModify);
+      if (failed > 0) {
+        // The rows were already repainted as starred; re-read so the ones that
+        // did not take revert rather than lingering as a lie.
+        this.fetchContacts();
+        this.reportFailure('contacts.starFailed', { failed, total });
+      }
     } catch (e) {
       console.error('Error toggling star', e);
+      this.reportFailure('contacts.starFailed');
     } finally {
       this.saving = false;
     }
+  }
+
+  /**
+   * Says a write failed. Every failure in this page was a console.error the
+   * user never saw — a starred contact that did not star, a category rename
+   * that did not happen — so the UI simply showed the state it had hoped for.
+   */
+  private reportFailure(key: string, params?: Record<string, any>) {
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: { message: this.i18nStore?.t(key, params), duration: 5000 }
+    }));
   }
 
   private handleDelete() {
@@ -693,18 +789,25 @@ export class ContactsPage extends LitElement {
     this.showDeleteConfirm = false;
     this.saving = true;
     try {
-      const pathsToDelete = this.selectedContacts.size > 1 ? Array.from(this.selectedContacts) as string[] : [this.selectedContact?.path].filter(Boolean) as string[];
-      await contactsService.bulkDeleteContacts(pathsToDelete);
+      const pathsToDelete = this.gestureTargets;
+      const { total, failed } = await contactsService.bulkDeleteContacts(pathsToDelete);
 
       this.selectedContact = null;
-      if (this.selectedContacts.size > 1) {
+      if (this.selectedContacts.size > 0) {
         this.selectedContacts = new Set();
       }
       this.isEditing = false;
+      // Unconditionally, and no longer only on the success path: a partial
+      // failure used to throw past this, leaving every deleted contact still
+      // drawn in a list that no longer matched the server.
       this.fetchContacts();
+      if (failed > 0) {
+        this.reportFailure('contacts.deleteFailed', { failed, total });
+      }
     } catch (e) {
       console.error('Error deleting contacts', e);
-      alert('Failed to delete one or more contacts');
+      this.fetchContacts();
+      this.reportFailure('contacts.deleteFailed', { failed: 1, total: 1 });
     } finally {
       this.saving = false;
     }
@@ -717,10 +820,10 @@ export class ContactsPage extends LitElement {
     }
     if (cat && !this.addedCategories.includes(cat)) {
       this.addedCategories = [...this.addedCategories, cat];
-      localStorage.setItem('contacts_categories_cache', JSON.stringify(this.addedCategories));
+      this.saveAddedCategories();
     }
 
-    const pathsToUpdate = this.selectedContacts.size > 1 ? Array.from(this.selectedContacts) : [this.selectedContact?.path].filter(Boolean);
+    const pathsToUpdate = this.gestureTargets;
     if (pathsToUpdate.length === 0) return;
 
     this.saving = true;
@@ -750,8 +853,12 @@ export class ContactsPage extends LitElement {
         return payload;
       }).filter(Boolean);
 
-      await contactsService.bulkUpdateContacts(contactsToModify);
+      const { total, failed } = await contactsService.bulkUpdateContacts(contactsToModify);
       this.contacts = [...this.contacts]; // Trigger re-render
+      if (failed > 0) {
+        this.fetchContacts();
+        this.reportFailure('contacts.categoryUpdateFailed', { failed, total });
+      }
 
       if (this.selectedContact && this.selectedContacts.size <= 1 && this.selectedCategory !== '') {
         const hasCategory = this.selectedContact.categories?.includes(this.selectedCategory);
@@ -768,6 +875,7 @@ export class ContactsPage extends LitElement {
       }
     } catch (e) {
       console.error('Error updating categories', e);
+      this.reportFailure('contacts.categoryUpdateFailed');
     } finally {
       this.saving = false;
     }

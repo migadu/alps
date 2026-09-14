@@ -313,7 +313,7 @@ func handleTrustLinkedAccounts(ctx *alps.Context) error {
 		Trust bool `json:"trust"`
 	}
 	if err := ctx.BindJSON(&req); err != nil {
-		return alps.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("invalid request: %v", err))
+		return ctx.RespondBindError(err)
 	}
 
 	// Only allow enabling this setting if session is 2FA authenticated
@@ -587,7 +587,7 @@ func handleLinkedAccountsTrust(ctx *alps.Context) error {
 		Trust bool `json:"trust"`
 	}
 	if err := ctx.BindJSON(&req); err != nil {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return ctx.RespondBindError(err)
 	}
 
 	creds, err := loadCredentials(ctx.Session.Store())

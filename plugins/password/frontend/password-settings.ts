@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '../../../frontend/src/utils/fetch-utils';
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
@@ -50,7 +51,7 @@ export class PasswordSettings extends LitElement {
 
 		this.isSubmitting = true;
 		try {
-			const response = await fetch('/password/change', {
+			const response = await fetchWithTimeout('/password/change', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -69,7 +70,7 @@ export class PasswordSettings extends LitElement {
 				window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: data.error || 'Failed to change password.', timeout: 3000 } }));
 			}
 		} catch (e) {
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: 'Network error occurred.', timeout: 3000 } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore?.t('login.networkError'), timeout: 3000 } }));
 		} finally {
 			this.isSubmitting = false;
 		}

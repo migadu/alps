@@ -1,8 +1,28 @@
 import { createContext } from '@lit/context';
 import { messageOperations } from '../services/message-operations';
+import { activeUsername, readUserSettings } from './settings-store';
+import { abortUploads } from '../utils/attachment-utils';
 import { Logger } from '../utils/logger';
 
-const isBlockedAddress = (addr: string): boolean => {
+/**
+ * Where a user's unsent drafts are kept, scoped to WHOSE they are.
+ *
+ * They were kept under one shared `alps_compose_drafts` key, and nothing
+ * removed it at sign-out — so the next person to sign in on this browser, or
+ * the next linked account switched into, had the previous user's unsent
+ * message restored into their composer: recipients, subject and body. Same
+ * shape the settings store already uses for its per-user record.
+ */
+const draftsKeyFor = (username: string) => `alps_compose_drafts_${username}`;
+
+/** The pre-scoping key. Read once, to delete: its contents cannot be attributed
+ * to anyone, and handing them to whoever signs in next is the bug being fixed. */
+const LEGACY_DRAFTS_KEY = 'alps_compose_drafts';
+
+/** The mailbox inside a recipient pill, lower-cased: `"Me" <me@example.com>` and
+ * `ME@example.com` are both `me@example.com`. For comparing two spellings of one
+ * address, which an exact string match cannot do. */
+export const bareAddress = (addr: string): string => {
   let rawEmail = addr.trim();
   if (rawEmail.endsWith('>')) {
     const startObj = rawEmail.lastIndexOf('<');
@@ -10,7 +30,11 @@ const isBlockedAddress = (addr: string): boolean => {
       rawEmail = rawEmail.substring(startObj + 1, rawEmail.length - 1);
     }
   }
-  const lowerEmail = rawEmail.toLowerCase();
+  return rawEmail.trim().toLowerCase();
+};
+
+const isBlockedAddress = (addr: string): boolean => {
+  const lowerEmail = bareAddress(addr);
   return lowerEmail.startsWith('noreply') || 
          lowerEmail.startsWith('no-reply') || 
          lowerEmail.startsWith('mailer-daemon');
@@ -56,14 +80,101 @@ export class ComposeStore extends EventTarget {
   
   private saveTimeout: number | null = null;
 
+  /** Whose drafts are currently loaded. `null` before sign-in, and again after
+   * sign-out — in which case nothing is persisted at all, rather than persisted
+   * somewhere shared. */
+  private username: string | null = null;
+
   constructor() {
     super();
-    this.state.activeComposers = this.loadDrafts();
+    // Unattributable, so it is removed rather than adopted.
+    try {
+      localStorage.removeItem(LEGACY_DRAFTS_KEY);
+    } catch { /* storage blocked; nothing to remove from */ }
+
+    window.addEventListener('session-cleared', this.handleSessionCleared);
+    // BOTH events, and the second is the one that actually carries the answer.
+    //
+    // `user-logged-in` fires the moment POST /session returns, and the identity
+    // is not known then: the settings store is only just starting its own
+    // `/settings` fetch, and `alps_active_user` is written when that lands. So
+    // adopting on `user-logged-in` alone read a null username and stopped
+    // there — drafts were neither restored on sign-in nor persisted for the
+    // rest of the session, because `saveDrafts` returns early without one, and
+    // nothing else re-ran this until a page reload.
+    window.addEventListener('user-logged-in', this.adoptSession);
+    window.addEventListener('alps-active-user-changed', this.adoptSession);
+    this.adoptSession();
   }
 
-  private loadDrafts(): ComposerInstance[] {
+  /**
+   * Loads the signed-in user's drafts, and carries across anything opened
+   * before we knew who they were.
+   *
+   * Only for the anonymous-to-known transition: a second identity signing in
+   * must not inherit the first's windows, which is the whole point of the
+   * scoping.
+   */
+  private adoptSession = () => {
+    const username = activeUsername();
+    if (username === this.username) return;
+
+    const carried = this.username === null ? this.state.activeComposers : [];
+    this.username = username;
+    const restored = username ? this.loadDrafts(username) : [];
+    this.state.activeComposers = username ? [...restored, ...carried] : [];
+    this.notify();
+  };
+
+  /**
+   * Sign-out: the drafts leave the screen AND the disk. Expiry — a
+   * `session-cleared` carrying `reason: 'expired'` — the screen only.
+   *
+   * Cancelling the debounced writer is not tidiness — it is the difference
+   * between erasing and appearing to. A save armed moments before the logout
+   * would otherwise fire afterwards and write the composers straight back out,
+   * restoring on disk exactly what this just removed.
+   *
+   * In-memory state is cleared BEFORE touching storage, because a browser with
+   * site data blocked throws on the localStorage ACCESS rather than on the
+   * operation — so the one path whose job is to leave nothing behind would
+   * abort before emptying the composers, on precisely the locked-down or shared
+   * machine where it matters.
+   */
+  private handleSessionCleared = (event?: Event) => {
+    if (this.saveTimeout !== null) {
+      window.clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    // An expired session is the same user, about to sign back in — not a
+    // departure. Drafts are keyed by username, so keeping them cannot hand them to
+    // anyone else on this browser; deleting them was simply data loss. Flush what
+    // is on screen FIRST, while the identity is still known, so edits inside the
+    // debounce window survive too — for a send interrupted by the 401 that is the
+    // whole message. loadDrafts already drops half-finished uploads and resets
+    // isSending on the way back in.
+    const expired = (event as CustomEvent | undefined)?.detail?.reason === 'expired';
+    if (expired) this.saveDrafts();
+    const key = this.username && !expired ? draftsKeyFor(this.username) : null;
+    this.username = null;
+    // An upload still streaming would otherwise finish (or 401) into a composer
+    // that no longer exists, and deposit its bytes in a server-side session that
+    // is being torn down.
+    for (const c of this.state.activeComposers) abortUploads(c.attachments || []);
+    this.state.activeComposers = [];
+    this.notify();
+    if (key) {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {
+        Logger.error('Failed to clear compose drafts', e);
+      }
+    }
+  };
+
+  private loadDrafts(username: string): ComposerInstance[] {
     try {
-      const stored = localStorage.getItem('alps_compose_drafts');
+      const stored = localStorage.getItem(draftsKeyFor(username));
       if (stored) {
         const drafts: ComposerInstance[] = JSON.parse(stored);
         // Sanitize drafts: remove attachments that were interrupted during upload
@@ -85,8 +196,11 @@ export class ComposeStore extends EventTarget {
   }
 
   private saveDrafts() {
+    // No identity, no key that could safely be written — so nothing is
+    // persisted, rather than persisted where the next user would find it.
+    if (!this.username) return;
     try {
-      localStorage.setItem('alps_compose_drafts', JSON.stringify(this.state.activeComposers));
+      localStorage.setItem(draftsKeyFor(this.username), JSON.stringify(this.state.activeComposers));
     } catch (e) {
       Logger.error('Failed to save compose drafts to localStorage', e);
     }
@@ -146,18 +260,17 @@ export class ComposeStore extends EventTarget {
     
     let defaultFormat: 'html' | 'text' = 'html';
     let signature = '';
-    try {
-      const storedSettings = localStorage.getItem('alps_settings');
-      if (storedSettings) {
-        const parsed = JSON.parse(storedSettings);
-        if (parsed.composeFormat === 'text') {
-          defaultFormat = 'text';
-        }
-        if (parsed.signature) {
-          signature = parsed.signature;
-        }
-      }
-    } catch (e) {}
+    // Through the store's own reader. Parsing `alps_settings` by hand here
+    // could never find these: that key holds only the seven theme/layout values
+    // the settings store calls `globalSettings`, so `composeFormat` and
+    // `signature` were both always undefined and both settings were inert.
+    const userSettings = readUserSettings();
+    if (userSettings.composeFormat === 'text') {
+      defaultFormat = 'text';
+    }
+    if (userSettings.signature) {
+      signature = userSettings.signature;
+    }
 
     let initialText = initialData?.text || '';
     let initialHtml = initialData?.html || '';
@@ -251,19 +364,74 @@ export class ComposeStore extends EventTarget {
   discardDraft(id: string) {
     const composer = this.state.activeComposers.find(c => c.id === id);
     if (composer && composer.draftUid && composer.draftMailbox) {
-      // Import and call messageOperations without waiting, so the UI closes immediately
-      messageOperations.deleteMessages(composer.draftMailbox!, [String(composer.draftUid)]);
+      // Deliberately not awaited, so the window closes at once. But the result
+      // is no longer thrown away: a refused delete leaves the draft sitting in
+      // the Drafts folder while the user has been shown it disappearing, and
+      // they find it again only by going to look.
+      void messageOperations
+        .deleteMessagesResult(composer.draftMailbox, [String(composer.draftUid)])
+        .then(result => {
+          // Quiet on `auth`: the shell is already showing the login screen.
+          if (!result.ok && result.reason !== 'auth') this.reportDiscardFailed();
+        });
     }
     this.closeComposer(id);
   }
 
+  /** Announced on the window: this store has no i18n context, and the toast
+   * host does, so the key is resolved there. */
+  private reportDiscardFailed() {
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: { i18nKey: 'composer.discardFailed', duration: 5000 }
+    }));
+  }
+
+  /**
+   * Takes the composer windows off the screen WITHOUT touching what is on disk.
+   *
+   * The only caller is `login-page`'s connectedCallback, which runs every time
+   * the login screen mounts — including on an ordinary boot redirect, when
+   * `app-root` finds no auth cookie and sends the browser to `#/login`. That
+   * redirect dispatches no `session-cleared`, so this store still knows whose
+   * drafts it holds.
+   *
+   * It used to call `saveDrafts()` here, which then wrote the emptied list over
+   * that user's stored drafts. So a session cookie quietly expiring was enough
+   * to destroy every unsent draft the user had: they reload, get bounced to the
+   * login screen, sign back in, and the composers are gone.
+   *
+   * Persisting is the sign-out path's job, and it already does it properly —
+   * `handleSessionCleared` removes the key outright, after aborting uploads.
+   * Here, memory only.
+   */
   clearAllComposers() {
     this.state = { ...this.state, activeComposers: [] };
-    this.saveDrafts();
     this.notify();
   }
 
-  async saveAllDirtyDrafts() {
+  /**
+   * Saves every dirty composer, and reports how many could NOT be saved.
+   *
+   * The result used to be discarded and `activeComposers` emptied regardless:
+   *
+   *     await messageOperations.saveDraft(formData);   // result ignored
+   *     …
+   *     this.state = { ...this.state, activeComposers: [] };
+   *     this.saveDrafts();
+   *
+   * The only caller is sign-out, which then dispatches `session-cleared` and
+   * deletes the drafts key outright. So a draft that failed to reach the server
+   * — offline, a 500, a full mailbox — was destroyed in the same breath, from
+   * the screen, from localStorage and from the server all at once, silently.
+   * This is the third place this exact mistake lived; the other two were the
+   * close button (e85d153) and the deferred close (63c1515).
+   *
+   * A local session that is ending cannot keep the draft, so the honest answer
+   * is not to silently keep going: the count travels back and the caller tells
+   * the user on the login screen they are about to land on.
+   */
+  async saveAllDirtyDrafts(): Promise<{ failed: number }> {
+    let failed = 0;
     const dirtyComposers = this.state.activeComposers.filter(c => c.dirty);
     if (dirtyComposers.length > 0) {
       for (const composer of dirtyComposers) {
@@ -275,20 +443,20 @@ export class ComposeStore extends EventTarget {
         const formData = new FormData();
         let bcc = [...(composer.bcc || [])];
         let replyToSetting = '';
-        try {
-          const storedSettings = localStorage.getItem('alps_settings');
-          if (storedSettings) {
-            const parsed = JSON.parse(storedSettings);
-            if (parsed.bccMyself && parsed.loginUsername) {
-              if (!bcc.includes(parsed.loginUsername)) {
-                bcc.push(parsed.loginUsername);
-              }
-            }
-            if (parsed.replyTo) {
-              replyToSetting = parsed.replyTo;
-            }
+        {
+          // Same correction as the composer defaults above: `bccMyself`,
+          // `loginUsername` and `replyTo` all live in the per-user record, never
+          // in `alps_settings`, so "BCC myself" and a custom Reply-To silently
+          // did nothing on every message sent.
+          const sendSettings = readUserSettings();
+          const self = sendSettings.loginUsername;
+          if (sendSettings.bccMyself && self && !bcc.some(addr => bareAddress(addr) === bareAddress(self))) {
+            bcc.push(self);
           }
-        } catch (e) {}
+          if (sendSettings.replyTo) {
+            replyToSetting = sendSettings.replyTo;
+          }
+        }
 
         formData.append('to', (composer.to || []).join(', '));
         formData.append('cc', (composer.cc || []).join(', '));
@@ -313,12 +481,13 @@ export class ComposeStore extends EventTarget {
         if (composer.draftMailbox) formData.append('draft_mailbox', composer.draftMailbox);
         if (composer.draftUid) formData.append('draft_uid', composer.draftUid);
 
-        await messageOperations.saveDraft(formData);
+        if (!(await messageOperations.saveDraft(formData))) failed++;
       }
     }
     this.state = { ...this.state, activeComposers: [] };
     this.saveDrafts();
     this.notify();
+    return { failed };
   }
 
   bringComposerToFront(id: string) {

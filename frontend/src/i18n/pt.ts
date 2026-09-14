@@ -1,5 +1,6 @@
 export const pt = {
   settings: {
+    saveFailed: 'Não foi possível salvar essa configuração — ela pode não sobreviver ao encerramento da sessão',
     title: 'Configurações',
     categories: {
       general: 'Geral',
@@ -51,7 +52,7 @@ export const pt = {
       plainText: 'Texto Simples',
       alwaysAsk: 'Sempre perguntar',
       alwaysLoad: 'Sempre carregar',
-      richText: 'Rich Text (HTML)',
+      richText: "Texto formatado (HTML)",
       markReadTimeout: 'Marcar como Lido',
       markReadImmediately: 'Imediatamente',
       markRead1s: 'Após 1 segundo',
@@ -64,7 +65,8 @@ export const pt = {
       sortUid: 'Data de Arquivamento',
       sortDate: 'Data de Recebimento',
       enableThreading: 'Usar tópicos de conversa',
-      themeIframeContent: 'Aplicar tema ao conteúdo das mensagens HTML'
+      themeIframeContent: 'Aplicar tema ao conteúdo das mensagens HTML',
+      threadingNotSupported: "Não suportado pelo seu servidor de e-mail"
     },
     appearance: {
       colorTheme: 'Tema de Cor',
@@ -147,7 +149,8 @@ export const pt = {
       keys_title: 'Chaves de Segurança',
       noKeys: 'Nenhuma chave registrada.',
       added: 'Adicionada',
-      remove_btn: 'Remover'
+      remove_btn: 'Remover',
+      unnamed_key: "Chave de segurança"
     }
   },
   print: {
@@ -165,8 +168,10 @@ export const pt = {
     pleaseWait: 'Por favor, aguarde',
     wait: 'Aguarde',
     signedOut: 'Você foi desconectado.',
+    signedOutDraftsLost: 'Você saiu da sua conta. Alguns rascunhos não enviados não puderam ser salvos e foram perdidos.',
     sessionExpired: 'A sua sessão expirou. Inicie sessão novamente.',
-    inactivitySignedOut: 'Você foi desconectado por inatividade.'
+    inactivitySignedOut: 'Você foi desconectado por inatividade.',
+    inactivitySignedOutDraftsLost: "Você foi desconectado por inatividade. Alguns rascunhos não enviados não puderam ser salvos e foram perdidos."
   },
   folderList: {
     compose: 'Escrever',
@@ -182,6 +187,7 @@ export const pt = {
     delete: 'Excluir',
     createFolder: 'Criar Pasta',
     renameFolder: 'Renomear Pasta',
+    folderName: 'Nome da pasta',
     deleteFolder: 'Excluir Pasta',
     deleteFolderConfirm: 'Tem certeza de que deseja excluir "{folder}"? Todas as mensagens serão excluídas permanentemente.',
     expandSidebar: 'Expandir barra lateral',
@@ -189,9 +195,20 @@ export const pt = {
     moveToTrash: 'Mover para a Lixeira',
     moveToTrashConfirm: 'Tem certeza de que deseja mover "{folder}" para a Lixeira?',
     createSubfolder: 'Criar subpasta',
-    createSubfolderUnder: 'Criar Subpasta em "{folder}"'
+    createSubfolderUnder: 'Criar Subpasta em "{folder}"',
+    subscribe: "Assinar",
+    unsubscribe: "Cancelar assinatura",
+    order: "Ordem",
+    moveToTop: "Mover para o topo",
+    moveUp: "Mover para cima",
+    moveDown: "Mover para baixo",
+    moveToBottom: "Mover para o final"
+  },
+  search: {
+    placeholder: 'Pesquisar e-mails',
   },
   messageList: {
+    menu: 'Menu',
     selectAll: 'Selecionar todas as mensagens',
     checkNew: 'Verificar novas mensagens',
     sortDesc: 'Classificar por data decrescente',
@@ -199,6 +216,8 @@ export const pt = {
     filterStarred: 'Filtrar por favoritos',
     filterUnread: 'Filtrar por não lidos',
     noMessages: 'Nenhuma mensagem',
+    loadError: 'Não foi possível carregar esta pasta.',
+    loadErrorRetry: 'Tentar novamente',
     loading: 'Carregando...',
     unknownSender: 'Remetente Desconhecido',
     unknown: 'Desconhecido',
@@ -218,10 +237,14 @@ export const pt = {
     emptyMailboxFailed: 'Falha ao esvaziar a caixa de correio. Certifique-se de que é Lixeira ou Lixo Eletrônico.'
   },
   composer: {
+    discardFailed: 'Não foi possível excluir o rascunho do servidor e ele ainda está em Rascunhos.',
+    attachmentsTooLarge: 'Os anexos excedem o tamanho máximo permitido.',
+    draftSaveFailedKeepOpen: 'Não foi possível salvar este rascunho — a janela permanece aberta para não perder nada',
     attachmentsWait: 'Por favor, aguarde o envio dos anexos terminar antes de enviar.',
     sending: 'A mensagem está sendo enviada...',
     undo: 'Desfazer',
-    sendError: 'Falha ao enviar mensagem: {error}'
+    sendError: 'Falha ao enviar mensagem: {error}',
+    presendFailed: 'Um plugin de segurança não conseguiu processar esta mensagem, por isso não foi enviada.'
   },
   messageComposer: {
     fontSize: 'Tamanho da fonte',
@@ -292,6 +315,7 @@ export const pt = {
     unknownError: 'Erro desconhecido'
   },
   messageReader: {
+    moreOptions: 'Mais opções',
     tags: 'Etiquetas',
     removeAllTags: 'Remover todas as etiquetas',
     removeTag: 'Remover etiqueta',
@@ -386,31 +410,72 @@ export const pt = {
   toast: {
     draftDiscarded: 'Rascunho descartado',
     folderRenamed: 'Pasta renomeada',
+    tagNotSupported: 'Este servidor de e-mail não suporta essa etiqueta',
+    flagChangeFailed: 'Não foi possível atualizar as mensagens',
+    folderCreated: 'Pasta criada',
+    folderExists: 'Já existe uma pasta com esse nome',
+    folderCreateFailed: 'Não foi possível criar a pasta',
+    folderRenameFailed: 'Não foi possível renomear a pasta',
+    folderDeleteFailed: 'Não foi possível excluir a pasta',
+    folderUndoFailed: 'Não foi possível desfazer',
     folderMovedToTrash: 'Pasta movida para a Lixeira',
     folderPermanentlyDeleted: 'Pasta excluída permanentemente',
     messagePermanentlyDeleted: 'Mensagem excluída permanentemente',
     undo: 'Desfazer',
     dismiss: 'Fechar',
     messageMovedToArchive: 'Mensagem movida para Arquivo',
-    messagesMovedToArchive: '{count} mensagens movidas para Arquivo',
+    messagesMovedToArchive: {
+      one: "{count} mensagem movida para Arquivo",
+      other: "{count} mensagens movidas para Arquivo"
+    },
     messageMovedToSpam: 'Mensagem movida para Spam',
-    messagesMovedToSpam: '{count} mensagens movidas para Spam',
+    messagesMovedToSpam: {
+      one: "{count} mensagem movida para Spam",
+      other: "{count} mensagens movidas para Spam"
+    },
     messageMovedToInbox: 'Mensagem movida para Entrada',
-    messagesMovedToInbox: '{count} mensagens movidas para Entrada',
+    messagesMovedToInbox: {
+      one: "{count} mensagem movida para Entrada",
+      other: "{count} mensagens movidas para Entrada"
+    },
     messageMovedToTrash: 'Mensagem movida para Lixeira',
-    messagesMovedToTrash: '{count} mensagens movidas para Lixeira',
+    messagesMovedToTrash: {
+      one: "{count} mensagem movida para Lixeira",
+      other: "{count} mensagens movidas para Lixeira"
+    },
     messageMovedToFolder: 'Mensagem movida para {folder}',
-    messagesMovedToFolder: '{count} mensagens movidas para {folder}',
+    messagesMovedToFolder: {
+      one: "{count} mensagem movida para {folder}",
+      other: "{count} mensagens movidas para {folder}"
+    },
     messageCopiedToFolder: 'Mensagem copiada para {folder}',
-    messagesCopiedToFolder: '{count} mensagens copiadas para {folder}',
-    draftsDiscarded: '{count} rascunhos descartados',
-    messagesPermanentlyDeleted: '{count} mensagens excluídas permanentemente'
+    messagesCopiedToFolder: {
+      one: "{count} mensagem copiada para {folder}",
+      other: "{count} mensagens copiadas para {folder}"
+    },
+    draftsDiscarded: {
+      one: "{count} rascunho descartado",
+      other: "{count} rascunhos descartados"
+    },
+    messagesPermanentlyDeleted: {
+      one: "{count} mensagem excluída permanentemente",
+      other: "{count} mensagens excluídas permanentemente"
+    },
+    undoFailed: 'Não foi possível desfazer',
+    messageDeleteFailed: 'Não foi possível eliminar a mensagem',
+    moveFailed: 'Não foi possível mover',
+    copyFailed: 'Não foi possível copiar',
+    subscribeFailed: "Não foi possível assinar",
+    unsubscribeFailed: "Não foi possível cancelar a assinatura"
   },
   mailboxPage: {
     mailboxNotFound: 'Caixa de correio não encontrada',
     newMessages: 'Novas mensagens',
     newMessagesSingleBody: 'Você tem 1 nova mensagem',
-    newMessagesMultiBody: 'Você tem {count} novas mensagens',
+    newMessagesMultiBody: {
+      one: "Você tem {count} nova mensagem",
+      other: "Você tem {count} novas mensagens"
+    },
     newMessagesInInbox: 'Novas mensagens na Caixa de Entrada',
     newMessagesAvailable: 'Novas mensagens disponíveis',
     open: 'Abrir',
@@ -429,7 +494,15 @@ export const pt = {
     cancel: 'Cancelar',
     save: 'Salvar',
     optional: 'Opcional',
-    delete: 'Excluir'
+    delete: 'Excluir',
+    clear: "Limpar",
+    showPassword: "Mostrar senha",
+    hidePassword: "Ocultar senha",
+    previous: "Anterior",
+    next: "Próximo",
+    expand: "Expandir",
+    collapse: "Recolher",
+    notFound: "Página não encontrada"
   }
 };
 

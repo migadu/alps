@@ -94,19 +94,18 @@ export class CalendarMiniMonth extends LitElement {
     `;
 
     private getMonthGrid() {
-        const firstDay = new Date(this.year, this.month, 1);
-        const lastDay = new Date(this.year, this.month + 1, 0);
-        
-        const grid = [];
-        let current = new Date(firstDay);
-        // Rewind to Monday (1 = Monday, 0 = Sunday)
-        let dayOfWeek = current.getDay();
-        if (dayOfWeek === 0) dayOfWeek = 7;
-        current.setDate(current.getDate() - (dayOfWeek - 1));
+        // Counted rather than walked, for the reason given in the month view's
+        // getMonthGrid: a day cursor gains an hour at a midnight DST start and
+        // then drops the month's last day and the today highlight.
+        let dayOfWeek = new Date(this.year, this.month, 1).getDay();
+        if (dayOfWeek === 0) dayOfWeek = 7; // Monday first
+        const firstCell = 1 - (dayOfWeek - 1);
+        const daysInMonth = new Date(this.year, this.month + 1, 0).getDate();
+        const cellCount = Math.ceil((daysInMonth + (dayOfWeek - 1)) / 7) * 7;
 
-        while (current <= lastDay || grid.length % 7 !== 0) {
-            grid.push(new Date(current));
-            current.setDate(current.getDate() + 1);
+        const grid: Date[] = [];
+        for (let i = 0; i < cellCount; i++) {
+            grid.push(new Date(this.year, this.month, firstCell + i));
         }
         return grid;
     }
@@ -120,7 +119,7 @@ export class CalendarMiniMonth extends LitElement {
         dayEnd.setHours(23,59,59,999);
 
         return this.events.some(e => {
-            const isAllDay = isAllDayEvent(e.start, e.end);
+            const isAllDay = isAllDayEvent(e);
 
             if (isAllDay) {
                 const startStr = e.start.split('T')[0];

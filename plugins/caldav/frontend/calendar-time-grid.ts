@@ -229,7 +229,7 @@ export class CalendarTimeGrid extends LitElement {
     private getEventsForDate(date: Date, includeAllDay: boolean) {
         if (!this.events) return [];
         return this.events.filter(e => {
-            const isAllDay = isAllDayEvent(e.start, e.end);
+            const isAllDay = isAllDayEvent(e);
             if (includeAllDay !== isAllDay) return false;
 
             const dayStart = new Date(date);
@@ -265,7 +265,10 @@ export class CalendarTimeGrid extends LitElement {
         newDate.setHours(hour, 0, 0, 0);
 
         this.dispatchEvent(new CustomEvent('create-event', {
-            detail: { date: newDate },
+            // The intent is stated rather than left to the editor, which read any
+            // midnight as a day-cell click: the top (00:00) row of the week and
+            // day grids opened the all-day form.
+            detail: { date: newDate, allDay: false },
             bubbles: true,
             composed: true
         }));
@@ -276,7 +279,7 @@ export class CalendarTimeGrid extends LitElement {
         newDate.setHours(0, 0, 0, 0);
 
         this.dispatchEvent(new CustomEvent('create-event', {
-            detail: { date: newDate },
+            detail: { date: newDate, allDay: true },
             bubbles: true,
             composed: true
         }));
@@ -364,8 +367,12 @@ export class CalendarTimeGrid extends LitElement {
                                             const renderEnd = end > dayEnd ? dayEnd : end;
 
                                             const top = (renderStart.getHours() * 48) + (renderStart.getMinutes() / 60 * 48);
-                                            const durationMinutes = (renderEnd.getTime() - renderStart.getTime()) / 1000 / 60;
-                                            let height = (durationMinutes / 60) * 48;
+                                            // Both ends read off the wall clock, like the hour lines behind
+                                            // them. Elapsed time is not wall-clock distance on a DST day: an
+                                            // 01:00-04:00 event on a spring-forward Sunday is two real hours,
+                                            // so a height from milliseconds stopped at the 03:00 line.
+                                            const bottom = (renderEnd.getHours() * 48) + (renderEnd.getMinutes() / 60 * 48);
+                                            let height = bottom - top;
                                             
                                             // Ensure minimum height for visibility, but don't overflow bottom
                                             if (height < 20) height = 20;

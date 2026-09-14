@@ -1,3 +1,5 @@
+import { autoLogoutService } from '../services/auto-logout';
+
 export function applyThemeToIframe(iframe: HTMLIFrameElement, themeIframeContent: boolean): void {
   if (!iframe.contentDocument || !iframe.contentDocument.body) return;
 
@@ -61,6 +63,9 @@ export function setupIframeSizing(iframe: HTMLIFrameElement, themeIframeContent:
   // Prevent dropping files inside the iframe from navigating away
   iframe.contentDocument.addEventListener('dragover', (ev) => ev.preventDefault());
   iframe.contentDocument.addEventListener('drop', (ev) => ev.preventDefault());
+
+  // Bridge interactions inside the iframe to auto-logout activity tracking
+  autoLogoutService.trackIframe(iframe);
 
   applyThemeToIframe(iframe, themeIframeContent);
 

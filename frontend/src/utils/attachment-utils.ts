@@ -1,4 +1,8 @@
 import { Logger } from './logger';
+
+/** The English fallback for the over-budget refusal, used when a caller has no
+ * translation to hand. */
+const DEFAULT_TOO_LARGE = 'Attachments exceed the maximum allowed size.';
 export interface Attachment {
   uuid?: string;
   partPath?: string;
@@ -11,11 +15,41 @@ export interface Attachment {
 
 const activeUploads = new Map<string, XMLHttpRequest>();
 
+/**
+ * An id for one in-flight upload.
+ *
+ * `activeUploads` is a module-level map shared by every open composer, so a
+ * collision aborts somebody else's upload. The previous
+ * `Math.random().toString(36).substring(2, 15)` was generated in a tight loop —
+ * once per file in a multi-file selection — which is exactly where a
+ * same-millisecond collision is least unlikely.
+ */
+export function newAttachmentId(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+  );
+}
+
 export function abortUpload(tempId: string) {
   const xhr = activeUploads.get(tempId);
   if (xhr) {
     xhr.abort();
     activeUploads.delete(tempId);
+  }
+}
+
+/**
+ * Cancels every in-flight upload among `attachments` — for a composer that is
+ * going away whole (discarded, or signed out from under).
+ *
+ * Without this, an upload still streaming when the session ends finishes into a
+ * composer that no longer exists, and deposits its bytes in a server-side
+ * session that is being torn down.
+ */
+export function abortUploads(attachments: Attachment[]): void {
+  for (const att of attachments) {
+    if (att.uploading && att._tempId) abortUpload(att._tempId);
   }
 }
 
@@ -36,7 +70,8 @@ export function handleAttachClick(
   onFileAdded: (tempId: string, file: File) => void,
   onProgress: (tempId: string, progress: number) => void,
   onComplete: (tempId: string, uuids: string[]) => void,
-  onError: (tempId: string, err: any) => void
+  onError: (tempId: string, err: any) => void,
+  refusal?: string
 ) {
   const input = document.createElement('input');
   input.type = 'file';
@@ -46,7 +81,7 @@ export function handleAttachClick(
     const files = Array.from((e.target as HTMLInputElement).files || []);
     if (files.length === 0) return;
 
-    uploadFiles(files, composerId, maxBytes, currentBytes, onFileAdded, onProgress, onComplete, onError);
+    uploadFiles(files, composerId, maxBytes, currentBytes, onFileAdded, onProgress, onComplete, onError, refusal);
   };
 
   input.click();
@@ -60,7 +95,11 @@ export function uploadFiles(
   onFileAdded: (tempId: string, file: File) => void,
   onProgress: (tempId: string, progress: number) => void,
   onComplete: (tempId: string, uuids: string[]) => void,
-  onError: (tempId: string, err: any) => void
+  onError: (tempId: string, err: any) => void,
+  /** The translated over-budget message. Passed in because this module is not a
+   * component and cannot reach the i18n store, which alps provides through Lit
+   * context rather than as a singleton. */
+  refusal?: string
 ) {
   let incomingBytes = 0;
   for (const file of files) {
@@ -68,9 +107,11 @@ export function uploadFiles(
   }
 
   if (maxBytes > 0 && (currentBytes + incomingBytes) > maxBytes) {
+    // Translated, like every other message this app shows. This one was an
+    // English string literal in a UI that ships eight locales.
     window.dispatchEvent(new CustomEvent('show-toast', {
       detail: {
-        message: `Attachments exceed the maximum allowed size.`,
+        message: refusal || DEFAULT_TOO_LARGE,
         duration: 5000
       }
     }));
@@ -78,7 +119,7 @@ export function uploadFiles(
   }
 
   for (const file of files) {
-    const tempId = Math.random().toString(36).substring(2, 15);
+    const tempId = newAttachmentId();
     onFileAdded(tempId, file);
 
     const formData = new FormData();

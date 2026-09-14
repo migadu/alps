@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -13,7 +14,8 @@ type CertSyncWorker struct {
 	logger           *slog.Logger
 	stopCh           chan struct{}
 	doneCh           chan struct{}
-	consecutiveFails int // Tracks consecutive sync failures for log escalation
+	stopOnce         sync.Once // guards close(stopCh)
+	consecutiveFails int       // Tracks consecutive sync failures for log escalation
 }
 
 // NewCertSyncWorker creates a new certificate sync worker.
@@ -51,13 +53,36 @@ func (w *CertSyncWorker) Start() {
 		for {
 			select {
 			case <-ticker.C:
-				w.runSync()
+				w.runSyncSafely()
 			case <-w.stopCh:
 				w.logger.Info("certificate sync worker stopped")
 				return
 			}
 		}
 	}()
+}
+
+// runSyncSafely runs one sync with its own recover.
+//
+// The recover was a single defer on the goroutine itself, OUTSIDE the for, so a
+// panic in SyncAllToS3 unwound the whole loop and the worker returned for good —
+// and nothing restarts it. Certificate replication to S3 would then be over for
+// the life of the process, silently.
+//
+// Silently is the word that matters. runSync below escalates a persistent
+// FAILURE to "PERSISTENT SYNC FAILURE: certificates are NOT being replicated to
+// S3", precisely so a broken S3 cannot go unnoticed. A panic killed the worker
+// outright and logged one line, after which there was nothing left to escalate:
+// the recoverable path was loud and the fatal one quiet.
+//
+// Same fix as cache.go (1701e4e) and the cert warmer beside it.
+func (w *CertSyncWorker) runSyncSafely() {
+	defer func() {
+		if r := recover(); r != nil {
+			w.logger.Error("panic in certificate sync - continuing", "panic", r)
+		}
+	}()
+	w.runSync()
 }
 
 // runStartupSync runs an initial sync on startup, always comparing with S3
@@ -75,9 +100,14 @@ func (w *CertSyncWorker) runStartupSync() {
 }
 
 // Stop gracefully shuts down the sync worker.
+//
+// Guarded, because close of an already-closed channel panics and this is
+// reachable twice — Manager.Close is itself unguarded, and is both deferred
+// from main and exported. certWarmer.Stop in this same package already used a
+// sync.Once for the identical shape; this did not.
 func (w *CertSyncWorker) Stop(timeout time.Duration) {
 	w.logger.Info("stopping certificate sync worker")
-	close(w.stopCh)
+	w.stopOnce.Do(func() { close(w.stopCh) })
 
 	// Wait for worker to finish with timeout
 	select {

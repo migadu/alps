@@ -1,5 +1,11 @@
 export default {
   contacts: {
+    deleteFailed: 'Não foi possível eliminar {failed} de {total} contactos.',
+    categoryRenameFailed: 'Não foi possível atualizar {failed} de {total} contactos, a categoria foi renomeada apenas parcialmente.',
+    categoryDeleteFailed: 'Não foi possível atualizar {failed} de {total} contactos, a categoria foi removida apenas parcialmente.',
+    categoryUpdateFailed: 'Não foi possível atualizar {failed} de {total} contactos.',
+    saveFailed: 'Não foi possível guardar o contacto.',
+    starFailed: 'Não foi possível atualizar o contacto.',
     unnamedContact: 'Contato sem nome',
     title: 'Contatos',
     allContacts: 'Todos os contatos',
@@ -28,7 +34,10 @@ export default {
     cancel: 'Cancelar',
     noContacts: 'Nenhum contato encontrado',
     selectContact: 'Selecione um contato para ver os detalhes',
-    selectedContacts: '{count} contatos selecionados',
+    selectedContacts: {
+      one: '{count} contato selecionado',
+      other: '{count} contatos selecionados'
+    },
     clearSelection: 'Limpar seleção',
     selectAll: 'Selecionar tudo',
     clearSearch: 'Limpar pesquisa',

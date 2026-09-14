@@ -56,6 +56,7 @@ type EventData struct {
 	CalendarPath string `json:"calendarPath"`
 	Location     string `json:"location,omitempty"`
 	RRule        string `json:"rrule,omitempty"`
+	AllDay       bool   `json:"allDay"`
 }
 
 func parseObjectPath(s string) (string, error) {
@@ -93,11 +94,64 @@ func extractEventData(co *caldav.CalendarObject) (EventData, error) {
 		Description:  description,
 		Location:     location,
 		RRule:        rrule,
+		AllDay:       eventIsAllDay(&event),
 		Start:        start.Format(time.RFC3339),
 		End:          end.Format(time.RFC3339),
 		Path:         co.Path,
 		CalendarPath: "", // populated later
 	}, nil
+}
+
+// eventIsAllDay reports whether an event is date-based ("all day") rather than
+// timed.
+//
+// It is the server's to say, from the property itself, because the client cannot
+// tell: Start and End reach it as RFC 3339 instants, and the frontend used to
+// guess all-day from a UTC-midnight suffix. That guess is why the write path
+// stored all-day events as UTC-midnight DATE-TIMEs, which every other CalDAV
+// client reads as a timed event starting at midnight UTC: the evening before,
+// anywhere west of Greenwich.
+//
+// A VALUE=DATE start is all-day by definition, and so is a start with no VALUE
+// parameter but a date's length, which is how go-ical's own DateTime reads it.
+// The UTC-midnight pair is still accepted so that the events alps has already
+// written in that shape keep showing as all-day; a timed event that genuinely
+// runs from one UTC midnight to another is misread exactly as it was before.
+func eventIsAllDay(event *ical.Event) bool {
+	start := event.Props.Get(ical.PropDateTimeStart)
+	if start == nil {
+		return false
+	}
+	switch start.ValueType() {
+	case ical.ValueDate:
+		return true
+	case ical.ValueDefault:
+		if len(start.Value) == len("20060102") {
+			return true
+		}
+	}
+	end := event.Props.Get(ical.PropDateTimeEnd)
+	return end != nil && isUTCMidnight(start.Value) && isUTCMidnight(end.Value)
+}
+
+func isUTCMidnight(value string) bool {
+	return len(value) == len("20060102T150405Z") && strings.HasSuffix(value, "T000000Z")
+}
+
+// setEventTimes writes DTSTART and DTEND, as DATE values for an all-day event.
+//
+// The all-day date is the UTC calendar date of the instant the client sent,
+// which the frontend builds as UTC midnight of the day the user picked. Both
+// setters replace the property whole, so switching an event between all-day and
+// timed leaves no stale VALUE or TZID parameter behind.
+func setEventTimes(event *ical.Event, start, end time.Time, allDay bool) {
+	if allDay {
+		event.Props.SetDate(ical.PropDateTimeStart, start.UTC())
+		event.Props.SetDate(ical.PropDateTimeEnd, end.UTC())
+		return
+	}
+	event.Props.SetDateTime(ical.PropDateTimeStart, start)
+	event.Props.SetDateTime(ical.PropDateTimeEnd, end)
 }
 
 func registerRoutes(p *plugin) {
@@ -126,7 +180,7 @@ func registerRoutes(p *plugin) {
 			Name string `json:"name"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+			return ctx.RespondBindError(err)
 		}
 		if req.Name == "" {
 			return alps.NewHTTPError(http.StatusBadRequest, "Calendar name is required")
@@ -212,7 +266,7 @@ func registerRoutes(p *plugin) {
 			Name string `json:"name"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+			return ctx.RespondBindError(err)
 		}
 		if req.Name == "" {
 			return alps.NewHTTPError(http.StatusBadRequest, "Calendar name is required")
@@ -289,7 +343,14 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		c, _, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		c, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		// Must BE one of the user's calendars. RemoveAll takes children with it,
+		// so an unconstrained path here deletes whatever collection it names.
+		calPath, err = requireCalendarPath(calPath, calendars)
 		if err != nil {
 			return err
 		}
@@ -406,14 +467,32 @@ func registerRoutes(p *plugin) {
 	updateEvent := func(ctx *alps.Context) error {
 		var req EventData
 		if err := ctx.BindJSON(&req); err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+			return ctx.RespondBindError(err)
 		}
 
-		calendarObjectPath, _ := parseObjectPath(ctx.Param("path")) // Will be empty for create
+		// Empty for create, where there is no {path}; url.PathUnescape("") gives
+		// "" with no error. So a non-nil error is a malformed path, and it was
+		// discarded outright by the `_`. The empty result then reads as "this is
+		// a create" everywhere below, so editing an event through a malformed
+		// path silently made a SECOND event rather than reporting anything.
+		calendarObjectPath, err := parseObjectPath(ctx.Param("path"))
+		if err != nil {
+			return err
+		}
 
 		c, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
 		if err != nil {
 			return err
+		}
+
+		// An edit reads the object at this path and writes it back through
+		// PutCalendarObject. Unconstrained, that writes an iCalendar over
+		// whatever the path names.
+		if calendarObjectPath != "" {
+			calendarObjectPath, err = requireCalendarObjectPath(calendarObjectPath, calendars)
+			if err != nil {
+				return err
+			}
 		}
 
 		var co *caldav.CalendarObject
@@ -447,8 +526,7 @@ func registerRoutes(p *plugin) {
 
 		event.Props.SetDateTime(ical.PropDateTimeStamp, time.Now())
 		event.Props.SetText(ical.PropSummary, req.Summary)
-		event.Props.SetDateTime(ical.PropDateTimeStart, start)
-		event.Props.SetDateTime(ical.PropDateTimeEnd, end)
+		setEventTimes(event, start, end, req.AllDay)
 		event.Props.Del(ical.PropDuration)
 
 		if req.Description != "" {
@@ -502,6 +580,12 @@ func registerRoutes(p *plugin) {
 			if targetCal == nil && len(calendars) > 0 {
 				targetCal = &calendars[0]
 			}
+			// With no calendars at all, targetCal is still nil and the line
+			// below dereferenced it — a nil panic rather than an error, for an
+			// account the server simply has nothing provisioned for yet.
+			if targetCal == nil {
+				return alps.NewHTTPError(http.StatusConflict, "no calendar available to create the event in")
+			}
 
 			p = path.Join(targetCal.Path, newID.String()+".ics")
 		}
@@ -522,7 +606,14 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		c, _, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		c, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		// Must be INSIDE one of them: this route deletes an event, and RemoveAll
+		// would just as happily delete the calendar holding it.
+		path, err = requireCalendarObjectPath(path, calendars)
 		if err != nil {
 			return err
 		}

@@ -70,6 +70,11 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 	providerFactory := s.createProviderFactory()
 
 	s.Sessions = newSessionManager(providerFactory, s.dialSMTP, logger, options.CacheTTL, options.CacheEnabled, options.LoginKey, options.SessionDuration, options.MaxSessionDuration, options.MaxSessions, options.MaxSessionsPerUser, options.MaxAttachmentMiB, options.MaxSessionAttachmentMiB, options.MaxGlobalAttachmentMiB)
+	// Set after construction rather than as a fourteenth positional argument to
+	// newSessionManager, which every session test already calls.
+	if options.AbsoluteSessionDuration != 0 {
+		s.Sessions.absoluteSessionDuration = options.AbsoluteSessionDuration
+	}
 
 	// Initialize rate limiter if enabled
 	if options.RateLimitEnabled {
@@ -184,7 +189,7 @@ func (s *Server) createProviderFactory() provider.AuthenticatedProviderFactory {
 				return nil, AuthError{err}
 			}
 
-			return imap.NewIMAPProvider(client, s.Options.Debug), nil
+			return imap.NewIMAPProvider(client, s.Options.Debug).WithAuthservIDs(s.Options.Provider.IMAP.AuthservIDs), nil
 
 		default:
 			return nil, fmt.Errorf("unknown provider type: %s", s.Options.Provider.Type)
@@ -385,14 +390,18 @@ func handleUnauthenticated(next HandlerFunc, ctx *Context) error {
 }
 
 type Options struct {
-	SMTP                    SMTPOptions // SMTP configuration
-	Debug                   bool
-	LoginKey                *fernet.Key
-	EnabledPlugins          []string                // If empty, all plugins are enabled
-	CacheTTL                time.Duration           // Cache TTL, 0 means use default (10 minutes)
-	CacheEnabled            bool                    // If false, caching is disabled
-	SessionDuration         time.Duration           // Session timeout, 0 means use default (30 minutes)
-	MaxSessionDuration      time.Duration           // Maximum session duration users can set, 0 means no limit
+	SMTP               SMTPOptions // SMTP configuration
+	Debug              bool
+	LoginKey           *fernet.Key
+	EnabledPlugins     []string      // If empty, all plugins are enabled
+	CacheTTL           time.Duration // Cache TTL, 0 means use default (10 minutes)
+	CacheEnabled       bool          // If false, caching is disabled
+	SessionDuration    time.Duration // Session timeout, 0 means use default (30 minutes)
+	MaxSessionDuration time.Duration // Maximum session duration users can set, 0 means no limit
+	// How long a session may live no matter how much it is used. 0 means use
+	// the default (7 days); negative disables the cap entirely, which leaves
+	// sessions sliding forever — see defaultAbsoluteSessionDuration.
+	AbsoluteSessionDuration time.Duration
 	MaxSessions             int                     // Maximum total concurrent sessions, 0 means unlimited (default: 10000)
 	MaxSessionsPerUser      int                     // Maximum sessions per username, 0 means unlimited (default: 10)
 	MaxAttachmentMiB        int                     // Max attachment size per composer in MiB
@@ -422,6 +431,10 @@ type ProviderOptions struct {
 type IMAPProviderOptions struct {
 	Server   string
 	Insecure bool
+	// Authserv-ids of the receiving mail servers whose Authentication-Results
+	// fields are trusted for a message's DMARC verdict. Empty means the topmost
+	// field.
+	AuthservIDs []string
 }
 
 type SMTPOptions struct {

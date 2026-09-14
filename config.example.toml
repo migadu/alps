@@ -44,6 +44,19 @@ debug = true
 # Caps the maximum session duration even if user sets a higher auto-logout preference
 # max_session_minutes = 1440
 
+# Absolute session lifetime in hours (default: 168, i.e., 7 days)
+# A hard ceiling on how long one session may live NO MATTER how much it is used.
+#
+# The two settings above bound INACTIVITY, and inactivity alone bounds nothing:
+# every request resets the idle window, and the web UI pings /session every five
+# minutes while a tab is open. Without this ceiling a session token that has been
+# captured and is being kept warm never expires and the user is never asked to
+# authenticate again.
+#
+# Floored at session_minutes, so a value below the idle window cannot silently
+# redefine it. Set to -1 to disable the ceiling and let sessions slide forever.
+# absolute_session_hours = 168
+
 # HTTP Server Timeouts
 # Protects against slow client attacks and resource exhaustion
 
@@ -366,6 +379,13 @@ server = "imaps://imap.migadu.com:993"
 
 # Allow insecure connections (default: false)
 # insecure = false
+
+# Authserv-ids of the receiving mail servers whose Authentication-Results
+# header is trusted for a message's DMARC verdict, which decides whether a
+# sender's BIMI logo is shown (default: empty, meaning the topmost header).
+# Set it when your mail server stamps Authentication-Results: without it, a
+# message the server did not stamp is judged by a header its sender wrote.
+# authserv_ids = ["mx.example.com"]
 
 # Maildir Provider Configuration (Local filesystem)
 # [provider.maildir]

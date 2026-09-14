@@ -1,4 +1,5 @@
 import { html, css, LitElement } from 'lit';
+import { renderIcon } from '../utils/ui';
 import { customElement, state } from 'lit/decorators.js';
 import { Router } from '../router';
 import { registry } from '../plugin-registry';
@@ -61,6 +62,22 @@ export class AppRoot extends LitElement {
   private offlineInterval: number | null = null;
 
   static styles = css`
+    /* The offline modal's glyph. It was a hand-written <use> pointing at the
+       sprite with its OWN cache-busting query — ?v=7, where renderIcon uses
+       ?v=11 — so the browser treated it as a second 64 KB resource that nothing
+       else in the app ever requests. Which made the one icon shown BECAUSE the
+       network is down the one icon guaranteed not to be in cache: a fresh
+       fetch, while offline, that cannot succeed. */
+    .offline-icon {
+      color: var(--text-muted, #9ca3af);
+      margin-bottom: 16px;
+    }
+    .offline-icon .icon {
+      width: 48px;
+      height: 48px;
+      fill: currentColor;
+    }
+
     :host {
       display: block;
       height: 100vh;
@@ -92,6 +109,11 @@ export class AppRoot extends LitElement {
       window.location.hash = '#/login';
     }
 
+    // The settings store reports a failed save as a toast and needs the active
+    // dictionary to do it. It is not a component, so it cannot consume the Lit
+    // context the rest of the app reads i18n through.
+    this.settingsStore.setI18n(this.i18nStore);
+
     this.composeStore.addEventListener('change', this._handleComposeChange);
     this.settingsStore.addEventListener('change', this._handleSettingsChange);
     this.activeComposers = this.composeStore.getState().activeComposers;
@@ -99,9 +121,9 @@ export class AppRoot extends LitElement {
     // Initialize auto-logout
     const autoLogoutTime = this.settingsStore.getState().autoLogout ?? 0;
     autoLogoutService.setLogoutTime(autoLogoutTime);
-    autoLogoutService.onBeforeLogout = async () => {
-      await this.composeStore.saveAllDirtyDrafts();
-    };
+    // Returns the count, so auto-logout can say drafts were lost exactly as the
+    // Sign Out button does. The wrapper used to await it and discard the answer.
+    autoLogoutService.onBeforeLogout = () => this.composeStore.saveAllDirtyDrafts();
 
     // Initialize language
     const initialLang = this.settingsStore.getState().language ?? 'en';
@@ -173,7 +195,14 @@ export class AppRoot extends LitElement {
   private _handleAuthError = () => {
     sessionStorage.clear();
     clearSessionSettings();
-    window.dispatchEvent(new CustomEvent('session-cleared'));
+    // An EXPIRY, not a sign-out, and the two must not be the same event. This
+    // dispatched the bare sign-out signal, so compose-store deleted every unsent
+    // draft from storage the moment any request came back 401 — including the
+    // send the user had just pressed, whose message was destroyed before
+    // sendDraft returned. 7487097 closed that loss on the boot redirect; this was
+    // the same loss through the door left open. Sign-out and idle auto-logout
+    // still dispatch it bare, and still clear.
+    window.dispatchEvent(new CustomEvent('session-cleared', { detail: { reason: 'expired' } }));
     setLoginNotice('sessionExpired');
     window.location.hash = '#/login';
   };
@@ -262,7 +291,12 @@ export class AppRoot extends LitElement {
     const id = ++this.toastIdCounter;
     const newToast: ToastItem = {
       id,
-      message: e.detail.message,
+      // `i18nKey` lets a caller that has no i18n context of its own — a store,
+      // a plain module — name the string instead of resolving it. Resolved
+      // here, where the dictionary is.
+      message: e.detail.message
+        ?? (e.detail.i18nKey ? this.i18nStore?.t(e.detail.i18nKey) : undefined)
+        ?? '',
       actionLabel: e.detail.actionLabel || '',
       actionFn: e.detail.actionFn,
       dismissFn: e.detail.dismissFn,
@@ -339,7 +373,7 @@ export class AppRoot extends LitElement {
 
   private router = new Router(
     this.getRoutes(),
-    () => html`<div>404 Not Found</div>`,
+    () => html`<div>404 — ${this.i18nStore.t('general.notFound')}</div>`,
     () => this.requestUpdate()
   );
 
@@ -386,14 +420,12 @@ export class AppRoot extends LitElement {
       ${this.isOffline ? html`
         <ui-modal title=${this.i18nStore.t('offline.title')} .dismissible=${false} width="400px">
           <div style="text-align: center; padding: 16px 0;">
-            <svg style="width: 48px; height: 48px; color: var(--text-muted, #9ca3af); margin-bottom: 16px; fill: currentColor;">
-              <use href="/assets/icons/sprite.svg?v=7#wifiSlash"></use>
-            </svg>
+            <div class="offline-icon">${renderIcon('wifiSlash')}</div>
             <div style="font-weight: 500; font-size: 16px; margin-bottom: 8px; color: var(--text-primary, #111827);">
               ${this.i18nStore.t('offline.description')}
             </div>
             <div style="color: var(--text-secondary, #4b5563); font-size: 14px;">
-              ${this.i18nStore.t('offline.tryingAgain').replace('{seconds}', this.offlineCountdown.toString())}
+              ${this.i18nStore.t('offline.tryingAgain', { seconds: this.offlineCountdown })}
             </div>
           </div>
         </ui-modal>

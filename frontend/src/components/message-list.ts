@@ -1,10 +1,10 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { formatDateList, formatSize, getMailboxLabel, renderIcon, getBimiAvatarUrl } from '../utils/ui';
+import { formatDateList, formatSize, getMailboxLabel, renderIcon, bimiAvatarUrlFor, mayShowBimiLogo } from '../utils/ui';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED, getMessageTags } from '../utils/flags';
-import { FOLDER_DRAFTS, FOLDER_SENT } from '../utils/folders';
 import { messageSync } from '../services/message-sync';
 import { mailboxOperations } from '../services/mailbox-operations';
+import { fetchAuthVerdicts, VERDICT_BATCH, type AuthVerdict } from '../services/auth-verdicts';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -28,6 +28,8 @@ export class MessageList extends LitElement {
 
   @property({ type: Array }) messages: any[] = [];
   @property({ type: String }) currentMailbox = '';
+  /** As in `app-header` — the delimiter the server reported for this mailbox. */
+  @property({ type: String }) currentMailboxDelimiter = '';
   // Special-use role of the current mailbox ('drafts'|'sent'|...), resolved by the
   // parent from IMAP attributes so Gmail's "[Gmail]/Sent Mail" etc. are recognized.
   @property({ type: String }) currentMailboxRole = '';
@@ -46,12 +48,29 @@ export class MessageList extends LitElement {
 
   @property({ type: Object }) selectedMessages = new Set<string>();
   @property({ type: Boolean }) syncing = false;
+  /** The last listing failed: say so, rather than claim the folder is empty. */
+  @property({ type: Boolean }) loadFailed = false;
   @state() private isSpinning = false;
   @state() private isScrolled = false;
   @state() private isAtBottom = false;
   @state() private focusedIndex = -1;
   @state() private showEmptyConfirm = false;
   @state() private expandedThreads = new Set<string>();
+  // Verdicts for listed messages and the earlier messages of expanded threads,
+  // keyed by mailbox and UID, as answered under that mailbox's scope. Listings
+  // carry none: a mail server reads the header from each stored message, and
+  // for older mail that took seconds per page. They are asked for after the
+  // list shows, a batch at a time and one request at a time so other requests
+  // reach the mail server in between, only for messages that could show a
+  // logo, and once each: a reload asks only about messages not asked about.
+  // A new scope means the mailbox's UIDs name other messages, and that
+  // mailbox's answers are dropped.
+  @state() private verdicts = new Map<string, AuthVerdict>();
+  private verdictScopes = new Map<string, string>();
+  private verdictsAsked = new Set<string>();
+  private verdictGeneration = 0;
+  private verdictsRunning = false;
+  private verdictsRerun = false;
   private _shouldScrollToTop = false;
 
   static styles = css`
@@ -364,6 +383,11 @@ export class MessageList extends LitElement {
       color: var(--text-muted);
     }
 
+    .empty-state.load-error {
+      flex-direction: column;
+      gap: 12px;
+    }
+
     alps-pagination {
       flex: 1;
       min-width: 0;
@@ -632,6 +656,127 @@ export class MessageList extends LitElement {
     return list;
   }
 
+  /** Drops every verdict, and stops any request still asking for them. */
+  private resetVerdicts() {
+    this.verdicts = new Map();
+    this.verdictsAsked = new Set();
+    this.verdictScopes = new Map();
+    this.verdictGeneration++;
+  }
+
+  /** The mailbox a listed message is in: its own, since a search across mailboxes lists several. */
+  private mailboxOf(msg: any): string {
+    return typeof msg?.Mailbox === 'string' && msg.Mailbox ? msg.Mailbox : this.currentMailbox;
+  }
+
+  private verdictKey(mailbox: string, uid: string): string {
+    return `${mailbox}\u0000${uid}`;
+  }
+
+  /** Asks about the messages not asked about yet; one run at a time. */
+  private async refreshVerdicts() {
+    if (this.verdictsRunning) {
+      this.verdictsRerun = true;
+      return;
+    }
+    this.verdictsRunning = true;
+    try {
+      await this.askVerdicts();
+    } finally {
+      this.verdictsRunning = false;
+      if (this.verdictsRerun) {
+        this.verdictsRerun = false;
+        this.refreshVerdicts();
+      }
+    }
+  }
+
+  private async askVerdicts() {
+    const shown = this.currentMailbox;
+    if (!shown) return;
+    const generation = this.verdictGeneration;
+    const current = () => shown === this.currentMailbox && generation === this.verdictGeneration;
+
+    // Each message is asked about in its own mailbox. A row from another
+    // mailbox than the one shown belongs to the previous folder, still on
+    // screen until the new folder's list arrives, and asking the new folder
+    // about its UID would answer for a different message.
+    const byMailbox = new Map<string, string[]>();
+    const consider = (msg: any) => {
+      const uid = msg?.UID == null ? '' : String(msg.UID);
+      const mailbox = this.mailboxOf(msg);
+      if (!uid || (shown !== '*' && mailbox !== shown)) return;
+      const key = this.verdictKey(mailbox, uid);
+      if (this.verdictsAsked.has(key) || !mayShowBimiLogo(msg)) return;
+      this.verdictsAsked.add(key);
+      if (!byMailbox.has(mailbox)) byMailbox.set(mailbox, []);
+      byMailbox.get(mailbox)!.push(uid);
+    };
+    for (const msg of this.messages || []) {
+      consider(msg);
+      if (msg?.SubMessages?.length && this.isThreadExpanded(String(msg.UID))) msg.SubMessages.forEach(consider);
+    }
+
+    const queue: { mailbox: string; uid: string }[] = [];
+    for (const [mailbox, uids] of byMailbox) for (const uid of uids) queue.push({ mailbox, uid });
+    const unask = (from: number) => {
+      for (const q of queue.slice(from)) this.verdictsAsked.delete(this.verdictKey(q.mailbox, q.uid));
+    };
+
+    let i = 0;
+    while (i < queue.length) {
+      // A folder's list is loading. Its request waits behind every verdict
+      // request sent before it, so nothing more is sent until the list has
+      // arrived; the rest is asked for then.
+      if (this.loading) {
+        unask(i);
+        return;
+      }
+      const mailbox = queue[i].mailbox;
+      let j = i;
+      while (j < queue.length && j - i < VERDICT_BATCH && queue[j].mailbox === mailbox) j++;
+      const batch = queue.slice(i, j).map((q) => q.uid);
+
+      let answer;
+      try {
+        answer = await fetchAuthVerdicts(mailbox, batch);
+      } catch {
+        // The rows keep their initials, and the next reload asks again.
+        if (current()) unask(i);
+        return;
+      }
+      if (!current()) return;
+
+      const next = new Map(this.verdicts);
+      const known = this.verdictScopes.get(mailbox);
+      let startOver = false;
+      if (answer.scope && known && answer.scope !== known) {
+        // The mailbox's UIDs now name other messages, so its earlier answers
+        // were for messages that are gone. Keep this answer and ask again.
+        const prefix = this.verdictKey(mailbox, '');
+        for (const key of [...next.keys()]) if (key.startsWith(prefix)) next.delete(key);
+        for (const key of [...this.verdictsAsked]) if (key.startsWith(prefix)) this.verdictsAsked.delete(key);
+        for (const uid of batch) this.verdictsAsked.add(this.verdictKey(mailbox, uid));
+        unask(j);
+        startOver = true;
+      }
+      if (answer.scope) this.verdictScopes.set(mailbox, answer.scope);
+      for (const [uid, verdict] of answer.verdicts) next.set(this.verdictKey(mailbox, uid), verdict);
+      this.verdicts = next;
+      if (startOver) {
+        this.verdictsRerun = true;
+        return;
+      }
+      i = j;
+    }
+  }
+
+  /** msg with the verdict answered for it, if one has arrived. */
+  private withVerdict(msg: any): any {
+    const verdict = this.verdicts.get(this.verdictKey(this.mailboxOf(msg), String(msg?.UID)));
+    return verdict ? { ...msg, ...verdict } : msg;
+  }
+
   private isThreadExpanded(uid: string): boolean {
     return this.expandedThreads.has(uid);
   }
@@ -706,6 +851,9 @@ export class MessageList extends LitElement {
 
   willUpdate(changedProperties: Map<string, any>) {
     super.willUpdate(changedProperties);
+    if (changedProperties.has('currentMailbox')) {
+      this.resetVerdicts();
+    }
     if (changedProperties.has('currentMailbox') ||
       changedProperties.has('currentPage') ||
       changedProperties.has('filterQuery') ||
@@ -800,6 +948,10 @@ export class MessageList extends LitElement {
 
   updated(changedProperties: Map<string, any>) {
     super.updated(changedProperties);
+    if (changedProperties.has('messages') || changedProperties.has('expandedThreads') || changedProperties.has('currentMailbox') ||
+      (changedProperties.has('loading') && !this.loading)) {
+      this.refreshVerdicts();
+    }
     if (changedProperties.has('densityMode')) {
       this.classList.remove('density-loose', 'density-normal', 'density-compact', 'density-ultra-compact');
       this.classList.add(`density-${this.densityMode}`);
@@ -911,9 +1063,35 @@ export class MessageList extends LitElement {
     });
   }
 
+  /**
+   * Is the folder on screen one whose whole contents may be discarded?
+   *
+   * By ROLE, resolved from the IMAP special-use attribute upstream in
+   * mailbox-page and handed down as `currentMailboxRole`. This used to be
+   * `/^(trash|junk|spam|deleted items)$/i` against the folder's NAME, which the
+   * rest of this codebase goes out of its way not to do — `mailboxRole()`
+   * carries a comment about Gmail's `[Gmail]/Trash` for exactly this reason.
+   *
+   * The name test failed in both directions. On Gmail, or any server with
+   * localized folder names (Papierkorb, Corbeille, Otpad), the role is right and
+   * the name is not, so the banner never appeared and the user could not empty
+   * their trash from the list at all. And a user's own folder happening to be
+   * called "Spam" got a "Delete All Now" button for messages the server would
+   * then refuse to delete — handleEmptyMailbox does resolve the role properly.
+   *
+   * The English names are a fallback for servers that advertise no special-use
+   * attributes, and that fallback lives in one place — `mailboxRoleByName`, which
+   * only guesses a role by name when the server has not assigned it. A second
+   * name test here would re-open the override it now prevents.
+   */
+  private get isDiscardableFolder(): boolean {
+    return this.currentMailboxRole === 'trash' || this.currentMailboxRole === 'junk';
+  }
+
   private renderMessageItem(msg: any, isSubMessage: boolean = false, isFirstSub: boolean = false, isLastSub: boolean = false) {
-    const isDraftOrSent = this.currentMailboxRole === 'drafts' || this.currentMailboxRole === 'sent'
-      || this.currentMailbox === FOLDER_DRAFTS || this.currentMailbox === FOLDER_SENT;
+    // Role only. OR-ing the names in here let a user folder called "Sent" show
+    // recipients even where the server's own Sent is "[Gmail]/Sent Mail".
+    const isDraftOrSent = this.currentMailboxRole === 'drafts' || this.currentMailboxRole === 'sent';
 
     let rawContacts: any[] = [];
     if (isDraftOrSent) {
@@ -953,7 +1131,12 @@ export class MessageList extends LitElement {
 
     if (!allContacts.length) allContacts = [{}];
 
-    const fallbackKey = isDraftOrSent ? 'messageList.noRecipient' : 'messageList.unknownSender';
+    // The reader's noRecipients string, which every locale defines. The list used
+    // a noRecipient key of its own that no locale defines, and t() answers a
+    // missing path with the path itself, so a draft with no recipients was listed
+    // under the raw key. An audit of literal t() calls cannot see a key that
+    // reaches t() through a variable, as this one does.
+    const fallbackKey = isDraftOrSent ? 'messageReader.noRecipients' : 'messageList.unknownSender';
 
     const displayNames = allContacts.map(c => {
       const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
@@ -1072,8 +1255,7 @@ export class MessageList extends LitElement {
         ${displayAvatars.map((c, idx) => {
           const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
           const name = c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
-          const domain = c.Host ? c.Host.toLowerCase() : '';
-          const bimiUrl = getBimiAvatarUrl(domain);
+          const bimiUrl = bimiAvatarUrlFor(this.withVerdict(msg), c);
           return html`
             <div class="avatar-wrapper" style="z-index: ${totalRendered - idx};">
               <alps-avatar .name=${name} .email=${addr} .size=${avatarSize} .src=${bimiUrl}></alps-avatar>
@@ -1167,7 +1349,7 @@ export class MessageList extends LitElement {
           ></alps-icon-btn>
           ${this.sidebarCollapsed ? html`
             <div class="current-mailbox-label">
-              ${getMailboxLabel(this.currentMailbox, this.i18nStore)}
+              ${getMailboxLabel(this.currentMailbox, this.i18nStore, this.currentMailboxDelimiter)}
             </div>
           ` : ''}
           <alps-pagination 
@@ -1191,9 +1373,9 @@ export class MessageList extends LitElement {
             </alps-button>
           </alps-banner>
         ` : ''}
-        ${!this.filterQuery && /^(trash|junk|spam|deleted items)$/i.test(this.currentMailbox) && this.totalMessages > 0 ? html`
+        ${!this.filterQuery && this.isDiscardableFolder && this.totalMessages > 0 ? html`
           <alps-banner variant="warning">
-            <span>${this.i18nStore?.t('messageList.totalMessagesIn')?.replace('{count}', String(this.totalMessages)).replace('{folder}', this.currentMailbox) || `${this.totalMessages} total messages in ${this.currentMailbox}`}</span>
+            <span>${this.i18nStore?.t('messageList.totalMessagesIn', { count: this.totalMessages, folder: this.currentMailbox }) || `${this.totalMessages} total messages in ${this.currentMailbox}`}</span>
             <alps-button slot="action" variant="normal" ?disabled=${this.selectedMessages.size > 0} @click=${() => this.showEmptyConfirm = true}>
               ${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
             </alps-button>
@@ -1202,6 +1384,12 @@ export class MessageList extends LitElement {
         ${this.loading && this.messages.length === 0 ? html`
           <alps-loader full-height .text=${this.i18nStore?.t('messageList.loading') || 'Loading...'}></alps-loader>
         ` :
+        this.messages.length === 0 && this.loadFailed ? html`<div class="empty-state load-error">
+          <div>${this.i18nStore?.t('messageList.loadError')}</div>
+          <alps-button variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('refresh'))}>
+            ${this.i18nStore?.t('messageList.loadErrorRetry')}
+          </alps-button>
+        </div>` :
         this.messages.length === 0 ? html`<div class="empty-state">${this.i18nStore?.t('messageList.noMessages')}</div>` :
           repeat(this.messages, msg => msg.UID, msg => html`
             ${this.renderMessageItem(msg, false)}
@@ -1255,8 +1443,8 @@ export class MessageList extends LitElement {
       ` : ''}
       ${this.showEmptyConfirm ? html`
         <ui-confirm
-          title=${this.i18nStore?.t('messageList.emptyMailboxTitle')?.replace('{folder}', this.currentMailbox) || `Empty ${this.currentMailbox}`}
-          message=${this.i18nStore?.t('messageList.emptyMailboxConfirm')?.replace('{folder}', this.currentMailbox).replace('{count}', String(this.totalMessages)) || `Are you sure you want to permanently delete all ${this.totalMessages} messages in ${this.currentMailbox}? This action cannot be undone.`}
+          title=${this.i18nStore?.t('messageList.emptyMailboxTitle', { folder: this.currentMailbox }) || `Empty ${this.currentMailbox}`}
+          message=${this.i18nStore?.t('messageList.emptyMailboxConfirm', { folder: this.currentMailbox, count: this.totalMessages }) || `Are you sure you want to permanently delete all ${this.totalMessages} messages in ${this.currentMailbox}? This action cannot be undone.`}
           confirmText=${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
           .isDanger=${true}
           @confirm=${this.handleEmptyMailbox}

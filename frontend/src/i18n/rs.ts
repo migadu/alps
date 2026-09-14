@@ -1,5 +1,6 @@
 export const rs = {
   settings: {
+    saveFailed: 'Није могуће сачувати то подешавање — можда неће преживети одјаву',
     title: 'Подешавања',
     categories: {
       general: 'Опште',
@@ -65,7 +66,8 @@ export const rs = {
       sortUid: 'Датум архивирања у фасциклу',
       sortDate: 'Датум пријема',
       enableThreading: 'Користи нити',
-      themeIframeContent: 'Примени тему на HTML садржај порука'
+      themeIframeContent: 'Примени тему на HTML садржај порука',
+      threadingNotSupported: "Ваш сервер поште ово не подржава"
     },
     appearance: {
       colorTheme: 'Тема боја',
@@ -131,8 +133,10 @@ export const rs = {
     pleaseWait: 'Молимо сачекајте',
     wait: 'Сачекај',
     signedOut: 'Одјављени сте.',
+    signedOutDraftsLost: 'Одјављени сте. Неке непослате скице није било могуће сачувати и изгубљене су.',
     sessionExpired: 'Ваша сесија је истекла. Пријавите се поново.',
-    inactivitySignedOut: 'Одјављени сте због неактивности.'
+    inactivitySignedOut: 'Одјављени сте због неактивности.',
+    inactivitySignedOutDraftsLost: "Одјављени сте због неактивности. Неке непослате скице није било могуће сачувати и изгубљене су."
   },
   folderList: {
     compose: 'Напиши',
@@ -148,6 +152,7 @@ export const rs = {
     delete: 'Обриши',
     createFolder: 'Направи фасциклу',
     renameFolder: 'Преименуј фасциклу',
+    folderName: 'Назив фасцикле',
     deleteFolder: 'Обриши фасциклу',
     deleteFolderConfirm: 'Да ли сте сигурни да желите да обришете "{folder}"? Све поруке унутра биће трајно обрисане.',
     expandSidebar: 'Прошири бочну траку',
@@ -155,9 +160,20 @@ export const rs = {
     moveToTrash: 'Премести у отпад',
     moveToTrashConfirm: 'Да ли сте сигурни да желите да преместите "{folder}" у Отпад?',
     createSubfolder: 'Направи потфасциклу',
-    createSubfolderUnder: 'Направи потфасциклу у "{folder}"'
+    createSubfolderUnder: 'Направи потфасциклу у "{folder}"',
+    subscribe: "Претплати се",
+    unsubscribe: "Откажи претплату",
+    order: "Редослед",
+    moveToTop: "Помери на врх",
+    moveUp: "Помери нагоре",
+    moveDown: "Помери надоле",
+    moveToBottom: "Помери на дно"
+  },
+  search: {
+    placeholder: 'Претражи пошту',
   },
   messageList: {
+    menu: 'Мени',
     selectAll: 'Изабери све поруке',
     checkNew: 'Провери нове поруке',
     sortDesc: 'Сортирај опадајуће по датуму',
@@ -165,6 +181,8 @@ export const rs = {
     filterStarred: 'Филтрирај по означеним',
     filterUnread: 'Филтрирај по непрочитаним',
     noMessages: 'Нема порука',
+    loadError: 'Није могуће учитати ову фасциклу.',
+    loadErrorRetry: 'Покушај поново',
     loading: 'Учитавање...',
     unknownSender: 'Непознат пошиљалац',
     unknown: 'Непознато',
@@ -184,10 +202,14 @@ export const rs = {
     emptyMailboxFailed: 'Није могуће испразнити сандуче. Проверите да ли је Отпад или Непожељно.'
   },
   composer: {
+    discardFailed: 'Скицу није било могуће обрисати са сервера и још увек је у скицама.',
+    attachmentsTooLarge: 'Прилози прелазе максималну дозвољену величину.',
+    draftSaveFailedKeepOpen: 'Није могуће сачувати ову скицу — прозор остаје отворен да се ништа не изгуби',
     attachmentsWait: 'Молимо сачекајте да се прилози учитају пре слања.',
     sending: 'Слање поруке...',
     undo: 'Опозови',
-    sendError: 'Грешка при слању поруке: {error}'
+    sendError: 'Грешка при слању поруке: {error}',
+    presendFailed: 'Безбедносни додатак није могао да обради ову поруку, па она није послата.'
   },
   messageComposer: {
     fontSize: 'Величина фонта',
@@ -258,6 +280,7 @@ export const rs = {
     unknownError: 'Непозната грешка'
   },
   messageReader: {
+    moreOptions: 'Више опција',
     tags: 'Ознаке',
     removeAllTags: 'Уклони све ознаке',
     removeTag: 'Уклони ознаку',
@@ -353,30 +376,80 @@ export const rs = {
     messagePermanentlyDeleted: 'Порука трајно обрисана',
     draftDiscarded: 'Радна верзија одбачена',
     folderRenamed: 'Фасцикла преименована',
+    tagNotSupported: 'Овај мејл сервер не подржава ту ознаку',
+    flagChangeFailed: 'Није могуће ажурирати поруке',
+    folderCreated: 'Фасцикла је креирана',
+    folderExists: 'Фасцикла са тим именом већ постоји',
+    folderCreateFailed: 'Није могуће креирати фасциклу',
+    folderRenameFailed: 'Није могуће преименовати фасциклу',
+    folderDeleteFailed: 'Није могуће обрисати фасциклу',
+    folderUndoFailed: 'Није могуће поништити',
     folderMovedToTrash: 'Фасцикла премештена у Отпад',
     folderPermanentlyDeleted: 'Фасцикла трајно обрисана',
     undo: 'Опозови',
     dismiss: 'Одбаци',
     messageMovedToArchive: 'Порука премештена у Архиву',
-    messagesMovedToArchive: '{count} порука премештено у Архиву',
+    messagesMovedToArchive: {
+      one: "{count} порука премештена у Архиву",
+      few: "{count} поруке премештене у Архиву",
+      other: "{count} порука премештено у Архиву"
+    },
     messageMovedToSpam: 'Порука премештена у Непожељне',
-    messagesMovedToSpam: '{count} порука премештено у Непожељне',
+    messagesMovedToSpam: {
+      one: "{count} порука премештена у Непожељне",
+      few: "{count} поруке премештене у Непожељне",
+      other: "{count} порука премештено у Непожељне"
+    },
     messageMovedToInbox: 'Порука премештена у Пријемно',
-    messagesMovedToInbox: '{count} порука премештено у Пријемно',
+    messagesMovedToInbox: {
+      one: "{count} порука премештена у Пријемно",
+      few: "{count} поруке премештене у Пријемно",
+      other: "{count} порука премештено у Пријемно"
+    },
     messageMovedToTrash: 'Порука премештена у Смеће',
-    messagesMovedToTrash: '{count} порука премештено у Смеће',
+    messagesMovedToTrash: {
+      one: "{count} порука премештена у Смеће",
+      few: "{count} поруке премештене у Смеће",
+      other: "{count} порука премештено у Смеће"
+    },
     messageMovedToFolder: 'Порука премештена у {folder}',
-    messagesMovedToFolder: '{count} порука премештено у {folder}',
+    messagesMovedToFolder: {
+      one: "{count} порука премештена у {folder}",
+      few: "{count} поруке премештене у {folder}",
+      other: "{count} порука премештено у {folder}"
+    },
     messageCopiedToFolder: 'Порука копирана у {folder}',
-    messagesCopiedToFolder: '{count} порука копирано у {folder}',
-    draftsDiscarded: '{count} нацрта одбачено',
-    messagesPermanentlyDeleted: '{count} порука трајно обрисано'
+    messagesCopiedToFolder: {
+      one: "{count} порука копирана у {folder}",
+      few: "{count} поруке копиране у {folder}",
+      other: "{count} порука копирано у {folder}"
+    },
+    draftsDiscarded: {
+      one: "{count} нацрт одбачен",
+      few: "{count} нацрта одбачена",
+      other: "{count} нацрта одбачено"
+    },
+    messagesPermanentlyDeleted: {
+      one: "{count} порука трајно обрисана",
+      few: "{count} поруке трајно обрисане",
+      other: "{count} порука трајно обрисано"
+    },
+    undoFailed: 'Није могуће поништити',
+    messageDeleteFailed: 'Порука није могла бити обрисана',
+    moveFailed: 'Није могуће преместити',
+    copyFailed: 'Није могуће копирати',
+    subscribeFailed: "Претплата није успела",
+    unsubscribeFailed: "Отказивање претплате није успело"
   },
   mailboxPage: {
     mailboxNotFound: 'Сандуче није пронађено',
     newMessages: 'Нове поруке',
     newMessagesSingleBody: 'Имате 1 нову поруку',
-    newMessagesMultiBody: 'Имате {count} нових порука',
+    newMessagesMultiBody: {
+      one: "Имате {count} нову поруку",
+      few: "Имате {count} нове поруке",
+      other: "Имате {count} нових порука"
+    },
     newMessagesInInbox: 'Нове поруке у Пријемном сандучету',
     newMessagesAvailable: 'Нове поруке су доступне',
     open: 'Отвори',
@@ -395,7 +468,15 @@ export const rs = {
     cancel: 'Откажи',
     save: 'Сачувај',
     optional: 'Опционо',
-    delete: 'Обриши'
+    delete: 'Обриши',
+    clear: "Обриши",
+    showPassword: "Прикажи лозинку",
+    hidePassword: "Сакриј лозинку",
+    previous: "Назад",
+    next: "Напред",
+    expand: "Прошири",
+    collapse: "Скупи",
+    notFound: "Страница није пронађена"
   },
   webauthn: {
     title: 'Верификација безбедносног кључа',
@@ -420,16 +501,17 @@ export const rs = {
       begin_failed: 'Није успело покретање аутентификације.',
       invalid_options: 'Примљене су неважеће опције аутентификације.',
       verification_failed: 'Верификација није успела. Покушајте поново.',
-      register_failed: 'Došlo je do greške prilikom registracije bezbednosnog ključa. Pokušajte ponovo.',
+      register_failed: 'Дошло је до грешке приликом регистрације безбедносног кључа. Покушајте поново.',
       remove_failed: 'Није успело уклањање безбедносног кључа.',
       general: 'Дошло је до грешке.',
     },
     settings: {
       group_desc: 'Заштитите свој налог хардверским безбедносним кључем или биометријом.',
       keys_title: 'Безбедносни кључеви',
-      noKeys: 'Nema registrovanih ključeva.',
+      noKeys: 'Нема регистрованих кључева.',
       added: 'Додато',
-      remove_btn: 'Уклони'
+      remove_btn: 'Уклони',
+      unnamed_key: "Безбедносни кључ"
     }
   }
 };

@@ -1,5 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { consumesSpaceAsText, isMultilineTextEntry } from '../utils/active-element';
 
 export const popupStyles = css`
   .dropdown-header {
@@ -304,6 +305,7 @@ export class AlpsPopup extends LitElement {
     if (!this.openState) return;
 
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (isMultilineTextEntry(this._getActiveElement())) return;
       e.preventDefault();
       const focusable = this._getFocusableElements();
       if (focusable.length === 0) return;
@@ -320,6 +322,13 @@ export class AlpsPopup extends LitElement {
       focusable[index].focus();
     } else if (e.key === 'Enter' || e.key === ' ') {
       const active = this._getActiveElement() as HTMLElement;
+      // Not from a field that owns the key. Keystrokes from slotted content bubble
+      // to this dialog, so a space typed into the composer's link fields or a
+      // contact's new-category box was turned into a click on the input, and never
+      // typed. A radio or checkbox still takes the space as activation, and Enter
+      // in a single-line field still activates (the link form submits that way);
+      // in a textarea Enter is a newline.
+      if (e.key === ' ' ? consumesSpaceAsText(active) : isMultilineTextEntry(active)) return;
       if (active && typeof active.click === 'function') {
         e.preventDefault();
         active.click();
@@ -519,6 +528,15 @@ export class AlpsPopup extends LitElement {
       clearTimeout(this._closeTimeout);
       this._closeTimeout = null;
     }
+    // Being torn down is not a close. updated() only acts when openState
+    // CHANGES, so an element removed while open never runs its close branch:
+    // the dialog leaves the top layer with the element, but openState stays
+    // true, and an instance that comes back believes it is still open and never
+    // calls show()/showModal() again — a menu that cannot be opened. Closing
+    // here makes teardown and state agree however it is reached.
+    const dialog = this.shadowRoot?.querySelector('.popup-dialog') as HTMLDialogElement | null;
+    if (dialog?.open) dialog.close();
+    this.openState = false;
   }
 
   private _handleMouseEnter = () => {

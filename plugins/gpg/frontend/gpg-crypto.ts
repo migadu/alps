@@ -2,6 +2,7 @@ import { html } from 'lit';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { contactsService } from '../../carddav/frontend/contacts-service';
 import { fetchWithTimeout } from '../../../frontend/src/utils/fetch-utils';
+import { readUserSettings } from '../../../frontend/src/store/settings-store';
 import '../../../frontend/src/components/ui-prompt';
 
 function promptForPassphrase(errorMsg?: string, i18nStore?: any): Promise<string | null> {
@@ -124,20 +125,31 @@ export async function handlePresend(payload: any) {
         const publicKeys: any[] = [];
         const missingKeys: string[] = [];
 
-        // Get user's own emails from settings to skip CardDAV lookup for them
-        let userEmails: string[] = [];
-        try {
-            const storedSettings = localStorage.getItem('alps_settings');
-            if (storedSettings) {
-                const parsed = JSON.parse(storedSettings);
-                if (parsed.loginUsername) userEmails.push(parsed.loginUsername);
-                if (parsed.identities) {
-                    parsed.identities.forEach((i: any) => {
-                        if (i.email) userEmails.push(i.email);
-                    });
-                }
-            }
-        } catch (e) {}
+        // Get user's own emails from settings to skip CardDAV lookup for them.
+        //
+        // Through `readUserSettings`, because `loginUsername` and `identities`
+        // live in the per-user record and never in `alps_settings` — so this
+        // list was ALWAYS empty and the guard below never fired. That is not
+        // just a wasted lookup: a user who CCs or BCCs themselves and has no
+        // CardDAV contact carrying their own public key landed in `missingKeys`
+        // and the send was aborted outright, with an alert naming their own
+        // address as unencryptable. Their key is pushed unconditionally a few
+        // lines below ("encrypt to ourselves so we can read it in Sent"), so
+        // skipping the lookup is exactly right.
+        //
+        // Reachable more often now that the `bccMyself` setting works: appending
+        // the user's own address is precisely what it does.
+        //
+        // The `parsed.identities` half of this read is gone rather than
+        // corrected: nothing in this repository defines, writes or serves an
+        // `identities` field — not `SettingsState`, not the backend, not the
+        // settings UI. It was a read for a feature that does not exist, and
+        // pointing it at the right key would not have made it produce anything.
+        // Linked accounts are NOT that feature: they are separate logins to
+        // switch between, not alternate sending identities for one session.
+        const userEmails: string[] = [];
+        const ownSettings = readUserSettings();
+        if (ownSettings.loginUsername) userEmails.push(ownSettings.loginUsername);
 
         for (const email of recipients) {
             // Very simple extraction if email is like "Name <email@host.com>"
@@ -166,7 +178,10 @@ export async function handlePresend(payload: any) {
 
         if (missingKeys.length > 0) {
             const msgTemplate = composer.i18nStore?.t('gpg.missingPublicKeys') as string;
-            alert(msgTemplate ? msgTemplate.replace('{keys}', missingKeys.join('\\n')) : `Cannot encrypt: Missing public keys for:\n${missingKeys.join('\\n')}`);
+            // `join('\\n')` joined with a literal backslash-n, so several missing
+            // recipients rendered as one run-on line.
+            const keyList = missingKeys.join('\n');
+            alert(msgTemplate ? msgTemplate.replace('{keys}', keyList) : `Cannot encrypt: Missing public keys for:\n${keyList}`);
             return false; // Abort send
         }
 

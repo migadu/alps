@@ -1,5 +1,6 @@
 export const es = {
   settings: {
+    saveFailed: 'No se pudo guardar ese ajuste: puede que no se conserve al cerrar sesión',
     title: 'Configuración',
     categories: {
       general: 'General',
@@ -65,7 +66,8 @@ export const es = {
       sortUid: 'Fecha de archivo de carpeta',
       sortDate: 'Fecha de recepción',
       enableThreading: 'Usar hilos de conversación',
-      themeIframeContent: 'Aplicar tema al contenido de los mensajes HTML'
+      themeIframeContent: 'Aplicar tema al contenido de los mensajes HTML',
+      threadingNotSupported: "No compatible con tu servidor de correo"
     },
     appearance: {
       colorTheme: 'Tema de color',
@@ -131,8 +133,10 @@ export const es = {
     pleaseWait: 'Por favor espere',
     wait: 'Esperar',
     signedOut: 'Has cerrado sesión.',
+    signedOutDraftsLost: 'Se ha cerrado tu sesión. Algunos borradores sin enviar no se pudieron guardar y se perdieron.',
     sessionExpired: 'Tu sesión ha expirado. Por favor, inicia sesión de nuevo.',
-    inactivitySignedOut: 'Has cerrado sesión por inactividad.'
+    inactivitySignedOut: 'Has cerrado sesión por inactividad.',
+    inactivitySignedOutDraftsLost: "Has cerrado sesión por inactividad. Algunos borradores sin enviar no se pudieron guardar y se perdieron."
   },
   folderList: {
     compose: 'Redactar',
@@ -148,6 +152,7 @@ export const es = {
     delete: 'Eliminar',
     createFolder: 'Crear carpeta',
     renameFolder: 'Renombrar carpeta',
+    folderName: 'Nombre de la carpeta',
     deleteFolder: 'Eliminar carpeta',
     deleteFolderConfirm: '¿Estás seguro de que quieres eliminar "{folder}"? Todos los mensajes de su interior se eliminarán de forma permanente.',
     expandSidebar: 'Expandir barra lateral',
@@ -155,9 +160,20 @@ export const es = {
     moveToTrash: 'Mover a la papelera',
     moveToTrashConfirm: '¿Estás seguro de que quieres mover "{folder}" a la Papelera?',
     createSubfolder: 'Crear subcarpeta',
-    createSubfolderUnder: 'Crear subcarpeta en "{folder}"'
+    createSubfolderUnder: 'Crear subcarpeta en "{folder}"',
+    subscribe: "Suscribirse",
+    unsubscribe: "Cancelar suscripción",
+    order: "Orden",
+    moveToTop: "Mover al principio",
+    moveUp: "Subir",
+    moveDown: "Bajar",
+    moveToBottom: "Mover al final"
+  },
+  search: {
+    placeholder: 'Buscar correo',
   },
   messageList: {
+    menu: 'Menú',
     selectAll: 'Seleccionar todos los mensajes',
     checkNew: 'Comprobar mensajes nuevos',
     sortDesc: 'Ordenar descendente por fecha',
@@ -165,6 +181,8 @@ export const es = {
     filterStarred: 'Filtrar por destacados',
     filterUnread: 'Filtrar por no leídos',
     noMessages: 'No hay mensajes',
+    loadError: 'No se pudo cargar esta carpeta.',
+    loadErrorRetry: 'Reintentar',
     loading: 'Cargando...',
     unknownSender: 'Remitente desconocido',
     unknown: 'Desconocido',
@@ -184,10 +202,14 @@ export const es = {
     emptyMailboxFailed: 'No se pudo vaciar el buzón. Asegúrate de que sea Papelera o Correo no deseado.'
   },
   composer: {
+    discardFailed: 'No se pudo eliminar el borrador del servidor y sigue en Borradores.',
+    attachmentsTooLarge: 'Los archivos adjuntos superan el tamaño máximo permitido.',
+    draftSaveFailedKeepOpen: 'No se pudo guardar este borrador: la ventana permanece abierta para no perder nada',
     attachmentsWait: 'Espera a que los archivos adjuntos terminen de cargarse antes de enviar.',
     sending: 'Enviando mensaje...',
     undo: 'Deshacer',
-    sendError: 'Error al enviar el mensaje: {error}'
+    sendError: 'Error al enviar el mensaje: {error}',
+    presendFailed: 'Un complemento de seguridad no pudo procesar este mensaje, por lo que no se envió.'
   },
   messageComposer: {
     fontSize: 'Tamaño de fuente',
@@ -258,6 +280,7 @@ export const es = {
     unknownError: 'Error desconocido'
   },
   messageReader: {
+    moreOptions: 'Más opciones',
     tags: 'Etiquetas',
     removeAllTags: 'Eliminar todas las etiquetas',
     removeTag: 'Eliminar etiqueta',
@@ -353,30 +376,71 @@ export const es = {
     messagePermanentlyDeleted: 'Mensaje eliminado de forma permanente',
     draftDiscarded: 'Borrador descartado',
     folderRenamed: 'Carpeta renombrada',
+    tagNotSupported: 'Este servidor de correo no admite esa etiqueta',
+    flagChangeFailed: 'No se pudieron actualizar los mensajes',
+    folderCreated: 'Carpeta creada',
+    folderExists: 'Ya existe una carpeta con ese nombre',
+    folderCreateFailed: 'No se pudo crear la carpeta',
+    folderRenameFailed: 'No se pudo renombrar la carpeta',
+    folderDeleteFailed: 'No se pudo eliminar la carpeta',
+    folderUndoFailed: 'No se pudo deshacer',
     folderMovedToTrash: 'Carpeta movida a la Papelera',
     folderPermanentlyDeleted: 'Carpeta eliminada de forma permanente',
     undo: 'Deshacer',
     dismiss: 'Ocultar',
     messageMovedToArchive: 'Mensaje movido a Archivo',
-    messagesMovedToArchive: '{count} mensajes movidos a Archivo',
+    messagesMovedToArchive: {
+      one: "{count} mensaje movido a Archivo",
+      other: "{count} mensajes movidos a Archivo"
+    },
     messageMovedToSpam: 'Mensaje movido a Spam',
-    messagesMovedToSpam: '{count} mensajes movidos a Spam',
+    messagesMovedToSpam: {
+      one: "{count} mensaje movido a Spam",
+      other: "{count} mensajes movidos a Spam"
+    },
     messageMovedToInbox: 'Mensaje movido a Recibidos',
-    messagesMovedToInbox: '{count} mensajes movidos a Recibidos',
+    messagesMovedToInbox: {
+      one: "{count} mensaje movido a Recibidos",
+      other: "{count} mensajes movidos a Recibidos"
+    },
     messageMovedToTrash: 'Mensaje movido a Papelera',
-    messagesMovedToTrash: '{count} mensajes movidos a Papelera',
+    messagesMovedToTrash: {
+      one: "{count} mensaje movido a Papelera",
+      other: "{count} mensajes movidos a Papelera"
+    },
     messageMovedToFolder: 'Mensaje movido a {folder}',
-    messagesMovedToFolder: '{count} mensajes movidos a {folder}',
+    messagesMovedToFolder: {
+      one: "{count} mensaje movido a {folder}",
+      other: "{count} mensajes movidos a {folder}"
+    },
     messageCopiedToFolder: 'Mensaje copiado a {folder}',
-    messagesCopiedToFolder: '{count} mensajes copiados a {folder}',
-    draftsDiscarded: '{count} borradores descartados',
-    messagesPermanentlyDeleted: '{count} mensajes eliminados permanentemente'
+    messagesCopiedToFolder: {
+      one: "{count} mensaje copiado a {folder}",
+      other: "{count} mensajes copiados a {folder}"
+    },
+    draftsDiscarded: {
+      one: "{count} borrador descartado",
+      other: "{count} borradores descartados"
+    },
+    messagesPermanentlyDeleted: {
+      one: "{count} mensaje eliminado permanentemente",
+      other: "{count} mensajes eliminados permanentemente"
+    },
+    undoFailed: 'No se pudo deshacer',
+    messageDeleteFailed: 'No se pudo eliminar el mensaje',
+    moveFailed: 'No se pudo mover',
+    copyFailed: 'No se pudo copiar',
+    subscribeFailed: "No se pudo suscribir",
+    unsubscribeFailed: "No se pudo cancelar la suscripción"
   },
   mailboxPage: {
     mailboxNotFound: 'Buzón no encontrado',
     newMessages: 'Mensajes nuevos',
     newMessagesSingleBody: 'Tienes 1 mensaje nuevo',
-    newMessagesMultiBody: 'Tienes {count} mensajes nuevos',
+    newMessagesMultiBody: {
+      one: "Tienes {count} mensaje nuevo",
+      other: "Tienes {count} mensajes nuevos"
+    },
     newMessagesInInbox: 'Nuevos mensajes en la Bandeja de entrada',
     newMessagesAvailable: 'Nuevos mensajes disponibles',
     open: 'Abrir',
@@ -395,7 +459,15 @@ export const es = {
     cancel: 'Cancelar',
     save: 'Guardar',
     optional: 'Opcional',
-    delete: 'Eliminar'
+    delete: 'Eliminar',
+    clear: "Borrar",
+    showPassword: "Mostrar contraseña",
+    hidePassword: "Ocultar contraseña",
+    previous: "Anterior",
+    next: "Siguiente",
+    expand: "Expandir",
+    collapse: "Contraer",
+    notFound: "Página no encontrada"
   },
   webauthn: {
     title: 'Verificación de clave de seguridad',
@@ -429,7 +501,8 @@ export const es = {
       keys_title: 'Claves de seguridad',
       noKeys: 'No hay claves registradas.',
       added: 'Añadido',
-      remove_btn: 'Eliminar'
+      remove_btn: 'Eliminar',
+      unnamed_key: "Llave de seguridad"
     }
   }
 };

@@ -40,7 +40,7 @@ export class AlpsPagination extends LitElement {
       display: flex;
       flex: 1;
       align-items: center;
-      background: var(--bg-color);
+      background: var(--bg-primary, #ffffff);
       font-size: 13px;
       color: var(--text-muted);
       min-width: 0;

@@ -1,5 +1,11 @@
 export default {
   contacts: {
+    deleteFailed: '{failed} of {total} contacts could not be deleted.',
+    categoryRenameFailed: '{failed} of {total} contacts could not be updated, so the category was only partly renamed.',
+    categoryDeleteFailed: '{failed} of {total} contacts could not be updated, so the category was only partly removed.',
+    categoryUpdateFailed: '{failed} of {total} contacts could not be updated.',
+    saveFailed: 'The contact could not be saved.',
+    starFailed: 'The contact could not be updated.',
     unnamedContact: 'Unnamed Contact',
     title: 'Contacts',
     allContacts: 'All Contacts',
@@ -28,7 +34,10 @@ export default {
     cancel: 'Cancel',
     noContacts: 'No contacts found',
     selectContact: 'Select a contact to view details',
-    selectedContacts: '{count} contacts selected',
+    selectedContacts: {
+      one: '{count} contact selected',
+      other: '{count} contacts selected'
+    },
     clearSelection: 'Clear selection',
     selectAll: 'Select All',
     clearSearch: 'Clear Search',

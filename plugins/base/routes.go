@@ -3,6 +3,7 @@ package alpsbase
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -39,6 +40,7 @@ func registerRoutes(p *alps.GoPlugin) {
 		return handleGetPart(ctx, true)
 	})
 	p.GET("/mailboxes/{mbox}/messages/{uid}/thread", handleGetThread)
+	p.GET("/mailboxes/{mbox}/verdicts", handleAuthVerdicts)
 	p.DELETE("/mailboxes/{mbox}/messages", handleDelete)
 	p.POST("/mailboxes/{mbox}/empty", handleEmptyMailbox)
 	p.PUT("/mailboxes/{mbox}/messages/move", handleMove)
@@ -102,6 +104,25 @@ func mailboxInfoToStatus(mbox MailboxInfo) *MailboxStatus {
 }
 
 // invalidateMailboxCache clears cached mailbox data for a session.
+// invalidateMailboxTree drops every cached entry for a mailbox AND anything
+// beneath it, for operations that change which mailboxes exist.
+//
+// Create, delete and rename passed no names at all, so only the "mailboxes"
+// list was cleared and every `status:`, `messages:` and `message:` entry for the
+// affected folder survived. Keys are per NAME, so those stale entries are not
+// merely wasted memory: delete `Work` and create a new `Work`, or rename one
+// away and reuse the name, and `messages:Work:0` is served from the cache —
+// the new, empty folder shows the old folder's mail.
+//
+// The whole message cache goes rather than a prefix, because a prefix over
+// mailbox names is the `Archive`/`Arch` trap this review has now fixed three
+// times, and getting it wrong HERE means serving one folder's mail under
+// another's name. These three operations are rare and the cache refills on the
+// next read, so precision buys nothing worth that risk.
+func invalidateMailboxTree(ctx *alps.Context) {
+	ctx.Session.Cache().Clear()
+}
+
 func invalidateMailboxCache(ctx *alps.Context, mailboxNames ...string) {
 	cache := ctx.Session.Cache()
 
@@ -696,11 +717,12 @@ func handleNewMailbox(ctx *alps.Context) error {
 	})
 
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return respondMailboxError(ctx, "create mailbox", err)
 	}
 
-	// Invalidate mailbox list cache
-	invalidateMailboxCache(ctx)
+	// A brand-new mailbox may be reusing the name of one that was deleted or
+	// renamed while this session's cache still holds its pages.
+	invalidateMailboxTree(ctx)
 	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "mailbox": name})
 }
 
@@ -715,11 +737,10 @@ func handleDeleteMailbox(ctx *alps.Context) error {
 		return deleteMailboxWithProvider(p, mboxName)
 	})
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return respondMailboxError(ctx, "delete mailbox", err)
 	}
 
-	// Invalidate mailbox list cache
-	invalidateMailboxCache(ctx)
+	invalidateMailboxTree(ctx)
 	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
 }
 
@@ -733,25 +754,31 @@ func handleRenameMailbox(ctx *alps.Context) error {
 		NewName string `json:"new_name"`
 	}
 	if err := ctx.BindJSON(&req); err != nil {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+		return ctx.RespondBindError(err)
 	}
 	if req.NewName == "" {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "New name is required"})
 	}
 
-	isMoveToTrash := strings.HasPrefix(strings.ToLower(req.NewName), "trash")
-
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		if isMoveToTrash {
+		// "Is this rename a move into Trash?" resolved by IMAP special-use,
+		// not by testing whether the new name starts with the English word
+		// "trash". The frontend already resolves the real Trash folder by
+		// attribute — see findMailboxNameByRole and the issue #4 comment it
+		// carries — so the two halves of one feature disagreed: on Gmail, where
+		// Trash is `[Gmail]/Trash`, the unsubscribe that is supposed to
+		// accompany the move never happened, and a user's own folder named
+		// "Trash notes" got it when it should not have.
+		if isMoveIntoTrash(p, req.NewName) {
 			_ = unsubscribeMailboxWithProvider(p, mboxName)
 		}
 		return renameMailboxWithProvider(p, mboxName, req.NewName)
 	})
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return respondMailboxError(ctx, "rename mailbox", err)
 	}
 
-	invalidateMailboxCache(ctx)
+	invalidateMailboxTree(ctx)
 	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
 }
 
@@ -765,7 +792,7 @@ func handleSubscribeMailbox(ctx *alps.Context) error {
 		return subscribeMailboxWithProvider(p, mboxName)
 	})
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return respondMailboxError(ctx, "subscribe mailbox", err)
 	}
 
 	invalidateMailboxCache(ctx)
@@ -782,11 +809,7 @@ func handleUnsubscribeMailbox(ctx *alps.Context) error {
 		return unsubscribeMailboxWithProvider(p, mboxName)
 	})
 	if err != nil {
-		ctx.Server.Logger().Errorf("IMAP unsubscribe failed for %s: %v", mboxName, err)
-	}
-
-	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return respondMailboxError(ctx, "unsubscribe mailbox "+mboxName, err)
 	}
 
 	invalidateMailboxCache(ctx)
@@ -852,7 +875,7 @@ func handleLogin(ctx *alps.Context) error {
 			RememberMe string `json:"remember-me"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid json"})
+			return ctx.RespondBindError(err)
 		}
 		username = req.Username
 		password = req.Password
@@ -1360,7 +1383,19 @@ type messagePath struct {
 	Uid     string
 }
 
+// The largest body POST /messages will read. Attachments do not travel in it —
+// they are uploaded separately to /attachments and referenced here by UUID — so
+// this bounds message text, HTML and headers, where 32 MiB is already far more
+// than any real message. The number matches the one Context.FormParams passes to
+// ParseMultipartForm, which is an in-MEMORY threshold rather than a limit: above
+// it Go streams to a temp file and keeps going, so without this the intent
+// expressed there was not actually enforced anywhere.
+const maxComposeBodyBytes = 32 << 20
+
 func handleComposeNew(ctx *alps.Context) error {
+	// Before the first FormValue, which is what triggers parsing.
+	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, maxComposeBodyBytes)
+
 	saveAsDraft := ctx.FormValue("save_as_draft") != ""
 
 	fromAddr := ctx.FormValue("from")
@@ -1603,6 +1638,24 @@ func handleComposeNew(ctx *alps.Context) error {
 }
 
 func handleComposeAttachment(ctx *alps.Context) error {
+	// Bound the REQUEST, not just what we keep.
+	//
+	// ReadForm's argument is the in-memory threshold, not a limit: everything
+	// above 32 KiB streams to a temp file, with no ceiling. PutAttachment then
+	// checks the per-composer, per-session and global budgets — but by then the
+	// bytes are already on the server's disk, and only `form.RemoveAll()` takes
+	// them off again. So an authenticated user could write an arbitrarily large
+	// body into the temp directory before anything refused it, and several
+	// concurrent uploads multiplied that: the limits this server advertises
+	// governed retention and not intake.
+	//
+	// The cap is the per-composer budget plus a MiB of slack for multipart
+	// framing and field names, since one request can legitimately carry several
+	// files for a composer that is still empty. MaxBytesReader makes the read
+	// itself fail once the body passes it.
+	limit := ctx.Server.Sessions.MaxAttachmentSize() + (1 << 20)
+	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, limit)
+
 	reader, err := ctx.Request.MultipartReader()
 	if err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{
@@ -1611,6 +1664,16 @@ func handleComposeAttachment(ctx *alps.Context) error {
 	}
 	form, err := reader.ReadForm(32 << 10) // 32 KB - force attachments to temp dir on disk
 	if err != nil {
+		// A body over the cap lands here, as does a malformed one. The former is
+		// the user's attachments being too large, which is what the client's own
+		// over-budget message says, so answer with the size status rather than a
+		// generic 400.
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			return ctx.JSON(http.StatusRequestEntityTooLarge, map[string]string{
+				"error": "Your attachments exceed the maximum file size. Remove some and try again.",
+			})
+		}
 		return ctx.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Invalid request",
 		})
@@ -1670,7 +1733,7 @@ func handleMove(ctx *alps.Context) error {
 			To   string   `json:"to"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
-			return alps.NewHTTPError(http.StatusBadRequest, err)
+			return ctx.RespondBindError(err)
 		}
 		uids = req.Uids
 		to = req.To
@@ -1739,7 +1802,7 @@ func handleCopy(ctx *alps.Context) error {
 			To   string   `json:"to"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
-			return alps.NewHTTPError(http.StatusBadRequest, err)
+			return ctx.RespondBindError(err)
 		}
 		uids = req.Uids
 		to = req.To
@@ -1806,7 +1869,7 @@ func handleDelete(ctx *alps.Context) error {
 			Uids []string `json:"uids"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
-			return alps.NewHTTPError(http.StatusBadRequest, err)
+			return ctx.RespondBindError(err)
 		}
 		uids = req.Uids
 	} else {
@@ -1846,6 +1909,37 @@ func handleDelete(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
 }
 
+// mayEmptyMailbox reports whether name is a Trash or Junk mailbox, the only two
+// this endpoint empties, and emptying is permanent.
+//
+// By special-use attribute first. The name fallback is for servers that
+// advertise no roles, so it applies only to a role no mailbox has claimed: it
+// used to accept any mailbox called trash, junk, spam or deleted items, so on a
+// server whose \Trash is "Deleted Items" a user's own folder named "Trash" could
+// be emptied. The frontend has offered Empty by role only since c5e0f81; this is
+// the check that holds for a request that did not come from that button.
+func mayEmptyMailbox(name string, mailboxes []provider.Mailbox) bool {
+	trashClaimed, junkClaimed := false, false
+	for _, mb := range mailboxes {
+		for _, attr := range mb.Attributes {
+			isTrash := strings.EqualFold(attr, string(imap.MailboxAttrTrash))
+			isJunk := strings.EqualFold(attr, string(imap.MailboxAttrJunk))
+			if mb.Name == name && (isTrash || isJunk) {
+				return true
+			}
+			trashClaimed = trashClaimed || isTrash
+			junkClaimed = junkClaimed || isJunk
+		}
+	}
+	switch strings.ToLower(name) {
+	case "trash", "deleted items":
+		return !trashClaimed
+	case "junk", "spam":
+		return !junkClaimed
+	}
+	return false
+}
+
 func handleEmptyMailbox(ctx *alps.Context) error {
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
@@ -1859,35 +1953,21 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 			return fmt.Errorf("failed to list mailboxes for validation: %v", err)
 		}
 
-		isSpamOrTrash := false
-		for _, mb := range mailboxes {
-			if mb.Name == mboxName {
-				for _, attr := range mb.Attributes {
-					if strings.EqualFold(attr, string(imap.MailboxAttrTrash)) || strings.EqualFold(attr, string(imap.MailboxAttrJunk)) {
-						isSpamOrTrash = true
-						break
-					}
-				}
-				break
-			}
-		}
-
-		// Fallback check by name if attributes are missing
-		if !isSpamOrTrash {
-			lowerName := strings.ToLower(mboxName)
-			if lowerName == "trash" || lowerName == "junk" || lowerName == "spam" || lowerName == "deleted items" {
-				isSpamOrTrash = true
-			}
-		}
-
-		if !isSpamOrTrash {
-			return fmt.Errorf("emptying is only allowed for Trash and Junk mailboxes")
+		if !mayEmptyMailbox(mboxName, mailboxes) {
+			return errEmptyNotAllowed
 		}
 
 		return p.EmptyMailbox(mboxName)
 	})
 	if err != nil {
-		return fmt.Errorf("failed to empty mailbox: %v", err)
+		// A refusal is the user asking for something this endpoint does not do,
+		// not a server fault. It used to come back as a 500 whose body repeated
+		// the internal message verbatim — the same shape the folder verbs were
+		// corrected out of in 6cdf808.
+		if errors.Is(err, errEmptyNotAllowed) {
+			return ctx.JSON(http.StatusForbidden, map[string]string{"error": "not_discardable"})
+		}
+		return respondMailboxError(ctx, "empty mailbox", err)
 	}
 
 	// Invalidate cache for the mailbox
@@ -1936,7 +2016,7 @@ func handleSetFlags(ctx *alps.Context) error {
 			Action string   `json:"action"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
-			return alps.NewHTTPError(http.StatusBadRequest, err)
+			return ctx.RespondBindError(err)
 		}
 		uids = req.Uids
 		flags = req.Flags
@@ -1979,7 +2059,32 @@ func handleSetFlags(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusBadRequest, "invalid 'action' value")
 	}
 
+	if len(uids) > maxFlagUIDs {
+		// One STORE per gesture is the point of this endpoint, but an unbounded
+		// list is a request the IMAP session may not survive — and the client
+		// has no way to learn that from a timeout. Refuse with a number it can
+		// chunk by; the frontend splits at the same constant.
+		return ctx.JSON(http.StatusRequestEntityTooLarge, map[string]any{
+			"error": "too_many_messages",
+			"max":   maxFlagUIDs,
+		})
+	}
+
+	// The whitelist governs CREATION, not removal.
+	//
+	// That is what the original comment on the default branch said — "restrict
+	// creation of unsupported labels" — but the filter ran for every action,
+	// removal included. So a message carrying a keyword this list does not know
+	// (`Junk`, `NotJunk`, `$Phishing` — what other clients and spam filters
+	// leave behind) could never have it taken off: the UI's "remove all tags"
+	// sends exactly those, gathered by getRemovableTags, and they were dropped
+	// on the floor. A mixed list was worse than useless, since the recognised
+	// half succeeded and reported success for the whole request.
+	//
+	// Removing a keyword cannot create anything, so on a delete every
+	// syntactically valid keyword is accepted.
 	var l []imap.Flag
+	var rejected []string
 	for _, s := range flags {
 		lower := strings.ToLower(s)
 		switch lower {
@@ -1992,14 +2097,34 @@ func handleSetFlags(ctx *alps.Context) error {
 		case "$label1", "$label2", "$label3", "$label4", "$label5":
 			l = append(l, imap.Flag(lower)) // enforce lowercase for Thunderbird labels
 		default:
-			// restrict creation of unsupported labels
-			continue
+			if op == imap.StoreFlagsDel && isValidIMAPKeyword(s) {
+				l = append(l, imap.Flag(s))
+				continue
+			}
+			rejected = append(rejected, s)
 		}
 	}
 
-	// If flags were provided but all were filtered out, just return success
-	if len(l) == 0 && len(flags) > 0 {
-		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
+	// All or nothing on the recognised ones too. Filtering silently meant
+	// "add $label1 and Junk" applied half the request and answered 200, so the
+	// client had no way to learn that half of what it asked for did not happen.
+	if len(rejected) > 0 {
+		return ctx.JSON(http.StatusBadRequest, map[string]any{
+			"error":    "unsupported_flags",
+			"rejected": rejected,
+		})
+	}
+
+	// A request whose flags were ALL filtered out used to answer 200 OK.
+	//
+	// Nothing was written, and the client had just been told it succeeded — so
+	// the UI kept whatever it painted optimistically until the next sync quietly
+	// took it back, with no error anywhere in between. An unsupported keyword is
+	// the caller's mistake and has to read as one.
+	// Only reachable with an empty request now: anything unrecognised has
+	// already been refused above.
+	if len(l) == 0 {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "missing_flags"})
 	}
 
 	// Convert IMAP flag op to alps flag op
@@ -2051,8 +2176,91 @@ func handleSetFlags(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
 }
 
+// isValidIMAPKeyword reports whether s can be sent as an IMAP flag atom.
+//
+// Only consulted on removal, where the whitelist is deliberately not applied —
+// but a keyword still travels into a STORE command, so anything carrying an
+// atom-special or a control character is refused rather than escaped. RFC 3501
+// ATOM-CHAR: printable ASCII minus (){ %*"\ and ].
+// errEmptyNotAllowed marks the one refusal handleEmptyMailbox makes of its own
+// accord, so the HTTP layer can answer 403 instead of relaying it as a 500.
+var errEmptyNotAllowed = errors.New("emptying is only allowed for Trash and Junk mailboxes")
+
+// isMoveIntoTrash reports whether `name` is the Trash mailbox or sits beneath
+// it, with Trash identified by its \Trash special-use attribute and only
+// falling back to the English name when the server advertises none.
+func isMoveIntoTrash(p provider.MailProvider, name string) bool {
+	mailboxes, err := p.ListMailboxes()
+	if err != nil {
+		// Unknown rather than false would be more honest, but the only
+		// consequence of guessing wrong here is a missed unsubscribe, and the
+		// English name is the best guess available.
+		return strings.HasPrefix(strings.ToLower(name), "trash")
+	}
+
+	trash := ""
+	for _, mb := range mailboxes {
+		for _, attr := range mb.Attributes {
+			if strings.EqualFold(attr, string(imap.MailboxAttrTrash)) {
+				trash = mb.Name
+				break
+			}
+		}
+		if trash != "" {
+			break
+		}
+	}
+	if trash == "" {
+		return strings.HasPrefix(strings.ToLower(name), "trash")
+	}
+
+	return isAtOrUnderMailbox(name, trash)
+}
+
+// isAtOrUnderMailbox reports whether `name` IS `parent` or sits beneath it.
+//
+// The child test requires a SEPARATOR after the prefix, so `Trashcan` does not
+// count as being under `Trash` — the same prefix bug fixed on the frontend in
+// abdc8bb. The IMAP hierarchy delimiter is per-mailbox (`.`, `/`, `[Gmail]/`),
+// so rather than hardcode one, any non-alphanumeric character counts.
+func isAtOrUnderMailbox(name, parent string) bool {
+	if parent == "" || name == "" {
+		return false
+	}
+	if strings.EqualFold(name, parent) {
+		return true
+	}
+	if len(name) <= len(parent) || !strings.EqualFold(name[:len(parent)], parent) {
+		return false
+	}
+	next := name[len(parent)]
+	isAlnum := (next >= '0' && next <= '9') || (next >= 'A' && next <= 'Z') || (next >= 'a' && next <= 'z')
+	return !isAlnum
+}
+
+func isValidIMAPKeyword(s string) bool {
+	if s == "" || len(s) > 255 {
+		return false
+	}
+	for _, r := range s {
+		if r < 0x21 || r > 0x7e {
+			return false
+		}
+		switch r {
+		case '(', ')', '{', '}', '%', '*', '"', '\\', ']':
+			return false
+		}
+	}
+	return true
+}
+
 const settingsKey = "base.settings"
 const maxMessagesPerPage = 100
+
+// The largest UID list a single flag/delete/move/copy request may carry. The
+// frontend chunks at the same number, so an ordinary selection is still one
+// round trip and only a select-everything gesture is split.
+const maxFlagUIDs = 500
 
 type UIPreferences struct {
 	ThemeMode          string   `json:"themeMode,omitempty"`
@@ -2192,7 +2400,7 @@ func handleSettings(ctx *alps.Context) error {
 				MessageSortCriteria *string `json:"message_sort_criteria"`
 			}
 			if err := ctx.BindJSON(&req); err != nil {
-				return alps.NewHTTPError(http.StatusBadRequest, err)
+				return ctx.RespondBindError(err)
 			}
 			if req.MessagesPerPage != nil && *req.MessagesPerPage != 0 {
 				settings.MessagesPerPage = *req.MessagesPerPage
@@ -2407,6 +2615,16 @@ func handleRemoveAccount(ctx *alps.Context) error {
 	}
 
 	err = ctx.Session.RemoveLinkedAccount(username)
+	if errors.Is(err, alps.ErrReverseLinkNotCleared) {
+		// The link IS gone from this account — reporting a failure would invite a
+		// retry that cannot help. But this user's credential is still stored in
+		// the other mailbox, and they are entitled to know that rather than be
+		// told it all went fine.
+		return ctx.JSON(http.StatusOK, map[string]interface{}{
+			"ok":      true,
+			"warning": "reverse_link_not_cleared",
+		})
+	}
 	if err != nil {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("Failed to remove account: %v", err)})
 	}

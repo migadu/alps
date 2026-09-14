@@ -127,8 +127,9 @@ export class CalendarEventPreview extends LitElement {
         }
     `;
 
-    private formatEventDate(dateStr: string, endStr: string) {
-        const isAllDay = isAllDayEvent(dateStr, endStr);
+    private formatEventDate(event: EventData) {
+        const dateStr = event.start;
+        const isAllDay = isAllDayEvent(event);
         let d: Date;
         if (isAllDay) {
             d = new Date(dateStr.split('T')[0] + 'T00:00:00');
@@ -138,10 +139,10 @@ export class CalendarEventPreview extends LitElement {
         return `${this.i18nStore?.t(`calendar.days.${d.getDay()}`)}, ${this.i18nStore?.t(`calendar.monthsShort.${d.getMonth()}`)} ${d.getDate()}, ${d.getFullYear()}`;
     }
 
-    private formatEventTimeRange(startStr: string, endStr: string) {
-        const s = new Date(startStr);
-        const e = new Date(endStr);
-        const isAllDay = isAllDayEvent(startStr, endStr);
+    private formatEventTimeRange(event: EventData) {
+        const s = new Date(event.start);
+        const e = new Date(event.end);
+        const isAllDay = isAllDayEvent(event);
         if (isAllDay) return this.i18nStore?.t('calendar.allDay');
         
         const timeOptions: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
@@ -196,8 +197,8 @@ export class CalendarEventPreview extends LitElement {
             </div>
 
             <div class="card">
-                <div class="date-primary">${this.formatEventDate(e.start, e.end)}</div>
-                <div class="date-secondary">${this.formatEventTimeRange(e.start, e.end)}</div>
+                <div class="date-primary">${this.formatEventDate(e)}</div>
+                <div class="date-secondary">${this.formatEventTimeRange(e)}</div>
             </div>
 
             ${e.location ? html`

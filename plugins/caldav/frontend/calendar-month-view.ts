@@ -108,19 +108,24 @@ export class CalendarMonthView extends LitElement {
     private getMonthGrid() {
         const year = this.date.getFullYear();
         const month = this.date.getMonth();
-        const firstDay = new Date(year, month, 1);
-        const lastDay = new Date(year, month + 1, 0);
-        
-        const grid = [];
-        let current = new Date(firstDay);
-        // Rewind to Monday
-        let dayOfWeek = current.getDay();
-        if (dayOfWeek === 0) dayOfWeek = 7;
-        current.setDate(current.getDate() - (dayOfWeek - 1));
+        // Counted, not walked. The cursor this replaced carried state from cell to
+        // cell: in the zones that move their clocks at midnight (Santiago, Havana,
+        // Asuncion) `new Date(y, m, d)` on that day is 01:00, and `setDate(+1)`
+        // keeps the wall clock, so the extra hour rode into every later cell.
+        // September 2024 in Santiago lost its whole last row: 01:00 on the 30th
+        // failed `current <= lastDay` with the grid at exactly 35 cells, and no
+        // cell after the 8th could equal today's midnight for the highlight. Each
+        // cell is now built from its own integer, which Date normalises in or out
+        // of range, so a missing midnight can only affect its own cell.
+        let dayOfWeek = new Date(year, month, 1).getDay();
+        if (dayOfWeek === 0) dayOfWeek = 7; // Monday first
+        const firstCell = 1 - (dayOfWeek - 1);
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const cellCount = Math.ceil((daysInMonth + (dayOfWeek - 1)) / 7) * 7;
 
-        while (current <= lastDay || grid.length % 7 !== 0) {
-            grid.push(new Date(current));
-            current.setDate(current.getDate() + 1);
+        const grid: Date[] = [];
+        for (let i = 0; i < cellCount; i++) {
+            grid.push(new Date(year, month, firstCell + i));
         }
         return grid;
     }
@@ -128,7 +133,7 @@ export class CalendarMonthView extends LitElement {
     private getEventsForDate(date: Date, includeAllDay: boolean) {
         if (!this.events) return [];
         return this.events.filter(e => {
-            const isAllDay = isAllDayEvent(e.start, e.end);
+            const isAllDay = isAllDayEvent(e);
             if (includeAllDay !== isAllDay) return false;
 
             const dayStart = new Date(date);
@@ -156,7 +161,7 @@ export class CalendarMonthView extends LitElement {
 
     private handleCellClick(date: Date) {
         this.dispatchEvent(new CustomEvent('create-event', {
-            detail: { date },
+            detail: { date, allDay: true },
             bubbles: true,
             composed: true
         }));
@@ -190,7 +195,7 @@ export class CalendarMonthView extends LitElement {
                                 ${dayEvents.slice(0, 4).map(e => html`
                                     <alps-popup align="left" position="bottom" style="width: 100%; display: block;" @click=${(ev: Event) => ev.stopPropagation()}>
                                         <div slot="trigger"
-                                            class="event-chip ${isAllDayEvent(e.start, e.end) ? 'all-day' : ''}" 
+                                            class="event-chip ${isAllDayEvent(e) ? 'all-day' : ''}" 
                                             style=${e.color ? `background-color: ${e.color}` : ''}
                                             title="${e.summary || (this.i18nStore?.t('calendar.noTitle'))}">
                                             ${e.summary || (this.i18nStore?.t('calendar.noTitle'))}

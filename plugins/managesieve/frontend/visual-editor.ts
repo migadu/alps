@@ -25,8 +25,10 @@ export class VisualEditor extends LitElement {
 		return this.initialSnapshot !== '' && this.initialSnapshot !== JSON.stringify(this.state);
 	}
 
-	markClean() {
-		this.initialSnapshot = JSON.stringify(this.state);
+	/** Records `snapshot` as the saved state: the state that was SENT, which by
+	 * the time the save lands need not be this.state any more. */
+	markClean(snapshot: string = JSON.stringify(this.state)) {
+		this.initialSnapshot = snapshot;
 		this.requestUpdate();
 	}
 

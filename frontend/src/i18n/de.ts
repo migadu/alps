@@ -2,6 +2,7 @@ import type { TranslationDictionary } from './en';
 
 export const de: TranslationDictionary = {
   settings: {
+    saveFailed: 'Diese Einstellung konnte nicht gespeichert werden — sie überlebt das Abmelden möglicherweise nicht',
     title: 'Einstellungen',
     categories: {
       general: 'Allgemein',
@@ -54,7 +55,7 @@ export const de: TranslationDictionary = {
       plainText: 'Reiner Text',
       alwaysAsk: 'Immer fragen',
       alwaysLoad: 'Immer laden',
-      richText: 'Rich Text (HTML)',
+      richText: "Formatierter Text (HTML)",
       markReadTimeout: 'Als gelesen markieren',
       markReadImmediately: 'Sofort',
       markRead1s: 'Nach 1 Sekunde',
@@ -67,7 +68,8 @@ export const de: TranslationDictionary = {
       sortUid: 'Ablagedatum im Ordner',
       sortDate: 'Empfangsdatum',
       enableThreading: 'Threading verwenden',
-      themeIframeContent: 'Farbthema auf HTML-Nachrichten anwenden'
+      themeIframeContent: 'Farbthema auf HTML-Nachrichten anwenden',
+      threadingNotSupported: "Von Ihrem Mailserver nicht unterstützt"
     },
     appearance: {
       colorTheme: 'Farbthema',
@@ -80,7 +82,7 @@ export const de: TranslationDictionary = {
       listDensityDesc: 'Passen Sie den Abstand und die Kompaktheit der Nachrichtenliste an.',
       light: 'Hell',
       dark: 'Dunkel',
-      systemAuto: 'System Auto',
+      systemAuto: "Automatisch (System)",
       vertical: 'Vertikal (3 Bereiche)',
       horizontal: 'Horizontal (Oben/Unten)',
       fullScreen: 'Vollbild (Liste beim Lesen ausblenden)',
@@ -133,8 +135,10 @@ export const de: TranslationDictionary = {
     pleaseWait: 'Bitte warten',
     wait: 'Warten',
     signedOut: 'Sie wurden abgemeldet.',
+    signedOutDraftsLost: 'Sie wurden abgemeldet. Einige ungesendete Entwürfe konnten nicht gespeichert werden und gingen verloren.',
     sessionExpired: 'Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.',
-    inactivitySignedOut: 'Sie wurden wegen Inaktivität abgemeldet.'
+    inactivitySignedOut: 'Sie wurden wegen Inaktivität abgemeldet.',
+    inactivitySignedOutDraftsLost: "Sie wurden wegen Inaktivität abgemeldet. Einige ungesendete Entwürfe konnten nicht gespeichert werden und gingen verloren."
   },
   folderList: {
     compose: 'Verfassen',
@@ -150,6 +154,7 @@ export const de: TranslationDictionary = {
     delete: 'Löschen',
     createFolder: 'Ordner erstellen',
     renameFolder: 'Ordner umbenennen',
+    folderName: 'Ordnername',
     deleteFolder: 'Ordner löschen',
     deleteFolderConfirm: 'Möchten Sie "{folder}" wirklich löschen? Alle darin enthaltenen Nachrichten werden endgültig gelöscht.',
     expandSidebar: 'Seitenleiste einblenden',
@@ -157,9 +162,20 @@ export const de: TranslationDictionary = {
     moveToTrash: 'In den Papierkorb verschieben',
     moveToTrashConfirm: 'Sind Sie sicher, dass Sie "{folder}" in den Papierkorb verschieben möchten?',
     createSubfolder: 'Unterordner erstellen',
-    createSubfolderUnder: 'Unterordner unter "{folder}" erstellen'
+    createSubfolderUnder: 'Unterordner unter "{folder}" erstellen',
+    subscribe: "Abonnieren",
+    unsubscribe: "Abbestellen",
+    order: "Reihenfolge",
+    moveToTop: "Ganz nach oben",
+    moveUp: "Nach oben",
+    moveDown: "Nach unten",
+    moveToBottom: "Ganz nach unten"
+  },
+  search: {
+    placeholder: 'E-Mails durchsuchen',
   },
   messageList: {
+    menu: 'Menü',
     selectAll: 'Alle Nachrichten auswählen',
     checkNew: 'Nach neuen Nachrichten suchen',
     sortDesc: 'Nach Datum absteigend sortieren',
@@ -167,6 +183,8 @@ export const de: TranslationDictionary = {
     filterStarred: 'Nach markierten filtern',
     filterUnread: 'Nach ungelesenen filtern',
     noMessages: 'Keine Nachrichten',
+    loadError: 'Dieser Ordner konnte nicht geladen werden.',
+    loadErrorRetry: 'Erneut versuchen',
     loading: 'Wird geladen...',
     unknownSender: 'Unbekannter Absender',
     unknown: 'Unbekannt',
@@ -186,10 +204,14 @@ export const de: TranslationDictionary = {
     emptyMailboxFailed: 'Postfach konnte nicht geleert werden. Stellen Sie sicher, dass es sich um Papierkorb oder Spam handelt.'
   },
   composer: {
+    discardFailed: 'Der Entwurf konnte nicht vom Server gelöscht werden und liegt weiterhin in den Entwürfen.',
+    attachmentsTooLarge: 'Die Anhänge überschreiten die maximal zulässige Größe.',
+    draftSaveFailedKeepOpen: 'Entwurf konnte nicht gespeichert werden — das Fenster bleibt offen, damit nichts verloren geht',
     attachmentsWait: 'Bitte warten Sie, bis die Anhänge hochgeladen sind, bevor Sie senden.',
     sending: 'Nachricht wird gesendet...',
     undo: 'Rückgängig',
-    sendError: 'Nachricht konnte nicht gesendet werden: {error}'
+    sendError: 'Nachricht konnte nicht gesendet werden: {error}',
+    presendFailed: 'Ein Sicherheits-Plugin konnte diese Nachricht nicht verarbeiten, daher wurde sie nicht gesendet.'
   },
   messageComposer: {
     fontSize: 'Schriftgröße',
@@ -260,6 +282,7 @@ export const de: TranslationDictionary = {
     unknownError: 'Unbekannter Fehler'
   },
   messageReader: {
+    moreOptions: 'Weitere Optionen',
     tags: 'Schlagwörter',
     removeAllTags: 'Alle Schlagwörter entfernen',
     removeTag: 'Schlagwort entfernen',
@@ -355,30 +378,71 @@ export const de: TranslationDictionary = {
     messagePermanentlyDeleted: 'Nachricht endgültig gelöscht',
     draftDiscarded: 'Entwurf verworfen',
     folderRenamed: 'Ordner umbenannt',
+    tagNotSupported: 'Dieses Schlagwort wird von diesem Mailserver nicht unterstützt',
+    flagChangeFailed: 'Nachrichten konnten nicht aktualisiert werden',
+    folderCreated: 'Ordner erstellt',
+    folderExists: 'Ein Ordner mit diesem Namen existiert bereits',
+    folderCreateFailed: 'Ordner konnte nicht erstellt werden',
+    folderRenameFailed: 'Ordner konnte nicht umbenannt werden',
+    folderDeleteFailed: 'Ordner konnte nicht gelöscht werden',
+    folderUndoFailed: 'Rückgängig machen fehlgeschlagen',
     folderMovedToTrash: 'Ordner in den Papierkorb verschoben',
     folderPermanentlyDeleted: 'Ordner endgültig gelöscht',
     undo: 'Rückgängig',
     dismiss: 'Schließen',
     messageMovedToArchive: 'Nachricht ins Archiv verschoben',
-    messagesMovedToArchive: '{count} Nachrichten ins Archiv verschoben',
+    messagesMovedToArchive: {
+      one: "{count} Nachricht ins Archiv verschoben",
+      other: "{count} Nachrichten ins Archiv verschoben"
+    },
     messageMovedToSpam: 'Nachricht in Spam verschoben',
-    messagesMovedToSpam: '{count} Nachrichten in Spam verschoben',
+    messagesMovedToSpam: {
+      one: "{count} Nachricht in Spam verschoben",
+      other: "{count} Nachrichten in Spam verschoben"
+    },
     messageMovedToInbox: 'Nachricht in Posteingang verschoben',
-    messagesMovedToInbox: '{count} Nachrichten in Posteingang verschoben',
+    messagesMovedToInbox: {
+      one: "{count} Nachricht in Posteingang verschoben",
+      other: "{count} Nachrichten in Posteingang verschoben"
+    },
     messageMovedToTrash: 'Nachricht in Papierkorb verschoben',
-    messagesMovedToTrash: '{count} Nachrichten in Papierkorb verschoben',
+    messagesMovedToTrash: {
+      one: "{count} Nachricht in Papierkorb verschoben",
+      other: "{count} Nachrichten in Papierkorb verschoben"
+    },
     messageMovedToFolder: 'Nachricht nach {folder} verschoben',
-    messagesMovedToFolder: '{count} Nachrichten nach {folder} verschoben',
+    messagesMovedToFolder: {
+      one: "{count} Nachricht nach {folder} verschoben",
+      other: "{count} Nachrichten nach {folder} verschoben"
+    },
     messageCopiedToFolder: 'Nachricht nach {folder} kopiert',
-    messagesCopiedToFolder: '{count} Nachrichten nach {folder} kopiert',
-    draftsDiscarded: '{count} Entwürfe verworfen',
-    messagesPermanentlyDeleted: '{count} Nachrichten endgültig gelöscht'
+    messagesCopiedToFolder: {
+      one: "{count} Nachricht nach {folder} kopiert",
+      other: "{count} Nachrichten nach {folder} kopiert"
+    },
+    draftsDiscarded: {
+      one: "{count} Entwurf verworfen",
+      other: "{count} Entwürfe verworfen"
+    },
+    messagesPermanentlyDeleted: {
+      one: "{count} Nachricht endgültig gelöscht",
+      other: "{count} Nachrichten endgültig gelöscht"
+    },
+    undoFailed: 'Rückgängig machen fehlgeschlagen',
+    messageDeleteFailed: 'Die Nachricht konnte nicht gelöscht werden',
+    moveFailed: 'Verschieben fehlgeschlagen',
+    copyFailed: 'Kopieren fehlgeschlagen',
+    subscribeFailed: "Abonnieren fehlgeschlagen",
+    unsubscribeFailed: "Abbestellen fehlgeschlagen"
   },
   mailboxPage: {
     mailboxNotFound: 'Postfach nicht gefunden',
     newMessages: 'Neue Nachrichten',
     newMessagesSingleBody: 'Sie haben 1 neue Nachricht',
-    newMessagesMultiBody: 'Sie haben {count} neue Nachrichten',
+    newMessagesMultiBody: {
+      one: "Sie haben {count} neue Nachricht",
+      other: "Sie haben {count} neue Nachrichten"
+    },
     newMessagesInInbox: 'Neue Nachrichten im Posteingang',
     newMessagesAvailable: 'Neue Nachrichten verfügbar',
     open: 'Öffnen',
@@ -397,7 +461,15 @@ export const de: TranslationDictionary = {
     cancel: 'Abbrechen',
     save: 'Speichern',
     optional: 'Optional',
-    delete: 'Löschen'
+    delete: 'Löschen',
+    clear: "Leeren",
+    showPassword: "Passwort anzeigen",
+    hidePassword: "Passwort verbergen",
+    previous: "Zurück",
+    next: "Weiter",
+    expand: "Aufklappen",
+    collapse: "Zuklappen",
+    notFound: "Seite nicht gefunden"
   },
   webauthn: {
     title: 'Sicherheitsschlüssel-Überprüfung',
@@ -431,7 +503,8 @@ export const de: TranslationDictionary = {
       keys_title: 'Sicherheitsschlüssel',
       noKeys: 'Keine registrierten Schlüssel.',
       added: 'Hinzugefügt',
-      remove_btn: 'Entfernen'
+      remove_btn: 'Entfernen',
+      unnamed_key: "Sicherheitsschlüssel"
     }
   }
 };

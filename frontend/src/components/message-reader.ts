@@ -2,12 +2,12 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { live } from 'lit/directives/live.js';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName, getRemovableTags } from '../utils/flags';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
-import { renderIcon, formatFullDate, formatSize, getBimiAvatarUrl } from '../utils/ui';
+import { renderIcon, formatFullDate, formatSize, bimiAvatarUrlFor } from '../utils/ui';
 import './alps-recipient-pill';
 import './alps-attachment-list';
 import './alps-toolbar';
@@ -160,7 +160,11 @@ export class MessageReader extends LitElement {
 
   private _handleTag(tag: string) {
     this._closePopup();
-    const isBulk = this.selectedUids.size > 1 && !this.message;
+    // The operand the toolbar is drawn for. render() shows the bulk toolbar, with
+    // the checked rows' common tags, as soon as any row is checked, and the page
+    // applies the action to those rows; deciding from the open message until MORE
+    // than one was checked meant a click on a single checked row could do nothing.
+    const isBulk = this.selectedUids.size > 0;
     const hasTag = isBulk
       ? this.commonTags?.some(f => f.toLowerCase() === tag.toLowerCase())
       : this.message?.Flags?.some((f: string) => f.toLowerCase() === tag.toLowerCase());
@@ -170,7 +174,7 @@ export class MessageReader extends LitElement {
 
   private _handleRemoveAllTags() {
     this._closePopup();
-    const isBulk = this.selectedUids.size > 1 && !this.message;
+    const isBulk = this.selectedUids.size > 0; // the same operand as _handleTag
 
     let tags: string[];
     if (isBulk) {
@@ -744,14 +748,32 @@ export class MessageReader extends LitElement {
    */
   private loadRemoteResources() {
     this.allowRemoteResources = true;
-    if (this.rawMessageHtml) {
+    // Guarded on `this.message`, not just the HTML. The banner this runs from
+    // renders only alongside an open message, so it is true today — but that is
+    // a promise about a render arm kept in another method, and the sanitizer
+    // builds every `cid:` image URL out of this UID: broken, it silently mints
+    // `/messages/undefined/raw?part=…` for each inline image.
+    if (this.message && this.rawMessageHtml) {
+      // Reset BEFORE re-sanitizing, so the count reflects this pass. Left at
+      // `true` from the blocked pass, the "load remote content" banner stayed
+      // on screen after the user had already loaded it.
+      this.hasRemoteResources = false;
       this.content = sanitizeMessageHTML(this.rawMessageHtml, {
         mailbox: this.mailbox,
-        messageUid: this.message?.UID,
+        messageUid: this.message.UID,
         allowRemoteResources: this.allowRemoteResources,
-        messageStructure: this.message?.BodyStructure,
+        messageStructure: this.message.BodyStructure,
         onRemoteResourceBlocked: () => { this.hasRemoteResources = true; }
       });
+      // Keep the conversation card for this message in step, or it goes on
+      // showing the blocked copy behind the pane that just unblocked.
+      const item = this.threadItems.find(entry => String(entry.message?.UID) === String(this.message.UID));
+      if (item) {
+        item.allowRemoteResources = true;
+        item.content = this.content;
+        item.hasRemoteResources = this.hasRemoteResources;
+        this.updateThreadItemReference(item);
+      }
     }
   }
 
@@ -785,7 +807,17 @@ export class MessageReader extends LitElement {
         return dateA - dateB;
       });
     } else {
-      threadMessages = [msg];
+      // The root is not in the list, and that is no reason to collapse a
+      // conversation already on screen. This runs again on every list change —
+      // a background poll, new mail sliding the thread onto the next page — and
+      // rebuilding from [msg] there shrank an open, loaded conversation to its
+      // one opened message while it was being read. A different message, or
+      // threading switched off, still starts from [msg].
+      const loaded = enableThreading && this.threadItems.length > 1 &&
+        this.threadItems.some(item => String(item.message?.UID) === String(msg.UID))
+        ? this.threadItems.map(item => item.message)
+        : null;
+      threadMessages = loaded ?? [msg];
     }
 
     this._isThread = enableThreading && threadMessages.length > 1;
@@ -1084,17 +1116,26 @@ export class MessageReader extends LitElement {
 
   private loadRemoteResourcesForItem(item: ThreadMessageItem) {
     item.allowRemoteResources = true;
-    if (item.rawMessageHtml) {
+    if (item.message && item.rawMessageHtml) {
+      item.hasRemoteResources = false;
       item.content = sanitizeMessageHTML(item.rawMessageHtml, {
         mailbox: item.mailbox,
-        messageUid: item.message?.UID,
+        messageUid: item.message.UID,
         allowRemoteResources: item.allowRemoteResources,
-        messageStructure: item.message?.BodyStructure,
+        messageStructure: item.message.BodyStructure,
         onRemoteResourceBlocked: () => { item.hasRemoteResources = true; }
       });
-      if (item === this.threadItems[0]) {
+      // The OPEN message, not `threadItems[0]`.
+      //
+      // Those are the same thing only when the message being read happens to be
+      // first in its conversation. Otherwise loading remote content on the open
+      // card updated the card and left the reader's own copy blocked, with its
+      // banner still up — and, worse, a card that was NOT open could push its
+      // content into the reader by being first.
+      if (String(item.message.UID) === String(this.message?.UID)) {
         this.content = item.content;
         this.allowRemoteResources = true;
+        this.hasRemoteResources = item.hasRemoteResources;
       }
       this.updateThreadItemReference(item);
     }
@@ -1124,7 +1165,7 @@ export class MessageReader extends LitElement {
     }));
 
     try {
-      const success = await messageOperations.setFlag(item.mailbox, [String(item.message.UID)], [FLAG_FLAGGED], op);
+      const { ok: success } = await messageOperations.setFlag(item.mailbox, [String(item.message.UID)], [FLAG_FLAGGED], op);
       if (!success) {
         if (isStarred) {
           item.message.Flags = [...(item.message.Flags || []), FLAG_FLAGGED];
@@ -1171,14 +1212,27 @@ export class MessageReader extends LitElement {
     }
   }
 
+  /**
+   * A delete of one message in a thread that did not happen. Nothing used to say
+   * so, from either side: deleteMessages catches internally and never throws, so
+   * the catch below was unreachable for a refusal, and `if (success)` had no
+   * else. The row simply stayed, unexplained. Quiet on `auth`, which the shell
+   * already answers with the login screen.
+   */
+  private reportDeleteFailed() {
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: { message: this.i18nStore?.t('toast.messageDeleteFailed'), duration: 5000 }
+    }));
+  }
+
   private async deleteItem(item: ThreadMessageItem) {
     if (!item.message) return;
     const confirmed = confirm(this.i18nStore?.t('messageReader.deleteConfirmSingle') || 'Are you sure you want to permanently delete this message?');
     if (!confirmed) return;
 
     try {
-      const success = await messageOperations.deleteMessages(item.mailbox, [String(item.message.UID)]);
-      if (success) {
+      const result = await messageOperations.deleteMessagesResult(item.mailbox, [String(item.message.UID)]);
+      if (result.ok) {
         const uidStr = String(item.message.UID);
         const isFirst = this.threadItems.length > 0 && String(this.threadItems[0].message?.UID) === uidStr;
         this.threadItems = this.threadItems.filter(i => String(i.message?.UID) !== uidStr);
@@ -1187,9 +1241,12 @@ export class MessageReader extends LitElement {
         if (isFirst) {
           this.dispatchEvent(new CustomEvent('action', { detail: { action: 'delete' } }));
         }
+      } else if (result.reason !== 'auth') {
+        this.reportDeleteFailed();
       }
     } catch (err) {
       Logger.error('Failed to delete thread item', err);
+      this.reportDeleteFailed();
     }
   }
 
@@ -1417,8 +1474,7 @@ export class MessageReader extends LitElement {
     const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
     const dateStr = msg.Envelope?.Date ? formatFullDate(msg.Envelope.Date, dateFormat, hourFormat) : '';
 
-    const domain = sender.Host ? sender.Host.toLowerCase() : '';
-    const bimiUrl = getBimiAvatarUrl(domain);
+    const bimiUrl = bimiAvatarUrlFor(msg, sender);
 
     // Classify the current mailbox by IMAP special-use attribute (with a name
     // fallback) so Gmail's "[Gmail]/Trash", "[Gmail]/Spam", etc. show the correct
@@ -1537,7 +1593,7 @@ export class MessageReader extends LitElement {
             </button>
             ` : ''}
             <button class="dropdown-item" @click=${() => this._handleAction('delete')}>
-              ${renderIcon('trash')} <span class="item-text">${this.message?.Flags?.includes(FLAG_DRAFT) || this.mailbox === FOLDER_DRAFTS || mailboxRoleByName(this.mailbox || '', this.mailboxes) === 'drafts' ? (this.i18nStore?.t('messageReader.discardDraft')) : (this.i18nStore?.t('messageReader.delete'))}</span>
+              ${renderIcon('trash')} <span class="item-text">${this.message?.Flags?.includes(FLAG_DRAFT) || mailboxRoleByName(this.mailbox || '', this.mailboxes) === 'drafts' ? (this.i18nStore?.t('messageReader.discardDraft')) : (this.i18nStore?.t('messageReader.delete'))}</span>
             </button>
             <alps-folder-selector-popup
               class="folder-selector"

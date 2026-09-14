@@ -44,7 +44,7 @@ func handlePasswordChange(ctx *alps.Context) error {
 	var req PasswordChangeRequest
 	if strings.HasPrefix(ctx.Request.Header.Get("Content-Type"), "application/json") {
 		if err := ctx.BindJSON(&req); err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+			return ctx.RespondBindError(err)
 		}
 	} else {
 		req.OldPassword = ctx.FormValue("old_password")
@@ -162,6 +162,18 @@ func handlePasswordChange(ctx *alps.Context) error {
 	// Also update login token if present, preserving the persistence setting
 	if tokenUsername, _, verified2FA, persistent := ctx.GetLoginToken(); tokenUsername == username {
 		ctx.SetLoginToken(username, req.Password, verified2FA, persistent)
+	}
+
+	// Every account this one is linked to stores this account's password,
+	// encrypted, in its own METADATA — and the change just made all of those
+	// stale. Switching back from any of them would be rejected with the old
+	// password, silently.
+	if failed := ctx.Session.RefreshLinkedCredentials(req.Password); failed > 0 {
+		return ctx.JSON(http.StatusOK, map[string]interface{}{
+			"message": "Password successfully changed",
+			"warning": "linked_accounts_not_refreshed",
+			"count":   failed,
+		})
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]string{"message": "Password successfully changed"})

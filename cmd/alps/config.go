@@ -82,6 +82,7 @@ type ServerConfig struct {
 	TrustedOrigins          []string        `toml:"trusted_origins"`            // Extra origins accepted by the CSRF check, e.g. "https://webmail.example.com" (for TLS-terminating reverse proxies)
 	SessionMinutes          int             `toml:"session_minutes"`            // Session timeout in minutes (default: 30)
 	MaxSessionMinutes       int             `toml:"max_session_minutes"`        // Maximum session duration users can set (0 = no limit)
+	AbsoluteSessionHours    int             `toml:"absolute_session_hours"`     // Hard ceiling on a session's total life regardless of activity (default: 168 = 7 days; -1 disables)
 	MaxSessions             int             `toml:"max_sessions"`               // Maximum total concurrent sessions (0 = unlimited, default: 10000)
 	MaxSessionsPerUser      int             `toml:"max_sessions_per_user"`      // Maximum sessions per username (0 = unlimited, default: 10)
 	MaxAttachmentMiB        int             `toml:"max_attachment_mib"`         // Max attachment size per composer in MiB (default: 32)
@@ -129,8 +130,9 @@ type MaildirProviderConfig struct {
 }
 
 type IMAPProviderConfig struct {
-	Server   string `toml:"server"`   // Server URL (e.g., "imaps://imap.example.com:993")
-	Insecure bool   `toml:"insecure"` // Allow insecure connections
+	Server      string   `toml:"server"`       // Server URL (e.g., "imaps://imap.example.com:993")
+	Insecure    bool     `toml:"insecure"`     // Allow insecure connections
+	AuthservIDs []string `toml:"authserv_ids"` // Receiving servers whose Authentication-Results are trusted (e.g., ["mx.example.com"])
 }
 
 type SMTPConfig struct {
@@ -308,6 +310,10 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	if c.Server.MaxSessionMinutes > 0 {
 		options.MaxSessionDuration = time.Duration(c.Server.MaxSessionMinutes) * time.Minute
 	}
+	// Negative means "no cap", and has to survive the >0 guard the others use.
+	if c.Server.AbsoluteSessionHours != 0 {
+		options.AbsoluteSessionDuration = time.Duration(c.Server.AbsoluteSessionHours) * time.Hour
+	}
 
 	// Set session limit config
 	if c.Server.MaxSessions > 0 {
@@ -392,8 +398,9 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	}
 
 	options.Provider.IMAP = alps.IMAPProviderOptions{
-		Server:   c.Provider.IMAP.Server,
-		Insecure: c.Provider.IMAP.Insecure,
+		Server:      c.Provider.IMAP.Server,
+		Insecure:    c.Provider.IMAP.Insecure,
+		AuthservIDs: c.Provider.IMAP.AuthservIDs,
 	}
 
 	// Validation

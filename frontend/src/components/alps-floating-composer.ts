@@ -1,10 +1,11 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
-import { composeContext } from '../store/compose-store';
+import { bareAddress, composeContext } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
 import { messageOperations } from '../services/message-operations';
+import { readUserSettings } from '../store/settings-store';
 import { messageSync } from '../services/message-sync';
 import './alps-address-input.js';
 import './alps-message-composer.js';
@@ -128,9 +129,18 @@ export class AlpsFloatingComposer extends LitElement {
     }, 3000); // 3 seconds auto-save
   }
 
-  private async _saveDraft() {
+  /**
+   * Saves the draft.
+   *
+   * Returns whether the message is SAFE — either stored on the server, or so
+   * empty there is nothing to store. `false` means a save was attempted and did
+   * not land, which is the one case where closing the window would destroy what
+   * the user wrote. See `_handleCloseClick`.
+   */
+  private async _saveDraft(): Promise<boolean> {
     const currentInstance = this.composeStore.getComposer(this.instance.id) || this.instance;
-    if (currentInstance.isSending || this.isSaving) return;
+    // A save is already in flight; closing now would race it.
+    if (currentInstance.isSending || this.isSaving) return false;
 
     // Check if we have anything to save
     const hasRecipient = (currentInstance.to?.length || 0) > 0 || (currentInstance.cc?.length || 0) > 0 || (currentInstance.bcc?.length || 0) > 0;
@@ -138,7 +148,7 @@ export class AlpsFloatingComposer extends LitElement {
     const textIsJustInitial = currentInstance.text?.trim() === currentInstance.initialText?.trim();
     const hasContent = !textIsJustInitial || (currentInstance.subject?.trim().length || 0) > 0 || hasAttachments;
     if (!hasRecipient && !hasContent) {
-      return;
+      return true; // nothing to lose
     }
 
     this.isSaving = true;
@@ -168,7 +178,9 @@ export class AlpsFloatingComposer extends LitElement {
       }
 
       if (!this.isConnected) {
-        return;
+        // The element went away mid-save. Whether the message is safe is still
+        // decided by the server's answer, not by whether we are still on screen.
+        return !!result;
       }
 
       if (result) {
@@ -195,6 +207,7 @@ export class AlpsFloatingComposer extends LitElement {
           this._scheduleAutoSave();
         }
       }
+      return !!result;
     } finally {
       this.isSaving = false;
     }
@@ -207,20 +220,22 @@ export class AlpsFloatingComposer extends LitElement {
     let bcc = [...(currentInstance.bcc || [])];
     
     let replyToSetting = '';
-    try {
-      const storedSettings = localStorage.getItem('alps_settings');
-      if (storedSettings) {
-        const parsed = JSON.parse(storedSettings);
-        if (parsed.bccMyself && parsed.loginUsername) {
-          if (!bcc.includes(parsed.loginUsername)) {
-            bcc.push(parsed.loginUsername);
-          }
-        }
-        if (parsed.replyTo) {
-          replyToSetting = parsed.replyTo;
-        }
+    // `readUserSettings`, not a hand-parse of `alps_settings`: that key holds
+    // only theme and layout values, so `bccMyself`, `loginUsername` and
+    // `replyTo` were all undefined here and both settings were inert.
+    {
+      const parsed = readUserSettings();
+      const self = parsed.loginUsername;
+      // Compared as addresses: a pill can hold `"Me" <me@…>` or another case, and
+      // an exact string match added the sender to Bcc a second time.
+      const mine = self ? bareAddress(self) : '';
+      if (parsed.bccMyself && self && !bcc.some(addr => bareAddress(addr) === mine)) {
+        bcc.push(self);
       }
-    } catch (e) {}
+      if (parsed.replyTo) {
+        replyToSetting = parsed.replyTo;
+      }
+    }
 
     const text = currentInstance.text || '';
     const subject = (currentInstance.subject || '').trim();
@@ -304,15 +319,60 @@ export class AlpsFloatingComposer extends LitElement {
     });
   }
 
-  private _handleCloseClick() {
+  /**
+   * Completes a close that was deferred while an upload finished.
+   *
+   * `_handleCloseClick` sets `closing: true` and returns when attachments are
+   * still in flight; this runs when the last one settles. It used to be
+   * `this._saveDraft().then(() => closeComposer(...))` — closing regardless of
+   * whether the save landed, which is the message-loss bug e85d153 fixed on the
+   * close button itself and missed here, on the path a user takes precisely
+   * when their message has attachments worth waiting for.
+   */
+  private async _finishDeferredClose() {
+    if (await this._saveDraft()) {
+      this.composeStore.closeComposer(this.instance.id);
+      return;
+    }
+    // Take the window back out of its closing state, or it stays on screen
+    // with no way to complete the gesture.
+    this.composeStore.updateComposer(this.instance.id, { closing: false } as any);
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: {
+        message: this.i18nStore?.t('composer.draftSaveFailedKeepOpen')
+          || 'Could not save this draft — the window stays open so nothing is lost',
+        duration: 6000
+      }
+    }));
+  }
+
+  private async _handleCloseClick() {
     const hasUploading = (this.instance.attachments || []).some(a => a.uploading);
     if (hasUploading) {
       this.composeStore.updateComposer(this.instance.id, { closing: true } as any);
       return;
     }
 
+    // AWAITED, and the close is conditional on it.
+    //
+    // This used to fire the save and close in the same tick. `closeComposer`
+    // drops the composer from state and immediately persists the reduced list,
+    // so a save that then failed — offline, a 500, a full mailbox — left the
+    // message gone from the screen AND gone from localStorage, having never
+    // reached the server. Total, silent loss of what the user wrote, on the
+    // gesture they use to put a message aside for later.
     if (this.instance.dirty) {
-      this._saveDraft();
+      const saved = await this._saveDraft();
+      if (!saved) {
+        window.dispatchEvent(new CustomEvent('show-toast', {
+          detail: {
+            message: this.i18nStore?.t('composer.draftSaveFailedKeepOpen')
+              || 'Could not save this draft — the window stays open so nothing is lost',
+            duration: 6000
+          }
+        }));
+        return;
+      }
     }
     this.composeStore.closeComposer(this.instance.id);
   }
@@ -346,12 +406,30 @@ export class AlpsFloatingComposer extends LitElement {
     this._performDiscard(type);
   }
 
+  private _toastDiscardFailed() {
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: {
+        message: this.i18nStore?.t('composer.discardFailed')
+          || 'The draft could not be deleted from the server and is still in Drafts.',
+        duration: 5000
+      }
+    }));
+  }
+
   private async _performDiscard(type: 'close' | 'delete' | null) {
     if (type === 'delete' && this.instance.draftUid && this.instance.draftMailbox) {
       try {
-        await messageOperations.deleteMessages(this.instance.draftMailbox, [String(this.instance.draftUid)]);
+        // `deleteMessages` reports a refusal by RETURNING false; it only throws
+        // on a network error, so the catch below was the smaller half of the
+        // problem and the returned answer was discarded entirely. A draft the
+        // server would not delete stays in Drafts while the user watches the
+        // window close on it.
+        const deleted = await messageOperations.deleteMessagesResult(this.instance.draftMailbox, [String(this.instance.draftUid)]);
+        // Quiet on `auth`: the shell is already showing the login screen.
+        if (!deleted.ok && deleted.reason !== 'auth') this._toastDiscardFailed();
       } catch (e) {
         Logger.error('Failed to delete draft', e);
+        this._toastDiscardFailed();
       }
     }
 
@@ -542,8 +620,18 @@ export class AlpsFloatingComposer extends LitElement {
       const currentInstance = this.composeStore.getComposer(this.instance.id) || this.instance;
       let finalFormData = this._buildFormData(currentInstance);
 
-      const presendResults = await registry.invokeHookAsync('composer:presend', { composer: this, formData: finalFormData, instance: currentInstance });
-      let abortSend = false;
+      // invokeHookSettled, NOT invokeHookAsync: a presend hook that throws has
+      // not approved this send, it has failed to decide — and the only safe
+      // reading of that is to stop. GPG's handlePresend returns the ENCRYPTED
+      // FormData; if its rejection were swallowed, `finalFormData` would still
+      // be the plaintext one built above and the message would go out in the
+      // clear. (Under the old bare `Promise.all` the rejection propagated to
+      // this method's catch, which aborted the send — so switching that to
+      // allSettled without this would have turned a loud failure into a silent
+      // plaintext send.)
+      const { results: presendResults, failed: presendFailed } =
+        await registry.invokeHookSettled('composer:presend', { composer: this, formData: finalFormData, instance: currentInstance });
+      let abortSend = presendFailed > 0;
       for (const res of presendResults) {
         if (res instanceof FormData) finalFormData = res;
         else if (res === false) abortSend = true;
@@ -552,10 +640,27 @@ export class AlpsFloatingComposer extends LitElement {
       if (abortSend) {
         this.composeStore.updateComposer(this.instance.id, { isSending: false, minimized: false });
         this.composeStore.bringComposerToFront(this.instance.id);
+        // A hook that threw refused nothing on purpose, so say so — an aborted
+        // send with no explanation reads as the button not working.
+        if (presendFailed > 0) {
+          window.dispatchEvent(new CustomEvent('show-toast', {
+            detail: { message: this.i18nStore?.t('composer.presendFailed'), duration: 5000 }
+          }));
+        }
         return;
       }
 
-      await messageOperations.sendDraft(finalFormData);
+      // sendDraft THROWS for a refusal, which the catch below reports — but it
+      // RETURNS false for a 401, and that answer was discarded. So an expired
+      // session ran the composer:send hook (carddav saved every recipient as a
+      // contact for a message that never went out) and closed the window. The
+      // message itself is kept by compose-store on expiry; this must not act as
+      // though it was sent.
+      const sent = await messageOperations.sendDraft(finalFormData);
+      if (!sent) {
+        this.composeStore.updateComposer(this.instance.id, { isSending: false });
+        return;
+      }
 
       registry.invokeHook('composer:send', { recipients: allTo });
 
@@ -571,7 +676,7 @@ export class AlpsFloatingComposer extends LitElement {
       this._bringToFront();
       window.dispatchEvent(new CustomEvent('show-toast', {
         detail: {
-          message: this.i18nStore?.t('composer.sendError')?.replace('{error}', err.message),
+          message: this.i18nStore?.t('composer.sendError', { error: err.message }),
           duration: 5000
         }
       }));
@@ -592,6 +697,13 @@ export class AlpsFloatingComposer extends LitElement {
     });
   }
 
+  /** attachment-utils is not a component, so the translation is resolved here
+   * and handed down. */
+  private _attachmentsTooLarge(): string {
+    return this.i18nStore?.t('composer.attachmentsTooLarge')
+      || 'Attachments exceed the maximum allowed size.';
+  }
+
   private _handleAttachClick() {
     const maxBytes = (this.settingsStore?.getState()?.maxAttachmentMiB || 32) * 1024 * 1024;
     const currentBytes = (this.instance.attachments || []).reduce((sum, a) => sum + (a.size || 0), 0);
@@ -600,7 +712,8 @@ export class AlpsFloatingComposer extends LitElement {
       this.instance.id,
       maxBytes,
       currentBytes,
-      ...this._getUploadCallbacks()
+      ...this._getUploadCallbacks(),
+      this._attachmentsTooLarge()
     );
   }
 
@@ -613,7 +726,8 @@ export class AlpsFloatingComposer extends LitElement {
       this.instance.id,
       maxBytes,
       currentBytes,
-      ...this._getUploadCallbacks()
+      ...this._getUploadCallbacks(),
+      this._attachmentsTooLarge()
     );
   }
 
@@ -666,9 +780,7 @@ export class AlpsFloatingComposer extends LitElement {
           const latestComposer = this.composeStore.getComposer(this.instance.id);
           const stillUploading = (latestComposer?.attachments || []).some(a => a.uploading);
           if (latestComposer?.closing && !stillUploading) {
-            this._saveDraft().then(() => {
-              this.composeStore.closeComposer(this.instance.id);
-            });
+            void this._finishDeferredClose();
           } else {
             this._saveDraft();
           }
@@ -689,11 +801,17 @@ export class AlpsFloatingComposer extends LitElement {
         const latestComposer = this.composeStore.getComposer(this.instance.id);
         const stillUploading = (latestComposer?.attachments || []).some(a => a.uploading);
         if (latestComposer?.closing && !stillUploading) {
-          this._saveDraft().then(() => {
-            this.composeStore.closeComposer(this.instance.id);
-          });
+          void this._finishDeferredClose();
         } else if (!latestComposer?.closing) {
-          alert(this.i18nStore?.t('floatingComposer.uploadFailed', { error: err.message || this.i18nStore?.t('floatingComposer.unknownError') }));
+          // A toast, not `alert()`. This file already raises toasts for every
+          // other failure, and a modal native dialog blocks the composer the
+          // user is still working in.
+          window.dispatchEvent(new CustomEvent('show-toast', {
+            detail: {
+              message: this.i18nStore?.t('floatingComposer.uploadFailed', { error: err.message || this.i18nStore?.t('floatingComposer.unknownError') }),
+              duration: 6000
+            }
+          }));
         }
       }
     ];
@@ -1013,8 +1131,12 @@ export class AlpsFloatingComposer extends LitElement {
       .content {
         display: flex !important;
       }
-      .header-actions alps-icon-btn[title="Minimize"],
-      .header-actions alps-icon-btn[title="Expand"] {
+      /* By class, not by title: the titles are translated, so a selector on the
+         English title matched only in English, and on a phone in any other
+         language the full-screen composer kept minimize and expand buttons it
+         has no use for. */
+      .header-actions .minimize-btn,
+      .header-actions .expand-btn {
         display: none;
       }
     }
@@ -1161,11 +1283,13 @@ export class AlpsFloatingComposer extends LitElement {
           <div class="header-actions">
             ${this.isSaving ? html`<span class="saving-indicator">${this.i18nStore?.t('floatingComposer.saving')}</span>` : (this.instance.draftUid && !this.instance.dirty) ? html`<span class="saving-indicator">${this.i18nStore?.t('floatingComposer.autosaved')}</span>` : ''}
             <alps-icon-btn 
+              class="minimize-btn"
               title="${this.instance.minimized ? this.i18nStore?.t('floatingComposer.restore') : this.i18nStore?.t('floatingComposer.minimize')}" 
               icon="${this.instance.minimized ? 'caretUp' : 'composerMinimize'}"
               @click=${(e: Event) => { e.stopPropagation(); this._toggleMinimize(); }}>
             </alps-icon-btn>
             <alps-icon-btn 
+              class="expand-btn"
               title="${this.instance.expanded ? this.i18nStore?.t('floatingComposer.restore') : this.i18nStore?.t('floatingComposer.expand')}" 
               icon="${this.instance.expanded ? 'arrowsInSimple' : 'arrowsOutSimple'}"
               @click=${(e: Event) => { e.stopPropagation(); this._toggleExpand(); }}>

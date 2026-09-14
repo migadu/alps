@@ -6,7 +6,7 @@ import { composeContext } from '../store/compose-store';
 import type { ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { mailboxOperations } from '../services/mailbox-operations';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRole, findMailboxNameByRole } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox } from '../utils/folders';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import './alps-icon-btn';
 import './ui-prompt';
@@ -39,6 +39,8 @@ export class FolderList extends LitElement {
   @state() private isScrolled = false;
 
   @state() private showCreatePrompt = false;
+  /** True while the create request is out; disables the prompt's buttons. */
+  @state() private promptBusy = false;
   @state() private showRenamePrompt = false;
   @state() private mailboxToRename = '';
   @state() private showDeleteConfirm = false;
@@ -201,6 +203,26 @@ export class FolderList extends LitElement {
       display: flex;
     }
 
+    /* The lock-up guard, keyed on the menu's own state. A click-triggered
+       alps-popup opens with dialog.showModal(), which makes the whole document
+       inert until it closes. If the container of that still-open dialog is then
+       display: none, the user gets an INVISIBLE modal: nothing on screen, every
+       click dead, only Escape gets out. Two routes reached it:
+
+       1. Specificity. .folder-item.active .folder-actions is (0,3,0) and
+          .folder-actions.popup-open is (0,2,0), so on the SELECTED folder the
+          open rule lost. Hover held the container open until the modal opened,
+          but hover does not reach a modal dialog's ancestors.
+       2. A desynced marker. .popup-open mirrors activeKebabMenu, and the nested
+          Order submenu's popup-close bubbled (composed) to the outer kebab's
+          handler and cleared it while the outer menu was still open.
+
+       :has() reads the popup's reflected open attribute, which cannot desync,
+       and (0,3,1) outranks every display: none above. */
+    .folder-item .folder-actions:has(alps-popup[open]) {
+      display: flex;
+    }
+
     .folder-actions:focus-within ~ .folder-badge,
     .folder-actions.popup-open ~ .folder-badge {
       display: none;
@@ -324,8 +346,13 @@ export class FolderList extends LitElement {
     this.showCreatePrompt = true;
   }
 
-  private handleCreateSubmit(e: CustomEvent) {
+  private async handleCreateSubmit(e: CustomEvent) {
     let name = e.detail.name;
+    // The prompt stays mounted across the await below — abdc8bb made this
+    // handler async and left the dialog live while the request was out, so the
+    // confirm button could be pressed again and create the folder twice.
+    this.promptBusy = true;
+    try {
     if (name) {
       if (this.parentForNewFolder) {
         const parentMb = this.mailboxes.find(m => (m.Name || m.Mailbox) === this.parentForNewFolder);
@@ -340,28 +367,58 @@ export class FolderList extends LitElement {
           detail: { folderName: this.parentForNewFolder }
         }));
       }
-      mailboxOperations.createMailbox(name);
+      // The result was discarded entirely: creating a folder that already
+      // exists, or any server refusal, closed the prompt and said nothing.
+      const outcome = await mailboxOperations.createMailbox(name);
+      if (outcome === 'exists') {
+        this.toast(this.i18nStore?.t('toast.folderExists'), 'A folder with that name already exists', { type: 'error' });
+      } else if (outcome === 'failed') {
+        this.toast(this.i18nStore?.t('toast.folderCreateFailed'), 'Could not create the folder', { type: 'error' });
+      }
     }
-    this.showCreatePrompt = false;
-    this.parentForNewFolder = '';
+    } finally {
+      this.promptBusy = false;
+      this.showCreatePrompt = false;
+      this.parentForNewFolder = '';
+    }
+  }
+
+  /** One place to raise a toast, so every folder verb can report its outcome
+   * instead of only its success. */
+  private toast(message: string | undefined, fallback: string, extra: Record<string, unknown> = {}) {
+    this.dispatchEvent(new CustomEvent('toast', {
+      detail: { message: message || fallback, duration: 4000, ...extra },
+      bubbles: true,
+      composed: true
+    }));
   }
 
   private async handleRenameSubmit(e: CustomEvent) {
     const newName = e.detail.name;
     if (newName && this.mailboxToRename) {
       const oldName = this.mailboxToRename;
+      // Taken down before the request here, so there is no double-submit window
+      // to guard — unlike the create path above.
       this.showRenamePrompt = false;
       this.mailboxToRename = '';
-      const success = await mailboxOperations.renameMailbox(oldName, newName);
-      if (success) {
-        if (this.currentMailbox === oldName) {
-          this.selectMailbox(newName);
+      const outcome = await mailboxOperations.renameMailbox(oldName, newName);
+      if (outcome === 'exists') {
+        this.toast(this.i18nStore?.t('toast.folderExists'), 'A folder with that name already exists', { type: 'error' });
+      } else if (outcome === 'failed') {
+        this.toast(this.i18nStore?.t('toast.folderRenameFailed'), 'Could not rename the folder', { type: 'error' });
+      } else {
+        if (isSelfOrDescendantMailbox(this.currentMailbox, oldName)) {
+          this.selectMailbox(newName + this.currentMailbox.slice(oldName.length));
         }
 
         const undoFn = async () => {
-          await mailboxOperations.renameMailbox(newName, oldName);
-          if (this.currentMailbox === newName) {
-            this.selectMailbox(oldName);
+          const undone = await mailboxOperations.renameMailbox(newName, oldName);
+          if (undone !== 'ok') {
+            this.toast(this.i18nStore?.t('toast.folderUndoFailed'), 'Could not undo that', { type: 'error' });
+            return;
+          }
+          if (isSelfOrDescendantMailbox(this.currentMailbox, newName)) {
+            this.selectMailbox(oldName + this.currentMailbox.slice(newName.length));
           }
         };
 
@@ -386,7 +443,9 @@ export class FolderList extends LitElement {
     if (this.mailboxToDelete) {
       const success = await mailboxOperations.deleteMailbox(this.mailboxToDelete);
       if (success) {
-        if (this.currentMailbox.startsWith(this.mailboxToDelete)) {
+        // `startsWith` alone also matched a sibling that merely shares a prefix,
+        // so deleting `Arch` navigated away from `Archive`.
+        if (isSelfOrDescendantMailbox(this.currentMailbox, this.mailboxToDelete)) {
           this.selectMailbox(FOLDER_INBOX);
         }
 
@@ -398,6 +457,8 @@ export class FolderList extends LitElement {
           bubbles: true,
           composed: true
         }));
+      } else {
+        this.toast(this.i18nStore?.t('toast.folderDeleteFailed'), 'Could not delete the folder', { type: 'error' });
       }
     }
     this.showDeleteConfirm = false;
@@ -429,15 +490,20 @@ export class FolderList extends LitElement {
       }
       const newName = candidateName;
 
-      const success = await mailboxOperations.renameMailbox(this.mailboxToDelete, newName);
-      if (success) {
-        if (this.currentMailbox.startsWith(this.mailboxToDelete)) {
+      const outcome = await mailboxOperations.renameMailbox(this.mailboxToDelete, newName);
+      if (outcome !== 'ok') {
+        this.toast(this.i18nStore?.t('toast.folderRenameFailed'), 'Could not rename the folder', { type: 'error' });
+      } else {
+        // Same prefix guard as the permanent delete above.
+        if (isSelfOrDescendantMailbox(this.currentMailbox, this.mailboxToDelete, delimiter)) {
           this.selectMailbox(FOLDER_INBOX);
         }
 
         const oldName = this.mailboxToDelete;
         const undoFn = async () => {
-          await mailboxOperations.renameMailbox(newName, oldName);
+          if (await mailboxOperations.renameMailbox(newName, oldName) !== 'ok') {
+            this.toast(this.i18nStore?.t('toast.folderUndoFailed'), 'Could not undo that', { type: 'error' });
+          }
         };
 
         this.dispatchEvent(new CustomEvent('toast', {
@@ -699,8 +765,14 @@ export class FolderList extends LitElement {
             return a.localeCompare(b);
           });
 
-          isFirst = siblings.indexOf(node.fullName) === 0;
-          isLast = siblings.indexOf(node.fullName) === siblings.length - 1;
+          // A row that is not among the real siblings (a path segment with no
+          // mailbox of its own, drawn only because a deeper folder is named
+          // through it) cannot be reordered: moveFolder finds it at -1 and returns.
+          // Its bounds used to come out as neither first nor last, so all four
+          // Order items were enabled and did nothing.
+          const index = siblings.indexOf(node.fullName);
+          isFirst = index <= 0;
+          isLast = index === -1 || index === siblings.length - 1;
         }
 
         let icon = renderIcon('folder');
@@ -775,18 +847,37 @@ export class FolderList extends LitElement {
                   <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
-              if (node.mb?.Subscribed) mailboxOperations.unsubscribeMailbox(node.fullName);
-              else mailboxOperations.subscribeMailbox(node.fullName);
+              // The answer used to be discarded: a refused (un)subscribe changed nothing
+              // on screen and said nothing. Quiet on `auth`, which the shell answers.
+              const subscribing = !node.mb?.Subscribed;
+              void mailboxOperations.setSubscribed(node.fullName, subscribing).then(result => {
+                if (result.ok || result.reason === 'auth') return;
+                if (subscribing) this.toast(this.i18nStore?.t('toast.subscribeFailed'), 'Could not subscribe');
+                else this.toast(this.i18nStore?.t('toast.unsubscribeFailed'), 'Could not unsubscribe');
+              });
             }}>
-                    ${renderIcon(node.mb?.Subscribed ? 'eyeSlash' : 'eye')} <span class="item-text">${node.mb?.Subscribed ? 'Unsubscribe' : 'Subscribe'}</span>
+                    ${renderIcon(node.mb?.Subscribed ? 'eyeSlash' : 'eye')} <span class="item-text">${node.mb?.Subscribed ? this.i18nStore?.t('folderList.unsubscribe') : this.i18nStore?.t('folderList.subscribe')}</span>
                   </button>
                   <div class="dropdown-divider"></div>
                   
                   <!-- Natively nested Order submenu via extended alps-popup -->
-                  <alps-popup position="right" align="top" triggerOn="hover" @click=${(e: Event) => e.stopPropagation()}>
+                  <!--
+                    Open and close are stopped as well as the click: they are
+                    dispatched {bubbles, composed}, so this submenu's popup-close
+                    reached the OUTER kebab's @popup-close and cleared
+                    activeKebabMenu while the outer menu was still open.
+                  -->
+                  <alps-popup
+                    position="right"
+                    align="top"
+                    triggerOn="hover"
+                    @click=${(e: Event) => e.stopPropagation()}
+                    @popup-open=${(e: Event) => e.stopPropagation()}
+                    @popup-close=${(e: Event) => e.stopPropagation()}
+                  >
                     <button slot="trigger" class="dropdown-item submenu-trigger">
                       <div class="trigger-label">
-                        ${renderIcon('sortAscending')} <span class="item-text">Order</span>
+                        ${renderIcon('sortAscending')} <span class="item-text">${this.i18nStore?.t('folderList.order')}</span>
                       </div>
                       <div class="caret-icon">${renderIcon('caretRight')}</div>
                     </button>
@@ -800,7 +891,7 @@ export class FolderList extends LitElement {
 
               this.moveFolder(node.fullName, 'top');
             }}>
-                      ${renderIcon('caretDoubleUp')} <span class="item-text">Move to Top</span>
+                      ${renderIcon('caretDoubleUp')} <span class="item-text">${this.i18nStore?.t('folderList.moveToTop')}</span>
                     </button>
                     <button class="dropdown-item" ?disabled=${isFirst} @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
@@ -811,7 +902,7 @@ export class FolderList extends LitElement {
 
               this.moveFolder(node.fullName, 'up');
             }}>
-                      ${renderIcon('caretUp')} <span class="item-text">Move Up</span>
+                      ${renderIcon('caretUp')} <span class="item-text">${this.i18nStore?.t('folderList.moveUp')}</span>
                     </button>
                     <button class="dropdown-item" ?disabled=${isLast} @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
@@ -822,7 +913,7 @@ export class FolderList extends LitElement {
 
               this.moveFolder(node.fullName, 'down');
             }}>
-                      ${renderIcon('caretDown')} <span class="item-text">Move Down</span>
+                      ${renderIcon('caretDown')} <span class="item-text">${this.i18nStore?.t('folderList.moveDown')}</span>
                     </button>
                     <button class="dropdown-item" ?disabled=${isLast} @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
@@ -833,7 +924,7 @@ export class FolderList extends LitElement {
 
               this.moveFolder(node.fullName, 'bottom');
             }}>
-                      ${renderIcon('caretDoubleDown')} <span class="item-text">Move to Bottom</span>
+                      ${renderIcon('caretDoubleDown')} <span class="item-text">${this.i18nStore?.t('folderList.moveToBottom')}</span>
                     </button>
                   </alps-popup>
 
@@ -843,9 +934,17 @@ export class FolderList extends LitElement {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
               this.mailboxToDelete = node.fullName;
-              // The Trash folder itself (by special-use attribute or name) is deleted
-              // outright; other folders offer move-to-trash. See issue #4.
-              if (mailboxRole(node.mb) === 'trash' || node.fullName.toLowerCase().startsWith('trash')) {
+              // Trash itself, or a folder already inside it, is deleted outright; any
+              // other folder is offered move-to-trash. See issue #4.
+              //
+              // By role and by real location, never by a name prefix. The prefix ran
+              // even when the server named its own Trash, so a user's "Trash receipts"
+              // or "Trashcan" was treated as Trash: Delete offered only permanent
+              // deletion, never the move. It also stood in for "inside Trash", which
+              // the resolved Trash name and the server's delimiter answer exactly.
+              const trashName = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
+              if (mailboxRoleByName(node.fullName, this.mailboxes) === 'trash'
+                || isSelfOrDescendantMailbox(node.fullName, trashName, node.mb?.Delimiter || node.mb?.Delim)) {
                 this.showDeleteConfirm = true;
               } else {
                 this.showMoveToTrashConfirm = true;
@@ -904,10 +1003,11 @@ export class FolderList extends LitElement {
       ${this.showCreatePrompt ? html`
         <ui-prompt
           title=${this.parentForNewFolder ?
-          (this.i18nStore?.t('folderList.createSubfolderUnder')?.replace('{folder}', this.parentForNewFolder)) :
+          this.i18nStore?.t('folderList.createSubfolderUnder', { folder: this.parentForNewFolder }) :
           this.i18nStore?.t('folderList.createFolder')}
-          confirmText="Create"
-          .fields=${[{ id: 'name', label: 'Folder Name', autofocus: true }]}
+          confirmText=${this.i18nStore?.t('folderList.createFolder')}
+          .busy=${this.promptBusy}
+          .fields=${[{ id: 'name', label: this.i18nStore?.t('folderList.folderName') || 'Folder name', autofocus: true }]}
           @submit=${this.handleCreateSubmit}
           @cancel=${() => {
           this.showCreatePrompt = false;
@@ -919,8 +1019,8 @@ export class FolderList extends LitElement {
       ${this.showRenamePrompt ? html`
         <ui-prompt
           title="${this.i18nStore?.t('folderList.renameFolder')}"
-          confirmText="Rename"
-          .fields=${[{ id: 'name', label: 'New Name', autofocus: true, value: this.mailboxToRename }]}
+          confirmText=${this.i18nStore?.t('folderList.rename')}
+          .fields=${[{ id: 'name', label: this.i18nStore?.t('folderList.folderName') || 'Folder name', autofocus: true, value: this.mailboxToRename }]}
           @submit=${this.handleRenameSubmit}
           @cancel=${() => this.showRenamePrompt = false}
         ></ui-prompt>
@@ -929,7 +1029,7 @@ export class FolderList extends LitElement {
       ${this.showMoveToTrashConfirm ? html`
         <ui-confirm
           title=${this.i18nStore?.t('folderList.moveToTrash')}
-          message=${this.i18nStore?.t('folderList.moveToTrashConfirm')?.replace('{folder}', this.mailboxToDelete)}
+          message=${this.i18nStore?.t('folderList.moveToTrashConfirm', { folder: this.mailboxToDelete })}
           confirmText=${this.i18nStore?.t('folderList.moveToTrash')}
           isDanger=${false}
           @confirm=${this.handleMoveToTrashConfirm}
@@ -940,8 +1040,8 @@ export class FolderList extends LitElement {
       ${this.showDeleteConfirm ? html`
         <ui-confirm
           title="${this.i18nStore?.t('folderList.deleteFolder')}"
-          message=${this.i18nStore?.t('folderList.deleteFolderConfirm')?.replace('{folder}', this.mailboxToDelete)}
-          confirmText="Delete"
+          message=${this.i18nStore?.t('folderList.deleteFolderConfirm', { folder: this.mailboxToDelete })}
+          confirmText=${this.i18nStore?.t('folderList.delete')}
           isDanger=${true}
           @confirm=${this.handleDeleteConfirm}
           @cancel=${() => this.showDeleteConfirm = false}

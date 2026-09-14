@@ -99,7 +99,7 @@ func (w *certWarmer) run() {
 		return
 	}
 
-	w.maybeWarm()
+	w.maybeWarmSafely()
 
 	ticker := time.NewTicker(warmerInterval)
 	defer ticker.Stop()
@@ -110,26 +110,48 @@ func (w *certWarmer) run() {
 	for {
 		select {
 		case <-ticker.C:
-			w.maybeWarm()
+			w.maybeWarmSafely()
 		case <-leaderPoll.C:
 			is := w.isLeader()
 			if is && !wasLeader {
 				// Leadership acquired (leader restart or handover): converge
 				// immediately so the cluster is not left without an issuer.
 				w.m.logger.Info("cert warmer: leadership acquired - running warm pass")
-				w.maybeWarm()
+				w.maybeWarmSafely()
 			} else if is && w.isPending() {
 				// A pass was deferred while S3 was unhealthy: retry it now
 				// instead of waiting for the 12h ticker. maybeWarm re-checks
 				// S3 health, so this stays a cheap no-op until S3 is worth
 				// probing again.
-				w.maybeWarm()
+				w.maybeWarmSafely()
 			}
 			wasLeader = is
 		case <-w.stopCh:
 			return
 		}
 	}
+}
+
+// maybeWarmSafely runs one warm pass with its own recover.
+//
+// The recover used to be a single defer on run() itself, OUTSIDE the for. A
+// panic anywhere in a pass — autocert's GetCertificate, the S3 repair sync —
+// therefore unwound the whole loop and the goroutine returned for good, since
+// Start() is called exactly once and nothing restarts it. Certificate warming
+// and proactive renewal would then be over for the life of the process: certs
+// renew only opportunistically on a handshake, and on followers never, until
+// they expire.
+//
+// Per-pass recovery keeps one bad pass from ending the loop; the next tick
+// simply tries again. Same fix, and the same reasoning, as cache.go in 1701e4e.
+// The outer recover stays as a backstop for anything outside a pass.
+func (w *certWarmer) maybeWarmSafely() {
+	defer func() {
+		if r := recover(); r != nil {
+			w.m.logger.Error("panic in cert warmer pass - continuing", "panic", r)
+		}
+	}()
+	w.maybeWarm()
 }
 
 // isLeader reports whether this node should warm certificates. With no cluster
@@ -140,6 +162,14 @@ func (w *certWarmer) isLeader() bool {
 	if w.m.isLeader == nil {
 		return true
 	}
+	// The callback is injected by the cluster layer, so a panic in it would
+	// otherwise reach the loop from outside any pass. Not knowing means not
+	// warming: two nodes issuing concurrently is the thing this prevents.
+	defer func() {
+		if r := recover(); r != nil {
+			w.m.logger.Error("panic in cert warmer leadership check - assuming follower", "panic", r)
+		}
+	}()
 	return w.m.isLeader()
 }
 
