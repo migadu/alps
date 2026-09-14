@@ -66,6 +66,11 @@ export class MailboxPage extends LitElement {
 
   private unlockAudio = () => {
     if (this.audioUnlocked) return;
+    // Nothing is played, not even muted, while the chime is switched off. This
+    // ran on the first click whatever the setting said, and muting does not
+    // silence it in every browser. The listeners stay, so switching the sound
+    // on later unlocks it on the next gesture.
+    if (!this.settingsStore.getState().soundNotifications) return;
     // Mute rather than zero the volume: iOS ignores assignments to
     // HTMLMediaElement.volume, so the unlock play() was audible there.
     const sound = this.chime();
