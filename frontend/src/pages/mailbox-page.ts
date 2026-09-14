@@ -595,6 +595,15 @@ export class MailboxPage extends LitElement {
     this.showSenderAvatars = state.showSenderAvatars ?? true;
     this.sortOrder = state.sortOrder || 'desc';
 
+    // The header draws the user menu only once it has a username, and the
+    // folder listing used to be this page's only source for one. A listing that
+    // failed left the mail page without the menu, and so without Sign Out, while
+    // Calendar and Contacts showed it: they read the user the session names,
+    // which the store holds as soon as the session has answered.
+    if (state.loginUsername) {
+      this.username = state.loginUsername;
+    }
+
     if (this.sidebarCollapsed !== state.sidebarCollapsed) {
       this.sidebarCollapsed = state.sidebarCollapsed;
     }

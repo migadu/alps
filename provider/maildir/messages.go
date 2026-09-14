@@ -158,6 +158,12 @@ func getAllMessages(dir maildir.Dir) ([]*maildir.Message, error) {
 		msgs = append(msgs, m)
 		return nil
 	})
+	// A maildir nothing has been delivered to yet has no cur directory, often no
+	// directory at all, because delivery is what creates them. That is an empty
+	// mailbox, as ListMailboxes already counts it, not a failure to read one.
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
 	return msgs, err
 }
 
