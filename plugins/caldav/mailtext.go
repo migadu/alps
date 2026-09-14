@@ -31,6 +31,13 @@ var mailDictionaries = map[string]mailWords{
 		hasAccepted: "%s has accepted.", mayAttend: "%s may attend.", hasDeclined: "%s has declined.", hasCompleted: "%s has completed the task.",
 		isCancelled: "This has been cancelled.",
 	},
+	"da": {
+		invitation: "Invitation", updated: "Opdateret invitation", cancelled: "Aflyst", task: "Opgave",
+		accepted: "Accepteret", tentative: "Måske", declined: "Afvist", completed: "Udført",
+		when: "Hvornår", where: "Hvor", organizer: "Arrangør",
+		hasAccepted: "%s har accepteret.", mayAttend: "%s deltager måske.", hasDeclined: "%s har afvist.", hasCompleted: "%s har udført opgaven.",
+		isCancelled: "Dette er blevet aflyst.",
+	},
 	"de": {
 		invitation: "Einladung", updated: "Aktualisierte Einladung", cancelled: "Abgesagt", task: "Aufgabe",
 		accepted: "Angenommen", tentative: "Vorläufig", declined: "Abgelehnt", completed: "Erledigt",

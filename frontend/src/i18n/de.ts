@@ -104,7 +104,8 @@ export const de: TranslationDictionary = {
       serbian: 'Serbisch',
       serbianLatin: 'Serbisch (Lateinisch)',
       french: 'Französisch',
-      portuguese: 'Portugiesisch'
+      portuguese: 'Portugiesisch',
+      danish: 'Dänisch'
     },
   },
   linkedAccounts: {

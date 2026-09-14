@@ -102,7 +102,8 @@ export const es = {
       serbian: 'Serbio',
       serbianLatin: 'Serbio (Latino)',
       french: 'Francés',
-      portuguese: 'Portugués'
+      portuguese: 'Portugués',
+      danish: 'Danés'
     },
   },
   linkedAccounts: {

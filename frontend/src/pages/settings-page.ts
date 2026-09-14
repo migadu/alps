@@ -627,7 +627,8 @@ export class SettingsPage extends LitElement {
             {value: "rs", label: this.i18nStore?.t('settings.localization.serbian') || "rs"},
             {value: "sr", label: this.i18nStore?.t('settings.localization.serbianLatin') || "sr"},
             {value: "fr", label: this.i18nStore?.t('settings.localization.french') || "fr"},
-            {value: "pt", label: this.i18nStore?.t('settings.localization.portuguese') || "pt"}
+            {value: "pt", label: this.i18nStore?.t('settings.localization.portuguese') || "pt"},
+            {value: "da", label: this.i18nStore?.t('settings.localization.danish') || "da"}
           ]}>
           </alps-select>
         </alps-setting-group>
