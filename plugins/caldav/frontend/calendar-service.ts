@@ -1,4 +1,4 @@
-import { encodePathParam, fetchWithTimeout } from '../../../frontend/src/utils/fetch-utils';
+import { encodePathParam, fetchWithTimeout, HttpStatusError } from '../../../frontend/src/utils/fetch-utils';
 
 export interface CalendarData {
     name: string;
@@ -20,6 +20,16 @@ export interface EventData {
     rrule?: string;
     /** Stated by the server from the event's own DTSTART; see isAllDayEvent. */
     allDay?: boolean;
+    /** The version the event was read at. Sent back with an edit, which the
+     * server refuses (412) if the event was saved elsewhere since. */
+    etag?: string;
+}
+
+/** What a save answers: where the event is, and the version now stored. */
+export interface SavedEvent {
+    ok: string;
+    path: string;
+    etag?: string;
 }
 
 const CALENDAR_COLORS = [
@@ -119,7 +129,7 @@ class CalendarService {
         return response.json();
     }
 
-    async createEvent(event: Omit<EventData, 'uid' | 'path'>): Promise<{ ok: string, path: string }> {
+    async createEvent(event: Omit<EventData, 'uid' | 'path'>): Promise<SavedEvent> {
         const response = await fetchWithTimeout('/calendar/events', {
             method: 'POST',
             headers: {
@@ -128,12 +138,12 @@ class CalendarService {
             body: JSON.stringify(event)
         });
         if (!response.ok) {
-            throw new Error('Failed to create event');
+            throw new HttpStatusError(response.status, 'Failed to create event');
         }
         return response.json();
     }
 
-    async updateEvent(path: string, event: Omit<EventData, 'uid' | 'path'>): Promise<{ ok: string, path: string }> {
+    async updateEvent(path: string, event: Omit<EventData, 'uid' | 'path'>): Promise<SavedEvent> {
         const encodedPath = encodePathParam(path);
         const response = await fetchWithTimeout(`/calendar/events/${encodedPath}/edit`, {
             method: 'POST',
@@ -143,7 +153,7 @@ class CalendarService {
             body: JSON.stringify(event)
         });
         if (!response.ok) {
-            throw new Error('Failed to update event');
+            throw new HttpStatusError(response.status, 'Failed to update event');
         }
         return response.json();
     }

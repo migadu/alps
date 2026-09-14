@@ -5,6 +5,7 @@ export default {
     categoryDeleteFailed: '{failed} contacts sur {total} n\'ont pas pu être mis à jour, la catégorie n\'a été supprimée que partiellement.',
     categoryUpdateFailed: '{failed} contacts sur {total} n\'ont pas pu être mis à jour.',
     saveFailed: 'Le contact n\'a pas pu être enregistré.',
+    saveConflict: 'Le contact a été modifié sur un autre appareil, votre modification n\'a donc pas été enregistrée. Annulez la modification pour voir la dernière version.',
     starFailed: 'Le contact n\'a pas pu être mis à jour.',
     unnamedContact: 'Contact sans nom',
     title: 'Contacts',

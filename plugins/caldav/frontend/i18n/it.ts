@@ -4,6 +4,7 @@ export default {
       deleteEventFailed: 'Non è stato possibile eliminare l\'evento.',
       saveCalendarFailed: 'Non è stato possibile salvare il calendario.',
       saveEventFailed: 'Non è stato possibile salvare l\'evento.',
+      saveConflict: 'L\'evento è stato modificato su un altro dispositivo, quindi la modifica non è stata salvata. Chiudi l\'editor e riapri l\'evento per vedere l\'ultima versione.',
       loadFailed: 'Impossibile caricare il calendario. Controlla la connessione e riprova.',
         months: { '0': 'Gennaio', '1': 'Febbraio', '2': 'Marzo', '3': 'Aprile', '4': 'Maggio', '5': 'Giugno', '6': 'Luglio', '7': 'Agosto', '8': 'Settembre', '9': 'Ottobre', '10': 'Novembre', '11': 'Dicembre' },
         monthsShort: { '0': 'Gen', '1': 'Feb', '2': 'Mar', '3': 'Apr', '4': 'Mag', '5': 'Giu', '6': 'Lug', '7': 'Ago', '8': 'Set', '9': 'Ott', '10': 'Nov', '11': 'Dic' },

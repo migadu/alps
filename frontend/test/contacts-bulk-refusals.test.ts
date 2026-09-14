@@ -28,7 +28,7 @@ describe('starring contacts', () => {
     const el = page([card('a'), card('b')], ['a', 'b']);
     el.selectedContact = null;
     const reread = vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
-    vi.spyOn(contactsService, 'bulkUpdateContacts').mockResolvedValue({ total: 2, done: 0, failed: 2 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 2, done: 0, failed: 2 });
 
     await el.handleToggleStarEvent();
 
@@ -40,7 +40,7 @@ describe('starring contacts', () => {
     const open = card('a');
     const el = page([open], [], open);
     vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
-    vi.spyOn(contactsService, 'bulkUpdateContacts').mockResolvedValue({ total: 1, done: 0, failed: 1 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1 });
 
     await el.handleToggleStarEvent();
 
@@ -51,7 +51,7 @@ describe('starring contacts', () => {
   it('re-reads when some cards took the star, rather than un-starring them', async () => {
     const el = page([card('a'), card('b')], ['a', 'b']);
     const reread = vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
-    vi.spyOn(contactsService, 'bulkUpdateContacts').mockResolvedValue({ total: 2, done: 1, failed: 1 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 2, done: 1, failed: 1 });
 
     await el.handleToggleStarEvent();
 
@@ -62,7 +62,7 @@ describe('starring contacts', () => {
   it('keeps the star when every card took it', async () => {
     const el = page([card('a')], ['a']);
     const reread = vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
-    vi.spyOn(contactsService, 'bulkUpdateContacts').mockResolvedValue({ total: 1, done: 1, failed: 0 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 1, failed: 0 });
 
     await el.handleToggleStarEvent();
 

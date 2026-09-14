@@ -45,6 +45,12 @@ func (p *plugin) client(ctx context.Context, session *alps.Session) (*caldav.Cli
 	return newClient(p.url, session, p.debug)
 }
 
+// httpClient authenticates as the session, for the requests go-webdav's client
+// has no method for.
+func (p *plugin) httpClient(session *alps.Session) *http.Client {
+	return &http.Client{Transport: &authRoundTripper{server: http.DefaultTransport, session: session, debug: p.debug}}
+}
+
 func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session) (*caldav.Client, []caldav.Calendar, error) {
 	c, err := p.client(ctx, session)
 	if err != nil {

@@ -3,6 +3,7 @@ package alpscaldav
 import (
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/google/uuid"
 	"github.com/migadu/alps"
+	"github.com/migadu/alps/internal/davsave"
 )
 
 // resolveDAVPath returns the URL path to use for a DAV object href. DAV servers
@@ -57,6 +59,9 @@ type EventData struct {
 	Location     string `json:"location,omitempty"`
 	RRule        string `json:"rrule,omitempty"`
 	AllDay       bool   `json:"allDay"`
+	// The version this was read at. An edit sends it back, and is refused
+	// with 412 if the event has been saved elsewhere since.
+	ETag string `json:"etag,omitempty"`
 }
 
 func parseObjectPath(s string) (string, error) {
@@ -99,6 +104,7 @@ func extractEventData(co *caldav.CalendarObject) (EventData, error) {
 		End:          end.Format(time.RFC3339),
 		Path:         co.Path,
 		CalendarPath: "", // populated later
+		ETag:         co.ETag,
 	}, nil
 }
 
@@ -152,6 +158,35 @@ func setEventTimes(event *ical.Event, start, end time.Time, allDay bool) {
 	}
 	event.Props.SetDateTime(ical.PropDateTimeStart, start)
 	event.Props.SetDateTime(ical.PropDateTimeEnd, end)
+}
+
+// errChangedElsewhere answers a save made against a version that is no longer
+// the stored one: most often the user's own phone saved the object while it
+// was open here.
+var errChangedElsewhere = alps.NewHTTPError(http.StatusPreconditionFailed, "changed elsewhere since it was opened")
+
+// putCalendar writes cal to objectPath, conditional on etag when there is one,
+// and returns the ETag of the version written.
+func (p *plugin) putCalendar(ctx *alps.Context, c *caldav.Client, objectPath string, cal *ical.Calendar, etag string) (string, error) {
+	var buf bytes.Buffer
+	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
+		return "", fmt.Errorf("failed to encode calendar object: %v", err)
+	}
+	newETag, err := davsave.Put(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.url, objectPath), ical.MIMEType, buf.Bytes(), etag)
+	if errors.Is(err, davsave.ErrConflict) {
+		return "", errChangedElsewhere
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to put calendar object: %v", err)
+	}
+	if newETag == "" {
+		// Withheld (see davsave.Put). Read back, or the next save from the same
+		// editor would carry no version to be checked against.
+		if fresh, err := c.GetCalendarObject(ctx.Request.Context(), objectPath); err == nil {
+			newETag = fresh.ETag
+		}
+	}
+	return newETag, nil
 }
 
 func registerRoutes(p *plugin) {
@@ -502,6 +537,12 @@ func registerRoutes(p *plugin) {
 			if err != nil {
 				return fmt.Errorf("failed to get CalDAV event: %v", err)
 			}
+			// Compared here as well as sent as If-Match below, because they
+			// cover different spans: If-Match only the moment between this read
+			// and the write, this the whole time the editor was open.
+			if req.ETag != "" && !davsave.Same(req.ETag, co.ETag) {
+				return errChangedElsewhere
+			}
 			events := co.Data.Events()
 			if len(events) != 1 {
 				return fmt.Errorf("expected exactly one event, got %d", len(events))
@@ -561,9 +602,9 @@ func registerRoutes(p *plugin) {
 		cal.Props.SetText(ical.PropVersion, "2.0")
 		cal.Children = append(cal.Children, event.Component)
 
-		var p string
+		var objectPath, baseETag string
 		if co != nil {
-			p = co.Path
+			objectPath, baseETag = co.Path, co.ETag
 			// Optional: support moving events to different calendar if req.CalendarPath is provided and different from current parent
 			// But skipping for now unless specifically required.
 		} else {
@@ -587,14 +628,14 @@ func registerRoutes(p *plugin) {
 				return alps.NewHTTPError(http.StatusConflict, "no calendar available to create the event in")
 			}
 
-			p = path.Join(targetCal.Path, newID.String()+".ics")
+			objectPath = path.Join(targetCal.Path, newID.String()+".ics")
 		}
-		co, err = c.PutCalendarObject(ctx.Request.Context(), p, cal)
+		etag, err := p.putCalendar(ctx, c, objectPath, cal, baseETag)
 		if err != nil {
-			return fmt.Errorf("failed to put calendar object: %v", err)
+			return err
 		}
 
-		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "path": co.Path})
+		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "path": objectPath, "etag": etag})
 	}
 
 	p.POST("/calendar/events", updateEvent)

@@ -1,6 +1,8 @@
 package alpscarddav
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -12,6 +14,7 @@ import (
 	"github.com/emersion/go-webdav/carddav"
 	"github.com/google/uuid"
 	"github.com/migadu/alps"
+	"github.com/migadu/alps/internal/davsave"
 )
 
 type ContactData struct {
@@ -31,6 +34,9 @@ type ContactData struct {
 	Revision     string   `json:"revision,omitempty"`
 	PublicKey    string   `json:"public_key,omitempty"`
 	Path         string   `json:"path"`
+	// The version this was read at. An edit sends it back, and is refused
+	// with 412 if the card has been saved elsewhere since.
+	ETag string `json:"etag,omitempty"`
 }
 
 type ContactDetailData struct {
@@ -164,6 +170,56 @@ func parseObjectPath(s string) (string, error) {
 	return p, nil
 }
 
+// errChangedElsewhere answers a save made against a version that is no longer
+// the stored one: most often the user's own phone saved the card while it was
+// open here.
+var errChangedElsewhere = alps.NewHTTPError(http.StatusPreconditionFailed, "changed elsewhere since it was opened")
+
+// putCard writes card to objectPath, conditional on etag when there is one, and
+// returns the ETag of the version written.
+func (p *plugin) putCard(ctx *alps.Context, c *carddav.Client, objectPath string, card vcard.Card, etag string) (string, error) {
+	var buf bytes.Buffer
+	if err := vcard.NewEncoder(&buf).Encode(card); err != nil {
+		return "", fmt.Errorf("failed to encode address object: %v", err)
+	}
+	newETag, err := davsave.Put(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.url, objectPath), vcard.MIMEType, buf.Bytes(), etag)
+	if errors.Is(err, davsave.ErrConflict) {
+		return "", errChangedElsewhere
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to put address object: %v", err)
+	}
+	if newETag == "" {
+		// Withheld (see davsave.Put). Read back, or the next save from the same
+		// editor would carry no version to be checked against.
+		if fresh, err := c.GetAddressObject(ctx.Request.Context(), objectPath); err == nil {
+			newETag = fresh.ETag
+		}
+	}
+	return newETag, nil
+}
+
+// setCategories replaces a card's CATEGORIES, dropping blank names, and the
+// property itself when none are left.
+func setCategories(card vcard.Card, categories []string) {
+	var valid []string
+	for _, cat := range categories {
+		cat = strings.TrimSpace(cat)
+		if cat != "" {
+			valid = append(valid, cat)
+		}
+	}
+	if len(valid) == 0 {
+		delete(card, vcard.FieldCategories)
+		return
+	}
+	card[vcard.FieldCategories] = []*vcard.Field{{Value: strings.Join(valid, ",")}}
+}
+
+func touchRevision(card vcard.Card) {
+	card[vcard.FieldRevision] = []*vcard.Field{{Value: time.Now().UTC().Format("20060102T150405Z")}}
+}
+
 func registerRoutes(p *plugin) {
 	p.GET("/contacts", func(ctx *alps.Context) error {
 		queryText := ctx.QueryParam("query")
@@ -206,7 +262,9 @@ func registerRoutes(p *plugin) {
 
 		var contacts []ContactData
 		for _, ao := range aos {
-			contacts = append(contacts, extractContactData(ao.Card, ao.Path))
+			contact := extractContactData(ao.Card, ao.Path)
+			contact.ETag = ao.ETag
+			contacts = append(contacts, contact)
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]interface{}{
@@ -231,8 +289,10 @@ func registerRoutes(p *plugin) {
 			return fmt.Errorf("failed to query CardDAV address: %v", err)
 		}
 
+		contact := extractContactData(ao.Card, ao.Path)
+		contact.ETag = ao.ETag
 		return ctx.JSON(http.StatusOK, ContactDetailData{
-			ContactData: extractContactData(ao.Card, ao.Path),
+			ContactData: contact,
 			// Note: Full vCard could be useful if editing is implemented
 		})
 	})
@@ -307,6 +367,12 @@ func registerRoutes(p *plugin) {
 			if err != nil {
 				return fmt.Errorf("failed to query CardDAV address: %v", err)
 			}
+			// Compared here as well as sent as If-Match below, because they
+			// cover different spans: If-Match only the moment between this read
+			// and the write, this the whole time the editor was open.
+			if req.ETag != "" && !davsave.Same(req.ETag, ao.ETag) {
+				return errChangedElsewhere
+			}
 			card = ao.Card
 		} else {
 			card = make(vcard.Card)
@@ -355,22 +421,7 @@ func registerRoutes(p *plugin) {
 			card[vcard.FieldKey] = []*vcard.Field{{Value: val}}
 		}
 
-		if len(req.Categories) > 0 {
-			var validCats []string
-			for _, cat := range req.Categories {
-				cat = strings.TrimSpace(cat)
-				if cat != "" {
-					validCats = append(validCats, cat)
-				}
-			}
-			if len(validCats) > 0 {
-				card[vcard.FieldCategories] = []*vcard.Field{{Value: strings.Join(validCats, ",")}}
-			} else {
-				delete(card, vcard.FieldCategories)
-			}
-		} else {
-			delete(card, vcard.FieldCategories)
-		}
+		setCategories(card, req.Categories)
 
 		if strings.TrimSpace(req.Address) == "" {
 			delete(card, vcard.FieldAddress)
@@ -384,25 +435,78 @@ func registerRoutes(p *plugin) {
 			card.SetValue(vcard.FieldUID, id.URN())
 		}
 
-		var p string
+		var objectPath, baseETag string
 		if ao != nil {
-			p = ao.Path
+			objectPath, baseETag = ao.Path, ao.ETag
 		} else {
-			p = path.Join(addressBook.Path, id.String()+".vcf")
+			objectPath = path.Join(addressBook.Path, id.String()+".vcf")
 		}
 
-		card[vcard.FieldRevision] = []*vcard.Field{{Value: time.Now().UTC().Format("20060102T150405Z")}}
+		touchRevision(card)
 
-		ao, err = c.PutAddressObject(ctx.Request.Context(), p, card)
+		etag, err := p.putCard(ctx, c, objectPath, card, baseETag)
 		if err != nil {
-			return fmt.Errorf("failed to put address object: %v", err)
+			return err
 		}
 
-		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "path": ao.Path})
+		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "path": objectPath, "etag": etag})
 	}
 
 	p.POST("/contacts/create", updateContact)
 	p.POST("/contacts/{path}/edit", updateContact)
+
+	// A field gesture rather than a form save: starring, or adding, renaming or
+	// removing a category, on one card or across a selection. Those went through
+	// the edit route with the whole card as the LIST had it, so every other
+	// field was written back from the version the list was loaded at: a phone
+	// number changed elsewhere since was reverted by a star.
+	//
+	// Only the categories travel. A card saved elsewhere in the meantime is read
+	// again and the categories set on top of that, once: the gesture has no
+	// opinion about the rest of the card, so there is nothing to lose by
+	// re-applying it. A second refusal in a row is reported.
+	p.POST("/contacts/{path}/categories", func(ctx *alps.Context) error {
+		var req struct {
+			Categories []string `json:"categories"`
+		}
+		if err := ctx.BindJSON(&req); err != nil {
+			return ctx.RespondBindError(err)
+		}
+		rawPath, err := parseObjectPath(ctx.Param("path"))
+		if err != nil {
+			return err
+		}
+
+		c, addressBook, err := p.clientWithAddressBook(ctx.Request.Context(), ctx.Session)
+		if err != nil {
+			return err
+		}
+		collection := ""
+		if addressBook != nil {
+			collection = addressBook.Path
+		}
+		objectPath, err := requireObjectPath(rawPath, collection)
+		if err != nil {
+			return err
+		}
+
+		for attempt := 1; ; attempt++ {
+			ao, err := c.GetAddressObject(ctx.Request.Context(), objectPath)
+			if err != nil {
+				return fmt.Errorf("failed to query CardDAV address: %v", err)
+			}
+			setCategories(ao.Card, req.Categories)
+			touchRevision(ao.Card)
+			etag, err := p.putCard(ctx, c, objectPath, ao.Card, ao.ETag)
+			if err == errChangedElsewhere && attempt == 1 {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "path": objectPath, "etag": etag})
+		}
+	})
 
 	p.DELETE("/contacts/{path}", func(ctx *alps.Context) error {
 		rawPath, err := parseObjectPath(ctx.Param("path"))

@@ -20,6 +20,7 @@ import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { MailboxPage } from '../../../frontend/src/pages/mailbox-page';
 import { MessageList } from '../../../frontend/src/components/message-list';
 import { contactsService } from './contacts-service';
+import { isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
 
 /** Where the categories this user created, with no one filed into them yet, are kept. */
 const categoriesKeyFor = (username: string) => `alps_contacts_categories_${username}`;
@@ -424,6 +425,7 @@ export class ContactsPage extends LitElement {
     // Set immediately for instant UI feedback (prevents flashing)
     this.selectedContact = { ...contact };
     this.isEditing = false;
+    this.conflictedPath = null;
     try {
       const data = await contactsService.fetchContact(contact.path!);
       // Only update if the user hasn't selected another contact in the meantime
@@ -477,20 +479,8 @@ export class ContactsPage extends LitElement {
     this.contacts = this.contacts.map((c: any) => c.path === contact.path ? { ...c, categories } : c);
 
     try {
-      const payload = {
-        name: contact.name || '',
-        email: contact.email || '',
-        phone: contact.phone || '',
-        organization: contact.organization || '',
-        address: contact.address || '',
-        birthday: contact.birthday || '',
-        note: contact.note || '',
-        url: contact.url || '',
-        nickname: contact.nickname || '',
-        categories: categories
-      };
-
-      await contactsService.updateContact(contact.path, payload);
+      const saved = await contactsService.updateCategories(contact.path, categories);
+      this.applyETags(saved.etag ? { [contact.path]: saved.etag } : undefined);
 
       // Update selected contact if it's the one we're viewing
       if (this.selectedContact?.path === contact.path) {
@@ -608,7 +598,8 @@ export class ContactsPage extends LitElement {
           const categories = contact.categories.map((c: string) => c === oldName ? newName : c);
           return { ...contact, categories };
         });
-        const { total, failed } = await contactsService.bulkUpdateContacts(contactsToModify);
+        const { total, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+        this.applyETags(etags);
         this.fetchContacts();
         if (failed > 0) this.reportFailure('contacts.categoryRenameFailed', { failed, total });
       } catch (e) {
@@ -651,7 +642,8 @@ export class ContactsPage extends LitElement {
           const categories = contact.categories.filter((c: string) => c !== oldName);
           return { ...contact, categories };
         });
-        const { total, failed } = await contactsService.bulkUpdateContacts(contactsToModify);
+        const { total, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+        this.applyETags(etags);
         this.fetchContacts();
         if (failed > 0) this.reportFailure('contacts.categoryDeleteFailed', { failed, total });
       } catch (e) {
@@ -677,10 +669,82 @@ export class ContactsPage extends LitElement {
       if (!this.selectedCategory) {
         window.location.hash = `/contacts/all`;
       }
+    } else if (this.selectedContact?.path && this.selectedContact.path === this.conflictedPath) {
+      this.conflictedPath = null;
+      void this.rereadOpenContact();
     }
   }
 
+  /** Shows the open card as it is stored now: after a refused save, what the
+   * other device wrote. */
+  private async rereadOpenContact() {
+    const path = this.selectedContact?.path;
+    if (!path) return;
+    try {
+      const data = await contactsService.fetchContact(path);
+      if (this.selectedContact?.path === path && !this.isEditing) {
+        this.selectedContact = data;
+      }
+    } catch (e) {
+      console.error('Failed to re-read the contact', e);
+    }
+    this.fetchContacts();
+  }
+
+  /**
+   * Records the version each written card is now at, in the list and in the
+   * open card.
+   *
+   * Every write moves a card's version, so one left behind turns the NEXT save
+   * of that card into a refusal against a version this page wrote itself: star
+   * a contact, then edit it, and the edit would report a change made "on
+   * another device".
+   */
+  private applyETags(etags?: Record<string, string>) {
+    if (!etags || Object.keys(etags).length === 0) return;
+    this.contacts = this.contacts.map((c: any) => etags[c.path] ? { ...c, etag: etags[c.path] } : c);
+    const open = this.selectedContact?.path;
+    if (open && etags[open]) {
+      this.selectedContact = { ...this.selectedContact, etag: etags[open] };
+    }
+  }
+
+  /** The newest form state waiting for the save in flight; see handleSave. */
+  private queuedSave: any = null;
+  private saveRunning = false;
+  /** The card whose save was refused as changed elsewhere, until the edit is cancelled. */
+  private conflictedPath: string | null = null;
+
+  /**
+   * Saves the form, one request at a time.
+   *
+   * The form saves itself half a second after each change, and those saves
+   * used to overlap. Once versions are checked, an overlap is a refusal: the
+   * second save carries the version the first is about to replace. (For a new
+   * contact, an overlap made two contacts.) So a save now waits for the one in
+   * flight, and only the newest form state queued behind it is sent.
+   */
   private async handleSave(payload: any) {
+    this.queuedSave = payload;
+    if (this.saveRunning) return;
+    this.saveRunning = true;
+    try {
+      while (this.queuedSave) {
+        const next = this.queuedSave;
+        this.queuedSave = null;
+        await this.saveOnce(next);
+      }
+    } finally {
+      this.saveRunning = false;
+    }
+  }
+
+  private async saveOnce(payload: any) {
+    const editing = !!this.selectedContact && !this.selectedContact.isTemporary;
+    // After a refusal every autosave would be refused the same way, one error
+    // per keystroke. Nothing is sent until the edit is cancelled, which shows
+    // the stored card (handleCancelEdit).
+    if (editing && this.conflictedPath === this.selectedContact.path) return;
     this.saving = true;
     try {
       if (payload.categories && typeof payload.categories === 'string') {
@@ -690,13 +754,15 @@ export class ContactsPage extends LitElement {
       }
 
       let data;
-      if (this.selectedContact && !this.selectedContact.isTemporary) {
-        data = await contactsService.updateContact(this.selectedContact.path!, payload);
+      if (editing) {
+        // The page's version, not the form's: the form copied the card when
+        // editing began, and each save since has moved it on.
+        data = await contactsService.updateContact(this.selectedContact.path!, { ...payload, etag: this.selectedContact.etag });
       } else {
         data = await contactsService.createContact(payload);
       }
 
-      const savedContact = { ...payload, path: data.path || (this.selectedContact && !this.selectedContact.isTemporary ? this.selectedContact.path : '') };
+      const savedContact = { ...payload, path: data.path || (editing ? this.selectedContact.path : ''), etag: data.etag };
 
       const contactIndex = this.contacts.findIndex((c: any) => this.selectedContact && (c.path === this.selectedContact.path || (c.isTemporary && this.selectedContact.isTemporary)));
       if (contactIndex > -1) {
@@ -711,7 +777,12 @@ export class ContactsPage extends LitElement {
       delete this.selectedContact.isTemporary;
     } catch (e) {
       console.error('Error saving contact', e);
-      this.reportFailure('contacts.saveFailed');
+      if (editing && isVersionConflict(e)) {
+        this.conflictedPath = this.selectedContact.path;
+        this.reportFailure('contacts.saveConflict');
+      } else {
+        this.reportFailure('contacts.saveFailed');
+      }
     } finally {
       this.saving = false;
     }
@@ -760,7 +831,8 @@ export class ContactsPage extends LitElement {
 
       this.contacts = [...this.contacts]; // Trigger re-render immediately
 
-      const { total, done, failed } = await contactsService.bulkUpdateContacts(contactsToModify);
+      const { total, done, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+      this.applyETags(etags);
       if (failed > 0) {
         if (done === 0) {
           // Nothing was written, so the snapshot is the truth: both panes go
@@ -868,8 +940,9 @@ export class ContactsPage extends LitElement {
         return payload;
       }).filter(Boolean);
 
-      const { total, failed } = await contactsService.bulkUpdateContacts(contactsToModify);
+      const { total, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
       this.contacts = [...this.contacts]; // Trigger re-render
+      this.applyETags(etags);
       if (failed > 0) {
         this.fetchContacts();
         this.reportFailure('contacts.categoryUpdateFailed', { failed, total });

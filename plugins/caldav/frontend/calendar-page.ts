@@ -1027,6 +1027,7 @@ export class CalendarPage extends LitElement {
                 .calendars=${this.calendars}
                 @close=${this.handleModalClose}
                 @saved=${this.handleModalSaved}
+                @conflict=${this.fetchData}
             ></calendar-event-modal>
 
             ${this.promptOpen ? html`
