@@ -1,7 +1,7 @@
 /**
  * Meetings: guests in the event editor, and whether a change tells them.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../../plugins/caldav/frontend/calendar-event-modal';
 import '../../plugins/caldav/frontend/calendar-page';
 import { addressOfPerson, calendarService, personFromAddress, tellsSomeone } from '../../plugins/caldav/frontend/calendar-service';
@@ -16,7 +16,14 @@ const i18nStore = {
     getIntlLanguage: () => 'de',
 };
 
+beforeEach(() => {
+    // The meetings below are on 16 September 2026; today is the 14th.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-14T12:00:00Z'));
+});
+
 afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     cleanup();
 });
@@ -42,6 +49,7 @@ describe('guest addresses', () => {
 
     it('asks before telling anyone only when alps would be the one to tell them', () => {
         expect(tellsSomeone(meeting, 'email')).toBe(true);
+        expect(tellsSomeone({ ...meeting, ended: true }, 'email')).toBe(false);
         expect(tellsSomeone(meeting, 'server')).toBe(false);
         expect(tellsSomeone({ ...meeting, attendees: [] }, 'email')).toBe(false);
         expect(tellsSomeone({ role: 'attendee', status: 'accepted' }, 'email')).toBe(true);
@@ -127,6 +135,23 @@ describe('the event editor\'s guests', () => {
         expect(update).not.toHaveBeenCalled();
     });
 
+    it('tells nobody about a change to a meeting that is over, unless it is moved to come', async () => {
+        const update = vi.spyOn(calendarService, 'updateEvent').mockResolvedValue({ ok: 'true', path: meeting.path });
+        const over = { ...meeting, start: '2026-09-10T08:00:00Z', end: '2026-09-10T09:00:00Z', ended: true };
+        const el = await editor({ event: over, scheduling: 'email' });
+        await el.handleSave();
+        expect(shadowAll(el, 'ui-confirm')).toHaveLength(0);
+        expect(update).toHaveBeenCalledTimes(1);
+
+        const moved = await editor({ event: over, scheduling: 'email' });
+        moved.startDate = '2026-09-21';
+        moved.endDate = '2026-09-21';
+        await moved.handleSave();
+        await moved.updateComplete;
+        expect(shadowAll(moved, 'ui-confirm')).toHaveLength(1);
+        expect(update).toHaveBeenCalledTimes(1);
+    });
+
     it('does not ask when the calendar server tells the guests', async () => {
         const update = vi.spyOn(calendarService, 'updateEvent').mockResolvedValue({ ok: 'true', path: meeting.path });
         const el = await editor({ event: meeting, scheduling: 'server' });
@@ -184,6 +209,15 @@ describe('deleting a meeting', () => {
         declining.dispatchEvent(new CustomEvent('confirm'));
         await waitFor(() => remove.mock.calls.length === 2, 'the second delete');
         expect(remove.mock.calls[1][1]).toEqual({ notify: true, lang: 'de' });
+    });
+
+    it('asks nothing about deleting a meeting that is over', async () => {
+        vi.spyOn(calendarService, 'deleteEvent').mockResolvedValue({ ok: 'true' });
+        const el = await page('email');
+        el.eventToDelete = { ...meeting, ended: true };
+        await el.updateComplete;
+        expect(shadowAll(el, 'ui-confirm.delete-meeting')).toHaveLength(0);
+        expect(shadowAll(el, 'ui-confirm')).toHaveLength(1);
     });
 
     it('asks nothing more when the server tells the guests, and reports a message that could not go', async () => {

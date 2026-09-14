@@ -255,6 +255,12 @@ export class CalendarInvitationBanner extends LitElement {
     }
 
     private renderStateLine(v: InvitationView) {
+        if (v.ended) {
+            return html`
+                <div class="muted state ended">${this.t('invitations.states.ended')}</div>
+                ${v.status && v.status !== 'needs-action' ? html`<div class="muted answer">${this.t('invitations.yourAnswer')}: ${this.t(`invitations.statuses.${statusKey(v.status)}`)}</div>` : nothing}
+            `;
+        }
         if (v.state === 'answer') {
             if (!v.status || v.status === 'needs-action') return nothing;
             return html`<div class="muted answer">${this.t('invitations.yourAnswer')}: ${this.t(`invitations.statuses.${statusKey(v.status)}`)}</div>`;
@@ -264,7 +270,7 @@ export class CalendarInvitationBanner extends LitElement {
     }
 
     private renderClashes(v: InvitationView) {
-        if (v.kind !== 'event' || v.method !== 'request' || (v.state !== 'answer' && v.state !== 'update') || v.status === 'declined') {
+        if (v.ended || v.kind !== 'event' || v.method !== 'request' || (v.state !== 'answer' && v.state !== 'update') || v.status === 'declined') {
             return nothing;
         }
         if (!v.clashes.length) {
@@ -276,7 +282,7 @@ export class CalendarInvitationBanner extends LitElement {
 
     /** Only where the sender is who may change the calendar: a first invitation, an update, a cancellation, a reply. */
     private renderSender(v: InvitationView) {
-        if (v.senderVerified || !v.sender || !['answer', 'update', 'cancel', 'reply'].includes(v.state)) return nothing;
+        if (v.ended || v.senderVerified || !v.sender || !['answer', 'update', 'cancel', 'reply'].includes(v.state)) return nothing;
         const key = v.method === 'reply' ? 'invitations.unverifiedReply' : 'invitations.unverified';
         return html`<div class="warning sender">${this.t(key, { sender: v.sender })}</div>`;
     }
@@ -295,6 +301,9 @@ export class CalendarInvitationBanner extends LitElement {
     }
 
     private renderActions(v: InvitationView) {
+        // Over: an answer would tell the organizer about the past, and an
+        // update or cancellation would only rewrite its record.
+        if (v.ended) return nothing;
         if (v.method === 'request' && ['answer', 'update', 'outdated'].includes(v.state) && v.me) {
             const answer = (status: Answer, label: string) => html`
                 <alps-button

@@ -217,8 +217,14 @@ func newHarness(t *testing.T) *harness {
 	return startHarness(t, harnessOptions{})
 }
 
+// testNow is when the tests run, as far as the plugin can tell: the Monday
+// before the meetings they arrange, whatever the machine's clock says.
+var testNow = time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
+
 func startHarness(t *testing.T, o harnessOptions) *harness {
 	t.Helper()
+	clock = func() time.Time { return testNow }
+	t.Cleanup(func() { clock = time.Now })
 	dav := &memCalendars{objects: map[string]caldav.CalendarObject{}}
 	var handler http.Handler = &caldav.Handler{Backend: dav}
 	if o.wrap != nil {

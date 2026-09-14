@@ -47,6 +47,8 @@ export interface EventData {
     role?: 'organizer' | 'attendee' | '';
     /** The user's answer, when they are an attendee. */
     status?: string;
+    /** The event is over (a repeating one, its last occurrence): nobody is told of a change to it, or asked to answer it. */
+    ended?: boolean;
 }
 
 /** What a save answers: where the event is, and the version now stored. */
@@ -99,10 +101,10 @@ export function taskTellsSomeone(task: Pick<TaskData, 'role' | 'attendees' | 'an
 /**
  * Whether saving or removing an event emails anyone, which alps does itself
  * only when the server does not schedule: a meeting the user organizes, or an
- * invitation they have not declined.
+ * invitation they have not declined, and neither once it is over.
  */
-export function tellsSomeone(event: Pick<EventData, 'role' | 'attendees' | 'status'> | undefined, scheduling: string | undefined): boolean {
-    if (!event || scheduling === 'server') return false;
+export function tellsSomeone(event: Pick<EventData, 'role' | 'attendees' | 'status' | 'ended'> | undefined, scheduling: string | undefined): boolean {
+    if (!event || scheduling === 'server' || event.ended) return false;
     if (event.role === 'organizer') return (event.attendees?.length ?? 0) > 0;
     return event.role === 'attendee' && event.status !== 'declined';
 }

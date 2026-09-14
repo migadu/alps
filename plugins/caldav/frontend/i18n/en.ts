@@ -157,6 +157,7 @@ export default {
             unknown: 'This answer is about nothing in your calendar.',
             add: 'This is not in your calendar.',
             added: 'This is in your calendar.',
+            ended: 'This event is over.',
             unsupported: 'This calendar message cannot be acted on here.',
         },
         unverified: 'Sent from {sender}, who is not the organizer.',

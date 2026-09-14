@@ -86,6 +86,9 @@ func addressOf(a provider.Address) string {
 
 var errNoInvitation = alps.NewHTTPError(http.StatusNotFound, "this message carries no invitation")
 
+// errEventOver refuses an answer to an event that has ended.
+var errEventOver = alps.NewHTTPError(http.StatusConflict, "this event is over")
+
 // readInvitation reads the first calendar part of a message that decodes to
 // an event or a task.
 func (p *plugin) readInvitation(ctx *alps.Context, mailbox, uid string) (*invitationMessage, error) {
@@ -194,6 +197,8 @@ type invitation struct {
 	// a reply.
 	verified bool
 	replier  *itip.Party
+	// ended reports that the event is over: see ended.
+	ended bool
 }
 
 func (p *plugin) inspectInvitation(ctx *alps.Context, mailbox, uid string) (*invitation, error) {
@@ -216,6 +221,12 @@ func (p *plugin) inspectInvitation(ctx *alps.Context, mailbox, uid string) (*inv
 	if inv.copy != nil {
 		inv.copyItem = itip.Master(inv.copy.Data)
 	}
+	// A reply need not carry when the event is, or its rule: the copy says.
+	source := inv.msg.cal
+	if inv.method == itip.MethodReply && inv.copy != nil {
+		source = inv.copy.Data
+	}
+	inv.ended = ended(source, clock())
 	inv.decide()
 	return inv, nil
 }
@@ -346,10 +357,10 @@ func (inv *invitation) decide() {
 }
 
 // autoApply reports whether opening the message should apply it: a change
-// the organizer or attendee who may make it sent. Anything else waits for the
-// user to ask.
+// the organizer or attendee who may make it sent, to an event not yet over.
+// Anything else waits for the user to ask.
 func (inv *invitation) autoApply() bool {
-	if !inv.verified || inv.method == itip.MethodPublish {
+	if !inv.verified || inv.ended || inv.method == itip.MethodPublish {
 		return false
 	}
 	return inv.state == invUpdate || inv.state == invCancel || inv.state == invReply
@@ -549,6 +560,8 @@ type InvitationView struct {
 	// receiving server's checks.
 	Sender         string `json:"sender,omitempty"`
 	SenderVerified bool   `json:"senderVerified"`
+	// Ended reports that the event is over, so there is nothing to answer.
+	Ended bool `json:"ended"`
 	// Scheduling is who sends replies: "server" or "email" (alps).
 	Scheduling string         `json:"scheduling"`
 	Clashes    []Clash        `json:"clashes"`
@@ -573,6 +586,7 @@ func (p *plugin) invitationView(ctx *alps.Context, inv *invitation) InvitationVi
 		SenderVerified: inv.verified,
 		Scheduling:     inv.acct.mode(),
 		Me:             inv.me,
+		Ended:          inv.ended,
 		Attendees:      []Person{},
 		Clashes:        []Clash{},
 		Calendars:      []CalendarData{},
@@ -618,7 +632,7 @@ func (p *plugin) invitationView(ctx *alps.Context, inv *invitation) InvitationVi
 			view.Calendars = append(view.Calendars, CalendarData{Name: calendar.Name, Description: calendar.Description, Path: calendar.Path})
 		}
 	}
-	if inv.method == itip.MethodRequest && (inv.state == invAnswer || inv.state == invUpdate) {
+	if inv.method == itip.MethodRequest && !inv.ended && (inv.state == invAnswer || inv.state == invUpdate) {
 		view.Clashes = p.clashes(ctx, inv)
 	}
 	return view
@@ -726,6 +740,9 @@ func registerInvitationRoutes(p *plugin) {
 		}
 		if inv.method != itip.MethodRequest || (inv.state != invAnswer && inv.state != invUpdate && inv.state != invOutdated) {
 			return alps.NewHTTPError(http.StatusConflict, "this is not an invitation you can answer")
+		}
+		if inv.ended {
+			return errEventOver
 		}
 
 		now := time.Now()

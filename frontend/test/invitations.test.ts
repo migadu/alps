@@ -1,7 +1,7 @@
 /**
  * Invitations: the reader's banner, and answering from the calendar.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../../plugins/caldav/frontend/index';
 import '../../plugins/caldav/frontend/calendar-invitation-banner';
 import '../../plugins/caldav/frontend/calendar-event-preview';
@@ -20,7 +20,14 @@ const i18nStore = {
     getIntlLanguage: () => 'de',
 };
 
+beforeEach(() => {
+    // The meetings below are on 16 September 2026; today is the 14th.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-14T12:00:00Z'));
+});
+
 afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     cleanup();
 });
@@ -45,6 +52,7 @@ function view(overrides: Partial<InvitationView> = {}): InvitationView {
         autoApply: false,
         sender: 'grace@example.org',
         senderVerified: true,
+        ended: false,
         scheduling: 'email',
         clashes: [],
         calendars: [{ name: 'Work', path: '/cal/work/' }, { name: 'Home', path: '/cal/home/' }],
@@ -197,6 +205,21 @@ describe('the invitation banner', () => {
         expect(apply).toHaveBeenCalledWith({ mailbox: 'INBOX', uid: '42', calendarPath: '/cal/work/' });
     });
 
+    it('shows an invitation to an event that is over as over, with nothing to do', async () => {
+        const apply = vi.spyOn(invitationService, 'apply').mockResolvedValue({ sent: false });
+        vi.spyOn(invitationService, 'fetchInvitation').mockResolvedValue(view({
+            ended: true, state: 'update', status: 'accepted', senderVerified: false, sender: 'mallory@example.net',
+            clashes: [{ summary: 'Dentist', allDay: false }], copy: { path: '/cal/work/x.ics', calendarPath: '/cal/work/' },
+        }));
+        const el = await banner();
+        expect(text(el, '.state')).toBe('invitations.states.ended');
+        expect(text(el, '.answer')).toBe('invitations.yourAnswer: invitations.statuses.accepted');
+        expect(shadowAll(el, 'alps-button')).toHaveLength(0);
+        expect(shadowAll(el, '.clashes')).toHaveLength(0);
+        expect(shadowAll(el, '.sender')).toHaveLength(0);
+        expect(apply).not.toHaveBeenCalled();
+    });
+
     it('offers no answers for a meeting the user organizes', async () => {
         vi.spyOn(invitationService, 'fetchInvitation').mockResolvedValue(view({ state: 'organizer', me: undefined }));
         const el = await banner();
@@ -254,6 +277,15 @@ describe('the event preview', () => {
         shadow(el, '.answer-accepted').click();
         await waitFor(() => responses.length === 1, 'the answer event');
         expect(responses[0].detail).toEqual({ event: expect.objectContaining({ path: '/cal/work/review.ics' }), status: 'accepted' });
+    });
+
+    it('offers no answers once the event is over, nor from an occurrence already past', async () => {
+        const over = await mount<El>('calendar-event-preview', { i18nStore, event: { ...meeting, role: 'attendee', status: 'accepted', ended: true } });
+        expect(shadowAll(over, '.answers')).toHaveLength(0);
+        expect(text(over, '.answer-status')).toBe('invitations.statuses.accepted');
+
+        const lastWeek = await mount<El>('calendar-event-preview', { i18nStore, event: { ...meeting, role: 'attendee', status: 'accepted', start: '2026-09-07T08:00:00Z', end: '2026-09-07T09:00:00Z' } });
+        expect(shadowAll(lastWeek, '.answers')).toHaveLength(0);
     });
 
     it('offers the organizer no answers, and an event of one\'s own no meeting', async () => {

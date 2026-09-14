@@ -50,6 +50,8 @@ export interface InvitationView {
     autoApply: boolean;
     sender?: string;
     senderVerified: boolean;
+    /** The event is over: there is nothing to answer, and nothing is applied on opening. */
+    ended: boolean;
     /** Who mails replies: the calendar server, or alps. */
     scheduling: 'server' | 'email';
     clashes: InvitationClash[];

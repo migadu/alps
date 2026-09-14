@@ -157,6 +157,7 @@ export default {
             unknown: 'Ovaj odgovor se ne odnosi ni na šta u vašem kalendaru.',
             add: 'Ovo nije u vašem kalendaru.',
             added: 'Ovo je u vašem kalendaru.',
+            ended: 'Ovaj događaj je prošao.',
             unsupported: 'Ova kalendarska poruka ne može se obraditi ovde.',
         },
         unverified: 'Poslato sa adrese {sender}, koja nije organizator.',

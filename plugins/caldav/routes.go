@@ -73,6 +73,9 @@ type EventData struct {
 	Attendees []Person `json:"attendees,omitempty"`
 	Role      string   `json:"role,omitempty"`
 	Status    string   `json:"status,omitempty"`
+	// Ended reports that the event is over, the whole series for one that
+	// repeats: nobody is told of a change to it, or asked to answer it.
+	Ended bool `json:"ended,omitempty"`
 }
 
 // eventRequest is what the event editor sends.
@@ -489,6 +492,7 @@ func registerRoutes(p *plugin) {
 
 		var events []EventData
 		acct := p.scheduling(ctx, c)
+		listedAt := clock()
 		qLower := strings.ToLower(queryStr)
 		for _, calendar := range calendars {
 			if !holdsComponent(calendar, ical.CompEvent) {
@@ -512,6 +516,7 @@ func registerRoutes(p *plugin) {
 						}
 						eventData.CalendarPath = calendar.Path
 						eventData.Organizer, eventData.Attendees, eventData.Role, eventData.Status = meetingOf(itip.Master(co.Data), acct).people()
+						eventData.Ended = ended(co.Data, listedAt)
 						events = append(events, eventData)
 					}
 				}
@@ -786,6 +791,9 @@ func (p *plugin) respondToCopy(ctx *alps.Context) error {
 	master := itip.Master(co.Data)
 	if master == nil {
 		return alps.NewHTTPError(http.StatusBadRequest, "not an event or a task")
+	}
+	if ended(co.Data, clock()) {
+		return errEventOver
 	}
 	acct := p.scheduling(ctx, c)
 	m := meetingOf(master, acct)

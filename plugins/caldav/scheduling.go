@@ -16,6 +16,7 @@ import (
 	"github.com/migadu/alps/internal/davsave"
 	"github.com/migadu/alps/internal/imip"
 	"github.com/migadu/alps/internal/itip"
+	"github.com/teambition/rrule-go"
 )
 
 // Scheduling is inviting people to events and tasks, and answering
@@ -30,6 +31,66 @@ import (
 // own submission server. No server-specific switch decides between the two:
 // the server's own DAV header does, so a server that starts scheduling is
 // used for it as soon as it says so.
+
+// clock is the time the decisions below are made at; tests fix it.
+var clock = time.Now
+
+// ended reports whether an event is over: its last occurrence has finished.
+// Nobody is told about a change to one, or asked to answer it: an update to
+// the past only rewrites its record.
+//
+// A series with neither UNTIL nor COUNT has no last occurrence, and is never
+// over. Nor is a task, which still matters overdue.
+func ended(cal *ical.Calendar, now time.Time) bool {
+	items := itip.Items(cal)
+	if len(items) == 0 {
+		return false
+	}
+	for _, item := range items {
+		if item.Name != ical.CompEvent {
+			return false
+		}
+		start, end, _, ok := itemTimes(cal, item)
+		if !ok {
+			return false
+		}
+		length := end.Sub(start)
+		last := end
+		if rule := item.Props.Get(ical.PropRecurrenceRule); rule != nil {
+			opt, err := rrule.StrToROption(rule.Value)
+			if err != nil || (opt.Until.IsZero() && opt.Count == 0) || (!opt.Until.IsZero() && opt.Until.After(now)) {
+				return false
+			}
+			opt.Dtstart = start.UTC()
+			r, err := rrule.NewRRule(*opt)
+			if err != nil {
+				return false
+			}
+			if all := r.All(); len(all) > 0 {
+				last = all[len(all)-1].Add(length)
+			}
+		}
+		for _, rdate := range item.Props[ical.PropRecurrenceDates] {
+			for _, value := range strings.Split(rdate.Value, ",") {
+				if strings.Contains(value, "/") {
+					return false // A PERIOD: not worth reading for this.
+				}
+				one := ical.Prop{Name: rdate.Name, Value: strings.TrimSpace(value), Params: rdate.Params}
+				t, _, err := itip.Time(cal, &one)
+				if err != nil {
+					return false
+				}
+				if t.Add(length).After(last) {
+					last = t.Add(length)
+				}
+			}
+		}
+		if last.After(now) {
+			return false
+		}
+	}
+	return true
+}
 
 // How long what a server says about scheduling is believed before asking
 // again.
@@ -424,6 +485,11 @@ func organize(acct *schedulingAccount, before, after *ical.Calendar, attendees [
 	if !wasMeeting && !isMeeting {
 		return nil, ""
 	}
+	// Over, and left in the past: a record kept, told to nobody. Moved to a
+	// time still to come, it is news again.
+	if now := clock(); ended(after, now) && (before == nil || ended(before, now)) {
+		return nil, ""
+	}
 
 	revised := wasMeeting && itip.Revised(old, item)
 	if wasMeeting && (revised || len(added) > 0 || len(removed) > 0) {
@@ -453,7 +519,7 @@ func organize(acct *schedulingAccount, before, after *ical.Calendar, attendees [
 }
 
 // departure returns what removing a calendar object tells whom, and from
-// which address. A meeting the user organizes is cancelled for its guests;
+// which address. Removing an event that is over tells nobody. A meeting the user organizes is cancelled for its guests;
 // an invitation they have not declined is declined to its organizer, unless
 // it was cancelled or the organizer asked for no answers.
 //
@@ -465,12 +531,13 @@ func departure(acct *schedulingAccount, cal *ical.Calendar, notify bool, now tim
 	m := meetingOf(item, acct)
 	status, _ := item.Props.Text(ical.PropStatus)
 	cancelled := strings.EqualFold(status, "CANCELLED")
+	over := ended(cal, clock())
 
 	var header http.Header
-	if acct.server && m.role == "attendee" && (!notify || cancelled) {
+	if acct.server && m.role == "attendee" && (!notify || cancelled || over) {
 		header = http.Header{"Schedule-Reply": {"F"}}
 	}
-	if !notify {
+	if !notify || over {
 		return nil, "", header
 	}
 	switch m.role {

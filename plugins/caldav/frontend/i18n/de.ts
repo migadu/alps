@@ -157,6 +157,7 @@ export default {
             unknown: 'Diese Antwort betrifft nichts in Ihrem Kalender.',
             add: 'Dies ist nicht in Ihrem Kalender.',
             added: 'Dies ist in Ihrem Kalender.',
+            ended: 'Dieser Termin ist vorbei.',
             unsupported: 'Diese Kalendernachricht kann hier nicht verarbeitet werden.',
         },
         unverified: 'Gesendet von {sender}, nicht vom Organisator.',

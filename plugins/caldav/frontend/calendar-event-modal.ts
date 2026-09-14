@@ -177,6 +177,19 @@ export class CalendarEventModal extends LitElement {
         this.dispatchEvent(new CustomEvent('close'));
     }
 
+    /** The form's start and end, as the server takes them. */
+    private formTimes(): { startISO: string; endISO: string } {
+        if (this.isAllDay) {
+            const endD = new Date(`${this.endDate}T00:00:00.000Z`);
+            endD.setUTCDate(endD.getUTCDate() + 1);
+            return { startISO: `${this.startDate}T00:00:00.000Z`, endISO: endD.toISOString() };
+        }
+        return {
+            startISO: new Date(`${this.startDate}T${this.startTime || '00:00'}`).toISOString(),
+            endISO: new Date(`${this.endDate}T${this.endTime || '00:00'}`).toISOString(),
+        };
+    }
+
     /** Someone else's meeting: its guest list is its organizer's. */
     private get invited(): boolean {
         return this.event?.role === 'attendee';
@@ -187,7 +200,10 @@ export class CalendarEventModal extends LitElement {
         // A change to a meeting that already has guests is theirs to hear about
         // or not; a new meeting's guests are invited, which is what adding them
         // asked for.
-        if (this.event?.path && !this.invited && tellsSomeone(this.event, this.scheduling)) {
+        // An event that is over, and stays over, tells nobody: moved to a time
+        // still to come, it is news again.
+        const staysOver = !!this.event?.ended && new Date(this.formTimes().endISO) <= new Date();
+        if (this.event?.path && !this.invited && tellsSomeone({ ...this.event, ended: staysOver }, this.scheduling)) {
             this.askNotify = true;
             return;
         }
@@ -199,20 +215,7 @@ export class CalendarEventModal extends LitElement {
         this.isSaving = true;
 
         try {
-            let startISO: string;
-            let endISO: string;
-
-            if (this.isAllDay) {
-                startISO = `${this.startDate}T00:00:00.000Z`;
-                const endD = new Date(`${this.endDate}T00:00:00.000Z`);
-                endD.setUTCDate(endD.getUTCDate() + 1);
-                endISO = endD.toISOString();
-            } else {
-                const startD = new Date(`${this.startDate}T${this.startTime || '00:00'}`);
-                const endD = new Date(`${this.endDate}T${this.endTime || '00:00'}`);
-                startISO = startD.toISOString();
-                endISO = endD.toISOString();
-            }
+            const { startISO, endISO } = this.formTimes();
 
             let rruleStr: string | undefined = undefined;
             if (this.rruleFreq === 'CUSTOM') {

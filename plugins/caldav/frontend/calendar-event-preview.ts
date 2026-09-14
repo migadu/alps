@@ -245,6 +245,15 @@ export class CalendarEventPreview extends LitElement {
         }, 10);
     }
 
+    /**
+     * Whether an invitation can still be answered: not once the event is over,
+     * nor from an occurrence already past, since an answer is for the whole
+     * series and belongs with one still to come.
+     */
+    private answerable(e: EventData): boolean {
+        return !e.ended && new Date(e.end) > new Date();
+    }
+
     /** Who a meeting involves, and the user's own answer when they are invited. */
     private renderMeeting(e: EventData) {
         if (!e.organizer && !e.attendees?.length) return '';
@@ -272,11 +281,13 @@ export class CalendarEventPreview extends LitElement {
                 ` : ''}
                 ${e.role === 'attendee' ? html`
                     <div class="card-label">${t('invitations.yourAnswer')}</div>
-                    <div class="answers">
-                        ${answer('accepted', 'invitations.accept')}
-                        ${answer('tentative', 'invitations.maybe')}
-                        ${answer('declined', 'invitations.decline')}
-                    </div>
+                    ${this.answerable(e) ? html`
+                        <div class="answers">
+                            ${answer('accepted', 'invitations.accept')}
+                            ${answer('tentative', 'invitations.maybe')}
+                            ${answer('declined', 'invitations.decline')}
+                        </div>
+                    ` : html`<div class="description-text answer-status">${t(`invitations.statuses.${statusKey(e.status)}`)}</div>`}
                 ` : ''}
             </div>
         `;

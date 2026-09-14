@@ -157,6 +157,7 @@ export default {
             unknown: 'Questa risposta non riguarda nulla nel tuo calendario.',
             add: 'Non è nel tuo calendario.',
             added: 'È nel tuo calendario.',
+            ended: 'Questo evento è già passato.',
             unsupported: 'Questo messaggio di calendario non può essere gestito qui.',
         },
         unverified: 'Inviato da {sender}, che non è l\'organizzatore.',
