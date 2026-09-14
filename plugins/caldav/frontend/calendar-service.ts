@@ -54,6 +54,52 @@ export interface SavedEvent {
     ok: string;
     path: string;
     etag?: string;
+    /** The guests were emailed about the change. */
+    sent?: boolean;
+    /** Saved, but emailing the guests failed. */
+    sendFailed?: boolean;
+}
+
+/** What the event editor sends. */
+export type EventInput = Omit<EventData, 'uid' | 'path'> & {
+    /** Whether to tell the guests about the change; unsaid is yes. */
+    notify?: boolean;
+    /** The language to write those messages in. */
+    lang?: string;
+};
+
+export interface CalendarListing {
+    calendars: CalendarData[];
+    /** Who sends invitations and replies: the calendar server, or alps by email. */
+    scheduling?: 'server' | 'email';
+}
+
+/** A guest as the address field spells one: `"Name" <address>` or a bare address. */
+export function personFromAddress(address: string): InvitationPerson | null {
+    const trimmed = address.trim();
+    const angled = /^(.*)<([^<>\s]+@[^<>\s]+)>$/.exec(trimmed);
+    if (angled) {
+        const name = angled[1].trim().replace(/^"(.*)"$/, '$1').trim();
+        return name ? { email: angled[2], name } : { email: angled[2] };
+    }
+    return /^[^\s@<>]+@[^\s@<>]+$/.test(trimmed) ? { email: trimmed } : null;
+}
+
+/** The address field's spelling of a guest. */
+export function addressOfPerson(person: InvitationPerson): string {
+    const name = person.name?.replace(/"/g, '').trim();
+    return name ? `"${name}" <${person.email}>` : person.email;
+}
+
+/**
+ * Whether saving or removing an event emails anyone, which alps does itself
+ * only when the server does not schedule: a meeting the user organizes, or an
+ * invitation they have not declined.
+ */
+export function tellsSomeone(event: Pick<EventData, 'role' | 'attendees' | 'status'> | undefined, scheduling: string | undefined): boolean {
+    if (!event || scheduling === 'server') return false;
+    if (event.role === 'organizer') return (event.attendees?.length ?? 0) > 0;
+    return event.role === 'attendee' && event.status !== 'declined';
 }
 
 const CALENDAR_COLORS = [
@@ -91,7 +137,7 @@ export function isAllDayEvent(event: Pick<EventData, 'allDay'>): boolean {
 }
 
 class CalendarService {
-    async fetchCalendars(): Promise<{ calendars: CalendarData[] }> {
+    async fetchCalendars(): Promise<CalendarListing> {
         const response = await fetchWithTimeout('/calendar/calendars');
         if (!response.ok) {
             throw new Error('Failed to fetch calendars');
@@ -153,7 +199,7 @@ class CalendarService {
         return response.json();
     }
 
-    async createEvent(event: Omit<EventData, 'uid' | 'path'>): Promise<SavedEvent> {
+    async createEvent(event: EventInput): Promise<SavedEvent> {
         const response = await fetchWithTimeout('/calendar/events', {
             method: 'POST',
             headers: {
@@ -167,7 +213,7 @@ class CalendarService {
         return response.json();
     }
 
-    async updateEvent(path: string, event: Omit<EventData, 'uid' | 'path'>): Promise<SavedEvent> {
+    async updateEvent(path: string, event: EventInput): Promise<SavedEvent> {
         const encodedPath = encodePathParam(path);
         const response = await fetchWithTimeout(`/calendar/events/${encodedPath}/edit`, {
             method: 'POST',
@@ -196,9 +242,13 @@ class CalendarService {
         return response.json();
     }
 
-    async deleteEvent(path: string): Promise<{ ok: string }> {
+    async deleteEvent(path: string, options: { notify?: boolean; lang?: string } = {}): Promise<{ ok: string; sent?: boolean; sendFailed?: boolean }> {
         const encodedPath = encodePathParam(path);
-        const response = await fetchWithTimeout(`/calendar/events/${encodedPath}`, {
+        const params = new URLSearchParams();
+        if (options.notify === false) params.set('notify', '0');
+        if (options.lang) params.set('lang', options.lang);
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = await fetchWithTimeout(`/calendar/events/${encodedPath}${query}`, {
             method: 'DELETE'
         });
         if (!response.ok) {

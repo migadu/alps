@@ -696,12 +696,7 @@ func (p *plugin) sendReply(ctx *alps.Context, acct *schedulingAccount, cal *ical
 	if err != nil {
 		return saved, nil
 	}
-	if err := p.deliver(ctx, acct, me, lang, []letter{{to: []itip.Party{*org}, cal: reply}}); err != nil {
-		ctx.Server.Logger().Printf("caldav: %v", err)
-		saved.SendFailed = true
-		return saved, nil
-	}
-	saved.Sent = true
+	saved.Sent, saved.SendFailed = p.tell(ctx, acct, me, lang, []letter{{to: []itip.Party{*org}, cal: reply}})
 	return saved, nil
 }
 

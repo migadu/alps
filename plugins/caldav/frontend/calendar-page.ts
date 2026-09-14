@@ -3,7 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { calendarService, getCalendarColor, holdsEvents, taskChips, weekStart } from './calendar-service';
+import { calendarService, tellsSomeone, getCalendarColor, holdsEvents, taskChips, weekStart } from './calendar-service';
 import { tasksService, type TaskData } from './tasks-service';
 import type { CalendarData, EventData } from './calendar-service';
 import { sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
@@ -97,6 +97,8 @@ export class CalendarPage extends LitElement {
     @state() private promptTarget: any = null;
     @state() private calendarToDelete: any = null;
     @state() private eventToDelete: any = null;
+    /** Who tells guests about changes, as the calendar listing says: the server, or alps by email. */
+    @state() private scheduling: 'server' | 'email' = 'email';
     @state() private activeKebabMenu: string | null = null;
     private hoverTimeout: any = null;
     @state() private suppressSidebarHover = false;
@@ -552,6 +554,7 @@ export class CalendarPage extends LitElement {
             : Promise.resolve(null);
         try {
             const calRes = await calendarService.fetchCalendars();
+            this.scheduling = calRes.scheduling === 'server' ? 'server' : 'email';
             
             let start, end;
             const year = this.currentDate.getFullYear();
@@ -787,7 +790,7 @@ export class CalendarPage extends LitElement {
         }
     }
 
-    private async _executeDeleteEvent() {
+    private async _executeDeleteEvent(notify = true) {
         if (!this.eventToDelete) return;
         const event = this.eventToDelete;
         this.eventToDelete = null;
@@ -796,7 +799,8 @@ export class CalendarPage extends LitElement {
             if (event.task) {
                 await tasksService.deleteTask(event.task.path);
             } else {
-                await calendarService.deleteEvent(event.path);
+                const removed = await calendarService.deleteEvent(event.path, { notify, lang: this.i18nStore?.getLanguage?.() });
+                if (removed?.sendFailed) this.reportFailure('invitations.notTold');
             }
             await this.fetchData();
         } catch (err) {
@@ -1160,13 +1164,25 @@ export class CalendarPage extends LitElement {
                 ></ui-confirm>
             ` : ''}
 
-            ${this.eventToDelete ? html`
+            ${this.eventToDelete && !this.eventToDelete.task && tellsSomeone(this.eventToDelete, this.scheduling) ? html`
+                <ui-confirm
+                    class="delete-meeting"
+                    title="${this.i18nStore?.t('calendar.deleteEvent')}"
+                    message="${this.i18nStore?.t(this.eventToDelete.role === 'organizer' ? 'invitations.deleteTellGuests' : 'invitations.deleteTellOrganizer')}"
+                    confirmText="${this.i18nStore?.t('invitations.deleteAndTell')}"
+                    secondaryText="${this.i18nStore?.t('invitations.deleteOnly')}"
+                    isDanger
+                    @confirm=${() => this._executeDeleteEvent(true)}
+                    @secondary=${() => this._executeDeleteEvent(false)}
+                    @cancel=${() => this.eventToDelete = null}
+                ></ui-confirm>
+            ` : this.eventToDelete ? html`
                 <ui-confirm
                     title="${this.i18nStore?.t('calendar.deleteEvent')}"
                     message="Are you sure you want to delete this event?"
                     confirmText="${this.i18nStore?.t('calendar.delete')}"
                     isDanger
-                    @confirm=${this._executeDeleteEvent}
+                    @confirm=${() => this._executeDeleteEvent()}
                     @cancel=${() => this.eventToDelete = null}
                 ></ui-confirm>
             ` : ''}

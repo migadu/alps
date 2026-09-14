@@ -75,6 +75,22 @@ type EventData struct {
 	Status    string   `json:"status,omitempty"`
 }
 
+// eventRequest is what the event editor sends.
+type eventRequest struct {
+	EventData
+	// Notify says whether to tell the guests about the change. Unsaid is
+	// yes; a server that schedules tells them regardless.
+	Notify *bool `json:"notify"`
+	// Lang is the language to write the messages' readable text in.
+	Lang string `json:"lang"`
+}
+
+// eventSaved is what a save or delete of an event answers.
+type eventSaved struct {
+	OK string `json:"ok"`
+	Saved
+}
+
 func parseObjectPath(s string) (string, error) {
 	p, err := url.PathUnescape(s)
 	if err != nil {
@@ -508,7 +524,7 @@ func registerRoutes(p *plugin) {
 	})
 
 	updateEvent := func(ctx *alps.Context) error {
-		var req EventData
+		var req eventRequest
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
 		}
@@ -539,6 +555,7 @@ func registerRoutes(p *plugin) {
 		}
 
 		var co *caldav.CalendarObject
+		var before *ical.Calendar
 		var event *ical.Event
 		if calendarObjectPath != "" {
 			co, err = c.GetCalendarObject(ctx.Request.Context(), calendarObjectPath)
@@ -551,6 +568,7 @@ func registerRoutes(p *plugin) {
 			if req.ETag != "" && !davsave.Same(req.ETag, co.ETag) {
 				return errChangedElsewhere
 			}
+			before = itip.Clone(co.Data)
 			events := co.Data.Events()
 			if len(events) != 1 {
 				return fmt.Errorf("expected exactly one event, got %d", len(events))
@@ -605,10 +623,25 @@ func registerRoutes(p *plugin) {
 			event.Props.SetText(ical.PropUID, newID.String())
 		}
 
-		cal := ical.NewCalendar()
-		cal.Props.SetText(ical.PropProductID, "-//migadu//alps//EN")
-		cal.Props.SetText(ical.PropVersion, "2.0")
-		cal.Children = append(cal.Children, event.Component)
+		// An edit writes back the object it read, with the event changed in it:
+		// what else the object holds, the VTIMEZONEs its times are written in
+		// above all, stays.
+		var cal *ical.Calendar
+		if co != nil {
+			cal = co.Data
+		} else {
+			cal = ical.NewCalendar()
+			cal.Props.SetText(ical.PropProductID, "-//migadu//alps//EN")
+			cal.Props.SetText(ical.PropVersion, "2.0")
+			cal.Children = append(cal.Children, event.Component)
+		}
+
+		guests, err := partiesOf(req.Attendees)
+		if err != nil {
+			return err
+		}
+		acct := p.scheduling(ctx, c)
+		letters, from := organize(acct, before, cal, guests, req.Attendees != nil, time.Now())
 
 		var objectPath, baseETag string
 		if co != nil {
@@ -649,8 +682,11 @@ func registerRoutes(p *plugin) {
 		if err != nil {
 			return err
 		}
-
-		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "path": objectPath, "etag": etag})
+		saved := eventSaved{OK: "true", Saved: Saved{Path: objectPath, ETag: etag}}
+		if req.Notify == nil || *req.Notify {
+			saved.Sent, saved.SendFailed = p.tell(ctx, acct, from, req.Lang, letters)
+		}
+		return ctx.JSON(http.StatusOK, saved)
 	}
 
 	p.POST("/calendar/events", updateEvent)
@@ -674,11 +710,30 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		if err := c.RemoveAll(ctx.Request.Context(), path); err != nil {
+		// Read first, for who removing it tells: see departure.
+		var letters []letter
+		var from string
+		var header http.Header
+		var acct *schedulingAccount
+		if co, err := c.GetCalendarObject(ctx.Request.Context(), path); err == nil && itip.Master(co.Data) != nil {
+			acct = p.scheduling(ctx, c)
+			letters, from, header = departure(acct, co.Data, ctx.QueryParam("notify") != "0", time.Now())
+		}
+
+		if header != nil {
+			err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.url, path), "", header)
+		} else {
+			err = c.RemoveAll(ctx.Request.Context(), path)
+		}
+		if err != nil {
 			return fmt.Errorf("failed to delete calendar object: %v", err)
 		}
 
-		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
+		saved := eventSaved{OK: "true"}
+		if acct != nil {
+			saved.Sent, saved.SendFailed = p.tell(ctx, acct, from, ctx.QueryParam("lang"), letters)
+		}
+		return ctx.JSON(http.StatusOK, saved)
 	}
 
 	p.DELETE("/calendar/events/{path}", deleteObject)

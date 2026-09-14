@@ -291,9 +291,9 @@ type letter struct {
 // deliver emails scheduling messages as the user, one submission each, so a
 // retry after a failure repeats only the message that failed. On a server
 // that schedules on its own it sends nothing: see the top of this file.
-func (p *plugin) deliver(ctx *alps.Context, acct *schedulingAccount, from string, lang string, letters []letter) error {
+func (p *plugin) deliver(ctx *alps.Context, acct *schedulingAccount, from string, lang string, letters []letter) (sent int, err error) {
 	if acct.server {
-		return nil
+		return 0, nil
 	}
 	words := wordsFor(lang)
 	for _, l := range letters {
@@ -321,8 +321,172 @@ func (p *plugin) deliver(ctx *alps.Context, acct *schedulingAccount, from string
 			return imip.Send(c, acct.email, msg)
 		})
 		if err != nil {
-			return fmt.Errorf("failed to send the %s: %v", strings.ToLower(itip.Method(l.cal)), err)
+			return sent, fmt.Errorf("failed to send the %s: %v", strings.ToLower(itip.Method(l.cal)), err)
+		}
+		sent++
+	}
+	return sent, nil
+}
+
+// tell delivers letters, and reports whether alps sent any and whether
+// sending failed. The change they describe is saved either way: see Saved.
+func (p *plugin) tell(ctx *alps.Context, acct *schedulingAccount, from, lang string, letters []letter) (sent, failed bool) {
+	n, err := p.deliver(ctx, acct, from, lang, letters)
+	if err != nil {
+		ctx.Server.Logger().Printf("caldav: %v", err)
+		return n > 0, true
+	}
+	return n > 0, false
+}
+
+// maxAttendees bounds a guest list: every guest is mailed on every change.
+const maxAttendees = 200
+
+// partiesOf reads the guest list an editor sent. An entry that is not one
+// email address is refused, rather than written into the calendar and handed
+// to the submission server.
+func partiesOf(people []Person) ([]itip.Party, error) {
+	if len(people) > maxAttendees {
+		return nil, alps.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("a meeting can have at most %d guests", maxAttendees))
+	}
+	parties := make([]itip.Party, 0, len(people))
+	for _, person := range people {
+		addr, err := mail.ParseAddress(strings.TrimSpace(person.Email))
+		if err != nil || strings.ContainsAny(addr.Address, " \r\n") {
+			return nil, alps.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("not an email address: %q", person.Email))
+		}
+		name := strings.TrimSpace(person.Name)
+		if name == "" {
+			name = addr.Name
+		}
+		if strings.ContainsAny(name, "\r\n") {
+			return nil, alps.NewHTTPError(http.StatusBadRequest, "a guest's name cannot span lines")
+		}
+		parties = append(parties, itip.Party{Address: strings.ToLower(addr.Address), Name: name})
+	}
+	return parties, nil
+}
+
+// partiesNamed returns the parties at the given addresses.
+func partiesNamed(parties []itip.Party, addresses []string) []itip.Party {
+	named := map[string]bool{}
+	for _, addr := range addresses {
+		named[addr] = true
+	}
+	var out []itip.Party
+	for _, party := range parties {
+		if named[party.Address] {
+			out = append(out, party)
 		}
 	}
-	return nil
+	return out
+}
+
+// organize settles who a saved event or task involves, and returns what the
+// guests are to be told, and the address it is told from.
+//
+// before is the object as it was read, nil for a new one, and after is it
+// with the editor's changes. attendees is the guest list the editor sent;
+// given false means it sent none, as an editor from before guest lists did,
+// and the object keeps the list it has.
+//
+// Only the user's own meetings are theirs to organize. A copy of someone
+// else's keeps its guest list whatever the editor sent, and a change to it
+// is the user's own, told to nobody.
+func organize(acct *schedulingAccount, before, after *ical.Calendar, attendees []itip.Party, given bool, now time.Time) ([]letter, string) {
+	item := itip.Master(after)
+	var old *ical.Component
+	if before != nil {
+		old = itip.Master(before)
+	}
+	if old != nil {
+		if m := meetingOf(old, acct); m.organizer != nil && m.role != "organizer" {
+			return nil, ""
+		}
+	}
+
+	// The organizer the meeting already has, when it is one of the user's
+	// addresses: guests' replies go to it.
+	organizer := acct.party()
+	if existing := itip.Organizer(item); existing != nil && acct.owns(existing.Address) {
+		organizer.Address = existing.Address
+		if organizer.Name == "" {
+			organizer.Name = existing.Name
+		}
+	}
+
+	var added, removed []string
+	if given {
+		added, removed = itip.Invite(item, organizer, attendees)
+	}
+	wasMeeting := old != nil && len(itip.Attendees(old)) > 0
+	isMeeting := len(itip.Attendees(item)) > 0
+	if !wasMeeting && !isMeeting {
+		return nil, ""
+	}
+
+	revised := wasMeeting && itip.Revised(old, item)
+	if wasMeeting && (revised || len(added) > 0 || len(removed) > 0) {
+		itip.SetSequence(item, itip.Sequence(old)+1)
+	}
+	if wasMeeting && itip.Rescheduled(old, item) {
+		itip.AskAgain(item, acct.addresses...)
+	}
+
+	var letters []letter
+	if isMeeting {
+		everyone := itip.Attendees(item)
+		switch {
+		case !wasMeeting || revised:
+			letters = append(letters, letter{to: everyone, cal: itip.Message(after, itip.MethodRequest, now)})
+		case len(added) > 0:
+			// Only a guest was added: the others have nothing new to hear.
+			letters = append(letters, letter{to: partiesNamed(everyone, added), cal: itip.Message(after, itip.MethodRequest, now)})
+		}
+	}
+	if wasMeeting && len(removed) > 0 {
+		cancel := itip.Cancel(before, removed, now)
+		itip.SetSequence(itip.Master(cancel), itip.Sequence(item))
+		letters = append(letters, letter{to: partiesNamed(itip.Attendees(old), removed), cal: cancel})
+	}
+	return letters, organizer.Address
+}
+
+// departure returns what removing a calendar object tells whom, and from
+// which address. A meeting the user organizes is cancelled for its guests;
+// an invitation they have not declined is declined to its organizer, unless
+// it was cancelled or the organizer asked for no answers.
+//
+// Without notify nobody is told. A server that schedules is then asked not
+// to decline for the user (RFC 6638 §8.1), as it is for a cancelled
+// invitation, whose organizer has nobody left to hear from.
+func departure(acct *schedulingAccount, cal *ical.Calendar, notify bool, now time.Time) ([]letter, string, http.Header) {
+	item := itip.Master(cal)
+	m := meetingOf(item, acct)
+	status, _ := item.Props.Text(ical.PropStatus)
+	cancelled := strings.EqualFold(status, "CANCELLED")
+
+	var header http.Header
+	if acct.server && m.role == "attendee" && (!notify || cancelled) {
+		header = http.Header{"Schedule-Reply": {"F"}}
+	}
+	if !notify {
+		return nil, "", header
+	}
+	switch m.role {
+	case "organizer":
+		if len(m.attendees) > 0 {
+			return []letter{{to: m.attendees, cal: itip.Cancel(cal, nil, now)}}, m.organizer.Address, header
+		}
+	case "attendee":
+		if m.organizer == nil || cancelled || m.status() == itip.Declined || !m.rsvp() {
+			return nil, "", header
+		}
+		declined := itip.Clone(cal)
+		itip.Answer(declined, m.me, itip.Declined)
+		if reply, err := itip.Reply(declined, m.me, now); err == nil {
+			return []letter{{to: []itip.Party{*m.organizer}, cal: reply}}, m.me, header
+		}
+	}
+	return nil, "", header
 }
