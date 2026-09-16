@@ -952,7 +952,7 @@ func (p *IMAPProvider) GetMessageMetadata(mailbox string, id provider.MessageID)
 			}
 		}
 		if len(msgs) == 0 {
-			return nil, fmt.Errorf("message not found")
+			return nil, fmt.Errorf("UID %d: %w", uid, provider.ErrMessageNotFound)
 		}
 	}
 
@@ -1041,7 +1041,7 @@ func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath 
 			}
 		}
 		if len(msgs) == 0 {
-			return nil, nil, nil, fmt.Errorf("server didn't return message")
+			return nil, nil, nil, fmt.Errorf("UID %d: %w", uid, provider.ErrMessageNotFound)
 		}
 	}
 	msg := msgs[0]
@@ -1100,7 +1100,7 @@ func (p *IMAPProvider) getMessagePartWithData(mailbox string, uid imap.UID, part
 			}
 		}
 		if len(msgs) == 0 {
-			return nil, nil, nil, nil, fmt.Errorf("server didn't return message")
+			return nil, nil, nil, nil, fmt.Errorf("UID %d: %w", uid, provider.ErrMessageNotFound)
 		}
 	}
 	msg := msgs[0]

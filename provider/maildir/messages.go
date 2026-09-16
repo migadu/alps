@@ -2,8 +2,10 @@ package maildir
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"sort"
 	"strings"
@@ -314,10 +316,24 @@ func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page,
 	return messages, total, nil
 }
 
+// messageByKey finds a message for reading. A lookup that finds no file is a
+// message that is gone, or a folder that was never delivered to, and says so
+// with provider.ErrMessageNotFound rather than as a disk failure. Only the
+// lookup can say it: a flag change renames the file, so one that vanishes
+// before the open was not necessarily deleted.
+func messageByKey(dir maildir.Dir, key string) (*maildir.Message, error) {
+	m, err := dir.MessageByKey(key)
+	var keyErr *maildir.KeyError
+	if (errors.As(err, &keyErr) && keyErr.N == 0) || errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("key %q: %w", key, provider.ErrMessageNotFound)
+	}
+	return m, err
+}
+
 func (p *Provider) GetMessageMetadata(mailbox string, id provider.MessageID) (*provider.Message, error) {
 	key := id.String()
 	dir := p.getDir(mailbox)
-	m, err := dir.MessageByKey(key)
+	m, err := messageByKey(dir, key)
 	if err != nil {
 		return nil, err
 	}
@@ -382,7 +398,7 @@ func extractEntityData(e *message.Entity, limit int64) ([]byte, []byte, error) {
 
 func (p *Provider) getMessagePartEntity(mailbox string, key string, partPath []int) (*provider.Message, *message.Entity, io.ReadCloser, error) {
 	dir := p.getDir(mailbox)
-	m, err := dir.MessageByKey(key)
+	m, err := messageByKey(dir, key)
 	if err != nil {
 		return nil, nil, nil, err
 	}
