@@ -74,17 +74,23 @@ func newTestServerWithSMTP(t *testing.T, smtpServer string) *testServer {
 	if err := key.Generate(); err != nil {
 		t.Fatal(err)
 	}
+	pcfg := &maildir.Config{
+		Path: filepath.Join(base, "%u"),
+		AuthPasswdFile: passwd,
+	}
+	popt, err := pcfg.ToOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
 	opts := &alps.Options{
-		Provider: alps.ProviderOptions{
-			Type:    "maildir",
-			IMAP:    alps.IMAPProviderOptions{Server: "imap://127.0.0.1:1"},
-			Maildir: alps.MaildirProviderOptions{Path: filepath.Join(base, "%u"), AuthPasswdFile: passwd},
-		},
+		Provider:     popt,
 		SMTP:         alps.SMTPOptions{Server: smtpServer},
 		LoginKey:     &key,
 		CacheEnabled: true,
 		CacheTTL:     time.Minute,
+		Debug:        true,
 	}
+
 	srv, err := alps.New(alps.NewLogger(), opts)
 	if err != nil {
 		t.Fatal(err)

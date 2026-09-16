@@ -68,15 +68,6 @@ var (
 	ErrMailProviderUnavailable = errors.New("mail provider unavailable")
 )
 
-// AuthError wraps an authentication error.
-type AuthError struct {
-	cause error
-}
-
-func (err AuthError) Error() string {
-	return fmt.Sprintf("authentication failed: %v", err.cause)
-}
-
 // Session is an active user session. It may also hold a mail provider connection.
 //
 // The session's password is not available to plugins. Plugins should use the
@@ -301,7 +292,7 @@ func (s *Session) DoSMTP(f func(*smtp.Client) error) error {
 		if err == nil {
 			return nil
 		}
-		if _, ok := err.(AuthError); ok {
+		if _, ok := err.(provider.AuthError); ok {
 			return err
 		}
 		if attempt < smtpMaxAttempts {
@@ -321,7 +312,7 @@ func (s *Session) doSMTP(f func(*smtp.Client) error) error {
 
 	auth := sasl.NewPlainClient("", s.username, s.password)
 	if err := c.Auth(auth); err != nil {
-		return AuthError{err}
+		return provider.AuthError{err}
 	}
 
 	if err := f(c); err != nil {

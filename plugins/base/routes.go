@@ -1008,7 +1008,7 @@ func handleLogin(ctx *alps.Context) error {
 		}
 
 		if err != nil {
-			if _, ok := err.(alps.AuthError); ok {
+			if _, ok := err.(provider.AuthError); ok {
 				return ctx.JSON(http.StatusUnauthorized, map[string]interface{}{"error": "Failed to login"})
 			}
 			return fmt.Errorf("failed to put connection in pool: %v", err)
@@ -1826,7 +1826,7 @@ func handleComposeNew(ctx *alps.Context) error {
 		return sendMessage(c, msg)
 	})
 	if err != nil {
-		if _, ok := err.(alps.AuthError); ok {
+		if _, ok := err.(provider.AuthError); ok {
 			return ctx.JSON(http.StatusForbidden, map[string]string{"error": "Forbidden"})
 		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to send message: " + err.Error()})
@@ -3065,7 +3065,7 @@ func handleAddAccount(ctx *alps.Context) error {
 			errorMsg = "This account is already linked"
 		} else if err == alps.ErrCannotLinkSelf {
 			errorMsg = "You cannot link your own account"
-		} else if _, ok := err.(alps.AuthError); ok {
+		} else if _, ok := err.(provider.AuthError); ok {
 			errorMsg = "Authentication failed. Please check your credentials."
 		}
 

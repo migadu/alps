@@ -18,7 +18,7 @@ var ErrInvalidCredentials = fmt.Errorf("invalid credentials")
 
 // Authenticate verifies the username and password against a Dovecot passwd file.
 // Returns the parsed user home directory if successful, or an error.
-func Authenticate(passwdFile, username, password string) (string, error) {
+func authenticate(passwdFile, username, password string) (string, error) {
 	file, err := os.Open(passwdFile)
 	if err != nil {
 		return "", fmt.Errorf("failed to open passwd file: %w", err)

@@ -9,8 +9,27 @@ import (
 	"github.com/emersion/go-message"
 )
 
+// AuthError wraps an authentication error.
+type AuthError struct {
+	Cause error
+}
+
+func (err AuthError) Error() string {
+	return fmt.Sprintf("authentication failed: %v", err.Cause)
+}
+
 // AuthenticatedProviderFactory creates an authenticated provider instance
 type AuthenticatedProviderFactory func(username, password string) (MailProvider, error)
+
+type Config interface {
+	Type() string
+	ToOptions() (Options, error)
+}
+
+type Options interface {
+	Type() string
+	CreateFactory(timeout time.Duration) AuthenticatedProviderFactory
+}
 
 // MailProvider abstracts mail backend (IMAP, JMAP, etc.)
 type MailProvider interface {
