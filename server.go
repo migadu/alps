@@ -16,8 +16,6 @@ import (
 	"github.com/fernet/fernet-go"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/migadu/alps/provider"
-	"github.com/migadu/alps/provider/imap"
-	"github.com/migadu/alps/provider/maildir"
 )
 
 const (
@@ -41,11 +39,6 @@ type Server struct {
 
 	WebAuthn *webauthn.WebAuthn // Global WebAuthn instance
 
-	imap struct {
-		host     string
-		tls      bool
-		insecure bool
-	}
 	smtp struct {
 		host     string
 		tls      bool
@@ -59,15 +52,12 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 		Options: options,
 	}
 
-	if err := s.parseIMAPServer(); err != nil {
-		return nil, err
-	}
 	if err := s.parseSMTPServer(); err != nil {
 		return nil, err
 	}
 
 	// Create provider factory
-	providerFactory := s.createProviderFactory()
+	providerFactory := options.Provider.CreateFactory(options.ProviderTimeout)
 
 	s.Sessions = newSessionManager(providerFactory, s.dialSMTP, logger, options.CacheTTL, options.CacheEnabled, options.LoginKey, options.SessionDuration, options.MaxSessionDuration, options.MaxSessions, options.MaxSessionsPerUser, options.MaxAttachmentMiB, options.MaxSessionAttachmentMiB, options.MaxGlobalAttachmentMiB)
 	// Set after construction rather than as a fourteenth positional argument to
@@ -142,61 +132,6 @@ func (s *Server) LoadedPluginNames() []string {
 	return names
 }
 
-// createProviderFactory creates a factory function for mail providers
-func (s *Server) createProviderFactory() provider.AuthenticatedProviderFactory {
-	return func(username, password string) (provider.MailProvider, error) {
-		switch s.Options.Provider.Type {
-		case "maildir":
-			// Parse auth file config
-			authFile := s.Options.Provider.Maildir.AuthPasswdFile
-			if authFile == "" {
-				return nil, fmt.Errorf("maildir provider requires auth_passwd_file")
-			}
-
-			// Authenticate against dovecot passwd file
-			homeDir, err := maildir.Authenticate(authFile, username, password)
-			if err != nil {
-				return nil, AuthError{err}
-			}
-
-			// Use explicit Maildir path if provided, resolving %u and %d, otherwise use homeDir/Maildir
-			path := s.Options.Provider.Maildir.Path
-			if path != "" {
-				parts := strings.Split(username, "@")
-				domain := ""
-				user := username
-				if len(parts) == 2 {
-					user = parts[0]
-					domain = parts[1]
-				}
-				path = strings.ReplaceAll(path, "%u", user)
-				path = strings.ReplaceAll(path, "%n", username) // Sometimes %n is full username
-				path = strings.ReplaceAll(path, "%d", domain)
-			} else {
-				path = filepath.Join(homeDir, "Maildir")
-			}
-
-			return maildir.NewProvider(path, username), nil
-
-		case "imap", "": // Default is IMAP
-			client, err := imap.Connect(s.imap.host, s.imap.tls, s.imap.insecure, s.Options.IMAPTimeout, s.Options.Debug)
-			if err != nil {
-				return nil, err
-			}
-
-			if err := client.Login(username, password).Wait(); err != nil {
-				client.Logout()
-				return nil, AuthError{err}
-			}
-
-			return imap.NewIMAPProvider(client, s.Options.Debug).WithAuthservIDs(s.Options.Provider.IMAP.AuthservIDs), nil
-
-		default:
-			return nil, fmt.Errorf("unknown provider type: %s", s.Options.Provider.Type)
-		}
-	}
-}
-
 // ParseServerURL parses a connection string into a url.URL.
 // If the string lacks a scheme, it prepends // to ensure correct parsing of the hostname.
 func ParseServerURL(str string) (*url.URL, error) {
@@ -205,48 +140,6 @@ func ParseServerURL(str string) (*url.URL, error) {
 		str = "//" + str
 	}
 	return url.Parse(str)
-}
-
-func (s *Server) parseIMAPServer() error {
-	if s.Options.Provider.IMAP.Server == "" {
-		return fmt.Errorf("IMAP server requires a scheme (imaps://, imap://, imap+insecure://), got empty string")
-	}
-
-	u, err := ParseServerURL(s.Options.Provider.IMAP.Server)
-	if err != nil {
-		return fmt.Errorf("failed to parse IMAP server: %v", err)
-	}
-
-	if u.Scheme == "" {
-		return fmt.Errorf("IMAP server requires a scheme (imaps://, imap://, imap+insecure://), got: %v", u.String())
-	}
-
-	switch u.Scheme {
-	case "imaps":
-		s.imap.tls = true
-	case "imap+insecure":
-		s.imap.insecure = true
-	case "imap", "":
-		// default
-	default:
-		return fmt.Errorf("unknown scheme for IMAP server: %v", u.Scheme)
-	}
-
-	if s.Options.Provider.IMAP.Insecure {
-		s.imap.insecure = true
-	}
-
-	s.imap.host = u.Host
-	if !strings.ContainsRune(s.imap.host, ':') {
-		if u.Scheme == "imaps" {
-			s.imap.host += ":993"
-		} else {
-			s.imap.host += ":143"
-		}
-	}
-
-	s.logger.Printf("Configured IMAP server: %v", u)
-	return nil
 }
 
 func (s *Server) parseSMTPServer() error {
@@ -415,37 +308,18 @@ type Options struct {
 	ReadTimeout             time.Duration           // HTTP read timeout, 0 means use default (10 seconds)
 	WriteTimeout            time.Duration           // HTTP write timeout, 0 means use default (30 seconds)
 	IdleTimeout             time.Duration           // HTTP idle timeout, 0 means use default (120 seconds)
-	IMAPTimeout             time.Duration           // IMAP operation timeout, 0 means use default (30 seconds)
+	ProviderTimeout         time.Duration           // Provider connect timeout, 0 means use default (30 seconds)
 	SMTPTimeout             time.Duration           // SMTP operation timeout, 0 means use default (30 seconds)
 	WebAuthn                WebAuthnOptions         // WebAuthn configuration
 	Plugins                 map[string]PluginConfig // Generic plugin configuration
-	Provider                ProviderOptions         // Mail provider configuration
+	ProviderType            string                  // The type of provider to use
+	Provider                provider.Options        // Mail provider configuration
 	ClusterBroadcaster      ClusterBroadcaster      // Optional interface for cluster message broadcasting
-}
-
-type ProviderOptions struct {
-	Type    string
-	IMAP    IMAPProviderOptions
-	Maildir MaildirProviderOptions
-}
-
-type IMAPProviderOptions struct {
-	Server   string
-	Insecure bool
-	// Authserv-ids of the receiving mail servers whose Authentication-Results
-	// fields are trusted for a message's DMARC verdict. Empty means the topmost
-	// field.
-	AuthservIDs []string
 }
 
 type SMTPOptions struct {
 	Server   string
 	Insecure bool
-}
-
-type MaildirProviderOptions struct {
-	Path           string
-	AuthPasswdFile string
 }
 
 type WebAuthnOptions struct {
@@ -620,7 +494,7 @@ func (s *Server) handleError(err error, ctx *Context) {
 
 	// Check if this is an authentication or connection error - if so, log out the user
 	// to prevent endless loops
-	var authErr AuthError
+	var authErr provider.AuthError
 	shouldLogout := false
 
 	if errors.As(err, &authErr) {

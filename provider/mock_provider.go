@@ -1,9 +1,25 @@
 package provider
 
 import (
+	"time"
 	"github.com/emersion/go-message"
 	"github.com/stretchr/testify/mock"
 )
+
+type MockOptions struct {}
+
+func (o *MockOptions) Type() string {
+
+	return "mock"
+}
+
+func (o *MockOptions) CreateFactory(timeout time.Duration) AuthenticatedProviderFactory {
+
+	return func(username, password string) (MailProvider, error) {
+
+		return &MockProvider{}, nil
+	}
+}
 
 // MockProvider is a mock implementation of the MailProvider interface.
 type MockProvider struct {

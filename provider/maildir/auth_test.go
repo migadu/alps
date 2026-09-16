@@ -64,7 +64,7 @@ bcryptuser@example.com:{CRYPT}$2a$10$AtHqzAkW6RDNEHJo2VI7Yug6GLQp/WHDWrPGpUkTtEN
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			homeDir, err := Authenticate(passwdPath, tt.username, tt.password)
+			homeDir, err := authenticate(passwdPath, tt.username, tt.password)
 			if (err != nil) != tt.expectError {
 				t.Errorf("Authenticate() error = %v, expectError %v", err, tt.expectError)
 				return

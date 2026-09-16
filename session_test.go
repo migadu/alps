@@ -22,7 +22,7 @@ import (
 func TestDoMailWithContext_ConnectFailureIsIdentifiable(t *testing.T) {
 	authCause := errors.New("invalid credentials")
 	connectProvider := func(username, password string) (provider.MailProvider, error) {
-		return nil, AuthError{cause: authCause}
+		return nil, provider.AuthError{Cause: authCause}
 	}
 	sm := newSessionManager(
 		connectProvider, nil, &NilLogger{},
@@ -33,7 +33,7 @@ func TestDoMailWithContext_ConnectFailureIsIdentifiable(t *testing.T) {
 	err := s.DoMailWithContext(context.Background(), func(p provider.MailProvider) error { return nil })
 	assert.Error(t, err)
 
-	var authErr AuthError
+	var authErr provider.AuthError
 	assert.True(t, errors.As(err, &authErr), "AuthError must survive %%w wrapping so errors.As matches")
 	assert.True(t, errors.Is(err, ErrMailProviderUnavailable), "sentinel must be joined so handleError logs out")
 }
