@@ -519,6 +519,12 @@ func (s *Server) handleError(err error, ctx *Context) {
 		return
 	}
 
+	// A message deleted or moved since it was listed is gone, not broken: sending
+	// a draft removes the one the reader may still ask for.
+	if errors.Is(err, provider.ErrMessageNotFound) {
+		err = NewHTTPError(http.StatusNotFound, "Message not found")
+	}
+
 	code := http.StatusInternalServerError
 	if he, ok := err.(*HTTPError); ok {
 		code = he.Code

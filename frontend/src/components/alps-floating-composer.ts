@@ -570,9 +570,11 @@ export class AlpsFloatingComposer extends LitElement {
     const cc = this.instance.cc || [];
     const bcc = this.instance.bcc || [];
     const allTo = [...to, ...cc, ...bcc];
-    const subject = (this.instance.subject || '').trim();
 
-    if (!text || allTo.length === 0 || !subject) return;
+    // No subject check. A message without one is valid mail, the server omits
+    // the header when it is empty, and the Send button is enabled for it, so
+    // refusing here left the window open with nothing on screen to say why.
+    if (!text || allTo.length === 0) return;
 
     this._clearAutoSave();
     this.composeStore.updateComposer(this.instance.id, { isSending: true, minimized: true });

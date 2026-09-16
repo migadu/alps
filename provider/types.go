@@ -198,6 +198,11 @@ type MessagePart struct {
 // ErrNoStoreEntry is returned by Store.Get when the entry doesn't exist.
 var ErrNoStoreEntry = fmt.Errorf("provider: no such entry in store")
 
+// ErrMessageNotFound is returned, possibly wrapped, when a mailbox does not
+// hold the requested message: it was deleted or moved since it was listed, or
+// never existed. It is not a failure of the backend.
+var ErrMessageNotFound = fmt.Errorf("provider: no such message")
+
 // Store allows storing per-user persistent data.
 type Store interface {
 	Get(key string, out interface{}) error

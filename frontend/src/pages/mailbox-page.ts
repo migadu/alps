@@ -66,6 +66,11 @@ export class MailboxPage extends LitElement {
 
   private unlockAudio = () => {
     if (this.audioUnlocked) return;
+    // Nothing is played, not even muted, while the chime is switched off. This
+    // ran on the first click whatever the setting said, and muting does not
+    // silence it in every browser. The listeners stay, so switching the sound
+    // on later unlocks it on the next gesture.
+    if (!this.settingsStore.getState().soundNotifications) return;
     // Mute rather than zero the volume: iOS ignores assignments to
     // HTMLMediaElement.volume, so the unlock play() was audible there.
     const sound = this.chime();
@@ -589,6 +594,15 @@ export class MailboxPage extends LitElement {
     this.densityMode = state.densityMode;
     this.showSenderAvatars = state.showSenderAvatars ?? true;
     this.sortOrder = state.sortOrder || 'desc';
+
+    // The header draws the user menu only once it has a username, and the
+    // folder listing used to be this page's only source for one. A listing that
+    // failed left the mail page without the menu, and so without Sign Out, while
+    // Calendar and Contacts showed it: they read the user the session names,
+    // which the store holds as soon as the session has answered.
+    if (state.loginUsername) {
+      this.username = state.loginUsername;
+    }
 
     if (this.sidebarCollapsed !== state.sidebarCollapsed) {
       this.sidebarCollapsed = state.sidebarCollapsed;
