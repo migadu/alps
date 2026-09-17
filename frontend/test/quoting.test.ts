@@ -146,6 +146,23 @@ describe('generateQuote', () => {
     expect(doc.querySelector('img')?.getAttribute('src')).toBe('https://cdn.test/a.png');
   });
 
+  const illustrated =
+    '<p>chart</p><img src=" CID:chart@x"><img src="https://cdn.remote.test/logo.png">' +
+    '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="drawn">';
+
+  it("keeps the original's images in a reply as in a forward, as every client does", () => {
+    // The inline parts travel with either (see inlinePartsOf), and a remote
+    // image is the recipient's client's to show or block, as for any message.
+    for (const type of ['reply', 'replyAll', 'forward'] as const) {
+      const doc = parse(generateQuote(type, message(), 'chart', illustrated, true).quotedHtml);
+      expect(Array.from(doc.querySelectorAll('img'), (img) => img.getAttribute('src')), type).toEqual([
+        ' CID:chart@x',
+        'https://cdn.remote.test/logo.png',
+        'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
+      ]);
+    }
+  });
+
   it('marks an HTML quote for the composer to keep whole, and nothing else', () => {
     for (const type of ['reply', 'forward'] as const) {
       const marked = parse(generateQuote(type, message(), 'body', '<p>quoted body</p>', true).quotedHtml).querySelectorAll(`[${QUOTE_ATTRIBUTE}]`);

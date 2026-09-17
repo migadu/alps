@@ -221,6 +221,13 @@ describe('inline images', () => {
     expect(attr(out, 'img', 'src')).toBe('/mailboxes/%255BGmail%255D%252FAll%2520Mail/messages/42/raw?part=2');
   });
 
+  it('resolves a cid: written with leading whitespace, as a browser reads it', () => {
+    // The quote path and the reader disagreed on this: a ` cid:` the quoting
+    // sanitizer recognised, this one did not, and a part the forward carried
+    // showed as a broken image.
+    expect(attr(blocked('<img src=" cid:logo@sender.test">', { messageStructure: structure }), 'img', 'src')).toContain('part=2');
+  });
+
   it('leaves an unresolvable cid: alone, uncounted, with or without a structure', () => {
     expect(attr(blocked('<img src="cid:missing@sender.test">', { messageStructure: structure }), 'img', 'src')).toBe('cid:missing@sender.test');
     expect(attr(blocked('<img src="cid:missing@sender.test">'), 'img', 'src')).toBe('cid:missing@sender.test');

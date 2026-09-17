@@ -46,6 +46,17 @@ const filterAddresses = (addrs?: string[]): string[] | undefined => {
   return addrs.filter(addr => !isBlockedAddress(addr));
 };
 
+/**
+ * The message a quote's `cid:` images belong to, so the composer can show
+ * them: a forwarded original, or the draft a forward was saved into. A reply
+ * quotes no such images, since it carries none of the original's parts.
+ */
+export interface QuoteSource {
+  mailbox: string;
+  uid: string;
+  structure?: unknown;
+}
+
 export interface ComposerInstance {
   id: string;
   to?: string[];
@@ -61,6 +72,7 @@ export interface ComposerInstance {
   expanded?: boolean;
   zIndex?: number;
   attachments?: any[];
+  quoteSource?: QuoteSource;
   dirty?: boolean;
   draftUid?: string;
   draftMailbox?: string;

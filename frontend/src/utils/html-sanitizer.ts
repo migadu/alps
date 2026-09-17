@@ -28,6 +28,28 @@ function isRemoteUrl(value: string): boolean {
 }
 
 /**
+ * The URL as a browser reads its scheme: lower-cased, with every ASCII
+ * whitespace and control character removed. A browser ignores those before
+ * resolving a scheme, so `java\tscript:` is a live URL and ` cid:x` names a
+ * part, and a check that only trims would miss both. Every scheme test in this
+ * file goes through here, so the two sanitizers cannot disagree about one.
+ */
+function urlScheme(value: string): string {
+  return value.toLowerCase().replace(/[^\x21-\x7e]/g, '');
+}
+
+/** Does this URL name a part of the message it came in? */
+function isCidUrl(value: string): boolean {
+  return urlScheme(value).startsWith('cid:');
+}
+
+/** The Content-ID a `cid:` URL names, with the same characters removed that
+ * `urlScheme` removes, and the case kept: the id is compared exactly. */
+function cidOf(value: string): string {
+  return value.replace(/[^\x21-\x7e]/g, '').substring(4);
+}
+
+/**
  * The same question in the CSS grammar: a `url()` whose target is remote.
  *
  * ONE definition, because there were four — this pattern was written out three
@@ -270,8 +292,8 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
     const src = img.getAttribute('src');
     if (!src) return;
 
-    if (src.toLowerCase().startsWith('cid:')) {
-      const cid = src.substring(4);
+    if (isCidUrl(src)) {
+      const cid = cidOf(src);
       if (options.messageStructure) {
         const partPath = findPartPathByCID(options.messageStructure, cid);
         if (partPath) {
@@ -396,16 +418,24 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
  * cookie, so the recipient would get broken images and a look at our internal
  * URL shape.
  *
- * What this exists to stop is subtler than an XSS in our own page. It is that
- * replying makes our user a CARRIER: the sender's markup rides their reply out
- * to whoever they answer. The tracking pixel is the sharp case — the reader
- * blocks remote images precisely so a sender cannot learn the mail was read,
- * and quoting the tag unmodified re-arms it in the outgoing copy, under our
- * user's name.
+ * What this exists to stop is subtler than an XSS in our own page (the composer
+ * never makes the quote live markup here: it shows it in a script-less sandboxed
+ * frame, through the display sanitizer). It is that replying makes our user a
+ * CARRIER: the sender's markup rides their reply out to whoever they answer,
+ * and whatever executes in it does so under our user's name.
  *
- * So: remove what executes or fetches on the recipient's behalf, and change
- * nothing else. Remote `src` URLs are left EXACTLY as the sender wrote them —
- * rewriting them is the display concern this function exists to avoid.
+ * So: remove what executes, remove the stylesheets, and change nothing else.
+ * The images stay, as every mail client keeps them: a reply quotes the
+ * original as the recipient saw it, and the recipient's client shows or blocks
+ * its remote images as it does for any message. That a tracking pixel in the
+ * original is a tracking pixel in the quote is the trade-off of quoting at
+ * all; the reader's block protects the reader, not the reply's recipients.
+ * A `<style>` block goes because quoted CSS escapes the quote and restyles the
+ * reply around it, and a `url()` in an inline style goes with it: it fetches
+ * without being content.
+ *
+ * A `cid:` image names a part of the message it came in, which is why a reply
+ * or forward carries the original's inline parts (see inlinePartsOf).
  *
  * Returns a fragment (body innerHTML), not a document — the caller embeds it.
  */
@@ -430,17 +460,13 @@ export function sanitizeQuotedHTML(rawHtml: string): string {
         continue;
       }
       if (name === 'href' || name === 'src' || name === 'srcset' || name === 'action') {
-        // Browsers ignore ASCII whitespace and control characters before
-        // resolving a scheme, so `java\tscript:` is a live URL. Compare with
-        // all of them removed rather than trusting a trim.
-        const scheme = attr.value.toLowerCase().replace(/[^\x21-\x7e]/g, '');
+        const scheme = urlScheme(attr.value);
         if (scheme.startsWith('javascript:') || scheme.startsWith('vbscript:') || scheme.startsWith('data:text/html')) {
           el.removeAttribute(attr.name);
         }
       }
     }
-    // Inline styles survive as formatting, but not as a fetch: a url() in a
-    // style attribute loads on render exactly like an img src does.
+    // Inline styles survive as formatting, not as a fetch: see the docstring.
     const style = el.getAttribute('style');
     if (style && /url\s*\(/i.test(style)) {
       el.setAttribute('style', style.replace(/url\s*\([^)]*\)/gi, ''));

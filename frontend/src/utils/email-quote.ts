@@ -71,10 +71,10 @@ export function generateQuote(
   const eDate = escapeHtml(dateStr);
 
   // The message body is quoted through a sanitizer that removes what executes
-  // or fetches on the RECIPIENT's behalf. Without it, replying makes our user a
-  // carrier: the reader blocks remote images so the sender cannot learn the mail
-  // was read, and quoting the pixel unmodified re-arms it in the outgoing copy,
-  // under our user's name. Scripts and `on*` handlers ride out the same way.
+  // on the RECIPIENT's behalf. Without it, replying makes our user a carrier:
+  // scripts and `on*` handlers ride out under our user's name. The images
+  // stay, as every mail client keeps them; see sanitizeQuotedHTML for why, and
+  // inlinePartsOf for the parts their `cid:` references need.
   const safeHtml = hasHtml && rawMessageHtml ? sanitizeQuotedHTML(rawMessageHtml) : '';
 
   // The HTML quote is marked so the composer can hold it as one piece. Its

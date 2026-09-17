@@ -513,6 +513,8 @@ export class AlpsFloatingComposer extends LitElement {
 
     if (this.instance.format === 'html' && (this.composer as any).editor) {
       const editor = (this.composer as any).editor;
+      // Never over a selected quote: inserting replaces the selection.
+      (this.composer as any).leaveSelectedNode?.();
       if (text) {
         editor.chain().focus()
           .insertContent(`<a href="${url}">${text}</a>`)
@@ -1360,12 +1362,19 @@ export class AlpsFloatingComposer extends LitElement {
               .text=${this.instance.text || ''}
               .htmlText=${this.instance.html || ''}
               .format=${this.instance.format || 'html'}
+              .quoteSource=${this.instance.quoteSource}
               @text-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { text: e.detail.text, html: e.detail.html })}
             ></alps-message-composer>
           </div>
 
           <alps-attachment-list
-            .attachments=${this.instance.attachments || []}
+            .attachments=${
+              // Inline parts are the quote's own images, carried so its cid:
+              // references resolve. As chips the user would see files they never
+              // attached. Removal looks the entry up in the full list, so the
+              // filtered one is fine to hand over.
+              (this.instance.attachments || []).filter((a: any) => !a.inline)
+            }
             .removable=${true}
             .composerMode=${true}
             @remove-attachment=${(e: CustomEvent) => {

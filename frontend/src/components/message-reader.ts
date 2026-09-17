@@ -25,6 +25,7 @@ import { MessageCache } from '../utils/message-cache';
 import { sanitizeMessageHTML } from '../utils/html-sanitizer';
 import { generateQuote } from '../utils/email-quote';
 import { replyContext } from '../utils/reply-context';
+import { inlinePartsOf } from '../utils/attachment-utils';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { Logger } from '../utils/logger';
 import { registry } from '../plugin-registry';
@@ -125,12 +126,18 @@ export class MessageReader extends LitElement {
         hourFormat
       );
 
-      const attachments = action === 'forward' ? this.attachments.map(a => ({
+      // A forward carries the original's attachments; a reply does not. Both
+      // carry its inline parts, which the quote's images name: see inlinePartsOf.
+      const forwarded = action === 'forward' ? this.attachments.map(a => ({
         name: a.Filename || 'attachment',
         size: a.Size || 0,
         type: a.MIMEType || 'application/octet-stream',
         partPath: a.Path ? a.Path.join('.') : undefined
       })) : [];
+      const attachments = [
+        ...forwarded,
+        ...inlinePartsOf(this.message.BodyStructure).filter(part => !forwarded.some(a => a.partPath === part.partPath)),
+      ];
 
       const reply = action === 'reply' || action === 'replyAll' ? replyContext(this.message, this.message.Mailbox || this.mailbox) : {};
 
@@ -142,6 +149,9 @@ export class MessageReader extends LitElement {
         html: quotedHtml,
         format: this.settingsStore?.getState()?.composeFormat || 'html',
         attachments: attachments,
+        // The quote keeps the original's inline images, and the composer
+        // shows them from the original's own parts.
+        quoteSource: { mailbox: this.message.Mailbox || this.mailbox, uid: String(this.message.UID), structure: this.message.BodyStructure },
         ...reply
       });
       return;
@@ -1353,12 +1363,18 @@ export class MessageReader extends LitElement {
         hourFormat
       );
 
-      const attachments = action === 'forward' ? item.attachments.map(a => ({
+      // A forward carries the original's attachments; a reply does not. Both
+      // carry its inline parts, which the quote's images name: see inlinePartsOf.
+      const forwarded = action === 'forward' ? item.attachments.map(a => ({
         name: a.Filename || 'attachment',
         size: a.Size || 0,
         type: a.MIMEType || 'application/octet-stream',
         partPath: a.Path ? a.Path.join('.') : undefined
       })) : [];
+      const attachments = [
+        ...forwarded,
+        ...inlinePartsOf(item.message.BodyStructure).filter(part => !forwarded.some(a => a.partPath === part.partPath)),
+      ];
 
       const reply = action === 'reply' || action === 'replyAll' ? replyContext(item.message, item.mailbox) : {};
 
@@ -1370,6 +1386,9 @@ export class MessageReader extends LitElement {
         html: quotedHtml,
         format: this.settingsStore?.getState()?.composeFormat || 'html',
         attachments: attachments,
+        // The quote keeps the original's inline images, and the composer
+        // shows them from the original's own parts.
+        quoteSource: { mailbox: item.mailbox, uid: String(item.message.UID), structure: item.message.BodyStructure },
         ...reply
       });
       return;
@@ -1492,6 +1511,8 @@ export class MessageReader extends LitElement {
       html: rawMessageHtml,
       format: this.settingsStore?.getState()?.composeFormat || 'html',
       attachments: attachments,
+      // A forward's inline images are the draft's own parts now.
+      quoteSource: { mailbox, uid: msg.UID.toString(), structure: msg.BodyStructure },
       // A reply saved as a draft still answers its message when it is sent.
       inReplyTo: msg.Envelope?.InReplyTo || undefined,
       references: Array.isArray(msg.References) && msg.References.length ? msg.References : undefined
