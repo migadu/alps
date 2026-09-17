@@ -10,7 +10,7 @@ import (
 
 func TestConfigCarriesAuthservIDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "alps.toml")
-	config := "[server]\nprovider_type = \"imap\"\n[smtp]\nserver = \"smtps://smtp.example.com:465\"\n[provider.imap]\nserver = \"imaps://imap.example.com:993\"\nauthserv_ids = [\"mx.example.com\", \"mx2.example.com\"]\n"
+	config := "[smtp]\nserver = \"smtps://smtp.example.com:465\"\n[provider.imap]\nserver = \"imaps://imap.example.com:993\"\nauthserv_ids = [\"mx.example.com\", \"mx2.example.com\"]\n"
 	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}

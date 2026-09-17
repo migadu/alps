@@ -5,7 +5,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-type ConfigFactory func(data *toml.Primitive) (Config, error)
+type ConfigFactory func(meta *toml.MetaData, data *toml.Primitive) (Config, error)
 
 var providerMap = make(map[string]ConfigFactory)
 
@@ -18,7 +18,7 @@ func Register(name string, f ConfigFactory) {
 	providerMap[name] = f
 }
 
-func LoadConfig(name string, config *toml.Primitive) (Config, error) {
+func LoadConfig(name string, meta *toml.MetaData, data *toml.Primitive) (Config, error) {
 
 	if name == "" {
 		return nil, fmt.Errorf("no provider type")
@@ -28,5 +28,5 @@ func LoadConfig(name string, config *toml.Primitive) (Config, error) {
 		return nil, fmt.Errorf("unknown provider type '%s'", name)
 	}
 
-	return pcf(config)
+	return pcf(meta, data)
 }
