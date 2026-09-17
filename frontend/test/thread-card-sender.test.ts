@@ -9,10 +9,10 @@ import '../src/components/alps-thread-card';
 
 const TAG = 'alps-thread-card';
 
-const message = (verdict: Record<string, boolean> = {}) => ({
+const message = (verdict: Record<string, boolean> = {}, from: unknown = { Name: 'Brand', Mailbox: 'news', Host: 'brand.test' }) => ({
   UID: '7',
   Flags: ['\\Seen'],
-  Envelope: { From: [{ Name: 'Brand', Mailbox: 'news', Host: 'brand.test' }], To: [], Cc: [], Subject: 'Offer', Date: '2026-09-01T10:00:00Z' },
+  Envelope: { From: [from], To: [], Cc: [], Subject: 'Offer', Date: '2026-09-01T10:00:00Z' },
   ...verdict,
 });
 
@@ -50,6 +50,20 @@ describe('thread card sender', () => {
     const el = await mount(TAG, { item: item(message({ HasBimiFailed: true })), mailbox: 'INBOX', showSenderAvatars: false });
     expect(shadowAll(el, 'alps-avatar')).toHaveLength(0);
     expect(shadow<HTMLElement & { failed: boolean }>(el, 'alps-sender-auth-badge').failed).toBe(true);
+  });
+
+  it('names the sender and prints the sending address under it', async () => {
+    const el = await mount(TAG, { item: item(message()), mailbox: 'INBOX' });
+    expect(shadow(el, '.thread-card-sender-name').textContent?.trim()).toBe('Brand');
+    expect(shadow(el, '.thread-card-sender-address').textContent?.trim()).toBe('news@brand.test');
+    expect(shadow(el, '.thread-card-sender').getAttribute('title')).toBe('Brand <news@brand.test>');
+  });
+
+  it('shows the address once when the sender gave no distinct name', async () => {
+    const el = await mount(TAG, { item: item(message({}, { Mailbox: 'news', Host: 'brand.test' })), mailbox: 'INBOX' });
+    expect(shadow(el, '.thread-card-sender-name').textContent?.trim()).toBe('news@brand.test');
+    expect(shadowAll(el, '.thread-card-sender-address')).toHaveLength(0);
+    expect(shadow(el, '.thread-card-sender').getAttribute('title')).toBe('news@brand.test');
   });
 
   it('warns above the body of an expanded message that failed its checks, and only that one', async () => {

@@ -109,12 +109,38 @@ export class AlpsThreadCard extends LitElement {
     }
 
     .thread-card-sender {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+      max-width: 200px;
+      line-height: 1.2;
+    }
+
+    .thread-card-sender-heading {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .thread-card-sender-name {
       font-weight: 600;
       font-size: 14px;
+      line-height: 1.25;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 200px;
+    }
+
+    .thread-card-sender-address {
+      font-size: 12px;
+      font-weight: 400;
+      line-height: 1.2;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .avatar-container {
@@ -187,7 +213,7 @@ export class AlpsThreadCard extends LitElement {
       background: var(--bg-unread-hover, rgba(234, 179, 8, 0.12)) !important;
     }
 
-    .thread-card-sender.unread {
+    .thread-card-sender.unread .thread-card-sender-name {
       font-weight: 700;
     }
 
@@ -477,6 +503,10 @@ export class AlpsThreadCard extends LitElement {
     const sender = msg.Envelope?.From?.[0] || {};
     const senderAddress = sender.Mailbox && sender.Host ? `${sender.Mailbox}@${sender.Host}` : '';
     const senderName = sender.Name || senderAddress || (this.i18nStore?.t('messageList.unknownSender'));
+    // The address earns its own line only where the name does not already say it.
+    // Without a name the heading IS the address, and repeating it reads as a bug.
+    const hasDistinctName = Boolean(senderAddress && sender.Name?.trim() && sender.Name.trim() !== senderAddress);
+    const senderTitle = hasDistinctName ? `${sender.Name} <${senderAddress}>` : (senderAddress || senderName);
 
     const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
     const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
@@ -500,8 +530,13 @@ export class AlpsThreadCard extends LitElement {
                 <alps-avatar .name=${senderName} .email=${senderAddress} .size=${28} .src=${bimiUrl}></alps-avatar>
               </div>
             ` : ''}
-            <div class="thread-card-sender ${isUnread ? 'unread' : ''}">${senderName}</div>
-            <alps-sender-auth-badge ?verified=${!!msg.HasBimiPotential} ?failed=${!!msg.HasBimiFailed}></alps-sender-auth-badge>
+            <div class="thread-card-sender ${isUnread ? 'unread' : ''}" title=${senderTitle}>
+              <div class="thread-card-sender-heading">
+                <span class="thread-card-sender-name">${senderName}</span>
+                <alps-sender-auth-badge ?verified=${!!msg.HasBimiPotential} ?failed=${!!msg.HasBimiFailed}></alps-sender-auth-badge>
+              </div>
+              ${hasDistinctName ? html`<span class="thread-card-sender-address">${senderAddress}</span>` : ''}
+            </div>
             ${!this.item.expanded ? html`<div class="thread-card-snippet">${snippet}</div>` : ''}
           </div>
           <div class="thread-card-meta">
