@@ -1,4 +1,4 @@
-.PHONY: all clean build build-frontend install build-freebsd build-linux help test test-coverage
+.PHONY: all clean build build-frontend install build-freebsd build-linux help test test-coverage test-e2e
 
 # Binary names
 ALPS_BINARY ?= build/alps
@@ -45,6 +45,10 @@ clean:
 test:
 	go test -v ./...
 
+# Run the browser tests against a local mail stack (see docs/E2E.md)
+test-e2e:
+	scripts/e2e.sh
+
 # Help
 help:
 	@echo "Available targets:"
@@ -56,6 +60,7 @@ help:
 	@echo "  build-linux    - Cross-compile for Linux amd64"
 	@echo "  clean          - Remove build artifacts"
 	@echo "  test           - Run tests"
+	@echo "  test-e2e       - Run the browser tests (needs a sora checkout and PostgreSQL)"
 	@echo "  test-coverage  - Run tests and show coverage in HTML"
 
 # Run tests and show coverage

@@ -49,6 +49,7 @@ Dive deeper into how ALPS works:
 - [Attachment Handling](docs/ATTACHMENTS.md)
 - [Plugin System](docs/PLUGINS.md)
 - [TLS & SSL Configuration](docs/TLS.md)
+- [Browser Tests](docs/E2E.md)
 
 ## AI Assistance Policy
 

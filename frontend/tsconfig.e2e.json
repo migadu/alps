@@ -1,0 +1,18 @@
+// Typechecking for the browser tests.
+//
+// A separate config rather than an entry in tsconfig.json: the specs run under
+// Node (`process.env`, `Buffer`) and need @types/node, and loading that for
+// `src/` would put Node globals in scope for browser code — `setTimeout` would
+// type as returning `NodeJS.Timeout`, and a component using `process` or
+// `Buffer` would typecheck and then throw in the browser. The explicit `types`
+// in both configs is what keeps them apart.
+//
+// This catches drift in the specs' own shapes. It cannot catch a locator whose
+// text or role the page no longer renders; only running the suite does.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["e2e", "playwright.config.ts"]
+}
