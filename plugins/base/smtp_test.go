@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
@@ -376,5 +377,125 @@ func TestSendMessage_ReportsTheRefusedRecipient(t *testing.T) {
 	var smtpErr *smtp.SMTPError
 	if err == nil || !strings.Contains(err.Error(), "refused@example.com") || !errors.As(err, &smtpErr) && !strings.Contains(err.Error(), "550") {
 		t.Errorf("got %v, want the server's refusal naming the address", err)
+	}
+}
+
+// structure describes a written message as a tree of media types, each leaf
+// with its disposition and Content-ID: enough to see where a part landed.
+func structure(t *testing.T, raw string) string {
+	t.Helper()
+	e, err := message.Read(strings.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var walk func(*message.Entity) string
+	walk = func(e *message.Entity) string {
+		mediaType, _, _ := e.Header.ContentType()
+		if mr := e.MultipartReader(); mr != nil {
+			var children []string
+			for {
+				p, err := mr.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				children = append(children, walk(p))
+			}
+			return mediaType + "[" + strings.Join(children, " ") + "]"
+		}
+		disp, _, _ := e.Header.ContentDisposition()
+		leaf := mediaType
+		if disp != "" {
+			leaf += ";" + disp
+		}
+		if id := e.Header.Get("Content-Id"); id != "" {
+			leaf += id
+		}
+		return leaf
+	}
+	return walk(e)
+}
+
+func chartImage(cid string) *imapAttachment {
+	return &imapAttachment{
+		Node:   &IMAPPartNode{MIMEType: "image/png", Filename: "chart.png"},
+		Body:   []byte("\x89PNG\r\n"),
+		CID:    cid,
+		Inline: true,
+	}
+}
+
+// The body's images travel beside the HTML that names them, under the same
+// Content-ID, so the recipient's client can resolve every cid: reference.
+func TestOutgoingMessage_InlineImagesTravelWithTheHTML(t *testing.T) {
+	pdf := memAttachment{name: "report.pdf", mimeType: "application/pdf", body: []byte("%PDF")}
+
+	for name, tc := range map[string]struct {
+		html        string
+		attachments []Attachment
+		want        string
+	}{
+		"images only": {
+			html:        `<img src="cid:chart@remote.test">`,
+			attachments: []Attachment{chartImage("chart@remote.test")},
+			want:        "multipart/related[multipart/alternative[text/plain;inline text/html;inline] image/png;inline<chart@remote.test>]",
+		},
+		"images and a file": {
+			html:        `<img src="cid:chart@remote.test">`,
+			attachments: []Attachment{pdf, chartImage("chart@remote.test")},
+			want:        "multipart/mixed[multipart/related[multipart/alternative[text/plain;inline text/html;inline] image/png;inline<chart@remote.test>] application/pdf;attachment]",
+		},
+		// Without HTML nothing refers to the image, so it goes as a file, and
+		// keeps its ID.
+		"no HTML": {
+			attachments: []Attachment{chartImage("chart@remote.test")},
+			want:        "multipart/mixed[text/plain;inline image/png;attachment<chart@remote.test>]",
+		},
+		// An ID that could not be written back as one is not written at all.
+		"an ID that is not one": {
+			html:        `<p>hi</p>`,
+			attachments: []Attachment{chartImage("chart>\r\nBcc: victim@example.com")},
+			want:        "multipart/mixed[multipart/alternative[text/plain;inline text/html;inline] image/png;attachment]",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			msg := outgoing()
+			msg.HTML = tc.html
+			msg.Attachments = tc.attachments
+			var buf bytes.Buffer
+			if _, err := msg.WriteTo(&buf); err != nil {
+				t.Fatal(err)
+			}
+			if got := structure(t, buf.String()); got != tc.want {
+				t.Errorf("structure\n got %s\nwant %s", got, tc.want)
+			}
+			if strings.Contains(headerSection(buf.String()), "victim") {
+				t.Error("a part's ID reached the message header")
+			}
+		})
+	}
+}
+
+// What the parts hold survives the new layout: the text, the HTML, and the
+// image's bytes.
+func TestOutgoingMessage_RelatedPartsKeepTheirContent(t *testing.T) {
+	msg := outgoing()
+	msg.HTML = `<p>see <img src="cid:chart@remote.test"></p>`
+	msg.Attachments = []Attachment{chartImage("chart@remote.test")}
+	h, parts, _ := render(t, msg)
+	if ct, params, _ := h.ContentType(); ct != "multipart/related" || params["type"] != "multipart/alternative" {
+		t.Errorf("Content-Type = %q %v", ct, params)
+	}
+	var bodies []string
+	for _, p := range parts {
+		bodies = append(bodies, p.body)
+	}
+	joined := strings.Join(bodies, "|")
+	for _, want := range []string{"text body", `cid:chart@remote.test`, "\x89PNG\r\n"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("no part holds %q: %q", want, joined)
+		}
 	}
 }

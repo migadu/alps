@@ -378,15 +378,7 @@ test("the forwarded-message header names the original sender", async ({ page }) 
   await expect(composerBody(page)).toContainText("From: Ada Lovelace <ada@remote.test>");
 });
 
-// FIXME(alps): a forward sends without the original's attachments. The
-// composer names them as parts of the original (`prev_attachments`), but the
-// server resolves those only against the draft being replaced or the message
-// being replied to (plugins/base/routes.go, handleComposeNew: `sourcePath` is
-// `draftPath` or `inReplyToPath`), and a forward carries neither — the reader
-// builds reply context for reply and reply-all only (message-reader.ts,
-// `_handleAction`). With no source the parts are skipped silently: the chip
-// is on screen, the submitted message has no attachment.
-test.fixme("forwarding carries the original's attachment, byte for byte", async ({ page }) => {
+test("forwarding carries the original's attachment, byte for byte", async ({ page }) => {
   // A forwarded attachment is carried as a REFERENCE to the original's part —
   // nothing is downloaded into the composer — so the chip on screen proves
   // nothing about what gets sent. The claim a user holds is that the
@@ -586,13 +578,10 @@ test("replying to an HTML message keeps its layout and its images in the quote",
   await expect.poll(async () => (await frameLayout(quoteFrame(page))).cells).toEqual(["cell A", "cell B"]);
 });
 
-// FIXME(alps): a forwarded HTML message arrives with a broken inline image.
-// The image's part is dropped for the reason given above the attachment test,
-// and a part that IS carried (a reply's) goes out as a plain attachment with
-// no Content-ID (plugins/base/smtp.go, writeAttachment sets only type and
-// filename), so the quote's `cid:` reference resolves for nobody. The arrived
-// copy's frame then also logs a CSP refusal for the unresolved `cid:` image.
-test.fixme("forwarding an HTML message sends its layout and its inline image", async ({ page }) => {
+// The image has to leave under the Content-ID the quote names it by: without
+// it the reference resolves for nobody, and the arrived copy's frame logs a
+// CSP refusal for the unresolved `cid:` image, which fails this test too.
+test("forwarding an HTML message sends its layout and its inline image", async ({ page }) => {
   // The round trip is the claim: what arrives is laid out as the original was,
   // and the inline image the forward carries resolves in it.
   const subject = `Figures to pass on ${Date.now()}`;

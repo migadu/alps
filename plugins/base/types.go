@@ -208,6 +208,33 @@ func (msg *IMAPMessage) Attachments() []IMAPPartNode {
 	return attachments
 }
 
+// EmbeddedParts returns the parts the body refers to by Content-ID and that
+// Attachments leaves out: the body's own images. A composer carrying them
+// needs their paths, but must not show them as files.
+func (msg *IMAPMessage) EmbeddedParts() []IMAPPartNode {
+	if msg.BodyStructure == nil {
+		return nil
+	}
+	files := msg.Attachments()
+	var parts []IMAPPartNode
+	msg.BodyStructure.Walk(func(path []int, part imap.BodyStructure) bool {
+		singlePart, ok := part.(*imap.BodyStructureSinglePart)
+		if !ok || singlePart.ID == "" {
+			return true
+		}
+		for _, f := range files {
+			if pathsEqual(f.Path, path) {
+				return true
+			}
+		}
+		node := newIMAPPartNode(msg, path, singlePart)
+		node.IsInline = true
+		parts = append(parts, *node)
+		return true
+	})
+	return parts
+}
+
 func pathsEqual(a, b []int) bool {
 	if len(a) != len(b) {
 		return false

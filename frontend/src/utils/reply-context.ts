@@ -24,8 +24,18 @@ export function replyContext(message: any, mailbox: string): ReplyContext {
   return context;
 }
 
-/** The form fields a composer sends for its reply context. */
-export function appendReplyFields(formData: FormData, context: ReplyContext) {
+/**
+ * The form fields a composer sends for what it answers and what it quotes.
+ *
+ * The quoted message is sent apart from the answered one because a forward
+ * quotes a message and answers none: the parts it carries (its attachments,
+ * the quote's inline images) are named by their place in that message, and
+ * the server needs to know which message that is.
+ */
+export function appendReplyFields(
+  formData: FormData,
+  context: ReplyContext & { quoteSource?: { mailbox: string; uid: string } },
+) {
   if (context.inReplyTo) {
     formData.append('in_reply_to', context.inReplyTo);
   }
@@ -35,5 +45,9 @@ export function appendReplyFields(formData: FormData, context: ReplyContext) {
   if (context.replyMailbox && context.replyUid) {
     formData.append('reply_mailbox', context.replyMailbox);
     formData.append('reply_uid', context.replyUid);
+  }
+  if (context.quoteSource?.mailbox && context.quoteSource.uid) {
+    formData.append('source_mailbox', context.quoteSource.mailbox);
+    formData.append('source_uid', context.quoteSource.uid);
   }
 }

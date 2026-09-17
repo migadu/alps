@@ -44,6 +44,20 @@ type imapAttachment struct {
 	Node    *IMAPPartNode
 
 	Body []byte
+
+	// The part's Content-ID in the message it is carried from, without angle
+	// brackets, and whether it was part of that message's body there. An HTML
+	// body names such a part by cid:, so it must arrive under the same ID.
+	CID    string
+	Inline bool
+}
+
+func (att *imapAttachment) ContentID() string {
+	return att.CID
+}
+
+func (att *imapAttachment) IsInline() bool {
+	return att.Inline
 }
 
 func (att *imapAttachment) Open() (io.ReadCloser, error) {
@@ -92,11 +106,46 @@ func (msg *OutgoingMessage) ToString() string {
 	return strings.Join(msg.To, ", ")
 }
 
+// contentID is the Content-ID an attachment has to keep, if it has one. The
+// ID is read from another message, so one that could not be written back as
+// a msg-id — whitespace, brackets, anything outside printable ASCII — is
+// dropped rather than let into a header.
+func contentID(att Attachment) string {
+	c, ok := att.(interface{ ContentID() string })
+	if !ok {
+		return ""
+	}
+	id := c.ContentID()
+	if id == "" || len(id) > 998 {
+		return ""
+	}
+	for _, r := range id {
+		if r <= ' ' || r > '~' || r == '<' || r == '>' {
+			return ""
+		}
+	}
+	return id
+}
+
+func setContentID(h *message.Header, att Attachment) {
+	if id := contentID(att); id != "" {
+		h.Set("Content-Id", "<"+id+">")
+	}
+}
+
+// embedded reports whether att is one of the HTML body's own images rather
+// than a file: carried inline, under a Content-ID the body refers to.
+func embedded(att Attachment) bool {
+	i, ok := att.(interface{ IsInline() bool })
+	return ok && i.IsInline() && contentID(att) != ""
+}
+
 func writeAttachment(mw *mail.Writer, att Attachment) error {
 	var h mail.AttachmentHeader
 	t, params := att.MIMEType()
 	h.SetContentType(t, params)
 	h.SetFilename(att.Filename())
+	setContentID(&h.Header, att)
 
 	aw, err := mw.CreateAttachment(h)
 	if err != nil {
@@ -268,6 +317,21 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) (int64, error) {
 		return cw.n, nil
 	}
 
+	var images, files []Attachment
+	for _, att := range msg.Attachments {
+		if hasHTML && embedded(att) {
+			images = append(images, att)
+		} else {
+			files = append(files, att)
+		}
+	}
+	if len(images) > 0 {
+		if err := msg.writeRelated(cw, h, images, files); err != nil {
+			return cw.n, err
+		}
+		return cw.n, nil
+	}
+
 	mw, err := mail.CreateWriter(cw, h)
 	if err != nil {
 		return cw.n, fmt.Errorf("failed to create mail writer: %v", err)
@@ -326,7 +390,7 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) (int64, error) {
 		}
 	}
 
-	for _, att := range msg.Attachments {
+	for _, att := range files {
 		if err := writeAttachment(mw, att); err != nil {
 			return cw.n, err
 		}
@@ -337,6 +401,120 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) (int64, error) {
 	}
 
 	return cw.n, nil
+}
+
+// writeRelated writes an HTML message whose body shows images of its own:
+//
+//	multipart/mixed              (only when there are files as well)
+//	  multipart/related
+//	    multipart/alternative    text, then HTML
+//	    image …                  inline, under the Content-ID the HTML names
+//	  file …
+//
+// The images sit beside the HTML that refers to them, where a client looks a
+// cid: reference up, and are not offered as files the sender attached.
+func (msg *OutgoingMessage) writeRelated(w io.Writer, h mail.Header, images, files []Attachment) error {
+	var relatedHeader message.Header
+	relatedHeader.SetContentType("multipart/related", map[string]string{"type": "multipart/alternative"})
+
+	var root, related *message.Writer
+	var err error
+	if len(files) == 0 {
+		h.SetContentType("multipart/related", map[string]string{"type": "multipart/alternative"})
+		if root, err = message.CreateWriter(w, h.Header); err != nil {
+			return fmt.Errorf("failed to create mail writer: %v", err)
+		}
+		related = root
+	} else {
+		h.SetContentType("multipart/mixed", nil)
+		if root, err = message.CreateWriter(w, h.Header); err != nil {
+			return fmt.Errorf("failed to create mail writer: %v", err)
+		}
+		if related, err = root.CreatePart(relatedHeader); err != nil {
+			return fmt.Errorf("failed to create related part: %v", err)
+		}
+	}
+
+	var altHeader message.Header
+	altHeader.SetContentType("multipart/alternative", nil)
+	alt, err := related.CreatePart(altHeader)
+	if err != nil {
+		return fmt.Errorf("failed to create alternative part: %v", err)
+	}
+	if err := writeTextPart(alt, "text/plain", msg.Text); err != nil {
+		return err
+	}
+	if err := writeTextPart(alt, "text/html", msg.HTML); err != nil {
+		return err
+	}
+	if err := alt.Close(); err != nil {
+		return fmt.Errorf("failed to close alternative part: %v", err)
+	}
+
+	for _, att := range images {
+		if err := writeBinaryPart(related, att, "inline"); err != nil {
+			return err
+		}
+	}
+	if related != root {
+		if err := related.Close(); err != nil {
+			return fmt.Errorf("failed to close related part: %v", err)
+		}
+	}
+
+	for _, att := range files {
+		if err := writeBinaryPart(root, att, "attachment"); err != nil {
+			return err
+		}
+	}
+	if err := root.Close(); err != nil {
+		return fmt.Errorf("failed to close mail writer: %v", err)
+	}
+	return nil
+}
+
+func writeTextPart(parent *message.Writer, mediaType, body string) error {
+	var h message.Header
+	h.SetContentType(mediaType, map[string]string{"charset": "utf-8"})
+	h.Set("Content-Disposition", "inline")
+	h.Set("Content-Transfer-Encoding", "quoted-printable")
+	pw, err := parent.CreatePart(h)
+	if err != nil {
+		return fmt.Errorf("failed to create %s part: %v", mediaType, err)
+	}
+	if _, err := io.WriteString(pw, body); err != nil {
+		return fmt.Errorf("failed to write %s part: %v", mediaType, err)
+	}
+	if err := pw.Close(); err != nil {
+		return fmt.Errorf("failed to close %s part: %v", mediaType, err)
+	}
+	return nil
+}
+
+func writeBinaryPart(parent *message.Writer, att Attachment, disposition string) error {
+	var h message.Header
+	t, params := att.MIMEType()
+	h.SetContentType(t, params)
+	h.SetContentDisposition(disposition, map[string]string{"filename": att.Filename()})
+	h.Set("Content-Transfer-Encoding", "base64")
+	setContentID(&h, att)
+
+	pw, err := parent.CreatePart(h)
+	if err != nil {
+		return fmt.Errorf("failed to create attachment: %v", err)
+	}
+	f, err := att.Open()
+	if err != nil {
+		return fmt.Errorf("failed to open attachment: %v", err)
+	}
+	defer f.Close()
+	if _, err := io.Copy(pw, f); err != nil {
+		return fmt.Errorf("failed to write attachment: %v", err)
+	}
+	if err := pw.Close(); err != nil {
+		return fmt.Errorf("failed to close attachment: %v", err)
+	}
+	return nil
 }
 
 func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {

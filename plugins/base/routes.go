@@ -1423,6 +1423,16 @@ func handleComposeNew(ctx *alps.Context) error {
 		}
 	}
 
+	// The message a reply or forward quotes, whose parts it carries. A forward
+	// answers nothing, so without this its parts had nowhere to come from and
+	// were dropped without a word: the chips on screen, the file not sent.
+	var quotedPath *messagePath
+	if sourceMbox := ctx.FormValue("source_mailbox"); sourceMbox != "" {
+		if sourceUidStr := ctx.FormValue("source_uid"); sourceUidStr != "" {
+			quotedPath = &messagePath{Mailbox: sourceMbox, Uid: sourceUidStr}
+		}
+	}
+
 	prevAttachmentsRaw := ctx.FormValue("prev_attachments")
 	var prevAttachments []string
 	for _, p := range strings.Split(prevAttachmentsRaw, ",") {
@@ -1433,65 +1443,77 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	if len(prevAttachments) > 0 {
+		// A saved draft holds every part the composer carries, renumbered, so
+		// once there is one the parts are read from it.
 		var sourcePath *messagePath
-		if draftPath != nil {
+		switch {
+		case draftPath != nil:
 			sourcePath = draftPath
-		} else if inReplyToPath != nil {
+		case quotedPath != nil:
+			sourcePath = quotedPath
+		case inReplyToPath != nil:
 			sourcePath = inReplyToPath
 		}
+		if sourcePath == nil {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "attachments name a message part, but no message to take it from"})
+		}
 
-		if sourcePath != nil {
-			err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-				for _, pathStr := range prevAttachments {
-					partPath, err := parsePartPath(pathStr)
-					if err != nil {
-						return fmt.Errorf("invalid part path: %v", err)
-					}
-					parsedUid, err := p.ParseMessageID(sourcePath.Uid)
-					if err != nil {
-						return fmt.Errorf("invalid UID: %v", err)
-					}
-					_, entity, _, _, err := p.GetMessagePartWithData(sourcePath.Mailbox, parsedUid, partPath)
-					if err != nil {
-						return fmt.Errorf("failed to fetch attachment %s: %v", pathStr, err)
-					}
-
-					mimeType, _, _ := entity.Header.ContentType()
-					_, dispParams, _ := entity.Header.ContentDisposition()
-					filename := dispParams["filename"]
-					if filename == "" {
-						_, ctParams, _ := entity.Header.ContentType()
-						filename = ctParams["name"]
-					}
-					if mimeType == "" {
-						mimeType = "application/octet-stream"
-					}
-
-					// We have to decode Content-Transfer-Encoding for the bodyData.
-					// wait, entity.Body is an io.Reader that is ALREADY decoded!
-					// We can just read from entity.Body!
-					decodedBody, err := io.ReadAll(entity.Body)
-					if err != nil {
-						return fmt.Errorf("failed to decode attachment body: %v", err)
-					}
-
-					node := &IMAPPartNode{
-						Path:     partPath,
-						MIMEType: mimeType,
-						Filename: filename,
-					}
-					msg.Attachments = append(msg.Attachments, &imapAttachment{
-						Mailbox: sourcePath.Mailbox,
-						Uid:     sourcePath.Uid,
-						Node:    node,
-						Body:    decodedBody,
-					})
+		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+			for _, pathStr := range prevAttachments {
+				partPath, err := parsePartPath(pathStr)
+				if err != nil {
+					return fmt.Errorf("invalid part path: %v", err)
 				}
-				return nil
-			})
-			if err != nil {
-				return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to fetch previous attachments: " + err.Error()})
+				parsedUid, err := p.ParseMessageID(sourcePath.Uid)
+				if err != nil {
+					return fmt.Errorf("invalid UID: %v", err)
+				}
+				_, entity, _, _, err := p.GetMessagePartWithData(sourcePath.Mailbox, parsedUid, partPath)
+				if err != nil {
+					return fmt.Errorf("failed to fetch attachment %s: %v", pathStr, err)
+				}
+
+				mimeType, _, _ := entity.Header.ContentType()
+				disposition, dispParams, _ := entity.Header.ContentDisposition()
+				filename := dispParams["filename"]
+				if filename == "" {
+					_, ctParams, _ := entity.Header.ContentType()
+					filename = ctParams["name"]
+				}
+				if mimeType == "" {
+					mimeType = "application/octet-stream"
+				}
+				contentID := strings.Trim(strings.TrimSpace(entity.Header.Get("Content-Id")), "<>")
+
+				// We have to decode Content-Transfer-Encoding for the bodyData.
+				// wait, entity.Body is an io.Reader that is ALREADY decoded!
+				// We can just read from entity.Body!
+				decodedBody, err := io.ReadAll(entity.Body)
+				if err != nil {
+					return fmt.Errorf("failed to decode attachment body: %v", err)
+				}
+
+				node := &IMAPPartNode{
+					Path:     partPath,
+					MIMEType: mimeType,
+					Filename: filename,
+				}
+				msg.Attachments = append(msg.Attachments, &imapAttachment{
+					Mailbox: sourcePath.Mailbox,
+					Uid:     sourcePath.Uid,
+					Node:    node,
+					Body:    decodedBody,
+					CID:     contentID,
+					// A part with a Content-ID belongs to the body unless it says
+					// it is an attachment; an image in multipart/related often
+					// gives no disposition at all.
+					Inline: contentID != "" && !strings.EqualFold(disposition, "attachment"),
+				})
 			}
+			return nil
+		})
+		if err != nil {
+			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to fetch previous attachments: " + err.Error()})
 		}
 	}
 
@@ -1522,6 +1544,18 @@ func handleComposeNew(ctx *alps.Context) error {
 						"size":     a.Size,
 						"type":     a.MIMEType,
 						"partPath": formatPartPath(a.Path),
+					})
+				}
+				// The body's images too, marked inline: the composer replaces
+				// what it carries with this list, and left out they were not
+				// carried by the next save or by the send.
+				for _, a := range msgIMAP.EmbeddedParts() {
+					respAttachments = append(respAttachments, map[string]interface{}{
+						"name":     a.Filename,
+						"size":     a.Size,
+						"type":     a.MIMEType,
+						"partPath": formatPartPath(a.Path),
+						"inline":   true,
 					})
 				}
 			}
