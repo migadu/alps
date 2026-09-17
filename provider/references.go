@@ -5,6 +5,17 @@ import (
 	"unicode"
 )
 
+// ReferenceFinder is implemented by providers that can find the messages of a
+// conversation in another mailbox. Threading sees one mailbox at a time, and
+// the replies a user sends are filed in Sent, away from what they answer.
+type ReferenceFinder interface {
+	// FindByReferences returns the messages in mailbox whose Message-ID is one
+	// of ids, or whose In-Reply-To or References names one. It follows what it
+	// finds, within a bound, so a reply to a found message is found as well.
+	// IDs are given, and compared, without their angle brackets.
+	FindByReferences(mailbox string, ids []string) ([]Message, error)
+}
+
 // MessageIDs reads the message IDs in a Message-ID, In-Reply-To or References
 // value, without their angle brackets. A value with no bracketed ID is read as
 // bare IDs, which is how some senders write In-Reply-To. An ID with a space or
@@ -36,4 +47,27 @@ func wellFormedMessageID(id string) bool {
 		}
 	}
 	return true
+}
+
+// ConversationIDs collects the message IDs that tie msgs together: each one's
+// own, and the ones it names in In-Reply-To and References.
+func ConversationIDs(msgs []Message) []string {
+	seen := make(map[string]bool)
+	var ids []string
+	add := func(values []string) {
+		for _, id := range values {
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	for _, m := range msgs {
+		if m.Envelope != nil {
+			add(MessageIDs(m.Envelope.MessageID))
+			add(MessageIDs(m.Envelope.InReplyTo))
+		}
+		add(MessageIDs(strings.Join(m.References, " ")))
+	}
+	return ids
 }

@@ -1013,7 +1013,7 @@ func handleGetThread(ctx *alps.Context) error {
 			return parseErr
 		}
 
-		threadMsgs, threadErr := getMessageThreadWithProvider(p, mboxName, uid)
+		threadMsgs, threadErr := getConversationWithProvider(p, mboxName, uid, ctx.Server.Logger().Printf)
 		if threadErr != nil {
 			return threadErr
 		}

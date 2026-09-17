@@ -1,6 +1,9 @@
 package alpsbase
 
 import (
+	"sort"
+	"time"
+
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/migadu/alps/provider"
@@ -256,26 +259,22 @@ func copyMessagesWithProvider(p provider.MailProvider, srcMailbox, dstMailbox st
 	return p.CopyMessages(srcMailbox, dstMailbox, uids)
 }
 
-// getMessageThreadWithProvider gets a message thread using the provider
-func getMessageThreadWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID) ([]IMAPMessage, error) {
-	type threadCapable interface {
-		GetMessageThread(mailbox string, targetUID provider.MessageID) ([]provider.Message, error)
-	}
-
-	var msgs []provider.Message
-	var err error
-	if tc, ok := p.(threadCapable); ok {
-		msgs, err = tc.GetMessageThread(mailbox, uid)
-	} else {
-		var singleMsg *provider.Message
-		singleMsg, err = p.GetMessageMetadata(mailbox, uid)
-		if err == nil {
-			msgs = []provider.Message{*singleMsg}
-		}
-	}
-
+// getConversationWithProvider returns a message's conversation, oldest first:
+// its thread in mailbox, and the messages of it filed in Sent. Threading sees
+// one mailbox at a time, and the replies a user sends are not in the mailbox
+// of the messages they answer. A failed look in Sent is logged, and the thread
+// is returned as it is.
+func getConversationWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, logf func(format string, args ...interface{})) ([]IMAPMessage, error) {
+	thread, err := messageThreadWithProvider(p, mailbox, uid)
 	if err != nil {
 		return nil, err
+	}
+
+	msgs := thread
+	if sent, err := sentOfConversation(p, mailbox, thread); err != nil {
+		logf("looking in Sent for the conversation of %s/%s: %v", mailbox, uid, err)
+	} else {
+		msgs = mergeConversation(thread, sent)
 	}
 
 	result := make([]IMAPMessage, len(msgs))
@@ -283,4 +282,74 @@ func getMessageThreadWithProvider(p provider.MailProvider, mailbox string, uid p
 		result[i] = providerMessageToIMAP(m)
 	}
 	return result, nil
+}
+
+// messageThreadWithProvider gets a message's thread in its mailbox.
+func messageThreadWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID) ([]provider.Message, error) {
+	type threadCapable interface {
+		GetMessageThread(mailbox string, targetUID provider.MessageID) ([]provider.Message, error)
+	}
+	if tc, ok := p.(threadCapable); ok {
+		return tc.GetMessageThread(mailbox, uid)
+	}
+	msg, err := p.GetMessageMetadata(mailbox, uid)
+	if err != nil {
+		return nil, err
+	}
+	return []provider.Message{*msg}, nil
+}
+
+// sentOfConversation finds the messages of a thread's conversation in Sent,
+// unless the thread is in Sent already.
+func sentOfConversation(p provider.MailProvider, mailbox string, thread []provider.Message) ([]provider.Message, error) {
+	finder, ok := p.(provider.ReferenceFinder)
+	if !ok {
+		return nil, nil
+	}
+	ids := provider.ConversationIDs(thread)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	sent, err := p.FindMailboxByType(provider.MailboxTypeSent)
+	if err != nil || sent == nil || sent.Name == mailbox {
+		return nil, err
+	}
+	return finder.FindByReferences(sent.Name, ids)
+}
+
+// mergeConversation adds the sent messages a thread lacks, and orders them all
+// by date. A message in both, such as one sent to oneself, is shown once, from
+// the thread.
+func mergeConversation(thread, sent []provider.Message) []provider.Message {
+	have := make(map[string]bool)
+	for _, m := range thread {
+		for _, id := range ownMessageIDs(m) {
+			have[id] = true
+		}
+	}
+	merged := append([]provider.Message(nil), thread...)
+	for _, m := range sent {
+		if ids := ownMessageIDs(m); len(ids) > 0 && have[ids[0]] {
+			continue
+		}
+		merged = append(merged, m)
+	}
+	sort.SliceStable(merged, func(i, j int) bool {
+		return messageDate(merged[i]).Before(messageDate(merged[j]))
+	})
+	return merged
+}
+
+func ownMessageIDs(m provider.Message) []string {
+	if m.Envelope == nil {
+		return nil
+	}
+	return provider.MessageIDs(m.Envelope.MessageID)
+}
+
+func messageDate(m provider.Message) time.Time {
+	if m.Envelope == nil {
+		return time.Time{}
+	}
+	return m.Envelope.Date
 }
