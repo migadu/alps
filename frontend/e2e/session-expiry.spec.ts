@@ -109,14 +109,9 @@ test("an expired session on the tasks page routes back to sign-in", async ({ pag
   await expect(page.locator("login-page").getByText(EXPIRED_NOTICE)).toBeVisible();
 });
 
-// FIXME: the Tasks page reports an expired session as a connection failure.
-// `fetchTasks` in plugins/caldav/frontend/tasks-page.ts catches the refused
-// read and toasts `tasks.loadFailed` whatever the status, after
-// `fetchWithTimeout` has already dispatched `auth-error` for the 401 — so the
-// login form opens with "Your session has expired" beside "Could not load your
-// tasks. Check your connection and try again.", advice that cannot help. The
-// read should end quietly once the session is known to be gone.
-test.fixme("an expired session on the tasks page is not reported as a connection failure", async ({ page }) => {
+// The expiry is the only thing said: "Could not load your tasks. Check your
+// connection" beside "Your session has expired" is advice that cannot help.
+test("an expired session on the tasks page is not reported as a connection failure", async ({ page }) => {
   await login(page);
   await openTasks(page);
   allowConsoleErrors(page, ...EXPECTED_REFUSALS, /^Failed to load tasks HttpStatusError/);

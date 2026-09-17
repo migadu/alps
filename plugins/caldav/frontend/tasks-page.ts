@@ -11,6 +11,7 @@ import '../../../frontend/src/components/alps-icon-btn';
 import '../../../frontend/src/components/ui-prompt';
 import '../../../frontend/src/components/ui-confirm';
 import { renderIcon } from '../../../frontend/src/utils/ui';
+import { isSessionExpiry } from '../../../frontend/src/utils/fetch-utils';
 import { taskTellsSomeone, calendarService, getCalendarColor } from './calendar-service';
 import { formatDue, inSmartList, intlLocale, isClosed, scopeOf, tasksService } from './tasks-service';
 import type { SmartList, TaskData, TaskList, TaskScope } from './tasks-service';
@@ -328,7 +329,7 @@ export class TasksPage extends LitElement {
         } catch (e) {
             if (epoch !== this.readEpoch) return;
             console.error('Failed to load tasks', e);
-            this.toast('tasks.loadFailed');
+            this.failed('tasks.loadFailed', e);
         } finally {
             if (epoch === this.readEpoch) this.loading = false;
         }
@@ -381,7 +382,7 @@ export class TasksPage extends LitElement {
             // This row back as it was, and nothing else: a snapshot of the whole
             // list would also undo whatever changed while the tick was in flight.
             this.replaceTask(task.path, task);
-            this.toast('tasks.completeFailed');
+            this.failed('tasks.completeFailed', e);
         } finally {
             const pending = new Set(this.pendingPaths);
             pending.delete(task.path);
@@ -420,7 +421,7 @@ export class TasksPage extends LitElement {
             this.tasks = this.tasks.filter(t => t.path !== task.path);
         } catch (e) {
             console.error('Failed to delete task', e);
-            this.toast('tasks.deleteFailed');
+            this.failed('tasks.deleteFailed', e);
         }
     }
 
@@ -433,7 +434,7 @@ export class TasksPage extends LitElement {
             await this.fetchTasks();
         } catch (err) {
             console.error('Failed to create list', err);
-            this.toast('tasks.createListFailed');
+            this.failed('tasks.createListFailed', err);
         }
     }
 
@@ -465,6 +466,12 @@ export class TasksPage extends LitElement {
 
     private formatDue(task: TaskData): string {
         return formatDue(task, new Date(), this.i18nStore?.t('tasks.today') ?? 'Today', intlLocale(this.i18nStore?.getLanguage?.()));
+    }
+
+    /** Says an action failed, unless the session ending is why: that has its
+     * own notice already. */
+    private failed(key: string, error: unknown) {
+        if (!isSessionExpiry(error)) this.toast(key);
     }
 
     private toast(key: string, params?: Record<string, string | number>) {

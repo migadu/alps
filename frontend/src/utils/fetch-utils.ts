@@ -46,6 +46,18 @@ export function isVersionConflict(error: unknown): boolean {
 }
 
 /**
+ * Did this fail because the session has ended?
+ *
+ * `fetchWithTimeout` has already announced it, and the user is on the way to
+ * the login screen with a notice saying why. A failure message of the caller's
+ * own beside that notice — "check your connection" — sends them looking for a
+ * fault they do not have.
+ */
+export function isSessionExpiry(error: unknown): boolean {
+  return error instanceof HttpStatusError && error.status === 401;
+}
+
+/**
  * Upstream answers worth another attempt: the backend saying "not now" rather
  * than "no". A deploy rolling or an upstream connection being re-established
  * produces exactly these, briefly, and without a retry that blip reached the
