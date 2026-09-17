@@ -65,13 +65,49 @@ func TestSanitizeError(t *testing.T) {
 }
 
 func TestIsPublic(t *testing.T) {
-	assert.True(t, isPublic("/session"))
-	assert.True(t, isPublic("/plugins/caldav/assets/style.css"))
-	assert.True(t, isPublic("/webauthn/verify"))
+	assert.True(t, isPublic(http.MethodPost, "/session"))
+	assert.True(t, isPublic(http.MethodDelete, "/session"))
+	assert.True(t, isPublic(http.MethodGet, "/plugins/caldav/assets/style.css"))
+	assert.True(t, isPublic(http.MethodPost, "/webauthn/verify"))
 
-	assert.False(t, isPublic("/api/messages"))
-	assert.False(t, isPublic("/"))
-	assert.False(t, isPublic("/plugins/caldav/events"))
+	// Reading the session needs one.
+	assert.False(t, isPublic(http.MethodGet, "/session"))
+	assert.False(t, isPublic(http.MethodGet, "/api/messages"))
+	assert.False(t, isPublic(http.MethodGet, "/"))
+	assert.False(t, isPublic(http.MethodGet, "/plugins/caldav/events"))
+}
+
+// TestSessionRoutesWithoutASession runs the real middleware chain: without a
+// session cookie, reading the session is refused before its handler runs,
+// while signing in and signing out still reach theirs.
+func TestSessionRoutesWithoutASession(t *testing.T) {
+	server := &Server{logger: &NilLogger{}, Options: &Options{}}
+	router := NewRouter(server)
+	server.setupMiddleware(router)
+
+	reached := map[string]bool{}
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodDelete} {
+		router.Add(method, "/session", func(ctx *Context) error {
+			reached[method] = true
+			if method == http.MethodGet {
+				_ = ctx.Session.Username() // what the read handler does
+			}
+			return ctx.String(http.StatusOK, "ok")
+		})
+	}
+
+	for method, want := range map[string]int{
+		http.MethodGet:    http.StatusUnauthorized,
+		http.MethodPost:   http.StatusOK,
+		http.MethodDelete: http.StatusOK,
+	} {
+		req := httptest.NewRequest(method, "http://example.com/session", nil)
+		req.Header.Set("Origin", "http://example.com")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, want, w.Code, method)
+		assert.Equal(t, want == http.StatusOK, reached[method], method)
+	}
 }
 
 func TestHandleUnauthenticated(t *testing.T) {
@@ -82,7 +118,7 @@ func TestHandleUnauthenticated(t *testing.T) {
 	}
 
 	// Test Public Path
-	reqPublic := httptest.NewRequest(http.MethodGet, "/session", nil)
+	reqPublic := httptest.NewRequest(http.MethodPost, "/session", nil)
 	wPublic := httptest.NewRecorder()
 	ctxPublic := NewContext(wPublic, reqPublic, server)
 	err := handleUnauthenticated(nextHandler, ctxPublic)

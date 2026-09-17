@@ -159,21 +159,21 @@ test("an expired session on the contacts page routes back to sign-in", async ({ 
   expect(await page.locator("alps-toast").count(), "a toast was raised on the way out").toBe(0);
 });
 
-// FIXME: alps answers `GET /session` with a 500 when the session is gone.
-// `isPublic` in server.go lets `/session` through the auth middleware for every
-// method (it is public for the sign-in POST), and `handleGetSession` in
-// plugins/base/routes.go calls `ctx.Session.Username()` on the nil session:
-// alps.log shows "PANIC in handler for /session: runtime error: invalid memory
-// address or nil pointer dereference", and the browser logs two 500s (app-root
-// and the settings store both ask on boot). The user still lands on the login
-// form, via the 401 from `/settings`; the answer should have been that 401.
-test.fixme("reloading a tab whose session has expired routes back to sign-in", async ({ page }) => {
+// Every request a reloaded tab makes on boot has to answer 401, `GET /session`
+// included: `EXPECTED_REFUSALS` permits exactly that status, so a 500 from any
+// of them fails the test.
+test("reloading a tab whose session has expired routes back to sign-in", async ({ page }) => {
   // The other way a user meets an expiry: they come back to the tab and reload
   // it. The marker cookie still says "signed in", so the shell boots the
   // mailbox and asks the server for the session — and has to take no for an
   // answer.
   await login(page);
   await expect(archiveFolder(page)).toBeVisible();
+  // Quiet first. A full inbox is still fetching its rows' sender verdicts once
+  // the sidebar is up, and one of those refused would route to sign-in, and
+  // show the notice, BEFORE the reload: the notice is shown once, so the page
+  // the reload lands on would rightly have none.
+  await page.waitForLoadState("networkidle");
   allowConsoleErrors(page, ...EXPECTED_REFUSALS);
   await expireSession(page);
 
