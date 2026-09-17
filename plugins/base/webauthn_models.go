@@ -1,8 +1,8 @@
 package alpsbase
 
 import (
+	"encoding/json"
 	"errors"
-	"strings"
 
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/migadu/alps"
@@ -75,8 +75,9 @@ func loadCredentialsInternal(store provider.Store, strict bool) (*UserCredential
 		// so users can still access the settings page and re-register.
 		// But be strict during verification to avoid authentication issues.
 		if !strict {
-			errStr := err.Error()
-			if strings.Contains(errStr, "unmarshal") || strings.Contains(errStr, "invalid character") {
+			var syntaxErr *json.SyntaxError
+			var typeErr *json.UnmarshalTypeError
+			if errors.As(err, &syntaxErr) || errors.As(err, &typeErr) {
 				return &UserCredentials{Credentials: []CredentialInfo{}}, nil
 			}
 		}

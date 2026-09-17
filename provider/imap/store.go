@@ -107,10 +107,15 @@ func (s *imapStore) key(key string) string {
 	return "/private/vendor/alps/" + key
 }
 
+// Get reports an entry it cannot decode as an error, not as a missing entry.
+// Callers take a missing entry for a new account and write their own record
+// over it, so an entry that one version of alps could not read was replaced
+// with defaults. A decode error keeps the json error for errors.As; for a
+// value of the wrong type, encoding/json has still filled in the rest.
 func (s *imapStore) Get(key string, out interface{}) error {
 	var cached json.RawMessage
 	if err := s.cache.Get(key, &cached); err == nil {
-		return json.Unmarshal(cached, out)
+		return decodeStoreEntry(key, cached, out)
 	} else if err != provider.ErrNoStoreEntry {
 		return err
 	}
@@ -124,11 +129,20 @@ func (s *imapStore) Get(key string, out interface{}) error {
 	if !ok || v == nil || len(*v) == 0 || string(*v) == "NIL" {
 		return provider.ErrNoStoreEntry
 	}
-	if err := json.Unmarshal(*v, out); err != nil {
-		log.Printf("provider/imap: ignoring invalid store entry %q (err: %v)", key, err)
-		return provider.ErrNoStoreEntry
+	raw := bytes.Clone(*v)
+	if json.Valid(raw) {
+		if err := s.cache.Put(key, json.RawMessage(raw)); err != nil {
+			return err
+		}
 	}
-	return s.cache.Put(key, json.RawMessage(bytes.Clone(*v)))
+	return decodeStoreEntry(key, raw, out)
+}
+
+func decodeStoreEntry(key string, raw []byte, out interface{}) error {
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("provider/imap: failed to decode IMAP store entry %q: %w", key, err)
+	}
+	return nil
 }
 
 func (s *imapStore) Put(key string, v interface{}) error {

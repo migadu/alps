@@ -3,6 +3,7 @@ package alpsbase
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -599,7 +600,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 		}
 	}
 
-	settings, err := loadSettings(ctx.Session.Store())
+	settings, err := readSettings(ctx)
 	if err != nil {
 		return err
 	}
@@ -1043,7 +1044,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		return alps.NewHTTPError(http.StatusNotFound, "Mailbox not found")
 	}
 
-	settings, err := loadSettings(ctx.Session.Store())
+	settings, err := readSettings(ctx)
 	if err != nil {
 		return err
 	}
@@ -1401,7 +1402,7 @@ func handleComposeNew(ctx *alps.Context) error {
 	fromAddr := ctx.FormValue("from")
 	if fromAddr == "" {
 		fromAddr = ctx.Session.Username()
-		if settings, err := loadSettings(ctx.Session.Store()); err == nil && settings.From != "" {
+		if settings, err := readSettings(ctx); err == nil && settings.From != "" {
 			fromAddr = fmt.Sprintf("%s <%s>", settings.From, ctx.Session.Username())
 		}
 	}
@@ -2319,6 +2320,15 @@ type Settings struct {
 	DateFormat string `json:"date_format,omitempty"`
 }
 
+// errUnreadableSettings marks a saved settings record that does not decode.
+var errUnreadableSettings = errors.New("the saved settings do not decode")
+
+// loadSettings reads the account's settings over the defaults.
+//
+// A value of a type this version does not expect, as another version of alps
+// may have written, keeps its default: encoding/json reads the rest, and the
+// next save writes back a record this version can read. A record that does not
+// decode at all is errUnreadableSettings, which readSettings removes.
 func loadSettings(s provider.Store) (*Settings, error) {
 	autoLogoutDefault := 30
 	settings := &Settings{
@@ -2327,7 +2337,16 @@ func loadSettings(s provider.Store) (*Settings, error) {
 		AutoLogout:         &autoLogoutDefault,
 		SoundNotifications: true,
 	}
-	if err := s.Get(settingsKey, settings); err != nil && err != provider.ErrNoStoreEntry {
+	err := s.Get(settingsKey, settings)
+	var typeErr *json.UnmarshalTypeError
+	var syntaxErr *json.SyntaxError
+	switch {
+	case err == nil || err == provider.ErrNoStoreEntry:
+	case errors.As(err, &typeErr) && typeErr.Field != "":
+		// Read around the one value.
+	case errors.As(err, &typeErr) || errors.As(err, &syntaxErr):
+		return nil, fmt.Errorf("%w: %w", errUnreadableSettings, err)
+	default:
 		return nil, err
 	}
 	// Set default if empty
@@ -2365,6 +2384,29 @@ func loadSettings(s provider.Store) (*Settings, error) {
 	return settings, nil
 }
 
+// readSettings is loadSettings for a request. A saved record that does not
+// decode at all is removed, and the account starts again from the defaults:
+// no version of alps can read it, and keeping it kept the account from ever
+// saving its settings again.
+func readSettings(ctx *alps.Context) (*Settings, error) {
+	store := ctx.Session.Store()
+	settings, err := loadSettings(store)
+	if !errors.Is(err, errUnreadableSettings) {
+		return settings, err
+	}
+	if putErr := store.Put(settingsKey, nil); putErr != nil {
+		return nil, fmt.Errorf("failed to remove unreadable settings: %v", putErr)
+	}
+	ctx.Server.Logger().Printf("Removed unreadable settings of %s: %v", ctx.Session.Username(), err)
+	return loadSettings(noSettings{})
+}
+
+// noSettings is a store without a settings record, for the defaults.
+type noSettings struct{}
+
+func (noSettings) Get(string, interface{}) error { return provider.ErrNoStoreEntry }
+func (noSettings) Put(string, interface{}) error { return errors.New("no store") }
+
 func (s *Settings) check() error {
 	if s.MessagesPerPage <= 0 || s.MessagesPerPage > maxMessagesPerPage {
 		return fmt.Errorf("messages per page out of bounds: %v", s.MessagesPerPage)
@@ -2382,7 +2424,7 @@ func (s *Settings) check() error {
 }
 
 func handleSettings(ctx *alps.Context) error {
-	settings, err := loadSettings(ctx.Session.Store())
+	settings, err := readSettings(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load settings: %v", err)
 	}

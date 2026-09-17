@@ -1,10 +1,13 @@
 package imap
 
 import (
+	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 
 	"github.com/emersion/go-imap/v2"
+	"github.com/migadu/alps/provider"
 )
 
 type storedSettings struct {
@@ -94,5 +97,58 @@ func TestStoreReadersOfOnePartLeaveTheRestForOthers(t *testing.T) {
 	}
 	if err := fresh.Get("base.settings", &language); err != nil || language.Language != "fr" {
 		t.Errorf("after a write, the language reads %q, %v", language.Language, err)
+	}
+}
+
+// An entry that does not decode is an error, not a missing entry: callers take
+// a missing entry for a new account, and wrote their defaults over the record.
+func TestStoreEntryThatDoesNotDecodeIsNotMissing(t *testing.T) {
+	p := memIMAP(t, &memServer{caps: imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapMetadata: {}}})
+	for key, raw := range map[string]string{
+		"broken":  `{"signature": "Ada"`,
+		"drifted": `{"signature": "Ada", "messages_per_page": "fifty"}`,
+	} {
+		value := []byte(raw)
+		if err := p.client.SetMetadata("", map[string]*[]byte{"/private/vendor/alps/" + key: &value}).Wait(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fresh, err := newIMAPStore(p.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type settings struct {
+		Signature       string `json:"signature"`
+		MessagesPerPage int    `json:"messages_per_page"`
+	}
+	var broken settings
+	var syntaxErr *json.SyntaxError
+	if err := fresh.Get("broken", &broken); !errors.As(err, &syntaxErr) {
+		t.Errorf("reading an entry that is not JSON: %v, want a syntax error", err)
+	}
+	// Which a caller can then remove.
+	if err := fresh.Put("broken", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := fresh.Get("broken", &broken); err != provider.ErrNoStoreEntry {
+		t.Errorf("after removing it, reading the entry: %v", err)
+	}
+
+	// A field of another type, as another version of alps may write: the error
+	// says so, and the rest of the entry is read.
+	drifted := settings{MessagesPerPage: 50}
+	var typeErr *json.UnmarshalTypeError
+	if err := fresh.Get("drifted", &drifted); !errors.As(err, &typeErr) {
+		t.Errorf("reading a field of the wrong type: %v, want a type error", err)
+	}
+	if drifted != (settings{Signature: "Ada", MessagesPerPage: 50}) {
+		t.Errorf("around the field of the wrong type, read %+v", drifted)
+	}
+	var signature struct {
+		Signature string `json:"signature"`
+	}
+	if err := fresh.Get("drifted", &signature); err != nil || signature.Signature != "Ada" {
+		t.Errorf("a reader that skips the field of the wrong type got %+v, %v", signature, err)
 	}
 }
