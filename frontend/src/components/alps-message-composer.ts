@@ -460,6 +460,9 @@ export class AlpsMessageComposer extends LitElement {
   public focusEditor() {
     if (this.format === 'html' && this.editor && !this.editor.isDestroyed) {
       this.editor.commands.focus('start');
+      // The command only places the caret now and focuses on the next frame; a
+      // key pressed before that frame would go to whatever held focus.
+      this.editor.view.focus();
     } else if (this.replyInputRef.value) {
       this.replyInputRef.value.focus();
       this.replyInputRef.value.setSelectionRange(0, 0);

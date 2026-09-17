@@ -103,11 +103,23 @@ export class AlpsFloatingComposer extends LitElement {
   };
 
   firstUpdated() {
-    setTimeout(() => {
-      if (this.isConnected && this.composer && (this.composer as any).focusEditor) {
-        (this.composer as any).focusEditor();
-      }
-    }, 100);
+    void this._focusNewEditor();
+  }
+
+  /**
+   * Puts the caret in a new window's editor as soon as the editor exists.
+   *
+   * The composer builds its editor in its own first update, which follows this
+   * window's. A 100 ms timer stood in for that wait, and for those 100 ms focus
+   * stayed on the button that opened the window: a letter typed then was lost,
+   * and a space pressed that button again, opening a second composer or a
+   * second reply.
+   */
+  private async _focusNewEditor() {
+    const composer = this.composer as any;
+    if (!composer) return;
+    await composer.updateComplete;
+    if (this.isConnected && composer.isConnected) composer.focusEditor?.();
   }
 
   private _clearAutoSave() {

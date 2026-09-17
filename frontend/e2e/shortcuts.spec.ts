@@ -123,13 +123,10 @@ test.afterEach(async ({ page }) => {
   await discardAll(page).catch(() => {});
 });
 
-// FIXME: alps-floating-composer moves focus into its editor from a 100 ms
-// timer in firstUpdated(), not when the window appears. For those 100 ms focus
-// stays on the button that opened the window, so a letter typed then is lost
-// and a space clicks that button again: a second composer opens (seen as 2
-// windows here), and on Reply a second reply to the same message. The editor
-// should hold focus by the time the window is on screen.
-test.fixme("typing the moment a composer opens is text, not a click on Compose", async ({ page }) => {
+// The editor holds focus by the time the window is on screen. Until it does,
+// focus is on the button that opened the window: a letter typed then is lost,
+// and a space clicks that button again and opens a second composer.
+test("typing the moment a composer opens is text, not a click on Compose", async ({ page }) => {
   await login(page);
 
   await page.locator("alps-folder-list alps-create-button").click();
@@ -147,9 +144,9 @@ test.fixme("typing the moment a composer opens is text, not a click on Compose",
   await expect(composer.locator(".ProseMirror")).toContainText(TYPED);
 });
 
-// FIXME: the same 100 ms focus timer as above; here the first letter typed
-// was lost ("wo words" reached the draft).
-test.fixme("typing the moment a reply opens is text, not a second reply", async ({ page }) => {
+// As above, for a reply: a stray key on the Reply button behind the window
+// would answer the same message twice, and a lost letter changes the reply.
+test("typing the moment a reply opens is text, not a second reply", async ({ page }) => {
   const subject = `Shortcuts reply ${unique()}`;
   await deliverGuarded(subject);
   await login(page);
