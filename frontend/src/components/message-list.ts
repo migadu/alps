@@ -74,6 +74,12 @@ export class MessageList extends LitElement {
   private verdictsRunning = false;
   private verdictsRerun = false;
   private _shouldScrollToTop = false;
+  // The highest UID each mailbox had on screen when the user asked to check for
+  // new mail, held until that check's answer lands; null when none is waiting.
+  // A thread's row carries the thread's highest UID, so a reply to it counts.
+  private _uidsBeforeCheck: Map<string, number> | null = null;
+  // The row of the first message that check found, to be scrolled to once drawn.
+  private _arrivedIndex = -1;
 
   static styles = css`
     :host {
@@ -870,6 +876,21 @@ export class MessageList extends LitElement {
         this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
       }
       this._shouldScrollToTop = true;
+      // Another listing altogether, already shown from its top.
+      this._uidsBeforeCheck = null;
+    }
+
+    // The check's answer. Loading ends whether it succeeded or not, and on
+    // success the new listing arrives in the same update.
+    if (this._uidsBeforeCheck && changedProperties.has('loading') && !this.loading) {
+      const before = this._uidsBeforeCheck;
+      this._uidsBeforeCheck = null;
+      if (changedProperties.has('messages')) {
+        // Higher than anything held, not merely absent: after a delete the next
+        // page's first messages move up into this one, and they are not new.
+        const idx = (this.messages || []).findIndex(m => Number(m.UID) > (before.get(this.mailboxOf(m)) ?? 0));
+        if (idx !== -1) this._arrivedIndex = this.visibleMessages.indexOf(this.messages[idx]);
+      }
     }
 
     if (changedProperties.has('selectedMessage') || changedProperties.has('messages')) {
@@ -967,7 +988,13 @@ export class MessageList extends LitElement {
     if (changedProperties.has('syncing') && this.syncing) {
       this.isSpinning = true;
     }
-    if (changedProperties.has('selectedMessage') && this.selectedMessage) {
+    // Only when another message is opened. The page hands down a fresh copy of
+    // the open one whenever its flags may have changed, which is on every sync
+    // and every star or read toggle, and each copy scrolled the list back to it:
+    // mail that a check had just brought in at the top was scrolled away from.
+    const previous = changedProperties.get('selectedMessage');
+    if (changedProperties.has('selectedMessage') && this.selectedMessage &&
+      String(previous?.UID) !== String(this.selectedMessage.UID)) {
       setTimeout(() => {
         const listContent = this.renderRoot.querySelector('.list-content');
         const activeItem = listContent?.querySelector('.message-item.active');
@@ -983,12 +1010,35 @@ export class MessageList extends LitElement {
       }
       this._shouldScrollToTop = false;
     }
+    if (this._arrivedIndex !== -1) {
+      const idx = this._arrivedIndex;
+      this._arrivedIndex = -1;
+      const listContent = this.renderRoot.querySelector('.list-content');
+      if (idx === 0) {
+        // From the very top, so a banner above the first row shows too.
+        if (listContent) listContent.scrollTop = 0;
+      } else {
+        // Newest-first puts new mail at the top; other orders may not.
+        listContent?.querySelectorAll('.message-item')[idx]?.scrollIntoView({ block: 'nearest' });
+      }
+    }
     const listContent = this.renderRoot.querySelector('.list-content') as HTMLElement;
     if (listContent) {
       requestAnimationFrame(() => {
         this.checkScrollState(listContent);
       });
     }
+  }
+
+  /** The check-for-new-mail button: asks the page to sync, remembering what was listed. */
+  private checkForNew() {
+    const highest = new Map<string, number>();
+    for (const m of this.messages || []) {
+      const mailbox = this.mailboxOf(m);
+      highest.set(mailbox, Math.max(highest.get(mailbox) ?? 0, Number(m.UID) || 0));
+    }
+    this._uidsBeforeCheck = highest;
+    this.dispatchEvent(new CustomEvent('refresh'));
   }
 
   private selectMessage(msg: any) {
@@ -1334,7 +1384,7 @@ export class MessageList extends LitElement {
             @change=${this.handleSelectAll}>
           <alps-icon-btn 
             title=${this.i18nStore?.t('messageList.checkNew')}
-            @click=${() => this.dispatchEvent(new CustomEvent('refresh'))}
+            @click=${() => this.checkForNew()}
             @animationiteration=${this.handleSpinIteration}
             ?spinning=${this.isSpinning}
             icon="arrowsClockwise"
@@ -1396,7 +1446,7 @@ export class MessageList extends LitElement {
         ` :
         this.messages.length === 0 && this.loadFailed ? html`<div class="empty-state load-error">
           <div>${this.i18nStore?.t('messageList.loadError')}</div>
-          <alps-button variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('refresh'))}>
+          <alps-button variant="normal" @click=${() => this.checkForNew()}>
             ${this.i18nStore?.t('messageList.loadErrorRetry')}
           </alps-button>
         </div>` :
@@ -1418,7 +1468,7 @@ export class MessageList extends LitElement {
                 @change=${this.handleSelectAll}>
               <alps-icon-btn 
                 title=${this.i18nStore?.t('messageList.checkNew')}
-                @click=${() => this.dispatchEvent(new CustomEvent('refresh'))}
+                @click=${() => this.checkForNew()}
                 @animationiteration=${this.handleSpinIteration}
                 ?spinning=${this.isSpinning}
                 icon="arrowsClockwise"
