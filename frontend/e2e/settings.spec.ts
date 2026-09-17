@@ -218,6 +218,42 @@ test("a preference changed in another browser shows after a reload", async ({ pa
   await expect(page.getByLabel("Use threading")).not.toBeChecked();
 });
 
+// Two open browsers, each changing a different setting: both changes stay. A
+// save that wrote this tab's whole copy of the record put back the value the
+// other browser had just replaced.
+test("a change saved here keeps a change another browser saved since", async ({ page, browser }) => {
+  await openSettings(page, "/#/settings/identity");
+  const bcc = page.getByLabel("Always BCC myself on outgoing mail");
+  await expect(bcc).not.toBeChecked();
+
+  const other = await anotherBrowser(browser);
+  try {
+    await other.page.goto("/#/settings/reading");
+    const threading = other.page.getByLabel("Use threading");
+    await expect(threading).toBeChecked();
+    const saved = settingsSaved(other.page);
+    await threading.uncheck();
+    await saved;
+  } finally {
+    await other.close();
+  }
+
+  // This tab still shows threading on, and saves something else.
+  const saved = settingsSaved(page);
+  await bcc.check();
+  expect((await saved).request().postDataJSON(), "the save sent more than the change").toEqual({ bcc_myself: true });
+
+  const third = await anotherBrowser(browser);
+  try {
+    await third.page.goto("/#/settings/reading");
+    await expect(third.page.getByLabel("Use threading")).not.toBeChecked();
+    await third.page.goto("/#/settings/identity");
+    await expect(third.page.getByLabel("Always BCC myself on outgoing mail")).toBeChecked();
+  } finally {
+    await third.close();
+  }
+});
+
 // The regression guard for the unregistered-component failure described at the
 // top of this file, on all four panels built from dropdowns. It fails the
 // moment `alps-setting-group` or `alps-select` stops being registered, and the
