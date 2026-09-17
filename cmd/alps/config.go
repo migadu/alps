@@ -114,6 +114,7 @@ type ServerConfig struct {
 	ReadTimeoutSec          int             `toml:"read_timeout_sec"`           // HTTP read timeout in seconds (default: 10)
 	WriteTimeoutSec         int             `toml:"write_timeout_sec"`          // HTTP write timeout in seconds (default: 30)
 	IdleTimeoutSec          int             `toml:"idle_timeout_sec"`           // HTTP idle timeout in seconds (default: 120)
+	IMAPTimeoutSec          int             `toml:"imap_timeout_sec"`           // IMAP operation timeout in seconds (default: 30)
 	SMTPTimeoutSec          int             `toml:"smtp_timeout_sec"`           // SMTP operation timeout in seconds (default: 30)
 }
 
@@ -259,6 +260,11 @@ func LoadConfigString(data string) (*Config, error) {
 	pconfig.meta = &meta
 	pconfig.primitive = &p
 	config.provider = &pconfig
+
+	// do not break the old IMAP timeout configuration key
+	if pconfig.Type == "imap" && pconfig.TimeoutSec == 0 && config.Server.IMAPTimeoutSec > 0 {
+		pconfig.TimeoutSec = config.Server.IMAPTimeoutSec
+	}
 
 	// Set defaults
 	if config.Server.Addr == "" {

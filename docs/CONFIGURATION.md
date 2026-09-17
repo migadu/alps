@@ -17,7 +17,6 @@ This section contains core settings for the ALPS HTTP server, session management
 | `temp_dir` | String | OS Default | (Optional) Directory for temporary file uploads and processing. |
 | `session_minutes` | Integer | `30` | Duration of user sessions in minutes without activity. |
 | `max_session_minutes` | Integer | `1440` | Maximum absolute duration of a session (e.g., 24 hours), capping user preferences. |
-| `provider_type` | String | `"imap"` | Mail provider protocol (`"imap"` or `"maildir"`). |
 
 ### 1.1 HTTP Server Timeouts
 These settings protect the server against slow client attacks and resource exhaustion.
@@ -142,6 +141,12 @@ Required when using Let's Encrypt with S3 storage across multiple ALPS nodes.
 
 ## 8. Provider & Servers
 Configures the backend mail services.
+
+### `[provider]`
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `type` | String | `"imap"` | Mail provider protocol (`"imap"` or `"maildir"`). |
 
 ### `[provider.imap]`
 | Option | Type | Default | Description |
