@@ -65,10 +65,10 @@ func (o *options) CreateFactory(timeout time.Duration) provider.AuthenticatedPro
 	}
 }
 
-func configure(raw *toml.Primitive) (provider.Config, error) {
+func configure(meta *toml.MetaData, raw *toml.Primitive) (provider.Config, error) {
 
 	var cfg Config
-	err := toml.PrimitiveDecode(*raw, &cfg)
+	err := meta.PrimitiveDecode(*raw, &cfg)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding configuration for [provider.maildir]: %v", err)
 	}

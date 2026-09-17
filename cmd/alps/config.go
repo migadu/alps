@@ -15,15 +15,32 @@ import (
 	_ "github.com/migadu/alps/provider/maildir"
 )
 
+type ConfigError struct {
+	Location string
+	Err error
+}
+
+func (e ConfigError) Error() string {
+
+	return e.Location + ": " + e.Err.Error()
+}
+
+func newConfigError(loc string, msg string, argv ...interface{}) ConfigError {
+
+	return ConfigError{
+		Location: loc,
+		Err: fmt.Errorf(msg, argv...),
+	}
+}
+
 // Config represents the TOML configuration file structure
 type Config struct {
 	Server   ServerConfig            `toml:"server"`
 	Cache    CacheConfig             `toml:"cache"`
 	Logging  LoggingConfig           `toml:"logging"`
 	TLS      TLSConfig               `toml:"tls"`
-	// Delay decoding of the provider configurations
-	// let each provider handle its own decoding based on possible internal types
-	Provider map[string]*toml.Primitive `toml:"provider"`
+	RawProvider toml.Primitive       `toml:"provider"`
+	provider *ProviderConfig
 	SMTP     SMTPConfig              `toml:"smtp"`
 	WebAuthn WebAuthnConfig          `toml:"webauthn"`
 	Cluster  ClusterConfig           `toml:"cluster"`
@@ -97,10 +114,7 @@ type ServerConfig struct {
 	ReadTimeoutSec          int             `toml:"read_timeout_sec"`           // HTTP read timeout in seconds (default: 10)
 	WriteTimeoutSec         int             `toml:"write_timeout_sec"`          // HTTP write timeout in seconds (default: 30)
 	IdleTimeoutSec          int             `toml:"idle_timeout_sec"`           // HTTP idle timeout in seconds (default: 120)
-	ProviderTimeoutSec      int             `toml:"provider_timeout_sec"`       // Provider connect timeout in seconds (default: 30)
-	                                                                            // Replaces IMAPTimeoutSec to be provider agnostic
 	SMTPTimeoutSec          int             `toml:"smtp_timeout_sec"`           // SMTP operation timeout in seconds (default: 30)
-	ProviderType            string          `toml:"provider_type"`              // Choose the provider type
 }
 
 type RateLimitConfig struct {
@@ -124,6 +138,13 @@ type LoggingConfig struct {
 	Output string `toml:"output"` // "stderr", "stdout", "syslog", or file path
 	Format string `toml:"format"` // "json" or "console"
 	Level  string `toml:"level"`  // "debug", "info", "warn", "error"
+}
+
+type ProviderConfig struct {
+	Type         string            `toml:"type"`        // "imap" (default)
+	TimeoutSec   int               `toml:"timeout_sec"` // Provider connect timeout in seconds (default: 30)
+	meta         *toml.MetaData
+	primitive    *toml.Primitive
 }
 
 type SMTPConfig struct {
@@ -195,17 +216,49 @@ func (c *Config) GetPluginServers() []string {
 	return servers
 }
 
-// LoadConfig loads configuration from a TOML file
 func LoadConfig(path string) (*Config, error) {
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
+	return LoadConfigString(string(data))
+}
 
+// LoadConfig loads configuration from a TOML file
+func LoadConfigString(data string) (*Config, error) {
+
+	// decode the configuration with Decode to get the MataData object
 	var config Config
-	if err := toml.Unmarshal(data, &config); err != nil {
+	meta, err := toml.Decode(string(data), &config)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse TOML config: %w", err)
 	}
+
+	// decode the Provider field as a generic ProviderConfig to get the type
+	// set the default type if none is found
+	var pconfig ProviderConfig
+	err = meta.PrimitiveDecode(config.RawProvider, &pconfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse TOML provider config: %w", err)
+	}
+	if pconfig.Type == "" {
+		pconfig.Type = "imap"
+	}
+
+	// check for a TOML section with the corresponding name and save the primitive for further decoding
+	var pmap map[string]toml.Primitive
+	err = meta.PrimitiveDecode(config.RawProvider, &pmap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse TOML provider config as a map: %w", err)
+	}
+	p, ok := pmap[pconfig.Type]
+	if !ok {
+		return nil, newConfigError("provider." + pconfig.Type, "missing TOML section [provider.%s]", pconfig.Type)
+	}
+	pconfig.meta = &meta
+	pconfig.primitive = &p
+	config.provider = &pconfig
 
 	// Set defaults
 	if config.Server.Addr == "" {
@@ -230,15 +283,7 @@ func (c *Config) ToOptions() (alps.Options, error) {
 
 	// delegate loading the provider configuration to the provider package
 	// asssume a default provider of imap if none is configured explicitly
-	ptype := c.Server.ProviderType
-	if ptype == "" {
-		ptype = "imap"
-	}
-	raw, ok := c.Provider[ptype]
-	if !ok {
-		return options, fmt.Errorf("missing configuration for [provider.%s]", ptype)
-	}
-	pcfg, err := provider.LoadConfig(ptype, raw)
+	pcfg, err := provider.LoadConfig(c.provider.Type, c.provider.meta, c.provider.primitive)
 	if err != nil {
 		return options, err
 	}
@@ -344,8 +389,8 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	if c.Server.IdleTimeoutSec > 0 {
 		options.IdleTimeout = time.Duration(c.Server.IdleTimeoutSec) * time.Second
 	}
-	if c.Server.ProviderTimeoutSec > 0 {
-		options.ProviderTimeout = time.Duration(c.Server.ProviderTimeoutSec) * time.Second
+	if c.provider.TimeoutSec > 0 {
+		options.ProviderTimeout = time.Duration(c.provider.TimeoutSec) * time.Second
 	}
 	if c.Server.SMTPTimeoutSec > 0 {
 		options.SMTPTimeout = time.Duration(c.Server.SMTPTimeoutSec) * time.Second
