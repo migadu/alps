@@ -209,6 +209,22 @@ type Store interface {
 	Put(key string, v interface{}) error
 }
 
+// A FreshStore can read an entry from where it is kept, past any copy it
+// holds, and keeps what it read. A copy is only what this connection last
+// saw: another client may have written the entry since.
+type FreshStore interface {
+	Store
+	GetFresh(key string, out interface{}) error
+}
+
+// GetFresh reads key from s, past any copy s keeps when it can.
+func GetFresh(s Store, key string, out interface{}) error {
+	if f, ok := s.(FreshStore); ok {
+		return f.GetFresh(key, out)
+	}
+	return s.Get(key, out)
+}
+
 var messageIDRegex = regexp.MustCompile(`<([^>]+)>`)
 
 // ParseReferences parses a references string and returns a slice of Message-IDs.

@@ -40,9 +40,15 @@ type testServer struct {
 	url    string
 	client *http.Client
 	store  *maildir.Provider
+	dir    string // the account's maildir
 }
 
 func newTestServer(t *testing.T) *testServer {
+	t.Helper()
+	return newTestServerWithSMTP(t, "smtp://127.0.0.1:1")
+}
+
+func newTestServerWithSMTP(t *testing.T, smtpServer string) *testServer {
 	t.Helper()
 	base := t.TempDir()
 	passwd := filepath.Join(base, "passwd")
@@ -58,7 +64,7 @@ func newTestServer(t *testing.T) *testServer {
 		}
 	}
 	for _, subject := range []string{"Engines", "Looms"} {
-		msg := "From: Charles <charles@remote.test>\r\nTo: " + testUser + "\r\nSubject: " + subject + "\r\nDate: Mon, 02 Jan 2006 15:04:05 +0000\r\n\r\nbody of " + subject + "\r\n"
+		msg := "From: Charles <charles@remote.test>\r\nTo: " + testUser + "\r\nSubject: " + subject + "\r\nDate: Mon, 02 Jan 2006 15:04:05 +0000\r\nMessage-ID: <" + strings.ToLower(subject) + "@remote.test>\r\n\r\nbody of " + subject + "\r\n"
 		if _, _, _, err := store.AppendMessage("INBOX", rawMessage(msg), 0); err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +85,7 @@ func newTestServer(t *testing.T) *testServer {
 	opts := &alps.Options{
 		ProviderType: "maildir",
 		Provider: popt,
-		SMTP:         alps.SMTPOptions{Server: "smtp://127.0.0.1:1"},
+		SMTP:         alps.SMTPOptions{Server: smtpServer},
 		LoginKey:     &key,
 		CacheEnabled: true,
 		CacheTTL:     time.Minute,
@@ -96,7 +102,7 @@ func newTestServer(t *testing.T) *testServer {
 	})
 
 	jar, _ := cookiejar.New(nil)
-	return &testServer{t: t, url: ts.URL, client: &http.Client{Jar: jar}, store: store}
+	return &testServer{t: t, url: ts.URL, client: &http.Client{Jar: jar}, store: store, dir: filepath.Join(base, "ada")}
 }
 
 type response struct {

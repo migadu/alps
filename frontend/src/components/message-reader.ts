@@ -5,7 +5,7 @@ import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTa
 import { FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
-import { settingsContext, SettingsStore } from '../store/settings-store';
+import { activeUsername, settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon, formatFullDate, formatSize, bimiAvatarUrlFor } from '../utils/ui';
 import './alps-recipient-pill';
@@ -24,6 +24,8 @@ import './alps-banner';
 import { MessageCache } from '../utils/message-cache';
 import { sanitizeMessageHTML } from '../utils/html-sanitizer';
 import { generateQuote } from '../utils/email-quote';
+import { replyContext } from '../utils/reply-context';
+import { inlinePartsOf } from '../utils/attachment-utils';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { Logger } from '../utils/logger';
 import { registry } from '../plugin-registry';
@@ -49,6 +51,14 @@ interface ThreadMessageItem {
   expanded: boolean;
 }
 
+/**
+ * A message's identity in a conversation. A UID is unique only within its
+ * mailbox, and a conversation holds messages from Sent as well.
+ */
+function messageKey(mailbox: string | undefined, uid: unknown): string {
+  return `${mailbox ?? ''}\u0000${String(uid)}`;
+}
+
 @customElement('alps-message-reader')
 export class MessageReader extends LitElement {
   @consume({ context: settingsContext })
@@ -59,6 +69,13 @@ export class MessageReader extends LitElement {
 
   @consume({ context: composeContext })
   composeStore!: ComposeStore;
+
+  /** The addresses a reply must not be sent back to: the account's, and the
+   * Reply-To it asks answers to go to. */
+  private ownAddresses(): string[] {
+    const state = this.settingsStore?.getState();
+    return [state?.loginUsername || activeUsername() || '', state?.replyTo || ''].filter(Boolean);
+  }
 
   /**
    * Closes the "More" actions popup menu if it is currently open.
@@ -113,17 +130,24 @@ export class MessageReader extends LitElement {
         this.rawMessageHtml,
         this.hasHtml,
         dateFormat,
-        hourFormat
+        hourFormat,
+        this.ownAddresses()
       );
 
-      const attachments = action === 'forward' ? this.attachments.map(a => ({
+      // A forward carries the original's attachments; a reply does not. Both
+      // carry its inline parts, which the quote's images name: see inlinePartsOf.
+      const forwarded = action === 'forward' ? this.attachments.map(a => ({
         name: a.Filename || 'attachment',
         size: a.Size || 0,
         type: a.MIMEType || 'application/octet-stream',
         partPath: a.Path ? a.Path.join('.') : undefined
       })) : [];
+      const attachments = [
+        ...forwarded,
+        ...inlinePartsOf(this.message.BodyStructure).filter(part => !forwarded.some(a => a.partPath === part.partPath)),
+      ];
 
-      const inReplyTo = (action === 'reply' || action === 'replyAll') ? (this.message.Envelope?.MessageID || this.message.Envelope?.MessageId) : undefined;
+      const reply = action === 'reply' || action === 'replyAll' ? replyContext(this.message, this.message.Mailbox || this.mailbox) : {};
 
       this.composeStore.openComposer({
         subject,
@@ -133,7 +157,10 @@ export class MessageReader extends LitElement {
         html: quotedHtml,
         format: this.settingsStore?.getState()?.composeFormat || 'html',
         attachments: attachments,
-        inReplyTo
+        // The quote keeps the original's inline images, and the composer
+        // shows them from the original's own parts.
+        quoteSource: { mailbox: this.message.Mailbox || this.mailbox, uid: String(this.message.UID), structure: this.message.BodyStructure },
+        ...reply
       });
       return;
     }
@@ -227,6 +254,37 @@ export class MessageReader extends LitElement {
   @state() private threadItems: ThreadMessageItem[] = [];
   @state() private _isThread = false;
   private _deferPropertySync = false;
+  /**
+   * The open message's conversation as the server has it: the thread in this
+   * mailbox, and the replies filed in Sent, which the list cannot hold.
+   */
+  private _conversation: { key: string; messages: any[] } | null = null;
+
+  private keyOf(msg: any): string {
+    return messageKey(msg?.Mailbox || this.mailbox, msg?.UID);
+  }
+
+  private itemKey(item: ThreadMessageItem): string {
+    return messageKey(item.mailbox, item.message?.UID);
+  }
+
+  private isOpenItem(item: ThreadMessageItem): boolean {
+    return !!this.message && this.itemKey(item) === this.keyOf(this.message);
+  }
+
+  /** The messages the list shows, which its flag events and updates are about. */
+  private listedKeys(): Set<string> {
+    const keys = new Set<string>();
+    for (const m of this.messages || []) {
+      keys.add(this.keyOf(m));
+      for (const sub of m.SubMessages || []) keys.add(this.keyOf(sub));
+    }
+    return keys;
+  }
+
+  private cardId(item: ThreadMessageItem): string {
+    return `thread-card-${encodeURIComponent(item.mailbox)}-${item.message?.UID}`;
+  }
 
   connectedCallback() {
     super.connectedCallback();
@@ -249,9 +307,10 @@ export class MessageReader extends LitElement {
     if (!this.threadItems || this.threadItems.length === 0) return;
 
     let updated = false;
+    const listed = this.listedKeys();
     for (let i = 0; i < this.threadItems.length; i++) {
       const item = this.threadItems[i];
-      if (item.message && uids.includes(String(item.message.UID))) {
+      if (item.message && uids.includes(String(item.message.UID)) && listed.has(this.itemKey(item))) {
         const oldFlags = item.message.Flags || [];
         const hasFlag = oldFlags.includes(flag);
         if (action === 'add' && !hasFlag) {
@@ -665,8 +724,8 @@ export class MessageReader extends LitElement {
   updated(changedProperties: Map<string, any>) {
     if (changedProperties.has('message') && this.message) {
       setTimeout(() => {
-        const cardId = `thread-card-${this.message?.UID}`;
-        const el = this.shadowRoot?.getElementById(cardId);
+        const open = this.threadItems.find(item => this.isOpenItem(item));
+        const el = open ? this.shadowRoot?.getElementById(this.cardId(open)) : null;
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
@@ -752,7 +811,7 @@ export class MessageReader extends LitElement {
       });
       // Keep the conversation card for this message in step, or it goes on
       // showing the blocked copy behind the pane that just unblocked.
-      const item = this.threadItems.find(entry => String(entry.message?.UID) === String(this.message.UID));
+      const item = this.threadItems.find(entry => this.isOpenItem(entry));
       if (item) {
         item.allowRemoteResources = true;
         item.content = this.content;
@@ -771,12 +830,12 @@ export class MessageReader extends LitElement {
 
     if (enableThreading && this.messages && this.messages.length > 0) {
       // Find the thread root message that contains msg (either directly or in SubMessages)
-      const found = this.messages.find(m => String(m.UID) === String(msg.UID));
+      const found = this.messages.find(m => this.keyOf(m) === this.keyOf(msg));
       if (found) {
         rootMsg = found;
       } else {
         for (const m of this.messages) {
-          if (m.SubMessages && m.SubMessages.find((s: any) => String(s.UID) === String(msg.UID))) {
+          if (m.SubMessages && m.SubMessages.find((s: any) => this.keyOf(s) === this.keyOf(msg))) {
             rootMsg = m;
             break;
           }
@@ -799,10 +858,23 @@ export class MessageReader extends LitElement {
       // one opened message while it was being read. A different message, or
       // threading switched off, still starts from [msg].
       const loaded = enableThreading && this.threadItems.length > 1 &&
-        this.threadItems.some(item => String(item.message?.UID) === String(msg.UID))
-        ? this.threadItems.map(item => item.message)
+        this.threadItems.some(item => this.itemKey(item) === this.keyOf(msg))
+        ? this.threadItems.map(item => ({ ...item.message, Mailbox: item.mailbox }))
         : null;
       threadMessages = loaded ?? [msg];
+    }
+
+    if (enableThreading && this._conversation?.key === this.keyOf(msg)) {
+      const have = new Set(threadMessages.map(m => this.keyOf(m)));
+      const extra = this._conversation.messages.filter(m => !have.has(this.keyOf(m)));
+      if (extra.length > 0) {
+        threadMessages = [...threadMessages, ...extra];
+        threadMessages.sort((a, b) => {
+          const dateA = a.Envelope?.Date ? new Date(a.Envelope.Date).getTime() : 0;
+          const dateB = b.Envelope?.Date ? new Date(b.Envelope.Date).getTime() : 0;
+          return dateA - dateB;
+        });
+      }
     }
 
     this._isThread = enableThreading && threadMessages.length > 1;
@@ -811,8 +883,8 @@ export class MessageReader extends LitElement {
     const oldItems = this.threadItems || [];
 
     this.threadItems = threadMessages.map(m => {
-      const isCurrent = String(m.UID) === String(msg.UID);
-      const existing = oldItems.find(item => String(item.message?.UID) === String(m.UID));
+      const isCurrent = this.keyOf(m) === this.keyOf(msg);
+      const existing = oldItems.find(item => this.itemKey(item) === this.keyOf(m));
 
       if (existing) {
         const mergedMessage = { ...m, Flags: m.Flags || existing.message.Flags || [] };
@@ -859,11 +931,13 @@ export class MessageReader extends LitElement {
       this.allowRemoteResources = this.settingsStore?.getState().showRemoteContent === 'always';
       this.hasRemoteResources = false;
       this.threadItems = [];
+      this._conversation = null;
     }
 
     this.resolveThread(msg);
+    if (!silent) this.loadConversation(msg);
 
-    const primaryItem = this.threadItems.find(item => String(item.message?.UID) === String(msg.UID)) || this.threadItems[0];
+    const primaryItem = this.threadItems.find(item => this.itemKey(item) === this.keyOf(msg)) || this.threadItems[0];
     if (primaryItem) {
       primaryItem.loading = !silent;
       primaryItem.expanded = true;
@@ -878,9 +952,35 @@ export class MessageReader extends LitElement {
     }
   }
 
+  /**
+   * Asks the server for the open message's conversation, which holds what the
+   * list cannot: the replies filed in Sent, and thread messages on other pages.
+   * The cards already on screen stay as they are; the rest are added.
+   */
+  private async loadConversation(msg: any) {
+    const enableThreading = this.settingsStore?.getState()?.enableThreading ?? true;
+    if (!enableThreading || !msg?.UID) return;
+    const key = this.keyOf(msg);
+    const mailbox = msg.Mailbox || this.mailbox;
+    try {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/thread`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const messages = Array.isArray(data?.Messages) ? data.Messages : [];
+      if (!this.message || this.keyOf(this.message) !== key) return;
+      this._conversation = { key, messages };
+      if (messages.length > 1) {
+        this.resolveThread(this.message);
+        this.requestUpdate();
+      }
+    } catch (e) {
+      Logger.error('Failed to load the conversation', e);
+    }
+  }
+
   private updateThreadItemReference(item: ThreadMessageItem) {
     if (!item.message) return;
-    const idx = this.threadItems.findIndex(i => String(i.message?.UID) === String(item.message?.UID));
+    const idx = this.threadItems.findIndex(i => this.itemKey(i) === this.itemKey(item));
     if (idx !== -1) {
       // Create a shallow copy to change the reference, reactively updating Lit child components
       this.threadItems[idx] = { ...item };
@@ -923,7 +1023,7 @@ export class MessageReader extends LitElement {
                   messageUid: item.message?.UID,
                   allowRemoteResources: item.allowRemoteResources,
                   messageStructure: item.message?.BodyStructure,
-                  onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (String(item.message.UID) === String(this.message?.UID)) this.hasRemoteResources = true; }
+                  onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (this.isOpenItem(item)) this.hasRemoteResources = true; }
                 });
               }
             }
@@ -940,12 +1040,12 @@ export class MessageReader extends LitElement {
               messageUid: item.message?.UID,
               allowRemoteResources: item.allowRemoteResources,
               messageStructure: item.message?.BodyStructure,
-              onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (String(item.message.UID) === String(this.message?.UID)) this.hasRemoteResources = true; }
+              onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (this.isOpenItem(item)) this.hasRemoteResources = true; }
             });
           }
         }
         item.loading = false;
-        if (!this._deferPropertySync && String(item.message.UID) === String(this.message?.UID)) {
+        if (!this._deferPropertySync && this.isOpenItem(item)) {
           this.content = item.content;
           this.mimeType = item.mimeType;
           this.rawMessageHtml = item.rawMessageHtml;
@@ -1005,7 +1105,7 @@ export class MessageReader extends LitElement {
               messageUid: item.message?.UID,
               allowRemoteResources: item.allowRemoteResources,
               messageStructure: item.message?.BodyStructure,
-              onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (String(item.message.UID) === String(this.message?.UID)) this.hasRemoteResources = true; }
+              onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (this.isOpenItem(item)) this.hasRemoteResources = true; }
             });
           } else {
             rawText = await rawRes.text();
@@ -1025,7 +1125,7 @@ export class MessageReader extends LitElement {
                 messageUid: item.message?.UID,
                 allowRemoteResources: item.allowRemoteResources,
                 messageStructure: item.message?.BodyStructure,
-                onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (String(item.message.UID) === String(this.message?.UID)) this.hasRemoteResources = true; }
+                onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (this.isOpenItem(item)) this.hasRemoteResources = true; }
               });
             }
           }
@@ -1046,7 +1146,7 @@ export class MessageReader extends LitElement {
       item.content = 'Error loading message.';
     } finally {
       item.loading = false;
-      if (!this._deferPropertySync && String(item.message.UID) === String(this.message?.UID)) {
+      if (!this._deferPropertySync && this.isOpenItem(item)) {
         this.content = item.content;
         this.mimeType = item.mimeType;
         this.rawMessageHtml = item.rawMessageHtml;
@@ -1117,7 +1217,7 @@ export class MessageReader extends LitElement {
       // card updated the card and left the reader's own copy blocked, with its
       // banner still up — and, worse, a card that was NOT open could push its
       // content into the reader by being first.
-      if (String(item.message.UID) === String(this.message?.UID)) {
+      if (this.isOpenItem(item)) {
         this.content = item.content;
         this.allowRemoteResources = true;
         this.hasRemoteResources = item.hasRemoteResources;
@@ -1138,16 +1238,24 @@ export class MessageReader extends LitElement {
     }
     this.updateThreadItemReference(item);
 
+    // The list holds only its own mailbox's rows, and finds them by UID alone,
+    // so a card from Sent must not tell it anything.
+    const listed = this.listedKeys().has(this.itemKey(item));
+    const tellList = (action: string) => {
+      if (!listed) return;
+      this.dispatchEvent(new CustomEvent('message-flags-changed', {
+        detail: {
+          uid: String(item.message.UID),
+          flag: FLAG_FLAGGED,
+          action
+        },
+        bubbles: true,
+        composed: true
+      }));
+    };
+
     // Optimistically notify parent page to update flags in list view
-    this.dispatchEvent(new CustomEvent('message-flags-changed', {
-      detail: {
-        uid: String(item.message.UID),
-        flag: FLAG_FLAGGED,
-        action: op
-      },
-      bubbles: true,
-      composed: true
-    }));
+    tellList(op);
 
     try {
       const { ok: success } = await messageOperations.setFlag(item.mailbox, [String(item.message.UID)], [FLAG_FLAGGED], op);
@@ -1160,17 +1268,9 @@ export class MessageReader extends LitElement {
         this.updateThreadItemReference(item);
 
         // Revert parent view on failure
-        this.dispatchEvent(new CustomEvent('message-flags-changed', {
-          detail: {
-            uid: String(item.message.UID),
-            flag: FLAG_FLAGGED,
-            action: isStarred ? 'add' : 'remove'
-          },
-          bubbles: true,
-          composed: true
-        }));
+        tellList(isStarred ? 'add' : 'remove');
       } else {
-        if (String(item.message.UID) === String(this.message?.UID)) {
+        if (this.isOpenItem(item)) {
           this.message.Flags = item.message.Flags;
           this.requestUpdate();
         }
@@ -1185,15 +1285,7 @@ export class MessageReader extends LitElement {
       this.updateThreadItemReference(item);
 
       // Revert parent view on failure
-      this.dispatchEvent(new CustomEvent('message-flags-changed', {
-        detail: {
-          uid: String(item.message.UID),
-          flag: FLAG_FLAGGED,
-          action: isStarred ? 'add' : 'remove'
-        },
-        bubbles: true,
-        composed: true
-      }));
+      tellList(isStarred ? 'add' : 'remove');
     }
   }
 
@@ -1218,9 +1310,18 @@ export class MessageReader extends LitElement {
     try {
       const result = await messageOperations.deleteMessagesResult(item.mailbox, [String(item.message.UID)]);
       if (result.ok) {
-        const uidStr = String(item.message.UID);
-        const isFirst = this.threadItems.length > 0 && String(this.threadItems[0].message?.UID) === uidStr;
-        this.threadItems = this.threadItems.filter(i => String(i.message?.UID) !== uidStr);
+        const key = this.itemKey(item);
+        // Only a listed message is the page's to follow up; a card from Sent
+        // can come first in its conversation and is not.
+        const isFirst = this.threadItems.length > 0 && this.itemKey(this.threadItems[0]) === key &&
+          this.listedKeys().has(key);
+        this.threadItems = this.threadItems.filter(i => this.itemKey(i) !== key);
+        if (this._conversation) {
+          this._conversation = {
+            ...this._conversation,
+            messages: this._conversation.messages.filter(m => this.keyOf(m) !== key)
+          };
+        }
         this.requestUpdate();
 
         if (isFirst) {
@@ -1267,17 +1368,24 @@ export class MessageReader extends LitElement {
         item.rawMessageHtml,
         item.hasHtml,
         dateFormat,
-        hourFormat
+        hourFormat,
+        this.ownAddresses()
       );
 
-      const attachments = action === 'forward' ? item.attachments.map(a => ({
+      // A forward carries the original's attachments; a reply does not. Both
+      // carry its inline parts, which the quote's images name: see inlinePartsOf.
+      const forwarded = action === 'forward' ? item.attachments.map(a => ({
         name: a.Filename || 'attachment',
         size: a.Size || 0,
         type: a.MIMEType || 'application/octet-stream',
         partPath: a.Path ? a.Path.join('.') : undefined
       })) : [];
+      const attachments = [
+        ...forwarded,
+        ...inlinePartsOf(item.message.BodyStructure).filter(part => !forwarded.some(a => a.partPath === part.partPath)),
+      ];
 
-      const inReplyTo = (action === 'reply' || action === 'replyAll') ? (item.message.Envelope?.MessageID || item.message.Envelope?.MessageId) : undefined;
+      const reply = action === 'reply' || action === 'replyAll' ? replyContext(item.message, item.mailbox) : {};
 
       this.composeStore.openComposer({
         subject,
@@ -1287,7 +1395,10 @@ export class MessageReader extends LitElement {
         html: quotedHtml,
         format: this.settingsStore?.getState()?.composeFormat || 'html',
         attachments: attachments,
-        inReplyTo
+        // The quote keeps the original's inline images, and the composer
+        // shows them from the original's own parts.
+        quoteSource: { mailbox: item.mailbox, uid: String(item.message.UID), structure: item.message.BodyStructure },
+        ...reply
       });
       return;
     }
@@ -1408,7 +1519,12 @@ export class MessageReader extends LitElement {
       text: textBody,
       html: rawMessageHtml,
       format: this.settingsStore?.getState()?.composeFormat || 'html',
-      attachments: attachments
+      attachments: attachments,
+      // A forward's inline images are the draft's own parts now.
+      quoteSource: { mailbox, uid: msg.UID.toString(), structure: msg.BodyStructure },
+      // A reply saved as a draft still answers its message when it is sent.
+      inReplyTo: msg.Envelope?.InReplyTo || undefined,
+      references: Array.isArray(msg.References) && msg.References.length ? msg.References : undefined
     });
   }
 
@@ -1420,7 +1536,7 @@ export class MessageReader extends LitElement {
   private renderThreadCard(item: ThreadMessageItem) {
     return html`
       <alps-thread-card
-        id="thread-card-${item.message?.UID}"
+        id=${this.cardId(item)}
         .item=${item}
         .mailbox=${this.mailbox}
         .showSenderAvatars=${this.showSenderAvatars}

@@ -26,6 +26,8 @@ Supported prefixes (case-insensitive) are:
 `from:alice subject:meeting`
 _Matches emails sent by "alice" that have "meeting" in the subject line._
 
+A word with a colon that is not one of these prefixes, such as `10:30` or a link, is searched for as it is written.
+
 ## Quoted Terms
 
 If your search term contains spaces, you can wrap it in double quotes (`"`) to ensure the entire phrase is searched as a single unit. This works for both basic and prefix searches.

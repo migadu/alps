@@ -175,7 +175,7 @@ class CalendarService {
             body: JSON.stringify({ name })
         });
         if (!response.ok) {
-            throw new Error('Failed to create calendar');
+            throw new HttpStatusError(response.status, 'Failed to create calendar');
         }
         return response.json();
     }

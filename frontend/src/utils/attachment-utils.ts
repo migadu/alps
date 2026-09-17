@@ -8,6 +8,9 @@ export interface Attachment {
   partPath?: string;
   filename: string;
   size: number;
+  /** A part of the body's markup, not of the attachment tray: it is sent, which
+   * is what makes the quote's `cid:` reference resolve, and shown as no chip. */
+  inline?: boolean;
   uploading?: boolean;
   progress?: number;
   _tempId?: string; // used to identify the attachment during upload
@@ -172,4 +175,47 @@ export function uploadFiles(
 
     xhr.send(formData);
   }
+}
+
+/** A part of another message, as a composer names it to the server. */
+export interface CarriedPart {
+  name: string;
+  size: number;
+  type: string;
+  partPath: string;
+  inline?: boolean;
+}
+
+/**
+ * The original's inline parts, for a reply or forward to carry.
+ *
+ * The quote keeps the original's `cid:` images, as every mail client's does,
+ * and a `cid:` names a part of the message it came in: without the part, the
+ * recipient gets a broken image. The message's attachment rows leave these
+ * parts out, as parts of the body, so they are read off its structure: every
+ * part with a Content-ID, whatever its disposition, numbered as the server
+ * numbers parts. They are carried as inline, so they are the body's images
+ * and not chips the user never attached.
+ */
+export function inlinePartsOf(structure: any): CarriedPart[] {
+  const parts: CarriedPart[] = [];
+  const walk = (node: any, path: string) => {
+    if (!node) return;
+    if (node.ID) {
+      const encoded = Number(node.Size) || 0;
+      parts.push({
+        name: node.Extended?.Disposition?.Params?.filename || node.Params?.name || 'image',
+        // The structure reports the encoded size, and these parts are base64.
+        size: String(node.Encoding).toLowerCase() === 'base64' ? Math.floor((encoded * 3) / 4) : encoded,
+        type: node.Type && node.Subtype ? `${node.Type}/${node.Subtype}`.toLowerCase() : 'application/octet-stream',
+        partPath: path || '1',
+        inline: true,
+      });
+    }
+    if (Array.isArray(node.Children)) {
+      node.Children.forEach((child: any, i: number) => walk(child, path ? `${path}.${i + 1}` : `${i + 1}`));
+    }
+  };
+  walk(structure, '');
+  return parts;
 }

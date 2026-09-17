@@ -13,7 +13,9 @@ import {
   findMailboxNameByRole,
   isDescendantMailbox,
   isSelfOrDescendantMailbox,
+  delimiterOf,
   mailboxDelimiter,
+  mailboxLevels,
   mailboxRole,
   mailboxRoleByName,
 } from '../src/utils/folders';
@@ -144,6 +146,13 @@ describe('mailboxDelimiter', () => {
     expect(mailboxDelimiter('INBOX.Old', list)).toBe('.');
   });
 
+  it('answers a string for the character code the listing sends', () => {
+    // 47 is `/`: a number here made every "is it inside Trash" check false.
+    const list = [mb('Trash', [], { Delim: 47 }), mb('Trash/Old', [], { Delim: 47 })];
+    expect(mailboxDelimiter('Trash/Old', list)).toBe('/');
+    expect(isSelfOrDescendantMailbox('Trash/Old', 'Trash', mailboxDelimiter('Trash/Old', list))).toBe(true);
+  });
+
   it('answers empty for an unknown mailbox', () => {
     expect(mailboxDelimiter('Nope', [mb('Work', [], { Delimiter: '/' })])).toBe('');
     expect(mailboxDelimiter('')).toBe('');
@@ -159,5 +168,31 @@ describe('encodeMailboxPath', () => {
 
   it('leaves an ordinary name alone', () => {
     expect(encodeMailboxPath('INBOX')).toBe('INBOX');
+  });
+});
+
+describe('delimiterOf', () => {
+  it('reads either field, as a string', () => {
+    expect(delimiterOf({ Delimiter: '.' })).toBe('.');
+    expect(delimiterOf({ Delim: 47 })).toBe('/');
+    expect(delimiterOf({ Delimiter: 46 })).toBe('.');
+  });
+
+  it('answers empty for a server without a hierarchy, whatever the fallback', () => {
+    // NIL arrives as 0: there is no delimiter, not an unknown one.
+    expect(delimiterOf({ Delim: 0 })).toBe('');
+    expect(delimiterOf({ Delim: 0 }, '.')).toBe('');
+  });
+
+  it('answers the fallback when the mailbox says nothing', () => {
+    expect(delimiterOf({})).toBe('');
+    expect(delimiterOf(undefined, '.')).toBe('.');
+  });
+});
+
+describe('mailboxLevels', () => {
+  it('splits on the delimiter, and not at all without one', () => {
+    expect(mailboxLevels('Trash/Old/2024', '/')).toEqual(['Trash', 'Old', '2024']);
+    expect(mailboxLevels('Invoices v1.2', '')).toEqual(['Invoices v1.2']);
   });
 });

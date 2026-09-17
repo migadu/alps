@@ -21,6 +21,7 @@ import './alps-emoji-selector-popup.js';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { Logger } from '../utils/logger';
+import { appendReplyFields } from '../utils/reply-context';
 import { registry } from '../plugin-registry';
 const UNDO_TOAST_TIMEOUT_MS = 5000;
 
@@ -102,11 +103,23 @@ export class AlpsFloatingComposer extends LitElement {
   };
 
   firstUpdated() {
-    setTimeout(() => {
-      if (this.isConnected && this.composer && (this.composer as any).focusEditor) {
-        (this.composer as any).focusEditor();
-      }
-    }, 100);
+    void this._focusNewEditor();
+  }
+
+  /**
+   * Puts the caret in a new window's editor as soon as the editor exists.
+   *
+   * The composer builds its editor in its own first update, which follows this
+   * window's. A 100 ms timer stood in for that wait, and for those 100 ms focus
+   * stayed on the button that opened the window: a letter typed then was lost,
+   * and a space pressed that button again, opening a second composer or a
+   * second reply.
+   */
+  private async _focusNewEditor() {
+    const composer = this.composer as any;
+    if (!composer) return;
+    await composer.updateComplete;
+    if (this.isConnected && composer.isConnected) composer.focusEditor?.();
   }
 
   private _clearAutoSave() {
@@ -269,9 +282,7 @@ export class AlpsFloatingComposer extends LitElement {
     if (currentInstance.draftUid) {
       formData.append('draft_uid', currentInstance.draftUid);
     }
-    if (currentInstance.inReplyTo) {
-      formData.append('in_reply_to', currentInstance.inReplyTo);
-    }
+    appendReplyFields(formData, currentInstance);
 
     return formData;
   }
@@ -300,13 +311,13 @@ export class AlpsFloatingComposer extends LitElement {
       this.composeStore.updateComposer(this.instance.id, { minimized: false });
       setTimeout(() => {
         if (this.isConnected && this.composer && (this.composer as any).focusEditor) {
-          (this.composer as any).focusEditor();
+          (this.composer as any).focusEditor(true);
         }
       }, 100);
     } else if (!this._wasActiveOnMousedown) {
       setTimeout(() => {
         if (this.isConnected && this.composer && (this.composer as any).focusEditor) {
-          (this.composer as any).focusEditor();
+          (this.composer as any).focusEditor(true);
         }
       }, 100);
     }
@@ -470,7 +481,7 @@ export class AlpsFloatingComposer extends LitElement {
     // Explicitly restore focus to the editor so the selection doesn't visually disappear,
     // mirroring how formatting buttons (like Bold) work.
     if ((this.composer as any).focusEditor) {
-      (this.composer as any).focusEditor();
+      (this.composer as any).focusEditor(true);
     }
 
     const hasSelection = this.composer.hasSelection();
@@ -488,15 +499,32 @@ export class AlpsFloatingComposer extends LitElement {
       ];
     }
 
-    // reset values to match fields
-    setTimeout(() => {
-      const inputs = this.shadowRoot?.querySelectorAll('#linkPopup input') as NodeListOf<HTMLInputElement>;
-      inputs.forEach(input => {
-        const field = this.linkPromptFields.find(f => f.id === input.id);
-        input.value = field?.value || '';
-      });
-      // Do not auto-focus the input, allowing the editor to potentially keep its visual selection
-    }, 50);
+    // Once, as the popup opens, which also clears what was typed the last time
+    // it was open. Not bound in the template: a binding is re-applied by any
+    // render of this window, and one mid-typing wiped the field. No field is
+    // focused, so the editor keeps its visible selection.
+    void this.updateComplete.then(() => {
+      for (const field of this._linkPromptFieldElements()) {
+        field.value = this.linkPromptFields.find(f => f.id === field.inputId)?.value || '';
+      }
+    });
+  }
+
+  private _linkPromptFieldElements() {
+    return Array.from(this.shadowRoot?.querySelectorAll<HTMLElement & { inputId: string; value: string }>('#linkPopup alps-input') ?? []);
+  }
+
+  /**
+   * What the link popup's fields hold, by field id.
+   *
+   * Read from the fields' `alps-input` elements. The `<input>` inside each is
+   * in that element's own shadow root, where a query from here never reaches,
+   * so reading those found nothing and Apply inserted no link at all.
+   */
+  private _linkPromptValues(): Record<string, string> {
+    const values: Record<string, string> = {};
+    for (const field of this._linkPromptFieldElements()) values[field.inputId] = field.value;
+    return values;
   }
 
   private _handleLinkSubmit() {
@@ -505,15 +533,13 @@ export class AlpsFloatingComposer extends LitElement {
 
     if (!this.composer) return;
 
-    const inputs = this.shadowRoot?.querySelectorAll('#linkPopup input') as NodeListOf<HTMLInputElement>;
-    const values: Record<string, string> = {};
-    inputs.forEach(input => values[input.id] = input.value);
-
-    const { text, url } = values;
+    const { text, url } = this._linkPromptValues();
     if (!url) return;
 
     if (this.instance.format === 'html' && (this.composer as any).editor) {
       const editor = (this.composer as any).editor;
+      // Never over a selected quote: inserting replaces the selection.
+      (this.composer as any).leaveSelectedNode?.();
       if (text) {
         editor.chain().focus()
           .insertContent(`<a href="${url}">${text}</a>`)
@@ -1361,12 +1387,19 @@ export class AlpsFloatingComposer extends LitElement {
               .text=${this.instance.text || ''}
               .htmlText=${this.instance.html || ''}
               .format=${this.instance.format || 'html'}
+              .quoteSource=${this.instance.quoteSource}
               @text-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { text: e.detail.text, html: e.detail.html })}
             ></alps-message-composer>
           </div>
 
           <alps-attachment-list
-            .attachments=${this.instance.attachments || []}
+            .attachments=${
+              // Inline parts are the quote's own images, carried so its cid:
+              // references resolve. As chips the user would see files they never
+              // attached. Removal looks the entry up in the full list, so the
+              // filtered one is fine to hand over.
+              (this.instance.attachments || []).filter((a: any) => !a.inline)
+            }
             .removable=${true}
             .composerMode=${true}
             @remove-attachment=${(e: CustomEvent) => {

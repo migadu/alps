@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
+	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 )
 
@@ -126,6 +129,43 @@ func TestOutgoingMessage_ReplyHeaders(t *testing.T) {
 	if h.Get("Reply-To") != "team@example.com" || h.Get("In-Reply-To") != "<original@example.com>" {
 		t.Errorf("Reply-To = %q, In-Reply-To = %q", h.Get("Reply-To"), h.Get("In-Reply-To"))
 	}
+	if refs := h.Get("References"); refs != "<original@example.com>" {
+		t.Errorf("References = %q, want the message replied to", refs)
+	}
+}
+
+// The composer sends the IDs it has, and the envelope gives them without angle
+// brackets. Written bare, In-Reply-To is not a msg-id: a server parsing it
+// keeps nothing, and the reply belongs to no conversation, in threading here
+// and in the recipient's client alike.
+func TestOutgoingMessage_ReplyHeadersFromBareIDs(t *testing.T) {
+	msg := outgoing()
+	msg.InReplyTo = "parent@example.com"
+	msg.References = "root@example.com middle@example.com parent@example.com"
+	h, _, _ := render(t, msg)
+	if got, err := h.MsgIDList("In-Reply-To"); err != nil || len(got) != 1 || got[0] != "parent@example.com" {
+		t.Errorf("In-Reply-To = %q, parsed as %q, %v", h.Get("In-Reply-To"), got, err)
+	}
+	got, err := h.MsgIDList("References")
+	want := []string{"root@example.com", "middle@example.com", "parent@example.com"}
+	if err != nil || strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("References = %q, parsed as %q, %v; want %q", h.Get("References"), got, err, want)
+	}
+}
+
+func TestOutgoingMessage_LongReferencesKeepTheRoot(t *testing.T) {
+	var chain []string
+	for i := 0; i < 30; i++ {
+		chain = append(chain, fmt.Sprintf("<m%d@example.com>", i))
+	}
+	msg := outgoing()
+	msg.InReplyTo = "<m29@example.com>"
+	msg.References = strings.Join(chain, " ")
+	h, _, _ := render(t, msg)
+	got, _ := h.MsgIDList("References")
+	if len(got) != maxReferences || got[0] != "m0@example.com" || got[len(got)-1] != "m29@example.com" || got[1] != "m11@example.com" {
+		t.Errorf("References = %q", got)
+	}
 }
 
 func TestOutgoingMessage_EncodesNonASCIIHeaders(t *testing.T) {
@@ -148,9 +188,14 @@ func TestOutgoingMessage_EncodesNonASCIIHeaders(t *testing.T) {
 
 func TestOutgoingMessage_HeaderValuesCannotAddHeaders(t *testing.T) {
 	cases := map[string]func(*OutgoingMessage){
-		"subject":     func(m *OutgoingMessage) { m.Subject = "hello\r\nBcc: victim@example.net" },
-		"reply-to":    func(m *OutgoingMessage) { m.ReplyTo = "team@example.com\r\nBcc: victim@example.net" },
-		"in-reply-to": func(m *OutgoingMessage) { m.InReplyTo = "<a@example.com>\r\nBcc: victim@example.net" },
+		"subject":          func(m *OutgoingMessage) { m.Subject = "hello\r\nBcc: victim@example.net" },
+		"reply-to":         func(m *OutgoingMessage) { m.ReplyTo = "team@example.com\r\nBcc: victim@example.net" },
+		"in-reply-to":      func(m *OutgoingMessage) { m.InReplyTo = "<a@example.com>\r\nBcc: victim@example.net" },
+		"bare in-reply-to": func(m *OutgoingMessage) { m.InReplyTo = "a@example.com\r\nBcc: victim@example.net" },
+		"references": func(m *OutgoingMessage) {
+			m.InReplyTo = "a@example.com"
+			m.References = "<r@example.com\r\nBcc: victim@example.net>"
+		},
 	}
 	for name, mutate := range cases {
 		msg := outgoing()
@@ -269,7 +314,14 @@ func (s *smtpSession) Data(_ context.Context, r io.Reader) error {
 func (s *smtpSession) Reset()        {}
 func (s *smtpSession) Logout() error { return nil }
 
-func dialRecorder(t *testing.T) (*smtp.Client, *smtpRecorder) {
+// Any credentials will do: the session under test authenticates as its user.
+func (s *smtpSession) AuthMechanisms() []string { return []string{sasl.Plain} }
+func (s *smtpSession) Auth(string) (sasl.Server, error) {
+	return sasl.NewPlainServer(func(string, string, string) error { return nil }), nil
+}
+
+// listenRecorder serves a recorder and returns the address to configure.
+func listenRecorder(t *testing.T) (string, *smtpRecorder) {
 	t.Helper()
 	rec := &smtpRecorder{}
 	srv := smtp.NewServer(rec)
@@ -281,7 +333,13 @@ func dialRecorder(t *testing.T) (*smtp.Client, *smtpRecorder) {
 	}
 	go srv.Serve(ln)
 	t.Cleanup(func() { srv.Close() })
-	c, err := smtp.Dial(ln.Addr().String())
+	return "smtp+insecure://" + ln.Addr().String(), rec
+}
+
+func dialRecorder(t *testing.T) (*smtp.Client, *smtpRecorder) {
+	t.Helper()
+	addr, rec := listenRecorder(t)
+	c, err := smtp.Dial(strings.TrimPrefix(addr, "smtp+insecure://"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,5 +377,125 @@ func TestSendMessage_ReportsTheRefusedRecipient(t *testing.T) {
 	var smtpErr *smtp.SMTPError
 	if err == nil || !strings.Contains(err.Error(), "refused@example.com") || !errors.As(err, &smtpErr) && !strings.Contains(err.Error(), "550") {
 		t.Errorf("got %v, want the server's refusal naming the address", err)
+	}
+}
+
+// structure describes a written message as a tree of media types, each leaf
+// with its disposition and Content-ID: enough to see where a part landed.
+func structure(t *testing.T, raw string) string {
+	t.Helper()
+	e, err := message.Read(strings.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var walk func(*message.Entity) string
+	walk = func(e *message.Entity) string {
+		mediaType, _, _ := e.Header.ContentType()
+		if mr := e.MultipartReader(); mr != nil {
+			var children []string
+			for {
+				p, err := mr.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				children = append(children, walk(p))
+			}
+			return mediaType + "[" + strings.Join(children, " ") + "]"
+		}
+		disp, _, _ := e.Header.ContentDisposition()
+		leaf := mediaType
+		if disp != "" {
+			leaf += ";" + disp
+		}
+		if id := e.Header.Get("Content-Id"); id != "" {
+			leaf += id
+		}
+		return leaf
+	}
+	return walk(e)
+}
+
+func chartImage(cid string) *imapAttachment {
+	return &imapAttachment{
+		Node:   &IMAPPartNode{MIMEType: "image/png", Filename: "chart.png"},
+		Body:   []byte("\x89PNG\r\n"),
+		CID:    cid,
+		Inline: true,
+	}
+}
+
+// The body's images travel beside the HTML that names them, under the same
+// Content-ID, so the recipient's client can resolve every cid: reference.
+func TestOutgoingMessage_InlineImagesTravelWithTheHTML(t *testing.T) {
+	pdf := memAttachment{name: "report.pdf", mimeType: "application/pdf", body: []byte("%PDF")}
+
+	for name, tc := range map[string]struct {
+		html        string
+		attachments []Attachment
+		want        string
+	}{
+		"images only": {
+			html:        `<img src="cid:chart@remote.test">`,
+			attachments: []Attachment{chartImage("chart@remote.test")},
+			want:        "multipart/related[multipart/alternative[text/plain;inline text/html;inline] image/png;inline<chart@remote.test>]",
+		},
+		"images and a file": {
+			html:        `<img src="cid:chart@remote.test">`,
+			attachments: []Attachment{pdf, chartImage("chart@remote.test")},
+			want:        "multipart/mixed[multipart/related[multipart/alternative[text/plain;inline text/html;inline] image/png;inline<chart@remote.test>] application/pdf;attachment]",
+		},
+		// Without HTML nothing refers to the image, so it goes as a file, and
+		// keeps its ID.
+		"no HTML": {
+			attachments: []Attachment{chartImage("chart@remote.test")},
+			want:        "multipart/mixed[text/plain;inline image/png;attachment<chart@remote.test>]",
+		},
+		// An ID that could not be written back as one is not written at all.
+		"an ID that is not one": {
+			html:        `<p>hi</p>`,
+			attachments: []Attachment{chartImage("chart>\r\nBcc: victim@example.com")},
+			want:        "multipart/mixed[multipart/alternative[text/plain;inline text/html;inline] image/png;attachment]",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			msg := outgoing()
+			msg.HTML = tc.html
+			msg.Attachments = tc.attachments
+			var buf bytes.Buffer
+			if _, err := msg.WriteTo(&buf); err != nil {
+				t.Fatal(err)
+			}
+			if got := structure(t, buf.String()); got != tc.want {
+				t.Errorf("structure\n got %s\nwant %s", got, tc.want)
+			}
+			if strings.Contains(headerSection(buf.String()), "victim") {
+				t.Error("a part's ID reached the message header")
+			}
+		})
+	}
+}
+
+// What the parts hold survives the new layout: the text, the HTML, and the
+// image's bytes.
+func TestOutgoingMessage_RelatedPartsKeepTheirContent(t *testing.T) {
+	msg := outgoing()
+	msg.HTML = `<p>see <img src="cid:chart@remote.test"></p>`
+	msg.Attachments = []Attachment{chartImage("chart@remote.test")}
+	h, parts, _ := render(t, msg)
+	if ct, params, _ := h.ContentType(); ct != "multipart/related" || params["type"] != "multipart/alternative" {
+		t.Errorf("Content-Type = %q %v", ct, params)
+	}
+	var bodies []string
+	for _, p := range parts {
+		bodies = append(bodies, p.body)
+	}
+	joined := strings.Join(bodies, "|")
+	for _, want := range []string{"text body", `cid:chart@remote.test`, "\x89PNG\r\n"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("no part holds %q: %q", want, joined)
+		}
 	}
 }

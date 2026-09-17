@@ -1,6 +1,7 @@
 package imap
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -82,6 +83,12 @@ func (s *memoryStore) Put(key string, v interface{}) error {
 	return nil
 }
 
+// imapStore keeps each entry in the server's METADATA, and caches it as the
+// JSON the server holds. Callers decode the same entry into different types:
+// signing in reads only the auto-logout from the settings, a listing only the
+// threading choice, the settings page all of it. Caching what the first of
+// them decoded handed everyone after it that caller's part, and defaults for
+// the rest, which the settings page then saved over the account's settings.
 type imapStore struct {
 	client *imapclient.Client
 	cache  *memoryStore
@@ -100,8 +107,16 @@ func (s *imapStore) key(key string) string {
 	return "/private/vendor/alps/" + key
 }
 
+// Get reports an entry it cannot decode as an error, not as a missing entry.
+// Callers take a missing entry for a new account and write their own record
+// over it, so an entry that one version of alps could not read was replaced
+// with defaults. A decode error keeps the json error for errors.As; for a
+// value of the wrong type, encoding/json has still filled in the rest.
 func (s *imapStore) Get(key string, out interface{}) error {
-	if err := s.cache.Get(key, out); err != provider.ErrNoStoreEntry {
+	var cached json.RawMessage
+	if err := s.cache.Get(key, &cached); err == nil {
+		return decodeStoreEntry(key, cached, out)
+	} else if err != provider.ErrNoStoreEntry {
 		return err
 	}
 
@@ -114,12 +129,30 @@ func (s *imapStore) Get(key string, out interface{}) error {
 	if !ok || v == nil || len(*v) == 0 || string(*v) == "NIL" {
 		return provider.ErrNoStoreEntry
 	}
-	if err := json.Unmarshal(*v, out); err != nil {
-		log.Printf("provider/imap: ignoring invalid store entry %q (err: %v)", key, err)
-		return provider.ErrNoStoreEntry
+	raw := bytes.Clone(*v)
+	if json.Valid(raw) {
+		if err := s.cache.Put(key, json.RawMessage(raw)); err != nil {
+			return err
+		}
 	}
-	// Store the dereferenced value in cache, not the pointer
-	return s.cache.Put(key, reflect.ValueOf(out).Elem().Interface())
+	return decodeStoreEntry(key, raw, out)
+}
+
+// GetFresh asks the server, whatever this connection has cached: the cache
+// lasts as long as the connection, and another client, or another session of
+// this one, may have written the entry since.
+func (s *imapStore) GetFresh(key string, out interface{}) error {
+	if err := s.cache.Put(key, nil); err != nil {
+		return err
+	}
+	return s.Get(key, out)
+}
+
+func decodeStoreEntry(key string, raw []byte, out interface{}) error {
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("provider/imap: failed to decode IMAP store entry %q: %w", key, err)
+	}
+	return nil
 }
 
 func (s *imapStore) Put(key string, v interface{}) error {
@@ -136,14 +169,8 @@ func (s *imapStore) Put(key string, v interface{}) error {
 		return fmt.Errorf("provider/imap: failed to put IMAP store entry %q: %v", key, err)
 	}
 
-	if v == nil {
+	if bPtr == nil {
 		return s.cache.Put(key, nil)
 	}
-
-	// Store the fresh value in cache
-	val := reflect.ValueOf(v)
-	if val.Kind() == reflect.Ptr {
-		return s.cache.Put(key, val.Elem().Interface())
-	}
-	return s.cache.Put(key, v)
+	return s.cache.Put(key, json.RawMessage(*bPtr))
 }

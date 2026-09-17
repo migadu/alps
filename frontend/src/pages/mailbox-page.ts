@@ -317,6 +317,12 @@ export class MailboxPage extends LitElement {
     }));
   }
 
+  /** Shows a child's `toast` event. Both lists report through it; only the
+   * folder list's were shown, so emptying Trash or Junk said nothing at all. */
+  private _relayToast = (e: CustomEvent) => {
+    this.showGlobalToast(e.detail.message, e.detail.actionLabel, e.detail.actionFn, e.detail.duration);
+  };
+
   /**
    * Says why a flag write did not happen.
    *
@@ -1508,7 +1514,7 @@ export class MailboxPage extends LitElement {
           this.mobileSidebarOpen = false;
         }
       }}
-            @toast=${(e: CustomEvent) => this.showGlobalToast(e.detail.message, e.detail.actionLabel, e.detail.actionFn, e.detail.duration)}
+            @toast=${this._relayToast}
           ></alps-folder-list>
           <alps-icon-btn 
             slot="footer-actions"
@@ -1549,6 +1555,7 @@ export class MailboxPage extends LitElement {
       }}
               @toggle-sidebar=${() => this.mobileSidebarOpen = !this.mobileSidebarOpen}
               @compose=${() => this.composeStore.openComposer()}
+              @toast=${this._relayToast}
               @select-message=${(e: CustomEvent) => this.selectMessage(e.detail.message)}
               @change-page=${(e: CustomEvent) => this.updateUrl(this.currentMailbox, e.detail.page, this.targetUid)}
               @list-scrolled=${(e: CustomEvent) => this.listScrolled = e.detail.scrolled}

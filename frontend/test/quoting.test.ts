@@ -104,6 +104,44 @@ describe('generateQuote', () => {
     expect(quote.cc).toEqual(['bob@example.test']);
   });
 
+  describe("the user's own addresses", () => {
+    const quote = (type: 'reply' | 'replyAll', envelope: Record<string, unknown>, self = ['ME@example.test']) =>
+      generateQuote(type, message(envelope), '', null, false, undefined, undefined, self);
+
+    it('are left out of a Reply All, in To and in Cc', () => {
+      const q = quote('replyAll', {
+        To: [{ Name: 'Me', Mailbox: 'me', Host: 'example.test' }, { Mailbox: 'grace', Host: 'remote.test' }],
+        Cc: [{ Mailbox: 'bob', Host: 'example.test' }, { Mailbox: 'me', Host: 'EXAMPLE.test' }],
+      });
+      expect(q.to).toEqual(['Ada Lovelace <ada@remote.test>', 'grace@remote.test']);
+      expect(q.cc).toEqual(['bob@example.test']);
+    });
+
+    it('are matched however the setting spells them', () => {
+      const q = quote('replyAll', {}, ['"Me" <me@example.test>']);
+      expect(q.to).toEqual(['Ada Lovelace <ada@remote.test>']);
+    });
+
+    it('turn a reply to my own message into one to its recipients', () => {
+      const sent = { From: [{ Name: 'Me', Mailbox: 'me', Host: 'example.test' }], To: [{ Mailbox: 'grace', Host: 'remote.test' }] };
+      expect(quote('reply', sent).to).toEqual(['grace@remote.test']);
+      const all = quote('replyAll', sent);
+      expect(all.to).toEqual(['grace@remote.test']);
+      expect(all.cc).toEqual(['bob@example.test']);
+    });
+
+    it('move Cc up when my message had nobody else in To', () => {
+      const q = quote('replyAll', { From: [{ Mailbox: 'me', Host: 'example.test' }], To: [{ Mailbox: 'me', Host: 'example.test' }] });
+      expect(q.to).toEqual(['bob@example.test']);
+      expect(q.cc).toEqual([]);
+    });
+
+    it('still answer a message I sent only to myself', () => {
+      const q = quote('reply', { From: [{ Mailbox: 'me', Host: 'example.test' }], To: [{ Mailbox: 'me', Host: 'example.test' }] });
+      expect(q.to).toEqual(['me@example.test']);
+    });
+  });
+
   it('addresses a forward to nobody', () => {
     const quote = generateQuote('forward', message(), '', null, false);
     expect(quote.to).toEqual([]);
@@ -144,6 +182,23 @@ describe('generateQuote', () => {
     expect(doc.querySelector('script')).toBeNull();
     expect(doc.querySelector('img')?.getAttribute('onerror')).toBeNull();
     expect(doc.querySelector('img')?.getAttribute('src')).toBe('https://cdn.test/a.png');
+  });
+
+  const illustrated =
+    '<p>chart</p><img src=" CID:chart@x"><img src="https://cdn.remote.test/logo.png">' +
+    '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="drawn">';
+
+  it("keeps the original's images in a reply as in a forward, as every client does", () => {
+    // The inline parts travel with either (see inlinePartsOf), and a remote
+    // image is the recipient's client's to show or block, as for any message.
+    for (const type of ['reply', 'replyAll', 'forward'] as const) {
+      const doc = parse(generateQuote(type, message(), 'chart', illustrated, true).quotedHtml);
+      expect(Array.from(doc.querySelectorAll('img'), (img) => img.getAttribute('src')), type).toEqual([
+        ' CID:chart@x',
+        'https://cdn.remote.test/logo.png',
+        'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
+      ]);
+    }
   });
 
   it('marks an HTML quote for the composer to keep whole, and nothing else', () => {

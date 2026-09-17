@@ -1683,6 +1683,10 @@ func (p *IMAPProvider) GetMessageThread(mailbox string, targetUID provider.Messa
 			algo = imap.ThreadOrderedSubject
 		}
 	}
+	if isMailboxMassive(p.client.Mailbox()) {
+		// ListMessages does not thread a mailbox this big, and neither does this.
+		algo = ""
+	}
 
 	if algo != "" {
 		options := imapclient.ThreadOptions{

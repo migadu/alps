@@ -8,12 +8,18 @@ import '../../../frontend/src/components/alps-button';
 
 @customElement('alps-raw-editor')
 export class RawEditor extends LitElement {
-	private initialScript: string | null = null;
 	@state() private isDirty = false;
 	@consume({ context: i18nContext })
 	i18nStore!: I18nStore;
 
 	@property({ type: String }) script = '';
+	/**
+	 * The script as the server holds it. Save is offered whenever the text
+	 * differs. The first text this editor was handed stood in for it, and that
+	 * is not always what is stored: rules switched here before they were saved
+	 * arrived as the first text, so they read as saved and could not be.
+	 */
+	@property({ type: String }) stored = '';
 	@state() private isValidating = false;
 	@state() private isSaving = false;
 
@@ -88,11 +94,8 @@ export class RawEditor extends LitElement {
 	`;
 
 	willUpdate(changedProperties: Map<string, any>) {
-		if (changedProperties.has('script')) {
-			if (this.initialScript === null) {
-				this.initialScript = this.script;
-			}
-			this.isDirty = this.script !== this.initialScript;
+		if (changedProperties.has('script') || changedProperties.has('stored')) {
+			this.isDirty = this.script !== this.stored;
 		}
 	}
 
@@ -165,8 +168,8 @@ export class RawEditor extends LitElement {
 		const sent = this.script;
 		try {
 			await managesieveService.saveScript(sent, 'PUT');
-			this.initialScript = sent;
-			this.isDirty = this.script !== sent;
+			this.stored = sent;
+			this.dispatchEvent(new CustomEvent('script-saved', { detail: { script: sent } }));
 			const msgKey = sent.trim() === '' ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), timeout: 3000 } }));
 		} catch (e: any) {

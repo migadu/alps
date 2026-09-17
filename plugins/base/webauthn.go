@@ -13,7 +13,6 @@ import (
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/migadu/alps"
-	"github.com/migadu/alps/provider"
 )
 
 // CredentialDisplay is used to display credentials in the UI
@@ -38,7 +37,7 @@ func handleSetupPage(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
 	}
 
-	creds, err := loadCredentials(ctx.Session.Store())
+	creds, err := loadCredentials(ctx.Session)
 	if err != nil {
 		return fmt.Errorf("failed to load credentials: %v", err)
 	}
@@ -69,7 +68,7 @@ func handleSetupBegin(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
 	}
 
-	creds, err := loadCredentials(ctx.Session.Store())
+	creds, err := loadCredentials(ctx.Session)
 	if err != nil {
 		return fmt.Errorf("failed to load credentials: %v", err)
 	}
@@ -172,7 +171,7 @@ func handleSetupFinish(ctx *alps.Context) error {
 	}
 
 	// Load credentials
-	creds, err := loadCredentials(ctx.Session.Store())
+	creds, err := loadCredentials(ctx.Session)
 	if err != nil {
 		return fmt.Errorf("failed to load credentials: %v", err)
 	}
@@ -269,7 +268,7 @@ func handleDeleteCredential(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusBadRequest, "invalid credential ID")
 	}
 
-	creds, err := loadCredentials(ctx.Session.Store())
+	creds, err := loadCredentials(ctx.Session)
 	if err != nil {
 		return fmt.Errorf("failed to load credentials: %v", err)
 	}
@@ -321,7 +320,7 @@ func handleTrustLinkedAccounts(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusForbidden, "2FA authentication required to change this setting")
 	}
 
-	creds, err := loadCredentials(ctx.Session.Store())
+	creds, err := loadCredentials(ctx.Session)
 	if err != nil {
 		return fmt.Errorf("failed to load credentials: %v", err)
 	}
@@ -349,8 +348,8 @@ func handleVerifyBegin(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusUnauthorized, "invalid 2FA session")
 	}
 
-	// Load user credentials from IMAP METADATA (strict mode for verification)
-	creds, err := loadCredentialsForVerification(session.Store())
+	// Load user credentials from IMAP METADATA
+	creds, err := loadCredentials(session)
 	if err != nil {
 		return fmt.Errorf("failed to load credentials: %v", err)
 	}
@@ -413,8 +412,8 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		return fmt.Errorf("failed to unmarshal session: %v", err)
 	}
 
-	// Load credentials (strict mode for verification)
-	creds, err := loadCredentialsForVerification(session.Store())
+	// Load credentials
+	creds, err := loadCredentials(session)
 	if err != nil {
 		ctx.Server.Logger().Errorf("WebAuthn verify: failed to load credentials for user %s: %v", session.Username(), err)
 		return fmt.Errorf("failed to load credentials: %v", err)
@@ -499,84 +498,6 @@ func handleVerifyFinish(ctx *alps.Context) error {
 	})
 }
 
-// Helper functions for login integration (to be used by base plugin)
-
-// IsEnabled checks if a user has WebAuthn enabled
-func IsEnabled(store provider.Store) (bool, error) {
-	creds, err := loadCredentials(store)
-	if err != nil {
-		return false, err
-	}
-	return creds.Enabled && len(creds.Credentials) > 0, nil
-}
-
-// BeginLogin starts WebAuthn authentication for a user
-func BeginLogin(server *alps.Server, username string, session *alps.Session) (*protocol.CredentialAssertion, error) {
-	creds, err := loadCredentialsForVerification(session.Store())
-	if err != nil {
-		return nil, err
-	}
-
-	user := &webauthnUser{
-		username:    username,
-		credentials: creds,
-	}
-
-	options, webauthnSession, err := server.WebAuthn.BeginLogin(user)
-	if err != nil {
-		return nil, err
-	}
-
-	// Store session data
-	sessionDataBytes, err := json.Marshal(webauthnSession)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := saveSessionData(session, &sessionData{
-		Challenge: string(sessionDataBytes),
-	}); err != nil {
-		return nil, err
-	}
-
-	return options, nil
-}
-
-// FinishLogin completes WebAuthn authentication
-func FinishLogin(server *alps.Server, session *alps.Session, response *http.Request) error {
-	// Load session data
-	sessionDataStored, err := loadSessionData(session)
-	if err != nil {
-		return err
-	}
-
-	var webauthnSession webauthn.SessionData
-	if err := json.Unmarshal([]byte(sessionDataStored.Challenge), &webauthnSession); err != nil {
-		return err
-	}
-
-	// Load credentials (strict mode for verification)
-	creds, err := loadCredentialsForVerification(session.Store())
-	if err != nil {
-		return err
-	}
-
-	user := &webauthnUser{
-		credentials: creds,
-	}
-
-	_, err = server.WebAuthn.FinishLogin(user, webauthnSession, response)
-	if err != nil {
-		return err
-	}
-
-	if err := clearSessionData(session); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // handleLinkedAccountsTrust updates the trust setting for linked accounts
 func handleLinkedAccountsTrust(ctx *alps.Context) error {
 	if ctx.Session == nil {
@@ -590,7 +511,7 @@ func handleLinkedAccountsTrust(ctx *alps.Context) error {
 		return ctx.RespondBindError(err)
 	}
 
-	creds, err := loadCredentials(ctx.Session.Store())
+	creds, err := loadCredentials(ctx.Session)
 	if err != nil {
 		return fmt.Errorf("failed to load credentials: %v", err)
 	}

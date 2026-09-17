@@ -1,10 +1,11 @@
 /**
  * The settings store.
  *
- * A save sends the WHOLE record, so the store must never save before it has
- * read the server's copy — or one failed read at sign-in overwrites every
- * setting the account had with this browser's defaults. And it must end on the
- * latest value when changes arrive faster than saves complete.
+ * A save sends only what changed in this browser, so another browser's
+ * changes to the rest of the record survive it. It sends nothing before the
+ * server's copy has been read, keeps a change that could not be saved for the
+ * next save, and ends on the latest value when changes arrive faster than
+ * saves complete.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SettingsStore, activeUsername, clearSessionSettings, readUserSettings } from '../src/store/settings-store';
@@ -88,7 +89,7 @@ describe('signing in', () => {
     expect(store.getState().enableThreading).toBe(false);
   });
 
-  it('applies the account\'s choice about sender avatars, and saves it with the rest', async () => {
+  it('applies the account\'s choice about sender avatars, and saves a change to it', async () => {
     signedIn();
     const calls = serve({
       'GET /session': () => json(200, { Username: USER }),
@@ -102,7 +103,33 @@ describe('signing in', () => {
 
     await store.updateSettings({ showSenderAvatars: true });
     const put = calls.find((c) => c.key === 'PUT /settings')!.body;
-    expect(put.ui.showSenderAvatars).toBe(true);
+    expect(put).toEqual({ ui: { showSenderAvatars: true } });
+  });
+
+  it('saves nothing when it has only read the account\'s record', async () => {
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { signature: 'Ada', language: 'de' } }),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    await Promise.resolve();
+    expect(calls.map((c) => c.key)).toEqual(['GET /session', 'GET /settings']);
+  });
+
+  it('gives an account without a language this browser\'s, and sends nothing else', async () => {
+    signedIn();
+    localStorage.setItem('alps_settings', JSON.stringify({ language: 'fr', layoutMode: 'horizontal' }));
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { signature: 'Ada' } }),
+      'PUT /settings': () => json(200, {}),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(calls.some((c) => c.key === 'PUT /settings')).toBe(true));
+    expect(calls.filter((c) => c.key === 'PUT /settings').map((c) => c.body)).toEqual([{ language: 'fr' }]);
+    expect(store.getState()).toMatchObject({ signature: 'Ada', language: 'fr' });
   });
 
   it('sends the shell to sign-in when there is no session at all', async () => {
@@ -132,8 +159,10 @@ describe('saving', () => {
 
     expect(calls.map((c) => c.key)).toEqual(['GET /session', 'GET /settings', 'GET /settings', 'PUT /settings']);
     const put = calls.find((c) => c.key === 'PUT /settings')!.body;
-    // The change made while the record could not be read wins; the rest is the server's.
-    expect(put).toMatchObject({ signature: 'typed here', from: 'Ada Lovelace', language: 'de' });
+    // The change made while the record could not be read wins, and is all that
+    // is sent; the rest is the server's.
+    expect(put).toEqual({ signature: 'typed here' });
+    expect(store.getState()).toMatchObject({ signature: 'typed here', name: 'Ada Lovelace', language: 'de' });
   });
 
   it('keeps a change local, and says so, when the record still cannot be read', async () => {
@@ -166,6 +195,64 @@ describe('saving', () => {
     await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
     await store.updateSettings({ bccMyself: true });
     expect(toasts).toHaveLength(1);
+  });
+
+  it('sends only what changed, so another browser\'s changes survive', async () => {
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', signature: 'Ada' } }),
+      'PUT /settings': () => json(200, {}),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+
+    await store.updateSettings({ bccMyself: true });
+    await store.updateSettings({ densityMode: 'loose' });
+    await store.updateSettings({ customMailboxOrder: ['INBOX', 'Work'] });
+
+    expect(calls.filter((c) => c.key === 'PUT /settings').map((c) => c.body)).toEqual([
+      { bcc_myself: true },
+      { ui: { densityMode: 'loose' } },
+      { ui: { customMailboxOrder: ['INBOX', 'Work'] } },
+    ]);
+  });
+
+  it('sends nothing for what did not change, or what the server does not keep', async () => {
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', signature: 'Ada' } }),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+
+    await store.updateSettings({ signature: 'Ada' });
+    await store.updateSettings({ sidebarCollapsed: true });
+    await store.updateSettings({ customMailboxOrder: [] });
+
+    expect(store.getState().sidebarCollapsed).toBe(true);
+    expect(calls.map((c) => c.key)).toEqual(['GET /session', 'GET /settings']);
+  });
+
+  it('sends a change the server refused with the next one', async () => {
+    signedIn();
+    let puts = 0;
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en' } }),
+      'PUT /settings': () => (++puts === 1 ? json(503) : json(200, {})),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+
+    await store.updateSettings({ signature: 'Ada' });
+    await store.updateSettings({ replyTo: 'ada@example.org' });
+
+    expect(calls.filter((c) => c.key === 'PUT /settings').map((c) => c.body)).toEqual([
+      { signature: 'Ada' },
+      { signature: 'Ada', reply_to: 'ada@example.org' },
+    ]);
   });
 
   it('sends one save at a time and ends on the latest value', async () => {

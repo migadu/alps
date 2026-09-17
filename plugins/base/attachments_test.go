@@ -86,3 +86,44 @@ func TestAttachmentsMessageRFC822KeepsExplicitFilename(t *testing.T) {
 		t.Errorf("expected explicit filename to be kept, got %q", atts[0].Filename)
 	}
 }
+
+// A composer carrying a saved draft's parts needs the body's images listed too,
+// apart from its files: it replaces what it carries with what the draft holds.
+func TestEmbeddedPartsAreTheBodysImages(t *testing.T) {
+	attachment := &imap.BodyStructureSinglePartExt{
+		Disposition: &imap.BodyStructureDisposition{Value: "attachment", Params: map[string]string{"filename": "ledger.txt"}},
+	}
+	msg := newTestMessage(&imap.BodyStructureMultiPart{
+		Subtype: "mixed",
+		Children: []imap.BodyStructure{
+			&imap.BodyStructureMultiPart{
+				Subtype: "related",
+				Children: []imap.BodyStructure{
+					&imap.BodyStructureMultiPart{
+						Subtype: "alternative",
+						Children: []imap.BodyStructure{
+							&imap.BodyStructureSinglePart{Type: "text", Subtype: "plain"},
+							&imap.BodyStructureSinglePart{Type: "text", Subtype: "html"},
+						},
+					},
+					&imap.BodyStructureSinglePart{Type: "image", Subtype: "png", ID: "<chart@remote.test>", Extended: inlineDisposition()},
+				},
+			},
+			&imap.BodyStructureSinglePart{Type: "text", Subtype: "plain", Extended: attachment},
+			// An ID on a part that says it is an attachment makes it a file.
+			&imap.BodyStructureSinglePart{Type: "image", Subtype: "gif", ID: "<logo@remote.test>", Extended: attachment},
+		},
+	})
+
+	images := msg.EmbeddedParts()
+	if len(images) != 1 || formatPartPath(images[0].Path) != "1.2" || !images[0].IsInline {
+		t.Fatalf("embedded parts = %+v", images)
+	}
+	var files []string
+	for _, a := range msg.Attachments() {
+		files = append(files, formatPartPath(a.Path))
+	}
+	if len(files) != 2 || files[0] != "2" || files[1] != "3" {
+		t.Errorf("files = %v", files)
+	}
+}

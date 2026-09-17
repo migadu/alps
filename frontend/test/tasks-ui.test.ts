@@ -335,6 +335,27 @@ describe('the tasks page', () => {
         expect(el.tasks[0].status).toBe('completed');
     });
 
+    it('says nothing of its own when the session has ended', async () => {
+        // The expiry has its own notice; "check your connection" beside it is
+        // advice about a fault the user does not have.
+        const milk = task('milk');
+        const el = page([milk]);
+        const toasts = record<CustomEvent>(window, 'show-toast');
+        const expired = new HttpStatusError(401, 'Unauthorized');
+        vi.spyOn(tasksService, 'fetchTasks').mockRejectedValue(expired);
+        vi.spyOn(tasksService, 'completeTask').mockRejectedValue(expired);
+        vi.spyOn(tasksService, 'deleteTask').mockRejectedValue(expired);
+
+        await el.fetchTasks();
+        await el.handleToggleComplete(milk, true);
+        el.taskToDelete = milk;
+        await el.confirmDelete();
+
+        expect(toasts).toEqual([]);
+        // The refused tick is still put back.
+        expect(el.tasks[0].status).toBe('needs-action');
+    });
+
     it('says when some lists could not be read', async () => {
         const el = page([]);
         const toasts = record<CustomEvent>(window, 'show-toast');

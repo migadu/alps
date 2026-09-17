@@ -1,9 +1,8 @@
 package imap
 
 import (
-	"bufio"
-	"bytes"
 	"strings"
+	"unicode"
 
 	"github.com/emersion/go-imap/v2"
 )
@@ -14,19 +13,6 @@ func searchCriteriaHeader(k, v string) *imap.SearchCriteria {
 			{Key: k, Value: v},
 		},
 	}
-}
-
-func searchCriteriaOr(criteria ...*imap.SearchCriteria) *imap.SearchCriteria {
-	if criteria[0] == nil {
-		criteria = criteria[1:]
-	}
-	or := criteria[0]
-	for _, c := range criteria[1:] {
-		or = &imap.SearchCriteria{
-			Or: [][2]imap.SearchCriteria{{*or, *c}},
-		}
-	}
-	return or
 }
 
 func searchCriteriaAnd(criteria ...*imap.SearchCriteria) *imap.SearchCriteria {
@@ -40,86 +26,101 @@ func searchCriteriaAnd(criteria ...*imap.SearchCriteria) *imap.SearchCriteria {
 	return and
 }
 
-// Splits search up into the longest string of non-functional parts and
-// functional parts
+// searchPrefixes are the prefixes a query term may carry; see docs/SEARCH.md.
+// Any other "word:" is ordinary text, such as a time or a URL.
+var searchPrefixes = map[string]bool{
+	"from": true, "to": true, "cc": true, "subject": true, "body": true, "is": true, "header": true,
+}
+
+// searchTerm is one term of a query: text to find, or a prefix and its value.
+type searchTerm struct {
+	prefix, value string
+}
+
+// searchTokens splits a query into its terms. A prefixed term is "key:value",
+// its value held together by quotes if it has spaces, and read without them.
+// Plain words between prefixed terms make one text term, and a quoted phrase
+// makes one of its own.
 //
-// Input: hello world foo:bar baz trains:"are cool"
-// Output: ["hello world", "foo:bar", "baz", "trains:are cool"]
-func splitSearchTokens(buf []byte, eof bool) (int, []byte, error) {
-	if len(buf) == 0 {
-		return 0, nil, nil
-	}
-
-	if buf[0] == ' ' {
-		return 1, nil, nil
-	}
-
-	colon := bytes.IndexByte(buf, byte(':'))
-	if colon == -1 && eof {
-		return len(buf), buf, nil
-	} else if colon == -1 {
-		return 0, nil, nil
-	} else {
-		space := bytes.LastIndexByte(buf[:colon], byte(' '))
-		if space != -1 {
-			return space, buf[:space], nil
+// Input: hello world from:bar baz subject:"are cool" "big deal"
+// Terms: text "hello world", from "bar", text "baz", subject "are cool", text "big deal"
+func searchTokens(query string) []searchTerm {
+	var terms []searchTerm
+	var plain []string
+	flush := func() {
+		if len(plain) > 0 {
+			terms = append(terms, searchTerm{value: strings.Join(plain, " ")})
+			plain = nil
 		}
-
-		var (
-			terminator int
-			quoted     bool
-		)
-		if colon+1 < len(buf) && buf[colon+1] == byte('"') {
-			terminator = bytes.IndexByte(buf[colon+2:], byte('"'))
-			if terminator != -1 {
-				terminator += colon + 3
+	}
+	rest := query
+	for {
+		rest = strings.TrimLeftFunc(rest, unicode.IsSpace)
+		if rest == "" {
+			break
+		}
+		if rest[0] == '"' {
+			phrase, after := quoted(rest)
+			flush()
+			if phrase = strings.TrimSpace(phrase); phrase != "" {
+				terms = append(terms, searchTerm{value: phrase})
 			}
-			quoted = true
-		} else {
-			terminator = bytes.IndexByte(buf[colon:], byte(' '))
-			if terminator != -1 {
-				terminator += colon
-			}
+			rest = after
+			continue
 		}
-
-		if terminator == -1 && eof {
-			terminator = len(buf)
-		} else if terminator == -1 {
-			return 0, nil, nil
+		word, after := searchWord(rest)
+		rest = after
+		key, value, ok := strings.Cut(word, ":")
+		if !ok || !searchPrefixes[strings.ToLower(key)] {
+			plain = append(plain, word)
+			continue
 		}
-
-		if quoted {
-			trimmed := append(buf[:colon+1], buf[colon+2:terminator-1]...)
-			return terminator, trimmed, nil
+		flush()
+		if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+			value = value[1 : len(value)-1]
 		}
-
-		return terminator, buf[:terminator], nil
+		terms = append(terms, searchTerm{prefix: strings.ToLower(key), value: value})
 	}
+	flush()
+	return terms
+}
+
+// quoted reads a phrase that starts with a quote, up to the closing quote or
+// the end of the query.
+func quoted(s string) (phrase, rest string) {
+	if end := strings.IndexByte(s[1:], '"'); end >= 0 {
+		return s[1 : end+1], s[end+2:]
+	}
+	return s[1:], ""
+}
+
+// searchWord reads up to the next space outside quotes.
+func searchWord(s string) (word, rest string) {
+	inQuotes := false
+	for i, r := range s {
+		switch {
+		case r == '"':
+			inQuotes = !inQuotes
+		case unicode.IsSpace(r) && !inQuotes:
+			return s[:i], s[i:]
+		}
+	}
+	return s, ""
 }
 
 // prepareIMAPSearch parses search terms into IMAP search criteria
 func prepareIMAPSearch(terms string) *imap.SearchCriteria {
 	var criteria *imap.SearchCriteria
 
-	scanner := bufio.NewScanner(strings.NewReader(terms))
-	scanner.Split(splitSearchTokens)
-
-	for scanner.Scan() {
-		term := scanner.Text()
-		if !strings.ContainsRune(term, ':') {
-			criteria = searchCriteriaAnd(
-				criteria,
-				searchCriteriaOr(
-					searchCriteriaHeader("From", term),
-					searchCriteriaHeader("To", term),
-					searchCriteriaHeader("Cc", term),
-					searchCriteriaHeader("Subject", term),
-				),
-			)
+	for _, term := range searchTokens(terms) {
+		value := term.value
+		if term.prefix == "" {
+			// TEXT is the header and the body, as the search help says. It
+			// used to be From, To, Cc and Subject only, so a word in the body
+			// was found only with body:.
+			criteria = searchCriteriaAnd(criteria, &imap.SearchCriteria{Text: []string{value}})
 		} else {
-			parts := strings.SplitN(term, ":", 2)
-			key, value := parts[0], parts[1]
-			switch strings.ToLower(key) {
+			switch term.prefix {
 			case "from":
 				criteria = searchCriteriaAnd(
 					criteria, searchCriteriaHeader("From", value))

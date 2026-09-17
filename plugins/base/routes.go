@@ -3,12 +3,14 @@ package alpsbase
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -158,8 +160,12 @@ type CachedMessagePart struct {
 
 // updateCachedMessageFlags updates flags for specific messages in cached message lists
 func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.MessageID, addFlags []imap.Flag, removeFlags []imap.Flag) {
-	cache := ctx.Session.Cache()
+	applyFlagsToCache(ctx.Session.Cache(), ctx.Server.Logger().Debugf, mailbox, uid, addFlags, removeFlags)
+}
 
+// applyFlagsToCache brings the session's cached copies of one message, and
+// its mailbox's unseen count, in line with a flag change the server has made.
+func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), mailbox string, uid provider.MessageID, addFlags []imap.Flag, removeFlags []imap.Flag) {
 	// Convert IMAP flags to alps flags
 	alpsAddFlags := make([]provider.Flag, len(addFlags))
 	for i, f := range addFlags {
@@ -170,18 +176,25 @@ func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.Me
 		alpsRemoveFlags[i] = provider.Flag(f)
 	}
 
+	// What the cached copies said about \Seen BEFORE this change. The unseen
+	// count may only move when the message really goes from unseen to seen or
+	// back: reading a message adds \Seen twice (the body fetch sets it, and
+	// so does the reader's mark-as-read), and a count that dropped on both
+	// fell by two for one message.
+	var cachedSeen, cachedUnseen bool
+	noteSeen := func(flags []provider.Flag) {
+		if slices.Contains(flags, provider.Flag(imap.FlagSeen)) {
+			cachedSeen = true
+		} else {
+			cachedUnseen = true
+		}
+	}
+
 	// Helper function to update flags
 	updateFlags := func(flags []provider.Flag) []provider.Flag {
 		// Add new flags
 		for _, flag := range alpsAddFlags {
-			hasFlag := false
-			for _, existing := range flags {
-				if existing == flag {
-					hasFlag = true
-					break
-				}
-			}
-			if !hasFlag {
+			if !slices.Contains(flags, flag) {
 				flags = append(flags, flag)
 			}
 		}
@@ -211,10 +224,11 @@ func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.Me
 			// Find and update the message in this page
 			for i := range cachedData.Messages {
 				if cachedData.Messages[i].ID.String() == uidStr {
+					noteSeen(cachedData.Messages[i].Flags)
 					cachedData.Messages[i].Flags = updateFlags(cachedData.Messages[i].Flags)
 					cache.Set(key, cachedData)
 					messageUpdated = true
-					ctx.Server.Logger().Debugf("Updated flags for message %s in cache key %s", uidStr, key)
+					debugf("Updated flags for message %s in cache key %s", uidStr, key)
 					break
 				}
 			}
@@ -226,49 +240,54 @@ func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.Me
 	if cached, ok := cache.Get(msgKey); ok {
 		cachedPart := cached.(CachedMessagePart)
 		if cachedPart.Message != nil {
+			noteSeen(cachedPart.Message.Flags)
 			cachedPart.Message.Flags = updateFlags(cachedPart.Message.Flags)
 			cache.Set(msgKey, cachedPart)
-			ctx.Server.Logger().Debugf("Updated flags for message %s in individual cache", uidStr)
+			debugf("Updated flags for message %s in individual cache", uidStr)
 			messageUpdated = true
 		}
 	}
 
 	if !messageUpdated {
-		ctx.Server.Logger().Debugf("Message %d not found in cache, pages may need refresh", uid)
+		debugf("Message %s not found in cache, pages may need refresh", uidStr)
 	}
 
-	// Update mailbox status if we're changing the \Seen flag
-	seenAdded := false
-	seenRemoved := false
-	for _, flag := range addFlags {
-		if flag == imap.FlagSeen {
-			seenAdded = true
-			break
-		}
-	}
-	for _, flag := range removeFlags {
-		if flag == imap.FlagSeen {
-			seenRemoved = true
-			break
-		}
+	seenAdded := slices.Contains(addFlags, imap.FlagSeen)
+	seenRemoved := slices.Contains(removeFlags, imap.FlagSeen)
+	if !seenAdded && !seenRemoved {
+		return
 	}
 
-	if seenAdded || seenRemoved {
-		statusKey := "status:" + mailbox
-		if cached, ok := cache.Get(statusKey); ok {
-			status := cached.(*MailboxStatus)
-			if seenAdded && status.NumUnseen != nil && *status.NumUnseen > 0 {
-				newCount := *status.NumUnseen - 1
-				status.NumUnseen = &newCount
-				cache.Set(statusKey, status)
-				ctx.Server.Logger().Debugf("Decremented unseen count for %s to %d", mailbox, newCount)
-			} else if seenRemoved && status.NumUnseen != nil {
-				newCount := *status.NumUnseen + 1
-				status.NumUnseen = &newCount
-				cache.Set(statusKey, status)
-				ctx.Server.Logger().Debugf("Incremented unseen count for %s to %d", mailbox, newCount)
-			}
-		}
+	statusKey := "status:" + mailbox
+	cached, ok := cache.Get(statusKey)
+	if !ok {
+		return
+	}
+	status := cached.(*MailboxStatus)
+	if status.NumUnseen == nil {
+		return
+	}
+
+	// Copies that disagree, or no copy at all, say nothing reliable about the
+	// message's state before the change: drop the count and let the next
+	// listing ask the server.
+	if cachedSeen == cachedUnseen {
+		cache.Delete(statusKey)
+		debugf("Dropped cached status for %s: the message's previous \\Seen state is unknown", mailbox)
+		return
+	}
+
+	switch {
+	case seenAdded && cachedUnseen && *status.NumUnseen > 0:
+		newCount := *status.NumUnseen - 1
+		status.NumUnseen = &newCount
+		cache.Set(statusKey, status)
+		debugf("Decremented unseen count for %s to %d", mailbox, newCount)
+	case seenRemoved && cachedSeen:
+		newCount := *status.NumUnseen + 1
+		status.NumUnseen = &newCount
+		cache.Set(statusKey, status)
+		debugf("Incremented unseen count for %s to %d", mailbox, newCount)
 	}
 }
 
@@ -599,7 +618,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 		}
 	}
 
-	settings, err := loadSettings(ctx.Session.Store())
+	settings, err := readSettings(ctx)
 	if err != nil {
 		return err
 	}
@@ -816,55 +835,6 @@ func handleUnsubscribeMailbox(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
 }
 
-// checkWebAuthnEnabled checks if a user has WebAuthn 2FA enabled
-func checkWebAuthnEnabled(store provider.Store) (bool, error) {
-	// Use a minimal struct that matches only the fields we need
-	// This avoids importing the webauthn plugin types
-	var data map[string]interface{}
-
-	if err := store.Get("webauthn", &data); err != nil {
-		if err == provider.ErrNoStoreEntry {
-			return false, nil
-		}
-		return false, err
-	}
-
-	enabled, ok := data["enabled"].(bool)
-	if !ok {
-		return false, nil
-	}
-
-	if !enabled {
-		return false, nil
-	}
-
-	credentials, ok := data["credentials"].([]interface{})
-	if !ok {
-		return false, nil
-	}
-
-	return len(credentials) > 0, nil
-}
-
-// checkTrustLinkedAccounts checks if a user has enabled "trust linked accounts" setting
-func checkTrustLinkedAccounts(store provider.Store) (bool, error) {
-	var data map[string]interface{}
-
-	if err := store.Get("webauthn", &data); err != nil {
-		if err == provider.ErrNoStoreEntry {
-			return false, nil // Default: don't trust
-		}
-		return false, err
-	}
-
-	trust, ok := data["trust_linked_accounts"].(bool)
-	if !ok {
-		return false, nil // Default: don't trust
-	}
-
-	return trust, nil
-}
-
 func handleLogin(ctx *alps.Context) error {
 	var username, password, remember string
 
@@ -888,8 +858,9 @@ func handleLogin(ctx *alps.Context) error {
 
 	// Check if we're restoring from a login token (session restoration)
 	restoredFromToken := false
+	tokenVerified2FA := false
 	if username == "" && password == "" {
-		username, password, _, _ = ctx.GetLoginToken()
+		username, password, tokenVerified2FA, _ = ctx.GetLoginToken()
 		restoredFromToken = username != "" && password != ""
 	}
 
@@ -929,18 +900,12 @@ func handleLogin(ctx *alps.Context) error {
 			return fmt.Errorf("failed to put connection in pool: %v", err)
 		}
 
-		// Check if WebAuthn 2FA is enabled for this user
-		// Skip 2FA check if restoring from login token (token only exists after successful 2FA)
-		enabled := false
-		if !restoredFromToken {
-			var err error
-			enabled, err = checkWebAuthnEnabled(s.Store())
-			if err != nil {
-				ctx.Server.Logger().Printf("Failed to check WebAuthn status: %v", err)
-				// Continue with normal login on error
-				enabled = false
-			}
+		// The second factor is asked for when the account has one, unless the
+		// token that restored the session says it was given.
+		if restoredFromToken {
+			s.SetAuthenticated2FA(tokenVerified2FA)
 		}
+		enabled := s.Requires2FA() && !s.IsAuthenticated2FA()
 		if enabled {
 			// 2FA required - store temporary session token and redirect to WebAuthn verification
 			ctx.SetCookie(&http.Cookie{
@@ -979,8 +944,10 @@ func handleLogin(ctx *alps.Context) error {
 
 		// No 2FA - proceed with normal login
 		// Always create encrypted login token to enable session restoration after server restart
+		// The token says whether 2FA was done. It used to say yes here, and
+		// restored a session past a second factor turned on later.
 		persistent := remember == "on"
-		ctx.SetLoginToken(username, password, true, persistent)
+		ctx.SetLoginToken(username, password, s.IsAuthenticated2FA(), persistent)
 
 		// Set session cookie: persistent if "remember me" checked, browser session otherwise
 		ctx.SetSessionWithExpiry(s, persistent)
@@ -1013,7 +980,7 @@ func handleGetThread(ctx *alps.Context) error {
 			return parseErr
 		}
 
-		threadMsgs, threadErr := getMessageThreadWithProvider(p, mboxName, uid)
+		threadMsgs, threadErr := getConversationWithProvider(p, mboxName, uid, ctx.Server.Logger().Printf)
 		if threadErr != nil {
 			return threadErr
 		}
@@ -1043,7 +1010,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		return alps.NewHTTPError(http.StatusNotFound, "Mailbox not found")
 	}
 
-	settings, err := loadSettings(ctx.Session.Store())
+	settings, err := readSettings(ctx)
 	if err != nil {
 		return err
 	}
@@ -1401,22 +1368,23 @@ func handleComposeNew(ctx *alps.Context) error {
 	fromAddr := ctx.FormValue("from")
 	if fromAddr == "" {
 		fromAddr = ctx.Session.Username()
-		if settings, err := loadSettings(ctx.Session.Store()); err == nil && settings.From != "" {
+		if settings, err := readSettings(ctx); err == nil && settings.From != "" {
 			fromAddr = fmt.Sprintf("%s <%s>", settings.From, ctx.Session.Username())
 		}
 	}
 
 	msg := &OutgoingMessage{
-		From:      fromAddr,
-		To:        parseAddressList(ctx.FormValue("to")),
-		Cc:        parseAddressList(ctx.FormValue("cc")),
-		Bcc:       parseAddressList(ctx.FormValue("bcc")),
-		Subject:   ctx.FormValue("subject"),
-		Text:      ctx.FormValue("text"),
-		HTML:      ctx.FormValue("html"),
-		InReplyTo: ctx.FormValue("in_reply_to"),
-		ReplyTo:   ctx.FormValue("reply_to"),
-		MessageID: ctx.FormValue("message_id"),
+		From:       fromAddr,
+		To:         parseAddressList(ctx.FormValue("to")),
+		Cc:         parseAddressList(ctx.FormValue("cc")),
+		Bcc:        parseAddressList(ctx.FormValue("bcc")),
+		Subject:    ctx.FormValue("subject"),
+		Text:       ctx.FormValue("text"),
+		HTML:       ctx.FormValue("html"),
+		InReplyTo:  ctx.FormValue("in_reply_to"),
+		References: ctx.FormValue("references"),
+		ReplyTo:    ctx.FormValue("reply_to"),
+		MessageID:  ctx.FormValue("message_id"),
 	}
 
 	if msg.MessageID == "" {
@@ -1455,6 +1423,16 @@ func handleComposeNew(ctx *alps.Context) error {
 		}
 	}
 
+	// The message a reply or forward quotes, whose parts it carries. A forward
+	// answers nothing, so without this its parts had nowhere to come from and
+	// were dropped without a word: the chips on screen, the file not sent.
+	var quotedPath *messagePath
+	if sourceMbox := ctx.FormValue("source_mailbox"); sourceMbox != "" {
+		if sourceUidStr := ctx.FormValue("source_uid"); sourceUidStr != "" {
+			quotedPath = &messagePath{Mailbox: sourceMbox, Uid: sourceUidStr}
+		}
+	}
+
 	prevAttachmentsRaw := ctx.FormValue("prev_attachments")
 	var prevAttachments []string
 	for _, p := range strings.Split(prevAttachmentsRaw, ",") {
@@ -1465,65 +1443,77 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	if len(prevAttachments) > 0 {
+		// A saved draft holds every part the composer carries, renumbered, so
+		// once there is one the parts are read from it.
 		var sourcePath *messagePath
-		if draftPath != nil {
+		switch {
+		case draftPath != nil:
 			sourcePath = draftPath
-		} else if inReplyToPath != nil {
+		case quotedPath != nil:
+			sourcePath = quotedPath
+		case inReplyToPath != nil:
 			sourcePath = inReplyToPath
 		}
+		if sourcePath == nil {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "attachments name a message part, but no message to take it from"})
+		}
 
-		if sourcePath != nil {
-			err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-				for _, pathStr := range prevAttachments {
-					partPath, err := parsePartPath(pathStr)
-					if err != nil {
-						return fmt.Errorf("invalid part path: %v", err)
-					}
-					parsedUid, err := p.ParseMessageID(sourcePath.Uid)
-					if err != nil {
-						return fmt.Errorf("invalid UID: %v", err)
-					}
-					_, entity, _, _, err := p.GetMessagePartWithData(sourcePath.Mailbox, parsedUid, partPath)
-					if err != nil {
-						return fmt.Errorf("failed to fetch attachment %s: %v", pathStr, err)
-					}
-
-					mimeType, _, _ := entity.Header.ContentType()
-					_, dispParams, _ := entity.Header.ContentDisposition()
-					filename := dispParams["filename"]
-					if filename == "" {
-						_, ctParams, _ := entity.Header.ContentType()
-						filename = ctParams["name"]
-					}
-					if mimeType == "" {
-						mimeType = "application/octet-stream"
-					}
-
-					// We have to decode Content-Transfer-Encoding for the bodyData.
-					// wait, entity.Body is an io.Reader that is ALREADY decoded!
-					// We can just read from entity.Body!
-					decodedBody, err := io.ReadAll(entity.Body)
-					if err != nil {
-						return fmt.Errorf("failed to decode attachment body: %v", err)
-					}
-
-					node := &IMAPPartNode{
-						Path:     partPath,
-						MIMEType: mimeType,
-						Filename: filename,
-					}
-					msg.Attachments = append(msg.Attachments, &imapAttachment{
-						Mailbox: sourcePath.Mailbox,
-						Uid:     sourcePath.Uid,
-						Node:    node,
-						Body:    decodedBody,
-					})
+		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+			for _, pathStr := range prevAttachments {
+				partPath, err := parsePartPath(pathStr)
+				if err != nil {
+					return fmt.Errorf("invalid part path: %v", err)
 				}
-				return nil
-			})
-			if err != nil {
-				return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to fetch previous attachments: " + err.Error()})
+				parsedUid, err := p.ParseMessageID(sourcePath.Uid)
+				if err != nil {
+					return fmt.Errorf("invalid UID: %v", err)
+				}
+				_, entity, _, _, err := p.GetMessagePartWithData(sourcePath.Mailbox, parsedUid, partPath)
+				if err != nil {
+					return fmt.Errorf("failed to fetch attachment %s: %v", pathStr, err)
+				}
+
+				mimeType, _, _ := entity.Header.ContentType()
+				disposition, dispParams, _ := entity.Header.ContentDisposition()
+				filename := dispParams["filename"]
+				if filename == "" {
+					_, ctParams, _ := entity.Header.ContentType()
+					filename = ctParams["name"]
+				}
+				if mimeType == "" {
+					mimeType = "application/octet-stream"
+				}
+				contentID := strings.Trim(strings.TrimSpace(entity.Header.Get("Content-Id")), "<>")
+
+				// We have to decode Content-Transfer-Encoding for the bodyData.
+				// wait, entity.Body is an io.Reader that is ALREADY decoded!
+				// We can just read from entity.Body!
+				decodedBody, err := io.ReadAll(entity.Body)
+				if err != nil {
+					return fmt.Errorf("failed to decode attachment body: %v", err)
+				}
+
+				node := &IMAPPartNode{
+					Path:     partPath,
+					MIMEType: mimeType,
+					Filename: filename,
+				}
+				msg.Attachments = append(msg.Attachments, &imapAttachment{
+					Mailbox: sourcePath.Mailbox,
+					Uid:     sourcePath.Uid,
+					Node:    node,
+					Body:    decodedBody,
+					CID:     contentID,
+					// A part with a Content-ID belongs to the body unless it says
+					// it is an attachment; an image in multipart/related often
+					// gives no disposition at all.
+					Inline: contentID != "" && !strings.EqualFold(disposition, "attachment"),
+				})
 			}
+			return nil
+		})
+		if err != nil {
+			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to fetch previous attachments: " + err.Error()})
 		}
 	}
 
@@ -1554,6 +1544,18 @@ func handleComposeNew(ctx *alps.Context) error {
 						"size":     a.Size,
 						"type":     a.MIMEType,
 						"partPath": formatPartPath(a.Path),
+					})
+				}
+				// The body's images too, marked inline: the composer replaces
+				// what it carries with this list, and left out they were not
+				// carried by the next save or by the send.
+				for _, a := range msgIMAP.EmbeddedParts() {
+					respAttachments = append(respAttachments, map[string]interface{}{
+						"name":     a.Filename,
+						"size":     a.Size,
+						"type":     a.MIMEType,
+						"partPath": formatPartPath(a.Path),
+						"inline":   true,
 					})
 				}
 			}
@@ -1599,20 +1601,29 @@ func handleComposeNew(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to send message: " + err.Error()})
 	}
 
+	answered := false
 	if inReplyToPath != nil {
-		ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 			parsedReplyUid, err := p.ParseMessageID(inReplyToPath.Uid)
 			if err != nil {
 				return err
 			}
 			return markMessageAnsweredWithProvider(p, inReplyToPath.Mailbox, parsedReplyUid)
 		})
+		if err != nil {
+			// The reply is sent; the mark is only a mark.
+			ctx.Server.Logger().Printf("marking %s/%s answered failed: %v", inReplyToPath.Mailbox, inReplyToPath.Uid, err)
+		}
+		answered = err == nil
 	}
 
+	var sentName string
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		if _, _, _, err := appendMessageWithProvider(p, msg, provider.MailboxTypeSent); err != nil {
+		sent, _, _, err := appendMessageWithProvider(p, msg, provider.MailboxTypeSent)
+		if err != nil {
 			return err
 		}
+		sentName = sent.Name()
 		if draftPath != nil {
 			parsedDraftUid, err := p.ParseMessageID(draftPath.Uid)
 			if err != nil {
@@ -1628,9 +1639,14 @@ func handleComposeNew(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save message to Sent mailbox: " + err.Error()})
 	}
 
-	mailboxesToInvalidate := []string{"Sent"}
+	// The account's own Sent, which is not always named so, and the answered
+	// message's mailbox, whose cached pages would still show it unanswered.
+	mailboxesToInvalidate := []string{sentName}
 	if draftPath != nil {
 		mailboxesToInvalidate = append(mailboxesToInvalidate, draftPath.Mailbox)
+	}
+	if answered {
+		mailboxesToInvalidate = append(mailboxesToInvalidate, inReplyToPath.Mailbox)
 	}
 	invalidateMailboxCache(ctx, mailboxesToInvalidate...)
 
@@ -2304,7 +2320,20 @@ type Settings struct {
 	DateFormat string `json:"date_format,omitempty"`
 }
 
+// errUnreadableSettings marks a saved settings record that does not decode.
+var errUnreadableSettings = errors.New("the saved settings do not decode")
+
+// loadSettings reads the account's settings over the defaults.
+//
+// A value of a type this version does not expect, as another version of alps
+// may have written, keeps its default: encoding/json reads the rest, and the
+// next save writes back a record this version can read. A record that does not
+// decode at all is errUnreadableSettings, which readSettings removes.
 func loadSettings(s provider.Store) (*Settings, error) {
+	return loadSettingsWith(s.Get)
+}
+
+func loadSettingsWith(get func(key string, out interface{}) error) (*Settings, error) {
 	autoLogoutDefault := 30
 	settings := &Settings{
 		MessagesPerPage:    50,
@@ -2312,7 +2341,16 @@ func loadSettings(s provider.Store) (*Settings, error) {
 		AutoLogout:         &autoLogoutDefault,
 		SoundNotifications: true,
 	}
-	if err := s.Get(settingsKey, settings); err != nil && err != provider.ErrNoStoreEntry {
+	err := get(settingsKey, settings)
+	var typeErr *json.UnmarshalTypeError
+	var syntaxErr *json.SyntaxError
+	switch {
+	case err == nil || err == provider.ErrNoStoreEntry:
+	case errors.As(err, &typeErr) && typeErr.Field != "":
+		// Read around the one value.
+	case errors.As(err, &typeErr) || errors.As(err, &syntaxErr):
+		return nil, fmt.Errorf("%w: %w", errUnreadableSettings, err)
+	default:
 		return nil, err
 	}
 	// Set default if empty
@@ -2350,6 +2388,44 @@ func loadSettings(s provider.Store) (*Settings, error) {
 	return settings, nil
 }
 
+// readSettings is loadSettings for a request. A saved record that does not
+// decode at all is removed, and the account starts again from the defaults:
+// no version of alps can read it, and keeping it kept the account from ever
+// saving its settings again.
+func readSettings(ctx *alps.Context) (*Settings, error) {
+	store := ctx.Session.Store()
+	return settingsFrom(ctx, store, store.Get)
+}
+
+// readFreshSettings reads the record as the server holds it now. The settings
+// page shows it, and saves a change by writing it back whole: from the
+// session's copy, that showed a change made in another browser only once the
+// session ended, and wrote the old values back over it.
+func readFreshSettings(ctx *alps.Context) (*Settings, error) {
+	store := ctx.Session.Store()
+	return settingsFrom(ctx, store, func(key string, out interface{}) error {
+		return provider.GetFresh(store, key, out)
+	})
+}
+
+func settingsFrom(ctx *alps.Context, store provider.Store, get func(string, interface{}) error) (*Settings, error) {
+	settings, err := loadSettingsWith(get)
+	if !errors.Is(err, errUnreadableSettings) {
+		return settings, err
+	}
+	if putErr := store.Put(settingsKey, nil); putErr != nil {
+		return nil, fmt.Errorf("failed to remove unreadable settings: %v", putErr)
+	}
+	ctx.Server.Logger().Printf("Removed unreadable settings of %s: %v", ctx.Session.Username(), err)
+	return loadSettings(noSettings{})
+}
+
+// noSettings is a store without a settings record, for the defaults.
+type noSettings struct{}
+
+func (noSettings) Get(string, interface{}) error { return provider.ErrNoStoreEntry }
+func (noSettings) Put(string, interface{}) error { return errors.New("no store") }
+
 func (s *Settings) check() error {
 	if s.MessagesPerPage <= 0 || s.MessagesPerPage > maxMessagesPerPage {
 		return fmt.Errorf("messages per page out of bounds: %v", s.MessagesPerPage)
@@ -2367,7 +2443,7 @@ func (s *Settings) check() error {
 }
 
 func handleSettings(ctx *alps.Context) error {
-	settings, err := loadSettings(ctx.Session.Store())
+	settings, err := readFreshSettings(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load settings: %v", err)
 	}
@@ -2659,16 +2735,12 @@ func handleSwitchAccount(ctx *alps.Context) error {
 	}
 
 	// Check if the target account has 2FA enabled
-	has2FA, err := checkWebAuthnEnabled(newSession.Store())
-	if err != nil {
-		ctx.Server.Logger().Printf("Failed to check WebAuthn status for %s: %v", targetUsername, err)
-		has2FA = false // Continue without 2FA on error
-	}
+	has2FA := newSession.Requires2FA()
 
 	// Check if we should skip 2FA for trusted linked accounts
 	skipTwoFA := false
 	if has2FA {
-		trustLinked, err := checkTrustLinkedAccounts(newSession.Store())
+		trustLinked, err := newSession.TrustsLinkedAccounts()
 		if err != nil {
 			ctx.Server.Logger().Printf("Failed to check trust_linked_accounts for %s: %v", targetUsername, err)
 			trustLinked = false
@@ -2735,7 +2807,7 @@ func handleSwitchAccount(ctx *alps.Context) error {
 
 	// Update login token for new account, preserving persistence choice
 	if origUsername != "" {
-		ctx.SetLoginToken(targetUsername, password, true, wasPersistent)
+		ctx.SetLoginToken(targetUsername, password, newSession.IsAuthenticated2FA(), wasPersistent)
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})

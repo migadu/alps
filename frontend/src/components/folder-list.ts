@@ -6,7 +6,7 @@ import { composeContext } from '../store/compose-store';
 import type { ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { mailboxOperations } from '../services/mailbox-operations';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels } from '../utils/folders';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import './alps-icon-btn';
 import './ui-prompt';
@@ -356,11 +356,7 @@ export class FolderList extends LitElement {
     if (name) {
       if (this.parentForNewFolder) {
         const parentMb = this.mailboxes.find(m => (m.Name || m.Mailbox) === this.parentForNewFolder);
-        let delimiter = '.';
-        if (parentMb) {
-          const delim = parentMb.Delimiter || parentMb.Delim;
-          delimiter = typeof delim === 'number' ? String.fromCharCode(delim) : (delim || '.');
-        }
+        const delimiter = delimiterOf(parentMb) || '.';
         name = `${this.parentForNewFolder}${delimiter}${name}`;
 
         this.dispatchEvent(new CustomEvent('expand-folder', {
@@ -468,14 +464,12 @@ export class FolderList extends LitElement {
   private async handleMoveToTrashConfirm() {
     if (this.mailboxToDelete) {
       const mb = this.mailboxes.find(m => (m.Name || m.Mailbox) === this.mailboxToDelete);
-      let delimiter = '.';
-      if (mb) {
-        const delim = mb.Delimiter || mb.Delim;
-        delimiter = typeof delim === 'number' ? String.fromCharCode(delim) : (delim || '.');
-      }
-
-      const parts = this.mailboxToDelete.split(delimiter);
-      const leafName = parts[parts.length - 1];
+      const levels = mailboxLevels(this.mailboxToDelete, delimiterOf(mb, '.'));
+      const leafName = levels[levels.length - 1];
+      // A server without a hierarchy has no "inside Trash": the name is still
+      // built with a dot, as a folder created under a parent is, rather than
+      // run together with Trash's.
+      const delimiter = delimiterOf(mb, '.') || '.';
 
       // Resolve the actual Trash mailbox by IMAP special-use attribute (e.g.
       // Gmail's "[Gmail]/Trash"), falling back to a folder named "Trash". See issue #4.
@@ -525,16 +519,15 @@ export class FolderList extends LitElement {
   private moveFolder(folderName: string, direction: 'top' | 'up' | 'down' | 'bottom') {
     console.log('[moveFolder] Start:', { folderName, direction });
     const mb = this.mailboxes.find(m => (m.Name || m.Mailbox) === folderName);
-    const delim = mb?.Delimiter || mb?.Delim;
-    const delimiter = typeof delim === 'number' ? String.fromCharCode(delim) : (delim || '.');
-    const parts = folderName.split(delimiter);
+    const delimiter = delimiterOf(mb, '.');
+    const parts = mailboxLevels(folderName, delimiter);
     const parentPath = parts.slice(0, -1).join(delimiter);
 
     const siblings = this.mailboxes
       .map(m => m.Name || m.Mailbox || '')
       .filter(name => {
         if (this.primaryFullNames.has(name)) return false;
-        const sParts = name.split(delimiter);
+        const sParts = mailboxLevels(name, delimiter);
         const sParent = sParts.slice(0, -1).join(delimiter);
         return sParent === parentPath && sParts.length === parts.length;
       });
@@ -625,9 +618,8 @@ export class FolderList extends LitElement {
 
     this.mailboxes.forEach(mb => {
       const fullName = mb.Name || mb.Mailbox || '';
-      const delim = mb.Delimiter || mb.Delim;
-      const delimiter = typeof delim === 'number' ? String.fromCharCode(delim) : (delim || '.');
-      const parts = fullName.split(delimiter);
+      const delimiter = delimiterOf(mb, '.');
+      const parts = mailboxLevels(fullName, delimiter);
 
       let currentLevel = root;
       let pathAcc = '';
@@ -741,16 +733,15 @@ export class FolderList extends LitElement {
         let isFirst = false;
         let isLast = false;
         if (hasActions) {
-          const delim = node.mb?.Delimiter || node.mb?.Delim;
-          const delimiter = typeof delim === 'number' ? String.fromCharCode(delim) : (delim || '.');
-          const parts = node.fullName.split(delimiter);
+          const delimiter = delimiterOf(node.mb, '.');
+          const parts = mailboxLevels(node.fullName, delimiter);
           const parentPath = parts.slice(0, -1).join(delimiter);
 
           const siblings = this.mailboxes
             .map(m => m.Name || m.Mailbox || '')
             .filter(name => {
               if (this.primaryFullNames.has(name)) return false;
-              const sParts = name.split(delimiter);
+              const sParts = mailboxLevels(name, delimiter);
               const sParent = sParts.slice(0, -1).join(delimiter);
               return sParent === parentPath && sParts.length === parts.length;
             });
@@ -944,7 +935,7 @@ export class FolderList extends LitElement {
               // the resolved Trash name and the server's delimiter answer exactly.
               const trashName = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
               if (mailboxRoleByName(node.fullName, this.mailboxes) === 'trash'
-                || isSelfOrDescendantMailbox(node.fullName, trashName, node.mb?.Delimiter || node.mb?.Delim)) {
+                || isSelfOrDescendantMailbox(node.fullName, trashName, delimiterOf(node.mb))) {
                 this.showDeleteConfirm = true;
               } else {
                 this.showMoveToTrashConfirm = true;

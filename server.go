@@ -250,7 +250,7 @@ func (s *Server) Logger() Logger {
 	return s.logger
 }
 
-func isPublic(path string) bool {
+func isPublic(method, path string) bool {
 	if strings.HasPrefix(path, "/plugins/") {
 		parts := strings.Split(path, "/")
 		if len(parts) >= 4 && parts[3] == "assets" {
@@ -262,7 +262,11 @@ func isPublic(path string) bool {
 	if strings.HasPrefix(path, "/webauthn/verify") {
 		return true
 	}
-	return path == "/session"
+	// Signing in needs no session, and signing out must work without one: it
+	// also clears the login token. Reading the session is an authenticated
+	// request like any other, and was let through without one to a handler
+	// that dereferenced it — a 500 on every reload of an expired tab.
+	return path == "/session" && (method == http.MethodPost || method == http.MethodDelete)
 }
 
 func redirectToLogin(ctx *Context) error {
@@ -275,8 +279,9 @@ func redirectToLogin(ctx *Context) error {
 func handleUnauthenticated(next HandlerFunc, ctx *Context) error {
 	// Require auth for all requests except /login and assets
 	path := ctx.Request.URL.Path
-	ctx.Server.logger.Debugf("handleUnauthenticated: path=%s, isPublic=%v", path, isPublic(path))
-	if isPublic(path) {
+	public := isPublic(ctx.Request.Method, path)
+	ctx.Server.logger.Debugf("handleUnauthenticated: path=%s, isPublic=%v", path, public)
+	if public {
 		return next(ctx)
 	} else {
 		return redirectToLogin(ctx)
@@ -397,6 +402,12 @@ func (s *Server) setupMiddleware(router *Router) {
 						Secure:   ctx.IsEffectiveHTTPS(),
 						MaxAge:   -1,
 					})
+					// The restored session takes the same gate as every other:
+					// the request that restored it used to run regardless.
+					if session.Requires2FA() && !session.IsAuthenticated2FA() {
+						s.logger.Debugf("Auth middleware: restored session needs 2FA for %s", ctx.Request.URL.Path)
+						return handleUnauthenticated(next, ctx)
+					}
 					// Continue with restored session
 					ctx.Session.ping()
 					err = next(ctx)

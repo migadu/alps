@@ -94,6 +94,68 @@ const DEFAULT_SETTINGS: SettingsState = {
   customMailboxOrder: []
 };
 
+type ServerField = { ui?: true; name: string; value: (s: SettingsState) => unknown };
+
+/**
+ * Where each setting is kept in the account's record on the server.
+ *
+ * A save sends only the settings that changed, each under its name here. It
+ * used to send the whole record, which put this browser's copy of every other
+ * setting over whatever another browser had saved since this one loaded, so
+ * the last browser to change anything undid the others' changes. Settings not
+ * listed stay in this browser: the sidebar's state, and what the server
+ * reports rather than keeps.
+ */
+const SERVER_FIELDS: { [K in keyof SettingsState]?: ServerField } = {
+  themeMode: { ui: true, name: 'themeMode', value: s => s.themeMode },
+  colorFamily: { ui: true, name: 'colorFamily', value: s => s.colorFamily },
+  layoutMode: { ui: true, name: 'layoutMode', value: s => s.layoutMode },
+  // Read from the account's record at sign-in, and never saved to it until now.
+  densityMode: { ui: true, name: 'densityMode', value: s => s.densityMode },
+  enableThreading: { ui: true, name: 'enableThreading', value: s => s.enableThreading },
+  themeIframeContent: { ui: true, name: 'themeIframeContent', value: s => s.themeIframeContent },
+  showSenderAvatars: { ui: true, name: 'showSenderAvatars', value: s => s.showSenderAvatars },
+  customMailboxOrder: { ui: true, name: 'customMailboxOrder', value: s => s.customMailboxOrder },
+  checkMailInterval: { name: 'check_mail_interval', value: s => Number(s.checkMailInterval) || 0 },
+  autoLogout: { name: 'auto_logout', value: s => Number(s.autoLogout) || 0 },
+  desktopNotifications: { name: 'desktop_notifications', value: s => Boolean(s.desktopNotifications) },
+  soundNotifications: { name: 'sound_notifications', value: s => Boolean(s.soundNotifications) },
+  name: { name: 'from', value: s => s.name },
+  signature: { name: 'signature', value: s => s.signature },
+  replyTo: { name: 'reply_to', value: s => s.replyTo },
+  bccMyself: { name: 'bcc_myself', value: s => Boolean(s.bccMyself) },
+  messagesPerPage: { name: 'messages_per_page', value: s => Number(s.messagesPerPage) || 50 },
+  preferredView: { name: 'preferred_view', value: s => s.preferredView },
+  markReadTimeout: { name: 'mark_read_timeout', value: s => Number(s.markReadTimeout) || 0 },
+  showRemoteContent: { name: 'show_remote_content', value: s => s.showRemoteContent },
+  composeFormat: { name: 'compose_format', value: s => s.composeFormat },
+  undoTimeout: { name: 'undo_timeout', value: s => Number(s.undoTimeout) || 0 },
+  language: { name: 'language', value: s => s.language },
+  hourFormat: { name: 'hour_format', value: s => s.hourFormat },
+  dateFormat: { name: 'date_format', value: s => s.dateFormat },
+  sortOrder: { name: 'sort_order', value: s => s.sortOrder },
+  messageSortCriteria: { name: 'message_sort_criteria', value: s => s.messageSortCriteria },
+};
+
+type ServerKey = keyof typeof SERVER_FIELDS;
+
+const isServerKey = (key: string): key is ServerKey => key in SERVER_FIELDS;
+
+/** `keys` of `state`, as `PUT /settings` takes them. */
+function serverFields(state: SettingsState, keys: Iterable<ServerKey>): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  for (const key of keys) {
+    const field = SERVER_FIELDS[key]!;
+    if (field.ui) {
+      const ui = (body.ui ??= {}) as Record<string, unknown>;
+      ui[field.name] = field.value(state);
+    } else {
+      body[field.name] = field.value(state);
+    }
+  }
+  return body;
+}
+
 export class SettingsStore extends EventTarget {
   private state: SettingsState;
   private initialFetchCompleted = false;
@@ -101,9 +163,10 @@ export class SettingsStore extends EventTarget {
    * read succeeds; see _saveBackendSettings. */
   private settingsReadFailed = false;
   private rereadInFlight = false;
-  /** Keys changed in this browser while the record could not be read. A re-read
-   * keeps these over the server's values, then saves them. */
-  private keysChangedUnread = new Set<string>();
+  /** Settings changed in this browser that the server has not yet taken. A read
+   * of the record keeps these over the server's values, and a save sends them
+   * and nothing else. */
+  private unsaved = new Set<ServerKey>();
 
   constructor() {
     super();
@@ -120,7 +183,7 @@ export class SettingsStore extends EventTarget {
     window.addEventListener('session-cleared', () => {
       this.initialFetchCompleted = false;
       this.settingsReadFailed = false;
-      this.keysChangedUnread.clear();
+      this.unsaved.clear();
       this.state = this.loadSettings();
       this.applyTheme();
       this.notify();
@@ -257,12 +320,11 @@ export class SettingsStore extends EventTarget {
     const oldUsername = this.state.loginUsername;
     const newUsername = updates.loginUsername;
     
-    if (newUsername !== undefined && newUsername !== oldUsername) {
-      // Username changed or set!
-      this.state = { ...this.loadSettings(newUsername), ...updates };
-    } else {
-      this.state = { ...this.state, ...updates };
-    }
+    // Username changed or set: the change applies over that user's record.
+    const before = newUsername !== undefined && newUsername !== oldUsername
+      ? this.loadSettings(newUsername)
+      : this.state;
+    this.state = { ...before, ...updates };
 
     this.saveSettings();
     
@@ -272,14 +334,15 @@ export class SettingsStore extends EventTarget {
     
     this.notify();
 
-    const backendUpdates = { ...updates };
-    delete backendUpdates.loginUsername;
-    
-    if (Object.keys(backendUpdates).length > 0) {
-      if (this.settingsReadFailed) {
-        for (const key of Object.keys(backendUpdates)) this.keysChangedUnread.add(key);
-      }
-      return this._saveBackendSettings(this.state);
+    // Only what the server keeps, and only what this call changed: a control
+    // that sets the value it already shows has nothing to say to the server.
+    const changed = Object.keys(updates).filter(
+      (key): key is ServerKey => isServerKey(key)
+        && JSON.stringify(before[key]) !== JSON.stringify(this.state[key]),
+    );
+    if (changed.length > 0) {
+      for (const key of changed) this.unsaved.add(key);
+      return this._saveBackendSettings();
     }
   }
 
@@ -295,7 +358,7 @@ export class SettingsStore extends EventTarget {
       return;
     }
 
-    let needBackendSave = false;
+    let needLanguage = false;
     let readOk = false;
 
     try {
@@ -366,13 +429,18 @@ export class SettingsStore extends EventTarget {
           if (s.sort_order !== undefined && s.sort_order !== "") updates.sortOrder = s.sort_order;
           if (s.message_sort_criteria !== undefined && s.message_sort_criteria !== "") updates.messageSortCriteria = s.message_sort_criteria;
           
+          // An account that has never saved a language gets the one this
+          // browser shows, so that another browser signs in to it in the same
+          // language. Only the language: this used to save the whole record, so
+          // a read that came back short put this browser's settings over the
+          // account's.
           if (!s.language) {
-            needBackendSave = true;
+            needLanguage = true;
           }
 
-          // What was changed here while the record could not be read wins over
-          // the server's copy of those keys; everything else is the server's.
-          for (const key of this.keysChangedUnread) {
+          // What was changed here and not yet saved wins over the server's copy
+          // of those keys; everything else is the server's.
+          for (const key of this.unsaved) {
             delete (updates as Record<string, unknown>)[key];
           }
 
@@ -387,50 +455,42 @@ export class SettingsStore extends EventTarget {
     } catch (e) {
       Logger.error('Failed to fetch backend settings', e);
     } finally {
-      // Only a record actually READ unblocks saving. This was set on every exit,
-      // failures included, and a save sends the WHOLE record: after one failed
-      // read at sign-in (a 500, a moment offline) the next toggle PUT this
-      // browser's state over every setting the account had saved elsewhere, and
-      // on a browser that had never seen the account that state was the defaults.
+      // Only a record actually READ unblocks saving: a change made before it is
+      // kept here, and is saved over the server's values once they are in.
       this.initialFetchCompleted = readOk;
       this.settingsReadFailed = !readOk;
     }
 
-    if (readOk && this.keysChangedUnread.size > 0) {
-      this.keysChangedUnread.clear();
-      needBackendSave = true;
-    }
-
-    if (needBackendSave) {
-      await this._saveBackendSettings(this.state);
+    if (needLanguage) this.unsaved.add('language');
+    if (readOk && this.unsaved.size > 0) {
+      await this._saveBackendSettings();
     }
   }
 
   /**
-   * Serializes the settings PUT, and always ends on the latest state.
+   * Sends the unsaved settings, one request at a time, ending on the latest
+   * values.
    *
-   * `updateSettings` calls this on EVERY change, and the whole record is sent
-   * each time. Toggling quickly, or dragging a slider, therefore put several
-   * full-state writes in flight at once — and the last response is not
-   * necessarily the last request, so the server could settle on an older state
-   * than the one on screen. The user then sees their change applied locally
-   * (local state and localStorage are updated first) while the next sign-in
-   * from another browser hands back the value they thought they had replaced.
+   * `updateSettings` calls this on EVERY change. Toggling quickly, or dragging a
+   * slider, used to put several writes in flight at once, and the last response
+   * is not necessarily the last request, so the server could settle on an older
+   * value than the one on screen.
    *
-   * One request at a time. A change arriving mid-flight sets `savePending`
-   * rather than racing, and the trailing save reads `this.state` fresh when it
-   * runs, so intermediate values are coalesced away and the final write is
-   * always the current one.
+   * A change arriving mid-flight sets `savePending` rather than racing, and the
+   * trailing save reads the values when it runs, so intermediate values are
+   * coalesced away. A save that fails leaves its settings unsaved, so the next
+   * one carries them too.
    */
   private saveInFlight = false;
   private savePending = false;
 
-  private async _saveBackendSettings(state: SettingsState) {
+  private async _saveBackendSettings() {
     if (!this.initialFetchCompleted) {
-      // A PUT replaces the whole record, so nothing is sent before the record has
-      // been read. If that read failed, a change is the moment to try it again; a
-      // successful re-read folds the server's values in and saves the result
-      // itself.
+      // Nothing is sent before the record has been read: the read would put the
+      // server's values over the ones on screen, and a server that could not
+      // answer it will hardly take a write. If that read failed, a change is the
+      // moment to try it again; a successful re-read keeps the unsaved changes
+      // and saves them itself.
       if (this.settingsReadFailed && !this.rereadInFlight) {
         this.rereadInFlight = true;
         try {
@@ -446,63 +506,37 @@ export class SettingsStore extends EventTarget {
       this.savePending = true;
       return;
     }
+    const keys = [...this.unsaved];
+    if (keys.length === 0) return;
+    this.unsaved.clear();
     this.saveInFlight = true;
     try {
-      await this._putBackendSettings(state);
+      if (!(await this._putBackendSettings(serverFields(this.state, keys)))) {
+        for (const key of keys) this.unsaved.add(key);
+      }
     } finally {
       this.saveInFlight = false;
       if (this.savePending) {
         this.savePending = false;
-        // Fresh read, not the `state` captured above: that argument is the
-        // value as of an edit several keystrokes ago.
-        void this._saveBackendSettings(this.state);
+        void this._saveBackendSettings();
       }
     }
   }
 
-  private async _putBackendSettings(state: SettingsState) {
+  /** Whether the server took the save. A refusal has been reported. */
+  private async _putBackendSettings(body: Record<string, unknown>): Promise<boolean> {
     try {
       const response = await fetch('/settings', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ui: {
-            themeMode: state.themeMode,
-            colorFamily: state.colorFamily,
-            layoutMode: state.layoutMode,
-            sidebarCollapsed: state.sidebarCollapsed,
-            enableThreading: state.enableThreading,
-            themeIframeContent: state.themeIframeContent,
-            showSenderAvatars: state.showSenderAvatars,
-            customMailboxOrder: state.customMailboxOrder
-          },
-          check_mail_interval: Number(state.checkMailInterval) || 0,
-          auto_logout: Number(state.autoLogout) || 0,
-          desktop_notifications: Boolean(state.desktopNotifications),
-          sound_notifications: Boolean(state.soundNotifications),
-          from: state.name,
-          signature: state.signature,
-          reply_to: state.replyTo,
-          bcc_myself: Boolean(state.bccMyself),
-          messages_per_page: Number(state.messagesPerPage) || 50,
-          preferred_view: state.preferredView,
-          mark_read_timeout: Number(state.markReadTimeout) || 0,
-          show_remote_content: state.showRemoteContent,
-          compose_format: state.composeFormat,
-          undo_timeout: Number(state.undoTimeout) || 0,
-          language: state.language,
-          hour_format: state.hourFormat,
-          date_format: state.dateFormat,
-          sort_order: state.sortOrder,
-          message_sort_criteria: state.messageSortCriteria
-        })
+        body: JSON.stringify(body)
       });
       
       if (response.status === 401) {
         window.dispatchEvent(new CustomEvent('auth-error'));
-        return;
+        return false;
       }
 
       // `response.ok` was never consulted. A 400, a 413 or a 500 passed through
@@ -514,10 +548,13 @@ export class SettingsStore extends EventTarget {
       if (!response.ok) {
         Logger.error('Failed to save backend settings', response.status);
         this.reportSaveFailure();
+        return false;
       }
+      return true;
     } catch (e) {
       Logger.error('Failed to save backend settings', e);
       this.reportSaveFailure();
+      return false;
     }
   }
 

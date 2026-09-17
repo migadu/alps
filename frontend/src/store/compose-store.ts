@@ -3,6 +3,7 @@ import { messageOperations } from '../services/message-operations';
 import { activeUsername, readUserSettings } from './settings-store';
 import { abortUploads } from '../utils/attachment-utils';
 import { Logger } from '../utils/logger';
+import { appendReplyFields } from '../utils/reply-context';
 
 /**
  * Where a user's unsent drafts are kept, scoped to WHOSE they are.
@@ -45,6 +46,17 @@ const filterAddresses = (addrs?: string[]): string[] | undefined => {
   return addrs.filter(addr => !isBlockedAddress(addr));
 };
 
+/**
+ * The message a quote's `cid:` images belong to, so the composer can show
+ * them: a forwarded original, or the draft a forward was saved into. A reply
+ * quotes no such images, since it carries none of the original's parts.
+ */
+export interface QuoteSource {
+  mailbox: string;
+  uid: string;
+  structure?: unknown;
+}
+
 export interface ComposerInstance {
   id: string;
   to?: string[];
@@ -60,10 +72,14 @@ export interface ComposerInstance {
   expanded?: boolean;
   zIndex?: number;
   attachments?: any[];
+  quoteSource?: QuoteSource;
   dirty?: boolean;
   draftUid?: string;
   draftMailbox?: string;
   inReplyTo?: string;
+  references?: string[];
+  replyMailbox?: string;
+  replyUid?: string;
   isSending?: boolean;
   closing?: boolean;
   [key: string]: any;
@@ -480,6 +496,7 @@ export class ComposeStore extends EventTarget {
 
         if (composer.draftMailbox) formData.append('draft_mailbox', composer.draftMailbox);
         if (composer.draftUid) formData.append('draft_uid', composer.draftUid);
+        appendReplyFields(formData, composer);
 
         if (!(await messageOperations.saveDraft(formData))) failed++;
       }

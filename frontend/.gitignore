@@ -20,3 +20,7 @@ node_modules
 *.njsproj
 *.sln
 *.sw?
+
+# Browser tests
+test-results/
+playwright-report/

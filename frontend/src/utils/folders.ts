@@ -185,6 +185,27 @@ export function isSelfOrDescendantMailbox(name: string, parent: string, delimite
  */
 export function mailboxDelimiter(name: string, mailboxes: any[] = []): string {
   if (!name) return '';
-  const mb = mailboxes.find(m => (m.Name || m.Mailbox) === name);
-  return mb?.Delimiter || mb?.Delim || '';
+  return delimiterOf(mailboxes.find(m => (m.Name || m.Mailbox) === name));
+}
+
+/**
+ * A listed mailbox's hierarchy delimiter, as a string.
+ *
+ * The listing sends it as a character code (47 for `/`), and a code where a
+ * string is expected fails without a sound: `'Trash/Old'.startsWith(47)` looks
+ * for the text "47". A folder inside Trash was never recognised as one, so it
+ * could only ever be moved to Trash again, never deleted.
+ *
+ * A server without a hierarchy reports none (NIL, sent as 0), and that is
+ * `''`. `fallback` is for a mailbox that says nothing at all.
+ */
+export function delimiterOf(mb: any, fallback = ''): string {
+  const delim = mb?.Delimiter || mb?.Delim;
+  if (typeof delim === 'number') return delim > 0 ? String.fromCharCode(delim) : '';
+  return typeof delim === 'string' && delim ? delim : fallback;
+}
+
+/** A mailbox name's levels. Without a delimiter the name is one level. */
+export function mailboxLevels(name: string, delimiter: string): string[] {
+  return delimiter ? name.split(delimiter) : [name];
 }
