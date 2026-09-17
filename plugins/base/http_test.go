@@ -351,6 +351,61 @@ func TestHTTP_MoveAndDeleteMessages(t *testing.T) {
 	s.expect(s.do("DELETE", "/mailboxes/INBOX/messages", map[string]any{"uids": []string{}}), http.StatusBadRequest)
 }
 
+// "*" is the view of a search across every folder, not a folder. A write sent
+// to it names its messages by ID alone, and it used to be passed on as if "*"
+// were a folder: here, one that really is called "*".
+func TestHTTP_NoWriteReachesTheSearchAcrossFolders(t *testing.T) {
+	s := newTestServer(t)
+	if err := s.store.CreateMailbox(allMailboxes); err != nil {
+		t.Fatal(err)
+	}
+	msg := "From: Charles <charles@remote.test>\r\nTo: " + testUser + "\r\nSubject: Stars\r\nDate: Mon, 02 Jan 2006 15:04:05 +0000\r\nMessage-ID: <stars@remote.test>\r\n\r\nbody\r\n"
+	if _, _, _, err := s.store.AppendMessage(allMailboxes, rawMessage(msg), 0); err != nil {
+		t.Fatal(err)
+	}
+	listed, _, err := s.store.ListMessages(allMailboxes, "", 0, 10)
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("the folder called \"*\" lists %d messages: %v", len(listed), err)
+	}
+	uid := listed[0].ID.String()
+	if uid == "" {
+		t.Fatal("the message has no ID to write to")
+	}
+	s.login()
+
+	for _, write := range []struct {
+		method, path string
+		body         map[string]any
+	}{
+		{"PUT", "/mailboxes/*/messages/flag", map[string]any{"uids": []string{uid}, "flags": []string{`\Flagged`}, "action": "add"}},
+		{"PUT", "/mailboxes/*/messages/move", map[string]any{"uids": []string{uid}, "to": "Archive"}},
+		{"PUT", "/mailboxes/*/messages/copy", map[string]any{"uids": []string{uid}, "to": "Archive"}},
+		{"DELETE", "/mailboxes/*/messages", map[string]any{"uids": []string{uid}}},
+	} {
+		r := s.do(write.method, write.path, write.body)
+		s.expect(r, http.StatusBadRequest)
+		if !strings.Contains(string(r.body), "not_a_folder") {
+			t.Errorf("%s %s: body = %s", write.method, write.path, r.body)
+		}
+	}
+
+	msgs, total, err := s.store.ListMessages(allMailboxes, "", 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(msgs) != 1 {
+		t.Fatalf("the folder called \"*\" holds %d messages, want 1", total)
+	}
+	for _, f := range msgs[0].Flags {
+		if strings.EqualFold(string(f), `\Flagged`) {
+			t.Error("the message in the folder called \"*\" was flagged")
+		}
+	}
+	if got := s.mailbox("Archive").Total; got != 0 {
+		t.Errorf("Archive holds %d messages", got)
+	}
+}
+
 func TestHTTP_FolderVerbs(t *testing.T) {
 	s := newTestServer(t)
 	s.login()

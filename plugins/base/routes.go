@@ -298,10 +298,10 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 		return nil, alps.NewHTTPError(http.StatusBadRequest, err)
 	}
 
-	if mboxName == "*" {
+	if mboxName == allMailboxes {
 		active := &MailboxStatus{
 			StatusData: &imap.StatusData{
-				Mailbox: "*",
+				Mailbox: allMailboxes,
 			},
 		}
 
@@ -1727,6 +1727,20 @@ func handleCancelAttachment(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, nil)
 }
 
+// allMailboxes is the name a search across every folder is viewed under. It
+// is not a folder.
+const allMailboxes = "*"
+
+// refuseAllMailboxes answers a write addressed to allMailboxes. The write names
+// its messages by UID, and a UID means nothing outside its own folder. Passed
+// on, it reached the mail server as SELECT "*": an error on most servers, and on
+// one that allows a folder called "*", a write to that folder's messages that
+// happen to carry the same UIDs. The frontend writes to each message's own
+// folder instead.
+func refuseAllMailboxes(ctx *alps.Context) error {
+	return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "not_a_folder"})
+}
+
 func formOrQueryParam(ctx *alps.Context, k string) string {
 	if v := ctx.FormValue(k); v != "" {
 		return v
@@ -1738,6 +1752,9 @@ func handleMove(ctx *alps.Context) error {
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
 		return alps.NewHTTPError(http.StatusBadRequest, err)
+	}
+	if mboxName == allMailboxes {
+		return refuseAllMailboxes(ctx)
 	}
 
 	var uids []string
@@ -1808,6 +1825,9 @@ func handleCopy(ctx *alps.Context) error {
 	if err != nil {
 		return alps.NewHTTPError(http.StatusBadRequest, err)
 	}
+	if mboxName == allMailboxes {
+		return refuseAllMailboxes(ctx)
+	}
 
 	var uids []string
 	var to string
@@ -1876,6 +1896,9 @@ func handleDelete(ctx *alps.Context) error {
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
 		return alps.NewHTTPError(http.StatusBadRequest, err)
+	}
+	if mboxName == allMailboxes {
+		return refuseAllMailboxes(ctx)
 	}
 
 	var uids []string
@@ -2019,6 +2042,9 @@ func handleSetFlags(ctx *alps.Context) error {
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 	if err != nil {
 		return alps.NewHTTPError(http.StatusBadRequest, err)
+	}
+	if mboxName == allMailboxes {
+		return refuseAllMailboxes(ctx)
 	}
 
 	var uids []string
