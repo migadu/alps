@@ -875,9 +875,14 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	// and holding sm.locker across them would serialize every login and block
 	// all other sessions' requests on one user's network latency.
 	s.duration = sm.calculateSessionDuration(s.Store())
-	if enabled, err := CheckWebAuthnEnabled(s.Store()); err == nil && enabled {
-		s.requires2FA = true
+	// A sign-in whose second factor cannot be looked up does not go ahead
+	// without one. It used to, whenever the record could not be read.
+	requires2FA, err := s.webAuthnEnabled()
+	if err != nil {
+		s.teardown() // the read may have replaced or dropped p
+		return nil, fmt.Errorf("failed to check whether %s signs in with 2FA: %w", username, err)
 	}
+	s.requires2FA = requires2FA
 
 	sm.locker.Lock()
 	defer sm.locker.Unlock()

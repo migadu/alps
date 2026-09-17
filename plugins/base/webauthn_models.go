@@ -1,7 +1,6 @@
 package alpsbase
 
 import (
-	"encoding/json"
 	"errors"
 
 	"github.com/go-webauthn/webauthn/webauthn"
@@ -56,31 +55,13 @@ func (u *webauthnUser) WebAuthnCredentials() []webauthn.Credential {
 	return creds
 }
 
-func loadCredentials(store provider.Store) (*UserCredentials, error) {
-	return loadCredentialsInternal(store, false)
-}
-
-func loadCredentialsForVerification(store provider.Store) (*UserCredentials, error) {
-	return loadCredentialsInternal(store, true)
-}
-
-func loadCredentialsInternal(store provider.Store, strict bool) (*UserCredentials, error) {
+// loadCredentials reads the account's WebAuthn credentials. An account
+// without a record, or whose record was unreadable and so removed, has none.
+func loadCredentials(session *alps.Session) (*UserCredentials, error) {
 	var creds UserCredentials
-	err := store.Get("webauthn", &creds)
-	if err != nil {
-		if err == provider.ErrNoStoreEntry {
-			return &UserCredentials{Credentials: []CredentialInfo{}}, nil
-		}
-		// Be resilient to corrupted data when loading for display (e.g., settings page)
-		// so users can still access the settings page and re-register.
-		// But be strict during verification to avoid authentication issues.
-		if !strict {
-			var syntaxErr *json.SyntaxError
-			var typeErr *json.UnmarshalTypeError
-			if errors.As(err, &syntaxErr) || errors.As(err, &typeErr) {
-				return &UserCredentials{Credentials: []CredentialInfo{}}, nil
-			}
-		}
+	if err := session.ReadWebAuthn(&creds); err == provider.ErrNoStoreEntry {
+		return &UserCredentials{Credentials: []CredentialInfo{}}, nil
+	} else if err != nil {
 		return nil, err
 	}
 	return &creds, nil

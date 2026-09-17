@@ -817,55 +817,6 @@ func handleUnsubscribeMailbox(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
 }
 
-// checkWebAuthnEnabled checks if a user has WebAuthn 2FA enabled
-func checkWebAuthnEnabled(store provider.Store) (bool, error) {
-	// Use a minimal struct that matches only the fields we need
-	// This avoids importing the webauthn plugin types
-	var data map[string]interface{}
-
-	if err := store.Get("webauthn", &data); err != nil {
-		if err == provider.ErrNoStoreEntry {
-			return false, nil
-		}
-		return false, err
-	}
-
-	enabled, ok := data["enabled"].(bool)
-	if !ok {
-		return false, nil
-	}
-
-	if !enabled {
-		return false, nil
-	}
-
-	credentials, ok := data["credentials"].([]interface{})
-	if !ok {
-		return false, nil
-	}
-
-	return len(credentials) > 0, nil
-}
-
-// checkTrustLinkedAccounts checks if a user has enabled "trust linked accounts" setting
-func checkTrustLinkedAccounts(store provider.Store) (bool, error) {
-	var data map[string]interface{}
-
-	if err := store.Get("webauthn", &data); err != nil {
-		if err == provider.ErrNoStoreEntry {
-			return false, nil // Default: don't trust
-		}
-		return false, err
-	}
-
-	trust, ok := data["trust_linked_accounts"].(bool)
-	if !ok {
-		return false, nil // Default: don't trust
-	}
-
-	return trust, nil
-}
-
 func handleLogin(ctx *alps.Context) error {
 	var username, password, remember string
 
@@ -932,16 +883,7 @@ func handleLogin(ctx *alps.Context) error {
 
 		// Check if WebAuthn 2FA is enabled for this user
 		// Skip 2FA check if restoring from login token (token only exists after successful 2FA)
-		enabled := false
-		if !restoredFromToken {
-			var err error
-			enabled, err = checkWebAuthnEnabled(s.Store())
-			if err != nil {
-				ctx.Server.Logger().Printf("Failed to check WebAuthn status: %v", err)
-				// Continue with normal login on error
-				enabled = false
-			}
-		}
+		enabled := !restoredFromToken && s.Requires2FA()
 		if enabled {
 			// 2FA required - store temporary session token and redirect to WebAuthn verification
 			ctx.SetCookie(&http.Cookie{
@@ -2716,16 +2658,12 @@ func handleSwitchAccount(ctx *alps.Context) error {
 	}
 
 	// Check if the target account has 2FA enabled
-	has2FA, err := checkWebAuthnEnabled(newSession.Store())
-	if err != nil {
-		ctx.Server.Logger().Printf("Failed to check WebAuthn status for %s: %v", targetUsername, err)
-		has2FA = false // Continue without 2FA on error
-	}
+	has2FA := newSession.Requires2FA()
 
 	// Check if we should skip 2FA for trusted linked accounts
 	skipTwoFA := false
 	if has2FA {
-		trustLinked, err := checkTrustLinkedAccounts(newSession.Store())
+		trustLinked, err := newSession.TrustsLinkedAccounts()
 		if err != nil {
 			ctx.Server.Logger().Printf("Failed to check trust_linked_accounts for %s: %v", targetUsername, err)
 			trustLinked = false
