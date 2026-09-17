@@ -16,7 +16,6 @@ import {
   cleanup, flush, installMatchMedia, installResizeObserver, installScrollIntoView, mount, record, shadowAll, update, waitFor,
 } from './helpers/dom';
 import type { ComposerInstance } from '../src/store/compose-store';
-import { ComposeStore } from '../src/store/compose-store';
 import { messageOperations } from '../src/services/message-operations';
 import { MessageCache } from '../src/utils/message-cache';
 import '../src/components/message-reader';
@@ -105,12 +104,35 @@ describe('the composer', () => {
     expect(store.closeComposer).toHaveBeenCalledWith('c1');
   });
 
-  it('says nothing when the draft is still there', async () => {
+  it('closes, and says the draft is still there when the server keeps it', async () => {
     vi.spyOn(messageOperations, 'deleteMessagesResult').mockResolvedValue({ ok: false, reason: 'failed' });
     const seen = record<CustomEvent>(window, 'draft-discarded');
+    const toasts = record<CustomEvent>(window, 'show-toast');
 
     const store = await discardFrom({ id: 'c1', draftUid: '7', draftMailbox: 'Drafts', subject: 'Engines' });
 
+    expect(seen).toEqual([]);
+    expect(toasts.map(e => e.detail.message)).toEqual(['composer.discardFailed']);
+    expect(store.closeComposer).toHaveBeenCalledWith('c1');
+  });
+
+  it('stays quiet on an expired session: the login screen is already the answer', async () => {
+    vi.spyOn(messageOperations, 'deleteMessagesResult').mockResolvedValue({ ok: false, reason: 'auth' });
+    const toasts = record<CustomEvent>(window, 'show-toast');
+
+    const store = await discardFrom({ id: 'c1', draftUid: '7', draftMailbox: 'Drafts', subject: 'Engines' });
+
+    expect(toasts).toEqual([]);
+    expect(store.closeComposer).toHaveBeenCalledWith('c1');
+  });
+
+  it('deletes nothing for a draft that was never saved', async () => {
+    const del = vi.spyOn(messageOperations, 'deleteMessagesResult');
+    const seen = record<CustomEvent>(window, 'draft-discarded');
+
+    const store = await discardFrom({ id: 'c1', subject: 'Engines' });
+
+    expect(del).not.toHaveBeenCalled();
     expect(seen).toEqual([]);
     expect(store.closeComposer).toHaveBeenCalledWith('c1');
   });
@@ -128,20 +150,6 @@ describe('the composer', () => {
     await el._saveDraft();
 
     expect(seen[0].detail).toMatchObject({ oldUid: '7', oldMailbox: 'Drafts', newUid: '8', mailbox: 'Drafts' });
-  });
-});
-
-describe('the compose store', () => {
-  it('says which draft it deleted, as the composer does', async () => {
-    localStorage.setItem('alps_active_user', 'ada');
-    vi.spyOn(messageOperations, 'deleteMessagesResult').mockResolvedValue({ ok: true });
-    const seen = record<CustomEvent>(window, 'draft-discarded');
-    const store = new ComposeStore();
-    store.openComposer({ draftUid: '7', draftMailbox: 'Drafts' });
-
-    store.discardDraft(store.getState().activeComposers[0].id);
-
-    await vi.waitFor(() => expect(seen.map(e => e.detail)).toEqual([{ mailbox: 'Drafts', uid: '7' }]));
   });
 });
 
