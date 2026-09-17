@@ -105,6 +105,32 @@ describe('signing in', () => {
     expect(put.ui.showSenderAvatars).toBe(true);
   });
 
+  it('saves nothing when it has only read the account\'s record', async () => {
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { signature: 'Ada', language: 'de' } }),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    await Promise.resolve();
+    expect(calls.map((c) => c.key)).toEqual(['GET /session', 'GET /settings']);
+  });
+
+  it('gives an account without a language this browser\'s, and sends nothing else', async () => {
+    signedIn();
+    localStorage.setItem('alps_settings', JSON.stringify({ language: 'fr', layoutMode: 'horizontal' }));
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { signature: 'Ada' } }),
+      'PUT /settings': () => json(200, {}),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(calls.some((c) => c.key === 'PUT /settings')).toBe(true));
+    expect(calls.filter((c) => c.key === 'PUT /settings').map((c) => c.body)).toEqual([{ language: 'fr' }]);
+    expect(store.getState()).toMatchObject({ signature: 'Ada', language: 'fr' });
+  });
+
   it('sends the shell to sign-in when there is no session at all', async () => {
     const authErrors = record('auth-error');
     const calls = serve({});

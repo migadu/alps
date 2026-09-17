@@ -94,6 +94,41 @@ const DEFAULT_SETTINGS: SettingsState = {
   customMailboxOrder: []
 };
 
+/** The whole record, as `PUT /settings` takes it. */
+function backendRecord(state: SettingsState): Record<string, unknown> {
+  return {
+    ui: {
+      themeMode: state.themeMode,
+      colorFamily: state.colorFamily,
+      layoutMode: state.layoutMode,
+      sidebarCollapsed: state.sidebarCollapsed,
+      enableThreading: state.enableThreading,
+      themeIframeContent: state.themeIframeContent,
+      showSenderAvatars: state.showSenderAvatars,
+      customMailboxOrder: state.customMailboxOrder
+    },
+    check_mail_interval: Number(state.checkMailInterval) || 0,
+    auto_logout: Number(state.autoLogout) || 0,
+    desktop_notifications: Boolean(state.desktopNotifications),
+    sound_notifications: Boolean(state.soundNotifications),
+    from: state.name,
+    signature: state.signature,
+    reply_to: state.replyTo,
+    bcc_myself: Boolean(state.bccMyself),
+    messages_per_page: Number(state.messagesPerPage) || 50,
+    preferred_view: state.preferredView,
+    mark_read_timeout: Number(state.markReadTimeout) || 0,
+    show_remote_content: state.showRemoteContent,
+    compose_format: state.composeFormat,
+    undo_timeout: Number(state.undoTimeout) || 0,
+    language: state.language,
+    hour_format: state.hourFormat,
+    date_format: state.dateFormat,
+    sort_order: state.sortOrder,
+    message_sort_criteria: state.messageSortCriteria
+  };
+}
+
 export class SettingsStore extends EventTarget {
   private state: SettingsState;
   private initialFetchCompleted = false;
@@ -296,6 +331,7 @@ export class SettingsStore extends EventTarget {
     }
 
     let needBackendSave = false;
+    let needLanguage = false;
     let readOk = false;
 
     try {
@@ -366,8 +402,13 @@ export class SettingsStore extends EventTarget {
           if (s.sort_order !== undefined && s.sort_order !== "") updates.sortOrder = s.sort_order;
           if (s.message_sort_criteria !== undefined && s.message_sort_criteria !== "") updates.messageSortCriteria = s.message_sort_criteria;
           
+          // An account that has never saved a language gets the one this
+          // browser shows, so that another browser signs in to it in the same
+          // language. Only the language: this used to save the whole record, so
+          // a read that came back short put this browser's settings over the
+          // account's.
           if (!s.language) {
-            needBackendSave = true;
+            needLanguage = true;
           }
 
           // What was changed here while the record could not be read wins over
@@ -403,6 +444,8 @@ export class SettingsStore extends EventTarget {
 
     if (needBackendSave) {
       await this._saveBackendSettings(this.state);
+    } else if (needLanguage) {
+      await this._saveBackendSettings(this.state, { language: this.state.language });
     }
   }
 
@@ -425,7 +468,8 @@ export class SettingsStore extends EventTarget {
   private saveInFlight = false;
   private savePending = false;
 
-  private async _saveBackendSettings(state: SettingsState) {
+  /** `fields`, when given, is all that is sent; the server keeps the rest. */
+  private async _saveBackendSettings(state: SettingsState, fields?: Record<string, unknown>) {
     if (!this.initialFetchCompleted) {
       // A PUT replaces the whole record, so nothing is sent before the record has
       // been read. If that read failed, a change is the moment to try it again; a
@@ -448,7 +492,7 @@ export class SettingsStore extends EventTarget {
     }
     this.saveInFlight = true;
     try {
-      await this._putBackendSettings(state);
+      await this._putBackendSettings(fields ?? backendRecord(state));
     } finally {
       this.saveInFlight = false;
       if (this.savePending) {
@@ -460,44 +504,14 @@ export class SettingsStore extends EventTarget {
     }
   }
 
-  private async _putBackendSettings(state: SettingsState) {
+  private async _putBackendSettings(body: Record<string, unknown>) {
     try {
       const response = await fetch('/settings', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ui: {
-            themeMode: state.themeMode,
-            colorFamily: state.colorFamily,
-            layoutMode: state.layoutMode,
-            sidebarCollapsed: state.sidebarCollapsed,
-            enableThreading: state.enableThreading,
-            themeIframeContent: state.themeIframeContent,
-            showSenderAvatars: state.showSenderAvatars,
-            customMailboxOrder: state.customMailboxOrder
-          },
-          check_mail_interval: Number(state.checkMailInterval) || 0,
-          auto_logout: Number(state.autoLogout) || 0,
-          desktop_notifications: Boolean(state.desktopNotifications),
-          sound_notifications: Boolean(state.soundNotifications),
-          from: state.name,
-          signature: state.signature,
-          reply_to: state.replyTo,
-          bcc_myself: Boolean(state.bccMyself),
-          messages_per_page: Number(state.messagesPerPage) || 50,
-          preferred_view: state.preferredView,
-          mark_read_timeout: Number(state.markReadTimeout) || 0,
-          show_remote_content: state.showRemoteContent,
-          compose_format: state.composeFormat,
-          undo_timeout: Number(state.undoTimeout) || 0,
-          language: state.language,
-          hour_format: state.hourFormat,
-          date_format: state.dateFormat,
-          sort_order: state.sortOrder,
-          message_sort_criteria: state.messageSortCriteria
-        })
+        body: JSON.stringify(body)
       });
       
       if (response.status === 401) {
