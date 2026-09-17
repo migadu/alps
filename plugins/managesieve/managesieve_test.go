@@ -55,6 +55,46 @@ func TestListScripts(t *testing.T) {
 	}
 }
 
+// recordingClient is newTestClient for a test that needs to see the command:
+// it returns what the client wrote, once srvResponse has been read.
+func recordingClient(t *testing.T, srvResponse string) (*MSClient, <-chan string) {
+	t.Helper()
+	client, server := net.Pipe()
+	t.Cleanup(func() { client.Close(); server.Close() })
+
+	sent := make(chan string, 1)
+	go func() {
+		line, _ := bufio.NewReader(server).ReadString('\n')
+		sent <- line
+		server.Write([]byte(srvResponse))
+	}()
+
+	return &MSClient{
+		conn:         client,
+		r:            bufio.NewReader(client),
+		capabilities: make(map[string]string),
+	}, sent
+}
+
+func TestDeleteScript(t *testing.T) {
+	c, sent := recordingClient(t, "OK \"Deletescript completed.\"\r\n")
+
+	if err := c.DeleteScript("vacation"); err != nil {
+		t.Fatalf("DeleteScript: %v", err)
+	}
+	if got := <-sent; got != "DELETESCRIPT \"vacation\"\r\n" {
+		t.Errorf("sent %q", got)
+	}
+}
+
+func TestDeleteScriptActiveIsRefused(t *testing.T) {
+	c, _ := recordingClient(t, "NO (ACTIVE) \"You may not delete an active script\"\r\n")
+
+	if err := c.DeleteScript("catchall"); err == nil {
+		t.Fatal("expected the server's refusal to be returned")
+	}
+}
+
 func TestListScriptsEmpty(t *testing.T) {
 	c, cleanup := newTestClient(t, "OK \"Listscripts completed.\"\r\n")
 	defer cleanup()

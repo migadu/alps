@@ -214,6 +214,15 @@ func (c *MSClient) SetActive(name string) error {
 	return c.readResponse()
 }
 
+// DeleteScript removes a script (RFC 5804 DELETESCRIPT). The server refuses to
+// delete the active script, so deactivate it with SetActive("") first.
+func (c *MSClient) DeleteScript(name string) error {
+	if err := c.sendCommand(fmt.Sprintf("DELETESCRIPT %q", name)); err != nil {
+		return err
+	}
+	return c.readResponse()
+}
+
 func (c *MSClient) GetScript(name string) (string, error) {
 	if err := c.sendCommand(fmt.Sprintf("GETSCRIPT %q", name)); err != nil {
 		return "", err
