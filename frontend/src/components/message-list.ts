@@ -824,6 +824,12 @@ export class MessageList extends LitElement {
     return [own, ...msg.SubMessages.map((sub: any) => this.keyOf(sub))];
   }
 
+  /** The messages a row stands for — {@link rowKeys}, as the messages themselves. */
+  private rowMessages(msg: any): any[] {
+    if (!msg.SubMessages?.length || this.isThreadExpanded(String(msg.UID))) return [msg];
+    return [msg, ...msg.SubMessages];
+  }
+
   /** How much of a row is checked: a collapsed thread can be checked in part. */
   private rowSelection(msg: any): 'all' | 'some' | 'none' {
     const keys = this.rowKeys(msg);
@@ -1235,7 +1241,11 @@ export class MessageList extends LitElement {
     // never read, left no trace on the list until the thread was expanded.
     // Expanded, every message has its own row and says so for itself.
     const isUnseen = unseen(msg) || (!isSubMessage && !!hasSubMessages && !expanded && msg.SubMessages.some(unseen));
-    const isStarred = msg.Flags && msg.Flags.includes(FLAG_FLAGGED);
+    // The star follows the same rule as the bold above. A star is how a
+    // conversation is kept in sight, and one put on an older message — from the
+    // open conversation, or before its reply arrived — vanished from the list
+    // the moment the thread collapsed over it. Expanded, each row shows its own.
+    const isStarred = this.rowMessages(msg).some((m: any) => m.Flags?.includes(FLAG_FLAGGED));
     const isAnswered = msg.Flags && msg.Flags.includes(FLAG_ANSWERED);
     const isForwarded = msg.Flags && msg.Flags.includes(FLAG_FORWARDED);
 
@@ -1379,9 +1389,17 @@ export class MessageList extends LitElement {
     `;
   }
 
+  /**
+   * `messages` is what the row stands for — the whole thread when it is
+   * collapsed — because only the list knows which threads are. The star the row
+   * shows is theirs together, so whoever answers this has to be able to clear it
+   * from wherever in the thread it actually is.
+   */
   private toggleStar(e: Event, msg: any) {
     e.stopPropagation();
-    this.dispatchEvent(new CustomEvent('toggle-star-message', { detail: { message: msg } }));
+    this.dispatchEvent(new CustomEvent('toggle-star-message', {
+      detail: { message: msg, messages: this.rowMessages(msg) },
+    }));
   }
 
   render() {

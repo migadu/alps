@@ -299,6 +299,67 @@ test("checking a conversation's row checks every message in it", async ({ page }
   await expect(page.locator("alps-message-list .message-item.unread").filter({ hasText: chain.subject })).toHaveCount(0);
 });
 
+test("a conversation's row wears the star of any message in it, sets one, and clears it wherever it is", async ({ page }) => {
+  // The row showed its newest message's star alone. A star on an older message
+  // vanished when the thread collapsed, and pressing the unlit star over it put
+  // a second one on the thread instead of taking the first off.
+  const chain = await deliverChain();
+
+  /** The next star write, as the server took it. */
+  const starWrite = () =>
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        new URL(response.url()).pathname === "/mailboxes/INBOX/messages/flag" &&
+        response.ok(),
+    ).then((response) => response.request().postDataJSON() as { uids: string[]; action: string });
+  const starred = () => page.locator("alps-message-list .message-item.starred").filter({ hasText: chain.subject });
+
+  await login(page);
+  const conversation = rows(page, chain.subject);
+  await expect(conversation).toHaveCount(1);
+
+  // Setting it stars ONE message, not all three.
+  let write = starWrite();
+  await conversation.locator(".star-btn").click();
+  expect(await write).toMatchObject({ action: "add", uids: [expect.any(String)] });
+  await expect(conversation).toHaveClass(/starred/);
+
+  // Laid out, that one is the row's own message, the newest.
+  await conversation.locator(".caret-col").click();
+  await expect(rows(page, chain.subject)).toHaveCount(3);
+  await expect(starred()).toHaveCount(1);
+  await expect(rows(page, chain.subject).first()).toHaveClass(/starred/);
+
+  // Move the star to the OLDEST message, each row now speaking for itself.
+  write = starWrite();
+  await rows(page, chain.subject).first().locator(".star-btn").click();
+  expect((await write).action).toBe("remove");
+  write = starWrite();
+  await rows(page, chain.subject).last().locator(".star-btn").click();
+  const oldest = await write;
+  expect(oldest.action).toBe("add");
+  await expect(starred()).toHaveCount(1);
+
+  // Collapsed again — and read from the mailbox again — the row is still lit,
+  // by a message it does not show.
+  await page.reload();
+  await expect(rows(page, chain.subject)).toHaveCount(1);
+  await expect(rows(page, chain.subject)).toHaveClass(/starred/);
+
+  // Pressing it takes the star off THAT message.
+  write = starWrite();
+  await rows(page, chain.subject).locator(".star-btn").click();
+  expect(await write).toEqual(expect.objectContaining({ action: "remove", uids: oldest.uids }));
+  await expect(rows(page, chain.subject)).not.toHaveClass(/starred/);
+
+  await page.reload();
+  await expect(rows(page, chain.subject)).toHaveCount(1);
+  await rows(page, chain.subject).locator(".caret-col").click();
+  await expect(rows(page, chain.subject)).toHaveCount(3);
+  await expect(starred()).toHaveCount(0);
+});
+
 test("opening a conversation shows all three messages, oldest first", async ({ page }) => {
   const chain = await deliverChain();
 

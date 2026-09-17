@@ -24,6 +24,9 @@ import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
+/** Whether a listed message carries a star. */
+const isFlagged = (msg: any): boolean => !!msg?.Flags?.includes(FLAG_FLAGGED);
+
 /** A Delete waiting on the question whether to delete for good. */
 interface PendingDelete {
   isBulk: boolean;
@@ -418,9 +421,49 @@ export class MailboxPage extends LitElement {
     return found;
   }
 
+  /**
+   * The checked messages as the rows a star is judged by. A thread checked
+   * WHOLE is one row — that is what checking its collapsed row does — and any
+   * other checked message is a row of its own, which is what it is in an
+   * expanded thread.
+   */
+  private get selectedStarRows(): { face: any; messages: any[] }[] {
+    const rows: { face: any; messages: any[] }[] = [];
+    for (const msg of this.messages) {
+      const members = [msg, ...(msg.SubMessages || [])];
+      const checked = members.filter((m: any) => this.selectedKeys.has(this.keyOf(m)));
+      if (members.length > 1 && checked.length === members.length) rows.push({ face: msg, messages: members });
+      else for (const m of checked) rows.push({ face: m, messages: [m] });
+    }
+    return rows;
+  }
+
+  /**
+   * Whether the star over the checked rows is lit, and so whether pressing it
+   * clears. A conversation is starred while ANY message in it is, as its row is
+   * drawn; judged message by message, a starred conversation with one star in
+   * three read as unstarred, and pressing the star put two more on it.
+   */
   private get allSelectedStarred() {
-    const selected = this.selectedListed;
-    return selected.length > 0 && selected.every(msg => msg.Flags?.includes(FLAG_FLAGGED));
+    const rows = this.selectedStarRows;
+    return rows.length > 0 && rows.every(row => row.messages.some(isFlagged));
+  }
+
+  /**
+   * What a star gesture over these rows writes. CLEARING takes the star off
+   * every message that carries one: the row's star is the conversation's, so it
+   * has to go out wherever in the thread it is, or the row stays lit and the
+   * gesture looks refused. SETTING stars one message per row that has none —
+   * the row's own, the newest — because one star lights the row, and a star on
+   * every message of a thread is a dozen to take back off one at a time from the
+   * open conversation. A row already starred is left as it is.
+   */
+  private starWrite(rows: { face: any; messages: any[] }[]): { keys: string[]; op: 'add' | 'remove' } {
+    const lit = rows.length > 0 && rows.every(row => row.messages.some(isFlagged));
+    const chosen = lit
+      ? rows.flatMap(row => row.messages.filter(isFlagged))
+      : rows.filter(row => !row.messages.some(isFlagged)).map(row => row.face);
+    return { keys: chosen.map((m: any) => this.keyOf(m)), op: lit ? 'remove' : 'add' };
   }
 
   private get commonSelectedTags() {
@@ -1132,26 +1175,42 @@ export class MailboxPage extends LitElement {
     }
   }
 
+  /**
+   * The star on a list row. The row is the list's to describe: `messages` is
+   * what it stands for, the whole thread when it is collapsed. See
+   * {@link starWrite} for what is written.
+   */
   private async _handleListToggleStar(e: CustomEvent) {
     const msg = e.detail.message;
-    const isStarred = msg.Flags && msg.Flags.includes(FLAG_FLAGGED);
-    const action = isStarred ? 'remove' : 'add';
-    const key = this.keyOf(msg);
+    const { keys, op } = this.starWrite([{ face: msg, messages: e.detail.messages ?? [msg] }]);
+    const undo = op === 'add' ? 'remove' : 'add';
 
     // Optimistic UI update
-    this.updateLocalMessageFlags([key], FLAG_FLAGGED, action);
+    this.updateLocalMessageFlags(keys, FLAG_FLAGGED, op);
 
+    // A thread's messages can sit in several folders (a search across them), so
+    // the write goes folder by folder, and only what a folder REFUSED is put
+    // back — what the others took is done.
+    const written = new Set<string>();
+    let refused: FlagResult | undefined;
     try {
-      const result = await messageOperations.setFlag(this.mailboxOf(msg), [String(msg.UID)], [FLAG_FLAGGED], action);
-      if (!result.ok) {
-        // Revert on failure, and say so: a star that flicks back on its own reads
-        // as a misclick, and the toolbar's star reports the same refusal.
-        this.updateLocalMessageFlags([key], FLAG_FLAGGED, isStarred ? 'add' : 'remove');
-        this.reportFlagFailure(result);
-      }
+      const outcome = await this.eachFolder(keys, async (mailbox, uids) => {
+        const result = await messageOperations.setFlag(mailbox, uids, [FLAG_FLAGGED], op);
+        // Noted as each folder answers, so a later folder that throws does not
+        // take back the paint of one that already took the write.
+        if (result.ok) for (const uid of uids) written.add(messageKey(mailbox, uid));
+        return result;
+      });
+      refused = outcome.refused;
     } catch (err) {
-      // Revert on failure
-      this.updateLocalMessageFlags([key], FLAG_FLAGGED, isStarred ? 'add' : 'remove');
+      // Revert below: nothing is known to have been written past `written`.
+    }
+    const unwritten = keys.filter(key => !written.has(key));
+    if (unwritten.length > 0) {
+      // Revert, and say so: a star that flicks back on its own reads as a
+      // misclick, and the toolbar's star reports the same refusal.
+      this.updateLocalMessageFlags(unwritten, FLAG_FLAGGED, undo);
+      if (refused) this.reportFlagFailure(refused);
     }
   }
 
@@ -1461,8 +1520,13 @@ export class MailboxPage extends LitElement {
       if (action === 'star') {
         // setFlag, not toggleStar: that returned the message unchanged on a
         // refusal, so the star stayed as it was and nothing said why.
-        const starred = isBulk ? this.allSelectedStarred : !!currentMsg.Flags?.includes(FLAG_FLAGGED);
-        const result = await this.flagEach(isBulk ? targets : open, [FLAG_FLAGGED], starred ? 'remove' : 'add');
+        // Over checked rows the star is each conversation's — see `starWrite`.
+        // In the reader it is the open message's own: every card there has a
+        // star of its own, and the toolbar's is the open one's.
+        const write = isBulk
+          ? this.starWrite(this.selectedStarRows)
+          : { keys: open, op: (currentMsg.Flags?.includes(FLAG_FLAGGED) ? 'remove' : 'add') as 'add' | 'remove' };
+        const result = await this.flagEach(write.keys, [FLAG_FLAGGED], write.op);
         if (!result.ok) this.reportFlagFailure(result);
       } else if (action === 'addTag' || action === 'removeTag') {
         const tags = e.detail.tags || (e.detail.folder ? [e.detail.folder] : []);

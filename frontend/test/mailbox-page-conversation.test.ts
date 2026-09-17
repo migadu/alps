@@ -326,6 +326,72 @@ describe('a flag change the reader reports', () => {
   });
 });
 
+describe('the star on a list row', () => {
+  const FLAGGED = '\\Flagged';
+  const flagWrites = () => writes().map(w => ({ uids: w.body.uids, action: w.body.action, flags: w.body.flags }));
+
+  // The list names what the row stands for: a collapsed thread is its row's
+  // own message (5) and the one filed under it (9).
+  async function pressed(flags: { row: string[]; under: string[] }, stoodFor: 'thread' | 'message' = 'thread'): Promise<El> {
+    const el = await page();
+    Object.assign(el, {
+      messages: [{ ...conversationRow(), Flags: flags.row, SubMessages: [{ ...open, Flags: flags.under }] }],
+      selectedMessage: null,
+    });
+    await el.updateComplete;
+    requests = [];
+    const row = el.messages[0];
+    const messages = stoodFor === 'thread' ? [row, ...row.SubMessages] : [row];
+    await el._handleListToggleStar(new CustomEvent('toggle-star-message', { detail: { message: row, messages } }));
+    await flush();
+    return el;
+  }
+
+  it('clears the conversation\'s star from the older message that carries it', async () => {
+    // The row was lit by 9's star. Pressing it used to read 5's own flag, find
+    // none, and ADD one — so the lit star could not be put out from the list.
+    const el = await pressed({ row: [SEEN], under: [SEEN, FLAGGED] });
+
+    expect(flagWrites()).toEqual([{ uids: ['9'], action: 'remove', flags: [FLAGGED] }]);
+    expect(el.messages[0].SubMessages[0].Flags).not.toContain(FLAGGED);
+  });
+
+  it('clears every star in it at once', async () => {
+    const el = await pressed({ row: [SEEN, FLAGGED], under: [SEEN, FLAGGED] });
+
+    expect(flagWrites()).toEqual([{ uids: ['5', '9'], action: 'remove', flags: [FLAGGED] }]);
+    expect(el.messages[0].Flags).not.toContain(FLAGGED);
+  });
+
+  it('stars the row\'s own message alone when nothing in it is starred', async () => {
+    const el = await pressed({ row: [SEEN], under: [SEEN] });
+
+    expect(flagWrites()).toEqual([{ uids: ['5'], action: 'add', flags: [FLAGGED] }]);
+    expect(el.messages[0].Flags).toContain(FLAGGED);
+    expect(el.messages[0].SubMessages[0].Flags).not.toContain(FLAGGED);
+  });
+
+  it('is the one message\'s own where the row stands for one: an expanded thread', async () => {
+    // 9 is starred, but the expanded top row is 5 alone.
+    await pressed({ row: [SEEN], under: [SEEN, FLAGGED] }, 'message');
+
+    expect(flagWrites()).toEqual([{ uids: ['5'], action: 'add', flags: [FLAGGED] }]);
+  });
+
+  it('puts the star back, and says why, when the server refuses', async () => {
+    vi.mocked(fetch).mockImplementation(async (url: any, init: RequestInit = {}) => {
+      requests.push({ url: String(url), method: init.method || 'GET', body: typeof init.body === 'string' ? JSON.parse(init.body) : undefined });
+      return json({ error: 'nope' }, 500);
+    });
+    const toasts = record<CustomEvent>(window, 'show-toast');
+
+    const el = await pressed({ row: [SEEN], under: [SEEN, FLAGGED] });
+
+    expect(el.messages[0].SubMessages[0].Flags).toContain(FLAGGED);
+    expect(toasts.length).toBeGreaterThan(0);
+  });
+});
+
 describe('a checked thread row', () => {
   // The list checks a collapsed thread as every message in it: the row's own
   // (5) and the one filed under it (9).
@@ -368,14 +434,70 @@ describe('a checked thread row', () => {
     expect(el.allSelectedUnread).toBe(false);
   });
 
-  it('is starred, and tagged, only when every message in it is', async () => {
-    const partly = await checked({ row: [SEEN, '\\Flagged', '$label1'], under: [SEEN] });
-    expect(partly.allSelectedStarred).toBe(false);
+  it('is tagged only when every message in it is', async () => {
+    const partly = await checked({ row: [SEEN, '$label1'], under: [SEEN] });
     expect(partly.commonSelectedTags).toEqual([]);
 
-    const wholly = await checked({ row: [SEEN, '\\Flagged', '$label1'], under: [SEEN, '\\Flagged', '$label1'] });
-    expect(wholly.allSelectedStarred).toBe(true);
+    const wholly = await checked({ row: [SEEN, '$label1'], under: [SEEN, '$label1'] });
     expect(wholly.commonSelectedTags).toEqual(['$label1']);
+  });
+
+  // A star is how a conversation is kept in sight, so it is the conversation's:
+  // its row is lit while any message in it is starred, one star lights it, and
+  // clearing it clears it wherever in the thread it is.
+  describe('and its star', () => {
+    const FLAGGED = '\\Flagged';
+    const flagWrites = () => writes().map(w => ({ uids: w.body.uids, action: w.body.action, flags: w.body.flags }));
+
+    it('is lit while any message in it is starred', async () => {
+      expect((await checked({ row: [SEEN], under: [SEEN, FLAGGED] })).allSelectedStarred).toBe(true);
+      expect((await checked({ row: [SEEN, FLAGGED], under: [SEEN] })).allSelectedStarred).toBe(true);
+      expect((await checked({ row: [SEEN], under: [SEEN] })).allSelectedStarred).toBe(false);
+    });
+
+    it('is cleared from wherever in the thread it is, and from nowhere else', async () => {
+      // Judged message by message, this read as unstarred, and pressing the
+      // star put a second one on the thread.
+      const el = await checked({ row: [SEEN], under: [SEEN, FLAGGED] });
+
+      await act(el, { action: 'star' });
+
+      expect(flagWrites()).toEqual([{ uids: ['9'], action: 'remove', flags: [FLAGGED] }]);
+      expect(el.messages[0].SubMessages[0].Flags).not.toContain(FLAGGED);
+      expect(el.allSelectedStarred).toBe(false);
+    });
+
+    it('is set on one message, the row\'s own, not on every message under it', async () => {
+      const el = await checked({ row: [SEEN], under: [SEEN] });
+
+      await act(el, { action: 'star' });
+
+      expect(flagWrites()).toEqual([{ uids: ['5'], action: 'add', flags: [FLAGGED] }]);
+      expect(el.messages[0].Flags).toContain(FLAGGED);
+      expect(el.messages[0].SubMessages[0].Flags).not.toContain(FLAGGED);
+      expect(el.allSelectedStarred).toBe(true);
+    });
+
+    it('leaves a starred row as it is when the one checked beside it is not', async () => {
+      const el = await checked({ row: [SEEN], under: [SEEN, FLAGGED] });
+      el.messages = [...el.messages, { UID: 12, Mailbox: 'INBOX', Flags: [SEEN], Envelope: { Subject: 'Alone' } }];
+      el.selectedKeys = new Set(['5', '9', '12'].map(uid => messageKey('INBOX', uid)));
+      expect(el.allSelectedStarred).toBe(false);
+
+      await act(el, { action: 'star' });
+
+      expect(flagWrites()).toEqual([{ uids: ['12'], action: 'add', flags: [FLAGGED] }]);
+    });
+
+    it('is each message\'s own where a thread is checked in part, as its expanded rows are', async () => {
+      // 9 alone is checked: a row of its own, unstarred, whatever 5 carries.
+      const el = await checked({ row: [SEEN, FLAGGED], under: [SEEN] }, ['9']);
+      expect(el.allSelectedStarred).toBe(false);
+
+      await act(el, { action: 'star' });
+
+      expect(flagWrites()).toEqual([{ uids: ['9'], action: 'add', flags: [FLAGGED] }]);
+    });
   });
 
   it('is filed whole', async () => {
