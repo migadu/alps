@@ -360,13 +360,9 @@ test("a folder deleted into the Trash comes back with undo", async ({ page }) =>
   expect(await mailboxNames(page)).not.toContain(`Trash/${name}`);
 });
 
-// FIXME (alps): a folder inside Trash is offered "Move to Trash" again, never
-// the permanent delete. folder-list.ts decides with
-// `isSelfOrDescendantMailbox(node.fullName, trashName, node.mb?.Delimiter ||
-// node.mb?.Delim)`, and the listing carries the delimiter as a NUMBER (the
-// rune, 47 for "/"); `rest.startsWith(47)` looks for the text "47", so no
-// folder is ever inside Trash and a folder can never be deleted for good.
-test.fixme("deleting a folder inside the Trash deletes it for good", async ({ page }) => {
+// The second step of the two: a folder already in Trash is deleted outright,
+// not offered the move it has already made.
+test("deleting a folder inside the Trash deletes it for good", async ({ page }) => {
   const name = `${PREFIX}purge-${Date.now()}`;
   await login(page);
   await expect(folder(page, "Trash")).toBeVisible();
