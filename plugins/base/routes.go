@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -159,8 +160,12 @@ type CachedMessagePart struct {
 
 // updateCachedMessageFlags updates flags for specific messages in cached message lists
 func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.MessageID, addFlags []imap.Flag, removeFlags []imap.Flag) {
-	cache := ctx.Session.Cache()
+	applyFlagsToCache(ctx.Session.Cache(), ctx.Server.Logger().Debugf, mailbox, uid, addFlags, removeFlags)
+}
 
+// applyFlagsToCache brings the session's cached copies of one message, and
+// its mailbox's unseen count, in line with a flag change the server has made.
+func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), mailbox string, uid provider.MessageID, addFlags []imap.Flag, removeFlags []imap.Flag) {
 	// Convert IMAP flags to alps flags
 	alpsAddFlags := make([]provider.Flag, len(addFlags))
 	for i, f := range addFlags {
@@ -171,18 +176,25 @@ func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.Me
 		alpsRemoveFlags[i] = provider.Flag(f)
 	}
 
+	// What the cached copies said about \Seen BEFORE this change. The unseen
+	// count may only move when the message really goes from unseen to seen or
+	// back: reading a message adds \Seen twice (the body fetch sets it, and
+	// so does the reader's mark-as-read), and a count that dropped on both
+	// fell by two for one message.
+	var cachedSeen, cachedUnseen bool
+	noteSeen := func(flags []provider.Flag) {
+		if slices.Contains(flags, provider.Flag(imap.FlagSeen)) {
+			cachedSeen = true
+		} else {
+			cachedUnseen = true
+		}
+	}
+
 	// Helper function to update flags
 	updateFlags := func(flags []provider.Flag) []provider.Flag {
 		// Add new flags
 		for _, flag := range alpsAddFlags {
-			hasFlag := false
-			for _, existing := range flags {
-				if existing == flag {
-					hasFlag = true
-					break
-				}
-			}
-			if !hasFlag {
+			if !slices.Contains(flags, flag) {
 				flags = append(flags, flag)
 			}
 		}
@@ -212,10 +224,11 @@ func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.Me
 			// Find and update the message in this page
 			for i := range cachedData.Messages {
 				if cachedData.Messages[i].ID.String() == uidStr {
+					noteSeen(cachedData.Messages[i].Flags)
 					cachedData.Messages[i].Flags = updateFlags(cachedData.Messages[i].Flags)
 					cache.Set(key, cachedData)
 					messageUpdated = true
-					ctx.Server.Logger().Debugf("Updated flags for message %s in cache key %s", uidStr, key)
+					debugf("Updated flags for message %s in cache key %s", uidStr, key)
 					break
 				}
 			}
@@ -227,49 +240,54 @@ func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.Me
 	if cached, ok := cache.Get(msgKey); ok {
 		cachedPart := cached.(CachedMessagePart)
 		if cachedPart.Message != nil {
+			noteSeen(cachedPart.Message.Flags)
 			cachedPart.Message.Flags = updateFlags(cachedPart.Message.Flags)
 			cache.Set(msgKey, cachedPart)
-			ctx.Server.Logger().Debugf("Updated flags for message %s in individual cache", uidStr)
+			debugf("Updated flags for message %s in individual cache", uidStr)
 			messageUpdated = true
 		}
 	}
 
 	if !messageUpdated {
-		ctx.Server.Logger().Debugf("Message %d not found in cache, pages may need refresh", uid)
+		debugf("Message %s not found in cache, pages may need refresh", uidStr)
 	}
 
-	// Update mailbox status if we're changing the \Seen flag
-	seenAdded := false
-	seenRemoved := false
-	for _, flag := range addFlags {
-		if flag == imap.FlagSeen {
-			seenAdded = true
-			break
-		}
-	}
-	for _, flag := range removeFlags {
-		if flag == imap.FlagSeen {
-			seenRemoved = true
-			break
-		}
+	seenAdded := slices.Contains(addFlags, imap.FlagSeen)
+	seenRemoved := slices.Contains(removeFlags, imap.FlagSeen)
+	if !seenAdded && !seenRemoved {
+		return
 	}
 
-	if seenAdded || seenRemoved {
-		statusKey := "status:" + mailbox
-		if cached, ok := cache.Get(statusKey); ok {
-			status := cached.(*MailboxStatus)
-			if seenAdded && status.NumUnseen != nil && *status.NumUnseen > 0 {
-				newCount := *status.NumUnseen - 1
-				status.NumUnseen = &newCount
-				cache.Set(statusKey, status)
-				ctx.Server.Logger().Debugf("Decremented unseen count for %s to %d", mailbox, newCount)
-			} else if seenRemoved && status.NumUnseen != nil {
-				newCount := *status.NumUnseen + 1
-				status.NumUnseen = &newCount
-				cache.Set(statusKey, status)
-				ctx.Server.Logger().Debugf("Incremented unseen count for %s to %d", mailbox, newCount)
-			}
-		}
+	statusKey := "status:" + mailbox
+	cached, ok := cache.Get(statusKey)
+	if !ok {
+		return
+	}
+	status := cached.(*MailboxStatus)
+	if status.NumUnseen == nil {
+		return
+	}
+
+	// Copies that disagree, or no copy at all, say nothing reliable about the
+	// message's state before the change: drop the count and let the next
+	// listing ask the server.
+	if cachedSeen == cachedUnseen {
+		cache.Delete(statusKey)
+		debugf("Dropped cached status for %s: the message's previous \\Seen state is unknown", mailbox)
+		return
+	}
+
+	switch {
+	case seenAdded && cachedUnseen && *status.NumUnseen > 0:
+		newCount := *status.NumUnseen - 1
+		status.NumUnseen = &newCount
+		cache.Set(statusKey, status)
+		debugf("Decremented unseen count for %s to %d", mailbox, newCount)
+	case seenRemoved && cachedSeen:
+		newCount := *status.NumUnseen + 1
+		status.NumUnseen = &newCount
+		cache.Set(statusKey, status)
+		debugf("Incremented unseen count for %s to %d", mailbox, newCount)
 	}
 }
 

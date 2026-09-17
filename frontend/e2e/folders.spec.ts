@@ -144,14 +144,11 @@ test("the sidebar lists every system folder, in role order", async ({ page }) =>
   await expect(folder(page, "Inbox")).toHaveClass(/\bactive\b/);
 });
 
-// fixme: opening an unread message takes the inbox count down by TWO. The
-// session's cached status is decremented whenever \Seen is added
-// (updateCachedMessageFlags, plugins/base/routes.go), without asking whether
-// the message was unread: once when the body is fetched, and again when the
-// reader's mark-as-read write lands. With a single unread message the second
-// decrement stops at zero and hides; the control message below keeps the count
-// above one so it cannot.
-test.fixme("unread mail is counted on the inbox, and reading it takes the count down", async ({ page }) => {
+// Reading a message marks it seen twice over — the body fetch does, and so does
+// the reader — and the count must fall by one, not two. With a single unread
+// message a second decrement would stop at zero and hide; the control message
+// keeps the count above one so it cannot.
+test("unread mail is counted on the inbox, and reading it takes the count down", async ({ page }) => {
   const stamp = Date.now();
   const subject = `Folders unread ${stamp}`;
   await deliver({ subject: `Folders control ${stamp}`, body: "Stays unread, keeping the count above one." });
