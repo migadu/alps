@@ -418,13 +418,9 @@ test("switching to the raw editor asks first, then shows the script the rules co
   expect((await storedScripts()).some((s) => s.active)).toBe(false);
 });
 
-// Switching to the raw editor starts it with the compiled rules as its
-// "unchanged" text, so Save is disabled — even though those rules were never
-// stored. The user sees their rules as a script they cannot save; leaving the
-// page loses them. raw-editor.ts takes the first `script` it is given as the
-// saved baseline (`initialScript` in willUpdate), and managesieve-page.ts
-// `confirmSwitchToRaw` hands it unsaved text.
-test.fixme("rules switched to the raw editor before they were saved can still be saved", async ({ page }) => {
+// Rules switched to the raw editor are text the server has never seen, so
+// they can be saved from there; otherwise leaving the page loses them.
+test("rules switched to the raw editor before they were saved can still be saved", async ({ page }) => {
   const marker = uniqueMarker();
   await openFilters(page);
   await addRule(page, marker);

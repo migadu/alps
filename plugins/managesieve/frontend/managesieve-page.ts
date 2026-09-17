@@ -17,6 +17,8 @@ export class ManageSievePage extends LitElement {
 
 	@state() private mode: 'visual' | 'raw' = 'visual';
 	@state() private script = '';
+	/** The script as the server holds it: what the raw editor measures edits against. */
+	@state() private storedScript = '';
 	@state() private visualState: VisualState = { rules: [] };
 	@state() folders: string[] = [];
 
@@ -48,6 +50,7 @@ export class ManageSievePage extends LitElement {
 		try {
 			const data = await managesieveService.fetchScript();
 			this.script = data.content || '';
+			this.storedScript = this.script;
 			if (this.script.trim() === '') {
 				this.mode = 'visual';
 				this.visualState = { rules: [] };
@@ -108,6 +111,7 @@ export class ManageSievePage extends LitElement {
 			const sentSnapshot = JSON.stringify(this.visualState);
 
 			await managesieveService.saveScript(compiled, 'PUT');
+			this.storedScript = compiled;
 			const msgKey = compiled.trim() === '' ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), timeout: 3000 } }));
 			const editor = this.shadowRoot?.querySelector('alps-visual-editor') as any;
@@ -139,7 +143,9 @@ export class ManageSievePage extends LitElement {
 					` : html`
 						<alps-raw-editor 
 							.script=${this.script}
+							.stored=${this.storedScript}
 							@script-changed=${this.handleRawScriptChange}
+							@script-saved=${(e: CustomEvent) => { this.storedScript = e.detail.script; }}
 						></alps-raw-editor>
 					`}
 				</alps-setting-group>
