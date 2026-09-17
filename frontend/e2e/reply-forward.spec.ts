@@ -299,9 +299,8 @@ async function deliverToGroup(subject: string, body: string): Promise<void> {
 
 test("Reply All addresses the sender and everyone else on the original", async ({ page }) => {
   // Who a Reply All addresses: the sender first, then the other recipients,
-  // with Cc kept as Cc. Checked apart from the test below, which also requires
-  // the user's own address to be left out, so this much keeps running while
-  // that one is parked.
+  // with Cc kept as Cc. The test below holds the rest: that the user's own
+  // address is left out.
   const subject = `Launch plan ${Date.now()}`;
   const body = "Here is the plan for Friday.";
   await deliverToGroup(subject, body);
@@ -317,12 +316,7 @@ test("Reply All addresses the sender and everyone else on the original", async (
   await expect(shown(fieldPills(page, "Cc"))).toHaveText(["Grace Hopper"]);
 });
 
-// FIXME(alps): Reply All puts the signed-in address back in To. `generateQuote`
-// (src/utils/email-quote.ts, the `replyAll` branch) merges the original's To
-// list into the reply target without removing the user's own address, so the
-// composer shows [Ada Lovelace, alice@example.test, Bob Smith] and the reply
-// mails the user a copy of their own answer.
-test.fixme("Reply All keeps the other recipients and never mails me a copy", async ({ page }) => {
+test("Reply All keeps the other recipients and never mails me a copy", async ({ page }) => {
   const subject = `Launch checklist ${Date.now()}`;
   const body = "Here is the checklist for Friday.";
   await deliverToGroup(subject, body);

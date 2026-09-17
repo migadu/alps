@@ -12,6 +12,23 @@ export function formatAddrs(addrs: any[]): string[] {
   return addrs.map(a => a.Name ? `${a.Name} <${a.Mailbox}@${a.Host}>` : `${a.Mailbox}@${a.Host}`);
 }
 
+/** An envelope address as `mailbox@host`, lower-cased, for comparing. */
+const addressKey = (a: any): string => `${a?.Mailbox ?? ''}@${a?.Host ?? ''}`.toLowerCase();
+
+/** A setting's address as `mailbox@host`, lower-cased: `"Me" <me@x>` and `ME@x` are one. */
+const bareKey = (addr: string): string => {
+  const trimmed = addr.trim();
+  const open = trimmed.lastIndexOf('<');
+  const bare = trimmed.endsWith('>') && open !== -1 ? trimmed.slice(open + 1, -1) : trimmed;
+  return bare.trim().toLowerCase();
+};
+
+/**
+ * `self` is the user's own addresses. A reply is never addressed to them: a
+ * Reply All used to keep the user wherever the original named them, so every
+ * answer to a group mailed its author a copy. A message the user sent is
+ * answered to the people it was sent to.
+ */
 export function generateQuote(
   type: 'reply' | 'replyAll' | 'forward',
   message: any,
@@ -19,7 +36,8 @@ export function generateQuote(
   rawMessageHtml: string | null,
   hasHtml: boolean,
   dateFormat: string = 'YYYY-MM-DD',
-  hourFormat: string = '12'
+  hourFormat: string = '12',
+  self: string[] = []
 ) {
   const originalSubject = message?.Envelope?.Subject || '';
   let subject = originalSubject;
@@ -33,18 +51,30 @@ export function generateQuote(
   let cc: string[] = [];
 
   if (type === 'reply' || type === 'replyAll') {
-    const replyTo = message?.Envelope?.ReplyTo;
-    const from = message?.Envelope?.From;
-    const parsedFrom = formatAddrs(replyTo && replyTo.length > 0 ? replyTo : from);
-    to = [...parsedFrom];
-    
-    if (type === 'replyAll') {
-      const originalTo = formatAddrs(message?.Envelope?.To) || [];
-      const originalCc = formatAddrs(message?.Envelope?.Cc) || [];
-      const allTo = new Set([...to, ...originalTo]);
-      to = Array.from(allTo);
-      cc = [...originalCc];
+    const envelope = message?.Envelope ?? {};
+    const mine = new Set(self.filter(Boolean).map(bareKey));
+    const taken = new Set<string>();
+    // Each address once, and never one of the user's own.
+    const others = (addrs: any[] | undefined): any[] => (addrs || []).filter(a => {
+      const key = addressKey(a);
+      if (mine.has(key) || taken.has(key)) return false;
+      taken.add(key);
+      return true;
+    });
+
+    const author = envelope.ReplyTo?.length > 0 ? envelope.ReplyTo : envelope.From;
+    let toAddrs = others(author);
+    // An empty list here means the user wrote the original.
+    if (type === 'replyAll' || toAddrs.length === 0) {
+      toAddrs = [...toAddrs, ...others(envelope.To)];
     }
+    let ccAddrs = type === 'replyAll' ? others(envelope.Cc) : [];
+    if (toAddrs.length === 0) {
+      [toAddrs, ccAddrs] = [ccAddrs, []];
+    }
+    // A message the user sent only to themselves is answered to them.
+    to = toAddrs.length > 0 ? formatAddrs(toAddrs) : formatAddrs(author);
+    cc = formatAddrs(ccAddrs);
   }
 
   const dateStr = message?.Envelope?.Date ? formatFullDate(message.Envelope.Date, dateFormat, hourFormat) : '';

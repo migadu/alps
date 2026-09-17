@@ -5,7 +5,7 @@ import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTa
 import { FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
-import { settingsContext, SettingsStore } from '../store/settings-store';
+import { activeUsername, settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon, formatFullDate, formatSize, bimiAvatarUrlFor } from '../utils/ui';
 import './alps-recipient-pill';
@@ -70,6 +70,13 @@ export class MessageReader extends LitElement {
   @consume({ context: composeContext })
   composeStore!: ComposeStore;
 
+  /** The addresses a reply must not be sent back to: the account's, and the
+   * Reply-To it asks answers to go to. */
+  private ownAddresses(): string[] {
+    const state = this.settingsStore?.getState();
+    return [state?.loginUsername || activeUsername() || '', state?.replyTo || ''].filter(Boolean);
+  }
+
   /**
    * Closes the "More" actions popup menu if it is currently open.
    */
@@ -123,7 +130,8 @@ export class MessageReader extends LitElement {
         this.rawMessageHtml,
         this.hasHtml,
         dateFormat,
-        hourFormat
+        hourFormat,
+        this.ownAddresses()
       );
 
       // A forward carries the original's attachments; a reply does not. Both
@@ -1360,7 +1368,8 @@ export class MessageReader extends LitElement {
         item.rawMessageHtml,
         item.hasHtml,
         dateFormat,
-        hourFormat
+        hourFormat,
+        this.ownAddresses()
       );
 
       // A forward carries the original's attachments; a reply does not. Both
