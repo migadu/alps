@@ -12,6 +12,11 @@ import { messageOperations } from '../src/services/message-operations';
 import { replyContext } from '../src/utils/reply-context';
 import '../src/components/alps-floating-composer';
 
+// The emoji picker builds its whole grid when it connects, which takes jsdom
+// seconds per composer and left these tests at their timeout. Nothing here
+// opens it.
+vi.mock('unicode-emoji-picker', () => ({}));
+
 afterEach(() => {
   cleanup();
   localStorage.clear();
