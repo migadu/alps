@@ -482,7 +482,7 @@ export class MessageReader extends LitElement {
     const detail = (e as CustomEvent<{ mailbox?: string; uid?: string }>).detail;
     if (!detail?.mailbox || !detail.uid || !this.message) return;
     const key = messageKey(detail.mailbox, detail.uid);
-    if (this.threadItems.some(item => this.itemKey(item) === key)) this.dropItem(key);
+    if (this.threadItems.some(item => this.itemKey(item) === key)) this.dropCard(key);
     if (this.keyOf(this.message) === key) this.dispatchEvent(new CustomEvent('close'));
   };
 
@@ -968,7 +968,9 @@ export class MessageReader extends LitElement {
         this.activeBanners = [];
         this.threadItems = [];
       } else {
-        const isNewMessage = !oldMessage || oldMessage.UID !== this.message.UID || oldMailbox !== this.mailbox;
+        // By key, not UID: a search of all mailboxes lists the same UID from
+        // several folders, and moving between two of them kept the first body.
+        const isNewMessage = !oldMessage || this.keyOf(oldMessage) !== this.keyOf(this.message) || oldMailbox !== this.mailbox;
 
         if (isNewMessage) {
           this.localPreferredView = null;
@@ -1360,7 +1362,7 @@ export class MessageReader extends LitElement {
       this._deferPropertySync = false;
 
       this.fetchItemBody(primaryItem).then(() => {
-        if (this.message?.UID !== msg.UID || this.mailbox !== msg.Mailbox) {
+        if (!this.message || this.keyOf(this.message) !== this.keyOf(msg)) {
           return;
         }
         this.requestUpdate();
@@ -1780,19 +1782,6 @@ export class MessageReader extends LitElement {
     if (this.message) void this.loadConversation(this.message, false);
   }
 
-  /** Takes one message's card off the conversation on screen, and out of the
-   * server's answer the cards are rebuilt from. */
-  private dropItem(key: string) {
-    this.threadItems = this.threadItems.filter(i => this.itemKey(i) !== key);
-    if (this._conversation) {
-      this._conversation = {
-        ...this._conversation,
-        messages: this._conversation.messages.filter(m => this.keyOf(m) !== key)
-      };
-    }
-    this.requestUpdate();
-  }
-
   private async _handleActionForItem(action: string, item: ThreadMessageItem) {
     if (action === 'reply' || action === 'replyAll' || action === 'forward') {
       let textBody = '';
@@ -1938,7 +1927,7 @@ export class MessageReader extends LitElement {
     // `*` in a search of all mailboxes, which is no mailbox at all: every save
     // of the draft failed on deleting the one it replaced, after storing a new
     // copy, and Discard could not delete it.
-    const mailbox = isItem ? item.mailbox : (msg?.Mailbox || this.mailbox);
+    const mailbox = isItem ? item.mailbox : this.mailboxOfMessage(msg);
     if (!msg) return;
 
     // If we're editing a specific thread item, make sure its body has been loaded

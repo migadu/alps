@@ -276,6 +276,21 @@ describe('the mail page, when a draft is saved', () => {
     expect(el.selectedMessage).toMatchObject({ UID: '8', Mailbox: 'Drafts' });
     // The row moved with it, and its namesake in the Inbox did not.
     expect(el.messages.map((m: any) => [m.Mailbox, String(m.UID)])).toEqual([['INBOX', '7'], ['Drafts', '8']]);
+    // And a reload opens the saved copy, in its own folder.
+    expect(window.location.hash).toBe('#/mailbox/*?uid=8&in=Drafts');
+  });
+
+  it('follows a draft filed outside Drafts into Drafts, where the save put it', async () => {
+    // The save stores the new copy in Drafts and deletes the old one from its
+    // own folder, so the link has to name the new folder, not the old one.
+    const found = draft('7', 'Archive');
+    const el = await page('*', [found], found);
+    window.history.replaceState(null, '', '#/mailbox/*?uid=7&in=Archive');
+
+    saved({ oldUid: '7', oldMailbox: 'Archive', newUid: '8' });
+
+    expect(el.selectedMessage).toMatchObject({ UID: '8', Mailbox: 'Drafts' });
+    expect(window.location.hash).toBe('#/mailbox/*?uid=8&in=Drafts');
   });
 
   it('leaves a message that only shares the UID alone, and inserts nothing outside Drafts', async () => {
@@ -296,5 +311,6 @@ describe('the mail page, when a draft is saved', () => {
 
     expect(el.selectedMessage).toMatchObject({ UID: '8' });
     expect(el.messages.map((m: any) => String(m.UID))).toEqual(['8']);
+    expect(window.location.hash).toBe('#/mailbox/Drafts?uid=8');
   });
 });

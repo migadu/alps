@@ -523,18 +523,15 @@ export class MailboxPage extends LitElement {
 
   /** Moves the open message, the link target and the URL onto a draft's new
    * UID — the selection half of an autosave. */
-  private followAutosavedSelection(oldUid: string, next: any) {
+  private followAutosavedSelection(next: any) {
     this.selectedMessage = next;
     this.targetUid = String(next.UID);
+    const mailbox = this.mailboxOf(next);
+    this.targetMailbox = mailbox !== this.currentMailbox ? mailbox : null;
 
-    // Silently update the hash so a page reload opens the new draft, without triggering a re-render
-    let currentHash = window.location.hash;
-    if (currentHash.includes(`/${oldUid}`)) {
-      currentHash = currentHash.replace(`/${oldUid}`, `/${next.UID}`);
-    } else if (currentHash.includes(`uid=${oldUid}`)) {
-      currentHash = currentHash.replace(`uid=${oldUid}`, `uid=${next.UID}`);
-    }
-    window.history.replaceState(null, '', currentHash);
+    // Rewritten without a hashchange, so a reload opens the new draft and
+    // nothing is fetched again now.
+    window.history.replaceState(null, '', this.hashFor(this.currentMailbox, this.currentPage, this.targetUid, this.filterQuery, this.targetMailbox));
   }
 
   private handleDraftAutosaved = (e: CustomEvent) => {
@@ -557,8 +554,7 @@ export class MailboxPage extends LitElement {
     //
     // Matched on mailbox AND UID: a UID is unique only within its mailbox, and
     // a search of all mailboxes lists several.
-    const oldKey = oldUid ? `${oldMailbox || mailbox}\u0000${oldUid}` : null;
-    const keyOf = (m: any) => `${m.Mailbox || this.currentMailbox}\u0000${m.UID}`;
+    const oldKey = oldUid ? messageKey(oldMailbox || mailbox, oldUid) : null;
     const replaced = (m: any) => ({
       ...m,
       UID: nextUid,
@@ -577,7 +573,7 @@ export class MailboxPage extends LitElement {
 
     if (oldKey) {
       // Search top-level messages first
-      const idx = this.messages.findIndex(m => keyOf(m) === oldKey);
+      const idx = this.messages.findIndex(m => this.keyOf(m) === oldKey);
       if (idx !== -1) {
         const updated = [...this.messages];
         updated[idx] = replaced(updated[idx]);
@@ -585,15 +581,15 @@ export class MailboxPage extends LitElement {
         found = true;
 
         // Preserve active message selection
-        if (this.selectedMessage && keyOf(this.selectedMessage) === oldKey) {
-          this.followAutosavedSelection(String(oldUid), updated[idx]);
+        if (this.selectedMessage && this.keyOf(this.selectedMessage) === oldKey) {
+          this.followAutosavedSelection(updated[idx]);
         }
       } else {
         // Search in SubMessages of all messages (threads)
         for (let i = 0; i < this.messages.length; i++) {
           const parent = this.messages[i];
           if (parent.SubMessages) {
-            const subIdx = parent.SubMessages.findIndex((sm: any) => keyOf(sm) === oldKey);
+            const subIdx = parent.SubMessages.findIndex((sm: any) => this.keyOf(sm) === oldKey);
             if (subIdx !== -1) {
               const updatedSubMessages = [...parent.SubMessages];
               updatedSubMessages[subIdx] = replaced(updatedSubMessages[subIdx]);
@@ -607,8 +603,8 @@ export class MailboxPage extends LitElement {
               found = true;
 
               // Preserve active message selection if we were viewing this sub-message draft
-              if (this.selectedMessage && keyOf(this.selectedMessage) === oldKey) {
-                this.followAutosavedSelection(String(oldUid), updatedSubMessages[subIdx]);
+              if (this.selectedMessage && this.keyOf(this.selectedMessage) === oldKey) {
+                this.followAutosavedSelection(updatedSubMessages[subIdx]);
               }
               break;
             }
@@ -618,8 +614,8 @@ export class MailboxPage extends LitElement {
 
       // The open draft with no row under it: opened from a page the list has
       // since moved past.
-      if (!found && this.selectedMessage && keyOf(this.selectedMessage) === oldKey) {
-        this.followAutosavedSelection(String(oldUid), replaced(this.selectedMessage));
+      if (!found && this.selectedMessage && this.keyOf(this.selectedMessage) === oldKey) {
+        this.followAutosavedSelection(replaced(this.selectedMessage));
       }
     }
 
@@ -921,6 +917,10 @@ export class MailboxPage extends LitElement {
    * and the same UID can be in each of them.
    */
   private updateUrl(mailbox: string, page: number, uid: string | null, filterQuery: string | null = this.filterQuery, uidMailbox: string | null = null) {
+    window.location.hash = this.hashFor(mailbox, page, uid, filterQuery, uidMailbox);
+  }
+
+  private hashFor(mailbox: string, page: number, uid: string | null, filterQuery: string | null, uidMailbox: string | null): string {
     let hash = `#/mailbox/${encodeURIComponent(mailbox)}`;
     const params = new URLSearchParams();
     if (page > 0) {
@@ -937,7 +937,7 @@ export class MailboxPage extends LitElement {
     if (qs) {
       hash += '?' + qs;
     }
-    window.location.hash = hash;
+    return hash;
   }
 
   /** Opens the message a key names, in the view given, or closes the reader. */
