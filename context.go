@@ -269,7 +269,14 @@ func (c *Context) SetSessionWithExpiry(s *Session, persistent bool) {
 	c.SetCookie(&frontendCookie)
 }
 
+// loginTokenVersion is the format of the login token. A token from before
+// version 1 said 2FA was done on every sign-in, whether or not the account
+// asked for it, and restored a session past a second factor the account had
+// turned on since. Such a token is read as not verified.
+const loginTokenVersion = 1
+
 type loginToken struct {
+	Version     int
 	Username    string
 	Password    string
 	Verified2FA bool
@@ -311,7 +318,13 @@ func (c *Context) SetLoginToken(username, password string, verified2FA bool, per
 	frontendCookie.Value = "1"
 	c.SetCookie(&frontendCookie)
 
-	loginToken := loginToken{username, password, verified2FA, persistent}
+	loginToken := loginToken{
+		Version:     loginTokenVersion,
+		Username:    username,
+		Password:    password,
+		Verified2FA: verified2FA,
+		Persistent:  persistent,
+	}
 	payload, err := json.Marshal(loginToken)
 	if err != nil {
 		panic(err) // Should never happen
@@ -361,5 +374,8 @@ func (c *Context) GetLoginToken() (string, string, bool, bool) {
 		return "", "", false, false
 	}
 
+	if token.Version < loginTokenVersion {
+		token.Verified2FA = false
+	}
 	return token.Username, token.Password, token.Verified2FA, token.Persistent
 }

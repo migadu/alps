@@ -840,8 +840,9 @@ func handleLogin(ctx *alps.Context) error {
 
 	// Check if we're restoring from a login token (session restoration)
 	restoredFromToken := false
+	tokenVerified2FA := false
 	if username == "" && password == "" {
-		username, password, _, _ = ctx.GetLoginToken()
+		username, password, tokenVerified2FA, _ = ctx.GetLoginToken()
 		restoredFromToken = username != "" && password != ""
 	}
 
@@ -881,9 +882,12 @@ func handleLogin(ctx *alps.Context) error {
 			return fmt.Errorf("failed to put connection in pool: %v", err)
 		}
 
-		// Check if WebAuthn 2FA is enabled for this user
-		// Skip 2FA check if restoring from login token (token only exists after successful 2FA)
-		enabled := !restoredFromToken && s.Requires2FA()
+		// The second factor is asked for when the account has one, unless the
+		// token that restored the session says it was given.
+		if restoredFromToken {
+			s.SetAuthenticated2FA(tokenVerified2FA)
+		}
+		enabled := s.Requires2FA() && !s.IsAuthenticated2FA()
 		if enabled {
 			// 2FA required - store temporary session token and redirect to WebAuthn verification
 			ctx.SetCookie(&http.Cookie{
@@ -922,8 +926,10 @@ func handleLogin(ctx *alps.Context) error {
 
 		// No 2FA - proceed with normal login
 		// Always create encrypted login token to enable session restoration after server restart
+		// The token says whether 2FA was done. It used to say yes here, and
+		// restored a session past a second factor turned on later.
 		persistent := remember == "on"
-		ctx.SetLoginToken(username, password, true, persistent)
+		ctx.SetLoginToken(username, password, s.IsAuthenticated2FA(), persistent)
 
 		// Set session cookie: persistent if "remember me" checked, browser session otherwise
 		ctx.SetSessionWithExpiry(s, persistent)
@@ -2730,7 +2736,7 @@ func handleSwitchAccount(ctx *alps.Context) error {
 
 	// Update login token for new account, preserving persistence choice
 	if origUsername != "" {
-		ctx.SetLoginToken(targetUsername, password, true, wasPersistent)
+		ctx.SetLoginToken(targetUsername, password, newSession.IsAuthenticated2FA(), wasPersistent)
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})

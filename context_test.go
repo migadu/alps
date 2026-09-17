@@ -291,6 +291,43 @@ func TestContextSetLoginToken(t *testing.T) {
 	assert.True(t, persistent)
 }
 
+// A token says whether 2FA was done at the sign-in that issued it, and one
+// from before the format said so is read as not verified: it said 2FA was
+// done at every sign-in.
+func TestContextLoginTokenSaysWhether2FAWasDone(t *testing.T) {
+	var key fernet.Key
+	if err := key.Generate(); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{Options: &Options{LoginKey: &key}, logger: &NilLogger{}}
+	read := func(cookie *http.Cookie) bool {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.AddCookie(cookie)
+		username, _, verified2FA, _ := NewContext(httptest.NewRecorder(), req, server).GetLoginToken()
+		assert.Equal(t, "user", username)
+		return verified2FA
+	}
+	issued := func(verified2FA bool) *http.Cookie {
+		w := httptest.NewRecorder()
+		NewContext(w, httptest.NewRequest("GET", "/", nil), server).SetLoginToken("user", "pass", verified2FA, true)
+		for _, cookie := range w.Result().Cookies() {
+			if cookie.Name == "alps_login_token" {
+				return cookie
+			}
+		}
+		t.Fatal("no login token cookie")
+		return nil
+	}
+	assert.True(t, read(issued(true)))
+	assert.False(t, read(issued(false)))
+
+	earlier, err := fernet.EncryptAndSign([]byte(`{"Username":"user","Password":"pass","Verified2FA":true,"Persistent":true}`), &key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.False(t, read(&http.Cookie{Name: "alps_login_token", Value: string(earlier)}))
+}
+
 // Dummy logger for tests
 type NilLogger struct{}
 

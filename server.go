@@ -523,6 +523,12 @@ func (s *Server) setupMiddleware(router *Router) {
 						Secure:   ctx.IsEffectiveHTTPS(),
 						MaxAge:   -1,
 					})
+					// The restored session takes the same gate as every other:
+					// the request that restored it used to run regardless.
+					if session.Requires2FA() && !session.IsAuthenticated2FA() {
+						s.logger.Debugf("Auth middleware: restored session needs 2FA for %s", ctx.Request.URL.Path)
+						return handleUnauthenticated(next, ctx)
+					}
 					// Continue with restored session
 					ctx.Session.ping()
 					err = next(ctx)
