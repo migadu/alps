@@ -299,3 +299,28 @@ test("sending without a subject is not silently swallowed", async ({ page }) => 
   expect(sent.recipients).toEqual([USER.address]);
   expect(header(sent, "Subject")).toBeNull();
 });
+
+test("a link inserted from the toolbar is sent as a link", async ({ page }) => {
+  // The popup's fields are components of their own, and what the user types
+  // into them has to reach the editor; an Apply that inserts nothing looks
+  // exactly like a popup that closed.
+  await login(page);
+  const composer = await openComposer(page);
+  const subject = `Link ${Date.now()}`;
+  await addRecipient(composer, USER.address);
+  await fillMessage(composer, subject, "See ");
+
+  await composer.getByRole("button", { name: "Insert Link", exact: true }).click();
+  await composer.locator("#linkPopup input#text").fill("the plan");
+  await composer.locator("#linkPopup input#url").fill("https://plans.example/friday");
+  await composer.locator("#linkPopup").getByRole("button", { name: "Apply", exact: true }).click();
+
+  // Where the caret was, after the text typed before it.
+  const editor = composer.locator(".ProseMirror");
+  await expect(editor.locator("p").first()).toHaveText("See the plan");
+  await expect(editor.locator('a[href="https://plans.example/friday"]')).toHaveText("the plan");
+
+  await sendNow(page, composer);
+  const sent = await sentWithSubject(subject);
+  expect(sent.data).toMatch(/<p>See <a [^>]*href="https:\/\/plans\.example\/friday"[^>]*>the plan<\/a><\/p>/);
+});

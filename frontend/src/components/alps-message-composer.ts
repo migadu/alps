@@ -457,15 +457,21 @@ export class AlpsMessageComposer extends LitElement {
   private bubbleMenuRef: Ref<HTMLDivElement> = createRef();
   public editor?: Editor;
 
-  public focusEditor() {
+  /**
+   * Focuses the body, with the caret at its start: where a new message, or a
+   * reply above its quote, begins. `keepCaret` leaves the caret where the user
+   * put it, for a return to the window or a toolbar action; moved to the
+   * start, a link from the toolbar went in before the text it followed.
+   */
+  public focusEditor(keepCaret = false) {
     if (this.format === 'html' && this.editor && !this.editor.isDestroyed) {
-      this.editor.commands.focus('start');
+      this.editor.commands.focus(keepCaret ? null : 'start');
       // The command only places the caret now and focuses on the next frame; a
       // key pressed before that frame would go to whatever held focus.
       this.editor.view.focus();
     } else if (this.replyInputRef.value) {
       this.replyInputRef.value.focus();
-      this.replyInputRef.value.setSelectionRange(0, 0);
+      if (!keepCaret) this.replyInputRef.value.setSelectionRange(0, 0);
     }
   }
 
