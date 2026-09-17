@@ -517,6 +517,16 @@ func (ss *sessionStore) Get(key string, out interface{}) error {
 	})
 }
 
+func (ss *sessionStore) GetFresh(key string, out interface{}) error {
+	return ss.session.DoMailWithContext(context.Background(), func(p provider.MailProvider) error {
+		store, err := p.GetStore()
+		if err != nil {
+			return err
+		}
+		return provider.GetFresh(store, key, out)
+	})
+}
+
 func (ss *sessionStore) Put(key string, v interface{}) error {
 	return ss.session.DoMailWithContext(context.Background(), func(p provider.MailProvider) error {
 		store, err := p.GetStore()

@@ -2330,6 +2330,10 @@ var errUnreadableSettings = errors.New("the saved settings do not decode")
 // next save writes back a record this version can read. A record that does not
 // decode at all is errUnreadableSettings, which readSettings removes.
 func loadSettings(s provider.Store) (*Settings, error) {
+	return loadSettingsWith(s.Get)
+}
+
+func loadSettingsWith(get func(key string, out interface{}) error) (*Settings, error) {
 	autoLogoutDefault := 30
 	settings := &Settings{
 		MessagesPerPage:    50,
@@ -2337,7 +2341,7 @@ func loadSettings(s provider.Store) (*Settings, error) {
 		AutoLogout:         &autoLogoutDefault,
 		SoundNotifications: true,
 	}
-	err := s.Get(settingsKey, settings)
+	err := get(settingsKey, settings)
 	var typeErr *json.UnmarshalTypeError
 	var syntaxErr *json.SyntaxError
 	switch {
@@ -2390,7 +2394,22 @@ func loadSettings(s provider.Store) (*Settings, error) {
 // saving its settings again.
 func readSettings(ctx *alps.Context) (*Settings, error) {
 	store := ctx.Session.Store()
-	settings, err := loadSettings(store)
+	return settingsFrom(ctx, store, store.Get)
+}
+
+// readFreshSettings reads the record as the server holds it now. The settings
+// page shows it, and saves a change by writing it back whole: from the
+// session's copy, that showed a change made in another browser only once the
+// session ended, and wrote the old values back over it.
+func readFreshSettings(ctx *alps.Context) (*Settings, error) {
+	store := ctx.Session.Store()
+	return settingsFrom(ctx, store, func(key string, out interface{}) error {
+		return provider.GetFresh(store, key, out)
+	})
+}
+
+func settingsFrom(ctx *alps.Context, store provider.Store, get func(string, interface{}) error) (*Settings, error) {
+	settings, err := loadSettingsWith(get)
 	if !errors.Is(err, errUnreadableSettings) {
 		return settings, err
 	}
@@ -2424,7 +2443,7 @@ func (s *Settings) check() error {
 }
 
 func handleSettings(ctx *alps.Context) error {
-	settings, err := readSettings(ctx)
+	settings, err := readFreshSettings(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load settings: %v", err)
 	}

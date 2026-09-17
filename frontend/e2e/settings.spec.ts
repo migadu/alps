@@ -188,14 +188,10 @@ test("a preference survives a reload, from the server", async ({ page, browser }
   }
 });
 
-// FIXME: a session that has read the settings once never reads them again.
-// The IMAP provider caches every METADATA entry it has fetched or written for
-// the life of its connection (`imapStore.cache` in provider/imap/store.go, a
-// map with no expiry), so a change saved from another browser — or by any
-// other client of the account — never reaches a session that is already open:
-// reloading, even with local storage cleared, hands back the old record until
-// that session ends. It should read what the server holds.
-test.fixme("a preference changed in another browser shows after a reload", async ({ page, browser }) => {
+// A session keeps a copy of the record on its IMAP connection, and the page
+// must not be shown that copy: a change saved from another browser, or by any
+// other client of the account, has to reach an open session on reload.
+test("a preference changed in another browser shows after a reload", async ({ page, browser }) => {
   // This tab's session reads the record first, as any open tab has.
   await openSettings(page, "/#/settings/reading");
   await expect(page.getByLabel("Use threading")).toBeChecked();

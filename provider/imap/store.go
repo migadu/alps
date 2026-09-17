@@ -138,6 +138,16 @@ func (s *imapStore) Get(key string, out interface{}) error {
 	return decodeStoreEntry(key, raw, out)
 }
 
+// GetFresh asks the server, whatever this connection has cached: the cache
+// lasts as long as the connection, and another client, or another session of
+// this one, may have written the entry since.
+func (s *imapStore) GetFresh(key string, out interface{}) error {
+	if err := s.cache.Put(key, nil); err != nil {
+		return err
+	}
+	return s.Get(key, out)
+}
+
 func decodeStoreEntry(key string, raw []byte, out interface{}) error {
 	if err := json.Unmarshal(raw, out); err != nil {
 		return fmt.Errorf("provider/imap: failed to decode IMAP store entry %q: %w", key, err)

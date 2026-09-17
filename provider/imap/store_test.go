@@ -152,3 +152,47 @@ func TestStoreEntryThatDoesNotDecodeIsNotMissing(t *testing.T) {
 		t.Errorf("a reader that skips the field of the wrong type got %+v, %v", signature, err)
 	}
 }
+
+// A connection's copy of an entry is only what it last saw. GetFresh reads
+// what the server holds now, including an entry another client removed, and
+// what it read is what the connection reads from then on.
+func TestStoreFreshReadSeesAnotherClientsWrite(t *testing.T) {
+	p := memIMAP(t, &memServer{caps: imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapMetadata: {}}})
+	mine, err := newIMAPStore(p.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := newIMAPStore(p.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mine.Put("base.settings", storedSettings{Language: "de"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Put("base.settings", storedSettings{Language: "fr"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var got storedSettings
+	if err := mine.Get("base.settings", &got); err != nil || got.Language != "de" {
+		t.Fatalf("the cached read got %q, %v", got.Language, err)
+	}
+	if err := provider.GetFresh(mine, "base.settings", &got); err != nil || got.Language != "fr" {
+		t.Fatalf("the fresh read got %q, %v", got.Language, err)
+	}
+	got = storedSettings{}
+	if err := mine.Get("base.settings", &got); err != nil || got.Language != "fr" {
+		t.Errorf("after a fresh read, the cached read got %q, %v", got.Language, err)
+	}
+
+	if err := other.Put("base.settings", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.GetFresh(mine, "base.settings", &got); !errors.Is(err, provider.ErrNoStoreEntry) {
+		t.Errorf("a removed entry read fresh: %v", err)
+	}
+	if err := mine.Get("base.settings", &got); !errors.Is(err, provider.ErrNoStoreEntry) {
+		t.Errorf("a removed entry read from the cache after a fresh read: %v", err)
+	}
+}

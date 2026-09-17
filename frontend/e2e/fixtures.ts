@@ -222,10 +222,10 @@ function asAccount(account = USER) {
  * run, so a preference one spec changes is a preference every later spec
  * inherits unless it is put back.
  *
- * Dropping the server's record is not enough on its own: an alps session reads
- * the record once and keeps it for the life of its IMAP connection, so the
- * session {@link login} reuses would go on serving what the test wrote. The
- * next `login` therefore signs in afresh.
+ * Dropping the server's record is not enough on its own: an alps session keeps
+ * a copy of it on its IMAP connection for the reads a listing makes, so the
+ * session {@link login} reuses could list mail as the test left it. The next
+ * `login` therefore signs in afresh.
  */
 export async function resetSettings(account = USER): Promise<void> {
   await control("/reset/settings", asAccount(account));
