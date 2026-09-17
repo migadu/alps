@@ -349,6 +349,7 @@ export const da: TranslationDictionary = {
     reportSpam: 'Rapportér som spam',
     notSpam: 'Ikke spam',
     delete: 'Slet',
+    deleteThread: 'Slet samtale',
     deleteConfirmSingle: 'Er du sikker på, at du vil slette denne besked permanent? Denne handling kan ikke fortrydes.',
     deleteConfirmMultiple: 'Er du sikker på, at du vil slette disse beskeder permanent? Denne handling kan ikke fortrydes.',
     markUnread: 'Marker som ulæst',

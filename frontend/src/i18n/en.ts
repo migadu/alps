@@ -347,6 +347,7 @@ export const en = {
     reportSpam: 'Report Spam',
     notSpam: 'Not Spam',
     delete: 'Delete',
+    deleteThread: 'Delete conversation',
     deleteConfirmSingle: 'Are you sure you want to permanently delete this message? This action cannot be undone.',
     deleteConfirmMultiple: 'Are you sure you want to permanently delete these messages? This action cannot be undone.',
     markUnread: 'Mark as unread',

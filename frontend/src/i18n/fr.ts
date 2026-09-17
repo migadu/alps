@@ -312,6 +312,7 @@ export const fr = {
     reportSpam: 'Signaler comme Spam',
     notSpam: 'Non Spam',
     delete: 'Supprimer',
+    deleteThread: 'Supprimer la conversation',
     deleteConfirmSingle: 'Êtes-vous sûr de vouloir supprimer définitivement ce message ? Cette action est irréversible.',
     deleteConfirmMultiple: 'Êtes-vous sûr de vouloir supprimer définitivement ces messages ? Cette action est irréversible.',
     markUnread: 'Marquer comme non lu',

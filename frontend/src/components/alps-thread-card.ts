@@ -51,6 +51,13 @@ export class AlpsThreadCard extends LitElement {
   @property({ type: String }) mailbox!: string;
   @property({ type: Boolean }) showSenderAvatars = true;
 
+  /**
+   * Whether this message offers "Mark as unread" (or, unread, "Mark as read").
+   * The reader decides: a message you sent has nothing to be unread about, and
+   * the folder being read may not offer the toggle at all.
+   */
+  @property({ type: Boolean }) canToggleRead = false;
+
   static styles = css`
     :host {
       display: block;
@@ -535,9 +542,23 @@ export class AlpsThreadCard extends LitElement {
                   ${renderIcon('arrowBendUpRight')} <span class="item-text">${this.i18nStore?.t('messageReader.forward')}</span>
                 </button>
                 <div class="dropdown-divider"></div>
+                <!-- Everything below is about THIS message. Over a conversation
+                     the toolbar acts on all of it, so these live here. -->
+                ${this.canToggleRead ? html`
+                <button class="dropdown-item" @click=${() => this.handleActionForItem(isUnread ? 'markRead' : 'markUnread')}>
+                  ${renderIcon(isUnread ? 'envelopeOpen' : 'envelopeUnread')} <span class="item-text">${this.i18nStore?.t(isUnread ? 'messageReader.markRead' : 'messageReader.markUnread')}</span>
+                </button>
+                ` : ''}
                 <button class="dropdown-item" @click=${() => this.handleActionForItem('print')}>
                   ${renderIcon('printer')} <span class="item-text">${this.i18nStore?.t('messageReader.print')}</span>
                 </button>
+                <button class="dropdown-item" @click=${() => this.handleActionForItem('downloadMessage')}>
+                  ${renderIcon('downloadSimple')} <span class="item-text">${this.i18nStore?.t('messageReader.downloadMessage')}</span>
+                </button>
+                <button class="dropdown-item" @click=${() => this.handleActionForItem('showOriginal')}>
+                  ${renderIcon('codeBlock')} <span class="item-text">${this.i18nStore?.t('messageReader.showOriginal')}</span>
+                </button>
+                <div class="dropdown-divider"></div>
                 <button class="dropdown-item" @click=${() => this.handleDeleteItem()}>
                   ${renderIcon('trash')} <span class="item-text">${this.i18nStore?.t('messageReader.delete')}</span>
                 </button>

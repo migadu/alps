@@ -5,6 +5,7 @@ import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED, getMessageTags 
 import { messageSync } from '../services/message-sync';
 import { mailboxOperations } from '../services/mailbox-operations';
 import { fetchAuthVerdicts, VERDICT_BATCH, type AuthVerdict } from '../services/auth-verdicts';
+import { mailboxOf, messageKey } from '../utils/message-key';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -48,6 +49,10 @@ export class MessageList extends LitElement {
   /** Off, rows draw no avatars, and no verdicts are asked for: a verdict only picks an avatar's logo. */
   @property({ type: Boolean }) showSenderAvatars = true;
 
+  /**
+   * The checked messages, by {@link messageKey}. A search across every folder
+   * lists messages from several, and two of its rows can carry the same UID.
+   */
   @property({ type: Object }) selectedMessages = new Set<string>();
   @property({ type: Boolean }) syncing = false;
   /** The last listing failed: say so, rather than claim the folder is empty. */
@@ -674,11 +679,11 @@ export class MessageList extends LitElement {
 
   /** The mailbox a listed message is in: its own, since a search across mailboxes lists several. */
   private mailboxOf(msg: any): string {
-    return typeof msg?.Mailbox === 'string' && msg.Mailbox ? msg.Mailbox : this.currentMailbox;
+    return mailboxOf(msg, this.currentMailbox);
   }
 
-  private verdictKey(mailbox: string, uid: string): string {
-    return `${mailbox}\u0000${uid}`;
+  private keyOf(msg: any): string {
+    return messageKey(this.mailboxOf(msg), msg?.UID);
   }
 
   /** Asks about the messages not asked about yet; one run at a time. */
@@ -719,7 +724,7 @@ export class MessageList extends LitElement {
       const uid = msg?.UID == null ? '' : String(msg.UID);
       const mailbox = this.mailboxOf(msg);
       if (!uid || (shown !== '*' && mailbox !== shown)) return;
-      const key = this.verdictKey(mailbox, uid);
+      const key = messageKey(mailbox, uid);
       if (this.verdictsAsked.has(key) || !mayShowBimiLogo(msg)) return;
       this.verdictsAsked.add(key);
       if (!byMailbox.has(mailbox)) byMailbox.set(mailbox, []);
@@ -733,7 +738,7 @@ export class MessageList extends LitElement {
     const queue: { mailbox: string; uid: string }[] = [];
     for (const [mailbox, uids] of byMailbox) for (const uid of uids) queue.push({ mailbox, uid });
     const unask = (from: number) => {
-      for (const q of queue.slice(from)) this.verdictsAsked.delete(this.verdictKey(q.mailbox, q.uid));
+      for (const q of queue.slice(from)) this.verdictsAsked.delete(messageKey(q.mailbox, q.uid));
     };
 
     let i = 0;
@@ -766,15 +771,15 @@ export class MessageList extends LitElement {
       if (answer.scope && known && answer.scope !== known) {
         // The mailbox's UIDs now name other messages, so its earlier answers
         // were for messages that are gone. Keep this answer and ask again.
-        const prefix = this.verdictKey(mailbox, '');
+        const prefix = messageKey(mailbox, '');
         for (const key of [...next.keys()]) if (key.startsWith(prefix)) next.delete(key);
         for (const key of [...this.verdictsAsked]) if (key.startsWith(prefix)) this.verdictsAsked.delete(key);
-        for (const uid of batch) this.verdictsAsked.add(this.verdictKey(mailbox, uid));
+        for (const uid of batch) this.verdictsAsked.add(messageKey(mailbox, uid));
         unask(j);
         startOver = true;
       }
       if (answer.scope) this.verdictScopes.set(mailbox, answer.scope);
-      for (const [uid, verdict] of answer.verdicts) next.set(this.verdictKey(mailbox, uid), verdict);
+      for (const [uid, verdict] of answer.verdicts) next.set(messageKey(mailbox, uid), verdict);
       this.verdicts = next;
       if (startOver) {
         this.verdictsRerun = true;
@@ -786,7 +791,7 @@ export class MessageList extends LitElement {
 
   /** msg with the verdict answered for it, if one has arrived. */
   private withVerdict(msg: any): any {
-    const verdict = this.verdicts.get(this.verdictKey(this.mailboxOf(msg), String(msg?.UID)));
+    const verdict = this.verdicts.get(messageKey(this.mailboxOf(msg), String(msg?.UID)));
     return verdict ? { ...msg, ...verdict } : msg;
   }
 
@@ -805,31 +810,71 @@ export class MessageList extends LitElement {
     this.expandedThreads = newSet;
   }
 
+  /**
+   * The messages a row stands for, by key. A collapsed thread is ONE row for
+   * the whole conversation, so checking it checks every message in it; it used
+   * to check the newest alone, and "Mark as read" or "Delete" from the selection
+   * bar then left the rest of the thread where it was, under a row that looked
+   * handled. Expanded, every message has a row of its own and the top row is its
+   * message.
+   */
+  private rowKeys(msg: any): string[] {
+    const own = this.keyOf(msg);
+    if (!msg.SubMessages?.length || this.isThreadExpanded(String(msg.UID))) return [own];
+    return [own, ...msg.SubMessages.map((sub: any) => this.keyOf(sub))];
+  }
+
+  /** How much of a row is checked: a collapsed thread can be checked in part. */
+  private rowSelection(msg: any): 'all' | 'some' | 'none' {
+    const keys = this.rowKeys(msg);
+    const checked = keys.filter(key => this.selectedMessages.has(key)).length;
+    return checked === 0 ? 'none' : checked === keys.length ? 'all' : 'some';
+  }
+
+  /** Checks a row, or clears it when all of it already is. Part-checked, it fills. */
+  private toggleRow(msg: any) {
+    const keys = this.rowKeys(msg);
+    const clear = this.rowSelection(msg) === 'all';
+    const newSet = new Set(this.selectedMessages);
+    for (const key of keys) {
+      if (clear) newSet.delete(key);
+      else newSet.add(key);
+    }
+    this.setSelection(newSet);
+  }
+
+  /** Every message on this page, whether or not its thread is expanded. */
+  private get pageKeys(): string[] {
+    const keys: string[] = [];
+    for (const msg of this.messages || []) {
+      keys.push(this.keyOf(msg));
+      for (const sub of msg.SubMessages || []) keys.push(this.keyOf(sub));
+    }
+    return keys;
+  }
+
+  private get allOnPageSelected(): boolean {
+    const keys = this.pageKeys;
+    return keys.length > 0 && keys.every(key => this.selectedMessages.has(key));
+  }
+
   private handleSelectAll(e: Event) {
     const checked = (e.target as HTMLInputElement).checked;
-    if (checked) {
-      const uids = this.visibleMessages.map(m => String(m.UID));
-      this.selectedMessages = new Set(uids);
-    } else {
-      this.selectedMessages = new Set();
-    }
-    this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
+    // Collapsed threads included: "all" is every message listed here, not every
+    // row, or a thread would again be taken by its newest message alone.
+    this.setSelection(checked ? new Set(this.pageKeys) : new Set());
   }
 
-  private handleSelectMessage(e: Event, uid: string) {
-    e.stopPropagation(); // prevent clicking the message row
-    const checked = (e.target as HTMLInputElement).checked;
-    const newSet = new Set(this.selectedMessages);
-    if (checked) {
-      newSet.add(uid);
-    } else {
-      newSet.delete(uid);
-    }
-    this.selectedMessages = newSet;
-    this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
+  /** Takes a new selection, and tells the page. */
+  private setSelection(keys: Set<string>) {
+    this.selectedMessages = keys;
+    this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedKeys: keys } }));
   }
 
-
+  /** Whether msg is the open message: the same UID in the same folder. */
+  private isOpen(msg: any): boolean {
+    return !!this.selectedMessage && this.keyOf(this.selectedMessage) === this.keyOf(msg);
+  }
 
   connectedCallback() {
     super.connectedCallback();
@@ -871,10 +916,7 @@ export class MessageList extends LitElement {
       changedProperties.has('currentPage') ||
       changedProperties.has('filterQuery') ||
       changedProperties.has('sortOrder')) {
-      if (this.selectedMessages.size > 0) {
-        this.selectedMessages = new Set();
-        this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
-      }
+      if (this.selectedMessages.size > 0) this.setSelection(new Set());
       this._shouldScrollToTop = true;
       // Another listing altogether, already shown from its top.
       this._uidsBeforeCheck = null;
@@ -896,28 +938,9 @@ export class MessageList extends LitElement {
     if (changedProperties.has('selectedMessage') || changedProperties.has('messages')) {
       if (changedProperties.has('messages') && this.messages) {
         if (this.selectedMessages.size > 0) {
-          const availableUids = new Set<string>();
-          for (const m of this.messages) {
-            availableUids.add(String(m.UID));
-            if (m.SubMessages) {
-              for (const sub of m.SubMessages) {
-                availableUids.add(String(sub.UID));
-              }
-            }
-          }
-          let changed = false;
-          const newSet = new Set<string>();
-          for (const uid of this.selectedMessages) {
-            if (availableUids.has(uid)) {
-              newSet.add(uid);
-            } else {
-              changed = true;
-            }
-          }
-          if (changed) {
-            this.selectedMessages = newSet;
-            this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
-          }
+          const listed = new Set(this.pageKeys);
+          const kept = new Set([...this.selectedMessages].filter(key => listed.has(key)));
+          if (kept.size !== this.selectedMessages.size) this.setSelection(kept);
         }
       }
 
@@ -926,7 +949,7 @@ export class MessageList extends LitElement {
           let expandedChanged = false;
           const newSet = new Set(this.expandedThreads);
           for (const m of this.messages) {
-            if (m.SubMessages && m.SubMessages.some((s: any) => String(s.UID) === String(this.selectedMessage.UID))) {
+            if (m.SubMessages && m.SubMessages.some((s: any) => this.isOpen(s))) {
               const uid = String(m.UID);
               if (!newSet.has(uid)) {
                 newSet.add(uid);
@@ -941,7 +964,7 @@ export class MessageList extends LitElement {
 
         const visible = this.visibleMessages;
         if (visible.length > 0) {
-          const idx = visible.findIndex(m => String(m.UID) === String(this.selectedMessage.UID));
+          const idx = visible.findIndex(m => this.isOpen(m));
           if (idx !== -1) {
             this.focusedIndex = idx;
           }
@@ -993,8 +1016,7 @@ export class MessageList extends LitElement {
     // and every star or read toggle, and each copy scrolled the list back to it:
     // mail that a check had just brought in at the top was scrolled away from.
     const previous = changedProperties.get('selectedMessage');
-    if (changedProperties.has('selectedMessage') && this.selectedMessage &&
-      String(previous?.UID) !== String(this.selectedMessage.UID)) {
+    if (changedProperties.has('selectedMessage') && this.selectedMessage && !(previous && this.isOpen(previous))) {
       setTimeout(() => {
         const listContent = this.renderRoot.querySelector('.list-content');
         const activeItem = listContent?.querySelector('.message-item.active');
@@ -1042,10 +1064,7 @@ export class MessageList extends LitElement {
   }
 
   private selectMessage(msg: any) {
-    if (this.selectedMessages.size > 0) {
-      this.selectedMessages = new Set();
-      this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
-    }
+    if (this.selectedMessages.size > 0) this.setSelection(new Set());
     this.dispatchEvent(new CustomEvent('select-message', {
       detail: { message: msg }
     }));
@@ -1071,16 +1090,7 @@ export class MessageList extends LitElement {
     } else if (e.key === ' ') {
       e.preventDefault();
       if (this.focusedIndex >= 0 && this.focusedIndex < visible.length) {
-        const msg = visible[this.focusedIndex];
-        const uid = String(msg.UID);
-        const newSet = new Set(this.selectedMessages);
-        if (newSet.has(uid)) {
-          newSet.delete(uid);
-        } else {
-          newSet.add(uid);
-        }
-        this.selectedMessages = newSet;
-        this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
+        this.toggleRow(visible[this.focusedIndex]);
 
         this.focusedIndex = Math.min(visible.length - 1, this.focusedIndex + 1);
         this.scrollToFocused();
@@ -1214,7 +1224,17 @@ export class MessageList extends LitElement {
     const msgSize = msg.RFC822Size || msg.Size;
     const sizeStr = msgSize ? formatSize(msgSize) : '';
 
-    const isUnseen = !msg.Flags || !msg.Flags.includes(FLAG_SEEN);
+    const hasSubMessages = msg.SubMessages && msg.SubMessages.length > 0;
+    const expanded = this.isThreadExpanded(String(msg.UID));
+    const rowSelection = this.rowSelection(msg);
+
+    const unseen = (m: any) => !m?.Flags || !m.Flags.includes(FLAG_SEEN);
+    // A collapsed thread is one row for the whole conversation, so it is unread
+    // while ANY of it is — as a thread row is in other mail clients. It showed
+    // the newest message's state alone, so an older message marked unread, or
+    // never read, left no trace on the list until the thread was expanded.
+    // Expanded, every message has its own row and says so for itself.
+    const isUnseen = unseen(msg) || (!isSubMessage && !!hasSubMessages && !expanded && msg.SubMessages.some(unseen));
     const isStarred = msg.Flags && msg.Flags.includes(FLAG_FLAGGED);
     const isAnswered = msg.Flags && msg.Flags.includes(FLAG_ANSWERED);
     const isForwarded = msg.Flags && msg.Flags.includes(FLAG_FORWARDED);
@@ -1222,25 +1242,18 @@ export class MessageList extends LitElement {
     const customTags = getMessageTags(msg.Flags, this.i18nStore);
     const avatarSize = this.densityMode === 'loose' ? 48 : this.densityMode === 'compact' ? 24 : 40;
 
-    const hasSubMessages = msg.SubMessages && msg.SubMessages.length > 0;
-    const expanded = this.isThreadExpanded(String(msg.UID));
-
     if (this.densityMode === 'ultra-compact') {
       return html`
-      <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.selectedMessage?.UID === msg.UID) || this.selectedMessages.has(String(msg.UID)) ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
+      <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.isOpen(msg)) || rowSelection !== 'none' ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
         <div class="checkbox-col" @click=${(e: Event) => {
           e.stopPropagation();
-          const uid = String(msg.UID);
-          const newSet = new Set(this.selectedMessages);
-          if (newSet.has(uid)) newSet.delete(uid);
-          else newSet.add(uid);
-          this.selectedMessages = newSet;
-          this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
+          this.toggleRow(msg);
         }}>
           <input type="checkbox" class="message-checkbox" 
-            .checked=${this.selectedMessages.has(String(msg.UID))}
+            .checked=${rowSelection === 'all'}
+            .indeterminate=${rowSelection === 'some'}
             @click=${(e: Event) => e.stopPropagation()}
-            @change=${(e: Event) => this.handleSelectMessage(e, String(msg.UID))}>
+            @change=${(e: Event) => { e.stopPropagation(); this.toggleRow(msg); }}>
         </div>
 
         <!-- Caret Toggle Button -->
@@ -1285,20 +1298,16 @@ export class MessageList extends LitElement {
     }
 
     return html`
-    <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.selectedMessage?.UID === msg.UID) || this.selectedMessages.has(String(msg.UID)) ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
+    <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.isOpen(msg)) || rowSelection !== 'none' ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
       <div class="checkbox-col" @click=${(e: Event) => {
         e.stopPropagation();
-        const uid = String(msg.UID);
-        const newSet = new Set(this.selectedMessages);
-        if (newSet.has(uid)) newSet.delete(uid);
-        else newSet.add(uid);
-        this.selectedMessages = newSet;
-        this.dispatchEvent(new CustomEvent('selection-changed', { detail: { selectedUids: this.selectedMessages } }));
+        this.toggleRow(msg);
       }}>
         <input type="checkbox" class="message-checkbox" 
-          .checked=${this.selectedMessages.has(String(msg.UID))}
+          .checked=${rowSelection === 'all'}
+          .indeterminate=${rowSelection === 'some'}
           @click=${(e: Event) => e.stopPropagation()}
-          @change=${(e: Event) => this.handleSelectMessage(e, String(msg.UID))}>
+          @change=${(e: Event) => { e.stopPropagation(); this.toggleRow(msg); }}>
       </div>
 
       <!-- Caret Toggle Button -->
@@ -1380,7 +1389,7 @@ export class MessageList extends LitElement {
       ${!this.isMobile ? html`
         <alps-toolbar class="list-header" ?scrolled=${this.isScrolled}>
           <input type="checkbox" class="select-all-checkbox" title=${this.i18nStore?.t('messageList.selectAll')}
-            .checked=${this.messages.length > 0 && this.selectedMessages.size === this.visibleMessages.length}
+            .checked=${this.allOnPageSelected}
             @change=${this.handleSelectAll}>
           <alps-icon-btn 
             title=${this.i18nStore?.t('messageList.checkNew')}
@@ -1451,7 +1460,7 @@ export class MessageList extends LitElement {
           </alps-button>
         </div>` :
         this.messages.length === 0 ? html`<div class="empty-state">${this.i18nStore?.t('messageList.noMessages')}</div>` :
-          repeat(this.messages, msg => msg.UID, msg => html`
+          repeat(this.messages, msg => this.keyOf(msg), msg => html`
             ${this.renderMessageItem(msg, false)}
             ${msg.SubMessages && msg.SubMessages.length > 0 && this.isThreadExpanded(String(msg.UID)) ? 
               msg.SubMessages.map((subMsg: any, idx: number) => this.renderMessageItem(subMsg, true, idx === 0, idx === msg.SubMessages.length - 1)) : ''}
@@ -1464,7 +1473,7 @@ export class MessageList extends LitElement {
           ` : html`
             <div class="mobile-bottom-actions">
               <input type="checkbox" class="select-all-checkbox" title=${this.i18nStore?.t('messageList.selectAll')}
-                .checked=${this.messages.length > 0 && this.selectedMessages.size === this.visibleMessages.length}
+                .checked=${this.allOnPageSelected}
                 @change=${this.handleSelectAll}>
               <alps-icon-btn 
                 title=${this.i18nStore?.t('messageList.checkNew')}

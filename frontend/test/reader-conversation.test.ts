@@ -13,6 +13,7 @@ import {
   cleanup, flush, installMatchMedia, installResizeObserver, installScrollIntoView, mount, shadowAll, update, waitFor,
 } from './helpers/dom';
 import { MessageCache } from '../src/utils/message-cache';
+import { messageKey } from '../src/utils/message-key';
 
 type El = HTMLElement & Record<string, any>;
 
@@ -134,13 +135,13 @@ describe('the conversation of an opened message', () => {
     expect(cards(el)[1].item.message.Flags).toContain('\\Flagged');
   });
 
-  it('applies a flag change from the list to the listed message only', async () => {
+  it('applies a flag change from the list to the message it names, not the reply with the same UID', async () => {
     const el = await openInbox();
     // As the page does it: its own rows first, then the event for the reader.
     const starred = { ...inboxMessage, Flags: [...inboxMessage.Flags, '\\Flagged'] };
     await update(el, { messages: [starred], message: starred });
     window.dispatchEvent(new CustomEvent('external-message-flags-changed', {
-      detail: { uids: ['7'], flag: '\\Flagged', action: 'add' },
+      detail: { keys: [messageKey('INBOX', '7')], flag: '\\Flagged', action: 'add' },
     }));
     await flush();
     expect(cards(el)[0].item.message.Flags).toContain('\\Flagged');
