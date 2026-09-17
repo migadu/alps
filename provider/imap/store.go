@@ -1,6 +1,7 @@
 package imap
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -82,6 +83,12 @@ func (s *memoryStore) Put(key string, v interface{}) error {
 	return nil
 }
 
+// imapStore keeps each entry in the server's METADATA, and caches it as the
+// JSON the server holds. Callers decode the same entry into different types:
+// signing in reads only the auto-logout from the settings, a listing only the
+// threading choice, the settings page all of it. Caching what the first of
+// them decoded handed everyone after it that caller's part, and defaults for
+// the rest, which the settings page then saved over the account's settings.
 type imapStore struct {
 	client *imapclient.Client
 	cache  *memoryStore
@@ -101,7 +108,10 @@ func (s *imapStore) key(key string) string {
 }
 
 func (s *imapStore) Get(key string, out interface{}) error {
-	if err := s.cache.Get(key, out); err != provider.ErrNoStoreEntry {
+	var cached json.RawMessage
+	if err := s.cache.Get(key, &cached); err == nil {
+		return json.Unmarshal(cached, out)
+	} else if err != provider.ErrNoStoreEntry {
 		return err
 	}
 
@@ -118,8 +128,7 @@ func (s *imapStore) Get(key string, out interface{}) error {
 		log.Printf("provider/imap: ignoring invalid store entry %q (err: %v)", key, err)
 		return provider.ErrNoStoreEntry
 	}
-	// Store the dereferenced value in cache, not the pointer
-	return s.cache.Put(key, reflect.ValueOf(out).Elem().Interface())
+	return s.cache.Put(key, json.RawMessage(bytes.Clone(*v)))
 }
 
 func (s *imapStore) Put(key string, v interface{}) error {
@@ -136,14 +145,8 @@ func (s *imapStore) Put(key string, v interface{}) error {
 		return fmt.Errorf("provider/imap: failed to put IMAP store entry %q: %v", key, err)
 	}
 
-	if v == nil {
+	if bPtr == nil {
 		return s.cache.Put(key, nil)
 	}
-
-	// Store the fresh value in cache
-	val := reflect.ValueOf(v)
-	if val.Kind() == reflect.Ptr {
-		return s.cache.Put(key, val.Elem().Interface())
-	}
-	return s.cache.Put(key, v)
+	return s.cache.Put(key, json.RawMessage(*bPtr))
 }

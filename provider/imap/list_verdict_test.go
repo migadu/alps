@@ -64,6 +64,16 @@ func (s *threadedSession) Sort(ctx context.Context, kind imapserver.NumKind, sor
 	return sorter.Sort(ctx, kind, sortCriteria, charset, searchCriteria, options)
 }
 
+// GetMetadata and SetMetadata pass METADATA through as well; a server offers
+// it only when these tests list imap.CapMetadata.
+func (s *threadedSession) GetMetadata(ctx context.Context, mailbox string, entries []string, options *imap.GetMetadataOptions) (*imap.GetMetadataData, error) {
+	return s.Session.(imapserver.SessionMetadata).GetMetadata(ctx, mailbox, entries, options)
+}
+
+func (s *threadedSession) SetMetadata(ctx context.Context, mailbox string, entries map[string]*[]byte) error {
+	return s.Session.(imapserver.SessionMetadata).SetMetadata(ctx, mailbox, entries)
+}
+
 // memIMAP serves the account with messages in INBOX and returns a provider
 // logged in to it.
 func memIMAP(t *testing.T, s *memServer, messages ...string) *IMAPProvider {
