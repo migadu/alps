@@ -275,12 +275,9 @@ test.describe.serial("emptying the discard folders", () => {
     await expect(discardBanner(page)).toHaveCount(0);
   });
 
-  // FIXME (alps): emptying never says how it went. alps-message-list reports
-  // the outcome with a `toast` event (message-list.ts handleEmptyMailbox), but
-  // mailbox-page turns `toast` events into toasts only for alps-folder-list
-  // (mailbox-page.ts, the @toast binding sits on <alps-folder-list> alone), so
-  // "Emptying mailbox...", the success and the failure all go unheard.
-  test.fixme("emptying a folder says it was emptied", async ({ page }) => {
+  // Emptying is permanent, so the user is told it happened, not left to infer
+  // it from an empty list.
+  test("emptying a folder says it was emptied", async ({ page }) => {
     const subject = `Trash emptied ${Date.now()}`;
     await deliver({ subject });
     await login(page);
