@@ -380,13 +380,20 @@ export class ComposeStore extends EventTarget {
   discardDraft(id: string) {
     const composer = this.state.activeComposers.find(c => c.id === id);
     if (composer && composer.draftUid && composer.draftMailbox) {
+      const mailbox = composer.draftMailbox;
+      const uid = String(composer.draftUid);
       // Deliberately not awaited, so the window closes at once. But the result
       // is no longer thrown away: a refused delete leaves the draft sitting in
       // the Drafts folder while the user has been shown it disappearing, and
       // they find it again only by going to look.
       void messageOperations
-        .deleteMessagesResult(composer.draftMailbox, [String(composer.draftUid)])
+        .deleteMessagesResult(mailbox, [uid])
         .then(result => {
+          // Told as the composer's own Discard tells it: a reader showing the
+          // draft does not close on the re-sync.
+          if (result.ok) {
+            window.dispatchEvent(new CustomEvent('draft-discarded', { detail: { mailbox, uid } }));
+          }
           // Quiet on `auth`: the shell is already showing the login screen.
           if (!result.ok && result.reason !== 'auth') this.reportDiscardFailed();
         });

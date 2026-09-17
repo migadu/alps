@@ -289,6 +289,7 @@ export class MessageReader extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener('external-message-flags-changed', this._handleExternalFlagsChanged);
+    window.addEventListener('draft-discarded', this._handleDraftDiscarded);
     this.updateComplete.then(() => {
       this.settingsStore?.addEventListener('change', this._handleSettingsChange);
     });
@@ -297,8 +298,26 @@ export class MessageReader extends LitElement {
   disconnectedCallback() {
     this.settingsStore?.removeEventListener('change', this._handleSettingsChange);
     window.removeEventListener('external-message-flags-changed', this._handleExternalFlagsChanged);
+    window.removeEventListener('draft-discarded', this._handleDraftDiscarded);
     super.disconnectedCallback();
   }
+
+  /**
+   * A draft was discarded from its composer — possibly one on screen here.
+   *
+   * The composer deletes it and the list re-syncs, and the re-sync takes the
+   * row away but never closes the reader: the page keeps the open message
+   * whether or not the new list still holds it. So Edit Draft, then Discard,
+   * left the deleted draft open. A card for it goes here, as a card's own
+   * Delete takes it; the open message closes the reader, as Back does.
+   */
+  private _handleDraftDiscarded = (e: Event) => {
+    const detail = (e as CustomEvent<{ mailbox?: string; uid?: string }>).detail;
+    if (!detail?.mailbox || !detail.uid || !this.message) return;
+    const key = messageKey(detail.mailbox, detail.uid);
+    if (this.threadItems.some(item => this.itemKey(item) === key)) this.dropItem(key);
+    if (this.keyOf(this.message) === key) this.dispatchEvent(new CustomEvent('close'));
+  };
 
   private _handleExternalFlagsChanged = (e: Event) => {
     const customE = e as CustomEvent;
@@ -1315,14 +1334,7 @@ export class MessageReader extends LitElement {
         // can come first in its conversation and is not.
         const isFirst = this.threadItems.length > 0 && this.itemKey(this.threadItems[0]) === key &&
           this.listedKeys().has(key);
-        this.threadItems = this.threadItems.filter(i => this.itemKey(i) !== key);
-        if (this._conversation) {
-          this._conversation = {
-            ...this._conversation,
-            messages: this._conversation.messages.filter(m => this.keyOf(m) !== key)
-          };
-        }
-        this.requestUpdate();
+        this.dropItem(key);
 
         if (isFirst) {
           this.dispatchEvent(new CustomEvent('action', { detail: { action: 'delete' } }));
@@ -1334,6 +1346,19 @@ export class MessageReader extends LitElement {
       Logger.error('Failed to delete thread item', err);
       this.reportDeleteFailed();
     }
+  }
+
+  /** Takes one message's card off the conversation on screen, and out of the
+   * server's answer the cards are rebuilt from. */
+  private dropItem(key: string) {
+    this.threadItems = this.threadItems.filter(i => this.itemKey(i) !== key);
+    if (this._conversation) {
+      this._conversation = {
+        ...this._conversation,
+        messages: this._conversation.messages.filter(m => this.keyOf(m) !== key)
+      };
+    }
+    this.requestUpdate();
   }
 
   private async _handleActionForItem(action: string, item: ThreadMessageItem) {
@@ -1464,7 +1489,11 @@ export class MessageReader extends LitElement {
   private async _handleEditDraft(item?: any) {
     const isItem = item && !(item instanceof Event);
     const msg = isItem ? item.message : this.message;
-    const mailbox = isItem ? item.mailbox : this.mailbox;
+    // The message's own mailbox, as its card has it. The one being viewed is
+    // `*` in a search of all mailboxes, which is no mailbox at all: every save
+    // of the draft failed on deleting the one it replaced, after storing a new
+    // copy, and Discard could not delete it.
+    const mailbox = isItem ? item.mailbox : (msg?.Mailbox || this.mailbox);
     if (!msg) return;
 
     // If we're editing a specific thread item, make sure its body has been loaded

@@ -470,119 +470,132 @@ export class MailboxPage extends LitElement {
     }
   }
 
+  /** Moves the open message, the link target and the URL onto a draft's new
+   * UID — the selection half of an autosave. */
+  private followAutosavedSelection(oldUid: string, next: any) {
+    this.selectedMessage = next;
+    this.targetUid = String(next.UID);
+
+    // Silently update the hash so a page reload opens the new draft, without triggering a re-render
+    let currentHash = window.location.hash;
+    if (currentHash.includes(`/${oldUid}`)) {
+      currentHash = currentHash.replace(`/${oldUid}`, `/${next.UID}`);
+    } else if (currentHash.includes(`uid=${oldUid}`)) {
+      currentHash = currentHash.replace(`uid=${oldUid}`, `uid=${next.UID}`);
+    }
+    window.history.replaceState(null, '', currentHash);
+  }
+
   private handleDraftAutosaved = (e: CustomEvent) => {
-    const { oldUid, newUid, mailbox, subject, hasAttachments, size } = e.detail;
-    if (this.currentMailbox === mailbox && this.messages) {
-      const parsedNewUid = Number(newUid);
-      let found = false;
+    const { oldUid, oldMailbox, newUid, mailbox, subject, hasAttachments, size } = e.detail;
+    if (!this.messages) return;
+    // A string, as the listing sends every UID. A number here made the reader,
+    // which compares UIDs as they are, take the same draft for a different
+    // message on the next sync: it reloaded it in full, and asked the server
+    // for the conversation of a draft the next save or a discard had deleted.
+    const nextUid = String(newUid);
+    let found = false;
 
-      if (oldUid) {
-        // Search top-level messages first
-        const idx = this.messages.findIndex(m => String(m.UID) === String(oldUid));
-        if (idx !== -1) {
-          const updated = [...this.messages];
-          updated[idx] = {
-            ...updated[idx],
-            UID: parsedNewUid,
-            Size: size || updated[idx].Size,
-            RFC822Size: size || updated[idx].RFC822Size,
-            HasAttachments: hasAttachments,
-            _isAutosaveUpdate: true,
-            Envelope: {
-              ...updated[idx].Envelope,
-              Subject: subject || updated[idx].Envelope?.Subject || '(No subject)'
-            }
-          };
-          this.messages = updated;
-          found = true;
+    // The draft this save replaced, wherever it is on screen — in any view.
+    //
+    // This half sat behind the Drafts test below along with the insert, and the
+    // two are different questions. A search of all mailboxes lists drafts too,
+    // and opens them; the save deletes the UID those rows and the reader hold,
+    // so the reader went on showing a draft that no longer existed, and a
+    // Discard from the composer named one it had never heard of.
+    //
+    // Matched on mailbox AND UID: a UID is unique only within its mailbox, and
+    // a search of all mailboxes lists several.
+    const oldKey = oldUid ? `${oldMailbox || mailbox}\u0000${oldUid}` : null;
+    const keyOf = (m: any) => `${m.Mailbox || this.currentMailbox}\u0000${m.UID}`;
+    const replaced = (m: any) => ({
+      ...m,
+      UID: nextUid,
+      // Only a row that names its mailbox has one to move; the rest are the
+      // view's own, and the view is where the draft went.
+      ...(m.Mailbox ? { Mailbox: mailbox } : {}),
+      Size: size || m.Size,
+      RFC822Size: size || m.RFC822Size,
+      HasAttachments: hasAttachments,
+      _isAutosaveUpdate: true,
+      Envelope: {
+        ...m.Envelope,
+        Subject: subject || m.Envelope?.Subject || '(No subject)'
+      }
+    });
 
-          // Preserve active message selection
-          if (this.selectedMessage && String(this.selectedMessage.UID) === String(oldUid)) {
-            this.selectedMessage = updated[idx];
-            this.targetUid = String(parsedNewUid);
+    if (oldKey) {
+      // Search top-level messages first
+      const idx = this.messages.findIndex(m => keyOf(m) === oldKey);
+      if (idx !== -1) {
+        const updated = [...this.messages];
+        updated[idx] = replaced(updated[idx]);
+        this.messages = updated;
+        found = true;
 
-            // Silently update the hash so a page reload opens the new draft, without triggering a re-render
-            let currentHash = window.location.hash;
-            if (currentHash.includes(`/${oldUid}`)) {
-              currentHash = currentHash.replace(`/${oldUid}`, `/${parsedNewUid}`);
-            } else if (currentHash.includes(`uid=${oldUid}`)) {
-              currentHash = currentHash.replace(`uid=${oldUid}`, `uid=${parsedNewUid}`);
-            }
-            window.history.replaceState(null, '', currentHash);
-          }
-        } else {
-          // Search in SubMessages of all messages (threads)
-          for (let i = 0; i < this.messages.length; i++) {
-            const parent = this.messages[i];
-            if (parent.SubMessages) {
-              const subIdx = parent.SubMessages.findIndex((sm: any) => String(sm.UID) === String(oldUid));
-              if (subIdx !== -1) {
-                const updatedSubMessages = [...parent.SubMessages];
-                updatedSubMessages[subIdx] = {
-                  ...updatedSubMessages[subIdx],
-                  UID: parsedNewUid,
-                  Size: size || updatedSubMessages[subIdx].Size,
-                  RFC822Size: size || updatedSubMessages[subIdx].RFC822Size,
-                  HasAttachments: hasAttachments,
-                  _isAutosaveUpdate: true,
-                  Envelope: {
-                    ...updatedSubMessages[subIdx].Envelope,
-                    Subject: subject || updatedSubMessages[subIdx].Envelope?.Subject || '(No subject)'
-                  }
-                };
+        // Preserve active message selection
+        if (this.selectedMessage && keyOf(this.selectedMessage) === oldKey) {
+          this.followAutosavedSelection(String(oldUid), updated[idx]);
+        }
+      } else {
+        // Search in SubMessages of all messages (threads)
+        for (let i = 0; i < this.messages.length; i++) {
+          const parent = this.messages[i];
+          if (parent.SubMessages) {
+            const subIdx = parent.SubMessages.findIndex((sm: any) => keyOf(sm) === oldKey);
+            if (subIdx !== -1) {
+              const updatedSubMessages = [...parent.SubMessages];
+              updatedSubMessages[subIdx] = replaced(updatedSubMessages[subIdx]);
 
-                const updatedMessages = [...this.messages];
-                updatedMessages[i] = {
-                  ...parent,
-                  SubMessages: updatedSubMessages
-                };
-                this.messages = updatedMessages;
-                found = true;
+              const updatedMessages = [...this.messages];
+              updatedMessages[i] = {
+                ...parent,
+                SubMessages: updatedSubMessages
+              };
+              this.messages = updatedMessages;
+              found = true;
 
-                // Preserve active message selection if we were viewing this sub-message draft
-                if (this.selectedMessage && String(this.selectedMessage.UID) === String(oldUid)) {
-                  this.selectedMessage = updatedSubMessages[subIdx];
-                  this.targetUid = String(parsedNewUid);
-
-                  let currentHash = window.location.hash;
-                  if (currentHash.includes(`/${oldUid}`)) {
-                    currentHash = currentHash.replace(`/${oldUid}`, `/${parsedNewUid}`);
-                  } else if (currentHash.includes(`uid=${oldUid}`)) {
-                    currentHash = currentHash.replace(`uid=${oldUid}`, `uid=${parsedNewUid}`);
-                  }
-                  window.history.replaceState(null, '', currentHash);
-                }
-                break;
+              // Preserve active message selection if we were viewing this sub-message draft
+              if (this.selectedMessage && keyOf(this.selectedMessage) === oldKey) {
+                this.followAutosavedSelection(String(oldUid), updatedSubMessages[subIdx]);
               }
+              break;
             }
           }
         }
       }
 
-      if (!found) {
-        const draftName = this.settingsStore?.getState().name || this.username;
-        const draftEmailParts = (this.username || '').split('@');
-        const draftMailboxStr = draftEmailParts[0] || '';
-        const draftHostStr = draftEmailParts[1] || '';
-
-        // If the draft was completely new or the old UID was out of sync, insert it at the top
-        const newDraft = {
-          UID: parsedNewUid,
-          Size: size || 0,
-          RFC822Size: size || 0,
-          HasAttachments: hasAttachments,
-          Flags: [FLAG_SEEN, FLAG_DRAFT],
-          _isAutosaveUpdate: true,
-          Envelope: {
-            Subject: subject || '(No subject)',
-            Date: new Date().toISOString(),
-            From: [{ Name: draftName, Mailbox: draftMailboxStr, Host: draftHostStr }]
-          }
-        };
-        // Also remove any existing draft with the same oldUid if it exists but wasn't caught
-        const filtered = this.messages.filter(m => String(m.UID) !== String(oldUid) && String(m.UID) !== String(newUid));
-        this.messages = [newDraft, ...filtered];
+      // The open draft with no row under it: opened from a page the list has
+      // since moved past.
+      if (!found && this.selectedMessage && keyOf(this.selectedMessage) === oldKey) {
+        this.followAutosavedSelection(String(oldUid), replaced(this.selectedMessage));
       }
+    }
+
+    // A save that matched no row is a new row only where drafts are listed.
+    if (!found && this.currentMailbox === mailbox) {
+      const draftName = this.settingsStore?.getState().name || this.username;
+      const draftEmailParts = (this.username || '').split('@');
+      const draftMailboxStr = draftEmailParts[0] || '';
+      const draftHostStr = draftEmailParts[1] || '';
+
+      // If the draft was completely new or the old UID was out of sync, insert it at the top
+      const newDraft = {
+        UID: nextUid,
+        Size: size || 0,
+        RFC822Size: size || 0,
+        HasAttachments: hasAttachments,
+        Flags: [FLAG_SEEN, FLAG_DRAFT],
+        _isAutosaveUpdate: true,
+        Envelope: {
+          Subject: subject || '(No subject)',
+          Date: new Date().toISOString(),
+          From: [{ Name: draftName, Mailbox: draftMailboxStr, Host: draftHostStr }]
+        }
+      };
+      // Also remove any existing draft with the same oldUid if it exists but wasn't caught
+      const filtered = this.messages.filter(m => String(m.UID) !== String(oldUid) && String(m.UID) !== String(newUid));
+      this.messages = [newDraft, ...filtered];
     }
   };
 
