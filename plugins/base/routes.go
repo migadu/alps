@@ -1407,16 +1407,17 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	msg := &OutgoingMessage{
-		From:      fromAddr,
-		To:        parseAddressList(ctx.FormValue("to")),
-		Cc:        parseAddressList(ctx.FormValue("cc")),
-		Bcc:       parseAddressList(ctx.FormValue("bcc")),
-		Subject:   ctx.FormValue("subject"),
-		Text:      ctx.FormValue("text"),
-		HTML:      ctx.FormValue("html"),
-		InReplyTo: ctx.FormValue("in_reply_to"),
-		ReplyTo:   ctx.FormValue("reply_to"),
-		MessageID: ctx.FormValue("message_id"),
+		From:       fromAddr,
+		To:         parseAddressList(ctx.FormValue("to")),
+		Cc:         parseAddressList(ctx.FormValue("cc")),
+		Bcc:        parseAddressList(ctx.FormValue("bcc")),
+		Subject:    ctx.FormValue("subject"),
+		Text:       ctx.FormValue("text"),
+		HTML:       ctx.FormValue("html"),
+		InReplyTo:  ctx.FormValue("in_reply_to"),
+		References: ctx.FormValue("references"),
+		ReplyTo:    ctx.FormValue("reply_to"),
+		MessageID:  ctx.FormValue("message_id"),
 	}
 
 	if msg.MessageID == "" {
@@ -1599,20 +1600,29 @@ func handleComposeNew(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to send message: " + err.Error()})
 	}
 
+	answered := false
 	if inReplyToPath != nil {
-		ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 			parsedReplyUid, err := p.ParseMessageID(inReplyToPath.Uid)
 			if err != nil {
 				return err
 			}
 			return markMessageAnsweredWithProvider(p, inReplyToPath.Mailbox, parsedReplyUid)
 		})
+		if err != nil {
+			// The reply is sent; the mark is only a mark.
+			ctx.Server.Logger().Printf("marking %s/%s answered failed: %v", inReplyToPath.Mailbox, inReplyToPath.Uid, err)
+		}
+		answered = err == nil
 	}
 
+	var sentName string
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		if _, _, _, err := appendMessageWithProvider(p, msg, provider.MailboxTypeSent); err != nil {
+		sent, _, _, err := appendMessageWithProvider(p, msg, provider.MailboxTypeSent)
+		if err != nil {
 			return err
 		}
+		sentName = sent.Name()
 		if draftPath != nil {
 			parsedDraftUid, err := p.ParseMessageID(draftPath.Uid)
 			if err != nil {
@@ -1628,9 +1638,14 @@ func handleComposeNew(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save message to Sent mailbox: " + err.Error()})
 	}
 
-	mailboxesToInvalidate := []string{"Sent"}
+	// The account's own Sent, which is not always named so, and the answered
+	// message's mailbox, whose cached pages would still show it unanswered.
+	mailboxesToInvalidate := []string{sentName}
 	if draftPath != nil {
 		mailboxesToInvalidate = append(mailboxesToInvalidate, draftPath.Mailbox)
+	}
+	if answered {
+		mailboxesToInvalidate = append(mailboxesToInvalidate, inReplyToPath.Mailbox)
 	}
 	invalidateMailboxCache(ctx, mailboxesToInvalidate...)
 

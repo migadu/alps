@@ -12,6 +12,7 @@ import (
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
+	"github.com/migadu/alps/provider"
 )
 
 type Attachment interface {
@@ -68,6 +69,7 @@ type OutgoingMessage struct {
 	Subject     string
 	MessageID   string
 	InReplyTo   string
+	References  string // the conversation before the message InReplyTo names
 	ReplyTo     string
 	Text        string
 	HTML        string
@@ -135,6 +137,34 @@ func prepareAddressList(addresses []string) ([]*mail.Address, error) {
 	return l, nil
 }
 
+// maxReferences bounds the References a reply carries. RFC 5322 lets a long
+// chain be shortened; the first ID, the conversation's root, is kept.
+const maxReferences = 20
+
+// replyHeaders returns the message a reply answers and its References: the
+// conversation before that message, then the message itself. The composer
+// sends IDs bare, as the envelope gives them, and they are written back with
+// their angle brackets; without them a server cannot read In-Reply-To at all,
+// and the reply is lost to threading, here and in the recipient's client.
+func replyHeaders(inReplyTo, references string) (string, []string) {
+	parents := provider.MessageIDs(inReplyTo)
+	if len(parents) == 0 {
+		return "", nil
+	}
+	parent := parents[0]
+	var refs []string
+	for _, id := range provider.MessageIDs(references) {
+		if id != parent {
+			refs = append(refs, id)
+		}
+	}
+	refs = append(refs, parent)
+	if len(refs) > maxReferences {
+		refs = append(refs[:1], refs[len(refs)-maxReferences+1:]...)
+	}
+	return parent, refs
+}
+
 func (msg *OutgoingMessage) WriteTo(w io.Writer) (int64, error) {
 	fromAddr, err := mail.ParseAddress(msg.From)
 	if err != nil {
@@ -160,8 +190,9 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) (int64, error) {
 	if msg.Subject != "" {
 		h.SetText("Subject", msg.Subject)
 	}
-	if msg.InReplyTo != "" {
-		h.Set("In-Reply-To", msg.InReplyTo)
+	if parent, refs := replyHeaders(msg.InReplyTo, msg.References); parent != "" {
+		h.SetMsgIDList("In-Reply-To", []string{parent})
+		h.SetMsgIDList("References", refs)
 	}
 	if msg.ReplyTo != "" {
 		h.Set("Reply-To", msg.ReplyTo)

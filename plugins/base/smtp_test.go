@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/emersion/go-message/mail"
+	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 )
 
@@ -126,6 +128,43 @@ func TestOutgoingMessage_ReplyHeaders(t *testing.T) {
 	if h.Get("Reply-To") != "team@example.com" || h.Get("In-Reply-To") != "<original@example.com>" {
 		t.Errorf("Reply-To = %q, In-Reply-To = %q", h.Get("Reply-To"), h.Get("In-Reply-To"))
 	}
+	if refs := h.Get("References"); refs != "<original@example.com>" {
+		t.Errorf("References = %q, want the message replied to", refs)
+	}
+}
+
+// The composer sends the IDs it has, and the envelope gives them without angle
+// brackets. Written bare, In-Reply-To is not a msg-id: a server parsing it
+// keeps nothing, and the reply belongs to no conversation, in threading here
+// and in the recipient's client alike.
+func TestOutgoingMessage_ReplyHeadersFromBareIDs(t *testing.T) {
+	msg := outgoing()
+	msg.InReplyTo = "parent@example.com"
+	msg.References = "root@example.com middle@example.com parent@example.com"
+	h, _, _ := render(t, msg)
+	if got, err := h.MsgIDList("In-Reply-To"); err != nil || len(got) != 1 || got[0] != "parent@example.com" {
+		t.Errorf("In-Reply-To = %q, parsed as %q, %v", h.Get("In-Reply-To"), got, err)
+	}
+	got, err := h.MsgIDList("References")
+	want := []string{"root@example.com", "middle@example.com", "parent@example.com"}
+	if err != nil || strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("References = %q, parsed as %q, %v; want %q", h.Get("References"), got, err, want)
+	}
+}
+
+func TestOutgoingMessage_LongReferencesKeepTheRoot(t *testing.T) {
+	var chain []string
+	for i := 0; i < 30; i++ {
+		chain = append(chain, fmt.Sprintf("<m%d@example.com>", i))
+	}
+	msg := outgoing()
+	msg.InReplyTo = "<m29@example.com>"
+	msg.References = strings.Join(chain, " ")
+	h, _, _ := render(t, msg)
+	got, _ := h.MsgIDList("References")
+	if len(got) != maxReferences || got[0] != "m0@example.com" || got[len(got)-1] != "m29@example.com" || got[1] != "m11@example.com" {
+		t.Errorf("References = %q", got)
+	}
 }
 
 func TestOutgoingMessage_EncodesNonASCIIHeaders(t *testing.T) {
@@ -148,9 +187,14 @@ func TestOutgoingMessage_EncodesNonASCIIHeaders(t *testing.T) {
 
 func TestOutgoingMessage_HeaderValuesCannotAddHeaders(t *testing.T) {
 	cases := map[string]func(*OutgoingMessage){
-		"subject":     func(m *OutgoingMessage) { m.Subject = "hello\r\nBcc: victim@example.net" },
-		"reply-to":    func(m *OutgoingMessage) { m.ReplyTo = "team@example.com\r\nBcc: victim@example.net" },
-		"in-reply-to": func(m *OutgoingMessage) { m.InReplyTo = "<a@example.com>\r\nBcc: victim@example.net" },
+		"subject":          func(m *OutgoingMessage) { m.Subject = "hello\r\nBcc: victim@example.net" },
+		"reply-to":         func(m *OutgoingMessage) { m.ReplyTo = "team@example.com\r\nBcc: victim@example.net" },
+		"in-reply-to":      func(m *OutgoingMessage) { m.InReplyTo = "<a@example.com>\r\nBcc: victim@example.net" },
+		"bare in-reply-to": func(m *OutgoingMessage) { m.InReplyTo = "a@example.com\r\nBcc: victim@example.net" },
+		"references": func(m *OutgoingMessage) {
+			m.InReplyTo = "a@example.com"
+			m.References = "<r@example.com\r\nBcc: victim@example.net>"
+		},
 	}
 	for name, mutate := range cases {
 		msg := outgoing()
@@ -269,7 +313,14 @@ func (s *smtpSession) Data(_ context.Context, r io.Reader) error {
 func (s *smtpSession) Reset()        {}
 func (s *smtpSession) Logout() error { return nil }
 
-func dialRecorder(t *testing.T) (*smtp.Client, *smtpRecorder) {
+// Any credentials will do: the session under test authenticates as its user.
+func (s *smtpSession) AuthMechanisms() []string { return []string{sasl.Plain} }
+func (s *smtpSession) Auth(string) (sasl.Server, error) {
+	return sasl.NewPlainServer(func(string, string, string) error { return nil }), nil
+}
+
+// listenRecorder serves a recorder and returns the address to configure.
+func listenRecorder(t *testing.T) (string, *smtpRecorder) {
 	t.Helper()
 	rec := &smtpRecorder{}
 	srv := smtp.NewServer(rec)
@@ -281,7 +332,13 @@ func dialRecorder(t *testing.T) (*smtp.Client, *smtpRecorder) {
 	}
 	go srv.Serve(ln)
 	t.Cleanup(func() { srv.Close() })
-	c, err := smtp.Dial(ln.Addr().String())
+	return "smtp+insecure://" + ln.Addr().String(), rec
+}
+
+func dialRecorder(t *testing.T) (*smtp.Client, *smtpRecorder) {
+	t.Helper()
+	addr, rec := listenRecorder(t)
+	c, err := smtp.Dial(strings.TrimPrefix(addr, "smtp+insecure://"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,6 +3,7 @@ import { messageOperations } from '../services/message-operations';
 import { activeUsername, readUserSettings } from './settings-store';
 import { abortUploads } from '../utils/attachment-utils';
 import { Logger } from '../utils/logger';
+import { appendReplyFields } from '../utils/reply-context';
 
 /**
  * Where a user's unsent drafts are kept, scoped to WHOSE they are.
@@ -64,6 +65,9 @@ export interface ComposerInstance {
   draftUid?: string;
   draftMailbox?: string;
   inReplyTo?: string;
+  references?: string[];
+  replyMailbox?: string;
+  replyUid?: string;
   isSending?: boolean;
   closing?: boolean;
   [key: string]: any;
@@ -480,6 +484,7 @@ export class ComposeStore extends EventTarget {
 
         if (composer.draftMailbox) formData.append('draft_mailbox', composer.draftMailbox);
         if (composer.draftUid) formData.append('draft_uid', composer.draftUid);
+        appendReplyFields(formData, composer);
 
         if (!(await messageOperations.saveDraft(formData))) failed++;
       }

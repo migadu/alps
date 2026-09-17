@@ -21,6 +21,7 @@ import './alps-emoji-selector-popup.js';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { Logger } from '../utils/logger';
+import { appendReplyFields } from '../utils/reply-context';
 import { registry } from '../plugin-registry';
 const UNDO_TOAST_TIMEOUT_MS = 5000;
 
@@ -269,9 +270,7 @@ export class AlpsFloatingComposer extends LitElement {
     if (currentInstance.draftUid) {
       formData.append('draft_uid', currentInstance.draftUid);
     }
-    if (currentInstance.inReplyTo) {
-      formData.append('in_reply_to', currentInstance.inReplyTo);
-    }
+    appendReplyFields(formData, currentInstance);
 
     return formData;
   }

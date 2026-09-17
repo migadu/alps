@@ -24,6 +24,7 @@ import './alps-banner';
 import { MessageCache } from '../utils/message-cache';
 import { sanitizeMessageHTML } from '../utils/html-sanitizer';
 import { generateQuote } from '../utils/email-quote';
+import { replyContext } from '../utils/reply-context';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { Logger } from '../utils/logger';
 import { registry } from '../plugin-registry';
@@ -123,7 +124,7 @@ export class MessageReader extends LitElement {
         partPath: a.Path ? a.Path.join('.') : undefined
       })) : [];
 
-      const inReplyTo = (action === 'reply' || action === 'replyAll') ? (this.message.Envelope?.MessageID || this.message.Envelope?.MessageId) : undefined;
+      const reply = action === 'reply' || action === 'replyAll' ? replyContext(this.message, this.message.Mailbox || this.mailbox) : {};
 
       this.composeStore.openComposer({
         subject,
@@ -133,7 +134,7 @@ export class MessageReader extends LitElement {
         html: quotedHtml,
         format: this.settingsStore?.getState()?.composeFormat || 'html',
         attachments: attachments,
-        inReplyTo
+        ...reply
       });
       return;
     }
@@ -1277,7 +1278,7 @@ export class MessageReader extends LitElement {
         partPath: a.Path ? a.Path.join('.') : undefined
       })) : [];
 
-      const inReplyTo = (action === 'reply' || action === 'replyAll') ? (item.message.Envelope?.MessageID || item.message.Envelope?.MessageId) : undefined;
+      const reply = action === 'reply' || action === 'replyAll' ? replyContext(item.message, item.mailbox) : {};
 
       this.composeStore.openComposer({
         subject,
@@ -1287,7 +1288,7 @@ export class MessageReader extends LitElement {
         html: quotedHtml,
         format: this.settingsStore?.getState()?.composeFormat || 'html',
         attachments: attachments,
-        inReplyTo
+        ...reply
       });
       return;
     }
@@ -1408,7 +1409,10 @@ export class MessageReader extends LitElement {
       text: textBody,
       html: rawMessageHtml,
       format: this.settingsStore?.getState()?.composeFormat || 'html',
-      attachments: attachments
+      attachments: attachments,
+      // A reply saved as a draft still answers its message when it is sent.
+      inReplyTo: msg.Envelope?.InReplyTo || undefined,
+      references: Array.isArray(msg.References) && msg.References.length ? msg.References : undefined
     });
   }
 

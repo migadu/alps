@@ -44,6 +44,11 @@ type testServer struct {
 
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
+	return newTestServerWithSMTP(t, "smtp://127.0.0.1:1")
+}
+
+func newTestServerWithSMTP(t *testing.T, smtpServer string) *testServer {
+	t.Helper()
 	base := t.TempDir()
 	passwd := filepath.Join(base, "passwd")
 	if err := os.WriteFile(passwd, []byte(testUser+":{PLAIN}"+testPassword+"\n"), 0o600); err != nil {
@@ -58,7 +63,7 @@ func newTestServer(t *testing.T) *testServer {
 		}
 	}
 	for _, subject := range []string{"Engines", "Looms"} {
-		msg := "From: Charles <charles@remote.test>\r\nTo: " + testUser + "\r\nSubject: " + subject + "\r\nDate: Mon, 02 Jan 2006 15:04:05 +0000\r\n\r\nbody of " + subject + "\r\n"
+		msg := "From: Charles <charles@remote.test>\r\nTo: " + testUser + "\r\nSubject: " + subject + "\r\nDate: Mon, 02 Jan 2006 15:04:05 +0000\r\nMessage-ID: <" + strings.ToLower(subject) + "@remote.test>\r\n\r\nbody of " + subject + "\r\n"
 		if _, _, _, err := store.AppendMessage("INBOX", rawMessage(msg), 0); err != nil {
 			t.Fatal(err)
 		}
@@ -74,7 +79,7 @@ func newTestServer(t *testing.T) *testServer {
 			IMAP:    alps.IMAPProviderOptions{Server: "imap://127.0.0.1:1"},
 			Maildir: alps.MaildirProviderOptions{Path: filepath.Join(base, "%u"), AuthPasswdFile: passwd},
 		},
-		SMTP:         alps.SMTPOptions{Server: "smtp://127.0.0.1:1"},
+		SMTP:         alps.SMTPOptions{Server: smtpServer},
 		LoginKey:     &key,
 		CacheEnabled: true,
 		CacheTTL:     time.Minute,
