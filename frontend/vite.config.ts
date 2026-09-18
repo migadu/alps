@@ -31,6 +31,14 @@ export default defineConfig({
             if (id.includes('@tiptap') || id.includes('prosemirror')) {
               return 'editor';
             }
+            // Its own chunk, and not for tidiness: the emoji table is the
+            // single largest dependency here, and it is reachable only from
+            // the composer. Left in `vendor` it is welded to packages the
+            // first paint DOES need, and a chunk is only as lazy as its
+            // most eager member — so all of it shipped to every load.
+            if (id.includes('unicode-emoji')) {
+              return 'emoji';
+            }
             if (id.includes('lit')) {
               return 'lit';
             }

@@ -4,6 +4,7 @@ import { fetchWithTimeout } from '../utils/fetch-utils';
 import '../components/folder-list';
 import '../components/message-list';
 import '../components/message-reader';
+import type { MessageReader, ReaderActionDetail } from '../components/message-reader';
 import '../components/ui-confirm.js';
 import '../components/app-header';
 import '../components/alps-sidebar';
@@ -19,8 +20,27 @@ import type { LayoutMode, DensityMode } from '../store/settings-store';
 import '../components/alps-initial-loader';
 import { Logger } from '../utils/logger';
 import { getFlexContainerMinWidth } from '../utils/ui';
+import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/message-key';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
+
+/** Whether a listed message carries a star. */
+const isFlagged = (msg: any): boolean => !!msg?.Flags?.includes(FLAG_FLAGGED);
+
+/** A Delete waiting on the question whether to delete for good. */
+interface PendingDelete {
+  isBulk: boolean;
+  /** Deleted for good, by key: in folders where a move to Trash changes nothing. */
+  doomed: string[];
+  /** Moved to Trash, by key: the rest of the same Delete. */
+  toTrash: string[];
+  isDrafts: boolean;
+  /** A card's own Delete, of the message it names. */
+  named?: { isOpen: boolean; nextUid?: string; done?: (ok: boolean) => void };
+}
+
+/** What one folder's move or copy answered, as {@link MailboxPage.eachFolder} reads it. */
+type MoveOutcome = { ok: boolean; reason?: string; uidMapping: Record<string, string> };
 
 const SIDEBAR_WIDTH_DEFAULT = 250;
 const SIDEBAR_WIDTH_MIN = 150;
@@ -47,7 +67,7 @@ export class MailboxPage extends LitElement {
   @state() private showDeleteConfirm = false;
   /** The last foreground listing failed; cleared when the next one starts. */
   @state() private listLoadFailed = false;
-  @state() private pendingDeleteDetails: any = null;
+  @state() private pendingDeleteDetails: PendingDelete | null = null;
 
   private markReadTimer: ReturnType<typeof setTimeout> | null = null;
   /**
@@ -254,7 +274,9 @@ export class MailboxPage extends LitElement {
   @state() private loadingMessages = true;
   @state() private showInitialLoader = !(window as any).alpsAppLoaded;
   @state() private selectedMessage: any = null;
-  @state() private selectedUids = new Set<string>();
+  /** The checked messages, by {@link messageKey}: a search across every folder
+   * lists several folders' messages, and a UID means nothing outside its own. */
+  @state() private selectedKeys = new Set<string>();
 
   @state() private layoutMode: LayoutMode = 'vertical';
   @state() private filterQuery = '';
@@ -278,6 +300,9 @@ export class MailboxPage extends LitElement {
   @state() private sortOrder: 'asc' | 'desc' = 'desc';
   @state() private listScrolled = false;
   @state() private targetUid: string | null = null;
+  /** The folder of the message the URL opens, when the list spans several:
+   * `in`, beside `uid`. Otherwise the folder being viewed. */
+  @state() private targetMailbox: string | null = null;
 
   @state() private isMobile = window.innerWidth <= 768;
   @state() private mobileSidebarOpen = false;
@@ -377,40 +402,109 @@ export class MailboxPage extends LitElement {
     return Math.max(this.computedMinListWidth, this.resizerPositionX - sidebarW);
   }
 
-  private get allSelectedStarred() {
-    if (this.selectedUids.size === 0) return false;
-    for (const uid of this.selectedUids) {
-      const msg = this.messages.find(m => String(m.UID) === uid);
-      if (!msg || !msg.Flags?.includes(FLAG_FLAGGED)) {
-        return false;
+  /**
+   * The checked messages, wherever the list holds them. A thread's older
+   * messages sit under its row as `SubMessages`, and a checked thread row is all
+   * of them — so looking through the top-level rows alone missed most of a
+   * checked conversation, and the selection bar then offered "Mark as unread"
+   * over a thread that still had unread mail in it.
+   */
+  private get selectedListed(): any[] {
+    if (this.selectedKeys.size === 0) return [];
+    const found: any[] = [];
+    for (const msg of this.messages) {
+      if (this.selectedKeys.has(this.keyOf(msg))) found.push(msg);
+      for (const sub of msg.SubMessages || []) {
+        if (this.selectedKeys.has(this.keyOf(sub))) found.push(sub);
       }
     }
-    return true;
+    return found;
+  }
+
+  /**
+   * The checked messages as the rows a star is judged by. A thread checked
+   * WHOLE is one row — that is what checking its collapsed row does — and any
+   * other checked message is a row of its own, which is what it is in an
+   * expanded thread.
+   */
+  private get selectedStarRows(): { face: any; messages: any[] }[] {
+    const rows: { face: any; messages: any[] }[] = [];
+    for (const msg of this.messages) {
+      const members = [msg, ...(msg.SubMessages || [])];
+      const checked = members.filter((m: any) => this.selectedKeys.has(this.keyOf(m)));
+      if (members.length > 1 && checked.length === members.length) rows.push({ face: msg, messages: members });
+      else for (const m of checked) rows.push({ face: m, messages: [m] });
+    }
+    return rows;
+  }
+
+  /**
+   * Whether the star over the checked rows is lit, and so whether pressing it
+   * clears. A conversation is starred while ANY message in it is, as its row is
+   * drawn; judged message by message, a starred conversation with one star in
+   * three read as unstarred, and pressing the star put two more on it.
+   */
+  private get allSelectedStarred() {
+    const rows = this.selectedStarRows;
+    return rows.length > 0 && rows.every(row => row.messages.some(isFlagged));
+  }
+
+  /**
+   * What a star gesture over these rows writes. CLEARING takes the star off
+   * every message that carries one: the row's star is the conversation's, so it
+   * has to go out wherever in the thread it is, or the row stays lit and the
+   * gesture looks refused. SETTING stars one message per row that has none —
+   * the row's own, the newest — because one star lights the row, and a star on
+   * every message of a thread is a dozen to take back off one at a time from the
+   * open conversation. A row already starred is left as it is.
+   */
+  private starWrite(rows: { face: any; messages: any[] }[]): { keys: string[]; op: 'add' | 'remove' } {
+    const lit = rows.length > 0 && rows.every(row => row.messages.some(isFlagged));
+    const chosen = lit
+      ? rows.flatMap(row => row.messages.filter(isFlagged))
+      : rows.filter(row => !row.messages.some(isFlagged)).map(row => row.face);
+    return { keys: chosen.map((m: any) => this.keyOf(m)), op: lit ? 'remove' : 'add' };
   }
 
   private get commonSelectedTags() {
-    if (this.selectedUids.size === 0) return [];
+    const selected = this.selectedListed;
+    if (selected.length === 0) return [];
     const allLabels = ['$label1', '$label2', '$label3', '$label4', '$label5'];
-    return allLabels.filter(label => {
-      for (const uid of this.selectedUids) {
-        const msg = this.messages.find(m => String(m.UID) === uid);
-        if (!msg || !msg.Flags?.some((f: string) => f.toLowerCase() === label.toLowerCase())) {
-          return false;
-        }
-      }
-      return true;
-    });
+    return allLabels.filter(label =>
+      selected.every(msg => msg.Flags?.some((f: string) => f.toLowerCase() === label.toLowerCase())));
   }
 
+  /**
+   * Whether the read toggle over the checked rows says "Mark as read". Judged
+   * thread by thread, as the list draws them: a thread's row is bold while any
+   * of it is unread, so a checked thread counts as unread while any checked
+   * message in it is. Judged message by message, a bold thread with one unread
+   * message in three was offered "Mark as unread", and no gesture on the
+   * selection bar could make it read.
+   */
   private get allSelectedUnread() {
-    if (this.selectedUids.size === 0) return false;
-    for (const uid of this.selectedUids) {
-      const msg = this.messages.find(m => String(m.UID) === uid);
-      if (msg && msg.Flags?.includes(FLAG_SEEN)) {
-        return false;
-      }
+    let any = false;
+    for (const msg of this.messages) {
+      const checked = [msg, ...(msg.SubMessages || [])].filter((m: any) => this.selectedKeys.has(this.keyOf(m)));
+      if (checked.length === 0) continue;
+      any = true;
+      if (checked.every((m: any) => m.Flags?.includes(FLAG_SEEN))) return false;
     }
-    return true;
+    return any;
+  }
+
+  /** The mailbox a listed message is in: its own, since a search across mailboxes lists several. */
+  private mailboxOf(msg: any): string {
+    return mailboxOf(msg, this.currentMailbox);
+  }
+
+  private keyOf(msg: any): string {
+    return messageKey(this.mailboxOf(msg), msg?.UID);
+  }
+
+  /** Whether msg is the open message: the same UID in the same folder. */
+  private isOpen(msg: any): boolean {
+    return !!this.selectedMessage && !!msg && this.keyOf(this.selectedMessage) === this.keyOf(msg);
   }
 
   private _handleMediaQuery = (e: MediaQueryListEvent | MediaQueryList) => {
@@ -470,119 +564,128 @@ export class MailboxPage extends LitElement {
     }
   }
 
+  /** Moves the open message, the link target and the URL onto a draft's new
+   * UID — the selection half of an autosave. */
+  private followAutosavedSelection(next: any) {
+    this.selectedMessage = next;
+    this.targetUid = String(next.UID);
+    const mailbox = this.mailboxOf(next);
+    this.targetMailbox = mailbox !== this.currentMailbox ? mailbox : null;
+
+    // Rewritten without a hashchange, so a reload opens the new draft and
+    // nothing is fetched again now.
+    window.history.replaceState(null, '', this.hashFor(this.currentMailbox, this.currentPage, this.targetUid, this.filterQuery, this.targetMailbox));
+  }
+
   private handleDraftAutosaved = (e: CustomEvent) => {
-    const { oldUid, newUid, mailbox, subject, hasAttachments, size } = e.detail;
-    if (this.currentMailbox === mailbox && this.messages) {
-      const parsedNewUid = Number(newUid);
-      let found = false;
+    const { oldUid, oldMailbox, newUid, mailbox, subject, hasAttachments, size } = e.detail;
+    if (!this.messages) return;
+    // A string, as the listing sends every UID. A number here made the reader,
+    // which compares UIDs as they are, take the same draft for a different
+    // message on the next sync: it reloaded it in full, and asked the server
+    // for the conversation of a draft the next save or a discard had deleted.
+    const nextUid = String(newUid);
+    let found = false;
 
-      if (oldUid) {
-        // Search top-level messages first
-        const idx = this.messages.findIndex(m => String(m.UID) === String(oldUid));
-        if (idx !== -1) {
-          const updated = [...this.messages];
-          updated[idx] = {
-            ...updated[idx],
-            UID: parsedNewUid,
-            Size: size || updated[idx].Size,
-            RFC822Size: size || updated[idx].RFC822Size,
-            HasAttachments: hasAttachments,
-            _isAutosaveUpdate: true,
-            Envelope: {
-              ...updated[idx].Envelope,
-              Subject: subject || updated[idx].Envelope?.Subject || '(No subject)'
-            }
-          };
-          this.messages = updated;
-          found = true;
+    // The draft this save replaced, wherever it is on screen — in any view.
+    //
+    // This half sat behind the Drafts test below along with the insert, and the
+    // two are different questions. A search of all mailboxes lists drafts too,
+    // and opens them; the save deletes the UID those rows and the reader hold,
+    // so the reader went on showing a draft that no longer existed, and a
+    // Discard from the composer named one it had never heard of.
+    //
+    // Matched on mailbox AND UID: a UID is unique only within its mailbox, and
+    // a search of all mailboxes lists several.
+    const oldKey = oldUid ? messageKey(oldMailbox || mailbox, oldUid) : null;
+    const replaced = (m: any) => ({
+      ...m,
+      UID: nextUid,
+      // Only a row that names its mailbox has one to move; the rest are the
+      // view's own, and the view is where the draft went.
+      ...(m.Mailbox ? { Mailbox: mailbox } : {}),
+      Size: size || m.Size,
+      RFC822Size: size || m.RFC822Size,
+      HasAttachments: hasAttachments,
+      _isAutosaveUpdate: true,
+      Envelope: {
+        ...m.Envelope,
+        Subject: subject || m.Envelope?.Subject || '(No subject)'
+      }
+    });
 
-          // Preserve active message selection
-          if (this.selectedMessage && String(this.selectedMessage.UID) === String(oldUid)) {
-            this.selectedMessage = updated[idx];
-            this.targetUid = String(parsedNewUid);
+    if (oldKey) {
+      // Search top-level messages first
+      const idx = this.messages.findIndex(m => this.keyOf(m) === oldKey);
+      if (idx !== -1) {
+        const updated = [...this.messages];
+        updated[idx] = replaced(updated[idx]);
+        this.messages = updated;
+        found = true;
 
-            // Silently update the hash so a page reload opens the new draft, without triggering a re-render
-            let currentHash = window.location.hash;
-            if (currentHash.includes(`/${oldUid}`)) {
-              currentHash = currentHash.replace(`/${oldUid}`, `/${parsedNewUid}`);
-            } else if (currentHash.includes(`uid=${oldUid}`)) {
-              currentHash = currentHash.replace(`uid=${oldUid}`, `uid=${parsedNewUid}`);
-            }
-            window.history.replaceState(null, '', currentHash);
-          }
-        } else {
-          // Search in SubMessages of all messages (threads)
-          for (let i = 0; i < this.messages.length; i++) {
-            const parent = this.messages[i];
-            if (parent.SubMessages) {
-              const subIdx = parent.SubMessages.findIndex((sm: any) => String(sm.UID) === String(oldUid));
-              if (subIdx !== -1) {
-                const updatedSubMessages = [...parent.SubMessages];
-                updatedSubMessages[subIdx] = {
-                  ...updatedSubMessages[subIdx],
-                  UID: parsedNewUid,
-                  Size: size || updatedSubMessages[subIdx].Size,
-                  RFC822Size: size || updatedSubMessages[subIdx].RFC822Size,
-                  HasAttachments: hasAttachments,
-                  _isAutosaveUpdate: true,
-                  Envelope: {
-                    ...updatedSubMessages[subIdx].Envelope,
-                    Subject: subject || updatedSubMessages[subIdx].Envelope?.Subject || '(No subject)'
-                  }
-                };
+        // Preserve active message selection
+        if (this.selectedMessage && this.keyOf(this.selectedMessage) === oldKey) {
+          this.followAutosavedSelection(updated[idx]);
+        }
+      } else {
+        // Search in SubMessages of all messages (threads)
+        for (let i = 0; i < this.messages.length; i++) {
+          const parent = this.messages[i];
+          if (parent.SubMessages) {
+            const subIdx = parent.SubMessages.findIndex((sm: any) => this.keyOf(sm) === oldKey);
+            if (subIdx !== -1) {
+              const updatedSubMessages = [...parent.SubMessages];
+              updatedSubMessages[subIdx] = replaced(updatedSubMessages[subIdx]);
 
-                const updatedMessages = [...this.messages];
-                updatedMessages[i] = {
-                  ...parent,
-                  SubMessages: updatedSubMessages
-                };
-                this.messages = updatedMessages;
-                found = true;
+              const updatedMessages = [...this.messages];
+              updatedMessages[i] = {
+                ...parent,
+                SubMessages: updatedSubMessages
+              };
+              this.messages = updatedMessages;
+              found = true;
 
-                // Preserve active message selection if we were viewing this sub-message draft
-                if (this.selectedMessage && String(this.selectedMessage.UID) === String(oldUid)) {
-                  this.selectedMessage = updatedSubMessages[subIdx];
-                  this.targetUid = String(parsedNewUid);
-
-                  let currentHash = window.location.hash;
-                  if (currentHash.includes(`/${oldUid}`)) {
-                    currentHash = currentHash.replace(`/${oldUid}`, `/${parsedNewUid}`);
-                  } else if (currentHash.includes(`uid=${oldUid}`)) {
-                    currentHash = currentHash.replace(`uid=${oldUid}`, `uid=${parsedNewUid}`);
-                  }
-                  window.history.replaceState(null, '', currentHash);
-                }
-                break;
+              // Preserve active message selection if we were viewing this sub-message draft
+              if (this.selectedMessage && this.keyOf(this.selectedMessage) === oldKey) {
+                this.followAutosavedSelection(updatedSubMessages[subIdx]);
               }
+              break;
             }
           }
         }
       }
 
-      if (!found) {
-        const draftName = this.settingsStore?.getState().name || this.username;
-        const draftEmailParts = (this.username || '').split('@');
-        const draftMailboxStr = draftEmailParts[0] || '';
-        const draftHostStr = draftEmailParts[1] || '';
-
-        // If the draft was completely new or the old UID was out of sync, insert it at the top
-        const newDraft = {
-          UID: parsedNewUid,
-          Size: size || 0,
-          RFC822Size: size || 0,
-          HasAttachments: hasAttachments,
-          Flags: [FLAG_SEEN, FLAG_DRAFT],
-          _isAutosaveUpdate: true,
-          Envelope: {
-            Subject: subject || '(No subject)',
-            Date: new Date().toISOString(),
-            From: [{ Name: draftName, Mailbox: draftMailboxStr, Host: draftHostStr }]
-          }
-        };
-        // Also remove any existing draft with the same oldUid if it exists but wasn't caught
-        const filtered = this.messages.filter(m => String(m.UID) !== String(oldUid) && String(m.UID) !== String(newUid));
-        this.messages = [newDraft, ...filtered];
+      // The open draft with no row under it: opened from a page the list has
+      // since moved past.
+      if (!found && this.selectedMessage && this.keyOf(this.selectedMessage) === oldKey) {
+        this.followAutosavedSelection(replaced(this.selectedMessage));
       }
+    }
+
+    // A save that matched no row is a new row only where drafts are listed.
+    if (!found && this.currentMailbox === mailbox) {
+      const draftName = this.settingsStore?.getState().name || this.username;
+      const draftEmailParts = (this.username || '').split('@');
+      const draftMailboxStr = draftEmailParts[0] || '';
+      const draftHostStr = draftEmailParts[1] || '';
+
+      // If the draft was completely new or the old UID was out of sync, insert it at the top
+      const newDraft = {
+        UID: nextUid,
+        Size: size || 0,
+        RFC822Size: size || 0,
+        HasAttachments: hasAttachments,
+        Flags: [FLAG_SEEN, FLAG_DRAFT],
+        _isAutosaveUpdate: true,
+        Envelope: {
+          Subject: subject || '(No subject)',
+          Date: new Date().toISOString(),
+          From: [{ Name: draftName, Mailbox: draftMailboxStr, Host: draftHostStr }]
+        }
+      };
+      // Also remove any existing draft with the same oldUid if it exists but wasn't caught
+      const filtered = this.messages.filter(m => String(m.UID) !== String(oldUid) && String(m.UID) !== String(newUid));
+      this.messages = [newDraft, ...filtered];
     }
   };
 
@@ -748,7 +851,7 @@ export class MailboxPage extends LitElement {
       if (data.Messages) {
         this.messages = data.Messages;
         if (this.selectedMessage) {
-          const updatedMsg = this.messages.find((m: any) => String(m.UID) === String(this.selectedMessage.UID));
+          const updatedMsg = this.messages.find((m: any) => this.isOpen(m));
           if (updatedMsg && updatedMsg.Flags) {
             this.selectedMessage = { ...this.selectedMessage, Flags: updatedMsg.Flags };
           }
@@ -793,6 +896,7 @@ export class MailboxPage extends LitElement {
     const oldMailbox = this.currentMailbox;
     const oldPage = this.currentPage;
     const oldUid = this.targetUid;
+    const oldUidMailbox = this.targetMailbox;
     const oldFilter = this.filterQuery;
 
     this.extractMailboxFromHash();
@@ -801,7 +905,7 @@ export class MailboxPage extends LitElement {
       if (oldMailbox !== this.currentMailbox) {
         this.selectedMessage = null; // Reset selection on mailbox change
         this.currentPage = 0; // Reset pagination on mailbox change
-        this.selectedUids = new Set(); // Reset selection on mailbox change
+        this.selectedKeys = new Set(); // Reset selection on mailbox change
 
         // Do not clear this.messages to prevent UI flash, let it be replaced when network returns
         this.loadingMessages = true; // Show loading immediately
@@ -811,7 +915,7 @@ export class MailboxPage extends LitElement {
         this.currentPage = 0;
       }
       messageSync.fetch(this.currentMailbox, this.currentPage, this.filterQuery, false);
-    } else if (oldUid !== this.targetUid) {
+    } else if (oldUid !== this.targetUid || oldUidMailbox !== this.targetMailbox) {
       this.applyTargetUid();
     }
   };
@@ -850,7 +954,16 @@ export class MailboxPage extends LitElement {
     }
   }
 
-  private updateUrl(mailbox: string, page: number, uid: string | null, filterQuery: string | null = this.filterQuery) {
+  /**
+   * `uidMailbox` is the folder the opened message is in, written only where it
+   * is not the folder being viewed: a search across every folder lists several,
+   * and the same UID can be in each of them.
+   */
+  private updateUrl(mailbox: string, page: number, uid: string | null, filterQuery: string | null = this.filterQuery, uidMailbox: string | null = null) {
+    window.location.hash = this.hashFor(mailbox, page, uid, filterQuery, uidMailbox);
+  }
+
+  private hashFor(mailbox: string, page: number, uid: string | null, filterQuery: string | null, uidMailbox: string | null): string {
     let hash = `#/mailbox/${encodeURIComponent(mailbox)}`;
     const params = new URLSearchParams();
     if (page > 0) {
@@ -858,6 +971,7 @@ export class MailboxPage extends LitElement {
     }
     if (uid) {
       params.set('uid', uid);
+      if (uidMailbox && uidMailbox !== mailbox) params.set('in', uidMailbox);
     }
     if (filterQuery) {
       params.set('q', filterQuery);
@@ -866,7 +980,17 @@ export class MailboxPage extends LitElement {
     if (qs) {
       hash += '?' + qs;
     }
-    window.location.hash = hash;
+    return hash;
+  }
+
+  /** Opens the message a key names, in the view given, or closes the reader. */
+  private openKeyInUrl(view: string, page: number, key: string | null) {
+    if (!key) {
+      this.updateUrl(view, page, null);
+      return;
+    }
+    const { mailbox, uid } = parseMessageKey(key);
+    this.updateUrl(view, page, uid, undefined, mailbox);
   }
 
   private extractMailboxFromHash() {
@@ -887,8 +1011,10 @@ export class MailboxPage extends LitElement {
 
       if (parts.length > 1 && parts[1]) {
         this.targetUid = parts[1];
+        this.targetMailbox = null;
       } else {
         this.targetUid = params.get('uid') || null;
+        this.targetMailbox = this.targetUid ? params.get('in') || null : null;
       }
 
       const pageParam = params.get('p');
@@ -901,6 +1027,7 @@ export class MailboxPage extends LitElement {
     } else {
       this.currentMailbox = FOLDER_INBOX;
       this.targetUid = null;
+      this.targetMailbox = null;
       this.currentPage = 0;
     }
   }
@@ -916,17 +1043,20 @@ export class MailboxPage extends LitElement {
     }
 
     const currentTargetUid = this.targetUid;
-    let msg = this.messages.find(m => String(m.UID) === currentTargetUid);
+    const currentTargetMailbox = this.targetMailbox;
+    const mailbox = currentTargetMailbox || this.currentMailbox;
+    const targetKey = messageKey(mailbox, currentTargetUid);
+    let msg = this.messages.find(m => this.keyOf(m) === targetKey);
 
     // If the message is not on the current page (e.g. it shifted or we changed pages),
     // fetch its metadata directly from the backend so the reader can still display it.
     if (!msg && this.messages.length > 0) {
       try {
-        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.currentMailbox)}/messages/${currentTargetUid}`);
+        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${currentTargetUid}`);
         if (metadataRes.ok) {
           const data = await metadataRes.json();
           if (data.Message) {
-            msg = data.Message;
+            msg = { ...data.Message, Mailbox: data.Message.Mailbox || mailbox };
           }
         }
       } catch (err) {
@@ -935,10 +1065,10 @@ export class MailboxPage extends LitElement {
     }
 
     // Prevent race conditions if the user clicked another message while we were fetching
-    if (this.targetUid !== currentTargetUid) return;
+    if (this.targetUid !== currentTargetUid || this.targetMailbox !== currentTargetMailbox) return;
 
     if (msg) {
-      if (this.selectedMessage?.UID !== msg.UID) {
+      if (!this.isOpen(msg)) {
         this.selectedMessage = msg;
         if (this.layoutMode === 'full') {
           // A new Set, not clear(): this is @state and bound to the folder list,
@@ -959,7 +1089,7 @@ export class MailboxPage extends LitElement {
 
 
   private async selectMessage(msg: any) {
-    this.updateUrl(this.currentMailbox, this.currentPage, msg.UID);
+    this.openKeyInUrl(this.currentMailbox, this.currentPage, this.keyOf(msg));
   }
 
   private _scheduleMarkAsRead(msg: any) {
@@ -982,25 +1112,42 @@ export class MailboxPage extends LitElement {
     }
   }
 
-  private updateLocalMessageFlags(uids: string[], flag: string, action: 'add' | 'remove') {
+  /** Paints a flag on the listed messages the keys name, and tells the reader. */
+  private updateLocalMessageFlags(keys: string[], flag: string, action: 'add' | 'remove') {
+    const named = new Set(keys);
     let updated = false;
     const newMessages = [...this.messages];
+    const withFlag = (msg: any) => {
+      const hasFlag = !!msg.Flags?.includes(flag);
+      if (action === 'add' && !hasFlag) return { ...msg, Flags: [...(msg.Flags || []), flag] };
+      if (action === 'remove' && hasFlag) return { ...msg, Flags: msg.Flags.filter((f: string) => f !== flag) };
+      return msg;
+    };
     for (let i = 0; i < newMessages.length; i++) {
-      const msg = newMessages[i];
-      if (uids.includes(String(msg.UID))) {
-        const hasFlag = msg.Flags && msg.Flags.includes(flag);
-        if (action === 'add' && !hasFlag) {
-          newMessages[i] = { ...msg, Flags: [...(msg.Flags || []), flag] };
+      let msg = newMessages[i];
+      if (named.has(this.keyOf(msg))) {
+        const next = withFlag(msg);
+        if (next !== msg) {
+          newMessages[i] = msg = next;
           updated = true;
-        } else if (action === 'remove' && hasFlag) {
-          newMessages[i] = { ...msg, Flags: msg.Flags.filter((f: string) => f !== flag) };
+        }
+      }
+      // A thread's other messages are rows too — the list draws each with its
+      // own unread and star once the thread is expanded — and the open
+      // conversation marks them read. Left alone, they stayed bold until the
+      // next sync, and the reader, which rebuilds its cards from these rows,
+      // went back to showing them unread.
+      if (msg.SubMessages?.some((sub: any) => named.has(this.keyOf(sub)))) {
+        const subs = msg.SubMessages.map((sub: any) => (named.has(this.keyOf(sub)) ? withFlag(sub) : sub));
+        if (subs.some((sub: any, j: number) => sub !== msg.SubMessages[j])) {
+          newMessages[i] = { ...msg, SubMessages: subs };
           updated = true;
         }
       }
     }
     if (updated) {
       this.messages = newMessages;
-      if (this.selectedMessage && uids.includes(String(this.selectedMessage.UID))) {
+      if (this.selectedMessage && named.has(this.keyOf(this.selectedMessage))) {
         const hasFlag = this.selectedMessage.Flags && this.selectedMessage.Flags.includes(flag);
         if (action === 'add' && !hasFlag) {
           this.selectedMessage.Flags = [...(this.selectedMessage.Flags || []), flag];
@@ -1023,30 +1170,47 @@ export class MailboxPage extends LitElement {
       // a re-fetch. The detail shape below is exactly this method's parameters,
       // which is how the handler was written to be called.
       window.dispatchEvent(new CustomEvent('external-message-flags-changed', {
-        detail: { uids, flag, action }
+        detail: { keys, flag, action }
       }));
     }
   }
 
+  /**
+   * The star on a list row. The row is the list's to describe: `messages` is
+   * what it stands for, the whole thread when it is collapsed. See
+   * {@link starWrite} for what is written.
+   */
   private async _handleListToggleStar(e: CustomEvent) {
     const msg = e.detail.message;
-    const isStarred = msg.Flags && msg.Flags.includes(FLAG_FLAGGED);
-    const action = isStarred ? 'remove' : 'add';
+    const { keys, op } = this.starWrite([{ face: msg, messages: e.detail.messages ?? [msg] }]);
+    const undo = op === 'add' ? 'remove' : 'add';
 
     // Optimistic UI update
-    this.updateLocalMessageFlags([String(msg.UID)], FLAG_FLAGGED, action);
+    this.updateLocalMessageFlags(keys, FLAG_FLAGGED, op);
 
+    // A thread's messages can sit in several folders (a search across them), so
+    // the write goes folder by folder, and only what a folder REFUSED is put
+    // back — what the others took is done.
+    const written = new Set<string>();
+    let refused: FlagResult | undefined;
     try {
-      const result = await messageOperations.setFlag(this.currentMailbox, [String(msg.UID)], [FLAG_FLAGGED], action);
-      if (!result.ok) {
-        // Revert on failure, and say so: a star that flicks back on its own reads
-        // as a misclick, and the toolbar's star reports the same refusal.
-        this.updateLocalMessageFlags([String(msg.UID)], FLAG_FLAGGED, isStarred ? 'add' : 'remove');
-        this.reportFlagFailure(result);
-      }
+      const outcome = await this.eachFolder(keys, async (mailbox, uids) => {
+        const result = await messageOperations.setFlag(mailbox, uids, [FLAG_FLAGGED], op);
+        // Noted as each folder answers, so a later folder that throws does not
+        // take back the paint of one that already took the write.
+        if (result.ok) for (const uid of uids) written.add(messageKey(mailbox, uid));
+        return result;
+      });
+      refused = outcome.refused;
     } catch (err) {
-      // Revert on failure
-      this.updateLocalMessageFlags([String(msg.UID)], FLAG_FLAGGED, isStarred ? 'add' : 'remove');
+      // Revert below: nothing is known to have been written past `written`.
+    }
+    const unwritten = keys.filter(key => !written.has(key));
+    if (unwritten.length > 0) {
+      // Revert, and say so: a star that flicks back on its own reads as a
+      // misclick, and the toolbar's star reports the same refusal.
+      this.updateLocalMessageFlags(unwritten, FLAG_FLAGGED, undo);
+      if (refused) this.reportFlagFailure(refused);
     }
   }
 
@@ -1062,48 +1226,308 @@ export class MailboxPage extends LitElement {
     // Selection is checked AFTER the await. It was checked before, so a user who
     // moved to another message while this was in flight had the old message
     // written back over their new selection.
-    const updated = await messageOperations.markAsRead(this.currentMailbox, msg);
+    const updated = await messageOperations.markAsRead(this.mailboxOf(msg), msg);
     if (!updated?.Flags?.includes(FLAG_SEEN)) return;
-    if (this.selectedMessage?.UID === msg.UID) this.selectedMessage = updated;
-    this.updateLocalMessageFlags([String(updated.UID)], FLAG_SEEN, 'add');
+    if (this.isOpen(msg)) this.selectedMessage = updated;
+    this.updateLocalMessageFlags([this.keyOf(msg)], FLAG_SEEN, 'add');
   }
 
-  private async _handleReaderAction(e: CustomEvent) {
-    const action = e.detail.action;
-    const isBulk = this.selectedUids && this.selectedUids.size > 0;
-    const uidsArray = isBulk ? Array.from(this.selectedUids) : [];
+  /**
+   * A card's own verb, on the message the card NAMES.
+   *
+   * Handled before anything reads the selection, because the card is about its
+   * message whatever is checked or open — and in a folder of its own: a
+   * conversation shows your replies from Sent, and a UID means nothing outside
+   * its folder.
+   */
+  private async handleNamedMessageAction(detail: ReaderActionDetail) {
+    const uid = String(detail.uid);
+    const mailbox = detail.mailbox!;
+    const key = messageKey(mailbox, uid);
+    const isOpen = !!this.selectedMessage && this.keyOf(this.selectedMessage) === key;
 
-    if (!isBulk && !this.selectedMessage?.UID) return;
+    if (detail.action === 'downloadMessage') {
+      const a = document.createElement('a');
+      a.href = `/mailboxes/${encodeMailboxPath(mailbox)}/messages/${uid}/raw`;
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
+    if (detail.action === 'showOriginal') {
+      window.open(`#/original?mailbox=${encodeURIComponent(mailbox)}&uid=${uid}`, '_blank');
+      return;
+    }
+    if (detail.action === 'markUnread') {
+      // Never a toggle: the card offers "Mark as unread" only on a message that
+      // is read, and marks read by itself. It ends where the toolbar's does —
+      // back on the list, where the row is bold again.
+      const seen = await messageOperations.setFlag(mailbox, [uid], [FLAG_SEEN], 'remove');
+      if (!seen.ok) {
+        this.reportFlagFailure(seen);
+        return;
+      }
+      this.updateLocalMessageFlags([key], FLAG_SEEN, 'remove');
+      this.selectedMessage = null;
+      this.updateUrl(this.currentMailbox, this.currentPage, null);
+      return;
+    }
+    if (detail.action !== 'delete') return;
+
+    // As the toolbar's Delete does it for a single message, decided by the
+    // folder the MESSAGE is in: where a move to Trash would change nothing, the
+    // delete is permanent, and asks first.
+    if (this.deletesForGood(mailbox)) {
+      this.pendingDeleteDetails = {
+        isBulk: false,
+        doomed: [key],
+        toTrash: [],
+        isDrafts: mailboxRoleByName(mailbox, this.mailboxes) === 'drafts',
+        named: { isOpen, nextUid: detail.nextUid, done: detail.done },
+      };
+      this.showDeleteConfirm = true;
+      return;
+    }
+
+    const trash = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
+    const view = this.currentMailbox;
+    const moved = await messageOperations.moveMessages(mailbox, [uid], trash);
+    if (!moved.success) {
+      detail.done?.(false);
+      if (moved.reason !== 'auth') this.reportActionFailed('toast.moveFailed', 'Could not move that');
+      return;
+    }
+    detail.done?.(true);
+    if (isOpen) this.leaveDeletedMessage(detail.nextUid);
+
+    const inTrash = moved.uidMapping?.[uid];
+    const undoFn = inTrash ? async () => {
+      try {
+        const back = await messageOperations.moveMessages(trash, [inTrash], mailbox);
+        if (!back.success) {
+          if (back.reason !== 'auth') this.reportActionFailed('toast.undoFailed', 'Could not undo that');
+          return;
+        }
+        const restored = back.uidMapping?.[inTrash];
+        if (isOpen) {
+          // Back to the message that was being read, as the toolbar's undo does.
+          const page = this.currentMailbox === view ? this.currentPage : 0;
+          this.openKeyInUrl(view, page, restored ? messageKey(mailbox, restored) : null);
+        } else {
+          // Another card: it is back under a new UID, and the conversation on
+          // screen has to be read again to show it.
+          (this.renderRoot.querySelector('alps-message-reader') as MessageReader | null)?.reloadConversation();
+        }
+      } catch (err) {
+        Logger.error('Undo failed', err);
+        this.reportActionFailed('toast.undoFailed', 'Could not undo that');
+      }
+    } : undefined;
+    this.showGlobalToast(
+      this.i18nStore?.t('toast.messageMovedToTrash'),
+      undoFn ? this.i18nStore?.t('mailboxPage.undo') : '',
+      undoFn,
+      UNDO_TOAST_TIMEOUT_MS,
+    );
+  }
+
+  /** The open message is gone and its conversation is not: stay on what is
+   * left of it, or go back to the list when nothing is. */
+  private leaveDeletedMessage(nextUid: string | undefined) {
+    if (nextUid) {
+      this.updateUrl(this.currentMailbox, this.currentPage, nextUid);
+      return;
+    }
+    this.selectedMessage = null;
+    this.updateUrl(this.currentMailbox, this.currentPage, null);
+  }
+
+  /**
+   * Runs a write once per folder over the messages the keys name: a UID means
+   * nothing outside its own folder, and a search across every folder checks
+   * rows from several. One folder at a time, as the chunks of one write go, and
+   * every folder is tried, so a refusal in one does not leave the rest undone —
+   * except an expired session, which every folder would answer the same way.
+   * Answers what each folder's write took, and the first refusal.
+   */
+  private async eachFolder<R extends { ok: boolean; reason?: string }>(
+    keys: string[],
+    write: (mailbox: string, uids: string[]) => Promise<R>,
+  ): Promise<{ done: { mailbox: string; uids: string[]; result: R }[]; refused?: R }> {
+    const done: { mailbox: string; uids: string[]; result: R }[] = [];
+    let refused: R | undefined;
+    for (const [mailbox, uids] of uidsByMailbox(keys)) {
+      const result = await write(mailbox, uids);
+      if (result.ok) {
+        done.push({ mailbox, uids, result });
+        continue;
+      }
+      refused ??= result;
+      if (result.reason === 'auth') break;
+    }
+    return { done, refused };
+  }
+
+  /** The keys of what {@link eachFolder} wrote. */
+  private writtenKeys(done: { mailbox: string; uids: string[] }[]): string[] {
+    return done.flatMap(({ mailbox, uids }) => uids.map(uid => messageKey(mailbox, uid)));
+  }
+
+  /**
+   * Sets or clears flags on the messages the keys name, and paints what each
+   * folder took. The result used to be discarded and the paint applied
+   * regardless, so a refused write showed as done until the next sync silently
+   * undid it.
+   */
+  private async flagEach(keys: string[], flags: string[], op: 'add' | 'remove'): Promise<FlagResult> {
+    const { refused } = await this.eachFolder(keys, async (mailbox, uids) => {
+      const result = await messageOperations.setFlag(mailbox, uids, flags, op);
+      if (result.ok) {
+        const written = uids.map(uid => messageKey(mailbox, uid));
+        for (const flag of flags) this.updateLocalMessageFlags(written, flag, op);
+      }
+      return result;
+    });
+    return refused ?? { ok: true };
+  }
+
+  /**
+   * Files the messages the keys name in `to` — Trash, Archive, Junk, the Inbox
+   * or a folder the user picked — says so, and offers to put each back in the
+   * folder it came from. A message already in `to` is left where it is: a move
+   * into its own folder changes nothing.
+   */
+  private async fileAway(keys: string[], to: string, isBulk: boolean, say: (count: number) => string) {
+    const view = this.currentMailbox;
+    const open = this.selectedMessage ? this.keyOf(this.selectedMessage) : undefined;
+    const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
+      if (from === to) return { ok: true, uidMapping: {} };
+      const result = await messageOperations.moveMessages(from, uids, to);
+      return { ok: result.success, reason: result.reason, uidMapping: result.uidMapping ?? {} };
+    });
+
+    const filed = this.writtenKeys(done);
+    if (filed.length > 0) {
+      if (isBulk) this.selectedKeys = new Set([...this.selectedKeys].filter(key => !filed.includes(key)));
+      this.selectedMessage = null;
+      this.updateUrl(this.currentMailbox, this.currentPage, null);
+
+      const moved = done
+        .filter(({ mailbox }) => mailbox !== to)
+        .map(({ mailbox, result }) => ({ from: mailbox, mapping: result.uidMapping }));
+      const undoFn = this.undoMoves(moved, to, view, isBulk ? undefined : open);
+      this.showGlobalToast(say(filed.length), undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
+    }
+    if (refused && refused.reason !== 'auth') this.reportActionFailed('toast.moveFailed', 'Could not move that');
+  }
+
+  /**
+   * The undo of a move: each folder's messages go back to that folder. After
+   * the open message, alone or with the rest of its conversation, the reader
+   * reopens on the message that was being read (`reopen`, its key before the
+   * move); after checked rows, they are checked again where they are listed.
+   */
+  private undoMoves(
+    moved: { from: string; mapping: Record<string, string> }[],
+    to: string,
+    view: string,
+    reopen: string | undefined,
+  ): (() => Promise<void>) | undefined {
+    const back = moved.filter(({ mapping }) => Object.keys(mapping).length > 0);
+    if (back.length === 0) return undefined;
+    return async () => {
+      try {
+        const restored: string[] = [];
+        let reopened: string | null = null;
+        let refused: MoveResult | undefined;
+        for (const { from, mapping } of back) {
+          const result = await messageOperations.moveMessages(to, Object.values(mapping), from);
+          if (!result.success) {
+            refused ??= result;
+            if (result.reason === 'auth') break;
+            continue;
+          }
+          for (const [was, now] of Object.entries(mapping)) {
+            const again = result.uidMapping?.[now];
+            if (!again) continue;
+            restored.push(messageKey(from, again));
+            if (reopen === messageKey(from, was)) reopened = messageKey(from, again);
+          }
+        }
+        if (refused && refused.reason !== 'auth') this.reportActionFailed('toast.undoFailed', 'Could not undo that');
+        if (restored.length === 0) return;
+        if (reopen !== undefined) {
+          const page = this.currentMailbox === view ? this.currentPage : 0;
+          this.openKeyInUrl(view, page, reopened);
+        } else if (this.currentMailbox === view) {
+          this.selectedKeys = new Set([...this.selectedKeys, ...restored]);
+        }
+      } catch (err) {
+        Logger.error("Undo failed", err);
+        this.reportActionFailed('toast.undoFailed', 'Could not undo that');
+      }
+    };
+  }
+
+  /**
+   * Whether a Delete in this folder is for good: where a move to Trash would
+   * change nothing. By IMAP special-use attribute, falling back to well-known
+   * names, so Gmail's "[Gmail]/Trash" etc. are recognized.
+   */
+  private deletesForGood(mailbox: string): boolean {
+    const role = mailboxRoleByName(mailbox, this.mailboxes);
+    return role === 'trash' || role === 'drafts' || role === 'junk';
+  }
+
+  /** What a toast says of messages filed away by `action`. */
+  private movedMessage(action: string, many: boolean, count: number, folder = ''): string {
+    const [several, one] = ({
+      archive: ['toast.messagesMovedToArchive', 'toast.messageMovedToArchive'],
+      reportSpam: ['toast.messagesMovedToSpam', 'toast.messageMovedToSpam'],
+      notSpam: ['toast.messagesMovedToInbox', 'toast.messageMovedToInbox'],
+      moveTo: ['toast.messagesMovedToFolder', 'toast.messageMovedToFolder'],
+    } as Record<string, [string, string]>)[action] ?? ['toast.messagesMovedToTrash', 'toast.messageMovedToTrash'];
+    return many ? this.i18nStore?.t(several, { count, folder }) : this.i18nStore?.t(one, { folder });
+  }
+
+  private async _handleReaderAction(e: CustomEvent<ReaderActionDetail>) {
+    const action = e.detail.action;
+    if (e.detail.uid && e.detail.mailbox) return this.handleNamedMessageAction(e.detail);
+    const isBulk = this.selectedKeys.size > 0;
+    const currentMsg = this.selectedMessage;
+
+    if (!isBulk && !currentMsg?.UID) return;
+
+    /** The open message, by key. */
+    const open = isBulk ? [] : [this.keyOf(currentMsg)];
+    /**
+     * What a gesture acts on, by key: the checked rows; else the open
+     * conversation's messages in this folder when the reader names them — its
+     * toolbar is about the whole conversation — or else the open message.
+     */
+    const targets: string[] = isBulk
+      ? [...this.selectedKeys]
+      : e.detail.uids?.length
+        ? e.detail.uids.map(uid => messageKey(this.currentMailbox, uid))
+        : open;
+    /** Whether to say "N messages" — a conversation of several is several. */
+    const many = isBulk || targets.length > 1;
 
     if (isBulk) this.bulkProcessing = true;
 
     try {
-      const currentMsg = this.selectedMessage;
-      const originalMailbox = this.currentMailbox;
-
       if (action === 'star') {
-        if (isBulk) {
-          const op = this.allSelectedStarred ? 'remove' : 'add';
-          // The result used to be discarded and the paint applied regardless, so
-          // a refused write showed as done until the next sync silently undid it.
-          const starred = await messageOperations.setFlag(this.currentMailbox, uidsArray, [FLAG_FLAGGED], op);
-          if (starred.ok) {
-            this.updateLocalMessageFlags(uidsArray, FLAG_FLAGGED, op);
-          } else {
-            this.reportFlagFailure(starred);
-          }
-        } else if (currentMsg?.UID) {
-          // setFlag, not toggleStar: that returned the message unchanged on a
-          // refusal, so the star stayed as it was and nothing said why, while the
-          // bulk branch above reports the same refusal.
-          const op = currentMsg.Flags?.includes(FLAG_FLAGGED) ? 'remove' : 'add';
-          const starred = await messageOperations.setFlag(this.currentMailbox, [String(currentMsg.UID)], [FLAG_FLAGGED], op);
-          if (starred.ok) {
-            this.updateLocalMessageFlags([String(currentMsg.UID)], FLAG_FLAGGED, op);
-          } else {
-            this.reportFlagFailure(starred);
-          }
-        }
+        // setFlag, not toggleStar: that returned the message unchanged on a
+        // refusal, so the star stayed as it was and nothing said why.
+        // Over checked rows the star is each conversation's — see `starWrite`.
+        // In the reader it is the open message's own: every card there has a
+        // star of its own, and the toolbar's is the open one's.
+        const write = isBulk
+          ? this.starWrite(this.selectedStarRows)
+          : { keys: open, op: (currentMsg.Flags?.includes(FLAG_FLAGGED) ? 'remove' : 'add') as 'add' | 'remove' };
+        const result = await this.flagEach(write.keys, [FLAG_FLAGGED], write.op);
+        if (!result.ok) this.reportFlagFailure(result);
       } else if (action === 'addTag' || action === 'removeTag') {
         const tags = e.detail.tags || (e.detail.folder ? [e.detail.folder] : []);
         if (!tags || tags.length === 0) return;
@@ -1111,50 +1535,31 @@ export class MailboxPage extends LitElement {
         // Tags are the path this matters most on: the backend stores only
         // `$label1`..`$label5` and used to answer 200 OK for anything else, so a
         // tag it would never keep was painted here and quietly erased later.
-        const targets = isBulk ? uidsArray : [String(currentMsg.UID)];
-        const tagged = await messageOperations.setFlag(this.currentMailbox, targets, tags, op);
-        if (tagged.ok) {
-          for (const t of tags) this.updateLocalMessageFlags(targets, t, op);
-        } else {
-          this.reportFlagFailure(tagged);
-        }
+        const result = await this.flagEach(targets, tags, op);
+        if (!result.ok) this.reportFlagFailure(result);
         this.requestUpdate();
       } else if (action === 'markUnread') {
         if (isBulk) {
-          const op = this.allSelectedUnread ? 'add' : 'remove';
-          const seen = await messageOperations.setFlag(this.currentMailbox, uidsArray, [FLAG_SEEN], op);
-          if (seen.ok) {
-            this.updateLocalMessageFlags(uidsArray, FLAG_SEEN, op);
-          } else {
-            this.reportFlagFailure(seen);
-          }
+          const result = await this.flagEach(targets, [FLAG_SEEN], this.allSelectedUnread ? 'add' : 'remove');
+          if (!result.ok) this.reportFlagFailure(result);
         } else {
           // setFlag, not markAsRead/markAsUnread: those hid the FlagResult, so the read
           // branch painted the row read even when the write failed, and the unread
           // branch said nothing when it did. The bulk branch above already did this.
-          if (currentMsg?.UID) {
-            const isUnread = !currentMsg.Flags || !currentMsg.Flags.includes(FLAG_SEEN);
-            const seen = await messageOperations.setFlag(this.currentMailbox, [String(currentMsg.UID)], [FLAG_SEEN], isUnread ? 'add' : 'remove');
-            if (!seen.ok) {
-              this.reportFlagFailure(seen);
-            } else if (isUnread) {
-              this.selectedMessage = { ...currentMsg, Flags: [...(currentMsg.Flags || []), FLAG_SEEN] };
-              this.updateLocalMessageFlags([String(currentMsg.UID)], FLAG_SEEN, 'add');
-            } else {
-              this.updateLocalMessageFlags([String(currentMsg.UID)], FLAG_SEEN, 'remove');
-              this.selectedMessage = null;
-              this.updateUrl(this.currentMailbox, this.currentPage, null);
-            }
+          const isUnread = !currentMsg.Flags || !currentMsg.Flags.includes(FLAG_SEEN);
+          const seen = await messageOperations.setFlag(this.mailboxOf(currentMsg), [String(currentMsg.UID)], [FLAG_SEEN], isUnread ? 'add' : 'remove');
+          if (!seen.ok) {
+            this.reportFlagFailure(seen);
+          } else if (isUnread) {
+            this.selectedMessage = { ...currentMsg, Flags: [...(currentMsg.Flags || []), FLAG_SEEN] };
+            this.updateLocalMessageFlags(open, FLAG_SEEN, 'add');
+          } else {
+            this.updateLocalMessageFlags(open, FLAG_SEEN, 'remove');
+            this.selectedMessage = null;
+            this.updateUrl(this.currentMailbox, this.currentPage, null);
           }
         }
       } else if (action === 'delete' || action === 'archive' || action === 'reportSpam' || action === 'notSpam') {
-        // Classify the current mailbox by IMAP special-use attribute (falling back
-        // to well-known names) so Gmail's "[Gmail]/Trash" etc. are recognized.
-        const currentRole = mailboxRoleByName(this.currentMailbox, this.mailboxes);
-        const isTrash = currentRole === 'trash';
-        const isDrafts = currentRole === 'drafts';
-        const isSpam = currentRole === 'junk';
-        let moveResult: MoveResult = { success: false };
         // Resolve move destinations to the actual special-use mailbox (e.g. Gmail's
         // "[Gmail]/Trash") rather than a hardcoded English name. See issue #4.
         let destinationFolder = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
@@ -1162,183 +1567,46 @@ export class MailboxPage extends LitElement {
         if (action === 'reportSpam') destinationFolder = findMailboxNameByRole('junk', this.mailboxes, FOLDER_JUNK);
         if (action === 'notSpam') destinationFolder = FOLDER_INBOX;
 
-        if (action === 'delete' && (isTrash || isDrafts || isSpam)) {
-          this.pendingDeleteDetails = {
-            isBulk,
-            uidsArray,
-            currentMsgUid: currentMsg?.UID,
-            isTrash,
-            isDrafts,
-            isSpam
-          };
-          this.showDeleteConfirm = true;
-          return;
-        } else {
-          if (isBulk) {
-            moveResult = await messageOperations.moveMessages(this.currentMailbox, uidsArray, destinationFolder);
-          } else {
-            moveResult = await messageOperations.moveMessages(this.currentMailbox, [String(currentMsg.UID)], destinationFolder);
+        if (action === 'delete') {
+          // Decided by the folder each message is in, as a card's Delete is. A
+          // folder's own list is all one kind; a search across every folder can
+          // check both, and then one question covers the part that is for good.
+          const doomed = targets.filter(key => this.deletesForGood(parseMessageKey(key).mailbox));
+          if (doomed.length > 0) {
+            this.pendingDeleteDetails = {
+              isBulk,
+              doomed,
+              toTrash: targets.filter(key => !doomed.includes(key)),
+              isDrafts: doomed.every(key => mailboxRoleByName(parseMessageKey(key).mailbox, this.mailboxes) === 'drafts'),
+            };
+            this.showDeleteConfirm = true;
+            return;
           }
         }
 
-        if (moveResult.success) {
-          if (isBulk) {
-            this.selectedUids = new Set();
-            this.selectedMessage = null;
-            this.updateUrl(this.currentMailbox, this.currentPage, null);
-            this.requestUpdate();
-          } else {
-            this.selectedMessage = null;
-            this.updateUrl(this.currentMailbox, this.currentPage, null);
-          }
-
-          let toastMessage = '';
-          let undoFn: (() => void) | undefined;
-
-          if (action === 'archive') {
-            toastMessage = isBulk 
-              ? this.i18nStore?.t('toast.messagesMovedToArchive', { count: uidsArray.length }) 
-              : this.i18nStore?.t('toast.messageMovedToArchive');
-          } else if (action === 'reportSpam') {
-            toastMessage = isBulk 
-              ? this.i18nStore?.t('toast.messagesMovedToSpam', { count: uidsArray.length }) 
-              : this.i18nStore?.t('toast.messageMovedToSpam');
-          } else if (action === 'notSpam') {
-            toastMessage = isBulk 
-              ? this.i18nStore?.t('toast.messagesMovedToInbox', { count: uidsArray.length }) 
-              : this.i18nStore?.t('toast.messageMovedToInbox');
-          } else {
-            toastMessage = isBulk 
-              ? this.i18nStore?.t('toast.messagesMovedToTrash', { count: uidsArray.length }) 
-              : this.i18nStore?.t('toast.messageMovedToTrash');
-          }
-
-          if (isBulk && moveResult.uidMapping) {
-            const mappedUids = Object.values(moveResult.uidMapping);
-            undoFn = async () => {
-              try {
-                const revertResult = await messageOperations.moveMessages(destinationFolder, mappedUids, originalMailbox);
-                if (revertResult.success) {
-                  if (this.currentMailbox === originalMailbox && revertResult.uidMapping) {
-                    const newUids = new Set(this.selectedUids);
-                    Object.values(revertResult.uidMapping).forEach(uid => newUids.add(uid));
-                    this.selectedUids = newUids;
-                    this.requestUpdate();
-                  }
-                } else if (revertResult.reason !== 'auth') {
-                  this.reportActionFailed('toast.undoFailed', 'Could not undo that');
-                }
-              } catch (err) {
-                Logger.error("Undo failed", err);
-                this.reportActionFailed('toast.undoFailed', 'Could not undo that');
-              }
-            };
-          } else if (!isBulk && moveResult.uidMapping?.[String(currentMsg.UID)]) {
-            const movedMsgMock = { UID: moveResult.uidMapping[String(currentMsg.UID)] };
-            undoFn = async () => {
-              try {
-                const revertResult = await messageOperations.moveMessages(destinationFolder, [String(movedMsgMock.UID)], originalMailbox);
-                if (revertResult.success) {
-                  const page = this.currentMailbox === originalMailbox ? this.currentPage : 0;
-                  if (revertResult.uidMapping?.[String(movedMsgMock.UID)]) {
-                    this.updateUrl(originalMailbox, page, revertResult.uidMapping[String(movedMsgMock.UID)]);
-                  } else {
-                    this.updateUrl(originalMailbox, page, null);
-                  }
-                } else if (revertResult.reason !== 'auth') {
-                  this.reportActionFailed('toast.undoFailed', 'Could not undo that');
-                }
-              } catch (err) {
-                Logger.error("Undo failed", err);
-                this.reportActionFailed('toast.undoFailed', 'Could not undo that');
-              }
-            };
-          }
-          this.showGlobalToast(toastMessage, undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
-        } else if (moveResult.reason !== 'auth') {
-          this.reportActionFailed('toast.moveFailed', 'Could not move that');
-        }
+        await this.fileAway(targets, destinationFolder, isBulk, count => this.movedMessage(action, many, count));
       } else if (action === 'moveTo' || action === 'copyTo') {
         const destinationFolder = e.detail.folder;
         if (!destinationFolder) return;
 
-        const isMove = action === 'moveTo';
-
-        let result: MoveResult = { success: false };
-        if (isMove) {
-          if (isBulk) result = await messageOperations.moveMessages(this.currentMailbox, uidsArray, destinationFolder);
-          else result = await messageOperations.moveMessages(this.currentMailbox, [String(currentMsg.UID)], destinationFolder);
+        if (action === 'moveTo') {
+          await this.fileAway(targets, destinationFolder, isBulk, count => this.movedMessage(action, many, count, destinationFolder));
         } else {
-          if (isBulk) result = await messageOperations.copyMessages(this.currentMailbox, uidsArray, destinationFolder);
-          else result = await messageOperations.copyMessages(this.currentMailbox, [String(currentMsg.UID)], destinationFolder);
-        }
-
-        if (result.success) {
-          if (isMove) {
-            if (isBulk) {
-              this.selectedUids = new Set();
-              this.selectedMessage = null;
-              this.updateUrl(this.currentMailbox, this.currentPage, null);
-              this.requestUpdate();
-            } else {
-              this.selectedMessage = null;
-              this.updateUrl(this.currentMailbox, this.currentPage, null);
-            }
+          const { done, refused } = await this.eachFolder(targets, async (from, uids): Promise<MoveOutcome> => {
+            const result = await messageOperations.copyMessages(from, uids, destinationFolder);
+            return { ok: result.success, reason: result.reason, uidMapping: {} };
+          });
+          const copied = this.writtenKeys(done).length;
+          if (copied > 0) {
+            const toastMessage = many
+              ? this.i18nStore?.t('toast.messagesCopiedToFolder', { count: copied, folder: destinationFolder })
+              : this.i18nStore?.t('toast.messageCopiedToFolder', { folder: destinationFolder });
+            this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
           }
-          let toastMessage = isMove 
-            ? (isBulk ? this.i18nStore?.t('toast.messagesMovedToFolder', { count: uidsArray.length, folder: destinationFolder }) : this.i18nStore?.t('toast.messageMovedToFolder', { folder: destinationFolder }))
-            : (isBulk ? this.i18nStore?.t('toast.messagesCopiedToFolder', { count: uidsArray.length, folder: destinationFolder }) : this.i18nStore?.t('toast.messageCopiedToFolder', { folder: destinationFolder }));
-          let undoFn: (() => void) | undefined;
-
-          if (isBulk && isMove && result.uidMapping) {
-            const mappedUids = Object.values(result.uidMapping);
-            undoFn = async () => {
-              try {
-                const revertResult = await messageOperations.moveMessages(destinationFolder, mappedUids, originalMailbox);
-                if (revertResult.success) {
-                  if (this.currentMailbox === originalMailbox && revertResult.uidMapping) {
-                    const newUids = new Set(this.selectedUids);
-                    Object.values(revertResult.uidMapping).forEach(uid => newUids.add(uid));
-                    this.selectedUids = newUids;
-                    this.requestUpdate();
-                  }
-                } else if (revertResult.reason !== 'auth') {
-                  this.reportActionFailed('toast.undoFailed', 'Could not undo that');
-                }
-              } catch (err) {
-                Logger.error("Undo failed", err);
-                this.reportActionFailed('toast.undoFailed', 'Could not undo that');
-              }
-            };
-          } else if (!isBulk && isMove && result.uidMapping?.[String(currentMsg.UID)]) {
-            const movedMsgMock = { UID: result.uidMapping[String(currentMsg.UID)] };
-            undoFn = async () => {
-              try {
-                const revertResult = await messageOperations.moveMessages(destinationFolder, [String(movedMsgMock.UID)], originalMailbox);
-                if (revertResult.success) {
-                  const page = this.currentMailbox === originalMailbox ? this.currentPage : 0;
-                  if (revertResult.uidMapping?.[String(movedMsgMock.UID)]) {
-                    this.updateUrl(originalMailbox, page, revertResult.uidMapping[String(movedMsgMock.UID)]);
-                  } else {
-                    this.updateUrl(originalMailbox, page, null);
-                  }
-                } else if (revertResult.reason !== 'auth') {
-                  this.reportActionFailed('toast.undoFailed', 'Could not undo that');
-                }
-              } catch (err) {
-                Logger.error("Undo failed", err);
-                this.reportActionFailed('toast.undoFailed', 'Could not undo that');
-              }
-            };
-          }
-          this.showGlobalToast(toastMessage, undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
-        } else if (result.reason !== 'auth') {
-          if (isMove) this.reportActionFailed('toast.moveFailed', 'Could not move that');
-          else this.reportActionFailed('toast.copyFailed', 'Could not copy that');
+          if (refused && refused.reason !== 'auth') this.reportActionFailed('toast.copyFailed', 'Could not copy that');
         }
       } else if (action === 'downloadMessage' && !isBulk) {
-        const uid = currentMsg.UID;
-        const url = `/mailboxes/${encodeMailboxPath(this.currentMailbox)}/messages/${uid}/raw`;
+        const url = `/mailboxes/${encodeMailboxPath(this.mailboxOf(currentMsg))}/messages/${currentMsg.UID}/raw`;
 
         const a = document.createElement('a');
         a.href = url;
@@ -1347,7 +1615,7 @@ export class MailboxPage extends LitElement {
         a.click();
         document.body.removeChild(a);
       } else if (action === 'showOriginal' && !isBulk) {
-        const url = `#/original?mailbox=${encodeURIComponent(this.currentMailbox)}&uid=${currentMsg.UID}`;
+        const url = `#/original?mailbox=${encodeURIComponent(this.mailboxOf(currentMsg))}&uid=${currentMsg.UID}`;
         window.open(url, '_blank');
       }
     } finally {
@@ -1361,34 +1629,41 @@ export class MailboxPage extends LitElement {
     this.pendingDeleteDetails = null;
     if (!details) return;
 
-    const { isBulk, uidsArray, currentMsgUid, isDrafts } = details;
+    const { isBulk, doomed, toTrash, isDrafts, named } = details;
+    const many = doomed.length > 1;
     if (isBulk) this.bulkProcessing = true;
     try {
-      const deleteResult = await messageOperations.deleteMessagesResult(
-        this.currentMailbox,
-        isBulk ? uidsArray : [String(currentMsgUid)],
-      );
+      const { done, refused } = await this.eachFolder(doomed, (mailbox, uids) =>
+        messageOperations.deleteMessagesResult(mailbox, uids));
+      named?.done?.(!refused);
 
-      if (deleteResult.ok) {
-        if (isBulk) {
-          this.selectedUids = new Set();
-          this.selectedMessage = null;
-          this.updateUrl(this.currentMailbox, this.currentPage, null);
-          this.requestUpdate();
+      const deleted = this.writtenKeys(done);
+      if (deleted.length > 0) {
+        if (named) {
+          // A card's Delete: the rest of the conversation stays on screen.
+          if (named.isOpen) this.leaveDeletedMessage(named.nextUid);
         } else {
+          if (isBulk) this.selectedKeys = new Set([...this.selectedKeys].filter(key => !deleted.includes(key)));
           this.selectedMessage = null;
           this.updateUrl(this.currentMailbox, this.currentPage, null);
         }
 
         let toastMessage = '';
         if (isDrafts) {
-          toastMessage = isBulk ? this.i18nStore?.t('toast.draftsDiscarded', { count: uidsArray.length }) : (this.i18nStore?.t('toast.draftDiscarded'));
+          toastMessage = many ? this.i18nStore?.t('toast.draftsDiscarded', { count: deleted.length }) : (this.i18nStore?.t('toast.draftDiscarded'));
         } else {
-          toastMessage = isBulk ? this.i18nStore?.t('toast.messagesPermanentlyDeleted', { count: uidsArray.length }) : (this.i18nStore?.t('toast.messagePermanentlyDeleted'));
+          toastMessage = many ? this.i18nStore?.t('toast.messagesPermanentlyDeleted', { count: deleted.length }) : (this.i18nStore?.t('toast.messagePermanentlyDeleted'));
         }
         this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
-      } else if (deleteResult.reason !== 'auth') {
+      }
+      if (refused && refused.reason !== 'auth') {
         this.reportActionFailed('toast.messageDeleteFailed', 'The message could not be deleted');
+      }
+
+      // The rest of the same Delete, in folders where it is a move to Trash.
+      if (toTrash.length > 0) {
+        const trash = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
+        await this.fileAway(toTrash, trash, isBulk, count => this.movedMessage('delete', isBulk || toTrash.length > 1, count));
       }
     } finally {
       if (isBulk) this.bulkProcessing = false;
@@ -1491,7 +1766,7 @@ export class MailboxPage extends LitElement {
           // Do not clear this.messages to prevent UI flash
           this.loadingMessages = true; // Show loading immediately
           this.filterQuery = '';
-          this.selectedUids = new Set();
+          this.selectedKeys = new Set();
           this.updateUrl(e.detail.name, 0, null);
         }
 
@@ -1536,7 +1811,7 @@ export class MailboxPage extends LitElement {
               .sidebarCollapsed=${this.sidebarCollapsed && !this.isMobile}
               .loading=${this.loadingMessages}
               .selectedMessage=${this.selectedMessage}
-              .selectedMessages=${this.selectedUids}
+              .selectedMessages=${this.selectedKeys}
               .layoutMode=${effectiveLayoutMode}
               .isMobile=${this.isMobile}
               .currentPage=${this.currentPage}
@@ -1557,7 +1832,7 @@ export class MailboxPage extends LitElement {
               @compose=${() => this.composeStore.openComposer()}
               @toast=${this._relayToast}
               @select-message=${(e: CustomEvent) => this.selectMessage(e.detail.message)}
-              @change-page=${(e: CustomEvent) => this.updateUrl(this.currentMailbox, e.detail.page, this.targetUid)}
+              @change-page=${(e: CustomEvent) => this.updateUrl(this.currentMailbox, e.detail.page, this.targetUid, undefined, this.targetMailbox)}
               @list-scrolled=${(e: CustomEvent) => this.listScrolled = e.detail.scrolled}
               @toggle-sort=${async () => {
         const newOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
@@ -1584,12 +1859,12 @@ export class MailboxPage extends LitElement {
                 const mailbox = e.detail.global ? '*' : this.currentMailbox;
                 this.updateUrl(mailbox, 0, null, newFilter);
               }}
-              @selection-changed=${(e: CustomEvent) => this.selectedUids = e.detail.selectedUids}
+              @selection-changed=${(e: CustomEvent) => this.selectedKeys = e.detail.selectedKeys}
               @toggle-star-message=${this._handleListToggleStar}
             >
               <div slot="mobile-bulk-actions" class="mobile-bulk-actions-container">
-                <alps-icon-btn title=${this.i18nStore?.t('general.cancel') || 'Cancel'} @click=${() => { this.selectedUids = new Set(); this.requestUpdate(); }} icon="arrowLeft"></alps-icon-btn>
-                <span class="mobile-bulk-actions-count">${this.selectedUids.size}</span>
+                <alps-icon-btn title=${this.i18nStore?.t('general.cancel') || 'Cancel'} @click=${() => { this.selectedKeys = new Set(); }} icon="arrowLeft"></alps-icon-btn>
+                <span class="mobile-bulk-actions-count">${this.selectedKeys.size}</span>
                 ${this.canArchiveHere ? html`
                   <alps-icon-btn title=${this.i18nStore?.t('messageReader.archive')} @click=${() => this._handleReaderAction(new CustomEvent('action', {detail: {action: 'archive'}}))} icon="archiveBox"></alps-icon-btn>
                 ` : ''}
@@ -1618,14 +1893,14 @@ export class MailboxPage extends LitElement {
               .message=${this.selectedMessage}
               .messages=${this.messages}
               .layoutMode=${effectiveLayoutMode}
-              .selectedUids=${this.selectedUids}
+              .selectedKeys=${this.selectedKeys}
               .allSelectedStarred=${this.allSelectedStarred}
               .allSelectedUnread=${this.allSelectedUnread}
               .commonTags=${this.commonSelectedTags}
               .bulkProcessing=${this.bulkProcessing}
               @close=${() => { this.updateUrl(this.currentMailbox, this.currentPage, null); }}
               @action=${this._handleReaderAction}
-              @message-flags-changed=${(e: CustomEvent) => this.updateLocalMessageFlags([e.detail.uid], e.detail.flag, e.detail.action)}
+              @message-flags-changed=${(e: CustomEvent) => this.updateLocalMessageFlags([messageKey(e.detail.mailbox ?? this.currentMailbox, e.detail.uid)], e.detail.flag, e.detail.action)}
             ></alps-message-reader>
           </div>
         </div>
@@ -1633,7 +1908,7 @@ export class MailboxPage extends LitElement {
       ${this.showDeleteConfirm ? html`
         <ui-confirm
           title="${this.i18nStore?.t('mailboxPage.permanentlyDelete')}"
-          message=${this.pendingDeleteDetails?.isBulk ? (this.i18nStore?.t('messageReader.deleteConfirmMultiple')) : (this.i18nStore?.t('messageReader.deleteConfirmSingle'))}
+          message=${(this.pendingDeleteDetails?.doomed.length ?? 0) > 1 ? (this.i18nStore?.t('messageReader.deleteConfirmMultiple')) : (this.i18nStore?.t('messageReader.deleteConfirmSingle'))}
           confirmText=${this.i18nStore?.t('mailboxPage.deletePermanently')}
           cancelText=${this.i18nStore?.t('general.cancel')}
           .isDanger=${true}

@@ -89,26 +89,45 @@ const sentWithSubject = (subject: string) => waitForSent((m) => header(m, "Subje
 const readerContent = (page: Page) => page.locator("alps-message-reader .reader-body > .message-content");
 
 /**
- * An arrived forward, as the reader shows it. A forward keeps its original's
- * subject behind the `Fwd:` prefix, and the server threads messages by base
- * subject, so the two arrive as one conversation: the forward is the card
- * whose sender is this account.
+ * An arrived forward's card, where the reader shows the forward inside a
+ * conversation: the card whose sender is this account.
  */
 const forwardCard = (page: Page) =>
   page.locator("alps-message-reader alps-thread-card").filter({
     has: page.locator(".thread-card-sender", { hasText: new RegExp(`^\\s*${USER.address.replace(/\./g, "\\.")}\\s*$`) }),
   });
 
-/** Opens an arrived forward by its own subject — never the message it was
- * forwarded FROM — and returns its card. */
+/** The open message's own part of the reader, where it is not in a conversation. */
+const singleMessageBody = (page: Page) => page.locator("alps-message-reader .reader-body");
+
+/**
+ * Opens an arrived forward by its own subject — never the message it was
+ * forwarded FROM — and returns the part of the reader that shows it: its card
+ * in a conversation, or the reader's body where it stands alone.
+ *
+ * Which one it is belongs to the SERVER, not to this app. A forward carries
+ * its original's subject behind the `Fwd:` prefix but answers nothing, so it
+ * shares a conversation with the original only where threading merges by
+ * subject: ORDEREDSUBJECT, or REFERENCES, whose last step merges roots with
+ * the same base subject. alps asks for THREAD=REFS first (provider/imap),
+ * which threads by reply chain alone and leaves the forward a conversation of
+ * its own — the answer sora gives now that it advertises REFS. Both are
+ * correct, and neither is what these tests are about, so they take the
+ * forward wherever the reader put it.
+ */
 async function openArrivedForward(page: Page, subject: string): Promise<Locator> {
   await page
     .locator("alps-message-list .message-subject", { hasText: `Fwd: ${subject}` })
     .first()
     .click({ timeout: 20_000 });
-  const card = forwardCard(page);
-  await expect(card.locator(".thread-card.expanded")).toBeVisible({ timeout: 20_000 });
-  return card;
+  // The body is a direct child of `.reader-body` only in the single-message
+  // view; inside a conversation it sits within a card.
+  const own = singleMessageBody(page).locator("> .message-content");
+  const inCard = forwardCard(page).locator(".thread-card.expanded");
+  await expect
+    .poll(async () => (await inCard.count()) + (await own.count()), { timeout: 20_000 })
+    .toBeGreaterThan(0);
+  return (await inCard.count()) > 0 ? forwardCard(page) : singleMessageBody(page);
 }
 
 /**
@@ -408,8 +427,8 @@ test("forwarding carries the original's attachment, byte for byte", async ({ pag
   expect(sent.data).toContain(Buffer.from(contents, "utf8").toString("base64"));
 
   // The forward, arriving.
-  const card = await openArrivedForward(page, subject);
-  const chip = card.locator("alps-attachment-list a.attachment-chip", { hasText: filename });
+  const forward = await openArrivedForward(page, subject);
+  const chip = forward.locator("alps-attachment-list a.attachment-chip", { hasText: filename });
   await expect(chip).toBeVisible();
 
   // Fetched through the browser context, so it carries the same session
@@ -598,8 +617,8 @@ test("forwarding an HTML message sends its layout and its inline image", async (
   expect(sent.data).toContain("cid:chart@remote.test");
   expect(sent.data).toMatch(/^Content-ID:\s*<chart@remote\.test>/im);
 
-  const card = await openArrivedForward(page, subject);
-  const arrived = card.locator(".message-content iframe.reader-iframe");
+  const forward = await openArrivedForward(page, subject);
+  const arrived = forward.locator(".message-content iframe.reader-iframe");
   await expect
     .poll(async () => (await frameLayout(arrived)).cells, { timeout: 20_000 })
     .toEqual(["cell A", "cell B"]);

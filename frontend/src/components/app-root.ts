@@ -14,7 +14,10 @@ import '../pages/login-webauthn-page';
 
 // Compose imports
 import { provide } from '@lit/context';
-import './alps-floating-composer';
+// NOT imported statically: the composer window carries the rich-text editor and
+// the emoji table, which together outweigh everything else the app loads. See
+// `ensureComposerLoaded` — it is fetched on the first compose, and prefetched
+// once the app goes idle so that first compose does not wait on the network.
 import './toast-notification';
 import './ui-modal';
 import './alps-attachment-preview';
@@ -27,10 +30,15 @@ import { autoLogoutService } from '../services/auto-logout';
 import { clearSessionSettings } from '../store/settings-store';
 import { setLoginNotice } from '../utils/login-notice';
 import { applyUpdate, registerBusyProbe, UPDATE_AVAILABLE_EVENT } from '../services/app-update';
+import { Logger } from '../utils/logger';
 
 const DEFAULT_TOAST_TIMEOUT_MS = 3000;
 /** Long enough to be read and acted on; the automatic paths catch a missed one. */
 const UPDATE_TOAST_MS = 15000;
+/** A busy app should not hold the composer back forever. */
+const COMPOSER_PREFETCH_TIMEOUT_MS = 3000;
+/** What the browsers without requestIdleCallback wait instead. */
+const COMPOSER_PREFETCH_DELAY_MS = 1500;
 
 interface ToastItem {
   id: number;
@@ -57,6 +65,7 @@ export class AppRoot extends LitElement {
   linkedAccountsStore = linkedAccountsStore;
 
   @state() private activeComposers: ComposerInstance[] = [];
+  @state() private composerReady = false;
 
   @state() private toasts: ToastItem[] = [];
   @state() private attachmentPreview: { attachments: any[]; mailbox: string; messageUid: string; index: number } | null = null;
@@ -121,7 +130,9 @@ export class AppRoot extends LitElement {
 
     this.composeStore.addEventListener('change', this._handleComposeChange);
     this.settingsStore.addEventListener('change', this._handleSettingsChange);
-    this.activeComposers = this.composeStore.getState().activeComposers;
+    // Through the handler, not a bare read: a composer restored before this
+    // point still needs its module fetched, and only the handler asks for it.
+    this._handleComposeChange();
     
     // Initialize auto-logout
     const autoLogoutTime = this.settingsStore.getState().autoLogout ?? 0;
@@ -360,8 +371,54 @@ export class AppRoot extends LitElement {
     }));
   };
 
+  firstUpdated() {
+    // Warm the composer once the app has settled, so the button that opens it
+    // answers instantly while the first paint never waited on it. Idle time
+    // only — a prefetch that competes with the message list has moved the cost
+    // rather than removed it.
+    const prefetch = () => { void this.ensureComposerLoaded().catch(() => {}); };
+    const idle = (window as any).requestIdleCallback;
+    if (typeof idle === 'function') {
+      idle(prefetch, { timeout: COMPOSER_PREFETCH_TIMEOUT_MS });
+    } else {
+      window.setTimeout(prefetch, COMPOSER_PREFETCH_DELAY_MS);
+    }
+  }
+
+  /**
+   * The composer window's module, fetched at most once.
+   *
+   * Held as the PROMISE rather than a boolean, so that composers opened while
+   * the fetch is still in flight — a restored draft and a click, say — all wait
+   * on the one request instead of racing to start their own.
+   */
+  private composerModule: Promise<unknown> | null = null;
+
+  private ensureComposerLoaded(): Promise<unknown> {
+    if (!this.composerModule) {
+      this.composerModule = import('./alps-floating-composer')
+        .then((mod) => {
+          this.composerReady = true;
+          return mod;
+        })
+        .catch((err) => {
+          // A failed fetch must not poison the cache: leaving the rejected
+          // promise in place would make every later compose fail too, with no
+          // way back but a reload.
+          this.composerModule = null;
+          Logger.error('Failed to load the composer', err);
+          throw err;
+        });
+    }
+    return this.composerModule;
+  }
+
   private _handleComposeChange = () => {
-    this.activeComposers = this.composeStore.getState().activeComposers;
+    const composers = this.composeStore.getState().activeComposers;
+    if (composers.length > 0) {
+      void this.ensureComposerLoaded();
+    }
+    this.activeComposers = composers;
   };
 
   private _handleSettingsChange = () => {
@@ -417,7 +474,7 @@ export class AppRoot extends LitElement {
     return html`
       ${this.router.render()}
       
-      ${this.activeComposers.map((composer, index) => {
+      ${!this.composerReady ? '' : this.activeComposers.map((composer, index) => {
         const isMinimized = composer.minimized;
         const currentOpenIndex = isMinimized ? 0 : openIndex++;
         const currentMinimizedIndex = isMinimized ? minimizedIndex++ : 0;

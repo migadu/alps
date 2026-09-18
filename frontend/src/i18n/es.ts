@@ -312,6 +312,7 @@ export const es = {
     reportSpam: 'Marcar como Spam',
     notSpam: 'No es Spam',
     delete: 'Eliminar',
+    deleteThread: 'Eliminar conversación',
     deleteConfirmSingle: '¿Estás seguro de que quieres eliminar de forma permanente este mensaje? Esta acción no se puede deshacer.',
     deleteConfirmMultiple: '¿Estás seguro de que quieres eliminar de forma permanente estos mensajes? Esta acción no se puede deshacer.',
     markUnread: 'Marcar como no leído',

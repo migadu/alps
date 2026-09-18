@@ -347,6 +347,7 @@ export const pt = {
     reportSpam: 'Denunciar Spam',
     notSpam: 'Não é Spam',
     delete: 'Excluir',
+    deleteThread: 'Excluir conversa',
     deleteConfirmSingle: 'Tem certeza de que deseja excluir permanentemente esta mensagem? Esta ação não pode ser desfeita.',
     deleteConfirmMultiple: 'Tem certeza de que deseja excluir permanentemente estas mensagens? Esta ação não pode ser desfeita.',
     markUnread: 'Marcar como não lido',

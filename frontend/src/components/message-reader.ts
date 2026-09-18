@@ -28,6 +28,7 @@ import { replyContext } from '../utils/reply-context';
 import { inlinePartsOf } from '../utils/attachment-utils';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { Logger } from '../utils/logger';
+import { mailboxOf, messageKey } from '../utils/message-key';
 import { registry } from '../plugin-registry';
 import { messageOperations } from '../services/message-operations';
 import { applyThemeToIframe as sharedApplyTheme, setupIframeSizing as sharedSetupSizing, htmlToPlainText } from '../utils/reader-utils';
@@ -51,12 +52,47 @@ interface ThreadMessageItem {
   expanded: boolean;
 }
 
+/** A message that has not been sent: a draft. */
+function isUnsent(msg: any): boolean {
+  return !!msg?.Flags?.includes(FLAG_DRAFT);
+}
+
 /**
- * A message's identity in a conversation. A UID is unique only within its
- * mailbox, and a conversation holds messages from Sent as well.
+ * How many unread messages a conversation OPENS with expanded.
+ *
+ * Expanding a card fetches its body and, for HTML mail, builds a sandboxed
+ * frame that sizes itself. A mailing-list thread seen for the first time can be
+ * unread from end to end, and opening it must not be that many of each. The
+ * oldest unread are the ones taken, because that is where reading starts; the
+ * rest stay collapsed and bold, and expanding one marks it read like any other.
  */
-function messageKey(mailbox: string | undefined, uid: unknown): string {
-  return `${mailbox ?? ''}\u0000${String(uid)}`;
+const UNREAD_EXPAND_LIMIT = 10;
+
+/**
+ * What the reader asks the page to do, on its `action` event.
+ *
+ * One message is named by `uid` AND `mailbox`, because a conversation holds
+ * replies filed in Sent and a UID means nothing without its folder. `uids` is
+ * the other operand: every message of the open conversation filed in the folder
+ * being viewed. Neither set means the page's own answer — the checked rows, or
+ * the open message.
+ */
+export interface ReaderActionDetail {
+  action: string;
+  /** A mailbox for moveTo/copyTo; a keyword for addTag/removeTag. */
+  folder?: string;
+  tags?: string[];
+  /** The conversation's messages in the viewed folder. */
+  uids?: string[];
+  /** One named message, from a card's own menu. */
+  uid?: string;
+  mailbox?: string;
+  /** For a card's Delete of the OPEN message: a message of the conversation,
+   * in the viewed folder, to stay on once it is gone. */
+  nextUid?: string;
+  /** Told whether a card's Delete happened, so the card goes only if it did.
+   * Called once, and not at all when the user cancels a confirmation. */
+  done?: (ok: boolean) => void;
 }
 
 @customElement('alps-message-reader')
@@ -105,7 +141,7 @@ export class MessageReader extends LitElement {
         textBody = this.content;
       } else {
         try {
-          const textRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailbox)}/messages/${this.message.UID}?view=text`);
+          const textRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailboxOfMessage(this.message))}/messages/${this.message.UID}?view=text`);
           if (textRes.ok) {
             const textData = await textRes.json();
             if (textData.Part && textData.RawText) {
@@ -178,12 +214,107 @@ export class MessageReader extends LitElement {
     }
     if (action === 'print') {
       const remoteParam = this.allowRemoteResources ? '&remote=1' : '';
-      window.open('#/print?mailbox=' + encodeURIComponent(this.mailbox) + '&uid=' + this.message.UID + remoteParam, '_blank');
+      window.open('#/print?mailbox=' + encodeURIComponent(this.mailboxOfMessage(this.message)) + '&uid=' + this.message.UID + remoteParam, '_blank');
       this._closePopup();
       return;
     }
     this._closePopup();
-    this.dispatchEvent(new CustomEvent('action', { detail: { action, folder } }));
+    if (this.toolbarIsConversation) {
+      // Above the cards, every verb is about the conversation — see
+      // `toolbarIsConversation`. Deleting ONE message is the card's own Delete.
+      if (action === 'markUnread') {
+        const unread = this.unreadKeys;
+        if (unread.length > 0) return void this.markMembersRead(unread);
+        // All of it is read, so the toggle means "mark unread", and a
+        // conversation is marked unread on the message the list opened, which
+        // the page closes the reader behind.
+      } else {
+        this.dispatchEvent(new CustomEvent<ReaderActionDetail>('action', {
+          detail: { action, folder, uids: this.conversationUids },
+        }));
+        return;
+      }
+    }
+    this.dispatchEvent(new CustomEvent<ReaderActionDetail>('action', { detail: { action, folder } }));
+  }
+
+  /**
+   * The open message is a draft, whether by its own flag or by the folder it
+   * is read in. See {@link toolbarIsConversation} for why that matters.
+   */
+  private get openIsUnsent(): boolean {
+    if (!this.message) return false;
+    return isUnsent(this.message) || mailboxRoleByName(this.mailbox || '', this.mailboxes) === 'drafts';
+  }
+
+  /**
+   * Whether the toolbar is about the CONVERSATION rather than one message.
+   *
+   * With a conversation on screen the header above the cards is a subject, not
+   * a message, and a control up there cannot say which card it means. It used to
+   * mean the "open" one — the message the URL names, which nothing on screen
+   * marks — so Archive filed that one message out of a conversation of five,
+   * and the rest stayed in the folder. The rule is positional now: what sits
+   * above the cards acts on all of them, and what acts on one message is in that
+   * message's own menu.
+   *
+   * "All of them" is the conversation's messages in the folder being viewed —
+   * the thread the list row stands for. The replies shown from Sent stay where
+   * they are: archiving a conversation out of the Inbox is not a reason to file
+   * away what you sent.
+   *
+   * Four cases keep the toolbar they had. A single message is its own
+   * conversation. A bulk selection makes the toolbar about the checked rows. A
+   * draft, read among the messages it answers, is what the user came for —
+   * "Discard draft" must go on meaning the draft. And a view that is not one
+   * folder, such as a search across all of them, has no messages "in the
+   * folder being viewed" for a conversation verb to take.
+   */
+  get toolbarIsConversation(): boolean {
+    const isBulk = (this.selectedKeys?.size ?? 0) > 0;
+    return !isBulk && this.threadItems.length > 1 && !this.openIsUnsent && this.conversationItems.length > 0;
+  }
+
+  /** The conversation's messages filed in the folder being viewed. */
+  private get conversationItems(): ThreadMessageItem[] {
+    return this.threadItems.filter(item => item.message && item.mailbox === this.mailbox);
+  }
+
+  /** Their UIDs — the operand of every verb on the conversation's toolbar. */
+  get conversationUids(): string[] {
+    return this.conversationItems.map(item => String(item.message.UID));
+  }
+
+  /** The keys of the conversation's messages nobody has read yet. */
+  private get unreadKeys(): string[] {
+    return this.threadItems
+      .filter(item => item.message && !item.message.Flags?.includes(FLAG_SEEN) && !isUnsent(item.message))
+      .map(item => this.itemKey(item));
+  }
+
+  /**
+   * Which way the toolbar's read toggle points — true for "Mark as read" — by
+   * what the toolbar is about: the checked rows, the conversation, or the open
+   * message. Over a conversation it is "Mark as read" while ANY of it is unread,
+   * because that is when the list shows the row bold.
+   */
+  get readToggleMarksRead(): boolean {
+    if ((this.selectedKeys?.size ?? 0) > 0) return this.allSelectedUnread;
+    if (this.toolbarIsConversation) return this.unreadKeys.length > 0;
+    return !this.message?.Flags?.includes(FLAG_SEEN);
+  }
+
+  /** Whether the tag is on what the toolbar is about: every checked row, every
+   * message of the conversation in this folder, or the open message. */
+  private hasTag(tag: string): boolean {
+    const lower = tag.toLowerCase();
+    const carries = (flags: string[] | undefined) => !!flags?.some((f: string) => f.toLowerCase() === lower);
+    if ((this.selectedKeys?.size ?? 0) > 0) return carries(this.commonTags);
+    if (this.toolbarIsConversation) {
+      const members = this.conversationItems;
+      return members.length > 0 && members.every(item => carries(item.message.Flags));
+    }
+    return carries(this.message?.Flags);
   }
 
   private _handleTag(tag: string) {
@@ -192,26 +323,32 @@ export class MessageReader extends LitElement {
     // the checked rows' common tags, as soon as any row is checked, and the page
     // applies the action to those rows; deciding from the open message until MORE
     // than one was checked meant a click on a single checked row could do nothing.
-    const isBulk = this.selectedUids.size > 0;
-    const hasTag = isBulk
-      ? this.commonTags?.some(f => f.toLowerCase() === tag.toLowerCase())
-      : this.message?.Flags?.some((f: string) => f.toLowerCase() === tag.toLowerCase());
-
-    this.dispatchEvent(new CustomEvent('action', { detail: { action: hasTag ? 'removeTag' : 'addTag', folder: tag } }));
+    const uids = this.toolbarIsConversation ? this.conversationUids : undefined;
+    this.dispatchEvent(new CustomEvent<ReaderActionDetail>('action', {
+      detail: { action: this.hasTag(tag) ? 'removeTag' : 'addTag', folder: tag, uids },
+    }));
   }
 
   private _handleRemoveAllTags() {
     this._closePopup();
-    const isBulk = this.selectedUids.size > 0; // the same operand as _handleTag
+    const isBulk = this.selectedKeys.size > 0; // the same operand as _handleTag
 
     let tags: string[];
     if (isBulk) {
-      // Union of removable keywords across all selected messages.
+      // Union of removable keywords across all selected messages, a checked
+      // thread's older messages included.
       const set = new Set<string>();
       for (const m of this.messages) {
-        if (this.selectedUids.has(String(m.UID))) {
-          for (const t of getRemovableTags(m.Flags)) set.add(t);
+        for (const one of [m, ...(m.SubMessages || [])]) {
+          if (!this.selectedKeys.has(this.keyOf(one))) continue;
+          for (const t of getRemovableTags(one.Flags)) set.add(t);
         }
+      }
+      tags = [...set];
+    } else if (this.toolbarIsConversation) {
+      const set = new Set<string>();
+      for (const item of this.conversationItems) {
+        for (const t of getRemovableTags(item.message.Flags)) set.add(t);
       }
       tags = [...set];
     } else {
@@ -219,7 +356,8 @@ export class MessageReader extends LitElement {
     }
 
     if (tags.length === 0) return;
-    this.dispatchEvent(new CustomEvent('action', { detail: { action: 'removeTag', tags } }));
+    const uids = !isBulk && this.toolbarIsConversation ? this.conversationUids : undefined;
+    this.dispatchEvent(new CustomEvent<ReaderActionDetail>('action', { detail: { action: 'removeTag', tags, uids } }));
   }
 
   @state()
@@ -234,7 +372,8 @@ export class MessageReader extends LitElement {
   @property({ type: String }) mailbox = FOLDER_INBOX;
   @property({ type: Object }) message: any = null;
   @property({ type: Array }) messages: any[] = [];
-  @property({ type: Object }) selectedUids = new Set<string>();
+  /** The rows checked in the list, by {@link messageKey}. */
+  @property({ type: Object }) selectedKeys = new Set<string>();
   @property({ type: Boolean }) allSelectedStarred = false;
   @property({ type: Boolean }) allSelectedUnread = false;
   @property({ type: Array }) commonTags: string[] = [];
@@ -260,8 +399,29 @@ export class MessageReader extends LitElement {
    */
   private _conversation: { key: string; messages: any[] } | null = null;
 
+  /** The message the reader has already scrolled to, by key. Not `@state`: it
+   * records what the DOM has done, and changing it must not schedule a render. */
+  private scrolledToKey: string | null = null;
+  /** The one pending scroll, so the last decision wins: an open scrolls to the
+   * open card, and the conversation landing a moment later may know better. */
+  private scrollTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * When each expanded, unread card is due to be marked read, by key — see
+   * {@link syncReadTimers}. One map and one timer, so the cards a conversation
+   * opens with expanded, which fall due together, go out as one write per folder.
+   */
+  private readDueAt = new Map<string, number>();
+  private readTimer: ReturnType<typeof setTimeout> | null = null;
+
   private keyOf(msg: any): string {
-    return messageKey(msg?.Mailbox || this.mailbox, msg?.UID);
+    return messageKey(this.mailboxOfMessage(msg), msg?.UID);
+  }
+
+  /** The folder a message is in: its own, since a search across every folder
+   * shows messages from several, and the viewed one otherwise. */
+  private mailboxOfMessage(msg: any): string {
+    return mailboxOf(msg, this.mailbox);
   }
 
   private itemKey(item: ThreadMessageItem): string {
@@ -289,6 +449,7 @@ export class MessageReader extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener('external-message-flags-changed', this._handleExternalFlagsChanged);
+    window.addEventListener('draft-discarded', this._handleDraftDiscarded);
     this.updateComplete.then(() => {
       this.settingsStore?.addEventListener('change', this._handleSettingsChange);
     });
@@ -297,20 +458,45 @@ export class MessageReader extends LitElement {
   disconnectedCallback() {
     this.settingsStore?.removeEventListener('change', this._handleSettingsChange);
     window.removeEventListener('external-message-flags-changed', this._handleExternalFlagsChanged);
+    // A timer that outlived the element would mark mail read for a reader
+    // nobody is looking at.
+    this.readDueAt.clear();
+    if (this.readTimer) clearTimeout(this.readTimer);
+    this.readTimer = null;
+    if (this.scrollTimer) clearTimeout(this.scrollTimer);
+    this.scrollTimer = null;
+    window.removeEventListener('draft-discarded', this._handleDraftDiscarded);
     super.disconnectedCallback();
   }
+
+  /**
+   * A draft was discarded from its composer — possibly one on screen here.
+   *
+   * The composer deletes it and the list re-syncs, and the re-sync takes the
+   * row away but never closes the reader: the page keeps the open message
+   * whether or not the new list still holds it. So Edit Draft, then Discard,
+   * left the deleted draft open. A card for it goes here, as a card's own
+   * Delete takes it; the open message closes the reader, as Back does.
+   */
+  private _handleDraftDiscarded = (e: Event) => {
+    const detail = (e as CustomEvent<{ mailbox?: string; uid?: string }>).detail;
+    if (!detail?.mailbox || !detail.uid || !this.message) return;
+    const key = messageKey(detail.mailbox, detail.uid);
+    if (this.threadItems.some(item => this.itemKey(item) === key)) this.dropCard(key);
+    if (this.keyOf(this.message) === key) this.dispatchEvent(new CustomEvent('close'));
+  };
 
   private _handleExternalFlagsChanged = (e: Event) => {
     const customE = e as CustomEvent;
     if (!customE.detail) return;
-    const { uids, flag, action } = customE.detail;
+    const { keys, flag, action } = customE.detail;
     if (!this.threadItems || this.threadItems.length === 0) return;
 
+    const named = new Set<string>(keys);
     let updated = false;
-    const listed = this.listedKeys();
     for (let i = 0; i < this.threadItems.length; i++) {
       const item = this.threadItems[i];
-      if (item.message && uids.includes(String(item.message.UID)) && listed.has(this.itemKey(item))) {
+      if (item.message && named.has(this.itemKey(item))) {
         const oldFlags = item.message.Flags || [];
         const hasFlag = oldFlags.includes(flag);
         if (action === 'add' && !hasFlag) {
@@ -338,7 +524,7 @@ export class MessageReader extends LitElement {
     if (updated) {
       this.threadItems = [...this.threadItems];
       this.requestUpdate();
-      if (this.message && uids.includes(String(this.message.UID))) {
+      if (this.message && named.has(this.keyOf(this.message))) {
         const hasFlag = this.message.Flags?.includes(flag);
         if (action === 'add' && !hasFlag) {
           this.message.Flags = [...(this.message.Flags || []), flag];
@@ -712,6 +898,15 @@ export class MessageReader extends LitElement {
       border-bottom: none;
       padding-bottom: 0;
     }
+
+    /* Lined up with the cards above it, and wrapping rather than shrinking:
+       three labels do not fit a narrow pane in German. */
+    .conversation-reply {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 0 16px 24px;
+    }
   `];
 
   /**
@@ -722,15 +917,33 @@ export class MessageReader extends LitElement {
    * @param changedProperties Map of properties that changed and their previous values.
    */
   updated(changedProperties: Map<string, any>) {
-    if (changedProperties.has('message') && this.message) {
-      setTimeout(() => {
-        const open = this.threadItems.find(item => this.isOpenItem(item));
-        const el = open ? this.shadowRoot?.getElementById(this.cardId(open)) : null;
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 50);
+    if (!changedProperties.has('message')) return;
+    if (!this.message) {
+      this.scrolledToKey = null;
+      return;
     }
+    // By the message's IDENTITY, not by the property having been reassigned.
+    // The open message is handed down again after every flag change and every
+    // body load, and scrolling each time took the pane back to the open card
+    // from wherever the user was reading.
+    const key = this.keyOf(this.message);
+    if (key === this.scrolledToKey) return;
+    this.scrolledToKey = key;
+    this.scrollToCard(key);
+  }
+
+  /** Brings a card to the top of the pane after the render that put it there,
+   * replacing whatever scroll was pending. */
+  private scrollToCard(key: string) {
+    if (this.scrollTimer) clearTimeout(this.scrollTimer);
+    this.scrollTimer = setTimeout(() => {
+      this.scrollTimer = null;
+      const item = this.threadItems.find(entry => this.itemKey(entry) === key);
+      const el = item ? this.shadowRoot?.getElementById(this.cardId(item)) : null;
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 50);
   }
 
   willUpdate(changedProperties: Map<string, any>) {
@@ -755,7 +968,9 @@ export class MessageReader extends LitElement {
         this.activeBanners = [];
         this.threadItems = [];
       } else {
-        const isNewMessage = !oldMessage || oldMessage.UID !== this.message.UID || oldMailbox !== this.mailbox;
+        // By key, not UID: a search of all mailboxes lists the same UID from
+        // several folders, and moving between two of them kept the first body.
+        const isNewMessage = !oldMessage || this.keyOf(oldMessage) !== this.keyOf(this.message) || oldMailbox !== this.mailbox;
 
         if (isNewMessage) {
           this.localPreferredView = null;
@@ -782,6 +997,209 @@ export class MessageReader extends LitElement {
       // Message list changed, re-resolve thread synchronously to pick up any replies or changes.
       this.resolveThread(this.message);
     }
+
+    // Last, so it sees the cards this update settled on. Everything that can
+    // change the answer is reactive — the open message, which cards are
+    // expanded, their flags, the checked rows — so this one call is every call.
+    this.syncReadTimers();
+  }
+
+  /**
+   * Reading a card marks it read — by the same setting, and after the same
+   * delay, as opening a message does.
+   *
+   * It did not used to, at all. The page marks the OPEN message read and
+   * nothing else, so every other message of a conversation stayed unread
+   * however thoroughly it was read: expand it, read it, and its row in the list
+   * was still bold.
+   *
+   * A reconcile rather than a call wherever a card opens, because the condition
+   * has several moving parts — expanded, unread, not the open message, cards on
+   * screen — and any of them can change on its own: a card collapsed before its
+   * delay is up, rows checked so the cards give way to the selection. Asked
+   * again after every update, none of them needs its own cancel.
+   *
+   * The open message is left to the page, whose timer it is: two timers on one
+   * message would be two writes and two owners.
+   */
+  private syncReadTimers() {
+    const delaySec = this.settingsStore?.getState()?.markReadTimeout ?? 0;
+    const isBulk = (this.selectedKeys?.size ?? 0) > 0;
+    const wanted = new Set<string>();
+    // `< 0` is the setting's "never mark as read automatically".
+    if (delaySec >= 0 && this.threadItems.length > 1 && !isBulk) {
+      for (const item of this.threadItems) {
+        if (!item.message || !item.expanded || this.isOpenItem(item)) continue;
+        if (item.message.Flags?.includes(FLAG_SEEN) || isUnsent(item.message)) continue;
+        wanted.add(this.itemKey(item));
+      }
+    }
+
+    let changed = false;
+    for (const key of [...this.readDueAt.keys()]) {
+      if (!wanted.has(key)) changed = this.readDueAt.delete(key) || changed;
+    }
+    // Due from when the card OPENED: a card already waiting keeps its deadline,
+    // or every unrelated render would push a half-read message's back.
+    for (const key of wanted) {
+      if (this.readDueAt.has(key)) continue;
+      this.readDueAt.set(key, Date.now() + delaySec * 1000);
+      changed = true;
+    }
+    if (changed) this.armReadTimer();
+  }
+
+  private armReadTimer() {
+    if (this.readTimer) clearTimeout(this.readTimer);
+    this.readTimer = null;
+    if (this.readDueAt.size === 0) return;
+    // Always a timer, even for "immediately": this runs inside an update, and a
+    // write — with the events it sends the page — must not start mid-render.
+    const wait = Math.max(0, Math.min(...this.readDueAt.values()) - Date.now());
+    this.readTimer = setTimeout(() => this.flushReadDue(), wait);
+  }
+
+  private flushReadDue() {
+    this.readTimer = null;
+    const now = Date.now();
+    const due = [...this.readDueAt].filter(([, at]) => at <= now).map(([key]) => key);
+    for (const key of due) this.readDueAt.delete(key);
+    // Asked of the cards as they are NOW: one may have been read elsewhere in
+    // the meantime, or have left the conversation.
+    const keys = due.filter((key) => {
+      const item = this.threadItems.find((i) => this.itemKey(i) === key);
+      return !!item && item.expanded && !item.message?.Flags?.includes(FLAG_SEEN);
+    });
+    if (keys.length > 0) void this.markMembersRead(keys);
+    this.armReadTimer();
+  }
+
+  /**
+   * Sets or clears a flag on one message of the conversation, everywhere this
+   * reader keeps a copy of it: its card, the conversation the server returned,
+   * and the open message.
+   *
+   * All three, because `resolveThread` rebuilds the cards from the list's rows
+   * and from that conversation on every list change. Painted on the card alone,
+   * a message from Sent or from another page of the list went back to its old
+   * flags the next time the list moved — and a card marked read went back to
+   * unread, due to be marked read again.
+   */
+  private patchMemberFlag(key: string, flag: string, action: 'add' | 'remove') {
+    const apply = (msg: any) => {
+      const flags: string[] = msg?.Flags || [];
+      const has = flags.includes(flag);
+      if ((action === 'add') === has) return msg;
+      return { ...msg, Flags: action === 'add' ? [...flags, flag] : flags.filter((f: string) => f !== flag) };
+    };
+    const idx = this.threadItems.findIndex(item => this.itemKey(item) === key);
+    if (idx !== -1) {
+      const item = this.threadItems[idx];
+      const message = apply(item.message);
+      if (message !== item.message) {
+        this.threadItems[idx] = { ...item, message };
+        this.threadItems = [...this.threadItems];
+      }
+    }
+    if (this._conversation) {
+      this._conversation = {
+        ...this._conversation,
+        messages: this._conversation.messages.map(m => (this.keyOf(m) === key ? apply(m) : m)),
+      };
+    }
+    // In place, as the card's star does: the page owns this object, and a new
+    // one assigned here would be the open message changing under it.
+    if (this.message && this.keyOf(this.message) === key) {
+      this.message.Flags = apply(this.message).Flags;
+      this.requestUpdate();
+    }
+  }
+
+  /**
+   * Marks messages of the open conversation read: all of its unread for the
+   * toolbar's "Mark as read", one for a card's own, and whichever have been read
+   * for long enough (see {@link syncReadTimers}). One write per folder, since a
+   * UID means nothing outside its own.
+   */
+  private async markMembersRead(keys: string[]) {
+    const named = new Set(keys);
+    const byMailbox = new Map<string, string[]>();
+    for (const item of this.threadItems) {
+      if (!item.message || !named.has(this.itemKey(item))) continue;
+      const uids = byMailbox.get(item.mailbox) ?? [];
+      uids.push(String(item.message.UID));
+      byMailbox.set(item.mailbox, uids);
+    }
+    const listed = this.listedKeys();
+    const paint = (mailbox: string, uids: string[], action: 'add' | 'remove') => {
+      for (const uid of uids) {
+        const key = messageKey(mailbox, uid);
+        // The list first, and only about a listed message — and it has to hear
+        // before the patch below, which changes the open message in place: the
+        // page shares that object with its row, and a row that already carries
+        // the flag is one the page does not repaint.
+        if (listed.has(key)) {
+          this.dispatchEvent(new CustomEvent('message-flags-changed', {
+            detail: { uid, mailbox, flag: FLAG_SEEN, action },
+            bubbles: true,
+            composed: true,
+          }));
+        }
+        this.patchMemberFlag(key, FLAG_SEEN, action);
+      }
+    };
+
+    await Promise.all([...byMailbox].map(async ([mailbox, uids]) => {
+      paint(mailbox, uids, 'add');
+      let ok = false;
+      try {
+        ok = (await messageOperations.setFlag(mailbox, uids, [FLAG_SEEN], 'add')).ok;
+      } catch (err) {
+        Logger.error('Failed to mark conversation messages read', err);
+      }
+      if (!ok) paint(mailbox, uids, 'remove');
+    }));
+  }
+
+  /**
+   * Expands the messages nobody has read, and says which one reading starts at.
+   *
+   * A conversation used to open with ONE card expanded — the open message — so
+   * the mail not yet seen looked like the mail already read, apart from a bold
+   * sender, and each had to be found and clicked.
+   *
+   * On the OPEN only, from the conversation's first answer. Mail that arrives in
+   * a conversation already on screen stays collapsed: expanded, it would be
+   * marked read by a reader sitting in a background tab. Nor for a draft read
+   * among the messages it answers: the draft is what the user came for.
+   *
+   * Bounded — see {@link UNREAD_EXPAND_LIMIT}.
+   */
+  private expandUnreadOnOpen(): string | undefined {
+    if (this.openIsUnsent) return undefined;
+    const unread = this.threadItems.filter(item =>
+      item.message && !item.message.Flags?.includes(FLAG_SEEN) && !isUnsent(item.message));
+    let changed = false;
+    for (const item of unread.slice(0, UNREAD_EXPAND_LIMIT)) {
+      if (item.expanded) continue;
+      item.expanded = true;
+      changed = true;
+      if (!item.content && !item.loading) {
+        item.loading = true;
+        void this.fetchItemBody(item);
+      }
+    }
+    if (changed) this.threadItems = [...this.threadItems];
+    return unread[0] ? this.itemKey(unread[0]) : undefined;
+  }
+
+  /** The conversation has been read from the server (or could not be): open
+   * the unread, and start where reading starts — which is not always the open
+   * message, since a bold row can be bold for an OLD message. */
+  private settleOpenedConversation() {
+    if (!this.message || this.threadItems.length < 2) return;
+    const firstUnread = this.expandUnreadOnOpen();
+    if (firstUnread && firstUnread !== this.keyOf(this.message)) this.scrollToCard(firstUnread);
   }
 
 
@@ -803,7 +1221,7 @@ export class MessageReader extends LitElement {
       // on screen after the user had already loaded it.
       this.hasRemoteResources = false;
       this.content = sanitizeMessageHTML(this.rawMessageHtml, {
-        mailbox: this.mailbox,
+        mailbox: this.mailboxOfMessage(this.message),
         messageUid: this.message.UID,
         allowRemoteResources: this.allowRemoteResources,
         messageStructure: this.message.BodyStructure,
@@ -944,7 +1362,7 @@ export class MessageReader extends LitElement {
       this._deferPropertySync = false;
 
       this.fetchItemBody(primaryItem).then(() => {
-        if (this.message?.UID !== msg.UID || this.mailbox !== msg.Mailbox) {
+        if (!this.message || this.keyOf(this.message) !== this.keyOf(msg)) {
           return;
         }
         this.requestUpdate();
@@ -957,25 +1375,29 @@ export class MessageReader extends LitElement {
    * list cannot: the replies filed in Sent, and thread messages on other pages.
    * The cards already on screen stay as they are; the rest are added.
    */
-  private async loadConversation(msg: any) {
+  private async loadConversation(msg: any, opening = true) {
     const enableThreading = this.settingsStore?.getState()?.enableThreading ?? true;
     if (!enableThreading || !msg?.UID) return;
     const key = this.keyOf(msg);
     const mailbox = msg.Mailbox || this.mailbox;
     try {
       const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/thread`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const messages = Array.isArray(data?.Messages) ? data.Messages : [];
-      if (!this.message || this.keyOf(this.message) !== key) return;
-      this._conversation = { key, messages };
-      if (messages.length > 1) {
-        this.resolveThread(this.message);
-        this.requestUpdate();
+      if (res.ok) {
+        const data = await res.json();
+        const messages = Array.isArray(data?.Messages) ? data.Messages : [];
+        if (!this.message || this.keyOf(this.message) !== key) return;
+        this._conversation = { key, messages };
+        if (messages.length > 1) {
+          this.resolveThread(this.message);
+          this.requestUpdate();
+        }
       }
     } catch (e) {
       Logger.error('Failed to load the conversation', e);
     }
+    // With or without the server's answer: the cards the list gave are a
+    // conversation too, and their unread should open all the same.
+    if (opening && this.message && this.keyOf(this.message) === key) this.settleOpenedConversation();
   }
 
   private updateThreadItemReference(item: ThreadMessageItem) {
@@ -1238,14 +1660,14 @@ export class MessageReader extends LitElement {
     }
     this.updateThreadItemReference(item);
 
-    // The list holds only its own mailbox's rows, and finds them by UID alone,
-    // so a card from Sent must not tell it anything.
+    // Only a listed message is news to the list: a card from Sent is not one of its rows.
     const listed = this.listedKeys().has(this.itemKey(item));
     const tellList = (action: string) => {
       if (!listed) return;
       this.dispatchEvent(new CustomEvent('message-flags-changed', {
         detail: {
           uid: String(item.message.UID),
+          mailbox: item.mailbox,
           flag: FLAG_FLAGGED,
           action
         },
@@ -1290,50 +1712,74 @@ export class MessageReader extends LitElement {
   }
 
   /**
-   * A delete of one message in a thread that did not happen. Nothing used to say
-   * so, from either side: deleteMessages catches internally and never throws, so
-   * the catch below was unreachable for a refusal, and `if (success)` had no
-   * else. The row simply stayed, unexplained. Quiet on `auth`, which the shell
-   * already answers with the login screen.
+   * A card's own Delete: ONE message of the conversation, whichever card it is.
+   *
+   * Carried out by the page, exactly as the toolbar's Delete was for a single
+   * message — to Trash with an undo, or, where that would be a no-op (Trash,
+   * Drafts, Junk), permanently after the page's own confirmation. It used to be
+   * done here, and differently: a permanent delete, from any folder, behind the
+   * browser's `confirm()`. With the toolbar's Delete now about the whole
+   * conversation, that made the card the only way to delete one message and the
+   * only delete that skipped Trash.
+   *
+   * It also asked the page for a second, unnamed delete when the card was the
+   * first of the conversation, which the page carried out on the OPEN message —
+   * a message nobody had asked to delete.
+   *
+   * The card goes when the page says the delete happened, not before.
    */
-  private reportDeleteFailed() {
-    window.dispatchEvent(new CustomEvent('show-toast', {
-      detail: { message: this.i18nStore?.t('toast.messageDeleteFailed'), duration: 5000 }
+  private deleteItem(item: ThreadMessageItem) {
+    if (!item.message) return;
+    const key = this.itemKey(item);
+    const isOpen = this.isOpenItem(item);
+    // Where to stay if this is the message being read: the newest other message
+    // of the conversation that the page can open, i.e. one in this folder.
+    const next = isOpen
+      ? [...this.conversationItems].reverse().find(other => this.itemKey(other) !== key)
+      : undefined;
+    this.dispatchEvent(new CustomEvent<ReaderActionDetail>('action', {
+      detail: {
+        action: 'delete',
+        uid: String(item.message.UID),
+        mailbox: item.mailbox,
+        nextUid: next ? String(next.message.UID) : undefined,
+        done: (ok: boolean) => { if (ok) this.dropCard(key); },
+      },
     }));
   }
 
-  private async deleteItem(item: ThreadMessageItem) {
-    if (!item.message) return;
-    const confirmed = confirm(this.i18nStore?.t('messageReader.deleteConfirmSingle') || 'Are you sure you want to permanently delete this message?');
-    if (!confirmed) return;
-
-    try {
-      const result = await messageOperations.deleteMessagesResult(item.mailbox, [String(item.message.UID)]);
-      if (result.ok) {
-        const key = this.itemKey(item);
-        // Only a listed message is the page's to follow up; a card from Sent
-        // can come first in its conversation and is not.
-        const isFirst = this.threadItems.length > 0 && this.itemKey(this.threadItems[0]) === key &&
-          this.listedKeys().has(key);
-        this.threadItems = this.threadItems.filter(i => this.itemKey(i) !== key);
-        if (this._conversation) {
-          this._conversation = {
-            ...this._conversation,
-            messages: this._conversation.messages.filter(m => this.keyOf(m) !== key)
-          };
-        }
-        this.requestUpdate();
-
-        if (isFirst) {
-          this.dispatchEvent(new CustomEvent('action', { detail: { action: 'delete' } }));
-        }
-      } else if (result.reason !== 'auth') {
-        this.reportDeleteFailed();
-      }
-    } catch (err) {
-      Logger.error('Failed to delete thread item', err);
-      this.reportDeleteFailed();
+  /** Takes a deleted message's card off the conversation. */
+  private dropCard(key: string) {
+    this.threadItems = this.threadItems.filter(i => this.itemKey(i) !== key);
+    if (this._conversation) {
+      this._conversation = {
+        ...this._conversation,
+        messages: this._conversation.messages.filter(m => this.keyOf(m) !== key),
+      };
     }
+    // One message left is no longer a conversation: collapsed, it would be a
+    // lone closed card with nothing to read.
+    if (this.threadItems.length === 1 && !this.threadItems[0].expanded) {
+      const last = this.threadItems[0];
+      last.expanded = true;
+      if (!last.content && !last.loading) {
+        last.loading = true;
+        void this.fetchItemBody(last);
+      }
+    }
+    this._isThread = this.threadItems.length > 1;
+    this.requestUpdate();
+  }
+
+  /**
+   * Reads the conversation from the server again, keeping the cards on screen.
+   *
+   * For the page's undo of a card's Delete: the message comes back under a new
+   * UID, and nothing else would tell this reader it is part of the
+   * conversation again until the conversation was reopened.
+   */
+  reloadConversation() {
+    if (this.message) void this.loadConversation(this.message, false);
   }
 
   private async _handleActionForItem(action: string, item: ThreadMessageItem) {
@@ -1402,6 +1848,19 @@ export class MessageReader extends LitElement {
       });
       return;
     }
+    // The card's read toggle. Marking read is this component's own write.
+    // Marking UNREAD is the page's: it ends by closing the reader — back to the
+    // list, where the row is bold again — and the selection is the page's.
+    if (action === 'markRead') return void this.markMembersRead([this.itemKey(item)]);
+    // These are the page's to carry out, and they name the card's message: the
+    // page would otherwise act on the open one, which is how they worked while
+    // they lived in the toolbar, and why they moved.
+    if (action === 'markUnread' || action === 'downloadMessage' || action === 'showOriginal') {
+      this.dispatchEvent(new CustomEvent<ReaderActionDetail>('action', {
+        detail: { action, uid: String(item.message.UID), mailbox: item.mailbox },
+      }));
+      return;
+    }
     if (action === 'showPlaintext') {
       this.localPreferredView = 'text';
       this.fetchItemBody(item);
@@ -1464,7 +1923,11 @@ export class MessageReader extends LitElement {
   private async _handleEditDraft(item?: any) {
     const isItem = item && !(item instanceof Event);
     const msg = isItem ? item.message : this.message;
-    const mailbox = isItem ? item.mailbox : this.mailbox;
+    // The message's own mailbox, as its card has it. The one being viewed is
+    // `*` in a search of all mailboxes, which is no mailbox at all: every save
+    // of the draft failed on deleting the one it replaced, after storing a new
+    // copy, and Discard could not delete it.
+    const mailbox = isItem ? item.mailbox : this.mailboxOfMessage(msg);
     if (!msg) return;
 
     // If we're editing a specific thread item, make sure its body has been loaded
@@ -1533,12 +1996,69 @@ export class MessageReader extends LitElement {
     return this.settingsStore?.getState()?.showSenderAvatars ?? true;
   }
 
+  /**
+   * Whether a card offers its read toggle: wherever the toolbar offers one for
+   * a single message (not in Trash, not in Sent), and not on a message that has
+   * nothing to be unread about — your own sent copy, a draft.
+   */
+  private canToggleReadFor(item: ThreadMessageItem): boolean {
+    if (!item.message || item.isSent || isUnsent(item.message)) return false;
+    if (mailboxRoleByName(this.mailbox || '', this.mailboxes) === 'trash') return false;
+    return (this.mailbox || '').toLowerCase() !== this.getSentMailboxName().toLowerCase();
+  }
+
+  /** The newest message that can be answered: a draft is not something to
+   * reply TO. `threadItems` is oldest first. */
+  private get newestAnswerable(): ThreadMessageItem | undefined {
+    return [...this.threadItems].reverse().find(item => item.message && !isUnsent(item.message));
+  }
+
+  /**
+   * Answers the newest message, from the row under the last card.
+   *
+   * The body first: a collapsed card has none until it is opened, and a reply
+   * built without it quotes nothing. `fetchItemBody` replaces the card in
+   * `threadItems` once it lands, so the card is found again before it is
+   * quoted from.
+   */
+  private async answerNewest(action: 'reply' | 'replyAll' | 'forward') {
+    const target = this.newestAnswerable;
+    if (!target) return;
+    const key = this.itemKey(target);
+    if (!target.content && !target.loading) await this.fetchItemBody(target);
+    const loaded = this.threadItems.find(item => this.itemKey(item) === key) ?? target;
+    await this._handleActionForItem(action, loaded);
+  }
+
+  /**
+   * Reply, Reply all and Forward, under the last card.
+   *
+   * What the toolbar's Reply became when the toolbar became about the
+   * conversation. It could not stay up there — it answered the "open" message,
+   * and nothing about a button over five cards says which that is — but
+   * answering is the commonest thing anyone does with a conversation, and the
+   * card headers that also offer it scroll away with a long message. Down here
+   * the position is the operand: it follows the newest message, so it answers
+   * the newest message.
+   */
+  private renderConversationReply() {
+    if (!this.toolbarIsConversation || !this.newestAnswerable) return '';
+    return html`
+      <div class="conversation-reply">
+        <alps-button variant="normal" icon="arrowBendUpLeft" @click=${() => this.answerNewest('reply')}>${this.i18nStore?.t('messageReader.reply')}</alps-button>
+        <alps-button variant="normal" icon="arrowBendDoubleUpLeft" @click=${() => this.answerNewest('replyAll')}>${this.i18nStore?.t('messageReader.replyAll')}</alps-button>
+        <alps-button variant="normal" icon="arrowBendUpRight" @click=${() => this.answerNewest('forward')}>${this.i18nStore?.t('messageReader.forward')}</alps-button>
+      </div>
+    `;
+  }
+
   private renderThreadCard(item: ThreadMessageItem) {
     return html`
       <alps-thread-card
         id=${this.cardId(item)}
         .item=${item}
         .mailbox=${this.mailbox}
+        .canToggleRead=${this.canToggleReadFor(item)}
         .showSenderAvatars=${this.showSenderAvatars}
         @toggle-expansion=${(e: CustomEvent) => this.toggleItemExpansion(e.detail.item)}
         @load-remote-resources=${(e: CustomEvent) => this.loadRemoteResourcesForItem(e.detail.item)}
@@ -1552,7 +2072,7 @@ export class MessageReader extends LitElement {
 
   render() {
 
-    const isBulk = this.selectedUids && this.selectedUids.size > 0;
+    const isBulk = this.selectedKeys && this.selectedKeys.size > 0;
     const enableThreading = this.settingsStore?.getState()?.enableThreading ?? true;
 
     if (!this.message && !isBulk) {
@@ -1594,6 +2114,16 @@ export class MessageReader extends LitElement {
     const isDrafts = currentRole === 'drafts';
     const isSent = mbxLower === this.getSentMailboxName().toLowerCase();
 
+    // Above a conversation the toolbar keeps only what acts on all of it; what
+    // acts on one message is on that message's card. See `toolbarIsConversation`.
+    const isConversation = this.toolbarIsConversation;
+    const offersMarkRead = this.readToggleMarksRead;
+    const deleteTitle = isConversation
+      ? this.i18nStore?.t('messageReader.deleteThread')
+      : (this.message?.Flags?.includes(FLAG_DRAFT) || isDrafts)
+        ? this.i18nStore?.t('messageReader.discardDraft')
+        : this.i18nStore?.t('messageReader.delete');
+
     return html`
       <alps-toolbar class="toolbar" ?scrolled=${this.isScrolled}>
         ${this.layoutMode === 'full' ? html`
@@ -1612,7 +2142,7 @@ export class MessageReader extends LitElement {
         ${isJunk ? html`
         <alps-icon-btn class="desktop-only" title=${this.i18nStore?.t('messageReader.notSpam')} @click=${() => this._handleAction('notSpam')} icon="notSpam"></alps-icon-btn>
         ` : ''}
-        <alps-icon-btn title=${(this.message?.Flags?.includes(FLAG_DRAFT) || isDrafts) ? (this.i18nStore?.t('messageReader.discardDraft')) : (this.i18nStore?.t('messageReader.delete'))} @click=${() => this._handleAction('delete')} icon="trash"></alps-icon-btn>
+        <alps-icon-btn title=${deleteTitle} @click=${() => this._handleAction('delete')} icon="trash"></alps-icon-btn>
         <alps-folder-selector-popup
           class="desktop-only"
           .mailboxes=${this.mailboxes}
@@ -1625,16 +2155,18 @@ export class MessageReader extends LitElement {
         <div class="toolbar-separator"></div>
         
         ${!isTrash && !isSent ? html`
-        <alps-icon-btn title=${(isBulk && this.allSelectedUnread) || (!isBulk && !this.message?.Flags?.includes(FLAG_SEEN)) ? (this.i18nStore?.t('messageReader.markRead')) : (this.i18nStore?.t('messageReader.markUnread'))} @click=${() => this._handleAction('markUnread')} icon=${(isBulk && this.allSelectedUnread) || (!isBulk && !this.message?.Flags?.includes(FLAG_SEEN)) ? 'envelopeOpen' : 'envelopeUnread'}></alps-icon-btn>
+        <alps-icon-btn title=${offersMarkRead ? (this.i18nStore?.t('messageReader.markRead')) : (this.i18nStore?.t('messageReader.markUnread'))} @click=${() => this._handleAction('markUnread')} icon=${offersMarkRead ? 'envelopeOpen' : 'envelopeUnread'}></alps-icon-btn>
         ` : ''}
+        ${!isConversation ? html`
+        <!-- A star is a flag on ONE message, so over a conversation it is each
+             card's own star and not a button up here. -->
         <alps-icon-btn class="desktop-only" ?active=${(isBulk && this.allSelectedStarred) || (!isBulk && this.message?.Flags?.includes(FLAG_FLAGGED))} title=${this.i18nStore?.t('messageReader.star')} @click=${() => this._handleAction('star')} icon=${(isBulk && this.allSelectedStarred) || (!isBulk && this.message?.Flags?.includes(FLAG_FLAGGED)) ? 'starFourFill' : 'starFour'}></alps-icon-btn>
+        ` : ''}
         
         <alps-popup align="left" class="tags-popup">
           <alps-icon-btn slot="trigger" class="desktop-only" title=${this.i18nStore?.t('messageReader.tags')} icon="tag"></alps-icon-btn>
           ${['$label1', '$label2', '$label3', '$label4', '$label5'].map(tag => {
-      const isActive = isBulk
-        ? this.commonTags?.some(f => f.toLowerCase() === tag.toLowerCase())
-        : this.message?.Flags?.some((f: string) => f.toLowerCase() === tag.toLowerCase());
+      const isActive = this.hasTag(tag);
 
       return html`
               <button class="dropdown-item ${isActive ? 'active' : ''}" @click=${() => this._handleTag(tag)}>
@@ -1665,14 +2197,14 @@ export class MessageReader extends LitElement {
           ${!isBulk ? html`
             ${this.message?.Flags?.includes(FLAG_DRAFT) || isDrafts ? html`
               <alps-icon-btn title=${this.i18nStore?.t('messageReader.editDraft')} @click=${this._handleEditDraft} icon="pen"></alps-icon-btn>
-            ` : html`
+            ` : !isConversation ? html`
               <alps-icon-btn title=${this.i18nStore?.t('messageReader.reply')} @click=${() => this._handleAction('reply')} icon="arrowBendUpLeft"></alps-icon-btn>
-            `}
+            ` : ''}
             
             <alps-popup align="right" class="more-menu-popup">
               <alps-icon-btn slot="trigger" class="more-btn" title=${this.i18nStore?.t('messageReader.moreOptions')} icon="dotsThreeVertical"></alps-icon-btn>
             
-            ${!(this.message?.Flags?.includes(FLAG_DRAFT) || isDrafts) ? html`
+            ${!(this.message?.Flags?.includes(FLAG_DRAFT) || isDrafts || isConversation) ? html`
             <button class="dropdown-item" @click=${() => this._handleAction('reply')}>
               ${renderIcon('arrowBendUpLeft')} <span class="item-text">${this.i18nStore?.t('messageReader.reply')}</span>
             </button>
@@ -1700,7 +2232,7 @@ export class MessageReader extends LitElement {
             </button>
             ` : ''}
             <button class="dropdown-item" @click=${() => this._handleAction('delete')}>
-              ${renderIcon('trash')} <span class="item-text">${this.message?.Flags?.includes(FLAG_DRAFT) || mailboxRoleByName(this.mailbox || '', this.mailboxes) === 'drafts' ? (this.i18nStore?.t('messageReader.discardDraft')) : (this.i18nStore?.t('messageReader.delete'))}</span>
+              ${renderIcon('trash')} <span class="item-text">${deleteTitle}</span>
             </button>
             <alps-folder-selector-popup
               class="folder-selector"
@@ -1712,19 +2244,27 @@ export class MessageReader extends LitElement {
                 ${renderIcon('folderOpen')} <span class="item-text">${this.i18nStore?.t('messageReader.moveTo')}</span>
               </button>
             </alps-folder-selector-popup>
+            ${(!isTrash && !isSent) || !isConversation ? html`
             <div class="dropdown-divider"></div>
             ${!isTrash && !isSent ? html`
             <button class="dropdown-item" @click=${() => this._handleAction('markUnread')}>
-              ${!this.message?.Flags?.includes(FLAG_SEEN) ? renderIcon('envelopeOpen') : renderIcon('envelopeUnread')} <span class="item-text">${!this.message?.Flags?.includes(FLAG_SEEN) ? (this.i18nStore?.t('messageReader.markRead')) : (this.i18nStore?.t('messageReader.markUnread'))}</span>
+              ${offersMarkRead ? renderIcon('envelopeOpen') : renderIcon('envelopeUnread')} <span class="item-text">${offersMarkRead ? (this.i18nStore?.t('messageReader.markRead')) : (this.i18nStore?.t('messageReader.markUnread'))}</span>
             </button>
             ` : ''}
+            ${!isConversation ? html`
             <button class="dropdown-item" @click=${() => this._handleAction('star')}>
               ${this.message?.Flags?.includes(FLAG_FLAGGED) ? renderIcon('starFourFill') : renderIcon('starFour')} <span class="item-text">${this.i18nStore?.t('messageReader.star')}</span>
             </button>
+            ` : ''}
+            ` : ''}
+            ${!isConversation ? html`
             <div class="dropdown-divider"></div>
             <button class="dropdown-item" @click=${() => this._handleAction('print')}>
               ${renderIcon('printer')} <span class="item-text">${this.i18nStore?.t('messageReader.print')}</span>
             </button>
+            ` : ''}
+            <!-- Stays over a conversation: it is a preference about the READER,
+                 not a verb on a message. -->
             <div class="dropdown-divider"></div>
             <button class="dropdown-item ${currentView === 'text' ? 'active' : ''}" ?disabled=${!this.hasText} @click=${() => this.hasText && this._handleAction('showPlaintext')}>
               ${renderIcon('textAlignLeft')}
@@ -1734,6 +2274,7 @@ export class MessageReader extends LitElement {
               ${renderIcon('code')}
               <span class="item-text">${this.i18nStore?.t('messageReader.showHtml')}</span>
             </button>
+            ${!isConversation ? html`
             <div class="dropdown-divider"></div>
             <button class="dropdown-item" @click=${() => this._handleAction('downloadMessage')}>
               ${renderIcon('downloadSimple')} <span class="item-text">${this.i18nStore?.t('messageReader.downloadMessage')}</span>
@@ -1741,6 +2282,7 @@ export class MessageReader extends LitElement {
             <button class="dropdown-item" @click=${() => this._handleAction('showOriginal')}>
               ${renderIcon('codeBlock')} <span class="item-text">${this.i18nStore?.t('messageReader.showOriginal')}</span>
             </button>
+            ` : ''}
           </alps-popup>
           ` : ''}
       </alps-toolbar>
@@ -1755,7 +2297,7 @@ export class MessageReader extends LitElement {
             ` : html`
               <alps-icon-btn icon="envelopeSimple" style="pointer-events: none;"></alps-icon-btn>
             `}
-            <span>${this.selectedUids.size} ${this.i18nStore?.t('messageReader.messagesSelected')}</span>
+            <span>${this.selectedKeys.size} ${this.i18nStore?.t('messageReader.messagesSelected')}</span>
           </div>
         </div>
       ` : (enableThreading && (this.threadItems.length > 1 || this._isThread)) ? html`
@@ -1775,6 +2317,7 @@ export class MessageReader extends LitElement {
           <div class="thread-container">
             ${this.threadItems.map(item => this.renderThreadCard(item))}
           </div>
+          ${this.renderConversationReply()}
         </div>
       ` : html`
         <div class="reader-body" @scroll=${this.handleScroll}>
@@ -1853,7 +2396,7 @@ export class MessageReader extends LitElement {
           <alps-attachment-list
             class="desktop-attachments"
             .attachments=${this.attachments}
-            .mailbox=${this.mailbox}
+            .mailbox=${this.mailboxOfMessage(msg)}
             .messageUid=${msg.UID}
           ></alps-attachment-list>
         ` : ''}
@@ -1913,7 +2456,7 @@ export class MessageReader extends LitElement {
         <alps-attachment-list
           class="mobile-attachments"
           .attachments=${this.attachments}
-          .mailbox=${this.mailbox}
+          .mailbox=${this.mailboxOfMessage(msg)}
           .messageUid=${msg.UID}
         ></alps-attachment-list>
       ` : ''}

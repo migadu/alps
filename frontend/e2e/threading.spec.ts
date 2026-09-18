@@ -264,6 +264,102 @@ test("a conversation row says how many messages it holds", async ({ page }) => {
   await expect(underneath.filter({ hasText: chain.subject })).toHaveCount(2);
 });
 
+test("checking a conversation's row checks every message in it", async ({ page }) => {
+  // Collapsed, the row is the whole conversation, so its checkbox is too. It
+  // stood for the newest message alone: the selection bar said "1 message",
+  // "Mark as read" left the two older ones unread, and the row stayed bold
+  // under a gesture that looked like it had worked.
+  const chain = await deliverChain();
+
+  await login(page);
+  const conversation = rows(page, chain.subject);
+  await expect(conversation).toHaveCount(1);
+  await expect(conversation).toHaveClass(/unread/);
+
+  await conversation.locator("input.message-checkbox").check();
+  const bar = page.locator("alps-message-reader");
+  await expect(bar.getByText("3 messages selected")).toBeVisible();
+
+  const flagged = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PUT" &&
+      new URL(response.url()).pathname === "/mailboxes/INBOX/messages/flag" &&
+      response.ok(),
+  );
+  await bar.getByRole("button", { name: "Mark as read", exact: true }).click();
+  await flagged;
+  await expect(conversation).not.toHaveClass(/unread/);
+
+  // Read from the mailbox again, and laid out: every message of the three was
+  // written, not only the one the row shows.
+  await page.reload();
+  await expect(rows(page, chain.subject)).toHaveCount(1);
+  await rows(page, chain.subject).locator(".caret-col").click();
+  await expect(rows(page, chain.subject)).toHaveCount(3);
+  await expect(page.locator("alps-message-list .message-item.unread").filter({ hasText: chain.subject })).toHaveCount(0);
+});
+
+test("a conversation's row wears the star of any message in it, sets one, and clears it wherever it is", async ({ page }) => {
+  // The row showed its newest message's star alone. A star on an older message
+  // vanished when the thread collapsed, and pressing the unlit star over it put
+  // a second one on the thread instead of taking the first off.
+  const chain = await deliverChain();
+
+  /** The next star write, as the server took it. */
+  const starWrite = () =>
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        new URL(response.url()).pathname === "/mailboxes/INBOX/messages/flag" &&
+        response.ok(),
+    ).then((response) => response.request().postDataJSON() as { uids: string[]; action: string });
+  const starred = () => page.locator("alps-message-list .message-item.starred").filter({ hasText: chain.subject });
+
+  await login(page);
+  const conversation = rows(page, chain.subject);
+  await expect(conversation).toHaveCount(1);
+
+  // Setting it stars ONE message, not all three.
+  let write = starWrite();
+  await conversation.locator(".star-btn").click();
+  expect(await write).toMatchObject({ action: "add", uids: [expect.any(String)] });
+  await expect(conversation).toHaveClass(/starred/);
+
+  // Laid out, that one is the row's own message, the newest.
+  await conversation.locator(".caret-col").click();
+  await expect(rows(page, chain.subject)).toHaveCount(3);
+  await expect(starred()).toHaveCount(1);
+  await expect(rows(page, chain.subject).first()).toHaveClass(/starred/);
+
+  // Move the star to the OLDEST message, each row now speaking for itself.
+  write = starWrite();
+  await rows(page, chain.subject).first().locator(".star-btn").click();
+  expect((await write).action).toBe("remove");
+  write = starWrite();
+  await rows(page, chain.subject).last().locator(".star-btn").click();
+  const oldest = await write;
+  expect(oldest.action).toBe("add");
+  await expect(starred()).toHaveCount(1);
+
+  // Collapsed again — and read from the mailbox again — the row is still lit,
+  // by a message it does not show.
+  await page.reload();
+  await expect(rows(page, chain.subject)).toHaveCount(1);
+  await expect(rows(page, chain.subject)).toHaveClass(/starred/);
+
+  // Pressing it takes the star off THAT message.
+  write = starWrite();
+  await rows(page, chain.subject).locator(".star-btn").click();
+  expect(await write).toEqual(expect.objectContaining({ action: "remove", uids: oldest.uids }));
+  await expect(rows(page, chain.subject)).not.toHaveClass(/starred/);
+
+  await page.reload();
+  await expect(rows(page, chain.subject)).toHaveCount(1);
+  await rows(page, chain.subject).locator(".caret-col").click();
+  await expect(rows(page, chain.subject)).toHaveCount(3);
+  await expect(starred()).toHaveCount(0);
+});
+
 test("opening a conversation shows all three messages, oldest first", async ({ page }) => {
   const chain = await deliverChain();
 
@@ -312,27 +408,25 @@ test("each message in a conversation can be expanded and read", async ({ page })
   await openRow(rows(page, chain.subject));
   await expect(cards(page)).toHaveCount(3);
 
-  // Only the message that was opened is expanded; the rest are summarized
-  // until asked for, so exactly one body is rendered. (Safe to state as a
-  // count: the card count above already waited for the conversation to be
-  // fully assembled, and the opened card's body is waited for first, so this
-  // is the settled state, not a head start.)
+  // The chain was just delivered, so nobody has read any of it — and a
+  // conversation opens with its unread messages expanded, not only the one that
+  // was opened. Each body is its own request, which is where a wrong UID shows
+  // up as the wrong text (or none).
   await expect(bodyOf(cards(page).nth(2))).toContainText(chain.texts[2]);
-  await expect(cardBodies(page)).toHaveCount(1);
-
-  // Expanding a collapsed card fetches that message's body — a separate
-  // request per member, which is where a wrong UID shows up as the wrong text
-  // (or none). The sender's name is part of the card's header, and carries no
-  // handler of its own, unlike the star and the menu beside it.
-  await cards(page).nth(0).locator(".thread-card-sender").click();
-  await cards(page).nth(1).locator(".thread-card-sender").click();
-
   await expect(cardBodies(page)).toHaveCount(3);
   // Asked per card rather than by position among the bodies: the body has to
-  // be in the card whose header was clicked, not merely somewhere on screen.
+  // be in the card it belongs to, not merely somewhere on screen.
   await expect(bodyOf(cards(page).nth(0))).toContainText(chain.texts[0]);
   await expect(bodyOf(cards(page).nth(1))).toContainText(chain.texts[1]);
-  await expect(bodyOf(cards(page).nth(2))).toContainText(chain.texts[2]);
+
+  // A card's header still collapses and expands it by hand. The sender's name
+  // is part of the header, and carries no handler of its own, unlike the star
+  // and the menu beside it.
+  await cards(page).nth(0).locator(".thread-card-sender").click();
+  await expect(cardBodies(page)).toHaveCount(2);
+  await cards(page).nth(0).locator(".thread-card-sender").click();
+  await expect(cardBodies(page)).toHaveCount(3);
+  await expect(bodyOf(cards(page).nth(0))).toContainText(chain.texts[0]);
 });
 
 test("opening a member the list never listed still shows the whole conversation", async ({ page }) => {
@@ -349,10 +443,10 @@ test("opening a member the list never listed still shows the whole conversation"
   await page.goto(`/#/mailbox/INBOX?uid=${first}`);
 
   await expect(cards(page)).toHaveCount(3);
-  // The linked message is the one opened, not merely the one the conversation
-  // starts with by accident.
+  // The linked message is opened with its own body. Not stated as a count of
+  // one: the chain was just delivered, and unread messages open expanded
+  // alongside it.
   await expect(bodyOf(cards(page).nth(0))).toContainText(chain.texts[0]);
-  await expect(cardBodies(page)).toHaveCount(1);
   await expect(cards(page).nth(2)).toContainText(SENDERS[2].name);
 });
 

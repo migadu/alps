@@ -377,31 +377,6 @@ export class ComposeStore extends EventTarget {
     this.notify();
   }
 
-  discardDraft(id: string) {
-    const composer = this.state.activeComposers.find(c => c.id === id);
-    if (composer && composer.draftUid && composer.draftMailbox) {
-      // Deliberately not awaited, so the window closes at once. But the result
-      // is no longer thrown away: a refused delete leaves the draft sitting in
-      // the Drafts folder while the user has been shown it disappearing, and
-      // they find it again only by going to look.
-      void messageOperations
-        .deleteMessagesResult(composer.draftMailbox, [String(composer.draftUid)])
-        .then(result => {
-          // Quiet on `auth`: the shell is already showing the login screen.
-          if (!result.ok && result.reason !== 'auth') this.reportDiscardFailed();
-        });
-    }
-    this.closeComposer(id);
-  }
-
-  /** Announced on the window: this store has no i18n context, and the toast
-   * host does, so the key is resolved there. */
-  private reportDiscardFailed() {
-    window.dispatchEvent(new CustomEvent('show-toast', {
-      detail: { i18nKey: 'composer.discardFailed', duration: 5000 }
-    }));
-  }
-
   /**
    * Takes the composer windows off the screen WITHOUT touching what is on disk.
    *

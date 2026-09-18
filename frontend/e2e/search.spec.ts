@@ -8,7 +8,7 @@
 // who cannot get back to the unfiltered list is stuck looking at one message.
 
 import type { Page } from "@playwright/test";
-import { deliver, expect, login, test } from "./fixtures";
+import { deliver, expect, login, test, toast } from "./fixtures";
 
 /**
  * A word that exists nowhere else in the mailbox.
@@ -290,4 +290,73 @@ test("the unread filter hides messages that have been read", async ({ page }) =>
   await listButton(page, "Filter by unread").click();
 
   await expect(listRow(page, readSubject)).toBeVisible();
+});
+
+/** The flags a folder's copy of a message carries, read from the server. */
+async function flagsIn(page: Page, folder: string, subject: string): Promise<string[] | null> {
+  const response = await page.request.get(
+    `/mailboxes/${encodeURIComponent(encodeURIComponent(folder))}?page=0&query=${encodeURIComponent(subject)}`,
+  );
+  if (!response.ok()) return null;
+  const body = (await response.json()) as { Messages?: { Flags?: string[]; Envelope?: { Subject?: string } }[] | null };
+  const found = (body.Messages ?? []).find((m) => m.Envelope?.Subject === subject);
+  return found ? found.Flags ?? [] : null;
+}
+
+test("checked results from several folders are starred and deleted each in its own folder", async ({ page }) => {
+  // A search across every folder is viewed as "*", which is not a folder. Its
+  // writes used to be sent to "*", and none of them worked.
+  test.setTimeout(75_000);
+  const word = token();
+  const inboxSubject = `Everywhere inbox ${word}`;
+  const archivedSubject = `Everywhere archived ${word}`;
+  await Promise.all([
+    deliver({ subject: inboxSubject, body: "Stays in the inbox." }),
+    deliver({ subject: archivedSubject, body: "Filed in Archive first." }),
+  ]);
+
+  await login(page);
+  const reader = page.locator("alps-message-reader");
+  const archived = listRow(page, archivedSubject);
+  await expect(archived).toBeVisible();
+  await archived.locator("input.message-checkbox").check();
+  await reader.getByRole("button", { name: "Archive", exact: true }).click();
+  await expect(archived).toHaveCount(0);
+  await expect.poll(() => flagsIn(page, "Archive", archivedSubject), { timeout: 15_000 }).not.toBeNull();
+
+  await waitForSearchable(page, word);
+  await searchFor(page, word);
+  const everywhere = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === "/mailboxes/*" && url.searchParams.get("query") === word && response.ok();
+  });
+  await searchBanner(page).getByRole("button", { name: "Search All", exact: true }).click();
+  await everywhere;
+  await expect(page).toHaveURL(/#\/mailbox\/\*\?/);
+
+  const rows = [listRow(page, inboxSubject), listRow(page, archivedSubject)];
+  for (const row of rows) await expect(row).toBeVisible();
+  for (const row of rows) await row.locator("input.message-checkbox").check();
+  await expect(reader.getByText("2 messages selected")).toBeVisible();
+
+  // One write per folder, each to the folder its message is in.
+  const flagged = (folder: string) =>
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        new URL(response.url()).pathname === `/mailboxes/${folder}/messages/flag` &&
+        response.ok(),
+    );
+  const written = Promise.all([flagged("INBOX"), flagged("Archive")]);
+  await reader.getByRole("button", { name: "Star", exact: true }).click();
+  await written;
+  expect(await flagsIn(page, "INBOX", inboxSubject)).toContain("\\Flagged");
+  expect(await flagsIn(page, "Archive", archivedSubject)).toContain("\\Flagged");
+
+  await reader.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(toast(page, "2 messages moved to Trash")).toBeVisible();
+  await expect.poll(() => flagsIn(page, "Trash", inboxSubject), { timeout: 15_000 }).not.toBeNull();
+  await expect.poll(() => flagsIn(page, "Trash", archivedSubject), { timeout: 15_000 }).not.toBeNull();
+  expect(await flagsIn(page, "INBOX", inboxSubject)).toBeNull();
+  expect(await flagsIn(page, "Archive", archivedSubject)).toBeNull();
 });

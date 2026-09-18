@@ -314,6 +314,7 @@ export const de: TranslationDictionary = {
     reportSpam: 'Als Spam melden',
     notSpam: 'Kein Spam',
     delete: 'Löschen',
+    deleteThread: 'Unterhaltung löschen',
     deleteConfirmSingle: 'Sind Sie sicher, dass Sie diese Nachricht endgültig löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
     deleteConfirmMultiple: 'Sind Sie sicher, dass Sie diese Nachrichten endgültig löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
     markUnread: 'Als ungelesen markieren',

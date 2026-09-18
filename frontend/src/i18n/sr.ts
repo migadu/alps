@@ -312,6 +312,7 @@ export const sr = {
     reportSpam: 'Prijavi kao Spem',
     notSpam: 'Nije Spem',
     delete: 'Obriši',
+    deleteThread: 'Obriši razgovor',
     deleteConfirmSingle: 'Da li ste sigurni da želite da trajno obrišete ovu poruku? Ova akcija se ne može poništiti.',
     deleteConfirmMultiple: 'Da li ste sigurni da želite da trajno obrišete ove poruke? Ova akcija se ne može poništiti.',
     markUnread: 'Označi kao nepročitano',

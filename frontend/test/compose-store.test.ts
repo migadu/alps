@@ -226,41 +226,6 @@ describe('saving everything at sign-out', () => {
   });
 });
 
-describe('discarding a draft', () => {
-  it('closes at once and says so when the server keeps the draft', async () => {
-    signIn('ada');
-    const store = makeStore();
-    vi.spyOn(messageOperations, 'deleteMessagesResult').mockResolvedValue({ ok: false, reason: 'failed' });
-    const toasts: CustomEvent[] = [];
-    const onToast = (e: Event) => toasts.push(e as CustomEvent);
-    window.addEventListener('show-toast', onToast);
-    store.openComposer({ draftUid: '7', draftMailbox: 'Drafts' });
-    store.discardDraft(composers(store)[0].id);
-    expect(composers(store)).toEqual([]);
-    await vi.waitFor(() => expect(toasts).toHaveLength(1));
-    window.removeEventListener('show-toast', onToast);
-    expect(toasts[0].detail.i18nKey).toBe('composer.discardFailed');
-  });
-
-  it('stays quiet on an expired session, and deletes nothing for a draft never saved', async () => {
-    signIn('ada');
-    const store = makeStore();
-    const del = vi.spyOn(messageOperations, 'deleteMessagesResult').mockResolvedValue({ ok: false, reason: 'auth' });
-    const toasts: Event[] = [];
-    const onToast = (e: Event) => toasts.push(e);
-    window.addEventListener('show-toast', onToast);
-    store.openComposer({ draftUid: '7', draftMailbox: 'Drafts' });
-    store.openComposer({ subject: 'never saved' });
-    const [saved, unsaved] = composers(store);
-    store.discardDraft(saved.id);
-    store.discardDraft(unsaved.id);
-    await new Promise((r) => setTimeout(r, 0));
-    window.removeEventListener('show-toast', onToast);
-    expect(del).toHaveBeenCalledTimes(1);
-    expect(toasts).toHaveLength(0);
-  });
-});
-
 describe('bareAddress', () => {
   it('reduces any spelling of an address to its lower-cased mailbox', () => {
     expect(bareAddress('"Me" <ME@Example.com>')).toBe('me@example.com');

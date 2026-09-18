@@ -178,6 +178,9 @@ export class AlpsFloatingComposer extends LitElement {
         window.dispatchEvent(new CustomEvent('draft-autosaved', {
           detail: {
             oldUid,
+            // A UID means something only in its mailbox, and a draft is on
+            // screen outside Drafts too — a search of all mailboxes lists it.
+            oldMailbox: this.instance.draftMailbox,
             newUid: result.uid,
             mailbox: result.mailbox,
             subject: this.instance.subject,
@@ -429,13 +432,21 @@ export class AlpsFloatingComposer extends LitElement {
 
   private async _performDiscard(type: 'close' | 'delete' | null) {
     if (type === 'delete' && this.instance.draftUid && this.instance.draftMailbox) {
+      const mailbox = this.instance.draftMailbox;
+      const uid = String(this.instance.draftUid);
       try {
         // `deleteMessages` reports a refusal by RETURNING false; it only throws
         // on a network error, so the catch below was the smaller half of the
         // problem and the returned answer was discarded entirely. A draft the
         // server would not delete stays in Drafts while the user watches the
         // window close on it.
-        const deleted = await messageOperations.deleteMessagesResult(this.instance.draftMailbox, [String(this.instance.draftUid)]);
+        const deleted = await messageOperations.deleteMessagesResult(mailbox, [uid]);
+        // The re-sync the delete ends in takes the row off the list, but never
+        // closes the reader, so a reader still showing this draft has to be told
+        // (alps-message-reader's `_handleDraftDiscarded`).
+        if (deleted.ok) {
+          window.dispatchEvent(new CustomEvent('draft-discarded', { detail: { mailbox, uid } }));
+        }
         // Quiet on `auth`: the shell is already showing the login screen.
         if (!deleted.ok && deleted.reason !== 'auth') this._toastDiscardFailed();
       } catch (e) {
