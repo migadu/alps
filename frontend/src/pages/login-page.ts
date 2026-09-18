@@ -221,6 +221,13 @@ export class LoginPage extends LitElement {
     }
   }
 
+  // The page otherwise settles with nothing focused, so the first keystrokes
+  // belong to whatever else is listening — a keyboard-driven browser reads
+  // them as its own commands instead of as an address.
+  firstUpdated() {
+    this.renderRoot.querySelector<HTMLInputElement>('#username')?.focus();
+  }
+
   private startRetryCountdown(seconds: number) {
     this.retryAfter = seconds;
     this.isRateLimited = true;
