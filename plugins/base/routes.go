@@ -26,6 +26,7 @@ import (
 
 func registerRoutes(p *alps.GoPlugin) {
 	// Mailboxes
+	p.GET("/mailboxes", handleListMailboxes)
 	p.GET("/mailboxes/{mbox}", handleGetMailbox)
 	p.GET("/mailboxes/{mbox}/status", handleMailboxStatus)
 	p.POST("/mailboxes", handleNewMailbox)
@@ -291,6 +292,31 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 	}
 }
 
+// cachedMailboxList returns the session's folder list, going to IMAP only when
+// the cache has none. The key is the one every mailbox verb already drops, so
+// a list read straight after a create or a rename is the new tree.
+func cachedMailboxList(ctx *alps.Context) ([]MailboxInfo, error) {
+	const cacheKey = "mailboxes"
+	if cached, ok := ctx.Session.Cache().Get(cacheKey); ok {
+		return cached.([]MailboxInfo), nil
+	}
+
+	var mailboxes []MailboxInfo
+	err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		var err error
+		mailboxes, err = listMailboxesWithProvider(p)
+		if err != nil {
+			return err
+		}
+		ctx.Session.Cache().Set(cacheKey, mailboxes)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mailboxes, nil
+}
+
 func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
@@ -305,23 +331,9 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 			},
 		}
 
-		var mailboxes []MailboxInfo
-		cacheKey := "mailboxes"
-		if cached, ok := ctx.Session.Cache().Get(cacheKey); ok {
-			mailboxes = cached.([]MailboxInfo)
-		} else {
-			err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-				var err error
-				mailboxes, err = listMailboxesWithProvider(p)
-				if err != nil {
-					return err
-				}
-				ctx.Session.Cache().Set(cacheKey, mailboxes)
-				return nil
-			})
-			if err != nil {
-				return nil, err
-			}
+		mailboxes, err := cachedMailboxList(ctx)
+		if err != nil {
+			return nil, err
 		}
 
 		return &BaseMailboxData{
@@ -723,6 +735,24 @@ func handleGetMailbox(ctx *alps.Context) error {
 		"Page":            page,
 		"MessagesPerPage": messagesPerPage,
 	})
+}
+
+// handleListMailboxes answers with the folder list and nothing else.
+//
+// `GET /mailboxes/{mbox}` carries one too, but only alongside a page of that
+// folder's mail — a THREAD/SORT and a FETCH. The verbs that change which
+// folders exist rather than what is inside one (create, rename, subscribe)
+// move no mail, so the folder list is the whole of what they need to re-read,
+// and this is how the frontend asks for it. See `messageSync.syncLabels`.
+func handleListMailboxes(ctx *alps.Context) error {
+	mailboxes, err := cachedMailboxList(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Keyed as `GET /mailboxes/{mbox}` keys it, so the one consumer on the
+	// frontend reads either answer the same way.
+	return ctx.JSON(http.StatusOK, map[string]interface{}{"Mailboxes": mailboxes})
 }
 
 func handleNewMailbox(ctx *alps.Context) error {

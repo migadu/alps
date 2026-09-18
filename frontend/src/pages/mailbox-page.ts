@@ -531,6 +531,7 @@ export class MailboxPage extends LitElement {
     messageSync.addEventListener('sync-start', this.handleSyncStart);
     messageSync.addEventListener('sync-success', this.handleSyncSuccess);
     messageSync.addEventListener('sync-error', this.handleSyncError);
+    messageSync.addEventListener('labels-success', this.handleLabelsSuccess);
     messageSync.addEventListener('mailbox-not-found', this.handleMailboxNotFound as EventListener);
 
     window.addEventListener('draft-autosaved', this.handleDraftAutosaved as EventListener);
@@ -552,6 +553,7 @@ export class MailboxPage extends LitElement {
     messageSync.removeEventListener('sync-start', this.handleSyncStart);
     messageSync.removeEventListener('sync-success', this.handleSyncSuccess);
     messageSync.removeEventListener('sync-error', this.handleSyncError);
+    messageSync.removeEventListener('labels-success', this.handleLabelsSuccess);
     messageSync.removeEventListener('mailbox-not-found', this.handleMailboxNotFound as EventListener);
     window.removeEventListener('draft-autosaved', this.handleDraftAutosaved as EventListener);
     messageSync.stop();
@@ -726,6 +728,20 @@ export class MailboxPage extends LitElement {
       messageSync.start(state.checkMailInterval);
     }
   }
+
+  /**
+   * A folder list arrived on its own, after a create, a rename or a
+   * (un)subscribe (see `messageSync.syncLabels`).
+   *
+   * The sidebar is all that changes. Deliberately none of what
+   * {@link handleSyncSuccess} does besides this: no row moved, so there is no
+   * arrival to chime, no listing to call loaded or failed, and no open message
+   * whose flags this answer could speak for.
+   */
+  private handleLabelsSuccess = (e: Event) => {
+    const { mailboxes } = (e as CustomEvent).detail;
+    this.mailboxes = mailboxes;
+  };
 
   private handleSyncStart = (e: Event) => {
     const detail = (e as CustomEvent).detail;

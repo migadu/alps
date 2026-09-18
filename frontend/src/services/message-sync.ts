@@ -97,7 +97,54 @@ export class MessageSyncService extends EventTarget {
     }
   }
 
+  /**
+   * Re-reads the folder list alone, for the verbs that change which folders
+   * exist rather than what is inside one.
+   *
+   * A create, a rename or a (un)subscribe moves no mail. `sync()` answered them
+   * by re-listing a page of the folder on screen — a THREAD/SORT and a FETCH,
+   * and a full repaint of rows that had not moved — to learn that a folder has
+   * a new name. This asks the question that was actually raised.
+   *
+   * Announced on its OWN event, not `sync-success`. That one carries a page of
+   * mail and everything the page infers from a page of mail: the arrival chime,
+   * the list's failure flag, the open message's flags. None of it follows from a
+   * folder list, and the chime in particular is gated on nothing but a count
+   * that rose, so it would ring for a rename whenever mail happened to land
+   * between the last poll and this read.
+   *
+   * Failure is logged and no more. The verb that called this already reported
+   * its own outcome to the user; the folder list stays as it was until the next
+   * poll, which is a stale count in the sidebar, not a lost answer.
+   */
+  async syncLabels(): Promise<void> {
+    // Its own counter, not `currentFetchId`: this reads no messages, so it
+    // neither supersedes a listing in flight nor is superseded by one. The
+    // ticket is only so that of two renames in quick succession, the older
+    // answer cannot land on top of the newer.
+    const labelsId = ++this.currentLabelsId;
+    try {
+      const response = await fetchWithTimeout('/mailboxes');
+      if (this.currentLabelsId !== labelsId) return;
+
+      if (response.status === 401) {
+        window.dispatchEvent(new CustomEvent('auth-error'));
+        return;
+      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const data: MailboxData = await response.json();
+      if (this.currentLabelsId !== labelsId) return;
+      if (!data.Mailboxes) return;
+
+      this.dispatchEvent(new CustomEvent('labels-success', { detail: { mailboxes: data.Mailboxes } }));
+    } catch (err) {
+      Logger.error('Failed to refresh folder list', err);
+    }
+  }
+
   private currentFetchId: number = 0;
+  private currentLabelsId: number = 0;
 
   /**
    * Fetches data immediately. Used for initial load, pagination, or manual refresh.

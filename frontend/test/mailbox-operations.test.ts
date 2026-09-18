@@ -12,6 +12,7 @@ beforeEach(() => {
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
   vi.spyOn(messageSync, 'sync').mockImplementation(() => {});
+  vi.spyOn(messageSync, 'syncLabels').mockResolvedValue(undefined);
   vi.spyOn(console, 'error').mockImplementation(() => {});
   authErrors = [];
   window.addEventListener('auth-error', onAuth);
@@ -32,7 +33,8 @@ describe('creating and renaming', () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe('/mailboxes');
     expect(init).toMatchObject({ method: 'POST', body: 'name=Work%2FClients' });
-    expect(messageSync.sync).toHaveBeenCalledTimes(1);
+    expect(messageSync.syncLabels).toHaveBeenCalledTimes(1);
+    expect(messageSync.sync).not.toHaveBeenCalled();
   });
 
   it('fails an expired session or a dropped connection without throwing', async () => {
@@ -42,16 +44,19 @@ describe('creating and renaming', () => {
     expect(await ops.createMailbox('Work')).toBe('failed');
   });
 
-  it('points the poll at the new name before re-reading', async () => {
-    // The re-read asks for whatever mailbox the sync service holds, and the
-    // old name no longer exists on the server.
+  it('points the poll at the new name, and re-reads only the folder list', async () => {
+    // The poll asks for whatever mailbox the sync service holds, and the old
+    // name no longer exists on the server.
     const renamed = vi.spyOn(messageSync, 'mailboxRenamed');
     fetchMock.mockResolvedValue(answer(200));
     expect(await ops.renameMailbox('Work', 'Jobs')).toBe('ok');
     expect(fetchMock.mock.calls[0][0]).toBe('/mailboxes/Work/rename');
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ new_name: 'Jobs' });
     expect(renamed).toHaveBeenCalledWith('Work', 'Jobs');
-    expect(renamed.mock.invocationCallOrder[0]).toBeLessThan((messageSync.sync as any).mock.invocationCallOrder[0]);
+    // A rename moves no mail, so the page of it on screen is not re-listed.
+    expect(messageSync.syncLabels).toHaveBeenCalledTimes(1);
+    expect(messageSync.sync).not.toHaveBeenCalled();
+    expect(renamed.mock.invocationCallOrder[0]).toBeLessThan((messageSync.syncLabels as any).mock.invocationCallOrder[0]);
   });
 
   it('leaves the poll alone when the rename is refused', async () => {
@@ -70,6 +75,9 @@ describe('deleting and emptying', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/mailboxes/%255BGmail%255D%252FOld');
     expect(deleted).toHaveBeenCalledWith('[Gmail]/Old');
     expect(deleted.mock.invocationCallOrder[0]).toBeLessThan((messageSync.sync as any).mock.invocationCallOrder[0]);
+    // Deleting the folder on screen sends the view to the Inbox, so there is a
+    // page of mail to read — the folder list alone would not fill it.
+    expect(messageSync.syncLabels).not.toHaveBeenCalled();
   });
 
   it('answers false for a refused delete or empty', async () => {
@@ -84,7 +92,9 @@ describe('deleting and emptying', () => {
     fetchMock.mockResolvedValue(answer(200));
     expect(await ops.emptyMailbox('Trash')).toBe(true);
     expect(fetchMock.mock.calls[0]).toEqual(['/mailboxes/Trash/empty', expect.objectContaining({ method: 'POST' })]);
+    // The one verb here that changes what is IN a folder, so the rows go too.
     expect(messageSync.sync).toHaveBeenCalledTimes(1);
+    expect(messageSync.syncLabels).not.toHaveBeenCalled();
   });
 });
 
@@ -96,5 +106,14 @@ describe('subscriptions', () => {
     expect(await ops.setSubscribed('Work', false)).toEqual({ ok: false, reason: 'failed' });
     expect(await ops.setSubscribed('Work', true)).toEqual({ ok: false, reason: 'failed' });
     expect(fetchMock.mock.calls.slice(0, 2).map((c) => c[0])).toEqual(['/mailboxes/Work/subscribe', '/mailboxes/Work/unsubscribe']);
+  });
+
+  it('re-reads the folder list, and only for the one that took', async () => {
+    fetchMock.mockResolvedValueOnce(answer(200)).mockResolvedValueOnce(answer(500));
+    await ops.setSubscribed('Work', true);
+    await ops.setSubscribed('Work', false);
+    // Subscribing changes which folders are listed, never what is in one.
+    expect(messageSync.syncLabels).toHaveBeenCalledTimes(1);
+    expect(messageSync.sync).not.toHaveBeenCalled();
   });
 });
