@@ -143,10 +143,10 @@ Required when using Let's Encrypt with S3 storage across multiple ALPS nodes.
 Configures the backend mail services.
 
 ### `[provider]`
+
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `type` | String | `"imap"` | Mail provider protocol (`"imap"` or `"maildir"`). |
-| `options` | Map | None | Provider-specific custom options. |
 
 ### `[provider.imap]`
 | Option | Type | Default | Description |

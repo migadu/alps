@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"github.com/migadu/alps/provider/imap"
 )
 
 func TestConfigCarriesAuthservIDs(t *testing.T) {
@@ -21,7 +22,11 @@ func TestConfigCarriesAuthservIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"mx.example.com", "mx2.example.com"}; !reflect.DeepEqual(opts.Provider.IMAP.AuthservIDs, want) {
-		t.Fatalf("AuthservIDs %q, want %q", opts.Provider.IMAP.AuthservIDs, want)
+	imapOpts, ok := opts.Provider.(*imap.Options)
+	if !ok {
+		t.Fatalf("Options have unexpected type: %T", opts.Provider)
+	}
+	if want := []string{"mx.example.com", "mx2.example.com"}; !reflect.DeepEqual(imapOpts.AuthservIDs, want) {
+		t.Fatalf("AuthservIDs %q, want %q", imapOpts.AuthservIDs, want)
 	}
 }

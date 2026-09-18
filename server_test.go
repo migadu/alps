@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+	"github.com/migadu/alps/provider"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -27,28 +28,22 @@ func TestServerPluginConfig(t *testing.T) {
 
 	// Test 1: Only domain name with scheme
 	opts := &Options{
-		Provider: ProviderOptions{
-			Type: "imap",
-			IMAP: IMAPProviderOptions{Server: "imaps://example.com"},
-		},
+		ProviderType: "mock",
+		Provider: &provider.MockOptions{},
 		SMTP: SMTPOptions{Server: "smtps://example.com"},
 	}
 	s, err := newServer(logger, opts)
 	assert.NoError(t, err)
-	assert.Equal(t, "example.com:993", s.imap.host)
+	assert.Equal(t, "example.com:465", s.smtp.host)
 
 	// Test 2: Specific schemes
 	opts = &Options{
-		Provider: ProviderOptions{
-			Type: "imap",
-			IMAP: IMAPProviderOptions{Server: "imaps://imap.example.com:993"},
-		},
+		ProviderType: "mock",
+		Provider: &provider.MockOptions{},
 		SMTP: SMTPOptions{Server: "smtps://smtp.example.com:465"},
 	}
 	s, err = newServer(logger, opts)
 	assert.NoError(t, err)
-	assert.True(t, s.imap.tls)
-	assert.Equal(t, "imap.example.com:993", s.imap.host)
 	assert.True(t, s.smtp.tls)
 	assert.Equal(t, "smtp.example.com:465", s.smtp.host)
 }
@@ -146,7 +141,7 @@ func TestServerHandleError(t *testing.T) {
 	w1 := httptest.NewRecorder()
 	ctx1 := NewContext(w1, req1, server)
 
-	authErr := AuthError{cause: errors.New("invalid credentials")}
+	authErr := provider.AuthError{Cause: errors.New("invalid credentials")}
 	server.handleError(authErr, ctx1)
 	assert.Equal(t, http.StatusUnauthorized, w1.Code)
 	assert.Contains(t, w1.Body.String(), "Authentication required")
