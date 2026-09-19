@@ -27,6 +27,26 @@ const UNDO_TOAST_TIMEOUT_MS = 10000;
 /** Whether a listed message carries a star. */
 const isFlagged = (msg: any): boolean => !!msg?.Flags?.includes(FLAG_FLAGGED);
 
+/** The same flags, in the order the server lists them. */
+const sameFlags = (a: string[] | undefined, b: string[] | undefined): boolean =>
+  (a?.length ?? 0) === (b?.length ?? 0) && (a ?? []).every((flag, i) => flag === b![i]);
+
+/**
+ * Is this listing the one already on screen?
+ *
+ * Compared as JSON, rather than by the fields a row happens to draw today: an
+ * answer that serialises the same is one the rows cannot tell apart, whatever
+ * they read — subject, flags, attachment, thread members, the lot. The two
+ * directions are not alike. Reading a difference that is only key order costs
+ * a repaint, which is what happened anyway; missing a real one leaves the
+ * folder painted wrong until the next change, so nothing here may guess.
+ */
+function sameListing(shown: any[], answer: any[]): boolean {
+  if (shown === answer) return true;
+  if (!shown || shown.length !== answer.length) return false;
+  return JSON.stringify(shown) === JSON.stringify(answer);
+}
+
 /** A Delete waiting on the question whether to delete for good. */
 interface PendingDelete {
   isBulk: boolean;
@@ -730,7 +750,11 @@ export class MailboxPage extends LitElement {
   private handleSyncStart = (e: Event) => {
     const detail = (e as CustomEvent).detail;
     this.isSyncing = true;
-    if (!detail.background) {
+    // A quiet read is a foreground one in every way but the dim: its answer
+    // lands on the page being viewed, and it is not new mail. It follows
+    // something the user just did (see messageSync.sync), so the rows change
+    // for a reason they already know, and fading them first only hides it.
+    if (!detail.background && !detail.quiet) {
       this.loadingMessages = true;
       this.listLoadFailed = false;
     }
@@ -849,10 +873,19 @@ export class MailboxPage extends LitElement {
       if (data.Total !== undefined) this.totalMessages = data.Total;
       if (data.MessagesPerPage !== undefined) this.messagesPerPage = data.MessagesPerPage;
       if (data.Messages) {
-        this.messages = data.Messages;
+        // Only when the answer differs from what is shown. Every read parses
+        // its own objects, so assigning one re-ran every row template and every
+        // sender lookup for a folder where nothing had moved — which is what a
+        // check, and a sync after a write elsewhere, usually finds.
+        if (!sameListing(this.messages, data.Messages)) {
+          this.messages = data.Messages;
+        }
         if (this.selectedMessage) {
           const updatedMsg = this.messages.find((m: any) => this.isOpen(m));
-          if (updatedMsg && updatedMsg.Flags) {
+          // Same rule for the open message: a fresh copy of it rebuilds the
+          // reader's cards and re-runs the list's "another message was opened"
+          // path, for flags that are the ones already held.
+          if (updatedMsg && updatedMsg.Flags && !sameFlags(this.selectedMessage.Flags, updatedMsg.Flags)) {
             this.selectedMessage = { ...this.selectedMessage, Flags: updatedMsg.Flags };
           }
         }
@@ -1826,7 +1859,9 @@ export class MailboxPage extends LitElement {
               @refresh=${() => {
         this.currentPage = 0;
 
-        messageSync.fetch(this.currentMailbox, this.currentPage, this.filterQuery, true);
+        // A check, not a fetch: over a list that is already current the rows
+        // neither dim nor re-list (see messageSync.check).
+        messageSync.check(this.currentMailbox, this.currentPage, this.filterQuery);
       }}
               @toggle-sidebar=${() => this.mobileSidebarOpen = !this.mobileSidebarOpen}
               @compose=${() => this.composeStore.openComposer()}

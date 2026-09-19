@@ -264,14 +264,14 @@ func copyMessagesWithProvider(p provider.MailProvider, srcMailbox, dstMailbox st
 // one mailbox at a time, and the replies a user sends are not in the mailbox
 // of the messages they answer. A failed look in Sent is logged, and the thread
 // is returned as it is.
-func getConversationWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, logf func(format string, args ...interface{})) ([]IMAPMessage, error) {
-	thread, err := messageThreadWithProvider(p, mailbox, uid)
+func getConversationWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, known conversationHints, logf func(format string, args ...interface{})) ([]IMAPMessage, error) {
+	thread, err := messageThreadWithProvider(p, mailbox, uid, known.memberUIDs)
 	if err != nil {
 		return nil, err
 	}
 
 	msgs := thread
-	if sent, err := sentOfConversation(p, mailbox, thread); err != nil {
+	if sent, err := sentOfConversation(p, mailbox, thread, known.sentMailbox); err != nil {
 		logf("looking in Sent for the conversation of %s/%s: %v", mailbox, uid, err)
 	} else {
 		msgs = mergeConversation(thread, sent)
@@ -284,8 +284,33 @@ func getConversationWithProvider(p provider.MailProvider, mailbox string, uid pr
 	return result, nil
 }
 
-// messageThreadWithProvider gets a message's thread in its mailbox.
-func messageThreadWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID) ([]provider.Message, error) {
+// conversationHints is what the CALLER already knows, so the provider is not
+// asked to rediscover it. Both fields are optional; an empty one means "find
+// out", which is what every caller did before they were passed.
+type conversationHints struct {
+	// The conversation's UIDs in this mailbox, as a listing already established
+	// them. Saves a THREAD over the whole mailbox — see GetThreadMembers.
+	memberUIDs []provider.MessageID
+	// The Sent mailbox's name, from the mailbox list the session has cached.
+	// Saves a LIST on every conversation read.
+	sentMailbox string
+}
+
+// messageThreadWithProvider gets a message's thread in its mailbox. `known`
+// names the members when the caller already has them, in which case they are
+// read directly instead of threaded for.
+func messageThreadWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, known []provider.MessageID) ([]provider.Message, error) {
+	type memberCapable interface {
+		GetThreadMembers(mailbox string, uids []provider.MessageID) ([]provider.Message, error)
+	}
+	if mc, ok := p.(memberCapable); ok && len(known) > 0 {
+		// The hint is only a hint: it comes from a cached listing, so a message
+		// expunged since can make the read come back short or fail. Threading
+		// from scratch is the answer to that, not an error to the reader.
+		if msgs, err := mc.GetThreadMembers(mailbox, known); err == nil && len(msgs) == len(known) {
+			return msgs, nil
+		}
+	}
 	type threadCapable interface {
 		GetMessageThread(mailbox string, targetUID provider.MessageID) ([]provider.Message, error)
 	}
@@ -301,7 +326,7 @@ func messageThreadWithProvider(p provider.MailProvider, mailbox string, uid prov
 
 // sentOfConversation finds the messages of a thread's conversation in Sent,
 // unless the thread is in Sent already.
-func sentOfConversation(p provider.MailProvider, mailbox string, thread []provider.Message) ([]provider.Message, error) {
+func sentOfConversation(p provider.MailProvider, mailbox string, thread []provider.Message, sentName string) ([]provider.Message, error) {
 	finder, ok := p.(provider.ReferenceFinder)
 	if !ok {
 		return nil, nil
@@ -310,11 +335,18 @@ func sentOfConversation(p provider.MailProvider, mailbox string, thread []provid
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	sent, err := p.FindMailboxByType(provider.MailboxTypeSent)
-	if err != nil || sent == nil || sent.Name == mailbox {
-		return nil, err
+	if sentName == "" {
+		// Asks the server which mailbox Sent is, with a LIST of its own.
+		sent, err := p.FindMailboxByType(provider.MailboxTypeSent)
+		if err != nil || sent == nil {
+			return nil, err
+		}
+		sentName = sent.Name
 	}
-	return finder.FindByReferences(sent.Name, ids)
+	if sentName == mailbox {
+		return nil, nil
+	}
+	return finder.FindByReferences(sentName, ids)
 }
 
 // mergeConversation adds the sent messages a thread lacks, and orders them all

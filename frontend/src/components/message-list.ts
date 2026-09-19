@@ -928,9 +928,11 @@ export class MessageList extends LitElement {
       this._uidsBeforeCheck = null;
     }
 
-    // The check's answer. Loading ends whether it succeeded or not, and on
-    // success the new listing arrives in the same update.
-    if (this._uidsBeforeCheck && changedProperties.has('loading') && !this.loading) {
+    // The check's answer. The sync ends whether it succeeded or not, and on
+    // success the new listing arrives in the same update. `syncing`, not
+    // `loading`: a check over a list that is already current runs in the
+    // background, so the rows never dim and `loading` never moves.
+    if (this._uidsBeforeCheck && changedProperties.has('syncing') && !this.syncing) {
       const before = this._uidsBeforeCheck;
       this._uidsBeforeCheck = null;
       if (changedProperties.has('messages')) {

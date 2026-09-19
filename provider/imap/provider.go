@@ -1724,51 +1724,7 @@ func (p *IMAPProvider) GetMessageThread(mailbox string, targetUID provider.Messa
 				}
 
 				if len(targetUIDs) > 0 {
-					var uidSet imap.UIDSet
-					for _, u := range targetUIDs {
-						uidSet.AddNum(imap.UID(u))
-					}
-
-					bodySection := &imap.FetchItemBodySection{
-						Specifier:    imap.PartSpecifierHeader,
-						HeaderFields: []string{"Authentication-Results"},
-						Peek:         true,
-					}
-					referencesBodySection := &imap.FetchItemBodySection{
-						Specifier:    imap.PartSpecifierHeader,
-						HeaderFields: []string{"References"},
-						Peek:         true,
-					}
-					fetchOptions := imap.FetchOptions{
-						Envelope:      true,
-						Flags:         true,
-						InternalDate:  true,
-						RFC822Size:    true,
-						BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
-						BodySection: []*imap.FetchItemBodySection{
-							bodySection, referencesBodySection,
-						},
-					}
-
-					imapMsgs, fetchErr := p.client.Fetch(uidSet, &fetchOptions).Collect()
-					if fetchErr == nil {
-						msgMap := make(map[uint32]*imapclient.FetchMessageBuffer)
-						for _, msg := range imapMsgs {
-							msgMap[uint32(msg.UID)] = msg
-						}
-
-						sort.Slice(targetUIDs, func(i, j int) bool {
-							return targetUIDs[i] < targetUIDs[j]
-						})
-
-						var resultMsgs []provider.Message
-						for _, uid := range targetUIDs {
-							fetchMsg, ok := msgMap[uid]
-							if !ok {
-								continue
-							}
-							resultMsgs = append(resultMsgs, p.convertIMAPMessage(fetchMsg, mailbox))
-						}
+					if resultMsgs, fetchErr := p.fetchThreadMembers(mailbox, targetUIDs); fetchErr == nil {
 						return resultMsgs, nil
 					}
 				}
@@ -1781,6 +1737,90 @@ func (p *IMAPProvider) GetMessageThread(mailbox string, targetUID provider.Messa
 		return nil, err
 	}
 	return []provider.Message{*singleMsg}, nil
+}
+
+// GetThreadMembers reads the messages a conversation is made of, for a caller
+// that already knows which UIDs those are.
+//
+// Finding them is the expensive half. `UID THREAD` is answered for the WHOLE
+// mailbox — its cost is the mailbox's size, not the conversation's — and a
+// listing has already asked it: every row it draws carries its own thread's
+// UIDs (see ListMessages). Without this, opening any message re-threaded the
+// mailbox to rediscover a tree the client was already holding, and a message
+// with no conversation at all paid it too.
+func (p *IMAPProvider) GetThreadMembers(mailbox string, uids []provider.MessageID) ([]provider.Message, error) {
+	nums := make([]uint32, 0, len(uids))
+	for _, uid := range uids {
+		n, err := strconv.ParseUint(uid.String(), 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("thread member %q is not a UID: %w", uid.String(), err)
+		}
+		nums = append(nums, uint32(n))
+	}
+	if len(nums) == 0 {
+		return nil, fmt.Errorf("no thread members named")
+	}
+	if err := p.ensureMailboxSelected(mailbox); err != nil {
+		return nil, err
+	}
+	return p.fetchThreadMembers(mailbox, nums)
+}
+
+// fetchThreadMembers reads the named UIDs, oldest first. The mailbox must
+// already be selected.
+func (p *IMAPProvider) fetchThreadMembers(mailbox string, uids []uint32) ([]provider.Message, error) {
+	var uidSet imap.UIDSet
+	for _, u := range uids {
+		uidSet.AddNum(imap.UID(u))
+	}
+
+	bodySection := &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"Authentication-Results"},
+		Peek:         true,
+	}
+	referencesBodySection := &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"References"},
+		Peek:         true,
+	}
+	fetchOptions := imap.FetchOptions{
+		Envelope:      true,
+		Flags:         true,
+		InternalDate:  true,
+		RFC822Size:    true,
+		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+		BodySection: []*imap.FetchItemBodySection{
+			bodySection, referencesBodySection,
+		},
+	}
+
+	imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
+	if err != nil {
+		return nil, err
+	}
+
+	msgMap := make(map[uint32]*imapclient.FetchMessageBuffer)
+	for _, msg := range imapMsgs {
+		msgMap[uint32(msg.UID)] = msg
+	}
+
+	ordered := append([]uint32(nil), uids...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i] < ordered[j] })
+
+	var resultMsgs []provider.Message
+	for _, uid := range ordered {
+		fetchMsg, ok := msgMap[uid]
+		if !ok {
+			// Expunged since the listing named it, or never ours.
+			continue
+		}
+		resultMsgs = append(resultMsgs, p.convertIMAPMessage(fetchMsg, mailbox))
+	}
+	if len(resultMsgs) == 0 {
+		return nil, fmt.Errorf("none of the %d named messages are in %s", len(uids), mailbox)
+	}
+	return resultMsgs, nil
 }
 
 func (p *IMAPProvider) HasESearchCapability() bool {

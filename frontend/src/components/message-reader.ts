@@ -1186,7 +1186,9 @@ export class MessageReader extends LitElement {
       changed = true;
       if (!item.content && !item.loading) {
         item.loading = true;
-        void this.fetchItemBody(item);
+        // Queued, not fired: ten of these at once put the next thing the user
+        // does behind ten answers (see queueItemBody).
+        this.queueItemBody(item);
       }
     }
     if (changed) this.threadItems = [...this.threadItems];
@@ -1353,20 +1355,82 @@ export class MessageReader extends LitElement {
     }
 
     this.resolveThread(msg);
-    if (!silent) this.loadConversation(msg);
+    // Whatever the previous conversation had left to read is not this one's.
+    this.prefetchQueue = [];
 
+    // The BODY first, and the conversation only once it has come back.
+    //
+    // Both were asked for here at once, the conversation first, and the server
+    // answers a session's requests ONE AT A TIME: it holds a single IMAP
+    // connection under a lock (see DoMailWithContext). So the message the user
+    // had just opened waited on the whole conversation being read — a THREAD
+    // over the mailbox, a search through Sent, an envelope for every member —
+    // before its own text was fetched. The cards were on screen throughout,
+    // drawn from the list's row; what the reader was waiting for was the one
+    // message they clicked.
+    //
+    // Issuing it first is not enough — measured, it still came back second: the
+    // two race for that lock, and the body's route does more before it asks for
+    // one. So the conversation waits for the body, which costs it one round trip
+    // and costs the reader nothing. It only ever ADDS to what the row already
+    // showed (replies filed in Sent, members on other pages); nothing on screen
+    // is waiting for it.
     const primaryItem = this.threadItems.find(item => this.itemKey(item) === this.keyOf(msg)) || this.threadItems[0];
     if (primaryItem) {
       primaryItem.loading = !silent;
       primaryItem.expanded = true;
       this._deferPropertySync = false;
 
-      this.fetchItemBody(primaryItem).then(() => {
+      const read = this.fetchItemBody(primaryItem);
+      read.then(() => {
         if (!this.message || this.keyOf(this.message) !== this.keyOf(msg)) {
           return;
         }
         this.requestUpdate();
       });
+      // Whether it arrived or failed: a body that never comes must not cost the
+      // reader its conversation.
+      if (!silent) read.catch(() => { }).then(() => this.loadConversation(msg));
+      return;
+    }
+
+    if (!silent) this.loadConversation(msg);
+  }
+
+  /**
+   * Reads the bodies this reader asked for on its own — the unread members a
+   * conversation opens expanded — one at a time.
+   *
+   * Ten of them went out at once, and the server answers one at a time, so the
+   * next thing the user did (opening another message, expanding a card) queued
+   * behind all ten. One in flight leaves that reader waiting for one body, and
+   * the queue itself is dropped the moment another message is opened, so a
+   * conversation left behind stops competing with the one on screen.
+   *
+   * Only for bodies nobody asked for. A card the user expands is fetched
+   * straight away, as it always was.
+   */
+  private prefetchQueue: ThreadMessageItem[] = [];
+  private prefetching = false;
+
+  private queueItemBody(item: ThreadMessageItem) {
+    this.prefetchQueue.push(item);
+    void this.drainPrefetch();
+  }
+
+  private async drainPrefetch() {
+    if (this.prefetching) return;
+    this.prefetching = true;
+    try {
+      while (this.prefetchQueue.length > 0) {
+        const item = this.prefetchQueue.shift()!;
+        // It may have been fetched since — by the user expanding it, or by a
+        // re-resolve carrying the content over.
+        if (item.content) continue;
+        await this.fetchItemBody(item);
+      }
+    } finally {
+      this.prefetching = false;
     }
   }
 
