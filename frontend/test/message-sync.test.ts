@@ -15,7 +15,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 function events(svc: MessageSyncService) {
   const seen: { type: string; detail: any }[] = [];
-  for (const type of ['sync-start', 'sync-success', 'sync-error', 'mailbox-not-found']) {
+  for (const type of ['sync-start', 'sync-success', 'sync-error', 'mailbox-not-found', 'labels-success']) {
     svc.addEventListener(type, (e) => seen.push({ type, detail: (e as CustomEvent).detail }));
   }
   return seen;
@@ -192,6 +192,97 @@ describe('the background poll', () => {
     expect(sync).not.toHaveBeenCalled();
     svc.syncIfViewing('Work');
     expect(sync).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The folder list read on its own, for the verbs that change which folders
+ * exist rather than what is inside one.
+ */
+describe('syncLabels', () => {
+  const folders = (...names: string[]) =>
+    new Response(JSON.stringify({ Mailboxes: names.map((Name) => ({ Name })) }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+  const named = (seen: { detail: any }[]) => seen.map((e) => e.detail.mailboxes.map((m: any) => m.Name));
+
+  it('asks for the list alone and announces it on its own event', async () => {
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    fetchMock.mockResolvedValueOnce(folders('INBOX', 'Jobs'));
+
+    await svc.syncLabels();
+
+    // No page, no query, no refresh: the whole request is the folder list.
+    expect(fetchMock.mock.calls).toEqual([['/mailboxes', expect.anything()]]);
+    // Not `sync-success`, which would carry this to the arrival chime and to
+    // the list's own loaded/failed state. Not `sync-start` either: nothing is
+    // waiting on it, so nothing should spin.
+    expect(seen.map((e) => e.type)).toEqual(['labels-success']);
+    expect(named(seen)).toEqual([['INBOX', 'Jobs']]);
+  });
+
+  it('leaves the poll pointed where it was', async () => {
+    const svc = new MessageSyncService();
+    svc.setContext('Archive', 3, 'from:ana');
+    fetchMock.mockResolvedValueOnce(folders('INBOX'));
+
+    await svc.syncLabels();
+
+    // It read no messages, so it has no view to re-point and none to supersede.
+    expect(context(svc)).toEqual({ mailbox: 'Archive', page: 3 });
+    expect((svc as any).currentQuery).toBe('from:ana');
+  });
+
+  it('drops an answer that a later read has overtaken', async () => {
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    let releaseFirst: (r: Response) => void = () => {};
+    fetchMock
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { releaseFirst = resolve; }))
+      .mockResolvedValueOnce(folders('INBOX', 'Jobs'));
+
+    const first = svc.syncLabels();
+    const second = svc.syncLabels();
+    await second;
+    releaseFirst(folders('INBOX', 'Work'));
+    await first;
+
+    // Rename twice in quick succession and the older tree must not land on top
+    // of the newer one.
+    expect(named(seen)).toEqual([['INBOX', 'Jobs']]);
+  });
+
+  it('says nothing to the page when the read fails', async () => {
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 500 }));
+
+    await expect(svc.syncLabels()).resolves.toBeUndefined();
+
+    // The verb that called this already told the user how it went. A stale
+    // count in the sidebar until the next poll is the whole of the damage.
+    expect(seen).toEqual([]);
+  });
+
+  it('reports an expired session the way every other read does', async () => {
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    const authErrors: Event[] = [];
+    const onAuth = (e: Event) => authErrors.push(e);
+    window.addEventListener('auth-error', onAuth);
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
+
+    await svc.syncLabels();
+    window.removeEventListener('auth-error', onAuth);
+
+    // Twice over, as every mail read here does: `fetchWithTimeout` announces it
+    // for the plugins' sake and the service announces it again. app-root's
+    // handler is idempotent.
+    expect(authErrors.length).toBeGreaterThan(0);
+    expect(seen).toEqual([]);
   });
 });
 
