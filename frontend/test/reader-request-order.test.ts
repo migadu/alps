@@ -195,3 +195,60 @@ describe('opening a conversation', () => {
     expect(members()).toEqual(readSoFar);
   });
 });
+
+describe('an answer that lands after the reader has gone', () => {
+  /**
+   * The reads here are held open and released at teardown, which is what a
+   * page coming down looks like: the element is removed and the request it was
+   * waiting on answers anyway. Applying that answer repaints a reader with no
+   * screen — its thread cards render, read `window`, and in a torn-down
+   * environment there is no window to read. That surfaced as an unhandled
+   * rejection in roughly a third of full runs, failing the suite's exit code
+   * while every test passed.
+   */
+  it('does not paint a body released after the element was removed', async () => {
+    const el = await openConversation();
+    await waitFor(() => release.has('10'), 'the opened message to be read');
+    expect(el.content).toBe('');
+
+    el.remove();
+    // The server answers regardless — it was already reading when we left.
+    release.get('10')!();
+    await flush();
+    await flush();
+
+    // The body reached the item object, which is nobody's screen. What must
+    // not happen is the reader adopting it and repainting for it.
+    expect(el.content).toBe('');
+    expect(el.loading).toBe(true);
+  });
+
+  it('does not resolve a conversation that lands after the element was removed', async () => {
+    // This one needs the CONVERSATION held rather than the body: the shared
+    // mock answers /thread at once, and then it has landed long before the
+    // element goes.
+    let answerThread: (() => void) | null = null;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const u = String(url);
+      asked.push(u);
+      if (/\/thread/.test(u)) {
+        await new Promise<void>(resolve => { answerThread = resolve; });
+        return json({ Messages: [...unread, opened] });
+      }
+      if (u.includes('/raw')) return new Response('the body', { status: 200 });
+      const view = /\/messages\/(\d+)\?view=/.exec(u);
+      if (view) return bodyOf([opened, ...unread].find(m => m.UID === view[1])!);
+      return new Response('{}', { status: 404 });
+    }));
+
+    const el = await openConversation();
+    await waitFor(() => answerThread !== null, 'the conversation to be asked for');
+
+    el.remove();
+    answerThread!();
+    await flush();
+    await flush();
+
+    expect(el._conversation).toBeNull();
+  });
+});

@@ -1395,6 +1395,12 @@ export class MessageReader extends LitElement {
 
       const read = this.fetchItemBody(primaryItem);
       read.then(() => {
+        // A reader that has left the page paints nobody. The answer can land
+        // after the element is gone — a body still in flight when the user
+        // moved on, or one released as the page came down — and repainting for
+        // it draws this conversation's cards into a document that may not be
+        // there any more.
+        if (!this.isConnected) return;
         if (!this.message || this.keyOf(this.message) !== this.keyOf(msg)) {
           return;
         }
@@ -1465,6 +1471,9 @@ export class MessageReader extends LitElement {
       if (res.ok) {
         const data = await res.json();
         const messages = Array.isArray(data?.Messages) ? data.Messages : [];
+        // Same reason as the body above: nothing on a page that has gone needs
+        // its conversation resolved, and resolving it repaints.
+        if (!this.isConnected) return;
         if (!this.message || this.keyOf(this.message) !== key) return;
         this._conversation = { key, messages };
         if (messages.length > 1) {
@@ -1482,6 +1491,9 @@ export class MessageReader extends LitElement {
 
   private updateThreadItemReference(item: ThreadMessageItem) {
     if (!item.message) return;
+    // The card list is what Lit renders from, so replacing its reference IS a
+    // repaint. A reader off the page has no screen for it.
+    if (!this.isConnected) return;
     const idx = this.threadItems.findIndex(i => this.itemKey(i) === this.itemKey(item));
     if (idx !== -1) {
       // Create a shallow copy to change the reference, reactively updating Lit child components
@@ -1547,7 +1559,7 @@ export class MessageReader extends LitElement {
           }
         }
         item.loading = false;
-        if (!this._deferPropertySync && this.isOpenItem(item)) {
+        if (this.isConnected && !this._deferPropertySync && this.isOpenItem(item)) {
           this.content = item.content;
           this.mimeType = item.mimeType;
           this.rawMessageHtml = item.rawMessageHtml;
@@ -1648,7 +1660,7 @@ export class MessageReader extends LitElement {
       item.content = 'Error loading message.';
     } finally {
       item.loading = false;
-      if (!this._deferPropertySync && this.isOpenItem(item)) {
+      if (this.isConnected && !this._deferPropertySync && this.isOpenItem(item)) {
         this.content = item.content;
         this.mimeType = item.mimeType;
         this.rawMessageHtml = item.rawMessageHtml;
