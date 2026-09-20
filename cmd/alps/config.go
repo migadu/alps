@@ -107,8 +107,10 @@ type RateLimitConfig struct {
 }
 
 type CacheConfig struct {
-	TTLMinutes int  `toml:"ttl_minutes"`
-	Enabled    bool `toml:"enabled"`
+	TTLMinutes int `toml:"ttl_minutes"`
+	// A pointer so that leaving it out is not the same as saying false: the
+	// session cache is on unless a config turns it off.
+	Enabled *bool `toml:"enabled"`
 }
 
 type LoggingConfig struct {
@@ -294,13 +296,14 @@ func (c *Config) ToOptions() (alps.Options, error) {
 		options.TrustedOrigins = append(options.TrustedOrigins, origin)
 	}
 
-	// Set cache config (default to enabled with 10 minute TTL)
-	options.CacheEnabled = true
+	// The session cache is on, with a 10 minute TTL, unless the config says
+	// otherwise. It read `enabled` as a plain bool, so a config with no [cache]
+	// section — or one that set only the TTL — turned caching OFF, against the
+	// comment here and the example config alike, and every page of every
+	// mailbox was then re-threaded from IMAP on every read.
+	options.CacheEnabled = c.Cache.Enabled == nil || *c.Cache.Enabled
 	if c.Cache.TTLMinutes > 0 {
 		options.CacheTTL = time.Duration(c.Cache.TTLMinutes) * time.Minute
-	}
-	if !c.Cache.Enabled {
-		options.CacheEnabled = false
 	}
 
 	// Set session duration config

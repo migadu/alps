@@ -19,6 +19,26 @@ import { Logger } from '../utils/logger';
 export type MailboxMutation = 'ok' | 'exists' | 'failed';
 
 /**
+ * What emptying a folder did.
+ *
+ * `discarded` is how many messages the server found to discard, and zero is a
+ * real answer: the folder was already empty and this request removed nothing.
+ * It used to be indistinguishable from a real emptying — both were `true` —
+ * and the success message that followed was a claim the list on screen could
+ * contradict.
+ *
+ * `timeout` is separated from `failed` for the same reason: the request gave
+ * up, the server very likely did not.
+ */
+export type EmptyOutcome =
+  | { ok: true; discarded?: number }
+  | { ok: false; reason: 'auth' | 'not_discardable' | 'timeout' | 'failed' };
+
+/** Ten minutes. Long enough for an expunge over a folder nobody has emptied in
+ * years, short enough that a wedged connection still ends in an answer. */
+const EMPTY_MAILBOX_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
  * NOT an EventTarget.
  *
  * It extended one and dispatched `auth-error` on itself beside every
@@ -106,25 +126,66 @@ export class MailboxOperationsService {
     }
   }
 
-  async emptyMailbox(name: string): Promise<boolean> {
+  /**
+   * Emptying a folder is ONE request that may run for minutes.
+   *
+   * The server takes it as a single IMAP conversation — SELECT, STORE \Deleted
+   * over the whole mailbox, EXPUNGE — with nothing to report until the expunge
+   * returns, and an expunge of tens of thousands of messages is not a
+   * 25-second job. On the default budget the browser aborted a delete that was
+   * working: the abort cancels the request context, so the backend drops its
+   * connection and never invalidates its caches, while the expunge it started
+   * runs to completion regardless. The user is told the empty failed, the list
+   * is never re-read, and the folder quietly empties behind them — which reads
+   * as "nothing happened, so I pressed it again".
+   *
+   * So the deadline is the folder's, not the default one. A timeout is still
+   * reported, and reported as its own thing: the work is probably still going
+   * on upstream, and "try again" is the wrong advice.
+   */
+  async emptyMailbox(name: string): Promise<EmptyOutcome> {
     try {
       const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(name)}/empty`, {
         method: 'POST'
-      });
-      
+      }, EMPTY_MAILBOX_TIMEOUT_MS);
+
       if (res.status === 401) {
-        window.dispatchEvent(new CustomEvent('auth-error'));
-        return false;
+        // Announced by fetchWithTimeout; the shell is already on its way to the
+        // login screen, so the caller says nothing.
+        return { ok: false, reason: 'auth' };
       }
-      
+
       if (res.ok) {
+        // The count is the whole point of reading this body: a 200 says the
+        // server has nothing left to complain about, not that it discarded
+        // anything. An older backend sends no `discarded` at all, and an empty
+        // that reported nothing is taken at its word rather than called a
+        // no-op.
+        let discarded: number | undefined;
+        try {
+          const body = await res.json();
+          if (typeof body?.discarded === 'number') discarded = body.discarded;
+        } catch {
+          // A 200 with an unreadable body is still an empty that happened.
+        }
         messageSync.sync();
-        return true;
+        return { ok: true, discarded };
       }
-      return false;
+
+      Logger.error('Failed to empty mailbox', res.status);
+      return { ok: false, reason: res.status === 403 ? 'not_discardable' : 'failed' };
     } catch (err) {
       Logger.error('Failed to empty mailbox', err);
-      return false;
+      if ((err as Error)?.name === 'AbortError') {
+        // Read the folder again even though the request was abandoned. The
+        // expunge is most likely still running or already done upstream, so
+        // whatever the list shows next is nearer the truth than the rows the
+        // client gave up holding — and a listing that succeeds also takes back
+        // the offline notice the abort raised.
+        messageSync.sync();
+        return { ok: false, reason: 'timeout' };
+      }
+      return { ok: false, reason: 'failed' };
     }
   }
 

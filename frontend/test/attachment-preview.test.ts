@@ -2,9 +2,24 @@
  * The attachment preview: what each kind of file is drawn as, where its bytes
  * come from, and the keys it takes from the page underneath.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, click, flush, mount, record, shadow, shadowAll, text, waitFor } from './helpers/dom';
 import '../src/components/alps-attachment-preview';
+
+/**
+ * Nothing in this file may reach the real network.
+ *
+ * An unstubbed GET fails with a TypeError, and `fetchWithTimeout` REPLAYS a
+ * failed GET after 250ms and again after a second — by which time this test is
+ * over and another is running. That test's own stub then counted a request it
+ * never made: "offers a download instead of fetching a very large text file"
+ * failed with the previous test's part URL in its list, in about a third of
+ * full runs and never on its own. A stub that answers keeps every read inside
+ * the test that made it.
+ */
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 200 })));
+});
 
 afterEach(cleanup);
 afterEach(() => vi.unstubAllGlobals());
