@@ -173,10 +173,10 @@ func TestListingsReadNoAuthenticationResults(t *testing.T) {
 			p := memIMAP(t, srv.server, messages...)
 			listings := []struct {
 				how  string
-				list func() ([]provider.Message, int, error)
+				list func() ([]provider.Message, provider.PageInfo, error)
 			}{
-				{"listed", func() ([]provider.Message, int, error) { return p.ListMessages("INBOX", "", 0, 50) }},
-				{"searched", func() ([]provider.Message, int, error) { return p.SearchMessages("INBOX", "", "", 0, 50) }},
+				{"listed", func() ([]provider.Message, provider.PageInfo, error) { return p.ListMessages("INBOX", "", 0, 50) }},
+				{"searched", func() ([]provider.Message, provider.PageInfo, error) { return p.SearchMessages("INBOX", "", "", 0, 50) }},
 			}
 			for _, l := range listings {
 				before := len(srv.server.traffic.String())

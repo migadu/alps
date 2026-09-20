@@ -508,12 +508,12 @@ func TestHTTP_NoWriteReachesTheSearchAcrossFolders(t *testing.T) {
 		}
 	}
 
-	msgs, total, err := s.store.ListMessages(allMailboxes, "", 0, 10)
+	msgs, page, err := s.store.ListMessages(allMailboxes, "", 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if total != 1 || len(msgs) != 1 {
-		t.Fatalf("the folder called \"*\" holds %d messages, want 1", total)
+	if page.Total != 1 || len(msgs) != 1 {
+		t.Fatalf("the folder called \"*\" holds %d messages, want 1", page.Total)
 	}
 	for _, f := range msgs[0].Flags {
 		if strings.EqualFold(string(f), `\Flagged`) {

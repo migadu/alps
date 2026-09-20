@@ -94,13 +94,13 @@ func (m *MockProvider) UnsubscribeMailbox(name string) error {
 	return args.Error(0)
 }
 
-func (m *MockProvider) ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]Message, int, error) {
+func (m *MockProvider) ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]Message, PageInfo, error) {
 	args := m.Called(mailbox, sortOrder, page, pageSize)
 	var msgs []Message
 	if val := args.Get(0); val != nil {
 		msgs = val.([]Message)
 	}
-	return msgs, args.Int(1), args.Error(2)
+	return msgs, mockPageInfo(args, 1), args.Error(2)
 }
 
 func (m *MockProvider) SearchMessageIDs(mailbox, query string) ([]MessageID, error) {
@@ -112,13 +112,26 @@ func (m *MockProvider) SearchMessageIDs(mailbox, query string) ([]MessageID, err
 	return ids, args.Error(1)
 }
 
-func (m *MockProvider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]Message, int, error) {
+func (m *MockProvider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]Message, PageInfo, error) {
 	args := m.Called(mailbox, query, sortOrder, page, pageSize)
 	var msgs []Message
 	if val := args.Get(0); val != nil {
 		msgs = val.([]Message)
 	}
-	return msgs, args.Int(1), args.Error(2)
+	return msgs, mockPageInfo(args, 1), args.Error(2)
+}
+
+// mockPageInfo lets a test set the page either way round: a PageInfo when it
+// cares whether the page was threaded, or a bare total when it does not.
+func mockPageInfo(args mock.Arguments, idx int) PageInfo {
+	switch v := args.Get(idx).(type) {
+	case PageInfo:
+		return v
+	case int:
+		return PageInfo{Total: v}
+	default:
+		return PageInfo{}
+	}
 }
 
 func (m *MockProvider) ParseMessageID(id string) (MessageID, error) {

@@ -160,6 +160,9 @@ func dropMailboxListings(cache *alps.Cache, mailbox string) {
 type CachedMessages struct {
 	Messages []provider.Message
 	Total    int
+	// Threaded records what Total counts, so a cache hit reports the same
+	// kind of row the live listing would have. See provider.PageInfo.
+	Threaded bool
 }
 
 // CachedMessagePart holds a cached individual message with optional body data
@@ -711,6 +714,11 @@ func handleGetMailbox(ctx *alps.Context) error {
 	var (
 		msgs  []IMAPMessage
 		total int
+		// threaded says whether Total counts conversations or messages; a
+		// server may refuse THREAD for one request and allow it for the next,
+		// and the client has to notice rather than page on with an offset that
+		// changed meaning underneath it.
+		threaded bool
 	)
 
 	// Build cache key for messages
@@ -746,6 +754,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 	if hit {
 		cachedData := cached.(CachedMessages)
 		total = cachedData.Total
+		threaded = cachedData.Threaded
 
 		// Convert cached provider messages to IMAP messages for display
 		msgs = make([]IMAPMessage, len(cachedData.Messages))
@@ -758,20 +767,23 @@ func handleGetMailbox(ctx *alps.Context) error {
 		var providerMsgs []provider.Message
 		err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 			var err error
+			var pageInfo provider.PageInfo
 			if query != "" || settings.MessageSortCriteria == "date" {
-				providerMsgs, total, err = p.SearchMessages(mbox.Name(), query, sortOrder, page, messagesPerPage)
+				providerMsgs, pageInfo, err = p.SearchMessages(mbox.Name(), query, sortOrder, page, messagesPerPage)
 			} else {
-				providerMsgs, total, err = p.ListMessages(mbox.Name(), sortOrder, page, messagesPerPage)
+				providerMsgs, pageInfo, err = p.ListMessages(mbox.Name(), sortOrder, page, messagesPerPage)
 			}
 			if err != nil {
 				return err
 			}
+			total, threaded = pageInfo.Total, pageInfo.Threaded
 
 			// Cache the message list using provider types
 			if cacheable {
 				ctx.Session.Cache().Set(msgCacheKey, CachedMessages{
 					Messages: providerMsgs,
 					Total:    total,
+					Threaded: threaded,
 				})
 			}
 
@@ -816,6 +828,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 		"Inbox":           ibase.Inbox,
 		"Messages":        msgs,
 		"Total":           total,
+		"Threaded":        threaded,
 		"Page":            page,
 		"MessagesPerPage": messagesPerPage,
 	})
