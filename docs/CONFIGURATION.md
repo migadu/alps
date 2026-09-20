@@ -147,19 +147,23 @@ Configures the backend mail services.
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `type` | String | `"imap"` | Mail provider protocol (`"imap"` or `"maildir"`). |
+| `timeout_sec` | Integer | `30` | Provider connect timeout in seconds. For the `imap` provider this supersedes the legacy `[server] imap_timeout_sec`, which is still honoured when `timeout_sec` is unset. |
+
+A `[provider.<type>]` section matching `type` is required.
 
 ### `[provider.imap]`
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `server` | String | None | Direct URL to IMAP server (e.g. `"imaps://imap.example.com:993"`). |
+| `server` | String | None | Direct URL to IMAP server (e.g. `"imaps://imap.example.com:993"`). Required, and must carry a scheme: `imaps://` (implicit TLS, default port 993), `imap://` (default port 143) or `imap+insecure://` (implies `insecure`). |
 | `insecure` | Boolean | `false` | Allow connections without strict TLS validation. |
+| `debug` | Boolean | `false` | Log the IMAP protocol exchange for this provider. OR-ed with `[server] debug`. Dumps message content and credentials-adjacent traffic, so keep it off in production. |
 | `authserv_ids` | Array | `[]` | Authserv-ids of the receiving mail servers whose `Authentication-Results` header is trusted for a message's DMARC verdict, which decides whether a sender's BIMI logo is shown (e.g. `["mx.example.com"]`). Matched in any case. Empty means the topmost header is read, so a message the server did not stamp is judged by a header its sender wrote. |
 
 ### `[provider.maildir]`
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `path` | String | None | Path to the Maildir root directory. |
-| `auth_passwd_file`| String | None | Path to the Dovecot-style authentication password file. |
+| `auth_passwd_file`| String | None | Path to the Dovecot-style authentication password file. **Required**; startup fails without it. |
+| `path` | String | None | Path to the Maildir root directory. Optional: when unset, each user's maildir is taken from the home directory in `auth_passwd_file` (`<home>/Maildir`). Supports the `%u` (local part), `%d` (domain) and `%n` (full username) placeholders. |
 
 ### `[smtp]`
 Configures the SMTP server used for sending emails.

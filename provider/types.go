@@ -18,6 +18,10 @@ func (err AuthError) Error() string {
 	return fmt.Sprintf("authentication failed: %v", err.Cause)
 }
 
+func (err AuthError) Unwrap() error {
+	return err.Cause
+}
+
 // AuthenticatedProviderFactory creates an authenticated provider instance
 type AuthenticatedProviderFactory func(username, password string) (MailProvider, error)
 
@@ -28,7 +32,7 @@ type Config interface {
 
 type Options interface {
 	Type() string
-	CreateFactory(timeout time.Duration) AuthenticatedProviderFactory
+	CreateFactory(timeout time.Duration, debug bool) AuthenticatedProviderFactory
 }
 
 // MailProvider abstracts mail backend (IMAP, JMAP, etc.)

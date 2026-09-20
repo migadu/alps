@@ -367,18 +367,27 @@ enabled = false
 
 [provider]
 # Mail provider type (default: "imap")
-# Options: "imap", "jmap" (future)
+# Options: "imap", "maildir", "jmap" (future)
+# A matching [provider.<type>] section is required.
 type = "imap"
 
-# Provider-specific options (optional map)
-# options = { "example_key" = "example_value" }
+# Provider connect timeout in seconds (default: 30)
+# For the imap provider this supersedes the legacy [server] imap_timeout_sec,
+# which is still honoured when this key is unset.
+# timeout_sec = 30
 
 [provider.imap]
 # IMAP server URL
+# Supported schemes: imaps:// (implicit TLS, default port 993),
+# imap:// (default port 143), imap+insecure:// (implies insecure)
 server = "imaps://imap.migadu.com:993"
 
 # Allow insecure connections (default: false)
 # insecure = false
+
+# Log the IMAP protocol exchange for this provider (default: false).
+# OR-ed with [server] debug. Dumps message content, so keep it off in production.
+# debug = false
 
 # Authserv-ids of the receiving mail servers whose Authentication-Results
 # header is trusted for a message's DMARC verdict, which decides whether a
@@ -389,11 +398,14 @@ server = "imaps://imap.migadu.com:993"
 
 # Maildir Provider Configuration (Local filesystem)
 # [provider.maildir]
-# Path to the base maildir directory for all users
-# path = "/var/mail/virtual"
-#
-# Path to the Dovecot-style passwd file for authentication
+# Path to the Dovecot-style passwd file for authentication (REQUIRED)
 # auth_passwd_file = "/etc/dovecot/users"
+#
+# Path to the base maildir directory for all users (optional).
+# When unset, each user's maildir is taken from the home directory recorded
+# in auth_passwd_file (<home>/Maildir). Placeholders: %u (local part),
+# %d (domain), %n (full username).
+# path = "/var/mail/virtual/%d/%u"
 
 [smtp]
 # SMTP server

@@ -2,111 +2,143 @@ package imap
 
 import (
 	"fmt"
-	"time"
-	"strings"
 	"net/url"
+	"strings"
+	"time"
+
 	"github.com/BurntSushi/toml"
 	"github.com/migadu/alps/provider"
 )
 
-// public configuration type
+// Config represents the TOML configuration for the IMAP provider.
 type Config struct {
-	// fields initialized from the user toml configuration
 	Server      string   `toml:"server"`       // Server URL (e.g., "imaps://imap.example.com:993")
 	Insecure    bool     `toml:"insecure"`     // Allow insecure connections
-	// Authserv-ids of the receiving mail servers whose Authentication-Results
-	// fields are trusted for a message's DMARC verdict. Empty means the topmost
-	// field.
 	AuthservIDs []string `toml:"authserv_ids"` // Receiving servers whose Authentication-Results are trusted (e.g., ["mx.example.com"])
-	Debug       bool     `toml:"debug"`        // turn out debugging output for the provider
-	// private fields for options interface
-	address  string
-	tls      bool
+	Debug       bool     `toml:"debug"`        // Turn on debugging output for the provider
 }
 
 func (c *Config) Type() string {
-
 	return "imap"
 }
 
-func (c *Config) ToOptions() (provider.Options, error) {
+// parseServer derives the dial address and TLS mode from the configured server
+// URL. The returned insecure flag is the configured one OR-ed with the scheme.
+func parseServer(c *Config) (address string, tls bool, insecure bool, err error) {
+	if c == nil {
+		return "", false, false, fmt.Errorf("IMAP provider has no configuration")
+	}
 
 	if c.Server == "" {
-		return nil, fmt.Errorf("IMAP server cannot be empty")
+		return "", false, false, fmt.Errorf("IMAP server requires a scheme (imaps://, imap://, imap+insecure://), got empty string")
+	}
+
+	if !strings.Contains(c.Server, "://") {
+		return "", false, false, fmt.Errorf("IMAP server requires a scheme (imaps://, imap://, imap+insecure://), got: %v", c.Server)
 	}
 
 	u, err := url.Parse(c.Server)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse IMAP server: %v", err)
+		return "", false, false, fmt.Errorf("failed to parse IMAP server: %w", err)
 	}
 
-	if u.Scheme == "" {
-		return nil, fmt.Errorf("IMAP server requires a scheme (imaps://, imap://, imap+insecure://), got: %v", u.String())
-	}
+	insecure = c.Insecure
 	switch u.Scheme {
 	case "imaps":
-		c.tls = true
+		tls = true
 	case "imap+insecure":
-		c.Insecure = true
+		insecure = true
 	case "imap":
 	default:
-		return nil, fmt.Errorf("unknown scheme for IMAP server: %v", u.Scheme)
+		return "", false, false, fmt.Errorf("unknown scheme for IMAP server: %v", u.Scheme)
 	}
 
-	c.address = u.Host
-	if !strings.ContainsRune(c.address, ':') {
+	address = u.Host
+	if address == "" {
+		return "", false, false, fmt.Errorf("IMAP server host cannot be empty")
+	}
+	if !strings.ContainsRune(address, ':') {
 		if u.Scheme == "imaps" {
-			c.address += ":993"
+			address += ":993"
 		} else {
-			c.address += ":143"
+			address += ":143"
 		}
 	}
 
-	return &Options{ c }, nil
+	return address, tls, insecure, nil
+}
+
+func (c *Config) ToOptions() (provider.Options, error) {
+	address, tls, insecure, err := parseServer(c)
+	if err != nil {
+		return nil, err
+	}
+
+	cfgCopy := *c
+	cfgCopy.Insecure = insecure
+
+	return &Options{
+		Config:  &cfgCopy,
+		address: address,
+		tls:     tls,
+	}, nil
 }
 
 type Options struct {
 	*Config
+	address string
+	tls     bool
 }
 
-func (o *Options) CreateFactory(timeout time.Duration) provider.AuthenticatedProviderFactory {
+// resolve returns the dial parameters, deriving them from Config when the
+// Options value was built directly instead of through Config.ToOptions.
+func (o *Options) resolve() (address string, tls bool, insecure bool, err error) {
+	if o.address != "" {
+		return o.address, o.tls, o.Insecure, nil
+	}
+	return parseServer(o.Config)
+}
+
+func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.AuthenticatedProviderFactory {
+	address, tls, insecure, resolveErr := o.resolve()
+
+	debugMode := debug
+	if o.Config != nil {
+		debugMode = o.Debug || debug
+	}
 
 	return func(username, password string) (provider.MailProvider, error) {
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
 
-		client, err := Connect(o.address, o.tls, o.Insecure, timeout, o.Debug)
+		client, err := Connect(address, tls, insecure, timeout, debugMode)
 		if err != nil {
 			return nil, err
 		}
 
 		if err := client.Login(username, password).Wait(); err != nil {
 			client.Logout()
-			return nil, provider.AuthError{ err }
+			return nil, provider.AuthError{Cause: err}
 		}
 
-		return NewIMAPProvider(client, o.Debug).WithAuthservIDs(o.AuthservIDs), nil
+		return NewIMAPProvider(client, debugMode).WithAuthservIDs(o.AuthservIDs), nil
 	}
 }
 
 func configure(meta *toml.MetaData, raw *toml.Primitive) (provider.Config, error) {
-
 	var cfg Config
-	err := meta.PrimitiveDecode(*raw, &cfg)
-	if err != nil {
-		return nil, fmt.Errorf("error decoding configuration for [provider.imap]: %v", err)
+	if err := meta.PrimitiveDecode(*raw, &cfg); err != nil {
+		return nil, fmt.Errorf("error decoding configuration for [provider.imap]: %w", err)
 	}
 
 	if cfg.Server == "" {
 		return nil, fmt.Errorf("IMAP server requires a scheme (imaps://, imap://, imap+insecure://), got empty string")
 	}
 
-	if !strings.ContainsAny(cfg.Server, ":/") {
-		cfg.Server = "//" + cfg.Server
-	}
-
 	return &cfg, nil
 }
 
 func init() {
-
 	provider.Register("imap", configure)
 }

@@ -312,7 +312,7 @@ func (s *Session) doSMTP(f func(*smtp.Client) error) error {
 
 	auth := sasl.NewPlainClient("", s.username, s.password)
 	if err := c.Auth(auth); err != nil {
-		return provider.AuthError{err}
+		return provider.AuthError{Cause: err}
 	}
 
 	if err := f(c); err != nil {

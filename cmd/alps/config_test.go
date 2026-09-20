@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"testing"
 	"github.com/migadu/alps/provider/imap"
+	"testing"
 
 	"github.com/stretchr/testify/assert"
 )

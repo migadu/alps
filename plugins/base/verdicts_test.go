@@ -54,14 +54,13 @@ func newIMAPTestServer(t *testing.T, messages ...string) *testServer {
 		t.Fatal(err)
 	}
 	pcfg := &imapprovider.Config{
-		Server:"imap+insecure://" + ln.Addr().String(),
+		Server: "imap+insecure://" + ln.Addr().String(),
 	}
 	popt, err := pcfg.ToOptions()
 	if err != nil {
 		t.Fatal(err)
 	}
 	srv, err := alps.New(alps.NewLogger(), &alps.Options{
-		ProviderType: "imap",
 		Provider:     popt,
 		SMTP:         alps.SMTPOptions{Server: "smtp://127.0.0.1:1"},
 		LoginKey:     &key,

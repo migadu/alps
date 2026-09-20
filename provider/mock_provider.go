@@ -1,22 +1,20 @@
 package provider
 
 import (
-	"time"
 	"github.com/emersion/go-message"
 	"github.com/stretchr/testify/mock"
+	"time"
 )
 
-type MockOptions struct {}
+type MockOptions struct{}
 
 func (o *MockOptions) Type() string {
 
 	return "mock"
 }
 
-func (o *MockOptions) CreateFactory(timeout time.Duration) AuthenticatedProviderFactory {
-
+func (o *MockOptions) CreateFactory(timeout time.Duration, debug bool) AuthenticatedProviderFactory {
 	return func(username, password string) (MailProvider, error) {
-
 		return &MockProvider{}, nil
 	}
 }

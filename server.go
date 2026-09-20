@@ -56,8 +56,12 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 		return nil, err
 	}
 
+	if options.Provider == nil {
+		return nil, fmt.Errorf("no mail provider configured")
+	}
+
 	// Create provider factory
-	providerFactory := options.Provider.CreateFactory(options.ProviderTimeout)
+	providerFactory := options.Provider.CreateFactory(options.ProviderTimeout, options.Debug)
 
 	s.Sessions = newSessionManager(providerFactory, s.dialSMTP, logger, options.CacheTTL, options.CacheEnabled, options.LoginKey, options.SessionDuration, options.MaxSessionDuration, options.MaxSessions, options.MaxSessionsPerUser, options.MaxAttachmentMiB, options.MaxSessionAttachmentMiB, options.MaxGlobalAttachmentMiB)
 	// Set after construction rather than as a fourteenth positional argument to
@@ -317,7 +321,6 @@ type Options struct {
 	SMTPTimeout             time.Duration           // SMTP operation timeout, 0 means use default (30 seconds)
 	WebAuthn                WebAuthnOptions         // WebAuthn configuration
 	Plugins                 map[string]PluginConfig // Generic plugin configuration
-	ProviderType            string                  // The type of provider to use
 	Provider                provider.Options        // Mail provider configuration
 	ClusterBroadcaster      ClusterBroadcaster      // Optional interface for cluster message broadcasting
 }

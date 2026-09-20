@@ -250,7 +250,7 @@ func startHarness(t *testing.T, o harnessOptions) *harness {
 		t.Fatal(err)
 	}
 	pcfg := &maildir.Config{
-		Path: filepath.Join(base, "%u"),
+		Path:           filepath.Join(base, "%u"),
 		AuthPasswdFile: passwd,
 	}
 	popt, err := pcfg.ToOptions()
@@ -258,7 +258,6 @@ func startHarness(t *testing.T, o harnessOptions) *harness {
 		t.Fatal(err)
 	}
 	opts := &alps.Options{
-		ProviderType:    "maildir",
 		Provider: popt,
 		SMTP:     alps.SMTPOptions{Server: o.smtp},
 		LoginKey: &key,

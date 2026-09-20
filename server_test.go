@@ -2,11 +2,11 @@ package alps
 
 import (
 	"errors"
+	"github.com/migadu/alps/provider"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-	"github.com/migadu/alps/provider"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -28,9 +28,8 @@ func TestServerPluginConfig(t *testing.T) {
 
 	// Test 1: Only domain name with scheme
 	opts := &Options{
-		ProviderType: "mock",
 		Provider: &provider.MockOptions{},
-		SMTP: SMTPOptions{Server: "smtps://example.com"},
+		SMTP:     SMTPOptions{Server: "smtps://example.com"},
 	}
 	s, err := newServer(logger, opts)
 	assert.NoError(t, err)
@@ -38,14 +37,23 @@ func TestServerPluginConfig(t *testing.T) {
 
 	// Test 2: Specific schemes
 	opts = &Options{
-		ProviderType: "mock",
 		Provider: &provider.MockOptions{},
-		SMTP: SMTPOptions{Server: "smtps://smtp.example.com:465"},
+		SMTP:     SMTPOptions{Server: "smtps://smtp.example.com:465"},
 	}
 	s, err = newServer(logger, opts)
 	assert.NoError(t, err)
 	assert.True(t, s.smtp.tls)
 	assert.Equal(t, "smtp.example.com:465", s.smtp.host)
+}
+
+func TestServerNilProvider(t *testing.T) {
+	logger := &NilLogger{}
+	opts := &Options{
+		SMTP: SMTPOptions{Server: "smtps://example.com"},
+	}
+	_, err := newServer(logger, opts)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no mail provider configured")
 }
 
 func TestSanitizeError(t *testing.T) {

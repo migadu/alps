@@ -1,11 +1,11 @@
 package main
 
 import (
+	"github.com/migadu/alps/provider/imap"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
-	"github.com/migadu/alps/provider/imap"
 )
 
 func TestConfigCarriesAuthservIDs(t *testing.T) {

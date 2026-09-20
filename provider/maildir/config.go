@@ -1,47 +1,44 @@
 package maildir
 
 import (
-	"time"
 	"fmt"
-	"strings"
 	"path/filepath"
+	"strings"
+	"time"
 
-	"github.com/migadu/alps/provider"
 	"github.com/BurntSushi/toml"
+	"github.com/migadu/alps/provider"
 )
 
-// Type to implement the provider.Options interface
+// Config represents the TOML configuration for the Maildir provider.
 type Config struct {
 	Path           string `toml:"path"`
 	AuthPasswdFile string `toml:"auth_passwd_file"`
 }
 
 func (c *Config) Type() string {
-
 	return "maildir"
 }
 
 func (c *Config) ToOptions() (provider.Options, error) {
-
 	if c.AuthPasswdFile == "" {
-		return nil, fmt.Errorf("AuthPasswdFile cannot be empty")
+		return nil, fmt.Errorf("auth_passwd_file cannot be empty")
 	}
 
-	return &options{ c }, nil
+	return &Options{Config: c}, nil
 }
 
-type options struct {
+// Options implements provider.Options for the Maildir provider.
+type Options struct {
 	*Config
 }
 
-func (o *options) CreateFactory(timeout time.Duration) provider.AuthenticatedProviderFactory {
-
+func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.AuthenticatedProviderFactory {
 	return func(username, password string) (provider.MailProvider, error) {
-
 		// Authenticate against dovecot passwd file
 		homeDir, err := authenticate(o.AuthPasswdFile, username, password)
 		if err != nil {
-			return nil, provider.AuthError{ err }
+			return nil, provider.AuthError{Cause: err}
 		}
 
 		// Use explicit Maildir path if provided, resolving %u and %d, otherwise use homeDir/Maildir
@@ -66,11 +63,10 @@ func (o *options) CreateFactory(timeout time.Duration) provider.AuthenticatedPro
 }
 
 func configure(meta *toml.MetaData, raw *toml.Primitive) (provider.Config, error) {
-
 	var cfg Config
 	err := meta.PrimitiveDecode(*raw, &cfg)
 	if err != nil {
-		return nil, fmt.Errorf("error decoding configuration for [provider.maildir]: %v", err)
+		return nil, fmt.Errorf("error decoding configuration for [provider.maildir]: %w", err)
 	}
 
 	if cfg.AuthPasswdFile == "" {
@@ -81,6 +77,5 @@ func configure(meta *toml.MetaData, raw *toml.Primitive) (provider.Config, error
 }
 
 func init() {
-
 	provider.Register("maildir", configure)
 }
