@@ -551,6 +551,101 @@ func (p *IMAPProvider) fetchThreadGroups(criteria *imap.SearchCriteria) ([]Threa
 	return groups, nil
 }
 
+// threadedPage paints one page of a THREADed message list: group the mailbox
+// into conversations, order the groups, then fetch and convert just the page's
+// messages. ListMessages and SearchMessages share it — they differ only in the
+// criteria they thread over.
+//
+// Its error is RECOVERABLE by design. Nothing here touches session state, so a
+// caller that gets one can simply carry on down its own unthreaded path, which
+// is what both of them do.
+func (p *IMAPProvider) threadedPage(mailbox string, criteria *imap.SearchCriteria, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
+	groups, err := p.fetchThreadGroups(criteria)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Sort groups based on criteria and sortOrder
+	if err := p.sortGroups(mailbox, groups, sortOrder); err != nil {
+		return nil, 0, fmt.Errorf("failed to sort thread groups: %v", err)
+	}
+
+	total := len(groups)
+	from := page * pageSize
+	to := from + pageSize
+	if from >= total {
+		return nil, total, nil
+	}
+	if to > total {
+		to = total
+	}
+	paginatedGroups := groups[from:to]
+
+	var allUIDs []uint32
+	for _, g := range paginatedGroups {
+		allUIDs = append(allUIDs, g.UIDs...)
+	}
+
+	var uidSet imap.UIDSet
+	for _, uid := range allUIDs {
+		uidSet.AddNum(imap.UID(uid))
+	}
+
+	fetchOptions := imap.FetchOptions{
+		Flags:         true,
+		Envelope:      true,
+		UID:           true,
+		RFC822Size:    true,
+		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+	}
+
+	imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch representative messages: %v", err)
+	}
+
+	msgMap := make(map[uint32]*imapclient.FetchMessageBuffer)
+	for _, msg := range imapMsgs {
+		msgMap[uint32(msg.UID)] = msg
+	}
+
+	msgs := make([]provider.Message, 0, len(paginatedGroups))
+	for _, g := range paginatedGroups {
+		fetchMsg, ok := msgMap[g.RepUID]
+		if !ok {
+			continue
+		}
+		converted := p.convertIMAPMessage(fetchMsg, mailbox)
+		converted.ThreadCount = len(g.UIDs)
+		converted.ThreadUIDs = make([]string, len(g.UIDs))
+		for idx, u := range g.UIDs {
+			converted.ThreadUIDs[idx] = strconv.FormatUint(uint64(u), 10)
+		}
+
+		// Sort sub-messages in ascending order (chronological) and assign them
+		sort.Slice(g.UIDs, func(i, j int) bool {
+			return g.UIDs[i] < g.UIDs[j]
+		})
+
+		var subMessages []provider.Message
+		for _, uid := range g.UIDs {
+			if uid == g.RepUID {
+				continue
+			}
+			subFetchMsg, ok := msgMap[uid]
+			if !ok {
+				continue
+			}
+			subMessages = append(subMessages, p.convertIMAPMessage(subFetchMsg, mailbox))
+		}
+		converted.SubMessages = subMessages
+
+		msgs = append(msgs, converted)
+	}
+
+	return msgs, total, nil
+}
+
 // ListMessages returns a paginated list of messages
 func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
 	// A NOOP will ensure we notice any new message
@@ -580,90 +675,19 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 	}
 
 	if enableThreading && p.HasThreadCapability() {
-		groups, err := p.fetchThreadGroups(&imap.SearchCriteria{})
-		if err != nil {
-			return nil, 0, err
+		msgs, total, err := p.threadedPage(mailbox, &imap.SearchCriteria{}, sortOrder, page, pageSize)
+		if err == nil {
+			return msgs, total, nil
 		}
-
-		// Sort groups based on criteria and sortOrder
-		if err := p.sortGroups(mailbox, groups, sortOrder); err != nil {
-			return nil, 0, fmt.Errorf("failed to sort thread groups: %v", err)
+		// A server can refuse THREAD over a folder it will happily list — it is
+		// the most expensive thing a client asks for, so it is the first thing
+		// a server throttles (ours answers `NO [LIMIT] ... slow down`). That is
+		// a reason to show the folder UNTHREADED, not to fail the page: a flat
+		// list is the whole folder, just without the grouping. Same call the
+		// SORT fallback in sortGroups makes.
+		if p.debug {
+			fmt.Printf("threaded list: THREAD failed, listing flat instead: %v\n", err)
 		}
-
-		total := len(groups)
-		from := page * pageSize
-		to := from + pageSize
-		if from >= total {
-			return nil, total, nil
-		}
-		if to > total {
-			to = total
-		}
-		paginatedGroups := groups[from:to]
-
-		var allUIDs []uint32
-		for _, g := range paginatedGroups {
-			allUIDs = append(allUIDs, g.UIDs...)
-		}
-
-		var uidSet imap.UIDSet
-		for _, uid := range allUIDs {
-			uidSet.AddNum(imap.UID(uid))
-		}
-
-		fetchOptions := imap.FetchOptions{
-			Flags:         true,
-			Envelope:      true,
-			UID:           true,
-			RFC822Size:    true,
-			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
-		}
-
-		imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to fetch representative messages: %v", err)
-		}
-
-		msgMap := make(map[uint32]*imapclient.FetchMessageBuffer)
-		for _, msg := range imapMsgs {
-			msgMap[uint32(msg.UID)] = msg
-		}
-
-		msgs := make([]provider.Message, 0, len(paginatedGroups))
-		for _, g := range paginatedGroups {
-			fetchMsg, ok := msgMap[g.RepUID]
-			if !ok {
-				continue
-			}
-			converted := p.convertIMAPMessage(fetchMsg, mailbox)
-			converted.ThreadCount = len(g.UIDs)
-			converted.ThreadUIDs = make([]string, len(g.UIDs))
-			for idx, u := range g.UIDs {
-				converted.ThreadUIDs[idx] = strconv.FormatUint(uint64(u), 10)
-			}
-
-			// Sort sub-messages in ascending order (chronological) and assign them
-			sort.Slice(g.UIDs, func(i, j int) bool {
-				return g.UIDs[i] < g.UIDs[j]
-			})
-
-			var subMessages []provider.Message
-			for _, uid := range g.UIDs {
-				if uid == g.RepUID {
-					continue
-				}
-				subFetchMsg, ok := msgMap[uid]
-				if !ok {
-					continue
-				}
-				subMessages = append(subMessages, p.convertIMAPMessage(subFetchMsg, mailbox))
-			}
-			converted.SubMessages = subMessages
-
-			msgs = append(msgs, converted)
-		}
-
-		return msgs, total, nil
 	}
 
 	mbox = p.client.Mailbox()
@@ -794,90 +818,19 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 	}
 
 	if enableThreading && p.HasThreadCapability() {
-		groups, err := p.fetchThreadGroups(searchCriteria)
-		if err != nil {
-			return nil, 0, err
+		msgs, total, err := p.threadedPage(mailbox, searchCriteria, sortOrder, page, pageSize)
+		if err == nil {
+			return msgs, total, nil
 		}
-
-		// Sort groups based on criteria and sortOrder
-		if err := p.sortGroups(mailbox, groups, sortOrder); err != nil {
-			return nil, 0, fmt.Errorf("failed to sort thread groups: %v", err)
+		// A server can refuse THREAD over a folder it will happily list — it is
+		// the most expensive thing a client asks for, so it is the first thing
+		// a server throttles (ours answers `NO [LIMIT] ... slow down`). That is
+		// a reason to show the folder UNTHREADED, not to fail the page: a flat
+		// list is the whole folder, just without the grouping. Same call the
+		// SORT fallback in sortGroups makes.
+		if p.debug {
+			fmt.Printf("threaded list: THREAD failed, listing flat instead: %v\n", err)
 		}
-
-		total := len(groups)
-		from := page * pageSize
-		to := from + pageSize
-		if from >= total {
-			return nil, total, nil
-		}
-		if to > total {
-			to = total
-		}
-		paginatedGroups := groups[from:to]
-
-		var allUIDs []uint32
-		for _, g := range paginatedGroups {
-			allUIDs = append(allUIDs, g.UIDs...)
-		}
-
-		var uidSet imap.UIDSet
-		for _, uid := range allUIDs {
-			uidSet.AddNum(imap.UID(uid))
-		}
-
-		fetchOptions := imap.FetchOptions{
-			Flags:         true,
-			Envelope:      true,
-			UID:           true,
-			RFC822Size:    true,
-			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
-		}
-
-		imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to fetch representative messages: %v", err)
-		}
-
-		msgMap := make(map[uint32]*imapclient.FetchMessageBuffer)
-		for _, msg := range imapMsgs {
-			msgMap[uint32(msg.UID)] = msg
-		}
-
-		msgs := make([]provider.Message, 0, len(paginatedGroups))
-		for _, g := range paginatedGroups {
-			fetchMsg, ok := msgMap[g.RepUID]
-			if !ok {
-				continue
-			}
-			converted := p.convertIMAPMessage(fetchMsg, mailbox)
-			converted.ThreadCount = len(g.UIDs)
-			converted.ThreadUIDs = make([]string, len(g.UIDs))
-			for idx, u := range g.UIDs {
-				converted.ThreadUIDs[idx] = strconv.FormatUint(uint64(u), 10)
-			}
-
-			// Sort sub-messages in ascending order (chronological) and assign them
-			sort.Slice(g.UIDs, func(i, j int) bool {
-				return g.UIDs[i] < g.UIDs[j]
-			})
-
-			var subMessages []provider.Message
-			for _, uid := range g.UIDs {
-				if uid == g.RepUID {
-					continue
-				}
-				subFetchMsg, ok := msgMap[uid]
-				if !ok {
-					continue
-				}
-				subMessages = append(subMessages, p.convertIMAPMessage(subFetchMsg, mailbox))
-			}
-			converted.SubMessages = subMessages
-
-			msgs = append(msgs, converted)
-		}
-
-		return msgs, total, nil
 	}
 
 	var nums []uint32

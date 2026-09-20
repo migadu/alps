@@ -21,7 +21,10 @@ import (
 type memServer struct {
 	caps    imap.CapSet       // IMAP4rev1 alone when nil
 	threads []imap.ThreadData // the answer to THREAD
-	traffic lockedBuffer
+	// threadErr, when set, is what THREAD is REFUSED with instead — a server
+	// that advertises the extension and still says no to one command.
+	threadErr error
+	traffic   lockedBuffer
 }
 
 type lockedBuffer struct {
@@ -45,10 +48,14 @@ func (b *lockedBuffer) String() string {
 // server's own answer is a fixed placeholder.
 type threadedSession struct {
 	imapserver.Session
-	threads []imap.ThreadData
+	threads   []imap.ThreadData
+	threadErr error
 }
 
 func (s *threadedSession) Thread(ctx context.Context, numKind imapserver.NumKind, algorithm imap.ThreadAlgorithm, charset string, criteria *imap.SearchCriteria) ([]imap.ThreadData, error) {
+	if s.threadErr != nil {
+		return nil, s.threadErr
+	}
 	return s.threads, nil
 }
 
@@ -90,7 +97,7 @@ func memIMAP(t *testing.T, s *memServer, messages ...string) *IMAPProvider {
 	}
 	srv := imapserver.New(&imapserver.Options{
 		NewSession: func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
-			return &threadedSession{Session: mem.NewSession(), threads: s.threads}, nil, nil
+			return &threadedSession{Session: mem.NewSession(), threads: s.threads, threadErr: s.threadErr}, nil, nil
 		},
 		Caps:         caps,
 		InsecureAuth: true,
