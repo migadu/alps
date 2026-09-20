@@ -118,7 +118,7 @@ func TestSession_ExpiryReleasesAttachments(t *testing.T) {
 	// Wait for the session to expire naturally.
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, gerr := sm.Get(token); gerr == ErrSessionExpired {
+		if _, gerr := sm.Get(token); errors.Is(gerr, ErrSessionExpired) {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)

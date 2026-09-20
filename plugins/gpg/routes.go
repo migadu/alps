@@ -1,6 +1,7 @@
 package gpg
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -21,7 +22,7 @@ func registerRoutes(p *alps.GoPlugin) {
 
 		var keyring Keyring
 		err := ctx.Session.Store().Get("gpg_keys", &keyring)
-		if err == provider.ErrNoStoreEntry {
+		if errors.Is(err, provider.ErrNoStoreEntry) {
 			// Return empty 200 OK if no keys are found
 			return ctx.JSON(http.StatusOK, Keyring{})
 		} else if err != nil {

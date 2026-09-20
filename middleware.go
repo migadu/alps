@@ -3,6 +3,7 @@ package alps
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net"
@@ -329,7 +330,7 @@ func (r *Router) wrapHandler(h HandlerFunc) http.HandlerFunc {
 
 		if err := handler(ctx); err != nil {
 			// Don't call handleError for redirects since response is already sent
-			if err != ErrRedirect {
+			if !errors.Is(err, ErrRedirect) {
 				r.server.logger.Debugf("Handler returned error for %s: %v", req.URL.Path, err)
 				r.server.handleError(err, ctx)
 			}

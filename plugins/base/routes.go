@@ -1933,7 +1933,7 @@ func handleComposeAttachment(ctx *alps.Context) error {
 	var uuids []string
 	for _, fh := range form.File["attachments"] {
 		uuid, err := ctx.Session.PutAttachment(composerID, fh, form)
-		if err == alps.ErrAttachmentCacheSize {
+		if errors.Is(err, alps.ErrAttachmentCacheSize) {
 			form.RemoveAll()
 			return ctx.JSON(http.StatusBadRequest, map[string]string{
 				"error": "Your attachments exceed the maximum file size. Remove some and try again.",
@@ -2707,7 +2707,7 @@ func loadSettingsWith(get func(key string, out interface{}) error) (*Settings, e
 	var typeErr *json.UnmarshalTypeError
 	var syntaxErr *json.SyntaxError
 	switch {
-	case err == nil || err == provider.ErrNoStoreEntry:
+	case err == nil || errors.Is(err, provider.ErrNoStoreEntry):
 	case errors.As(err, &typeErr) && typeErr.Field != "":
 		// Read around the one value.
 	case errors.As(err, &typeErr) || errors.As(err, &syntaxErr):
@@ -3064,9 +3064,9 @@ func handleAddAccount(ctx *alps.Context) error {
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to add account: %v", err)
 		var authErr provider.AuthError
-		if err == alps.ErrAccountAlreadyLinked {
+		if errors.Is(err, alps.ErrAccountAlreadyLinked) {
 			errorMsg = "This account is already linked"
-		} else if err == alps.ErrCannotLinkSelf {
+		} else if errors.Is(err, alps.ErrCannotLinkSelf) {
 			errorMsg = "You cannot link your own account"
 		} else if errors.As(err, &authErr) {
 			errorMsg = "Authentication failed. Please check your credentials."

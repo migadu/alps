@@ -59,7 +59,7 @@ func (u *webauthnUser) WebAuthnCredentials() []webauthn.Credential {
 // without a record, or whose record was unreadable and so removed, has none.
 func loadCredentials(session *alps.Session) (*UserCredentials, error) {
 	var creds UserCredentials
-	if err := session.ReadWebAuthn(&creds); err == provider.ErrNoStoreEntry {
+	if err := session.ReadWebAuthn(&creds); errors.Is(err, provider.ErrNoStoreEntry) {
 		return &UserCredentials{Credentials: []CredentialInfo{}}, nil
 	} else if err != nil {
 		return nil, err

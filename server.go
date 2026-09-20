@@ -364,7 +364,7 @@ func (s *Server) setupMiddleware(router *Router) {
 
 			s.logger.Debugf("Auth middleware: found cookie for %s", ctx.Request.URL.Path)
 			ctx.Session, err = ctx.Server.Sessions.get(cookie.Value)
-			if err == ErrSessionExpired {
+			if errors.Is(err, ErrSessionExpired) {
 				s.logger.Debugf("Auth middleware: session expired for %s", ctx.Request.URL.Path)
 				ctx.SetSession(nil)
 

@@ -3,6 +3,7 @@ package imap
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"reflect"
@@ -116,7 +117,7 @@ func (s *imapStore) Get(key string, out interface{}) error {
 	var cached json.RawMessage
 	if err := s.cache.Get(key, &cached); err == nil {
 		return decodeStoreEntry(key, cached, out)
-	} else if err != provider.ErrNoStoreEntry {
+	} else if !errors.Is(err, provider.ErrNoStoreEntry) {
 		return err
 	}
 

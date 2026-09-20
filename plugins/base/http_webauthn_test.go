@@ -1,6 +1,7 @@
 package alpsbase
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"os"
@@ -58,7 +59,7 @@ func TestHTTP_SignInRemovesAWebAuthnRecordThatDoesNotDecode(t *testing.T) {
 		t.Fatalf("signing in answered %v", got)
 	}
 	var record any
-	if err := store.Get("webauthn", &record); err != provider.ErrNoStoreEntry {
+	if err := store.Get("webauthn", &record); !errors.Is(err, provider.ErrNoStoreEntry) {
 		t.Errorf("the record is still %v, %v", record, err)
 	}
 	s.mailbox("INBOX")

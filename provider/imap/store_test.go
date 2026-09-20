@@ -131,7 +131,7 @@ func TestStoreEntryThatDoesNotDecodeIsNotMissing(t *testing.T) {
 	if err := fresh.Put("broken", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := fresh.Get("broken", &broken); err != provider.ErrNoStoreEntry {
+	if err := fresh.Get("broken", &broken); !errors.Is(err, provider.ErrNoStoreEntry) {
 		t.Errorf("after removing it, reading the entry: %v", err)
 	}
 

@@ -43,7 +43,7 @@ func (s *Session) ReadWebAuthn(out interface{}) error {
 // factor: WebAuthn is on, with at least one credential.
 func (s *Session) webAuthnEnabled() (bool, error) {
 	var data map[string]interface{}
-	if err := s.ReadWebAuthn(&data); err == provider.ErrNoStoreEntry {
+	if err := s.ReadWebAuthn(&data); errors.Is(err, provider.ErrNoStoreEntry) {
 		return false, nil
 	} else if err != nil {
 		return false, err
@@ -57,7 +57,7 @@ func (s *Session) webAuthnEnabled() (bool, error) {
 // signed in with its second factor switch to it without asking for one.
 func (s *Session) TrustsLinkedAccounts() (bool, error) {
 	var data map[string]interface{}
-	if err := s.ReadWebAuthn(&data); err == provider.ErrNoStoreEntry {
+	if err := s.ReadWebAuthn(&data); errors.Is(err, provider.ErrNoStoreEntry) {
 		return false, nil
 	} else if err != nil {
 		return false, err
