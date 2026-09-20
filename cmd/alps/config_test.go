@@ -7,6 +7,7 @@ import (
 
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider/imap"
+	"github.com/migadu/alps/provider/multi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -89,4 +90,31 @@ func imapAddress(t *testing.T, o alps.Options) string {
 	t.Helper()
 	v := reflect.ValueOf(o.Provider).Elem().FieldByName("address")
 	return v.String()
+}
+
+func TestMultiProviderConfig(t *testing.T) {
+	data := `
+[smtp]
+server = "smtps://smtp.example.com:465"
+
+[provider]
+type = "multi"
+
+[provider.multi]
+default_domain = "migadu.com"
+template = "imaps://mail.%d:993"
+
+[provider.multi.domains."migadu.com"]
+type = "imap"
+server = "imaps://imap.migadu.com:993"
+`
+	cfg, err := LoadConfigString(data)
+	require.NoError(t, err)
+	opts, err := cfg.ToOptions()
+	require.NoError(t, err)
+	multiOpts, ok := opts.Provider.(*multi.Options)
+	require.True(t, ok)
+	assert.Equal(t, "multi", multiOpts.Type())
+	assert.Equal(t, "migadu.com", multiOpts.DefaultDomain)
+	assert.Contains(t, multiOpts.Domains, "migadu.com")
 }

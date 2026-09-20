@@ -367,7 +367,7 @@ enabled = false
 
 [provider]
 # Mail provider type (default: "imap")
-# Options: "imap", "maildir", "jmap" (future)
+# Options: "imap", "maildir", "multi", "jmap" (future)
 # A matching [provider.<type>] section is required.
 type = "imap"
 
@@ -406,6 +406,52 @@ server = "imaps://imap.migadu.com:993"
 # in auth_passwd_file (<home>/Maildir). Placeholders: %u (local part),
 # %d (domain), %n (full username).
 # path = "/var/mail/virtual/%d/%u"
+
+# Multi-Provider Configuration
+# Routes incoming logins to different mail backends based on domain name,
+# grouped routes, template patterns, DNS SRV autodiscovery, or a default fallback.
+# [provider.multi]
+# Default domain assumed if a user logs in with a bare username (without @domain)
+# default_domain = "example.com"
+#
+# Server URL template with %d (domain), %u (local part), and %n (full username)
+# placeholders for dynamic per-domain hostnames. Both domain and local part
+# are strictly validated against RFC rules to prevent SSRF or URL injection.
+# template = "imaps://mail.%d:993"
+#
+# Domain allowlist for the template. Required when template is set: an unlisted
+# domain never matches and falls through to the next rule.
+# template_domains = ["example.com", "otherdomain.org"]
+#
+# Automatically discover IMAP server using RFC 6186 DNS SRV records (_imaps._tcp, _imap._tcp).
+# To protect against unauthenticated SSRF relays, an explicit domain allowlist is required.
+# autodiscover = false
+# autodiscover_domains = ["example.com", "otherdomain.org"]
+#
+# Either allowlist accepts the single entry "*" to match every domain. That
+# makes the server dial hosts chosen by whoever is logging in -- use it only
+# where untrusted users cannot reach the login form. Private, loopback,
+# link-local and CGNAT targets stay blocked either way.
+#
+# Explicit per-domain provider mappings:
+# [provider.multi.domains."migadu.com"]
+# type = "imap"
+# server = "imaps://imap.migadu.com:993"
+#
+# [provider.multi.domains."local.lan"]
+# type = "maildir"
+# auth_passwd_file = "/etc/dovecot/users"
+#
+# Grouped routes for multiple domains sharing backend settings:
+# [[provider.multi.routes]]
+# domains = ["domain1.com", "domain2.com"]
+# type = "imap"
+# server = "imaps://imap.sharedmail.com:993"
+#
+# Default fallback provider for domains not matched above:
+# [provider.multi.default]
+# type = "imap"
+# server = "imaps://imap.fallback.com:993"
 
 [smtp]
 # SMTP server

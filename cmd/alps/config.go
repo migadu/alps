@@ -14,6 +14,7 @@ import (
 	"github.com/migadu/alps/provider"
 	_ "github.com/migadu/alps/provider/imap"
 	_ "github.com/migadu/alps/provider/maildir"
+	_ "github.com/migadu/alps/provider/multi"
 )
 
 type ConfigError struct {

@@ -146,7 +146,7 @@ Configures the backend mail services.
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `type` | String | `"imap"` | Mail provider protocol (`"imap"` or `"maildir"`). |
+| `type` | String | `"imap"` | Mail provider protocol (`"imap"`, `"maildir"`, or `"multi"`). |
 | `timeout_sec` | Integer | `30` | Provider connect timeout in seconds. For the `imap` provider this supersedes the legacy `[server] imap_timeout_sec`, which is still honoured when `timeout_sec` is unset. |
 
 A `[provider.<type>]` section matching `type` is required.
@@ -164,6 +164,28 @@ A `[provider.<type>]` section matching `type` is required.
 | :--- | :--- | :--- | :--- |
 | `auth_passwd_file`| String | None | Path to the Dovecot-style authentication password file. **Required**; startup fails without it. |
 | `path` | String | None | Path to the Maildir root directory. Optional: when unset, each user's maildir is taken from the home directory in `auth_passwd_file` (`<home>/Maildir`). Supports the `%u` (local part), `%d` (domain) and `%n` (full username) placeholders. |
+
+### `[provider.multi]`
+Routes incoming user logins across multiple email backends. Domain resolution priority:
+1. **Explicit Domain Mapping**: `[provider.multi.domains."example.com"]` (any provider type like `imap` or `maildir`).
+2. **Grouped Routes**: `[[provider.multi.routes]]` matching the domain from `domains = ["d1.com", "d2.com"]`.
+3. **Template Pattern**: `template = "imaps://mail.%d:993"` where `%d` is replaced with the user's domain (also supports `%u` for local part and `%n` for username, validated against RFC rules).
+4. **RFC 6186 DNS Autodiscovery**: `autodiscover = true` queries `_imaps._tcp.<domain>` then `_imap._tcp.<domain>` SRV records for domains listed in `autodiscover_domains`. Private/loopback IP targets are strictly blocked to prevent SSRF.
+5. **Default Fallback Provider**: `[provider.multi.default]` used if no previous rules match. If a domain matches an explicit template or autodiscover rule, errors are returned directly and do not fail open.
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `default_domain` | String | None | Fallback domain assumed if a user logs in with a username lacking `@domain`. |
+| `template` | String | None | Server URL pattern containing `%d` (domain), `%u` (local part), or `%n` (full username). Both domain and local part are strictly validated to prevent injection and SSRF. |
+| `template_domains` | Array of Strings | `[]` | Domain allowlist for template routing. Required when `template` is set: the template builds a server address out of the login, so an unlisted domain never matches and routing falls through to the next rule. |
+| `autodiscover` | Boolean | `false` | Automatically look up RFC 6186 DNS SRV records for IMAP servers. |
+| `autodiscover_domains` | Array of Strings | `[]` | Domain allowlist for autodiscovery. Required when `autodiscover = true` to prevent unauthenticated SSRF relays. |
+| `domains` | Table | None | Map of domain strings to provider configurations (e.g. `[provider.multi.domains."example.com"]`). |
+| `routes` | Array of Tables | None | Grouped routes specifying `domains` list and provider configuration. |
+| `default` | Table | None | Fallback provider configuration table when no domain match occurs. |
+
+Both allowlists accept the single entry `"*"` to match every domain. That turns the dynamic routes back into an open relay: any login makes the server connect to a host the login chose, so use it only on a deployment that is not reachable by untrusted users. Private, loopback, link-local and CGNAT targets stay blocked either way, and the block is re-checked against the address each connection actually reaches.
+
 
 ### `[smtp]`
 Configures the SMTP server used for sending emails.
