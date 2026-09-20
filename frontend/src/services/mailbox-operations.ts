@@ -75,8 +75,9 @@ export class MailboxOperationsService {
       });
 
       const outcome = await this.classify(res, 'create mailbox');
-      // Trigger a sync to refresh mailbox list
-      if (outcome === 'ok') messageSync.sync();
+      // The folder list, and only that: a new folder is empty, and no message
+      // left the one on screen to be in it.
+      if (outcome === 'ok') void messageSync.syncLabels();
       return outcome;
     } catch (err) {
       Logger.error('Failed to create mailbox', err);
@@ -94,11 +95,14 @@ export class MailboxOperationsService {
 
       const outcome = await this.classify(res, 'rename mailbox');
       if (outcome === 'ok') {
-        // BEFORE the sync, which re-reads whatever mailbox this service is
-        // pointed at: if that is this one, the name it holds is the one the
-        // server has just stopped answering for. See `messageSync.mailboxRenamed`.
+        // Still first, though the folder-list read below no longer depends on
+        // it: what this fixes is the name the POLL will ask for, which is the
+        // one the server has just stopped answering for if the renamed folder
+        // is the one on screen. See `messageSync.mailboxRenamed`.
         messageSync.mailboxRenamed(oldName, newName);
-        messageSync.sync();
+        // A rename moves no mail. The rows on screen are the same messages
+        // under a folder that is now spelled differently.
+        void messageSync.syncLabels();
       }
       return outcome;
     } catch (err) {
@@ -115,7 +119,11 @@ export class MailboxOperationsService {
 
       const outcome = await this.classify(res, 'delete mailbox');
       if (outcome === 'ok') {
-        // Same ordering as the rename above, for the same reason.
+        // A full sync, unlike create and rename: deleting the folder on screen
+        // sends the view to the Inbox, so there IS a page of mail to read —
+        // a different folder's. `mailboxDeleted` points the service at it
+        // first, so that the sync asks for the Inbox and not for the mailbox
+        // the server has just dropped.
         messageSync.mailboxDeleted(name);
         messageSync.sync();
       }
@@ -168,6 +176,8 @@ export class MailboxOperationsService {
         } catch {
           // A 200 with an unreadable body is still an empty that happened.
         }
+        // A full sync too: emptying a folder is the one verb here that changes
+        // what is in one, and every row it held is now gone.
         messageSync.sync();
         return { ok: true, discarded };
       }
@@ -206,7 +216,10 @@ export class MailboxOperationsService {
         return { ok: false, reason: 'auth' };
       }
       if (res.ok) {
-        messageSync.sync();
+        // Which folders are listed, not what is in them. Unsubscribing the
+        // folder being viewed hides it from the sidebar and leaves its mail on
+        // screen, which is what it did before and is the server's answer too.
+        void messageSync.syncLabels();
         return { ok: true };
       }
       Logger.error(`Failed to ${verb} mailbox`, res.status);
