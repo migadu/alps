@@ -461,6 +461,13 @@ export class MessageReader extends LitElement {
     // A timer that outlived the element would mark mail read for a reader
     // nobody is looking at.
     this.readDueAt.clear();
+    // Nor does a reader that has left the page go on reading bodies nobody
+    // asked for. The queue is drained one at a time (see queueItemBody), so
+    // what is left of it would keep taking the session's one connection for a
+    // conversation that is no longer on screen — the same competition the
+    // drop-on-open exists to prevent, for an element that cannot even show
+    // what it reads.
+    this.prefetchQueue = [];
     if (this.readTimer) clearTimeout(this.readTimer);
     this.readTimer = null;
     if (this.scrollTimer) clearTimeout(this.scrollTimer);
@@ -1414,6 +1421,10 @@ export class MessageReader extends LitElement {
   private prefetching = false;
 
   private queueItemBody(item: ThreadMessageItem) {
+    // A conversation whose answer lands after this reader has left the page
+    // queues into nothing: `disconnectedCallback` empties the queue, and
+    // without this a read in flight then re-filled it behind the clear.
+    if (!this.isConnected) return;
     this.prefetchQueue.push(item);
     void this.drainPrefetch();
   }

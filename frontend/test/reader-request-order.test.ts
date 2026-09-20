@@ -40,6 +40,18 @@ const unread = [1, 2, 3, 4].map(uid => ({
   Envelope: { ...envelope(`Re: Engines ${uid}`, `2026-09-0${uid}T10:00:00Z`), MessageID: `${uid}@example.com` },
 }));
 
+/**
+ * A message from elsewhere, with a conversation of its own — one message, read.
+ * Opening it is a switch AWAY from the conversation under test, which is the
+ * only thing the last test here is about.
+ */
+const elsewhere = {
+  UID: '99',
+  Mailbox: 'INBOX',
+  Flags: ['\\Seen'],
+  Envelope: { ...envelope('Looms', '2026-09-10T10:00:00Z'), MessageID: 'looms@example.com' },
+};
+
 function settingsStore() {
   const state = { enableThreading: true, preferredView: 'text', showRemoteContent: 'never', showSenderAvatars: true };
   return Object.assign(new EventTarget(), { getState: () => state });
@@ -71,7 +83,13 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const u = String(url);
     asked.push(u);
-    if (u.includes('/thread')) return json({ Messages: [...unread, opened] });
+    // Per message, not one answer for every ask. A single shared conversation
+    // made the reader read THIS conversation's members after a switch to a
+    // message outside it — correctly, because the mock had just said they were
+    // that message's conversation too — and the test then counted those reads
+    // as a queue it had failed to drop.
+    const thread = /\/messages\/(\d+)\/thread/.exec(u);
+    if (thread) return json({ Messages: thread[1] === elsewhere.UID ? [elsewhere] : [...unread, opened] });
     if (u.includes('/raw')) return new Response('the body', { status: 200 });
     const view = /\/messages\/(\d+)\?view=/.exec(u);
     if (view) {
@@ -155,22 +173,25 @@ describe('opening a conversation', () => {
     release.get('10')!();
     await waitFor(() => bodyReads().length > 1, 'the first member to be read');
 
-    const elsewhere = {
-      UID: '99',
-      Mailbox: 'INBOX',
-      Flags: ['\\Seen'],
-      Envelope: { ...envelope('Looms', '2026-09-10T10:00:00Z'), MessageID: 'looms@example.com' },
-    };
+    /** The reads of THIS conversation: the message opened instead is not one. */
+    const members = () => bodyReads().filter(url => !url.includes(`/messages/${elsewhere.UID}?`));
+    // One member in flight, three still queued behind it.
+    const readSoFar = members();
+    expect(readSoFar).toHaveLength(2);
+
     el.messages = [elsewhere];
     el.message = elsewhere;
     await flush();
 
-    const queued = bodyReads().length;
     // Let the member that was in flight finish: the queue behind it is gone, so
     // the conversation left behind stops competing with the one on screen.
     for (const resolve of release.values()) resolve();
     await flush();
     await flush();
-    expect(bodyReads().filter(url => !url.includes('/messages/99?')).length).toBe(queued);
+    // Named reads, not a count. Counting both sides included the switch's own
+    // read on one side and excluded it on the other, so a member that WAS read
+    // after the switch cancelled it out and the test passed — until a second
+    // one leaked and it failed, on timing, about once in three runs.
+    expect(members()).toEqual(readSoFar);
   });
 });
