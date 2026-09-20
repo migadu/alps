@@ -3,6 +3,9 @@ import { MailboxOperationsService } from '../src/services/mailbox-operations';
 import { messageSync } from '../src/services/message-sync';
 
 const answer = (status: number) => new Response(null, { status });
+/** An answer with a JSON body, for the calls that read one. */
+const body = (status: number, payload: unknown) =>
+  new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } });
 const ops = new MailboxOperationsService();
 let fetchMock: ReturnType<typeof vi.fn>;
 let authErrors: Event[];
@@ -83,18 +86,64 @@ describe('deleting and emptying', () => {
   it('answers false for a refused delete or empty', async () => {
     fetchMock.mockResolvedValueOnce(answer(500)).mockResolvedValueOnce(answer(403)).mockResolvedValueOnce(answer(401));
     expect(await ops.deleteMailbox('Work')).toBe(false);
-    expect(await ops.emptyMailbox('Archive')).toBe(false);
-    expect(await ops.emptyMailbox('Trash')).toBe(false);
+    // The refusal a folder that is neither Trash nor Junk gets is told apart
+    // from a fault, and an expired session is told apart from both: the caller
+    // has a message for the first two and must stay quiet for the third.
+    expect(await ops.emptyMailbox('Archive')).toEqual({ ok: false, reason: 'not_discardable' });
+    expect(await ops.emptyMailbox('Trash')).toEqual({ ok: false, reason: 'auth' });
     expect(authErrors.length).toBeGreaterThan(0);
   });
 
   it('empties a folder with a POST and re-reads', async () => {
-    fetchMock.mockResolvedValue(answer(200));
-    expect(await ops.emptyMailbox('Trash')).toBe(true);
+    fetchMock.mockResolvedValue(body(200, { ok: 'true', discarded: 12 }));
+    expect(await ops.emptyMailbox('Trash')).toEqual({ ok: true, discarded: 12 });
     expect(fetchMock.mock.calls[0]).toEqual(['/mailboxes/Trash/empty', expect.objectContaining({ method: 'POST' })]);
     // The one verb here that changes what is IN a folder, so the rows go too.
     expect(messageSync.sync).toHaveBeenCalledTimes(1);
     expect(messageSync.syncLabels).not.toHaveBeenCalled();
+  });
+
+  it('carries back a count of nothing, which is not an emptying', async () => {
+    fetchMock.mockResolvedValue(body(200, { ok: 'true', discarded: 0 }));
+    expect(await ops.emptyMailbox('Trash')).toEqual({ ok: true, discarded: 0 });
+  });
+
+  it('takes a backend that names no count at its word', async () => {
+    // An older server answers `{"ok":"true"}`. That is a successful empty with
+    // nothing more to say about it — not a no-op, which is what reading a
+    // missing count as zero would make it.
+    fetchMock.mockResolvedValue(body(200, { ok: 'true' }));
+    expect(await ops.emptyMailbox('Trash')).toEqual({ ok: true, discarded: undefined });
+  });
+
+  it('gives an empty its own deadline, and reports giving up as its own thing', async () => {
+    // The request is abandoned; the expunge behind it is not. So the folder is
+    // re-read rather than left showing rows the server may already have gone
+    // through, and the outcome says `timeout`, which the UI words as "still
+    // working" instead of "failed".
+    const aborted = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    fetchMock.mockRejectedValue(aborted);
+    expect(await ops.emptyMailbox('Trash')).toEqual({ ok: false, reason: 'timeout' });
+    expect(messageSync.sync).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits far longer for an empty than for an ordinary request', async () => {
+    // A folder of tens of thousands of messages is one SELECT/STORE/EXPUNGE
+    // with nothing to report until it ends, and the 25s default cut it off
+    // mid-expunge.
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockImplementation((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+      }));
+      const pending = ops.emptyMailbox('Trash');
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(await pending).toEqual({ ok: false, reason: 'timeout' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -27,7 +27,10 @@ type MailProvider interface {
 	CreateMailbox(name string) error
 	RenameMailbox(oldName, newName string) error
 	DeleteMailbox(name string) error
-	EmptyMailbox(name string) error
+	// EmptyMailbox discards every message in a mailbox and reports how many
+	// there were to discard. A count of zero means the mailbox was already
+	// empty: the caller can say so rather than claim work it did not do.
+	EmptyMailbox(name string) (int, error)
 	SubscribeMailbox(name string) error
 	UnsubscribeMailbox(name string) error
 

@@ -16,6 +16,14 @@ export class MessageSyncService extends EventTarget {
   private currentMailbox: string = FOLDER_INBOX;
   private currentPage: number = 0;
   private currentQuery: string = '';
+  /**
+   * Whether a page for the CURRENT context has landed. False from the moment a
+   * fetch re-points the context until its answer arrives, and for good if it
+   * never does: until then the rows on hand are the previous view's, and
+   * {@link check} must not let a quiet status probe vouch for them under the
+   * new name.
+   */
+  private listed: boolean = false;
 
   /**
    * Updates the current context for background polling.
@@ -34,7 +42,7 @@ export class MessageSyncService extends EventTarget {
     this.stop();
     if (minutes <= 0) return;
     const ms = minutes * 60 * 1000;
-    this.interval = setInterval(() => this.backgroundSync(), ms);
+    this.interval = setInterval(() => void this.backgroundSync(), ms);
   }
 
   /**
@@ -78,14 +86,26 @@ export class MessageSyncService extends EventTarget {
     if (this.currentMailbox === name || isDescendantMailbox(this.currentMailbox, name)) {
       this.currentMailbox = FOLDER_INBOX;
       this.currentPage = 0;
+      // The rows on hand are the deleted folder's; nothing has been read of the
+      // Inbox this service now points at.
+      this.listed = false;
     }
   }
 
   /**
-   * Forces an immediate sync using the current context.
+   * Forces an immediate sync using the current context. Run after a move, a
+   * delete, a send — anything that changed the folder rather than asked about
+   * it.
+   *
+   * Read in full, because it is not a question: the counts on every folder move
+   * when a message is filed into one of them, and a status probe covers only
+   * the Inbox and the folder on screen. Announced QUIETLY, though. The rows are
+   * about to change because of something the user just did, and the dim that
+   * announced them was the same half-second flash a folder switch makes, over
+   * rows they were reading.
    */
   sync() {
-    this.fetch(this.currentMailbox, this.currentPage, this.currentQuery, true);
+    this.fetch(this.currentMailbox, this.currentPage, this.currentQuery, true, true);
   }
 
   /**
@@ -148,13 +168,27 @@ export class MessageSyncService extends EventTarget {
 
   /**
    * Fetches data immediately. Used for initial load, pagination, or manual refresh.
+   *
+   * `quiet` keeps the answer in the foreground — it lands on whatever page is
+   * being viewed, and it is not new mail — while asking the page not to dim the
+   * rows for it. The floor below goes with the dim, so a quiet read skips it too.
    */
-  async fetch(mailbox: string, page: number, query: string = '', checkStatus: boolean = false) {
+  async fetch(mailbox: string, page: number, query: string = '', checkStatus: boolean = false, quiet: boolean = false) {
     this.setContext(mailbox, page, query);
+    this.listed = false;
     const fetchId = ++this.currentFetchId;
 
-    this.dispatchEvent(new CustomEvent('sync-start', { detail: { background: false } }));
+    this.dispatchEvent(new CustomEvent('sync-start', { detail: { background: false, quiet } }));
     const startTime = Date.now();
+
+    // A dim shorter than the eye can read it is a flicker, so a foreground read
+    // holds it for 200ms even when the answer came sooner. Nothing to hold when
+    // nothing dimmed.
+    const settle = async () => {
+      if (quiet) return;
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 200) await new Promise(r => setTimeout(r, 200 - elapsed));
+    };
 
     try {
       let url = `/mailboxes/${encodeMailboxPath(mailbox)}?page=${page}`;
@@ -177,31 +211,65 @@ export class MessageSyncService extends EventTarget {
       const data: MailboxData = await response.json();
       if (this.currentFetchId !== fetchId) return; // Re-check after json parsing
 
-      const elapsed = Date.now() - startTime;
-      if (elapsed < 200) {
-        await new Promise(r => setTimeout(r, 200 - elapsed));
-      }
+      await settle();
       if (this.currentFetchId !== fetchId) return; // Re-check after artificial delay
 
-      this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: false } }));
+      this.listed = true;
+      this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: false, quiet } }));
     } catch (err) {
       if (this.currentFetchId !== fetchId) return;
       Logger.error('Failed to fetch mailbox data', err);
 
-      const elapsed = Date.now() - startTime;
-      if (elapsed < 200) {
-        await new Promise(r => setTimeout(r, 200 - elapsed));
-      }
+      await settle();
       if (this.currentFetchId !== fetchId) return; // Re-check after artificial delay
 
-      this.dispatchEvent(new CustomEvent('sync-error', { detail: { error: err, background: false } }));
+      this.dispatchEvent(new CustomEvent('sync-error', { detail: { error: err, background: false, quiet } }));
     }
   }
 
   /**
-   * Background sync invoked by the interval.
+   * The reader asked whether anything is new: the check-for-new-mail button.
+   *
+   * It was a `fetch`, and a fetch is a NAVIGATION. It announces itself in the
+   * foreground, so the page dims the rows it is about to replace, and its
+   * `refresh=true` drops the server's caches, so the mailbox is re-listed from
+   * IMAP whatever it has to say. Pressed over a list that was already current,
+   * which is nearly every press, that was a blink and a full THREAD/FETCH for
+   * an answer of "nothing".
+   *
+   * The poll already asks this question the right way — a status probe first,
+   * the page only when the counts moved — so the button asks it the same way.
+   * What differs is that somebody is watching. The check is ANNOUNCED, in the
+   * background so nothing dims, and it always ENDS: the chip that started it
+   * spins until it hears an end, and a poll that fails says nothing to anybody.
+   *
+   * Three cases are still a fetch, each one where the rows on hand are not
+   * something to check against: no read of this view has landed (a retry after
+   * a failed load is this one), the view asked for is not the one held, and a
+   * later page — the caller turns back to the first, where new mail is.
    */
-  private async backgroundSync() {
+  async check(mailbox: string, page: number, query: string = '') {
+    const held = this.listed
+      && page === 0 && this.currentPage === 0
+      && mailbox === this.currentMailbox
+      && query === this.currentQuery;
+    if (!held) return this.fetch(mailbox, page, query, true);
+
+    this.dispatchEvent(new CustomEvent('sync-start', { detail: { background: true } }));
+    if (await this.backgroundSync()) return;
+    // Logged where it failed. The rows on screen stand, as they do after any
+    // background failure; this is only the end the chip is waiting for.
+    this.dispatchEvent(new CustomEvent('sync-error', { detail: { error: null, background: true } }));
+  }
+
+  /**
+   * Background sync invoked by the interval, and by {@link check}.
+   *
+   * Answers whether the sync is ACCOUNTED FOR: it dispatched an event, or
+   * another fetch superseded it and will announce its own end. False is the
+   * failure nobody hears about, which only `check` has a listener waiting on.
+   */
+  private async backgroundSync(): Promise<boolean> {
     // The poll takes a ticket from the same counter the foreground fetch uses.
     //
     // It did not, and nothing else made the two agree, so a background response
@@ -216,19 +284,19 @@ export class MessageSyncService extends EventTarget {
       if (mailbox !== FOLDER_INBOX) {
         await fetchWithTimeout(`/mailboxes/${FOLDER_INBOX}/status`).catch(() => {});
       }
-      if (this.currentFetchId !== fetchId) return;
+      if (this.currentFetchId !== fetchId) return true;
       await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/status`);
-      if (this.currentFetchId !== fetchId) return;
+      if (this.currentFetchId !== fetchId) return true;
 
       let url = `/mailboxes/${encodeMailboxPath(mailbox)}?page=${page}`;
       if (query) url += `&query=${encodeURIComponent(query)}`;
 
       const response = await fetchWithTimeout(url);
-      if (this.currentFetchId !== fetchId) return;
+      if (this.currentFetchId !== fetchId) return true;
 
       if (response.status === 401) {
         window.dispatchEvent(new CustomEvent('auth-error'));
-        return;
+        return true;
       }
 
       // The foreground path reports this; the poll used to fall through to
@@ -237,15 +305,17 @@ export class MessageSyncService extends EventTarget {
       // no longer exists, silently, until the user clicked something.
       if (response.status === 404) {
         this.dispatchEvent(new CustomEvent('mailbox-not-found'));
-        return;
+        return true;
       }
 
       const data: MailboxData = await response.json();
-      if (this.currentFetchId !== fetchId) return;
+      if (this.currentFetchId !== fetchId) return true;
       this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: true } }));
+      return true;
     } catch (err) {
-      if (this.currentFetchId !== fetchId) return;
+      if (this.currentFetchId !== fetchId) return true;
       Logger.error('Background sync failed', err);
+      return false;
     }
   }
 }
