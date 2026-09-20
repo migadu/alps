@@ -2153,7 +2153,16 @@ export class MessageReader extends LitElement {
     if (!this.message && !isBulk) {
       return html`
         <div class="empty-reader-state">
-          ${this.i18nStore?.t('messageReader.selectMessage')}
+          ${this.bulkProcessing ? html`
+            <!--
+              A bulk write is still running, and the rows it is about have
+              already left the list — so the selection is empty and this pane
+              would otherwise flip back to "select a message" while the server
+              is still working. The loader is the one place left that can say
+              so, and it needs no words to.
+            -->
+            <div class="bulk-spinner-container"><alps-loader></alps-loader></div>
+          ` : this.i18nStore?.t('messageReader.selectMessage')}
         </div>
       `;
     }

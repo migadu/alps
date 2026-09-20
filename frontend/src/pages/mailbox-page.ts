@@ -1145,10 +1145,18 @@ export class MailboxPage extends LitElement {
     }
   }
 
-  /** Paints a flag on the listed messages the keys name, and tells the reader. */
-  private updateLocalMessageFlags(keys: string[], flag: string, action: 'add' | 'remove') {
+  /**
+   * Paints a flag on the listed messages the keys name, and tells the reader.
+   *
+   * Answers the keys it CHANGED, which is not the keys it was given: the paint
+   * is idempotent — adding a flag a message already carries does nothing — and
+   * a caller reverting a failed write has to put back only what it moved.
+   * Reverting the whole set with the opposite operation marks messages that
+   * were already read unread, on a write that never touched them.
+   */
+  private updateLocalMessageFlags(keys: string[], flag: string, action: 'add' | 'remove'): string[] {
     const named = new Set(keys);
-    let updated = false;
+    const changed: string[] = [];
     const newMessages = [...this.messages];
     const withFlag = (msg: any) => {
       const hasFlag = !!msg.Flags?.includes(flag);
@@ -1162,7 +1170,7 @@ export class MailboxPage extends LitElement {
         const next = withFlag(msg);
         if (next !== msg) {
           newMessages[i] = msg = next;
-          updated = true;
+          changed.push(this.keyOf(msg));
         }
       }
       // A thread's other messages are rows too — the list draws each with its
@@ -1172,13 +1180,14 @@ export class MailboxPage extends LitElement {
       // went back to showing them unread.
       if (msg.SubMessages?.some((sub: any) => named.has(this.keyOf(sub)))) {
         const subs = msg.SubMessages.map((sub: any) => (named.has(this.keyOf(sub)) ? withFlag(sub) : sub));
-        if (subs.some((sub: any, j: number) => sub !== msg.SubMessages[j])) {
+        const moved = subs.filter((sub: any, j: number) => sub !== msg.SubMessages[j]);
+        if (moved.length > 0) {
           newMessages[i] = { ...msg, SubMessages: subs };
-          updated = true;
+          for (const sub of moved) changed.push(this.keyOf(sub));
         }
       }
     }
-    if (updated) {
+    if (changed.length > 0) {
       this.messages = newMessages;
       if (this.selectedMessage && named.has(this.keyOf(this.selectedMessage))) {
         const hasFlag = this.selectedMessage.Flags && this.selectedMessage.Flags.includes(flag);
@@ -1206,6 +1215,7 @@ export class MailboxPage extends LitElement {
         detail: { keys, flag, action }
       }));
     }
+    return changed;
   }
 
   /**
@@ -1408,22 +1418,104 @@ export class MailboxPage extends LitElement {
   }
 
   /**
-   * Sets or clears flags on the messages the keys name, and paints what each
-   * folder took. The result used to be discarded and the paint applied
-   * regardless, so a refused write showed as done until the next sync silently
-   * undid it.
+   * Sets or clears flags on the messages the keys name.
+   *
+   * Painted BEFORE the write, and put back only where the write was refused.
+   *
+   * It used to be the other way round — paint each folder as it answered —
+   * which is correct and reads as nothing happening: the server takes a
+   * session's requests one at a time, so marking a few hundred rows read left
+   * every one of them looking unread for as long as the write took, with no
+   * sign that anything was underway. The rows the user acted on are the report
+   * that the gesture landed, and they have to change with the gesture.
+   *
+   * The revert is exact: {@link updateLocalMessageFlags} answers the keys it
+   * moved, so a refusal puts back those and not a message that already carried
+   * the flag.
    */
   private async flagEach(keys: string[], flags: string[], op: 'add' | 'remove'): Promise<FlagResult> {
+    const painted = flags.map(flag => ({ flag, keys: this.updateLocalMessageFlags(keys, flag, op) }));
+
+    const written = new Set<string>();
     const { refused } = await this.eachFolder(keys, async (mailbox, uids) => {
       const result = await messageOperations.setFlag(mailbox, uids, flags, op);
-      if (result.ok) {
-        const written = uids.map(uid => messageKey(mailbox, uid));
-        for (const flag of flags) this.updateLocalMessageFlags(written, flag, op);
-      }
+      if (result.ok) for (const uid of uids) written.add(messageKey(mailbox, uid));
       return result;
     });
+
+    if (written.size < keys.length) {
+      const undo = op === 'add' ? 'remove' : 'add';
+      for (const { flag, keys: moved } of painted) {
+        const back = moved.filter(key => !written.has(key));
+        if (back.length > 0) this.updateLocalMessageFlags(back, flag, undo);
+      }
+    }
     return refused ?? { ok: true };
   }
+
+  /**
+   * Takes the rows a write is about off the list, at once, before it runs.
+   *
+   * A bulk move or delete is one request per folder over as many messages as
+   * are checked, and the server answers a session one request at a time. Until
+   * it came back, nothing on screen moved: the rows stayed, the checkboxes
+   * stayed checked, and the only sign of work was a spinner in the reading
+   * pane, which a narrow layout does not show. Pressing again was the sensible
+   * reading of that, and it queued a second write behind the first.
+   *
+   * The rows are the report. They leave when the gesture is made, the way they
+   * do everywhere else, and the SELECTION GOES WITH THEM at no cost: the list
+   * keeps only checked keys it still lists (see message-list's willUpdate), so
+   * removing the rows empties the selection and folds the bulk bar away.
+   *
+   * Answers a PUT-BACK, for the write that is refused: given the keys that did
+   * go, it restores the rest exactly where they were. A folder refusing does
+   * not stop the others (see {@link eachFolder}), and what it refused has to
+   * come back checked, so the user can try that part again — the one thing a
+   * bare re-read of the folder cannot do. It answers whether it could: a
+   * listing that has landed meanwhile is newer than anything held here, and
+   * then the caller re-reads instead.
+   */
+  private takeRowsOut(keys: string[]): (written: string[]) => boolean {
+    const before = this.messages;
+    const beforeTotal = this.totalMessages;
+    const putBack = (written: string[]) => {
+      if (this.messages !== this.rowsAfterTakeOut) return false;
+      this.messages = before;
+      this.totalMessages = beforeTotal;
+      this.takeRowsOut(written);
+      return true;
+    };
+    if (keys.length === 0) return putBack;
+    const gone = new Set(keys);
+    let removed = 0;
+    const kept: any[] = [];
+    for (const msg of this.messages) {
+      const subs: any[] = msg.SubMessages ?? [];
+      const staying = subs.filter(sub => !gone.has(this.keyOf(sub)));
+      // A row goes only when EVERY message it stands for goes. A collapsed
+      // thread is checked whole, so that is the ordinary case; half of an
+      // expanded one leaves the row standing, because dropping it would take
+      // the messages the user did not check off the screen along with it.
+      if (gone.has(this.keyOf(msg)) && staying.length === 0) {
+        removed += 1 + subs.length;
+        continue;
+      }
+      removed += subs.length - staying.length;
+      kept.push(staying.length === subs.length ? msg : { ...msg, SubMessages: staying });
+    }
+    this.messages = kept;
+    this.rowsAfterTakeOut = kept;
+    // The count the pagination and the discard banner read. The next listing
+    // carries the server's own; this keeps the two from disagreeing by the
+    // width of the write.
+    if (removed > 0) this.totalMessages = Math.max(0, this.totalMessages - removed);
+    return putBack;
+  }
+
+  /** The rows {@link takeRowsOut} left behind, so its put-back can tell them
+   * from a listing that has arrived since. */
+  private rowsAfterTakeOut: any[] | null = null;
 
   /**
    * Files the messages the keys name in `to` — Trash, Archive, Junk, the Inbox
@@ -1434,6 +1526,12 @@ export class MailboxPage extends LitElement {
   private async fileAway(keys: string[], to: string, isBulk: boolean, say: (count: number) => string) {
     const view = this.currentMailbox;
     const open = this.selectedMessage ? this.keyOf(this.selectedMessage) : undefined;
+    // Checked rows leave now, not when the server has finished with them — see
+    // {@link takeRowsOut}. Only the ones that are actually going: a message
+    // already in `to` is left where it is, and so is its row. The single-message
+    // paths say so their own way, by closing the reader on the message.
+    const leaving = isBulk ? keys.filter(key => parseMessageKey(key).mailbox !== to) : [];
+    const putBack = isBulk ? this.takeRowsOut(leaving) : undefined;
     const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
       if (from === to) return { ok: true, uidMapping: {} };
       const result = await messageOperations.moveMessages(from, uids, to);
@@ -1452,7 +1550,17 @@ export class MailboxPage extends LitElement {
       const undoFn = this.undoMoves(moved, to, view, isBulk ? undefined : open);
       this.showGlobalToast(say(filed.length), undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
     }
-    if (refused && refused.reason !== 'auth') this.reportActionFailed('toast.moveFailed', 'Could not move that');
+    if (refused && refused.reason !== 'auth') {
+      this.reportActionFailed('toast.moveFailed', 'Could not move that');
+      if (putBack) {
+        // What the refusing folder held is still in it: its rows come back, and
+        // come back CHECKED, which is the state the user needs to try again.
+        const went = new Set(filed);
+        const stayed = keys.filter(key => !went.has(key));
+        if (putBack(leaving.filter(key => went.has(key)))) this.selectedKeys = new Set(stayed);
+        else messageSync.sync();
+      }
+    }
   }
 
   /**
@@ -1666,6 +1774,10 @@ export class MailboxPage extends LitElement {
     const many = doomed.length > 1;
     if (isBulk) this.bulkProcessing = true;
     try {
+      // Checked rows leave with the gesture. Not a card's Delete, which is
+      // about one message inside a conversation the reader is showing and has
+      // its own way of leaving it (`leaveDeletedMessage`).
+      const putBack = isBulk && !named ? this.takeRowsOut(doomed) : undefined;
       const { done, refused } = await this.eachFolder(doomed, (mailbox, uids) =>
         messageOperations.deleteMessagesResult(mailbox, uids));
       named?.done?.(!refused);
@@ -1691,6 +1803,12 @@ export class MailboxPage extends LitElement {
       }
       if (refused && refused.reason !== 'auth') {
         this.reportActionFailed('toast.messageDeleteFailed', 'The message could not be deleted');
+        if (putBack) {
+          // As in fileAway: back where they were, and checked.
+          const went = new Set(deleted);
+          if (putBack(deleted)) this.selectedKeys = new Set(doomed.filter(key => !went.has(key)));
+          else messageSync.sync();
+        }
       }
 
       // The rest of the same Delete, in folders where it is a move to Trash.
