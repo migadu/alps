@@ -306,7 +306,7 @@ func (s *Session) DoSMTP(f func(*smtp.Client) error) error {
 
 // doSMTP performs a single SMTP attempt: dial, authenticate, run f, quit.
 func (s *Session) doSMTP(f func(*smtp.Client) error) error {
-	c, err := s.manager.dialSMTP()
+	c, err := s.manager.dialSMTP(s.username)
 	if err != nil {
 		return err
 	}
@@ -536,8 +536,10 @@ func (s *Session) Store() provider.Store {
 }
 
 type (
-	// DialSMTPFunc connects to the upstream SMTP server.
-	DialSMTPFunc func() (*smtp.Client, error)
+	// DialSMTPFunc connects to the upstream SMTP server for a given login.
+	// The username decides the submission server when the provider routes it
+	// per domain; providers that do not route ignore it.
+	DialSMTPFunc func(username string) (*smtp.Client, error)
 )
 
 // SessionManager keeps track of active sessions. It connects and re-connects

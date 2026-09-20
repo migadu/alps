@@ -146,44 +146,60 @@ func ParseServerURL(str string) (*url.URL, error) {
 	return url.Parse(str)
 }
 
-func (s *Server) parseSMTPServer() error {
-	if s.Options.SMTP.Server == "" {
-		return fmt.Errorf("no SMTP server configured")
-	}
-	u, err := ParseServerURL(s.Options.SMTP.Server)
+// parseSMTPURL resolves a submission server URL into the address to dial and
+// the transport it implies. insecureOpt forces insecure mode on regardless of
+// scheme, mirroring the [smtp] insecure option.
+func parseSMTPURL(raw string, insecureOpt bool) (host string, tls bool, insecure bool, err error) {
+	u, err := ParseServerURL(raw)
 	if err != nil {
-		return fmt.Errorf("failed to parse SMTP server: %v", err)
+		return "", false, false, fmt.Errorf("failed to parse SMTP server: %v", err)
 	}
 
 	if u.Scheme == "" {
-		return fmt.Errorf("SMTP server requires a scheme (smtps://, smtp://, smtp+insecure://), got: %v", u.String())
+		return "", false, false, fmt.Errorf("SMTP server requires a scheme (smtps://, smtp://, smtp+insecure://), got: %v", u.String())
 	}
 
 	switch u.Scheme {
 	case "smtps":
-		s.smtp.tls = true
+		tls = true
 	case "smtp+insecure":
-		s.smtp.insecure = true
-	case "smtp", "":
-		// default
+		insecure = true
+	case "smtp":
 	default:
-		return fmt.Errorf("unknown scheme for SMTP server: %v", u.Scheme)
+		return "", false, false, fmt.Errorf("unknown scheme for SMTP server: %v", u.Scheme)
 	}
 
-	if s.Options.SMTP.Insecure {
-		s.smtp.insecure = true
+	if insecureOpt {
+		insecure = true
 	}
 
-	s.smtp.host = u.Host
-	if !strings.ContainsRune(s.smtp.host, ':') {
+	host = u.Host
+	if host == "" {
+		return "", false, false, fmt.Errorf("SMTP server host cannot be empty")
+	}
+	if !strings.ContainsRune(host, ':') {
 		if u.Scheme == "smtps" {
-			s.smtp.host += ":465"
+			host += ":465"
 		} else {
-			s.smtp.host += ":587"
+			host += ":587"
 		}
 	}
 
-	s.logger.Printf("Configured SMTP server: %v", u)
+	return host, tls, insecure, nil
+}
+
+func (s *Server) parseSMTPServer() error {
+	if s.Options.SMTP.Server == "" {
+		return fmt.Errorf("no SMTP server configured")
+	}
+
+	host, tls, insecure, err := parseSMTPURL(s.Options.SMTP.Server, s.Options.SMTP.Insecure)
+	if err != nil {
+		return err
+	}
+	s.smtp.host, s.smtp.tls, s.smtp.insecure = host, tls, insecure
+
+	s.logger.Printf("Configured SMTP server: %v", s.Options.SMTP.Server)
 	return nil
 }
 
@@ -560,4 +576,26 @@ func (s *Server) handleError(err error, ctx *Context) {
 		ctx.Logger().Error(fmt.Errorf(
 			"Error occured sending error JSON: %w", err))
 	}
+}
+
+// ServiceURLFor asks the configured provider which endpoint a given login
+// should use for a named service. It returns "" when the provider does not
+// route per login, or has no opinion for this one, and the caller then keeps
+// whatever is configured globally.
+func (s *Server) ServiceURLFor(service, username string) string {
+	router, ok := s.Options.Provider.(provider.ServiceRouter)
+	if !ok {
+		return ""
+	}
+	return router.ServiceURL(service, username)
+}
+
+// ServiceOptionsFor is ServiceURLFor for services configured by a block rather
+// than an address. It returns nil when the global configuration should stand.
+func (s *Server) ServiceOptionsFor(service, username string) map[string]interface{} {
+	router, ok := s.Options.Provider.(provider.ServiceRouter)
+	if !ok {
+		return nil
+	}
+	return router.ServiceOptions(service, username)
 }

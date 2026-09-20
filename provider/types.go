@@ -270,3 +270,32 @@ type AuthVerdictProvider interface {
 	// referred to: the same ID under a different scope is a different message.
 	AuthVerdicts(mailbox string, ids []MessageID) (verdicts map[string]AuthVerdict, scope string, err error)
 }
+
+// ServiceRouter is implemented by provider Options that resolve backends per
+// login. A provider that routes the mail store by domain can route everything
+// else the same way, so a user does not read from one host while sending,
+// syncing contacts or changing a password somewhere unrelated.
+//
+// Both methods return a zero value to mean "no opinion", in which case the
+// caller keeps whatever is configured globally. Providers that do not
+// implement this interface behave exactly as before.
+type ServiceRouter interface {
+	// ServiceURL resolves a single endpoint: "smtp", "carddav", "caldav" or
+	// "managesieve". An empty string defers to the global configuration.
+	ServiceURL(service, username string) string
+
+	// ServiceOptions resolves a whole plugin option block, for services whose
+	// configuration is more than an address. The password plugin needs this:
+	// two backends mean two admin APIs with separate credentials. A nil map
+	// defers to the global configuration.
+	ServiceOptions(service, username string) map[string]interface{}
+}
+
+// Service names understood by ServiceRouter.
+const (
+	ServiceSMTP        = "smtp"
+	ServiceCardDAV     = "carddav"
+	ServiceCalDAV      = "caldav"
+	ServiceManageSieve = "managesieve"
+	ServicePassword    = "password"
+)

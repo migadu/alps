@@ -3,6 +3,7 @@ package alpscarddav
 import (
 	"context"
 	"fmt"
+	"github.com/migadu/alps/provider"
 	"net/http"
 	"net/url"
 	"sync"
@@ -33,16 +34,42 @@ func sanityCheckURL(u *url.URL) error {
 type plugin struct {
 	alps.GoPlugin
 	url          *url.URL
+	srv          *alps.Server
+	urlCache     sync.Map // raw endpoint -> *url.URL
 	homeSetCache map[string]string
 	cacheMutex   sync.RWMutex
 	debug        bool
 }
 
+// urlFor resolves the CardDAV endpoint for a session. A provider that routes
+// per domain answers here, so contacts come from the same place as the mail;
+// otherwise the globally configured server stands.
+func (p *plugin) urlFor(session *alps.Session) *url.URL {
+	if session == nil || p.srv == nil {
+		return p.url
+	}
+	raw := p.srv.ServiceURLFor(provider.ServiceCardDAV, session.Username())
+	if raw == "" {
+		return p.url
+	}
+	if cached, ok := p.urlCache.Load(raw); ok {
+		return cached.(*url.URL)
+	}
+	u, err := parseCardDAVURL(raw)
+	if err != nil {
+		p.srv.Logger().Printf("carddav: provider named an unusable server %q for %s: %v (using the configured one)", raw, session.Username(), err)
+		return p.url
+	}
+	p.urlCache.Store(raw, u)
+	return u
+}
+
 func (p *plugin) client(ctx context.Context, session *alps.Session) (*carddav.Client, error) {
-	if p.url == nil {
+	u := p.urlFor(session)
+	if u == nil {
 		return nil, fmt.Errorf("CardDAV server is not configured")
 	}
-	return newClient(p.url, session, p.debug)
+	return newClient(u, session, p.debug)
 }
 
 // httpClient authenticates as the session, for the requests go-webdav's client
@@ -91,13 +118,9 @@ func (p *plugin) clientWithAddressBook(ctx context.Context, session *alps.Sessio
 	return c, &addressBooks[0], nil
 }
 
-func newPlugin(srv *alps.Server) (alps.Plugin, error) {
-	cfg := srv.Options.Plugins["carddav"]
-	if cfg.Server == "" {
-		// No server configured, disable plugin
-		return nil, nil
-	}
-	u, err := alps.ParseServerURL(cfg.Server)
+// parseCardDAVURL normalises a configured CardDAV endpoint into an http(s) URL.
+func parseCardDAVURL(raw string) (*url.URL, error) {
+	u, err := alps.ParseServerURL(raw)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse CardDAV server: %v", err)
 	}
@@ -111,6 +134,19 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	if u.Scheme == "" {
 		return nil, fmt.Errorf("CardDAV server requires a scheme (https://, http+insecure://), got: %v", u.String())
 	}
+	return u, nil
+}
+
+func newPlugin(srv *alps.Server) (alps.Plugin, error) {
+	cfg := srv.Options.Plugins["carddav"]
+	if cfg.Server == "" {
+		// No server configured, disable plugin
+		return nil, nil
+	}
+	u, err := parseCardDAVURL(cfg.Server)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := sanityCheckURL(u); err != nil {
 		srv.Logger().Printf("carddav: failed to connect to CardDAV server %q: %v (continuing anyway)", u, err)
@@ -121,6 +157,7 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	p := &plugin{
 		GoPlugin:     alps.GoPlugin{Name: "carddav"},
 		url:          u,
+		srv:          srv,
 		homeSetCache: make(map[string]string),
 		debug:        srv.Options.Debug,
 	}

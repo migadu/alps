@@ -33,8 +33,41 @@ func (c *Config) Type() string {
 }
 
 type routeEntry struct {
-	domains []string
-	options provider.Options
+	domains  []string
+	options  provider.Options
+	services services
+}
+
+// services holds the non-store backends a route names. An absent entry means
+// the route has no opinion and the global configuration stands.
+type services struct {
+	urls     map[string]string
+	password map[string]interface{}
+}
+
+// serviceProbe is the shape decoded out of any backend table to pick up the
+// endpoints it names alongside its mail store.
+type serviceProbe struct {
+	SMTP        string                 `toml:"smtp"`
+	CardDAV     string                 `toml:"carddav"`
+	CalDAV      string                 `toml:"caldav"`
+	ManageSieve string                 `toml:"managesieve"`
+	Password    map[string]interface{} `toml:"password"`
+}
+
+func (p serviceProbe) toServices() services {
+	urls := make(map[string]string)
+	for name, raw := range map[string]string{
+		provider.ServiceSMTP:        p.SMTP,
+		provider.ServiceCardDAV:     p.CardDAV,
+		provider.ServiceCalDAV:      p.CalDAV,
+		provider.ServiceManageSieve: p.ManageSieve,
+	} {
+		if v := strings.TrimSpace(raw); v != "" {
+			urls[name] = v
+		}
+	}
+	return services{urls: urls, password: p.Password}
 }
 
 // Options implements provider.Options for the multi-provider router.
@@ -48,6 +81,11 @@ type Options struct {
 	Default             provider.Options
 	Domains             map[string]provider.Options
 	Routes              []routeEntry
+
+	// Endpoints named alongside each backend. Any of them is optional: a
+	// backend that omits one defers to the matching global configuration.
+	DomainServices  map[string]services
+	DefaultServices services
 }
 
 func (o *Options) Type() string {
@@ -60,6 +98,7 @@ func (c *Config) ToOptions() (provider.Options, error) {
 	}
 
 	domains := make(map[string]provider.Options)
+	domainServices := make(map[string]services)
 	if len(c.Domains) > 0 {
 		if c.meta == nil {
 			return nil, fmt.Errorf("multi: configuration metadata is missing (must load via provider.LoadConfig)")
@@ -72,12 +111,14 @@ func (c *Config) ToOptions() (provider.Options, error) {
 
 			var probe struct {
 				Type string `toml:"type"`
+				serviceProbe
 			}
 			_ = c.meta.PrimitiveDecode(prim, &probe)
 			subType := strings.ToLower(strings.TrimSpace(probe.Type))
 			if subType == "" {
 				subType = "imap"
 			}
+			domainServices[domainClean] = probe.toServices()
 
 			subCfg, err := provider.LoadConfig(subType, c.meta, &prim)
 			if err != nil {
@@ -101,6 +142,7 @@ func (c *Config) ToOptions() (provider.Options, error) {
 			var probe struct {
 				Domains []string `toml:"domains"`
 				Type    string   `toml:"type"`
+				serviceProbe
 			}
 			if err := c.meta.PrimitiveDecode(prim, &probe); err != nil {
 				return nil, fmt.Errorf("multi: invalid route at index %d: %w", i, err)
@@ -133,25 +175,29 @@ func (c *Config) ToOptions() (provider.Options, error) {
 			}
 
 			routes = append(routes, routeEntry{
-				domains: cleanedDomains,
-				options: subOpt,
+				domains:  cleanedDomains,
+				options:  subOpt,
+				services: probe.toServices(),
 			})
 		}
 	}
 
 	var defaultOpt provider.Options
+	var defaultServices services
 	if c.Default != nil {
 		if c.meta == nil {
 			return nil, fmt.Errorf("multi: configuration metadata is missing (must load via provider.LoadConfig)")
 		}
 		var probe struct {
 			Type string `toml:"type"`
+			serviceProbe
 		}
 		_ = c.meta.PrimitiveDecode(*c.Default, &probe)
 		subType := strings.ToLower(strings.TrimSpace(probe.Type))
 		if subType == "" {
 			subType = "imap"
 		}
+		defaultServices = probe.toServices()
 
 		subCfg, err := provider.LoadConfig(subType, c.meta, c.Default)
 		if err != nil {
@@ -181,6 +227,8 @@ func (c *Config) ToOptions() (provider.Options, error) {
 		Default:             defaultOpt,
 		Domains:             domains,
 		Routes:              routes,
+		DomainServices:      domainServices,
+		DefaultServices:     defaultServices,
 	}, nil
 }
 
@@ -298,23 +346,9 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 	}
 
 	return func(username, password string) (provider.MailProvider, error) {
-		user, domain := username, ""
-		atCount := strings.Count(username, "@")
-		if atCount == 1 {
-			parts := strings.Split(username, "@")
-			user, domain = parts[0], parts[1]
-		} else if atCount > 1 {
-			if strings.HasPrefix(username, "\"") {
-				idx := strings.LastIndex(username, "@")
-				user, domain = username[:idx], username[idx+1:]
-			} else {
-				return nil, provider.AuthError{Cause: fmt.Errorf("malformed username %q: multiple unquoted '@' symbols", username)}
-			}
-		}
-		domain = strings.ToLower(strings.TrimSpace(domain))
-
-		if domain == "" && o.DefaultDomain != "" {
-			domain = strings.ToLower(strings.TrimSpace(o.DefaultDomain))
+		user, domain, err := o.splitUsername(username)
+		if err != nil {
+			return nil, provider.AuthError{Cause: err}
 		}
 
 		// 1. Explicit domain map
@@ -482,4 +516,79 @@ func domainAllowed(allowlist []string, domain string) bool {
 		}
 	}
 	return false
+}
+
+// splitUsername separates a login into its local part and domain, applying
+// DefaultDomain when the login carries none. Routing and submission share it
+// so the two cannot disagree about which domain a user belongs to.
+func (o *Options) splitUsername(username string) (user, domain string, err error) {
+	user = username
+	switch strings.Count(username, "@") {
+	case 0:
+	case 1:
+		parts := strings.SplitN(username, "@", 2)
+		user, domain = parts[0], parts[1]
+	default:
+		if !strings.HasPrefix(username, "\"") {
+			return "", "", fmt.Errorf("malformed username %q: multiple unquoted '@' symbols", username)
+		}
+		idx := strings.LastIndex(username, "@")
+		user, domain = username[:idx], username[idx+1:]
+	}
+
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	if domain == "" && o.DefaultDomain != "" {
+		domain = strings.ToLower(strings.TrimSpace(o.DefaultDomain))
+	}
+	return user, domain, nil
+}
+
+// resolveServices finds the backend a login belongs to and returns what it
+// names. found is false when no explicit rule matched, in which case the
+// default backend answers.
+func (o *Options) resolveServices(username string) (services, bool) {
+	_, domain, err := o.splitUsername(username)
+	if err != nil || domain == "" {
+		return o.DefaultServices, false
+	}
+
+	if svc, ok := o.DomainServices[domain]; ok {
+		return svc, true
+	}
+	if _, mapped := o.Domains[domain]; mapped {
+		// Mapped by an entry that names nothing: it has no opinion, and must
+		// not inherit one from an unrelated backend.
+		return services{}, true
+	}
+	for _, r := range o.Routes {
+		for _, d := range r.domains {
+			if d == domain {
+				return r.services, true
+			}
+		}
+	}
+	return o.DefaultServices, false
+}
+
+// ServiceURL implements provider.ServiceRouter. Every backend a login touches
+// follows the domain that chose its mail store, so a user does not read from
+// one host and send, sync or change a password somewhere unrelated.
+//
+// An empty result defers to the global configuration for that service.
+func (o *Options) ServiceURL(service, username string) string {
+	if o == nil {
+		return ""
+	}
+	svc, _ := o.resolveServices(username)
+	return svc.urls[service]
+}
+
+// ServiceOptions implements provider.ServiceRouter for services configured by
+// a block rather than an address.
+func (o *Options) ServiceOptions(service, username string) map[string]interface{} {
+	if o == nil || service != provider.ServicePassword {
+		return nil
+	}
+	svc, _ := o.resolveServices(username)
+	return svc.password
 }

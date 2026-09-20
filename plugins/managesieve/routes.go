@@ -50,12 +50,13 @@ func activeScript(scripts []Script) string {
 func (p *plugin) connectClient(ctx *alps.Context) (*MSClient, error) {
 	username := ctx.Session.Username()
 
-	if p.url == nil {
+	ep := p.endpointFor(ctx.Session)
+	if ep.url == nil {
 		return nil, fmt.Errorf("ManageSieve server is not configured")
 	}
 
-	addr := p.url.Host
-	if p.url.Port() == "" {
+	addr := ep.url.Host
+	if ep.url.Port() == "" {
 		addr = fmt.Sprintf("%s:4190", addr)
 	}
 
@@ -75,11 +76,11 @@ func (p *plugin) connectClient(ctx *alps.Context) (*MSClient, error) {
 	// spoofable) capability list omits STARTTLS — that is a downgrade attack.
 	if _, ok := c.capabilities["STARTTLS"]; ok {
 		host, _, _ := strings.Cut(addr, ":")
-		if err := c.StartTLS(&tls.Config{ServerName: host, InsecureSkipVerify: p.insecure}); err != nil {
+		if err := c.StartTLS(&tls.Config{ServerName: host, InsecureSkipVerify: ep.insecure}); err != nil {
 			c.Close()
 			return nil, fmt.Errorf("STARTTLS failed: %w", err)
 		}
-	} else if !p.insecure {
+	} else if !ep.insecure {
 		c.Close()
 		return nil, fmt.Errorf("ManageSieve server does not offer STARTTLS; refusing to send credentials over an unencrypted connection (use the managesieve+insecure:// scheme to override)")
 	} else {

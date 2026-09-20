@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"encoding/json"
+	"github.com/migadu/alps/provider"
 	"io"
 	"net/http"
 	"net/url"
@@ -39,7 +40,14 @@ func handlePasswordChange(ctx *alps.Context) error {
 	if !ok || !pluginCfg.Enabled {
 		return ctx.JSON(http.StatusForbidden, map[string]string{"error": "Password change is not enabled"})
 	}
-	cfg := parseConfig(pluginCfg.Options)
+	// A provider that routes per domain names its own admin API here: two
+	// backends mean two APIs with separate credentials, so the whole block is
+	// replaced rather than merged. A nil answer keeps the global one.
+	opts := pluginCfg.Options
+	if routed := ctx.Server.ServiceOptionsFor(provider.ServicePassword, ctx.Session.Username()); routed != nil {
+		opts = routed
+	}
+	cfg := parseConfig(opts)
 
 	var req PasswordChangeRequest
 	if strings.HasPrefix(ctx.Request.Header.Get("Content-Type"), "application/json") {

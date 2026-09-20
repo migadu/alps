@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/migadu/alps"
+	"github.com/migadu/alps/provider"
 	"github.com/migadu/alps/provider/imap"
 	"github.com/migadu/alps/provider/multi"
 	"github.com/stretchr/testify/assert"
@@ -117,4 +118,98 @@ server = "imaps://imap.migadu.com:993"
 	assert.Equal(t, "multi", multiOpts.Type())
 	assert.Equal(t, "migadu.com", multiOpts.DefaultDomain)
 	assert.Contains(t, multiOpts.Domains, "migadu.com")
+}
+
+// The per-domain smtp key must survive TOML loading and reach the router the
+// server consults when sending.
+func TestMultiProviderSMTPRouting(t *testing.T) {
+	data := `
+[smtp]
+server = "smtps://smtp.global.example:465"
+
+[provider]
+type = "multi"
+
+[provider.multi]
+
+[provider.multi.domains."open.email"]
+type = "imap"
+server = "imaps://mail.open.email:993"
+smtp = "smtps://mail.open.email:465"
+
+[provider.multi.default]
+type = "imap"
+server = "imaps://imap.migadu.com:993"
+smtp = "smtps://smtp.migadu.com:465"
+`
+	cfg, err := LoadConfigString(data)
+	require.NoError(t, err)
+	opts, err := cfg.ToOptions()
+	require.NoError(t, err)
+
+	router, ok := opts.Provider.(provider.ServiceRouter)
+	require.True(t, ok, "multi provider must route backends")
+
+	assert.Equal(t, "smtps://mail.open.email:465", router.ServiceURL(provider.ServiceSMTP, "me@open.email"))
+	assert.Equal(t, "smtps://smtp.migadu.com:465", router.ServiceURL(provider.ServiceSMTP, "me@elsewhere.example"))
+	// The global [smtp] remains configured as the last resort.
+	assert.Equal(t, "smtps://smtp.global.example:465", opts.SMTP.Server)
+}
+
+// Every backend a login touches must follow the domain that chose its mail
+// store, and survive TOML loading to get there.
+func TestMultiProviderRoutesAllServices(t *testing.T) {
+	data := `
+[smtp]
+server = "smtps://smtp.global.example:465"
+
+[provider]
+type = "multi"
+
+[provider.multi]
+
+[[provider.multi.routes]]
+domains = ["open.email", "strb.ac"]
+type = "imap"
+server = "imaps://mail.open.email:993"
+smtp = "smtps://smtp.open.email:465"
+carddav = "https://dav.open.email"
+caldav = "https://dav.open.email"
+managesieve = "managesieves://mail.open.email:4190"
+
+[provider.multi.routes.password]
+endpoint = "https://admin.open.email/api/webmail/mailboxes"
+auth_type = "basic"
+username = "oe-user"
+
+[[provider.multi.routes]]
+domains = ["migadu.com"]
+type = "imap"
+server = "imaps://imap.migadu.com:993"
+smtp = "smtps://smtp.migadu.com:465"
+carddav = "https://cdav.migadu.net"
+`
+	cfg, err := LoadConfigString(data)
+	require.NoError(t, err)
+	opts, err := cfg.ToOptions()
+	require.NoError(t, err)
+	r := opts.Provider.(provider.ServiceRouter)
+
+	// Both domains on the first route reach the same backends.
+	for _, u := range []string{"me@open.email", "me@strb.ac"} {
+		assert.Equal(t, "smtps://smtp.open.email:465", r.ServiceURL(provider.ServiceSMTP, u))
+		assert.Equal(t, "https://dav.open.email", r.ServiceURL(provider.ServiceCardDAV, u))
+		assert.Equal(t, "https://dav.open.email", r.ServiceURL(provider.ServiceCalDAV, u))
+		assert.Equal(t, "managesieves://mail.open.email:4190", r.ServiceURL(provider.ServiceManageSieve, u))
+		assert.Equal(t, "https://admin.open.email/api/webmail/mailboxes",
+			r.ServiceOptions(provider.ServicePassword, u)["endpoint"])
+	}
+
+	// The second route names no caldav, managesieve or password block, so each
+	// of those defers to the global plugin configuration rather than borrowing
+	// the other route's.
+	assert.Equal(t, "https://cdav.migadu.net", r.ServiceURL(provider.ServiceCardDAV, "me@migadu.com"))
+	assert.Equal(t, "", r.ServiceURL(provider.ServiceCalDAV, "me@migadu.com"))
+	assert.Equal(t, "", r.ServiceURL(provider.ServiceManageSieve, "me@migadu.com"))
+	assert.Nil(t, r.ServiceOptions(provider.ServicePassword, "me@migadu.com"))
 }

@@ -433,10 +433,15 @@ server = "imaps://imap.migadu.com:993"
 # where untrusted users cannot reach the login form. Private, loopback,
 # link-local and CGNAT targets stay blocked either way.
 #
-# Explicit per-domain provider mappings:
+# Explicit per-domain provider mappings. Alongside the mail store, a backend
+# may name the other endpoints its users should reach: smtp, carddav, caldav
+# and managesieve, plus a [.password] sub-table replacing
+# [plugin.password.options]. Anything not named falls back to the matching
+# global [smtp] / [plugin.*] setting.
 # [provider.multi.domains."migadu.com"]
 # type = "imap"
 # server = "imaps://imap.migadu.com:993"
+# smtp = "smtps://smtp.migadu.com:465"
 #
 # [provider.multi.domains."local.lan"]
 # type = "maildir"
@@ -447,11 +452,25 @@ server = "imaps://imap.migadu.com:993"
 # domains = ["domain1.com", "domain2.com"]
 # type = "imap"
 # server = "imaps://imap.sharedmail.com:993"
+# smtp = "smtps://smtp.sharedmail.com:465"
+# carddav = "https://dav.sharedmail.com"
+# caldav = "https://dav.sharedmail.com"
+# managesieve = "managesieves://imap.sharedmail.com:4190"
+#
+# Password changes for those domains, replacing [plugin.password.options]:
+# [provider.multi.routes.password]
+# endpoint = "https://admin.sharedmail.com/api/webmail/mailboxes"
+# method = "POST"
+# auth_type = "basic"
+# username = "..."
+# password = "..."
+# payload = "json"
 #
 # Default fallback provider for domains not matched above:
 # [provider.multi.default]
 # type = "imap"
 # server = "imaps://imap.fallback.com:993"
+# smtp = "smtps://smtp.fallback.com:465"
 
 [smtp]
 # SMTP server

@@ -181,8 +181,14 @@ Routes incoming user logins across multiple email backends. Domain resolution pr
 | `autodiscover` | Boolean | `false` | Automatically look up RFC 6186 DNS SRV records for IMAP servers. |
 | `autodiscover_domains` | Array of Strings | `[]` | Domain allowlist for autodiscovery. Required when `autodiscover = true` to prevent unauthenticated SSRF relays. |
 | `domains` | Table | None | Map of domain strings to provider configurations (e.g. `[provider.multi.domains."example.com"]`). |
+| `smtp`, `carddav`, `caldav`, `managesieve` | String | None | Set *inside* a `domains` entry, a `routes` entry or `default`: the endpoint logins that land there should use. Each takes the same URL form as its global counterpart. Omitted, that backend defers to the matching global setting. |
+| `password` | Table | None | A sub-table of a backend (`[provider.multi.routes.password]`), replacing `[plugin.password.options]` for logins that land there. Replaced whole, not merged: separate backends mean separate admin APIs and credentials. |
 | `routes` | Array of Tables | None | Grouped routes specifying `domains` list and provider configuration. |
 | `default` | Table | None | Fallback provider configuration table when no domain match occurs. |
+
+Every backend a login touches follows the domain that chose its mail store, so a user does not read from one host and then send, sync contacts or calendars, edit filters or change a password somewhere unrelated. A backend that names no endpoint for a service defers to that service's global setting rather than borrowing one from an unrelated backend; domains reached by `template` or `autodiscover` have no entry of their own and fall to `default`, then to the global setting. The global `[smtp] server` and the `[plugin.*]` blocks stay in place as that last resort, and a service left unconfigured globally and unnamed by the backend stays disabled.
+
+The CalDAV endpoint named here must carry a scheme. Start-up can fall back to DNS discovery for the global `[plugin.caldav] server`, but a login must not cost a discovery round trip, so a per-backend endpoint without a scheme is refused and the global one stands.
 
 Both allowlists accept the single entry `"*"` to match every domain. That turns the dynamic routes back into an open relay: any login makes the server connect to a host the login chose, so use it only on a deployment that is not reachable by untrusted users. Private, loopback, link-local and CGNAT targets stay blocked either way, and the block is re-checked against the address each connection actually reaches.
 

@@ -813,7 +813,7 @@ func registerInvitationRoutes(p *plugin) {
 				// otherwise answers an attendee's delete with a decline, to
 				// an organizer who has just cancelled.
 				header := http.Header{"Schedule-Reply": {"F"}}
-				err := davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.url, inv.copy.Path), inv.copy.ETag, header)
+				err := davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session), inv.copy.Path), inv.copy.ETag, header)
 				if errors.Is(err, davsave.ErrConflict) {
 					return errChangedElsewhere
 				}

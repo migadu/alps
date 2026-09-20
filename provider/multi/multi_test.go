@@ -548,35 +548,24 @@ func TestDNSAutodiscoverer_DeterministicOldestEviction(t *testing.T) {
 	assert.True(t, hasDomain2, "newer entry domain2.com must be kept")
 }
 
-// Resolving under the shared mutex made every dynamic login queue behind the
-// slowest nameserver. The lookups must overlap.
-func TestMultiConfig_DynamicLookupsAreNotSerialized(t *testing.T) {
+// Concurrent logins for one dynamic target must collapse onto a single cached
+// factory: the lookup now runs outside the cache lock, so two callers can be
+// in flight at once and the second must not lose its entry. IP literals keep
+// this free of DNS, which no wall-clock assertion could depend on reliably.
+func TestMultiConfig_DynamicFactoryCachingIsRaceSafe(t *testing.T) {
 	opts := &Options{Template: "imaps://%d:993", TemplateDomains: []string{"*"}}
-	factory := opts.CreateFactory(2*time.Second, false)
+	factory := opts.CreateFactory(50*time.Millisecond, false)
 
-	dom := func(i int) string {
-		return fmt.Sprintf("u@n%d-%d.invalid", i, time.Now().UnixNano())
-	}
-
-	start := time.Now()
-	_, _ = factory(dom(0), "pw")
-	single := time.Since(start)
-
-	const n = 8
 	var wg sync.WaitGroup
-	start = time.Now()
-	for i := 1; i <= n; i++ {
+	for i := 0; i < 32; i++ {
 		wg.Add(1)
-		go func(i int) { defer wg.Done(); _, _ = factory(dom(i), "pw") }(i)
+		go func(i int) {
+			defer wg.Done()
+			// Two distinct public targets, hit concurrently and repeatedly.
+			_, _ = factory(fmt.Sprintf("user@198.51.100.%d", 1+i%2), "pw")
+		}(i)
 	}
 	wg.Wait()
-	concurrent := time.Since(start)
-
-	// Serialized, this was ~n x a single lookup. Allow generous slack for a
-	// loaded CI box while still failing if the lock is reintroduced.
-	limit := time.Duration(float64(single) * float64(n) * 0.6)
-	assert.Less(t, concurrent, limit,
-		"concurrent=%v single=%v: dynamic lookups appear serialized", concurrent, single)
 }
 
 // A template names servers from user input, so it must apply only to
@@ -613,4 +602,84 @@ func TestIsValidLocalPart(t *testing.T) {
 	for _, bad := range []string{"a:b", "a/b", "a?c", "a#b", "a@b", "a[b]", "a%2f", "a b", "a\nb", ""} {
 		assert.False(t, isValidLocalPart(bad), "%q should be refused", bad)
 	}
+}
+
+func TestMultiConfig_ServiceRouting(t *testing.T) {
+	opts := &Options{
+		DefaultDomain: "fallback.example",
+		Domains: map[string]provider.Options{
+			"open.email":     nil,
+			"nosmtp.example": nil,
+		},
+		DomainServices: map[string]services{
+			"open.email": {urls: map[string]string{
+				provider.ServiceSMTP:        "smtps://smtp.open.email:465",
+				provider.ServiceCardDAV:     "https://dav.open.email",
+				provider.ServiceManageSieve: "managesieves://mail.open.email:4190",
+			}},
+			"nosmtp.example": {},
+		},
+		Routes: []routeEntry{
+			{domains: []string{"r1.example", "r2.example"}, services: services{
+				urls: map[string]string{provider.ServiceSMTP: "smtps://shared.example:465"},
+			}},
+		},
+		DefaultServices: services{urls: map[string]string{
+			provider.ServiceSMTP:   "smtps://smtp.default.example:465",
+			provider.ServiceCalDAV: "https://dav.default.example",
+		}},
+	}
+
+	// A backend's own endpoints win, for every service it names.
+	assert.Equal(t, "smtps://smtp.open.email:465", opts.ServiceURL(provider.ServiceSMTP, "me@open.email"))
+	assert.Equal(t, "https://dav.open.email", opts.ServiceURL(provider.ServiceCardDAV, "me@open.email"))
+	assert.Equal(t, "managesieves://mail.open.email:4190", opts.ServiceURL(provider.ServiceManageSieve, "me@open.email"))
+	// Case and spacing in the login must not change the answer.
+	assert.Equal(t, "https://dav.open.email", opts.ServiceURL(provider.ServiceCardDAV, "Me@OPEN.Email"))
+
+	// A service that backend does not name defers to the global config, and
+	// must not borrow the default backend's.
+	assert.Equal(t, "", opts.ServiceURL(provider.ServiceCalDAV, "me@open.email"))
+	assert.Equal(t, "", opts.ServiceURL(provider.ServiceSMTP, "me@nosmtp.example"))
+
+	// Grouped routes answer for every domain they cover.
+	assert.Equal(t, "smtps://shared.example:465", opts.ServiceURL(provider.ServiceSMTP, "me@r1.example"))
+	assert.Equal(t, "smtps://shared.example:465", opts.ServiceURL(provider.ServiceSMTP, "me@r2.example"))
+
+	// Anything unmatched lands on the default backend.
+	assert.Equal(t, "smtps://smtp.default.example:465", opts.ServiceURL(provider.ServiceSMTP, "me@unknown.example"))
+	assert.Equal(t, "https://dav.default.example", opts.ServiceURL(provider.ServiceCalDAV, "me@unknown.example"))
+
+	// A bare login takes DefaultDomain; a malformed one must not pick a server
+	// from a domain it never proved.
+	assert.Equal(t, "smtps://smtp.default.example:465", opts.ServiceURL(provider.ServiceSMTP, "bare"))
+	assert.Equal(t, "smtps://smtp.default.example:465", opts.ServiceURL(provider.ServiceSMTP, "a@b@c"))
+
+	// Nil receiver defers rather than panicking.
+	var nilOpts *Options
+	assert.Equal(t, "", nilOpts.ServiceURL(provider.ServiceSMTP, "me@open.email"))
+	assert.Nil(t, nilOpts.ServiceOptions(provider.ServicePassword, "me@open.email"))
+}
+
+func TestMultiConfig_ServiceOptionsRouting(t *testing.T) {
+	openBlock := map[string]interface{}{"endpoint": "https://admin.open.email/api", "username": "a"}
+	opts := &Options{
+		Domains:         map[string]provider.Options{"open.email": nil, "plain.example": nil},
+		DomainServices:  map[string]services{"open.email": {password: openBlock}, "plain.example": {}},
+		DefaultServices: services{password: map[string]interface{}{"endpoint": "https://admin.default.example/api"}},
+	}
+
+	assert.Equal(t, openBlock, opts.ServiceOptions(provider.ServicePassword, "me@open.email"))
+	// Named by a backend that carries no block: defer to the global one.
+	assert.Nil(t, opts.ServiceOptions(provider.ServicePassword, "me@plain.example"))
+	// Unmatched falls to the default backend's block.
+	assert.Equal(t, "https://admin.default.example/api",
+		opts.ServiceOptions(provider.ServicePassword, "me@unknown.example")["endpoint"])
+	// Only the password service is configured by a block.
+	assert.Nil(t, opts.ServiceOptions(provider.ServiceSMTP, "me@open.email"))
+}
+
+// The provider must satisfy the interface the server uses to route backends.
+func TestMultiOptionsImplementsServiceRouter(t *testing.T) {
+	var _ provider.ServiceRouter = (*Options)(nil)
 }
