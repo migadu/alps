@@ -397,7 +397,10 @@ export const fr = {
   pagination: {
     previousPage: 'Page précédente',
     nextPage: 'Page suivante',
-    zeroMessages: '0 message'
+    zeroMessages: '0 message',
+    totalCount: '{total} au total',
+    searchResults: '{total} résultats',
+    rangeOfTotal: '{start}–{end} sur {total}'
   },
   toast: {
     messagePermanentlyDeleted: 'Message définitivement supprimé',

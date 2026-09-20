@@ -398,7 +398,10 @@ export const rs = {
   pagination: {
     previousPage: 'Претходна страница',
     nextPage: 'Следећа страница',
-    zeroMessages: '0 порука'
+    zeroMessages: '0 порука',
+    totalCount: 'укупно {total}',
+    searchResults: '{total} резултата',
+    rangeOfTotal: '{start}–{end} од {total}'
   },
   toast: {
     messagePermanentlyDeleted: 'Порука трајно обрисана',

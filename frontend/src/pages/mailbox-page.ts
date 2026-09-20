@@ -303,6 +303,16 @@ export class MailboxPage extends LitElement {
   @state() private expandedFolders = new Set<string>([FOLDER_INBOX]);
   @state() private username = '';
   @state() private currentPage = 0;
+  /**
+   * The page the rows on screen came from.
+   *
+   * Not `currentPage`, which moves when the hash does — at the click, before
+   * anything has been fetched. The rows are deliberately left in place while
+   * the next page loads (see handleHashChange), so between the two the pager
+   * would be naming the new page's first row over the old page's last one, and
+   * correcting itself when the answer landed. This moves with the rows.
+   */
+  @state() private listedPage = 0;
   @state() private totalMessages = 0;
   @state() private messagesPerPage = 50;
   @state() private resizerPositionX = SIDEBAR_WIDTH_DEFAULT + Math.max(MESSAGE_LIST_WIDTH_MIN, (window.innerWidth - SIDEBAR_WIDTH_DEFAULT) * 0.4);
@@ -870,6 +880,7 @@ export class MailboxPage extends LitElement {
       // Do NOT update this.messages, this.totalMessages, or this.currentPage
     } else {
       if (data.Page !== undefined) this.currentPage = data.Page;
+      this.listedPage = data.Page !== undefined ? data.Page : this.currentPage;
       if (data.Total !== undefined) this.totalMessages = data.Total;
       if (data.MessagesPerPage !== undefined) this.messagesPerPage = data.MessagesPerPage;
       if (data.Messages) {
@@ -1966,6 +1977,7 @@ export class MailboxPage extends LitElement {
               .layoutMode=${effectiveLayoutMode}
               .isMobile=${this.isMobile}
               .currentPage=${this.currentPage}
+              .listedPage=${this.listedPage}
               .totalMessages=${this.totalMessages}
               .messagesPerPage=${this.messagesPerPage}
               .densityMode=${this.densityMode}

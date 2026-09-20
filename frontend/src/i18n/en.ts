@@ -432,7 +432,10 @@ export const en = {
   pagination: {
     previousPage: 'Previous page',
     nextPage: 'Next page',
-    zeroMessages: '0 messages'
+    zeroMessages: '0 messages',
+    totalCount: '{total} total',
+    searchResults: '{total} results',
+    rangeOfTotal: '{start}–{end} of {total}'
   },
   toast: {
     messagePermanentlyDeleted: 'Message permanently deleted',

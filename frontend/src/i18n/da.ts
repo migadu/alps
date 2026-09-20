@@ -434,7 +434,10 @@ export const da: TranslationDictionary = {
   pagination: {
     previousPage: 'Forrige side',
     nextPage: 'Næste side',
-    zeroMessages: '0 beskeder'
+    zeroMessages: '0 beskeder',
+    totalCount: '{total} i alt',
+    searchResults: '{total} resultater',
+    rangeOfTotal: '{start}–{end} af {total}'
   },
   toast: {
     messagePermanentlyDeleted: 'Besked slettet permanent',

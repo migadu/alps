@@ -399,7 +399,10 @@ export const de: TranslationDictionary = {
   pagination: {
     previousPage: 'Vorherige Seite',
     nextPage: 'Nächste Seite',
-    zeroMessages: '0 Nachrichten'
+    zeroMessages: '0 Nachrichten',
+    totalCount: '{total} insgesamt',
+    searchResults: '{total} Ergebnisse',
+    rangeOfTotal: '{start}–{end} von {total}'
   },
   toast: {
     messagePermanentlyDeleted: 'Nachricht endgültig gelöscht',

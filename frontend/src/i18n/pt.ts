@@ -432,7 +432,10 @@ export const pt = {
   pagination: {
     previousPage: 'Página anterior',
     nextPage: 'Próxima página',
-    zeroMessages: '0 mensagens'
+    zeroMessages: '0 mensagens',
+    totalCount: '{total} no total',
+    searchResults: '{total} resultados',
+    rangeOfTotal: '{start}–{end} de {total}'
   },
   toast: {
     draftDiscarded: 'Rascunho descartado',
