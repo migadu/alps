@@ -391,7 +391,10 @@ export const sr = {
   pagination: {
     previousPage: 'Prethodna stranica',
     nextPage: 'Sledeća stranica',
-    zeroMessages: '0 poruka'
+    zeroMessages: '0 poruka',
+    totalCount: 'ukupno {total}',
+    searchResults: '{total} rezultata',
+    rangeOfTotal: '{start}–{end} od {total}'
   },
   toast: {
     messagePermanentlyDeleted: 'Poruka trajno obrisana',

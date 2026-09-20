@@ -19,6 +19,9 @@ import './ui-confirm';
 import './alps-loader';
 import { repeat } from 'lit/directives/repeat.js';
 
+/** The filter bar's own toggles, which narrow a FOLDER rather than search it. */
+const FILTER_TOGGLES = new Set(['is:starred', 'is:unread']);
+
 @customElement('alps-message-list')
 export class MessageList extends LitElement {
   @consume({ context: settingsContext })
@@ -399,11 +402,6 @@ export class MessageList extends LitElement {
     .empty-state.load-error {
       flex-direction: column;
       gap: 12px;
-    }
-
-    alps-pagination {
-      flex: 1;
-      min-width: 0;
     }
 
     .loading-state {
@@ -1402,6 +1400,12 @@ export class MessageList extends LitElement {
     }));
   }
 
+  /** A query the user typed, as opposed to one of the toolbar's own toggles.
+   * Only the former makes the count a claim about a search. */
+  private get isTextSearch(): boolean {
+    return this.filterQuery !== '' && !FILTER_TOGGLES.has(this.filterQuery);
+  }
+
   render() {
     return html`
       ${!this.isMobile ? html`
@@ -1442,7 +1446,9 @@ export class MessageList extends LitElement {
           <alps-pagination 
             .currentPage=${this.currentPage} 
             .totalItems=${this.totalMessages} 
-            .itemsPerPage=${this.messagesPerPage}>
+            .itemsPerPage=${this.messagesPerPage}
+            .currentCount=${this.messages.length}
+            .isSearch=${this.isTextSearch}>
           </alps-pagination>
         </alps-toolbar>
       ` : ''}
@@ -1523,7 +1529,9 @@ export class MessageList extends LitElement {
             <alps-pagination 
               .currentPage=${this.currentPage} 
               .totalItems=${this.totalMessages} 
-              .itemsPerPage=${this.messagesPerPage}>
+              .itemsPerPage=${this.messagesPerPage}
+              .currentCount=${this.messages.length}
+              .isSearch=${this.isTextSearch}>
             </alps-pagination>
           `}
         </div>
