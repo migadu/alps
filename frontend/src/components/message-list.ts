@@ -43,6 +43,9 @@ export class MessageList extends LitElement {
   @property({ type: Boolean }) isMobile = false;
   @property({ type: Boolean }) sidebarCollapsed = false;
   @property({ type: Number }) currentPage = 0;
+  /** The page the rows came from, which is what the pager counts from —
+   * `currentPage` has already moved to the one being fetched. */
+  @property({ type: Number }) listedPage = 0;
   @property({ type: Number }) totalMessages = 0;
   @property({ type: Number }) messagesPerPage = 50;
   @property({ type: String }) filterQuery = '';
@@ -1444,7 +1447,7 @@ export class MessageList extends LitElement {
             </div>
           ` : ''}
           <alps-pagination 
-            .currentPage=${this.currentPage} 
+            .currentPage=${this.listedPage} 
             .totalItems=${this.totalMessages} 
             .itemsPerPage=${this.messagesPerPage}
             .currentCount=${this.messages.length}
@@ -1527,7 +1530,7 @@ export class MessageList extends LitElement {
             </div>
 
             <alps-pagination 
-              .currentPage=${this.currentPage} 
+              .currentPage=${this.listedPage} 
               .totalItems=${this.totalMessages} 
               .itemsPerPage=${this.messagesPerPage}
               .currentCount=${this.messages.length}
