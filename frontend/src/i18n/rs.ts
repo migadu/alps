@@ -197,9 +197,19 @@ export const rs = {
     clearSearch: 'Очисти претрагу',
     searchAllMailboxes: 'Претражи све',
     totalMessagesIn: 'Укупно {count} порука у {folder}',
+    totalConversationsIn: {
+      one: '{count} разговор у {folder}',
+      few: 'Укупно {count} разговора у {folder}',
+      other: 'Укупно {count} разговора у {folder}'
+    },
     deleteAllNow: 'Обриши све сада',
     emptyMailboxTitle: 'Испразни {folder}',
     emptyMailboxConfirm: 'Да ли сте сигурни да желите трајно да обришете свих {count} порука у {folder}? Ова акција се не може поништити.',
+    emptyMailboxConfirmConversations: {
+      one: 'Да ли сте сигурни да желите трајно да обришете један разговор у {folder} и све поруке у њему? Ова акција се не може поништити.',
+      few: 'Да ли сте сигурни да желите трајно да обришете {count} разговора у {folder} и све поруке у њима? Ова акција се не може поништити.',
+      other: 'Да ли сте сигурни да желите трајно да обришете свих {count} разговора у {folder} и све поруке у њима? Ова акција се не може поништити.'
+    },
     emptyMailboxSelectionNote: {
       one: 'Укључена је и порука коју сте означили.',
       few: 'Укључене су и {count} поруке које сте означили.',

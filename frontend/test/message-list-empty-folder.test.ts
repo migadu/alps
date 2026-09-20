@@ -216,3 +216,47 @@ describe('while the empty runs', () => {
     expect(deleteAll(el)?.spinning ?? false).toBe(false);
   });
 });
+
+describe('what the count is a count of', () => {
+  /**
+   * A threaded listing. The server pages THREAD GROUPS and answers len(groups)
+   * as the folder's total, marking each row with the size of its group — so
+   * the number beside "Delete All Now" counts conversations, and calling them
+   * messages understates the folder by however much its mail is grouped.
+   */
+  const conversation = (uid: string, size: number) => ({ ...message(uid), ThreadCount: size });
+
+  async function threadedTrash(): Promise<El> {
+    return mount<El>(TAG, {
+      i18nStore: new I18nStore(),
+      // Two conversations holding five messages between them.
+      messages: [conversation('1', 3), conversation('2', 2)],
+      currentMailbox: 'Trash',
+      currentMailboxRole: 'trash',
+      totalMessages: 2,
+    });
+  }
+
+  it('says conversations when the listing is threaded', async () => {
+    const el = await threadedTrash();
+    const banner = shadowAll(el, 'alps-banner span').map(s => s.textContent ?? '').join(' ');
+    expect(banner).toContain('2 total conversations in Trash');
+
+    await click(deleteAll(el), el);
+    const asked = shadow(el, 'ui-confirm').getAttribute('message') ?? '';
+    expect(asked).toContain('all 2 conversations in Trash');
+    // What a conversation count leaves unsaid on its own: the five messages
+    // under those two rows go as well.
+    expect(asked).toContain('every message in them');
+  });
+
+  it('says messages when it is not', async () => {
+    // The rows carry no ThreadCount, which is what an unthreaded listing looks
+    // like — there a message IS a row, and the two readings agree.
+    const el = await trash();
+    const banner = shadowAll(el, 'alps-banner span').map(s => s.textContent ?? '').join(' ');
+    expect(banner).toContain('2 total messages in Trash');
+    await click(deleteAll(el), el);
+    expect(shadow(el, 'ui-confirm').getAttribute('message')).toContain('all 2 messages in Trash');
+  });
+});

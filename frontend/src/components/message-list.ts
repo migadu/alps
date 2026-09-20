@@ -1133,11 +1133,32 @@ export class MessageList extends LitElement {
    * messages are part of it and not the whole of it. A user who meant to
    * delete only their selection reads that and cancels.
    */
+  /**
+   * Whether the listing on screen is counted in CONVERSATIONS.
+   *
+   * A threaded listing is paged and counted in thread groups, so the folder's
+   * total is a number of conversations and calling it a number of messages
+   * understates a folder by however much its mail is grouped.
+   *
+   * Read off the rows rather than off the threading SETTING: the server drops
+   * threading by itself on a mailbox too large to thread, and then the setting
+   * says one thing while the listing is the other. `ThreadCount` is omitted
+   * from a row the server did not thread, and is at least 1 on one it did.
+   */
+  private get countsConversations(): boolean {
+    return this.messages.some((msg: any) => (msg?.ThreadCount ?? 0) > 0);
+  }
+
   private get emptyConfirmMessage(): string {
     const folder = this.currentMailbox;
     const count = this.totalMessages;
-    const message = this.i18nStore?.t('messageList.emptyMailboxConfirm', { folder, count })
-      || `Are you sure you want to permanently delete all ${count} messages in ${folder}? This action cannot be undone.`;
+    const key = this.countsConversations
+      ? 'messageList.emptyMailboxConfirmConversations'
+      : 'messageList.emptyMailboxConfirm';
+    const message = this.i18nStore?.t(key, { folder, count })
+      || (this.countsConversations
+        ? `Are you sure you want to permanently delete all ${count} conversations in ${folder}, and every message in them? This action cannot be undone.`
+        : `Are you sure you want to permanently delete all ${count} messages in ${folder}? This action cannot be undone.`);
 
     const selected = this.selectedMessages.size;
     if (selected === 0) return message;
@@ -1536,7 +1557,10 @@ export class MessageList extends LitElement {
         ` : ''}
         ${!this.filterQuery && this.isDiscardableFolder && this.totalMessages > 0 ? html`
           <alps-banner variant="warning">
-            <span>${this.i18nStore?.t('messageList.totalMessagesIn', { count: this.totalMessages, folder: this.currentMailbox }) || `${this.totalMessages} total messages in ${this.currentMailbox}`}</span>
+            <span>${this.i18nStore?.t(
+              this.countsConversations ? 'messageList.totalConversationsIn' : 'messageList.totalMessagesIn',
+              { count: this.totalMessages, folder: this.currentMailbox },
+            ) || `${this.totalMessages} total ${this.countsConversations ? 'conversations' : 'messages'} in ${this.currentMailbox}`}</span>
             <alps-button slot="action" variant="normal"
               ?spinning=${this.emptying}
               @click=${() => this.showEmptyConfirm = true}>

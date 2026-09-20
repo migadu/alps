@@ -197,9 +197,17 @@ export const es = {
     clearSearch: 'Borrar búsqueda',
     searchAllMailboxes: 'Buscar en todo',
     totalMessagesIn: '{count} mensajes en total en {folder}',
+    totalConversationsIn: {
+      one: '{count} conversación en {folder}',
+      other: '{count} conversaciones en total en {folder}'
+    },
     deleteAllNow: 'Eliminar todos ahora',
     emptyMailboxTitle: 'Vaciar {folder}',
     emptyMailboxConfirm: '¿Estás seguro de que quieres eliminar permanentemente todos los {count} mensajes en {folder}? Esta acción no se puede deshacer.',
+    emptyMailboxConfirmConversations: {
+      one: '¿Estás seguro de que quieres eliminar permanentemente la única conversación en {folder} y todos sus mensajes? Esta acción no se puede deshacer.',
+      other: '¿Estás seguro de que quieres eliminar permanentemente las {count} conversaciones en {folder} y todos sus mensajes? Esta acción no se puede deshacer.'
+    },
     emptyMailboxSelectionNote: {
       one: 'Esto incluye el mensaje que has seleccionado.',
       other: 'Esto incluye los {count} mensajes que has seleccionado.'

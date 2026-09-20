@@ -199,9 +199,17 @@ export const de: TranslationDictionary = {
     clearSearch: 'Suche löschen',
     searchAllMailboxes: 'Alle durchsuchen',
     totalMessagesIn: '{count} Nachrichten insgesamt in {folder}',
+    totalConversationsIn: {
+      one: '{count} Konversation in {folder}',
+      other: '{count} Konversationen insgesamt in {folder}'
+    },
     deleteAllNow: 'Jetzt alle löschen',
     emptyMailboxTitle: '{folder} leeren',
     emptyMailboxConfirm: 'Sind Sie sicher, dass Sie alle {count} Nachrichten in {folder} dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
+    emptyMailboxConfirmConversations: {
+      one: 'Sind Sie sicher, dass Sie die eine Konversation in {folder} mit allen ihren Nachrichten dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
+      other: 'Sind Sie sicher, dass Sie alle {count} Konversationen in {folder} mit allen ihren Nachrichten dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.'
+    },
     emptyMailboxSelectionNote: {
       one: 'Die markierte Nachricht ist darin enthalten.',
       other: 'Die {count} markierten Nachrichten sind darin enthalten.'

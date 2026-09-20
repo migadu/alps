@@ -239,9 +239,17 @@ export const en = {
     clearSearch: 'Clear search',
     searchAllMailboxes: 'Search All',
     totalMessagesIn: '{count} total messages in {folder}',
+    totalConversationsIn: {
+      one: '{count} conversation in {folder}',
+      other: '{count} total conversations in {folder}'
+    },
     deleteAllNow: 'Delete All Now',
     emptyMailboxTitle: 'Empty {folder}',
     emptyMailboxConfirm: 'Are you sure you want to permanently delete all {count} messages in {folder}? This action cannot be undone.',
+    emptyMailboxConfirmConversations: {
+      one: 'Are you sure you want to permanently delete the one conversation in {folder}, and every message in it? This action cannot be undone.',
+      other: 'Are you sure you want to permanently delete all {count} conversations in {folder}, and every message in them? This action cannot be undone.'
+    },
     emptyMailboxSelectionNote: {
       one: 'This includes the message you have checked.',
       other: 'This includes the {count} messages you have checked.'
