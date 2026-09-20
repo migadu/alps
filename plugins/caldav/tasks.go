@@ -1,6 +1,7 @@
 package alpscaldav
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"path"
@@ -795,7 +796,7 @@ func registerTaskRoutes(p *plugin) {
 			}
 			me := progress(co.Data, todo, acct, wasDone)
 			etag, err := p.putCalendar(ctx, c, co.Path, co.Data, co.ETag)
-			if err == errChangedElsewhere && attempt == 1 {
+			if errors.Is(err, errChangedElsewhere) && attempt == 1 {
 				continue
 			}
 			if err != nil {

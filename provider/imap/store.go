@@ -20,7 +20,7 @@ func newStore(client *imapclient.Client) (provider.Store, error) {
 	s, err := newIMAPStore(client)
 	if err == nil {
 		return s, nil
-	} else if err != errIMAPMetadataUnsupported {
+	} else if !errors.Is(err, errIMAPMetadataUnsupported) {
 		return nil, err
 	}
 	if !warnedTransientStore {

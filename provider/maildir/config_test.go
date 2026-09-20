@@ -90,3 +90,10 @@ func TestExpandPathRejectsTraversal(t *testing.T) {
 		assert.Error(t, err, "username %q must be refused", username)
 	}
 }
+
+func TestExpandPathRejectsEmptyLocalPart(t *testing.T) {
+	for _, username := range []string{"@example.com", "", "@"} {
+		_, err := expandPath("/var/mail/%u", username)
+		assert.Error(t, err, "username %q with empty local part must be refused", username)
+	}
+}

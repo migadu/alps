@@ -46,6 +46,10 @@ func expandPath(pattern, username string) (string, error) {
 		user, domain = parts[0], parts[1]
 	}
 
+	if user == "" {
+		return "", fmt.Errorf("maildir: refusing to build a path for username %q with empty local part", username)
+	}
+
 	// A username is only ever matched verbatim against the passwd file, but the
 	// expanded path must not be able to escape the configured pattern.
 	for _, part := range []string{user, domain} {

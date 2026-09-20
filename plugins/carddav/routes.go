@@ -498,7 +498,7 @@ func registerRoutes(p *plugin) {
 			setCategories(ao.Card, req.Categories)
 			touchRevision(ao.Card)
 			etag, err := p.putCard(ctx, c, objectPath, ao.Card, ao.ETag)
-			if err == errChangedElsewhere && attempt == 1 {
+			if errors.Is(err, errChangedElsewhere) && attempt == 1 {
 				continue
 			}
 			if err != nil {

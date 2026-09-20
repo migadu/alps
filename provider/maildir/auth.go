@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"crypto/sha256"
 	"crypto/sha512"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -67,14 +68,14 @@ func verifyHash(password, hash string) error {
 	if strings.HasPrefix(hash, "{") {
 		endIdx := strings.Index(hash, "}")
 		if endIdx > 0 {
-			scheme = hash[:endIdx+1]
+			scheme = strings.ToUpper(hash[:endIdx+1])
 			hash = hash[endIdx+1:]
 		}
 	}
 
 	switch scheme {
 	case "{PLAIN}":
-		if password != hash {
+		if subtle.ConstantTimeCompare([]byte(password), []byte(hash)) != 1 {
 			return fmt.Errorf("password mismatch")
 		}
 		return nil
@@ -86,19 +87,22 @@ func verifyHash(password, hash string) error {
 		return fmt.Errorf("unsupported crypt scheme: %s", hash)
 	case "{MD5}":
 		sum := md5.Sum([]byte(password))
-		if hex.EncodeToString(sum[:]) != hash {
+		got := hex.EncodeToString(sum[:])
+		if subtle.ConstantTimeCompare([]byte(got), []byte(strings.ToLower(hash))) != 1 {
 			return fmt.Errorf("password mismatch")
 		}
 		return nil
 	case "{SHA256}":
 		sum := sha256.Sum256([]byte(password))
-		if hex.EncodeToString(sum[:]) != hash {
+		got := hex.EncodeToString(sum[:])
+		if subtle.ConstantTimeCompare([]byte(got), []byte(strings.ToLower(hash))) != 1 {
 			return fmt.Errorf("password mismatch")
 		}
 		return nil
 	case "{SHA512}":
 		sum := sha512.Sum512([]byte(password))
-		if hex.EncodeToString(sum[:]) != hash {
+		got := hex.EncodeToString(sum[:])
+		if subtle.ConstantTimeCompare([]byte(got), []byte(strings.ToLower(hash))) != 1 {
 			return fmt.Errorf("password mismatch")
 		}
 		return nil
