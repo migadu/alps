@@ -1145,7 +1145,12 @@ export class MessageReader extends LitElement {
         // before the patch below, which changes the open message in place: the
         // page shares that object with its row, and a row that already carries
         // the flag is one the page does not repaint.
-        if (listed.has(key)) {
+        //
+        // And only while this reader is still on the page. The write below is
+        // awaited, so its revert can land after the element has gone, and an
+        // event from an element with no ancestors bubbles to nobody: the paint
+        // it would undo belongs to a list that stopped listening.
+        if (listed.has(key) && this.isConnected) {
           this.dispatchEvent(new CustomEvent('message-flags-changed', {
             detail: { uid, mailbox, flag: FLAG_SEEN, action },
             bubbles: true,
