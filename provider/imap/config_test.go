@@ -43,7 +43,27 @@ func TestIMAPConfig(t *testing.T) {
 	assert.True(t, imapOpt.Insecure)
 	assert.Equal(t, "imap.example.com:1143", imapOpt.address)
 
-	// Test 4: Factory creation with debug flag
+	// Test 4: IPv6 address with default port
+	cfg = &Config{
+		Server: "imaps://[::1]",
+	}
+	opt, err = cfg.ToOptions()
+	require.NoError(t, err)
+	imapOpt = opt.(*Options)
+	assert.True(t, imapOpt.tls)
+	assert.Equal(t, "[::1]:993", imapOpt.address)
+
+	// Test 5: IPv6 address with explicit port
+	cfg = &Config{
+		Server: "imaps://[::1]:1993",
+	}
+	opt, err = cfg.ToOptions()
+	require.NoError(t, err)
+	imapOpt = opt.(*Options)
+	assert.True(t, imapOpt.tls)
+	assert.Equal(t, "[::1]:1993", imapOpt.address)
+
+	// Test 6: Factory creation with debug flag
 	factory := imapOpt.CreateFactory(5*time.Second, true)
 	assert.NotNil(t, factory)
 }

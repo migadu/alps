@@ -241,6 +241,7 @@ func LoadConfigString(data string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse TOML provider config: %w", err)
 	}
+	pconfig.Type = strings.ToLower(strings.TrimSpace(pconfig.Type))
 	if pconfig.Type == "" {
 		pconfig.Type = "imap"
 	}
@@ -251,8 +252,16 @@ func LoadConfigString(data string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse TOML provider config as a map: %w", err)
 	}
-	p, ok := pmap[pconfig.Type]
-	if !ok {
+	var p toml.Primitive
+	var found bool
+	for k, v := range pmap {
+		if strings.EqualFold(k, pconfig.Type) {
+			p = v
+			found = true
+			break
+		}
+	}
+	if !found {
 		return nil, newConfigError("provider."+pconfig.Type, "missing TOML section [provider.%s]", pconfig.Type)
 	}
 	pconfig.meta = &meta

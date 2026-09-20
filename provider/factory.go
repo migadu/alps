@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/BurntSushi/toml"
@@ -15,6 +16,11 @@ var (
 )
 
 func Register(name string, f ConfigFactory) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		panic("provider: cannot register empty provider name")
+	}
+
 	providerMu.Lock()
 	defer providerMu.Unlock()
 
@@ -25,6 +31,7 @@ func Register(name string, f ConfigFactory) {
 }
 
 func LoadConfig(name string, meta *toml.MetaData, data *toml.Primitive) (Config, error) {
+	name = strings.ToLower(strings.TrimSpace(name))
 	if name == "" {
 		return nil, fmt.Errorf("no provider type")
 	}

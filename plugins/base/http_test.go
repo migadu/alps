@@ -12,9 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/fernet/fernet-go"
+
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider/maildir"
 )
@@ -89,7 +89,6 @@ func newTestServerWithSMTP(t *testing.T, smtpServer string) *testServer {
 		CacheEnabled: true,
 		Debug:        true,
 	}
-
 
 	srv, err := alps.New(alps.NewLogger(), opts)
 	if err != nil {

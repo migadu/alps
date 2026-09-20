@@ -292,9 +292,11 @@ func (s *Session) DoSMTP(f func(*smtp.Client) error) error {
 		if err == nil {
 			return nil
 		}
-		if _, ok := err.(provider.AuthError); ok {
+		var authErr provider.AuthError
+		if errors.As(err, &authErr) {
 			return err
 		}
+
 		if attempt < smtpMaxAttempts {
 			time.Sleep(time.Duration(attempt) * time.Second)
 		}

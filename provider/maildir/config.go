@@ -35,10 +35,17 @@ type Options struct {
 
 func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.AuthenticatedProviderFactory {
 	return func(username, password string) (provider.MailProvider, error) {
+		if o == nil || o.Config == nil || o.AuthPasswdFile == "" {
+			return nil, fmt.Errorf("maildir: auth_passwd_file is not configured")
+		}
+
 		// Authenticate against dovecot passwd file
 		homeDir, err := authenticate(o.AuthPasswdFile, username, password)
 		if err != nil {
-			return nil, provider.AuthError{Cause: err}
+			if err == ErrInvalidCredentials {
+				return nil, provider.AuthError{Cause: err}
+			}
+			return nil, err
 		}
 
 		// Use explicit Maildir path if provided, resolving %u and %d, otherwise use homeDir/Maildir
@@ -55,6 +62,9 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 			path = strings.ReplaceAll(path, "%n", username) // Sometimes %n is full username
 			path = strings.ReplaceAll(path, "%d", domain)
 		} else {
+			if homeDir == "" {
+				return nil, fmt.Errorf("maildir: user %q has no home directory in passwd file and no path pattern is configured", username)
+			}
 			path = filepath.Join(homeDir, "Maildir")
 		}
 

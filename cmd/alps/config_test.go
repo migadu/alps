@@ -34,3 +34,12 @@ func TestIMAPValidDefaultConfig(t *testing.T) {
 		assert.True(t, ok, "unexpected type for provider options")
 	}
 }
+
+func TestProviderCaseInsensitive(t *testing.T) {
+	data := "[smtp]\nserver = \"smtps://smtp.example.com:465\"\n[provider]\ntype = \"IMAP\"\n[provider.IMAP]\nserver = \"imaps://imap.example.com:993\"\n"
+	cfg, err := LoadConfigString(data)
+	assert.NoError(t, err)
+	opts, err := cfg.ToOptions()
+	assert.NoError(t, err)
+	assert.Equal(t, "imap", opts.Provider.Type())
+}

@@ -2,6 +2,7 @@ package imap
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -53,19 +54,23 @@ func parseServer(c *Config) (address string, tls bool, insecure bool, err error)
 		return "", false, false, fmt.Errorf("unknown scheme for IMAP server: %v", u.Scheme)
 	}
 
-	address = u.Host
-	if address == "" {
+	hostname := u.Hostname()
+	if hostname == "" {
 		return "", false, false, fmt.Errorf("IMAP server host cannot be empty")
 	}
-	if !strings.ContainsRune(address, ':') {
+
+	port := u.Port()
+	if port == "" {
 		if u.Scheme == "imaps" {
-			address += ":993"
+			port = "993"
 		} else {
-			address += ":143"
+			port = "143"
 		}
 	}
+	address = net.JoinHostPort(hostname, port)
 
 	return address, tls, insecure, nil
+
 }
 
 func (c *Config) ToOptions() (provider.Options, error) {

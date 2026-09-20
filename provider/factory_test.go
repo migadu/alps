@@ -22,13 +22,26 @@ func TestRegisterAndLoadConfig(t *testing.T) {
 
 	Register("test-custom", dummyFactory)
 
-	// Duplicate registration should panic
+	// Duplicate registration should panic (including case-insensitive)
 	assert.Panics(t, func() {
 		Register("test-custom", dummyFactory)
 	})
+	assert.Panics(t, func() {
+		Register("TEST-CUSTOM", dummyFactory)
+	})
+
+	// Empty name registration should panic
+	assert.Panics(t, func() {
+		Register("", dummyFactory)
+	})
+
+	// Case-insensitive lookup should succeed
+	cfg, err := LoadConfig("TEST-CUSTOM", &toml.MetaData{}, &toml.Primitive{})
+	assert.NoError(t, err)
+	assert.Nil(t, cfg)
 
 	// Unknown provider should error
-	_, err := LoadConfig("unknown-provider-xyz", nil, nil)
+	_, err = LoadConfig("unknown-provider-xyz", nil, nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown provider type 'unknown-provider-xyz'")
 
