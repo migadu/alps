@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -252,13 +253,24 @@ func LoadConfigString(data string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse TOML provider config as a map: %w", err)
 	}
-	var p toml.Primitive
-	var found bool
-	for k, v := range pmap {
-		if strings.EqualFold(k, pconfig.Type) {
-			p = v
-			found = true
-			break
+	// Prefer an exact match. Only then fall back to a case-insensitive one, and
+	// reject an ambiguous fallback: map iteration order is randomised, so
+	// picking the first fold match would bind a different section per start-up.
+	p, found := pmap[pconfig.Type]
+	if !found {
+		var matches []string
+		for k := range pmap {
+			if strings.EqualFold(k, pconfig.Type) {
+				matches = append(matches, k)
+			}
+		}
+		sort.Strings(matches)
+		if len(matches) > 1 {
+			return nil, newConfigError("provider."+pconfig.Type,
+				"ambiguous TOML sections for provider %q: %s", pconfig.Type, strings.Join(matches, ", "))
+		}
+		if len(matches) == 1 {
+			p, found = pmap[matches[0]], true
 		}
 	}
 	if !found {

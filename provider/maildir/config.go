@@ -1,6 +1,7 @@
 package maildir
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -33,6 +34,33 @@ type Options struct {
 	*Config
 }
 
+// expandPath resolves the %u (local part), %d (domain) and %n (full username)
+// placeholders in a maildir path pattern.
+//
+// The replacements are applied in a single pass: substituting them one after
+// another lets a local part that itself contains a literal "%d" be rewritten by
+// the following pass, which can map two distinct accounts onto one maildir.
+func expandPath(pattern, username string) (string, error) {
+	user, domain := username, ""
+	if parts := strings.SplitN(username, "@", 2); len(parts) == 2 {
+		user, domain = parts[0], parts[1]
+	}
+
+	// A username is only ever matched verbatim against the passwd file, but the
+	// expanded path must not be able to escape the configured pattern.
+	for _, part := range []string{user, domain} {
+		if strings.ContainsAny(part, `/\`) || part == ".." || part == "." {
+			return "", fmt.Errorf("maildir: refusing to build a path for username %q", username)
+		}
+	}
+
+	return strings.NewReplacer(
+		"%u", user,
+		"%n", username,
+		"%d", domain,
+	).Replace(pattern), nil
+}
+
 func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.AuthenticatedProviderFactory {
 	return func(username, password string) (provider.MailProvider, error) {
 		if o == nil || o.Config == nil || o.AuthPasswdFile == "" {
@@ -42,7 +70,7 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 		// Authenticate against dovecot passwd file
 		homeDir, err := authenticate(o.AuthPasswdFile, username, password)
 		if err != nil {
-			if err == ErrInvalidCredentials {
+			if errors.Is(err, ErrInvalidCredentials) {
 				return nil, provider.AuthError{Cause: err}
 			}
 			return nil, err
@@ -51,16 +79,10 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 		// Use explicit Maildir path if provided, resolving %u and %d, otherwise use homeDir/Maildir
 		path := o.Path
 		if path != "" {
-			parts := strings.Split(username, "@")
-			domain := ""
-			user := username
-			if len(parts) == 2 {
-				user = parts[0]
-				domain = parts[1]
+			path, err = expandPath(path, username)
+			if err != nil {
+				return nil, err
 			}
-			path = strings.ReplaceAll(path, "%u", user)
-			path = strings.ReplaceAll(path, "%n", username) // Sometimes %n is full username
-			path = strings.ReplaceAll(path, "%d", domain)
 		} else {
 			if homeDir == "" {
 				return nil, fmt.Errorf("maildir: user %q has no home directory in passwd file and no path pattern is configured", username)

@@ -87,7 +87,6 @@ func newTestServerWithSMTP(t *testing.T, smtpServer string) *testServer {
 		SMTP:         alps.SMTPOptions{Server: smtpServer},
 		LoginKey:     &key,
 		CacheEnabled: true,
-		Debug:        true,
 	}
 
 	srv, err := alps.New(alps.NewLogger(), opts)

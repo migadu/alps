@@ -58,3 +58,35 @@ func TestMaildirConfigErrors(t *testing.T) {
 	var authErr provider.AuthError
 	assert.False(t, errors.As(err, &authErr), "missing file error must not be masked as AuthError")
 }
+
+// Placeholders must be resolved in one pass. Substituting them one after
+// another lets a local part containing a literal "%d" be rewritten by the
+// following pass, mapping two distinct accounts onto a single maildir.
+func TestExpandPathSinglePass(t *testing.T) {
+	a, err := expandPath("/var/mail/%u", "bob%d@evil.com")
+	require.NoError(t, err)
+	b, err := expandPath("/var/mail/%u", "bobevil.com@other.com")
+	require.NoError(t, err)
+
+	assert.Equal(t, "/var/mail/bob%d", a)
+	assert.Equal(t, "/var/mail/bobevil.com", b)
+	assert.NotEqual(t, a, b, "distinct accounts must not share a maildir")
+}
+
+func TestExpandPathPlaceholders(t *testing.T) {
+	got, err := expandPath("/srv/%d/%u/%n", "alice@example.com")
+	require.NoError(t, err)
+	assert.Equal(t, "/srv/example.com/alice/alice@example.com", got)
+
+	// No domain part: %u is the whole username and %d is empty.
+	got, err = expandPath("/srv/%u", "operator")
+	require.NoError(t, err)
+	assert.Equal(t, "/srv/operator", got)
+}
+
+func TestExpandPathRejectsTraversal(t *testing.T) {
+	for _, username := range []string{"../root@example.com", "a/b@example.com", "..@example.com", `a\b@example.com`} {
+		_, err := expandPath("/var/mail/%u", username)
+		assert.Error(t, err, "username %q must be refused", username)
+	}
+}
