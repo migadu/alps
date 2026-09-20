@@ -242,9 +242,15 @@ export const en = {
     deleteAllNow: 'Delete All Now',
     emptyMailboxTitle: 'Empty {folder}',
     emptyMailboxConfirm: 'Are you sure you want to permanently delete all {count} messages in {folder}? This action cannot be undone.',
+    emptyMailboxSelectionNote: {
+      one: 'This includes the message you have checked.',
+      other: 'This includes the {count} messages you have checked.'
+    },
     emptyingMailbox: 'Emptying mailbox...',
     mailboxEmptied: 'Mailbox emptied successfully.',
-    emptyMailboxFailed: 'Failed to empty mailbox. Make sure it is Trash or Junk.'
+    emptyMailboxFailed: 'Failed to empty mailbox. Make sure it is Trash or Junk.',
+    mailboxAlreadyEmpty: '{folder} was already empty — nothing was deleted.',
+    emptyMailboxSlow: 'Still emptying {folder}. The server is working on it — check the folder again in a moment.'
   },
   composer: {
     discardFailed: 'The draft could not be deleted from the server and is still in Drafts.',

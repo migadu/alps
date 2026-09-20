@@ -463,6 +463,37 @@ func TestHTTP_EmptyOnlyTrashOrJunk(t *testing.T) {
 	}
 }
 
+// An empty that discarded nothing says so, because the alternative is a success
+// message over a folder still full of mail — which is what a stale count
+// produced, and what left the user pressing the button again.
+func TestHTTP_EmptyReportsWhatItDiscarded(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
+	msgs := s.mailbox("INBOX").Messages
+	s.expect(s.do("PUT", "/mailboxes/INBOX/messages/move", map[string]any{"uids": []string{msgs[0].UID, msgs[1].UID}, "to": "Trash"}), http.StatusOK)
+
+	var body struct {
+		OK        string `json:"ok"`
+		Discarded int    `json:"discarded"`
+	}
+	r := s.do("POST", "/mailboxes/Trash/empty", nil)
+	s.expect(r, http.StatusOK)
+	r.json(t, &body)
+	if body.Discarded != 2 {
+		t.Errorf("first empty discarded %d, want the 2 messages that were there: %s", body.Discarded, r.body)
+	}
+
+	// The same request again is not a second emptying. It is the same 200, and
+	// only the count tells the two apart.
+	r = s.do("POST", "/mailboxes/Trash/empty", nil)
+	s.expect(r, http.StatusOK)
+	body.Discarded = -1
+	r.json(t, &body)
+	if body.Discarded != 0 {
+		t.Errorf("empty of an empty Trash discarded %d, want 0: %s", body.Discarded, r.body)
+	}
+}
+
 func TestHTTP_Logout(t *testing.T) {
 	s := newTestServer(t)
 	s.login()

@@ -200,9 +200,16 @@ export const sr = {
     deleteAllNow: 'Obriši sve sada',
     emptyMailboxTitle: 'Isprazni {folder}',
     emptyMailboxConfirm: 'Da li ste sigurni da želite trajno da obrišete svih {count} poruka u {folder}? Ova akcija se ne može poništiti.',
+    emptyMailboxSelectionNote: {
+      one: 'Uključena je i poruka koju ste označili.',
+      few: 'Uključene su i {count} poruke koje ste označili.',
+      other: 'Uključeno je i {count} poruka koje ste označili.'
+    },
     emptyingMailbox: 'Pražnjenje sandučeta...',
     mailboxEmptied: 'Sanduče je uspešno ispražnjeno.',
-    emptyMailboxFailed: 'Nije moguće isprazniti sanduče. Proverite da li je Otpad ili Nepoželjna pošta.'
+    emptyMailboxFailed: 'Nije moguće isprazniti sanduče. Proverite da li je Otpad ili Nepoželjna pošta.',
+    mailboxAlreadyEmpty: '{folder} je već bio prazan — ništa nije obrisano.',
+    emptyMailboxSlow: 'Pražnjenje fascikle {folder} je još u toku. Server i dalje radi — proverite ponovo za trenutak.'
   },
   composer: {
     discardFailed: 'Skicu nije bilo moguće obrisati sa servera i još uvek je u skicama.',

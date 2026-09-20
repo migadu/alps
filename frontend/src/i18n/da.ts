@@ -244,9 +244,15 @@ export const da: TranslationDictionary = {
     deleteAllNow: 'Slet alle nu',
     emptyMailboxTitle: 'Tøm {folder}',
     emptyMailboxConfirm: 'Er du sikker på, at du vil slette alle {count} beskeder i {folder} permanent? Denne handling kan ikke fortrydes.',
+    emptyMailboxSelectionNote: {
+      one: 'Den markerede besked er inkluderet.',
+      other: 'De {count} markerede beskeder er inkluderet.'
+    },
     emptyingMailbox: 'Tømmer postkasse...',
     mailboxEmptied: 'Postkasse tømt.',
-    emptyMailboxFailed: 'Kunne ikke tømme postkassen. Den skal være Papirkurv eller Uønsket.'
+    emptyMailboxFailed: 'Kunne ikke tømme postkassen. Den skal være Papirkurv eller Uønsket.',
+    mailboxAlreadyEmpty: '{folder} var allerede tom – intet blev slettet.',
+    emptyMailboxSlow: 'Tømmer stadig {folder}. Serveren arbejder på det – se efter igen om et øjeblik.'
   },
   composer: {
     discardFailed: 'Kladden kunne ikke slettes fra serveren og ligger stadig i Kladder.',

@@ -2186,6 +2186,7 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusBadRequest, err)
 	}
 
+	var discarded int
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		// Security check: Only allow emptying Trash or Junk
 		mailboxes, err := p.ListMailboxes()
@@ -2197,7 +2198,8 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 			return errEmptyNotAllowed
 		}
 
-		return p.EmptyMailbox(mboxName)
+		discarded, err = p.EmptyMailbox(mboxName)
+		return err
 	})
 	if err != nil {
 		// A refusal is the user asking for something this endpoint does not do,
@@ -2213,7 +2215,12 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 	// Invalidate cache for the mailbox
 	invalidateMailboxCache(ctx, mboxName)
 
-	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
+	// How many went, so the client can tell an emptied folder from one that had
+	// nothing in it. The two are the same 200 otherwise, and "Mailbox emptied"
+	// over a list that still shows mail is the report a user cannot act on: it
+	// says the work was done when the only honest answer is that this request
+	// found nothing to do.
+	return ctx.JSON(http.StatusOK, map[string]any{"ok": "true", "discarded": discarded})
 }
 
 func handleGetSession(ctx *alps.Context) error {

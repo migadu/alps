@@ -202,9 +202,15 @@ export const de: TranslationDictionary = {
     deleteAllNow: 'Jetzt alle löschen',
     emptyMailboxTitle: '{folder} leeren',
     emptyMailboxConfirm: 'Sind Sie sicher, dass Sie alle {count} Nachrichten in {folder} dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
+    emptyMailboxSelectionNote: {
+      one: 'Die markierte Nachricht ist darin enthalten.',
+      other: 'Die {count} markierten Nachrichten sind darin enthalten.'
+    },
     emptyingMailbox: 'Postfach wird geleert...',
     mailboxEmptied: 'Postfach erfolgreich geleert.',
-    emptyMailboxFailed: 'Postfach konnte nicht geleert werden. Stellen Sie sicher, dass es sich um Papierkorb oder Spam handelt.'
+    emptyMailboxFailed: 'Postfach konnte nicht geleert werden. Stellen Sie sicher, dass es sich um Papierkorb oder Spam handelt.',
+    mailboxAlreadyEmpty: '{folder} war bereits leer – es wurde nichts gelöscht.',
+    emptyMailboxSlow: '{folder} wird noch geleert. Der Server arbeitet daran – sehen Sie gleich noch einmal nach.'
   },
   composer: {
     discardFailed: 'Der Entwurf konnte nicht vom Server gelöscht werden und liegt weiterhin in den Entwürfen.',

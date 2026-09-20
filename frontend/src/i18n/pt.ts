@@ -235,9 +235,15 @@ export const pt = {
     deleteAllNow: 'Excluir tudo agora',
     emptyMailboxTitle: 'Esvaziar {folder}',
     emptyMailboxConfirm: 'Tem certeza de que deseja excluir permanentemente todas as {count} mensagens em {folder}? Esta ação não pode ser desfeita.',
+    emptyMailboxSelectionNote: {
+      one: 'Isso inclui a mensagem que você selecionou.',
+      other: 'Isso inclui as {count} mensagens que você selecionou.'
+    },
     emptyingMailbox: 'Esvaziando a caixa de correio...',
     mailboxEmptied: 'Caixa de correio esvaziada com sucesso.',
-    emptyMailboxFailed: 'Falha ao esvaziar a caixa de correio. Certifique-se de que é Lixeira ou Lixo Eletrônico.'
+    emptyMailboxFailed: 'Falha ao esvaziar a caixa de correio. Certifique-se de que é Lixeira ou Lixo Eletrônico.',
+    mailboxAlreadyEmpty: '{folder} já estava vazia — nada foi excluído.',
+    emptyMailboxSlow: 'Ainda esvaziando {folder}. O servidor está trabalhando nisso — verifique novamente em instantes.'
   },
   composer: {
     discardFailed: 'Não foi possível excluir o rascunho do servidor e ele ainda está em Rascunhos.',

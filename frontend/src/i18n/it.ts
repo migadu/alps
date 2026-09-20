@@ -200,9 +200,15 @@ export const it = {
     deleteAllNow: 'Elimina tutto ora',
     emptyMailboxTitle: 'Svuota {folder}',
     emptyMailboxConfirm: 'Sei sicuro di voler eliminare in modo permanente tutti i {count} messaggi in {folder}? Questa azione non può essere annullata.',
+    emptyMailboxSelectionNote: {
+      one: 'È incluso anche il messaggio selezionato.',
+      other: 'Sono inclusi anche i {count} messaggi selezionati.'
+    },
     emptyingMailbox: 'Svuotamento casella di posta...',
     mailboxEmptied: 'Casella di posta svuotata con successo.',
-    emptyMailboxFailed: 'Impossibile svuotare la casella di posta. Assicurati che sia Cestino o Posta indesiderata.'
+    emptyMailboxFailed: 'Impossibile svuotare la casella di posta. Assicurati che sia Cestino o Posta indesiderata.',
+    mailboxAlreadyEmpty: '{folder} era già vuota: non è stato eliminato nulla.',
+    emptyMailboxSlow: 'Svuotamento di {folder} ancora in corso. Il server ci sta lavorando: ricontrolla tra un momento.'
   },
   composer: {
     discardFailed: 'Non è stato possibile eliminare la bozza dal server ed è ancora nelle bozze.',

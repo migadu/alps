@@ -241,30 +241,44 @@ func (p *IMAPProvider) DeleteMailbox(name string) error {
 	return cmd.Wait()
 }
 
-// EmptyMailbox empties a mailbox by deleting all its messages
-func (p *IMAPProvider) EmptyMailbox(name string) error {
-	if err := p.ensureMailboxSelected(name); err != nil {
-		return err
+// EmptyMailbox deletes every message in a mailbox, and returns how many there
+// were when it started.
+//
+// The count comes from a SELECT issued HERE, never from the client's cached
+// view of the mailbox. `ensureMailboxSelected` is a no-op when the mailbox is
+// already the selected one, and the NumMessages it then leaves behind is
+// whatever the last command on this connection happened to observe. A stale
+// zero made this method return nil without touching a thing — and nil is what
+// the route reports to the user as "Mailbox emptied", over a folder still full
+// of mail. A re-SELECT of the mailbox already selected is one cheap round trip,
+// and it is the only way to know the answer is current.
+func (p *IMAPProvider) EmptyMailbox(name string) (int, error) {
+	data, err := p.client.Select(name, nil).Wait()
+	if err != nil {
+		return 0, fmt.Errorf("failed to select mailbox: %v", err)
 	}
+	p.selectedUIDValidity = data.UIDValidity
 
-	mbox := p.client.Mailbox()
-	if mbox == nil || mbox.NumMessages == 0 {
-		return nil
+	if data.NumMessages == 0 {
+		return 0, nil
 	}
 
 	var seqSet imap.SeqSet
-	seqSet.AddRange(1, mbox.NumMessages)
+	seqSet.AddRange(1, data.NumMessages)
 
-	err := p.client.Store(seqSet, &imap.StoreFlags{
+	err = p.client.Store(seqSet, &imap.StoreFlags{
 		Op:     imap.StoreFlagsAdd,
 		Silent: true,
 		Flags:  []imap.Flag{imap.FlagDeleted},
 	}, nil).Close()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	return p.client.Expunge().Close()
+	if err := p.client.Expunge().Close(); err != nil {
+		return 0, err
+	}
+	return int(data.NumMessages), nil
 }
 
 // RenameMailbox renames a mailbox

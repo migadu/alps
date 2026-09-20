@@ -200,9 +200,15 @@ export const fr = {
     deleteAllNow: 'Tout supprimer maintenant',
     emptyMailboxTitle: 'Vider {folder}',
     emptyMailboxConfirm: 'Êtes-vous sûr de vouloir supprimer définitivement les {count} messages dans {folder} ? Cette action ne peut pas être annulée.',
+    emptyMailboxSelectionNote: {
+      one: 'Le message coché est inclus.',
+      other: 'Les {count} messages cochés sont inclus.'
+    },
     emptyingMailbox: 'Vidage de la boîte aux lettres...',
     mailboxEmptied: 'Boîte aux lettres vidée avec succès.',
-    emptyMailboxFailed: 'Échec du vidage de la boîte aux lettres. Assurez-vous qu\'il s\'agit de la Corbeille ou des Indésirables.'
+    emptyMailboxFailed: 'Échec du vidage de la boîte aux lettres. Assurez-vous qu\'il s\'agit de la Corbeille ou des Indésirables.',
+    mailboxAlreadyEmpty: '{folder} était déjà vide – rien n\'a été supprimé.',
+    emptyMailboxSlow: 'Vidage de {folder} toujours en cours. Le serveur y travaille – revenez voir dans un instant.'
   },
   composer: {
     discardFailed: 'Le brouillon n’a pas pu être supprimé du serveur et se trouve toujours dans les brouillons.',

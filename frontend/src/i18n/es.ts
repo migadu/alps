@@ -200,9 +200,15 @@ export const es = {
     deleteAllNow: 'Eliminar todos ahora',
     emptyMailboxTitle: 'Vaciar {folder}',
     emptyMailboxConfirm: '¿Estás seguro de que quieres eliminar permanentemente todos los {count} mensajes en {folder}? Esta acción no se puede deshacer.',
+    emptyMailboxSelectionNote: {
+      one: 'Esto incluye el mensaje que has seleccionado.',
+      other: 'Esto incluye los {count} mensajes que has seleccionado.'
+    },
     emptyingMailbox: 'Vaciando buzón...',
     mailboxEmptied: 'Buzón vaciado correctamente.',
-    emptyMailboxFailed: 'No se pudo vaciar el buzón. Asegúrate de que sea Papelera o Correo no deseado.'
+    emptyMailboxFailed: 'No se pudo vaciar el buzón. Asegúrate de que sea Papelera o Correo no deseado.',
+    mailboxAlreadyEmpty: '{folder} ya estaba vacía: no se eliminó nada.',
+    emptyMailboxSlow: 'Todavía se está vaciando {folder}. El servidor sigue trabajando: vuelve a comprobarlo en un momento.'
   },
   composer: {
     discardFailed: 'No se pudo eliminar el borrador del servidor y sigue en Borradores.',

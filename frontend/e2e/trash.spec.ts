@@ -206,6 +206,33 @@ test("the Trash's empty control is labelled, not keyed", async ({ page }) => {
   await expect(banner).not.toContainText("messageList.");
 });
 
+test("the Trash's empty control stays live while messages are checked", async ({ page }) => {
+  const subject = `Trash checked ${Date.now()}`;
+  await deliver({ subject });
+  await login(page);
+  await moveToTrash(page, subject);
+
+  await openFolder(page, TRASH);
+  await row(page, subject).locator(".checkbox-col").click();
+
+  // The control used to go dead the moment anything was checked, with nothing
+  // said about why — so the way back to it was to work out that the checkboxes
+  // were the obstacle and undo them one at a time.
+  const button = discardBanner(page).getByRole("button", { name: "Delete All Now" });
+  await expect(button).toBeEnabled();
+  await button.click();
+
+  // The ambiguity it was guarding against is answered where the decision is
+  // taken: the dialog says the checked messages are PART of what goes, and the
+  // user who meant to delete only those reads that and cancels.
+  const confirm = page.locator("alps-message-list ui-confirm");
+  await expect(confirm).toContainText("This includes the message you have checked.");
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(confirm).toHaveCount(0);
+  // Asking is not doing.
+  await expect(row(page, subject)).toBeVisible();
+});
+
 // DESTRUCTIVE — everything below removes EVERY message in the folder, not just
 // the one the test seeded, because that is what the gesture means. Two
 // consequences this file has to carry explicitly:
