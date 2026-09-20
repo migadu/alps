@@ -1509,10 +1509,17 @@ export class MailboxPage extends LitElement {
       // expanded one leaves the row standing, because dropping it would take
       // the messages the user did not check off the screen along with it.
       if (gone.has(this.keyOf(msg)) && staying.length === 0) {
-        removed += 1 + subs.length;
+        // ROWS, not the messages under them. A threaded listing is paged and
+        // counted in conversations — the server answers len(groups) as its
+        // total — so taking a thread of five out of the folder takes ONE off
+        // that count. Unthreaded, a message is its own row and the two agree.
+        // Counting messages here made the number fall by five and the next
+        // listing put four of them back.
+        removed += 1;
         continue;
       }
-      removed += subs.length - staying.length;
+      // A thread the gesture only emptied in part is still a conversation in
+      // the folder, so the count does not move for it.
       kept.push(staying.length === subs.length ? msg : { ...msg, SubMessages: staying });
     }
     this.messages = kept;

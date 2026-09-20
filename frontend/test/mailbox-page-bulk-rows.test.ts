@@ -238,9 +238,16 @@ describe('a thread checked in part', () => {
   /** One row standing for three messages, and a message on its own. */
   const listing = () => [{ ...row('9'), SubMessages: [row('4'), row('5')] }, row('7')];
 
+  /**
+   * TWO, because a threaded listing is counted in conversations: the server
+   * pages thread groups and answers len(groups) as its total. These four
+   * messages are two of them.
+   */
+  const LISTED = 2;
+
   it('keeps the row, because the rest of it was not acted on', async () => {
     const el = await inbox(listing());
-    el.totalMessages = 4;
+    el.totalMessages = LISTED;
     // Expanded, each message of a thread has a row of its own and can be
     // checked alone. Here that is the face.
     await checked(el, '9');
@@ -253,13 +260,14 @@ describe('a thread checked in part', () => {
     // never checked — for as long as the write ran.
     expect(subjects(el)).toEqual(['message 9', 'message 7']);
     expect(el.messages[0].SubMessages.map((m: any) => m.UID)).toEqual(['4', '5']);
-    expect(el.totalMessages).toBe(4);
+    // The conversation is still in the folder, so the count does not move.
+    expect(el.totalMessages).toBe(LISTED);
     await release(done);
   });
 
   it('takes the whole row when every message in it is checked', async () => {
     const el = await inbox(listing());
-    el.totalMessages = 4;
+    el.totalMessages = LISTED;
     // Collapsed, the checkbox stands for the whole conversation, so this is
     // what an ordinary bulk gesture over a thread looks like.
     await checked(el, '9', '4', '5');
@@ -268,8 +276,9 @@ describe('a thread checked in part', () => {
     await flush();
 
     expect(subjects(el)).toEqual(['message 7']);
-    // All three of them, not one row.
-    expect(el.totalMessages).toBe(1);
+    // ONE conversation gone, not the three messages under it: the count is in
+    // the same units the server keeps it in, and the next listing agrees.
+    expect(el.totalMessages).toBe(LISTED - 1);
     await release(done);
   });
 });
