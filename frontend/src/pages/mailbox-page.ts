@@ -11,7 +11,7 @@ import '../components/alps-sidebar';
 import { consume } from '@lit/context';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { messageSync } from '../services/message-sync';
-import { messageOperations, type FlagResult, type MoveResult } from '../services/message-operations';
+import { messageOperations, type FlagResult, type MatchingScope, type MoveResult } from '../services/message-operations';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
@@ -37,6 +37,8 @@ interface PendingDelete {
   isDrafts: boolean;
   /** A card's own Delete, of the message it names. */
   named?: { isOpen: boolean; nextUid?: string; done?: (ok: boolean) => void };
+  /** The whole folder, asked for by the list's banner: `doomed` cannot name it. */
+  matching?: { count: number };
 }
 
 /** What one folder's move or copy answered, as {@link MailboxPage.eachFolder} reads it. */
@@ -275,8 +277,19 @@ export class MailboxPage extends LitElement {
   @state() private showInitialLoader = !(window as any).alpsAppLoaded;
   @state() private selectedMessage: any = null;
   /** The checked messages, by {@link messageKey}: a search across every folder
-   * lists several folders' messages, and a UID means nothing outside its own. */
+   * lists several folders' messages, and a UID means nothing outside its own.
+   * Under {@link selectAllMatching} these are the rows of this page that the
+   * whole-folder selection still covers — what the list draws checked. */
   @state() private selectedKeys = new Set<string>();
+  /**
+   * The gesture is about every message the folder holds that the listing's
+   * query matches, not the rows on screen: the list's "select all in this
+   * folder". The server resolves that against the mailbox, so it holds for the
+   * pages the user never looked at.
+   */
+  @state() private selectAllMatching = false;
+  /** Under it, the rows unchecked afterwards, by key: the write's exceptions. */
+  @state() private excludedKeys = new Set<string>();
 
   @state() private layoutMode: LayoutMode = 'vertical';
   @state() private filterQuery = '';
@@ -491,6 +504,59 @@ export class MailboxPage extends LitElement {
       if (checked.every((m: any) => m.Flags?.includes(FLAG_SEEN))) return false;
     }
     return any;
+  }
+
+  /** How many messages a gesture is about. */
+  private get selectionCount(): number {
+    if (!this.selectAllMatching) return this.selectedKeys.size;
+    return Math.max(0, this.totalMessages - this.excludedKeys.size);
+  }
+
+  /** What a whole-folder write names: the listing's query, and the exceptions. */
+  private get matchingScope(): MatchingScope {
+    return { query: this.filterQuery, except: [...this.excludedKeys].map(key => parseMessageKey(key).uid) };
+  }
+
+  /** Every message the list shows, by key, a thread's own members included. */
+  private listedKeys(): string[] {
+    const keys: string[] = [];
+    for (const msg of this.messages || []) {
+      keys.push(this.keyOf(msg));
+      for (const sub of msg.SubMessages || []) keys.push(this.keyOf(sub));
+    }
+    return keys;
+  }
+
+  /**
+   * Takes what the list checked. Under a whole-folder selection the checked
+   * rows are the ones NOT excluded, so a row unchecked here becomes an
+   * exception the write carries — and one unchecked on a page the user has
+   * since left stays one.
+   */
+  private takeSelection(keys: Set<string>) {
+    this.selectedKeys = keys;
+    if (!this.selectAllMatching) return;
+    const excluded = new Set(this.excludedKeys);
+    for (const key of this.listedKeys()) {
+      if (keys.has(key)) excluded.delete(key);
+      else excluded.add(key);
+    }
+    this.excludedKeys = excluded;
+    // Unchecking the last of them is no longer a selection of anything.
+    if (this.selectionCount <= 0) this.clearSelection();
+  }
+
+  /** The list's "select all in this folder". */
+  private selectAllInFolder() {
+    this.selectAllMatching = true;
+    this.excludedKeys = new Set();
+    this.selectedKeys = new Set(this.listedKeys());
+  }
+
+  private clearSelection() {
+    this.selectAllMatching = false;
+    this.excludedKeys = new Set();
+    this.selectedKeys = new Set();
   }
 
   /** The mailbox a listed message is in: its own, since a search across mailboxes lists several. */
@@ -850,6 +916,11 @@ export class MailboxPage extends LitElement {
       if (data.MessagesPerPage !== undefined) this.messagesPerPage = data.MessagesPerPage;
       if (data.Messages) {
         this.messages = data.Messages;
+        // A whole-folder selection covers the page that just arrived, less
+        // whatever the user unchecked before paging here.
+        if (this.selectAllMatching) {
+          this.selectedKeys = new Set(this.listedKeys().filter(key => !this.excludedKeys.has(key)));
+        }
         if (this.selectedMessage) {
           const updatedMsg = this.messages.find((m: any) => this.isOpen(m));
           if (updatedMsg && updatedMsg.Flags) {
@@ -905,7 +976,7 @@ export class MailboxPage extends LitElement {
       if (oldMailbox !== this.currentMailbox) {
         this.selectedMessage = null; // Reset selection on mailbox change
         this.currentPage = 0; // Reset pagination on mailbox change
-        this.selectedKeys = new Set(); // Reset selection on mailbox change
+        this.clearSelection(); // Another folder is not what was selected
 
         // Do not clear this.messages to prevent UI flash, let it be replaced when network returns
         this.loadingMessages = true; // Show loading immediately
@@ -913,6 +984,9 @@ export class MailboxPage extends LitElement {
         // Do not clear this.messages
         this.loadingMessages = true;
         this.currentPage = 0;
+        // The query is what a whole-folder selection is made of, so another
+        // query is another selection.
+        this.clearSelection();
       }
       messageSync.fetch(this.currentMailbox, this.currentPage, this.filterQuery, false);
     } else if (oldUid !== this.targetUid || oldUidMailbox !== this.targetMailbox) {
@@ -1393,12 +1467,47 @@ export class MailboxPage extends LitElement {
   }
 
   /**
+   * Sets flags on what the gesture is about: every message the folder holds
+   * that matches, or the keys. Either way the rows on screen are painted.
+   */
+  private async flagTargets(targets: string[], flags: string[], op: 'add' | 'remove'): Promise<FlagResult> {
+    if (!this.selectAllMatching) return this.flagEach(targets, flags, op);
+    const result = await messageOperations.setFlagMatching(this.currentMailbox, this.matchingScope, flags, op);
+    if (result.ok) {
+      for (const flag of flags) this.updateLocalMessageFlags(targets, flag, op);
+    }
+    return result;
+  }
+
+  /**
+   * Files every message the folder holds that matches, and says how many. One
+   * request: the folder is the operand, and the server searches it.
+   */
+  private async fileWholeFolder(to: string, say: (count: number) => string) {
+    const view = this.currentMailbox;
+    const scope = this.matchingScope;
+    const result = await messageOperations.moveMatching(view, scope, to);
+    if (!result.success) {
+      if (result.reason !== 'auth') this.reportActionFailed('toast.moveFailed', 'Could not move that');
+      return;
+    }
+
+    this.clearSelection();
+    this.selectedMessage = null;
+    this.updateUrl(view, this.currentPage, null);
+
+    const undoFn = this.undoMoves([{ from: view, mapping: result.uidMapping ?? {} }], to, view, undefined);
+    this.showGlobalToast(say(result.count ?? 0), undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
+  }
+
+  /**
    * Files the messages the keys name in `to` — Trash, Archive, Junk, the Inbox
    * or a folder the user picked — says so, and offers to put each back in the
    * folder it came from. A message already in `to` is left where it is: a move
    * into its own folder changes nothing.
    */
   private async fileAway(keys: string[], to: string, isBulk: boolean, say: (count: number) => string) {
+    if (this.selectAllMatching) return this.fileWholeFolder(to, say);
     const view = this.currentMailbox;
     const open = this.selectedMessage ? this.keyOf(this.selectedMessage) : undefined;
     const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
@@ -1494,7 +1603,7 @@ export class MailboxPage extends LitElement {
   private async _handleReaderAction(e: CustomEvent<ReaderActionDetail>) {
     const action = e.detail.action;
     if (e.detail.uid && e.detail.mailbox) return this.handleNamedMessageAction(e.detail);
-    const isBulk = this.selectedKeys.size > 0;
+    const isBulk = this.selectionCount > 0;
     const currentMsg = this.selectedMessage;
 
     if (!isBulk && !currentMsg?.UID) return;
@@ -1526,7 +1635,7 @@ export class MailboxPage extends LitElement {
         const write = isBulk
           ? this.starWrite(this.selectedStarRows)
           : { keys: open, op: (currentMsg.Flags?.includes(FLAG_FLAGGED) ? 'remove' : 'add') as 'add' | 'remove' };
-        const result = await this.flagEach(write.keys, [FLAG_FLAGGED], write.op);
+        const result = await this.flagTargets(write.keys, [FLAG_FLAGGED], write.op);
         if (!result.ok) this.reportFlagFailure(result);
       } else if (action === 'addTag' || action === 'removeTag') {
         const tags = e.detail.tags || (e.detail.folder ? [e.detail.folder] : []);
@@ -1535,12 +1644,15 @@ export class MailboxPage extends LitElement {
         // Tags are the path this matters most on: the backend stores only
         // `$label1`..`$label5` and used to answer 200 OK for anything else, so a
         // tag it would never keep was painted here and quietly erased later.
-        const result = await this.flagEach(targets, tags, op);
+        // Which tags those are is read from the rows on screen — see the
+        // reader's own gathering — so a whole-folder "remove all tags" takes
+        // off what this page carries.
+        const result = await this.flagTargets(targets, tags, op);
         if (!result.ok) this.reportFlagFailure(result);
         this.requestUpdate();
       } else if (action === 'markUnread') {
         if (isBulk) {
-          const result = await this.flagEach(targets, [FLAG_SEEN], this.allSelectedUnread ? 'add' : 'remove');
+          const result = await this.flagTargets(targets, [FLAG_SEEN], this.allSelectedUnread ? 'add' : 'remove');
           if (!result.ok) this.reportFlagFailure(result);
         } else {
           // setFlag, not markAsRead/markAsUnread: those hid the FlagResult, so the read
@@ -1567,7 +1679,21 @@ export class MailboxPage extends LitElement {
         if (action === 'reportSpam') destinationFolder = findMailboxNameByRole('junk', this.mailboxes, FOLDER_JUNK);
         if (action === 'notSpam') destinationFolder = FOLDER_INBOX;
 
-        if (action === 'delete') {
+        if (action === 'delete' && this.selectAllMatching) {
+          // A whole folder is one folder, so its Delete is one kind: for good
+          // where a move to Trash would change nothing, and a move otherwise.
+          if (this.deletesForGood(this.currentMailbox)) {
+            this.pendingDeleteDetails = {
+              isBulk,
+              doomed: [],
+              toTrash: [],
+              isDrafts: mailboxRoleByName(this.currentMailbox, this.mailboxes) === 'drafts',
+              matching: { count: this.selectionCount },
+            };
+            this.showDeleteConfirm = true;
+            return;
+          }
+        } else if (action === 'delete') {
           // Decided by the folder each message is in, as a card's Delete is. A
           // folder's own list is all one kind; a search across every folder can
           // check both, and then one question covers the part that is for good.
@@ -1591,6 +1717,18 @@ export class MailboxPage extends LitElement {
 
         if (action === 'moveTo') {
           await this.fileAway(targets, destinationFolder, isBulk, count => this.movedMessage(action, many, count, destinationFolder));
+        } else if (this.selectAllMatching) {
+          const result = await messageOperations.copyMatching(this.currentMailbox, this.matchingScope, destinationFolder);
+          if (result.success) {
+            const count = result.count ?? 0;
+            this.showGlobalToast(
+              many
+                ? this.i18nStore?.t('toast.messagesCopiedToFolder', { count, folder: destinationFolder })
+                : this.i18nStore?.t('toast.messageCopiedToFolder', { folder: destinationFolder }),
+              '', undefined, UNDO_TOAST_TIMEOUT_MS);
+          } else if (result.reason !== 'auth') {
+            this.reportActionFailed('toast.copyFailed', 'Could not copy that');
+          }
         } else {
           const { done, refused } = await this.eachFolder(targets, async (from, uids): Promise<MoveOutcome> => {
             const result = await messageOperations.copyMessages(from, uids, destinationFolder);
@@ -1629,10 +1767,29 @@ export class MailboxPage extends LitElement {
     this.pendingDeleteDetails = null;
     if (!details) return;
 
-    const { isBulk, doomed, toTrash, isDrafts, named } = details;
-    const many = doomed.length > 1;
+    const { isBulk, doomed, toTrash, isDrafts, named, matching } = details;
+    const many = matching ? matching.count > 1 : doomed.length > 1;
     if (isBulk) this.bulkProcessing = true;
     try {
+      if (matching) {
+        // The whole folder, deleted for good: one request, and the server
+        // searches the folder rather than taking a page of UIDs on trust.
+        const result = await messageOperations.deleteMatchingResult(this.currentMailbox, this.matchingScope);
+        if (result.ok) {
+          const count = result.count ?? 0;
+          this.clearSelection();
+          this.selectedMessage = null;
+          this.updateUrl(this.currentMailbox, this.currentPage, null);
+          const toastMessage = isDrafts
+            ? (many ? this.i18nStore?.t('toast.draftsDiscarded', { count }) : this.i18nStore?.t('toast.draftDiscarded'))
+            : (many ? this.i18nStore?.t('toast.messagesPermanentlyDeleted', { count }) : this.i18nStore?.t('toast.messagePermanentlyDeleted'));
+          this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
+        } else if (result.reason !== 'auth') {
+          this.reportActionFailed('toast.messageDeleteFailed', 'The message could not be deleted');
+        }
+        return;
+      }
+
       const { done, refused } = await this.eachFolder(doomed, (mailbox, uids) =>
         messageOperations.deleteMessagesResult(mailbox, uids));
       named?.done?.(!refused);
@@ -1766,7 +1923,7 @@ export class MailboxPage extends LitElement {
           // Do not clear this.messages to prevent UI flash
           this.loadingMessages = true; // Show loading immediately
           this.filterQuery = '';
-          this.selectedKeys = new Set();
+          this.clearSelection();
           this.updateUrl(e.detail.name, 0, null);
         }
 
@@ -1812,6 +1969,8 @@ export class MailboxPage extends LitElement {
               .loading=${this.loadingMessages}
               .selectedMessage=${this.selectedMessage}
               .selectedMessages=${this.selectedKeys}
+              .selectAllMatching=${this.selectAllMatching}
+              .matchingCount=${this.selectionCount}
               .layoutMode=${effectiveLayoutMode}
               .isMobile=${this.isMobile}
               .currentPage=${this.currentPage}
@@ -1859,12 +2018,14 @@ export class MailboxPage extends LitElement {
                 const mailbox = e.detail.global ? '*' : this.currentMailbox;
                 this.updateUrl(mailbox, 0, null, newFilter);
               }}
-              @selection-changed=${(e: CustomEvent) => this.selectedKeys = e.detail.selectedKeys}
+              @selection-changed=${(e: CustomEvent) => this.takeSelection(e.detail.selectedKeys)}
+              @select-all-matching=${() => this.selectAllInFolder()}
+              @clear-selection=${() => this.clearSelection()}
               @toggle-star-message=${this._handleListToggleStar}
             >
               <div slot="mobile-bulk-actions" class="mobile-bulk-actions-container">
-                <alps-icon-btn title=${this.i18nStore?.t('general.cancel') || 'Cancel'} @click=${() => { this.selectedKeys = new Set(); }} icon="arrowLeft"></alps-icon-btn>
-                <span class="mobile-bulk-actions-count">${this.selectedKeys.size}</span>
+                <alps-icon-btn title=${this.i18nStore?.t('general.cancel') || 'Cancel'} @click=${() => this.clearSelection()} icon="arrowLeft"></alps-icon-btn>
+                <span class="mobile-bulk-actions-count">${this.selectionCount}</span>
                 ${this.canArchiveHere ? html`
                   <alps-icon-btn title=${this.i18nStore?.t('messageReader.archive')} @click=${() => this._handleReaderAction(new CustomEvent('action', {detail: {action: 'archive'}}))} icon="archiveBox"></alps-icon-btn>
                 ` : ''}
@@ -1894,6 +2055,7 @@ export class MailboxPage extends LitElement {
               .messages=${this.messages}
               .layoutMode=${effectiveLayoutMode}
               .selectedKeys=${this.selectedKeys}
+              .selectedCount=${this.selectionCount}
               .allSelectedStarred=${this.allSelectedStarred}
               .allSelectedUnread=${this.allSelectedUnread}
               .commonTags=${this.commonSelectedTags}
@@ -1908,7 +2070,7 @@ export class MailboxPage extends LitElement {
       ${this.showDeleteConfirm ? html`
         <ui-confirm
           title="${this.i18nStore?.t('mailboxPage.permanentlyDelete')}"
-          message=${(this.pendingDeleteDetails?.doomed.length ?? 0) > 1 ? (this.i18nStore?.t('messageReader.deleteConfirmMultiple')) : (this.i18nStore?.t('messageReader.deleteConfirmSingle'))}
+          message=${((this.pendingDeleteDetails?.matching?.count ?? this.pendingDeleteDetails?.doomed.length) ?? 0) > 1 ? (this.i18nStore?.t('messageReader.deleteConfirmMultiple')) : (this.i18nStore?.t('messageReader.deleteConfirmSingle'))}
           confirmText=${this.i18nStore?.t('mailboxPage.deletePermanently')}
           cancelText=${this.i18nStore?.t('general.cancel')}
           .isDanger=${true}

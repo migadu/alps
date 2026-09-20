@@ -1741,6 +1741,93 @@ func refuseAllMailboxes(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "not_a_folder"})
 }
 
+// messageScope is how a write says which messages it is about: the UIDs the
+// client listed, or — from the list's "select all in this folder" — every
+// message the folder holds that the listing's own `query` matches, less the
+// rows the user then unchecked.
+//
+// `all` is resolved here, against the mailbox, rather than by the client
+// sending thousands of UIDs: the client holds one page of a listing, and what
+// it holds goes stale while the user reads it.
+type messageScope struct {
+	Uids   []string `json:"uids"`
+	All    bool     `json:"all"`
+	Query  string   `json:"query"`
+	Except []string `json:"except"`
+}
+
+// problem names what a write cannot be acted on for — one that names no
+// messages, and one that names them two ways at once, where only the sender
+// knows which it meant — or "" when the scope can be resolved.
+func (scope messageScope) problem() string {
+	if scope.All && len(scope.Uids) > 0 {
+		return "uids_and_all"
+	}
+	if !scope.All && len(scope.Uids) == 0 {
+		return "No messages selected."
+	}
+	return ""
+}
+
+// resolve answers the messages to act on, in the order the mailbox gives them.
+func (scope messageScope) resolve(p provider.MailProvider, mboxName string) ([]provider.MessageID, error) {
+	if !scope.All {
+		ids := make([]provider.MessageID, len(scope.Uids))
+		for i, uidStr := range scope.Uids {
+			uid, err := p.ParseMessageID(uidStr)
+			if err != nil {
+				return nil, err
+			}
+			ids[i] = uid
+		}
+		return ids, nil
+	}
+
+	found, err := p.SearchMessageIDs(mboxName, scope.Query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find the messages to act on: %v", err)
+	}
+	if len(scope.Except) == 0 {
+		return found, nil
+	}
+
+	except := make(map[string]struct{}, len(scope.Except))
+	for _, uid := range scope.Except {
+		except[uid] = struct{}{}
+	}
+	kept := make([]provider.MessageID, 0, len(found))
+	for _, id := range found {
+		if _, skip := except[id.String()]; !skip {
+			kept = append(kept, id)
+		}
+	}
+	return kept, nil
+}
+
+// maxScopeBatch is how many messages one command carries. A whole folder can be
+// any size, and both the mail server and this session are better served by
+// several commands than by one of unbounded length.
+const maxScopeBatch = 500
+
+// maxReportedMapping is how many moved messages an answer carries the new UIDs
+// for. The client offers Undo with them; past that the table is larger than the
+// undo is worth, and the client says so instead.
+const maxReportedMapping = 1000
+
+// inBatches runs fn over the ids, at most maxScopeBatch at a time.
+func inBatches(ids []provider.MessageID, fn func([]provider.MessageID) error) error {
+	for start := 0; start < len(ids); start += maxScopeBatch {
+		end := start + maxScopeBatch
+		if end > len(ids) {
+			end = len(ids)
+		}
+		if err := fn(ids[start:end]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func formOrQueryParam(ctx *alps.Context, k string) string {
 	if v := ctx.FormValue(k); v != "" {
 		return v
@@ -1757,55 +1844,58 @@ func handleMove(ctx *alps.Context) error {
 		return refuseAllMailboxes(ctx)
 	}
 
-	var uids []string
+	var scope messageScope
 	var to string
 
 	if strings.HasPrefix(ctx.Request.Header.Get("Content-Type"), "application/json") {
 		var req struct {
-			Uids []string `json:"uids"`
-			To   string   `json:"to"`
+			messageScope
+			To string `json:"to"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
 		}
-		uids = req.Uids
+		scope = req.messageScope
 		to = req.To
 	} else {
 		formParams, err := ctx.FormParams()
 		if err != nil {
 			return alps.NewHTTPError(http.StatusBadRequest, err)
 		}
-		uids = formParams["uids"]
+		scope.Uids = formParams["uids"]
 		to = formOrQueryParam(ctx, "to")
 	}
 
-	if len(uids) == 0 {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "No messages selected."})
+	if problem := scope.problem(); problem != "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": problem})
 	}
 
 	if to == "" {
 		return alps.NewHTTPError(http.StatusBadRequest, "missing 'to' parameter")
 	}
 
+	moved := 0
 	uidMapping := make(map[string]string)
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		alpsMsgIDs := make([]provider.MessageID, len(uids))
-		for i, uidStr := range uids {
-			uid, err := p.ParseMessageID(uidStr)
-			if err != nil {
-				return err
-			}
-			alpsMsgIDs[i] = uid
-		}
-		// Move messages in bulk
-		mapping, err := moveMessagesWithProvider(p, mboxName, to, alpsMsgIDs)
+		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
-			return fmt.Errorf("failed to move messages: %v", err)
+			return err
 		}
-		for k, v := range mapping {
-			uidMapping[k.String()] = v.String()
-		}
-		return nil
+		withMapping := len(alpsMsgIDs) <= maxReportedMapping
+		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
+			mapping, err := moveMessagesWithProvider(p, mboxName, to, batch)
+			if err != nil {
+				return fmt.Errorf("failed to move messages: %v", err)
+			}
+			moved += len(batch)
+			if !withMapping {
+				return nil
+			}
+			for k, v := range mapping {
+				uidMapping[k.String()] = v.String()
+			}
+			return nil
+		})
 	})
 	if err != nil {
 		return err
@@ -1816,6 +1906,7 @@ func handleMove(ctx *alps.Context) error {
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"ok":         true,
+		"count":      moved,
 		"uidMapping": uidMapping,
 	})
 }
@@ -1829,55 +1920,58 @@ func handleCopy(ctx *alps.Context) error {
 		return refuseAllMailboxes(ctx)
 	}
 
-	var uids []string
+	var scope messageScope
 	var to string
 
 	if strings.HasPrefix(ctx.Request.Header.Get("Content-Type"), "application/json") {
 		var req struct {
-			Uids []string `json:"uids"`
-			To   string   `json:"to"`
+			messageScope
+			To string `json:"to"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
 		}
-		uids = req.Uids
+		scope = req.messageScope
 		to = req.To
 	} else {
 		formParams, err := ctx.FormParams()
 		if err != nil {
 			return alps.NewHTTPError(http.StatusBadRequest, err)
 		}
-		uids = formParams["uids"]
+		scope.Uids = formParams["uids"]
 		to = formOrQueryParam(ctx, "to")
 	}
 
-	if len(uids) == 0 {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "No messages selected."})
+	if problem := scope.problem(); problem != "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": problem})
 	}
 
 	if to == "" {
 		return alps.NewHTTPError(http.StatusBadRequest, "missing 'to' parameter")
 	}
 
+	copied := 0
 	uidMapping := make(map[string]string)
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		alpsMsgIDs := make([]provider.MessageID, len(uids))
-		for i, uidStr := range uids {
-			uid, err := p.ParseMessageID(uidStr)
-			if err != nil {
-				return err
-			}
-			alpsMsgIDs[i] = uid
-		}
-		// Copy messages in bulk
-		mapping, err := copyMessagesWithProvider(p, mboxName, to, alpsMsgIDs)
+		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
-			return fmt.Errorf("failed to copy messages: %v", err)
+			return err
 		}
-		for k, v := range mapping {
-			uidMapping[k.String()] = v.String()
-		}
-		return nil
+		withMapping := len(alpsMsgIDs) <= maxReportedMapping
+		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
+			mapping, err := copyMessagesWithProvider(p, mboxName, to, batch)
+			if err != nil {
+				return fmt.Errorf("failed to copy messages: %v", err)
+			}
+			copied += len(batch)
+			if !withMapping {
+				return nil
+			}
+			for k, v := range mapping {
+				uidMapping[k.String()] = v.String()
+			}
+			return nil
+		})
 	})
 	if err != nil {
 		return err
@@ -1888,6 +1982,7 @@ func handleCopy(ctx *alps.Context) error {
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"ok":         true,
+		"count":      copied,
 		"uidMapping": uidMapping,
 	})
 }
@@ -1901,42 +1996,37 @@ func handleDelete(ctx *alps.Context) error {
 		return refuseAllMailboxes(ctx)
 	}
 
-	var uids []string
+	var scope messageScope
 
 	if strings.HasPrefix(ctx.Request.Header.Get("Content-Type"), "application/json") {
-		var req struct {
-			Uids []string `json:"uids"`
-		}
-		if err := ctx.BindJSON(&req); err != nil {
+		if err := ctx.BindJSON(&scope); err != nil {
 			return ctx.RespondBindError(err)
 		}
-		uids = req.Uids
 	} else {
 		formParams, err := ctx.FormParams()
 		if err != nil {
 			return alps.NewHTTPError(http.StatusBadRequest, err)
 		}
-		uids = formParams["uids"]
+		scope.Uids = formParams["uids"]
 	}
 
-	if len(uids) == 0 {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "No messages selected."})
+	if problem := scope.problem(); problem != "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": problem})
 	}
 
+	deleted := 0
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		alpsMsgIDs := make([]provider.MessageID, len(uids))
-		for i, uidStr := range uids {
-			uid, err := p.ParseMessageID(uidStr)
-			if err != nil {
-				return err
+		alpsMsgIDs, err := scope.resolve(p, mboxName)
+		if err != nil {
+			return err
+		}
+		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
+			if err := deleteMessagesWithProvider(p, mboxName, batch); err != nil {
+				return fmt.Errorf("failed to delete messages: %v", err)
 			}
-			alpsMsgIDs[i] = uid
-		}
-		// Delete messages in bulk
-		if err := deleteMessagesWithProvider(p, mboxName, alpsMsgIDs); err != nil {
-			return fmt.Errorf("failed to delete messages: %v", err)
-		}
-		return nil
+			deleted += len(batch)
+			return nil
+		})
 	})
 	if err != nil {
 		return err
@@ -1945,7 +2035,7 @@ func handleDelete(ctx *alps.Context) error {
 	// Invalidate cache for the mailbox
 	invalidateMailboxCache(ctx, mboxName)
 
-	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
+	return ctx.JSON(http.StatusOK, map[string]any{"ok": "true", "count": deleted})
 }
 
 // mayEmptyMailbox reports whether name is a Trash or Junk mailbox, the only two
@@ -2047,20 +2137,20 @@ func handleSetFlags(ctx *alps.Context) error {
 		return refuseAllMailboxes(ctx)
 	}
 
-	var uids []string
+	var scope messageScope
 	var flags []string
 	var actionStr string
 
 	if strings.HasPrefix(ctx.Request.Header.Get("Content-Type"), "application/json") {
 		var req struct {
-			Uids   []string `json:"uids"`
+			messageScope
 			Flags  []string `json:"flags"`
 			Action string   `json:"action"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
 		}
-		uids = req.Uids
+		scope = req.messageScope
 		flags = req.Flags
 		actionStr = req.Action
 	} else {
@@ -2069,7 +2159,7 @@ func handleSetFlags(ctx *alps.Context) error {
 			return alps.NewHTTPError(http.StatusBadRequest, err)
 		}
 
-		uids = formParams["uids"]
+		scope.Uids = formParams["uids"]
 		flags = formParams["flags"]
 		if len(flags) == 0 {
 			flagsStr := ctx.QueryParam("to")
@@ -2085,8 +2175,8 @@ func handleSetFlags(ctx *alps.Context) error {
 		}
 	}
 
-	if len(uids) == 0 {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "No messages selected."})
+	if problem := scope.problem(); problem != "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": problem})
 	}
 
 	var op imap.StoreFlagsOp
@@ -2101,7 +2191,9 @@ func handleSetFlags(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusBadRequest, "invalid 'action' value")
 	}
 
-	if len(uids) > maxFlagUIDs {
+	// A whole folder is not sent as a list, so this bounds only what a client
+	// listed itself; `all` is resolved here and written a batch at a time.
+	if len(scope.Uids) > maxFlagUIDs {
 		// One STORE per gesture is the point of this endpoint, but an unbounded
 		// list is a request the IMAP session may not survive — and the client
 		// has no way to learn that from a timeout. Refuse with a number it can
@@ -2188,34 +2280,38 @@ func handleSetFlags(ctx *alps.Context) error {
 
 	var alpsMsgIDs []provider.MessageID
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		alpsMsgIDs = make([]provider.MessageID, len(uids))
-		for i, uidStr := range uids {
-			uid, err := p.ParseMessageID(uidStr)
-			if err != nil {
-				return err
-			}
-			alpsMsgIDs[i] = uid
+		alpsMsgIDs, err = scope.resolve(p, mboxName)
+		if err != nil {
+			return err
 		}
-		return setMessageFlagsWithProvider(p, mboxName, alpsMsgIDs, alpsOp, alpsFlags)
+		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
+			return setMessageFlagsWithProvider(p, mboxName, batch, alpsOp, alpsFlags)
+		})
 	})
 	if err != nil {
 		return err
 	}
 
-	// Update cached message flags instead of full invalidation
-	for _, uid := range alpsMsgIDs {
-		switch op {
-		case imap.StoreFlagsAdd:
-			updateCachedMessageFlags(ctx, mboxName, uid, l, nil)
-		case imap.StoreFlagsDel:
-			updateCachedMessageFlags(ctx, mboxName, uid, nil, l)
-		default:
-			// StoreFlagsSet is complex (replaces all flags), so invalidate
-			invalidateMailboxCache(ctx, mboxName)
+	// A whole folder's worth of messages is not patched into the cache one at a
+	// time: the listing is dropped instead, and read again.
+	if scope.All {
+		invalidateMailboxCache(ctx, mboxName)
+	} else {
+		// Update cached message flags instead of full invalidation
+		for _, uid := range alpsMsgIDs {
+			switch op {
+			case imap.StoreFlagsAdd:
+				updateCachedMessageFlags(ctx, mboxName, uid, l, nil)
+			case imap.StoreFlagsDel:
+				updateCachedMessageFlags(ctx, mboxName, uid, nil, l)
+			default:
+				// StoreFlagsSet is complex (replaces all flags), so invalidate
+				invalidateMailboxCache(ctx, mboxName)
+			}
 		}
 	}
 
-	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
+	return ctx.JSON(http.StatusOK, map[string]any{"ok": "true", "count": len(alpsMsgIDs)})
 }
 
 // isValidIMAPKeyword reports whether s can be sent as an IMAP flag atom.

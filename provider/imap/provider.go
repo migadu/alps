@@ -708,6 +708,37 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 	return msgs, total, nil
 }
 
+// SearchMessageIDs answers every UID in the mailbox the query matches, and
+// nothing about those messages: what an action on a whole folder is applied to.
+// One SEARCH, so the answer is the mailbox as it stands, not the page of a
+// listing the client happens to hold.
+func (p *IMAPProvider) SearchMessageIDs(mailbox, query string) ([]provider.MessageID, error) {
+	if p.client == nil {
+		return nil, fmt.Errorf("IMAP client not initialized")
+	}
+	if err := p.ensureMailboxSelected(mailbox); err != nil {
+		return nil, err
+	}
+
+	criteria := prepareIMAPSearch(query)
+	if criteria == nil {
+		// No query is the whole mailbox, as an unfiltered listing is.
+		criteria = &imap.SearchCriteria{}
+	}
+
+	data, err := p.client.UIDSearch(criteria, nil).Wait()
+	if err != nil {
+		return nil, fmt.Errorf("failed to search %q: %v", mailbox, err)
+	}
+
+	uids := data.AllUIDs()
+	ids := make([]provider.MessageID, 0, len(uids))
+	for _, uid := range uids {
+		ids = append(ids, IMAPUID(uid))
+	}
+	return ids, nil
+}
+
 // SearchMessages searches messages in a mailbox
 func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
 	if mailbox == "*" {

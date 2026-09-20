@@ -89,6 +89,15 @@ func (m *MockProvider) ListMessages(mailbox string, sortOrder string, page, page
 	return msgs, args.Int(1), args.Error(2)
 }
 
+func (m *MockProvider) SearchMessageIDs(mailbox, query string) ([]MessageID, error) {
+	args := m.Called(mailbox, query)
+	var ids []MessageID
+	if val := args.Get(0); val != nil {
+		ids = val.([]MessageID)
+	}
+	return ids, args.Error(1)
+}
+
 func (m *MockProvider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]Message, int, error) {
 	args := m.Called(mailbox, query, sortOrder, page, pageSize)
 	var msgs []Message

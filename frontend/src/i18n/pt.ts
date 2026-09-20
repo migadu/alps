@@ -213,6 +213,10 @@ export const pt = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Selecionar todas as mensagens',
+    allOnPageSelected: 'As {count} mensagens desta página estão selecionadas',
+    selectAllMatching: 'Selecionar todas as {count} em {folder}',
+    allMatchingSelected: 'As {count} mensagens em {folder} estão selecionadas',
+    clearSelection: 'Limpar a seleção',
     checkNew: 'Verificar novas mensagens',
     sortDesc: 'Classificar por data decrescente',
     sortAsc: 'Classificar por data crescente',

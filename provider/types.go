@@ -34,6 +34,11 @@ type MailProvider interface {
 	// Message listing and search
 	ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]Message, int, error)
 	SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]Message, int, error)
+	// SearchMessageIDs answers every message of the mailbox the query matches,
+	// and nothing about them: the operand of an action taken on a whole folder,
+	// which must not depend on what a page of the listing happens to hold. An
+	// empty query is the whole mailbox, as an empty listing query is.
+	SearchMessageIDs(mailbox, query string) ([]MessageID, error)
 
 	// Message operations
 	ParseMessageID(id string) (MessageID, error)

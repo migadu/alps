@@ -222,6 +222,10 @@ export const da: TranslationDictionary = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Vælg alle beskeder',
+    allOnPageSelected: 'Alle {count} beskeder på denne side er valgt',
+    selectAllMatching: 'Vælg alle {count} i {folder}',
+    allMatchingSelected: 'Alle {count} beskeder i {folder} er valgt',
+    clearSelection: 'Ryd markeringen',
     checkNew: 'Tjek for nye beskeder',
     sortDesc: 'Sortér faldende efter dato',
     sortAsc: 'Sortér stigende efter dato',
