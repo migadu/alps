@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -68,8 +69,33 @@ func (sw *sanitizingWriter) Write(p []byte) (n int, err error) {
 	return len(p), err // Return original length to satisfy io.Writer contract
 }
 
-// Connect establishes an IMAP connection based on the provided configuration
-func Connect(host string, tls bool, insecure bool, timeout time.Duration, debug bool) (*imapclient.Client, error) {
+// TargetGuard inspects the address a dial actually resolved to. Returning an
+// error aborts the connection.
+//
+// It runs from net.Dialer.Control, after resolution and before connect, so it
+// sees the IP the kernel is about to reach. Validating a hostname beforehand
+// cannot do that: the dial resolves again and a low-TTL record can answer
+// differently the second time (DNS rebinding).
+type TargetGuard func(net.IP) error
+
+func controlFor(guard TargetGuard) func(network, address string, c syscall.RawConn) error {
+	if guard == nil {
+		return nil
+	}
+	return func(network, address string, c syscall.RawConn) error {
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return fmt.Errorf("cannot parse dial address %q: %w", address, err)
+		}
+		ip := net.ParseIP(host)
+		if ip == nil {
+			return fmt.Errorf("dial address %q is not an IP", host)
+		}
+		return guard(ip)
+	}
+}
+
+func Connect(host string, tls bool, insecure bool, timeout time.Duration, debug bool, guard TargetGuard) (*imapclient.Client, error) {
 	var debugWriter io.Writer
 	if debug {
 		// Wrap os.Stderr with sanitizing writer to redact credentials
@@ -81,14 +107,17 @@ func Connect(host string, tls bool, insecure bool, timeout time.Duration, debug 
 		timeout = 30 * time.Second // Default to 30s
 	}
 
+	dialer := &net.Dialer{
+		Timeout: timeout,
+		Control: controlFor(guard),
+	}
+
 	options := &imapclient.Options{
 		DebugWriter: debugWriter,
 		WordDecoder: &mime.WordDecoder{
 			CharsetReader: charset.Reader,
 		},
-		Dialer: &net.Dialer{
-			Timeout: timeout,
-		},
+		Dialer: dialer,
 	}
 
 	var c *imapclient.Client
@@ -104,7 +133,8 @@ func Connect(host string, tls bool, insecure bool, timeout time.Duration, debug 
 			return nil, fmt.Errorf("failed to connect to IMAP server: %v", err)
 		}
 	} else {
-		conn, err := net.Dial("tcp", host)
+		// Dial through the same dialer so the guard still applies.
+		conn, err := dialer.Dial("tcp", host)
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to IMAP server: %v", err)
 		}

@@ -1891,14 +1891,19 @@ func (p *IMAPProvider) searchESearchMessages(query string, sortOrder string, pag
 		return nil, 0, fmt.Errorf("ESEARCH failed: %v", err)
 	}
 
-	var allMsgs []provider.Message
+	type searchCandidate struct {
+		mailbox string
+		uid     uint32
+		date    time.Time
+	}
+
+	var candidates []searchCandidate
 	for _, data := range results {
 		uids := data.AllUIDs()
 		if len(uids) == 0 {
 			continue
 		}
 
-		// 3. Batch-fetch for this mailbox
 		if err := p.ensureMailboxSelected(data.Mailbox); err != nil {
 			continue
 		}
@@ -1908,62 +1913,122 @@ func (p *IMAPProvider) searchESearchMessages(query string, sortOrder string, pag
 			uidSet.AddNum(imap.UID(uid))
 		}
 
-		bodySection := &imap.FetchItemBodySection{
-			Specifier:    imap.PartSpecifierHeader,
-			HeaderFields: []string{"Authentication-Results"},
-			Peek:         true,
-		}
-		referencesBodySection := &imap.FetchItemBodySection{
-			Specifier:    imap.PartSpecifierHeader,
-			HeaderFields: []string{"References"},
-			Peek:         true,
-		}
-		fetchOptions := imap.FetchOptions{
-			Flags:         true,
-			Envelope:      true,
-			UID:           true,
-			RFC822Size:    true,
-			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
-			BodySection: []*imap.FetchItemBodySection{
-				bodySection, referencesBodySection,
-			},
+		// Phase 1: Lightweight fetch of Envelope and InternalDate to determine order without loading bodies
+		envelopeFetchOptions := imap.FetchOptions{
+			Envelope:     true,
+			InternalDate: true,
+			UID:          true,
 		}
 
-		imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
+		imapMsgs, err := p.client.Fetch(uidSet, &envelopeFetchOptions).Collect()
 		if err != nil {
-			return nil, 0, fmt.Errorf("failed to fetch messages for %s: %v", data.Mailbox, err)
+			return nil, 0, fmt.Errorf("failed to fetch envelopes for %s: %v", data.Mailbox, err)
 		}
 
 		for _, msg := range imapMsgs {
-			allMsgs = append(allMsgs, p.convertIMAPMessage(msg, data.Mailbox))
+			var date time.Time
+			if msg.Envelope != nil {
+				date = msg.Envelope.Date
+			}
+			if date.IsZero() {
+				date = msg.InternalDate
+			}
+			candidates = append(candidates, searchCandidate{
+				mailbox: data.Mailbox,
+				uid:     uint32(msg.UID),
+				date:    date,
+			})
 		}
 	}
 
-	// 4. Sort globally by envelope date descending (or ascending if requested)
-	sort.Slice(allMsgs, func(i, j int) bool {
-		var dateI, dateJ time.Time
-		if allMsgs[i].Envelope != nil {
-			dateI = allMsgs[i].Envelope.Date
-		}
-		if allMsgs[j].Envelope != nil {
-			dateJ = allMsgs[j].Envelope.Date
-		}
+	// Sort globally by date descending (or ascending if requested)
+	sort.Slice(candidates, func(i, j int) bool {
 		if sortOrder == "asc" {
-			return dateI.Before(dateJ)
+			return candidates[i].date.Before(candidates[j].date)
 		}
-		return dateI.After(dateJ)
+		return candidates[i].date.After(candidates[j].date)
 	})
 
-	// 5. Paginate
-	total := len(allMsgs)
+	total := len(candidates)
 	from := page * pageSize
 	to := from + pageSize
-	if from >= len(allMsgs) {
+	if from >= total {
 		return nil, total, nil
 	}
-	if to > len(allMsgs) {
-		to = len(allMsgs)
+	if to > total {
+		to = total
 	}
 
-	return allMsgs[from:to], total, nil
+	paginated := candidates[from:to]
+	if len(paginated) == 0 {
+		return nil, total, nil
+	}
+
+	// Phase 2: Full fetch ONLY for the paginated slice
+	type pageItem struct {
+		candidate searchCandidate
+		origIndex int
+	}
+	byMailbox := make(map[string][]pageItem)
+	for idx, c := range paginated {
+		byMailbox[c.mailbox] = append(byMailbox[c.mailbox], pageItem{candidate: c, origIndex: idx})
+	}
+
+	bodySection := &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"Authentication-Results"},
+		Peek:         true,
+	}
+	referencesBodySection := &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"References"},
+		Peek:         true,
+	}
+	fullFetchOptions := imap.FetchOptions{
+		Flags:         true,
+		Envelope:      true,
+		UID:           true,
+		RFC822Size:    true,
+		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+		BodySection: []*imap.FetchItemBodySection{
+			bodySection, referencesBodySection,
+		},
+	}
+
+	pageMsgs := make([]provider.Message, len(paginated))
+	for mboxName, items := range byMailbox {
+		if err := p.ensureMailboxSelected(mboxName); err != nil {
+			continue
+		}
+
+		var uidSet imap.UIDSet
+		for _, item := range items {
+			uidSet.AddNum(imap.UID(item.candidate.uid))
+		}
+
+		imapMsgs, err := p.client.Fetch(uidSet, &fullFetchOptions).Collect()
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to fetch messages for %s: %v", mboxName, err)
+		}
+
+		msgMap := make(map[uint32]*imapclient.FetchMessageBuffer, len(imapMsgs))
+		for _, msg := range imapMsgs {
+			msgMap[uint32(msg.UID)] = msg
+		}
+
+		for _, item := range items {
+			if fetchMsg, ok := msgMap[item.candidate.uid]; ok {
+				pageMsgs[item.origIndex] = p.convertIMAPMessage(fetchMsg, mboxName)
+			}
+		}
+	}
+
+	var finalMsgs []provider.Message
+	for _, m := range pageMsgs {
+		if m.ID != nil {
+			finalMsgs = append(finalMsgs, m)
+		}
+	}
+
+	return finalMsgs, total, nil
 }

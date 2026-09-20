@@ -17,6 +17,11 @@ type Config struct {
 	Insecure    bool     `toml:"insecure"`     // Allow insecure connections
 	AuthservIDs []string `toml:"authserv_ids"` // Receiving servers whose Authentication-Results are trusted (e.g., ["mx.example.com"])
 	Debug       bool     `toml:"debug"`        // Turn on debugging output for the provider
+
+	// TargetGuard validates the IP a connection actually resolved to, at dial
+	// time. It has no TOML tag: callers that route to dynamically derived
+	// servers set it in code. Nil means no restriction.
+	TargetGuard TargetGuard
 }
 
 func (c *Config) Type() string {
@@ -98,18 +103,35 @@ type Options struct {
 // resolve returns the dial parameters, deriving them from Config when the
 // Options value was built directly instead of through Config.ToOptions.
 func (o *Options) resolve() (address string, tls bool, insecure bool, err error) {
+	if o == nil {
+		return "", false, false, fmt.Errorf("IMAP provider has no configuration")
+	}
 	if o.address != "" {
-		return o.address, o.tls, o.Insecure, nil
+		insecure := false
+		if o.Config != nil {
+			insecure = o.Config.Insecure
+		}
+		return o.address, o.tls, insecure, nil
 	}
 	return parseServer(o.Config)
 }
 
 func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.AuthenticatedProviderFactory {
+	if o == nil {
+		return func(username, password string) (provider.MailProvider, error) {
+			return nil, fmt.Errorf("IMAP provider has no configuration")
+		}
+	}
+
 	address, tls, insecure, resolveErr := o.resolve()
 
 	debugMode := debug
+	var authservIDs []string
+	var guard TargetGuard
 	if o.Config != nil {
 		debugMode = o.Debug || debug
+		authservIDs = o.AuthservIDs
+		guard = o.TargetGuard
 	}
 
 	return func(username, password string) (provider.MailProvider, error) {
@@ -117,7 +139,7 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 			return nil, resolveErr
 		}
 
-		client, err := Connect(address, tls, insecure, timeout, debugMode)
+		client, err := Connect(address, tls, insecure, timeout, debugMode, guard)
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +149,7 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 			return nil, provider.AuthError{Cause: err}
 		}
 
-		return NewIMAPProvider(client, debugMode).WithAuthservIDs(o.AuthservIDs), nil
+		return NewIMAPProvider(client, debugMode).WithAuthservIDs(authservIDs), nil
 	}
 }
 

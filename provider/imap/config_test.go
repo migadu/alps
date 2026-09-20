@@ -116,4 +116,21 @@ func TestIMAPOptionsBuiltDirectly(t *testing.T) {
 	// factory rather than dialing an empty address.
 	_, err = (&Options{}).CreateFactory(time.Second, false)("user", "pass")
 	assert.Error(t, err)
+
+	// A nil Options receiver must return an error without panicking.
+	var nilOpt *Options
+	_, _, _, err = nilOpt.resolve()
+	assert.Error(t, err)
+	_, err = nilOpt.CreateFactory(time.Second, false)("user", "pass")
+	assert.Error(t, err)
+
+	// An Options struct with address set but Config nil must not panic on Insecure or AuthservIDs.
+	noCfgOpt := &Options{address: "direct.example.com:993", tls: true}
+	addr, tls, insecure, err := noCfgOpt.resolve()
+	require.NoError(t, err)
+	assert.Equal(t, "direct.example.com:993", addr)
+	assert.True(t, tls)
+	assert.False(t, insecure)
+	factory := noCfgOpt.CreateFactory(time.Second, false)
+	assert.NotNil(t, factory)
 }
