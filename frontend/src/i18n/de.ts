@@ -180,6 +180,10 @@ export const de: TranslationDictionary = {
   messageList: {
     menu: 'Menü',
     selectAll: 'Alle Nachrichten auswählen',
+    allOnPageSelected: 'Alle {count} Nachrichten auf dieser Seite sind ausgewählt',
+    selectAllMatching: 'Alle {count} in {folder} auswählen',
+    allMatchingSelected: 'Alle {count} Nachrichten in {folder} sind ausgewählt',
+    clearSelection: 'Auswahl aufheben',
     checkNew: 'Nach neuen Nachrichten suchen',
     sortDesc: 'Nach Datum absteigend sortieren',
     sortAsc: 'Nach Datum aufsteigend sortieren',

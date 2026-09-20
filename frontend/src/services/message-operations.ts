@@ -98,6 +98,102 @@ export class MessageOperationsService {
 
 
   /**
+   * The messages of a folder an action is about when the user asked for all of
+   * them — the list's "select all in this folder" — rather than for the rows
+   * they checked: the listing's own query, and the rows they then unchecked.
+   *
+   * The folder is not sent as a list of UIDs. The client holds one page of it,
+   * a page goes stale while it is read, and a folder can hold more messages
+   * than a request can carry; the server searches it and acts on the answer.
+   */
+  private matchingBody(scope: MatchingScope, rest: Record<string, unknown> = {}): string {
+    return JSON.stringify({ all: true, query: scope.query || '', except: scope.except ?? [], ...rest });
+  }
+
+  /** How many messages the server says it wrote, or 0 when it did not say. */
+  private countOf(body: Record<string, any>): number {
+    return typeof body.count === 'number' ? body.count : 0;
+  }
+
+  /** As {@link setFlag}, for every message the folder holds that matches. */
+  async setFlagMatching(mailbox: string, scope: MatchingScope, flags: string[], action: 'add' | 'remove' | 'set'): Promise<FlagResult> {
+    try {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/flag`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: this.matchingBody(scope, { flags, action }),
+      });
+      if (this.isAuthError(res)) return { ok: false, reason: 'auth' };
+      const body = await readErrorBody(res);
+      if (!res.ok) {
+        const reason = body.error === 'unsupported_flags' ? 'unsupported' : 'failed';
+        Logger.error('Failed to set a flag on a folder', res.status, body);
+        return { ok: false, reason, rejected: body.rejected };
+      }
+      messageSync.sync();
+      return { ok: true, applied: this.countOf(body) };
+    } catch (err) {
+      Logger.error('Failed to set a flag on a folder', err);
+      return { ok: false, reason: 'failed' };
+    }
+  }
+
+  /** As {@link moveMessages}, for every message the folder holds that matches. */
+  async moveMatching(mailbox: string, scope: MatchingScope, to: string): Promise<MoveResult> {
+    return this.fileMatching('move', mailbox, scope, to);
+  }
+
+  /** As {@link copyMessages}, for every message the folder holds that matches. */
+  async copyMatching(mailbox: string, scope: MatchingScope, to: string): Promise<MoveResult> {
+    return this.fileMatching('copy', mailbox, scope, to);
+  }
+
+  private async fileMatching(verb: 'move' | 'copy', mailbox: string, scope: MatchingScope, to: string): Promise<MoveResult> {
+    try {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${verb}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: this.matchingBody(scope, { to }),
+      });
+      if (this.isAuthError(res)) return { success: false, reason: 'auth' };
+      const body = await readErrorBody(res);
+      if (!res.ok) {
+        Logger.error(`Failed to ${verb} a folder's messages`, res.status, body);
+        return { success: false, reason: 'failed' };
+      }
+      messageSync.sync();
+      // Past a few thousand messages the server sends no new UIDs — see
+      // `maxReportedMapping` — and the move is then reported without an Undo.
+      return { success: true, uidMapping: body.uidMapping ?? {}, count: this.countOf(body) };
+    } catch (err) {
+      Logger.error(`Failed to ${verb} a folder's messages`, err);
+      return { success: false, reason: 'failed' };
+    }
+  }
+
+  /** As {@link deleteMessagesResult}, for every message the folder holds that matches. */
+  async deleteMatchingResult(mailbox: string, scope: MatchingScope): Promise<DeleteResult> {
+    try {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: this.matchingBody(scope),
+      });
+      if (this.isAuthError(res)) return { ok: false, reason: 'auth' };
+      const body = await readErrorBody(res);
+      if (!res.ok) {
+        Logger.error("Failed to delete a folder's messages", res.status, body);
+        return { ok: false, reason: 'failed' };
+      }
+      messageSync.sync();
+      return { ok: true, count: this.countOf(body) };
+    } catch (err) {
+      Logger.error("Failed to delete a folder's messages", err);
+      return { ok: false, reason: 'failed' };
+    }
+  }
+
+  /**
    * Marks a message as read by adding the \Seen flag.
    */
   async markAsRead(mailbox: string, message: any): Promise<any> {
@@ -331,12 +427,24 @@ export interface MoveResult {
   success: boolean;
   uidMapping?: Record<string, string>;
   reason?: 'empty' | 'auth' | 'failed';
+  /** How many messages the server filed, when it was asked for a whole folder. */
+  count?: number;
+}
+
+/** A whole folder's worth of messages, as an action names them. */
+export interface MatchingScope {
+  /** The listing's query: what the user is looking at. Empty is the whole folder. */
+  query: string;
+  /** The UIDs of the rows they unchecked afterwards. */
+  except: string[];
 }
 
 /** As MoveResult, for deletes — shaped like FlagResult above. */
 export interface DeleteResult {
   ok: boolean;
   reason?: 'empty' | 'auth' | 'failed';
+  /** How many messages the server deleted, when it was asked for a whole folder. */
+  count?: number;
 }
 
 export const messageOperations = new MessageOperationsService();

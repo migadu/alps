@@ -60,6 +60,14 @@ export class MessageList extends LitElement {
    * lists messages from several, and two of its rows can carry the same UID.
    */
   @property({ type: Object }) selectedMessages = new Set<string>();
+  /**
+   * Every message the folder holds that the listing's query matches is
+   * selected, not only the rows on this page. The page owns what that means;
+   * the list says so, and offers the way in and the way out.
+   */
+  @property({ type: Boolean }) selectAllMatching = false;
+  /** How many messages that is, the rows the user unchecked already taken off. */
+  @property({ type: Number }) matchingCount = 0;
   @property({ type: Boolean }) syncing = false;
   /** The last listing failed: say so, rather than claim the folder is empty. */
   @property({ type: Boolean }) loadFailed = false;
@@ -875,8 +883,23 @@ export class MessageList extends LitElement {
     return keys.length > 0 && keys.every(key => this.selectedMessages.has(key));
   }
 
+  /**
+   * Whether there is a whole folder to offer: more messages than this page
+   * holds, and a folder to search. A search across every folder is not one —
+   * see the badge each row carries there — so it is not offered.
+   */
+  private get canSelectAllMatching(): boolean {
+    return this.currentMailbox !== '*' && this.totalMessages > this.pageKeys.length;
+  }
+
   private handleSelectAll(e: Event) {
     const checked = (e.target as HTMLInputElement).checked;
+    // Clearing the box while the whole folder is selected ends that, rather
+    // than unchecking this page of it and leaving the rest selected unseen.
+    if (!checked && this.selectAllMatching) {
+      this.dispatchEvent(new CustomEvent('clear-selection'));
+      return;
+    }
     // Collapsed threads included: "all" is every message listed here, not every
     // row, or a thread would again be taken by its newest message alone.
     this.setSelection(checked ? new Set(this.pageKeys) : new Set());
@@ -933,7 +956,11 @@ export class MessageList extends LitElement {
       changedProperties.has('currentPage') ||
       changedProperties.has('filterQuery') ||
       changedProperties.has('sortOrder')) {
-      if (this.selectedMessages.size > 0) this.setSelection(new Set());
+      // A whole-folder selection outlives the page it was made on — that is
+      // what it is for — and the mail page ends it when the folder or the
+      // query changes. Clearing it here would report every row of the new page
+      // as unchecked, which the page would take for exceptions.
+      if (!this.selectAllMatching && this.selectedMessages.size > 0) this.setSelection(new Set());
       this._shouldScrollToTop = true;
       // Another listing altogether, already shown from its top.
       this._uidsBeforeCheck = null;
@@ -956,7 +983,7 @@ export class MessageList extends LitElement {
 
     if (changedProperties.has('selectedMessage') || changedProperties.has('messages')) {
       if (changedProperties.has('messages') && this.messages) {
-        if (this.selectedMessages.size > 0) {
+        if (!this.selectAllMatching && this.selectedMessages.size > 0) {
           const listed = new Set(this.pageKeys);
           const kept = new Set([...this.selectedMessages].filter(key => listed.has(key)));
           if (kept.size !== this.selectedMessages.size) this.setSelection(kept);
@@ -1552,6 +1579,21 @@ export class MessageList extends LitElement {
             ` : ''}
             <alps-button slot="action" variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('clear-search'))}>
               ${this.i18nStore?.t('messageList.clearSearch')}
+            </alps-button>
+          </alps-banner>
+        ` : ''}
+        ${this.selectAllMatching ? html`
+          <alps-banner>
+            <span>${this.i18nStore?.t('messageList.allMatchingSelected', { count: this.matchingCount, folder: getMailboxLabel(this.currentMailbox, this.i18nStore, this.currentMailboxDelimiter) })}</span>
+            <alps-button slot="action" variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('clear-selection'))}>
+              ${this.i18nStore?.t('messageList.clearSelection')}
+            </alps-button>
+          </alps-banner>
+        ` : this.selectedMessages.size > 0 && this.allOnPageSelected && this.canSelectAllMatching ? html`
+          <alps-banner>
+            <span>${this.i18nStore?.t('messageList.allOnPageSelected', { count: this.pageKeys.length })}</span>
+            <alps-button slot="action" variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('select-all-matching'))}>
+              ${this.i18nStore?.t('messageList.selectAllMatching', { count: this.totalMessages, folder: getMailboxLabel(this.currentMailbox, this.i18nStore, this.currentMailboxDelimiter) })}
             </alps-button>
           </alps-banner>
         ` : ''}

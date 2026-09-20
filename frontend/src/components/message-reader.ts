@@ -271,7 +271,7 @@ export class MessageReader extends LitElement {
    * folder being viewed" for a conversation verb to take.
    */
   get toolbarIsConversation(): boolean {
-    const isBulk = (this.selectedKeys?.size ?? 0) > 0;
+    const isBulk = this.selectedCount > 0;
     return !isBulk && this.threadItems.length > 1 && !this.openIsUnsent && this.conversationItems.length > 0;
   }
 
@@ -299,7 +299,7 @@ export class MessageReader extends LitElement {
    * because that is when the list shows the row bold.
    */
   get readToggleMarksRead(): boolean {
-    if ((this.selectedKeys?.size ?? 0) > 0) return this.allSelectedUnread;
+    if (this.selectedCount > 0) return this.allSelectedUnread;
     if (this.toolbarIsConversation) return this.unreadKeys.length > 0;
     return !this.message?.Flags?.includes(FLAG_SEEN);
   }
@@ -309,7 +309,7 @@ export class MessageReader extends LitElement {
   private hasTag(tag: string): boolean {
     const lower = tag.toLowerCase();
     const carries = (flags: string[] | undefined) => !!flags?.some((f: string) => f.toLowerCase() === lower);
-    if ((this.selectedKeys?.size ?? 0) > 0) return carries(this.commonTags);
+    if (this.selectedCount > 0) return carries(this.commonTags);
     if (this.toolbarIsConversation) {
       const members = this.conversationItems;
       return members.length > 0 && members.every(item => carries(item.message.Flags));
@@ -331,7 +331,7 @@ export class MessageReader extends LitElement {
 
   private _handleRemoveAllTags() {
     this._closePopup();
-    const isBulk = this.selectedKeys.size > 0; // the same operand as _handleTag
+    const isBulk = this.selectedCount > 0; // the same operand as _handleTag
 
     let tags: string[];
     if (isBulk) {
@@ -372,8 +372,12 @@ export class MessageReader extends LitElement {
   @property({ type: String }) mailbox = FOLDER_INBOX;
   @property({ type: Object }) message: any = null;
   @property({ type: Array }) messages: any[] = [];
-  /** The rows checked in the list, by {@link messageKey}. */
+  /** The rows checked in the list, by {@link messageKey}. Under a whole-folder
+   * selection these are the ones this page of it shows. */
   @property({ type: Object }) selectedKeys = new Set<string>();
+  /** How many messages the selection holds: the checked rows, or a whole
+   * folder the page is one listing of. What the toolbar is drawn for. */
+  @property({ type: Number }) selectedCount = 0;
   @property({ type: Boolean }) allSelectedStarred = false;
   @property({ type: Boolean }) allSelectedUnread = false;
   @property({ type: Array }) commonTags: string[] = [];
@@ -1031,7 +1035,7 @@ export class MessageReader extends LitElement {
    */
   private syncReadTimers() {
     const delaySec = this.settingsStore?.getState()?.markReadTimeout ?? 0;
-    const isBulk = (this.selectedKeys?.size ?? 0) > 0;
+    const isBulk = this.selectedCount > 0;
     const wanted = new Set<string>();
     // `< 0` is the setting's "never mark as read automatically".
     if (delaySec >= 0 && this.threadItems.length > 1 && !isBulk) {
@@ -2164,7 +2168,7 @@ export class MessageReader extends LitElement {
 
   render() {
 
-    const isBulk = this.selectedKeys && this.selectedKeys.size > 0;
+    const isBulk = this.selectedCount > 0;
     const enableThreading = this.settingsStore?.getState()?.enableThreading ?? true;
 
     if (!this.message && !isBulk) {
@@ -2398,7 +2402,7 @@ export class MessageReader extends LitElement {
             ` : html`
               <alps-icon-btn icon="envelopeSimple" style="pointer-events: none;"></alps-icon-btn>
             `}
-            <span>${this.selectedKeys.size} ${this.i18nStore?.t('messageReader.messagesSelected')}</span>
+            <span>${this.selectedCount} ${this.i18nStore?.t('messageReader.messagesSelected')}</span>
           </div>
         </div>
       ` : (enableThreading && (this.threadItems.length > 1 || this._isThread)) ? html`

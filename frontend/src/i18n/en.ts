@@ -220,6 +220,10 @@ export const en = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Select all messages',
+    allOnPageSelected: 'All {count} messages on this page are selected',
+    selectAllMatching: 'Select all {count} in {folder}',
+    allMatchingSelected: 'All {count} messages in {folder} are selected',
+    clearSelection: 'Clear selection',
     checkNew: 'Check for new messages',
     sortDesc: 'Sort descending by date',
     sortAsc: 'Sort ascending by date',

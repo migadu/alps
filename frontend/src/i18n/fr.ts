@@ -178,6 +178,10 @@ export const fr = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Sélectionner tous les messages',
+    allOnPageSelected: 'Les {count} messages de cette page sont sélectionnés',
+    selectAllMatching: 'Sélectionner les {count} messages de {folder}',
+    allMatchingSelected: 'Les {count} messages de {folder} sont sélectionnés',
+    clearSelection: 'Effacer la sélection',
     checkNew: 'Vérifier les nouveaux messages',
     sortDesc: 'Trier par date décroissante',
     sortAsc: 'Trier par date croissante',

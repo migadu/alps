@@ -351,6 +351,121 @@ func TestHTTP_MoveAndDeleteMessages(t *testing.T) {
 	s.expect(s.do("DELETE", "/mailboxes/INBOX/messages", map[string]any{"uids": []string{}}), http.StatusBadRequest)
 }
 
+// "Select all in this folder" names the folder and the listing's own query,
+// not a page of UIDs: the client holds one page of a listing, and the user
+// asked for the folder. The server searches it and acts on the answer.
+func TestHTTP_ActOnEveryMessageMatching(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
+	// Seeded: "Engines" and "Looms", both in the INBOX.
+	subjectOf := func(folder string) []string {
+		var out []string
+		for _, m := range s.mailbox(folder).Messages {
+			out = append(out, m.Envelope.Subject)
+		}
+		return out
+	}
+	flagged := func(folder string) []string {
+		var out []string
+		for _, m := range s.mailbox(folder).Messages {
+			if contains(m.Flags, `\Flagged`) {
+				out = append(out, m.Envelope.Subject)
+			}
+		}
+		return out
+	}
+	count := func(r response) int {
+		var body struct{ Count int }
+		r.json(t, &body)
+		return body.Count
+	}
+
+	// A query: only what it matches, and the answer says how many.
+	r := s.do("PUT", "/mailboxes/INBOX/messages/flag", map[string]any{
+		"all": true, "query": "Engines", "flags": []string{`\Flagged`}, "action": "add",
+	})
+	s.expect(r, http.StatusOK)
+	if got := count(r); got != 1 {
+		t.Errorf("the flag write reports %d messages, want 1", got)
+	}
+	if got := flagged("INBOX"); len(got) != 1 || got[0] != "Engines" {
+		t.Errorf("flagged in the INBOX: %v", got)
+	}
+
+	// No query is the whole folder, and `except` is the rows the user unchecked.
+	uid := ""
+	for _, m := range s.mailbox("INBOX").Messages {
+		if m.Envelope.Subject == "Looms" {
+			uid = m.UID
+		}
+	}
+	if uid == "" {
+		t.Fatal("the seeded Looms message is not listed")
+	}
+	r = s.do("PUT", "/mailboxes/INBOX/messages/flag", map[string]any{
+		"all": true, "except": []string{uid}, "flags": []string{`\Seen`}, "action": "add",
+	})
+	s.expect(r, http.StatusOK)
+	if got := count(r); got != 1 {
+		t.Errorf("the flag write reports %d messages, want 1 (the other was excepted)", got)
+	}
+	for _, m := range s.mailbox("INBOX").Messages {
+		if seen := contains(m.Flags, `\Seen`); seen == (m.Envelope.Subject == "Looms") {
+			t.Errorf("%q: \\Seen = %v", m.Envelope.Subject, seen)
+		}
+	}
+
+	// A move takes everything the query matches, out of the folder.
+	r = s.do("PUT", "/mailboxes/INBOX/messages/move", map[string]any{"all": true, "query": "Looms", "to": "Archive"})
+	s.expect(r, http.StatusOK)
+	if got := count(r); got != 1 {
+		t.Errorf("the move reports %d messages, want 1", got)
+	}
+	if got := subjectOf("INBOX"); len(got) != 1 || got[0] != "Engines" {
+		t.Errorf("the INBOX holds %v", got)
+	}
+	if got := subjectOf("Archive"); len(got) != 1 || got[0] != "Looms" {
+		t.Errorf("Archive holds %v", got)
+	}
+
+	// And a delete for good takes the rest.
+	r = s.do("DELETE", "/mailboxes/INBOX/messages", map[string]any{"all": true})
+	s.expect(r, http.StatusOK)
+	if got := count(r); got != 1 {
+		t.Errorf("the delete reports %d messages, want 1", got)
+	}
+	if got := s.mailbox("INBOX").Total; got != 0 {
+		t.Errorf("the INBOX holds %d messages after deleting all of them", got)
+	}
+}
+
+// Naming messages twice over is a request the endpoint cannot act on: one of
+// the two is what the user meant, and the server cannot tell which.
+func TestHTTP_UidsAndAllTogetherAreRefused(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
+	uid := s.mailbox("INBOX").Messages[0].UID
+
+	for _, write := range []struct {
+		method, path string
+		body         map[string]any
+	}{
+		{"PUT", "/mailboxes/INBOX/messages/flag", map[string]any{"uids": []string{uid}, "all": true, "flags": []string{`\Seen`}, "action": "add"}},
+		{"PUT", "/mailboxes/INBOX/messages/move", map[string]any{"uids": []string{uid}, "all": true, "to": "Archive"}},
+		{"PUT", "/mailboxes/INBOX/messages/copy", map[string]any{"uids": []string{uid}, "all": true, "to": "Archive"}},
+		{"DELETE", "/mailboxes/INBOX/messages", map[string]any{"uids": []string{uid}, "all": true}},
+	} {
+		r := s.do(write.method, write.path, write.body)
+		s.expect(r, http.StatusBadRequest)
+		if !strings.Contains(string(r.body), "uids_and_all") {
+			t.Errorf("%s %s: body = %s", write.method, write.path, r.body)
+		}
+	}
+	if got := s.mailbox("INBOX").Total; got != 2 {
+		t.Errorf("the INBOX holds %d messages, want the 2 it was seeded with", got)
+	}
+}
+
 // "*" is the view of a search across every folder, not a folder. A write sent
 // to it names its messages by ID alone, and it used to be passed on as if "*"
 // were a folder: here, one that really is called "*".

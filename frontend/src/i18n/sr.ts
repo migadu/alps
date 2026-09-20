@@ -178,6 +178,10 @@ export const sr = {
   messageList: {
     menu: 'Meni',
     selectAll: 'Izaberi sve poruke',
+    allOnPageSelected: 'Svih {count} poruka na ovoj stranici je izabrano',
+    selectAllMatching: 'Izaberi svih {count} u {folder}',
+    allMatchingSelected: 'Svih {count} poruka u {folder} je izabrano',
+    clearSelection: 'Poništi izbor',
     checkNew: 'Proveri nove poruke',
     sortDesc: 'Sortiraj opadajuće po datumu',
     sortAsc: 'Sortiraj rastuće po datumu',
