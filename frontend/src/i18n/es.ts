@@ -201,12 +201,26 @@ export const es = {
     clearSearch: 'Borrar búsqueda',
     searchAllMailboxes: 'Buscar en todo',
     totalMessagesIn: '{count} mensajes en total en {folder}',
+    totalConversationsIn: {
+      one: '{count} conversación en {folder}',
+      other: '{count} conversaciones en total en {folder}'
+    },
     deleteAllNow: 'Eliminar todos ahora',
     emptyMailboxTitle: 'Vaciar {folder}',
     emptyMailboxConfirm: '¿Estás seguro de que quieres eliminar permanentemente todos los {count} mensajes en {folder}? Esta acción no se puede deshacer.',
+    emptyMailboxConfirmConversations: {
+      one: '¿Estás seguro de que quieres eliminar permanentemente la única conversación en {folder} y todos sus mensajes? Esta acción no se puede deshacer.',
+      other: '¿Estás seguro de que quieres eliminar permanentemente las {count} conversaciones en {folder} y todos sus mensajes? Esta acción no se puede deshacer.'
+    },
+    emptyMailboxSelectionNote: {
+      one: 'Esto incluye el mensaje que has seleccionado.',
+      other: 'Esto incluye los {count} mensajes que has seleccionado.'
+    },
     emptyingMailbox: 'Vaciando buzón...',
     mailboxEmptied: 'Buzón vaciado correctamente.',
-    emptyMailboxFailed: 'No se pudo vaciar el buzón. Asegúrate de que sea Papelera o Correo no deseado.'
+    emptyMailboxFailed: 'No se pudo vaciar el buzón. Asegúrate de que sea Papelera o Correo no deseado.',
+    mailboxAlreadyEmpty: '{folder} ya estaba vacía: no se eliminó nada.',
+    emptyMailboxSlow: 'Todavía se está vaciando {folder}. El servidor sigue trabajando: vuelve a comprobarlo en un momento.'
   },
   composer: {
     discardFailed: 'No se pudo eliminar el borrador del servidor y sigue en Borradores.',
@@ -395,7 +409,10 @@ export const es = {
   pagination: {
     previousPage: 'Página anterior',
     nextPage: 'Página siguiente',
-    zeroMessages: '0 mensajes'
+    zeroMessages: '0 mensajes',
+    totalCount: '{total} en total',
+    searchResults: '{total} resultados',
+    rangeOfTotal: '{start}–{end} de {total}'
   },
   toast: {
     messagePermanentlyDeleted: 'Mensaje eliminado de forma permanente',

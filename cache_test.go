@@ -5,18 +5,43 @@ import (
 	"time"
 )
 
+// registered reports whether the manager is holding this cache, without keeping
+// its lock across an assertion.
+//
+// t.Fatalf ends the goroutine through runtime.Goexit. Nothing unwinds — only
+// deferred calls run — so a lock taken inline and released inline is never
+// released at all. These assertions used to sit INSIDE globalCleanupManager's
+// read lock, and the first one to fail left it held: the next NewCache blocked
+// in register() forever, and the package's test binary ran to its ten-minute
+// timeout and panicked naming TestCacheConcurrency, a test that was only
+// waiting its turn. One wrong count, reported as a deadlock somewhere else.
+func registered(c *Cache) bool {
+	globalCleanupManager.mu.RLock()
+	defer globalCleanupManager.mu.RUnlock()
+	for _, held := range globalCleanupManager.caches {
+		if held == c {
+			return true
+		}
+	}
+	return false
+}
+
 func TestCacheCleanupManager(t *testing.T) {
 	// Create multiple caches
 	cache1 := NewCache(100 * time.Millisecond)
 	cache2 := NewCache(100 * time.Millisecond)
 	cache3 := NewCache(100 * time.Millisecond)
 
-	// Verify all caches are registered
-	globalCleanupManager.mu.RLock()
-	if len(globalCleanupManager.caches) != 3 {
-		t.Fatalf("Expected 3 caches registered, got %d", len(globalCleanupManager.caches))
+	// Named, not counted. The manager is process-global and this is not the only
+	// test in the package that makes caches — a session registers one of its own
+	// and closes it on teardown — so its SIZE here is whatever else has run and
+	// whatever else is still finishing. Whether it is holding these three is a
+	// question only about these three.
+	for i, c := range []*Cache{cache1, cache2, cache3} {
+		if !registered(c) {
+			t.Fatalf("Expected cache%d to be registered", i+1)
+		}
 	}
-	globalCleanupManager.mu.RUnlock()
 
 	// Add entries to each cache
 	cache1.Set("key1", "value1")
@@ -37,13 +62,9 @@ func TestCacheCleanupManager(t *testing.T) {
 	// Wait for entries to expire and cleanup to run
 	time.Sleep(150 * time.Millisecond)
 
-	// Trigger cleanup manually to ensure it runs
-	globalCleanupManager.mu.RLock()
-	caches := make([]*Cache, len(globalCleanupManager.caches))
-	copy(caches, globalCleanupManager.caches)
-	globalCleanupManager.mu.RUnlock()
-
-	for _, c := range caches {
+	// Trigger cleanup manually to ensure it runs — on these three, rather than on
+	// every cache the process happens to hold.
+	for _, c := range []*Cache{cache1, cache2, cache3} {
 		c.cleanupExpired()
 	}
 
@@ -61,22 +82,23 @@ func TestCacheCleanupManager(t *testing.T) {
 	// Close one cache
 	cache1.Close()
 
-	// Verify it's unregistered
-	globalCleanupManager.mu.RLock()
-	if len(globalCleanupManager.caches) != 2 {
-		t.Fatalf("Expected 2 caches after Close, got %d", len(globalCleanupManager.caches))
+	// Verify it's unregistered, and that closing it took nothing else with it
+	if registered(cache1) {
+		t.Fatal("Expected cache1 to be unregistered after Close")
 	}
-	globalCleanupManager.mu.RUnlock()
+	if !registered(cache2) || !registered(cache3) {
+		t.Fatal("Expected cache2 and cache3 to still be registered")
+	}
 
 	// Clean up remaining caches
 	cache2.Close()
 	cache3.Close()
 
-	globalCleanupManager.mu.RLock()
-	if len(globalCleanupManager.caches) != 0 {
-		t.Fatalf("Expected 0 caches after all Close, got %d", len(globalCleanupManager.caches))
+	for i, c := range []*Cache{cache2, cache3} {
+		if registered(c) {
+			t.Fatalf("Expected cache%d to be unregistered after Close", i+2)
+		}
 	}
-	globalCleanupManager.mu.RUnlock()
 }
 
 func TestCacheConcurrency(t *testing.T) {

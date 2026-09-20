@@ -160,16 +160,24 @@ func (p *Provider) DeleteMailbox(name string) error {
 	return os.RemoveAll(string(dir))
 }
 
-func (p *Provider) EmptyMailbox(name string) error {
+// EmptyMailbox removes every message in a mailbox and returns how many it
+// removed, so a caller can tell an emptied folder from one that was already
+// empty. A removal that fails is not counted and is reported: the folder is
+// then still holding mail the user was told had gone.
+func (p *Provider) EmptyMailbox(name string) (int, error) {
 	dir := p.getDir(name)
 	messages, err := getAllMessages(dir)
 	if err != nil {
-		return err
+		return 0, err
 	}
+	removed := 0
 	for _, msg := range messages {
-		msg.Remove()
+		if err := msg.Remove(); err != nil {
+			return removed, err
+		}
+		removed++
 	}
-	return nil
+	return removed, nil
 }
 
 func (p *Provider) SubscribeMailbox(name string) error {

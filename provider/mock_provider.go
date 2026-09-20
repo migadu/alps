@@ -65,9 +65,9 @@ func (m *MockProvider) DeleteMailbox(name string) error {
 	return args.Error(0)
 }
 
-func (m *MockProvider) EmptyMailbox(name string) error {
+func (m *MockProvider) EmptyMailbox(name string) (int, error) {
 	args := m.Called(name)
-	return args.Error(0)
+	return args.Int(0), args.Error(1)
 }
 
 func (m *MockProvider) SubscribeMailbox(name string) error {

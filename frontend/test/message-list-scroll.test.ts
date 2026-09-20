@@ -30,14 +30,19 @@ function scrollable(el: HTMLElement, at: number) {
   return { get top() { return top; } };
 }
 
-/** What the page does for the button: loads, then answers with a listing. */
+/**
+ * What the page does for the button: syncs, then answers with a listing.
+ *
+ * `syncing`, not `loading`: the check runs in the background, so the rows keep
+ * their opacity and only the chip turns (see messageSync.check).
+ */
 async function checkForNew(el: HTMLElement, answer: unknown[] | null) {
   const refreshed = vi.fn();
   el.addEventListener('refresh', refreshed, { once: true });
   shadow(el, '.list-header alps-icon-btn[icon="arrowsClockwise"]').click();
   expect(refreshed).toHaveBeenCalledOnce();
-  await update(el, { loading: true });
-  await update(el, answer ? { messages: answer, loading: false } : { loading: false });
+  await update(el, { syncing: true });
+  await update(el, answer ? { messages: answer, syncing: false } : { syncing: false });
   await pastScrollDelay();
 }
 

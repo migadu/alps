@@ -19,6 +19,9 @@ import './ui-confirm';
 import './alps-loader';
 import { repeat } from 'lit/directives/repeat.js';
 
+/** The filter bar's own toggles, which narrow a FOLDER rather than search it. */
+const FILTER_TOGGLES = new Set(['is:starred', 'is:unread']);
+
 @customElement('alps-message-list')
 export class MessageList extends LitElement {
   @consume({ context: settingsContext })
@@ -40,6 +43,9 @@ export class MessageList extends LitElement {
   @property({ type: Boolean }) isMobile = false;
   @property({ type: Boolean }) sidebarCollapsed = false;
   @property({ type: Number }) currentPage = 0;
+  /** The page the rows came from, which is what the pager counts from —
+   * `currentPage` has already moved to the one being fetched. */
+  @property({ type: Number }) listedPage = 0;
   @property({ type: Number }) totalMessages = 0;
   @property({ type: Number }) messagesPerPage = 50;
   @property({ type: String }) filterQuery = '';
@@ -70,6 +76,16 @@ export class MessageList extends LitElement {
   @state() private isAtBottom = false;
   @state() private focusedIndex = -1;
   @state() private showEmptyConfirm = false;
+  /**
+   * An empty is in flight.
+   *
+   * Emptying a folder can take minutes (see `mailboxOperations.emptyMailbox`),
+   * and for all that time the only sign of it was an info toast that scrolls
+   * away. The control that started it says so instead — it spins, and it
+   * refuses a second press, which is the press that sends a second full
+   * SELECT/STORE/EXPUNGE over a folder already being emptied.
+   */
+  @state() private emptying = false;
   @state() private expandedThreads = new Set<string>();
   // Verdicts for listed messages and the earlier messages of expanded threads,
   // keyed by mailbox and UID, as answered under that mailbox's scope. Listings
@@ -407,11 +423,6 @@ export class MessageList extends LitElement {
     .empty-state.load-error {
       flex-direction: column;
       gap: 12px;
-    }
-
-    alps-pagination {
-      flex: 1;
-      min-width: 0;
     }
 
     .loading-state {
@@ -955,9 +966,11 @@ export class MessageList extends LitElement {
       this._uidsBeforeCheck = null;
     }
 
-    // The check's answer. Loading ends whether it succeeded or not, and on
-    // success the new listing arrives in the same update.
-    if (this._uidsBeforeCheck && changedProperties.has('loading') && !this.loading) {
+    // The check's answer. The sync ends whether it succeeded or not, and on
+    // success the new listing arrives in the same update. `syncing`, not
+    // `loading`: a check over a list that is already current runs in the
+    // background, so the rows never dim and `loading` never moves.
+    if (this._uidsBeforeCheck && changedProperties.has('syncing') && !this.syncing) {
       const before = this._uidsBeforeCheck;
       this._uidsBeforeCheck = null;
       if (changedProperties.has('messages')) {
@@ -1131,27 +1144,101 @@ export class MessageList extends LitElement {
     }
   }
 
-  private async handleEmptyMailbox() {
-    this.showEmptyConfirm = false;
+  /**
+   * What the confirmation asks, which is about the WHOLE folder.
+   *
+   * This control used to be disabled whenever anything was checked, on the
+   * reasoning that "delete the three I picked" and "delete all four hundred"
+   * must not be confused. What it produced was a dead button with no
+   * explanation: the way to reach it was to work out that the checkboxes were
+   * the obstacle and undo them one by one, and a disabled alps-button swallows
+   * the press that would have asked why.
+   *
+   * The ambiguity is real, so it is answered where the decision is actually
+   * taken. The button stays live; the dialog names the folder, the count it
+   * would discard, and — when something is checked — says that the checked
+   * messages are part of it and not the whole of it. A user who meant to
+   * delete only their selection reads that and cancels.
+   */
+  /**
+   * Whether the listing on screen is counted in CONVERSATIONS.
+   *
+   * A threaded listing is paged and counted in thread groups, so the folder's
+   * total is a number of conversations and calling it a number of messages
+   * understates a folder by however much its mail is grouped.
+   *
+   * Read off the rows rather than off the threading SETTING: the server drops
+   * threading by itself on a mailbox too large to thread, and then the setting
+   * says one thing while the listing is the other. `ThreadCount` is omitted
+   * from a row the server did not thread, and is at least 1 on one it did.
+   */
+  private get countsConversations(): boolean {
+    return this.messages.some((msg: any) => (msg?.ThreadCount ?? 0) > 0);
+  }
+
+  private get emptyConfirmMessage(): string {
+    const folder = this.currentMailbox;
+    const count = this.totalMessages;
+    const key = this.countsConversations
+      ? 'messageList.emptyMailboxConfirmConversations'
+      : 'messageList.emptyMailboxConfirm';
+    const message = this.i18nStore?.t(key, { folder, count })
+      || (this.countsConversations
+        ? `Are you sure you want to permanently delete all ${count} conversations in ${folder}, and every message in them? This action cannot be undone.`
+        : `Are you sure you want to permanently delete all ${count} messages in ${folder}? This action cannot be undone.`);
+
+    const selected = this.selectedMessages.size;
+    if (selected === 0) return message;
+
+    const note = this.i18nStore?.t('messageList.emptyMailboxSelectionNote', { count: selected })
+      || `This includes the ${selected} messages you have checked.`;
+    return `${message} ${note}`;
+  }
+
+  private toast(type: 'info' | 'success' | 'error', message: string) {
     this.dispatchEvent(new CustomEvent('toast', {
-      detail: { type: 'info', message: this.i18nStore?.t('messageList.emptyingMailbox') || 'Emptying mailbox...' },
+      detail: { type, message },
       bubbles: true,
       composed: true
     }));
+  }
 
-    const success = await mailboxOperations.emptyMailbox(this.currentMailbox);
-    if (success) {
-      this.dispatchEvent(new CustomEvent('toast', {
-        detail: { type: 'success', message: this.i18nStore?.t('messageList.mailboxEmptied') || 'Mailbox emptied successfully.' },
-        bubbles: true,
-        composed: true
-      }));
-    } else {
-      this.dispatchEvent(new CustomEvent('toast', {
-        detail: { type: 'error', message: this.i18nStore?.t('messageList.emptyMailboxFailed') || 'Failed to empty mailbox. Make sure it is Trash or Junk.' },
-        bubbles: true,
-        composed: true
-      }));
+  /**
+   * Empties the folder on screen, and reports what actually happened to it.
+   *
+   * Four outcomes, not two. A folder the server found EMPTY is not an emptying
+   * — it is this request having nothing to do — and saying "emptied
+   * successfully" over a list that still shows mail is how a stale count used
+   * to pass for a delete. A TIMEOUT is not a failure either: the expunge
+   * carries on upstream, so the message says to look again rather than to try
+   * again, and the service has already re-read the folder.
+   */
+  private async handleEmptyMailbox() {
+    if (this.emptying) return;
+    this.showEmptyConfirm = false;
+    this.emptying = true;
+    const folder = this.currentMailbox;
+    this.toast('info', this.i18nStore?.t('messageList.emptyingMailbox') || 'Emptying mailbox...');
+
+    try {
+      const outcome = await mailboxOperations.emptyMailbox(folder);
+
+      if (outcome.ok && outcome.discarded === 0) {
+        this.toast('info', this.i18nStore?.t('messageList.mailboxAlreadyEmpty', { folder })
+          || `${folder} was already empty — nothing was deleted.`);
+      } else if (outcome.ok) {
+        this.toast('success', this.i18nStore?.t('messageList.mailboxEmptied') || 'Mailbox emptied successfully.');
+      } else if (outcome.reason === 'timeout') {
+        this.toast('error', this.i18nStore?.t('messageList.emptyMailboxSlow', { folder })
+          || `Still emptying ${folder}. The server is working on it — check the folder again in a moment.`);
+      } else if (outcome.reason !== 'auth') {
+        // `auth` is silent: the session has ended, the shell says so, and a
+        // second notice beside it sends the user looking for a fault they
+        // do not have.
+        this.toast('error', this.i18nStore?.t('messageList.emptyMailboxFailed') || 'Failed to empty mailbox. Make sure it is Trash or Junk.');
+      }
+    } finally {
+      this.emptying = false;
     }
   }
 
@@ -1429,6 +1516,12 @@ export class MessageList extends LitElement {
     }));
   }
 
+  /** A query the user typed, as opposed to one of the toolbar's own toggles.
+   * Only the former makes the count a claim about a search. */
+  private get isTextSearch(): boolean {
+    return this.filterQuery !== '' && !FILTER_TOGGLES.has(this.filterQuery);
+  }
+
   render() {
     return html`
       ${!this.isMobile ? html`
@@ -1467,9 +1560,11 @@ export class MessageList extends LitElement {
             </div>
           ` : ''}
           <alps-pagination 
-            .currentPage=${this.currentPage} 
+            .currentPage=${this.listedPage} 
             .totalItems=${this.totalMessages} 
-            .itemsPerPage=${this.messagesPerPage}>
+            .itemsPerPage=${this.messagesPerPage}
+            .currentCount=${this.messages.length}
+            .isSearch=${this.isTextSearch}>
           </alps-pagination>
         </alps-toolbar>
       ` : ''}
@@ -1504,8 +1599,13 @@ export class MessageList extends LitElement {
         ` : ''}
         ${!this.filterQuery && this.isDiscardableFolder && this.totalMessages > 0 ? html`
           <alps-banner variant="warning">
-            <span>${this.i18nStore?.t('messageList.totalMessagesIn', { count: this.totalMessages, folder: this.currentMailbox }) || `${this.totalMessages} total messages in ${this.currentMailbox}`}</span>
-            <alps-button slot="action" variant="normal" ?disabled=${this.selectedMessages.size > 0} @click=${() => this.showEmptyConfirm = true}>
+            <span>${this.i18nStore?.t(
+              this.countsConversations ? 'messageList.totalConversationsIn' : 'messageList.totalMessagesIn',
+              { count: this.totalMessages, folder: this.currentMailbox },
+            ) || `${this.totalMessages} total ${this.countsConversations ? 'conversations' : 'messages'} in ${this.currentMailbox}`}</span>
+            <alps-button slot="action" variant="normal"
+              ?spinning=${this.emptying}
+              @click=${() => this.showEmptyConfirm = true}>
               ${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
             </alps-button>
           </alps-banner>
@@ -1563,9 +1663,11 @@ export class MessageList extends LitElement {
             </div>
 
             <alps-pagination 
-              .currentPage=${this.currentPage} 
+              .currentPage=${this.listedPage} 
               .totalItems=${this.totalMessages} 
-              .itemsPerPage=${this.messagesPerPage}>
+              .itemsPerPage=${this.messagesPerPage}
+              .currentCount=${this.messages.length}
+              .isSearch=${this.isTextSearch}>
             </alps-pagination>
           `}
         </div>
@@ -1573,7 +1675,7 @@ export class MessageList extends LitElement {
       ${this.showEmptyConfirm ? html`
         <ui-confirm
           title=${this.i18nStore?.t('messageList.emptyMailboxTitle', { folder: this.currentMailbox }) || `Empty ${this.currentMailbox}`}
-          message=${this.i18nStore?.t('messageList.emptyMailboxConfirm', { folder: this.currentMailbox, count: this.totalMessages }) || `Are you sure you want to permanently delete all ${this.totalMessages} messages in ${this.currentMailbox}? This action cannot be undone.`}
+          message=${this.emptyConfirmMessage}
           confirmText=${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
           .isDanger=${true}
           @confirm=${this.handleEmptyMailbox}

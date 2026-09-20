@@ -465,6 +465,13 @@ export class MessageReader extends LitElement {
     // A timer that outlived the element would mark mail read for a reader
     // nobody is looking at.
     this.readDueAt.clear();
+    // Nor does a reader that has left the page go on reading bodies nobody
+    // asked for. The queue is drained one at a time (see queueItemBody), so
+    // what is left of it would keep taking the session's one connection for a
+    // conversation that is no longer on screen — the same competition the
+    // drop-on-open exists to prevent, for an element that cannot even show
+    // what it reads.
+    this.prefetchQueue = [];
     if (this.readTimer) clearTimeout(this.readTimer);
     this.readTimer = null;
     if (this.scrollTimer) clearTimeout(this.scrollTimer);
@@ -1142,7 +1149,12 @@ export class MessageReader extends LitElement {
         // before the patch below, which changes the open message in place: the
         // page shares that object with its row, and a row that already carries
         // the flag is one the page does not repaint.
-        if (listed.has(key)) {
+        //
+        // And only while this reader is still on the page. The write below is
+        // awaited, so its revert can land after the element has gone, and an
+        // event from an element with no ancestors bubbles to nobody: the paint
+        // it would undo belongs to a list that stopped listening.
+        if (listed.has(key) && this.isConnected) {
           this.dispatchEvent(new CustomEvent('message-flags-changed', {
             detail: { uid, mailbox, flag: FLAG_SEEN, action },
             bubbles: true,
@@ -1190,7 +1202,9 @@ export class MessageReader extends LitElement {
       changed = true;
       if (!item.content && !item.loading) {
         item.loading = true;
-        void this.fetchItemBody(item);
+        // Queued, not fired: ten of these at once put the next thing the user
+        // does behind ten answers (see queueItemBody).
+        this.queueItemBody(item);
       }
     }
     if (changed) this.threadItems = [...this.threadItems];
@@ -1357,20 +1371,92 @@ export class MessageReader extends LitElement {
     }
 
     this.resolveThread(msg);
-    if (!silent) this.loadConversation(msg);
+    // Whatever the previous conversation had left to read is not this one's.
+    this.prefetchQueue = [];
 
+    // The BODY first, and the conversation only once it has come back.
+    //
+    // Both were asked for here at once, the conversation first, and the server
+    // answers a session's requests ONE AT A TIME: it holds a single IMAP
+    // connection under a lock (see DoMailWithContext). So the message the user
+    // had just opened waited on the whole conversation being read — a THREAD
+    // over the mailbox, a search through Sent, an envelope for every member —
+    // before its own text was fetched. The cards were on screen throughout,
+    // drawn from the list's row; what the reader was waiting for was the one
+    // message they clicked.
+    //
+    // Issuing it first is not enough — measured, it still came back second: the
+    // two race for that lock, and the body's route does more before it asks for
+    // one. So the conversation waits for the body, which costs it one round trip
+    // and costs the reader nothing. It only ever ADDS to what the row already
+    // showed (replies filed in Sent, members on other pages); nothing on screen
+    // is waiting for it.
     const primaryItem = this.threadItems.find(item => this.itemKey(item) === this.keyOf(msg)) || this.threadItems[0];
     if (primaryItem) {
       primaryItem.loading = !silent;
       primaryItem.expanded = true;
       this._deferPropertySync = false;
 
-      this.fetchItemBody(primaryItem).then(() => {
+      const read = this.fetchItemBody(primaryItem);
+      read.then(() => {
+        // A reader that has left the page paints nobody. The answer can land
+        // after the element is gone — a body still in flight when the user
+        // moved on, or one released as the page came down — and repainting for
+        // it draws this conversation's cards into a document that may not be
+        // there any more.
+        if (!this.isConnected) return;
         if (!this.message || this.keyOf(this.message) !== this.keyOf(msg)) {
           return;
         }
         this.requestUpdate();
       });
+      // Whether it arrived or failed: a body that never comes must not cost the
+      // reader its conversation.
+      if (!silent) read.catch(() => { }).then(() => this.loadConversation(msg));
+      return;
+    }
+
+    if (!silent) this.loadConversation(msg);
+  }
+
+  /**
+   * Reads the bodies this reader asked for on its own — the unread members a
+   * conversation opens expanded — one at a time.
+   *
+   * Ten of them went out at once, and the server answers one at a time, so the
+   * next thing the user did (opening another message, expanding a card) queued
+   * behind all ten. One in flight leaves that reader waiting for one body, and
+   * the queue itself is dropped the moment another message is opened, so a
+   * conversation left behind stops competing with the one on screen.
+   *
+   * Only for bodies nobody asked for. A card the user expands is fetched
+   * straight away, as it always was.
+   */
+  private prefetchQueue: ThreadMessageItem[] = [];
+  private prefetching = false;
+
+  private queueItemBody(item: ThreadMessageItem) {
+    // A conversation whose answer lands after this reader has left the page
+    // queues into nothing: `disconnectedCallback` empties the queue, and
+    // without this a read in flight then re-filled it behind the clear.
+    if (!this.isConnected) return;
+    this.prefetchQueue.push(item);
+    void this.drainPrefetch();
+  }
+
+  private async drainPrefetch() {
+    if (this.prefetching) return;
+    this.prefetching = true;
+    try {
+      while (this.prefetchQueue.length > 0) {
+        const item = this.prefetchQueue.shift()!;
+        // It may have been fetched since — by the user expanding it, or by a
+        // re-resolve carrying the content over.
+        if (item.content) continue;
+        await this.fetchItemBody(item);
+      }
+    } finally {
+      this.prefetching = false;
     }
   }
 
@@ -1389,6 +1475,9 @@ export class MessageReader extends LitElement {
       if (res.ok) {
         const data = await res.json();
         const messages = Array.isArray(data?.Messages) ? data.Messages : [];
+        // Same reason as the body above: nothing on a page that has gone needs
+        // its conversation resolved, and resolving it repaints.
+        if (!this.isConnected) return;
         if (!this.message || this.keyOf(this.message) !== key) return;
         this._conversation = { key, messages };
         if (messages.length > 1) {
@@ -1406,6 +1495,9 @@ export class MessageReader extends LitElement {
 
   private updateThreadItemReference(item: ThreadMessageItem) {
     if (!item.message) return;
+    // The card list is what Lit renders from, so replacing its reference IS a
+    // repaint. A reader off the page has no screen for it.
+    if (!this.isConnected) return;
     const idx = this.threadItems.findIndex(i => this.itemKey(i) === this.itemKey(item));
     if (idx !== -1) {
       // Create a shallow copy to change the reference, reactively updating Lit child components
@@ -1471,7 +1563,7 @@ export class MessageReader extends LitElement {
           }
         }
         item.loading = false;
-        if (!this._deferPropertySync && this.isOpenItem(item)) {
+        if (this.isConnected && !this._deferPropertySync && this.isOpenItem(item)) {
           this.content = item.content;
           this.mimeType = item.mimeType;
           this.rawMessageHtml = item.rawMessageHtml;
@@ -1572,7 +1664,7 @@ export class MessageReader extends LitElement {
       item.content = 'Error loading message.';
     } finally {
       item.loading = false;
-      if (!this._deferPropertySync && this.isOpenItem(item)) {
+      if (this.isConnected && !this._deferPropertySync && this.isOpenItem(item)) {
         this.content = item.content;
         this.mimeType = item.mimeType;
         this.rawMessageHtml = item.rawMessageHtml;
@@ -2082,7 +2174,16 @@ export class MessageReader extends LitElement {
     if (!this.message && !isBulk) {
       return html`
         <div class="empty-reader-state">
-          ${this.i18nStore?.t('messageReader.selectMessage')}
+          ${this.bulkProcessing ? html`
+            <!--
+              A bulk write is still running, and the rows it is about have
+              already left the list — so the selection is empty and this pane
+              would otherwise flip back to "select a message" while the server
+              is still working. The loader is the one place left that can say
+              so, and it needs no words to.
+            -->
+            <div class="bulk-spinner-container"><alps-loader></alps-loader></div>
+          ` : this.i18nStore?.t('messageReader.selectMessage')}
         </div>
       `;
     }
