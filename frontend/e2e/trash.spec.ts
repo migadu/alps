@@ -58,7 +58,7 @@ function readerAction(page: Page, title: string) {
 
 /** The discard banner at the top of Trash and Junk. */
 function discardBanner(page: Page) {
-  return page.locator("alps-message-list alps-banner").filter({ hasText: "total messages in" });
+  return page.locator("alps-message-list alps-banner").filter({ hasText: /in (Trash|Junk)/ });
 }
 
 /**
@@ -200,7 +200,7 @@ test("the Trash's empty control is labelled, not keyed", async ({ page }) => {
   // Words, and the RIGHT words: the banner names the folder it would empty and
   // how much is in it, because emptying is decided on exactly that.
   const banner = discardBanner(page);
-  await expect(banner).toContainText(/\d+ total messages in Trash/);
+  await expect(banner).toContainText(/\d+ (total )?(messages|conversations?) in Trash/);
   await expect(banner.getByRole("button", { name: "Delete All Now" })).toBeVisible();
   // An unresolved key renders as the key.
   await expect(banner).not.toContainText("messageList.");
