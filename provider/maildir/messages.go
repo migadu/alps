@@ -235,6 +235,71 @@ func (p *Provider) ListMessages(mailbox string, sortOrder string, page, pageSize
 	return messages, total, nil
 }
 
+// messageContains reports whether the stored message holds the query, matched
+// as a case-insensitive substring of the whole file, headers and body alike.
+// Read in chunks, keeping the tail of each so a match across a chunk boundary
+// is still found, and stopped at the first one.
+func messageContains(m *maildir.Message, query string) bool {
+	wanted := []byte(strings.ToLower(query))
+	if len(wanted) == 0 {
+		return true
+	}
+
+	f, err := os.Open(m.Filename())
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 32*1024)
+	var overlap []byte
+	for {
+		n, err := f.Read(buf)
+		if n > 0 {
+			chunk := bytes.ToLower(append(overlap, buf[:n]...))
+			if bytes.Contains(chunk, wanted) {
+				return true
+			}
+			if len(chunk) > len(wanted) {
+				overlap = chunk[len(chunk)-len(wanted):]
+			} else {
+				overlap = chunk
+			}
+		}
+		if err != nil {
+			return false
+		}
+	}
+}
+
+// SearchMessageIDs answers every message of the mailbox the query matches,
+// newest first, and nothing about them: what an action on a whole folder is
+// applied to. An empty query is the whole mailbox.
+func (p *Provider) SearchMessageIDs(mailbox, query string) ([]provider.MessageID, error) {
+	msgs, err := getAllMessages(p.getDir(mailbox))
+	if err != nil {
+		return nil, err
+	}
+
+	matched := msgs
+	if query != "" {
+		matched = nil
+		for _, m := range msgs {
+			if messageContains(m, query) {
+				matched = append(matched, m)
+			}
+		}
+	}
+
+	sort.Slice(matched, func(i, j int) bool { return matched[i].Key() > matched[j].Key() })
+
+	ids := make([]provider.MessageID, 0, len(matched))
+	for _, m := range matched {
+		ids = append(ids, MaildirMessageID(m.Key()))
+	}
+	return ids, nil
+}
+
 func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
 	dir := p.getDir(mailbox)
 	msgs, err := getAllMessages(dir)
@@ -242,42 +307,11 @@ func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page,
 		return nil, 0, err
 	}
 
-	queryLower := strings.ToLower(query)
 	var matchedMsgs []*maildir.Message
-
-	queryLowerBytes := []byte(queryLower)
-	queryLen := len(queryLowerBytes)
-
 	for _, m := range msgs {
-		path := m.Filename()
-		f, err := os.Open(path)
-		if err != nil {
-			continue
+		if messageContains(m, query) {
+			matchedMsgs = append(matchedMsgs, m)
 		}
-
-		buf := make([]byte, 32*1024)
-		var overlap []byte
-
-		for {
-			n, err := f.Read(buf)
-			if n > 0 {
-				chunk := bytes.ToLower(append(overlap, buf[:n]...))
-				if bytes.Contains(chunk, queryLowerBytes) {
-					matchedMsgs = append(matchedMsgs, m)
-					break // Stop scanning the message on first occurence
-				}
-
-				if len(chunk) > queryLen {
-					overlap = chunk[len(chunk)-queryLen:]
-				} else {
-					overlap = chunk
-				}
-			}
-			if err != nil {
-				break
-			}
-		}
-		f.Close()
 	}
 
 	sort.Slice(matchedMsgs, func(i, j int) bool {

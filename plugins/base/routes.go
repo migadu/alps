@@ -26,6 +26,7 @@ import (
 
 func registerRoutes(p *alps.GoPlugin) {
 	// Mailboxes
+	p.GET("/mailboxes", handleListMailboxes)
 	p.GET("/mailboxes/{mbox}", handleGetMailbox)
 	p.GET("/mailboxes/{mbox}/status", handleMailboxStatus)
 	p.POST("/mailboxes", handleNewMailbox)
@@ -136,12 +137,23 @@ func invalidateMailboxCache(ctx *alps.Context, mailboxNames ...string) {
 		// Clear mailbox status
 		cache.Delete("status:" + name)
 
-		// Clear all message pages for this mailbox
-		cache.DeletePrefix("messages:" + name + ":")
+		dropMailboxListings(cache, name)
 
 		// Clear individual messages for this mailbox
 		cache.DeletePrefix("message:" + name + ":")
 	}
+}
+
+// dropMailboxListings forgets what this session was told a mailbox holds: its
+// pages, and the conversations assembled from them.
+//
+// The two go together. A cached conversation is named by the same membership
+// the pages carry (see listedThreadUIDs), so a page kept past a change it does
+// not show is one thing, and a conversation kept past it would be that same
+// staleness served to the reader under its own name.
+func dropMailboxListings(cache *alps.Cache, mailbox string) {
+	cache.DeletePrefix("messages:" + mailbox + ":")
+	cache.DeletePrefix("thread:" + mailbox + ":")
 }
 
 // CachedMessages holds cached message list data
@@ -161,6 +173,59 @@ type CachedMessagePart struct {
 // updateCachedMessageFlags updates flags for specific messages in cached message lists
 func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.MessageID, addFlags []imap.Flag, removeFlags []imap.Flag) {
 	applyFlagsToCache(ctx.Session.Cache(), ctx.Server.Logger().Debugf, mailbox, uid, addFlags, removeFlags)
+}
+
+// patchCachedConversations brings the conversations this session has assembled
+// in line with a flag change, so a star or a read does not have to throw them
+// away (see handleGetThread).
+//
+// Dropping them would undo the caching exactly where it pays: a reader marks a
+// conversation read AS it opens it, and the next thing it asks for is the next
+// member of that same conversation. A conversation that does not hold the
+// message is left alone — it is not affected by the change — but one whose
+// members cannot be told apart from it is dropped rather than guessed at.
+func patchCachedConversations(cache *alps.Cache, debugf func(string, ...interface{}), mailbox, uidStr string, addFlags, removeFlags []imap.Flag) {
+	keys := cache.GetKeysWithPrefix("thread:" + mailbox + ":")
+	if len(keys) == 0 {
+		return
+	}
+
+	for _, key := range keys {
+		cached, ok := cache.Get(key)
+		if !ok {
+			continue
+		}
+		msgs, ok := cached.([]IMAPMessage)
+		if !ok {
+			cache.Delete(key)
+			continue
+		}
+		for i := range msgs {
+			// By the id the reader names messages with, which is the provider's
+			// own: a UID under IMAP, a file name under maildir.
+			if msgs[i].AlpsUID != uidStr {
+				continue
+			}
+			flags := msgs[i].Flags
+			for _, flag := range addFlags {
+				if !slices.Contains(flags, flag) {
+					flags = append(flags, flag)
+				}
+			}
+			for _, flag := range removeFlags {
+				for j := len(flags) - 1; j >= 0; j-- {
+					if flags[j] == flag {
+						flags = append(flags[:j], flags[j+1:]...)
+						break
+					}
+				}
+			}
+			msgs[i].Flags = flags
+			cache.Set(key, msgs)
+			debugf("Updated flags for message %s in conversation %s", uidStr, key)
+			break
+		}
+	}
 }
 
 // applyFlagsToCache brings the session's cached copies of one message, and
@@ -248,6 +313,8 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 		}
 	}
 
+	patchCachedConversations(cache, debugf, mailbox, uidStr, addFlags, removeFlags)
+
 	if !messageUpdated {
 		debugf("Message %s not found in cache, pages may need refresh", uidStr)
 	}
@@ -291,6 +358,31 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 	}
 }
 
+// cachedMailboxList returns the session's folder list, going to IMAP only when
+// the cache has none. The key is the one every mailbox verb already drops, so
+// a list read straight after a create or a rename is the new tree.
+func cachedMailboxList(ctx *alps.Context) ([]MailboxInfo, error) {
+	const cacheKey = "mailboxes"
+	if cached, ok := ctx.Session.Cache().Get(cacheKey); ok {
+		return cached.([]MailboxInfo), nil
+	}
+
+	var mailboxes []MailboxInfo
+	err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		var err error
+		mailboxes, err = listMailboxesWithProvider(p)
+		if err != nil {
+			return err
+		}
+		ctx.Session.Cache().Set(cacheKey, mailboxes)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mailboxes, nil
+}
+
 func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 
 	mboxName, err := url.PathUnescape(ctx.Param("mbox"))
@@ -305,23 +397,9 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 			},
 		}
 
-		var mailboxes []MailboxInfo
-		cacheKey := "mailboxes"
-		if cached, ok := ctx.Session.Cache().Get(cacheKey); ok {
-			mailboxes = cached.([]MailboxInfo)
-		} else {
-			err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-				var err error
-				mailboxes, err = listMailboxesWithProvider(p)
-				if err != nil {
-					return err
-				}
-				ctx.Session.Cache().Set(cacheKey, mailboxes)
-				return nil
-			})
-			if err != nil {
-				return nil, err
-			}
+		mailboxes, err := cachedMailboxList(ctx)
+		if err != nil {
+			return nil, err
 		}
 
 		return &BaseMailboxData{
@@ -561,7 +639,7 @@ func handleMailboxStatus(ctx *alps.Context) error {
 	// If counts changed, invalidate message-page caches and mailbox list
 	// so the next full-page fetch will return fresh data.
 	if newTotal != prevTotal || newUnseen != prevUnseen {
-		cache.DeletePrefix("messages:" + mboxName + ":")
+		dropMailboxListings(cache, mboxName)
 		cache.Delete("mailboxes")
 		// Also clear all status caches so sidebar counts refresh
 		for _, key := range cache.GetKeysWithPrefix("status:") {
@@ -587,7 +665,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 
 		mboxName, err := url.PathUnescape(ctx.Param("mbox"))
 		if err == nil {
-			cache.DeletePrefix("messages:" + mboxName + ":")
+			dropMailboxListings(cache, mboxName)
 		}
 	}
 
@@ -648,8 +726,24 @@ func handleGetMailbox(ctx *alps.Context) error {
 	}
 	msgCacheKey := fmt.Sprintf("messages:%s:page%d:perpage%d:query%s:sort%s:criteria%s:thread%t", mbox.Name(), page, messagesPerPage, query, sortOrder, settings.MessageSortCriteria, enableThreading)
 
+	// A search is never answered from the cache, and never stored in it.
+	//
+	// A cached page is dropped when the mailbox changes — a write here, or its
+	// counts moving (handleMailboxStatus). A search's answer changes without
+	// either: a body word is matched through a full-text index the server
+	// builds after delivery, so the message is counted well before its body can
+	// be found. The first search for it was empty, correctly, and that empty
+	// page was then the answer to every search after it until something else
+	// in the mailbox moved. A search is a question asked on purpose; it goes to
+	// the server each time.
+	cacheable := query == ""
+
 	// Try to get messages from cache
-	if cached, ok := ctx.Session.Cache().Get(msgCacheKey); ok {
+	cached, hit := ctx.Session.Cache().Get(msgCacheKey)
+	if !cacheable {
+		hit = false
+	}
+	if hit {
 		cachedData := cached.(CachedMessages)
 		total = cachedData.Total
 
@@ -674,10 +768,12 @@ func handleGetMailbox(ctx *alps.Context) error {
 			}
 
 			// Cache the message list using provider types
-			ctx.Session.Cache().Set(msgCacheKey, CachedMessages{
-				Messages: providerMsgs,
-				Total:    total,
-			})
+			if cacheable {
+				ctx.Session.Cache().Set(msgCacheKey, CachedMessages{
+					Messages: providerMsgs,
+					Total:    total,
+				})
+			}
 
 			// Also cache individual message metadata (without body) for faster individual access
 			for i := range providerMsgs {
@@ -723,6 +819,24 @@ func handleGetMailbox(ctx *alps.Context) error {
 		"Page":            page,
 		"MessagesPerPage": messagesPerPage,
 	})
+}
+
+// handleListMailboxes answers with the folder list and nothing else.
+//
+// `GET /mailboxes/{mbox}` carries one too, but only alongside a page of that
+// folder's mail — a THREAD/SORT and a FETCH. The verbs that change which
+// folders exist rather than what is inside one (create, rename, subscribe)
+// move no mail, so the folder list is the whole of what they need to re-read,
+// and this is how the frontend asks for it. See `messageSync.syncLabels`.
+func handleListMailboxes(ctx *alps.Context) error {
+	mailboxes, err := cachedMailboxList(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Keyed as `GET /mailboxes/{mbox}` keys it, so the one consumer on the
+	// frontend reads either answer the same way.
+	return ctx.JSON(http.StatusOK, map[string]interface{}{"Mailboxes": mailboxes})
 }
 
 func handleNewMailbox(ctx *alps.Context) error {
@@ -967,10 +1081,29 @@ func handleLogout(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
 }
 
+// A conversation, keyed by EVERY member that lives in this mailbox.
+//
+// Reading through a long conversation means opening one member after another,
+// and each open asked for the conversation again from scratch: the same THREAD,
+// the same search through Sent, the same envelopes. They are one answer, so it
+// is stored once per member and any of them is served from it. Dropped wherever
+// the mailbox's listings are (see dropMailboxListings), which is every write,
+// every count change and every explicit refresh.
+func threadCacheKey(mailbox, uid string) string {
+	return "thread:" + mailbox + ":" + uid
+}
+
 func handleGetThread(ctx *alps.Context) error {
 	mboxName, uidStr, err := parseMboxAndUidStr(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
 		return err
+	}
+
+	cache := ctx.Session.Cache()
+	if cached, ok := cache.Get(threadCacheKey(mboxName, uidStr)); ok {
+		if msgs, ok := cached.([]IMAPMessage); ok {
+			return ctx.JSON(http.StatusOK, map[string]interface{}{"Messages": msgs})
+		}
 	}
 
 	var msgs []IMAPMessage
@@ -980,7 +1113,11 @@ func handleGetThread(ctx *alps.Context) error {
 			return parseErr
 		}
 
-		threadMsgs, threadErr := getConversationWithProvider(p, mboxName, uid, ctx.Server.Logger().Printf)
+		known := conversationHints{
+			memberUIDs:  listedThreadUIDs(p, cache, mboxName, uidStr),
+			sentMailbox: cachedSentMailbox(cache),
+		}
+		threadMsgs, threadErr := getConversationWithProvider(p, mboxName, uid, known, ctx.Server.Logger().Printf)
 		if threadErr != nil {
 			return threadErr
 		}
@@ -991,9 +1128,103 @@ func handleGetThread(ctx *alps.Context) error {
 		return err
 	}
 
+	// Under the message asked for, and under every member of the conversation
+	// that lives in this mailbox: reading a long conversation means opening one
+	// member after another, and they are all this one answer.
+	cache.Set(threadCacheKey(mboxName, uidStr), msgs)
+	for _, m := range msgs {
+		// Members from Sent are keyed under their own mailbox by the read that
+		// asks for them there, which is a different conversation to assemble.
+		if m.AlpsUID == "" || (m.Mailbox != "" && m.Mailbox != mboxName) {
+			continue
+		}
+		cache.Set(threadCacheKey(mboxName, m.AlpsUID), msgs)
+	}
+
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Messages": msgs,
 	})
+}
+
+// listedThreadUIDs answers which UIDs the conversation holds in this mailbox,
+// from the listing pages this session has already read.
+//
+// A threaded listing carries every row's whole thread (ListMessages), so for a
+// message the user clicked on a page they are looking at — which is nearly
+// every open — the membership is known and no THREAD command is needed. The
+// answer is as fresh as that page: a reply that landed since is missed, but it
+// is missed by the row the user clicked as well, so the reader is shown the
+// conversation it already had, not an older one.
+//
+// Nothing is claimed when the message is not on a cached page, and the caller
+// then threads for it as before.
+func listedThreadUIDs(p provider.MailProvider, cache *alps.Cache, mailbox, uidStr string) []provider.MessageID {
+	for _, key := range cache.GetKeysWithPrefix("messages:" + mailbox + ":") {
+		cached, ok := cache.Get(key)
+		if !ok {
+			continue
+		}
+		listing, ok := cached.(CachedMessages)
+		if !ok {
+			continue
+		}
+		for _, row := range listing.Messages {
+			if !rowHoldsUID(row, uidStr) {
+				continue
+			}
+			if len(row.ThreadUIDs) == 0 {
+				return nil
+			}
+			uids := make([]provider.MessageID, 0, len(row.ThreadUIDs))
+			for _, u := range row.ThreadUIDs {
+				id, err := p.ParseMessageID(u)
+				if err != nil {
+					return nil
+				}
+				uids = append(uids, id)
+			}
+			return uids
+		}
+	}
+	return nil
+}
+
+// rowHoldsUID: the row itself, or one of the messages behind it.
+func rowHoldsUID(row provider.Message, uidStr string) bool {
+	if row.ID != nil && row.ID.String() == uidStr {
+		return true
+	}
+	for _, u := range row.ThreadUIDs {
+		if u == uidStr {
+			return true
+		}
+	}
+	return false
+}
+
+// cachedSentMailbox names Sent from the mailbox list the session holds, so a
+// conversation read does not LIST for it every time. Empty when the list is not
+// cached, which leaves the provider to ask.
+func cachedSentMailbox(cache *alps.Cache) string {
+	cached, ok := cache.Get("mailboxes")
+	if !ok {
+		return ""
+	}
+	mailboxes, ok := cached.([]MailboxInfo)
+	if !ok {
+		return ""
+	}
+	for _, mbox := range mailboxes {
+		if mbox.HasAttr("\\Sent") {
+			return mbox.Name()
+		}
+	}
+	for _, mbox := range mailboxes {
+		if strings.EqualFold(mbox.Name(), "Sent") {
+			return mbox.Name()
+		}
+	}
+	return ""
 }
 
 func handleGetPart(ctx *alps.Context, raw bool) error {
@@ -1741,6 +1972,93 @@ func refuseAllMailboxes(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "not_a_folder"})
 }
 
+// messageScope is how a write says which messages it is about: the UIDs the
+// client listed, or — from the list's "select all in this folder" — every
+// message the folder holds that the listing's own `query` matches, less the
+// rows the user then unchecked.
+//
+// `all` is resolved here, against the mailbox, rather than by the client
+// sending thousands of UIDs: the client holds one page of a listing, and what
+// it holds goes stale while the user reads it.
+type messageScope struct {
+	Uids   []string `json:"uids"`
+	All    bool     `json:"all"`
+	Query  string   `json:"query"`
+	Except []string `json:"except"`
+}
+
+// problem names what a write cannot be acted on for — one that names no
+// messages, and one that names them two ways at once, where only the sender
+// knows which it meant — or "" when the scope can be resolved.
+func (scope messageScope) problem() string {
+	if scope.All && len(scope.Uids) > 0 {
+		return "uids_and_all"
+	}
+	if !scope.All && len(scope.Uids) == 0 {
+		return "No messages selected."
+	}
+	return ""
+}
+
+// resolve answers the messages to act on, in the order the mailbox gives them.
+func (scope messageScope) resolve(p provider.MailProvider, mboxName string) ([]provider.MessageID, error) {
+	if !scope.All {
+		ids := make([]provider.MessageID, len(scope.Uids))
+		for i, uidStr := range scope.Uids {
+			uid, err := p.ParseMessageID(uidStr)
+			if err != nil {
+				return nil, err
+			}
+			ids[i] = uid
+		}
+		return ids, nil
+	}
+
+	found, err := p.SearchMessageIDs(mboxName, scope.Query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find the messages to act on: %v", err)
+	}
+	if len(scope.Except) == 0 {
+		return found, nil
+	}
+
+	except := make(map[string]struct{}, len(scope.Except))
+	for _, uid := range scope.Except {
+		except[uid] = struct{}{}
+	}
+	kept := make([]provider.MessageID, 0, len(found))
+	for _, id := range found {
+		if _, skip := except[id.String()]; !skip {
+			kept = append(kept, id)
+		}
+	}
+	return kept, nil
+}
+
+// maxScopeBatch is how many messages one command carries. A whole folder can be
+// any size, and both the mail server and this session are better served by
+// several commands than by one of unbounded length.
+const maxScopeBatch = 500
+
+// maxReportedMapping is how many moved messages an answer carries the new UIDs
+// for. The client offers Undo with them; past that the table is larger than the
+// undo is worth, and the client says so instead.
+const maxReportedMapping = 1000
+
+// inBatches runs fn over the ids, at most maxScopeBatch at a time.
+func inBatches(ids []provider.MessageID, fn func([]provider.MessageID) error) error {
+	for start := 0; start < len(ids); start += maxScopeBatch {
+		end := start + maxScopeBatch
+		if end > len(ids) {
+			end = len(ids)
+		}
+		if err := fn(ids[start:end]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func formOrQueryParam(ctx *alps.Context, k string) string {
 	if v := ctx.FormValue(k); v != "" {
 		return v
@@ -1757,55 +2075,58 @@ func handleMove(ctx *alps.Context) error {
 		return refuseAllMailboxes(ctx)
 	}
 
-	var uids []string
+	var scope messageScope
 	var to string
 
 	if strings.HasPrefix(ctx.Request.Header.Get("Content-Type"), "application/json") {
 		var req struct {
-			Uids []string `json:"uids"`
-			To   string   `json:"to"`
+			messageScope
+			To string `json:"to"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
 		}
-		uids = req.Uids
+		scope = req.messageScope
 		to = req.To
 	} else {
 		formParams, err := ctx.FormParams()
 		if err != nil {
 			return alps.NewHTTPError(http.StatusBadRequest, err)
 		}
-		uids = formParams["uids"]
+		scope.Uids = formParams["uids"]
 		to = formOrQueryParam(ctx, "to")
 	}
 
-	if len(uids) == 0 {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "No messages selected."})
+	if problem := scope.problem(); problem != "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": problem})
 	}
 
 	if to == "" {
 		return alps.NewHTTPError(http.StatusBadRequest, "missing 'to' parameter")
 	}
 
+	moved := 0
 	uidMapping := make(map[string]string)
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		alpsMsgIDs := make([]provider.MessageID, len(uids))
-		for i, uidStr := range uids {
-			uid, err := p.ParseMessageID(uidStr)
-			if err != nil {
-				return err
-			}
-			alpsMsgIDs[i] = uid
-		}
-		// Move messages in bulk
-		mapping, err := moveMessagesWithProvider(p, mboxName, to, alpsMsgIDs)
+		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
-			return fmt.Errorf("failed to move messages: %v", err)
+			return err
 		}
-		for k, v := range mapping {
-			uidMapping[k.String()] = v.String()
-		}
-		return nil
+		withMapping := len(alpsMsgIDs) <= maxReportedMapping
+		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
+			mapping, err := moveMessagesWithProvider(p, mboxName, to, batch)
+			if err != nil {
+				return fmt.Errorf("failed to move messages: %v", err)
+			}
+			moved += len(batch)
+			if !withMapping {
+				return nil
+			}
+			for k, v := range mapping {
+				uidMapping[k.String()] = v.String()
+			}
+			return nil
+		})
 	})
 	if err != nil {
 		return err
@@ -1816,6 +2137,7 @@ func handleMove(ctx *alps.Context) error {
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"ok":         true,
+		"count":      moved,
 		"uidMapping": uidMapping,
 	})
 }
@@ -1829,55 +2151,58 @@ func handleCopy(ctx *alps.Context) error {
 		return refuseAllMailboxes(ctx)
 	}
 
-	var uids []string
+	var scope messageScope
 	var to string
 
 	if strings.HasPrefix(ctx.Request.Header.Get("Content-Type"), "application/json") {
 		var req struct {
-			Uids []string `json:"uids"`
-			To   string   `json:"to"`
+			messageScope
+			To string `json:"to"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
 		}
-		uids = req.Uids
+		scope = req.messageScope
 		to = req.To
 	} else {
 		formParams, err := ctx.FormParams()
 		if err != nil {
 			return alps.NewHTTPError(http.StatusBadRequest, err)
 		}
-		uids = formParams["uids"]
+		scope.Uids = formParams["uids"]
 		to = formOrQueryParam(ctx, "to")
 	}
 
-	if len(uids) == 0 {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "No messages selected."})
+	if problem := scope.problem(); problem != "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": problem})
 	}
 
 	if to == "" {
 		return alps.NewHTTPError(http.StatusBadRequest, "missing 'to' parameter")
 	}
 
+	copied := 0
 	uidMapping := make(map[string]string)
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		alpsMsgIDs := make([]provider.MessageID, len(uids))
-		for i, uidStr := range uids {
-			uid, err := p.ParseMessageID(uidStr)
-			if err != nil {
-				return err
-			}
-			alpsMsgIDs[i] = uid
-		}
-		// Copy messages in bulk
-		mapping, err := copyMessagesWithProvider(p, mboxName, to, alpsMsgIDs)
+		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
-			return fmt.Errorf("failed to copy messages: %v", err)
+			return err
 		}
-		for k, v := range mapping {
-			uidMapping[k.String()] = v.String()
-		}
-		return nil
+		withMapping := len(alpsMsgIDs) <= maxReportedMapping
+		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
+			mapping, err := copyMessagesWithProvider(p, mboxName, to, batch)
+			if err != nil {
+				return fmt.Errorf("failed to copy messages: %v", err)
+			}
+			copied += len(batch)
+			if !withMapping {
+				return nil
+			}
+			for k, v := range mapping {
+				uidMapping[k.String()] = v.String()
+			}
+			return nil
+		})
 	})
 	if err != nil {
 		return err
@@ -1888,6 +2213,7 @@ func handleCopy(ctx *alps.Context) error {
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"ok":         true,
+		"count":      copied,
 		"uidMapping": uidMapping,
 	})
 }
@@ -1901,42 +2227,37 @@ func handleDelete(ctx *alps.Context) error {
 		return refuseAllMailboxes(ctx)
 	}
 
-	var uids []string
+	var scope messageScope
 
 	if strings.HasPrefix(ctx.Request.Header.Get("Content-Type"), "application/json") {
-		var req struct {
-			Uids []string `json:"uids"`
-		}
-		if err := ctx.BindJSON(&req); err != nil {
+		if err := ctx.BindJSON(&scope); err != nil {
 			return ctx.RespondBindError(err)
 		}
-		uids = req.Uids
 	} else {
 		formParams, err := ctx.FormParams()
 		if err != nil {
 			return alps.NewHTTPError(http.StatusBadRequest, err)
 		}
-		uids = formParams["uids"]
+		scope.Uids = formParams["uids"]
 	}
 
-	if len(uids) == 0 {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "No messages selected."})
+	if problem := scope.problem(); problem != "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": problem})
 	}
 
+	deleted := 0
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		alpsMsgIDs := make([]provider.MessageID, len(uids))
-		for i, uidStr := range uids {
-			uid, err := p.ParseMessageID(uidStr)
-			if err != nil {
-				return err
+		alpsMsgIDs, err := scope.resolve(p, mboxName)
+		if err != nil {
+			return err
+		}
+		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
+			if err := deleteMessagesWithProvider(p, mboxName, batch); err != nil {
+				return fmt.Errorf("failed to delete messages: %v", err)
 			}
-			alpsMsgIDs[i] = uid
-		}
-		// Delete messages in bulk
-		if err := deleteMessagesWithProvider(p, mboxName, alpsMsgIDs); err != nil {
-			return fmt.Errorf("failed to delete messages: %v", err)
-		}
-		return nil
+			deleted += len(batch)
+			return nil
+		})
 	})
 	if err != nil {
 		return err
@@ -1945,7 +2266,7 @@ func handleDelete(ctx *alps.Context) error {
 	// Invalidate cache for the mailbox
 	invalidateMailboxCache(ctx, mboxName)
 
-	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
+	return ctx.JSON(http.StatusOK, map[string]any{"ok": "true", "count": deleted})
 }
 
 // mayEmptyMailbox reports whether name is a Trash or Junk mailbox, the only two
@@ -1985,6 +2306,7 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusBadRequest, err)
 	}
 
+	var discarded int
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		// Security check: Only allow emptying Trash or Junk
 		mailboxes, err := p.ListMailboxes()
@@ -1996,7 +2318,8 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 			return errEmptyNotAllowed
 		}
 
-		return p.EmptyMailbox(mboxName)
+		discarded, err = p.EmptyMailbox(mboxName)
+		return err
 	})
 	if err != nil {
 		// A refusal is the user asking for something this endpoint does not do,
@@ -2012,7 +2335,12 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 	// Invalidate cache for the mailbox
 	invalidateMailboxCache(ctx, mboxName)
 
-	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
+	// How many went, so the client can tell an emptied folder from one that had
+	// nothing in it. The two are the same 200 otherwise, and "Mailbox emptied"
+	// over a list that still shows mail is the report a user cannot act on: it
+	// says the work was done when the only honest answer is that this request
+	// found nothing to do.
+	return ctx.JSON(http.StatusOK, map[string]any{"ok": "true", "discarded": discarded})
 }
 
 func handleGetSession(ctx *alps.Context) error {
@@ -2047,20 +2375,20 @@ func handleSetFlags(ctx *alps.Context) error {
 		return refuseAllMailboxes(ctx)
 	}
 
-	var uids []string
+	var scope messageScope
 	var flags []string
 	var actionStr string
 
 	if strings.HasPrefix(ctx.Request.Header.Get("Content-Type"), "application/json") {
 		var req struct {
-			Uids   []string `json:"uids"`
+			messageScope
 			Flags  []string `json:"flags"`
 			Action string   `json:"action"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
 		}
-		uids = req.Uids
+		scope = req.messageScope
 		flags = req.Flags
 		actionStr = req.Action
 	} else {
@@ -2069,7 +2397,7 @@ func handleSetFlags(ctx *alps.Context) error {
 			return alps.NewHTTPError(http.StatusBadRequest, err)
 		}
 
-		uids = formParams["uids"]
+		scope.Uids = formParams["uids"]
 		flags = formParams["flags"]
 		if len(flags) == 0 {
 			flagsStr := ctx.QueryParam("to")
@@ -2085,8 +2413,8 @@ func handleSetFlags(ctx *alps.Context) error {
 		}
 	}
 
-	if len(uids) == 0 {
-		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "No messages selected."})
+	if problem := scope.problem(); problem != "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": problem})
 	}
 
 	var op imap.StoreFlagsOp
@@ -2101,7 +2429,9 @@ func handleSetFlags(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusBadRequest, "invalid 'action' value")
 	}
 
-	if len(uids) > maxFlagUIDs {
+	// A whole folder is not sent as a list, so this bounds only what a client
+	// listed itself; `all` is resolved here and written a batch at a time.
+	if len(scope.Uids) > maxFlagUIDs {
 		// One STORE per gesture is the point of this endpoint, but an unbounded
 		// list is a request the IMAP session may not survive — and the client
 		// has no way to learn that from a timeout. Refuse with a number it can
@@ -2188,34 +2518,38 @@ func handleSetFlags(ctx *alps.Context) error {
 
 	var alpsMsgIDs []provider.MessageID
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		alpsMsgIDs = make([]provider.MessageID, len(uids))
-		for i, uidStr := range uids {
-			uid, err := p.ParseMessageID(uidStr)
-			if err != nil {
-				return err
-			}
-			alpsMsgIDs[i] = uid
+		alpsMsgIDs, err = scope.resolve(p, mboxName)
+		if err != nil {
+			return err
 		}
-		return setMessageFlagsWithProvider(p, mboxName, alpsMsgIDs, alpsOp, alpsFlags)
+		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
+			return setMessageFlagsWithProvider(p, mboxName, batch, alpsOp, alpsFlags)
+		})
 	})
 	if err != nil {
 		return err
 	}
 
-	// Update cached message flags instead of full invalidation
-	for _, uid := range alpsMsgIDs {
-		switch op {
-		case imap.StoreFlagsAdd:
-			updateCachedMessageFlags(ctx, mboxName, uid, l, nil)
-		case imap.StoreFlagsDel:
-			updateCachedMessageFlags(ctx, mboxName, uid, nil, l)
-		default:
-			// StoreFlagsSet is complex (replaces all flags), so invalidate
-			invalidateMailboxCache(ctx, mboxName)
+	// A whole folder's worth of messages is not patched into the cache one at a
+	// time: the listing is dropped instead, and read again.
+	if scope.All {
+		invalidateMailboxCache(ctx, mboxName)
+	} else {
+		// Update cached message flags instead of full invalidation
+		for _, uid := range alpsMsgIDs {
+			switch op {
+			case imap.StoreFlagsAdd:
+				updateCachedMessageFlags(ctx, mboxName, uid, l, nil)
+			case imap.StoreFlagsDel:
+				updateCachedMessageFlags(ctx, mboxName, uid, nil, l)
+			default:
+				// StoreFlagsSet is complex (replaces all flags), so invalidate
+				invalidateMailboxCache(ctx, mboxName)
+			}
 		}
 	}
 
-	return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
+	return ctx.JSON(http.StatusOK, map[string]any{"ok": "true", "count": len(alpsMsgIDs)})
 }
 
 // isValidIMAPKeyword reports whether s can be sent as an IMAP flag atom.
@@ -2468,6 +2802,17 @@ func (s *Settings) check() error {
 	return nil
 }
 
+// listingSettings is everything about a listing that the settings decide: how
+// many messages a page holds, the order they are in, and whether rows are
+// conversations. A cached page is only wrong if one of these changed.
+func listingSettings(s *Settings) [4]string {
+	threading := "server"
+	if s.UI.EnableThreading != nil {
+		threading = strconv.FormatBool(*s.UI.EnableThreading)
+	}
+	return [4]string{strconv.Itoa(s.MessagesPerPage), s.SortOrder, s.MessageSortCriteria, threading}
+}
+
 func handleSettings(ctx *alps.Context) error {
 	settings, err := readFreshSettings(ctx)
 	if err != nil {
@@ -2475,6 +2820,10 @@ func handleSettings(ctx *alps.Context) error {
 	}
 
 	if ctx.Request.Method == http.MethodPut {
+		// What a cached listing page was READ under, before this write changes
+		// anything: see the invalidation below.
+		listedAs := listingSettings(settings)
+
 		if strings.HasPrefix(ctx.Request.Header.Get("Content-Type"), "application/json") {
 			var req struct {
 				MessagesPerPage *int           `json:"messages_per_page"`
@@ -2621,10 +2970,22 @@ func handleSettings(ctx *alps.Context) error {
 			return fmt.Errorf("failed to save settings: %v", err)
 		}
 
-		// Invalidate all message list caches since MessagesPerPage may have changed
-		cache := ctx.Session.Cache()
-		for _, key := range cache.GetKeysWithPrefix("messages:") {
-			cache.Delete(key)
+		// Only when this write changed what a listing IS.
+		//
+		// Every settings write dropped every cached page of every mailbox —
+		// and the frontend writes settings for things that have nothing to do
+		// with listings: the theme, the layout, the signature, and once per
+		// sign-in the address it just learned. The page a reader is looking at
+		// was thrown away seconds after it was read, every time, and with it
+		// the conversations assembled from it (see listedThreadUIDs).
+		if listedAs != listingSettings(settings) {
+			cache := ctx.Session.Cache()
+			for _, key := range cache.GetKeysWithPrefix("messages:") {
+				cache.Delete(key)
+			}
+			for _, key := range cache.GetKeysWithPrefix("thread:") {
+				cache.Delete(key)
+			}
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})

@@ -15,7 +15,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 function events(svc: MessageSyncService) {
   const seen: { type: string; detail: any }[] = [];
-  for (const type of ['sync-start', 'sync-success', 'sync-error', 'mailbox-not-found']) {
+  for (const type of ['sync-start', 'sync-success', 'sync-error', 'mailbox-not-found', 'labels-success']) {
     svc.addEventListener(type, (e) => seen.push({ type, detail: (e as CustomEvent).detail }));
   }
   return seen;
@@ -192,5 +192,241 @@ describe('the background poll', () => {
     expect(sync).not.toHaveBeenCalled();
     svc.syncIfViewing('Work');
     expect(sync).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The folder list read on its own, for the verbs that change which folders
+ * exist rather than what is inside one.
+ */
+describe('syncLabels', () => {
+  const folders = (...names: string[]) =>
+    new Response(JSON.stringify({ Mailboxes: names.map((Name) => ({ Name })) }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+  const named = (seen: { detail: any }[]) => seen.map((e) => e.detail.mailboxes.map((m: any) => m.Name));
+
+  it('asks for the list alone and announces it on its own event', async () => {
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    fetchMock.mockResolvedValueOnce(folders('INBOX', 'Jobs'));
+
+    await svc.syncLabels();
+
+    // No page, no query, no refresh: the whole request is the folder list.
+    expect(fetchMock.mock.calls).toEqual([['/mailboxes', expect.anything()]]);
+    // Not `sync-success`, which would carry this to the arrival chime and to
+    // the list's own loaded/failed state. Not `sync-start` either: nothing is
+    // waiting on it, so nothing should spin.
+    expect(seen.map((e) => e.type)).toEqual(['labels-success']);
+    expect(named(seen)).toEqual([['INBOX', 'Jobs']]);
+  });
+
+  it('leaves the poll pointed where it was', async () => {
+    const svc = new MessageSyncService();
+    svc.setContext('Archive', 3, 'from:ana');
+    fetchMock.mockResolvedValueOnce(folders('INBOX'));
+
+    await svc.syncLabels();
+
+    // It read no messages, so it has no view to re-point and none to supersede.
+    expect(context(svc)).toEqual({ mailbox: 'Archive', page: 3 });
+    expect((svc as any).currentQuery).toBe('from:ana');
+  });
+
+  it('drops an answer that a later read has overtaken', async () => {
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    let releaseFirst: (r: Response) => void = () => {};
+    fetchMock
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { releaseFirst = resolve; }))
+      .mockResolvedValueOnce(folders('INBOX', 'Jobs'));
+
+    const first = svc.syncLabels();
+    const second = svc.syncLabels();
+    await second;
+    releaseFirst(folders('INBOX', 'Work'));
+    await first;
+
+    // Rename twice in quick succession and the older tree must not land on top
+    // of the newer one.
+    expect(named(seen)).toEqual([['INBOX', 'Jobs']]);
+  });
+
+  it('says nothing to the page when the read fails', async () => {
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 500 }));
+
+    await expect(svc.syncLabels()).resolves.toBeUndefined();
+
+    // The verb that called this already told the user how it went. A stale
+    // count in the sidebar until the next poll is the whole of the damage.
+    expect(seen).toEqual([]);
+  });
+
+  it('reports an expired session the way every other read does', async () => {
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    const authErrors: Event[] = [];
+    const onAuth = (e: Event) => authErrors.push(e);
+    window.addEventListener('auth-error', onAuth);
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
+
+    await svc.syncLabels();
+    window.removeEventListener('auth-error', onAuth);
+
+    // Twice over, as every mail read here does: `fetchWithTimeout` announces it
+    // for the plugins' sake and the service announces it again. app-root's
+    // handler is idempotent.
+    expect(authErrors.length).toBeGreaterThan(0);
+    expect(seen).toEqual([]);
+  });
+});
+
+describe('the check-for-new-mail button', () => {
+  /** A landed foreground read, which is what a check checks against. */
+  async function landed(svc: MessageSyncService, mailbox = 'INBOX', page = 0, query = '') {
+    fetchMock.mockResolvedValue(listing(mailbox));
+    const pending = svc.fetch(mailbox, page, query);
+    await vi.runAllTimersAsync();
+    await pending;
+    fetchMock.mockReset();
+  }
+
+  const quiet = () => fetchMock.mockImplementation(async (url: string) =>
+    (url.includes('/status') ? new Response('{}', { status: 200 }) : listing('Work')));
+
+  it('asks the counts first and never re-lists the folder from IMAP', async () => {
+    const svc = new MessageSyncService();
+    await landed(svc, 'Work');
+    quiet();
+    await svc.check('Work', 0);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Work/status', '/mailboxes/Work?page=0']);
+  });
+
+  it('announces itself in the background, so the rows do not dim', async () => {
+    const svc = new MessageSyncService();
+    await landed(svc, 'Work');
+    const seen = events(svc);
+    quiet();
+    await svc.check('Work', 0);
+    expect(seen.map((e) => e.type)).toEqual(['sync-start', 'sync-success']);
+    expect(seen.every((e) => e.detail.background === true)).toBe(true);
+  });
+
+  it('ends out loud when the re-read fails, which a poll does not', async () => {
+    const svc = new MessageSyncService();
+    await landed(svc, 'Work');
+    const seen = events(svc);
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/status')) return new Response('{}', { status: 200 });
+      throw new TypeError('offline');
+    });
+    const checking = svc.check('Work', 0);
+    await vi.runAllTimersAsync();
+    await checking;
+    expect(seen.map((e) => e.type)).toEqual(['sync-start', 'sync-error']);
+    expect(seen[1].detail.background).toBe(true);
+  });
+
+  it('ends out loud when only the counts fail', async () => {
+    const svc = new MessageSyncService();
+    await landed(svc);
+    const seen = events(svc);
+    fetchMock.mockRejectedValue(new TypeError('offline'));
+    const checking = svc.check('INBOX', 0);
+    await vi.runAllTimersAsync();
+    await checking;
+    expect(seen.map((e) => e.type)).toEqual(['sync-start', 'sync-error']);
+  });
+
+  it('is a foreground fetch when no read of the view has landed', async () => {
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    fetchMock.mockResolvedValue(listing('INBOX'));
+    const pending = svc.check('INBOX', 0);
+    await vi.runAllTimersAsync();
+    await pending;
+    expect(seen[0].detail.background).toBe(false);
+    expect(fetchMock.mock.calls[0][0]).toBe('/mailboxes/INBOX?page=0&refresh=true');
+  });
+
+  it('is a foreground fetch after a load that failed', async () => {
+    const svc = new MessageSyncService();
+    fetchMock.mockRejectedValue(new TypeError('offline'));
+    const failing = svc.fetch('Work', 0);
+    await vi.runAllTimersAsync();
+    await failing;
+    fetchMock.mockReset();
+
+    const seen = events(svc);
+    fetchMock.mockResolvedValue(listing('Work'));
+    const pending = svc.check('Work', 0);
+    await vi.runAllTimersAsync();
+    await pending;
+    expect(seen[0].detail.background).toBe(false);
+  });
+
+  it('is a foreground fetch for a view other than the one held', async () => {
+    const svc = new MessageSyncService();
+    await landed(svc, 'Work', 0, 'ada');
+    const seen = events(svc);
+    fetchMock.mockResolvedValue(listing('Work'));
+    const pending = svc.check('Work', 0);
+    await vi.runAllTimersAsync();
+    await pending;
+    expect(seen[0].detail.background).toBe(false);
+  });
+
+  it('is a foreground fetch from a later page, which lands on the first', async () => {
+    const svc = new MessageSyncService();
+    await landed(svc, 'Work', 3);
+    const seen = events(svc);
+    fetchMock.mockResolvedValue(listing('Work'));
+    const pending = svc.check('Work', 0);
+    await vi.runAllTimersAsync();
+    await pending;
+    expect(seen[0].detail.background).toBe(false);
+    expect(fetchMock.mock.calls[0][0]).toBe('/mailboxes/Work?page=0&refresh=true');
+    expect(context(svc)).toEqual({ mailbox: 'Work', page: 0 });
+  });
+});
+
+describe('the re-read after a write', () => {
+  it('reads the folder in full, and asks the page not to dim for it', async () => {
+    fetchMock.mockResolvedValue(listing('Work'));
+    const svc = new MessageSyncService();
+    svc.setContext('Work', 2, 'ada');
+    const seen = events(svc);
+
+    svc.sync();
+    await vi.runAllTimersAsync();
+
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/Work?page=2&query=ada&refresh=true']);
+    expect(seen.map((e) => e.type)).toEqual(['sync-start', 'sync-success']);
+    expect(seen.every((e) => e.detail.quiet === true && e.detail.background === false)).toBe(true);
+  });
+
+  it('skips the 200ms the dim is held for, which it does not raise', async () => {
+    // A fresh answer per call: a Response's body is read once.
+    fetchMock.mockImplementation(async () => listing('Work'));
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+
+    svc.sync();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(seen.map((e) => e.type)).toEqual(['sync-start', 'sync-success']);
+
+    // The same answer, read as a navigation, is still held back for the floor.
+    const navigating = events(svc);
+    const pending = svc.fetch('Work', 0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(navigating.map((e) => e.type)).toEqual(['sync-start']);
+    await vi.runAllTimersAsync();
+    await pending;
+    expect(navigating.map((e) => e.type)).toEqual(['sync-start', 'sync-success']);
   });
 });

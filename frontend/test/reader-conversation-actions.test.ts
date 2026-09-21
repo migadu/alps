@@ -455,7 +455,7 @@ describe('reading a conversation', () => {
 
   it('stops while rows are checked and the cards are off screen', async () => {
     const el = await openConversation({ members: [older([]), reply(), newer()], settings: { markReadTimeout: 1 } });
-    await update(el, { selectedKeys: new Set([messageKey('INBOX', '42')]) });
+    await update(el, { selectedKeys: new Set([messageKey('INBOX', '42')]), selectedCount: 1 });
     await new Promise(resolve => setTimeout(resolve, 1100));
     await settle();
 

@@ -178,6 +178,10 @@ export const sr = {
   messageList: {
     menu: 'Meni',
     selectAll: 'Izaberi sve poruke',
+    allOnPageSelected: 'Svih {count} poruka na ovoj stranici je izabrano',
+    selectAllMatching: 'Izaberi svih {count} u {folder}',
+    allMatchingSelected: 'Svih {count} poruka u {folder} je izabrano',
+    clearSelection: 'Poništi izbor',
     checkNew: 'Proveri nove poruke',
     sortDesc: 'Sortiraj opadajuće po datumu',
     sortAsc: 'Sortiraj rastuće po datumu',
@@ -197,12 +201,29 @@ export const sr = {
     clearSearch: 'Obriši pretragu',
     searchAllMailboxes: 'Pretraži sve',
     totalMessagesIn: 'Ukupno {count} poruka u {folder}',
+    totalConversationsIn: {
+      one: '{count} razgovor u {folder}',
+      few: 'Ukupno {count} razgovora u {folder}',
+      other: 'Ukupno {count} razgovora u {folder}'
+    },
     deleteAllNow: 'Obriši sve sada',
     emptyMailboxTitle: 'Isprazni {folder}',
     emptyMailboxConfirm: 'Da li ste sigurni da želite trajno da obrišete svih {count} poruka u {folder}? Ova akcija se ne može poništiti.',
+    emptyMailboxConfirmConversations: {
+      one: 'Da li ste sigurni da želite trajno da obrišete jedan razgovor u {folder} i sve poruke u njemu? Ova akcija se ne može poništiti.',
+      few: 'Da li ste sigurni da želite trajno da obrišete {count} razgovora u {folder} i sve poruke u njima? Ova akcija se ne može poništiti.',
+      other: 'Da li ste sigurni da želite trajno da obrišete svih {count} razgovora u {folder} i sve poruke u njima? Ova akcija se ne može poništiti.'
+    },
+    emptyMailboxSelectionNote: {
+      one: 'Uključena je i poruka koju ste označili.',
+      few: 'Uključene su i {count} poruke koje ste označili.',
+      other: 'Uključeno je i {count} poruka koje ste označili.'
+    },
     emptyingMailbox: 'Pražnjenje sandučeta...',
     mailboxEmptied: 'Sanduče je uspešno ispražnjeno.',
-    emptyMailboxFailed: 'Nije moguće isprazniti sanduče. Proverite da li je Otpad ili Nepoželjna pošta.'
+    emptyMailboxFailed: 'Nije moguće isprazniti sanduče. Proverite da li je Otpad ili Nepoželjna pošta.',
+    mailboxAlreadyEmpty: '{folder} je već bio prazan — ništa nije obrisano.',
+    emptyMailboxSlow: 'Pražnjenje fascikle {folder} je još u toku. Server i dalje radi — proverite ponovo za trenutak.'
   },
   composer: {
     discardFailed: 'Skicu nije bilo moguće obrisati sa servera i još uvek je u skicama.',
@@ -391,7 +412,10 @@ export const sr = {
   pagination: {
     previousPage: 'Prethodna stranica',
     nextPage: 'Sledeća stranica',
-    zeroMessages: '0 poruka'
+    zeroMessages: '0 poruka',
+    totalCount: 'ukupno {total}',
+    searchResults: '{total} rezultata',
+    rangeOfTotal: '{start}–{end} od {total}'
   },
   toast: {
     messagePermanentlyDeleted: 'Poruka trajno obrisana',

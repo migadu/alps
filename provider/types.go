@@ -46,13 +46,21 @@ type MailProvider interface {
 	CreateMailbox(name string) error
 	RenameMailbox(oldName, newName string) error
 	DeleteMailbox(name string) error
-	EmptyMailbox(name string) error
+	// EmptyMailbox discards every message in a mailbox and reports how many
+	// there were to discard. A count of zero means the mailbox was already
+	// empty: the caller can say so rather than claim work it did not do.
+	EmptyMailbox(name string) (int, error)
 	SubscribeMailbox(name string) error
 	UnsubscribeMailbox(name string) error
 
 	// Message listing and search
 	ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]Message, int, error)
 	SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]Message, int, error)
+	// SearchMessageIDs answers every message of the mailbox the query matches,
+	// and nothing about them: the operand of an action taken on a whole folder,
+	// which must not depend on what a page of the listing happens to hold. An
+	// empty query is the whole mailbox, as an empty listing query is.
+	SearchMessageIDs(mailbox, query string) ([]MessageID, error)
 
 	// Message operations
 	ParseMessageID(id string) (MessageID, error)

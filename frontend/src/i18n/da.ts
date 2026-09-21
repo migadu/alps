@@ -222,6 +222,10 @@ export const da: TranslationDictionary = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Vælg alle beskeder',
+    allOnPageSelected: 'Alle {count} beskeder på denne side er valgt',
+    selectAllMatching: 'Vælg alle {count} i {folder}',
+    allMatchingSelected: 'Alle {count} beskeder i {folder} er valgt',
+    clearSelection: 'Ryd markeringen',
     checkNew: 'Tjek for nye beskeder',
     sortDesc: 'Sortér faldende efter dato',
     sortAsc: 'Sortér stigende efter dato',
@@ -241,12 +245,26 @@ export const da: TranslationDictionary = {
     clearSearch: 'Ryd søgning',
     searchAllMailboxes: 'Søg i alle',
     totalMessagesIn: '{count} beskeder i alt i {folder}',
+    totalConversationsIn: {
+      one: '{count} samtale i {folder}',
+      other: '{count} samtaler i alt i {folder}'
+    },
     deleteAllNow: 'Slet alle nu',
     emptyMailboxTitle: 'Tøm {folder}',
     emptyMailboxConfirm: 'Er du sikker på, at du vil slette alle {count} beskeder i {folder} permanent? Denne handling kan ikke fortrydes.',
+    emptyMailboxConfirmConversations: {
+      one: 'Er du sikker på, at du vil slette den ene samtale i {folder} og alle dens beskeder permanent? Denne handling kan ikke fortrydes.',
+      other: 'Er du sikker på, at du vil slette alle {count} samtaler i {folder} og alle deres beskeder permanent? Denne handling kan ikke fortrydes.'
+    },
+    emptyMailboxSelectionNote: {
+      one: 'Den markerede besked er inkluderet.',
+      other: 'De {count} markerede beskeder er inkluderet.'
+    },
     emptyingMailbox: 'Tømmer postkasse...',
     mailboxEmptied: 'Postkasse tømt.',
-    emptyMailboxFailed: 'Kunne ikke tømme postkassen. Den skal være Papirkurv eller Uønsket.'
+    emptyMailboxFailed: 'Kunne ikke tømme postkassen. Den skal være Papirkurv eller Uønsket.',
+    mailboxAlreadyEmpty: '{folder} var allerede tom – intet blev slettet.',
+    emptyMailboxSlow: 'Tømmer stadig {folder}. Serveren arbejder på det – se efter igen om et øjeblik.'
   },
   composer: {
     discardFailed: 'Kladden kunne ikke slettes fra serveren og ligger stadig i Kladder.',
@@ -428,7 +446,10 @@ export const da: TranslationDictionary = {
   pagination: {
     previousPage: 'Forrige side',
     nextPage: 'Næste side',
-    zeroMessages: '0 beskeder'
+    zeroMessages: '0 beskeder',
+    totalCount: '{total} i alt',
+    searchResults: '{total} resultater',
+    rangeOfTotal: '{start}–{end} af {total}'
   },
   toast: {
     messagePermanentlyDeleted: 'Besked slettet permanent',

@@ -213,6 +213,10 @@ export const pt = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Selecionar todas as mensagens',
+    allOnPageSelected: 'As {count} mensagens desta página estão selecionadas',
+    selectAllMatching: 'Selecionar todas as {count} em {folder}',
+    allMatchingSelected: 'As {count} mensagens em {folder} estão selecionadas',
+    clearSelection: 'Limpar a seleção',
     checkNew: 'Verificar novas mensagens',
     sortDesc: 'Classificar por data decrescente',
     sortAsc: 'Classificar por data crescente',
@@ -232,12 +236,26 @@ export const pt = {
     clearSearch: 'Limpar pesquisa',
     searchAllMailboxes: 'Pesquisar tudo',
     totalMessagesIn: '{count} mensagens no total em {folder}',
+    totalConversationsIn: {
+      one: '{count} conversa em {folder}',
+      other: '{count} conversas no total em {folder}'
+    },
     deleteAllNow: 'Excluir tudo agora',
     emptyMailboxTitle: 'Esvaziar {folder}',
     emptyMailboxConfirm: 'Tem certeza de que deseja excluir permanentemente todas as {count} mensagens em {folder}? Esta ação não pode ser desfeita.',
+    emptyMailboxConfirmConversations: {
+      one: 'Tem certeza de que deseja excluir permanentemente a única conversa em {folder} e todas as suas mensagens? Esta ação não pode ser desfeita.',
+      other: 'Tem certeza de que deseja excluir permanentemente todas as {count} conversas em {folder} e todas as suas mensagens? Esta ação não pode ser desfeita.'
+    },
+    emptyMailboxSelectionNote: {
+      one: 'Isso inclui a mensagem que você selecionou.',
+      other: 'Isso inclui as {count} mensagens que você selecionou.'
+    },
     emptyingMailbox: 'Esvaziando a caixa de correio...',
     mailboxEmptied: 'Caixa de correio esvaziada com sucesso.',
-    emptyMailboxFailed: 'Falha ao esvaziar a caixa de correio. Certifique-se de que é Lixeira ou Lixo Eletrônico.'
+    emptyMailboxFailed: 'Falha ao esvaziar a caixa de correio. Certifique-se de que é Lixeira ou Lixo Eletrônico.',
+    mailboxAlreadyEmpty: '{folder} já estava vazia — nada foi excluído.',
+    emptyMailboxSlow: 'Ainda esvaziando {folder}. O servidor está trabalhando nisso — verifique novamente em instantes.'
   },
   composer: {
     discardFailed: 'Não foi possível excluir o rascunho do servidor e ele ainda está em Rascunhos.',
@@ -426,7 +444,10 @@ export const pt = {
   pagination: {
     previousPage: 'Página anterior',
     nextPage: 'Próxima página',
-    zeroMessages: '0 mensagens'
+    zeroMessages: '0 mensagens',
+    totalCount: '{total} no total',
+    searchResults: '{total} resultados',
+    rangeOfTotal: '{start}–{end} de {total}'
   },
   toast: {
     draftDiscarded: 'Rascunho descartado',

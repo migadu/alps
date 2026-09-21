@@ -19,6 +19,26 @@ import { Logger } from '../utils/logger';
 export type MailboxMutation = 'ok' | 'exists' | 'failed';
 
 /**
+ * What emptying a folder did.
+ *
+ * `discarded` is how many messages the server found to discard, and zero is a
+ * real answer: the folder was already empty and this request removed nothing.
+ * It used to be indistinguishable from a real emptying — both were `true` —
+ * and the success message that followed was a claim the list on screen could
+ * contradict.
+ *
+ * `timeout` is separated from `failed` for the same reason: the request gave
+ * up, the server very likely did not.
+ */
+export type EmptyOutcome =
+  | { ok: true; discarded?: number }
+  | { ok: false; reason: 'auth' | 'not_discardable' | 'timeout' | 'failed' };
+
+/** Ten minutes. Long enough for an expunge over a folder nobody has emptied in
+ * years, short enough that a wedged connection still ends in an answer. */
+const EMPTY_MAILBOX_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
  * NOT an EventTarget.
  *
  * It extended one and dispatched `auth-error` on itself beside every
@@ -55,8 +75,9 @@ export class MailboxOperationsService {
       });
 
       const outcome = await this.classify(res, 'create mailbox');
-      // Trigger a sync to refresh mailbox list
-      if (outcome === 'ok') messageSync.sync();
+      // The folder list, and only that: a new folder is empty, and no message
+      // left the one on screen to be in it.
+      if (outcome === 'ok') void messageSync.syncLabels();
       return outcome;
     } catch (err) {
       Logger.error('Failed to create mailbox', err);
@@ -74,11 +95,14 @@ export class MailboxOperationsService {
 
       const outcome = await this.classify(res, 'rename mailbox');
       if (outcome === 'ok') {
-        // BEFORE the sync, which re-reads whatever mailbox this service is
-        // pointed at: if that is this one, the name it holds is the one the
-        // server has just stopped answering for. See `messageSync.mailboxRenamed`.
+        // Still first, though the folder-list read below no longer depends on
+        // it: what this fixes is the name the POLL will ask for, which is the
+        // one the server has just stopped answering for if the renamed folder
+        // is the one on screen. See `messageSync.mailboxRenamed`.
         messageSync.mailboxRenamed(oldName, newName);
-        messageSync.sync();
+        // A rename moves no mail. The rows on screen are the same messages
+        // under a folder that is now spelled differently.
+        void messageSync.syncLabels();
       }
       return outcome;
     } catch (err) {
@@ -95,7 +119,11 @@ export class MailboxOperationsService {
 
       const outcome = await this.classify(res, 'delete mailbox');
       if (outcome === 'ok') {
-        // Same ordering as the rename above, for the same reason.
+        // A full sync, unlike create and rename: deleting the folder on screen
+        // sends the view to the Inbox, so there IS a page of mail to read —
+        // a different folder's. `mailboxDeleted` points the service at it
+        // first, so that the sync asks for the Inbox and not for the mailbox
+        // the server has just dropped.
         messageSync.mailboxDeleted(name);
         messageSync.sync();
       }
@@ -106,25 +134,68 @@ export class MailboxOperationsService {
     }
   }
 
-  async emptyMailbox(name: string): Promise<boolean> {
+  /**
+   * Emptying a folder is ONE request that may run for minutes.
+   *
+   * The server takes it as a single IMAP conversation — SELECT, STORE \Deleted
+   * over the whole mailbox, EXPUNGE — with nothing to report until the expunge
+   * returns, and an expunge of tens of thousands of messages is not a
+   * 25-second job. On the default budget the browser aborted a delete that was
+   * working: the abort cancels the request context, so the backend drops its
+   * connection and never invalidates its caches, while the expunge it started
+   * runs to completion regardless. The user is told the empty failed, the list
+   * is never re-read, and the folder quietly empties behind them — which reads
+   * as "nothing happened, so I pressed it again".
+   *
+   * So the deadline is the folder's, not the default one. A timeout is still
+   * reported, and reported as its own thing: the work is probably still going
+   * on upstream, and "try again" is the wrong advice.
+   */
+  async emptyMailbox(name: string): Promise<EmptyOutcome> {
     try {
       const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(name)}/empty`, {
         method: 'POST'
-      });
-      
+      }, EMPTY_MAILBOX_TIMEOUT_MS);
+
       if (res.status === 401) {
-        window.dispatchEvent(new CustomEvent('auth-error'));
-        return false;
+        // Announced by fetchWithTimeout; the shell is already on its way to the
+        // login screen, so the caller says nothing.
+        return { ok: false, reason: 'auth' };
       }
-      
+
       if (res.ok) {
+        // The count is the whole point of reading this body: a 200 says the
+        // server has nothing left to complain about, not that it discarded
+        // anything. An older backend sends no `discarded` at all, and an empty
+        // that reported nothing is taken at its word rather than called a
+        // no-op.
+        let discarded: number | undefined;
+        try {
+          const body = await res.json();
+          if (typeof body?.discarded === 'number') discarded = body.discarded;
+        } catch {
+          // A 200 with an unreadable body is still an empty that happened.
+        }
+        // A full sync too: emptying a folder is the one verb here that changes
+        // what is in one, and every row it held is now gone.
         messageSync.sync();
-        return true;
+        return { ok: true, discarded };
       }
-      return false;
+
+      Logger.error('Failed to empty mailbox', res.status);
+      return { ok: false, reason: res.status === 403 ? 'not_discardable' : 'failed' };
     } catch (err) {
       Logger.error('Failed to empty mailbox', err);
-      return false;
+      if ((err as Error)?.name === 'AbortError') {
+        // Read the folder again even though the request was abandoned. The
+        // expunge is most likely still running or already done upstream, so
+        // whatever the list shows next is nearer the truth than the rows the
+        // client gave up holding — and a listing that succeeds also takes back
+        // the offline notice the abort raised.
+        messageSync.sync();
+        return { ok: false, reason: 'timeout' };
+      }
+      return { ok: false, reason: 'failed' };
     }
   }
 
@@ -145,7 +216,10 @@ export class MailboxOperationsService {
         return { ok: false, reason: 'auth' };
       }
       if (res.ok) {
-        messageSync.sync();
+        // Which folders are listed, not what is in them. Unsubscribing the
+        // folder being viewed hides it from the sidebar and leaves its mail on
+        // screen, which is what it did before and is the server's answer too.
+        void messageSync.syncLabels();
         return { ok: true };
       }
       Logger.error(`Failed to ${verb} mailbox`, res.status);

@@ -180,6 +180,10 @@ export const de: TranslationDictionary = {
   messageList: {
     menu: 'Menü',
     selectAll: 'Alle Nachrichten auswählen',
+    allOnPageSelected: 'Alle {count} Nachrichten auf dieser Seite sind ausgewählt',
+    selectAllMatching: 'Alle {count} in {folder} auswählen',
+    allMatchingSelected: 'Alle {count} Nachrichten in {folder} sind ausgewählt',
+    clearSelection: 'Auswahl aufheben',
     checkNew: 'Nach neuen Nachrichten suchen',
     sortDesc: 'Nach Datum absteigend sortieren',
     sortAsc: 'Nach Datum aufsteigend sortieren',
@@ -199,12 +203,26 @@ export const de: TranslationDictionary = {
     clearSearch: 'Suche löschen',
     searchAllMailboxes: 'Alle durchsuchen',
     totalMessagesIn: '{count} Nachrichten insgesamt in {folder}',
+    totalConversationsIn: {
+      one: '{count} Konversation in {folder}',
+      other: '{count} Konversationen insgesamt in {folder}'
+    },
     deleteAllNow: 'Jetzt alle löschen',
     emptyMailboxTitle: '{folder} leeren',
     emptyMailboxConfirm: 'Sind Sie sicher, dass Sie alle {count} Nachrichten in {folder} dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
+    emptyMailboxConfirmConversations: {
+      one: 'Sind Sie sicher, dass Sie die eine Konversation in {folder} mit allen ihren Nachrichten dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
+      other: 'Sind Sie sicher, dass Sie alle {count} Konversationen in {folder} mit allen ihren Nachrichten dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.'
+    },
+    emptyMailboxSelectionNote: {
+      one: 'Die markierte Nachricht ist darin enthalten.',
+      other: 'Die {count} markierten Nachrichten sind darin enthalten.'
+    },
     emptyingMailbox: 'Postfach wird geleert...',
     mailboxEmptied: 'Postfach erfolgreich geleert.',
-    emptyMailboxFailed: 'Postfach konnte nicht geleert werden. Stellen Sie sicher, dass es sich um Papierkorb oder Spam handelt.'
+    emptyMailboxFailed: 'Postfach konnte nicht geleert werden. Stellen Sie sicher, dass es sich um Papierkorb oder Spam handelt.',
+    mailboxAlreadyEmpty: '{folder} war bereits leer – es wurde nichts gelöscht.',
+    emptyMailboxSlow: '{folder} wird noch geleert. Der Server arbeitet daran – sehen Sie gleich noch einmal nach.'
   },
   composer: {
     discardFailed: 'Der Entwurf konnte nicht vom Server gelöscht werden und liegt weiterhin in den Entwürfen.',
@@ -393,7 +411,10 @@ export const de: TranslationDictionary = {
   pagination: {
     previousPage: 'Vorherige Seite',
     nextPage: 'Nächste Seite',
-    zeroMessages: '0 Nachrichten'
+    zeroMessages: '0 Nachrichten',
+    totalCount: '{total} insgesamt',
+    searchResults: '{total} Ergebnisse',
+    rangeOfTotal: '{start}–{end} von {total}'
   },
   toast: {
     messagePermanentlyDeleted: 'Nachricht endgültig gelöscht',

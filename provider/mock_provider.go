@@ -81,9 +81,9 @@ func (m *MockProvider) DeleteMailbox(name string) error {
 	return args.Error(0)
 }
 
-func (m *MockProvider) EmptyMailbox(name string) error {
+func (m *MockProvider) EmptyMailbox(name string) (int, error) {
 	args := m.Called(name)
-	return args.Error(0)
+	return args.Int(0), args.Error(1)
 }
 
 func (m *MockProvider) SubscribeMailbox(name string) error {
@@ -103,6 +103,15 @@ func (m *MockProvider) ListMessages(mailbox string, sortOrder string, page, page
 		msgs = val.([]Message)
 	}
 	return msgs, args.Int(1), args.Error(2)
+}
+
+func (m *MockProvider) SearchMessageIDs(mailbox, query string) ([]MessageID, error) {
+	args := m.Called(mailbox, query)
+	var ids []MessageID
+	if val := args.Get(0); val != nil {
+		ids = val.([]MessageID)
+	}
+	return ids, args.Error(1)
 }
 
 func (m *MockProvider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]Message, int, error) {
