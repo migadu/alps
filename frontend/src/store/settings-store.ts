@@ -45,6 +45,7 @@ export interface SettingsState {
   language: string;
   hourFormat: '12' | '24';
   dateFormat: string;
+  weekStart: number;
   sortOrder: 'asc' | 'desc';
   messageSortCriteria: 'uid' | 'date';
   loginUsername?: string;
@@ -88,6 +89,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   language: 'en',
   hourFormat: '24',
   dateFormat: 'YYYY-MM-DD',
+  weekStart: 1,
   sortOrder: 'desc',
   messageSortCriteria: 'date',
   maxAttachmentMiB: 32,
@@ -133,6 +135,7 @@ const SERVER_FIELDS: { [K in keyof SettingsState]?: ServerField } = {
   language: { name: 'language', value: s => s.language },
   hourFormat: { name: 'hour_format', value: s => s.hourFormat },
   dateFormat: { name: 'date_format', value: s => s.dateFormat },
+  weekStart: { name: 'week_start', value: s => Number(s.weekStart) ?? 1 },
   sortOrder: { name: 'sort_order', value: s => s.sortOrder },
   messageSortCriteria: { name: 'message_sort_criteria', value: s => s.messageSortCriteria },
 };
@@ -467,6 +470,7 @@ export class SettingsStore extends EventTarget {
           if (s.language !== undefined && s.language !== "") updates.language = s.language;
           if (s.hour_format !== undefined && s.hour_format !== "") updates.hourFormat = s.hour_format;
           if (s.date_format !== undefined && s.date_format !== "") updates.dateFormat = s.date_format;
+          if (s.week_start !== undefined) updates.weekStart = Number(s.week_start);
           if (s.sort_order !== undefined && s.sort_order !== "") updates.sortOrder = s.sort_order;
           if (s.message_sort_criteria !== undefined && s.message_sort_criteria !== "") updates.messageSortCriteria = s.message_sort_criteria;
           

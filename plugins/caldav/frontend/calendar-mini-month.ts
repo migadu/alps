@@ -2,6 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
+import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
 import { isAllDayEvent } from './calendar-service';
 import type { EventData } from './calendar-service';
 
@@ -9,10 +10,31 @@ import type { EventData } from './calendar-service';
 export class CalendarMiniMonth extends LitElement {
     @consume({ context: i18nContext })
     i18nStore!: I18nStore;
+    @consume({ context: settingsContext })
+    settingsStore!: SettingsStore;
     @property({ type: Number }) year!: number;
     @property({ type: Number }) month!: number;
     @property({ type: Array }) events: EventData[] = [];
     @property({ type: Boolean }) showTitle = false;
+    @property({ type: Number }) weekStart?: number;
+
+    private _handleSettingsChange = () => {
+        this.requestUpdate();
+    };
+
+    connectedCallback() {
+        super.connectedCallback();
+        this.settingsStore?.addEventListener('change', this._handleSettingsChange);
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        this.settingsStore?.removeEventListener('change', this._handleSettingsChange);
+    }
+
+    private getFirstDayOfWeek(): number {
+        return this.weekStart !== undefined ? this.weekStart : (this.settingsStore?.getState()?.weekStart ?? 1);
+    }
     
     // An optional date to treat as the "current" selection
     @property({ type: Object }) currentDate?: Date;
@@ -97,11 +119,12 @@ export class CalendarMiniMonth extends LitElement {
         // Counted rather than walked, for the reason given in the month view's
         // getMonthGrid: a day cursor gains an hour at a midnight DST start and
         // then drops the month's last day and the today highlight.
-        let dayOfWeek = new Date(this.year, this.month, 1).getDay();
-        if (dayOfWeek === 0) dayOfWeek = 7; // Monday first
-        const firstCell = 1 - (dayOfWeek - 1);
+        const firstDayOfWeek = this.getFirstDayOfWeek();
+        const dayOfWeek = new Date(this.year, this.month, 1).getDay();
+        const offset = (dayOfWeek - firstDayOfWeek + 7) % 7;
+        const firstCell = 1 - offset;
         const daysInMonth = new Date(this.year, this.month + 1, 0).getDate();
-        const cellCount = Math.ceil((daysInMonth + (dayOfWeek - 1)) / 7) * 7;
+        const cellCount = Math.ceil((daysInMonth + offset) / 7) * 7;
 
         const grid: Date[] = [];
         for (let i = 0; i < cellCount; i++) {
@@ -149,9 +172,10 @@ export class CalendarMiniMonth extends LitElement {
 
     render() {
         const grid = this.getMonthGrid();
+        const firstDayOfWeek = this.getFirstDayOfWeek();
         const dayNames = Array.from({length: 7}, (_, i) => {
-            const d = new Date(2021, 10, i + 1); // Nov 1, 2021 was a Monday
-            return this.i18nStore?.t(`calendar.daysNarrow.${d.getDay()}`);
+            const dayIndex = (firstDayOfWeek + i) % 7;
+            return this.i18nStore?.t(`calendar.daysNarrow.${dayIndex}`);
         });
         const today = new Date();
         today.setHours(0,0,0,0);

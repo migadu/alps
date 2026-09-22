@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
 )
 
@@ -140,5 +141,65 @@ func TestHTTP_SettingsThatDoNotDecodeAreRemoved(t *testing.T) {
 	var saved map[string]any
 	if err := store.Get(settingsKey, &saved); err != nil || saved["signature"] != "Ada" {
 		t.Errorf("saved %v, %v", saved, err)
+	}
+}
+
+func TestHTTP_SettingsWeekStart(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
+
+	saved := func() *int {
+		t.Helper()
+		var got struct {
+			Settings struct {
+				WeekStart *int `json:"week_start"`
+			} `json:"Settings"`
+		}
+		r := s.do("GET", "/settings", nil)
+		s.expect(r, http.StatusOK)
+		r.json(t, &got)
+		return got.Settings.WeekStart
+	}
+
+	// Defaults to 1 (Monday) when unspecified
+	if v := saved(); v == nil || *v != 1 {
+		t.Fatalf("default week_start = %v, want 1", v)
+	}
+
+	// Update to 0 (Sunday)
+	s.expect(s.do("PUT", "/settings", map[string]any{"week_start": 0}), http.StatusOK)
+	if v := saved(); v == nil || *v != 0 {
+		t.Fatalf("after update to Sunday, week_start = %v, want 0", v)
+	}
+
+	// Update back to 1 (Monday)
+	s.expect(s.do("PUT", "/settings", map[string]any{"week_start": 1}), http.StatusOK)
+	if v := saved(); v == nil || *v != 1 {
+		t.Fatalf("after update to Monday, week_start = %v, want 1", v)
+	}
+}
+
+func TestHTTP_SettingsWeekStartFromCaldavOptions(t *testing.T) {
+	s := newTestServer(t)
+	s.server.Options.Plugins = map[string]alps.PluginConfig{
+		"caldav": {
+			Enabled: true,
+			Options: map[string]interface{}{
+				"week_start": 0,
+			},
+		},
+	}
+	s.login()
+
+	var got struct {
+		Settings struct {
+			WeekStart *int `json:"week_start"`
+		} `json:"Settings"`
+	}
+	r := s.do("GET", "/settings", nil)
+	s.expect(r, http.StatusOK)
+	r.json(t, &got)
+	if got.Settings.WeekStart == nil || *got.Settings.WeekStart != 0 {
+		t.Fatalf("week_start from caldav plugin config = %v, want 0", got.Settings.WeekStart)
 	}
 }

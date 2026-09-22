@@ -8,12 +8,13 @@
  * inheriting the machine's.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, mount, record, shadowAll } from './helpers/dom';
+import { cleanup, mount, record, shadow, shadowAll } from './helpers/dom';
 import { I18nStore } from '../src/store/i18n-store';
 import { getCalendarColor, isAllDayEvent, weekStart, type EventData } from '../../plugins/caldav/frontend/calendar-service';
 import '../../plugins/caldav/frontend/calendar-month-view';
 import '../../plugins/caldav/frontend/calendar-mini-month';
 import '../../plugins/caldav/frontend/calendar-time-grid';
+import '../../plugins/caldav/frontend/calendar-week-view';
 import '../../plugins/caldav/frontend/calendar-list-view';
 
 const originalZone = process.env.TZ;
@@ -43,6 +44,16 @@ describe('calendar helpers', () => {
     }
     const sunday = weekStart(new Date(2024, 8, 1, 9));
     expect([sunday.getMonth(), sunday.getDate()]).toEqual([7, 26]);
+  });
+
+  it('starts every week on its Sunday at midnight when firstDayOfWeek is 0', () => {
+    inZone('Europe/Belgrade');
+    for (let day = 1; day <= 7; day++) {
+      const start = weekStart(new Date(2024, 8, day, 15, 30), 0);
+      expect([start.getFullYear(), start.getMonth(), start.getDate(), start.getHours()], `September ${day}`).toEqual([2024, 8, 1, 0]);
+    }
+    const saturday = weekStart(new Date(2024, 7, 31, 9), 0);
+    expect([saturday.getMonth(), saturday.getDate()]).toEqual([7, 25]);
   });
 
   it('does not move the date it is given', () => {
@@ -79,6 +90,18 @@ describe('month view', () => {
     expect(cells(september)).toHaveLength(42);
     expect(cells(september).slice(0, 6).map(dayNumber)).toEqual(['26', '27', '28', '29', '30', '31']);
     expect(dayNumber(cells(september)[6])).toBe('1');
+    const mondayHeaders = shadowAll(september, '.month-header-cell').map((h) => h.textContent?.trim());
+    expect(mondayHeaders).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+  });
+
+  it('lays out Sunday-first weeks when configured', async () => {
+    inZone('Europe/Belgrade');
+    // September 1, 2024 was a Sunday
+    const el = await mount('calendar-month-view', { date: new Date(2024, 8, 10), weekStart: 0, i18nStore: i18n });
+    expect(cells(el)).toHaveLength(35);
+    expect(dayNumber(cells(el)[0])).toBe('1');
+    const sundayHeaders = shadowAll(el, '.month-header-cell').map((h) => h.textContent?.trim());
+    expect(sundayHeaders).toEqual(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
   });
 
   it('keeps every day of the month where the clocks skip midnight', async () => {
@@ -150,6 +173,18 @@ describe('mini month', () => {
     (current[4] as HTMLElement).click();
     expect(picked[0].detail.date.getDate()).toBe(5);
   });
+
+  it('lays out Sunday-first weeks and narrow headers when configured', async () => {
+    inZone('Europe/Belgrade');
+    const el = await mount('calendar-mini-month', {
+      year: 2024, month: 8, weekStart: 0, i18nStore: i18n,
+    });
+    const days = shadowAll(el, '.mini-day');
+    expect(days).toHaveLength(35);
+    expect(dayNumber(days[0])).toBe('1');
+    const headers = shadowAll(el, '.mini-day-name').map((h) => h.textContent?.trim());
+    expect(headers).toEqual(['S', 'M', 'T', 'W', 'T', 'F', 'S']);
+  });
 });
 
 describe('time grid', () => {
@@ -195,6 +230,25 @@ describe('time grid', () => {
     column.dispatchEvent(new MouseEvent('click', { clientY: 10, bubbles: true }));
     column.dispatchEvent(new MouseEvent('click', { clientY: 100, bubbles: true }));
     expect(created.map((e) => [e.detail.allDay, e.detail.date.getHours()])).toEqual([[false, 0], [false, 2]]);
+  });
+});
+
+describe('week view', () => {
+  it('lays out 7 days starting from Sunday when weekStart is 0', async () => {
+    inZone('Europe/Belgrade');
+    const el = await mount('calendar-week-view', {
+      date: new Date(2024, 8, 4), // Wednesday Sept 4, 2024
+      weekStart: 0,
+      i18nStore: i18n,
+    });
+    const timeGrid = shadow<HTMLElement>(el, 'calendar-time-grid');
+    await (timeGrid as any).updateComplete;
+    const dayHeaders = shadowAll(timeGrid, '.time-grid-day-header');
+    expect(dayHeaders).toHaveLength(7);
+    const dayNames = dayHeaders.map((h) => h.querySelector('.time-grid-day-name')?.textContent?.trim());
+    const dayNums = dayHeaders.map((h) => h.querySelector('.time-grid-day-number')?.textContent?.trim());
+    expect(dayNames).toEqual(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
+    expect(dayNums).toEqual(['1', '2', '3', '4', '5', '6', '7']);
   });
 });
 

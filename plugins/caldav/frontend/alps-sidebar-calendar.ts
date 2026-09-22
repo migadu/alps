@@ -12,6 +12,7 @@ export class AlpsSidebarCalendar extends LitElement {
     i18nStore!: I18nStore;
     @property({ type: Object }) selectedDate: Date = new Date();
     @property({ type: Array }) events: EventData[] = [];
+    @property({ type: Number }) weekStart?: number;
 
     @state() private viewDate: Date = new Date();
 
@@ -74,6 +75,7 @@ export class AlpsSidebarCalendar extends LitElement {
                     .month=${month}
                     .events=${this.events}
                     .currentDate=${this.selectedDate}
+                    .weekStart=${this.weekStart}
                     @date-selected=${(e: CustomEvent) => {
                 // Forward the event to the parent
                 this.dispatchEvent(new CustomEvent('date-selected', {

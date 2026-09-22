@@ -46,6 +46,37 @@ func TestXMLEscape(t *testing.T) {
 	}
 }
 
+func TestParseWeekStart(t *testing.T) {
+	cases := []struct {
+		in   any
+		want int
+	}{
+		{0, 0},
+		{1, 1},
+		{int64(0), 0},
+		{int64(1), 1},
+		{float64(0), 0},
+		{float64(1), 1},
+		{"0", 0},
+		{"1", 1},
+		{"sunday", 0},
+		{"Sunday", 0},
+		{"SUN", 0},
+		{"monday", 1},
+		{"Monday", 1},
+		{"MON", 1},
+		{nil, 1},
+		{"tuesday", 1},
+		{2, 1},
+		{-1, 1},
+	}
+	for _, tc := range cases {
+		if got := parseWeekStart(tc.in); got != tc.want {
+			t.Errorf("parseWeekStart(%v) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
 func calendarObjectOf(event *ical.Event) *caldav.CalendarObject {
 	cal := ical.NewCalendar()
 	cal.Children = append(cal.Children, event.Component)
