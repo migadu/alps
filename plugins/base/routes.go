@@ -160,6 +160,9 @@ func dropMailboxListings(cache *alps.Cache, mailbox string) {
 type CachedMessages struct {
 	Messages []provider.Message
 	Total    int
+	// Threaded records what Total counts, so a cache hit reports the same
+	// kind of row the live listing would have. See provider.PageInfo.
+	Threaded bool
 }
 
 // CachedMessagePart holds a cached individual message with optional body data
@@ -711,6 +714,11 @@ func handleGetMailbox(ctx *alps.Context) error {
 	var (
 		msgs  []IMAPMessage
 		total int
+		// threaded says whether Total counts conversations or messages; a
+		// server may refuse THREAD for one request and allow it for the next,
+		// and the client has to notice rather than page on with an offset that
+		// changed meaning underneath it.
+		threaded bool
 	)
 
 	// Build cache key for messages
@@ -746,6 +754,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 	if hit {
 		cachedData := cached.(CachedMessages)
 		total = cachedData.Total
+		threaded = cachedData.Threaded
 
 		// Convert cached provider messages to IMAP messages for display
 		msgs = make([]IMAPMessage, len(cachedData.Messages))
@@ -758,20 +767,23 @@ func handleGetMailbox(ctx *alps.Context) error {
 		var providerMsgs []provider.Message
 		err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 			var err error
+			var pageInfo provider.PageInfo
 			if query != "" || settings.MessageSortCriteria == "date" {
-				providerMsgs, total, err = p.SearchMessages(mbox.Name(), query, sortOrder, page, messagesPerPage)
+				providerMsgs, pageInfo, err = p.SearchMessages(mbox.Name(), query, sortOrder, page, messagesPerPage)
 			} else {
-				providerMsgs, total, err = p.ListMessages(mbox.Name(), sortOrder, page, messagesPerPage)
+				providerMsgs, pageInfo, err = p.ListMessages(mbox.Name(), sortOrder, page, messagesPerPage)
 			}
 			if err != nil {
 				return err
 			}
+			total, threaded = pageInfo.Total, pageInfo.Threaded
 
 			// Cache the message list using provider types
 			if cacheable {
 				ctx.Session.Cache().Set(msgCacheKey, CachedMessages{
 					Messages: providerMsgs,
 					Total:    total,
+					Threaded: threaded,
 				})
 			}
 
@@ -816,6 +828,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 		"Inbox":           ibase.Inbox,
 		"Messages":        msgs,
 		"Total":           total,
+		"Threaded":        threaded,
 		"Page":            page,
 		"MessagesPerPage": messagesPerPage,
 	})
@@ -1008,7 +1021,8 @@ func handleLogin(ctx *alps.Context) error {
 		}
 
 		if err != nil {
-			if _, ok := err.(alps.AuthError); ok {
+			var authErr provider.AuthError
+			if errors.As(err, &authErr) {
 				return ctx.JSON(http.StatusUnauthorized, map[string]interface{}{"error": "Failed to login"})
 			}
 			return fmt.Errorf("failed to put connection in pool: %v", err)
@@ -1826,7 +1840,8 @@ func handleComposeNew(ctx *alps.Context) error {
 		return sendMessage(c, msg)
 	})
 	if err != nil {
-		if _, ok := err.(alps.AuthError); ok {
+		var authErr provider.AuthError
+		if errors.As(err, &authErr) {
 			return ctx.JSON(http.StatusForbidden, map[string]string{"error": "Forbidden"})
 		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to send message: " + err.Error()})
@@ -1931,7 +1946,7 @@ func handleComposeAttachment(ctx *alps.Context) error {
 	var uuids []string
 	for _, fh := range form.File["attachments"] {
 		uuid, err := ctx.Session.PutAttachment(composerID, fh, form)
-		if err == alps.ErrAttachmentCacheSize {
+		if errors.Is(err, alps.ErrAttachmentCacheSize) {
 			form.RemoveAll()
 			return ctx.JSON(http.StatusBadRequest, map[string]string{
 				"error": "Your attachments exceed the maximum file size. Remove some and try again.",
@@ -2705,7 +2720,7 @@ func loadSettingsWith(get func(key string, out interface{}) error) (*Settings, e
 	var typeErr *json.UnmarshalTypeError
 	var syntaxErr *json.SyntaxError
 	switch {
-	case err == nil || err == provider.ErrNoStoreEntry:
+	case err == nil || errors.Is(err, provider.ErrNoStoreEntry):
 	case errors.As(err, &typeErr) && typeErr.Field != "":
 		// Read around the one value.
 	case errors.As(err, &typeErr) || errors.As(err, &syntaxErr):
@@ -3061,11 +3076,12 @@ func handleAddAccount(ctx *alps.Context) error {
 	err := ctx.Session.AddLinkedAccount(username, password, displayName)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to add account: %v", err)
-		if err == alps.ErrAccountAlreadyLinked {
+		var authErr provider.AuthError
+		if errors.Is(err, alps.ErrAccountAlreadyLinked) {
 			errorMsg = "This account is already linked"
-		} else if err == alps.ErrCannotLinkSelf {
+		} else if errors.Is(err, alps.ErrCannotLinkSelf) {
 			errorMsg = "You cannot link your own account"
-		} else if _, ok := err.(alps.AuthError); ok {
+		} else if errors.As(err, &authErr) {
 			errorMsg = "Authentication failed. Please check your credentials."
 		}
 

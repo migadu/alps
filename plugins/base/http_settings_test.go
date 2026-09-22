@@ -1,6 +1,7 @@
 package alpsbase
 
 import (
+	"errors"
 	"net/http"
 	"testing"
 
@@ -108,7 +109,7 @@ func TestHTTP_SettingsThatDoNotDecodeAreRemoved(t *testing.T) {
 	gone := func() {
 		t.Helper()
 		var record any
-		if err := store.Get(settingsKey, &record); err != provider.ErrNoStoreEntry {
+		if err := store.Get(settingsKey, &record); !errors.Is(err, provider.ErrNoStoreEntry) {
 			t.Errorf("the record is still %v, %v", record, err)
 		}
 	}

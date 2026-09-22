@@ -5,10 +5,26 @@ import (
 	"time"
 
 	"github.com/emersion/go-smtp"
+	"github.com/migadu/alps/provider"
 )
 
-func (s *Server) dialSMTP() (*smtp.Client, error) {
-	if s.smtp.host == "" {
+func (s *Server) dialSMTP(username string) (*smtp.Client, error) {
+	host, tls, insecure := s.smtp.host, s.smtp.tls, s.smtp.insecure
+
+	// A provider that routes the mail store per domain may route submission
+	// the same way. An empty answer means it has no opinion for this login,
+	// and the globally configured server stands.
+	if raw := s.ServiceURLFor(provider.ServiceSMTP, username); raw != "" {
+		{
+			h, t, i, err := parseSMTPURL(raw, s.Options.SMTP.Insecure)
+			if err != nil {
+				return nil, fmt.Errorf("provider named an unusable SMTP server for %q: %v", username, err)
+			}
+			host, tls, insecure = h, t, i
+		}
+	}
+
+	if host == "" {
 		return nil, fmt.Errorf("SMTP is disabled")
 	}
 
@@ -20,18 +36,18 @@ func (s *Server) dialSMTP() (*smtp.Client, error) {
 
 	var c *smtp.Client
 	var err error
-	if s.smtp.tls {
-		c, err = smtp.DialTLS(s.smtp.host, nil)
+	if tls {
+		c, err = smtp.DialTLS(host, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to SMTPS server: %v", err)
 		}
-	} else if !s.smtp.insecure {
-		c, err = smtp.DialStartTLS(s.smtp.host, nil)
+	} else if !insecure {
+		c, err = smtp.DialStartTLS(host, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to SMTP server: %v", err)
 		}
 	} else {
-		c, err = smtp.Dial(s.smtp.host)
+		c, err = smtp.Dial(host)
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to SMTP server: %v", err)
 		}

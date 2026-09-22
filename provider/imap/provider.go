@@ -3,8 +3,10 @@ package imap
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,7 +44,10 @@ type IMAPProvider struct {
 	verdictLock         sync.Mutex
 	verdicts            map[string]*mailboxVerdicts
 	dateCache           map[string]map[uint32]time.Time
-	cacheLock           sync.RWMutex
+	// threadFallbacks names the mailboxes already reported as listing flat,
+	// so a server that refuses THREAD is logged once per session per mailbox.
+	threadFallbacks map[string]bool
+	cacheLock       sync.RWMutex
 }
 
 func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
@@ -513,7 +518,7 @@ func (p *IMAPProvider) fetchThreadGroups(criteria *imap.SearchCriteria) ([]Threa
 	}
 	threadTrees, err := p.client.UIDThread(&options).Wait()
 	if err != nil {
-		return nil, fmt.Errorf("UID THREAD failed: %v", err)
+		return nil, fmt.Errorf("UID THREAD failed: %w", err)
 	}
 
 	var groups []ThreadGroup
@@ -551,15 +556,142 @@ func (p *IMAPProvider) fetchThreadGroups(criteria *imap.SearchCriteria) ([]Threa
 	return groups, nil
 }
 
+// refusedByServer reports whether err is the server declining a command with a
+// tagged NO or BAD, rather than the connection or the client giving out.
+//
+// Only a refusal is worth answering differently. Anything else — a dead
+// socket, a malformed response — will fail the next command on this connection
+// too, and the caller is better served by the original error than by a second
+// one from a fallback that never had a chance.
+func refusedByServer(err error) bool {
+	var imapErr *imap.Error
+	if !errors.As(err, &imapErr) {
+		return false
+	}
+	return imapErr.Type == imap.StatusResponseTypeNo || imapErr.Type == imap.StatusResponseTypeBad
+}
+
+// noteThreadFallback records that a mailbox is being listed flat, and reports
+// whether this is the first time for this session. A server that refuses
+// THREAD refuses it for every page, so the operator wants to hear once, not on
+// each click.
+func (p *IMAPProvider) noteThreadFallback(mailbox string) bool {
+	p.cacheLock.Lock()
+	defer p.cacheLock.Unlock()
+	if p.threadFallbacks == nil {
+		p.threadFallbacks = make(map[string]bool)
+	}
+	if p.threadFallbacks[mailbox] {
+		return false
+	}
+	p.threadFallbacks[mailbox] = true
+	return true
+}
+
+// threadedPage paints one page of a THREADed message list: group the mailbox
+// into conversations, order the groups, then fetch and convert just the page's
+// messages. ListMessages and SearchMessages share it — they differ only in the
+// criteria they thread over.
+//
+// Its error is RECOVERABLE by design. Nothing here touches session state, so a
+// caller that gets one can simply carry on down its own unthreaded path, which
+// is what both of them do.
+func (p *IMAPProvider) threadedPage(mailbox string, criteria *imap.SearchCriteria, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
+	groups, err := p.fetchThreadGroups(criteria)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Sort groups based on criteria and sortOrder
+	if err := p.sortGroups(mailbox, groups, sortOrder); err != nil {
+		return nil, 0, fmt.Errorf("failed to sort thread groups: %w", err)
+	}
+
+	total := len(groups)
+	from := page * pageSize
+	to := from + pageSize
+	if from >= total {
+		return nil, total, nil
+	}
+	if to > total {
+		to = total
+	}
+	paginatedGroups := groups[from:to]
+
+	var allUIDs []uint32
+	for _, g := range paginatedGroups {
+		allUIDs = append(allUIDs, g.UIDs...)
+	}
+
+	var uidSet imap.UIDSet
+	for _, uid := range allUIDs {
+		uidSet.AddNum(imap.UID(uid))
+	}
+
+	fetchOptions := imap.FetchOptions{
+		Flags:         true,
+		Envelope:      true,
+		UID:           true,
+		RFC822Size:    true,
+		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+	}
+
+	imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch representative messages: %w", err)
+	}
+
+	msgMap := make(map[uint32]*imapclient.FetchMessageBuffer)
+	for _, msg := range imapMsgs {
+		msgMap[uint32(msg.UID)] = msg
+	}
+
+	msgs := make([]provider.Message, 0, len(paginatedGroups))
+	for _, g := range paginatedGroups {
+		fetchMsg, ok := msgMap[g.RepUID]
+		if !ok {
+			continue
+		}
+		converted := p.convertIMAPMessage(fetchMsg, mailbox)
+		converted.ThreadCount = len(g.UIDs)
+		converted.ThreadUIDs = make([]string, len(g.UIDs))
+		for idx, u := range g.UIDs {
+			converted.ThreadUIDs[idx] = strconv.FormatUint(uint64(u), 10)
+		}
+
+		// Sort sub-messages in ascending order (chronological) and assign them
+		sort.Slice(g.UIDs, func(i, j int) bool {
+			return g.UIDs[i] < g.UIDs[j]
+		})
+
+		var subMessages []provider.Message
+		for _, uid := range g.UIDs {
+			if uid == g.RepUID {
+				continue
+			}
+			subFetchMsg, ok := msgMap[uid]
+			if !ok {
+				continue
+			}
+			subMessages = append(subMessages, p.convertIMAPMessage(subFetchMsg, mailbox))
+		}
+		converted.SubMessages = subMessages
+
+		msgs = append(msgs, converted)
+	}
+
+	return msgs, total, nil
+}
+
 // ListMessages returns a paginated list of messages
-func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
+func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
 	// A NOOP will ensure we notice any new message
 	noop := p.client.Noop()
 	if err := p.ensureMailboxSelected(mailbox); err != nil {
-		return nil, 0, err
+		return nil, provider.PageInfo{}, err
 	}
 	if err := noop.Wait(); err != nil {
-		return nil, 0, err
+		return nil, provider.PageInfo{}, err
 	}
 
 	var s struct {
@@ -580,90 +712,13 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 	}
 
 	if enableThreading && p.HasThreadCapability() {
-		groups, err := p.fetchThreadGroups(&imap.SearchCriteria{})
-		if err != nil {
-			return nil, 0, err
+		msgs, total, err := p.threadedPage(mailbox, &imap.SearchCriteria{}, sortOrder, page, pageSize)
+		if err == nil {
+			return msgs, provider.PageInfo{Total: total, Threaded: true}, nil
 		}
-
-		// Sort groups based on criteria and sortOrder
-		if err := p.sortGroups(mailbox, groups, sortOrder); err != nil {
-			return nil, 0, fmt.Errorf("failed to sort thread groups: %v", err)
+		if !p.fallBackToFlat(mailbox, err) {
+			return nil, provider.PageInfo{}, err
 		}
-
-		total := len(groups)
-		from := page * pageSize
-		to := from + pageSize
-		if from >= total {
-			return nil, total, nil
-		}
-		if to > total {
-			to = total
-		}
-		paginatedGroups := groups[from:to]
-
-		var allUIDs []uint32
-		for _, g := range paginatedGroups {
-			allUIDs = append(allUIDs, g.UIDs...)
-		}
-
-		var uidSet imap.UIDSet
-		for _, uid := range allUIDs {
-			uidSet.AddNum(imap.UID(uid))
-		}
-
-		fetchOptions := imap.FetchOptions{
-			Flags:         true,
-			Envelope:      true,
-			UID:           true,
-			RFC822Size:    true,
-			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
-		}
-
-		imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to fetch representative messages: %v", err)
-		}
-
-		msgMap := make(map[uint32]*imapclient.FetchMessageBuffer)
-		for _, msg := range imapMsgs {
-			msgMap[uint32(msg.UID)] = msg
-		}
-
-		msgs := make([]provider.Message, 0, len(paginatedGroups))
-		for _, g := range paginatedGroups {
-			fetchMsg, ok := msgMap[g.RepUID]
-			if !ok {
-				continue
-			}
-			converted := p.convertIMAPMessage(fetchMsg, mailbox)
-			converted.ThreadCount = len(g.UIDs)
-			converted.ThreadUIDs = make([]string, len(g.UIDs))
-			for idx, u := range g.UIDs {
-				converted.ThreadUIDs[idx] = strconv.FormatUint(uint64(u), 10)
-			}
-
-			// Sort sub-messages in ascending order (chronological) and assign them
-			sort.Slice(g.UIDs, func(i, j int) bool {
-				return g.UIDs[i] < g.UIDs[j]
-			})
-
-			var subMessages []provider.Message
-			for _, uid := range g.UIDs {
-				if uid == g.RepUID {
-					continue
-				}
-				subFetchMsg, ok := msgMap[uid]
-				if !ok {
-					continue
-				}
-				subMessages = append(subMessages, p.convertIMAPMessage(subFetchMsg, mailbox))
-			}
-			converted.SubMessages = subMessages
-
-			msgs = append(msgs, converted)
-		}
-
-		return msgs, total, nil
 	}
 
 	mbox = p.client.Mailbox()
@@ -677,7 +732,7 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 			to = total
 		}
 		if from > total {
-			return nil, total, nil
+			return nil, provider.PageInfo{Total: total}, nil
 		}
 	} else {
 		to = total - page*pageSize
@@ -686,7 +741,7 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 			from = 1
 		}
 		if to <= 0 {
-			return nil, total, nil
+			return nil, provider.PageInfo{Total: total}, nil
 		}
 	}
 
@@ -701,7 +756,7 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 	}
 	imapMsgs, err := p.client.Fetch(seqSet, &options).Collect()
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to fetch message list: %v", err)
+		return nil, provider.PageInfo{}, fmt.Errorf("failed to fetch message list: %v", err)
 	}
 
 	msgs := make([]provider.Message, 0, len(imapMsgs))
@@ -719,7 +774,7 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 		}
 	}
 
-	return msgs, total, nil
+	return msgs, provider.PageInfo{Total: total}, nil
 }
 
 // SearchMessageIDs answers every UID in the mailbox the query matches, and
@@ -754,7 +809,7 @@ func (p *IMAPProvider) SearchMessageIDs(mailbox, query string) ([]provider.Messa
 }
 
 // SearchMessages searches messages in a mailbox
-func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
+func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
 	if mailbox == "*" {
 		if p.HasESearchCapability() {
 			return p.searchESearchMessages(query, sortOrder, page, pageSize)
@@ -764,7 +819,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 	}
 
 	if err := p.ensureMailboxSelected(mailbox); err != nil {
-		return nil, 0, err
+		return nil, provider.PageInfo{}, err
 	}
 
 	mbox := p.client.Mailbox()
@@ -794,97 +849,29 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 	}
 
 	if enableThreading && p.HasThreadCapability() {
-		groups, err := p.fetchThreadGroups(searchCriteria)
-		if err != nil {
-			return nil, 0, err
+		msgs, total, err := p.threadedPage(mailbox, searchCriteria, sortOrder, page, pageSize)
+		if err == nil {
+			return msgs, provider.PageInfo{Total: total, Threaded: true}, nil
 		}
-
-		// Sort groups based on criteria and sortOrder
-		if err := p.sortGroups(mailbox, groups, sortOrder); err != nil {
-			return nil, 0, fmt.Errorf("failed to sort thread groups: %v", err)
+		if !p.fallBackToFlat(mailbox, err) {
+			return nil, provider.PageInfo{}, err
 		}
-
-		total := len(groups)
-		from := page * pageSize
-		to := from + pageSize
-		if from >= total {
-			return nil, total, nil
+		// A server can refuse THREAD over a folder it will happily list — it is
+		// the most expensive thing a client asks for, so it is the first thing
+		// a server throttles (ours answers `NO [LIMIT] ... slow down`). That is
+		// a reason to show the folder UNTHREADED, not to fail the page: a flat
+		// list is the whole folder, just without the grouping. Same call the
+		// SORT fallback in sortGroups makes.
+		if p.debug {
+			fmt.Printf("threaded list: THREAD failed, listing flat instead: %v\n", err)
 		}
-		if to > total {
-			to = total
-		}
-		paginatedGroups := groups[from:to]
-
-		var allUIDs []uint32
-		for _, g := range paginatedGroups {
-			allUIDs = append(allUIDs, g.UIDs...)
-		}
-
-		var uidSet imap.UIDSet
-		for _, uid := range allUIDs {
-			uidSet.AddNum(imap.UID(uid))
-		}
-
-		fetchOptions := imap.FetchOptions{
-			Flags:         true,
-			Envelope:      true,
-			UID:           true,
-			RFC822Size:    true,
-			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
-		}
-
-		imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to fetch representative messages: %v", err)
-		}
-
-		msgMap := make(map[uint32]*imapclient.FetchMessageBuffer)
-		for _, msg := range imapMsgs {
-			msgMap[uint32(msg.UID)] = msg
-		}
-
-		msgs := make([]provider.Message, 0, len(paginatedGroups))
-		for _, g := range paginatedGroups {
-			fetchMsg, ok := msgMap[g.RepUID]
-			if !ok {
-				continue
-			}
-			converted := p.convertIMAPMessage(fetchMsg, mailbox)
-			converted.ThreadCount = len(g.UIDs)
-			converted.ThreadUIDs = make([]string, len(g.UIDs))
-			for idx, u := range g.UIDs {
-				converted.ThreadUIDs[idx] = strconv.FormatUint(uint64(u), 10)
-			}
-
-			// Sort sub-messages in ascending order (chronological) and assign them
-			sort.Slice(g.UIDs, func(i, j int) bool {
-				return g.UIDs[i] < g.UIDs[j]
-			})
-
-			var subMessages []provider.Message
-			for _, uid := range g.UIDs {
-				if uid == g.RepUID {
-					continue
-				}
-				subFetchMsg, ok := msgMap[uid]
-				if !ok {
-					continue
-				}
-				subMessages = append(subMessages, p.convertIMAPMessage(subFetchMsg, mailbox))
-			}
-			converted.SubMessages = subMessages
-
-			msgs = append(msgs, converted)
-		}
-
-		return msgs, total, nil
 	}
 
 	var nums []uint32
 	if !p.client.Caps().Has(imap.CapSort) {
 		data, err := p.client.Search(searchCriteria, nil).Wait()
 		if err != nil {
-			return nil, 0, fmt.Errorf("SEARCH failed: %v", err)
+			return nil, provider.PageInfo{}, fmt.Errorf("SEARCH failed: %v", err)
 		}
 		if data != nil {
 			nums = data.AllSeqNums()
@@ -905,7 +892,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		var err error
 		sortData, err := p.client.Sort(sortOptions).Wait()
 		if err != nil {
-			return nil, 0, fmt.Errorf("SORT failed: %v", err)
+			return nil, provider.PageInfo{}, fmt.Errorf("SORT failed: %v", err)
 		}
 		nums = sortData.SeqNums
 	}
@@ -915,7 +902,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 	from := page * pageSize
 	to := from + pageSize
 	if from >= len(nums) {
-		return nil, total, nil
+		return nil, provider.PageInfo{Total: total}, nil
 	}
 	if to > len(nums) {
 		to = len(nums)
@@ -937,7 +924,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 	}
 	results, err := p.client.Fetch(seqSet, &options).Collect()
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to fetch message list: %v", err)
+		return nil, provider.PageInfo{}, fmt.Errorf("failed to fetch message list: %v", err)
 	}
 
 	msgs := make([]provider.Message, len(nums))
@@ -956,7 +943,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		}
 	}
 
-	return validMsgs, total, nil
+	return validMsgs, provider.PageInfo{Total: total}, nil
 }
 
 // GetMessageMetadata fetches a message's metadata without downloading any body parts
@@ -1875,9 +1862,38 @@ func (p *IMAPProvider) HasESearchCapability() bool {
 	return p.client.Caps().Has(imap.CapMultiSearch)
 }
 
-func (p *IMAPProvider) searchESearchMessages(query string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
+// searchCandidate is one match from a cross-mailbox search, carrying just
+// enough to order the whole result set before any body is fetched.
+type searchCandidate struct {
+	mailbox string
+	uid     uint32
+	date    time.Time
+}
+
+// candidateBefore orders two matches from a cross-mailbox search.
+//
+// Date alone is not a total order: bulk mail arrives sharing a timestamp to
+// the second, and every page of a search is produced by a fresh sort. Two
+// requests that disagreed about how to order tied messages would cut the page
+// boundary in different places, and a reader paging through would see one
+// message twice and another not at all. Mailbox and UID settle the tie, and
+// together they identify a message uniquely.
+func candidateBefore(a, b searchCandidate, sortOrder string) bool {
+	if !a.date.Equal(b.date) {
+		if sortOrder == "asc" {
+			return a.date.Before(b.date)
+		}
+		return a.date.After(b.date)
+	}
+	if a.mailbox != b.mailbox {
+		return a.mailbox < b.mailbox
+	}
+	return a.uid < b.uid
+}
+
+func (p *IMAPProvider) searchESearchMessages(query string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
 	if p.client == nil {
-		return nil, 0, fmt.Errorf("IMAP client not initialized")
+		return nil, provider.PageInfo{}, fmt.Errorf("IMAP client not initialized")
 	}
 
 	searchCriteria := prepareIMAPSearch(query)
@@ -1888,17 +1904,16 @@ func (p *IMAPProvider) searchESearchMessages(query string, sortOrder string, pag
 	// 2. Perform ESEARCH
 	results, err := p.client.MultiSearch(source, searchCriteria, nil).Wait()
 	if err != nil {
-		return nil, 0, fmt.Errorf("ESEARCH failed: %v", err)
+		return nil, provider.PageInfo{}, fmt.Errorf("ESEARCH failed: %v", err)
 	}
 
-	var allMsgs []provider.Message
+	var candidates []searchCandidate
 	for _, data := range results {
 		uids := data.AllUIDs()
 		if len(uids) == 0 {
 			continue
 		}
 
-		// 3. Batch-fetch for this mailbox
 		if err := p.ensureMailboxSelected(data.Mailbox); err != nil {
 			continue
 		}
@@ -1908,62 +1923,148 @@ func (p *IMAPProvider) searchESearchMessages(query string, sortOrder string, pag
 			uidSet.AddNum(imap.UID(uid))
 		}
 
-		bodySection := &imap.FetchItemBodySection{
-			Specifier:    imap.PartSpecifierHeader,
-			HeaderFields: []string{"Authentication-Results"},
-			Peek:         true,
-		}
-		referencesBodySection := &imap.FetchItemBodySection{
-			Specifier:    imap.PartSpecifierHeader,
-			HeaderFields: []string{"References"},
-			Peek:         true,
-		}
-		fetchOptions := imap.FetchOptions{
-			Flags:         true,
-			Envelope:      true,
-			UID:           true,
-			RFC822Size:    true,
-			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
-			BodySection: []*imap.FetchItemBodySection{
-				bodySection, referencesBodySection,
-			},
+		// Phase 1: Lightweight fetch of Envelope and InternalDate to determine order without loading bodies
+		envelopeFetchOptions := imap.FetchOptions{
+			Envelope:     true,
+			InternalDate: true,
+			UID:          true,
 		}
 
-		imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
+		imapMsgs, err := p.client.Fetch(uidSet, &envelopeFetchOptions).Collect()
 		if err != nil {
-			return nil, 0, fmt.Errorf("failed to fetch messages for %s: %v", data.Mailbox, err)
+			return nil, provider.PageInfo{}, fmt.Errorf("failed to fetch envelopes for %s: %v", data.Mailbox, err)
 		}
 
 		for _, msg := range imapMsgs {
-			allMsgs = append(allMsgs, p.convertIMAPMessage(msg, data.Mailbox))
+			var date time.Time
+			if msg.Envelope != nil {
+				date = msg.Envelope.Date
+			}
+			if date.IsZero() {
+				date = msg.InternalDate
+			}
+			candidates = append(candidates, searchCandidate{
+				mailbox: data.Mailbox,
+				uid:     uint32(msg.UID),
+				date:    date,
+			})
 		}
 	}
 
-	// 4. Sort globally by envelope date descending (or ascending if requested)
-	sort.Slice(allMsgs, func(i, j int) bool {
-		var dateI, dateJ time.Time
-		if allMsgs[i].Envelope != nil {
-			dateI = allMsgs[i].Envelope.Date
-		}
-		if allMsgs[j].Envelope != nil {
-			dateJ = allMsgs[j].Envelope.Date
-		}
-		if sortOrder == "asc" {
-			return dateI.Before(dateJ)
-		}
-		return dateI.After(dateJ)
+	// Sort globally by date descending (or ascending if requested).
+	//
+	// Date alone is not a total order: bulk mail arrives sharing a timestamp
+	// to the second, and every page of this search is produced by a fresh
+	// sort. Two requests that disagreed about how to order the tied messages
+	// would cut the page boundary in different places, so a reader paging
+	// through would see one message twice and another not at all. Mailbox and
+	// UID settle the tie, and they identify a message uniquely.
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidateBefore(candidates[i], candidates[j], sortOrder)
 	})
 
-	// 5. Paginate
-	total := len(allMsgs)
+	total := len(candidates)
 	from := page * pageSize
 	to := from + pageSize
-	if from >= len(allMsgs) {
-		return nil, total, nil
+	if from >= total {
+		return nil, provider.PageInfo{Total: total}, nil
 	}
-	if to > len(allMsgs) {
-		to = len(allMsgs)
+	if to > total {
+		to = total
 	}
 
-	return allMsgs[from:to], total, nil
+	paginated := candidates[from:to]
+	if len(paginated) == 0 {
+		return nil, provider.PageInfo{Total: total}, nil
+	}
+
+	// Phase 2: Full fetch ONLY for the paginated slice
+	type pageItem struct {
+		candidate searchCandidate
+		origIndex int
+	}
+	byMailbox := make(map[string][]pageItem)
+	for idx, c := range paginated {
+		byMailbox[c.mailbox] = append(byMailbox[c.mailbox], pageItem{candidate: c, origIndex: idx})
+	}
+
+	bodySection := &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"Authentication-Results"},
+		Peek:         true,
+	}
+	referencesBodySection := &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"References"},
+		Peek:         true,
+	}
+	fullFetchOptions := imap.FetchOptions{
+		Flags:         true,
+		Envelope:      true,
+		UID:           true,
+		RFC822Size:    true,
+		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+		BodySection: []*imap.FetchItemBodySection{
+			bodySection, referencesBodySection,
+		},
+	}
+
+	pageMsgs := make([]provider.Message, len(paginated))
+	for mboxName, items := range byMailbox {
+		if err := p.ensureMailboxSelected(mboxName); err != nil {
+			continue
+		}
+
+		var uidSet imap.UIDSet
+		for _, item := range items {
+			uidSet.AddNum(imap.UID(item.candidate.uid))
+		}
+
+		imapMsgs, err := p.client.Fetch(uidSet, &fullFetchOptions).Collect()
+		if err != nil {
+			return nil, provider.PageInfo{}, fmt.Errorf("failed to fetch messages for %s: %v", mboxName, err)
+		}
+
+		msgMap := make(map[uint32]*imapclient.FetchMessageBuffer, len(imapMsgs))
+		for _, msg := range imapMsgs {
+			msgMap[uint32(msg.UID)] = msg
+		}
+
+		for _, item := range items {
+			if fetchMsg, ok := msgMap[item.candidate.uid]; ok {
+				pageMsgs[item.origIndex] = p.convertIMAPMessage(fetchMsg, mboxName)
+			}
+		}
+	}
+
+	var finalMsgs []provider.Message
+	for _, m := range pageMsgs {
+		if m.ID != nil {
+			finalMsgs = append(finalMsgs, m)
+		}
+	}
+
+	return finalMsgs, provider.PageInfo{Total: total}, nil
+}
+
+// fallBackToFlat decides what to do when a threaded page could not be built,
+// and reports whether the caller should list the folder flat instead.
+//
+// THREAD is answered over the whole mailbox, so its cost is the mailbox's
+// size, which makes it the first command a loaded server throttles — ours
+// answers `NO [LIMIT] ... slow down`. Losing the grouping is not a reason to
+// lose the folder, so a refusal falls back. Anything else is the connection
+// or the client failing, and the caller sees that error rather than a second
+// one from a fallback that would fail the same way.
+func (p *IMAPProvider) fallBackToFlat(mailbox string, err error) bool {
+	if !refusedByServer(err) {
+		return false
+	}
+	if p.noteThreadFallback(mailbox) {
+		log.Printf("alps/provider: IMAP server refused THREAD for %q, listing it without grouping: %v", mailbox, err)
+	}
+	if p.debug {
+		fmt.Printf("threaded list: THREAD refused, listing flat instead: %v\n", err)
+	}
+	return true
 }

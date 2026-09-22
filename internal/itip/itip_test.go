@@ -1,6 +1,7 @@
 package itip
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -177,7 +178,7 @@ func TestReplyNamesOnlyTheAttendeeWithoutAlarms(t *testing.T) {
 	}
 	encode(t, reply)
 
-	if _, err := Reply(cal, "mallory@example.net", now); err != ErrNotInvited {
+	if _, err := Reply(cal, "mallory@example.net", now); !errors.Is(err, ErrNotInvited) {
 		t.Fatalf("a reply for someone not invited: %v", err)
 	}
 }
@@ -293,12 +294,12 @@ func TestApplyReply(t *testing.T) {
 
 	crasher := Clone(reply)
 	Master(crasher).Props.Get(ical.PropAttendee).Value = "mailto:mallory@example.net"
-	if _, err := ApplyReply(organizerCopy, crasher); err != ErrNotInvited {
+	if _, err := ApplyReply(organizerCopy, crasher); !errors.Is(err, ErrNotInvited) {
 		t.Fatalf("an answer from someone not invited: %v", err)
 	}
 
 	SetSequence(Master(organizerCopy), 3)
-	if _, err := ApplyReply(organizerCopy, reply); err != ErrOutdated {
+	if _, err := ApplyReply(organizerCopy, reply); !errors.Is(err, ErrOutdated) {
 		t.Fatalf("an answer to an earlier revision: %v", err)
 	}
 }

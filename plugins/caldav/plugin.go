@@ -3,6 +3,7 @@ package alpscaldav
 import (
 	"context"
 	"fmt"
+	"github.com/migadu/alps/provider"
 	"net/http"
 	"net/url"
 	"sync"
@@ -33,6 +34,8 @@ func sanityCheckURL(u *url.URL) error {
 type plugin struct {
 	alps.GoPlugin
 	url          *url.URL
+	srv          *alps.Server
+	urlCache     sync.Map // raw endpoint -> *url.URL
 	homeSetCache map[string]string
 	// accounts caches what the server says about scheduling, per user; see
 	// schedulingAccount.
@@ -41,11 +44,57 @@ type plugin struct {
 	debug      bool
 }
 
+// urlFor resolves the CalDAV endpoint for a session. A provider that routes
+// per domain answers here, so calendars come from the same place as the mail;
+// otherwise the globally configured server stands.
+//
+// Unlike start-up, this never falls back to DNS discovery: a login must not
+// cost a discovery round trip, so an endpoint without a scheme is refused.
+func (p *plugin) urlFor(username string) *url.URL {
+	if username == "" || p.srv == nil {
+		return p.url
+	}
+	raw := p.srv.ServiceURLFor(provider.ServiceCalDAV, username)
+	if raw == "" {
+		return p.url
+	}
+	if cached, ok := p.urlCache.Load(raw); ok {
+		return cached.(*url.URL)
+	}
+	u, err := parseCalDAVURL(raw)
+	if err != nil {
+		p.srv.Logger().Printf("caldav: provider named an unusable server %q for %s: %v (using the configured one)", raw, username, err)
+		return p.url
+	}
+	p.urlCache.Store(raw, u)
+	return u
+}
+
+// parseCalDAVURL normalises a configured CalDAV endpoint into an http(s) URL.
+// It requires an explicit scheme; start-up handles the discovery case.
+func parseCalDAVURL(raw string) (*url.URL, error) {
+	u, err := alps.ParseServerURL(raw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse CalDAV server: %v", err)
+	}
+	switch u.Scheme {
+	case "caldavs":
+		u.Scheme = "https"
+	case "caldav+insecure", "http+insecure":
+		u.Scheme = "http"
+	}
+	if u.Scheme == "" {
+		return nil, fmt.Errorf("CalDAV server requires a scheme (https://, http+insecure://), got: %v", u.String())
+	}
+	return u, nil
+}
+
 func (p *plugin) client(ctx context.Context, session *alps.Session) (*caldav.Client, error) {
-	if p.url == nil {
+	u := p.urlFor(usernameOf(session))
+	if u == nil {
 		return nil, fmt.Errorf("CalDAV server is not configured")
 	}
-	return newClient(p.url, session, p.debug)
+	return newClient(u, session, p.debug)
 }
 
 // httpClient authenticates as the session, for the requests go-webdav's client
@@ -97,41 +146,46 @@ func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session)
 
 func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	cfg := srv.Options.Plugins["caldav"]
-	if cfg.Server == "" {
-		// No server configured, disable plugin
+	if cfg.Server == "" && !cfg.Enabled && !srv.HasServiceRouting(provider.ServiceCalDAV) {
+		// No server configured and service not routed/enabled, disable plugin
 		return nil, nil
 	}
-	u, err := alps.ParseServerURL(cfg.Server)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse CalDAV server: %v", err)
-	}
-
-	switch u.Scheme {
-	case "caldavs":
-		u.Scheme = "https"
-	case "caldav+insecure", "http+insecure":
-		u.Scheme = "http"
-	}
-	if u.Scheme == "" {
-		s, err := caldav.DiscoverContextURL(context.Background(), u.Host)
+	var u *url.URL
+	if cfg.Server != "" {
+		var err error
+		u, err = alps.ParseServerURL(cfg.Server)
 		if err != nil {
-			srv.Logger().Printf("caldav: failed to discover CalDAV server: %v", err)
-			return nil, nil
+			return nil, fmt.Errorf("failed to parse CalDAV server: %v", err)
 		}
-		u, err = url.Parse(s)
-		if err != nil {
-			return nil, fmt.Errorf("caldav: Discover returned an invalid URL: %v", err)
+
+		switch u.Scheme {
+		case "caldavs":
+			u.Scheme = "https"
+		case "caldav+insecure", "http+insecure":
+			u.Scheme = "http"
 		}
-	}
+		if u.Scheme == "" {
+			s, err := caldav.DiscoverContextURL(context.Background(), u.Host)
+			if err != nil {
+				srv.Logger().Printf("caldav: failed to discover CalDAV server: %v", err)
+				return nil, nil
+			}
+			u, err = url.Parse(s)
+			if err != nil {
+				return nil, fmt.Errorf("caldav: Discover returned an invalid URL: %v", err)
+			}
+		}
 
-	if err := sanityCheckURL(u); err != nil {
-		srv.Logger().Printf("caldav: failed to connect to CalDAV server %q: %v (continuing anyway)", u, err)
-	}
+		if err := sanityCheckURL(u); err != nil {
+			srv.Logger().Printf("caldav: failed to connect to CalDAV server %q: %v (continuing anyway)", u, err)
+		}
 
-	srv.Logger().Printf("Configured CalDAV server: %v", u)
+		srv.Logger().Printf("Configured CalDAV server: %v", u)
+	}
 
 	p := &plugin{
 		GoPlugin:     alps.GoPlugin{Name: "caldav"},
+		srv:          srv,
 		url:          u,
 		homeSetCache: make(map[string]string),
 		accounts:     make(map[string]*schedulingAccount),
@@ -154,4 +208,13 @@ func init() {
 		}
 		return []alps.Plugin{p}, err
 	})
+}
+
+// usernameOf reads a session's login, tolerating the nil session that a
+// caller outside a request may hand over.
+func usernameOf(session *alps.Session) string {
+	if session == nil {
+		return ""
+	}
+	return session.Username()
 }

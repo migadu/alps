@@ -191,11 +191,11 @@ func countUnseen(msgs []*maildir.Message) int {
 	return n
 }
 
-func (p *Provider) ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
+func (p *Provider) ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
 	dir := p.getDir(mailbox)
 	msgs, err := getAllMessages(dir)
 	if err != nil {
-		return nil, 0, err
+		return nil, provider.PageInfo{}, err
 	}
 
 	sort.Slice(msgs, func(i, j int) bool {
@@ -209,7 +209,7 @@ func (p *Provider) ListMessages(mailbox string, sortOrder string, page, pageSize
 
 	start := page * pageSize
 	if start >= total {
-		return []provider.Message{}, total, nil
+		return []provider.Message{}, provider.PageInfo{Total: total}, nil
 	}
 	end := start + pageSize
 	if end > total {
@@ -232,7 +232,7 @@ func (p *Provider) ListMessages(mailbox string, sortOrder string, page, pageSize
 		}
 	}
 
-	return messages, total, nil
+	return messages, provider.PageInfo{Total: total}, nil
 }
 
 // messageContains reports whether the stored message holds the query, matched
@@ -300,11 +300,11 @@ func (p *Provider) SearchMessageIDs(mailbox, query string) ([]provider.MessageID
 	return ids, nil
 }
 
-func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
+func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
 	dir := p.getDir(mailbox)
 	msgs, err := getAllMessages(dir)
 	if err != nil {
-		return nil, 0, err
+		return nil, provider.PageInfo{}, err
 	}
 
 	var matchedMsgs []*maildir.Message
@@ -324,7 +324,7 @@ func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page,
 	total := len(matchedMsgs)
 	start := page * pageSize
 	if start >= total {
-		return []provider.Message{}, total, nil
+		return []provider.Message{}, provider.PageInfo{Total: total}, nil
 	}
 	end := start + pageSize
 	if end > total {
@@ -347,7 +347,7 @@ func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page,
 		}
 	}
 
-	return messages, total, nil
+	return messages, provider.PageInfo{Total: total}, nil
 }
 
 // messageByKey finds a message for reading. A lookup that finds no file is a

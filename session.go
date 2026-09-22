@@ -68,15 +68,6 @@ var (
 	ErrMailProviderUnavailable = errors.New("mail provider unavailable")
 )
 
-// AuthError wraps an authentication error.
-type AuthError struct {
-	cause error
-}
-
-func (err AuthError) Error() string {
-	return fmt.Sprintf("authentication failed: %v", err.cause)
-}
-
 // Session is an active user session. It may also hold a mail provider connection.
 //
 // The session's password is not available to plugins. Plugins should use the
@@ -301,9 +292,11 @@ func (s *Session) DoSMTP(f func(*smtp.Client) error) error {
 		if err == nil {
 			return nil
 		}
-		if _, ok := err.(AuthError); ok {
+		var authErr provider.AuthError
+		if errors.As(err, &authErr) {
 			return err
 		}
+
 		if attempt < smtpMaxAttempts {
 			time.Sleep(time.Duration(attempt) * time.Second)
 		}
@@ -313,7 +306,7 @@ func (s *Session) DoSMTP(f func(*smtp.Client) error) error {
 
 // doSMTP performs a single SMTP attempt: dial, authenticate, run f, quit.
 func (s *Session) doSMTP(f func(*smtp.Client) error) error {
-	c, err := s.manager.dialSMTP()
+	c, err := s.manager.dialSMTP(s.username)
 	if err != nil {
 		return err
 	}
@@ -321,7 +314,7 @@ func (s *Session) doSMTP(f func(*smtp.Client) error) error {
 
 	auth := sasl.NewPlainClient("", s.username, s.password)
 	if err := c.Auth(auth); err != nil {
-		return AuthError{err}
+		return provider.AuthError{Cause: err}
 	}
 
 	if err := f(c); err != nil {
@@ -543,8 +536,10 @@ func (s *Session) Store() provider.Store {
 }
 
 type (
-	// DialSMTPFunc connects to the upstream SMTP server.
-	DialSMTPFunc func() (*smtp.Client, error)
+	// DialSMTPFunc connects to the upstream SMTP server for a given login.
+	// The username decides the submission server when the provider routes it
+	// per domain; providers that do not route ignore it.
+	DialSMTPFunc func(username string) (*smtp.Client, error)
 )
 
 // SessionManager keeps track of active sessions. It connects and re-connects

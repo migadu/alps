@@ -15,6 +15,8 @@ func TestAuthenticate(t *testing.T) {
 # This is a comment
 plainuser@example.com:{PLAIN}password123:1000:1000::/var/vmail/plainuser::
 bcryptuser@example.com:{CRYPT}$2a$10$AtHqzAkW6RDNEHJo2VI7Yug6GLQp/WHDWrPGpUkTtENE5woXCIf0W:1001:1001::/var/vmail/bcryptuser::
+sha256user@example.com:{SHA256}EF92B778BAFE771E89245B89ECBC08A44A4E166C06659911881F383D4473E94F:1002:1002::/var/vmail/sha256user::
+md5user@example.com:{md5}5f4dcc3b5aa765d61d8327deb882cf99:1003:1003::/var/vmail/md5user::
 `
 	err := os.WriteFile(passwdPath, []byte(content), 0644)
 	if err != nil {
@@ -55,6 +57,20 @@ bcryptuser@example.com:{CRYPT}$2a$10$AtHqzAkW6RDNEHJo2VI7Yug6GLQp/WHDWrPGpUkTtEN
 			expectError: true,
 		},
 		{
+			name:        "Valid SHA256 with uppercase hex",
+			username:    "sha256user@example.com",
+			password:    "password123",
+			expectError: false,
+			expectHome:  "/var/vmail/sha256user",
+		},
+		{
+			name:        "Valid MD5 with lowercase scheme tag",
+			username:    "md5user@example.com",
+			password:    "password",
+			expectError: false,
+			expectHome:  "/var/vmail/md5user",
+		},
+		{
 			name:        "Unknown user",
 			username:    "unknown@example.com",
 			password:    "password123",
@@ -64,7 +80,7 @@ bcryptuser@example.com:{CRYPT}$2a$10$AtHqzAkW6RDNEHJo2VI7Yug6GLQp/WHDWrPGpUkTtEN
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			homeDir, err := Authenticate(passwdPath, tt.username, tt.password)
+			homeDir, err := authenticate(passwdPath, tt.username, tt.password)
 			if (err != nil) != tt.expectError {
 				t.Errorf("Authenticate() error = %v, expectError %v", err, tt.expectError)
 				return

@@ -9,8 +9,31 @@ import (
 	"github.com/emersion/go-message"
 )
 
+// AuthError wraps an authentication error.
+type AuthError struct {
+	Cause error
+}
+
+func (err AuthError) Error() string {
+	return fmt.Sprintf("authentication failed: %v", err.Cause)
+}
+
+func (err AuthError) Unwrap() error {
+	return err.Cause
+}
+
 // AuthenticatedProviderFactory creates an authenticated provider instance
 type AuthenticatedProviderFactory func(username, password string) (MailProvider, error)
+
+type Config interface {
+	Type() string
+	ToOptions() (Options, error)
+}
+
+type Options interface {
+	Type() string
+	CreateFactory(timeout time.Duration, debug bool) AuthenticatedProviderFactory
+}
 
 // MailProvider abstracts mail backend (IMAP, JMAP, etc.)
 type MailProvider interface {
@@ -35,8 +58,8 @@ type MailProvider interface {
 	UnsubscribeMailbox(name string) error
 
 	// Message listing and search
-	ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]Message, int, error)
-	SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]Message, int, error)
+	ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]Message, PageInfo, error)
+	SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]Message, PageInfo, error)
 	// SearchMessageIDs answers every message of the mailbox the query matches,
 	// and nothing about them: the operand of an action taken on a whole folder,
 	// which must not depend on what a page of the listing happens to hold. An
@@ -246,4 +269,56 @@ type AuthVerdictProvider interface {
 	// mailbox, keyed by the ID's String(), and a scope naming what those IDs
 	// referred to: the same ID under a different scope is a different message.
 	AuthVerdicts(mailbox string, ids []MessageID) (verdicts map[string]AuthVerdict, scope string, err error)
+}
+
+// ServiceRouter is implemented by provider Options that resolve backends per
+// login. A provider that routes the mail store by domain can route everything
+// else the same way, so a user does not read from one host while sending,
+// syncing contacts or changing a password somewhere unrelated.
+//
+// Both methods return a zero value to mean "no opinion", in which case the
+// caller keeps whatever is configured globally. Providers that do not
+// implement this interface behave exactly as before.
+type ServiceRouter interface {
+	// ServiceURL resolves a single endpoint: "smtp", "carddav", "caldav" or
+	// "managesieve". An empty string defers to the global configuration.
+	ServiceURL(service, username string) string
+
+	// ServiceOptions resolves a whole plugin option block, for services whose
+	// configuration is more than an address. The password plugin needs this:
+	// two backends mean two admin APIs with separate credentials. A nil map
+	// defers to the global configuration.
+	ServiceOptions(service, username string) map[string]interface{}
+}
+
+// Service names understood by ServiceRouter.
+const (
+	ServiceSMTP        = "smtp"
+	ServiceCardDAV     = "carddav"
+	ServiceCalDAV      = "caldav"
+	ServiceManageSieve = "managesieve"
+	ServicePassword    = "password"
+)
+
+// PageInfo describes the page a listing returned.
+//
+// Total counts rows of the kind the page actually contains, and Threaded says
+// which kind that is. The two travel together because a provider may not be
+// able to keep its promise: threading is answered over the whole mailbox, so
+// it is the first thing a loaded server refuses, and a listing that cannot
+// group still shows the folder — flat, and counted in messages rather than
+// conversations.
+//
+// That makes Threaded part of the pagination contract, not a decoration. The
+// same mailbox can answer 12 (conversations) to one request and 48 (messages)
+// to the next, so a caller holding a page number must treat a change in
+// Threaded as a reset rather than paging on with an offset that now means
+// something else.
+type PageInfo struct {
+	// Total is the number of rows available to page through: conversations
+	// when Threaded, individual messages otherwise.
+	Total int
+
+	// Threaded reports whether each row is a conversation.
+	Threaded bool
 }

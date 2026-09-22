@@ -4,25 +4,49 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/fernet/fernet-go"
 	"github.com/migadu/alps"
+	"github.com/migadu/alps/provider"
+	_ "github.com/migadu/alps/provider/imap"
+	_ "github.com/migadu/alps/provider/maildir"
+	_ "github.com/migadu/alps/provider/multi"
 )
+
+type ConfigError struct {
+	Location string
+	Err      error
+}
+
+func (e ConfigError) Error() string {
+
+	return e.Location + ": " + e.Err.Error()
+}
+
+func newConfigError(loc string, msg string, argv ...interface{}) ConfigError {
+
+	return ConfigError{
+		Location: loc,
+		Err:      fmt.Errorf(msg, argv...),
+	}
+}
 
 // Config represents the TOML configuration file structure
 type Config struct {
-	Server   ServerConfig            `toml:"server"`
-	Cache    CacheConfig             `toml:"cache"`
-	Logging  LoggingConfig           `toml:"logging"`
-	TLS      TLSConfig               `toml:"tls"`
-	Provider ProviderConfig          `toml:"provider"`
-	SMTP     SMTPConfig              `toml:"smtp"`
-	WebAuthn WebAuthnConfig          `toml:"webauthn"`
-	Cluster  ClusterConfig           `toml:"cluster"`
-	Plugin   map[string]PluginConfig `toml:"plugin"`
+	Server      ServerConfig   `toml:"server"`
+	Cache       CacheConfig    `toml:"cache"`
+	Logging     LoggingConfig  `toml:"logging"`
+	TLS         TLSConfig      `toml:"tls"`
+	RawProvider toml.Primitive `toml:"provider"`
+	provider    *ProviderConfig
+	SMTP        SMTPConfig              `toml:"smtp"`
+	WebAuthn    WebAuthnConfig          `toml:"webauthn"`
+	Cluster     ClusterConfig           `toml:"cluster"`
+	Plugin      map[string]PluginConfig `toml:"plugin"`
 }
 
 type ClusterConfig struct {
@@ -120,21 +144,10 @@ type LoggingConfig struct {
 }
 
 type ProviderConfig struct {
-	Type    string                 `toml:"type"` // "imap" (default)
-	IMAP    IMAPProviderConfig     `toml:"imap"`
-	Maildir MaildirProviderConfig  `toml:"maildir"`
-	Options map[string]interface{} `toml:"options"` // Provider-specific options
-}
-
-type MaildirProviderConfig struct {
-	Path           string `toml:"path"`
-	AuthPasswdFile string `toml:"auth_passwd_file"`
-}
-
-type IMAPProviderConfig struct {
-	Server      string   `toml:"server"`       // Server URL (e.g., "imaps://imap.example.com:993")
-	Insecure    bool     `toml:"insecure"`     // Allow insecure connections
-	AuthservIDs []string `toml:"authserv_ids"` // Receiving servers whose Authentication-Results are trusted (e.g., ["mx.example.com"])
+	Type       string `toml:"type"`        // "imap" (default)
+	TimeoutSec int    `toml:"timeout_sec"` // Provider connect timeout in seconds (default: 30)
+	meta       *toml.MetaData
+	primitive  *toml.Primitive
 }
 
 type SMTPConfig struct {
@@ -206,16 +219,71 @@ func (c *Config) GetPluginServers() []string {
 	return servers
 }
 
-// LoadConfig loads configuration from a TOML file
 func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
+	return LoadConfigString(string(data))
+}
 
+// LoadConfigString loads configuration from a TOML string
+func LoadConfigString(data string) (*Config, error) {
+	// decode the configuration with Decode to get the MetaData object
 	var config Config
-	if err := toml.Unmarshal(data, &config); err != nil {
+	meta, err := toml.Decode(data, &config)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse TOML config: %w", err)
+	}
+
+	// decode the Provider field as a generic ProviderConfig to get the type
+	// set the default type if none is found
+	var pconfig ProviderConfig
+	err = meta.PrimitiveDecode(config.RawProvider, &pconfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse TOML provider config: %w", err)
+	}
+	pconfig.Type = strings.ToLower(strings.TrimSpace(pconfig.Type))
+	if pconfig.Type == "" {
+		pconfig.Type = "imap"
+	}
+
+	// check for a TOML section with the corresponding name and save the primitive for further decoding
+	var pmap map[string]toml.Primitive
+	err = meta.PrimitiveDecode(config.RawProvider, &pmap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse TOML provider config as a map: %w", err)
+	}
+	// Prefer an exact match. Only then fall back to a case-insensitive one, and
+	// reject an ambiguous fallback: map iteration order is randomised, so
+	// picking the first fold match would bind a different section per start-up.
+	p, found := pmap[pconfig.Type]
+	if !found {
+		var matches []string
+		for k := range pmap {
+			if strings.EqualFold(k, pconfig.Type) {
+				matches = append(matches, k)
+			}
+		}
+		sort.Strings(matches)
+		if len(matches) > 1 {
+			return nil, newConfigError("provider."+pconfig.Type,
+				"ambiguous TOML sections for provider %q: %s", pconfig.Type, strings.Join(matches, ", "))
+		}
+		if len(matches) == 1 {
+			p, found = pmap[matches[0]], true
+		}
+	}
+	if !found {
+		return nil, newConfigError("provider."+pconfig.Type, "missing TOML section [provider.%s]", pconfig.Type)
+	}
+	pconfig.meta = &meta
+	pconfig.primitive = &p
+	config.provider = &pconfig
+
+	// do not break the old IMAP timeout configuration key
+	if pconfig.Type == "imap" && pconfig.TimeoutSec == 0 && config.Server.IMAPTimeoutSec > 0 {
+		pconfig.TimeoutSec = config.Server.IMAPTimeoutSec
 	}
 
 	// Set defaults
@@ -239,16 +307,21 @@ func (c *Config) ToOptions() (alps.Options, error) {
 		RPOrigins:     c.WebAuthn.RPOrigins,
 	}
 
-	options.Provider = alps.ProviderOptions{
-		Type: c.Provider.Type,
-		Maildir: alps.MaildirProviderOptions{
-			Path:           c.Provider.Maildir.Path,
-			AuthPasswdFile: c.Provider.Maildir.AuthPasswdFile,
-		},
+	if c.provider == nil {
+		return options, fmt.Errorf("provider configuration is missing")
 	}
-	if options.Provider.Type == "" {
-		options.Provider.Type = "imap" // Default provider
+
+	// delegate loading the provider configuration to the provider package
+	// assume a default provider of imap if none is configured explicitly
+	pcfg, err := provider.LoadConfig(c.provider.Type, c.provider.meta, c.provider.primitive)
+	if err != nil {
+		return options, err
 	}
+	po, err := pcfg.ToOptions()
+	if err != nil {
+		return options, err
+	}
+	options.Provider = po
 
 	// Set session limit defaults
 	options.MaxSessions = 10000     // Global limit: 10,000 sessions
@@ -346,8 +419,8 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	if c.Server.IdleTimeoutSec > 0 {
 		options.IdleTimeout = time.Duration(c.Server.IdleTimeoutSec) * time.Second
 	}
-	if c.Server.IMAPTimeoutSec > 0 {
-		options.IMAPTimeout = time.Duration(c.Server.IMAPTimeoutSec) * time.Second
+	if c.provider.TimeoutSec > 0 {
+		options.ProviderTimeout = time.Duration(c.provider.TimeoutSec) * time.Second
 	}
 	if c.Server.SMTPTimeoutSec > 0 {
 		options.SMTPTimeout = time.Duration(c.Server.SMTPTimeoutSec) * time.Second
@@ -400,26 +473,9 @@ func (c *Config) ToOptions() (alps.Options, error) {
 		Insecure: c.SMTP.Insecure,
 	}
 
-	options.Provider.IMAP = alps.IMAPProviderOptions{
-		Server:      c.Provider.IMAP.Server,
-		Insecure:    c.Provider.IMAP.Insecure,
-		AuthservIDs: c.Provider.IMAP.AuthservIDs,
-	}
-
 	// Validation
 	if options.SMTP.Server == "" {
 		return options, fmt.Errorf("no SMTP server specified in config file ([smtp] server)")
-	}
-
-	switch options.Provider.Type {
-	case "imap", "":
-		if options.Provider.IMAP.Server == "" {
-			return options, fmt.Errorf("no IMAP server specified in config file for imap provider ([provider.imap] server)")
-		}
-	case "maildir":
-		if options.Provider.Maildir.Path == "" {
-			return options, fmt.Errorf("no Maildir path specified in config file for maildir provider ([provider.maildir] path)")
-		}
 	}
 
 	if c.Server.LoginKey != "" {

@@ -2,6 +2,7 @@ package alps
 
 import (
 	"errors"
+	"github.com/migadu/alps/provider"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -27,30 +28,82 @@ func TestServerPluginConfig(t *testing.T) {
 
 	// Test 1: Only domain name with scheme
 	opts := &Options{
-		Provider: ProviderOptions{
-			Type: "imap",
-			IMAP: IMAPProviderOptions{Server: "imaps://example.com"},
-		},
-		SMTP: SMTPOptions{Server: "smtps://example.com"},
+		Provider: &provider.MockOptions{},
+		SMTP:     SMTPOptions{Server: "smtps://example.com"},
 	}
 	s, err := newServer(logger, opts)
 	assert.NoError(t, err)
-	assert.Equal(t, "example.com:993", s.imap.host)
+	assert.Equal(t, "example.com:465", s.smtp.host)
 
 	// Test 2: Specific schemes
 	opts = &Options{
-		Provider: ProviderOptions{
-			Type: "imap",
-			IMAP: IMAPProviderOptions{Server: "imaps://imap.example.com:993"},
-		},
-		SMTP: SMTPOptions{Server: "smtps://smtp.example.com:465"},
+		Provider: &provider.MockOptions{},
+		SMTP:     SMTPOptions{Server: "smtps://smtp.example.com:465"},
 	}
 	s, err = newServer(logger, opts)
 	assert.NoError(t, err)
-	assert.True(t, s.imap.tls)
-	assert.Equal(t, "imap.example.com:993", s.imap.host)
 	assert.True(t, s.smtp.tls)
 	assert.Equal(t, "smtp.example.com:465", s.smtp.host)
+}
+
+func TestParseSMTPURL(t *testing.T) {
+	// IPv4 with and without port
+	host, tls, insecure, err := parseSMTPURL("smtps://mail.example.com", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "mail.example.com:465", host)
+	assert.True(t, tls)
+	assert.False(t, insecure)
+
+	host, tls, insecure, err = parseSMTPURL("smtp://mail.example.com", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "mail.example.com:587", host)
+	assert.False(t, tls)
+	assert.False(t, insecure)
+
+	host, tls, insecure, err = parseSMTPURL("smtp+insecure://mail.example.com:2525", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "mail.example.com:2525", host)
+	assert.False(t, tls)
+	assert.True(t, insecure)
+
+	// IPv6 bracketed hosts without port
+	host, tls, insecure, err = parseSMTPURL("smtps://[::1]", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "[::1]:465", host)
+	assert.True(t, tls)
+
+	host, tls, insecure, err = parseSMTPURL("smtp://[2001:db8::1]", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "[2001:db8::1]:587", host)
+	assert.False(t, tls)
+
+	// IPv6 bracketed hosts with custom port
+	host, tls, insecure, err = parseSMTPURL("smtps://[2001:db8::1]:4650", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "[2001:db8::1]:4650", host)
+	assert.True(t, tls)
+
+	// insecureOpt overrides scheme
+	_, _, insecure, err = parseSMTPURL("smtps://mail.example.com", true)
+	assert.NoError(t, err)
+	assert.True(t, insecure)
+
+	// Error cases
+	_, _, _, err = parseSMTPURL("invalid-scheme://mail.example.com", false)
+	assert.Error(t, err)
+
+	_, _, _, err = parseSMTPURL("mail.example.com", false)
+	assert.Error(t, err)
+}
+
+func TestServerNilProvider(t *testing.T) {
+	logger := &NilLogger{}
+	opts := &Options{
+		SMTP: SMTPOptions{Server: "smtps://example.com"},
+	}
+	_, err := newServer(logger, opts)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no mail provider configured")
 }
 
 func TestSanitizeError(t *testing.T) {
@@ -146,7 +199,7 @@ func TestServerHandleError(t *testing.T) {
 	w1 := httptest.NewRecorder()
 	ctx1 := NewContext(w1, req1, server)
 
-	authErr := AuthError{cause: errors.New("invalid credentials")}
+	authErr := provider.AuthError{Cause: errors.New("invalid credentials")}
 	server.handleError(authErr, ctx1)
 	assert.Equal(t, http.StatusUnauthorized, w1.Code)
 	assert.Contains(t, w1.Body.String(), "Authentication required")

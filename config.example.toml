@@ -367,18 +367,27 @@ enabled = false
 
 [provider]
 # Mail provider type (default: "imap")
-# Options: "imap", "jmap" (future)
+# Options: "imap", "maildir", "multi", "jmap" (future)
+# A matching [provider.<type>] section is required.
 type = "imap"
 
-# Provider-specific options (optional map)
-# options = { "example_key" = "example_value" }
+# Provider connect timeout in seconds (default: 30)
+# For the imap provider this supersedes the legacy [server] imap_timeout_sec,
+# which is still honoured when this key is unset.
+# timeout_sec = 30
 
 [provider.imap]
 # IMAP server URL
+# Supported schemes: imaps:// (implicit TLS, default port 993),
+# imap:// (default port 143), imap+insecure:// (implies insecure)
 server = "imaps://imap.migadu.com:993"
 
 # Allow insecure connections (default: false)
 # insecure = false
+
+# Log the IMAP protocol exchange for this provider (default: false).
+# OR-ed with [server] debug. Dumps message content, so keep it off in production.
+# debug = false
 
 # Authserv-ids of the receiving mail servers whose Authentication-Results
 # header is trusted for a message's DMARC verdict, which decides whether a
@@ -389,11 +398,95 @@ server = "imaps://imap.migadu.com:993"
 
 # Maildir Provider Configuration (Local filesystem)
 # [provider.maildir]
-# Path to the base maildir directory for all users
-# path = "/var/mail/virtual"
-#
-# Path to the Dovecot-style passwd file for authentication
+# Path to the Dovecot-style passwd file for authentication (REQUIRED)
 # auth_passwd_file = "/etc/dovecot/users"
+#
+# Path to the base maildir directory for all users (optional).
+# When unset, each user's maildir is taken from the home directory recorded
+# in auth_passwd_file (<home>/Maildir). Placeholders: %u (local part),
+# %d (domain), %n (full username).
+# path = "/var/mail/virtual/%d/%u"
+
+# Multi-Provider Configuration
+# Routes each login to a backend chosen by the domain in the username.
+# Requires type = "multi" in [provider] above.
+#
+# The rules are tried in this order, and the first that matches wins:
+#   1. [provider.multi.domains."d"]  an entry naming that exact domain
+#   2. [[provider.multi.routes]]     an entry whose domains list contains it
+#   3. template                      if the domain is in template_domains
+#   4. autodiscover                  if the domain is in autodiscover_domains
+#   5. [provider.multi.default]      everything else
+#
+# A domain outside an allowlist is not an error: that rule simply does not
+# match and the next one is tried. A rule that DOES match and then fails
+# returns its error rather than quietly handing the user to another backend.
+# [provider.multi]
+# Default domain assumed if a user logs in with a bare username (without @domain)
+# default_domain = "example.com"
+#
+# Server URL template with %d (domain), %u (local part), and %n (full username)
+# placeholders for dynamic per-domain hostnames. The domain is validated per
+# RFC 1035. The local part is validated only when the template interpolates it,
+# and rejects what would re-point the URL -- ":/?#@[]\%", controls and spaces --
+# so a few RFC-legal addresses cannot be used with a %u or %n template.
+# template = "imaps://mail.%d:993"
+#
+# Domain allowlist for the template. Required when template is set: an unlisted
+# domain never matches and falls through to the next rule.
+# template_domains = ["example.com", "otherdomain.org"]
+#
+# Automatically discover IMAP server using RFC 6186 DNS SRV records (_imaps._tcp, _imap._tcp).
+# To protect against unauthenticated SSRF relays, an explicit domain allowlist is required.
+# autodiscover = false
+# autodiscover_domains = ["example.com", "otherdomain.org"]
+#
+# Either allowlist accepts the single entry "*" to match every domain. That
+# makes the server dial hosts chosen by whoever is logging in -- use it only
+# where untrusted users cannot reach the login form. Private, loopback,
+# link-local and CGNAT targets stay blocked either way.
+#
+# Explicit per-domain provider mappings. Alongside the mail store, a backend
+# may name the other endpoints its users should reach: smtp, carddav, caldav
+# and managesieve, plus a password sub-table that replaces the options in
+# plugin.password. Anything a backend does not name falls back to the matching
+# global setting, so a backend never inherits an endpoint from another one.
+# [provider.multi.domains."migadu.com"]
+# type = "imap"
+# server = "imaps://imap.migadu.com:993"
+# smtp = "smtps://smtp.migadu.com:465"
+#
+# [provider.multi.domains."local.lan"]
+# type = "maildir"
+# auth_passwd_file = "/etc/dovecot/users"
+#
+# Grouped routes for multiple domains sharing backend settings:
+# [[provider.multi.routes]]
+# domains = ["domain1.com", "domain2.com"]
+# type = "imap"
+# server = "imaps://imap.sharedmail.com:993"
+# smtp = "smtps://smtp.sharedmail.com:465"
+# carddav = "https://dav.sharedmail.com"
+# caldav = "https://dav.sharedmail.com"
+# managesieve = "managesieves://imap.sharedmail.com:4190"
+#
+# Password changes for those domains, replacing the options in plugin.password.
+# In TOML this sub-table binds to the route declared ABOVE it, so keep each one
+# directly under its own [[provider.multi.routes]]. A domains entry takes the
+# same sub-table, as [provider.multi.domains."d".password].
+# [provider.multi.routes.password]
+# endpoint = "https://admin.sharedmail.com/api/webmail/mailboxes"
+# method = "POST"
+# auth_type = "basic"
+# username = "..."
+# password = "..."
+# payload = "json"
+#
+# Default fallback provider for domains not matched above:
+# [provider.multi.default]
+# type = "imap"
+# server = "imaps://imap.fallback.com:993"
+# smtp = "smtps://smtp.fallback.com:465"
 
 [smtp]
 # SMTP server

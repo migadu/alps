@@ -143,29 +143,61 @@ Required when using Let's Encrypt with S3 storage across multiple ALPS nodes.
 Configures the backend mail services.
 
 ### `[provider]`
+
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `type` | String | `"imap"` | Mail provider protocol (`"imap"` or `"maildir"`). |
-| `options` | Map | None | Provider-specific custom options. |
+| `type` | String | `"imap"` | Mail provider protocol (`"imap"`, `"maildir"`, or `"multi"`). |
+| `timeout_sec` | Integer | `30` | Provider connect timeout in seconds. For the `imap` provider this supersedes the legacy `[server] imap_timeout_sec`, which is still honoured when `timeout_sec` is unset. |
+
+A `[provider.<type>]` section matching `type` is required.
 
 ### `[provider.imap]`
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `server` | String | None | Direct URL to IMAP server (e.g. `"imaps://imap.example.com:993"`). |
+| `server` | String | None | Direct URL to IMAP server (e.g. `"imaps://imap.example.com:993"`). Required, and must carry a scheme: `imaps://` (implicit TLS, default port 993), `imap://` (default port 143) or `imap+insecure://` (implies `insecure`). |
 | `insecure` | Boolean | `false` | Allow connections without strict TLS validation. |
+| `debug` | Boolean | `false` | Log the IMAP protocol exchange for this provider. OR-ed with `[server] debug`. Dumps message content and credentials-adjacent traffic, so keep it off in production. |
 | `authserv_ids` | Array | `[]` | Authserv-ids of the receiving mail servers whose `Authentication-Results` header is trusted for a message's DMARC verdict, which decides whether a sender's BIMI logo is shown (e.g. `["mx.example.com"]`). Matched in any case. Empty means the topmost header is read, so a message the server did not stamp is judged by a header its sender wrote. |
 
 ### `[provider.maildir]`
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `path` | String | None | Path to the Maildir root directory. |
-| `auth_passwd_file`| String | None | Path to the Dovecot-style authentication password file. |
+| `auth_passwd_file`| String | None | Path to the Dovecot-style authentication password file. **Required**; startup fails without it. |
+| `path` | String | None | Path to the Maildir root directory. Optional: when unset, each user's maildir is taken from the home directory in `auth_passwd_file` (`<home>/Maildir`). Supports the `%u` (local part), `%d` (domain) and `%n` (full username) placeholders. |
+
+### `[provider.multi]`
+Routes incoming user logins across multiple email backends. Domain resolution priority:
+1. **Explicit Domain Mapping**: `[provider.multi.domains."example.com"]` (any provider type like `imap` or `maildir`).
+2. **Grouped Routes**: `[[provider.multi.routes]]` matching the domain from `domains = ["d1.com", "d2.com"]`.
+3. **Template Pattern**: `template = "imaps://mail.%d:993"` where `%d` is replaced with the user's domain (also supports `%u` for local part and `%n` for username, validated against RFC rules).
+4. **RFC 6186 DNS Autodiscovery**: `autodiscover = true` queries `_imaps._tcp.<domain>` then `_imap._tcp.<domain>` SRV records for domains listed in `autodiscover_domains`. Private/loopback IP targets are strictly blocked to prevent SSRF.
+5. **Default Fallback Provider**: `[provider.multi.default]` used if no previous rules match. If a domain matches an explicit template or autodiscover rule, errors are returned directly and do not fail open.
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `default_domain` | String | None | Fallback domain assumed if a user logs in with a username lacking `@domain`. |
+| `template` | String | None | Server URL pattern containing `%d` (domain), `%u` (local part), or `%n` (full username). Both domain and local part are strictly validated to prevent injection and SSRF. |
+| `template_domains` | Array of Strings | `[]` | Domain allowlist for template routing. Required when `template` is set: the template builds a server address out of the login, so an unlisted domain never matches and routing falls through to the next rule. |
+| `autodiscover` | Boolean | `false` | Automatically look up RFC 6186 DNS SRV records for IMAP servers. |
+| `autodiscover_domains` | Array of Strings | `[]` | Domain allowlist for autodiscovery. Required when `autodiscover = true` to prevent unauthenticated SSRF relays. |
+| `domains` | Table | None | Map of domain strings to provider configurations (e.g. `[provider.multi.domains."example.com"]`). |
+| `smtp`, `carddav`, `caldav`, `managesieve` | String | None | Set *inside* a `domains` entry, a `routes` entry or `default`: the endpoint logins that land there should use. Each takes the same URL form as its global counterpart. Omitted, that backend defers to the matching global setting. |
+| `password` | Table | None | A sub-table of a backend (`[provider.multi.routes.password]`), replacing `[plugin.password.options]` for logins that land there. Replaced whole, not merged: separate backends mean separate admin APIs and credentials. |
+| `routes` | Array of Tables | None | Grouped routes specifying `domains` list and provider configuration. |
+| `default` | Table | None | Fallback provider configuration table when no domain match occurs. |
+
+Every backend a login touches follows the domain that chose its mail store, so a user does not read from one host and then send, sync contacts or calendars, edit filters or change a password somewhere unrelated. A backend that names no endpoint for a service defers to that service's global setting rather than borrowing one from an unrelated backend; domains reached by `template` or `autodiscover` have no entry of their own and fall to `default`, then to the global setting. When per-domain endpoints are configured in `multi`, service plugins (`carddav`, `caldav`, `managesieve`) initialize automatically even if their global `server` option is omitted, with unrouted logins treating unnamed services as disabled.
+
+The CalDAV endpoint named here must carry a scheme. Start-up can fall back to DNS discovery for the global `[plugin.caldav] server`, but a login must not cost a discovery round trip, so a per-backend endpoint without a scheme is refused and the global one stands.
+
+Both allowlists accept the single entry `"*"` to match every domain. That turns the dynamic routes back into an open relay: any login makes the server connect to a host the login chose, so use it only on a deployment that is not reachable by untrusted users. Private, loopback, link-local, `0.0.0.0/8`, and CGNAT targets stay blocked either way, and the block is re-checked against the address each connection actually reaches. An unallowlisted domain simply misses the rule and routing proceeds to `default`.
+
 
 ### `[smtp]`
 Configures the SMTP server used for sending emails.
 | Option | Type | Description |
 | :--- | :--- | :--- |
-| `server` | String | SMTP server URI (e.g., `"smtps://smtp.example.com:465"`). |
+| `server` | String | SMTP server URI (e.g., `"smtps://smtp.example.com:465"`, `"smtps://[2001:db8::1]"`). Bracketed IPv6 hosts without an explicit port automatically receive port 465 (smtps) or 587 (smtp). |
 | `insecure` | Boolean | Allow connections without strict TLS validation. |
 
 ---

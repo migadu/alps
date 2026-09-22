@@ -16,6 +16,7 @@ import (
 	"github.com/emersion/go-imap/v2/imapserver/imapmemserver"
 	"github.com/fernet/fernet-go"
 	"github.com/migadu/alps"
+	imapprovider "github.com/migadu/alps/provider/imap"
 )
 
 // newIMAPTestServer is newTestServer with the IMAP provider, against an
@@ -52,8 +53,15 @@ func newIMAPTestServer(t *testing.T, messages ...string) *testServer {
 	if err := key.Generate(); err != nil {
 		t.Fatal(err)
 	}
+	pcfg := &imapprovider.Config{
+		Server: "imap+insecure://" + ln.Addr().String(),
+	}
+	popt, err := pcfg.ToOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv, err := alps.New(alps.NewLogger(), &alps.Options{
-		Provider:     alps.ProviderOptions{Type: "imap", IMAP: alps.IMAPProviderOptions{Server: "imap+insecure://" + ln.Addr().String()}},
+		Provider:     popt,
 		SMTP:         alps.SMTPOptions{Server: "smtp://127.0.0.1:1"},
 		LoginKey:     &key,
 		CacheEnabled: true,

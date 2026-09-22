@@ -106,12 +106,15 @@ func TestProviderMessages(t *testing.T) {
 	}
 
 	// 2. Test ListMessages
-	msgs, total, err := p.ListMessages("INBOX", "desc", 0, 10)
+	msgs, page, err := p.ListMessages("INBOX", "desc", 0, 10)
 	if err != nil {
 		t.Fatalf("ListMessages failed: %v", err)
 	}
-	if total != 1 || len(msgs) != 1 {
-		t.Fatalf("Expected 1 message, got %d (total: %d)", len(msgs), total)
+	if page.Total != 1 || len(msgs) != 1 {
+		t.Fatalf("Expected 1 message, got %d (total: %d)", len(msgs), page.Total)
+	}
+	if page.Threaded {
+		t.Error("maildir has no threading; a page from it is never threaded")
 	}
 
 	firstMsg := msgs[0]
@@ -120,12 +123,12 @@ func TestProviderMessages(t *testing.T) {
 	}
 
 	// 3. Test SearchMessages
-	_, searchTotal, err := p.SearchMessages("INBOX", "test message body", "desc", 0, 10)
+	_, searchPage, err := p.SearchMessages("INBOX", "test message body", "desc", 0, 10)
 	if err != nil {
 		t.Fatalf("SearchMessages failed: %v", err)
 	}
-	if searchTotal != 1 {
-		t.Errorf("Expected SearchMessages to find 1 message, got %d", searchTotal)
+	if searchPage.Total != 1 {
+		t.Errorf("Expected SearchMessages to find 1 message, got %d", searchPage.Total)
 	}
 
 	// 4. Test GetMailboxStatus
@@ -172,9 +175,9 @@ func TestProviderMessages(t *testing.T) {
 		t.Fatalf("DeleteMessages failed: %v", err)
 	}
 
-	msgs, total, _ = p.ListMessages("INBOX", "desc", 0, 10)
-	if total != 0 {
-		t.Errorf("Expected 0 messages after delete, got %d", total)
+	msgs, page, _ = p.ListMessages("INBOX", "desc", 0, 10)
+	if page.Total != 0 {
+		t.Errorf("Expected 0 messages after delete, got %d", page.Total)
 	}
 }
 

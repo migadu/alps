@@ -201,3 +201,21 @@ func NewHTTPError(code int, message ...interface{}) *HTTPError {
 	}
 	return e
 }
+
+// discardLogger swallows everything. It stands in for a Server that was built
+// without one, so a plugin logging on a fallback path cannot panic.
+type discardLogger struct{}
+
+func (discardLogger) Print(i ...interface{})                    {}
+func (discardLogger) Printf(format string, args ...interface{}) {}
+func (discardLogger) Debug(i ...interface{})                    {}
+func (discardLogger) Debugf(format string, args ...interface{}) {}
+func (discardLogger) Info(i ...interface{})                     {}
+func (discardLogger) Infof(format string, args ...interface{})  {}
+func (discardLogger) Warn(i ...interface{})                     {}
+func (discardLogger) Warnf(format string, args ...interface{})  {}
+func (discardLogger) Error(i ...interface{})                    {}
+func (discardLogger) Errorf(format string, args ...interface{}) {}
+func (discardLogger) Fatal(i ...interface{})                    {}
+func (discardLogger) Fatalf(format string, args ...interface{}) {}
+func (discardLogger) SetLevel(level slog.Level)                 {}

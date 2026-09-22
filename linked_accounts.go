@@ -76,7 +76,7 @@ func (s *Session) GetLinkedAccounts() (*LinkedAccounts, error) {
 	var accounts LinkedAccounts
 	err := s.Store().Get(linkedAccountsStoreKey, &accounts)
 	if err != nil {
-		if err == provider.ErrNoStoreEntry {
+		if errors.Is(err, provider.ErrNoStoreEntry) {
 			return &LinkedAccounts{Accounts: []LinkedAccount{}}, nil
 		}
 		return nil, fmt.Errorf("failed to get linked accounts: %w", err)
@@ -393,7 +393,7 @@ func getLinkedAccountsViaStore(store provider.Store) (*LinkedAccounts, error) {
 	var accounts LinkedAccounts
 	err := store.Get(linkedAccountsStoreKey, &accounts)
 	if err != nil {
-		if err == provider.ErrNoStoreEntry {
+		if errors.Is(err, provider.ErrNoStoreEntry) {
 			return &LinkedAccounts{Accounts: []LinkedAccount{}}, nil
 		}
 		return nil, fmt.Errorf("failed to get linked accounts: %w", err)

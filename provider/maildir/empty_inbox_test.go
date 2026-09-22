@@ -12,14 +12,14 @@ import (
 func TestInboxNotYetOnDisk(t *testing.T) {
 	p := NewProvider(filepath.Join(t.TempDir(), "never-delivered"), "ada@example.com")
 
-	msgs, total, err := p.ListMessages("INBOX", "desc", 0, 50)
-	if err != nil || total != 0 || len(msgs) != 0 {
-		t.Errorf("ListMessages: %d messages, total %d, err %v; want an empty inbox", len(msgs), total, err)
+	msgs, page, err := p.ListMessages("INBOX", "desc", 0, 50)
+	if err != nil || page.Total != 0 || len(msgs) != 0 {
+		t.Errorf("ListMessages: %d messages, total %d, err %v; want an empty inbox", len(msgs), page.Total, err)
 	}
 
-	msgs, total, err = p.SearchMessages("INBOX", "", "desc", 0, 50)
-	if err != nil || total != 0 || len(msgs) != 0 {
-		t.Errorf("SearchMessages: %d messages, total %d, err %v; want an empty inbox", len(msgs), total, err)
+	msgs, page, err = p.SearchMessages("INBOX", "", "desc", 0, 50)
+	if err != nil || page.Total != 0 || len(msgs) != 0 {
+		t.Errorf("SearchMessages: %d messages, total %d, err %v; want an empty inbox", len(msgs), page.Total, err)
 	}
 
 	status, err := p.GetMailboxStatus("INBOX")
