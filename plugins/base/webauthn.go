@@ -494,7 +494,8 @@ func handleVerifyFinish(ctx *alps.Context) error {
 
 	ctx.Response.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(ctx.Response).Encode(map[string]interface{}{
-		"success": true,
+		"success":  true,
+		"username": session.Username(),
 	})
 }
 
