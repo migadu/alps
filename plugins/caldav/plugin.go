@@ -50,11 +50,11 @@ type plugin struct {
 //
 // Unlike start-up, this never falls back to DNS discovery: a login must not
 // cost a discovery round trip, so an endpoint without a scheme is refused.
-func (p *plugin) urlFor(session *alps.Session) *url.URL {
-	if session == nil || p.srv == nil {
+func (p *plugin) urlFor(username string) *url.URL {
+	if username == "" || p.srv == nil {
 		return p.url
 	}
-	raw := p.srv.ServiceURLFor(provider.ServiceCalDAV, session.Username())
+	raw := p.srv.ServiceURLFor(provider.ServiceCalDAV, username)
 	if raw == "" {
 		return p.url
 	}
@@ -63,7 +63,7 @@ func (p *plugin) urlFor(session *alps.Session) *url.URL {
 	}
 	u, err := parseCalDAVURL(raw)
 	if err != nil {
-		p.srv.Logger().Printf("caldav: provider named an unusable server %q for %s: %v (using the configured one)", raw, session.Username(), err)
+		p.srv.Logger().Printf("caldav: provider named an unusable server %q for %s: %v (using the configured one)", raw, username, err)
 		return p.url
 	}
 	p.urlCache.Store(raw, u)
@@ -90,7 +90,7 @@ func parseCalDAVURL(raw string) (*url.URL, error) {
 }
 
 func (p *plugin) client(ctx context.Context, session *alps.Session) (*caldav.Client, error) {
-	u := p.urlFor(session)
+	u := p.urlFor(usernameOf(session))
 	if u == nil {
 		return nil, fmt.Errorf("CalDAV server is not configured")
 	}
@@ -204,4 +204,13 @@ func init() {
 		}
 		return []alps.Plugin{p}, err
 	})
+}
+
+// usernameOf reads a session's login, tolerating the nil session that a
+// caller outside a request may hand over.
+func usernameOf(session *alps.Session) string {
+	if session == nil {
+		return ""
+	}
+	return session.Username()
 }

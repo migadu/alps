@@ -1862,6 +1862,35 @@ func (p *IMAPProvider) HasESearchCapability() bool {
 	return p.client.Caps().Has(imap.CapMultiSearch)
 }
 
+// searchCandidate is one match from a cross-mailbox search, carrying just
+// enough to order the whole result set before any body is fetched.
+type searchCandidate struct {
+	mailbox string
+	uid     uint32
+	date    time.Time
+}
+
+// candidateBefore orders two matches from a cross-mailbox search.
+//
+// Date alone is not a total order: bulk mail arrives sharing a timestamp to
+// the second, and every page of a search is produced by a fresh sort. Two
+// requests that disagreed about how to order tied messages would cut the page
+// boundary in different places, and a reader paging through would see one
+// message twice and another not at all. Mailbox and UID settle the tie, and
+// together they identify a message uniquely.
+func candidateBefore(a, b searchCandidate, sortOrder string) bool {
+	if !a.date.Equal(b.date) {
+		if sortOrder == "asc" {
+			return a.date.Before(b.date)
+		}
+		return a.date.After(b.date)
+	}
+	if a.mailbox != b.mailbox {
+		return a.mailbox < b.mailbox
+	}
+	return a.uid < b.uid
+}
+
 func (p *IMAPProvider) searchESearchMessages(query string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
 	if p.client == nil {
 		return nil, provider.PageInfo{}, fmt.Errorf("IMAP client not initialized")
@@ -1876,12 +1905,6 @@ func (p *IMAPProvider) searchESearchMessages(query string, sortOrder string, pag
 	results, err := p.client.MultiSearch(source, searchCriteria, nil).Wait()
 	if err != nil {
 		return nil, provider.PageInfo{}, fmt.Errorf("ESEARCH failed: %v", err)
-	}
-
-	type searchCandidate struct {
-		mailbox string
-		uid     uint32
-		date    time.Time
 	}
 
 	var candidates []searchCandidate
@@ -1928,12 +1951,16 @@ func (p *IMAPProvider) searchESearchMessages(query string, sortOrder string, pag
 		}
 	}
 
-	// Sort globally by date descending (or ascending if requested)
+	// Sort globally by date descending (or ascending if requested).
+	//
+	// Date alone is not a total order: bulk mail arrives sharing a timestamp
+	// to the second, and every page of this search is produced by a fresh
+	// sort. Two requests that disagreed about how to order the tied messages
+	// would cut the page boundary in different places, so a reader paging
+	// through would see one message twice and another not at all. Mailbox and
+	// UID settle the tie, and they identify a message uniquely.
 	sort.Slice(candidates, func(i, j int) bool {
-		if sortOrder == "asc" {
-			return candidates[i].date.Before(candidates[j].date)
-		}
-		return candidates[i].date.After(candidates[j].date)
+		return candidateBefore(candidates[i], candidates[j], sortOrder)
 	})
 
 	total := len(candidates)

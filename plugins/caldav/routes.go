@@ -204,7 +204,7 @@ func (p *plugin) putCalendar(ctx *alps.Context, c *caldav.Client, objectPath str
 	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
 		return "", fmt.Errorf("failed to encode calendar object: %v", err)
 	}
-	newETag, err := davsave.Put(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session), objectPath), ical.MIMEType, buf.Bytes(), etag)
+	newETag, err := davsave.Put(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), objectPath), ical.MIMEType, buf.Bytes(), etag)
 	if errors.Is(err, davsave.ErrConflict) {
 		return "", errChangedElsewhere
 	}
@@ -276,8 +276,8 @@ func registerRoutes(p *plugin) {
 		newID := uuid.New().String()
 		newPath := path.Join(homeSet, newID) + "/"
 
-		targetURL := *p.urlFor(ctx.Session)
-		targetURL.Path = resolveDAVPath(p.urlFor(ctx.Session), newPath)
+		targetURL := *p.urlFor(ctx.Session.Username())
+		targetURL.Path = resolveDAVPath(p.urlFor(ctx.Session.Username()), newPath)
 		if !strings.HasSuffix(targetURL.Path, "/") {
 			targetURL.Path += "/"
 		}
@@ -352,8 +352,8 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		targetURL := *p.urlFor(ctx.Session)
-		targetURL.Path = resolveDAVPath(p.urlFor(ctx.Session), calPath)
+		targetURL := *p.urlFor(ctx.Session.Username())
+		targetURL.Path = resolveDAVPath(p.urlFor(ctx.Session.Username()), calPath)
 		if !strings.HasSuffix(targetURL.Path, "/") {
 			targetURL.Path += "/"
 		}
@@ -726,7 +726,7 @@ func registerRoutes(p *plugin) {
 		}
 
 		if header != nil {
-			err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session), path), "", header)
+			err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), path), "", header)
 		} else {
 			err = c.RemoveAll(ctx.Request.Context(), path)
 		}

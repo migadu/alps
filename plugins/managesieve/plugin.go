@@ -52,12 +52,12 @@ func parseSieveURL(raw string) (sieveEndpoint, error) {
 //
 // The insecure flag travels with the endpoint: a per-domain server must not
 // inherit permission to send credentials in the clear from an unrelated one.
-func (p *plugin) endpointFor(session *alps.Session) sieveEndpoint {
+func (p *plugin) endpointFor(username string) sieveEndpoint {
 	fallback := sieveEndpoint{url: p.url, insecure: p.insecure}
-	if session == nil || p.srv == nil {
+	if username == "" || p.srv == nil {
 		return fallback
 	}
-	raw := p.srv.ServiceURLFor(provider.ServiceManageSieve, session.Username())
+	raw := p.srv.ServiceURLFor(provider.ServiceManageSieve, username)
 	if raw == "" {
 		return fallback
 	}
@@ -66,7 +66,7 @@ func (p *plugin) endpointFor(session *alps.Session) sieveEndpoint {
 	}
 	ep, err := parseSieveURL(raw)
 	if err != nil {
-		p.srv.Logger().Printf("managesieve: provider named an unusable server %q for %s: %v (using the configured one)", raw, session.Username(), err)
+		p.srv.Logger().Printf("managesieve: provider named an unusable server %q for %s: %v (using the configured one)", raw, username, err)
 		return fallback
 	}
 	p.urlCache.Store(raw, ep)

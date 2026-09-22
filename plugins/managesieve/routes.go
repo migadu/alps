@@ -50,7 +50,7 @@ func activeScript(scripts []Script) string {
 func (p *plugin) connectClient(ctx *alps.Context) (*MSClient, error) {
 	username := ctx.Session.Username()
 
-	ep := p.endpointFor(ctx.Session)
+	ep := p.endpointFor(ctx.Session.Username())
 	if ep.url == nil {
 		return nil, fmt.Errorf("ManageSieve server is not configured")
 	}

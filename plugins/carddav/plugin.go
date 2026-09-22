@@ -44,11 +44,11 @@ type plugin struct {
 // urlFor resolves the CardDAV endpoint for a session. A provider that routes
 // per domain answers here, so contacts come from the same place as the mail;
 // otherwise the globally configured server stands.
-func (p *plugin) urlFor(session *alps.Session) *url.URL {
-	if session == nil || p.srv == nil {
+func (p *plugin) urlFor(username string) *url.URL {
+	if username == "" || p.srv == nil {
 		return p.url
 	}
-	raw := p.srv.ServiceURLFor(provider.ServiceCardDAV, session.Username())
+	raw := p.srv.ServiceURLFor(provider.ServiceCardDAV, username)
 	if raw == "" {
 		return p.url
 	}
@@ -57,7 +57,7 @@ func (p *plugin) urlFor(session *alps.Session) *url.URL {
 	}
 	u, err := parseCardDAVURL(raw)
 	if err != nil {
-		p.srv.Logger().Printf("carddav: provider named an unusable server %q for %s: %v (using the configured one)", raw, session.Username(), err)
+		p.srv.Logger().Printf("carddav: provider named an unusable server %q for %s: %v (using the configured one)", raw, username, err)
 		return p.url
 	}
 	p.urlCache.Store(raw, u)
@@ -65,7 +65,7 @@ func (p *plugin) urlFor(session *alps.Session) *url.URL {
 }
 
 func (p *plugin) client(ctx context.Context, session *alps.Session) (*carddav.Client, error) {
-	u := p.urlFor(session)
+	u := p.urlFor(usernameOf(session))
 	if u == nil {
 		return nil, fmt.Errorf("CardDAV server is not configured")
 	}
@@ -178,4 +178,13 @@ func init() {
 		}
 		return []alps.Plugin{p}, err
 	})
+}
+
+// usernameOf reads a session's login, tolerating the nil session that a
+// caller outside a request may hand over.
+func usernameOf(session *alps.Session) string {
+	if session == nil {
+		return ""
+	}
+	return session.Username()
 }

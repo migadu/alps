@@ -267,6 +267,11 @@ func (s *Server) initialLoad() error {
 
 // Logger returns this server's logger.
 func (s *Server) Logger() Logger {
+	if s == nil || s.logger == nil {
+		// A Server assembled outside New — a test, an embedder — still hands
+		// plugins something to log to, rather than a nil to dereference.
+		return discardLogger{}
+	}
 	return s.logger
 }
 

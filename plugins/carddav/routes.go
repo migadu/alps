@@ -182,7 +182,7 @@ func (p *plugin) putCard(ctx *alps.Context, c *carddav.Client, objectPath string
 	if err := vcard.NewEncoder(&buf).Encode(card); err != nil {
 		return "", fmt.Errorf("failed to encode address object: %v", err)
 	}
-	newETag, err := davsave.Put(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session), objectPath), vcard.MIMEType, buf.Bytes(), etag)
+	newETag, err := davsave.Put(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), objectPath), vcard.MIMEType, buf.Bytes(), etag)
 	if errors.Is(err, davsave.ErrConflict) {
 		return "", errChangedElsewhere
 	}
