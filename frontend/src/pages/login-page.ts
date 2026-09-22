@@ -305,7 +305,9 @@ export class LoginPage extends LitElement {
           window.location.hash = '/login/webauthn';
           this.isSubmitting = false;
         } else {
-          window.dispatchEvent(new CustomEvent('user-logged-in'));
+          window.dispatchEvent(new CustomEvent('user-logged-in', {
+            detail: { username: this.username }
+          }));
           window.location.hash = '/mailbox/INBOX';
         }
       } else {

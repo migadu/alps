@@ -306,3 +306,62 @@ func TestSessionManager_AbsoluteDeadlineIsFlooredAtTheIdleWindow(t *testing.T) {
 	sm = &SessionManager{sessionDuration: 30 * time.Minute, absoluteSessionDuration: -1}
 	assert.True(t, sm.absoluteDeadlineFrom(start).IsZero())
 }
+
+func TestSession_NextTimeout_DisabledIdleTimeout(t *testing.T) {
+	// Idle timeout disabled (duration <= 0), no absolute deadline:
+	// nextTimeout must be positive (not 0 or negative which immediately kills the session).
+	s := &Session{duration: 0}
+	assert.Greater(t, s.nextTimeout(), time.Duration(0))
+
+	// Idle timeout disabled (duration <= 0), but absolute deadline is set:
+	// nextTimeout should return time remaining until absolute deadline.
+	s.absoluteDeadline = time.Now().Add(1 * time.Hour)
+	d := s.nextTimeout()
+	assert.Greater(t, d, 50*time.Minute)
+	assert.LessOrEqual(t, d, 1*time.Hour)
+}
+
+func TestSession_UpdateDurationZeroDoesNotTerminateSession(t *testing.T) {
+	mockProvider := &provider.MockProvider{}
+	mockStore := &provider.MockStore{}
+	mockProvider.On("Close").Return(nil)
+	mockProvider.On("GetStore").Return(mockStore, nil)
+	mockStore.On("Get", mock.Anything, mock.Anything).Return(provider.ErrNoStoreEntry)
+
+	connectProvider := func(username, password string) (provider.MailProvider, error) {
+		return mockProvider, nil
+	}
+	sm := newSessionManager(
+		connectProvider,
+		nil,
+		&NilLogger{},
+		0,
+		false,
+		nil,
+		30*time.Minute,
+		0,
+		0,
+		10,
+		32,
+		128,
+		1024,
+	)
+
+	session, err := sm.Put("user@example.com", "pass")
+	assert.NoError(t, err)
+
+	// Update duration to 0 (inactivity logout disabled)
+	session.UpdateDuration(0)
+
+	// Ping session
+	session.ping()
+
+	// Give the goroutine a moment to process the channel message
+	time.Sleep(50 * time.Millisecond)
+
+	// Session must still exist and be alive
+	retrieved, err := sm.Get(session.Token())
+	assert.NoError(t, err, "session should not be terminated when idle duration is set to 0")
+	assert.NotNil(t, retrieved)
+}
+
