@@ -302,6 +302,9 @@ export class LoginPage extends LitElement {
 
       if (response.ok) {
         if (data.requires_2fa) {
+          try {
+            sessionStorage.setItem('pending_2fa_username', this.username);
+          } catch {}
           window.location.hash = '/login/webauthn';
           this.isSubmitting = false;
         } else {

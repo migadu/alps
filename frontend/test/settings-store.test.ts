@@ -181,6 +181,41 @@ describe('signing in', () => {
     expect(activeUsername()).toBe(USER);
   });
 
+  it('restores account settings on 2FA login after logout without page reload', async () => {
+    // 1. Initial sign-in with custom settings
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { from: 'Ada Lovelace', auto_logout: 0, signature: 'Ada' } }),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(store.getState().name).toBe('Ada Lovelace'));
+    expect(store.getState().autoLogout).toBe(0);
+
+    // 2. User logs out
+    clearSessionSettings();
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+
+    // Verify state was cleared to defaults
+    expect(store.getState().name).toBe('');
+    expect(store.getState().autoLogout).toBe(30);
+    expect(store.getState().loginUsername).toBeUndefined();
+
+    // 3. User completes 2FA verification, which dispatches user-logged-in with username
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { from: 'Ada Lovelace', auto_logout: 0, signature: 'Ada' } }),
+    });
+    window.dispatchEvent(new CustomEvent('user-logged-in', { detail: { username: USER } }));
+
+    // Settings must be restored from server without needing a page reload
+    await vi.waitFor(() => expect(store.getState().name).toBe('Ada Lovelace'));
+    expect(store.getState().autoLogout).toBe(0);
+    expect(store.getState().loginUsername).toBe(USER);
+    expect(activeUsername()).toBe(USER);
+  });
+
   it('does not wipe out backend settings when updateSettings is called with loginUsername', async () => {
     signedIn();
     serve({
