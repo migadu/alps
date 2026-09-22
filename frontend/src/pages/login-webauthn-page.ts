@@ -122,10 +122,20 @@ export class LoginWebAuthnPage extends LitElement {
         this.statusType = 'success';
         this.isSuccess = true;
 
+        let isSwitch = false;
+        try {
+          isSwitch = sessionStorage.getItem('pending_2fa_is_switch') === '1';
+          sessionStorage.removeItem('pending_2fa_is_switch');
+        } catch {}
+
         let username = result.username;
         if (!username) {
           try {
             username = sessionStorage.getItem('pending_2fa_username') || '';
+            sessionStorage.removeItem('pending_2fa_username');
+          } catch {}
+        } else {
+          try {
             sessionStorage.removeItem('pending_2fa_username');
           } catch {}
         }
@@ -136,6 +146,11 @@ export class LoginWebAuthnPage extends LitElement {
             detail: { username }
           }));
           window.location.hash = '/mailbox/INBOX';
+          if (isSwitch && typeof window.location.reload === 'function') {
+            try {
+              window.location.reload();
+            } catch {}
+          }
         }, 500);
       } else {
         throw new Error(this.i18nStore?.t('webauthn.errors.verification_failed'));

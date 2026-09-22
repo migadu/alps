@@ -212,7 +212,7 @@ export class SettingsStore extends EventTarget {
         Logger.error('Failed to record the active user', e);
       }
       const userSettings = this.loadSettings(knownUsername);
-      this.state = { ...userSettings, ...this.state, loginUsername: knownUsername };
+      this.state = { ...this.state, ...userSettings, loginUsername: knownUsername };
       this.applyTheme();
       this.notify();
     }
@@ -245,7 +245,7 @@ export class SettingsStore extends EventTarget {
               Logger.error('Failed to record the active user', e);
             }
             const userSettings = this.loadSettings(username);
-            this.state = { ...userSettings, ...this.state, loginUsername: username };
+            this.state = { ...this.state, ...userSettings, loginUsername: username };
             this.applyTheme();
             this.notify();
           }

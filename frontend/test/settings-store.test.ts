@@ -216,6 +216,27 @@ describe('signing in', () => {
     expect(activeUsername()).toBe(USER);
   });
 
+  it('immediately applies cached user settings over defaults on user-logged-in before server responds', () => {
+    // Save user settings directly in localStorage
+    localStorage.setItem(`alps_settings_${USER}`, JSON.stringify({
+      name: 'Ada Lovelace',
+      autoLogout: 0,
+      signature: 'Ada',
+    }));
+
+    const store = new SettingsStore();
+    // Simulate cleared session (logout)
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    expect(store.getState().name).toBe('');
+    expect(store.getState().autoLogout).toBe(30);
+
+    // Dispatch user-logged-in with username; user settings must override empty defaults immediately
+    window.dispatchEvent(new CustomEvent('user-logged-in', { detail: { username: USER } }));
+    expect(store.getState().name).toBe('Ada Lovelace');
+    expect(store.getState().autoLogout).toBe(0);
+    expect(store.getState().loginUsername).toBe(USER);
+  });
+
   it('does not wipe out backend settings when updateSettings is called with loginUsername', async () => {
     signedIn();
     serve({
