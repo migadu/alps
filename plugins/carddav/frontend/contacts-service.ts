@@ -1,9 +1,16 @@
 import { fetchWithTimeout, encodePathParam, HttpStatusError } from '../../../frontend/src/utils/fetch-utils';
 
+export interface ContactProperty {
+  value: string;
+  type?: string;
+}
+
 export interface ContactPayload {
   name?: string;
   email?: string;
+  emails?: ContactProperty[];
   phone?: string;
+  phones?: ContactProperty[];
   address?: string;
   birthday?: string;
   note?: string;

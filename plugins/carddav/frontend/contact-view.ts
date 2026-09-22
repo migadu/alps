@@ -131,6 +131,39 @@ export class AlpsContactView extends LitElement {
       resize: vertical;
       box-sizing: border-box;
     }
+    .multi-field-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .multi-field-row alps-input {
+      flex: 1;
+    }
+    .multi-field-type {
+      height: 36px;
+      padding: 0 8px;
+      background: var(--bg-primary, #ffffff);
+      border: 1px solid var(--border-color, #e5e7eb);
+      border-radius: var(--input-radius, 6px);
+      color: var(--text-primary, #111827);
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+    }
+    .add-field-btn {
+      align-self: flex-start;
+      background: none;
+      border: none;
+      color: var(--link-color, var(--primary, #2563eb));
+      font-size: 13px;
+      cursor: pointer;
+      padding: 2px 4px;
+      margin-top: -8px;
+      margin-bottom: 4px;
+    }
+    .add-field-btn:hover {
+      text-decoration: underline;
+    }
     .view-header {
       display: flex;
       flex-direction: column;
@@ -226,6 +259,20 @@ export class AlpsContactView extends LitElement {
         if (Array.isArray(this.editForm.categories)) {
           this.editForm.categories = this.editForm.categories.join(', ');
         }
+        if (Array.isArray(this.editForm.emails) && this.editForm.emails.length > 0) {
+          this.editForm.emails = this.editForm.emails.map((e: any) => ({ ...e }));
+        } else if (this.editForm.email) {
+          this.editForm.emails = [{ value: this.editForm.email, type: '' }];
+        } else {
+          this.editForm.emails = [{ value: '', type: '' }];
+        }
+        if (Array.isArray(this.editForm.phones) && this.editForm.phones.length > 0) {
+          this.editForm.phones = this.editForm.phones.map((p: any) => ({ ...p }));
+        } else if (this.editForm.phone) {
+          this.editForm.phones = [{ value: this.editForm.phone, type: '' }];
+        } else {
+          this.editForm.phones = [{ value: '', type: '' }];
+        }
       }
     }
   }
@@ -247,6 +294,53 @@ export class AlpsContactView extends LitElement {
     this.debouncedSave();
   }
 
+  private handleMultiInput(field: 'emails' | 'phones', index: number, prop: 'value' | 'type', val: string) {
+    const list = [...(this.editForm[field] || [])];
+    if (list[index]) {
+      list[index] = { ...list[index], [prop]: val };
+      this.editForm = {
+        ...this.editForm,
+        [field]: list,
+        ...(field === 'emails' ? { email: list[0]?.value || '' } : { phone: list[0]?.value || '' })
+      };
+      this.isDirty = true;
+      this.debouncedSave();
+    }
+  }
+
+  private addMultiField(field: 'emails' | 'phones') {
+    const list = [...(this.editForm[field] || [])];
+    list.push({ value: '', type: '' });
+    this.editForm = { ...this.editForm, [field]: list };
+    this.requestUpdate();
+  }
+
+  private removeMultiField(field: 'emails' | 'phones', index: number) {
+    const list = [...(this.editForm[field] || [])];
+    list.splice(index, 1);
+    this.editForm = {
+      ...this.editForm,
+      [field]: list,
+      ...(field === 'emails' ? { email: list[0]?.value || '' } : { phone: list[0]?.value || '' })
+    };
+    this.isDirty = true;
+    this.debouncedSave();
+  }
+
+  private formatTypeLabel(type: string | undefined, defaultLabel: string): string {
+    if (!type) return defaultLabel;
+    const clean = type.toLowerCase();
+    const map: Record<string, string> = {
+      home: this.i18nStore?.t('contacts.typeHome') || 'Home',
+      work: this.i18nStore?.t('contacts.typeWork') || 'Work',
+      other: this.i18nStore?.t('contacts.typeOther') || 'Other',
+      cell: this.i18nStore?.t('contacts.typeMobile') || 'Mobile',
+      mobile: this.i18nStore?.t('contacts.typeMobile') || 'Mobile',
+    };
+    const prefix = map[clean] || (type.charAt(0).toUpperCase() + type.slice(1).toLowerCase());
+    return `${prefix} ${defaultLabel}`;
+  }
+
   private handleSave() {
     this.dispatchEvent(new CustomEvent('save', {
       detail: this.editForm,
@@ -255,17 +349,17 @@ export class AlpsContactView extends LitElement {
     }));
   }
 
-  private renderDetailRow(label: string, value: string) {
+  private renderDetailRow(label: string, value: string, isEmail = false, isPhone = false) {
     if (!value) return '';
     
     let content = html`${value}`;
-    if (label === 'Email Address') {
+    if (isEmail || label === 'Email Address' || label === 'Email' || label.endsWith('Email') || label.endsWith(this.i18nStore?.t('contacts.email') || 'Email')) {
       content = html`<a href="mailto:${value}" @click=${(e: Event) => {
         e.preventDefault();
         const formattedEmail = this.contact?.name ? `"${this.contact.name}" <${value}>` : value;
         this.composeStore?.openComposer({ to: [formattedEmail] });
       }}>${value}</a>`;
-    } else if (label === 'Phone') {
+    } else if (isPhone || label === 'Phone' || label.endsWith('Phone') || label.endsWith(this.i18nStore?.t('contacts.phone') || 'Phone')) {
       content = html`<a href="tel:${value}">${value}</a>`;
     } else if (label === 'URL') {
       const url = value.startsWith('http') ? value : `https://${value}`;
@@ -418,13 +512,53 @@ export class AlpsContactView extends LitElement {
             <alps-input placeholder="${this.i18nStore?.t('contacts.nickname')}" .value=${this.editForm.nickname || ''} @input=${(e: any) => this.handleInput('nickname', e.target.value)}></alps-input>
             <alps-input placeholder="${this.i18nStore?.t('contacts.organization')}" .value=${this.editForm.organization || ''} @input=${(e: any) => this.handleInput('organization', e.target.value)}></alps-input>
             <alps-input placeholder="${this.i18nStore?.t('contacts.titleField')}" .value=${this.editForm.title || ''} @input=${(e: any) => this.handleInput('title', e.target.value)}></alps-input>
-            <alps-input 
-              placeholder="${this.i18nStore?.t('contacts.email')}" 
-              type="email"
-              .value=${this.editForm.email || ''} 
-              @input=${(e: any) => this.handleInput('email', e.target.value)}>
-            </alps-input>
-            <alps-input placeholder="${this.i18nStore?.t('contacts.phone')}" .value=${this.editForm.phone || ''} @input=${(e: any) => this.handleInput('phone', e.target.value)}></alps-input>
+
+            ${(this.editForm.emails || []).map((em: any, index: number) => html`
+              <div class="multi-field-row">
+                <alps-input 
+                  placeholder="${this.i18nStore?.t('contacts.email')}" 
+                  type="email"
+                  .value=${em.value || ''} 
+                  @input=${(e: any) => this.handleMultiInput('emails', index, 'value', e.target.value)}>
+                </alps-input>
+                <select class="multi-field-type" .value=${em.type || ''} @change=${(e: any) => this.handleMultiInput('emails', index, 'type', e.target.value)}>
+                  <option value="" ?selected=${!em.type}>${this.i18nStore?.t('contacts.typeDefault') || 'Default'}</option>
+                  <option value="home" ?selected=${em.type?.toLowerCase() === 'home'}>${this.i18nStore?.t('contacts.typeHome') || 'Home'}</option>
+                  <option value="work" ?selected=${em.type?.toLowerCase() === 'work'}>${this.i18nStore?.t('contacts.typeWork') || 'Work'}</option>
+                  <option value="other" ?selected=${em.type?.toLowerCase() === 'other'}>${this.i18nStore?.t('contacts.typeOther') || 'Other'}</option>
+                </select>
+                ${(this.editForm.emails || []).length > 1 ? html`
+                  <alps-icon-btn icon="trash" @click=${() => this.removeMultiField('emails', index)} title="${this.i18nStore?.t('contacts.delete')}"></alps-icon-btn>
+                ` : ''}
+              </div>
+            `)}
+            <button type="button" class="add-field-btn" @click=${() => this.addMultiField('emails')}>
+              + ${this.i18nStore?.t('contacts.addEmail') || 'Add Email'}
+            </button>
+
+            ${(this.editForm.phones || []).map((ph: any, index: number) => html`
+              <div class="multi-field-row">
+                <alps-input 
+                  placeholder="${this.i18nStore?.t('contacts.phone')}" 
+                  .value=${ph.value || ''} 
+                  @input=${(e: any) => this.handleMultiInput('phones', index, 'value', e.target.value)}>
+                </alps-input>
+                <select class="multi-field-type" .value=${ph.type || ''} @change=${(e: any) => this.handleMultiInput('phones', index, 'type', e.target.value)}>
+                  <option value="" ?selected=${!ph.type}>${this.i18nStore?.t('contacts.typeDefault') || 'Default'}</option>
+                  <option value="cell" ?selected=${ph.type?.toLowerCase() === 'cell' || ph.type?.toLowerCase() === 'mobile'}>${this.i18nStore?.t('contacts.typeMobile') || 'Mobile'}</option>
+                  <option value="home" ?selected=${ph.type?.toLowerCase() === 'home'}>${this.i18nStore?.t('contacts.typeHome') || 'Home'}</option>
+                  <option value="work" ?selected=${ph.type?.toLowerCase() === 'work'}>${this.i18nStore?.t('contacts.typeWork') || 'Work'}</option>
+                  <option value="other" ?selected=${ph.type?.toLowerCase() === 'other'}>${this.i18nStore?.t('contacts.typeOther') || 'Other'}</option>
+                </select>
+                ${(this.editForm.phones || []).length > 1 ? html`
+                  <alps-icon-btn icon="trash" @click=${() => this.removeMultiField('phones', index)} title="${this.i18nStore?.t('contacts.delete')}"></alps-icon-btn>
+                ` : ''}
+              </div>
+            `)}
+            <button type="button" class="add-field-btn" @click=${() => this.addMultiField('phones')}>
+              + ${this.i18nStore?.t('contacts.addPhone') || 'Add Phone'}
+            </button>
+
             <alps-input placeholder="${this.i18nStore?.t('contacts.address')}" .value=${this.editForm.address || ''} @input=${(e: any) => this.handleInput('address', e.target.value)}></alps-input>
             <alps-input placeholder="${this.i18nStore?.t('contacts.url')}" type="url" .value=${this.editForm.url || ''} @input=${(e: any) => this.handleInput('url', e.target.value)}></alps-input>
             <alps-input placeholder="${this.i18nStore?.t('contacts.birthday')}" type="date" .value=${this.editForm.birthday || ''} @input=${(e: any) => this.handleInput('birthday', e.target.value)}></alps-input>
@@ -448,8 +582,14 @@ export class AlpsContactView extends LitElement {
             ` : ''}
           </div>
           <div class="view-details">
-            ${this.renderDetailRow(this.i18nStore?.t('contacts.email'), this.contact.email)}
-            ${this.renderDetailRow(this.i18nStore?.t('contacts.phone'), this.contact.phone)}
+            ${(this.contact.emails && this.contact.emails.length > 0)
+              ? this.contact.emails.map((e: any) => this.renderDetailRow(this.formatTypeLabel(e.type, this.i18nStore?.t('contacts.email') || 'Email'), e.value, true))
+              : this.renderDetailRow(this.i18nStore?.t('contacts.email') || 'Email', this.contact.email, true)
+            }
+            ${(this.contact.phones && this.contact.phones.length > 0)
+              ? this.contact.phones.map((p: any) => this.renderDetailRow(this.formatTypeLabel(p.type, this.i18nStore?.t('contacts.phone') || 'Phone'), p.value, false, true))
+              : this.renderDetailRow(this.i18nStore?.t('contacts.phone') || 'Phone', this.contact.phone, false, true)
+            }
             ${this.renderDetailRow(this.i18nStore?.t('contacts.address'), this.contact.address)}
             ${this.renderDetailRow(this.i18nStore?.t('contacts.birthday'), this.formattedBirthday)}
             ${this.renderDetailRow(this.i18nStore?.t('contacts.url'), this.contact.url)}

@@ -49,10 +49,27 @@ registry.registerHook('composer:suggest', async ({ query }: { query: string }) =
     try {
         const result = await contactsService.fetchContacts(query);
         const contactsList = result.contacts || [];
-        return contactsList.map((c: any) => ({
-            name: c.name || '',
-            address: c.email || ''
-        })).filter((c: any) => c.address);
+        const suggestions: Array<{ name: string; address: string }> = [];
+        const seen = new Set<string>();
+
+        for (const c of contactsList) {
+            const name = c.name || '';
+            const emails: Array<{ value: string; type?: string }> = (c.emails && c.emails.length > 0)
+                ? c.emails
+                : (c.email ? [{ value: c.email }] : []);
+
+            for (const em of emails) {
+                const addr = em.value?.trim();
+                if (addr && !seen.has(addr.toLowerCase())) {
+                    seen.add(addr.toLowerCase());
+                    suggestions.push({
+                        name,
+                        address: addr
+                    });
+                }
+            }
+        }
+        return suggestions;
     } catch (e) {
         console.error('Failed to fetch contact suggestions', e);
         return [];

@@ -56,6 +56,13 @@ export default {
     birthday: 'Geburtstag',
     back: 'Zurück',
     toggleStar: 'Markierung umschalten',
-    publicKey: 'Öffentlicher Schlüssel'
+    publicKey: 'Öffentlicher Schlüssel',
+    addEmail: 'E-Mail hinzufügen',
+    addPhone: 'Telefonnummer hinzufügen',
+    typeDefault: 'Standard',
+    typeHome: 'Privat',
+    typeWork: 'Geschäftlich',
+    typeOther: 'Sonstige',
+    typeMobile: 'Mobil'
   }
 };

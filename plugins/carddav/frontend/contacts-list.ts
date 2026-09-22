@@ -45,8 +45,13 @@ export class AlpsContactsList extends LitElement {
       }
       if (this.filterQuery) {
         const query = this.filterQuery.toLowerCase();
+        const matchesEmail = (c.email || '').toLowerCase().includes(query) ||
+          (c.emails && c.emails.some((e: any) => (e.value || '').toLowerCase().includes(query)));
+        const matchesPhone = (c.phone || '').toLowerCase().includes(query) ||
+          (c.phones && c.phones.some((p: any) => (p.value || '').toLowerCase().includes(query)));
         if (!(c.name || '').toLowerCase().includes(query) &&
-          !(c.email || '').toLowerCase().includes(query) &&
+          !matchesEmail &&
+          !matchesPhone &&
           !(c.nickname || '').toLowerCase().includes(query) &&
           !(c.organization || '').toLowerCase().includes(query)) {
           return false;
