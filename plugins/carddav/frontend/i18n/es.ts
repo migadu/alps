@@ -56,6 +56,13 @@ export default {
     birthday: 'Cumpleaños',
     back: 'Volver',
     toggleStar: 'Alternar destacado',
-    publicKey: 'Clave pública'
+    publicKey: 'Clave pública',
+    addEmail: 'Añadir correo electrónico',
+    addPhone: 'Añadir teléfono',
+    typeDefault: 'Predeterminado',
+    typeHome: 'Casa',
+    typeWork: 'Trabajo',
+    typeOther: 'Otro',
+    typeMobile: 'Móvil'
   }
 };

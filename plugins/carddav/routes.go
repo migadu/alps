@@ -17,23 +17,30 @@ import (
 	"github.com/migadu/alps/internal/davsave"
 )
 
+type ContactProperty struct {
+	Value string `json:"value"`
+	Type  string `json:"type,omitempty"`
+}
+
 type ContactData struct {
-	UID          string   `json:"uid"`
-	Name         string   `json:"name"`
-	Email        string   `json:"email"`
-	Phone        string   `json:"phone,omitempty"`
-	Organization string   `json:"organization,omitempty"`
-	Title        string   `json:"title,omitempty"`
-	Address      string   `json:"address,omitempty"`
-	Birthday     string   `json:"birthday,omitempty"`
-	Note         string   `json:"note,omitempty"`
-	URL          string   `json:"url,omitempty"`
-	Nickname     string   `json:"nickname,omitempty"`
-	Avatar       string   `json:"avatar,omitempty"`
-	Categories   []string `json:"categories,omitempty"`
-	Revision     string   `json:"revision,omitempty"`
-	PublicKey    string   `json:"public_key,omitempty"`
-	Path         string   `json:"path"`
+	UID          string            `json:"uid"`
+	Name         string            `json:"name"`
+	Email        string            `json:"email"`
+	Emails       []ContactProperty `json:"emails,omitempty"`
+	Phone        string            `json:"phone,omitempty"`
+	Phones       []ContactProperty `json:"phones,omitempty"`
+	Organization string            `json:"organization,omitempty"`
+	Title        string            `json:"title,omitempty"`
+	Address      string            `json:"address,omitempty"`
+	Birthday     string            `json:"birthday,omitempty"`
+	Note         string            `json:"note,omitempty"`
+	URL          string            `json:"url,omitempty"`
+	Nickname     string            `json:"nickname,omitempty"`
+	Avatar       string            `json:"avatar,omitempty"`
+	Categories   []string          `json:"categories,omitempty"`
+	Revision     string            `json:"revision,omitempty"`
+	PublicKey    string            `json:"public_key,omitempty"`
+	Path         string            `json:"path"`
 	// The version this was read at. An edit sends it back, and is refused
 	// with 412 if the card has been saved elsewhere since.
 	ETag string `json:"etag,omitempty"`
@@ -44,22 +51,54 @@ type ContactDetailData struct {
 	VCard string `json:"vcard"`
 }
 
+func extractTypedProperties(fields []*vcard.Field) []ContactProperty {
+	var props []ContactProperty
+	for _, f := range fields {
+		val := strings.TrimSpace(f.Value)
+		if val == "" {
+			continue
+		}
+		propType := ""
+		if f.Params != nil {
+			for _, t := range f.Params.Types() {
+				t = strings.TrimSpace(t)
+				if strings.EqualFold(t, "pref") || t == "" {
+					continue
+				}
+				propType = strings.ToLower(t)
+				break
+			}
+		}
+		props = append(props, ContactProperty{
+			Value: val,
+			Type:  propType,
+		})
+	}
+	return props
+}
+
 func extractContactData(card vcard.Card, path string) ContactData {
 	fn := ""
 	if f := card.Preferred(vcard.FieldFormattedName); f != nil {
 		fn = f.Value
 	}
+	emails := extractTypedProperties(card[vcard.FieldEmail])
 	email := ""
 	if f := card.Preferred(vcard.FieldEmail); f != nil {
 		email = f.Value
+	} else if len(emails) > 0 {
+		email = emails[0].Value
 	}
 	uid := ""
 	if f := card.Preferred(vcard.FieldUID); f != nil {
 		uid = f.Value
 	}
+	phones := extractTypedProperties(card[vcard.FieldTelephone])
 	phone := ""
 	if f := card.Preferred(vcard.FieldTelephone); f != nil {
 		phone = f.Value
+	} else if len(phones) > 0 {
+		phone = phones[0].Value
 	}
 	org := ""
 	if f := card.Preferred(vcard.FieldOrganization); f != nil {
@@ -145,7 +184,9 @@ func extractContactData(card vcard.Card, path string) ContactData {
 		UID:          uid,
 		Name:         fn,
 		Email:        email,
+		Emails:       emails,
 		Phone:        phone,
+		Phones:       phones,
 		Organization: org,
 		Title:        title,
 		Address:      addrStr,
@@ -234,6 +275,7 @@ func registerRoutes(p *plugin) {
 				Props: []string{
 					vcard.FieldFormattedName,
 					vcard.FieldEmail,
+					vcard.FieldTelephone,
 					vcard.FieldUID,
 				},
 			},
@@ -336,24 +378,45 @@ func registerRoutes(p *plugin) {
 		}
 
 		// Deduplication check for new contacts
-		if addressObjectPath == "" && req.Email != "" {
+		var candidateEmails []string
+		if req.Email != "" {
+			candidateEmails = append(candidateEmails, req.Email)
+		}
+		for _, em := range req.Emails {
+			v := strings.TrimSpace(em.Value)
+			if v != "" {
+				already := false
+				for _, c := range candidateEmails {
+					if strings.EqualFold(c, v) {
+						already = true
+						break
+					}
+				}
+				if !already {
+					candidateEmails = append(candidateEmails, v)
+				}
+			}
+		}
+
+		if addressObjectPath == "" && len(candidateEmails) > 0 {
 			query := carddav.AddressBookQuery{
 				DataRequest: carddav.AddressDataRequest{
 					Props: []string{vcard.FieldEmail},
 				},
 				PropFilters: []carddav.PropFilter{
 					{
-						Name:        vcard.FieldEmail,
-						TextMatches: []carddav.TextMatch{{Text: req.Email}},
+						Name: vcard.FieldEmail,
 					},
 				},
 			}
 			if aos, err := c.QueryAddressBook(ctx.Request.Context(), addressBook.Path, &query); err == nil {
 				for _, existingAo := range aos {
-					if existingEmailField := existingAo.Card.Preferred(vcard.FieldEmail); existingEmailField != nil {
-						if strings.EqualFold(strings.TrimSpace(existingEmailField.Value), strings.TrimSpace(req.Email)) {
-							// Contact already exists. Do not overwrite.
-							return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "path": existingAo.Path})
+					for _, existingEmailField := range existingAo.Card[vcard.FieldEmail] {
+						for _, candidate := range candidateEmails {
+							if strings.EqualFold(strings.TrimSpace(existingEmailField.Value), strings.TrimSpace(candidate)) {
+								// Contact already exists. Do not overwrite.
+								return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "path": existingAo.Path})
+							}
 						}
 					}
 				}
@@ -404,8 +467,51 @@ func registerRoutes(p *plugin) {
 			}
 		}
 
-		setSimpleField(vcard.FieldEmail, req.Email)
-		setSimpleField(vcard.FieldTelephone, req.Phone)
+		updateMultiField := func(field string, explicitProps []ContactProperty, fallbackVal string) {
+			if explicitProps != nil {
+				var fields []*vcard.Field
+				for _, p := range explicitProps {
+					val := strings.TrimSpace(p.Value)
+					if val == "" {
+						continue
+					}
+					f := &vcard.Field{Value: val}
+					if p.Type != "" {
+						f.Params = vcard.Params{"TYPE": []string{strings.ToUpper(strings.TrimSpace(p.Type))}}
+					}
+					fields = append(fields, f)
+				}
+				if len(fields) > 0 {
+					card[field] = fields
+				} else {
+					delete(card, field)
+				}
+			} else if fallbackVal != "" {
+				if len(card[field]) > 1 {
+					found := false
+					for i, f := range card[field] {
+						if strings.EqualFold(strings.TrimSpace(f.Value), strings.TrimSpace(fallbackVal)) {
+							found = true
+							if i > 0 {
+								match := card[field][i]
+								card[field] = append([]*vcard.Field{match}, append(card[field][:i], card[field][i+1:]...)...)
+							}
+							break
+						}
+					}
+					if !found {
+						setSimpleField(field, fallbackVal)
+					}
+				} else {
+					setSimpleField(field, fallbackVal)
+				}
+			} else {
+				setSimpleField(field, fallbackVal)
+			}
+		}
+
+		updateMultiField(vcard.FieldEmail, req.Emails, req.Email)
+		updateMultiField(vcard.FieldTelephone, req.Phones, req.Phone)
 		setSimpleField(vcard.FieldOrganization, req.Organization)
 		setSimpleField(vcard.FieldTitle, req.Title)
 		setSimpleField(vcard.FieldBirthday, req.Birthday)

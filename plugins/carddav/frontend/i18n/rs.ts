@@ -57,6 +57,13 @@ export default {
     birthday: 'Рођендан',
     back: 'Назад',
     toggleStar: 'Укључи/искључи омиљено',
-    publicKey: 'Јавни кључ'
+    publicKey: 'Јавни кључ',
+    addEmail: 'Додај е-пошту',
+    addPhone: 'Додај телефон',
+    typeDefault: 'Подразумевано',
+    typeHome: 'Кућа',
+    typeWork: 'Посао',
+    typeOther: 'Остало',
+    typeMobile: 'Мобилни'
   }
 };

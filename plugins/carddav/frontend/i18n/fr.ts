@@ -56,6 +56,13 @@ export default {
     birthday: 'Date de naissance',
     back: 'Retour',
     toggleStar: 'Basculer le favori',
-    publicKey: 'Clé publique'
+    publicKey: 'Clé publique',
+    addEmail: 'Ajouter une adresse e-mail',
+    addPhone: 'Ajouter un téléphone',
+    typeDefault: 'Par défaut',
+    typeHome: 'Domicile',
+    typeWork: 'Travail',
+    typeOther: 'Autre',
+    typeMobile: 'Mobile'
   }
 };
