@@ -688,16 +688,21 @@ func (sm *SessionManager) absoluteDeadlineFrom(start time.Time) time.Time {
 // nextTimeout is how long the timeout goroutine should wait before ending the
 // session: the idle window, or whatever is left of the absolute cap, whichever
 // comes first. A non-positive result means the cap has already passed.
+// When idle timeout is disabled (s.duration <= 0), it waits until the absolute
+// deadline, or for 1 year if no absolute deadline is configured.
 func (s *Session) nextTimeout() time.Duration {
-	if s.absoluteDeadline.IsZero() {
+	if !s.absoluteDeadline.IsZero() {
+		remaining := time.Until(s.absoluteDeadline)
+		if remaining <= 0 {
+			return 0
+		}
+		if s.duration <= 0 || remaining < s.duration {
+			return remaining
+		}
 		return s.duration
 	}
-	remaining := time.Until(s.absoluteDeadline)
-	if remaining <= 0 {
-		return 0
-	}
-	if remaining < s.duration {
-		return remaining
+	if s.duration <= 0 {
+		return 8760 * time.Hour
 	}
 	return s.duration
 }
