@@ -75,8 +75,8 @@ func (p *plugin) connectClient(ctx *alps.Context) (*MSClient, error) {
 	// silently fall back to cleartext just because the (unauthenticated,
 	// spoofable) capability list omits STARTTLS — that is a downgrade attack.
 	if _, ok := c.capabilities["STARTTLS"]; ok {
-		host, _, _ := strings.Cut(addr, ":")
-		if err := c.StartTLS(&tls.Config{ServerName: host, InsecureSkipVerify: ep.insecure}); err != nil {
+		serverName := ep.url.Hostname()
+		if err := c.StartTLS(&tls.Config{ServerName: serverName, InsecureSkipVerify: ep.insecure}); err != nil {
 			c.Close()
 			return nil, fmt.Errorf("STARTTLS failed: %w", err)
 		}

@@ -396,28 +396,26 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 		}
 
 		// 4. RFC 6186 DNS autodiscover
-		if domain != "" && autodiscoverer != nil {
+		// Autodiscover requires an explicit allowlist to prevent SSRF.
+		// A domain outside the list is not an error: the rule does not match,
+		// and routing continues to the default provider.
+		if domain != "" && autodiscoverer != nil && domainAllowed(o.AutodiscoverDomains, domain) {
 			if !isValidDomain(domain) {
 				return nil, provider.AuthError{Cause: fmt.Errorf("invalid domain %q for autodiscovery", domain)}
 			}
 
-			// Autodiscover requires an explicit allowlist to prevent SSRF.
-			isAllowed := domainAllowed(o.AutodiscoverDomains, domain)
-
-			if isAllowed {
-				ctx, cancel := context.WithTimeout(context.Background(), netTimeout)
-				discovered, err := autodiscoverer.Discover(ctx, domain)
-				if err != nil {
-					cancel()
-					return nil, fmt.Errorf("autodiscovery failed for domain %q: %w", domain, err)
-				}
-				f, dynErr := getDynamicFactory(ctx, discovered.ServerURL())
+			ctx, cancel := context.WithTimeout(context.Background(), netTimeout)
+			discovered, err := autodiscoverer.Discover(ctx, domain)
+			if err != nil {
 				cancel()
-				if dynErr != nil {
-					return nil, fmt.Errorf("failed to initialize autodiscovered server: %w", dynErr)
-				}
-				return f(username, password)
+				return nil, fmt.Errorf("autodiscovery failed for domain %q: %w", domain, err)
 			}
+			f, dynErr := getDynamicFactory(ctx, discovered.ServerURL())
+			cancel()
+			if dynErr != nil {
+				return nil, fmt.Errorf("failed to initialize autodiscovered server: %w", dynErr)
+			}
+			return f(username, password)
 		}
 
 		// 5. Default provider fallback

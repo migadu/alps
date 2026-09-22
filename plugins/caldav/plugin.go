@@ -146,38 +146,42 @@ func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session)
 
 func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	cfg := srv.Options.Plugins["caldav"]
-	if cfg.Server == "" {
-		// No server configured, disable plugin
+	if cfg.Server == "" && !cfg.Enabled && !srv.HasServiceRouting(provider.ServiceCalDAV) {
+		// No server configured and service not routed/enabled, disable plugin
 		return nil, nil
 	}
-	u, err := alps.ParseServerURL(cfg.Server)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse CalDAV server: %v", err)
-	}
-
-	switch u.Scheme {
-	case "caldavs":
-		u.Scheme = "https"
-	case "caldav+insecure", "http+insecure":
-		u.Scheme = "http"
-	}
-	if u.Scheme == "" {
-		s, err := caldav.DiscoverContextURL(context.Background(), u.Host)
+	var u *url.URL
+	if cfg.Server != "" {
+		var err error
+		u, err = alps.ParseServerURL(cfg.Server)
 		if err != nil {
-			srv.Logger().Printf("caldav: failed to discover CalDAV server: %v", err)
-			return nil, nil
+			return nil, fmt.Errorf("failed to parse CalDAV server: %v", err)
 		}
-		u, err = url.Parse(s)
-		if err != nil {
-			return nil, fmt.Errorf("caldav: Discover returned an invalid URL: %v", err)
+
+		switch u.Scheme {
+		case "caldavs":
+			u.Scheme = "https"
+		case "caldav+insecure", "http+insecure":
+			u.Scheme = "http"
 		}
-	}
+		if u.Scheme == "" {
+			s, err := caldav.DiscoverContextURL(context.Background(), u.Host)
+			if err != nil {
+				srv.Logger().Printf("caldav: failed to discover CalDAV server: %v", err)
+				return nil, nil
+			}
+			u, err = url.Parse(s)
+			if err != nil {
+				return nil, fmt.Errorf("caldav: Discover returned an invalid URL: %v", err)
+			}
+		}
 
-	if err := sanityCheckURL(u); err != nil {
-		srv.Logger().Printf("caldav: failed to connect to CalDAV server %q: %v (continuing anyway)", u, err)
-	}
+		if err := sanityCheckURL(u); err != nil {
+			srv.Logger().Printf("caldav: failed to connect to CalDAV server %q: %v (continuing anyway)", u, err)
+		}
 
-	srv.Logger().Printf("Configured CalDAV server: %v", u)
+		srv.Logger().Printf("Configured CalDAV server: %v", u)
+	}
 
 	p := &plugin{
 		GoPlugin:     alps.GoPlugin{Name: "caldav"},

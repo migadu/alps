@@ -173,17 +173,19 @@ func parseSMTPURL(raw string, insecureOpt bool) (host string, tls bool, insecure
 		insecure = true
 	}
 
-	host = u.Host
-	if host == "" {
+	hostname := u.Hostname()
+	if hostname == "" {
 		return "", false, false, fmt.Errorf("SMTP server host cannot be empty")
 	}
-	if !strings.ContainsRune(host, ':') {
+	port := u.Port()
+	if port == "" {
 		if u.Scheme == "smtps" {
-			host += ":465"
+			port = "465"
 		} else {
-			host += ":587"
+			port = "587"
 		}
 	}
+	host = net.JoinHostPort(hostname, port)
 
 	return host, tls, insecure, nil
 }
@@ -603,4 +605,14 @@ func (s *Server) ServiceOptionsFor(service, username string) map[string]interfac
 		return nil
 	}
 	return router.ServiceOptions(service, username)
+}
+
+// HasServiceRouting reports whether the configured provider may route the
+// named service per login.
+func (s *Server) HasServiceRouting(service string) bool {
+	if s == nil || s.Options == nil {
+		return false
+	}
+	_, ok := s.Options.Provider.(provider.ServiceRouter)
+	return ok
 }

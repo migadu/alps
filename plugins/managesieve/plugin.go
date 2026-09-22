@@ -75,17 +75,21 @@ func (p *plugin) endpointFor(username string) sieveEndpoint {
 
 func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	cfg := srv.Options.Plugins["managesieve"]
-	if cfg.Server == "" {
-		// No server configured, disable plugin
+	if cfg.Server == "" && !cfg.Enabled && !srv.HasServiceRouting(provider.ServiceManageSieve) {
+		// No server configured and service not routed/enabled, disable plugin
 		return nil, nil
 	}
-	ep, err := parseSieveURL(cfg.Server)
-	if err != nil {
-		return nil, err
-	}
-	u, insecure := ep.url, ep.insecure
+	var u *url.URL
+	var insecure bool
+	if cfg.Server != "" {
+		ep, err := parseSieveURL(cfg.Server)
+		if err != nil {
+			return nil, err
+		}
+		u, insecure = ep.url, ep.insecure
 
-	srv.Logger().Printf("Configured ManageSieve server: %v", u)
+		srv.Logger().Printf("Configured ManageSieve server: %v", u)
+	}
 
 	p := &plugin{
 		GoPlugin: alps.GoPlugin{Name: "managesieve"},

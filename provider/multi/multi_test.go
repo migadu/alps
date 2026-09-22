@@ -408,6 +408,49 @@ func TestMultiConfig_AutodiscoverSSRFBlocked(t *testing.T) {
 	assert.Contains(t, err.Error(), "no mail provider configured for domain")
 }
 
+func TestIsRestrictedIP(t *testing.T) {
+	restricted := []string{
+		"127.0.0.1",
+		"127.0.4.5",
+		"10.0.0.1",
+		"172.16.0.1",
+		"192.168.1.1",
+		"169.254.169.254",
+		"0.0.0.0",
+		"0.0.0.1",
+		"0.42.1.2",
+		"100.64.0.1",
+		"255.255.255.255",
+		"224.0.0.1",
+		"239.255.255.250",
+		"::1",
+		"fe80::1",
+		"fc00::1",
+		"::ffff:127.0.0.1",
+		"::ffff:10.0.0.1",
+	}
+	for _, ipStr := range restricted {
+		ip := net.ParseIP(ipStr)
+		require.NotNil(t, ip, "failed to parse %s", ipStr)
+		assert.True(t, isRestrictedIP(ip), "IP %s should be restricted", ipStr)
+	}
+
+	allowed := []string{
+		"8.8.8.8",
+		"1.1.1.1",
+		"93.184.216.34",
+		"2001:4860:4860::8888",
+		"2606:4700:4700::1111",
+	}
+	for _, ipStr := range allowed {
+		ip := net.ParseIP(ipStr)
+		require.NotNil(t, ip, "failed to parse %s", ipStr)
+		assert.False(t, isRestrictedIP(ip), "IP %s should be allowed", ipStr)
+	}
+
+	assert.True(t, isRestrictedIP(nil), "nil IP should be restricted")
+}
+
 func TestMultiConfig_TemplateSSRFBlocked(t *testing.T) {
 	// 1. Injection via %u containing invalid characters (colons, slashes, ports)
 	opts := &Options{
@@ -590,6 +633,34 @@ func TestMultiConfig_TemplateRequiresAllowlist(t *testing.T) {
 	_, err = bare("user@other.example", "pass")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no mail provider configured")
+}
+
+// Autodiscovery queries DNS for servers, so it applies only to allowlisted
+// domains. A domain outside the list is not an error: the rule does not match
+// and routing continues to the default provider, even if the domain contains
+// characters not conforming to RFC 1035.
+func TestMultiConfig_AutodiscoverRequiresAllowlist(t *testing.T) {
+	mockDefault := &provider.MockOptions{}
+	mockDisc := &mockAutodiscoverer{
+		server: &DiscoveredServer{Host: "mail.allowed.example", Port: 993, TLS: true},
+	}
+	opts := &Options{
+		Autodiscover:        true,
+		AutodiscoverDomains: []string{"allowed.example"},
+		Autodiscoverer:      mockDisc,
+		Default:             mockDefault,
+	}
+	factory := opts.CreateFactory(time.Second, false)
+
+	// Not allowlisted: falls through to the default provider.
+	p, err := factory("user@other.example", "pass")
+	require.NoError(t, err)
+	assert.NotNil(t, p)
+
+	// Non-RFC 1035 domain (e.g. underscore) outside allowlist also falls through to default.
+	p, err = factory("user@corp_office.local", "pass")
+	require.NoError(t, err)
+	assert.NotNil(t, p)
 }
 
 func TestIsValidLocalPart(t *testing.T) {

@@ -93,3 +93,57 @@ func TestEndpointForKeepsGoingWhenTheProviderNamesNonsense(t *testing.T) {
 		t.Errorf("an unusable endpoint yielded %v, want the configured %v", got.url, global)
 	}
 }
+
+func TestEndpointForIPv6(t *testing.T) {
+	global, _ := url.Parse("managesieves://global.example:4190")
+	ipv6URL := "managesieves://[2001:db8::1]:4190"
+	p := &plugin{url: global, srv: stubServer(routerStub{
+		service: provider.ServiceManageSieve, user: "ipv6@example.com", url: ipv6URL,
+	})}
+	ep := p.endpointFor("ipv6@example.com")
+	if ep.url == nil || ep.url.String() != ipv6URL {
+		t.Fatalf("expected %s, got %v", ipv6URL, ep.url)
+	}
+	if ep.url.Hostname() != "2001:db8::1" {
+		t.Errorf("hostname was truncated, got %q, want %q", ep.url.Hostname(), "2001:db8::1")
+	}
+}
+
+func TestEndpointForWithoutGlobalServer(t *testing.T) {
+	srv := stubServer(routerStub{
+		service: provider.ServiceManageSieve, user: "routed@example.com", url: "managesieves://sieve.routed.example:4190",
+	})
+	p := &plugin{url: nil, srv: srv}
+	ep := p.endpointFor("routed@example.com")
+	if ep.url == nil || ep.url.String() != "managesieves://sieve.routed.example:4190" {
+		t.Errorf("got %v, want managesieves://sieve.routed.example:4190", ep.url)
+	}
+	unrouted := p.endpointFor("other@example.com")
+	if unrouted.url != nil {
+		t.Errorf("unrouted user should get nil URL, got %v", unrouted.url)
+	}
+}
+
+func TestNewPluginWithoutGlobalServer(t *testing.T) {
+	srv := stubServer(routerStub{
+		service: provider.ServiceManageSieve, user: "routed@example.com", url: "managesieves://sieve.routed.example:4190",
+	})
+	srv.Options.Plugins = map[string]alps.PluginConfig{"managesieve": {}}
+	pl, err := newPlugin(srv)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pl == nil {
+		t.Fatal("plugin should be initialized when provider routes ManageSieve")
+	}
+
+	// When neither server nor routing exists, it stays disabled.
+	bareSrv := &alps.Server{Options: &alps.Options{Plugins: map[string]alps.PluginConfig{"managesieve": {}}}}
+	disabled, err := newPlugin(bareSrv)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if disabled != nil {
+		t.Fatal("plugin should be disabled when unconfigured and unrouted")
+	}
+}

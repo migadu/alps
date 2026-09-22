@@ -186,18 +186,18 @@ Routes incoming user logins across multiple email backends. Domain resolution pr
 | `routes` | Array of Tables | None | Grouped routes specifying `domains` list and provider configuration. |
 | `default` | Table | None | Fallback provider configuration table when no domain match occurs. |
 
-Every backend a login touches follows the domain that chose its mail store, so a user does not read from one host and then send, sync contacts or calendars, edit filters or change a password somewhere unrelated. A backend that names no endpoint for a service defers to that service's global setting rather than borrowing one from an unrelated backend; domains reached by `template` or `autodiscover` have no entry of their own and fall to `default`, then to the global setting. The global `[smtp] server` and the `[plugin.*]` blocks stay in place as that last resort, and a service left unconfigured globally and unnamed by the backend stays disabled.
+Every backend a login touches follows the domain that chose its mail store, so a user does not read from one host and then send, sync contacts or calendars, edit filters or change a password somewhere unrelated. A backend that names no endpoint for a service defers to that service's global setting rather than borrowing one from an unrelated backend; domains reached by `template` or `autodiscover` have no entry of their own and fall to `default`, then to the global setting. When per-domain endpoints are configured in `multi`, service plugins (`carddav`, `caldav`, `managesieve`) initialize automatically even if their global `server` option is omitted, with unrouted logins treating unnamed services as disabled.
 
 The CalDAV endpoint named here must carry a scheme. Start-up can fall back to DNS discovery for the global `[plugin.caldav] server`, but a login must not cost a discovery round trip, so a per-backend endpoint without a scheme is refused and the global one stands.
 
-Both allowlists accept the single entry `"*"` to match every domain. That turns the dynamic routes back into an open relay: any login makes the server connect to a host the login chose, so use it only on a deployment that is not reachable by untrusted users. Private, loopback, link-local and CGNAT targets stay blocked either way, and the block is re-checked against the address each connection actually reaches.
+Both allowlists accept the single entry `"*"` to match every domain. That turns the dynamic routes back into an open relay: any login makes the server connect to a host the login chose, so use it only on a deployment that is not reachable by untrusted users. Private, loopback, link-local, `0.0.0.0/8`, and CGNAT targets stay blocked either way, and the block is re-checked against the address each connection actually reaches. An unallowlisted domain simply misses the rule and routing proceeds to `default`.
 
 
 ### `[smtp]`
 Configures the SMTP server used for sending emails.
 | Option | Type | Description |
 | :--- | :--- | :--- |
-| `server` | String | SMTP server URI (e.g., `"smtps://smtp.example.com:465"`). |
+| `server` | String | SMTP server URI (e.g., `"smtps://smtp.example.com:465"`, `"smtps://[2001:db8::1]"`). Bracketed IPv6 hosts without an explicit port automatically receive port 465 (smtps) or 587 (smtp). |
 | `insecure` | Boolean | Allow connections without strict TLS validation. |
 
 ---

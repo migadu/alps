@@ -235,7 +235,6 @@ func (p *Provider) ListMessages(mailbox string, sortOrder string, page, pageSize
 	return messages, provider.PageInfo{Total: total}, nil
 }
 
-<<<<<<< HEAD
 // messageContains reports whether the stored message holds the query, matched
 // as a case-insensitive substring of the whole file, headers and body alike.
 // Read in chunks, keeping the tail of each so a match across a chunk boundary

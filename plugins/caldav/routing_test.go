@@ -85,3 +85,40 @@ func TestURLForCachesWithoutCrossingLogins(t *testing.T) {
 		}
 	}
 }
+
+func TestURLForWithoutGlobalServer(t *testing.T) {
+	srv := stubServer(routerStub{
+		service: provider.ServiceCalDAV, user: "routed@example.com", url: "https://cal.routed.example",
+	})
+	p := &plugin{url: nil, srv: srv}
+	if got := p.urlFor("routed@example.com"); got == nil || got.String() != "https://cal.routed.example" {
+		t.Errorf("got %v, want https://cal.routed.example", got)
+	}
+	if got := p.urlFor("other@example.com"); got != nil {
+		t.Errorf("unrouted user should get nil URL, got %v", got)
+	}
+}
+
+func TestNewPluginWithoutGlobalServer(t *testing.T) {
+	srv := stubServer(routerStub{
+		service: provider.ServiceCalDAV, user: "routed@example.com", url: "https://cal.routed.example",
+	})
+	srv.Options.Plugins = map[string]alps.PluginConfig{"caldav": {}}
+	pl, err := newPlugin(srv)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pl == nil {
+		t.Fatal("plugin should be initialized when provider routes CalDAV")
+	}
+
+	// When neither server nor routing exists, it stays disabled.
+	bareSrv := &alps.Server{Options: &alps.Options{Plugins: map[string]alps.PluginConfig{"caldav": {}}}}
+	disabled, err := newPlugin(bareSrv)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if disabled != nil {
+		t.Fatal("plugin should be disabled when unconfigured and unrouted")
+	}
+}

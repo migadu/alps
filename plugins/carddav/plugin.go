@@ -139,20 +139,24 @@ func parseCardDAVURL(raw string) (*url.URL, error) {
 
 func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 	cfg := srv.Options.Plugins["carddav"]
-	if cfg.Server == "" {
-		// No server configured, disable plugin
+	if cfg.Server == "" && !cfg.Enabled && !srv.HasServiceRouting(provider.ServiceCardDAV) {
+		// No server configured and service not routed/enabled, disable plugin
 		return nil, nil
 	}
-	u, err := parseCardDAVURL(cfg.Server)
-	if err != nil {
-		return nil, err
-	}
+	var u *url.URL
+	if cfg.Server != "" {
+		var err error
+		u, err = parseCardDAVURL(cfg.Server)
+		if err != nil {
+			return nil, err
+		}
 
-	if err := sanityCheckURL(u); err != nil {
-		srv.Logger().Printf("carddav: failed to connect to CardDAV server %q: %v (continuing anyway)", u, err)
-	}
+		if err := sanityCheckURL(u); err != nil {
+			srv.Logger().Printf("carddav: failed to connect to CardDAV server %q: %v (continuing anyway)", u, err)
+		}
 
-	srv.Logger().Printf("Configured CardDAV server: %v", u)
+		srv.Logger().Printf("Configured CardDAV server: %v", u)
+	}
 
 	p := &plugin{
 		GoPlugin:     alps.GoPlugin{Name: "carddav"},

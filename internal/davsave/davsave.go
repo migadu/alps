@@ -30,6 +30,9 @@ var ErrConflict = errors.New("davsave: the object changed since it was read")
 // client does: a server-rooted href is used as it is, a relative one is joined
 // onto the endpoint's path.
 func URL(endpoint *url.URL, href string) string {
+	if endpoint == nil {
+		return href
+	}
 	p := href
 	if !strings.HasPrefix(p, "/") {
 		p = path.Join(endpoint.Path, p)

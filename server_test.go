@@ -46,6 +46,56 @@ func TestServerPluginConfig(t *testing.T) {
 	assert.Equal(t, "smtp.example.com:465", s.smtp.host)
 }
 
+func TestParseSMTPURL(t *testing.T) {
+	// IPv4 with and without port
+	host, tls, insecure, err := parseSMTPURL("smtps://mail.example.com", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "mail.example.com:465", host)
+	assert.True(t, tls)
+	assert.False(t, insecure)
+
+	host, tls, insecure, err = parseSMTPURL("smtp://mail.example.com", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "mail.example.com:587", host)
+	assert.False(t, tls)
+	assert.False(t, insecure)
+
+	host, tls, insecure, err = parseSMTPURL("smtp+insecure://mail.example.com:2525", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "mail.example.com:2525", host)
+	assert.False(t, tls)
+	assert.True(t, insecure)
+
+	// IPv6 bracketed hosts without port
+	host, tls, insecure, err = parseSMTPURL("smtps://[::1]", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "[::1]:465", host)
+	assert.True(t, tls)
+
+	host, tls, insecure, err = parseSMTPURL("smtp://[2001:db8::1]", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "[2001:db8::1]:587", host)
+	assert.False(t, tls)
+
+	// IPv6 bracketed hosts with custom port
+	host, tls, insecure, err = parseSMTPURL("smtps://[2001:db8::1]:4650", false)
+	assert.NoError(t, err)
+	assert.Equal(t, "[2001:db8::1]:4650", host)
+	assert.True(t, tls)
+
+	// insecureOpt overrides scheme
+	_, _, insecure, err = parseSMTPURL("smtps://mail.example.com", true)
+	assert.NoError(t, err)
+	assert.True(t, insecure)
+
+	// Error cases
+	_, _, _, err = parseSMTPURL("invalid-scheme://mail.example.com", false)
+	assert.Error(t, err)
+
+	_, _, _, err = parseSMTPURL("mail.example.com", false)
+	assert.Error(t, err)
+}
+
 func TestServerNilProvider(t *testing.T) {
 	logger := &NilLogger{}
 	opts := &Options{
