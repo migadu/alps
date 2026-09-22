@@ -41,6 +41,7 @@ type testServer struct {
 	client *http.Client
 	store  *maildir.Provider
 	dir    string // the account's maildir
+	server *alps.Server
 }
 
 func newTestServer(t *testing.T) *testServer {
@@ -100,7 +101,7 @@ func newTestServerWithSMTP(t *testing.T, smtpServer string) *testServer {
 	})
 
 	jar, _ := cookiejar.New(nil)
-	return &testServer{t: t, url: ts.URL, client: &http.Client{Jar: jar}, store: store, dir: filepath.Join(base, "ada")}
+	return &testServer{t: t, url: ts.URL, client: &http.Client{Jar: jar}, store: store, dir: filepath.Join(base, "ada"), server: srv}
 }
 
 type response struct {

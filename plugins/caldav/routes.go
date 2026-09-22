@@ -242,6 +242,7 @@ func registerRoutes(p *plugin) {
 			"calendars": calDatas,
 			// Who sends invitations and replies: "server" or "email".
 			"scheduling": p.scheduling(ctx, c).mode(),
+			"week_start": p.defaultWeekStart,
 		})
 	})
 

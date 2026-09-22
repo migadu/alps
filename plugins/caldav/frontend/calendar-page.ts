@@ -379,8 +379,13 @@ export class CalendarPage extends LitElement {
                     this.fetchData();
                 }, ms);
             }
+            this.requestUpdate();
         }
     };
+
+    private getFirstDayOfWeek(): number {
+        return this.settingsStore?.getState()?.weekStart ?? 1;
+    }
 
     async connectedCallback() {
         super.connectedCallback();
@@ -571,7 +576,7 @@ export class CalendarPage extends LitElement {
                 start.setDate(start.getDate() - 14);
                 end.setDate(end.getDate() + 14);
             } else if (this.viewMode === 'week') {
-                start = weekStart(this.currentDate);
+                start = weekStart(this.currentDate, this.getFirstDayOfWeek());
                 end = new Date(start);
                 end.setDate(start.getDate() + 7);
             } else {
@@ -705,7 +710,7 @@ export class CalendarPage extends LitElement {
             return date.getFullYear() === anchor.getFullYear() && date.getMonth() === anchor.getMonth();
         }
         if (this.viewMode === 'week') {
-            const start = weekStart(anchor);
+            const start = weekStart(anchor, this.getFirstDayOfWeek());
             const end = new Date(start);
             end.setDate(start.getDate() + 7);
             return date >= start && date < end;
@@ -1015,6 +1020,7 @@ export class CalendarPage extends LitElement {
                                 <alps-sidebar-calendar
                                     .selectedDate=${this.currentDate}
                                     .events=${visibleEvents}
+                                    .weekStart=${this.getFirstDayOfWeek()}
                                     @date-selected=${(e: CustomEvent) => this.handleDateSelected(e.detail.date)}
                                 ></alps-sidebar-calendar>
                             </div>
@@ -1071,6 +1077,7 @@ export class CalendarPage extends LitElement {
                                 <calendar-year-view 
                                 .year=${year} 
                                 .events=${visibleEvents}
+                                .weekStart=${this.getFirstDayOfWeek()}
                                 @date-selected=${(e: CustomEvent) => this.handleDateSelected(e.detail.date)}
                             ></calendar-year-view>
                         ` : ''}
@@ -1078,6 +1085,7 @@ export class CalendarPage extends LitElement {
                             <calendar-month-view 
                                 .date=${this.currentDate} 
                                 .events=${visibleEvents}
+                                .weekStart=${this.getFirstDayOfWeek()}
                                 @create-event=${(e: CustomEvent) => this.openCreateModal(e.detail.date, e.detail.allDay)}
                                 @edit-event=${(e: CustomEvent) => this.openEditModal(e.detail.event)}
                                 @delete-event=${(e: CustomEvent) => this.eventToDelete = e.detail.event}
@@ -1087,6 +1095,7 @@ export class CalendarPage extends LitElement {
                             <calendar-week-view 
                                 .date=${this.currentDate} 
                                 .events=${visibleEvents}
+                                .weekStart=${this.getFirstDayOfWeek()}
                                 @create-event=${(e: CustomEvent) => this.openCreateModal(e.detail.date, e.detail.allDay)}
                                 @edit-event=${(e: CustomEvent) => this.openEditModal(e.detail.event)}
                                 @delete-event=${(e: CustomEvent) => this.eventToDelete = e.detail.event}

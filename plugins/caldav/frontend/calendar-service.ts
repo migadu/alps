@@ -74,6 +74,7 @@ export interface CalendarListing {
     calendars: CalendarData[];
     /** Who sends invitations and replies: the calendar server, or alps by email. */
     scheduling?: 'server' | 'email';
+    week_start?: number;
 }
 
 /** A guest as the address field spells one: `"Name" <address>` or a bare address. */
@@ -298,20 +299,16 @@ export function taskChips(tasks: TaskData[]): EventData[] {
 }
 
 /**
- * The Monday that begins `date`'s week, at midnight.
+ * The day that begins `date`'s week (default: Monday / 1), at midnight.
  *
  * Shared because the page and the week view must agree on it: the week view
  * draws seven days from here, and the page fetches the events for that window.
- * The page computed it as `getDate() - getDay() + 1`, which reads a SUNDAY
- * (`getDay() === 0`) as the Monday AFTER it, while the week view corrected for
- * Sunday in a private copy — so on Sundays the page fetched next week's events
- * for the week the grid was drawing, and the day the user was looking at showed
- * none. The window also began at whatever time of day the page had loaded, so a
- * load at 14:00 left Monday morning outside the fetch.
+ * The window begins at midnight (00:00:00) so earlier hours are not excluded.
  */
-export function weekStart(date: Date): Date {
+export function weekStart(date: Date, firstDayOfWeek: number = 1): Date {
     const start = new Date(date);
-    start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+    const diff = (start.getDay() - firstDayOfWeek + 7) % 7;
+    start.setDate(start.getDate() - diff);
     start.setHours(0, 0, 0, 0);
     return start;
 }

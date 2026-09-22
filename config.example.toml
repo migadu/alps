@@ -517,7 +517,9 @@ enabled = true
 # server = "https://caldav.example.com"
 
 # Plugin-specific options (optional map)
-# options = { "example_key" = "example_value" }
+# Options:
+#   week_start: day that starts the week in the calendar UI (0 = Sunday, 1 = Monday). Default: 1.
+# options = { week_start = 0 }
 
 
 [plugin.carddav]

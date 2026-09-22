@@ -106,6 +106,23 @@ describe('signing in', () => {
     expect(put).toEqual({ ui: { showSenderAvatars: true } });
   });
 
+  it('applies the account\'s choice about weekStart, and saves a change to it', async () => {
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', week_start: 0 } }),
+      'PUT /settings': () => json(200, {}),
+    });
+    const store = new SettingsStore();
+    expect(store.getState().weekStart).toBe(1);
+    await vi.waitFor(() => expect(store.getState().weekStart).toBe(0));
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+
+    await store.updateSettings({ weekStart: 1 });
+    const put = calls.find((c) => c.key === 'PUT /settings')!.body;
+    expect(put).toEqual({ week_start: 1 });
+  });
+
   it('saves nothing when it has only read the account\'s record', async () => {
     signedIn();
     const calls = serve({
