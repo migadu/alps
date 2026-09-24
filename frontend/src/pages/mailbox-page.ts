@@ -1436,7 +1436,7 @@ export class MailboxPage extends LitElement {
       return;
     }
 
-    const trash = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
+    const trash = findMailboxNameByRole('trash', mailbox, this.mailboxes, FOLDER_TRASH);
     const view = this.currentMailbox;
     const moved = await messageOperations.moveMessages(mailbox, [uid], trash);
     if (!moved.success) {
@@ -1851,10 +1851,10 @@ export class MailboxPage extends LitElement {
       } else if (action === 'delete' || action === 'archive' || action === 'reportSpam' || action === 'notSpam') {
         // Resolve move destinations to the actual special-use mailbox (e.g. Gmail's
         // "[Gmail]/Trash") rather than a hardcoded English name. See issue #4.
-        let destinationFolder = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
-        if (action === 'archive') destinationFolder = findMailboxNameByRole('archive', this.mailboxes, FOLDER_ARCHIVE);
-        if (action === 'reportSpam') destinationFolder = findMailboxNameByRole('junk', this.mailboxes, FOLDER_JUNK);
-        if (action === 'notSpam') destinationFolder = FOLDER_INBOX;
+        let destinationFolder = findMailboxNameByRole('trash', this.currentMailbox, this.mailboxes, FOLDER_TRASH);
+        if (action === 'archive') destinationFolder = findMailboxNameByRole('archive', this.currentMailbox, this.mailboxes, FOLDER_ARCHIVE);
+        if (action === 'reportSpam') destinationFolder = findMailboxNameByRole('junk', this.currentMailbox, this.mailboxes, FOLDER_JUNK);
+        if (action === 'notSpam') destinationFolder = findMailboxNameByRole('inbox', this.currentMailbox, this.mailboxes, FOLDER_INBOX);
 
         if (action === 'delete' && this.selectAllMatching) {
           // A whole folder is one folder, so its Delete is one kind: for good
@@ -2006,7 +2006,7 @@ export class MailboxPage extends LitElement {
 
       // The rest of the same Delete, in folders where it is a move to Trash.
       if (toTrash.length > 0) {
-        const trash = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
+        const trash = findMailboxNameByRole('trash', this.currentMailbox, this.mailboxes, FOLDER_TRASH);
         await this.fileAway(toTrash, trash, isBulk, count => this.movedMessage('delete', isBulk || toTrash.length > 1, count));
       }
     } finally {

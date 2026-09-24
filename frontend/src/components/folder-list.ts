@@ -473,7 +473,8 @@ export class FolderList extends LitElement {
 
       // Resolve the actual Trash mailbox by IMAP special-use attribute (e.g.
       // Gmail's "[Gmail]/Trash"), falling back to a folder named "Trash". See issue #4.
-      const trashName = findMailboxNameByRole('trash', this.mailboxes, 'Trash');
+      // Provide mailbox to be deleted so the correct Trash folder can be located
+      const trashName = findMailboxNameByRole('trash', this.mailboxToDelete, this.mailboxes, 'Trash');
 
       // Resolve name collisions by appending a suffix if needed
       let candidateName = `${trashName}${delimiter}${leafName}`;
@@ -613,7 +614,34 @@ export class FolderList extends LitElement {
       [FOLDER_TRASH]: { icon: 'trash', colorClass: 'icon-trash', label: this.i18nStore?.t('folderList.trash') }
     };
 
-    type TreeNode = { name: string; fullName: string; mb?: any; children: Record<string, TreeNode>; primary?: { icon: string; colorClass: string; label: string } };
+    type Account = {
+      name: string;
+      standardBySlot: Map<number, TreeNode>;
+    };
+
+    const newAccount = (name: string) => ({ name: name, standardBySlot: new Map<number, TreeNode>() })
+
+    const accounts = new Map<string, Account>();
+
+    const getOrAddAccount = (name: string) => {
+      let a = accounts.get(name);
+      if (!a) {
+        a = newAccount(name);
+        accounts.set(name, a);
+      }
+      return a;
+    }
+
+    const defaultAccount = newAccount("@default");
+
+    type TreeNode = {
+      account: Account;
+      name: string;
+      fullName: string;
+      mb?: any;
+      children: Record<string, TreeNode>;
+      primary?: { icon: string; colorClass: string; label: string }
+    };
     const root: Record<string, TreeNode> = {};
 
     this.mailboxes.forEach(mb => {
@@ -623,13 +651,18 @@ export class FolderList extends LitElement {
 
       let currentLevel = root;
       let pathAcc = '';
+      let account = defaultAccount;
 
+      if (parts[0].startsWith("@")) {
+        account = getOrAddAccount(parts[0])
+      }
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
         pathAcc = i === 0 ? part : pathAcc + delimiter + part;
 
         if (!currentLevel[part]) {
           currentLevel[part] = {
+            account: account,
             name: part,
             fullName: pathAcc,
             children: {}
@@ -668,15 +701,23 @@ export class FolderList extends LitElement {
       return -1;
     };
 
-    const standardBySlot = new Map<number, TreeNode>();
     const customNodes: TreeNode[] = [];
 
-    Object.values(root).forEach(node => {
-      const idx = slotIndexForNode(node);
-      if (idx < 0) {
+    // Special folders can occur at the top level, or at the first nested level in accounts
+    const assignSlots = (topLevel: boolean) => (node: TreeNode) => {
+      if (node.name == node.account.name) {
+        // top level account nodes go in the custom folder list
         customNodes.push(node);
+        // And the process recurses into the children
+        Object.values(node.children).forEach(assignSlots(false))
         return;
       }
+      const idx = slotIndexForNode(node);
+      if (idx < 0) {
+        if (topLevel) customNodes.push(node);
+        return;
+      }
+      const standardBySlot = node.account.standardBySlot
       const existing = standardBySlot.get(idx);
       if (!existing) {
         standardBySlot.set(idx, node);
@@ -697,21 +738,26 @@ export class FolderList extends LitElement {
           (existingRank === -1 || nodeRank < existingRank));
       if (nodeWins) {
         standardBySlot.set(idx, node);
-        customNodes.push(existing);
+        if (topLevel) customNodes.push(existing);
       } else {
-        customNodes.push(node);
+        if (topLevel) customNodes.push(node);
       }
-    });
+    };
+    Object.values(root).forEach(assignSlots(true));
 
     const standardNodes: TreeNode[] = [];
     for (let i = 0; i < specialSlots.length; i++) {
-      const node = standardBySlot.get(i);
+      const node = defaultAccount.standardBySlot.get(i);
       if (!node) continue;
       node.primary = stdMap[node.name] || specialSlots[i].display;
       standardNodes.push(node);
     }
     this.primaryFullNames = new Set(standardNodes.map(n => n.fullName));
-
+    accounts.forEach((account) => {
+      account.standardBySlot.forEach((node, index) => {
+        node.primary = stdMap[node.name] || specialSlots[index].display;
+      })
+    })
     const customOrder = this.settingsStore?.getState()?.customMailboxOrder || [];
 
     customNodes.sort((a, b) => {
@@ -925,6 +971,7 @@ export class FolderList extends LitElement {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
               this.mailboxToDelete = node.fullName;
+
               // Trash itself, or a folder already inside it, is deleted outright; any
               // other folder is offered move-to-trash. See issue #4.
               //
@@ -933,7 +980,7 @@ export class FolderList extends LitElement {
               // or "Trashcan" was treated as Trash: Delete offered only permanent
               // deletion, never the move. It also stood in for "inside Trash", which
               // the resolved Trash name and the server's delimiter answer exactly.
-              const trashName = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
+              const trashName = findMailboxNameByRole('trash', this.mailboxToDelete, this.mailboxes, FOLDER_TRASH);
               if (mailboxRoleByName(node.fullName, this.mailboxes) === 'trash'
                 || isSelfOrDescendantMailbox(node.fullName, trashName, delimiterOf(node.mb))) {
                 this.showDeleteConfirm = true;

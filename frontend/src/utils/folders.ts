@@ -116,10 +116,32 @@ export function mailboxRoleByName(name: string, mailboxes: any[] = []): MailboxR
  * a well-known name. Returns `fallback` when no matching mailbox is found, so a
  * caller can still attempt a move/copy against the conventional name.
  */
-export function findMailboxNameByRole(role: MailboxRole, mailboxes: any[], fallback: string): string {
+export function findMailboxNameByRole(role: MailboxRole, originMailbox: string, mailboxes: any[], fallback: string): string {
   const advertised = advertisedRoles(mailboxes);
-  const mb = (mailboxes || []).find(m => mailboxRole(m, advertised) === role);
+  if (!originMailbox) {
+    const related = (mailboxes || []).filter(m => mailboxAccountFromName(m.Name || m.Mailbox || "") === null);
+    const mb = related.find(m => mailboxRole(m, advertised) === role);
+    return mb ? (mb.Name || mb.Mailbox || fallback) : fallback;
+  }
+  const account = mailboxAccountFromName(originMailbox);
+  const delimiter = mailboxDelimiter(originMailbox, mailboxes);
+  const related = (mailboxes || []).filter(m => mailboxAccountFromName(m.Name || m.Mailbox || "") === account);
+  const mb = related.find(m => mailboxRole(m, advertised) === role);
+  if (account !== null) fallback = account + delimiter + fallback;
   return mb ? (mb.Name || mb.Mailbox || fallback) : fallback;
+}
+
+export function mailboxAccountFromName(name: string): string | null {
+
+  if (!name === null) return null;
+  if (name === "INBOX") return null;
+  const parts = name.split("#")
+  if (parts.length == 1) return null;
+  if (parts[0] == "INBOX") {
+    return parts[1];
+  } else {
+    return parts[0];
+  }
 }
 
 /**
