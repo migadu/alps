@@ -56,6 +56,13 @@ export default {
     birthday: 'Compleanno',
     back: 'Indietro',
     toggleStar: 'Attiva/disattiva preferito',
-    publicKey: 'Chiave pubblica'
+    publicKey: 'Chiave pubblica',
+    addEmail: 'Aggiungi email',
+    addPhone: 'Aggiungi telefono',
+    typeDefault: 'Predefinito',
+    typeHome: 'Casa',
+    typeWork: 'Lavoro',
+    typeOther: 'Altro',
+    typeMobile: 'Cellulare'
   }
 };

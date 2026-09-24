@@ -106,6 +106,23 @@ describe('signing in', () => {
     expect(put).toEqual({ ui: { showSenderAvatars: true } });
   });
 
+  it('applies the account\'s choice about weekStart, and saves a change to it', async () => {
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', week_start: 0 } }),
+      'PUT /settings': () => json(200, {}),
+    });
+    const store = new SettingsStore();
+    expect(store.getState().weekStart).toBe(1);
+    await vi.waitFor(() => expect(store.getState().weekStart).toBe(0));
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+
+    await store.updateSettings({ weekStart: 1 });
+    const put = calls.find((c) => c.key === 'PUT /settings')!.body;
+    expect(put).toEqual({ week_start: 1 });
+  });
+
   it('saves nothing when it has only read the account\'s record', async () => {
     signedIn();
     const calls = serve({
@@ -138,6 +155,123 @@ describe('signing in', () => {
     new SettingsStore();
     await vi.waitFor(() => expect(authErrors.length).toBeGreaterThan(0));
     expect(calls).toHaveLength(0);
+  });
+
+  it('restores account settings on login right after logout without page reload', async () => {
+    // 1. Initial sign-in with custom settings
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { from: 'Ada Lovelace', auto_logout: 0, signature: 'Ada' } }),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(store.getState().name).toBe('Ada Lovelace'));
+    expect(store.getState().autoLogout).toBe(0);
+
+    // 2. User logs out
+    clearSessionSettings();
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+
+    // Verify state was cleared to defaults
+    expect(store.getState().name).toBe('');
+    expect(store.getState().autoLogout).toBe(30);
+    expect(store.getState().loginUsername).toBeUndefined();
+
+    // 3. User logs back in (login-page.ts does not include detail and initializeSession runs)
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { from: 'Ada Lovelace', auto_logout: 0, signature: 'Ada' } }),
+    });
+    window.dispatchEvent(new CustomEvent('user-logged-in'));
+
+    // Wait for backend settings to arrive
+    await vi.waitFor(() => expect(store.getState().name).toBe('Ada Lovelace'));
+
+    // 4. Simulate mailbox sync updating loginUsername when message sync completes
+    await store.updateSettings({ loginUsername: USER });
+
+    // 5. Verify settings were not wiped out by updateSettings loading from empty localStorage
+    expect(store.getState().name).toBe('Ada Lovelace');
+    expect(store.getState().autoLogout).toBe(0);
+    expect(store.getState().loginUsername).toBe(USER);
+    expect(activeUsername()).toBe(USER);
+  });
+
+  it('restores account settings on 2FA login after logout without page reload', async () => {
+    // 1. Initial sign-in with custom settings
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { from: 'Ada Lovelace', auto_logout: 0, signature: 'Ada' } }),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(store.getState().name).toBe('Ada Lovelace'));
+    expect(store.getState().autoLogout).toBe(0);
+
+    // 2. User logs out
+    clearSessionSettings();
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+
+    // Verify state was cleared to defaults
+    expect(store.getState().name).toBe('');
+    expect(store.getState().autoLogout).toBe(30);
+    expect(store.getState().loginUsername).toBeUndefined();
+
+    // 3. User completes 2FA verification, which dispatches user-logged-in with username
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { from: 'Ada Lovelace', auto_logout: 0, signature: 'Ada' } }),
+    });
+    window.dispatchEvent(new CustomEvent('user-logged-in', { detail: { username: USER } }));
+
+    // Settings must be restored from server without needing a page reload
+    await vi.waitFor(() => expect(store.getState().name).toBe('Ada Lovelace'));
+    expect(store.getState().autoLogout).toBe(0);
+    expect(store.getState().loginUsername).toBe(USER);
+    expect(activeUsername()).toBe(USER);
+  });
+
+  it('immediately applies cached user settings over defaults on user-logged-in before server responds', () => {
+    // Save user settings directly in localStorage
+    localStorage.setItem(`alps_settings_${USER}`, JSON.stringify({
+      name: 'Ada Lovelace',
+      autoLogout: 0,
+      signature: 'Ada',
+    }));
+
+    const store = new SettingsStore();
+    // Simulate cleared session (logout)
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    expect(store.getState().name).toBe('');
+    expect(store.getState().autoLogout).toBe(30);
+
+    // Dispatch user-logged-in with username; user settings must override empty defaults immediately
+    window.dispatchEvent(new CustomEvent('user-logged-in', { detail: { username: USER } }));
+    expect(store.getState().name).toBe('Ada Lovelace');
+    expect(store.getState().autoLogout).toBe(0);
+    expect(store.getState().loginUsername).toBe(USER);
+  });
+
+  it('does not wipe out backend settings when updateSettings is called with loginUsername', async () => {
+    signedIn();
+    serve({
+      'GET /settings': () => json(200, { Settings: { from: 'Ada Lovelace', auto_logout: 0, signature: 'Ada' } }),
+    });
+    const store = new SettingsStore();
+    // Simulate backend settings fetched while loginUsername is still undefined
+    await (store as any)._fetchBackendSettings();
+    expect(store.getState().name).toBe('Ada Lovelace');
+    expect(store.getState().autoLogout).toBe(0);
+
+    // Now mailbox-page sets loginUsername
+    await store.updateSettings({ loginUsername: USER });
+
+    // The name and autoLogout must NOT be wiped out to defaults!
+    expect(store.getState().name).toBe('Ada Lovelace');
+    expect(store.getState().autoLogout).toBe(0);
+    expect(store.getState().loginUsername).toBe(USER);
   });
 });
 

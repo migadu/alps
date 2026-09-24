@@ -273,7 +273,7 @@ export class SettingsPage extends LitElement {
           // Optionally show a toast that permission is blocked
         }
       }
-    } else if (target.type === 'number' || ['checkMailInterval', 'autoLogout', 'messagesPerPage', 'markReadTimeout', 'undoTimeout'].includes(key)) {
+    } else if (target.type === 'number' || ['checkMailInterval', 'autoLogout', 'messagesPerPage', 'markReadTimeout', 'undoTimeout', 'weekStart'].includes(key)) {
       val = parseInt(target.value, 10);
       if (isNaN(val)) val = 0;
     }
@@ -655,6 +655,14 @@ export class SettingsPage extends LitElement {
             {value: "YYYY-MM-DD", label: "YYYY-MM-DD"},
             {value: "MM/DD/YYYY", label: "MM/DD/YYYY"},
             {value: "DD.MM.YYYY", label: "DD.MM.YYYY"}
+          ]}>
+          </alps-select>
+        </alps-setting-group>
+        <alps-setting-group label="${this.i18nStore?.t('settings.localization.weekStart')}">
+          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'weekStart')} .value=${String(this.settingsState.weekStart ?? 1)}
+            .options=${[
+            {value: "1", label: this.i18nStore?.t('settings.localization.monday') || "Monday"},
+            {value: "0", label: this.i18nStore?.t('settings.localization.sunday') || "Sunday"}
           ]}>
           </alps-select>
         </alps-setting-group>

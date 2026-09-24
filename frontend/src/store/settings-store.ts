@@ -45,6 +45,7 @@ export interface SettingsState {
   language: string;
   hourFormat: '12' | '24';
   dateFormat: string;
+  weekStart: number;
   sortOrder: 'asc' | 'desc';
   messageSortCriteria: 'uid' | 'date';
   loginUsername?: string;
@@ -88,6 +89,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   language: 'en',
   hourFormat: '24',
   dateFormat: 'YYYY-MM-DD',
+  weekStart: 1,
   sortOrder: 'desc',
   messageSortCriteria: 'date',
   maxAttachmentMiB: 32,
@@ -133,6 +135,7 @@ const SERVER_FIELDS: { [K in keyof SettingsState]?: ServerField } = {
   language: { name: 'language', value: s => s.language },
   hourFormat: { name: 'hour_format', value: s => s.hourFormat },
   dateFormat: { name: 'date_format', value: s => s.dateFormat },
+  weekStart: { name: 'week_start', value: s => Number(s.weekStart) ?? 1 },
   sortOrder: { name: 'sort_order', value: s => s.sortOrder },
   messageSortCriteria: { name: 'message_sort_criteria', value: s => s.messageSortCriteria },
 };
@@ -189,16 +192,37 @@ export class SettingsStore extends EventTarget {
       this.notify();
     });
 
-    window.addEventListener('user-logged-in', () => {
-      this.initializeSession();
+    window.addEventListener('user-logged-in', (e: Event) => {
+      const username = (e as CustomEvent).detail?.username;
+      this.initializeSession(username);
     });
 
     this.initializeSession();
   }
 
-  private async initializeSession() {
+  private async initializeSession(knownUsername?: string) {
     this.initialFetchCompleted = false;
-    const isLoggedIn = document.cookie.split(';').some(c => c.trim().startsWith('alps_logged_in=1'));
+
+    if (knownUsername) {
+      this.state.loginUsername = knownUsername;
+      try {
+        const previous = localStorage.getItem(ACTIVE_USER_KEY);
+        localStorage.setItem(ACTIVE_USER_KEY, knownUsername);
+        if (previous !== knownUsername) {
+          window.dispatchEvent(new CustomEvent('alps-active-user-changed'));
+        }
+      } catch (e) {
+        Logger.error('Failed to record the active user', e);
+      }
+      const userSettings = this.loadSettings(knownUsername);
+      this.state = { ...this.state, ...userSettings, loginUsername: knownUsername };
+      this.applyTheme();
+      this.notify();
+    }
+
+    const isLoggedIn = document.cookie.split(';').some(c => c.trim().startsWith('alps_logged_in=1'))
+      || !!this.state.loginUsername
+      || !!activeUsername();
     const hasLoginToken = document.cookie.split(';').some(c => c.trim().startsWith('alps_has_login_token=1'));
     
     if (!isLoggedIn && !hasLoginToken) {
@@ -206,19 +230,32 @@ export class SettingsStore extends EventTarget {
       return;
     }
 
-    try {
-      const response = await fetch('/session');
-      if (response.ok) {
-        const data = await response.json();
-        const username = data.Username || data.username;
-        if (username) {
-          this.state = this.loadSettings(username);
-          this.applyTheme();
-          this.notify();
+    if (!knownUsername) {
+      try {
+        const response = await fetch('/session');
+        if (response.ok) {
+          const data = await response.json();
+          const username = data.Username || data.username;
+          if (username) {
+            this.state.loginUsername = username;
+            try {
+              const previous = localStorage.getItem(ACTIVE_USER_KEY);
+              localStorage.setItem(ACTIVE_USER_KEY, username);
+              if (previous !== username) {
+                window.dispatchEvent(new CustomEvent('alps-active-user-changed'));
+              }
+            } catch (e) {
+              Logger.error('Failed to record the active user', e);
+            }
+            const userSettings = this.loadSettings(username);
+            this.state = { ...this.state, ...userSettings, loginUsername: username };
+            this.applyTheme();
+            this.notify();
+          }
         }
+      } catch (e) {
+        Logger.error('Failed to fetch session username during initialization', e);
       }
-    } catch (e) {
-      Logger.error('Failed to fetch session username during initialization', e);
     }
 
     // Now fetch backend settings (which will merge with the loaded user settings)
@@ -274,8 +311,11 @@ export class SettingsStore extends EventTarget {
   }
 
   private saveSettings() {
-    const username = this.state.loginUsername;
+    const username = this.state.loginUsername || activeUsername();
     if (username) {
+      if (!this.state.loginUsername) {
+        this.state.loginUsername = username;
+      }
       // Save full settings to user-specific key
       localStorage.setItem(`alps_settings_${username}`, JSON.stringify(this.state));
       // And the pointer that lets `readUserSettings` find this record.
@@ -322,7 +362,9 @@ export class SettingsStore extends EventTarget {
     
     // Username changed or set: the change applies over that user's record.
     const before = newUsername !== undefined && newUsername !== oldUsername
-      ? this.loadSettings(newUsername)
+      ? (oldUsername === undefined
+          ? { ...this.loadSettings(newUsername), ...this.state }
+          : this.loadSettings(newUsername))
       : this.state;
     this.state = { ...before, ...updates };
 
@@ -347,7 +389,9 @@ export class SettingsStore extends EventTarget {
   }
 
   private async _fetchBackendSettings() {
-    const isLoggedIn = document.cookie.split(';').some(c => c.trim().startsWith('alps_logged_in=1'));
+    const isLoggedIn = document.cookie.split(';').some(c => c.trim().startsWith('alps_logged_in=1'))
+      || !!this.state.loginUsername
+      || !!activeUsername();
     const hasLoginToken = document.cookie.split(';').some(c => c.trim().startsWith('alps_has_login_token=1'));
     
     if (!isLoggedIn && !hasLoginToken) {
@@ -426,6 +470,7 @@ export class SettingsStore extends EventTarget {
           if (s.language !== undefined && s.language !== "") updates.language = s.language;
           if (s.hour_format !== undefined && s.hour_format !== "") updates.hourFormat = s.hour_format;
           if (s.date_format !== undefined && s.date_format !== "") updates.dateFormat = s.date_format;
+          if (s.week_start !== undefined) updates.weekStart = Number(s.week_start);
           if (s.sort_order !== undefined && s.sort_order !== "") updates.sortOrder = s.sort_order;
           if (s.message_sort_criteria !== undefined && s.message_sort_criteria !== "") updates.messageSortCriteria = s.message_sort_criteria;
           
@@ -445,7 +490,11 @@ export class SettingsStore extends EventTarget {
           }
 
           if (Object.keys(updates).length > 0) {
+            const currentUsername = this.state.loginUsername || activeUsername();
             this.state = { ...this.state, ...updates };
+            if (currentUsername && !this.state.loginUsername) {
+              this.state.loginUsername = currentUsername;
+            }
             this.saveSettings();
             this.applyTheme();
             this.notify();

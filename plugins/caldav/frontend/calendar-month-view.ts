@@ -9,13 +9,35 @@ import './calendar-event-preview';
 
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
+import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
 
 @customElement('calendar-month-view')
 export class CalendarMonthView extends LitElement {
     @consume({ context: i18nContext })
     i18nStore!: I18nStore;
+    @consume({ context: settingsContext })
+    settingsStore!: SettingsStore;
     @property({ type: Object }) date!: Date;
     @property({ type: Array }) events: EventData[] = [];
+    @property({ type: Number }) weekStart?: number;
+
+    private _handleSettingsChange = () => {
+        this.requestUpdate();
+    };
+
+    connectedCallback() {
+        super.connectedCallback();
+        this.settingsStore?.addEventListener('change', this._handleSettingsChange);
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        this.settingsStore?.removeEventListener('change', this._handleSettingsChange);
+    }
+
+    private getFirstDayOfWeek(): number {
+        return this.weekStart !== undefined ? this.weekStart : (this.settingsStore?.getState()?.weekStart ?? 1);
+    }
 
     static styles = css`
         :host {
@@ -144,11 +166,12 @@ export class CalendarMonthView extends LitElement {
         // cell after the 8th could equal today's midnight for the highlight. Each
         // cell is now built from its own integer, which Date normalises in or out
         // of range, so a missing midnight can only affect its own cell.
-        let dayOfWeek = new Date(year, month, 1).getDay();
-        if (dayOfWeek === 0) dayOfWeek = 7; // Monday first
-        const firstCell = 1 - (dayOfWeek - 1);
+        const firstDayOfWeek = this.getFirstDayOfWeek();
+        const dayOfWeek = new Date(year, month, 1).getDay();
+        const offset = (dayOfWeek - firstDayOfWeek + 7) % 7;
+        const firstCell = 1 - offset;
         const daysInMonth = new Date(year, month + 1, 0).getDate();
-        const cellCount = Math.ceil((daysInMonth + (dayOfWeek - 1)) / 7) * 7;
+        const cellCount = Math.ceil((daysInMonth + offset) / 7) * 7;
 
         const grid: Date[] = [];
         for (let i = 0; i < cellCount; i++) {
@@ -199,9 +222,10 @@ export class CalendarMonthView extends LitElement {
 
     render() {
         const grid = this.getMonthGrid();
+        const firstDayOfWeek = this.getFirstDayOfWeek();
         const dayNames = Array.from({length: 7}, (_, i) => {
-            const d = new Date(2021, 10, i + 1); // Nov 1, 2021 was a Monday
-            return this.i18nStore?.t(`calendar.daysShort.${d.getDay()}`);
+            const dayIndex = (firstDayOfWeek + i) % 7;
+            return this.i18nStore?.t(`calendar.daysShort.${dayIndex}`);
         });
         const today = new Date();
         today.setHours(0,0,0,0);

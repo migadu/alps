@@ -302,10 +302,15 @@ export class LoginPage extends LitElement {
 
       if (response.ok) {
         if (data.requires_2fa) {
+          try {
+            sessionStorage.setItem('pending_2fa_username', this.username);
+          } catch {}
           window.location.hash = '/login/webauthn';
           this.isSubmitting = false;
         } else {
-          window.dispatchEvent(new CustomEvent('user-logged-in'));
+          window.dispatchEvent(new CustomEvent('user-logged-in', {
+            detail: { username: this.username }
+          }));
           window.location.hash = '/mailbox/INBOX';
         }
       } else {

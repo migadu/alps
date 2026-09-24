@@ -56,6 +56,13 @@ export default {
     birthday: 'Birthday',
     back: 'Back',
     toggleStar: 'Toggle Star',
-    publicKey: 'Public Key'
+    publicKey: 'Public Key',
+    addEmail: 'Add Email',
+    addPhone: 'Add Phone',
+    typeDefault: 'Default',
+    typeHome: 'Home',
+    typeWork: 'Work',
+    typeOther: 'Other',
+    typeMobile: 'Mobile'
   }
 };

@@ -56,6 +56,13 @@ export default {
     birthday: 'Fødselsdag',
     back: 'Tilbage',
     toggleStar: 'Slå stjernemarkering til/fra',
-    publicKey: 'Offentlig nøgle'
+    publicKey: 'Offentlig nøgle',
+    addEmail: 'Tilføj e-mail',
+    addPhone: 'Tilføj telefon',
+    typeDefault: 'Standard',
+    typeHome: 'Hjem',
+    typeWork: 'Arbejde',
+    typeOther: 'Andet',
+    typeMobile: 'Mobil'
   }
 };

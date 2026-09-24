@@ -2693,6 +2693,7 @@ type Settings struct {
 	Language   string `json:"language,omitempty"`
 	HourFormat string `json:"hour_format,omitempty"`
 	DateFormat string `json:"date_format,omitempty"`
+	WeekStart  *int   `json:"week_start,omitempty"`
 }
 
 // errUnreadableSettings marks a saved settings record that does not decode.
@@ -2828,6 +2829,31 @@ func listingSettings(s *Settings) [4]string {
 	return [4]string{strconv.Itoa(s.MessagesPerPage), s.SortOrder, s.MessageSortCriteria, threading}
 }
 
+func parseWeekStartOption(val interface{}) int {
+	switch v := val.(type) {
+	case int:
+		if v == 0 || v == 1 {
+			return v
+		}
+	case int64:
+		if v == 0 || v == 1 {
+			return int(v)
+		}
+	case float64:
+		if v == 0 || v == 1 {
+			return int(v)
+		}
+	case string:
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "0", "sunday", "sun":
+			return 0
+		case "1", "monday", "mon":
+			return 1
+		}
+	}
+	return 1
+}
+
 func handleSettings(ctx *alps.Context) error {
 	settings, err := readFreshSettings(ctx)
 	if err != nil {
@@ -2863,6 +2889,7 @@ func handleSettings(ctx *alps.Context) error {
 				Language            *string `json:"language"`
 				HourFormat          *string `json:"hour_format"`
 				DateFormat          *string `json:"date_format"`
+				WeekStart           *int    `json:"week_start"`
 				SortOrder           *string `json:"sort_order"`
 				MessageSortCriteria *string `json:"message_sort_criteria"`
 			}
@@ -2958,6 +2985,9 @@ func handleSettings(ctx *alps.Context) error {
 			if req.MessageSortCriteria != nil {
 				settings.MessageSortCriteria = *req.MessageSortCriteria
 			}
+			if req.WeekStart != nil && (*req.WeekStart == 0 || *req.WeekStart == 1) {
+				settings.WeekStart = req.WeekStart
+			}
 		} else {
 			settings.MessagesPerPage, err = strconv.Atoi(ctx.FormValue("messages_per_page"))
 			if err != nil {
@@ -2968,6 +2998,11 @@ func handleSettings(ctx *alps.Context) error {
 			settings.PreferredView = ctx.FormValue("preferred_view")
 			if settings.PreferredView == "" {
 				settings.PreferredView = "html"
+			}
+			if ws := ctx.FormValue("week_start"); ws != "" {
+				if parsed, err := strconv.Atoi(ws); err == nil && (parsed == 0 || parsed == 1) {
+					settings.WeekStart = &parsed
+				}
 			}
 		}
 
@@ -3034,6 +3069,18 @@ func handleSettings(ctx *alps.Context) error {
 
 	if settings.UI.EnableThreading == nil {
 		settings.UI.EnableThreading = &hasThreadCapability
+	}
+
+	if settings.WeekStart == nil {
+		weekStart := 1
+		if caldavCfg, ok := ctx.Server.Options.Plugins["caldav"]; ok && caldavCfg.Options != nil {
+			if v, exists := caldavCfg.Options["week_start"]; exists {
+				weekStart = parseWeekStartOption(v)
+			} else if v, exists := caldavCfg.Options["first_day_of_week"]; exists {
+				weekStart = parseWeekStartOption(v)
+			}
+		}
+		settings.WeekStart = &weekStart
 	}
 
 	maxAttachmentMiB := ctx.Server.Options.MaxAttachmentMiB

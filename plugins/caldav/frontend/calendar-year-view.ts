@@ -7,6 +7,7 @@ import './calendar-mini-month';
 export class CalendarYearView extends LitElement {
     @property({ type: Number }) year!: number;
     @property({ type: Array }) events: EventData[] = [];
+    @property({ type: Number }) weekStart?: number;
 
     static styles = css`
         :host {
@@ -61,6 +62,7 @@ export class CalendarYearView extends LitElement {
                         .month=${month} 
                         .events=${this.events}
                         .showTitle=${true}
+                        .weekStart=${this.weekStart}
                     ></calendar-mini-month>
                 `)}
             </div>

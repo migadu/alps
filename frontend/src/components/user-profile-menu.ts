@@ -193,6 +193,10 @@ export class UserProfileMenu extends LitElement {
          // the compose store would restore THEIR drafts.
          clearSessionSettings(false);
          sessionStorage.clear();
+         try {
+           sessionStorage.setItem('pending_2fa_username', username);
+           sessionStorage.setItem('pending_2fa_is_switch', '1');
+         } catch {}
          window.location.hash = '#/login/webauthn';
          // Remove overlay so webauthn page is visible
          if (overlayDiv) overlayDiv.style.opacity = '0';
