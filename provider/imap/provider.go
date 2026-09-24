@@ -91,6 +91,7 @@ func (p *IMAPProvider) Close() error {
 func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
 	var options imap.ListOptions
 	options.ReturnSubscribed = true
+	options.ReturnSpecialUse = true
 	if p.client.Caps().Has(imap.CapListStatus) {
 		options.ReturnStatus = &imap.StatusOptions{
 			NumMessages: true,
