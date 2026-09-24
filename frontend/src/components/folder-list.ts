@@ -843,13 +843,17 @@ export class FolderList extends LitElement {
         // flags for deciding which actions to add
         const isSpecial = node.primary;
         const isAccount = node.name.startsWith("@");
-        const canReorder = true;
+        const canCreate = !isSpecial;
+        const canRename = !isSpecial && !isAccount;
+        const canSubscribe = !isSpecial && !isAccount;
+        const canReorder = !isSpecial;
+        const canDelete = !isAccount && !isSpecial;
 
         // array to build up the list of actions
         const actions = [];
 
         // Action to create sub folders - only in account or standard folders?
-        if (!isSpecial) {
+        if (canCreate) {
           actions.push(html`
             <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
@@ -863,7 +867,7 @@ export class FolderList extends LitElement {
         }
 
         // Action to rename a mailbox - only regular folders
-        if (!isSpecial && !isAccount) {
+        if (canRename) {
           actions.push(html`
             <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
@@ -877,7 +881,7 @@ export class FolderList extends LitElement {
         }
 
         // Manage subscription
-        if (!isSpecial && !isAccount) {
+        if (canSubscribe) {
           actions.push(html`
             <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
@@ -962,7 +966,7 @@ export class FolderList extends LitElement {
         }
 
         // Delete action
-        if (!isAccount && !isSpecial) {
+        if (canDelete) {
           if (actions.length > 0) actions.push(html`<div class="dropdown-divider"></div>`);
           actions.push(html`
             <button class="dropdown-item" @click=${(e: Event) => {
