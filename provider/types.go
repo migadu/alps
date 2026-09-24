@@ -96,6 +96,7 @@ const (
 	MailboxTypeTrash
 	MailboxTypeJunk
 	MailboxTypeArchive
+	MailboxTypeUser
 )
 
 // Mailbox represents a mail folder
