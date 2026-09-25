@@ -74,7 +74,6 @@ export interface CalendarListing {
     calendars: CalendarData[];
     /** Who sends invitations and replies: the calendar server, or alps by email. */
     scheduling?: 'server' | 'email';
-    week_start?: number;
 }
 
 /** A guest as the address field spells one: `"Name" <address>` or a bare address. */

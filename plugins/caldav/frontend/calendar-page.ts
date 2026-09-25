@@ -363,10 +363,16 @@ export class CalendarPage extends LitElement {
         }
     `];
 
+    private _lastWeekStart = 1;
+
     private _handleSettingsChange = () => {
         if (this.settingsStore) {
             const state = this.settingsStore.getState();
             this.sidebarCollapsed = state.sidebarCollapsed;
+
+            const weekStart = this.getFirstDayOfWeek();
+            const weekStartChanged = weekStart !== this._lastWeekStart;
+            this._lastWeekStart = weekStart;
 
             // Manage background sync interval based on checkMailInterval (in minutes)
             if (this.syncIntervalTimer) {
@@ -378,6 +384,9 @@ export class CalendarPage extends LitElement {
                 this.syncIntervalTimer = setInterval(() => {
                     this.fetchData();
                 }, ms);
+            }
+            if (weekStartChanged && this.viewMode === 'week') {
+                void this.fetchData();
             }
             this.requestUpdate();
         }
@@ -392,6 +401,7 @@ export class CalendarPage extends LitElement {
         window.addEventListener('resize', this.handleResize);
         window.addEventListener('hashchange', this.handleHashChange);
         if (this.settingsStore) {
+            this._lastWeekStart = this.getFirstDayOfWeek();
             this.settingsStore.addEventListener('change', this._handleSettingsChange);
             this._handleSettingsChange();
         }

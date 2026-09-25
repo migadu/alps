@@ -2,7 +2,6 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
-import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
 import { isAllDayEvent } from './calendar-service';
 import type { EventData } from './calendar-service';
 
@@ -10,30 +9,14 @@ import type { EventData } from './calendar-service';
 export class CalendarMiniMonth extends LitElement {
     @consume({ context: i18nContext })
     i18nStore!: I18nStore;
-    @consume({ context: settingsContext })
-    settingsStore!: SettingsStore;
     @property({ type: Number }) year!: number;
     @property({ type: Number }) month!: number;
     @property({ type: Array }) events: EventData[] = [];
     @property({ type: Boolean }) showTitle = false;
-    @property({ type: Number }) weekStart?: number;
-
-    private _handleSettingsChange = () => {
-        this.requestUpdate();
-    };
-
-    connectedCallback() {
-        super.connectedCallback();
-        this.settingsStore?.addEventListener('change', this._handleSettingsChange);
-    }
-
-    disconnectedCallback() {
-        super.disconnectedCallback();
-        this.settingsStore?.removeEventListener('change', this._handleSettingsChange);
-    }
+    @property({ type: Number }) weekStart = 1;
 
     private getFirstDayOfWeek(): number {
-        return this.weekStart !== undefined ? this.weekStart : (this.settingsStore?.getState()?.weekStart ?? 1);
+        return this.weekStart ?? 1;
     }
     
     // An optional date to treat as the "current" selection
