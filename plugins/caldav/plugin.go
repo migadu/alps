@@ -8,10 +8,16 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/migadu/alps"
 )
+
+// sanityCheckTimeout bounds sanityCheckURL's OPTIONS probe. http.DefaultClient
+// has no timeout, so an unresponsive server blocked plugin startup forever.
+// A var so tests can shorten it.
+var sanityCheckTimeout = 10 * time.Second
 
 func sanityCheckURL(u *url.URL) error {
 	req, err := http.NewRequest(http.MethodOptions, u.String(), nil)
@@ -19,7 +25,8 @@ func sanityCheckURL(u *url.URL) error {
 		return err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: sanityCheckTimeout}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
