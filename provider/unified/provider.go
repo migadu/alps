@@ -26,8 +26,8 @@ type ProviderConfig struct {
 }
 
 type Provider struct {
-	config       *ProviderConfig
-	store        *fileStore
+	debug        bool
+	store        provider.Store
 	backendOrder []string
 	backendMap   map[string]*backend
 	unifiedOrder []string
@@ -142,6 +142,11 @@ func (p *Provider) GetStore() (provider.Store, error) {
 	return p.store, nil
 }
 
+func (p *Provider) SetStore(s provider.Store) {
+
+	p.store = s
+}
+
 // Close closes all the child providers
 func (p *Provider) Close() error {
 	var errs []error
@@ -226,7 +231,7 @@ func (p *Provider) ListMailboxes() ([]provider.Mailbox, error) {
 			mailboxes = append(mailboxes, mbox)
 		}
 	}
-	if p.config.debug {
+	if p.debug {
 		for i, x := range mailboxes {
 			log.Printf("provider/%s: mailbox %d = %s, total = %d, unseen = %d, attr = (%s)\n", providerName, i, x.Name, x.Total, x.Unseen, strings.Join(x.Attributes, ", "))
 		}
@@ -676,9 +681,9 @@ func (p *Provider) HasESearchCapability() bool {
 	return false
 }
 
-func newProvider(cfg *ProviderConfig) (provider.MailProvider, error) {
+func newProvider(path string, debug bool, factory provider.AuthenticatedProviderFactory) (provider.MailProvider, error) {
 
-	store, err := newFileStore(cfg.path)
+	store, err := newFileStore(path)
 	if err != nil {
 		return nil, err
 	}
@@ -696,7 +701,7 @@ func newProvider(cfg *ProviderConfig) (provider.MailProvider, error) {
 			log.Printf("provider/%s: account %d has duplicate name %s", providerName, i, c.Name)
 			continue
 		}
-		a, err := newBackend(c, store, cfg.debugBackend)
+		a, err := newBackend(c, store, factory)
 		if err != nil {
 			log.Printf("provider/%s: connect failed for %s: %s", providerName, c.Name, err)
 			continue
@@ -718,7 +723,7 @@ func newProvider(cfg *ProviderConfig) (provider.MailProvider, error) {
 	}
 
 	return &Provider{
-		config: cfg,
+		debug: debug,
 		store: store,
 		backendOrder: blist,
 		backendMap: bmap,

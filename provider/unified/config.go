@@ -77,13 +77,14 @@ func authenticate(passwordFile, username, password string) (string, error) {
 
 type Options struct {
 	*Config
+	backend provider.Options
 }
 
 func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.AuthenticatedProviderFactory {
 
 	return func(username, password string) (provider.MailProvider, error) {
 
-		if o == nil || o.Config == nil || o.Path == "" {
+		if o == nil || o.Config == nil || o.Path == "" || o.backend == nil {
 			return nil, fmt.Errorf("%s: path is not configured", providerName)
 		}
 
@@ -94,12 +95,10 @@ func (o *Options) CreateFactory(timeout time.Duration, debug bool) provider.Auth
 			}
 			return nil, err
 		}
-		cfg := &ProviderConfig{
-			path: userPath,
-			debug: o.Debug,
-			debugBackend: o.DebugBackend,
-		}
-		return newProvider(cfg)
+
+		backendFactory := o.backend.CreateFactory(timeout, o.DebugBackend)
+
+		return newProvider(userPath, o.Debug, backendFactory)
 	}
 }
 
@@ -107,6 +106,7 @@ type Config struct {
 	Path string       `toml:"path"`             // The path to the user database
 	Debug bool        `toml:"debug"`
 	DebugBackend bool `toml:"debug_backend"`
+	backend provider.Config
 }
 
 func (c *Config) Type() string {
@@ -119,11 +119,20 @@ func (c *Config) ToOptions() (provider.Options, error) {
 	if c.Path == "" {
 		return nil, fmt.Errorf("path cannot be empty")
 	}
+	if c.backend == nil {
+		return nil, fmt.Errorf("backend not configured")
+	}
 
 	cfgCopy := *c
 
+	bopt, err := c.backend.ToOptions()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Options{
 		Config:  &cfgCopy,
+		backend: bopt,
 	}, nil
 }
 
@@ -138,6 +147,12 @@ func configure(meta *toml.MetaData, raw *toml.Primitive) (provider.Config, error
 		return nil, fmt.Errorf("%s provider requires a path, got empty string", providerName)
 	}
 
+	bcfg, err := provider.LoadConfig("multi", meta, raw)
+	if err != nil {
+		return nil, fmt.Errorf("error loading [provider.unified] as a [provider.multi]: %w", err)
+	}
+
+	cfg.backend = bcfg
 	return &cfg, nil
 }
 

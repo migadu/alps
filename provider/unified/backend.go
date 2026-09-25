@@ -10,7 +10,6 @@ import (
 	"context"
 	"github.com/emersion/go-message"
 	"github.com/migadu/alps/provider"
-	"github.com/migadu/alps/provider/imap"
 )
 
 const retryLimit = 3
@@ -47,20 +46,20 @@ type backend struct {
 	config *backendConfig
 	store provider.Store
 	plock sync.Mutex
+	factory provider.AuthenticatedProviderFactory
 	handler provider.MailProvider
 	delim string
-	debug bool
 	unified map[string]string
 }
 
-func newBackend(cfg *backendConfig, s provider.Store, debug bool) (*backend, error) {
+func newBackend(cfg *backendConfig, s provider.Store, f provider.AuthenticatedProviderFactory) (*backend, error) {
 
 	b := &backend{
 		config: cfg,
 		store: s,
+		factory: f,
 		handler: nil,
 		delim: ".",
-		debug: debug,
 		unified: make(map[string]string),
 	}
 
@@ -74,25 +73,14 @@ func newBackend(cfg *backendConfig, s provider.Store, debug bool) (*backend, err
 
 func (b *backend) connect() error {
 
-	// TODO: handle any actual backend type
-	tls := true
-	insecure := false
-	timeout := 30*time.Second
-	client, err := imap.Connect(b.config.Server, tls, insecure, timeout, b.debug, nil)
-	if err != nil { return err }
-
-	cmd := client.Login(b.config.Username, b.config.Password)
-	err = cmd.Wait()
+	p, err := b.factory(b.config.Username, b.config.Password)
 	if err != nil {
-		client.Logout()
 		return err
 	}
-
-	ip := imap.NewIMAPProvider(client, b.debug)
 	if b.store != nil {
-		ip.SetStore(b.store)
+		p.SetStore(b.store)
 	}
-	b.handler = ip
+	b.handler = p
 	return nil
 }
 

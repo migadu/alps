@@ -13,12 +13,14 @@ import (
 type Provider struct {
 	basePath string
 	username string
+	store provider.Store
 }
 
 func NewProvider(basePath, username string) *Provider {
 	return &Provider{
 		basePath: basePath,
 		username: username,
+		store: nil,
 	}
 }
 

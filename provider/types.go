@@ -42,6 +42,7 @@ type MailProvider interface {
 
 	// Storage operations
 	GetStore() (Store, error)
+	SetStore(Store)
 
 	// Mailbox operations
 	ListMailboxes() ([]Mailbox, error)

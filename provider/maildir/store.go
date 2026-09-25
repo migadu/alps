@@ -15,11 +15,19 @@ type Store struct {
 }
 
 func (p *Provider) GetStore() (provider.Store, error) {
-	// Use a file named alps_store.json in the base path of the maildir
-	storePath := filepath.Join(p.basePath, "alps_store.json")
-	return &Store{
-		path: storePath,
-	}, nil
+	if p.store == nil {
+		// Use a file named alps_store.json in the base path of the maildir
+		storePath := filepath.Join(p.basePath, "alps_store.json")
+		p.store = &Store{
+			path: storePath,
+		}
+	}
+	return p.store, nil
+}
+
+func (p *Provider) SetStore(s provider.Store) {
+
+	p.store = s
 }
 
 func (s *Store) readData() (map[string]interface{}, error) {
