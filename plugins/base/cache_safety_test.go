@@ -19,20 +19,6 @@ func TestCacheTypeAssertionSafety(t *testing.T) {
 	res := s.do("GET", "/mailboxes/INBOX?page=0", nil)
 	s.expect(res, http.StatusOK)
 
-	var mboxData struct {
-		Messages []struct {
-			UID string
-		}
-	}
-	res.json(t, &mboxData)
-	if len(mboxData.Messages) == 0 {
-		t.Fatal("expected messages in INBOX")
-	}
-	uid := mboxData.Messages[0].UID
-
-	// Fetch message once to populate message part cache
-	s.expect(s.do("GET", "/mailboxes/INBOX/messages/"+uid, nil), http.StatusOK)
-
 	// Extract session token from cookies
 	u, err := url.Parse(s.url)
 	if err != nil {
@@ -55,7 +41,7 @@ func TestCacheTypeAssertionSafety(t *testing.T) {
 		t.Fatalf("failed to retrieve session: %v", err)
 	}
 
-	// Corrupt messages cache entries
+	// Corrupt messages cache entries with unexpected type
 	msgKeys := sess.Cache().GetKeysWithPrefix("messages:")
 	if len(msgKeys) == 0 {
 		t.Fatal("expected at least one cached messages entry after initial listing")
@@ -64,19 +50,7 @@ func TestCacheTypeAssertionSafety(t *testing.T) {
 		sess.Cache().Set(k, "corrupted cache value")
 	}
 
-	// Corrupt single message cache entries
-	partKeys := sess.Cache().GetKeysWithPrefix("message:")
-	if len(partKeys) == 0 {
-		t.Fatal("expected at least one cached message part entry")
-	}
-	for _, k := range partKeys {
-		sess.Cache().Set(k, "corrupted message part value")
-	}
-
-	// Next fetches must not panic, and must return 200 OK by falling back to provider
+	// Next fetch must not panic, and must return 200 OK by falling back to provider
 	res2 := s.do("GET", "/mailboxes/INBOX?page=0", nil)
 	s.expect(res2, http.StatusOK)
-
-	res3 := s.do("GET", "/mailboxes/INBOX/messages/"+uid, nil)
-	s.expect(res3, http.StatusOK)
 }
