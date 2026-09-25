@@ -179,12 +179,20 @@ func NewCluster(cfg Config) (*Cluster, error) {
 // catch the membership changes the event delegate missed; it has to outlive a
 // bad tick.
 func (c *Cluster) updateLeaderSafely() {
+	c.runSafely(c.updateLeader)
+}
+
+// runSafely runs fn, turning a panic into a logged error. The ticker loop and
+// the memberlist event delegate both update leadership through this: a panic
+// reading memberlist state must not end the ticker loop, and on the event
+// delegate's spawned goroutines it would otherwise kill the whole process.
+func (c *Cluster) runSafely(fn func()) {
 	defer func() {
 		if r := recover(); r != nil {
 			c.logger.Error("panic in cluster leader check - continuing", "panic", r)
 		}
 	}()
-	c.updateLeader()
+	fn()
 }
 
 // rejoinLoop periodically re-attempts to join the configured peers whenever this
@@ -355,12 +363,12 @@ func (c *Cluster) SetMessageHandler(handler func(msg []byte)) {
 
 func (c *Cluster) NotifyJoin(node *memberlist.Node) {
 	c.logger.Info("node joined cluster", "node", node.Name, "addr", node.Address())
-	go c.updateLeader()
+	go c.updateLeaderSafely()
 }
 
 func (c *Cluster) NotifyLeave(node *memberlist.Node) {
 	c.logger.Info("node left cluster", "node", node.Name, "addr", node.Address())
-	go c.updateLeader()
+	go c.updateLeaderSafely()
 }
 
 func (c *Cluster) NotifyUpdate(node *memberlist.Node) {
