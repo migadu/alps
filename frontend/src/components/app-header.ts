@@ -26,6 +26,7 @@ export class AppHeader extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this.updateComplete.then(() => {
+      if (!this.isConnected) return;
       this.i18nStore?.addEventListener('change', this._handleStoreChange);
     });
     window.addEventListener('hashchange', this._handleHashChange);

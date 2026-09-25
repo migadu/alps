@@ -65,6 +65,7 @@ export class AlpsFloatingComposer extends LitElement {
     window.addEventListener('dragleave', this._handleWindowDragLeave);
     window.addEventListener('alps-composer-drop', this._handleGlobalDropHandled as EventListener);
     this.updateComplete.then(() => {
+      if (!this.isConnected) return;
       this.i18nStore?.addEventListener('change', this._handleI18nChange);
     });
     if ((this.instance.cc && this.instance.cc.length > 0)) this.showCc = true;

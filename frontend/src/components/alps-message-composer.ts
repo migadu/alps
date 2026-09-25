@@ -585,6 +585,7 @@ export class AlpsMessageComposer extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this.updateComplete.then(() => {
+      if (!this.isConnected) return;
       this.i18nStore?.addEventListener('change', this._handleI18nChange);
       this.settingsStore?.addEventListener('change', this._handleSettingsChange);
     });
