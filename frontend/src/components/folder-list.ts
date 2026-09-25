@@ -62,6 +62,7 @@ export class FolderList extends LitElement {
     // Actually, context is provided synchronously down the tree.
     // Wait until next tick to ensure context is resolved.
     this.updateComplete.then(() => {
+      if (!this.isConnected) return;
       if (this.composeStore) {
         this.composeStore.addEventListener('change', this._handleStoreChange);
       }

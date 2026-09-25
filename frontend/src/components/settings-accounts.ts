@@ -73,6 +73,7 @@ export class SettingsAccounts extends LitElement {
     connectedCallback() {
         super.connectedCallback();
         this.updateComplete.then(() => {
+            if (!this.isConnected) return;
             this.i18nStore?.addEventListener('change', this._handleStoreChange);
             this.linkedAccountsStore?.addEventListener('change', this._handleStoreChange);
             if (this.linkedAccountsStore && !this.linkedAccountsStore.isInitialized()) {

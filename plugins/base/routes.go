@@ -752,18 +752,22 @@ func handleGetMailbox(ctx *alps.Context) error {
 		hit = false
 	}
 	if hit {
-		cachedData := cached.(CachedMessages)
-		total = cachedData.Total
-		threaded = cachedData.Threaded
+		if cachedData, ok := cached.(CachedMessages); ok {
+			total = cachedData.Total
+			threaded = cachedData.Threaded
 
-		// Convert cached provider messages to IMAP messages for display
-		msgs = make([]IMAPMessage, len(cachedData.Messages))
-		for i, msg := range cachedData.Messages {
-			msgs[i] = providerMessageToIMAP(msg)
+			// Convert cached provider messages to IMAP messages for display
+			msgs = make([]IMAPMessage, len(cachedData.Messages))
+			for i, msg := range cachedData.Messages {
+				msgs[i] = providerMessageToIMAP(msg)
+			}
+
+			ctx.Server.Logger().Debugf("Cache HIT for messages in %s page %d (query: %q)", mbox.Name(), page, query)
+		} else {
+			hit = false
 		}
-
-		ctx.Server.Logger().Debugf("Cache HIT for messages in %s page %d (query: %q)", mbox.Name(), page, query)
-	} else {
+	}
+	if !hit {
 		var providerMsgs []provider.Message
 		err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 			var err error
@@ -1339,8 +1343,14 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	msgCacheKey := fmt.Sprintf("message:%s:%s:%s:limit%d", mbox.Name(), uid.String(), partPathStr, limit)
 
 	// Try to get message from cache
+	var cachedPart *CachedMessagePart
 	if cached, ok := ctx.Session.Cache().Get(msgCacheKey); ok {
-		cachedData := cached.(CachedMessagePart)
+		if cp, ok := cached.(CachedMessagePart); ok {
+			cachedPart = &cp
+		}
+	}
+	if cachedPart != nil {
+		cachedData := *cachedPart
 
 		// Check if we have the body data
 		if cachedData.HeaderData != nil && cachedData.BodyData != nil {
@@ -3231,13 +3241,7 @@ func handleSwitchAccount(ctx *alps.Context) error {
 		ctx.Session.Close()
 
 		// Clear the old session cookie so Auth middleware doesn't try to restore it
-		ctx.SetCookie(&http.Cookie{
-			Name:     "alps_session",
-			Value:    "",
-			Path:     "/",
-			HttpOnly: true,
-			MaxAge:   -1,
-		})
+		ctx.SetSession(nil)
 
 		// Don't set the session cookie yet - will be set after 2FA verification
 		return ctx.JSON(http.StatusOK, map[string]interface{}{"requires_2fa": true})
