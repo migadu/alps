@@ -135,7 +135,9 @@ const SERVER_FIELDS: { [K in keyof SettingsState]?: ServerField } = {
   language: { name: 'language', value: s => s.language },
   hourFormat: { name: 'hour_format', value: s => s.hourFormat },
   dateFormat: { name: 'date_format', value: s => s.dateFormat },
-  weekStart: { name: 'week_start', value: s => Number(s.weekStart) ?? 1 },
+  // Only 0 (Sunday) and 1 (Monday) exist; anything else, including the NaN
+  // that ?? would let through, saves as the Monday default.
+  weekStart: { name: 'week_start', value: s => (Number(s.weekStart) === 0 ? 0 : 1) },
   sortOrder: { name: 'sort_order', value: s => s.sortOrder },
   messageSortCriteria: { name: 'message_sort_criteria', value: s => s.messageSortCriteria },
 };
