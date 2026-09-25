@@ -6,7 +6,6 @@ import (
 	"github.com/migadu/alps/provider"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 
 	"github.com/emersion/go-webdav/caldav"
@@ -40,35 +39,9 @@ type plugin struct {
 	homeSetCache map[string]string
 	// accounts caches what the server says about scheduling, per user; see
 	// schedulingAccount.
-	accounts         map[string]*schedulingAccount
-	cacheMutex       sync.RWMutex
-	debug            bool
-	defaultWeekStart int
-}
-
-func parseWeekStart(val interface{}) int {
-	switch v := val.(type) {
-	case int:
-		if v == 0 || v == 1 {
-			return v
-		}
-	case int64:
-		if v == 0 || v == 1 {
-			return int(v)
-		}
-	case float64:
-		if v == 0 || v == 1 {
-			return int(v)
-		}
-	case string:
-		switch strings.ToLower(strings.TrimSpace(v)) {
-		case "0", "sunday", "sun":
-			return 0
-		case "1", "monday", "mon":
-			return 1
-		}
-	}
-	return 1
+	accounts   map[string]*schedulingAccount
+	cacheMutex sync.RWMutex
+	debug      bool
 }
 
 // urlFor resolves the CalDAV endpoint for a session. A provider that routes
@@ -210,23 +183,13 @@ func newPlugin(srv *alps.Server) (alps.Plugin, error) {
 		srv.Logger().Printf("Configured CalDAV server: %v", u)
 	}
 
-	defaultWeekStart := 1
-	if cfg.Options != nil {
-		if v, ok := cfg.Options["week_start"]; ok {
-			defaultWeekStart = parseWeekStart(v)
-		} else if v, ok := cfg.Options["first_day_of_week"]; ok {
-			defaultWeekStart = parseWeekStart(v)
-		}
-	}
-
 	p := &plugin{
-		GoPlugin:         alps.GoPlugin{Name: "caldav"},
-		srv:              srv,
-		url:              u,
-		homeSetCache:     make(map[string]string),
-		accounts:         make(map[string]*schedulingAccount),
-		debug:            srv.Options.Debug,
-		defaultWeekStart: defaultWeekStart,
+		GoPlugin:     alps.GoPlugin{Name: "caldav"},
+		srv:          srv,
+		url:          u,
+		homeSetCache: make(map[string]string),
+		accounts:     make(map[string]*schedulingAccount),
+		debug:        srv.Options.Debug,
 	}
 
 	registerRoutes(p)

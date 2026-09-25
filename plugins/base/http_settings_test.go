@@ -203,3 +203,35 @@ func TestHTTP_SettingsWeekStartFromCaldavOptions(t *testing.T) {
 		t.Fatalf("week_start from caldav plugin config = %v, want 0", got.Settings.WeekStart)
 	}
 }
+
+func TestParseWeekStartOption(t *testing.T) {
+	cases := []struct {
+		in   any
+		want int
+	}{
+		{0, 0},
+		{1, 1},
+		{int64(0), 0},
+		{int64(1), 1},
+		{float64(0), 0},
+		{float64(1), 1},
+		{"0", 0},
+		{"1", 1},
+		{"sunday", 0},
+		{"Sunday", 0},
+		{"SUN", 0},
+		{"monday", 1},
+		{"Monday", 1},
+		{"MON", 1},
+		{nil, 1},
+		{"tuesday", 1},
+		{2, 1},
+		{-1, 1},
+	}
+	for _, tc := range cases {
+		if got := parseWeekStartOption(tc.in); got != tc.want {
+			t.Errorf("parseWeekStartOption(%v) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
