@@ -3,36 +3,20 @@ import { consume } from '@lit/context';
 import { weekStart } from './calendar-service';
 import { customElement, property } from 'lit/decorators.js';
 import type { EventData } from './calendar-service';
-import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import './calendar-time-grid';
 
 @customElement('calendar-week-view')
 export class CalendarWeekView extends LitElement {
     @consume({ context: i18nContext })
+    @property({ attribute: false })
     i18nStore!: I18nStore;
-    @consume({ context: settingsContext })
-    settingsStore!: SettingsStore;
     @property({ type: Object }) date!: Date;
     @property({ type: Array }) events: EventData[] = [];
-    @property({ type: Number }) weekStart?: number;
-
-    private _handleSettingsChange = () => {
-        this.requestUpdate();
-    };
-
-    connectedCallback() {
-        super.connectedCallback();
-        this.settingsStore?.addEventListener('change', this._handleSettingsChange);
-    }
-
-    disconnectedCallback() {
-        super.disconnectedCallback();
-        this.settingsStore?.removeEventListener('change', this._handleSettingsChange);
-    }
+    @property({ type: Number }) weekStart = 1;
 
     private getFirstDayOfWeek(): number {
-        return this.weekStart !== undefined ? this.weekStart : (this.settingsStore?.getState()?.weekStart ?? 1);
+        return this.weekStart ?? 1;
     }
 
     static styles = css`
