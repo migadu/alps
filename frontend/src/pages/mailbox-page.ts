@@ -610,9 +610,39 @@ export class MailboxPage extends LitElement {
     }
   };
 
+  /**
+   * Whether this element has been on the page before.
+   *
+   * app-root keeps one mailbox page for the whole session and re-attaches it
+   * when the user comes back from Calendar, Contacts or Settings, so a return
+   * is not a first load: the folders, the rows and the open message are all
+   * still here, and are shown at once while a quiet read brings them up to date.
+   * Built afresh on every return, the page sat on its spinner for a full
+   * listing of a folder it had just been showing.
+   */
+  private hasConnected = false;
+
   connectedCallback() {
     super.connectedCallback();
-    this.extractMailboxFromHash();
+    const returning = this.hasConnected;
+    this.hasConnected = true;
+
+    // The Messages tab sends a return to `#/`, which names the Inbox. Coming
+    // back, that means "the mail", not "the Inbox": put the URL back on the
+    // folder, page, search and message that were on screen. A link naming a
+    // mailbox of its own is followed as it stands.
+    if (returning && !window.location.hash.startsWith('#/mailbox/')) {
+      window.history.replaceState(null, '', this.hashFor(this.currentMailbox, this.currentPage, this.targetUid, this.filterQuery, this.targetMailbox));
+    }
+    const heldView = [this.currentMailbox, this.currentPage, this.filterQuery].join('\n');
+    if (returning) {
+      // The same comparison a hash change makes, against the view still held:
+      // another folder or search dims and reads as any switch does, another
+      // message opens it, and neither fetches for nothing.
+      this.handleHashChange();
+    } else {
+      this.extractMailboxFromHash();
+    }
     window.addEventListener('hashchange', this.handleHashChange);
 
     document.addEventListener('click', this.unlockAudio);
@@ -632,7 +662,13 @@ export class MailboxPage extends LitElement {
 
     window.addEventListener('draft-autosaved', this.handleDraftAutosaved as EventListener);
 
-    messageSync.fetch(this.currentMailbox, this.currentPage, this.filterQuery, true);
+    if (!returning) {
+      messageSync.fetch(this.currentMailbox, this.currentPage, this.filterQuery, true);
+    } else if (heldView === [this.currentMailbox, this.currentPage, this.filterQuery].join('\n')) {
+      // The rows on screen are this view's, only older: refreshed QUIETLY, so
+      // they stay readable instead of dimming under a spinner while it runs.
+      messageSync.fetch(this.currentMailbox, this.currentPage, this.filterQuery, true, true);
+    }
   }
 
   disconnectedCallback() {
