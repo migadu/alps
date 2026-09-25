@@ -442,6 +442,7 @@ export class AppRoot extends LitElement {
    * else's, starts from a fresh page rather than the last user's mail.
    */
   private mailboxPage: HTMLElement | null = null;
+  private pluginPages = new Map<string, HTMLElement>();
 
   private getMailboxPage(): HTMLElement {
     return (this.mailboxPage ??= document.createElement('mailbox-page'));
@@ -449,6 +450,7 @@ export class AppRoot extends LitElement {
 
   private _handleSessionCleared = () => {
     this.mailboxPage = null;
+    this.pluginPages.clear();
   };
 
   private getRoutes() {
@@ -469,10 +471,11 @@ export class AppRoot extends LitElement {
     };
 
     registry.getRoutes().forEach(route => {
-      let cachedEl: HTMLElement | null = null;
       baseRoutes[route.path] = () => {
+        let cachedEl = this.pluginPages.get(route.path);
         if (!cachedEl) {
           cachedEl = document.createElement(route.component);
+          this.pluginPages.set(route.path, cachedEl);
         }
         return cachedEl;
       };
