@@ -652,6 +652,7 @@ export class MailboxPage extends LitElement {
     this._handleMediaQuery(this._mql);
 
     this.settingsStore.addEventListener('change', this._handleSettingsChange);
+    this.i18nStore?.addEventListener('change', this._handleI18nChange);
     this._syncSettings();
 
     messageSync.addEventListener('sync-start', this.handleSyncStart);
