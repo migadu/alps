@@ -134,3 +134,44 @@ describe('the Today button', () => {
     }
   });
 });
+
+describe('week start dynamic change', () => {
+  it('refetches data when weekStart changes while on week view', () => {
+    const el = page(new Date(2024, 8, 18), 'week') as any;
+    let fetched = 0;
+    el.fetchData = () => { fetched++; return Promise.resolve(); };
+    let weekStartVal = 1;
+    el.settingsStore = {
+      getState: () => ({ weekStart: weekStartVal }),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    if (typeof el.connectedCallback === 'function') {
+      // simulate connection or initialize lastWeekStart
+      el._lastWeekStart = 1;
+    }
+    call(el, '_handleSettingsChange');
+    expect(fetched).toBe(0);
+
+    // weekStart changed from 1 (Monday) to 0 (Sunday)
+    weekStartVal = 0;
+    call(el, '_handleSettingsChange');
+    expect(fetched).toBe(1);
+  });
+
+  it('does not refetch data when weekStart changes while on month or day view', () => {
+    const el = page(new Date(2024, 8, 18), 'month') as any;
+    let fetched = 0;
+    el.fetchData = () => { fetched++; return Promise.resolve(); };
+    let weekStartVal = 1;
+    el.settingsStore = {
+      getState: () => ({ weekStart: weekStartVal }),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    el._lastWeekStart = 1;
+    weekStartVal = 0;
+    call(el, '_handleSettingsChange');
+    expect(fetched).toBe(0);
+  });
+});
