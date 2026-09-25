@@ -691,7 +691,7 @@ export class MessageReader extends LitElement {
       min-width: 0;
     }
 
-    alps-recipient-pill:not(:last-child)::after {
+    .reader-recipients-list alps-recipient-pill:not(:last-child)::after {
       content: ", ";
       color: var(--text-color);
       white-space: pre;
