@@ -472,7 +472,7 @@ export class SettingsStore extends EventTarget {
           if (s.language !== undefined && s.language !== "") updates.language = s.language;
           if (s.hour_format !== undefined && s.hour_format !== "") updates.hourFormat = s.hour_format;
           if (s.date_format !== undefined && s.date_format !== "") updates.dateFormat = s.date_format;
-          if (s.week_start !== undefined) updates.weekStart = Number(s.week_start);
+          if (s.week_start !== undefined) updates.weekStart = Number(s.week_start) === 0 ? 0 : 1;
           if (s.sort_order !== undefined && s.sort_order !== "") updates.sortOrder = s.sort_order;
           if (s.message_sort_criteria !== undefined && s.message_sort_criteria !== "") updates.messageSortCriteria = s.message_sort_criteria;
           
