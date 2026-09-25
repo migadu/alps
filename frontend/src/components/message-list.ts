@@ -922,6 +922,7 @@ export class MessageList extends LitElement {
     messageSync.addEventListener('sync-success', this.handleSyncEnd);
     messageSync.addEventListener('sync-error', this.handleSyncEnd);
     this.updateComplete.then(() => {
+      if (!this.isConnected) return;
       this.i18nStore?.addEventListener('change', this._handleStoreChange);
     });
   }

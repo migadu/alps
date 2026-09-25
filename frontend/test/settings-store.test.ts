@@ -123,6 +123,33 @@ describe('signing in', () => {
     expect(put).toEqual({ week_start: 1 });
   });
 
+  it('saves Monday, not NaN, when weekStart is not a number', async () => {
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', week_start: 0 } }),
+      'PUT /settings': () => json(200, {}),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(store.getState().weekStart).toBe(0));
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+
+    await store.updateSettings({ weekStart: undefined as any });
+    const put = calls.find((c) => c.key === 'PUT /settings')!.body;
+    expect(put).toEqual({ week_start: 1 });
+  });
+
+  it('normalizes invalid week_start from server to Monday (1)', async () => {
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', week_start: 5 } }),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    expect(store.getState().weekStart).toBe(1);
+  });
+
   it('saves nothing when it has only read the account\'s record', async () => {
     signedIn();
     const calls = serve({

@@ -146,6 +146,7 @@ export class AppRoot extends LitElement {
     this.i18nStore.setLanguage(initialLang);
 
     window.addEventListener('auth-error', this._handleAuthError);
+    window.addEventListener('session-cleared', this._handleSessionCleared);
     window.addEventListener('show-toast', this._handleShowToast as EventListener);
     window.addEventListener('beforeunload', this._handleBeforeUnload);
     window.addEventListener('online', this._handleOnlineEvent);
@@ -199,6 +200,7 @@ export class AppRoot extends LitElement {
     this.composeStore.removeEventListener('change', this._handleComposeChange);
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     window.removeEventListener('auth-error', this._handleAuthError);
+    window.removeEventListener('session-cleared', this._handleSessionCleared);
     window.removeEventListener('show-toast', this._handleShowToast as EventListener);
     window.removeEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
     window.removeEventListener('beforeunload', this._handleBeforeUnload);
@@ -427,13 +429,35 @@ export class AppRoot extends LitElement {
     this.i18nStore.setLanguage(settings.language ?? 'en');
   };
 
-  private mailboxPageTemplate = html`<mailbox-page></mailbox-page>`;
+  /**
+   * The mailbox page, kept for the session as the plugin pages are.
+   *
+   * It was a template, and a template swapped out for Calendar is torn down:
+   * coming back built a new page that started from nothing — no folders, no
+   * rows, a spinner over a full listing of the folder the user had just left.
+   * The kept element comes back with all of that on screen and refreshes it
+   * quietly (see mailbox-page's connectedCallback).
+   *
+   * Dropped when the session ends, so the next sign-in, which may be someone
+   * else's, starts from a fresh page rather than the last user's mail.
+   */
+  private mailboxPage: HTMLElement | null = null;
+  private pluginPages = new Map<string, HTMLElement>();
+
+  private getMailboxPage(): HTMLElement {
+    return (this.mailboxPage ??= document.createElement('mailbox-page'));
+  }
+
+  private _handleSessionCleared = () => {
+    this.mailboxPage = null;
+    this.pluginPages.clear();
+  };
 
   private getRoutes() {
     const baseRoutes: Record<string, () => any> = {
-      '/': () => this.mailboxPageTemplate,
+      '/': () => this.getMailboxPage(),
       '/login': () => html`<login-page></login-page>`,
-      '/mailbox/*': () => this.mailboxPageTemplate,
+      '/mailbox/*': () => this.getMailboxPage(),
       '/settings': () => html`<settings-page category="general"></settings-page>`,
       '/settings/*': () => {
          const hash = window.location.hash;
@@ -447,10 +471,11 @@ export class AppRoot extends LitElement {
     };
 
     registry.getRoutes().forEach(route => {
-      let cachedEl: HTMLElement | null = null;
       baseRoutes[route.path] = () => {
+        let cachedEl = this.pluginPages.get(route.path);
         if (!cachedEl) {
           cachedEl = document.createElement(route.component);
+          this.pluginPages.set(route.path, cachedEl);
         }
         return cachedEl;
       };

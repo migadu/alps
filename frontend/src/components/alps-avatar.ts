@@ -29,6 +29,7 @@ export class AlpsAvatar extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this.updateComplete.then(() => {
+      if (!this.isConnected) return;
       this.settingsStore?.addEventListener('change', this._handleStoreChange);
     });
   }

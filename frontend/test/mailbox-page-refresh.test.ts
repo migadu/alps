@@ -231,4 +231,11 @@ describe('the re-read after a move or a delete', () => {
 
     expect(el.messages.map((m: any) => m.UID)).toEqual(['10']);
   });
+
+  it('re-renders when language changes in i18nStore', async () => {
+    const el = await shownInbox();
+    const updateSpy = vi.spyOn(el, 'requestUpdate');
+    i18nStore.dispatchEvent(new Event('change'));
+    expect(updateSpy).toHaveBeenCalled();
+  });
 });

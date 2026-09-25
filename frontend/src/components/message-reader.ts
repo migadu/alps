@@ -455,6 +455,7 @@ export class MessageReader extends LitElement {
     window.addEventListener('external-message-flags-changed', this._handleExternalFlagsChanged);
     window.addEventListener('draft-discarded', this._handleDraftDiscarded);
     this.updateComplete.then(() => {
+      if (!this.isConnected) return;
       this.settingsStore?.addEventListener('change', this._handleSettingsChange);
     });
   }
@@ -691,7 +692,7 @@ export class MessageReader extends LitElement {
       min-width: 0;
     }
 
-    alps-recipient-pill:not(:last-child)::after {
+    .reader-recipients-list alps-recipient-pill:not(:last-child)::after {
       content: ", ";
       color: var(--text-color);
       white-space: pre;
