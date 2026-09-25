@@ -235,3 +235,15 @@ func TestParseWeekStartOption(t *testing.T) {
 	}
 }
 
+func TestSettingsCheckWeekStart(t *testing.T) {
+	bad := 2
+	s := &Settings{
+		MessagesPerPage: 25,
+		WeekStart:       &bad,
+	}
+	if err := s.check(); err == nil {
+		t.Fatalf("check() allowed invalid week_start = %d, want error", bad)
+	}
+}
+
+

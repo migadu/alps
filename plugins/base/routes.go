@@ -2815,6 +2815,9 @@ func (s *Settings) check() error {
 	if s.PreferredView != "" && s.PreferredView != "html" && s.PreferredView != "text" {
 		return fmt.Errorf("preferred view must be 'html' or 'text'")
 	}
+	if s.WeekStart != nil && *s.WeekStart != 0 && *s.WeekStart != 1 {
+		return fmt.Errorf("week_start must be 0 or 1")
+	}
 	return nil
 }
 
