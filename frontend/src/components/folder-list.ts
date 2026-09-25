@@ -474,7 +474,8 @@ export class FolderList extends LitElement {
 
       // Resolve the actual Trash mailbox by IMAP special-use attribute (e.g.
       // Gmail's "[Gmail]/Trash"), falling back to a folder named "Trash". See issue #4.
-      const trashName = findMailboxNameByRole('trash', this.mailboxes, 'Trash');
+      // Provide mailbox to be deleted so the correct Trash folder can be located
+      const trashName = findMailboxNameByRole('trash', this.mailboxToDelete, this.mailboxes, 'Trash');
 
       // Resolve name collisions by appending a suffix if needed
       let candidateName = `${trashName}${delimiter}${leafName}`;
@@ -614,7 +615,34 @@ export class FolderList extends LitElement {
       [FOLDER_TRASH]: { icon: 'trash', colorClass: 'icon-trash', label: this.i18nStore?.t('folderList.trash') }
     };
 
-    type TreeNode = { name: string; fullName: string; mb?: any; children: Record<string, TreeNode>; primary?: { icon: string; colorClass: string; label: string } };
+    type Account = {
+      name: string;
+      standardBySlot: Map<number, TreeNode>;
+    };
+
+    const newAccount = (name: string) => ({ name: name, standardBySlot: new Map<number, TreeNode>() })
+
+    const accounts = new Map<string, Account>();
+
+    const getOrAddAccount = (name: string) => {
+      let a = accounts.get(name);
+      if (!a) {
+        a = newAccount(name);
+        accounts.set(name, a);
+      }
+      return a;
+    }
+
+    const defaultAccount = newAccount("@default");
+
+    type TreeNode = {
+      account: Account;
+      name: string;
+      fullName: string;
+      mb?: any;
+      children: Record<string, TreeNode>;
+      primary?: { icon: string; colorClass: string; label: string }
+    };
     const root: Record<string, TreeNode> = {};
 
     this.mailboxes.forEach(mb => {
@@ -624,13 +652,18 @@ export class FolderList extends LitElement {
 
       let currentLevel = root;
       let pathAcc = '';
+      let account = defaultAccount;
 
+      if (parts[0].startsWith("@")) {
+        account = getOrAddAccount(parts[0])
+      }
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
         pathAcc = i === 0 ? part : pathAcc + delimiter + part;
 
         if (!currentLevel[part]) {
           currentLevel[part] = {
+            account: account,
             name: part,
             fullName: pathAcc,
             children: {}
@@ -669,15 +702,23 @@ export class FolderList extends LitElement {
       return -1;
     };
 
-    const standardBySlot = new Map<number, TreeNode>();
     const customNodes: TreeNode[] = [];
 
-    Object.values(root).forEach(node => {
-      const idx = slotIndexForNode(node);
-      if (idx < 0) {
+    // Special folders can occur at the top level, or at the first nested level in accounts
+    const assignSlots = (topLevel: boolean) => (node: TreeNode) => {
+      if (node.name == node.account.name) {
+        // top level account nodes go in the custom folder list
         customNodes.push(node);
+        // And the process recurses into the children
+        Object.values(node.children).forEach(assignSlots(false))
         return;
       }
+      const idx = slotIndexForNode(node);
+      if (idx < 0) {
+        if (topLevel) customNodes.push(node);
+        return;
+      }
+      const standardBySlot = node.account.standardBySlot
       const existing = standardBySlot.get(idx);
       if (!existing) {
         standardBySlot.set(idx, node);
@@ -698,21 +739,26 @@ export class FolderList extends LitElement {
           (existingRank === -1 || nodeRank < existingRank));
       if (nodeWins) {
         standardBySlot.set(idx, node);
-        customNodes.push(existing);
+        if (topLevel) customNodes.push(existing);
       } else {
-        customNodes.push(node);
+        if (topLevel) customNodes.push(node);
       }
-    });
+    };
+    Object.values(root).forEach(assignSlots(true));
 
     const standardNodes: TreeNode[] = [];
     for (let i = 0; i < specialSlots.length; i++) {
-      const node = standardBySlot.get(i);
+      const node = defaultAccount.standardBySlot.get(i);
       if (!node) continue;
       node.primary = stdMap[node.name] || specialSlots[i].display;
       standardNodes.push(node);
     }
     this.primaryFullNames = new Set(standardNodes.map(n => n.fullName));
-
+    accounts.forEach((account) => {
+      account.standardBySlot.forEach((node, index) => {
+        node.primary = stdMap[node.name] || specialSlots[index].display;
+      })
+    })
     const customOrder = this.settingsStore?.getState()?.customMailboxOrder || [];
 
     customNodes.sort((a, b) => {
@@ -729,11 +775,15 @@ export class FolderList extends LitElement {
         const hasChildren = Object.keys(node.children).length > 0;
         const isExpanded = this.expandedFolders.has(node.fullName);
         const isActive = this.currentMailbox === node.fullName;
-        const hasActions = depth > 0 || !node.primary;
+        // Previously, nodd.primary could never occur for depth > 0
+        // With accounts, it can, and hasActions should be false, so || changes to &&
+        // This does not change any previous cases that were possible and fixes the additional
+        // cases that have been added
+        const hasActions = depth > 0 && !node.primary;
 
         let isFirst = false;
         let isLast = false;
-        if (hasActions) {
+        if (depth > 0) {
           const delimiter = delimiterOf(node.mb, '.');
           const parts = mailboxLevels(node.fullName, delimiter);
           const parentPath = parts.slice(0, -1).join(delimiter);
@@ -791,6 +841,160 @@ export class FolderList extends LitElement {
           }
         };
 
+        // flags for deciding which actions to add
+        const isSpecial = node.primary;
+        const isAccount = node.name.startsWith("@");
+        const canCreate = !isSpecial;
+        const canRename = !isSpecial && !isAccount;
+        const canSubscribe = !isSpecial && !isAccount;
+        const canReorder = !isSpecial;
+        const canDelete = !isAccount && !isSpecial;
+
+        // array to build up the list of actions
+        const actions = [];
+
+        // Action to create sub folders - only in account or standard folders?
+        if (canCreate) {
+          actions.push(html`
+            <button class="dropdown-item" @click=${(e: Event) => {
+              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+              if (popup) popup.close();
+              this.parentForNewFolder = node.fullName;
+              this.showCreatePrompt = true;
+            }}>
+              ${renderIcon('folderPlus')} <span class="item-text">${this.i18nStore?.t('folderList.createSubfolder')}</span>
+            </button>
+          `);
+        }
+
+        // Action to rename a mailbox - only regular folders
+        if (canRename) {
+          actions.push(html`
+            <button class="dropdown-item" @click=${(e: Event) => {
+              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+              if (popup) popup.close();
+              this.mailboxToRename = node.fullName;
+              this.showRenamePrompt = true;
+            }}>
+              ${renderIcon('pen')} <span class="item-text">${this.i18nStore?.t('folderList.rename')}</span>
+            </button>
+          `);
+        }
+
+        // Manage subscription
+        if (canSubscribe) {
+          actions.push(html`
+            <button class="dropdown-item" @click=${(e: Event) => {
+              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+              if (popup) popup.close();
+              // The answer used to be discarded: a refused (un)subscribe changed nothing
+              // on screen and said nothing. Quiet on auth, which the shell answers.
+              const subscribing = !node.mb?.Subscribed;
+              void mailboxOperations.setSubscribed(node.fullName, subscribing).then(result => {
+                if (result.ok || result.reason === 'auth') return;
+                if (subscribing) this.toast(this.i18nStore?.t('toast.subscribeFailed'), 'Could not subscribe');
+                else this.toast(this.i18nStore?.t('toast.unsubscribeFailed'), 'Could not unsubscribe');
+              });
+            }}>
+              ${renderIcon(node.mb?.Subscribed ? 'eyeSlash' : 'eye')} <span class="item-text">${node.mb?.Subscribed ? this.i18nStore?.t('folderList.unsubscribe') : this.i18nStore?.t('folderList.subscribe')}</span>
+            </button>
+          `);
+        }
+
+        // Divider for ordering
+        if (canReorder) {
+          if (actions.length > 0) actions.push(html`<div class="dropdown-divider"></div>`);
+          actions.push(html`
+            <!-- Natively nested Order submenu via extended alps-popup -->
+            <!--
+              Open and close are stopped as well as the click: they are
+              dispatched {bubbles, composed}, so this submenu's popup-close
+              reached the OUTER kebab's @popup-close and cleared
+              activeKebabMenu while the outer menu was still open.
+            -->
+            <alps-popup
+              position="right"
+              align="top"
+              triggerOn="hover"
+              @click=${(e: Event) => e.stopPropagation()}
+              @popup-open=${(e: Event) => e.stopPropagation()}
+              @popup-close=${(e: Event) => e.stopPropagation()}
+            >
+              <button slot="trigger" class="dropdown-item submenu-trigger">
+                <div class="trigger-label">
+                  ${renderIcon('sortAscending')} <span class="item-text">${this.i18nStore?.t('folderList.order')}</span>
+                </div>
+                <div class="caret-icon">${renderIcon('caretRight')}</div>
+              </button>
+              <button class="dropdown-item" ?disabled=${isFirst} @click=${(e: Event) => {
+                const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+                if (popup) popup.close();
+                const parentPopup = (e.target as HTMLElement).closest('.folder-actions')?.querySelector('alps-popup') as any;
+                if (parentPopup) parentPopup.close();
+                this.moveFolder(node.fullName, 'top');
+              }}>
+                ${renderIcon('caretDoubleUp')} <span class="item-text">${this.i18nStore?.t('folderList.moveToTop')}</span>
+              </button>
+              <button class="dropdown-item" ?disabled=${isFirst} @click=${(e: Event) => {
+                const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+                if (popup) popup.close();
+                const parentPopup = (e.target as HTMLElement).closest('.folder-actions')?.querySelector('alps-popup') as any;
+                if (parentPopup) parentPopup.close();
+                this.moveFolder(node.fullName, 'up');
+              }}>
+                ${renderIcon('caretUp')} <span class="item-text">${this.i18nStore?.t('folderList.moveUp')}</span>
+              </button>
+              <button class="dropdown-item" ?disabled=${isLast} @click=${(e: Event) => {
+                const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+                if (popup) popup.close();
+                const parentPopup = (e.target as HTMLElement).closest('.folder-actions')?.querySelector('alps-popup') as any;
+                if (parentPopup) parentPopup.close();
+                this.moveFolder(node.fullName, 'down');
+              }}>
+                ${renderIcon('caretDown')} <span class="item-text">${this.i18nStore?.t('folderList.moveDown')}</span>
+              </button>
+              <button class="dropdown-item" ?disabled=${isLast} @click=${(e: Event) => {
+                const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+                if (popup) popup.close();
+                const parentPopup = (e.target as HTMLElement).closest('.folder-actions')?.querySelector('alps-popup') as any;
+                if (parentPopup) parentPopup.close();
+                this.moveFolder(node.fullName, 'bottom');
+              }}>
+                ${renderIcon('caretDoubleDown')} <span class="item-text">${this.i18nStore?.t('folderList.moveToBottom')}</span>
+              </button>
+            </alps-popup>
+          `);
+        }
+
+        // Delete action
+        if (canDelete) {
+          if (actions.length > 0) actions.push(html`<div class="dropdown-divider"></div>`);
+          actions.push(html`
+            <button class="dropdown-item" @click=${(e: Event) => {
+              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
+              if (popup) popup.close();
+              this.mailboxToDelete = node.fullName;
+
+              // Trash itself, or a folder already inside it, is deleted outright; any
+              // other folder is offered move-to-trash. See issue #4.
+              //
+              // By role and by real location, never by a name prefix. The prefix ran
+              // even when the server named its own Trash, so a user's "Trash receipts"
+              // or "Trashcan" was treated as Trash: Delete offered only permanent
+              // deletion, never the move. It also stood in for "inside Trash", which
+              // the resolved Trash name and the server's delimiter answer exactly.
+              const trashName = findMailboxNameByRole('trash', this.mailboxToDelete, this.mailboxes, FOLDER_TRASH);
+              if (mailboxRoleByName(node.fullName, this.mailboxes) === 'trash'
+                || isSelfOrDescendantMailbox(node.fullName, trashName, delimiterOf(node.mb))) {
+                this.showDeleteConfirm = true;
+              } else {
+                this.showMoveToTrashConfirm = true;
+              }
+            }}>
+              ${renderIcon('trash')} <span class="item-text">${this.i18nStore?.t('folderList.delete')}</span>
+            </button>
+          `);
+        }
 
         return html`
           <div 
@@ -811,7 +1015,7 @@ export class FolderList extends LitElement {
             <div class="folder-icon ${colorClass}">${icon}</div>
             <div class="folder-name">${label}</div>
             
-            ${hasActions ? html`
+            ${actions.length > 0 ? html`
               <div class="folder-actions ${this.activeKebabMenu === node.fullName ? 'popup-open' : ''}" @click=${(e: Event) => e.stopPropagation()}>
                 <alps-popup 
                   align="right" 
@@ -820,137 +1024,14 @@ export class FolderList extends LitElement {
                   @popup-close=${() => { if (this.activeKebabMenu === node.fullName) this.activeKebabMenu = null; }}
                 >
                   <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" style="--btn-padding: 8px;"></alps-icon-btn>
-                  <button class="dropdown-item" @click=${(e: Event) => {
-              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
-              if (popup) popup.close();
-              this.parentForNewFolder = node.fullName;
-              this.showCreatePrompt = true;
-            }}>
-                    ${renderIcon('folderPlus')} <span class="item-text">${this.i18nStore?.t('folderList.createSubfolder')}</span>
-                  </button>
-                  <button class="dropdown-item" @click=${(e: Event) => {
-              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
-              if (popup) popup.close();
-              this.mailboxToRename = node.fullName;
-              this.showRenamePrompt = true;
-            }}>
-                    ${renderIcon('pen')} <span class="item-text">${this.i18nStore?.t('folderList.rename')}</span>
-                  </button>
-                  <button class="dropdown-item" @click=${(e: Event) => {
-              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
-              if (popup) popup.close();
-              // The answer used to be discarded: a refused (un)subscribe changed nothing
-              // on screen and said nothing. Quiet on `auth`, which the shell answers.
-              const subscribing = !node.mb?.Subscribed;
-              void mailboxOperations.setSubscribed(node.fullName, subscribing).then(result => {
-                if (result.ok || result.reason === 'auth') return;
-                if (subscribing) this.toast(this.i18nStore?.t('toast.subscribeFailed'), 'Could not subscribe');
-                else this.toast(this.i18nStore?.t('toast.unsubscribeFailed'), 'Could not unsubscribe');
-              });
-            }}>
-                    ${renderIcon(node.mb?.Subscribed ? 'eyeSlash' : 'eye')} <span class="item-text">${node.mb?.Subscribed ? this.i18nStore?.t('folderList.unsubscribe') : this.i18nStore?.t('folderList.subscribe')}</span>
-                  </button>
-                  <div class="dropdown-divider"></div>
-                  
-                  <!-- Natively nested Order submenu via extended alps-popup -->
-                  <!--
-                    Open and close are stopped as well as the click: they are
-                    dispatched {bubbles, composed}, so this submenu's popup-close
-                    reached the OUTER kebab's @popup-close and cleared
-                    activeKebabMenu while the outer menu was still open.
-                  -->
-                  <alps-popup
-                    position="right"
-                    align="top"
-                    triggerOn="hover"
-                    @click=${(e: Event) => e.stopPropagation()}
-                    @popup-open=${(e: Event) => e.stopPropagation()}
-                    @popup-close=${(e: Event) => e.stopPropagation()}
-                  >
-                    <button slot="trigger" class="dropdown-item submenu-trigger">
-                      <div class="trigger-label">
-                        ${renderIcon('sortAscending')} <span class="item-text">${this.i18nStore?.t('folderList.order')}</span>
-                      </div>
-                      <div class="caret-icon">${renderIcon('caretRight')}</div>
-                    </button>
-                    
-                    <button class="dropdown-item" ?disabled=${isFirst} @click=${(e: Event) => {
-              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
-              if (popup) popup.close();
-
-              const parentPopup = (e.target as HTMLElement).closest('.folder-actions')?.querySelector('alps-popup') as any;
-              if (parentPopup) parentPopup.close();
-
-              this.moveFolder(node.fullName, 'top');
-            }}>
-                      ${renderIcon('caretDoubleUp')} <span class="item-text">${this.i18nStore?.t('folderList.moveToTop')}</span>
-                    </button>
-                    <button class="dropdown-item" ?disabled=${isFirst} @click=${(e: Event) => {
-              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
-              if (popup) popup.close();
-
-              const parentPopup = (e.target as HTMLElement).closest('.folder-actions')?.querySelector('alps-popup') as any;
-              if (parentPopup) parentPopup.close();
-
-              this.moveFolder(node.fullName, 'up');
-            }}>
-                      ${renderIcon('caretUp')} <span class="item-text">${this.i18nStore?.t('folderList.moveUp')}</span>
-                    </button>
-                    <button class="dropdown-item" ?disabled=${isLast} @click=${(e: Event) => {
-              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
-              if (popup) popup.close();
-
-              const parentPopup = (e.target as HTMLElement).closest('.folder-actions')?.querySelector('alps-popup') as any;
-              if (parentPopup) parentPopup.close();
-
-              this.moveFolder(node.fullName, 'down');
-            }}>
-                      ${renderIcon('caretDown')} <span class="item-text">${this.i18nStore?.t('folderList.moveDown')}</span>
-                    </button>
-                    <button class="dropdown-item" ?disabled=${isLast} @click=${(e: Event) => {
-              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
-              if (popup) popup.close();
-
-              const parentPopup = (e.target as HTMLElement).closest('.folder-actions')?.querySelector('alps-popup') as any;
-              if (parentPopup) parentPopup.close();
-
-              this.moveFolder(node.fullName, 'bottom');
-            }}>
-                      ${renderIcon('caretDoubleDown')} <span class="item-text">${this.i18nStore?.t('folderList.moveToBottom')}</span>
-                    </button>
-                  </alps-popup>
-
-
-                  <div class="dropdown-divider"></div>
-                  <button class="dropdown-item" @click=${(e: Event) => {
-              const popup = (e.target as HTMLElement).closest('alps-popup') as any;
-              if (popup) popup.close();
-              this.mailboxToDelete = node.fullName;
-              // Trash itself, or a folder already inside it, is deleted outright; any
-              // other folder is offered move-to-trash. See issue #4.
-              //
-              // By role and by real location, never by a name prefix. The prefix ran
-              // even when the server named its own Trash, so a user's "Trash receipts"
-              // or "Trashcan" was treated as Trash: Delete offered only permanent
-              // deletion, never the move. It also stood in for "inside Trash", which
-              // the resolved Trash name and the server's delimiter answer exactly.
-              const trashName = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
-              if (mailboxRoleByName(node.fullName, this.mailboxes) === 'trash'
-                || isSelfOrDescendantMailbox(node.fullName, trashName, delimiterOf(node.mb))) {
-                this.showDeleteConfirm = true;
-              } else {
-                this.showMoveToTrashConfirm = true;
-              }
-            }}>
-                    ${renderIcon('trash')} <span class="item-text">${this.i18nStore?.t('folderList.delete')}</span>
-                  </button>
+                  ${ actions }
                 </alps-popup>
               </div>
             ` : ''}
 
             ${unseenCount > 0 ? html`<div class="folder-badge">${unseenCount}</div>` : ''}
           </div>
-          
+
           ${hasChildren && isExpanded ? html`
             <div class="folder-children">
               ${renderTree(Object.values(node.children).sort((a, b) => {

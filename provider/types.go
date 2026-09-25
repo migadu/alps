@@ -42,6 +42,7 @@ type MailProvider interface {
 
 	// Storage operations
 	GetStore() (Store, error)
+	SetStore(Store)
 
 	// Mailbox operations
 	ListMailboxes() ([]Mailbox, error)
@@ -96,6 +97,7 @@ const (
 	MailboxTypeTrash
 	MailboxTypeJunk
 	MailboxTypeArchive
+	MailboxTypeUser
 )
 
 // Mailbox represents a mail folder

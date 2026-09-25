@@ -98,15 +98,15 @@ describe('mailboxRoleByName', () => {
 describe('findMailboxNameByRole', () => {
   it('names the mailbox carrying the attribute even when a lookalike is listed first', () => {
     const list = [mb('Trash'), mb('Papierkorb', ['\\Trash'])];
-    expect(findMailboxNameByRole('trash', list, 'Trash')).toBe('Papierkorb');
+    expect(findMailboxNameByRole('trash', null, list, 'Trash')).toBe('Papierkorb');
   });
 
   it('reads the Mailbox field too', () => {
-    expect(findMailboxNameByRole('trash', [{ Mailbox: 'Corbeille', Attrs: ['\\Trash'] }], 'Trash')).toBe('Corbeille');
+    expect(findMailboxNameByRole('trash', null, [{ Mailbox: 'Corbeille', Attrs: ['\\Trash'] }], 'Trash')).toBe('Corbeille');
   });
 
   it('falls back to the conventional name when nothing matches', () => {
-    expect(findMailboxNameByRole('archive', [mb('INBOX')], 'Archive')).toBe('Archive');
+    expect(findMailboxNameByRole('archive', null, [mb('INBOX')], 'Archive')).toBe('Archive');
   });
 });
 
