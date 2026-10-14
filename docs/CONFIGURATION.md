@@ -192,6 +192,16 @@ The CalDAV endpoint named here must carry a scheme. Start-up can fall back to DN
 
 Both allowlists accept the single entry `"*"` to match every domain. That turns the dynamic routes back into an open relay: any login makes the server connect to a host the login chose, so use it only on a deployment that is not reachable by untrusted users. Private, loopback, link-local, `0.0.0.0/8`, and CGNAT targets stay blocked either way, and the block is re-checked against the address each connection actually reaches. An unallowlisted domain simply misses the rule and routing proceeds to `default`.
 
+### `[provider.unified]`
+Provides a single combined view of one or more backend accounts. This provider builds on the multi provider. The top level section has a few unified specific configuration options:
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `path` | String | None | Path to the user password file. |
+| `debug` | Boolean | `false` | Be more verbose in logging output |
+| `debug_backend` | Boolean | `false` | Ask the backends to be more verbose in logging output |
+
+The user password file is currently used to provider the set of known users and passwords. Each line has a third field providing the path to the user specific settings. This is a temporary setup until a better one is worked out.
 
 ### `[smtp]`
 Configures the SMTP server used for sending emails.

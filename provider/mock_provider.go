@@ -37,6 +37,10 @@ func (m *MockProvider) GetStore() (Store, error) {
 	return store, args.Error(1)
 }
 
+func (m *MockProvider) SetStore(s Store) {
+	m.Called(s)
+}
+
 func (m *MockProvider) ListMailboxes() ([]Mailbox, error) {
 	args := m.Called()
 	var mboxes []Mailbox
