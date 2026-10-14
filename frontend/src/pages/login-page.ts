@@ -224,7 +224,13 @@ export class LoginPage extends LitElement {
   // The page otherwise settles with nothing focused, so the first keystrokes
   // belong to whatever else is listening — a keyboard-driven browser reads
   // them as its own commands instead of as an address.
-  firstUpdated() {
+  //
+  // The input is slotted into alps-auth-card, which renders after this does:
+  // until it has, there is no slot, the input has no box, and focus() is a
+  // silent no-op. So wait for the card first.
+  async firstUpdated() {
+    const card = this.renderRoot.querySelector<LitElement>('alps-auth-card');
+    await card?.updateComplete;
     this.renderRoot.querySelector<HTMLInputElement>('#username')?.focus();
   }
 
