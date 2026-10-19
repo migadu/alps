@@ -1,5 +1,6 @@
 import { formatFullDate } from './ui';
 import { escapeHtml, sanitizeQuotedHTML } from './html-sanitizer';
+import { createDOMDirectionResolver } from './content-direction';
 
 /**
  * Marks the element that holds a quoted original. The composer keeps what is
@@ -106,6 +107,20 @@ export function generateQuote(
   // stay, as every mail client keeps them; see sanitizeQuotedHTML for why, and
   // inlinePartsOf for the parts their `cid:` references need.
   const safeHtml = hasHtml && rawMessageHtml ? sanitizeQuotedHTML(rawMessageHtml) : '';
+  // The plain-text fallback is HTML too, so the body needs escaping before its
+  // newlines become `<br>` — `textBody` is not markup and must not become any.
+  const escapedBody = escapeHtml(textBody).replace(/\n/g, '<br>');
+
+  // The quote runs the way the original does, not the way the reply does: an
+  // English answer to Arabic mail quotes it right to left, with its bar on the
+  // right. The side is written as physical properties because Gmail, Outlook
+  // and Yahoo drop the logical ones from mail they receive.
+  const direction = createDOMDirectionResolver()(
+    new DOMParser().parseFromString(safeHtml || escapedBody, 'text/html').body,
+  ) ?? 'ltr';
+  const quoteStyle = direction === 'rtl'
+    ? 'margin:0px 0.8ex 0px 0px;border-right:1px solid rgb(204,204,204);padding-right:1ex'
+    : 'margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex';
 
   // The HTML quote is marked so the composer can hold it as one piece. Its
   // editor drops every tag and style it has no node or mark for — tables,
@@ -116,16 +131,13 @@ export function generateQuote(
   if (safeHtml) {
     if (type === 'forward') {
       const toStrs = escapeHtml(formatAddrs(message?.Envelope?.To).join(', '));
-      quotedHtml = `<br><br><div class="gmail_quote" ${QUOTE_ATTRIBUTE}><div dir="ltr" class="gmail_attr">---------- Forwarded message ---------<br>From: ${eSenderName} &lt;${eSenderAddress}&gt;<br>Date: ${eDate}<br>Subject: ${eSubject}<br>To: ${toStrs}<br></div><br>${safeHtml}</div>`;
+      quotedHtml = `<br><br><div class="gmail_quote" ${QUOTE_ATTRIBUTE} dir="auto"><div dir="ltr" class="gmail_attr">---------- Forwarded message ---------<br>From: ${eSenderName} &lt;${eSenderAddress}&gt;<br>Date: ${eDate}<br>Subject: ${eSubject}<br>To: ${toStrs}<br></div><br>${safeHtml}</div>`;
     } else {
-      quotedHtml = `<br><br><div class="gmail_quote" ${QUOTE_ATTRIBUTE}><div dir="ltr" class="gmail_attr">On ${eDate}, ${eSenderName} wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${safeHtml}</blockquote></div>`;
+      quotedHtml = `<br><br><div class="gmail_quote" ${QUOTE_ATTRIBUTE} dir="auto"><div dir="ltr" class="gmail_attr">On ${eDate}, ${eSenderName} wrote:<br></div><blockquote class="gmail_quote" dir="${direction}" style="${quoteStyle}">${safeHtml}</blockquote></div>`;
     }
   } else {
-    // The plain-text fallback is HTML too, so the body needs escaping before its
-    // newlines become `<br>` — `textBody` is not markup and must not become any.
     const escapedHeader = escapeHtml(quoteHeader).replace(/\n/g, '<br>');
-    const escapedBody = escapeHtml(textBody).replace(/\n/g, '<br>');
-    quotedHtml = `<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">${escapedHeader}<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${escapedBody}</blockquote></div>`;
+    quotedHtml = `<br><br><div class="gmail_quote" dir="auto"><div dir="ltr" class="gmail_attr">${escapedHeader}<br></div><blockquote class="gmail_quote" dir="${direction}" style="${quoteStyle}">${escapedBody}</blockquote></div>`;
   }
 
   return { subject, to, cc, quotedText, quotedHtml };

@@ -1,6 +1,6 @@
 import * as cssParser from 'css';
 import { encodeMailboxPath } from './folders';
-import { applyAutoDirections, AUTO_DIRECTION_STYLES } from './content-direction';
+import { applyAutoDirections, AUTO_DIRECTION_STYLES, getAuthoredDirection } from './content-direction';
 
 export interface SanitizeOptions {
   mailbox: string;
@@ -598,7 +598,20 @@ export function sanitizeQuotedHTML(rawHtml: string): string {
   }
 
   // A frameset document has no body once its frameset is gone.
-  return doc.body?.innerHTML ?? '';
+  if (!doc.body) return '';
+  // A fragment has no <html> or <body> to carry the direction and language
+  // the original set there, so they move to a wrapper. Without it an Arabic
+  // original quoted into an English reply was laid out left to right.
+  const direction = getAuthoredDirection(doc.body) ?? getAuthoredDirection(doc.documentElement);
+  if (direction) {
+    const wrapper = doc.createElement('div');
+    wrapper.dir = direction;
+    const language = doc.body.getAttribute('lang') ?? doc.documentElement.getAttribute('lang');
+    if (language) wrapper.lang = language;
+    wrapper.innerHTML = doc.body.innerHTML;
+    return wrapper.outerHTML;
+  }
+  return doc.body.innerHTML;
 }
 
 /**
