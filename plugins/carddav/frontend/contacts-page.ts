@@ -93,6 +93,8 @@ export class ContactsPage extends LitElement {
       background-color: var(--bg-primary, #ffffff);
       color: var(--text-primary);
       overflow: hidden;
+      /* Not a scroll container: see the mailbox page's host. */
+      overflow: clip;
     }
     .folder-name {
       flex: 1;

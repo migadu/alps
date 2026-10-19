@@ -142,6 +142,12 @@ export class MailboxPage extends LitElement {
       background-color: var(--bg-primary);
       color: var(--text-primary);
       overflow: hidden;
+      /* Clip, where the browser knows it: a hidden host is still a scroll
+         container, so a scrollIntoView() or focus() on anything at its clipped
+         edge scrolled the whole page by what overflowed, cutting off the top
+         of the header until the next navigation. Clip cuts the same and
+         cannot be scrolled at all. */
+      overflow: clip;
       font-size: 14px;
     }
     

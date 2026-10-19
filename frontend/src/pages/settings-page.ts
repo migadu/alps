@@ -47,6 +47,8 @@ export class SettingsPage extends LitElement {
       background-color: var(--bg-primary);
       color: var(--text-primary);
       overflow: hidden;
+      /* Not a scroll container: see the mailbox page's host. */
+      overflow: clip;
       font-size: 14px;
     }
 
