@@ -192,3 +192,37 @@ describe('the undo window of a send', () => {
     expect(composeStore.closeComposer).toHaveBeenCalledWith('c1');
   });
 });
+
+describe('a send pressed during an autosave', () => {
+  it('waits for the save, and sends over the draft that save stored', async () => {
+    // The save stores draft 8 and deletes 7. Sent before it landed, the
+    // message named 7, and 8 stayed in Drafts beside the sent message.
+    let land!: (answer: unknown) => void;
+    vi.spyOn(messageOperations, 'saveDraft').mockImplementationOnce(() => new Promise(resolve => { land = resolve; }) as any);
+    const sendDraft = vi.spyOn(messageOperations, 'sendDraft').mockResolvedValue(true);
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const instance: ComposerInstance = {
+      id: 'c1', to: ['ada@example.com'], subject: 'Hi', text: 'Hello', initialText: '', format: 'text',
+      dirty: true, draftUid: '7', draftMailbox: 'Drafts',
+    };
+    const composeStore = {
+      ...storeFor(instance),
+      updateComposer: vi.fn((_id: string, updates: Partial<ComposerInstance>) => Object.assign(instance, updates)),
+    };
+    const el = await mount<HTMLElement & Record<string, any>>('alps-floating-composer', { instance, composeStore, i18nStore });
+
+    const saving = el._saveDraft();
+    const send = el._handleSend();
+    await waitFor(() => toasts.length > 0, 'the undo toast');
+    toasts[0].detail.dismissFn();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(sendDraft).not.toHaveBeenCalled();
+
+    land({ uid: '8', mailbox: 'Drafts' });
+    await saving;
+    await send;
+
+    expect(sendDraft).toHaveBeenCalledTimes(1);
+    expect((sendDraft.mock.calls[0][0] as FormData).get('draft_uid')).toBe('8');
+  });
+});

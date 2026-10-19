@@ -767,6 +767,13 @@ export class AlpsFloatingComposer extends LitElement {
         return;
       }
 
+      // An autosave still on the wire stores a new draft and deletes the one
+      // the send would name. Sent before it landed, the message was built on
+      // the deleted draft, whose attachments it carries, and the new draft
+      // stayed in Drafts beside the sent message.
+      await this.savingPromise?.catch(() => false);
+      if (this._sendCutShort(id)) return;
+
       // The store's composer, and no other. Falling back to the window's
       // property sent whatever that property held, which need not be the
       // message this send began with.
