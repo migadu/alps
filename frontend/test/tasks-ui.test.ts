@@ -411,6 +411,19 @@ describe('the tasks page', () => {
         expect(el.countFor('undated')).toBe(1);
         expect(el.countFor('completed')).toBeNull();
     });
+
+    it('makes a new list one that takes tasks alone, so the Calendar tab leaves it out', async () => {
+        const posted = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ ok: 'true', path: '/cal/errands/' }));
+        const el = page([]);
+        el.fetchTasks = vi.fn().mockResolvedValue(undefined);
+
+        await el.handleListPromptSubmit(new CustomEvent('submit', { detail: { name: '  Errands ' } }));
+        expect(posted).toHaveBeenCalledTimes(1);
+        const [url, init] = posted.mock.calls[0];
+        expect(url).toBe('/calendar/calendars');
+        expect(JSON.parse(String(init?.body))).toEqual({ name: 'Errands', components: ['VTODO'] });
+        expect(el.fetchTasks).toHaveBeenCalled();
+    });
 });
 
 describe('the calendar page', () => {

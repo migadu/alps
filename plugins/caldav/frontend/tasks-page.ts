@@ -428,7 +428,7 @@ export class TasksPage extends LitElement {
         const name = String(e.detail?.name ?? '').trim();
         if (!name) return;
         try {
-            await calendarService.createCalendar(name);
+            await calendarService.createCalendar(name, ['VTODO']);
             await this.fetchTasks();
         } catch (err) {
             console.error('Failed to create list', err);

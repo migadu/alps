@@ -166,13 +166,18 @@ class CalendarService {
         return response.json();
     }
 
-    async createCalendar(name: string): Promise<{ ok: string, path: string }> {
+    /**
+     * Makes a collection. `components` restricts what it takes: a task list
+     * is made for VTODO alone, so it stays off the Calendar tab. Without it,
+     * the server decides, which usually means events and tasks both.
+     */
+    async createCalendar(name: string, components?: Array<'VEVENT' | 'VTODO'>): Promise<{ ok: string, path: string }> {
         const response = await fetchWithTimeout('/calendar/calendars', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ name })
+            body: JSON.stringify(components ? { name, components } : { name })
         });
         if (!response.ok) {
             throw new HttpStatusError(response.status, 'Failed to create calendar');
