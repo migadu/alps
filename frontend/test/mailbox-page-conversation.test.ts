@@ -310,6 +310,45 @@ describe('a card\'s own verbs', () => {
       expect(done).toHaveBeenCalledWith(true);
       expect(el.selectedMessage).toBe(open);
     });
+
+    it('asks to discard a draft, in the words the composer\'s Discard uses', async () => {
+      // The same deletion as the composer's Discard, which asks "Discard
+      // Draft?". The page asked "Permanently Delete?" over a body about
+      // messages.
+      const el = await page();
+      el.mailboxes = [...MAILBOXES, { Name: 'Drafts', Attrs: ['\\Drafts'] }];
+      const trash = await page('Trash');
+
+      await act(el, { action: 'delete', uid: '5', mailbox: 'Drafts', done: vi.fn() });
+      await act(trash, { action: 'delete', uid: '5', mailbox: 'Trash', done: vi.fn() });
+      await el.updateComplete;
+      await trash.updateComplete;
+
+      const asked = el.shadowRoot!.querySelector('ui-confirm')!;
+      expect(asked.getAttribute('title')).toBe('floatingComposer.discardDraftTitle');
+      expect(asked.getAttribute('message')).toBe('floatingComposer.discardDraftMessage');
+      expect(asked.getAttribute('confirmText')).toBe('floatingComposer.discard');
+      // Trash keeps its own words: what it holds is mail, deleted for good.
+      const fromTrash = trash.shadowRoot!.querySelector('ui-confirm')!;
+      expect(fromTrash.getAttribute('title')).toBe('mailboxPage.permanentlyDelete');
+      expect(fromTrash.getAttribute('confirmText')).toBe('mailboxPage.deletePermanently');
+
+      await el._confirmDelete();
+      expect(writes()).toContainEqual({ url: '/mailboxes/Drafts/messages', method: 'DELETE', body: { uids: ['5'] } });
+    });
+
+    it('asks to discard several drafts as drafts', async () => {
+      const el = await page('Drafts');
+      el.mailboxes = [...MAILBOXES, { Name: 'Drafts', Attrs: ['\\Drafts'] }];
+
+      await act(el, { action: 'delete', uids: ['5', '9'] });
+      await el.updateComplete;
+
+      const asked = el.shadowRoot!.querySelector('ui-confirm')!;
+      expect(asked.getAttribute('title')).toBe('mailboxPage.discardDraftsTitle');
+      expect(asked.getAttribute('message')).toBe('mailboxPage.discardDraftsMessage');
+      expect(asked.getAttribute('confirmText')).toBe('floatingComposer.discard');
+    });
   });
 });
 

@@ -2060,6 +2060,32 @@ export class MailboxPage extends LitElement {
     }
   }
 
+  /**
+   * What the delete dialog says, by what confirming it does.
+   *
+   * Drafts are deleted for good like Trash, but a draft is discarded, not a
+   * message received, and the toast that follows already says so. The dialog
+   * asked "Permanently Delete?" over a single draft whose own Discard, in the
+   * composer, asks "Discard Draft?" for the same deletion.
+   */
+  private get deleteDialogWords(): { title?: string; message?: string; confirm?: string } {
+    const t = (key: string) => this.i18nStore?.t(key);
+    const details = this.pendingDeleteDetails;
+    const many = ((details?.matching?.count ?? details?.doomed.length) ?? 0) > 1;
+    if (details?.isDrafts) {
+      return {
+        title: t(many ? 'mailboxPage.discardDraftsTitle' : 'floatingComposer.discardDraftTitle'),
+        message: t(many ? 'mailboxPage.discardDraftsMessage' : 'floatingComposer.discardDraftMessage'),
+        confirm: t('floatingComposer.discard'),
+      };
+    }
+    return {
+      title: t('mailboxPage.permanentlyDelete'),
+      message: t(many ? 'messageReader.deleteConfirmMultiple' : 'messageReader.deleteConfirmSingle'),
+      confirm: t('mailboxPage.deletePermanently'),
+    };
+  }
+
   private _cancelDelete() {
     this.showDeleteConfirm = false;
     this.pendingDeleteDetails = null;
@@ -2289,9 +2315,9 @@ export class MailboxPage extends LitElement {
       </div>
       ${this.showDeleteConfirm ? html`
         <ui-confirm
-          title="${this.i18nStore?.t('mailboxPage.permanentlyDelete')}"
-          message=${((this.pendingDeleteDetails?.matching?.count ?? this.pendingDeleteDetails?.doomed.length) ?? 0) > 1 ? (this.i18nStore?.t('messageReader.deleteConfirmMultiple')) : (this.i18nStore?.t('messageReader.deleteConfirmSingle'))}
-          confirmText=${this.i18nStore?.t('mailboxPage.deletePermanently')}
+          title=${this.deleteDialogWords.title}
+          message=${this.deleteDialogWords.message}
+          confirmText=${this.deleteDialogWords.confirm}
           cancelText=${this.i18nStore?.t('general.cancel')}
           .isDanger=${true}
           @confirm=${this._confirmDelete}

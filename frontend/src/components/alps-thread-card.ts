@@ -477,6 +477,9 @@ export class AlpsThreadCard extends LitElement {
           <alps-banner style="margin-bottom: 12px;">
             <span>${this.i18nStore?.t('messageReader.isDraft')}</span>
             <alps-button slot="action" variant="normal" @click=${this.handleEditDraftClick}>${this.i18nStore?.t('messageReader.editDraft')}</alps-button>
+            <!-- The menu's Delete is the same gesture. This is where a draft is
+                 looked at, and Edit Draft alone left no way to drop one in sight. -->
+            <alps-button slot="action" variant="normal" @click=${() => this.handleDeleteItem()}>${this.i18nStore?.t('messageReader.discardDraft')}</alps-button>
           </alps-banner>
         ` : ''}
         
@@ -598,8 +601,9 @@ export class AlpsThreadCard extends LitElement {
                   ${renderIcon('codeBlock')} <span class="item-text">${this.i18nStore?.t('messageReader.showOriginal')}</span>
                 </button>
                 <div class="dropdown-divider"></div>
+                <!-- Named for what it does to a draft, as the toolbar's is. -->
                 <button class="dropdown-item" @click=${() => this.handleDeleteItem()}>
-                  ${renderIcon('trash')} <span class="item-text">${this.i18nStore?.t('messageReader.delete')}</span>
+                  ${renderIcon('trash')} <span class="item-text">${this.i18nStore?.t(msg.Flags?.includes(FLAG_DRAFT) ? 'messageReader.discardDraft' : 'messageReader.delete')}</span>
                 </button>
               </alps-popup>
             ` : ''}

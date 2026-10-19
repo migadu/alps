@@ -516,6 +516,8 @@ export const de: TranslationDictionary = {
     refresh: 'Aktualisieren',
     permanentlyDelete: 'Endgültig löschen?',
     deletePermanently: 'Endgültig löschen',
+    discardDraftsTitle: 'Entwürfe verwerfen?',
+    discardDraftsMessage: 'Sind Sie sicher, dass Sie diese Entwürfe verwerfen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
     undo: 'Rückgängig'
   },
   offline: {

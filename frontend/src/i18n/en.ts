@@ -557,6 +557,8 @@ export const en = {
     refresh: 'Refresh',
     permanentlyDelete: 'Permanently Delete?',
     deletePermanently: 'Delete Permanently',
+    discardDraftsTitle: 'Discard Drafts?',
+    discardDraftsMessage: 'Are you sure you want to discard these drafts? This action cannot be undone.',
     undo: 'Undo'
   },
   offline: {

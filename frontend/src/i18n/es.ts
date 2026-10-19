@@ -514,6 +514,8 @@ export const es = {
     refresh: 'Actualizar',
     permanentlyDelete: '¿Eliminar de forma permanente?',
     deletePermanently: 'Eliminar de forma permanente',
+    discardDraftsTitle: '¿Descartar borradores?',
+    discardDraftsMessage: '¿Estás seguro de que quieres descartar estos borradores? Esta acción no se puede deshacer.',
     undo: 'Deshacer'
   },
   offline: {

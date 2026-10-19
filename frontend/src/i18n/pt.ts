@@ -557,6 +557,8 @@ export const pt = {
     refresh: 'Atualizar',
     permanentlyDelete: 'Excluir permanentemente?',
     deletePermanently: 'Excluir permanentemente',
+    discardDraftsTitle: 'Descartar Rascunhos?',
+    discardDraftsMessage: 'Tem certeza de que deseja descartar estes rascunhos? Esta ação não pode ser desfeita.',
     undo: 'Desfazer'
   },
   offline: {

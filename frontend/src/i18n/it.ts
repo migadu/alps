@@ -514,6 +514,8 @@ export const it = {
     refresh: 'Aggiorna',
     permanentlyDelete: 'Eliminare definitivamente?',
     deletePermanently: 'Elimina definitivamente',
+    discardDraftsTitle: 'Eliminare le bozze?',
+    discardDraftsMessage: 'Sei sicuro di voler eliminare queste bozze? Questa azione non può essere annullata.',
     undo: 'Annulla'
   },
   offline: {

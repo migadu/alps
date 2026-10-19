@@ -91,6 +91,16 @@ describe('a thread card\'s menu', () => {
     expect(asked).toHaveLength(0);
   });
 
+  it('calls its Delete what it does to a draft', async () => {
+    const draft = await card(['\\Seen', '\\Draft']);
+    expect(entries(draft)).toContain('messageReader.discardDraft');
+    expect(entries(draft)).not.toContain('messageReader.delete');
+
+    const deletes = record<CustomEvent>(draft, 'delete-item');
+    entry(draft, 'messageReader.discardDraft').click();
+    expect(deletes.map(e => e.detail.item)).toEqual([draft.item]);
+  });
+
   it('offers the read toggle only where the reader allows it, pointing the way the flag says', async () => {
     expect(entries(await card(['\\Seen']))).not.toContain('messageReader.markUnread');
 
@@ -117,5 +127,28 @@ describe('a thread card\'s menu', () => {
         expect(isDivider(children[i]) && isDivider(children[i + 1]), `consecutive dividers at ${i}`).toBe(false);
       }
     }
+  });
+});
+
+describe('a draft\'s card', () => {
+  it('offers to discard the draft beside resuming it', async () => {
+    // Edit Draft alone left the menu's Delete as the only way to drop a draft
+    // being looked at, under a caption that did not say what it does to one.
+    const el = await card(['\\Seen', '\\Draft']);
+    const deletes = record<CustomEvent>(el, 'delete-item');
+    const edits = record<CustomEvent>(el, 'edit-draft-for-item');
+    const buttons = shadowAll<HTMLElement>(el, 'alps-banner alps-button');
+
+    expect(buttons.map(b => (b.textContent ?? '').trim()))
+      .toEqual(['messageReader.editDraft', 'messageReader.discardDraft']);
+    buttons[1].click();
+
+    expect(deletes.map(e => e.detail.item)).toEqual([el.item]);
+    expect(edits).toHaveLength(0);
+  });
+
+  it('is not offered on an ordinary message', async () => {
+    const el = await card();
+    expect(shadowAll(el, 'alps-banner alps-button')).toHaveLength(0);
   });
 });

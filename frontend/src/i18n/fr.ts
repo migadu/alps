@@ -514,6 +514,8 @@ export const fr = {
     refresh: 'Actualiser',
     permanentlyDelete: 'Supprimer définitivement ?',
     deletePermanently: 'Supprimer définitivement',
+    discardDraftsTitle: 'Supprimer les brouillons ?',
+    discardDraftsMessage: 'Êtes-vous sûr de vouloir supprimer ces brouillons ? Cette action est irréversible.',
     undo: 'Annuler'
   },
   offline: {

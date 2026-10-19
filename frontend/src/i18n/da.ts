@@ -559,6 +559,8 @@ export const da: TranslationDictionary = {
     refresh: 'Opdater',
     permanentlyDelete: 'Slet permanent?',
     deletePermanently: 'Slet permanent',
+    discardDraftsTitle: 'Kassér kladder?',
+    discardDraftsMessage: 'Er du sikker på, at du vil kassere disse kladder? Denne handling kan ikke fortrydes.',
     undo: 'Fortryd'
   },
   offline: {

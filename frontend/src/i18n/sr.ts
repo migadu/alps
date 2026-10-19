@@ -533,6 +533,8 @@ export const sr = {
     refresh: 'Osveži',
     permanentlyDelete: 'Trajno obrisati?',
     deletePermanently: 'Trajno obriši',
+    discardDraftsTitle: 'Odbaciti nacrte?',
+    discardDraftsMessage: 'Da li ste sigurni da želite da odbacite ove nacrte? Ova akcija se ne može poništiti.',
     undo: 'Opozovi'
   },
   offline: {
