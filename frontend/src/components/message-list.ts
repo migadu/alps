@@ -7,6 +7,7 @@ import { mailboxOperations } from '../services/mailbox-operations';
 import { fetchAuthVerdicts, VERDICT_BATCH, type AuthVerdict } from '../services/auth-verdicts';
 import { mailboxOf, messageKey } from '../utils/message-key';
 import { isolatedCaption } from '../utils/bidi';
+import { ALL_MAILBOXES } from '../utils/folders';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -38,6 +39,15 @@ export class MessageList extends LitElement {
   // Special-use role of the current mailbox ('drafts'|'sent'|...), resolved by the
   // parent from IMAP attributes so Gmail's "[Gmail]/Sent Mail" etc. are recognized.
   @property({ type: String }) currentMailboxRole = '';
+  /**
+   * The folder the ROWS were read from. It trails `currentMailbox` while a
+   * folder switch loads: the previous folder's rows stay up, dimmed, until
+   * the new listing replaces them, and each is drawn by the rules of the
+   * folder it came from. '' is the folder on screen.
+   */
+  @property({ type: String }) listedMailbox = '';
+  /** `listedMailbox`'s role, resolved by the parent as `currentMailboxRole` is. */
+  @property({ type: String }) listedMailboxRole = '';
   @property({ type: Boolean }) loading = false;
   @property({ type: Object }) selectedMessage: any = null;
   @property({ type: String }) layoutMode = 'vertical';
@@ -1293,10 +1303,34 @@ export class MessageList extends LitElement {
     return this.currentMailboxRole === 'trash' || this.currentMailboxRole === 'junk';
   }
 
+  /** Whether the rows on screen were read from the folder on screen. */
+  private get rowsAreCurrent(): boolean {
+    return !this.listedMailbox || this.listedMailbox === this.currentMailbox;
+  }
+
+  /**
+   * The folder a row is drawn by: the one it was read from.
+   *
+   * Everything inside a row reads these; the caption, the banners and the
+   * actions above the rows read `currentMailbox`. Drawn by the folder just
+   * clicked, the Inbox rows kept up during a switch to Sent named their
+   * recipients, which is the user, for the length of the read, and Sent rows
+   * on the way into the Inbox turned from recipients into the user's own name.
+   */
+  private get rowMailbox(): string {
+    return this.rowsAreCurrent ? this.currentMailbox : this.listedMailbox;
+  }
+
+  private get rowRole(): string {
+    return this.rowsAreCurrent ? this.currentMailboxRole : this.listedMailboxRole;
+  }
+
   private renderMessageItem(msg: any, isSubMessage: boolean = false, isFirstSub: boolean = false, isLastSub: boolean = false) {
     // Role only. OR-ing the names in here let a user folder called "Sent" show
     // recipients even where the server's own Sent is "[Gmail]/Sent Mail".
-    const isDraftOrSent = this.currentMailboxRole === 'drafts' || this.currentMailboxRole === 'sent';
+    const rowRole = this.rowRole;
+    const isDraftOrSent = rowRole === 'drafts' || rowRole === 'sent';
+    const showsFolder = this.rowMailbox === ALL_MAILBOXES;
 
     let rawContacts: any[] = [];
     if (isDraftOrSent) {
@@ -1426,7 +1460,7 @@ export class MessageList extends LitElement {
             `)}
           </div>
         ` : ''}
-        ${this.currentMailbox === '*' && msg.Mailbox ? html`
+        ${showsFolder && msg.Mailbox ? html`
           <span class="mailbox-badge" title="Folder: ${msg.Mailbox}">${msg.Mailbox}</span>
         ` : ''}
         <div class="message-subject" dir="auto">
@@ -1511,7 +1545,7 @@ export class MessageList extends LitElement {
               `)}
             </div>
           ` : ''}
-          ${this.currentMailbox === '*' && msg.Mailbox ? html`
+          ${showsFolder && msg.Mailbox ? html`
             <span class="mailbox-badge" title="Folder: ${msg.Mailbox}">${msg.Mailbox}</span>
           ` : ''}
           <div class="message-subject" dir="auto">

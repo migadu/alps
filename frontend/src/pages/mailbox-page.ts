@@ -326,6 +326,13 @@ export class MailboxPage extends LitElement {
    * correcting itself when the answer landed. This moves with the rows.
    */
   @state() private listedPage = 0;
+  /**
+   * The folder the rows were read from, which trails `currentMailbox` the same
+   * way and for the same reason: a folder switch leaves the previous folder's
+   * rows up until the new ones land, and the list draws a row by the folder it
+   * came from. '' until anything has been listed.
+   */
+  @state() private listedMailbox = '';
   @state() private totalMessages = 0;
   @state() private messagesPerPage = 50;
   @state() private resizerPositionX = SIDEBAR_WIDTH_DEFAULT + Math.max(MESSAGE_LIST_WIDTH_MIN, (window.innerWidth - SIDEBAR_WIDTH_DEFAULT) * 0.4);
@@ -1001,6 +1008,7 @@ export class MailboxPage extends LitElement {
     } else {
       if (data.Page !== undefined) this.currentPage = data.Page;
       this.listedPage = data.Page !== undefined ? data.Page : this.currentPage;
+      this.listedMailbox = data.ListedMailbox || this.currentMailbox;
       if (data.Total !== undefined) this.totalMessages = data.Total;
       if (data.MessagesPerPage !== undefined) this.messagesPerPage = data.MessagesPerPage;
       if (data.Messages) {
@@ -2219,6 +2227,8 @@ export class MailboxPage extends LitElement {
               .messages=${this.messages}
               .currentMailbox=${this.currentMailbox}
               .currentMailboxRole=${mailboxRoleByName(this.currentMailbox, this.mailboxes) || ''}
+              .listedMailbox=${this.listedMailbox}
+              .listedMailboxRole=${mailboxRoleByName(this.listedMailbox, this.mailboxes) || ''}
               .mailboxes=${this.mailboxes}
               .sidebarCollapsed=${this.sidebarCollapsed && !this.isMobile}
               .loading=${this.loadingMessages}

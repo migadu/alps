@@ -100,6 +100,7 @@ beforeEach(() => {
 afterEach(() => {
   messageSync.stop();
   cleanup();
+  history.replaceState(null, '', '#/mailbox/INBOX');
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -239,3 +240,53 @@ describe('the re-read after a move or a delete', () => {
     expect(updateSpy).toHaveBeenCalled();
   });
 });
+
+describe('a folder switch', () => {
+  const MAILBOXES = [{ Name: 'INBOX', Attrs: [] }, { Name: 'Sent', Attrs: ['\\Sent'] }];
+
+  /** Inbox and Sent, with the Sent listing held until `release` is called. */
+  function twoFolders() {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      urls.push(url);
+      if (url.includes('/status')) return new Response('{}', { status: 200 });
+      if (url.startsWith('/mailboxes/Sent?')) await held;
+      if (url.startsWith('/mailboxes/')) {
+        const folder = url.startsWith('/mailboxes/Sent?') ? 'Sent' : 'INBOX';
+        return new Response(JSON.stringify({
+          Page: 0,
+          Total: 1,
+          MessagesPerPage: 50,
+          Mailboxes: MAILBOXES,
+          Messages: [{ ...message(folder === 'Sent' ? 20 : 9), Mailbox: folder }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response('{}', { status: 404 });
+    }));
+    return () => release();
+  }
+
+  it('tells the list which folder the rows still on screen were read from', async () => {
+    const release = twoFolders();
+    const el = await shownInbox();
+    const list = shadow<El>(el, 'alps-message-list');
+    expect(list.listedMailbox).toBe('INBOX');
+
+    location.hash = '#/mailbox/Sent';
+    await waitFor(() => el.currentMailbox === 'Sent' && el.loadingMessages, 'the switch to start');
+    await el.updateComplete;
+    // The Inbox's rows, dimmed, under the Sent folder's name: drawn as Inbox rows.
+    expect(list.currentMailbox).toBe('Sent');
+    expect(list.currentMailboxRole).toBe('sent');
+    expect(list.listedMailbox).toBe('INBOX');
+    expect(list.listedMailboxRole).toBe('inbox');
+
+    release();
+    await waitFor(() => !el.loadingMessages, 'the Sent listing');
+    await el.updateComplete;
+    expect(list.listedMailbox).toBe('Sent');
+    expect(list.listedMailboxRole).toBe('sent');
+  });
+});
+

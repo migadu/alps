@@ -9,6 +9,14 @@ export interface MailboxData {
   MessagesPerPage?: number;
   Mailboxes?: any[];
   Messages?: any[];
+  /**
+   * The mailbox `Messages` were read from, stamped here from the read's own
+   * request rather than from {@link MessageSyncService.setContext}, which has
+   * moved on by the time a superseded read could land. A folder switch keeps
+   * the previous folder's rows on screen until the new ones arrive, and a row
+   * is drawn by the rules of the folder it came from.
+   */
+  ListedMailbox?: string;
 }
 
 export class MessageSyncService extends EventTarget {
@@ -230,6 +238,7 @@ export class MessageSyncService extends EventTarget {
       if (this.currentFetchId !== fetchId) return; // Re-check after artificial delay
 
       this.listed = true;
+      data.ListedMailbox = mailbox;
       this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: false, quiet } }));
     } catch (err) {
       if (this.currentFetchId !== fetchId) return;
@@ -325,6 +334,7 @@ export class MessageSyncService extends EventTarget {
 
       const data: MailboxData = await response.json();
       if (this.currentFetchId !== fetchId) return true;
+      data.ListedMailbox = mailbox;
       this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: true } }));
       return true;
     } catch (err) {

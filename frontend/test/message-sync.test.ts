@@ -105,6 +105,16 @@ describe('fetch', () => {
     expect(successes.map((e) => e.detail.data.Messages[0].Mailbox)).toEqual(['Archive']);
   });
 
+  it('stamps the answer with the folder it was read from', async () => {
+    fetchMock.mockResolvedValue(listing('[Gmail]/Sent Mail'));
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    const pending = svc.fetch('[Gmail]/Sent Mail', 0);
+    await vi.runAllTimersAsync();
+    await pending;
+    expect(seen.find((e) => e.type === 'sync-success')!.detail.data.ListedMailbox).toBe('[Gmail]/Sent Mail');
+  });
+
   it('reports a missing folder, an expired session and a failure distinctly', async () => {
     const svc = new MessageSyncService();
     const seen = events(svc);
@@ -157,6 +167,23 @@ describe('the background poll', () => {
     await Promise.all([poll, foreground]);
     const shown = seen.filter((e) => e.type === 'sync-success').map((e) => e.detail.data.Messages[0].Mailbox);
     expect(shown).toEqual(['Archive']);
+  });
+
+  it('stamps its answer with the folder it read, not the one the context names by then', async () => {
+    let releaseListing!: (r: Response) => void;
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/status')) return Promise.resolve(new Response('{}', { status: 200 }));
+      return new Promise((resolve) => { releaseListing = resolve; });
+    });
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    svc.setContext('Work', 0);
+    const poll = (svc as any).backgroundSync();
+    await vi.advanceTimersByTimeAsync(0);
+    svc.setContext('Sent', 0);
+    releaseListing(listing('Work'));
+    await poll;
+    expect(seen.find((e) => e.type === 'sync-success')!.detail.data.ListedMailbox).toBe('Work');
   });
 
   it('reports a folder that disappeared instead of failing quietly', async () => {
