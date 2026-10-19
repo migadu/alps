@@ -53,6 +53,10 @@ export class AlpsFloatingComposer extends LitElement {
   @state() private isDragOver = false;
 
   private autoSaveTimer: number | null = null;
+  /** The save on the wire, for a close or a discard to wait out. */
+  private savingPromise: Promise<boolean> | null = null;
+  /** Set once a discard is under way: no save may store the draft again. */
+  private discarding = false;
 
   private _handleI18nChange = () => {
     this.requestUpdate();
@@ -138,6 +142,7 @@ export class AlpsFloatingComposer extends LitElement {
 
   private _scheduleAutoSave() {
     this._clearAutoSave();
+    if (this.discarding) return;
     this.autoSaveTimer = window.setTimeout(() => {
       this._saveDraft();
     }, 3000); // 3 seconds auto-save
@@ -151,10 +156,19 @@ export class AlpsFloatingComposer extends LitElement {
    * not land, which is the one case where closing the window would destroy what
    * the user wrote. See `_handleCloseClick`.
    */
-  private async _saveDraft(): Promise<boolean> {
+  private _saveDraft(): Promise<boolean> {
+    // A save is already in flight; a second one now would race it.
+    if (this.savingPromise) return Promise.resolve(false);
+    const running = this._doSaveDraft().finally(() => {
+      if (this.savingPromise === running) this.savingPromise = null;
+    });
+    this.savingPromise = running;
+    return running;
+  }
+
+  private async _doSaveDraft(): Promise<boolean> {
     const currentInstance = this.composeStore.getComposer(this.instance.id) || this.instance;
-    // A save is already in flight; closing now would race it.
-    if (currentInstance.isSending || this.isSaving) return false;
+    if (currentInstance.isSending || this.discarding) return false;
 
     // Check if we have anything to save
     const hasRecipient = (currentInstance.to?.length || 0) > 0 || (currentInstance.cc?.length || 0) > 0 || (currentInstance.bcc?.length || 0) > 0;
@@ -351,6 +365,7 @@ export class AlpsFloatingComposer extends LitElement {
    * when their message has attachments worth waiting for.
    */
   private async _finishDeferredClose() {
+    await this.savingPromise?.catch(() => false);
     if (await this._saveDraft()) {
       this.composeStore.closeComposer(this.instance.id);
       return;
@@ -383,8 +398,12 @@ export class AlpsFloatingComposer extends LitElement {
     // reached the server. Total, silent loss of what the user wrote, on the
     // gesture they use to put a message aside for later.
     //
-    // The store's answer, not the rendered property's, which lags it: a save
-    // that has just landed may have left the composer dirty.
+    // An autosave already on the wire is waited out first. Its answer decides
+    // whether anything is left to save, and a second save beside it was
+    // refused and reported as a failure while the first one was still running.
+    // Then the store's answer, not the rendered property's, which lags it: a
+    // save that has just landed may have left the composer dirty.
+    await this.savingPromise?.catch(() => false);
     const current = this.composeStore.getComposer(this.instance.id) || this.instance;
     if (current.dirty) {
       const saved = await this._saveDraft();
@@ -442,9 +461,18 @@ export class AlpsFloatingComposer extends LitElement {
   }
 
   private async _performDiscard(type: 'close' | 'delete' | null) {
-    if (type === 'delete' && this.instance.draftUid && this.instance.draftMailbox) {
-      const mailbox = this.instance.draftMailbox;
-      const uid = String(this.instance.draftUid);
+    this.discarding = true;
+    this._clearAutoSave();
+    // A save already on the wire stores a new draft and deletes the one this
+    // window knew. Deleting before it lands deleted the old draft and left the
+    // new one in Drafts, after the user had discarded it. So the save is
+    // waited out, and the draft to delete is read from the store, which that
+    // save updates, not from the rendered property, which lags.
+    await this.savingPromise?.catch(() => false);
+    const current = this.composeStore.getComposer(this.instance.id) || this.instance;
+    if (type === 'delete' && current.draftUid && current.draftMailbox) {
+      const mailbox = current.draftMailbox;
+      const uid = String(current.draftUid);
       try {
         // `deleteMessages` reports a refusal by RETURNING false; it only throws
         // on a network error, so the catch below was the smaller half of the
@@ -466,8 +494,8 @@ export class AlpsFloatingComposer extends LitElement {
       }
     }
 
-    if (this.instance.attachments) {
-      for (const att of this.instance.attachments) {
+    if (current.attachments) {
+      for (const att of current.attachments) {
         if (att._tempId) abortUpload(att._tempId);
         else if (att.uuid) deleteAttachment(att.uuid);
       }

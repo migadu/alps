@@ -167,6 +167,31 @@ describe('the composer', () => {
     return (answer: unknown) => land(answer);
   }
 
+  it('waits for a save in flight, and discards the draft that save stored', async () => {
+    // The save stores draft 8 and deletes 7. Deleting 7 before it landed
+    // left 8 in Drafts, after the user had discarded it.
+    const land = heldSave();
+    const del = vi.spyOn(messageOperations, 'deleteMessagesResult').mockResolvedValue({ ok: true });
+    const instance: ComposerInstance = {
+      id: 'c1', draftUid: '7', draftMailbox: 'Drafts', subject: 'Engines', text: 'Notes', format: 'text', dirty: true,
+    };
+    const store = liveStoreFor(instance);
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    const saving = el._saveDraft();
+    const discarding = el._performDiscard('delete');
+    await flush();
+    expect(del).not.toHaveBeenCalled();
+    expect(store.closeComposer).not.toHaveBeenCalled();
+
+    land({ uid: '8', mailbox: 'Drafts' });
+    await saving;
+    await discarding;
+
+    expect(del.mock.calls).toEqual([['Drafts', ['8']]]);
+    expect(store.closeComposer).toHaveBeenCalledWith('c1');
+  });
+
   it('keeps what was typed during a save unsaved, and saves it on close', async () => {
     // Marked clean when the earlier save landed, the newer text was not saved
     // by the close, which saves only a dirty composer, and went with the window.
@@ -188,6 +213,26 @@ describe('the composer', () => {
     expect(save).toHaveBeenCalledTimes(2);
     expect((save.mock.calls[1][0] as FormData).get('text')).toBe('Notes, and more');
     expect((save.mock.calls[1][0] as FormData).get('draft_uid')).toBe('8');
+    expect(store.closeComposer).toHaveBeenCalledWith('c1');
+  });
+
+  it('closes after a save in flight rather than calling it a failure', async () => {
+    const land = heldSave();
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const instance: ComposerInstance = {
+      id: 'c1', to: ['ada@example.com'], subject: 'Engines', text: 'Notes', initialText: '', format: 'text', dirty: true,
+    };
+    const store = liveStoreFor(instance);
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    const saving = el._saveDraft();
+    const closing = el._handleCloseClick();
+    land({ uid: '8', mailbox: 'Drafts' });
+    await saving;
+    await closing;
+
+    expect(toasts).toEqual([]);
+    expect(messageOperations.saveDraft).toHaveBeenCalledTimes(1);
     expect(store.closeComposer).toHaveBeenCalledWith('c1');
   });
 });
