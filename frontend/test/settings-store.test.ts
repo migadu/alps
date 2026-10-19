@@ -55,6 +55,10 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const [type, listener] of listeners.splice(0)) window.removeEventListener(type, listener);
+  // The stores of a test outlive it, listening on the window. Ending the
+  // session stops any retry one of them has waiting, which would otherwise
+  // land in a later test.
+  window.dispatchEvent(new CustomEvent('session-cleared'));
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   clearCookies();
@@ -686,6 +690,101 @@ describe('a change the server has not taken', () => {
     await store.updateSettings({ signature: 'server' });
     expect(stored()).toBeNull();
     expect(puts(calls)).toEqual([]);
+  });
+
+  describe('when its save fails', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /** Answers saves in turn, the last answer repeating. */
+    const inTurn = (...answers: (() => Response)[]) => {
+      let next = 0;
+      return () => answers[Math.min(next++, answers.length - 1)]();
+    };
+
+    /** Signs in, then takes over the clock that retries are timed by. */
+    async function signInWithClock(put: () => Response) {
+      const signedIn = await signIn('server', put);
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      return signedIn;
+    }
+
+    it('is tried again by itself, backing off, and said once', async () => {
+      const toasts = record('show-toast');
+      const { store, calls } = await signInWithClock(inTurn(() => json(503), () => json(503), () => json(502), () => json(200, {})));
+      await store.updateSettings({ signature: 'typed here' });
+      expect(puts(calls)).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(puts(calls)).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(puts(calls)).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(puts(calls)).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(puts(calls)).toHaveLength(3);
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(puts(calls)).toHaveLength(4);
+
+      expect(puts(calls).every((body) => body.signature === 'typed here')).toBe(true);
+      expect(stored()).toBeNull();
+      // One failure, as far as the user is concerned, not three.
+      expect(toasts).toHaveLength(1);
+      // Saved, so nothing more is tried.
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(puts(calls)).toHaveLength(4);
+    });
+
+    it('waits as long as the server asks, when it asks for longer', async () => {
+      const busy = () => new Response(null, { status: 429, headers: { 'Retry-After': '60' } });
+      const { store, calls } = await signInWithClock(inTurn(busy, () => json(200, {})));
+      await store.updateSettings({ signature: 'typed here' });
+
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(puts(calls)).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(puts(calls)).toHaveLength(2);
+    });
+
+    it('is tried at once when the browser is back online', async () => {
+      const { store, calls } = await signInWithClock(inTurn(() => json(503), () => json(200, {})));
+      await store.updateSettings({ signature: 'typed here' });
+
+      window.dispatchEvent(new Event('online'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(puts(calls)).toHaveLength(2);
+      expect(stored()).toBeNull();
+      // And the retry it was waiting for is not tried as well.
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(puts(calls)).toHaveLength(2);
+    });
+
+    it('is not tried again, nor kept, when the server refuses it outright', async () => {
+      // A refusal of the values themselves: the same request gets it again.
+      const toasts = record('show-toast');
+      const { store, calls } = await signInWithClock(inTurn(() => json(413), () => json(200, {})));
+      await store.updateSettings({ signature: 'x'.repeat(100) });
+      expect(toasts).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(puts(calls)).toHaveLength(1);
+      expect(stored()).toBeNull();
+
+      // Nor does it go with the next change, and have that refused too.
+      await store.updateSettings({ replyTo: 'ada@example.org' });
+      expect(puts(calls)[1]).toEqual({ reply_to: 'ada@example.org' });
+    });
+
+    it('stops being tried at sign-out', async () => {
+      const { store, calls } = await signInWithClock(() => json(503));
+      await store.updateSettings({ signature: 'typed here' });
+
+      clearSessionSettings();
+      window.dispatchEvent(new CustomEvent('session-cleared'));
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(puts(calls)).toHaveLength(1);
+    });
   });
 });
 

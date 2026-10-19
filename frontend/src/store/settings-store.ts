@@ -185,6 +185,26 @@ interface Unsaved {
   base?: unknown;
 }
 
+/** How long a save that failed waits before it is tried again, by attempt; the
+ * last one repeats. A server that names its own wait (`Retry-After`) is
+ * believed when it asks for longer. */
+const RETRY_DELAYS_MS = [5_000, 30_000, 120_000, 300_000];
+
+/** How a save ended: taken; refused, which the same request would be again;
+ * worth another try, after the wait the server asked for if it named one; or
+ * answered after its session ended, which is nobody's business now. */
+type SaveOutcome = 'saved' | 'refused' | 'ended' | { retryAfterMs: number | null };
+
+/** `Retry-After` in milliseconds: seconds, or a date. */
+function retryAfterMs(response: Response): number | null {
+  const header = response.headers.get('Retry-After');
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const at = Date.parse(header);
+  return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
+}
+
 /** Not under the `alps_settings_` prefix, which is followed by a username. */
 const unsavedKeyFor = (username: string) => `alps_unsaved_settings_${username}`;
 
@@ -225,6 +245,10 @@ export class SettingsStore extends EventTarget {
   private unsaved = new Map<ServerKey, Unsaved>();
   /** The account's record as last read, and as since saved, in this session. */
   private record: Record<string, any> | null = null;
+  /** The retry of a save that failed, if one is waiting, and how many saves
+   * have failed in a row; see {@link retryLater}. */
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private failures = 0;
   /**
    * Moves when a session ends and when another begins. Signing out and in
    * again does not reload the page, so a read of `/session` or `/settings`
@@ -254,6 +278,8 @@ export class SettingsStore extends EventTarget {
       this.settingsReadFailed = false;
       this.unsaved.clear();
       this.record = null;
+      this.cancelRetry();
+      this.failures = 0;
       this.state = this.loadSettings();
       this.applyTheme();
       this.notify();
@@ -262,7 +288,17 @@ export class SettingsStore extends EventTarget {
     window.addEventListener('user-logged-in', (e: Event) => {
       const username = (e as CustomEvent).detail?.username;
       this.epoch++;
+      this.cancelRetry();
+      this.failures = 0;
       this.initializeSession(username);
+    });
+
+    // Back online is the best moment there is to retry: whatever the back-off
+    // had worked up to, its reason has probably just gone.
+    window.addEventListener('online', () => {
+      if (this.unsaved.size === 0 || !this.initialFetchCompleted) return;
+      this.cancelRetry();
+      void this._saveBackendSettings();
     });
 
     this.initializeSession();
@@ -702,7 +738,9 @@ export class SettingsStore extends EventTarget {
    * trailing save reads the values when it runs, so intermediate values are
    * coalesced away. A setting stays unsaved until a save that carried its
    * current value is answered, so a save that fails leaves its settings for
-   * the next one, and so does a reload.
+   * the next one, and so does a reload. The next one is not left to the next
+   * change, which may never come: a save that failed is tried again by
+   * itself ({@link retryLater}).
    */
   private saveInFlight = false;
   private savePending = false;
@@ -736,24 +774,39 @@ export class SettingsStore extends EventTarget {
     const sent = new Map(keys.map(key => [key, this.state[key]]));
     this.saveInFlight = true;
     try {
+      const outcome = await this._putBackendSettings(body, epoch);
       // An answer for a session that has ended is not this one's to act on.
-      if (await this._putBackendSettings(body, epoch) && epoch === this.epoch) {
+      if (outcome === 'ended' || epoch !== this.epoch) return;
+      if (outcome === 'saved') {
+        this.failures = 0;
+        this.cancelRetry();
         this.noteSaved(body);
-        const saved: ServerKey[] = [];
-        for (const key of keys) {
-          const entry = this.unsaved.get(key);
-          if (!entry) continue;
-          if (sameValue(this.state[key], sent.get(key))) {
-            saved.push(key);
-          } else if (this.record) {
-            // Changed again while the save was out: the value it carried is
-            // now the record's, and the one the newer change is made from.
-            entry.base = recordValue(this.record, key) ?? null;
-          }
-        }
-        for (const key of saved) this.unsaved.delete(key);
-        this.storeUnsaved(saved);
+      } else if (outcome !== 'refused') {
+        // Said once for a run of failures, not once for every retry of it.
+        if (this.failures === 0) this.reportSaveFailure();
+        this.retryLater(outcome.retryAfterMs);
+        return;
+      } else {
+        this.reportSaveFailure();
       }
+      // Taken, or refused outright, which the same values would be again.
+      // A refused setting kept unsaved went with every later save and had it
+      // refused too, and, now that unsaved settings outlive a reload, with
+      // every load as well.
+      const settled: ServerKey[] = [];
+      for (const key of keys) {
+        const entry = this.unsaved.get(key);
+        if (!entry) continue;
+        if (sameValue(this.state[key], sent.get(key))) {
+          settled.push(key);
+        } else if (outcome === 'saved' && this.record) {
+          // Changed again while the save was out: the value it carried is
+          // now the record's, and the one the newer change is made from.
+          entry.base = recordValue(this.record, key) ?? null;
+        }
+      }
+      for (const key of settled) this.unsaved.delete(key);
+      this.storeUnsaved(settled);
     } finally {
       this.saveInFlight = false;
       if (this.savePending) {
@@ -761,6 +814,31 @@ export class SettingsStore extends EventTarget {
         void this._saveBackendSettings();
       }
     }
+  }
+
+  /**
+   * Tries a failed save again, later and by itself.
+   *
+   * The change is on screen already, and nothing tells the user it is not on
+   * the server, so nothing should depend on their happening to change another
+   * setting. Backed off, because the usual reason is a server or a network
+   * that is down.
+   */
+  private retryLater(retryAfterMs: number | null) {
+    this.cancelRetry();
+    if (this.unsaved.size === 0) return;
+    const backoff = RETRY_DELAYS_MS[Math.min(this.failures, RETRY_DELAYS_MS.length - 1)];
+    this.failures++;
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      void this._saveBackendSettings();
+    }, Math.max(backoff, retryAfterMs ?? 0));
+  }
+
+  private cancelRetry() {
+    if (!this.retryTimer) return;
+    clearTimeout(this.retryTimer);
+    this.retryTimer = null;
   }
 
   /** What a save put in the account's record, which is now the value a change
@@ -776,9 +854,8 @@ export class SettingsStore extends EventTarget {
     }
   }
 
-  /** Whether the server took the save. A refusal has been reported, unless the
-   * session the save was made in has ended since. */
-  private async _putBackendSettings(body: Record<string, unknown>, epoch: number): Promise<boolean> {
+  /** How the save ended; see {@link SaveOutcome}. */
+  private async _putBackendSettings(body: Record<string, unknown>, epoch: number): Promise<SaveOutcome> {
     try {
       const response = await fetch('/settings', {
         method: 'PUT',
@@ -787,11 +864,11 @@ export class SettingsStore extends EventTarget {
         },
         body: JSON.stringify(body)
       });
-      if (epoch !== this.epoch) return false;
+      if (epoch !== this.epoch) return 'ended';
       
       if (response.status === 401) {
         window.dispatchEvent(new CustomEvent('auth-error'));
-        return false;
+        return 'ended';
       }
 
       // `response.ok` was never consulted. A 400, a 413 or a 500 passed through
@@ -802,14 +879,17 @@ export class SettingsStore extends EventTarget {
       // was also the only one that could fail without saying so.
       if (!response.ok) {
         Logger.error('Failed to save backend settings', response.status);
-        this.reportSaveFailure();
-        return false;
+        // Worth another try: a server in trouble, a timeout, a rate limit. Not
+        // worth one: a refusal of these values, too large or malformed, which
+        // the same request would get again.
+        const transient = response.status >= 500 || response.status === 408 || response.status === 429;
+        return transient ? { retryAfterMs: retryAfterMs(response) } : 'refused';
       }
-      return true;
+      return 'saved';
     } catch (e) {
+      // No answer at all: offline, or the connection dropped.
       Logger.error('Failed to save backend settings', e);
-      if (epoch === this.epoch) this.reportSaveFailure();
-      return false;
+      return epoch === this.epoch ? { retryAfterMs: null } : 'ended';
     }
   }
 
