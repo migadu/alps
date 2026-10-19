@@ -182,9 +182,18 @@ export const fr = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Sélectionner tous les messages',
-    allOnPageSelected: 'Les {count} messages de cette page sont sélectionnés',
-    selectAllMatching: 'Sélectionner les {count} messages de {folder}',
-    allMatchingSelected: 'Les {count} messages de {folder} sont sélectionnés',
+    allOnPageSelected: {
+      one: '{count} message de cette page est sélectionné',
+      other: 'Les {count} messages de cette page sont sélectionnés'
+    },
+    selectAllMatching: {
+      one: 'Sélectionner {count} message de {folder}',
+      other: 'Sélectionner les {count} messages de {folder}'
+    },
+    allMatchingSelected: {
+      one: '{count} message de {folder} est sélectionné',
+      other: 'Les {count} messages de {folder} sont sélectionnés'
+    },
     clearSelection: 'Effacer la sélection',
     checkNew: 'Vérifier les nouveaux messages',
     sortDesc: 'Trier par date décroissante',
@@ -204,14 +213,20 @@ export const fr = {
     searchResultsFor: 'Résultats de recherche pour:',
     clearSearch: 'Effacer la recherche',
     searchAllMailboxes: 'Tout rechercher',
-    totalMessagesIn: '{count} messages au total dans {folder}',
+    totalMessagesIn: {
+      one: '{count} message dans {folder}',
+      other: '{count} messages au total dans {folder}'
+    },
     totalConversationsIn: {
       one: '{count} conversation dans {folder}',
       other: '{count} conversations au total dans {folder}'
     },
     deleteAllNow: 'Tout supprimer maintenant',
     emptyMailboxTitle: 'Vider {folder}',
-    emptyMailboxConfirm: 'Êtes-vous sûr de vouloir supprimer définitivement les {count} messages dans {folder} ? Cette action ne peut pas être annulée.',
+    emptyMailboxConfirm: {
+      one: 'Êtes-vous sûr de vouloir supprimer définitivement l’unique message dans {folder} ? Cette action ne peut pas être annulée.',
+      other: 'Êtes-vous sûr de vouloir supprimer définitivement les {count} messages dans {folder} ? Cette action ne peut pas être annulée.'
+    },
     emptyMailboxConfirmConversations: {
       one: 'Êtes-vous sûr de vouloir supprimer définitivement l’unique conversation dans {folder}, et tous ses messages ? Cette action ne peut pas être annulée.',
       other: 'Êtes-vous sûr de vouloir supprimer définitivement les {count} conversations dans {folder}, et tous leurs messages ? Cette action ne peut pas être annulée.'
@@ -418,7 +433,10 @@ export const fr = {
     nextPage: 'Page suivante',
     zeroMessages: '0 message',
     totalCount: '{total} au total',
-    searchResults: '{total} résultats',
+    searchResults: {
+      one: '{count} résultat',
+      other: '{count} résultats'
+    },
     rangeOfTotal: '{start}–{end} sur {total}'
   },
   toast: {
@@ -501,7 +519,10 @@ export const fr = {
   offline: {
     title: 'Connexion perdue',
     description: 'Connexion réseau interrompue',
-    tryingAgain: 'Nouvel essai dans {seconds} secondes...'
+    tryingAgain: {
+      one: 'Nouvel essai dans {count} seconde...',
+      other: 'Nouvel essai dans {count} secondes...'
+    }
   },
   update: {
     available: 'Une nouvelle version est disponible.',

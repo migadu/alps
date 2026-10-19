@@ -9,6 +9,7 @@ import '../../plugins/carddav/frontend/contacts-page';
 import { contactsService } from '../../plugins/carddav/frontend/contacts-service';
 import { CATEGORY_FAVORITES } from '../../plugins/carddav/frontend/constants';
 import { HttpStatusError, outcomeUnknown } from '../src/utils/fetch-utils';
+import { I18nStore } from '../src/store/i18n-store';
 
 type Page = HTMLElement & Record<string, any>;
 
@@ -283,5 +284,47 @@ describe('the bulk outcome', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+/**
+ * What the refusal toast says. The counts went in as {failed} and {total},
+ * and the noun beside them could only be right for one number; the total is
+ * now the plural key's {count}. One path passed no numbers at all and showed
+ * the placeholders themselves.
+ */
+describe('the refusal toast', () => {
+  async function toastFrom(language: string, act: (el: Page) => Promise<void>, contacts = [card('a'), card('b')]) {
+    const el = page(contacts, contacts.map((c) => c.path));
+    el.i18nStore = new I18nStore();
+    await el.i18nStore.setLanguage(language);
+    vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
+    const shown: string[] = [];
+    const listen = (e: Event) => shown.push((e as CustomEvent).detail.message);
+    window.addEventListener('show-toast', listen);
+    try {
+      await act(el);
+    } finally {
+      window.removeEventListener('show-toast', listen);
+    }
+    return shown;
+  }
+
+  it('counts a partial delete in words that agree with the total', async () => {
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 2, done: 1, failed: 1 });
+    expect(await toastFrom('en', (el) => el.confirmDelete())).toEqual(['1 of 2 contacts could not be deleted.']);
+  });
+
+  it('agrees in Serbian too, where 3 takes another form than 5', async () => {
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 3, done: 2, failed: 1 });
+    const three = [card('a'), card('b'), card('c')];
+    expect(await toastFrom('sr', (el) => el.confirmDelete(), three)).toEqual(['1 od 3 kontakta nije moglo biti obrisano.']);
+  });
+
+  it('names the numbers when a category change fails outright', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockRejectedValue(new Error('offline'));
+    const shown = await toastFrom('en', (el) => el.handleUpdateCategories(new CustomEvent('x', { detail: { category: 'Work' } })));
+    expect(shown).toEqual(['2 of 2 contacts could not be updated.']);
   });
 });

@@ -182,9 +182,18 @@ export const it = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Seleziona tutti i messaggi',
-    allOnPageSelected: 'Tutti i {count} messaggi di questa pagina sono selezionati',
-    selectAllMatching: 'Seleziona tutti i {count} in {folder}',
-    allMatchingSelected: 'Tutti i {count} messaggi in {folder} sono selezionati',
+    allOnPageSelected: {
+      one: '{count} messaggio di questa pagina è selezionato',
+      other: 'Tutti i {count} messaggi di questa pagina sono selezionati'
+    },
+    selectAllMatching: {
+      one: 'Seleziona {count} in {folder}',
+      other: 'Seleziona tutti i {count} in {folder}'
+    },
+    allMatchingSelected: {
+      one: '{count} messaggio in {folder} è selezionato',
+      other: 'Tutti i {count} messaggi in {folder} sono selezionati'
+    },
     clearSelection: 'Annulla la selezione',
     checkNew: 'Controlla nuovi messaggi',
     sortDesc: 'Ordina decrescente per data',
@@ -204,14 +213,20 @@ export const it = {
     searchResultsFor: 'Risultati della ricerca per:',
     clearSearch: 'Cancella ricerca',
     searchAllMailboxes: 'Cerca ovunque',
-    totalMessagesIn: '{count} messaggi in totale in {folder}',
+    totalMessagesIn: {
+      one: '{count} messaggio in {folder}',
+      other: '{count} messaggi in totale in {folder}'
+    },
     totalConversationsIn: {
       one: '{count} conversazione in {folder}',
       other: '{count} conversazioni in totale in {folder}'
     },
     deleteAllNow: 'Elimina tutto ora',
     emptyMailboxTitle: 'Svuota {folder}',
-    emptyMailboxConfirm: 'Sei sicuro di voler eliminare in modo permanente tutti i {count} messaggi in {folder}? Questa azione non può essere annullata.',
+    emptyMailboxConfirm: {
+      one: 'Sei sicuro di voler eliminare in modo permanente l’unico messaggio in {folder}? Questa azione non può essere annullata.',
+      other: 'Sei sicuro di voler eliminare in modo permanente tutti i {count} messaggi in {folder}? Questa azione non può essere annullata.'
+    },
     emptyMailboxConfirmConversations: {
       one: 'Sei sicuro di voler eliminare in modo permanente l’unica conversazione in {folder}, con tutti i suoi messaggi? Questa azione non può essere annullata.',
       other: 'Sei sicuro di voler eliminare in modo permanente tutte le {count} conversazioni in {folder}, con tutti i loro messaggi? Questa azione non può essere annullata.'
@@ -418,7 +433,10 @@ export const it = {
     nextPage: 'Pagina successiva',
     zeroMessages: '0 messaggi',
     totalCount: '{total} in totale',
-    searchResults: '{total} risultati',
+    searchResults: {
+      one: '{count} risultato',
+      other: '{count} risultati'
+    },
     rangeOfTotal: '{start}–{end} di {total}'
   },
   toast: {
@@ -501,7 +519,10 @@ export const it = {
   offline: {
     title: 'Connessione persa',
     description: 'Connessione di rete persa',
-    tryingAgain: 'Nuovo tentativo in {seconds} secondi...'
+    tryingAgain: {
+      one: 'Nuovo tentativo in {count} secondo...',
+      other: 'Nuovo tentativo in {count} secondi...'
+    }
   },
   update: {
     available: 'È disponibile una nuova versione.',

@@ -779,7 +779,7 @@ export class ContactsPage extends LitElement {
       contactsToUpdate = await this.cardsCarrying(oldName);
     } catch (e) {
       console.error('Could not read the address book for a category change', e);
-      this.reportFailure('contacts.categoryRenameFailed', { failed: 1, total: 1 });
+      this.reportFailure('contacts.categoryRenameFailed', { failed: 1, count: 1 });
       return;
     }
     if (contactsToUpdate.length > 0) {
@@ -792,11 +792,11 @@ export class ContactsPage extends LitElement {
         const { total, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
         this.fetchContacts();
-        if (failed > 0) this.reportFailure('contacts.categoryRenameFailed', { failed, total });
+        if (failed > 0) this.reportFailure('contacts.categoryRenameFailed', { failed, count: total });
       } catch (e) {
         console.error('Error renaming category', e);
         this.fetchContacts();
-        this.reportFailure('contacts.categoryRenameFailed', { failed: 1, total: 1 });
+        this.reportFailure('contacts.categoryRenameFailed', { failed: 1, count: 1 });
       } finally {
         this.saving = false;
       }
@@ -824,7 +824,7 @@ export class ContactsPage extends LitElement {
       contactsToUpdate = await this.cardsCarrying(oldName);
     } catch (e) {
       console.error('Could not read the address book for a category change', e);
-      this.reportFailure('contacts.categoryDeleteFailed', { failed: 1, total: 1 });
+      this.reportFailure('contacts.categoryDeleteFailed', { failed: 1, count: 1 });
       return;
     }
     if (contactsToUpdate.length > 0) {
@@ -837,11 +837,11 @@ export class ContactsPage extends LitElement {
         const { total, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
         this.fetchContacts();
-        if (failed > 0) this.reportFailure('contacts.categoryDeleteFailed', { failed, total });
+        if (failed > 0) this.reportFailure('contacts.categoryDeleteFailed', { failed, count: total });
       } catch (e) {
         console.error('Error deleting category', e);
         this.fetchContacts();
-        this.reportFailure('contacts.categoryDeleteFailed', { failed: 1, total: 1 });
+        this.reportFailure('contacts.categoryDeleteFailed', { failed: 1, count: 1 });
       } finally {
         this.saving = false;
       }
@@ -1114,12 +1114,12 @@ export class ContactsPage extends LitElement {
         }
       }
       if (failed > 0) {
-        this.reportFailure('contacts.deleteFailed', { failed, total });
+        this.reportFailure('contacts.deleteFailed', { failed, count: total });
       }
     } catch (e) {
       console.error('Error deleting contacts', e);
       this.fetchContacts();
-      this.reportFailure('contacts.deleteFailed', { failed: 1, total: 1 });
+      this.reportFailure('contacts.deleteFailed', { failed: 1, count: 1 });
     } finally {
       this.saving = false;
     }
@@ -1170,7 +1170,7 @@ export class ContactsPage extends LitElement {
       this.applyETags(etags);
       if (failed > 0) {
         this.fetchContacts();
-        this.reportFailure('contacts.categoryUpdateFailed', { failed, total });
+        this.reportFailure('contacts.categoryUpdateFailed', { failed, count: total });
       }
 
       if (this.selectedContact && this.selectedContacts.size <= 1 && this.selectedCategory !== '') {
@@ -1191,7 +1191,10 @@ export class ContactsPage extends LitElement {
       }
     } catch (e) {
       console.error('Error updating categories', e);
-      this.reportFailure('contacts.categoryUpdateFailed');
+      // The bulk update threw before reporting any outcome, so none of the
+      // cards can be counted as done. Without numbers the toast showed its
+      // own "{failed} of {total}" placeholders.
+      this.reportFailure('contacts.categoryUpdateFailed', { failed: pathsToUpdate.length, count: pathsToUpdate.length });
     } finally {
       this.saving = false;
     }

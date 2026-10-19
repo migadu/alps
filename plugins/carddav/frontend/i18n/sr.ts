@@ -1,9 +1,25 @@
 export default {
   contacts: {
-    deleteFailed: '{failed} od {total} kontakata nije moglo biti obrisano.',
-    categoryRenameFailed: '{failed} od {total} kontakata nije moglo biti ažurirano, kategorija je samo delimično preimenovana.',
-    categoryDeleteFailed: '{failed} od {total} kontakata nije moglo biti ažurirano, kategorija je samo delimično uklonjena.',
-    categoryUpdateFailed: '{failed} od {total} kontakata nije moglo biti ažurirano.',
+    deleteFailed: {
+      one: '{failed} od {count} kontakta nije moglo biti obrisano.',
+      few: '{failed} od {count} kontakta nije moglo biti obrisano.',
+      other: '{failed} od {count} kontakata nije moglo biti obrisano.'
+    },
+    categoryRenameFailed: {
+      one: '{failed} od {count} kontakta nije moglo biti ažurirano, kategorija je samo delimično preimenovana.',
+      few: '{failed} od {count} kontakta nije moglo biti ažurirano, kategorija je samo delimično preimenovana.',
+      other: '{failed} od {count} kontakata nije moglo biti ažurirano, kategorija je samo delimično preimenovana.'
+    },
+    categoryDeleteFailed: {
+      one: '{failed} od {count} kontakta nije moglo biti ažurirano, kategorija je samo delimično uklonjena.',
+      few: '{failed} od {count} kontakta nije moglo biti ažurirano, kategorija je samo delimično uklonjena.',
+      other: '{failed} od {count} kontakata nije moglo biti ažurirano, kategorija je samo delimično uklonjena.'
+    },
+    categoryUpdateFailed: {
+      one: '{failed} od {count} kontakta nije moglo biti ažurirano.',
+      few: '{failed} od {count} kontakta nije moglo biti ažurirano.',
+      other: '{failed} od {count} kontakata nije moglo biti ažurirano.'
+    },
     saveFailed: 'Kontakt nije mogao biti sačuvan.',
     saveConflict: 'Kontakt je izmenjen na drugom uređaju, pa vaša izmena nije sačuvana. Otkažite izmenu da biste videli najnoviju verziju.',
     starFailed: 'Kontakt nije mogao biti ažuriran.',

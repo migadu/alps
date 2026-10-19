@@ -232,9 +232,18 @@ export const en = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Select all messages',
-    allOnPageSelected: 'All {count} messages on this page are selected',
-    selectAllMatching: 'Select all {count} in {folder}',
-    allMatchingSelected: 'All {count} messages in {folder} are selected',
+    allOnPageSelected: {
+      one: '{count} message on this page is selected',
+      other: 'All {count} messages on this page are selected'
+    },
+    selectAllMatching: {
+      one: 'Select {count} in {folder}',
+      other: 'Select all {count} in {folder}'
+    },
+    allMatchingSelected: {
+      one: '{count} message in {folder} is selected',
+      other: 'All {count} messages in {folder} are selected'
+    },
     clearSelection: 'Clear selection',
     checkNew: 'Check for new messages',
     sortDesc: 'Sort descending by date',
@@ -254,14 +263,20 @@ export const en = {
     searchResultsFor: 'Search results for:',
     clearSearch: 'Clear search',
     searchAllMailboxes: 'Search All',
-    totalMessagesIn: '{count} total messages in {folder}',
+    totalMessagesIn: {
+      one: '{count} message in {folder}',
+      other: '{count} total messages in {folder}'
+    },
     totalConversationsIn: {
       one: '{count} conversation in {folder}',
       other: '{count} total conversations in {folder}'
     },
     deleteAllNow: 'Delete All Now',
     emptyMailboxTitle: 'Empty {folder}',
-    emptyMailboxConfirm: 'Are you sure you want to permanently delete all {count} messages in {folder}? This action cannot be undone.',
+    emptyMailboxConfirm: {
+      one: 'Are you sure you want to permanently delete the one message in {folder}? This action cannot be undone.',
+      other: 'Are you sure you want to permanently delete all {count} messages in {folder}? This action cannot be undone.'
+    },
     emptyMailboxConfirmConversations: {
       one: 'Are you sure you want to permanently delete the one conversation in {folder}, and every message in it? This action cannot be undone.',
       other: 'Are you sure you want to permanently delete all {count} conversations in {folder}, and every message in them? This action cannot be undone.'
@@ -461,7 +476,10 @@ export const en = {
     nextPage: 'Next page',
     zeroMessages: '0 messages',
     totalCount: '{total} total',
-    searchResults: '{total} results',
+    searchResults: {
+      one: '{count} result',
+      other: '{count} results'
+    },
     rangeOfTotal: '{start}–{end} of {total}'
   },
   toast: {
@@ -544,7 +562,10 @@ export const en = {
   offline: {
     title: 'Connection Lost',
     description: 'Network connectivity lost',
-    tryingAgain: 'Trying again in {seconds} seconds...'
+    tryingAgain: {
+      one: 'Trying again in {count} second...',
+      other: 'Trying again in {count} seconds...'
+    }
   },
   update: {
     available: 'A new version is available.',

@@ -182,9 +182,21 @@ export const rs = {
   messageList: {
     menu: 'Мени',
     selectAll: 'Изабери све поруке',
-    allOnPageSelected: 'Свих {count} порука на овој страници је изабрано',
-    selectAllMatching: 'Изабери свих {count} у {folder}',
-    allMatchingSelected: 'Свих {count} порука у {folder} је изабрано',
+    allOnPageSelected: {
+      one: '{count} порука на овој страници је изабрана',
+      few: 'Све {count} поруке на овој страници су изабране',
+      other: 'Свих {count} порука на овој страници је изабрано'
+    },
+    selectAllMatching: {
+      one: 'Изабери све {count} у {folder}',
+      few: 'Изабери све {count} у {folder}',
+      other: 'Изабери свих {count} у {folder}'
+    },
+    allMatchingSelected: {
+      one: '{count} порука у {folder} је изабрана',
+      few: 'Све {count} поруке у {folder} су изабране',
+      other: 'Свих {count} порука у {folder} је изабрано'
+    },
     clearSelection: 'Поништи избор',
     checkNew: 'Провери нове поруке',
     sortDesc: 'Сортирај опадајуће по датуму',
@@ -204,7 +216,11 @@ export const rs = {
     searchResultsFor: 'Резултати претраге за:',
     clearSearch: 'Очисти претрагу',
     searchAllMailboxes: 'Претражи све',
-    totalMessagesIn: 'Укупно {count} порука у {folder}',
+    totalMessagesIn: {
+      one: '{count} порука у {folder}',
+      few: 'Укупно {count} поруке у {folder}',
+      other: 'Укупно {count} порука у {folder}'
+    },
     totalConversationsIn: {
       one: '{count} разговор у {folder}',
       few: 'Укупно {count} разговора у {folder}',
@@ -212,14 +228,18 @@ export const rs = {
     },
     deleteAllNow: 'Обриши све сада',
     emptyMailboxTitle: 'Испразни {folder}',
-    emptyMailboxConfirm: 'Да ли сте сигурни да желите трајно да обришете свих {count} порука у {folder}? Ова акција се не може поништити.',
+    emptyMailboxConfirm: {
+      one: 'Да ли сте сигурни да желите трајно да обришете {count} поруку у {folder}? Ова акција се не може поништити.',
+      few: 'Да ли сте сигурни да желите трајно да обришете све {count} поруке у {folder}? Ова акција се не може поништити.',
+      other: 'Да ли сте сигурни да желите трајно да обришете свих {count} порука у {folder}? Ова акција се не може поништити.'
+    },
     emptyMailboxConfirmConversations: {
-      one: 'Да ли сте сигурни да желите трајно да обришете један разговор у {folder} и све поруке у њему? Ова акција се не може поништити.',
+      one: 'Да ли сте сигурни да желите трајно да обришете {count} разговор у {folder} и све поруке у њему? Ова акција се не може поништити.',
       few: 'Да ли сте сигурни да желите трајно да обришете {count} разговора у {folder} и све поруке у њима? Ова акција се не може поништити.',
       other: 'Да ли сте сигурни да желите трајно да обришете свих {count} разговора у {folder} и све поруке у њима? Ова акција се не може поништити.'
     },
     emptyMailboxSelectionNote: {
-      one: 'Укључена је и порука коју сте означили.',
+      one: 'Укључена је и {count} порука коју сте означили.',
       few: 'Укључене су и {count} поруке које сте означили.',
       other: 'Укључено је и {count} порука које сте означили.'
     },
@@ -422,7 +442,11 @@ export const rs = {
     nextPage: 'Следећа страница',
     zeroMessages: '0 порука',
     totalCount: 'укупно {total}',
-    searchResults: '{total} резултата',
+    searchResults: {
+      one: '{count} резултат',
+      few: '{count} резултата',
+      other: '{count} резултата'
+    },
     rangeOfTotal: '{start}–{end} од {total}'
   },
   toast: {
@@ -514,7 +538,11 @@ export const rs = {
   offline: {
     title: 'Веза је прекинута',
     description: 'Мрежна веза је прекинута',
-    tryingAgain: 'Покушај поново за {seconds} секунди...'
+    tryingAgain: {
+      one: 'Нови покушај за {count} секунду...',
+      few: 'Нови покушај за {count} секунде...',
+      other: 'Нови покушај за {count} секунди...'
+    }
   },
   update: {
     available: 'Доступна је нова верзија.',

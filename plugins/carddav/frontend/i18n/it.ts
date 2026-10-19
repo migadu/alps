@@ -1,9 +1,21 @@
 export default {
   contacts: {
-    deleteFailed: 'Non è stato possibile eliminare {failed} contatti su {total}.',
-    categoryRenameFailed: 'Non è stato possibile aggiornare {failed} contatti su {total}, la categoria è stata rinominata solo in parte.',
-    categoryDeleteFailed: 'Non è stato possibile aggiornare {failed} contatti su {total}, la categoria è stata rimossa solo in parte.',
-    categoryUpdateFailed: 'Non è stato possibile aggiornare {failed} contatti su {total}.',
+    deleteFailed: {
+      one: 'Non è stato possibile eliminare {failed} contatto su {count}.',
+      other: 'Non è stato possibile eliminare {failed} dei {count} contatti.'
+    },
+    categoryRenameFailed: {
+      one: 'Non è stato possibile aggiornare {failed} contatto su {count}, la categoria è stata rinominata solo in parte.',
+      other: 'Non è stato possibile aggiornare {failed} dei {count} contatti, la categoria è stata rinominata solo in parte.'
+    },
+    categoryDeleteFailed: {
+      one: 'Non è stato possibile aggiornare {failed} contatto su {count}, la categoria è stata rimossa solo in parte.',
+      other: 'Non è stato possibile aggiornare {failed} dei {count} contatti, la categoria è stata rimossa solo in parte.'
+    },
+    categoryUpdateFailed: {
+      one: 'Non è stato possibile aggiornare {failed} contatto su {count}.',
+      other: 'Non è stato possibile aggiornare {failed} dei {count} contatti.'
+    },
     saveFailed: 'Non è stato possibile salvare il contatto.',
     saveConflict: 'Il contatto è stato modificato su un altro dispositivo, quindi la modifica non è stata salvata. Annulla la modifica per vedere l\'ultima versione.',
     starFailed: 'Non è stato possibile aggiornare il contatto.',

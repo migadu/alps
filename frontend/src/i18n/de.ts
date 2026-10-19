@@ -184,9 +184,18 @@ export const de: TranslationDictionary = {
   messageList: {
     menu: 'Menü',
     selectAll: 'Alle Nachrichten auswählen',
-    allOnPageSelected: 'Alle {count} Nachrichten auf dieser Seite sind ausgewählt',
-    selectAllMatching: 'Alle {count} in {folder} auswählen',
-    allMatchingSelected: 'Alle {count} Nachrichten in {folder} sind ausgewählt',
+    allOnPageSelected: {
+      one: '{count} Nachricht auf dieser Seite ist ausgewählt',
+      other: 'Alle {count} Nachrichten auf dieser Seite sind ausgewählt'
+    },
+    selectAllMatching: {
+      one: '{count} in {folder} auswählen',
+      other: 'Alle {count} in {folder} auswählen'
+    },
+    allMatchingSelected: {
+      one: '{count} Nachricht in {folder} ist ausgewählt',
+      other: 'Alle {count} Nachrichten in {folder} sind ausgewählt'
+    },
     clearSelection: 'Auswahl aufheben',
     checkNew: 'Nach neuen Nachrichten suchen',
     sortDesc: 'Nach Datum absteigend sortieren',
@@ -206,14 +215,20 @@ export const de: TranslationDictionary = {
     searchResultsFor: 'Suchergebnisse für:',
     clearSearch: 'Suche löschen',
     searchAllMailboxes: 'Alle durchsuchen',
-    totalMessagesIn: '{count} Nachrichten insgesamt in {folder}',
+    totalMessagesIn: {
+      one: '{count} Nachricht in {folder}',
+      other: '{count} Nachrichten insgesamt in {folder}'
+    },
     totalConversationsIn: {
       one: '{count} Konversation in {folder}',
       other: '{count} Konversationen insgesamt in {folder}'
     },
     deleteAllNow: 'Jetzt alle löschen',
     emptyMailboxTitle: '{folder} leeren',
-    emptyMailboxConfirm: 'Sind Sie sicher, dass Sie alle {count} Nachrichten in {folder} dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
+    emptyMailboxConfirm: {
+      one: 'Sind Sie sicher, dass Sie die eine Nachricht in {folder} dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
+      other: 'Sind Sie sicher, dass Sie alle {count} Nachrichten in {folder} dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.'
+    },
     emptyMailboxConfirmConversations: {
       one: 'Sind Sie sicher, dass Sie die eine Konversation in {folder} mit allen ihren Nachrichten dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
       other: 'Sind Sie sicher, dass Sie alle {count} Konversationen in {folder} mit allen ihren Nachrichten dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.'
@@ -420,7 +435,10 @@ export const de: TranslationDictionary = {
     nextPage: 'Nächste Seite',
     zeroMessages: '0 Nachrichten',
     totalCount: '{total} insgesamt',
-    searchResults: '{total} Ergebnisse',
+    searchResults: {
+      one: '{count} Ergebnis',
+      other: '{count} Ergebnisse'
+    },
     rangeOfTotal: '{start}–{end} von {total}'
   },
   toast: {
@@ -503,7 +521,10 @@ export const de: TranslationDictionary = {
   offline: {
     title: 'Verbindung verloren',
     description: 'Netzwerkverbindung unterbrochen',
-    tryingAgain: 'Nächster Versuch in {seconds} Sekunden...'
+    tryingAgain: {
+      one: 'Nächster Versuch in {count} Sekunde...',
+      other: 'Nächster Versuch in {count} Sekunden...'
+    }
   },
   update: {
     available: 'Eine neue Version ist verfügbar.',

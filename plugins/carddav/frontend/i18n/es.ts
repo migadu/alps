@@ -1,9 +1,21 @@
 export default {
   contacts: {
-    deleteFailed: 'No se pudieron eliminar {failed} de {total} contactos.',
-    categoryRenameFailed: 'No se pudieron actualizar {failed} de {total} contactos, la categoría solo se renombró parcialmente.',
-    categoryDeleteFailed: 'No se pudieron actualizar {failed} de {total} contactos, la categoría solo se eliminó parcialmente.',
-    categoryUpdateFailed: 'No se pudieron actualizar {failed} de {total} contactos.',
+    deleteFailed: {
+      one: 'No se pudo eliminar {failed} de {count} contacto.',
+      other: 'No se pudieron eliminar {failed} de {count} contactos.'
+    },
+    categoryRenameFailed: {
+      one: 'No se pudo actualizar {failed} de {count} contacto, la categoría solo se renombró parcialmente.',
+      other: 'No se pudieron actualizar {failed} de {count} contactos, la categoría solo se renombró parcialmente.'
+    },
+    categoryDeleteFailed: {
+      one: 'No se pudo actualizar {failed} de {count} contacto, la categoría solo se eliminó parcialmente.',
+      other: 'No se pudieron actualizar {failed} de {count} contactos, la categoría solo se eliminó parcialmente.'
+    },
+    categoryUpdateFailed: {
+      one: 'No se pudo actualizar {failed} de {count} contacto.',
+      other: 'No se pudieron actualizar {failed} de {count} contactos.'
+    },
     saveFailed: 'No se pudo guardar el contacto.',
     saveConflict: 'El contacto se modificó en otro dispositivo, así que tu cambio no se guardó. Cancela la edición para ver la última versión.',
     starFailed: 'No se pudo actualizar el contacto.',

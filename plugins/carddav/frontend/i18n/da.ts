@@ -1,9 +1,21 @@
 export default {
   contacts: {
-    deleteFailed: '{failed} af {total} kontakter kunne ikke slettes.',
-    categoryRenameFailed: '{failed} af {total} kontakter kunne ikke opdateres, så kategorien blev kun delvist omdøbt.',
-    categoryDeleteFailed: '{failed} af {total} kontakter kunne ikke opdateres, så kategorien blev kun delvist fjernet.',
-    categoryUpdateFailed: '{failed} af {total} kontakter kunne ikke opdateres.',
+    deleteFailed: {
+      one: '{failed} af {count} kontakt kunne ikke slettes.',
+      other: '{failed} af {count} kontakter kunne ikke slettes.'
+    },
+    categoryRenameFailed: {
+      one: '{failed} af {count} kontakt kunne ikke opdateres, så kategorien blev kun delvist omdøbt.',
+      other: '{failed} af {count} kontakter kunne ikke opdateres, så kategorien blev kun delvist omdøbt.'
+    },
+    categoryDeleteFailed: {
+      one: '{failed} af {count} kontakt kunne ikke opdateres, så kategorien blev kun delvist fjernet.',
+      other: '{failed} af {count} kontakter kunne ikke opdateres, så kategorien blev kun delvist fjernet.'
+    },
+    categoryUpdateFailed: {
+      one: '{failed} af {count} kontakt kunne ikke opdateres.',
+      other: '{failed} af {count} kontakter kunne ikke opdateres.'
+    },
     saveFailed: 'Kontakten kunne ikke gemmes.',
     saveConflict: 'Kontakten er blevet ændret på en anden enhed, så din ændring blev ikke gemt. Annuller redigeringen for at se den nyeste version.',
     starFailed: 'Kontakten kunne ikke opdateres.',

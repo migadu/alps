@@ -126,9 +126,11 @@ export class AlpsPagination extends LitElement {
       // anywhere. A folder still prefers its counter, which spans every page
       // it would have had.
       const total = this.isSearch ? rows : (this.knownTotal ?? rows);
-      const key = this.isSearch ? 'pagination.searchResults' : 'pagination.totalCount';
-      const fallback = this.isSearch ? '{total} results' : '{total} total';
-      return (this.i18nStore?.t(key) || fallback).replace('{total}', String(total));
+      // The search count is a plural key ("1 result"), so the number goes in
+      // as a parameter: a template fetched without a count and filled in
+      // afterwards is how a plural key renders as its own name.
+      if (this.isSearch) return this.i18nStore?.t('pagination.searchResults', { count: total }) || `${total} results`;
+      return this.i18nStore?.t('pagination.totalCount', { total }) || `${total} total`;
     }
     const start = this.currentPage * this.itemsPerPage + 1;
     const end = start + rows - 1;

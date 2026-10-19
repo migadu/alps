@@ -103,11 +103,27 @@ function checkFamily(name: string, source: Dict, locales: [string, Dict][]) {
       if (typeof value !== 'string' || !value.trim()) problems.push(`${name}/${code}: ${key} is not a non-empty string`);
     }
 
-    const placeholders = (v: unknown) => (typeof v === 'string' ? [...v.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join() : '');
-    for (const [key, value] of leaves(source)) {
-      const want = placeholders(value);
-      const got = placeholders(lookup(dict, key));
-      if (want && typeof lookup(dict, key) === 'string' && want !== got) problems.push(`${name}/${code}: ${key} has {${got}} where en has {${want}}`);
+    const placeholders = (v: unknown) => (typeof v === 'string' ? [...new Set([...v.matchAll(/\{(\w+)\}/g)].map((m) => m[1]))].sort() : []);
+    for (const key of enKeys) {
+      const value = lookup(source, key);
+      const translated = lookup(dict, key);
+      if (!isPlural(value)) {
+        const want = placeholders(value).join();
+        const got = placeholders(translated).join();
+        if (want && typeof translated === 'string' && want !== got) problems.push(`${name}/${code}: ${key} has {${got}} where en has {${want}}`);
+        continue;
+      }
+      // Each form of a plural entry says what en's `other` says. A form may
+      // leave the count out when it names the number in words ("the one
+      // message"), but Serbian's `one` also serves 21 and must keep it, so
+      // the forms are held to `other` rather than to en's form of the same name.
+      const want = placeholders((value as Dict).other);
+      for (const [form, text] of Object.entries(isObject(translated) ? (translated as Dict) : {})) {
+        const got = placeholders(text);
+        const missing = want.filter((p) => p !== 'count' && !got.includes(p));
+        const extra = got.filter((p) => !want.includes(p));
+        if (missing.length || extra.length) problems.push(`${name}/${code}: ${key}.${form} has {${got}} where en has {${want}}`);
+      }
     }
   }
   return problems;
@@ -127,6 +143,47 @@ describe('locales', () => {
     const problems: string[] = [];
     for (const [plugin, locales] of byPlugin) {
       problems.push(...checkFamily(plugin, locales.get('en')!, [...locales].filter(([code]) => code !== 'en')));
+    }
+    expect(problems).toEqual([]);
+  });
+});
+
+describe('counted numbers', () => {
+  /**
+   * A plain string can be right for one grammatical number only: "1 messages
+   * selected", and Serbian, whose noun has three forms, was wrong for most
+   * counts. So a number that counts something is a plural key. These strings
+   * have no counted noun beside their number, and say why.
+   */
+  const COUNT_WITHOUT_NOUN: Record<string, string> = {
+    'pagination.totalCount': 'a bare total: "120 total"',
+    'pagination.rangeOfTotal': 'a range: "1–50 of 120"',
+    'calendar.moreEvents': 'no noun: "+3 more"',
+  };
+  const NUMBER_PLACEHOLDER = /\{(count|n|total|limit|seconds|minutes|hours|left|failed|done|start|end)\}/;
+
+  it('every counted number is a plural key', () => {
+    const plain = keysOf(mergedEn).filter((key) => {
+      const value = lookup(mergedEn, key);
+      return typeof value === 'string' && NUMBER_PLACEHOLDER.test(value);
+    });
+    // The exemptions must all still be plain counted strings, or the list goes stale.
+    for (const key of Object.keys(COUNT_WITHOUT_NOUN)) expect(plain, key).toContain(key);
+    expect(plain.filter((key) => !(key in COUNT_WITHOUT_NOUN))).toEqual([]);
+  });
+
+  it('a one form that also serves 21 and 31 says its number', () => {
+    // Serbian files 1, 21, 31, 101 under `one`, so "jedan razgovor" or "the
+    // message you checked" there was wrong for every count but 1.
+    const problems: string[] = [];
+    const families: [string, [string, Dict][]][] = [['core', CORE], ...[...byPlugin].map(([p, locales]) => [p, [...locales]] as [string, [string, Dict][]])];
+    for (const [name, locales] of families) {
+      for (const [code, dict] of locales) {
+        if (new Intl.PluralRules(intlTag(code)).select(21) !== 'one') continue;
+        for (const [key, value] of leaves(dict)) {
+          if (key.endsWith('.one') && typeof value === 'string' && !value.includes('{count}')) problems.push(`${name}/${code}: ${key}`);
+        }
+      }
     }
     expect(problems).toEqual([]);
   });
@@ -160,14 +217,33 @@ describe('keys used in source', () => {
   });
 
   it('no plural key is asked for without a count', () => {
-    const plurals = keysOf(mergedEn).filter((k) => isPlural(lookup(mergedEn, k)));
-    expect(plurals.length).toBeGreaterThan(5);
+    // t() picks a form only when params.count is a number; without one the
+    // plural entry is not a string and the user reads the key. A literal key
+    // handed to any call counts, not only t(): the contacts page passes its
+    // keys through reportFailure(), and one of those calls passed no numbers.
+    const pattern = /\b[A-Za-z_$][\w$]*\(\s*['"`]([a-zA-Z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+)['"`]/g;
     const offenders: string[] = [];
+    let plurals = 0;
     for (const [file, text] of Object.entries(SOURCES)) {
-      for (const key of plurals) {
-        if (new RegExp(`t\\(\\s*['"\`]${key.replace(/\./g, '\\.')}['"\`]\\s*\\)`).test(text)) offenders.push(`${key} (${file})`);
+      const source = stripComments(text);
+      for (const m of source.matchAll(pattern)) {
+        if (!isPlural(lookup(mergedEn, m[1]))) continue;
+        plurals++;
+        // The rest of the call, up to its own closing parenthesis.
+        let depth = 0;
+        let end = m.index! + m[0].length;
+        for (; end < source.length; end++) {
+          const ch = source[end];
+          if (ch === '(' || ch === '{' || ch === '[') depth++;
+          else if (ch === ')' || ch === '}' || ch === ']') {
+            if (depth === 0) break;
+            depth--;
+          }
+        }
+        if (!/\bcount\b/.test(source.slice(m.index! + m[0].length, end))) offenders.push(`${m[1]} (${file})`);
       }
     }
+    expect(plurals).toBeGreaterThan(10);
     expect(offenders).toEqual([]);
   });
 

@@ -1,9 +1,21 @@
 export default {
   contacts: {
-    deleteFailed: '{failed} von {total} Kontakten konnten nicht gelöscht werden.',
-    categoryRenameFailed: '{failed} von {total} Kontakten konnten nicht aktualisiert werden, die Kategorie wurde nur teilweise umbenannt.',
-    categoryDeleteFailed: '{failed} von {total} Kontakten konnten nicht aktualisiert werden, die Kategorie wurde nur teilweise entfernt.',
-    categoryUpdateFailed: '{failed} von {total} Kontakten konnten nicht aktualisiert werden.',
+    deleteFailed: {
+      one: '{failed} von {count} Kontakt konnte nicht gelöscht werden.',
+      other: '{failed} von {count} Kontakten konnten nicht gelöscht werden.'
+    },
+    categoryRenameFailed: {
+      one: '{failed} von {count} Kontakt konnte nicht aktualisiert werden, die Kategorie wurde nur teilweise umbenannt.',
+      other: '{failed} von {count} Kontakten konnten nicht aktualisiert werden, die Kategorie wurde nur teilweise umbenannt.'
+    },
+    categoryDeleteFailed: {
+      one: '{failed} von {count} Kontakt konnte nicht aktualisiert werden, die Kategorie wurde nur teilweise entfernt.',
+      other: '{failed} von {count} Kontakten konnten nicht aktualisiert werden, die Kategorie wurde nur teilweise entfernt.'
+    },
+    categoryUpdateFailed: {
+      one: '{failed} von {count} Kontakt konnte nicht aktualisiert werden.',
+      other: '{failed} von {count} Kontakten konnten nicht aktualisiert werden.'
+    },
     saveFailed: 'Der Kontakt konnte nicht gespeichert werden.',
     saveConflict: 'Der Kontakt wurde auf einem anderen Gerät geändert, daher wurde Ihre Änderung nicht gespeichert. Brechen Sie die Bearbeitung ab, um die neueste Version zu sehen.',
     starFailed: 'Der Kontakt konnte nicht aktualisiert werden.',

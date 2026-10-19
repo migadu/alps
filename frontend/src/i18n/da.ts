@@ -234,9 +234,18 @@ export const da: TranslationDictionary = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Vælg alle beskeder',
-    allOnPageSelected: 'Alle {count} beskeder på denne side er valgt',
-    selectAllMatching: 'Vælg alle {count} i {folder}',
-    allMatchingSelected: 'Alle {count} beskeder i {folder} er valgt',
+    allOnPageSelected: {
+      one: '{count} besked på denne side er valgt',
+      other: 'Alle {count} beskeder på denne side er valgt'
+    },
+    selectAllMatching: {
+      one: 'Vælg {count} i {folder}',
+      other: 'Vælg alle {count} i {folder}'
+    },
+    allMatchingSelected: {
+      one: '{count} besked i {folder} er valgt',
+      other: 'Alle {count} beskeder i {folder} er valgt'
+    },
     clearSelection: 'Ryd markeringen',
     checkNew: 'Tjek for nye beskeder',
     sortDesc: 'Sortér faldende efter dato',
@@ -256,14 +265,20 @@ export const da: TranslationDictionary = {
     searchResultsFor: 'Søgeresultater for:',
     clearSearch: 'Ryd søgning',
     searchAllMailboxes: 'Søg i alle',
-    totalMessagesIn: '{count} beskeder i alt i {folder}',
+    totalMessagesIn: {
+      one: '{count} besked i {folder}',
+      other: '{count} beskeder i alt i {folder}'
+    },
     totalConversationsIn: {
       one: '{count} samtale i {folder}',
       other: '{count} samtaler i alt i {folder}'
     },
     deleteAllNow: 'Slet alle nu',
     emptyMailboxTitle: 'Tøm {folder}',
-    emptyMailboxConfirm: 'Er du sikker på, at du vil slette alle {count} beskeder i {folder} permanent? Denne handling kan ikke fortrydes.',
+    emptyMailboxConfirm: {
+      one: 'Er du sikker på, at du vil slette den ene besked i {folder} permanent? Denne handling kan ikke fortrydes.',
+      other: 'Er du sikker på, at du vil slette alle {count} beskeder i {folder} permanent? Denne handling kan ikke fortrydes.'
+    },
     emptyMailboxConfirmConversations: {
       one: 'Er du sikker på, at du vil slette den ene samtale i {folder} og alle dens beskeder permanent? Denne handling kan ikke fortrydes.',
       other: 'Er du sikker på, at du vil slette alle {count} samtaler i {folder} og alle deres beskeder permanent? Denne handling kan ikke fortrydes.'
@@ -463,7 +478,10 @@ export const da: TranslationDictionary = {
     nextPage: 'Næste side',
     zeroMessages: '0 beskeder',
     totalCount: '{total} i alt',
-    searchResults: '{total} resultater',
+    searchResults: {
+      one: '{count} resultat',
+      other: '{count} resultater'
+    },
     rangeOfTotal: '{start}–{end} af {total}'
   },
   toast: {
@@ -546,7 +564,10 @@ export const da: TranslationDictionary = {
   offline: {
     title: 'Forbindelsen er afbrudt',
     description: 'Netværksforbindelsen er mistet',
-    tryingAgain: 'Prøver igen om {seconds} sekunder...'
+    tryingAgain: {
+      one: 'Prøver igen om {count} sekund...',
+      other: 'Prøver igen om {count} sekunder...'
+    }
   },
   update: {
     available: 'En ny version er tilgængelig.',

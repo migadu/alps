@@ -556,7 +556,7 @@ export class AppRoot extends LitElement {
               ${this.i18nStore.t('offline.description')}
             </div>
             <div style="color: var(--text-secondary, #4b5563); font-size: 14px;">
-              ${this.i18nStore.t('offline.tryingAgain', { seconds: this.offlineCountdown })}
+              ${this.i18nStore.t('offline.tryingAgain', { count: this.offlineCountdown })}
             </div>
           </div>
         </ui-modal>

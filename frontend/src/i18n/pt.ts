@@ -225,9 +225,18 @@ export const pt = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Selecionar todas as mensagens',
-    allOnPageSelected: 'As {count} mensagens desta página estão selecionadas',
-    selectAllMatching: 'Selecionar todas as {count} em {folder}',
-    allMatchingSelected: 'As {count} mensagens em {folder} estão selecionadas',
+    allOnPageSelected: {
+      one: '{count} mensagem desta página está selecionada',
+      other: 'As {count} mensagens desta página estão selecionadas'
+    },
+    selectAllMatching: {
+      one: 'Selecionar {count} em {folder}',
+      other: 'Selecionar todas as {count} em {folder}'
+    },
+    allMatchingSelected: {
+      one: '{count} mensagem em {folder} está selecionada',
+      other: 'As {count} mensagens em {folder} estão selecionadas'
+    },
     clearSelection: 'Limpar a seleção',
     checkNew: 'Verificar novas mensagens',
     sortDesc: 'Classificar por data decrescente',
@@ -247,14 +256,20 @@ export const pt = {
     searchResultsFor: 'Resultados da pesquisa para:',
     clearSearch: 'Limpar pesquisa',
     searchAllMailboxes: 'Pesquisar tudo',
-    totalMessagesIn: '{count} mensagens no total em {folder}',
+    totalMessagesIn: {
+      one: '{count} mensagem em {folder}',
+      other: '{count} mensagens no total em {folder}'
+    },
     totalConversationsIn: {
       one: '{count} conversa em {folder}',
       other: '{count} conversas no total em {folder}'
     },
     deleteAllNow: 'Excluir tudo agora',
     emptyMailboxTitle: 'Esvaziar {folder}',
-    emptyMailboxConfirm: 'Tem certeza de que deseja excluir permanentemente todas as {count} mensagens em {folder}? Esta ação não pode ser desfeita.',
+    emptyMailboxConfirm: {
+      one: 'Tem certeza de que deseja excluir permanentemente a única mensagem em {folder}? Esta ação não pode ser desfeita.',
+      other: 'Tem certeza de que deseja excluir permanentemente todas as {count} mensagens em {folder}? Esta ação não pode ser desfeita.'
+    },
     emptyMailboxConfirmConversations: {
       one: 'Tem certeza de que deseja excluir permanentemente a única conversa em {folder} e todas as suas mensagens? Esta ação não pode ser desfeita.',
       other: 'Tem certeza de que deseja excluir permanentemente todas as {count} conversas em {folder} e todas as suas mensagens? Esta ação não pode ser desfeita.'
@@ -461,7 +476,10 @@ export const pt = {
     nextPage: 'Próxima página',
     zeroMessages: '0 mensagens',
     totalCount: '{total} no total',
-    searchResults: '{total} resultados',
+    searchResults: {
+      one: '{count} resultado',
+      other: '{count} resultados'
+    },
     rangeOfTotal: '{start}–{end} de {total}'
   },
   toast: {
@@ -544,7 +562,10 @@ export const pt = {
   offline: {
     title: 'Conexão Perdida',
     description: 'A conexão de rede foi perdida',
-    tryingAgain: 'Tentando novamente em {seconds} segundos...'
+    tryingAgain: {
+      one: 'Tentando novamente em {count} segundo...',
+      other: 'Tentando novamente em {count} segundos...'
+    }
   },
   update: {
     available: 'Está disponível uma nova versão.',
