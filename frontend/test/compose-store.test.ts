@@ -110,6 +110,15 @@ describe('leaving', () => {
     expect(storedDrafts('ada').map((c: any) => c.subject)).toEqual(['typed just before the 401']);
   });
 
+  it('clears no windows quietly, announcing no change', () => {
+    signIn('ada');
+    const store = makeStore();
+    const changes: Event[] = [];
+    store.addEventListener('change', e => changes.push(e));
+    store.clearAllComposers();
+    expect(changes).toHaveLength(0);
+  });
+
   it('clears the windows for the login screen without touching what is stored', () => {
     signIn('ada');
     const store = makeStore();

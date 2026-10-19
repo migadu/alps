@@ -431,8 +431,14 @@ export class ComposeStore extends EventTarget {
    * Persisting is the sign-out path's job, and it already does it properly —
    * `handleSessionCleared` removes the key outright, after aborting uploads.
    * Here, memory only.
+   *
+   * With nothing open it does nothing, not even announce a change. The login
+   * page calls this as it connects, inside the shell's render, and the
+   * change it announced regardless had the shell render the login screen a
+   * second time.
    */
   clearAllComposers() {
+    if (this.state.activeComposers.length === 0) return;
     this.state = { ...this.state, activeComposers: [] };
     this.notify();
   }
