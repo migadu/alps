@@ -205,9 +205,29 @@ describe('time grid', () => {
     inZone('Europe/Belgrade');
     const el = await grid([new Date(2024, 8, 10), new Date(2024, 8, 11)], [event({ start: '2024-09-10T23:00:00', end: '2024-09-11T01:00:00' })]);
     const [first, second] = shadowAll(el, '.time-column').map((col) => placement(col.querySelector('.time-event-popup')!));
-    expect(first.top).toBe(23 * 48);
-    expect(first.top + first.height).toBeLessThanOrEqual(24 * 48);
+    expect(first).toEqual({ top: 23 * 48, height: 48 });
     expect(second).toEqual({ top: 0, height: 48 });
+  });
+
+  it('runs an event that ends at midnight to the foot of the day', async () => {
+    inZone('Europe/Belgrade');
+    const el = await grid([new Date(2024, 8, 10)], [event({ start: '2024-09-10T22:00:00', end: '2024-09-11T00:00:00' })]);
+    expect(shadowAll(el, '.time-event-popup').map(placement)).toEqual([{ top: 22 * 48, height: 96 }]);
+  });
+
+  it('starts an event from the day before at the head of a day whose midnight the clocks skip', async () => {
+    // Santiago's 8 September 2024 began at 01:00.
+    inZone('America/Santiago');
+    const el = await grid([new Date(2024, 8, 8)], [event({ start: '2024-09-07T22:00:00', end: '2024-09-08T02:00:00' })]);
+    expect(shadowAll(el, '.time-event-popup').map(placement)).toEqual([{ top: 0, height: 96 }]);
+  });
+
+  it('sizes an event inside the hour a fall-back night repeats by its real length', async () => {
+    // Belgrade's clocks went from 03:00 back to 02:00 on 27 October 2024:
+    // 02:30 summer time to 02:15 winter time is three quarters of an hour.
+    inZone('Europe/Belgrade');
+    const el = await grid([new Date(2024, 9, 27)], [event({ start: '2024-10-27T00:30:00Z', end: '2024-10-27T01:15:00Z' })]);
+    expect(shadowAll(el, '.time-event-popup').map(placement)).toEqual([{ top: 2.5 * 48, height: 36 }]);
   });
 
   it('keeps a very short event visible', async () => {
