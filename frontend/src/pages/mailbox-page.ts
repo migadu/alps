@@ -11,7 +11,7 @@ import '../components/app-header';
 import { closeSidebarPeek } from '../components/alps-sidebar';
 import { consume } from '@lit/context';
 import { composeContext, ComposeStore } from '../store/compose-store';
-import { messageSync } from '../services/message-sync';
+import { messageSync, type MailboxData } from '../services/message-sync';
 import { messageOperations, type FlagResult, type MatchingScope, type MoveResult } from '../services/message-operations';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -1008,6 +1008,19 @@ export class MailboxPage extends LitElement {
         );
       }
       // Do NOT update this.messages, this.totalMessages, or this.currentPage
+    } else if (this.pastTheLastPage(data)) {
+      // A later page that has emptied, which the server answers as asked: no
+      // rows. Moving or deleting every row on the last page re-read that page,
+      // and the list said "No messages" with only Previous offered while the
+      // folder still held mail. The last page that exists is read instead, in
+      // full and quietly as the re-read was, and the address says so without
+      // adding a step to go back to.
+      const perPage = data.MessagesPerPage || this.messagesPerPage;
+      const last = Math.max(0, Math.ceil(data.Total / perPage) - 1);
+      this.currentPage = last;
+      window.history.replaceState(null, '', this.hashFor(this.currentMailbox, last, this.targetUid, this.filterQuery, this.targetMailbox));
+      messageSync.fetch(this.currentMailbox, last, this.filterQuery, true, true);
+      return;
     } else {
       if (data.Page !== undefined) this.currentPage = data.Page;
       this.listedPage = data.Page !== undefined ? data.Page : this.currentPage;
@@ -1056,6 +1069,15 @@ export class MailboxPage extends LitElement {
       }
     }
   };
+
+  /** Whether a listing is of a page beyond the folder's last. */
+  private pastTheLastPage(data: MailboxData): data is MailboxData & { Total: number } {
+    const page = data.Page ?? this.currentPage;
+    const perPage = data.MessagesPerPage || this.messagesPerPage;
+    if (page <= 0 || (data.Messages?.length ?? 0) > 0) return false;
+    if (data.Total === undefined || data.Total <= 0 || perPage <= 0) return false;
+    return Math.ceil(data.Total / perPage) - 1 < page;
+  }
 
   private handleSyncError = (e: Event) => {
     this.isSyncing = false;

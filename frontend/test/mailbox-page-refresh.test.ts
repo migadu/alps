@@ -241,6 +241,53 @@ describe('the re-read after a move or a delete', () => {
   });
 });
 
+describe('a later page that has emptied', () => {
+  /** A folder of 60 messages, 50 to a page: page 1 holds ten, page 2 none. */
+  function sixtyMessages() {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      urls.push(url);
+      if (url.includes('/status')) return new Response('{}', { status: 200 });
+      const page = Number(new URL(url, 'http://alps.test').searchParams.get('page'));
+      return new Response(JSON.stringify({
+        Page: page,
+        Total: 60,
+        MessagesPerPage: 50,
+        Mailboxes: [{ Name: 'INBOX', Total: 60, Unseen: 0 }],
+        Messages: page === 1 ? [message(10)] : page === 0 ? [message(60)] : [],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+  }
+
+  it('gives way to the last page that exists, quietly and without a step back', async () => {
+    const el = await shownInbox();
+    sixtyMessages();
+    history.pushState(null, '', '#/mailbox/INBOX?p=2');
+    const steps = history.length;
+    el.currentPage = 2;
+    messageSync.setContext('INBOX', 2, '');
+
+    // What a move or delete of every row on the page re-reads.
+    messageSync.sync();
+    await waitFor(() => el.messages.length === 1 && !el.isSyncing, 'the last page');
+
+    expect(listingReads()).toEqual(['/mailboxes/INBOX?page=2&refresh=true', '/mailboxes/INBOX?page=1&refresh=true']);
+    expect(el.currentPage).toBe(1);
+    expect(el.messages.map((m: any) => m.UID)).toEqual(['10']);
+    expect(location.hash).toBe('#/mailbox/INBOX?p=1');
+    expect(history.length).toBe(steps);
+    expect(el.loadingMessages).toBe(false);
+  });
+
+  it('is not what the first page is, which is empty when the folder is', async () => {
+    const el = await shownInbox();
+    quietMailbox([]);
+    messageSync.sync();
+    await waitFor(() => !el.isSyncing, 'the sync to end');
+    expect(listingReads()).toEqual(['/mailboxes/INBOX?page=0&refresh=true']);
+    expect(el.messages).toEqual([]);
+  });
+});
+
 describe('a folder switch', () => {
   const MAILBOXES = [{ Name: 'INBOX', Attrs: [] }, { Name: 'Sent', Attrs: ['\\Sent'] }];
 
