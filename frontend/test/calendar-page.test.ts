@@ -91,9 +91,23 @@ describe('reading a link', () => {
     expect(el.viewMode).toBe('month');
   });
 
-  it('completes a bare calendar link to the current view and date', () => {
+  it('completes a bare calendar link to the current view and date, in place', () => {
     const el = page(new Date(2024, 6, 4), 'week');
-    expect(read(el, '#/calendar')).toBe(false);
+    window.location.hash = '#/calendar';
+    const before = history.length;
+    // Nothing on screen changes, so there is nothing to fetch.
+    expect(call(el, 'parseHash')).toBe(false);
+    expect(window.location.hash).toBe('#/calendar/week/2024-07-04');
+    // The tab's link is the entry; the completion is not a second one.
+    expect(history.length).toBe(before);
+  });
+
+  it('asks for a fetch when completing a bare link ends a search', () => {
+    // replaceState fires no hashchange, so the answer is the only thing that
+    // makes the caller load what the completed address shows.
+    const el = page(new Date(2024, 6, 4), 'week');
+    el.searchQuery = 'standup';
+    expect(read(el, '#/calendar')).toBe(true);
     expect(window.location.hash).toBe('#/calendar/week/2024-07-04');
   });
 });

@@ -495,11 +495,17 @@ export class CalendarPage extends LitElement {
             changed = true;
         }
 
+        // A bare `#/calendar`, which is what the Calendar tab sets, is completed
+        // IN PLACE with the view and date the page is showing. That is not a
+        // place the user went, so it must not be a history entry. Assigning the
+        // hash made it one: Back returned to the bare URL, whose `hashchange`
+        // ran this again and pushed the view forward, and Back could never
+        // leave the calendar. `replaceState` fires no `hashchange`, so the
+        // caller fetches on `changed` as the event would have.
         if (pathStr === '/calendar' || pathStr === '/calendar/') {
-            this.navigate(this.viewMode, this.currentDate, this.searchQuery);
-            return false;
+            history.replaceState(null, '', this.hashFor(this.viewMode, this.currentDate, this.searchQuery));
         }
-        
+
         return changed;
     }
 
@@ -509,11 +515,13 @@ export class CalendarPage extends LitElement {
         }
     };
 
-    private navigate(mode: ViewMode, date: Date, query: string = '') {
+    /** The address of a view: its mode, the date as that mode spells it, and
+     * the search. */
+    private hashFor(mode: ViewMode, date: Date, query: string = ''): string {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
-        
+
         let hash = `#/calendar/${mode}`;
         if (mode === 'year') {
             hash += `/${year}`;
@@ -522,11 +530,18 @@ export class CalendarPage extends LitElement {
         } else {
             hash += `/${year}-${month}-${day}`;
         }
-        
+
         if (query) {
             hash += `?q=${encodeURIComponent(query)}`;
         }
-        
+        return hash;
+    }
+
+    /** Goes to a view. Another view, date or search is the user's own move, so
+     * it is a history entry, the one Back returns from; completing a bare
+     * address is not (see parseHash). */
+    private navigate(mode: ViewMode, date: Date, query: string = '') {
+        const hash = this.hashFor(mode, date, query);
         if (window.location.hash !== hash) {
             window.location.hash = hash;
         } else {

@@ -377,11 +377,25 @@ describe('the tasks page', () => {
         expect([el.wantedScope, el.selectedList, el.searchQuery]).toEqual(['all', 'today', 'milk']);
     });
 
-    it('sends an address naming no list to All, keeping its filter', () => {
-        const el = page([]);
+    it('sends an address naming no list to All in place, keeping its filter', () => {
+        // In place: the Tasks tab sets a bare #/tasks, and completing it by
+        // assignment was a second entry that Back onto the bare one pushed
+        // again, so Back could never leave the page.
+        const el = page([], { selectedList: 'today' });
         window.location.hash = '#/tasks?list=%2Fcal%2Fwork%2F';
-        el.parseHash();
+        const before = history.length;
+        expect(el.parseHash()).toBe(false);
         expect(window.location.hash).toBe('#/tasks/all?list=%2Fcal%2Fwork%2F');
+        expect(history.length).toBe(before);
+        expect([el.selectedList, el.selectedCalendar]).toEqual(['all', '/cal/work/']);
+
+        // replaceState fires no hashchange, so the answer is what asks for a
+        // fetch when the completed view needs tasks not yet loaded.
+        const done = page([], { selectedList: 'completed', loadedScope: 'closed' });
+        window.location.hash = '#/tasks/someday';
+        expect(done.parseHash()).toBe(true);
+        expect(window.location.hash).toBe('#/tasks/all');
+        expect(done.wantedScope).toBe('active');
     });
 
     it('narrows to one list, and searches titles and notes', () => {

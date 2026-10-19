@@ -279,11 +279,17 @@ export class TasksPage extends LitElement {
         const params = new URLSearchParams(query);
         const calendar = params.get('list') ?? '';
         const search = params.get('q') ?? '';
-        if (!SMART_LISTS.some(list => list.id === segment)) {
-            this.navigate('all', calendar, search);
-            return false;
+        let list = segment as SmartList;
+        if (!SMART_LISTS.some(smart => smart.id === segment)) {
+            // A bare `#/tasks`, which is what the Tasks tab sets, or a list this
+            // page does not have, is completed IN PLACE to All. Assigning the
+            // hash pushed a second entry, and Back onto the bare one ran this
+            // again and pushed All forward, so Back could never leave the page.
+            // `replaceState` fires no `hashchange`, so the view is read here,
+            // and the caller fetches on the answer as the event would have.
+            list = 'all';
+            history.replaceState(null, '', this.hashFor(list, calendar, search));
         }
-        const list = segment as SmartList;
         if (list !== this.selectedList || calendar !== this.selectedCalendar || search !== this.searchQuery) {
             this.settling = new Set();
         }
@@ -293,12 +299,19 @@ export class TasksPage extends LitElement {
         return this.wantedScope !== this.loadedScope;
     }
 
-    navigate(list: SmartList, calendar = this.selectedCalendar, query = this.searchQuery) {
+    /** The address of a view: the list, then the calendar and the search. */
+    private hashFor(list: SmartList, calendar: string, query: string): string {
         const params = new URLSearchParams();
         if (calendar) params.set('list', calendar);
         if (query) params.set('q', query);
         const search = params.toString();
-        const hash = `#/tasks/${list}${search ? `?${search}` : ''}`;
+        return `#/tasks/${list}${search ? `?${search}` : ''}`;
+    }
+
+    /** Goes to a view. The user's own move, so a history entry; completing a
+     * bare address is not (see parseHash). */
+    navigate(list: SmartList, calendar = this.selectedCalendar, query = this.searchQuery) {
+        const hash = this.hashFor(list, calendar, query);
         if (window.location.hash !== hash) window.location.hash = hash;
     }
 
