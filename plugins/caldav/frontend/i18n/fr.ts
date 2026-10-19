@@ -4,6 +4,7 @@ export default {
       deleteEventFailed: 'L\'événement n\'a pas pu être supprimé.',
       saveCalendarFailed: 'Le calendrier n\'a pas pu être enregistré.',
       saveEventFailed: 'L\'événement n\'a pas pu être enregistré.',
+      endBeforeStart: 'L\'événement ne peut pas se terminer avant de commencer.',
       saveConflict: 'L\'événement a été modifié sur un autre appareil, votre modification n\'a donc pas été enregistrée. Fermez l\'éditeur et rouvrez l\'événement pour voir la dernière version.',
       loadFailed: 'Impossible de charger votre agenda. Vérifiez votre connexion et réessayez.',
         months: { '0': 'Janvier', '1': 'Février', '2': 'Mars', '3': 'Avril', '4': 'Mai', '5': 'Juin', '6': 'Juillet', '7': 'Août', '8': 'Septembre', '9': 'Octobre', '10': 'Novembre', '11': 'Décembre' },

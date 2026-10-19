@@ -4,6 +4,7 @@ export default {
       deleteEventFailed: 'No se pudo eliminar el evento.',
       saveCalendarFailed: 'No se pudo guardar el calendario.',
       saveEventFailed: 'No se pudo guardar el evento.',
+      endBeforeStart: 'El evento no puede terminar antes de empezar.',
       saveConflict: 'El evento se modificó en otro dispositivo, así que tu cambio no se guardó. Cierra el editor y vuelve a abrir el evento para ver la última versión.',
       loadFailed: 'No se pudo cargar tu calendario. Comprueba la conexión e inténtalo de nuevo.',
         months: { '0': 'Enero', '1': 'Febrero', '2': 'Marzo', '3': 'Abril', '4': 'Mayo', '5': 'Junio', '6': 'Julio', '7': 'Agosto', '8': 'Septiembre', '9': 'Octubre', '10': 'Noviembre', '11': 'Diciembre' },

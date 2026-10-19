@@ -4,6 +4,7 @@ export default {
       deleteEventFailed: 'The event could not be deleted.',
       saveCalendarFailed: 'The calendar could not be saved.',
       saveEventFailed: 'The event could not be saved.',
+      endBeforeStart: 'The event cannot end before it starts.',
       saveConflict: 'This event was changed on another device, so your edit was not saved. Close the editor and open the event again to see the latest version.',
       loadFailed: 'Could not load your calendar. Check your connection and try again.',
         months: { '0': 'January', '1': 'February', '2': 'March', '3': 'April', '4': 'May', '5': 'June', '6': 'July', '7': 'August', '8': 'September', '9': 'October', '10': 'November', '11': 'December' },

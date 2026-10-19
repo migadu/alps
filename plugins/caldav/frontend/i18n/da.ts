@@ -4,6 +4,7 @@ export default {
       deleteEventFailed: 'Begivenheden kunne ikke slettes.',
       saveCalendarFailed: 'Kalenderen kunne ikke gemmes.',
       saveEventFailed: 'Begivenheden kunne ikke gemmes.',
+      endBeforeStart: 'Begivenheden kan ikke slutte, før den begynder.',
       saveConflict: 'Begivenheden er blevet ændret på en anden enhed, så din ændring blev ikke gemt. Luk editoren, og åbn begivenheden igen for at se den nyeste version.',
       loadFailed: 'Kalenderen kunne ikke indlæses. Tjek din forbindelse, og prøv igen.',
         months: { '0': 'Januar', '1': 'Februar', '2': 'Marts', '3': 'April', '4': 'Maj', '5': 'Juni', '6': 'Juli', '7': 'August', '8': 'September', '9': 'Oktober', '10': 'November', '11': 'December' },

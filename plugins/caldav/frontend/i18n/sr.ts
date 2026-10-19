@@ -4,6 +4,7 @@ export default {
       deleteEventFailed: 'Događaj nije mogao biti obrisan.',
       saveCalendarFailed: 'Kalendar nije mogao biti sačuvan.',
       saveEventFailed: 'Događaj nije mogao biti sačuvan.',
+      endBeforeStart: 'Događaj ne može da se završi pre nego što počne.',
       saveConflict: 'Događaj je izmenjen na drugom uređaju, pa vaša izmena nije sačuvana. Zatvorite uređivač i ponovo otvorite događaj da biste videli najnoviju verziju.',
       loadFailed: 'Nije moguće učitati kalendar. Proverite vezu i pokušajte ponovo.',
         months: { '0': 'Januar', '1': 'Februar', '2': 'Mart', '3': 'April', '4': 'Maj', '5': 'Jun', '6': 'Jul', '7': 'Avgust', '8': 'Septembar', '9': 'Oktobar', '10': 'Novembar', '11': 'Decembar' },
