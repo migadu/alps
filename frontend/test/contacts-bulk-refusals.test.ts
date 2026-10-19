@@ -83,6 +83,24 @@ describe('deleting contacts', () => {
     expect(reread).not.toHaveBeenCalled();
   });
 
+  it('keeps a selection built while the delete was on its way', async () => {
+    // The open card was the target. The user ticked another while the request
+    // was out, and the answer used to clear that too.
+    const open = card('a');
+    const el = page([open, card('b')], [], open);
+    vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
+    let answer!: (outcome: any) => void;
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockReturnValue(new Promise(resolve => { answer = resolve; }));
+
+    const deleting = el.confirmDelete();
+    el.selectedContacts = new Set(['b']);
+    answer({ total: 1, done: 1, failed: 0, deletedPaths: ['a'] });
+    await deleting;
+
+    expect(el.selectedContact).toBeNull();
+    expect([...el.selectedContacts]).toEqual(['b']);
+  });
+
   it('clears the selection and re-reads when any card went', async () => {
     const el = page([card('a'), card('b')], ['a', 'b']);
     const reread = vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
@@ -103,6 +121,6 @@ describe('the bulk outcome', () => {
       .mockResolvedValueOnce(undefined);
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    expect(await contactsService.bulkDeleteContacts(['a', 'b', 'c'])).toEqual({ total: 3, done: 2, failed: 1 });
+    expect(await contactsService.bulkDeleteContacts(['a', 'b', 'c'])).toEqual({ total: 3, done: 2, failed: 1, deletedPaths: ['a', 'c'] });
   });
 });

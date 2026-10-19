@@ -29,23 +29,32 @@ const BOB = { path: '/book/bob.vcf', uid: 'uB', name: 'Bob Barker' };
 
 const i18nStore = { t: (key: string) => key, getLanguage: () => 'en' };
 
-/** What the server holds: Ada's categories, and whether she is still there. */
+/** What the server holds: Ada's categories, and who is still there. */
 let adaCategories: string[] = [];
 let adaDeleted = false;
+let bobDeleted = false;
+/** Runs before a delete is answered; true refuses that card. */
+let beforeDelete: ((path: string) => Promise<boolean>) | undefined;
 
 const stored = () => [
   ...(adaDeleted ? [] : [{ ...ADA, categories: [...adaCategories] }]),
-  { ...BOB, categories: [] },
+  ...(bobDeleted ? [] : [{ ...BOB, categories: [] }]),
 ];
 
 beforeEach(() => {
   adaCategories = ['Work'];
   adaDeleted = false;
+  bobDeleted = false;
+  beforeDelete = undefined;
+  vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(contactsService, 'fetchContacts').mockImplementation(async () => ({ contacts: stored() }));
   vi.spyOn(contactsService, 'fetchContact').mockImplementation(async (path: string) => stored().find(c => c.path === path));
-  vi.spyOn(contactsService, 'bulkDeleteContacts').mockImplementation(async (paths: string[]) => {
-    if (paths.includes(ADA.path)) adaDeleted = true;
-    return { total: paths.length, done: paths.length, failed: 0, deletedPaths: paths };
+  // The real bulk delete, so its outcome is the service's own; one card at a
+  // time is the stub.
+  vi.spyOn(contactsService, 'deleteContact').mockImplementation(async (path: string) => {
+    if (await beforeDelete?.(path)) throw new Error('refused');
+    if (path === ADA.path) adaDeleted = true;
+    if (path === BOB.path) bobDeleted = true;
   });
   vi.spyOn(contactsService, 'bulkUpdateCategories').mockImplementation(async (cards: any[]) => {
     for (const card of cards) if (card.path === ADA.path) adaCategories = card.categories;
@@ -148,6 +157,42 @@ describe("the page's own rewrites of the address", () => {
 
     await back(page);
     expect(window.location.hash).toBe('#/');
+  });
+
+  it('a delayed delete cannot close the card opened while it was pending', async () => {
+    await follow(`#/contacts/all/${ADA.uid}`);
+    const page = await open();
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    beforeDelete = async () => { await held; return false; };
+
+    await send(page, 'alps-contact-view', 'delete');
+    await send(page, 'ui-confirm', 'confirm');
+    await follow(`#/contacts/all/${BOB.uid}`);
+    await settle(page);
+    expect(page.selectedContact?.path).toBe(BOB.path);
+    release();
+    await settle(page);
+
+    expect(adaDeleted).toBe(true);
+    expect(window.location.hash).toBe(`#/contacts/all/${BOB.uid}`);
+    expect(page.selectedContact?.path).toBe(BOB.path);
+  });
+
+  it('a partial delete keeps the open card whose deletion was refused', async () => {
+    await follow(`#/contacts/all/${ADA.uid}`);
+    const page = await open();
+    page.selectedContacts = new Set([ADA.path, BOB.path]);
+    beforeDelete = async path => path === ADA.path;
+
+    await send(page, 'alps-contact-view', 'delete');
+    await send(page, 'ui-confirm', 'confirm');
+
+    expect(adaDeleted).toBe(false);
+    expect(bobDeleted).toBe(true);
+    expect(window.location.hash).toBe(`#/contacts/all/${ADA.uid}`);
+    expect(page.selectedContact?.path).toBe(ADA.path);
+    expect(page.selectedContacts.size).toBe(0);
   });
 
   it('filing the open card out of the open category moves to All in place', async () => {

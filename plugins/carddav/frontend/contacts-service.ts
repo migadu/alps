@@ -41,6 +41,9 @@ export interface BulkOutcome {
   failed: number;
   /** The version each card that took the change is now at, by path. */
   etags?: Record<string, string>;
+  /** The cards a delete removed. The counts say how many, and a caller that
+   * acts on one card (the open one) needs to know whether it was that one. */
+  deletedPaths?: string[];
 }
 
 function summarize(settled: PromiseSettledResult<unknown>[]): BulkOutcome {
@@ -159,7 +162,8 @@ class ContactsService {
 
   async bulkDeleteContacts(paths: string[]): Promise<BulkOutcome> {
     const settled = await Promise.allSettled(paths.map(path => this.deleteContact(path)));
-    return summarize(settled);
+    const deletedPaths = paths.filter((_, i) => settled[i].status === 'fulfilled');
+    return { ...summarize(settled), deletedPaths };
   }
 }
 

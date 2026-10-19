@@ -924,25 +924,35 @@ export class ContactsPage extends LitElement {
   private async confirmDelete() {
     this.showDeleteConfirm = false;
     this.saving = true;
+    // What the confirmed delete was aimed at, taken before the request: the
+    // user can open another card, or tick others, while it is on its way, and
+    // the answer must not clear those.
     const open = this.selectedContact?.path;
+    const openedHash = window.location.hash;
+    const selection = this.selectedContacts;
     try {
       const pathsToDelete = this.gestureTargets;
-      const { total, done, failed } = await contactsService.bulkDeleteContacts(pathsToDelete);
+      const { total, done, failed, deletedPaths = [] } = await contactsService.bulkDeleteContacts(pathsToDelete);
 
-      // Only when something went. The outcome is a count, not which cards, so
-      // after any deletion the selection cannot be trimmed to the survivors and
-      // the list is re-read. A delete that removed nothing (offline, say)
-      // leaves every card there, and the selection the user built stays too.
+      // Only when something went, and the list is re-read. A delete that
+      // removed nothing (offline, say) leaves every card there, and the
+      // selection the user built stays too.
       if (done > 0) {
-        this.selectedContact = null;
-        if (this.selectedContacts.size > 0) {
+        // The open card closes only if it is still the one that was open and
+        // it is gone: a card the batch failed to delete is still there, and
+        // one opened meanwhile was never a target.
+        if (open && this.selectedContact?.path === open && deletedPaths.includes(open)) {
+          this.selectedContact = null;
+          this.isEditing = false;
+          // Before the re-read, whose hash handler would open a card the
+          // address still names; and only the address the delete was made
+          // from, not one the user has since moved to.
+          if (window.location.hash === openedHash) this.leaveDeletedCard();
+        }
+        // The ticked batch was the target. A selection built since is not.
+        if (this.selectedContacts === selection && selection.size > 0) {
           this.selectedContacts = new Set();
         }
-        this.isEditing = false;
-        // Before the re-read, whose hash handler would open a card the address
-        // still names. An open card the delete was not aimed at keeps its
-        // address, and the re-read brings it back.
-        if (open && pathsToDelete.includes(open)) this.leaveDeletedCard();
         this.fetchContacts();
       }
       if (failed > 0) {
