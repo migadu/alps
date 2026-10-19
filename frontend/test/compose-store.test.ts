@@ -130,6 +130,17 @@ describe('opening a composer', () => {
     expect(c.html).toContain('<div class="alps-signature">-- <br>Ada<br>Engines</div>');
   });
 
+  it('writes the signature into the HTML as the text it is, never as markup', () => {
+    signIn('ada', { signature: 'Ada <ada@example.com>\r\nR&D <b>dept</b>\n<img src=x onerror="steal()">' });
+    const store = makeStore();
+    store.openComposer();
+    const [c] = composers(store);
+    const sig = new DOMParser().parseFromString(c.html!, 'text/html').querySelector('.alps-signature')!;
+    expect([...sig.children].map((el) => el.tagName)).toEqual(['BR', 'BR', 'BR']);
+    expect(sig.textContent).toBe('-- Ada <ada@example.com>R&D <b>dept</b><img src=x onerror="steal()">');
+    expect(c.text).toContain('-- \nAda <ada@example.com>\r\nR&D <b>dept</b>\n');
+  });
+
   it('adds no signature to a draft being reopened, and reuses its window', () => {
     signIn('ada', { signature: 'Ada' });
     const store = makeStore();

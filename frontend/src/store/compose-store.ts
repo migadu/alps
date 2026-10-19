@@ -4,6 +4,7 @@ import { activeUsername, readUserSettings } from './settings-store';
 import { abortUploads } from '../utils/attachment-utils';
 import { Logger } from '../utils/logger';
 import { appendReplyFields } from '../utils/reply-context';
+import { escapeHtml } from '../utils/html-sanitizer';
 
 /**
  * Where a user's unsent drafts are kept, scoped to WHOSE they are.
@@ -293,7 +294,10 @@ export class ComposeStore extends EventTarget {
 
     if (signature && !initialData?.draftUid) {
       const sigText = `-- \n${signature}`;
-      const sigHtml = `<div class="alps-signature">-- <br>${signature.replace(/\n/g, '<br>')}</div>`;
+      // The signature is plain text, typed into a textarea: escaped, so an
+      // address in angle brackets or an ampersand reads as written instead of
+      // as markup, with its line breaks kept.
+      const sigHtml = `<div class="alps-signature">-- <br>${escapeHtml(signature).replace(/\r?\n/g, '<br>')}</div>`;
       
       initialText = `\n\n${sigText}\n${initialText}`;
       if (initialHtml || initialData?.text) {
