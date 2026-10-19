@@ -22,7 +22,7 @@ import './alps-avatar';
 import './alps-sender-auth-badge';
 import './alps-tag';
 import './alps-banner';
-import { MessageCache } from '../utils/message-cache';
+import { MessageCache, type CachedMessage } from '../utils/message-cache';
 import { sanitizeMessageHTML } from '../utils/html-sanitizer';
 import { generateQuote } from '../utils/email-quote';
 import { replyContext } from '../utils/reply-context';
@@ -201,16 +201,17 @@ export class MessageReader extends LitElement {
       });
       return;
     }
-    if (action === 'showPlaintext') {
-      this.localPreferredView = 'text';
-      if (this.message) this.fetchMessageBody(this.message);
+    if (action === 'showPlaintext' || action === 'showHtml') {
+      this.localPreferredView = action === 'showPlaintext' ? 'text' : 'html';
       this._closePopup();
-      return;
-    }
-    if (action === 'showHtml') {
-      this.localPreferredView = 'html';
-      if (this.message) this.fetchMessageBody(this.message);
-      this._closePopup();
+      // The bodies in hand are read again in the other view, and the toggle
+      // ends when they have been. It re-opened the message instead, without
+      // waiting: the conversation collapsed to the open card and was asked for
+      // again, and a read in the old view could land after the new one. A card
+      // never expanded has no body to switch.
+      await Promise.all(this.threadItems
+        .filter(item => item.content || item.loading)
+        .map(item => this.fetchItemBody(item)));
       return;
     }
     if (action === 'print') {
@@ -1512,10 +1513,28 @@ export class MessageReader extends LitElement {
     }
   }
 
+  /**
+   * The latest body read started for each card, by message key: a read that
+   * is no longer the latest for its card commits nothing.
+   *
+   * A card can be read twice at once. The Plaintext and HTML toggles read it
+   * again in the other view while the first read may still be out, and the two
+   * could finish in either order. A late HTML pass wrote its fields into the
+   * card one at a time, painted the reader, and put its copy back into the
+   * card list, all over the Plaintext the user had switched to since. By key,
+   * not on the card, because a fresh open of the same message builds new cards
+   * while the old ones' reads are still running.
+   */
+  private bodyReads = new Map<string, number>();
+
   private async fetchItemBody(item: ThreadMessageItem) {
     if (!item.message) return;
     const msg = item.message;
     const mailbox = item.mailbox;
+    const key = this.itemKey(item);
+    const seq = (this.bodyReads.get(key) ?? 0) + 1;
+    this.bodyReads.set(key, seq);
+    const current = () => this.bodyReads.get(key) === seq;
 
     const preferredView = this.localPreferredView || this.settingsStore?.getState()?.preferredView || 'html';
     // Taken before asking: a body that answers after its user has signed out
@@ -1524,53 +1543,123 @@ export class MessageReader extends LitElement {
 
     try {
       const cached = MessageCache.get(mailbox, msg.UID.toString(), preferredView);
+      let read: Omit<CachedMessage, 'timestamp'>;
       if (cached) {
-        item.attachments = cached.Attachments || [];
-        item.hasHtml = cached.HasHTML || false;
-        item.hasText = cached.HasText || false;
-        if (cached.Message) {
-          item.message = { ...msg, ...cached.Message };
+        read = cached;
+      } else {
+        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}?view=${preferredView}`);
+        if (!current()) return;
+        if (metadataRes.status === 401) {
+          window.location.hash = '/login';
+          return;
         }
-        if (cached.Part) {
-          item.mimeType = cached.Part.MIMEType || cached.Part.MimeType || 'text/plain';
-          if (cached.RawHtml === undefined) {
-            if (cached.RawText !== undefined) {
-              item.content = cached.RawText;
-              const payload: any = { content: item.content, isHtml: false, message: item.message, mailbox, banners: [], i18nStore: this.i18nStore };
-              const hookResults = await registry.invokeHookAsync('reader:content', payload);
-              for (const res of hookResults) {
-                if (res && typeof res === 'string') item.content = res;
-              }
-              item.activeBanners = payload.banners || [];
-              if (payload.isHtml) {
-                item.mimeType = 'text/html';
-                item.hasHtml = true;
-                item.content = sanitizeMessageHTML(item.content, {
-                  mailbox: mailbox,
-                  messageUid: item.message?.UID,
-                  allowRemoteResources: item.allowRemoteResources,
-                  messageStructure: item.message?.BodyStructure,
-                  onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (this.isOpenItem(item)) this.hasRemoteResources = true; }
-                });
-              }
-            }
-          } else {
-            item.rawMessageHtml = cached.RawHtml;
-            const payload: any = { content: item.rawMessageHtml, isHtml: true, message: item.message, mailbox, banners: [], i18nStore: this.i18nStore };
-            const hookResults = await registry.invokeHookAsync('reader:content', payload);
-            for (const res of hookResults) {
-              if (res && typeof res === 'string') item.rawMessageHtml = res;
-            }
-            item.activeBanners = payload.banners || [];
-            item.content = sanitizeMessageHTML(item.rawMessageHtml, {
-              mailbox: mailbox,
-              messageUid: item.message?.UID,
-              allowRemoteResources: item.allowRemoteResources,
-              messageStructure: item.message?.BodyStructure,
-              onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (this.isOpenItem(item)) this.hasRemoteResources = true; }
-            });
+        if (!metadataRes.ok) throw new Error('Failed to fetch metadata');
+        const data = await metadataRes.json();
+        if (!current()) return;
+
+        let rawHtml: string | undefined;
+        let rawText: string | undefined;
+        const part = data.Part;
+        if (part) {
+          const partPathStr = Array.isArray(part.Path) ? part.Path.join('.') : part.Path;
+          const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`);
+          if (!current()) return;
+          if (rawRes.status === 401) {
+            window.location.hash = '/login';
+            return;
+          }
+          if (rawRes.ok) {
+            const raw = await rawRes.text();
+            if (!current()) return;
+            if ((part.MIMEType || part.MimeType || 'text/plain').toLowerCase() === 'text/html') rawHtml = raw;
+            else rawText = raw;
           }
         }
+        read = {
+          Message: data.Message,
+          Part: data.Part,
+          Attachments: data.Attachments,
+          RawHtml: rawHtml,
+          RawText: rawText,
+          HasHTML: !!data.HasHTML,
+          HasText: !!data.HasText,
+        };
+      }
+
+      // Worked out in full first, and only then given to the card: whatever
+      // this read has not computed yet stays as the card had it, never half of
+      // one view and half of the other.
+      const message = read.Message ? { ...msg, ...read.Message } : msg;
+      let hasHtml = !!read.HasHTML;
+      const hasText = !!read.HasText;
+      let mimeType = item.mimeType;
+      let content = item.content;
+      let rawMessageHtml = item.rawMessageHtml;
+      let activeBanners = item.activeBanners;
+      let hasRemoteResources = item.hasRemoteResources;
+      const sanitize = (html: string) => sanitizeMessageHTML(html, {
+        mailbox: mailbox,
+        messageUid: message?.UID,
+        allowRemoteResources: item.allowRemoteResources,
+        messageStructure: message?.BodyStructure,
+        onRemoteResourceBlocked: () => { hasRemoteResources = true; }
+      });
+
+      if (read.Part) {
+        mimeType = read.Part.MIMEType || read.Part.MimeType || 'text/plain';
+        if (read.RawHtml !== undefined) {
+          // Recomputed for THIS body: the sanitizer below is what raises it.
+          hasRemoteResources = false;
+          const payload: any = { content: read.RawHtml, isHtml: true, message, mailbox, banners: [], i18nStore: this.i18nStore };
+          const hookResults = await registry.invokeHookAsync('reader:content', payload);
+          if (!current()) return;
+          rawMessageHtml = read.RawHtml;
+          for (const res of hookResults) {
+            if (res && typeof res === 'string') rawMessageHtml = res;
+          }
+          activeBanners = payload.banners || [];
+          content = sanitize(rawMessageHtml);
+        } else if (read.RawText !== undefined) {
+          // Plain text has nothing remote to load. Kept from an HTML pass, the
+          // flag offered "Load remote content" over the text.
+          hasRemoteResources = false;
+          const payload: any = { content: read.RawText, isHtml: false, message, mailbox, banners: [], i18nStore: this.i18nStore };
+          const hookResults = await registry.invokeHookAsync('reader:content', payload);
+          if (!current()) return;
+          content = read.RawText;
+          for (const res of hookResults) {
+            if (res && typeof res === 'string') content = res;
+          }
+          activeBanners = payload.banners || [];
+          if (payload.isHtml) {
+            mimeType = 'text/html';
+            hasHtml = true;
+            content = sanitize(content);
+          }
+        }
+      }
+
+      if (!cached && MessageCache.generation() === cacheGeneration) {
+        MessageCache.set(mailbox, msg.UID.toString(), preferredView, { ...read, HasHTML: hasHtml, HasText: hasText });
+      }
+
+      item.attachments = read.Attachments || [];
+      item.hasHtml = hasHtml;
+      item.hasText = hasText;
+      item.message = message;
+      item.mimeType = mimeType;
+      item.content = content;
+      item.rawMessageHtml = rawMessageHtml;
+      item.activeBanners = activeBanners;
+      item.hasRemoteResources = hasRemoteResources;
+    } catch (e) {
+      if (!current()) return;
+      Logger.error('Failed to fetch message:', e);
+      item.content = 'Error loading message.';
+    } finally {
+      // A read that was overtaken paints nothing and leaves the card list
+      // alone: the newer read does both when it lands.
+      if (current()) {
         item.loading = false;
         if (this.isConnected && !this._deferPropertySync && this.isOpenItem(item)) {
           this.content = item.content;
@@ -1586,109 +1675,7 @@ export class MessageReader extends LitElement {
           this.message = { ...this.message, ...item.message };
         }
         this.updateThreadItemReference(item);
-        return;
       }
-
-      const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}?view=${preferredView}`);
-      if (metadataRes.status === 401) {
-        window.location.hash = '/login';
-        return;
-      }
-      if (!metadataRes.ok) throw new Error('Failed to fetch metadata');
-      const data = await metadataRes.json();
-
-      item.attachments = data.Attachments || [];
-      item.hasHtml = !!data.HasHTML;
-      item.hasText = !!data.HasText;
-      if (data.Message) {
-        item.message = { ...item.message, ...data.Message };
-      }
-
-      let rawHtml: string | undefined;
-      let rawText: string | undefined;
-
-      const part = data.Part;
-      if (part) {
-        item.mimeType = part.MIMEType || part.MimeType || 'text/plain';
-        const partPathStr = Array.isArray(part.Path) ? part.Path.join('.') : part.Path;
-        const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`);
-        if (rawRes.status === 401) {
-          window.location.hash = '/login';
-          return;
-        }
-        if (rawRes.ok) {
-          if (item.mimeType.toLowerCase() === 'text/html') {
-            rawHtml = await rawRes.text();
-            item.rawMessageHtml = rawHtml;
-            const payload: any = { content: item.rawMessageHtml, isHtml: true, message: item.message, mailbox, banners: [], i18nStore: this.i18nStore };
-            const hookResults = await registry.invokeHookAsync('reader:content', payload);
-            for (const res of hookResults) {
-              if (res && typeof res === 'string') item.rawMessageHtml = res;
-            }
-            item.activeBanners = payload.banners || [];
-
-            item.content = sanitizeMessageHTML(item.rawMessageHtml, {
-              mailbox: mailbox,
-              messageUid: item.message?.UID,
-              allowRemoteResources: item.allowRemoteResources,
-              messageStructure: item.message?.BodyStructure,
-              onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (this.isOpenItem(item)) this.hasRemoteResources = true; }
-            });
-          } else {
-            rawText = await rawRes.text();
-            item.content = rawText;
-            const payload: any = { content: item.content, isHtml: false, message: item.message, mailbox, banners: [], i18nStore: this.i18nStore };
-            const hookResults = await registry.invokeHookAsync('reader:content', payload);
-            for (const res of hookResults) {
-              if (res && typeof res === 'string') item.content = res;
-            }
-            item.activeBanners = payload.banners || [];
-
-            if (payload.isHtml) {
-              item.mimeType = 'text/html';
-              item.hasHtml = true;
-              item.content = sanitizeMessageHTML(item.content, {
-                mailbox: mailbox,
-                messageUid: item.message?.UID,
-                allowRemoteResources: item.allowRemoteResources,
-                messageStructure: item.message?.BodyStructure,
-                onRemoteResourceBlocked: () => { item.hasRemoteResources = true; if (this.isOpenItem(item)) this.hasRemoteResources = true; }
-              });
-            }
-          }
-        }
-      }
-
-      if (MessageCache.generation() === cacheGeneration) {
-        MessageCache.set(mailbox, msg.UID.toString(), preferredView, {
-          Message: data.Message,
-          Part: data.Part,
-          Attachments: data.Attachments,
-          RawHtml: rawHtml,
-          RawText: rawText,
-          HasHTML: item.hasHtml,
-          HasText: item.hasText
-        });
-      }
-    } catch (e) {
-      Logger.error('Failed to fetch message:', e);
-      item.content = 'Error loading message.';
-    } finally {
-      item.loading = false;
-      if (this.isConnected && !this._deferPropertySync && this.isOpenItem(item)) {
-        this.content = item.content;
-        this.mimeType = item.mimeType;
-        this.rawMessageHtml = item.rawMessageHtml;
-        this.attachments = item.attachments;
-        this.hasHtml = item.hasHtml;
-        this.hasText = item.hasText;
-        this.activeBanners = item.activeBanners;
-        this.allowRemoteResources = item.allowRemoteResources;
-        this.hasRemoteResources = item.hasRemoteResources;
-        this.loading = false;
-        this.message = { ...this.message, ...item.message };
-      }
-      this.updateThreadItemReference(item);
     }
   }
 
