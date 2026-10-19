@@ -121,6 +121,17 @@ describe('quoting into the composer', () => {
     expect(parse(sent.html).querySelector('div.gmail_quote')?.textContent).toContain('Forwarded message');
   });
 
+  it('reports no change of its own as it opens', async () => {
+    // Any change of html marks a composer as unsaved, so a report here would
+    // file every reply opened and left unanswered as a draft.
+    const changes = record<CustomEvent>(document, 'text-changed');
+    const composer = await openComposer(reply());
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(composer.editor).toBeTruthy();
+    expect(changes).toEqual([]);
+  });
+
   it('keeps the quote whole when a saved draft is reopened', async () => {
     const saved = typeLine(await openComposer(forward()), 'Sounds good.').html;
     cleanup();

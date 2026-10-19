@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
-import { bareAddress, composeContext } from '../store/compose-store';
+import { bareAddress, composeContext, draftContentKey } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
 import { messageOperations } from '../services/message-operations';
@@ -168,6 +168,7 @@ export class AlpsFloatingComposer extends LitElement {
     this.isSaving = true;
     try {
       const sentUuids = (currentInstance.attachments || []).map(a => a.uuid).filter(Boolean);
+      const contentKey = draftContentKey(currentInstance);
       const formData = this._buildFormData(currentInstance);
       formData.append('save_as_draft', '1');
 
@@ -201,14 +202,19 @@ export class AlpsFloatingComposer extends LitElement {
       }
 
       if (result) {
-        // Mark as clean and update draft properties silently without triggering another auto-save
+        // Clean only if nothing changed while the request was out. What was
+        // typed meanwhile is not in this draft, and marking it clean let a
+        // close, which saves only a dirty composer, or a sign-out drop it.
+        const latest = this.composeStore.getComposer(this.instance.id) || currentInstance;
         const updates: any = {
-          dirty: false,
+          dirty: draftContentKey(latest) !== contentKey,
           draftUid: result.uid,
           draftMailbox: result.mailbox
         };
         if (result.attachments) {
-          const unsavedAttachments = (currentInstance.attachments || []).filter(a => {
+          // From the composer as it is now: one picked during the save is in
+          // neither the snapshot nor the server's answer.
+          const unsavedAttachments = (latest.attachments || []).filter(a => {
             if (a._tempId) return true; // Still uploading
             if (a.uuid && !sentUuids.includes(a.uuid)) return true; // Uploaded but not included in this save
             return false;
@@ -376,7 +382,11 @@ export class AlpsFloatingComposer extends LitElement {
     // message gone from the screen AND gone from localStorage, having never
     // reached the server. Total, silent loss of what the user wrote, on the
     // gesture they use to put a message aside for later.
-    if (this.instance.dirty) {
+    //
+    // The store's answer, not the rendered property's, which lags it: a save
+    // that has just landed may have left the composer dirty.
+    const current = this.composeStore.getComposer(this.instance.id) || this.instance;
+    if (current.dirty) {
       const saved = await this._saveDraft();
       if (!saved) {
         window.dispatchEvent(new CustomEvent('show-toast', {

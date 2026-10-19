@@ -35,6 +35,16 @@ export const bareAddress = (addr: string): string => {
   return rawEmail.trim().toLowerCase();
 };
 
+/**
+ * What a draft save stores of a composer: the message, not where its window
+ * sits or how far an upload has got. Two composers with the same key would
+ * save the same draft.
+ */
+export const draftContentKey = (c: ComposerInstance): string => JSON.stringify([
+  c.subject, c.to, c.cc, c.bcc, c.text, c.format, c.html,
+  (c.attachments || []).map(a => [a._tempId, a.uuid, a.partPath, a.filename]),
+]);
+
 const isBlockedAddress = (addr: string): boolean => {
   const lowerEmail = bareAddress(addr);
   return lowerEmail.startsWith('noreply') || 
@@ -349,20 +359,22 @@ export class ComposeStore extends EventTarget {
       if ('cc' in updates && JSON.stringify(updates.cc || []) !== JSON.stringify(c.cc || [])) isDirtyUpdate = true;
       if ('bcc' in updates && JSON.stringify(updates.bcc || []) !== JSON.stringify(c.bcc || [])) isDirtyUpdate = true;
       if ('attachments' in updates && updates.attachments !== c.attachments) isDirtyUpdate = true;
-
-      if (!isDirtyUpdate && !c.dirty) {
-        if ('text' in updates || 'html' in updates) {
-          const newText = 'text' in updates ? updates.text || '' : c.text || '';
-          const initialText = c.initialText || '';
-          if (newText.trim() !== initialText.trim()) {
-            isDirtyUpdate = true;
-          }
-        }
-      } else if (!isDirtyUpdate && c.dirty) {
-         // if it's already dirty, check if the change should keep it dirty or if they deleted everything back to initial
-         // We could revert dirty to false here if they erase their work, 
-         // but let's just keep it dirty if it was already dirty unless we explicitly pass dirty: false
-      }
+      // Against the current revision, not the opening text: once a draft is
+      // saved, the opening text is not what is stored, and an edit back to it
+      // is an edit. Nor is the text the whole message: a switch between rich
+      // and plain text, or bold over unchanged words, changes what is saved
+      // and sent while the text stays the same.
+      //
+      // Except while the composer is pristine, never stored and never edited.
+      // Its opening text is then the only baseline, and whitespace at its
+      // edges, such as the newline a stray Enter leaves, is not an edit: an
+      // opened but unanswered reply is not worth filing as a draft.
+      const pristine = !c.dirty && !c.draftUid;
+      if ('text' in updates && (updates.text || '') !== (c.text || '') &&
+          !(pristine && (updates.text || '').trim() === (c.initialText || '').trim())) isDirtyUpdate = true;
+      if ('format' in updates && updates.format !== c.format) isDirtyUpdate = true;
+      if ((updates.format ?? c.format) === 'html' && 'html' in updates &&
+          (updates.html || '') !== (c.html || '')) isDirtyUpdate = true;
 
       const newDirty = 'dirty' in updates ? updates.dirty : (isDirtyUpdate ? true : c.dirty);
       return { ...c, ...updates, dirty: newDirty };

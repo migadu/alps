@@ -191,6 +191,41 @@ describe('editing', () => {
     expect(composers(store)[0].dirty).toBe(false);
   });
 
+  it.each([
+    ['bold over unchanged words', { html: '<p><strong>body</strong></p>' }],
+    ['a switch to plain text', { format: 'text' as const }],
+  ])('marks %s as unsaved', (_name, edit) => {
+    signIn('ada');
+    const store = makeStore();
+    store.openComposer({ text: 'body', html: '<p>body</p>', format: 'html', draftUid: '7' });
+    const id = composers(store)[0].id;
+    store.updateComposer(id, { text: 'body', ...edit });
+    expect(composers(store)[0].dirty).toBe(true);
+  });
+
+  it('marks an edit back to the opening text as unsaved once a draft is stored', () => {
+    // The stored draft holds the intermediate text, so going back is a change.
+    signIn('ada');
+    const store = makeStore();
+    store.openComposer({ text: 'original', draftUid: '7' });
+    const id = composers(store)[0].id;
+    store.updateComposer(id, { text: 'intermediate' });
+    store.updateComposer(id, { draftUid: '8', dirty: false });
+    store.updateComposer(id, { text: 'original' });
+    expect(composers(store)[0].dirty).toBe(true);
+  });
+
+  it('leaves a saved revision clean when the editor reports the text it already has', () => {
+    signIn('ada');
+    const store = makeStore();
+    store.openComposer({ text: 'original', draftUid: '7' });
+    const id = composers(store)[0].id;
+    store.updateComposer(id, { text: 'intermediate' });
+    store.updateComposer(id, { draftUid: '8', dirty: false });
+    store.updateComposer(id, { text: 'intermediate' });
+    expect(composers(store)[0].dirty).toBe(false);
+  });
+
   it('saves edits after a pause rather than on every keystroke', async () => {
     vi.useFakeTimers();
     signIn('ada');
