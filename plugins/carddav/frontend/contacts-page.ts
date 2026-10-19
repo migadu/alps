@@ -280,6 +280,7 @@ export class ContactsPage extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.stopResize?.();
     window.removeEventListener('resize', this._handleWindowResize);
     window.removeEventListener('hashchange', this._handleHashChange);
     window.removeEventListener('alps-active-user-changed', this.loadAddedCategories);
@@ -968,8 +969,14 @@ export class ContactsPage extends LitElement {
     }
   }
 
+  /** Ends the pane drag in progress, if any; null when there is none. A page
+   * that leaves the screen mid-drag calls it, or its window listeners would
+   * keep running against it until the next mouseup. */
+  private stopResize: (() => void) | null = null;
+
   private startResize = (e: MouseEvent) => {
     e.preventDefault();
+    this.stopResize?.();
     this.isPaneDragging = true;
 
     const startX = e.clientX;
@@ -981,11 +988,13 @@ export class ContactsPage extends LitElement {
     };
 
     const onMouseUp = () => {
+      this.stopResize = null;
       this.isPaneDragging = false;
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
 
+    this.stopResize = onMouseUp;
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
   };

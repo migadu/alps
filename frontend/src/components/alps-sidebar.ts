@@ -292,6 +292,8 @@ export class AlpsSidebar extends LitElement {
 
   private openTimer: ReturnType<typeof setTimeout> | null = null;
   private closeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Ends the resize drag in progress, if any; null when there is none. */
+  private stopResize: (() => void) | null = null;
 
   constructor() {
     super();
@@ -302,6 +304,10 @@ export class AlpsSidebar extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.clearPeekTimers();
+    // A sidebar that leaves the page in the middle of a drag (a sign-out, a
+    // route change) would otherwise keep its window listeners, resizing a
+    // detached sidebar, until the next mouseup.
+    this.stopResize?.();
   }
 
   /** Shuts the overlay, because a choice was made in it, and keeps it shut
@@ -360,6 +366,7 @@ export class AlpsSidebar extends LitElement {
   private startResize(e: MouseEvent) {
     if (this.isMobile || this.collapsed) return;
     e.preventDefault();
+    this.stopResize?.();
     this.isDragging = true;
     this.dispatchEvent(new CustomEvent('drag-start'));
 
@@ -376,12 +383,16 @@ export class AlpsSidebar extends LitElement {
     };
 
     const onMouseUp = () => {
+      this.stopResize = null;
       this.isDragging = false;
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      // Sent when a disconnect ends the drag too: the page keeps its own
+      // dragging flag, and a cached page would come back with it still set.
       this.dispatchEvent(new CustomEvent('drag-end'));
     };
 
+    this.stopResize = onMouseUp;
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
   }

@@ -674,6 +674,7 @@ export class MailboxPage extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.stopResize?.();
     window.removeEventListener('hashchange', this.handleHashChange);
     this._mql.removeEventListener('change', this._handleMediaQuery);
     
@@ -1093,8 +1094,14 @@ export class MailboxPage extends LitElement {
     }
   };
 
+  /** Ends the pane drag in progress, if any; null when there is none. A page
+   * that leaves the screen mid-drag calls it, or its window listeners would
+   * keep running against it until the next mouseup. */
+  private stopResize: (() => void) | null = null;
+
   private startResize = (e: MouseEvent) => {
     e.preventDefault();
+    this.stopResize?.();
     this.isPaneDragging = true;
     
     // Ensure we have the latest width before drag
@@ -1111,11 +1118,13 @@ export class MailboxPage extends LitElement {
     };
 
     const onMouseUp = () => {
+      this.stopResize = null;
       this.isPaneDragging = false;
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
 
+    this.stopResize = onMouseUp;
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
   };
