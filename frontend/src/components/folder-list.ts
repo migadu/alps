@@ -978,7 +978,11 @@ export class FolderList extends LitElement {
             @click=${() => this.dispatchEvent(new CustomEvent('compose'))}
           >${this.i18nStore?.t('folderList.compose')}</alps-create-button>
         </alps-toolbar>
-        <div class="sidebar-content" @scroll=${this.handleScroll}>
+        <!-- Inert in the strip, not only dimmed. sidebarLayoutStyles gives the
+             dimmed content pointer-events: none, which keeps the mouse out;
+             inert keeps the keyboard out too, so Tab cannot walk into folder
+             carets clipped past the strip's edge. Compose, above, stays live. -->
+        <div class="sidebar-content" ?inert=${this.collapsed} @scroll=${this.handleScroll}>
           <div class="sidebar-scroll-content">
             ${renderTree(standardNodes)}
             ${standardNodes.length > 0 && customNodes.length > 0 ? html`

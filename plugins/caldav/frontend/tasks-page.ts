@@ -540,7 +540,8 @@ export class TasksPage extends LitElement {
                                     @click=${() => this.openCreate()}
                                 >${t('tasks.addTask')}</alps-create-button>
                             </alps-toolbar>
-                            <div class="sidebar-content">
+                            <!-- Inert in the strip, as it is dimmed there. -->
+                            <div class="sidebar-content" ?inert=${collapsed}>
                                 <div class="sidebar-scroll-content">
                                     <nav class="smart-lists">
                                         ${SMART_LISTS.map(list => {

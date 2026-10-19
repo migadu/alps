@@ -959,7 +959,9 @@ export class CalendarPage extends LitElement {
                                 @click=${() => this.openCreateModal()}
                             >${this.i18nStore?.t('calendar.addEvent')}</alps-create-button>
                         </alps-toolbar>
-                        <div class="sidebar-content">
+                        <!-- Inert in the strip, as it is dimmed there: the
+                             calendars, their menus and the mini-month. -->
+                        <div class="sidebar-content" ?inert=${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile}>
                             <div class="sidebar-scroll-content">
                                 <div class="calendars-list">
                                     <h3>${this.i18nStore?.t('calendar.myCalendars')}</h3>

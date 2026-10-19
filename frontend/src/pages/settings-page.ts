@@ -322,7 +322,8 @@ export class SettingsPage extends LitElement {
           @close-sidebar=${() => this.mobileSidebarOpen = false}
         >
           <div class="sidebar-wrapper ${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile ? 'collapsed' : ''}">
-            <div class="sidebar-content">
+            <!-- Inert in the strip, as it is dimmed there. -->
+            <div class="sidebar-content" ?inert=${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile}>
               <div class="sidebar-scroll-content">
                 <alps-category-item 
             ?active=${this.category === 'general'}
