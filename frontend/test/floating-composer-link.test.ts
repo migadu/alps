@@ -67,7 +67,7 @@ describe('the Insert Link popup', () => {
 
     el._handleLinkSubmit();
 
-    expect(editor.getHTML()).toMatch(/<p>See:<a [^>]*href="https:\/\/example\.com\/"[^>]*>Example<\/a><\/p>/);
+    expect(editor.getHTML()).toMatch(/<p[^>]*>See:<a [^>]*href="https:\/\/example\.com\/"[^>]*>Example<\/a><\/p>/);
   });
 
   it('opens with the fields cleared of what was typed last time', async () => {

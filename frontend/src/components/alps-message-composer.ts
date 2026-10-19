@@ -9,6 +9,7 @@ import type { JSONContent } from '@tiptap/core';
 import { DOMParser as SchemaParser, DOMSerializer } from '@tiptap/pm/model';
 import type { Node as ProseMirrorNode, Schema } from '@tiptap/pm/model';
 import { NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
 import { TextStyle } from '@tiptap/extension-text-style';
@@ -29,6 +30,10 @@ import { QUOTE_ATTRIBUTE } from '../utils/email-quote';
 import { escapeHtml, sanitizeMessageHTML, sanitizeQuotedHTML, stripCssUrls } from '../utils/html-sanitizer';
 import type { SanitizeOptions } from '../utils/html-sanitizer';
 import { applyThemeToIframe, htmlToPlainText, setupIframeSizing } from '../utils/reader-utils';
+import {
+  applyAutoDirections, AUTO_DIRECTION_ATTRIBUTE, createDirectionResolver, createDOMDirectionResolver,
+  getAuthoredDirection, getAuthoredStyle,
+} from '../utils/content-direction';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -277,9 +282,32 @@ function unmarkQuotes(markup: string): string {
  * off the document in order and spliced in as strings, so the editor never
  * serializes a quote's markup and nothing here parses it: an edit costs the
  * same whatever the size of the original.
+ *
+ * The directions the editor shows are written into the HTML first, for the
+ * recipient's client: see TextDirection and Indent.
  */
 function serializeEditorHtml(editor: Editor): string {
-  const html = editor.getHTML();
+  let html = editor.getHTML();
+  if (/<(?:blockquote|ul|ol)\b|margin-inline-start\s*:/.test(html)) {
+    const body = new DOMParser().parseFromString(html, 'text/html').body;
+    // The editor resolves an automatic quote or list with a decoration, which
+    // getHTML() leaves out. Written in here, the recipient sees what the user
+    // saw, and the marker lets a reopened draft stay automatic.
+    applyAutoDirections(body, true);
+    // An indent is a logical margin in the editor, so it follows a
+    // right-to-left paragraph to its right. Gmail, Outlook and Yahoo drop
+    // logical properties from mail they receive, so it goes out as a margin
+    // on the side the paragraph resolves to.
+    const resolve = createDOMDirectionResolver();
+    for (const block of body.querySelectorAll<HTMLElement>('[style]')) {
+      const indent = block.style.marginInlineStart;
+      if (!indent) continue;
+      const side = resolve(block) === 'rtl' ? 'margin-right' : 'margin-left';
+      block.style.removeProperty('margin-inline-start');
+      block.style.setProperty(side, indent);
+    }
+    html = body.innerHTML;
+  }
   if (!html.includes(QUOTE_SLOT)) return html;
   const quotes: string[] = [];
   editor.state.doc.descendants((node) => {
@@ -300,7 +328,34 @@ function serializeEditorHtml(editor: Editor): string {
  */
 function contentFromHtml(schema: Schema, markup: string): JSONContent {
   const body = new DOMParser().parseFromString(markup, 'text/html').body;
-  return SchemaParser.fromSchema(schema).parse(body).toJSON();
+  const doc = SchemaParser.fromSchema(schema).parse(body).toJSON();
+  // A block with no direction of its own inside one that has a fixed
+  // direction takes it, through every level, so that it is written out when
+  // the draft is saved: see TextDirection.
+  const inheritDir = (node: JSONContent, parentDir?: string | null) => {
+    const direction = node.attrs?.dir ?? parentDir;
+    if (node.attrs?.dir === null && (direction === 'ltr' || direction === 'rtl')) {
+      node.attrs.dir = direction;
+    }
+    node.content?.forEach((child) => inheritDir(child, direction));
+  };
+  inheritDir(doc);
+  return doc;
+}
+
+/**
+ * The indent a block was saved with. It went out as a margin on the side its
+ * direction starts from, and is read back from there; a zero edge of a
+ * `margin` shorthand must not hide the other.
+ */
+function readIndent(element: HTMLElement) {
+  const side = createDOMDirectionResolver()(element) === 'rtl' ? 'right' : 'left';
+  const properties = ['margin-inline-start', `margin-${side}`, `margin-${side === 'right' ? 'left' : 'right'}`];
+  for (const property of properties) {
+    const value = parseInt(element.style.getPropertyValue(property), 10) || 0;
+    if (value) return { property, value, side };
+  }
+  return { property: '', value: 0, side };
 }
 
 /**
@@ -333,7 +388,21 @@ const QuoteBar = Extension.create({
           },
           style: {
             default: null,
-            parseHTML: (element) => stripCssUrls(element.getAttribute('style') ?? '') || null,
+            parseHTML: (element) => {
+              // Without a direction the editor itself wrote, so an automatic
+              // quote stays automatic once reopened.
+              const style = getAuthoredStyle(element);
+              if (!style) return null;
+              const indent = readIndent(element);
+              if (!indent.value) return stripCssUrls(style) || null;
+              // The indent attribute owns this offset. Kept in the quote's own
+              // style as well, Outdent would leave it behind.
+              const base = element.ownerDocument.createElement('div');
+              base.style.cssText = style;
+              const baseline = element.classList.contains('gmail_quote') ? '0.8ex' : '0px';
+              base.style.setProperty(indent.property, baseline);
+              return stripCssUrls(base.style.cssText) || null;
+            },
             renderHTML: (attributes) => (attributes.style ? { style: attributes.style } : {}),
           },
         },
@@ -376,6 +445,95 @@ const FontSize = Extension.create({
   },
 });
 
+/**
+ * Each block keeps the direction its author gave it, and one left automatic
+ * is laid out by its own first letter, whatever the interface's language.
+ *
+ * Every block is written with a `dir`: the one it was given, or `auto`. A
+ * block with none, pasted or typed into a quote whose direction is fixed,
+ * takes the quote's, so it goes out the way it was shown. A browser lays out
+ * an automatic quote or list by its first letter, but skips every paragraph
+ * inside it, since each carries a `dir`. The plugin below resolves such a
+ * quote or list, and the editor itself, from their content instead, and
+ * decorates them with the answer.
+ */
+const TextDirection = Extension.create({
+  name: 'messageTextDirection',
+  addGlobalAttributes() {
+    return [{
+      types: ['paragraph', 'heading', 'blockquote', 'listItem', 'bulletList', 'orderedList'],
+      attributes: {
+        dir: {
+          default: null,
+          parseHTML: (element) => {
+            for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+              // The nearest direction an author set wins over any farther up.
+              const direction = getAuthoredDirection(node);
+              if (direction) return direction;
+            }
+            // None: the block inherits from wherever it lands, which is not
+            // the same as an explicit auto. See appendTransaction below.
+            return null;
+          },
+          renderHTML: (attributes) => ({ dir: attributes.dir || 'auto' }),
+        },
+      },
+    }];
+  },
+  addProseMirrorPlugins() {
+    const key = new PluginKey<ReturnType<typeof directionsFor>>('messageDirection');
+    function directionsFor(doc: ProseMirrorNode) {
+      const resolve = createDirectionResolver<ProseMirrorNode>((node) => ({
+        text: node.isText ? node.text : undefined,
+        direction: node.attrs.dir,
+        children: node.content.content,
+      }));
+      const decorations: Decoration[] = [];
+      doc.descendants((node, position) => {
+        if (['blockquote', 'listItem', 'bulletList', 'orderedList'].includes(node.type.name)
+          && node.attrs.dir !== 'ltr' && node.attrs.dir !== 'rtl') {
+          const direction = resolve(node);
+          if (direction) {
+            decorations.push(Decoration.node(position, position + node.nodeSize, {
+              [AUTO_DIRECTION_ATTRIBUTE]: direction,
+              style: `direction: ${direction}`,
+            }));
+          }
+        }
+      });
+      return { decorations: DecorationSet.create(doc, decorations), direction: resolve(doc) ?? 'ltr' };
+    }
+    return [new Plugin({
+      key,
+      appendTransaction: (transactions, _oldState, newState) => {
+        if (!transactions.some((tr) => tr.docChanged)) return null;
+        let tr: typeof newState.tr | null = null;
+        const inheritDir = (node: ProseMirrorNode, position: number, parentDir?: string | null) => {
+          // A pasted container's own blocks still have no direction during
+          // this walk, so the inherited one is carried down to them. An
+          // explicit auto starts a subtree that follows its own content.
+          const direction = node.attrs.dir ?? parentDir;
+          if (node.attrs.dir === null && (direction === 'ltr' || direction === 'rtl')) {
+            tr ??= newState.tr;
+            tr.setNodeMarkup(position, undefined, { ...node.attrs, dir: direction });
+          }
+          node.forEach((child, offset) => inheritDir(child, position + 1 + offset, direction));
+        };
+        inheritDir(newState.doc, -1);
+        return tr;
+      },
+      state: {
+        init: (_config, state) => directionsFor(state.doc),
+        apply: (transaction, previous) => transaction.docChanged ? directionsFor(transaction.doc) : previous,
+      },
+      props: {
+        decorations: (state) => key.getState(state)?.decorations,
+        attributes: (state) => ({ style: `direction: ${key.getState(state)?.direction ?? 'ltr'}` }),
+      },
+    })];
+  },
+});
+
 const Indent = Extension.create({
   name: 'indent',
   addOptions() {
@@ -393,13 +551,12 @@ const Indent = Extension.create({
         attributes: {
           indent: {
             default: 0,
-            parseHTML: element => {
-              const marginLeft = parseInt(element.style.marginLeft, 10) || 0;
-              return marginLeft;
-            },
+            parseHTML: element => readIndent(element).value,
+            // Logical, so the indent follows a right-to-left block to its
+            // right. serializeEditorHtml writes it out as a physical margin.
             renderHTML: attributes => {
               if (!attributes.indent) return {};
-              return { style: `margin-left: ${attributes.indent}px` };
+              return { style: `margin-inline-start: ${attributes.indent}px` };
             },
           },
         },
@@ -663,6 +820,7 @@ export class AlpsMessageComposer extends LitElement {
         TextStyle,
         Color,
         FontSize,
+        TextDirection,
         Indent,
         QuoteBar,
         QuotedMessage.configure({
@@ -691,6 +849,7 @@ export class AlpsMessageComposer extends LitElement {
       // Parsed here rather than by the editor: see contentFromHtml. The schema
       // is the same one the editor builds from these extensions.
       content: contentFromHtml(getSchema(extensions), initial),
+      editorProps: { attributes: { dir: 'auto' } },
       // The editor's stylesheet goes into document.head, which this shadow root
       // never sees; the rules it needs are in this component's own CSS.
       injectCSS: false,
@@ -919,16 +1078,18 @@ export class AlpsMessageComposer extends LitElement {
       cursor: pointer;
     }
 
+    /* Logical sides, so a right-to-left list or quote has its markers and
+       its bar on the right. */
     .editor-container .ProseMirror ul,
     .editor-container .ProseMirror ol {
       margin: 0 0 1em 0;
-      padding-left: 1.5em;
+      padding-inline-start: 1.5em;
     }
 
     .editor-container .ProseMirror blockquote {
-      border-left: 3px solid var(--border-color, #e5e7eb);
+      border-inline-start: 3px solid var(--border-color, #e5e7eb);
       margin: 0 0 1em 0;
-      padding-left: 1em;
+      padding-inline-start: 1em;
       color: var(--text-muted, #6b7280);
     }
 
@@ -1249,6 +1410,7 @@ export class AlpsMessageComposer extends LitElement {
           </div>
         </div>
         <textarea
+          dir="auto"
           ${ref(this.replyInputRef)}
           class="reply-box ${this.format === 'html' ? 'hidden' : ''}"
           placeholder=${this.i18nStore?.t('messageComposer.writeMessage')}

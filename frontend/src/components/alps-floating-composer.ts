@@ -1385,6 +1385,7 @@ export class AlpsFloatingComposer extends LitElement {
 
           <div class="field-row">
             <input 
+              dir="auto"
               class="field-input" 
               placeholder=${this.i18nStore?.t('floatingComposer.subject')} 
               .value=${this.instance.subject || ''}
