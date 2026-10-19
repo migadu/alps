@@ -48,6 +48,10 @@ function promptForPassphrase(errorMsg?: string, i18nStore?: any): Promise<string
 // storage, nullifying the passphrase protection on the at-rest key.
 let cachedPrivateKey: any = null;
 
+// Moves when the session ends. A key read, or unlocked, for the session that
+// ended is not kept for the next one.
+let keyEpoch = 0;
+
 // clearCachedPrivateKey forgets the in-memory decrypted key (used by "purge"
 // and lock actions). Also drops any legacy value persisted by older versions.
 export function clearCachedPrivateKey(): void {
@@ -57,13 +61,31 @@ export function clearCachedPrivateKey(): void {
     } catch (e) { /* ignore */ }
 }
 
+// Signing out does not reload the page, and the unlocked key outlived it: the
+// next user to sign in on the same tab had their encrypted mail signed with
+// the previous user's key and encrypted to it as well, and their reader
+// decrypted with it. Their own key is asked for, and unlocked, afresh.
+window.addEventListener('session-cleared', () => {
+    keyEpoch++;
+    clearCachedPrivateKey();
+});
+
+function remember(key: any, epoch: number): any {
+    if (epoch === keyEpoch) cachedPrivateKey = key;
+    return key;
+}
+
 async function getPrivateKey(openpgp: any, i18nStore?: any): Promise<any> {
     if (cachedPrivateKey) return cachedPrivateKey;
+    const epoch = keyEpoch;
 
     // Fetch from server
     const res = await fetchWithTimeout('/gpg/keys');
     if (!res.ok) throw new Error('Failed to fetch GPG keyring.');
     const keyring = await res.json();
+    // The keyring of a session that has since ended: not to be unlocked, let
+    // alone kept, for whoever is signed in now.
+    if (epoch !== keyEpoch) throw new Error('The session ended.');
     
     if (!keyring.encrypted_private_key) {
         throw new Error('No private key found on server. Please generate one in Settings.');
@@ -80,8 +102,7 @@ async function getPrivateKey(openpgp: any, i18nStore?: any): Promise<any> {
                     privateKey,
                     passphrase: pass
                 });
-                cachedPrivateKey = decryptedKey;
-                return cachedPrivateKey;
+                return remember(decryptedKey, epoch);
             } catch (e: any) {
                 errorMsg = 'Incorrect passphrase: ' + e.message;
                 pass = await promptForPassphrase(errorMsg, i18nStore);
@@ -90,8 +111,7 @@ async function getPrivateKey(openpgp: any, i18nStore?: any): Promise<any> {
         throw new Error('Passphrase prompt cancelled.');
     } else {
         // Key was already decrypted (unlikely if securely stored)
-        cachedPrivateKey = privateKey;
-        return cachedPrivateKey;
+        return remember(privateKey, epoch);
     }
 }
 
