@@ -30,13 +30,18 @@ let listings: string[] = [];
 /** When set, a read with this query waits for `release`. */
 let holdQuery: string | null = null;
 let release: () => void = () => {};
+/** When set, a read of the whole book fails. */
+let bookFails = false;
 
 beforeEach(() => {
   listings = [];
   holdQuery = null;
+  bookFails = false;
+  vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(contactsService, 'fetchContacts').mockImplementation(async (query = '') => {
     listings.push(query);
     if (query && query === holdQuery) await new Promise<void>(resolve => { release = resolve; });
+    if (!query && bookFails) throw new Error('offline');
     const cards = query ? BOOK.filter(c => c.name.toLowerCase().includes(query.toLowerCase())) : BOOK;
     return { contacts: cards.map(c => ({ ...c, categories: [...c.categories] })) };
   });
@@ -142,5 +147,50 @@ describe('reads that answer out of order', () => {
     expect(page.filterQuery).toBe('');
     expect(shown(page)).toEqual([ANN.path, BOB.path, CAL.path]);
     expect(page.loading).toBe(false);
+  });
+});
+
+describe('the sidebar during a search', () => {
+  /** What the sidebar lists, as `name count`. */
+  const sidebar = async (page: Page) => {
+    const categories = child(page, 'alps-contacts-categories');
+    // It reads its dictionary from context, which this page is mounted without.
+    categories.i18nStore = i18nStore;
+    categories.requestUpdate();
+    await categories.updateComplete;
+    return Array.from(categories.shadowRoot!.querySelectorAll('.category-item')).map(item =>
+      `${item.querySelector('.category-name')!.textContent!.trim()} ${item.querySelector('.category-badge')?.textContent?.trim() ?? ''}`.trim());
+  };
+
+  it('describes the whole book, not the matches', async () => {
+    const page = await searchedForAnn();
+    await settle(page);
+
+    // Home is carried only by Cal, who does not match "ann"; Work has two cards.
+    expect(await sidebar(page)).toEqual(['contacts.allContacts 3', 'contacts.favorites 0', 'Home 1', 'Work 2']);
+    // The category picker offers what the sidebar does.
+    expect(child(page, 'alps-contact-view').uniqueCategories).toEqual(['Home', 'Work']);
+  });
+
+  it('counts an edit made during the search', async () => {
+    const page = await searchedForAnn();
+    vi.spyOn(contactsService, 'updateCategories').mockResolvedValue({ ok: 'true', path: ANN.path });
+
+    await page.handleToggleStar(new Event('click'), page.contacts[0]);
+    await settle(page);
+
+    expect(await sidebar(page)).toContain('contacts.favorites 1');
+    expect(await sidebar(page)).toContain('Work 2');
+  });
+
+  it('keeps the book it had when the read beside the search fails', async () => {
+    const page = await mount<Page>('contacts-page', { i18nStore });
+    await settle(page);
+    bookFails = true;
+
+    await send(page, 'app-header', 'search-submit', { value: 'ann' });
+
+    expect(shown(page), 'the search itself still answered').toEqual([ANN.path]);
+    expect(await sidebar(page)).toEqual(['contacts.allContacts 3', 'contacts.favorites 0', 'Home 1', 'Work 2']);
   });
 });

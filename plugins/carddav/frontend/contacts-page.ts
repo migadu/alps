@@ -74,6 +74,11 @@ export class ContactsPage extends LitElement {
   private syncIntervalTimer: ReturnType<typeof setInterval> | null = null;
   /** Bumped by every read of the list; only the newest read's answer is painted. */
   private readEpoch = 0;
+  /** The search `contacts` answers: '' when it holds the whole book. */
+  private loadedQuery = '';
+  /** The whole book as last read, beside a search or without one; see allContacts. */
+  private wholeBook: any[] = [];
+  private mergedBook: { contacts: any[]; wholeBook: any[]; merged: any[] } | null = null;
 
   static styles = [
     MailboxPage.styles,
@@ -428,9 +433,35 @@ export class ContactsPage extends LitElement {
     this.writeHash(this.listHash(), 'replace');
   }
 
+  /**
+   * Every card in the book, whatever the search: what the sidebar and the
+   * category picker describe.
+   *
+   * Under a search `contacts` is only the server's matches, and the sidebar
+   * was built from it: a category carried only by cards the search did not
+   * match left the sidebar, so it could not be clicked, and every count was
+   * counted over the matches. Under one, this is the whole book read beside
+   * the search, with each card the list also holds taken from the list, which
+   * carries the page's own edits since that read.
+   */
+  get allContacts(): any[] {
+    if (!this.loadedQuery) return this.contacts;
+    const cached = this.mergedBook;
+    if (cached && cached.contacts === this.contacts && cached.wholeBook === this.wholeBook) return cached.merged;
+    const listed = new Map(this.contacts.filter(c => c.path).map(c => [c.path, c]));
+    const inBook = new Set(this.wholeBook.map(c => c.path));
+    const merged = [
+      // A card created during the search is in the list and not yet in the book.
+      ...this.contacts.filter(c => !c.path || !inBook.has(c.path)),
+      ...this.wholeBook.map(c => listed.get(c.path) ?? c),
+    ];
+    this.mergedBook = { contacts: this.contacts, wholeBook: this.wholeBook, merged };
+    return merged;
+  }
+
   get uniqueCategories() {
     const cats = new Set<string>(this.addedCategories);
-    for (const c of this.contacts) {
+    for (const c of this.allContacts) {
       if (c.categories) {
         for (const cat of c.categories) {
           cats.add(cat);
@@ -457,10 +488,25 @@ export class ContactsPage extends LitElement {
     const epoch = ++this.readEpoch;
     this.loading = true;
     try {
-      const data = await contactsService.fetchContacts(this.filterQuery);
+      const query = this.filterQuery;
+      const [data, whole] = await Promise.all([
+        contactsService.fetchContacts(query),
+        // The whole book beside a search, for the sidebar (see allContacts).
+        // Never fatal to the search: on failure the sidebar keeps the book it
+        // last had.
+        query
+          ? contactsService.fetchContacts().catch((e: unknown) => {
+            console.error('Failed to read the whole address book beside a search', e);
+            return null;
+          })
+          : null,
+      ]);
       if (epoch !== this.readEpoch) return;
 
       this.contacts = data.contacts || [];
+      this.loadedQuery = query;
+      if (!query) this.wholeBook = this.contacts;
+      else if (whole) this.wholeBook = whole.contacts || [];
       this._handleHashChange(); // Trigger selection if a deep link was used
     } catch (e) {
       if (epoch !== this.readEpoch) return;
@@ -1161,7 +1207,7 @@ export class ContactsPage extends LitElement {
           @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
         >
           <alps-contacts-categories
-            .contacts=${this.contacts}
+            .contacts=${this.allContacts}
             .uniqueCategories=${this.uniqueCategories}
             .selectedCategory=${this.selectedCategory}
             .filterQuery=${this.filterQuery}
