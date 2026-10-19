@@ -215,9 +215,15 @@ export class CalendarEventModal extends LitElement {
         return new Date(endISO).getTime() < new Date(startISO).getTime();
     }
 
-    /** Someone else's meeting: its guest list is its organizer's. */
-    private get invited(): boolean {
-        return this.event?.role === 'attendee';
+    /**
+     * Someone else's meeting: its guest list is its organizer's. That is one
+     * the user is invited to, and also a colleague's in a calendar shared
+     * with the user, which names an organizer and not the user at all; the
+     * server keeps the guests of both as they are, whatever is sent.
+     */
+    private get othersMeeting(): boolean {
+        const event = this.event;
+        return event?.role === 'attendee' || (!!event?.organizer && event.role !== 'organizer');
     }
 
     private async handleSave() {
@@ -237,7 +243,7 @@ export class CalendarEventModal extends LitElement {
         // An event that is over, and stays over, tells nobody: moved to a time
         // still to come, it is news again.
         const staysOver = !!this.event?.ended && new Date(this.formTimes().endISO) <= new Date();
-        if (this.event?.path && !this.invited && tellsSomeone({ ...this.event, ended: staysOver }, this.scheduling)) {
+        if (this.event?.path && !this.othersMeeting && tellsSomeone({ ...this.event, ended: staysOver }, this.scheduling)) {
             this.askNotify = true;
             return;
         }
@@ -270,7 +276,7 @@ export class CalendarEventModal extends LitElement {
                 // The version this editor opened; see EventData.etag.
                 etag: this.event?.etag,
                 // Left out for someone else's meeting, whose list stays as it is.
-                attendees: this.invited
+                attendees: this.othersMeeting
                     ? undefined
                     : this.attendees.map(personFromAddress).filter((p): p is NonNullable<typeof p> => p !== null),
                 notify,
@@ -335,7 +341,7 @@ export class CalendarEventModal extends LitElement {
                     </div>
                 ` : ''}
 
-                ${this.invited ? html`
+                ${this.othersMeeting ? html`
                     <div class="form-group organized-by">
                         ${this.i18nStore?.t('invitations.organizedBy', { name: this.event?.organizer?.name || this.event?.organizer?.email || '' })}
                     </div>
