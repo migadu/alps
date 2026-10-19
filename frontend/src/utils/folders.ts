@@ -64,6 +64,18 @@ const NAME_TO_ROLE: Record<string, MailboxRole> = {
 };
 
 /**
+ * A role from one of the tables above, or null.
+ *
+ * The tables are object literals, and a bare `table[key]` also finds what
+ * every object inherits: a folder called "constructor" or "toString" came back
+ * with Object's own function for a role, which no comparison matches and which
+ * reads as truthy wherever a role is tested for at all.
+ */
+function lookupRole(table: Record<string, MailboxRole>, key: string): MailboxRole | null {
+  return Object.hasOwn(table, key) ? table[key] : null;
+}
+
+/**
  * Determines the special-use role of a mailbox object (as sent by the backend,
  * carrying an `Attrs` string array and a `Name`/`Mailbox` field).
  *
@@ -79,7 +91,7 @@ export function mailboxRole(mb: any, advertised?: Set<MailboxRole>): MailboxRole
   const attrs: any[] = Array.isArray(mb.Attrs) ? mb.Attrs : [];
   const lowerAttrs = attrs.map(a => (typeof a === 'string' ? a.toLowerCase() : ''));
   for (const a of lowerAttrs) {
-    const role = ATTR_TO_ROLE[a];
+    const role = lookupRole(ATTR_TO_ROLE, a);
     if (role) return role;
   }
   // Do not let non-selectable placeholders masquerade as a special mailbox.
@@ -87,7 +99,7 @@ export function mailboxRole(mb: any, advertised?: Set<MailboxRole>): MailboxRole
     return null;
   }
   const name: string = mb.Name || mb.Mailbox || '';
-  const byName = NAME_TO_ROLE[name.toLowerCase()] ?? null;
+  const byName = lookupRole(NAME_TO_ROLE, name.toLowerCase());
   // A name is a guess, and only for a role the server has not assigned itself.
   // This used to answer by name for ANY mailbox lacking an attribute, even when
   // another mailbox carried that very attribute — so beside a \Trash called
@@ -106,7 +118,7 @@ export function mailboxRoleByName(name: string, mailboxes: any[] = []): MailboxR
   const advertised = advertisedRoles(mailboxes);
   const mb = (mailboxes || []).find(m => (m?.Name || m?.Mailbox) === name);
   if (mb) return mailboxRole(mb, advertised);
-  const byName = NAME_TO_ROLE[name.toLowerCase()] ?? null;
+  const byName = lookupRole(NAME_TO_ROLE, name.toLowerCase());
   return byName && advertised.has(byName) ? null : byName;
 }
 
@@ -135,7 +147,7 @@ export function advertisedRoles(mailboxes: any[] = []): Set<MailboxRole> {
   for (const mb of mailboxes || []) {
     const attrs: any[] = Array.isArray(mb?.Attrs) ? mb.Attrs : [];
     for (const a of attrs) {
-      const role = typeof a === 'string' ? ATTR_TO_ROLE[a.toLowerCase()] : undefined;
+      const role = typeof a === 'string' ? lookupRole(ATTR_TO_ROLE, a.toLowerCase()) : null;
       if (role && role !== 'inbox') roles.add(role);
     }
   }

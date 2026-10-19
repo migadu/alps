@@ -624,7 +624,12 @@ export class FolderList extends LitElement {
     };
 
     type TreeNode = { name: string; fullName: string; mb?: any; children: Record<string, TreeNode>; primary?: { icon: string; colorClass: string; label: string } };
-    const root: Record<string, TreeNode> = {};
+    // Keyed by name, so without a prototype. On a plain object a folder called
+    // "constructor" or "toString" found an inherited function where its node
+    // should be and was never drawn, and one called "__proto__" was written onto
+    // Object.prototype itself, handing every object in the app its mailbox.
+    const level = (): Record<string, TreeNode> => Object.create(null);
+    const root = level();
 
     this.mailboxes.forEach(mb => {
       const fullName = mb.Name || mb.Mailbox || '';
@@ -642,7 +647,7 @@ export class FolderList extends LitElement {
           currentLevel[part] = {
             name: part,
             fullName: pathAcc,
-            children: {}
+            children: level()
           };
         }
         if (i === parts.length - 1) {
@@ -717,7 +722,11 @@ export class FolderList extends LitElement {
     for (let i = 0; i < specialSlots.length; i++) {
       const node = standardBySlot.get(i);
       if (!node) continue;
-      node.primary = stdMap[node.name] || specialSlots[i].display;
+      // The name's own entry only when the name is one of this slot's, which
+      // is how a \Junk called Spam keeps that word. Looked up by any name, a
+      // \Trash called "constructor" found Object's function in the table and
+      // drew a row with no caption and no icon.
+      node.primary = (specialSlots[i].names.includes(node.name) && stdMap[node.name]) || specialSlots[i].display;
       standardNodes.push(node);
     }
     this.primaryFullNames = new Set(standardNodes.map(n => n.fullName));

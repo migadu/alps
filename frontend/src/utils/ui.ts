@@ -91,7 +91,10 @@ export function getMailboxLabel(name: string, i18nStore?: I18nStore, delimiter?:
     [FOLDER_JUNK]: i18nStore?.t('folderList.junk'),
     [FOLDER_TRASH]: i18nStore?.t('folderList.trash')
   };
-  if (stdMap[name]) return stdMap[name] as string;
+  // Own keys only: a folder called "constructor" found Object's function here,
+  // and the header drew its source text as the folder's name.
+  const known = Object.hasOwn(stdMap, name) ? stdMap[name] : undefined;
+  if (known) return known;
   // Split on the delimiter the SERVER reported, when the caller knows it.
   //
   // This split on `[.\/]` unconditionally, which is a guess at two of the

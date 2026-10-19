@@ -76,6 +76,12 @@ describe('getMailboxLabel', () => {
   it('answers an empty name with an empty label', () => {
     expect(getMailboxLabel('')).toBe('');
   });
+
+  it.each(['constructor', 'toString', 'valueOf', '__proto__'])('names a folder called %s by its name', (name) => {
+    // Not by what an object inherits under that key: the header drew
+    // "function Object() { [native code] }" for a folder called "constructor".
+    expect(getMailboxLabel(name, i18n)).toBe(name);
+  });
 });
 
 describe('getBimiAvatarUrl', () => {
