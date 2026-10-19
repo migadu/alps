@@ -72,6 +72,8 @@ export class ContactsPage extends LitElement {
   @state() private categoryToDelete: string | null = null;
   
   private syncIntervalTimer: ReturnType<typeof setInterval> | null = null;
+  /** Bumped by every read of the list; only the newest read's answer is painted. */
+  private readEpoch = 0;
 
   static styles = [
     MailboxPage.styles,
@@ -250,7 +252,16 @@ export class ContactsPage extends LitElement {
         messageListPane.classList.add(`density-${mode}`);
       }
     }
+  }
 
+  /**
+   * In willUpdate, not updated: a property set in updated() lands after the
+   * render that saw `loading` turn on, so every fetch, the mount's own
+   * included, rendered the whole page a second time. Here the spinner starts
+   * in the same render.
+   */
+  willUpdate(changedProperties: Map<string, any>) {
+    super.willUpdate(changedProperties);
     if (changedProperties.has('loading') && this.loading) {
       this.isSpinning = true;
     }
@@ -433,17 +444,29 @@ export class ContactsPage extends LitElement {
     return this.settingsStore?.getState().loginUsername || '';
   }
 
+  /**
+   * Reads the list, with the search when there is one.
+   *
+   * Only the newest read is painted. The list is read from a search, a search
+   * ended, a refresh, the sync timer and the reconciles after writes, with no
+   * ordering between their answers, so the slowest one won: a search's
+   * matches landing after the read that ended it left them on screen under
+   * an empty search box.
+   */
   async fetchContacts() {
+    const epoch = ++this.readEpoch;
     this.loading = true;
     try {
       const data = await contactsService.fetchContacts(this.filterQuery);
+      if (epoch !== this.readEpoch) return;
 
       this.contacts = data.contacts || [];
       this._handleHashChange(); // Trigger selection if a deep link was used
     } catch (e) {
+      if (epoch !== this.readEpoch) return;
       console.error('Failed to fetch contacts', e);
     } finally {
-      this.loading = false;
+      if (epoch === this.readEpoch) this.loading = false;
       if (this.showInitialLoader) {
         setTimeout(() => {
           this.showInitialLoader = false;
@@ -451,6 +474,26 @@ export class ContactsPage extends LitElement {
         }, 100);
       }
     }
+  }
+
+  /**
+   * Ends the search, for the banner's "clear search" and for a category
+   * clicked in the sidebar alike.
+   *
+   * Clearing `filterQuery` is not enough on its own: under a search
+   * `this.contacts` is the server's answer to the query. The sidebar cleared
+   * it and read nothing, so the box and the banner said there was no search
+   * while the list went on showing the old query's matches, and of the
+   * category clicked only the cards that matched it.
+   *
+   * With no search active there is nothing to read: `contacts` is already the
+   * whole book. The search box needs nothing either; it shows the header's
+   * `searchQuery`, which is bound to `filterQuery`.
+   */
+  private clearSearch() {
+    if (!this.filterQuery) return;
+    this.filterQuery = '';
+    void this.fetchContacts();
   }
 
   async selectContact(contact: any, updateHash: boolean = true) {
@@ -1127,7 +1170,7 @@ export class ContactsPage extends LitElement {
             .isMobile=${this.isMobile}
             @create-contact=${this.handleCreateNew}
             @select-category=${(e: CustomEvent) => {
-        this.filterQuery = '';
+        this.clearSearch();
         const cat = e.detail.category;
         if (cat === CATEGORY_ALL_CONTACTS) {
           this.writeHash('#/contacts/all', 'push');
@@ -1188,12 +1231,7 @@ export class ContactsPage extends LitElement {
               @spin-iteration=${this.handleSpinIteration}
               @sort-toggle=${() => this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc'}
               @filter-star-toggle=${() => this.showOnlyStarred = !this.showOnlyStarred}
-              @clear-search=${() => {
-        this.filterQuery = '';
-        this.fetchContacts();
-        const appHeader = document.querySelector('app-header');
-        if (appHeader) appHeader.shadowRoot?.querySelector('alps-input')?.shadowRoot?.querySelector('input')?.setAttribute('value', '');
-      }}
+              @clear-search=${() => this.clearSearch()}
               @list-scrolled=${(e: CustomEvent) => this.listScrolled = e.detail.scrolled}
             ></alps-contacts-list>
           </div>
