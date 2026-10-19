@@ -771,6 +771,14 @@ describe('Serbian terms, titles and twins', () => {
     }
     expect([lookup(sr, 'folderList.spam'), lookup(rs, 'folderList.spam')]).toEqual(['Spam', 'Спам']);
   });
+
+  it('puts a folder name after "fascikla", never straight after "u"', () => {
+    // A folder name arrives in the nominative, and "u" wants the accusative
+    // (moved into) or the locative (in): "premeštena u Arhiva". After the noun
+    // the name stands in apposition, where its case does not matter.
+    const bare = [...stringsOf('rs'), ...stringsOf('sr')].filter(([, text]) => /(?<!\p{L})[uу] \{folder\}/u.test(text));
+    expect(bare).toEqual([]);
+  });
 });
 
 describe('terms within one locale', () => {

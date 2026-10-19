@@ -189,14 +189,14 @@ export const sr = {
       other: 'Svih {count} poruka na ovoj stranici je izabrano'
     },
     selectAllMatching: {
-      one: 'Izaberi sve {count} u {folder}',
-      few: 'Izaberi sve {count} u {folder}',
-      other: 'Izaberi svih {count} u {folder}'
+      one: 'Izaberi sve {count} u fascikli {folder}',
+      few: 'Izaberi sve {count} u fascikli {folder}',
+      other: 'Izaberi svih {count} u fascikli {folder}'
     },
     allMatchingSelected: {
-      one: '{count} poruka u {folder} je izabrana',
-      few: 'Sve {count} poruke u {folder} su izabrane',
-      other: 'Svih {count} poruka u {folder} je izabrano'
+      one: '{count} poruka u fascikli {folder} je izabrana',
+      few: 'Sve {count} poruke u fascikli {folder} su izabrane',
+      other: 'Svih {count} poruka u fascikli {folder} je izabrano'
     },
     clearSelection: 'Poništi izbor',
     checkNew: 'Proveri nove poruke',
@@ -218,26 +218,26 @@ export const sr = {
     clearSearch: 'Očisti pretragu',
     searchAllMailboxes: 'Pretraži sve',
     totalMessagesIn: {
-      one: '{count} poruka u {folder}',
-      few: 'Ukupno {count} poruke u {folder}',
-      other: 'Ukupno {count} poruka u {folder}'
+      one: '{count} poruka u fascikli {folder}',
+      few: 'Ukupno {count} poruke u fascikli {folder}',
+      other: 'Ukupno {count} poruka u fascikli {folder}'
     },
     totalConversationsIn: {
-      one: '{count} razgovor u {folder}',
-      few: 'Ukupno {count} razgovora u {folder}',
-      other: 'Ukupno {count} razgovora u {folder}'
+      one: '{count} razgovor u fascikli {folder}',
+      few: 'Ukupno {count} razgovora u fascikli {folder}',
+      other: 'Ukupno {count} razgovora u fascikli {folder}'
     },
     deleteAllNow: 'Obriši sve sada',
     emptyMailboxTitle: 'Isprazni {folder}',
     emptyMailboxConfirm: {
-      one: 'Da li ste sigurni da želite trajno da obrišete {count} poruku u {folder}? Ova akcija se ne može poništiti.',
-      few: 'Da li ste sigurni da želite trajno da obrišete sve {count} poruke u {folder}? Ova akcija se ne može poništiti.',
-      other: 'Da li ste sigurni da želite trajno da obrišete svih {count} poruka u {folder}? Ova akcija se ne može poništiti.'
+      one: 'Da li ste sigurni da želite trajno da obrišete {count} poruku u fascikli {folder}? Ova akcija se ne može poništiti.',
+      few: 'Da li ste sigurni da želite trajno da obrišete sve {count} poruke u fascikli {folder}? Ova akcija se ne može poništiti.',
+      other: 'Da li ste sigurni da želite trajno da obrišete svih {count} poruka u fascikli {folder}? Ova akcija se ne može poništiti.'
     },
     emptyMailboxConfirmConversations: {
-      one: 'Da li ste sigurni da želite trajno da obrišete {count} razgovor u {folder} i sve poruke u njemu? Ova akcija se ne može poništiti.',
-      few: 'Da li ste sigurni da želite trajno da obrišete {count} razgovora u {folder} i sve poruke u njima? Ova akcija se ne može poništiti.',
-      other: 'Da li ste sigurni da želite trajno da obrišete svih {count} razgovora u {folder} i sve poruke u njima? Ova akcija se ne može poništiti.'
+      one: 'Da li ste sigurni da želite trajno da obrišete {count} razgovor u fascikli {folder} i sve poruke u njemu? Ova akcija se ne može poništiti.',
+      few: 'Da li ste sigurni da želite trajno da obrišete {count} razgovora u fascikli {folder} i sve poruke u njima? Ova akcija se ne može poništiti.',
+      other: 'Da li ste sigurni da želite trajno da obrišete svih {count} razgovora u fascikli {folder} i sve poruke u njima? Ova akcija se ne može poništiti.'
     },
     emptyMailboxSelectionNote: {
       one: 'Uključena je i {count} poruka koju ste označili.',
@@ -469,17 +469,17 @@ export const sr = {
     folderPermanentlyDeleted: 'Fascikla trajno obrisana',
     undo: 'Opozovi',
     dismiss: 'Odbaci',
-    messageMovedToFolder: 'Poruka premeštena u {folder}',
+    messageMovedToFolder: 'Poruka premeštena u fasciklu {folder}',
     messagesMovedToFolder: {
-      one: "{count} poruka premeštena u {folder}",
-      few: "{count} poruke premeštene u {folder}",
-      other: "{count} poruka premešteno u {folder}"
+      one: "{count} poruka premeštena u fasciklu {folder}",
+      few: "{count} poruke premeštene u fasciklu {folder}",
+      other: "{count} poruka premešteno u fasciklu {folder}"
     },
-    messageCopiedToFolder: 'Poruka kopirana u {folder}',
+    messageCopiedToFolder: 'Poruka kopirana u fasciklu {folder}',
     messagesCopiedToFolder: {
-      one: "{count} poruka kopirana u {folder}",
-      few: "{count} poruke kopirane u {folder}",
-      other: "{count} poruka kopirano u {folder}"
+      one: "{count} poruka kopirana u fasciklu {folder}",
+      few: "{count} poruke kopirane u fasciklu {folder}",
+      other: "{count} poruka kopirano u fasciklu {folder}"
     },
     draftsDiscarded: {
       one: "{count} nacrt odbačen",
