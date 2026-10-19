@@ -26,7 +26,7 @@ import { readUserSettings, settingsContext } from '../store/settings-store';
 import type { SettingsStore } from '../store/settings-store';
 import type { QuoteSource } from '../store/compose-store';
 import { QUOTE_ATTRIBUTE } from '../utils/email-quote';
-import { sanitizeMessageHTML, sanitizeQuotedHTML, stripCssUrls } from '../utils/html-sanitizer';
+import { escapeHtml, sanitizeMessageHTML, sanitizeQuotedHTML, stripCssUrls } from '../utils/html-sanitizer';
 import type { SanitizeOptions } from '../utils/html-sanitizer';
 import { applyThemeToIframe, htmlToPlainText, setupIframeSizing } from '../utils/reader-utils';
 
@@ -301,6 +301,14 @@ function serializeEditorHtml(editor: Editor): string {
 function contentFromHtml(schema: Schema, markup: string): JSONContent {
   const body = new DOMParser().parseFromString(markup, 'text/html').body;
   return SchemaParser.fromSchema(schema).parse(body).toJSON();
+}
+
+/**
+ * Plain text as the editor's paragraphs, one a line, escaped so that it reads
+ * as it was typed: a line with `<b>` or `a<b` in it is text, not markup.
+ */
+function paragraphsOf(text: string): string {
+  return text.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('');
 }
 
 /**
@@ -632,8 +640,7 @@ export class AlpsMessageComposer extends LitElement {
       const oldFormat = changedProperties.get('format');
       if (oldFormat === 'text' && this.format === 'html') {
         if (this.editor && this.editor.getText() !== this.text) {
-          const contentStr = this.text.split('\n').map(line => `<p>${line}</p>`).join('');
-          this.editor.commands.setContent(contentFromHtml(this.editor.schema, contentStr));
+          this.editor.commands.setContent(contentFromHtml(this.editor.schema, paragraphsOf(this.text)));
           this.htmlText = serializeEditorHtml(this.editor);
         }
       } else if (oldFormat === 'html' && this.format === 'text') {
@@ -677,7 +684,7 @@ export class AlpsMessageComposer extends LitElement {
           },
         }),
     ];
-    const initial = this.htmlText || (this.format === 'html' ? this.text.split('\n').map(line => `<p>${line}</p>`).join('') : this.text);
+    const initial = this.htmlText || (this.format === 'html' ? paragraphsOf(this.text) : this.text);
     this.editor = new Editor({
       element: this.editorContainerRef.value,
       extensions,
