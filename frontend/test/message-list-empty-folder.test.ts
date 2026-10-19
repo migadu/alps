@@ -188,6 +188,57 @@ describe('the control and a checked selection', () => {
   });
 });
 
+describe('the folder it names', () => {
+  /**
+   * The server's Trash under its own name and a namespace prefix. Every
+   * sentence about it used to print that path, where the sidebar and the
+   * header say "Trash" (or "Papierkorb", or "Corbeille").
+   */
+  async function prefixedTrash(): Promise<El> {
+    return mount<El>(TAG, {
+      i18nStore: new I18nStore(),
+      messages: [message('1'), message('2')],
+      currentMailbox: 'INBOX.Bin',
+      currentMailboxRole: 'trash',
+      mailboxes: [
+        { Name: 'INBOX', Attrs: [], Delimiter: '.' },
+        { Name: 'INBOX.Bin', Attrs: ['\\Trash'], Delimiter: '.' },
+      ],
+      totalMessages: 2,
+    });
+  }
+
+  it('is the name the sidebar gives it, in the banner and the confirmation', async () => {
+    const el = await prefixedTrash();
+    const banner = shadowAll(el, 'alps-banner span').map(s => s.textContent ?? '').join(' ');
+    expect(banner).toContain('2 total messages in Trash');
+
+    await click(deleteAll(el), el);
+    const dialog = shadow(el, 'ui-confirm');
+    const asked = `${dialog.getAttribute('title')} ${dialog.getAttribute('message')}`;
+    expect(asked).toContain('all 2 messages in Trash');
+    expect(asked).not.toContain('INBOX.');
+    expect(`${banner} ${asked}`).not.toContain('Bin');
+  });
+
+  it('is that name in what the empty reports', async () => {
+    vi.spyOn(mailboxOperations, 'emptyMailbox')
+      .mockResolvedValueOnce({ ok: true, discarded: 0 })
+      .mockResolvedValueOnce({ ok: false, reason: 'timeout' });
+    const el = await prefixedTrash();
+    const toasts = record<CustomEvent>(el, 'toast');
+
+    await emptyTheFolder(el);
+    await emptyTheFolder(el);
+
+    expect(messages(toasts).join(' ')).toContain('Trash was already empty');
+    expect(messages(toasts).join(' ')).toContain('Still emptying Trash');
+    expect(messages(toasts).join(' ')).not.toContain('Bin');
+    // The request still names the folder by its path.
+    expect(mailboxOperations.emptyMailbox).toHaveBeenCalledWith('INBOX.Bin');
+  });
+});
+
 describe('while the empty runs', () => {
   it('spins on the control and refuses a second press', async () => {
     let finish!: (outcome: any) => void;

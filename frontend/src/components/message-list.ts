@@ -1178,8 +1178,21 @@ export class MessageList extends LitElement {
     return this.messages.some((msg: any) => (msg?.ThreadCount ?? 0) > 0);
   }
 
+  /**
+   * What the folder on screen is called, as the sidebar and the header call it.
+   *
+   * The Delete All banner, its confirmation and the toasts after it printed
+   * the IMAP path itself. The last sentence before a delete that cannot be
+   * undone read "Trash" beside a sidebar saying "Papierkorb", and "INBOX.Trash"
+   * or "[Gmail]/Spam" on a server that files its folders under a prefix. The
+   * path is still what the request names.
+   */
+  private get folderTitle(): string {
+    return getMailboxLabel(this.currentMailbox, this.i18nStore, this.mailboxes);
+  }
+
   private get emptyConfirmMessage(): string {
-    const folder = this.currentMailbox;
+    const folder = this.folderTitle;
     const count = this.totalMessages;
     const key = this.countsConversations
       ? 'messageList.emptyMailboxConfirmConversations'
@@ -1220,19 +1233,21 @@ export class MessageList extends LitElement {
     this.showEmptyConfirm = false;
     this.emptying = true;
     const folder = this.currentMailbox;
+    // Named now: the user may be in another folder by the time this answers.
+    const title = this.folderTitle;
     this.toast('info', this.i18nStore?.t('messageList.emptyingMailbox') || 'Emptying mailbox...');
 
     try {
       const outcome = await mailboxOperations.emptyMailbox(folder);
 
       if (outcome.ok && outcome.discarded === 0) {
-        this.toast('info', this.i18nStore?.t('messageList.mailboxAlreadyEmpty', { folder })
-          || `${folder} was already empty — nothing was deleted.`);
+        this.toast('info', this.i18nStore?.t('messageList.mailboxAlreadyEmpty', { folder: title })
+          || `${title} was already empty — nothing was deleted.`);
       } else if (outcome.ok) {
         this.toast('success', this.i18nStore?.t('messageList.mailboxEmptied') || 'Mailbox emptied successfully.');
       } else if (outcome.reason === 'timeout') {
-        this.toast('error', this.i18nStore?.t('messageList.emptyMailboxSlow', { folder })
-          || `Still emptying ${folder}. The server is working on it — check the folder again in a moment.`);
+        this.toast('error', this.i18nStore?.t('messageList.emptyMailboxSlow', { folder: title })
+          || `Still emptying ${title}. The server is working on it — check the folder again in a moment.`);
       } else if (outcome.reason !== 'auth') {
         // `auth` is silent: the session has ended, the shell says so, and a
         // second notice beside it sends the user looking for a fault they
@@ -1562,7 +1577,7 @@ export class MessageList extends LitElement {
           ></alps-icon-btn>
           ${this.sidebarCollapsed ? html`
             <div class="current-mailbox-label">
-              ${getMailboxLabel(this.currentMailbox, this.i18nStore, this.mailboxes)}
+              ${this.folderTitle}
             </div>
           ` : ''}
           <alps-pagination 
@@ -1590,7 +1605,7 @@ export class MessageList extends LitElement {
         ` : ''}
         ${this.selectAllMatching ? html`
           <alps-banner>
-            <span>${this.i18nStore?.t('messageList.allMatchingSelected', { count: this.matchingCount, folder: getMailboxLabel(this.currentMailbox, this.i18nStore, this.mailboxes) })}</span>
+            <span>${this.i18nStore?.t('messageList.allMatchingSelected', { count: this.matchingCount, folder: this.folderTitle })}</span>
             <alps-button slot="action" variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('clear-selection'))}>
               ${this.i18nStore?.t('messageList.clearSelection')}
             </alps-button>
@@ -1599,7 +1614,7 @@ export class MessageList extends LitElement {
           <alps-banner>
             <span>${this.i18nStore?.t('messageList.allOnPageSelected', { count: this.pageKeys.length })}</span>
             <alps-button slot="action" variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('select-all-matching'))}>
-              ${this.i18nStore?.t('messageList.selectAllMatching', { count: this.totalMessages, folder: getMailboxLabel(this.currentMailbox, this.i18nStore, this.mailboxes) })}
+              ${this.i18nStore?.t('messageList.selectAllMatching', { count: this.totalMessages, folder: this.folderTitle })}
             </alps-button>
           </alps-banner>
         ` : ''}
@@ -1607,8 +1622,8 @@ export class MessageList extends LitElement {
           <alps-banner variant="warning">
             <span>${this.i18nStore?.t(
               this.countsConversations ? 'messageList.totalConversationsIn' : 'messageList.totalMessagesIn',
-              { count: this.totalMessages, folder: this.currentMailbox },
-            ) || `${this.totalMessages} total ${this.countsConversations ? 'conversations' : 'messages'} in ${this.currentMailbox}`}</span>
+              { count: this.totalMessages, folder: this.folderTitle },
+            ) || `${this.totalMessages} total ${this.countsConversations ? 'conversations' : 'messages'} in ${this.folderTitle}`}</span>
             <alps-button slot="action" variant="normal"
               ?spinning=${this.emptying}
               @click=${() => this.showEmptyConfirm = true}>
@@ -1680,7 +1695,7 @@ export class MessageList extends LitElement {
       ` : ''}
       ${this.showEmptyConfirm ? html`
         <ui-confirm
-          title=${this.i18nStore?.t('messageList.emptyMailboxTitle', { folder: this.currentMailbox }) || `Empty ${this.currentMailbox}`}
+          title=${this.i18nStore?.t('messageList.emptyMailboxTitle', { folder: this.folderTitle }) || `Empty ${this.folderTitle}`}
           message=${this.emptyConfirmMessage}
           confirmText=${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
           .isDanger=${true}
