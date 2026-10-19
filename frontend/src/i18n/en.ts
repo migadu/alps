@@ -502,26 +502,6 @@ export const en = {
     folderPermanentlyDeleted: 'Folder permanently deleted',
     undo: 'Undo',
     dismiss: 'Dismiss',
-    messageMovedToArchive: 'Message moved to Archive',
-    messagesMovedToArchive: {
-      one: "{count} message moved to Archive",
-      other: "{count} messages moved to Archive"
-    },
-    messageMovedToSpam: 'Message moved to Spam',
-    messagesMovedToSpam: {
-      one: "{count} message moved to Spam",
-      other: "{count} messages moved to Spam"
-    },
-    messageMovedToInbox: 'Message moved to Inbox',
-    messagesMovedToInbox: {
-      one: "{count} message moved to Inbox",
-      other: "{count} messages moved to Inbox"
-    },
-    messageMovedToTrash: 'Message moved to Trash',
-    messagesMovedToTrash: {
-      one: "{count} message moved to Trash",
-      other: "{count} messages moved to Trash"
-    },
     messageMovedToFolder: 'Message moved to {folder}',
     messagesMovedToFolder: {
       one: "{count} message moved to {folder}",

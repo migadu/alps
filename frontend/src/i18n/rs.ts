@@ -469,30 +469,6 @@ export const rs = {
     folderPermanentlyDeleted: 'Фасцикла трајно обрисана',
     undo: 'Опозови',
     dismiss: 'Одбаци',
-    messageMovedToArchive: 'Порука премештена у Архиву',
-    messagesMovedToArchive: {
-      one: "{count} порука премештена у Архиву",
-      few: "{count} поруке премештене у Архиву",
-      other: "{count} порука премештено у Архиву"
-    },
-    messageMovedToSpam: 'Порука премештена у Непожељне',
-    messagesMovedToSpam: {
-      one: "{count} порука премештена у Непожељне",
-      few: "{count} поруке премештене у Непожељне",
-      other: "{count} порука премештено у Непожељне"
-    },
-    messageMovedToInbox: 'Порука премештена у Пријемно',
-    messagesMovedToInbox: {
-      one: "{count} порука премештена у Пријемно",
-      few: "{count} поруке премештене у Пријемно",
-      other: "{count} порука премештено у Пријемно"
-    },
-    messageMovedToTrash: 'Порука премештена у Смеће',
-    messagesMovedToTrash: {
-      one: "{count} порука премештена у Смеће",
-      few: "{count} поруке премештене у Смеће",
-      other: "{count} порука премештено у Смеће"
-    },
     messageMovedToFolder: 'Порука премештена у {folder}',
     messagesMovedToFolder: {
       one: "{count} порука премештена у {folder}",

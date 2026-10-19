@@ -459,26 +459,6 @@ export const it = {
     folderPermanentlyDeleted: 'Cartella eliminata definitivamente',
     undo: 'Annulla',
     dismiss: 'Ignora',
-    messageMovedToArchive: 'Messaggio spostato in Archivio',
-    messagesMovedToArchive: {
-      one: "{count} messaggio spostato in Archivio",
-      other: "{count} messaggi spostati in Archivio"
-    },
-    messageMovedToSpam: 'Messaggio spostato in Spam',
-    messagesMovedToSpam: {
-      one: "{count} messaggio spostato in Spam",
-      other: "{count} messaggi spostati in Spam"
-    },
-    messageMovedToInbox: 'Messaggio spostato in Posta in arrivo',
-    messagesMovedToInbox: {
-      one: "{count} messaggio spostato in Posta in arrivo",
-      other: "{count} messaggi spostati in Posta in arrivo"
-    },
-    messageMovedToTrash: 'Messaggio spostato nel Cestino',
-    messagesMovedToTrash: {
-      one: "{count} messaggio spostato nel Cestino",
-      other: "{count} messaggi spostati nel Cestino"
-    },
     messageMovedToFolder: 'Messaggio spostato in {folder}',
     messagesMovedToFolder: {
       one: "{count} messaggio spostato in {folder}",

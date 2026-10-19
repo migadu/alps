@@ -459,26 +459,6 @@ export const fr = {
     folderPermanentlyDeleted: 'Dossier définitivement supprimé',
     undo: 'Annuler',
     dismiss: 'Fermer',
-    messageMovedToArchive: 'Message déplacé dans les archives',
-    messagesMovedToArchive: {
-      one: "{count} message déplacé dans les archives",
-      other: "{count} messages déplacés dans les archives"
-    },
-    messageMovedToSpam: 'Message déplacé dans les indésirables',
-    messagesMovedToSpam: {
-      one: "{count} message déplacé dans les indésirables",
-      other: "{count} messages déplacés dans les indésirables"
-    },
-    messageMovedToInbox: 'Message déplacé dans la boîte de réception',
-    messagesMovedToInbox: {
-      one: "{count} message déplacé dans la boîte de réception",
-      other: "{count} messages déplacés dans la boîte de réception"
-    },
-    messageMovedToTrash: 'Message déplacé dans la corbeille',
-    messagesMovedToTrash: {
-      one: "{count} message déplacé dans la corbeille",
-      other: "{count} messages déplacés dans la corbeille"
-    },
     messageMovedToFolder: 'Message déplacé vers {folder}',
     messagesMovedToFolder: {
       one: "{count} message déplacé vers {folder}",

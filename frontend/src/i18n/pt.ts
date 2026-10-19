@@ -502,26 +502,6 @@ export const pt = {
     messagePermanentlyDeleted: 'Mensagem excluída permanentemente',
     undo: 'Desfazer',
     dismiss: 'Fechar',
-    messageMovedToArchive: 'Mensagem movida para Arquivo',
-    messagesMovedToArchive: {
-      one: "{count} mensagem movida para Arquivo",
-      other: "{count} mensagens movidas para Arquivo"
-    },
-    messageMovedToSpam: 'Mensagem movida para Spam',
-    messagesMovedToSpam: {
-      one: "{count} mensagem movida para Spam",
-      other: "{count} mensagens movidas para Spam"
-    },
-    messageMovedToInbox: 'Mensagem movida para Entrada',
-    messagesMovedToInbox: {
-      one: "{count} mensagem movida para Entrada",
-      other: "{count} mensagens movidas para Entrada"
-    },
-    messageMovedToTrash: 'Mensagem movida para Lixeira',
-    messagesMovedToTrash: {
-      one: "{count} mensagem movida para Lixeira",
-      other: "{count} mensagens movidas para Lixeira"
-    },
     messageMovedToFolder: 'Mensagem movida para {folder}',
     messagesMovedToFolder: {
       one: "{count} mensagem movida para {folder}",

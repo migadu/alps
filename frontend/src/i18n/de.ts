@@ -461,26 +461,6 @@ export const de: TranslationDictionary = {
     folderPermanentlyDeleted: 'Ordner endgültig gelöscht',
     undo: 'Rückgängig',
     dismiss: 'Schließen',
-    messageMovedToArchive: 'Nachricht ins Archiv verschoben',
-    messagesMovedToArchive: {
-      one: "{count} Nachricht ins Archiv verschoben",
-      other: "{count} Nachrichten ins Archiv verschoben"
-    },
-    messageMovedToSpam: 'Nachricht in Spam verschoben',
-    messagesMovedToSpam: {
-      one: "{count} Nachricht in Spam verschoben",
-      other: "{count} Nachrichten in Spam verschoben"
-    },
-    messageMovedToInbox: 'Nachricht in Posteingang verschoben',
-    messagesMovedToInbox: {
-      one: "{count} Nachricht in Posteingang verschoben",
-      other: "{count} Nachrichten in Posteingang verschoben"
-    },
-    messageMovedToTrash: 'Nachricht in Papierkorb verschoben',
-    messagesMovedToTrash: {
-      one: "{count} Nachricht in Papierkorb verschoben",
-      other: "{count} Nachrichten in Papierkorb verschoben"
-    },
     messageMovedToFolder: 'Nachricht nach {folder} verschoben',
     messagesMovedToFolder: {
       one: "{count} Nachricht nach {folder} verschoben",

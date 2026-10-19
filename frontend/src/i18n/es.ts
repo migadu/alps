@@ -459,26 +459,6 @@ export const es = {
     folderPermanentlyDeleted: 'Carpeta eliminada de forma permanente',
     undo: 'Deshacer',
     dismiss: 'Ocultar',
-    messageMovedToArchive: 'Mensaje movido a Archivo',
-    messagesMovedToArchive: {
-      one: "{count} mensaje movido a Archivo",
-      other: "{count} mensajes movidos a Archivo"
-    },
-    messageMovedToSpam: 'Mensaje movido a Spam',
-    messagesMovedToSpam: {
-      one: "{count} mensaje movido a Spam",
-      other: "{count} mensajes movidos a Spam"
-    },
-    messageMovedToInbox: 'Mensaje movido a Recibidos',
-    messagesMovedToInbox: {
-      one: "{count} mensaje movido a Recibidos",
-      other: "{count} mensajes movidos a Recibidos"
-    },
-    messageMovedToTrash: 'Mensaje movido a Papelera',
-    messagesMovedToTrash: {
-      one: "{count} mensaje movido a Papelera",
-      other: "{count} mensajes movidos a Papelera"
-    },
     messageMovedToFolder: 'Mensaje movido a {folder}',
     messagesMovedToFolder: {
       one: "{count} mensaje movido a {folder}",

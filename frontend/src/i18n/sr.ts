@@ -469,30 +469,6 @@ export const sr = {
     folderPermanentlyDeleted: 'Fascikla trajno obrisana',
     undo: 'Opozovi',
     dismiss: 'Odbaci',
-    messageMovedToArchive: 'Poruka premeštena u Arhivu',
-    messagesMovedToArchive: {
-      one: "{count} poruka premeštena u Arhivu",
-      few: "{count} poruke premeštene u Arhivu",
-      other: "{count} poruka premešteno u Arhivu"
-    },
-    messageMovedToSpam: 'Poruka premeštena u Nepoželjne',
-    messagesMovedToSpam: {
-      one: "{count} poruka premeštena u Nepoželjne",
-      few: "{count} poruke premeštene u Nepoželjne",
-      other: "{count} poruka premešteno u Nepoželjne"
-    },
-    messageMovedToInbox: 'Poruka premeštena u Prijemno',
-    messagesMovedToInbox: {
-      one: "{count} poruka premeštena u Prijemno",
-      few: "{count} poruke premeštene u Prijemno",
-      other: "{count} poruka premešteno u Prijemno"
-    },
-    messageMovedToTrash: 'Poruka premeštena u Smeće',
-    messagesMovedToTrash: {
-      one: "{count} poruka premeštena u Smeće",
-      few: "{count} poruke premeštene u Smeće",
-      other: "{count} poruka premešteno u Smeće"
-    },
     messageMovedToFolder: 'Poruka premeštena u {folder}',
     messagesMovedToFolder: {
       one: "{count} poruka premeštena u {folder}",

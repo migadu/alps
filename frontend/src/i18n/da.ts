@@ -504,26 +504,6 @@ export const da: TranslationDictionary = {
     folderPermanentlyDeleted: 'Mappe slettet permanent',
     undo: 'Fortryd',
     dismiss: 'Luk',
-    messageMovedToArchive: 'Besked flyttet til arkiv',
-    messagesMovedToArchive: {
-      one: '{count} besked flyttet til arkiv',
-      other: '{count} beskeder flyttet til arkiv'
-    },
-    messageMovedToSpam: 'Besked flyttet til spam',
-    messagesMovedToSpam: {
-      one: '{count} besked flyttet til spam',
-      other: '{count} beskeder flyttet til spam'
-    },
-    messageMovedToInbox: 'Besked flyttet til indbakke',
-    messagesMovedToInbox: {
-      one: '{count} besked flyttet til indbakke',
-      other: '{count} beskeder flyttet til indbakke'
-    },
-    messageMovedToTrash: 'Besked flyttet til papirkurv',
-    messagesMovedToTrash: {
-      one: '{count} besked flyttet til papirkurv',
-      other: '{count} beskeder flyttet til papirkurv'
-    },
     messageMovedToFolder: 'Besked flyttet til {folder}',
     messagesMovedToFolder: {
       one: '{count} besked flyttet til {folder}',
