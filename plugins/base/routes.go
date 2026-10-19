@@ -1623,8 +1623,14 @@ func handleComposeNew(ctx *alps.Context) error {
 	fromAddr := ctx.FormValue("from")
 	if fromAddr == "" {
 		fromAddr = ctx.Session.Username()
-		if settings, err := readSettings(ctx); err == nil && settings.From != "" {
-			fromAddr = fmt.Sprintf("%s <%s>", settings.From, ctx.Session.Username())
+		if settings, err := readSettings(ctx); err == nil {
+			// The display name is free text, so it is formatted as an address
+			// rather than pasted in front of one. Written bare, a comma in it
+			// ("Doe, Jane") read as two addresses, the first with none, and
+			// every send and draft save failed; quotes in it were lost.
+			if name := strings.TrimSpace(settings.From); name != "" {
+				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Username()}).String()
+			}
 		}
 	}
 
