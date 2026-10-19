@@ -57,6 +57,9 @@ export class AlpsFloatingComposer extends LitElement {
   private savingPromise: Promise<boolean> | null = null;
   /** Set once a discard is under way: no save may store the draft again. */
   private discarding = false;
+  /** The undo window of a send, and how to end it as Undo does. */
+  private undoSendTimer: number | null = null;
+  private cancelUndoSend: (() => void) | null = null;
 
   private _handleI18nChange = () => {
     this.requestUpdate();
@@ -84,6 +87,10 @@ export class AlpsFloatingComposer extends LitElement {
     window.removeEventListener('alps-composer-drop', this._handleGlobalDropHandled as EventListener);
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
     this._clearAutoSave();
+    // A send still in its undo window goes no further once the window is
+    // gone. A sign-out takes it away, and the timer used to send the message
+    // anyway, under whichever session was signed in by then.
+    this._clearUndoSend();
   }
 
   private _handleWindowDragOver = () => {
@@ -132,6 +139,28 @@ export class AlpsFloatingComposer extends LitElement {
       window.clearTimeout(this.autoSaveTimer);
       this.autoSaveTimer = null;
     }
+  }
+
+  private _clearUndoSend() {
+    if (this.undoSendTimer !== null) {
+      window.clearTimeout(this.undoSendTimer);
+      this.undoSendTimer = null;
+    }
+    const cancel = this.cancelUndoSend;
+    this.cancelUndoSend = null;
+    cancel?.();
+  }
+
+  /**
+   * Whether a send has to stop after an await: this window is gone, or its
+   * composer has left the store, as a sign-out takes every composer. A
+   * composer still in the store is given back, so it is not left sending.
+   */
+  private _sendCutShort(id: string): boolean {
+    const current = this.composeStore.getComposer(id);
+    if (this.isConnected && current) return false;
+    if (current) this.composeStore.updateComposer(id, { isSending: false, minimized: false });
+    return true;
   }
 
   updated(changedProperties: Map<string, any>) {
@@ -648,6 +677,9 @@ export class AlpsFloatingComposer extends LitElement {
   };
 
   private async _handleSend() {
+    // Captured once: the window may be gone, and its property with it, by the
+    // time the countdown ends.
+    const id = this.instance.id;
     const hasUploading = (this.instance.attachments || []).some(a => a.uploading);
     if (hasUploading) {
       window.dispatchEvent(new CustomEvent('show-toast', {
@@ -671,24 +703,27 @@ export class AlpsFloatingComposer extends LitElement {
     if (!text || allTo.length === 0) return;
 
     this._clearAutoSave();
-    this.composeStore.updateComposer(this.instance.id, { isSending: true, minimized: true });
+    this.composeStore.updateComposer(id, { isSending: true, minimized: true });
 
     try {
       let undoFn: (() => void) | undefined;
       let sendNowFn: (() => void) | undefined;
       const sendPromise = new Promise<boolean>((resolve) => {
-        let timeoutId = window.setTimeout(() => {
-          resolve(true);
-        }, UNDO_TOAST_TIMEOUT_MS);
-
-        undoFn = () => {
-          window.clearTimeout(timeoutId);
-          resolve(false);
+        let settled = false;
+        // Once only: a toast's Undo pressed late must not end the countdown
+        // of a later send from this window.
+        const settle = (send: boolean) => {
+          if (settled) return;
+          settled = true;
+          if (this.undoSendTimer !== null) window.clearTimeout(this.undoSendTimer);
+          this.undoSendTimer = null;
+          this.cancelUndoSend = null;
+          resolve(send);
         };
-        sendNowFn = () => {
-          window.clearTimeout(timeoutId);
-          resolve(true);
-        };
+        this.undoSendTimer = window.setTimeout(() => settle(true), UNDO_TOAST_TIMEOUT_MS);
+        undoFn = () => settle(false);
+        sendNowFn = () => settle(true);
+        this.cancelUndoSend = undoFn;
       });
 
       window.dispatchEvent(new CustomEvent('show-toast', {
@@ -707,13 +742,17 @@ export class AlpsFloatingComposer extends LitElement {
       }));
 
       const shouldSend = await sendPromise;
+      if (this._sendCutShort(id)) return;
       if (!shouldSend) {
-        this.composeStore.updateComposer(this.instance.id, { isSending: false, minimized: false });
-        this.composeStore.bringComposerToFront(this.instance.id);
+        this.composeStore.updateComposer(id, { isSending: false, minimized: false });
+        this.composeStore.bringComposerToFront(id);
         return;
       }
 
-      const currentInstance = this.composeStore.getComposer(this.instance.id) || this.instance;
+      // The store's composer, and no other. Falling back to the window's
+      // property sent whatever that property held, which need not be the
+      // message this send began with.
+      const currentInstance = this.composeStore.getComposer(id)!;
       let finalFormData = this._buildFormData(currentInstance);
 
       // invokeHookSettled, NOT invokeHookAsync: a presend hook that throws has
@@ -727,6 +766,7 @@ export class AlpsFloatingComposer extends LitElement {
       // plaintext send.)
       const { results: presendResults, failed: presendFailed } =
         await registry.invokeHookSettled('composer:presend', { composer: this, formData: finalFormData, instance: currentInstance });
+      if (this._sendCutShort(id)) return;
       let abortSend = presendFailed > 0;
       for (const res of presendResults) {
         if (res instanceof FormData) finalFormData = res;
@@ -734,8 +774,8 @@ export class AlpsFloatingComposer extends LitElement {
       }
 
       if (abortSend) {
-        this.composeStore.updateComposer(this.instance.id, { isSending: false, minimized: false });
-        this.composeStore.bringComposerToFront(this.instance.id);
+        this.composeStore.updateComposer(id, { isSending: false, minimized: false });
+        this.composeStore.bringComposerToFront(id);
         // A hook that threw refused nothing on purpose, so say so — an aborted
         // send with no explanation reads as the button not working.
         if (presendFailed > 0) {
@@ -754,7 +794,7 @@ export class AlpsFloatingComposer extends LitElement {
       // though it was sent.
       const sent = await messageOperations.sendDraft(finalFormData);
       if (!sent) {
-        this.composeStore.updateComposer(this.instance.id, { isSending: false });
+        this.composeStore.updateComposer(id, { isSending: false });
         return;
       }
 
@@ -764,11 +804,11 @@ export class AlpsFloatingComposer extends LitElement {
         messageSync.fetch(currentInstance.draftMailbox, 0, '', false);
       }
 
-      this.composeStore.closeComposer(this.instance.id);
+      this.composeStore.closeComposer(id);
     } catch (err: any) {
       Logger.error('Failed to send message:', err);
       // Bring back the composer window if it was minimized or hidden
-      this.composeStore.updateComposer(this.instance.id, { isSending: false, minimized: false, expanded: false });
+      this.composeStore.updateComposer(id, { isSending: false, minimized: false, expanded: false });
       this._bringToFront();
       window.dispatchEvent(new CustomEvent('show-toast', {
         detail: {

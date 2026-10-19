@@ -139,3 +139,56 @@ describe('send', () => {
     }
   });
 });
+
+describe('the undo window of a send', () => {
+  afterEach(() => vi.useRealTimers());
+
+  async function sending(composeStore: ReturnType<typeof storeFor>, instance: ComposerInstance) {
+    const sendDraft = vi.spyOn(messageOperations, 'sendDraft').mockResolvedValue(true);
+    const el = await mount<HTMLElement & Record<string, any>>('alps-floating-composer', { instance, composeStore, i18nStore });
+    vi.useFakeTimers();
+    const send = el._handleSend();
+    await vi.advanceTimersByTimeAsync(2000);
+    return { el, send, sendDraft };
+  }
+
+  it('ends when the window goes, and sends nothing', async () => {
+    const instance: ComposerInstance = { id: 'c1', to: ['ada@example.com'], subject: 'Hi', text: 'Hello', format: 'text' };
+    const composeStore = storeFor(instance);
+    const { el, send, sendDraft } = await sending(composeStore, instance);
+
+    el.remove();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await send;
+
+    expect(sendDraft).not.toHaveBeenCalled();
+    expect(composeStore.closeComposer).not.toHaveBeenCalled();
+    // Still in the store, so it is given back rather than left sending.
+    expect(composeStore.updateComposer).toHaveBeenLastCalledWith('c1', { isSending: false, minimized: false });
+  });
+
+  it('sends nothing once its composer has left the store, as at sign-out', async () => {
+    const instance: ComposerInstance = { id: 'c1', to: ['ada@example.com'], subject: 'Hi', text: 'Hello', format: 'text' };
+    const composeStore = storeFor(instance);
+    const { send, sendDraft } = await sending(composeStore, instance);
+
+    composeStore.getComposer = () => undefined;
+    await vi.advanceTimersByTimeAsync(10_000);
+    await send;
+
+    expect(sendDraft).not.toHaveBeenCalled();
+    expect(composeStore.closeComposer).not.toHaveBeenCalled();
+  });
+
+  it('still sends when the countdown runs out', async () => {
+    const instance: ComposerInstance = { id: 'c1', to: ['ada@example.com'], subject: 'Hi', text: 'Hello', format: 'text' };
+    const composeStore = storeFor(instance);
+    const { send, sendDraft } = await sending(composeStore, instance);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await send;
+
+    expect(sendDraft).toHaveBeenCalledTimes(1);
+    expect(composeStore.closeComposer).toHaveBeenCalledWith('c1');
+  });
+});

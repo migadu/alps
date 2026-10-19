@@ -1,6 +1,7 @@
 import { html, css, LitElement } from 'lit';
 import { renderIcon } from '../utils/ui';
 import { customElement, state } from 'lit/decorators.js';
+import { repeat } from 'lit/directives/repeat.js';
 import { Router } from '../router';
 import { registry } from '../plugin-registry';
 
@@ -507,7 +508,11 @@ export class AppRoot extends LitElement {
     return html`
       ${this.router.render()}
       
-      ${!this.composerReady ? '' : this.activeComposers.map((composer, index) => {
+      <!-- Keyed by composer: a window's element is that composer's for its
+           whole life. By position, closing the first of three handed the
+           second window's element to the third composer, and a send counting
+           down in it went on to send the wrong message. -->
+      ${!this.composerReady ? '' : repeat(this.activeComposers, (composer) => composer.id, (composer, index) => {
         const isMinimized = composer.minimized;
         const currentOpenIndex = isMinimized ? 0 : openIndex++;
         const currentMinimizedIndex = isMinimized ? minimizedIndex++ : 0;
