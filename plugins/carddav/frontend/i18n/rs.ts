@@ -69,7 +69,7 @@ export default {
     email: 'Е-пошта',
     phone: 'Телефон',
     address: 'Адреса',
-    url: 'УРЛ',
+    url: 'URL',
     birthday: 'Рођендан',
     back: 'Назад',
     toggleStar: 'Укључи/искључи омиљено',

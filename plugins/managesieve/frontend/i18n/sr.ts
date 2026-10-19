@@ -12,7 +12,7 @@ export default {
     },
     "warningRawSwitchTitle": "Prebacite u sirovi režim",
     "warningRawSwitchConfirm": "Prebaci",
-    "warningRawSwitch": "Prelazak na sirovi režim znači da se skripta više neće moći vizuelno uređivati. Nastavi?",
+    "warningRawSwitch": "Prelazak na sirovi režim znači da se skripta više neće moći vizuelno uređivati. Nastaviti?",
     "toast": {
       "saved": "Pravila su sačuvana i aktivirana.",
       "deactivated": "Pravila su deaktivirana.",

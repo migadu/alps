@@ -463,3 +463,149 @@ describe('Serbian Cyrillic in its own script', () => {
     expect([...LATIN_IN_CYRILLIC].filter((token) => !used.has(token))).toEqual([]);
   });
 });
+
+/**
+ * Serbian speaks to the user formally, in both scripts. The dictionaries say
+ * "želite", "Pokušajte ponovo" and "vaše sanduče", and a few strings had
+ * slipped into the familiar ti: the name field's placeholder said "Tvoje ime",
+ * the sign-in checkbox told the user "Ostani prijavljen", the rate-limited
+ * button "Sačekaj", the filters' warning asked "Nastavi?".
+ *
+ * A command the user gives keeps the singular. A button, a menu item or an
+ * option names what the user tells the app to do ("Obriši", "Sačuvaj i
+ * zatvori"), which is how Serbian software writes them. The register shows
+ * where the app speaks TO the user: an instruction, an error, a question. So
+ * the second person, the pronouns and the possessive are read everywhere, and
+ * the commands only where one continues a sentence, after . ! ? : or ;.
+ *
+ * rs is read as Latin, each string transliterated letter for letter first, so
+ * one marker reads both scripts; the self-check proves it on a sample in each.
+ */
+const CYRILLIC_TO_LATIN: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', ђ: 'đ', е: 'e', ж: 'ž', з: 'z', и: 'i', ј: 'j', к: 'k', л: 'l', љ: 'lj', м: 'm',
+  н: 'n', њ: 'nj', о: 'o', п: 'p', р: 'r', с: 's', т: 't', ћ: 'ć', у: 'u', ф: 'f', х: 'h', ц: 'c', ч: 'č', џ: 'dž', ш: 'š',
+};
+
+/** A Serbian string in Latin letters, lower case, as the case-insensitive markers read it. */
+function toLatin(text: string): string {
+  return [...text.toLowerCase()].map((letter) => CYRILLIC_TO_LATIN[letter] ?? letter).join('');
+}
+
+/** The strings, across both scripts' dictionaries, that `word` finds once read as Latin. */
+function usingSerbian(word: RegExp): string[] {
+  return ['rs', 'sr'].flatMap((code) => stringsOf(code).filter(([, text]) => word.test(toLatin(text))).map(([where, text]) => `${where}="${text}"`));
+}
+
+const serbianCommand = (verb: string): RegExp => new RegExp(`(?<=[.!?:;]\\s+)${verb}(?!\\p{L})`, 'iu');
+const SERBIAN_FAMILIAR: { familiar: string; formal: string; marker: RegExp; caught: string[]; spared: string[] }[] = [
+  {
+    familiar: 'nećeš, vidiš, možeš',
+    formal: 'nećete, vidite, možete',
+    marker: /(?<!\p{L})(?!(?:vaš|naš|heš)(?!\p{L}))\p{L}*[aei]š(?!\p{L})/iu,
+    caught: ['Organizatoru možeš javiti da nećeš doći.', 'Организатору можеш јавити да нећеш доћи.'],
+    spared: ['Organizatoru možete javiti da nećete doći.', 'Организатору можете јавити да нећете доћи.'],
+  },
+  {
+    familiar: 'si',
+    formal: 'ste',
+    marker: /(?<!\p{L})(?:si|jesi|nisi)(?!\p{L})/iu,
+    caught: ['Da li si siguran?', 'Да ли си сигуран?'],
+    spared: ['Da li ste sigurni?', 'Да ли сте сигурни?'],
+  },
+  {
+    familiar: 'tvoj',
+    formal: 'vaš',
+    marker: /(?<!\p{L})tvo(?:j\p{L}*|g|ga|m|me|mu)(?!\p{L})/iu,
+    caught: ['Tvoje ime', 'Твоје име'],
+    spared: ['Vaše ime', 'Ваше име'],
+  },
+  {
+    familiar: 'ti, tebe, tebi, tobom',
+    formal: 'vi, vas, vam, vama',
+    marker: /(?<!\p{L})(?:ti|tebe|tebi|tobom)(?!\p{L})/iu,
+    caught: ['Organizator ti je poslao izmene.', 'Организатор ти је послао измене.'],
+    spared: ['Organizator vam je poslao izmene.', 'Организатор вам је послао измене.'],
+  },
+  {
+    familiar: 'Nastavi?',
+    formal: 'Nastaviti?',
+    marker: serbianCommand('nastavi'),
+    caught: ['Skripta se više neće moći vizuelno uređivati. Nastavi?', 'Скрипта се више неће моћи визуелно уређивати. Настави?'],
+    spared: ['Skripta se više neće moći vizuelno uređivati. Nastaviti?', 'Скрипта се више неће моћи визуелно уређивати. Наставити?'],
+  },
+  {
+    familiar: 'Pokušaj ponovo',
+    formal: 'Pokušajte ponovo',
+    marker: serbianCommand('pokušaj ponovo'),
+    caught: ['Došlo je do greške na mreži. Pokušaj ponovo.', 'Дошло је до грешке на мрежи. Покушај поново.'],
+    spared: ['Došlo je do greške na mreži. Pokušajte ponovo.', 'Дошло је до грешке на мрежи. Покушајте поново.'],
+  },
+];
+
+/** Spelt like a familiar form, but a command the user gives, a noun or a possessive. */
+const SERBIAN_NOT_FAMILIAR = [
+  'Sačuvaj i zatvori', 'Сачувај и затвори',
+  'Pokušaj ponovo', 'Покушај поново',
+  'Novi pokušaj za {count} sekundi...', 'Нови покушај за {count} секунди...',
+  'Vaš odgovor', 'Ваш одговор',
+  'Nikada ne označavaj automatski', 'Никада не означавај аутоматски',
+];
+
+/**
+ * Strings the markers cannot see, because they open on the command: each was
+ * said to the user in the singular, so none is a command the user gives.
+ */
+const SERBIAN_FORMAL_PINS: [key: string, latin: string, cyrillic: string][] = [
+  ['settings.placeholderName', 'Vaše ime', 'Ваше име'],
+  // A checkbox, but "Ostani prijavljen" told the user to stay, in the masculine.
+  ['login.keepMeSignedIn', 'Ostanite prijavljeni', 'Останите пријављени'],
+  // The sign-in button's text while sign-in is rate limited, telling the user to wait.
+  ['login.wait', 'Sačekajte', 'Сачекајте'],
+  // The app retrying on its own. "Pokušaj ponovo za {seconds} sekundi" read as
+  // telling the user to try again.
+  ['offline.tryingAgain.other', 'Novi pokušaj za {count} sekundi...', 'Нови покушај за {count} секунди...'],
+];
+
+describe('Serbian register and spelling', () => {
+  it('reads every Serbian dictionary through, so an empty scan cannot pass', () => {
+    for (const code of ['rs', 'sr']) expect(dictionariesOf(code).map(([file]) => file), code).toEqual(expect.arrayContaining([`core/${code}`, `caldav/${code}`, `carddav/${code}`, `gpg/${code}`, `managesieve/${code}`, `password/${code}`]));
+  });
+
+  it('reads every rs letter as Latin, so a Cyrillic word cannot slip past a marker', () => {
+    expect(toLatin('Љубав, Њива, Џеп, Ђак, Шта, Жута, Ћуп, Чаша')).toBe('ljubav, njiva, džep, đak, šta, žuta, ćup, čaša');
+    const left = stringsOf('rs').filter(([, text]) => /\p{Script=Cyrillic}/u.test(toLatin(text)));
+    expect(left).toEqual([]);
+  });
+
+  it('has familiar-register markers that catch their forms and spare the formal ones, in both scripts', () => {
+    for (const { familiar, marker, caught, spared } of SERBIAN_FAMILIAR) {
+      for (const text of caught) expect(marker.test(toLatin(text)), `${familiar} in "${text}"`).toBe(true);
+      for (const text of spared) expect(marker.test(toLatin(text)), `${familiar} in "${text}"`).toBe(false);
+    }
+    for (const text of SERBIAN_NOT_FAMILIAR) {
+      expect(SERBIAN_FAMILIAR.filter(({ marker }) => marker.test(toLatin(text))).map(({ familiar }) => familiar), text).toEqual([]);
+    }
+  });
+
+  it.each(SERBIAN_FAMILIAR.map((f) => [f.formal, f.familiar, f.marker] as const))('rs and sr say "%s", not "%s"', (_formal, _familiar, marker) => {
+    expect(usingSerbian(marker)).toEqual([]);
+  });
+
+  it('says to the user formally what the markers cannot see', () => {
+    const wrong = SERBIAN_FORMAL_PINS.flatMap(([key, latin, cyrillic]) => [
+      ...(lookup(sr, key) === latin ? [] : [`sr:${key}="${lookup(sr, key)}"`]),
+      ...(lookup(rs, key) === cyrillic ? [] : [`rs:${key}="${lookup(rs, key)}"`]),
+    ]);
+    expect(wrong).toEqual([]);
+  });
+
+  it('rs writes URL in Latin, as the rest of rs does', () => {
+    // carddav/rs labelled the field "УРЛ", where the composer says "URL везе".
+    expect(stringsOf('rs').filter(([, text]) => /(?<!\p{L})урл(?!\p{L})/iu.test(text))).toEqual([]);
+    expect(lookup(byPlugin.get('carddav')!.get('rs'), 'contacts.url')).toBe('URL');
+  });
+
+  it.each(['rs', 'sr'])('%s uses no long dash', (code) => {
+    expect(stringsOf(code).filter(([, text]) => text.includes('—'))).toEqual([]);
+  });
+});

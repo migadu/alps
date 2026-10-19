@@ -1,6 +1,6 @@
 export const rs = {
   settings: {
-    saveFailed: 'Није могуће сачувати то подешавање — можда неће преживети одјаву',
+    saveFailed: 'Није могуће сачувати то подешавање; можда неће преживети одјаву',
     title: 'Подешавања',
     categories: {
       general: 'Опште',
@@ -14,7 +14,7 @@ export const rs = {
       webauthn: '2FA / WebAuthn'
     },
     loading: 'Учитавање...',
-    placeholderName: 'Твоје име',
+    placeholderName: 'Ваше име',
     placeholderReplyTo: 'odgovor@primer.example',
     general: {
       checkMailInterval: 'Интервал провере поште',
@@ -131,13 +131,13 @@ export const rs = {
     subtitle: 'Пријавите се на свој вебмејл.',
     emailPlaceholder: 'Адреса е-поште',
     passwordPlaceholder: 'Лозинка',
-    keepMeSignedIn: 'Остани пријављен',
+    keepMeSignedIn: 'Останите пријављени',
     signIn: 'Пријави се',
     tooManyAttempts: 'Превише покушаја пријављивања',
     loginFailed: 'Пријављивање није успело. Проверите своје податке.',
     networkError: 'Дошло је до грешке на мрежи. Покушајте поново.',
     pleaseWait: 'Молимо сачекајте',
-    wait: 'Сачекај',
+    wait: 'Сачекајте',
     signedOut: 'Одјављени сте.',
     signedOutDraftsLost: 'Одјављени сте. Неке непослате скице није било могуће сачувати и изгубљене су.',
     sessionExpired: 'Ваша сесија је истекла. Пријавите се поново.',
@@ -246,13 +246,13 @@ export const rs = {
     emptyingMailbox: 'Празњење сандучета...',
     mailboxEmptied: 'Сандуче је успешно испражњено.',
     emptyMailboxFailed: 'Није могуће испразнити сандуче. Проверите да ли је Отпад или Непожељно.',
-    mailboxAlreadyEmpty: '{folder} је већ био празан — ништа није обрисано.',
-    emptyMailboxSlow: 'Пражњење фасцикле {folder} је још у току. Сервер и даље ради — проверите поново за тренутак.'
+    mailboxAlreadyEmpty: '{folder} је већ био празан, па ништа није обрисано.',
+    emptyMailboxSlow: 'Пражњење фасцикле {folder} је још у току. Сервер и даље ради; проверите поново за тренутак.'
   },
   composer: {
     discardFailed: 'Скицу није било могуће обрисати са сервера и још увек је у скицама.',
     attachmentsTooLarge: 'Прилози прелазе максималну дозвољену величину.',
-    draftSaveFailedKeepOpen: 'Није могуће сачувати ову скицу — прозор остаје отворен да се ништа не изгуби',
+    draftSaveFailedKeepOpen: 'Није могуће сачувати ову скицу, па прозор остаје отворен да се ништа не изгуби',
     attachmentsWait: 'Молимо сачекајте да се прилози учитају пре слања.',
     sending: 'Слање поруке...',
     undo: 'Опозови',
