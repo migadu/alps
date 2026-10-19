@@ -194,6 +194,11 @@ func eventIsAllDay(event *ical.Event) bool {
 	return end != nil && isUTCMidnight(start.Value) && isUTCMidnight(end.Value)
 }
 
+// dateOf is t's calendar date, at midnight in t's own location.
+func dateOf(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
 func isUTCMidnight(value string) bool {
 	return len(value) == len("20060102T150405Z") && strings.HasSuffix(value, "T000000Z")
 }
@@ -204,10 +209,19 @@ func isUTCMidnight(value string) bool {
 // which the frontend builds as UTC midnight of the day the user picked. Both
 // setters replace the property whole, so switching an event between all-day and
 // timed leaves no stale VALUE or TZID parameter behind.
+//
+// DTEND is exclusive, so an all-day event ends on the day after its last at
+// the earliest. Written on its first day instead, it lasts no time at all, and
+// calendars draw it on no day.
 func setEventTimes(event *ical.Event, start, end time.Time, allDay bool) {
 	if allDay {
-		event.Props.SetDate(ical.PropDateTimeStart, start.UTC())
-		event.Props.SetDate(ical.PropDateTimeEnd, end.UTC())
+		first := dateOf(start.UTC())
+		after := dateOf(end.UTC())
+		if !after.After(first) {
+			after = first.AddDate(0, 0, 1)
+		}
+		event.Props.SetDate(ical.PropDateTimeStart, first)
+		event.Props.SetDate(ical.PropDateTimeEnd, after)
 		return
 	}
 	event.Props.SetDateTime(ical.PropDateTimeStart, start)
