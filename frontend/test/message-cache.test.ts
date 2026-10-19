@@ -102,3 +102,27 @@ describe('failure is never the caller\'s problem', () => {
     expect(() => MessageCache.set('INBOX', '2', 'html', body())).not.toThrow();
   });
 });
+
+describe('a session that ends', () => {
+  it('moves the generation when the cache is cleared, and when the session is', () => {
+    const start = MessageCache.generation();
+    MessageCache.clear();
+    expect(MessageCache.generation()).toBe(start + 1);
+    // An expired session empties sessionStorage itself and never calls clear().
+    window.dispatchEvent(new CustomEvent('session-cleared', { detail: { reason: 'expired' } }));
+    expect(MessageCache.generation()).toBe(start + 2);
+  });
+
+  it('does not move it to make room when storage is full', () => {
+    // Making room is not a new session, so the reads in flight still write.
+    const start = MessageCache.generation();
+    const original = Storage.prototype.setItem;
+    let calls = 0;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key: string, value: string) {
+      if (++calls === 1) throw new DOMException('full', 'QuotaExceededError');
+      return original.call(this, key, value);
+    });
+    MessageCache.set('INBOX', '2', 'html', body());
+    expect(MessageCache.generation()).toBe(start);
+  });
+});

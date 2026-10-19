@@ -223,6 +223,31 @@ describe('an answer that lands after the reader has gone', () => {
     expect(el.loading).toBe(true);
   });
 
+  it('does not cache a body that answers after its user signed out', async () => {
+    // The cache keys name no user, so a body written after the sign-out is
+    // there for whoever signs in next on this tab and opens the same message.
+    // Only the event, not `MessageCache.clear()`: an expired session empties
+    // sessionStorage wholesale and dispatches nothing else.
+    const el = await openConversation();
+    await waitFor(() => release.has('10'), 'the opened message to be read');
+
+    sessionStorage.clear();
+    window.dispatchEvent(new CustomEvent('session-cleared', { detail: { reason: 'expired' } }));
+    el.remove();
+    release.get('10')!();
+    await flush();
+    await flush();
+
+    expect(MessageCache.get('INBOX', '10', 'text')).toBeNull();
+  });
+
+  it('caches a body that answers while its user is still signed in', async () => {
+    await openConversation();
+    await waitFor(() => release.has('10'), 'the opened message to be read');
+    release.get('10')!();
+    await waitFor(() => MessageCache.get('INBOX', '10', 'text') !== null, 'the body to be cached');
+  });
+
   it('does not resolve a conversation that lands after the element was removed', async () => {
     // This one needs the CONVERSATION held rather than the body: the shared
     // mock answers /thread at once, and then it has landed long before the

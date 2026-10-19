@@ -1513,6 +1513,9 @@ export class MessageReader extends LitElement {
     const mailbox = item.mailbox;
 
     const preferredView = this.localPreferredView || this.settingsStore?.getState()?.preferredView || 'html';
+    // Taken before asking: a body that answers after its user has signed out
+    // is not written to the cache the next user opens from.
+    const cacheGeneration = MessageCache.generation();
 
     try {
       const cached = MessageCache.get(mailbox, msg.UID.toString(), preferredView);
@@ -1651,15 +1654,17 @@ export class MessageReader extends LitElement {
         }
       }
 
-      MessageCache.set(mailbox, msg.UID.toString(), preferredView, {
-        Message: data.Message,
-        Part: data.Part,
-        Attachments: data.Attachments,
-        RawHtml: rawHtml,
-        RawText: rawText,
-        HasHTML: item.hasHtml,
-        HasText: item.hasText
-      });
+      if (MessageCache.generation() === cacheGeneration) {
+        MessageCache.set(mailbox, msg.UID.toString(), preferredView, {
+          Message: data.Message,
+          Part: data.Part,
+          Attachments: data.Attachments,
+          RawHtml: rawHtml,
+          RawText: rawText,
+          HasHTML: item.hasHtml,
+          HasText: item.hasText
+        });
+      }
     } catch (e) {
       Logger.error('Failed to fetch message:', e);
       item.content = 'Error loading message.';
