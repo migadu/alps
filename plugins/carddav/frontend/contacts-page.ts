@@ -20,7 +20,7 @@ import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { MailboxPage } from '../../../frontend/src/pages/mailbox-page';
 import { MessageList } from '../../../frontend/src/components/message-list';
 import { contactsService } from './contacts-service';
-import { isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
+import { isVersionConflict, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
 
 /** Where the categories this user created, with no one filed into them yet, are kept. */
 const categoriesKeyFor = (username: string) => `alps_contacts_categories_${username}`;
@@ -652,6 +652,30 @@ export class ContactsPage extends LitElement {
       // a contact with no categories the revert itself threw.
       const original = contact.categories;
       this.contacts = this.contacts.map((c: any) => c.path === contact.path ? { ...c, categories: original } : c);
+      // The rollback is the truth only for a refusal. A lost response may hide
+      // a star that was written, which would otherwise show off until the next
+      // read of the list.
+      if (outcomeUnknown(err)) void this.rereadCategories(contact.path);
+    }
+  }
+
+  /**
+   * One card's stored categories and version, after a write whose outcome is
+   * unknown. Dropped if anything repainted the card meanwhile: a newer
+   * gesture or read is the newer truth.
+   */
+  private async rereadCategories(path: string) {
+    const row = this.contacts.find((c: any) => c.path === path);
+    try {
+      const card = await contactsService.fetchContact(path);
+      if (!row || this.contacts.find((c: any) => c.path === path) !== row) return;
+      const stored = { categories: card.categories ?? [], ...(card.etag ? { etag: card.etag } : {}) };
+      this.contacts = this.contacts.map((c: any) => c.path === path ? { ...c, ...stored } : c);
+      if (this.selectedContact?.path === path) {
+        this.selectedContact = { ...this.selectedContact, ...stored };
+      }
+    } catch (e) {
+      console.error('Failed to re-read a contact after a write that may have landed', e);
     }
   }
 
@@ -999,15 +1023,18 @@ export class ContactsPage extends LitElement {
 
       this.contacts = [...this.contacts]; // Trigger re-render immediately
 
-      const { total, done, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+      const { total, done, failed, uncertain, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
       this.applyETags(etags);
       if (failed > 0) {
         if (done === 0) {
-          // Nothing was written, so the snapshot is the truth: both panes go
-          // back at once. A re-read would leave the star lit until it answered,
+          // Nothing is known to have been written, so both panes go back at
+          // once. A re-read alone would leave the star lit until it answered,
           // and for good when it failed too, as it does offline.
           this.contacts = previousContacts;
           this.selectedContact = previousSelected;
+          // But a timeout or a lost response may hide a star that was written,
+          // and only a read can tell.
+          if (uncertain > 0) this.fetchContacts();
         } else {
           // Some cards took the change, and the snapshot would un-star them.
           this.fetchContacts();
@@ -1048,7 +1075,7 @@ export class ContactsPage extends LitElement {
     const selection = this.selectedContacts;
     try {
       const pathsToDelete = this.gestureTargets;
-      const { total, done, failed, deletedPaths = [] } = await contactsService.bulkDeleteContacts(pathsToDelete);
+      const { total, done, failed, uncertain, deletedPaths = [] } = await contactsService.bulkDeleteContacts(pathsToDelete);
 
       // Only when something went, and the list is re-read. A delete that
       // removed nothing (offline, say) leaves every card there, and the
@@ -1070,6 +1097,21 @@ export class ContactsPage extends LitElement {
           this.selectedContacts = new Set();
         }
         this.fetchContacts();
+      } else if (uncertain > 0) {
+        // Nothing is known to have gone, but a lost response may hide a delete
+        // that was made. Read again, then let go of only the targets the book
+        // no longer has: offline the read fails too, and everything stays.
+        await this.fetchContacts();
+        const book = new Set(this.allContacts.map((c: any) => c.path));
+        const gone = (path?: string) => !!path && pathsToDelete.includes(path) && !book.has(path);
+        if (open && this.selectedContact?.path === open && gone(open)) {
+          this.selectedContact = null;
+          this.isEditing = false;
+          if (window.location.hash === openedHash) this.leaveDeletedCard();
+        }
+        if (this.selectedContacts === selection && [...selection].some(gone)) {
+          this.selectedContacts = new Set([...selection].filter(path => !gone(path)));
+        }
       }
       if (failed > 0) {
         this.reportFailure('contacts.deleteFailed', { failed, total });

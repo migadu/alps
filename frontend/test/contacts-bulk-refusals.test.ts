@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../../plugins/carddav/frontend/contacts-page';
 import { contactsService } from '../../plugins/carddav/frontend/contacts-service';
 import { CATEGORY_FAVORITES } from '../../plugins/carddav/frontend/constants';
+import { HttpStatusError, outcomeUnknown } from '../src/utils/fetch-utils';
 
 type Page = HTMLElement & Record<string, any>;
 
@@ -175,14 +176,112 @@ describe('a search that narrowed the list', () => {
   });
 });
 
+describe('a write whose outcome is unknown', () => {
+  // A timeout, a lost connection or a 5xx says nothing about what the server
+  // did. The page rolled every such failure back as if it were a refusal, so
+  // a star or a delete that was made behind a lost response showed undone
+  // until the next read of the list.
+  const lost = () => new TypeError('Failed to fetch');
+  const refused = () => new HttpStatusError(403, 'Forbidden');
+
+  for (const [name, failure, rereads] of [['lost', lost, true], ['refused', refused, false]] as const) {
+    it(`a single star, ${name}: ${rereads ? 're-reads the card and shows what was stored' : 'keeps the rollback without a read'}`, async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const open = card('a');
+      const el = page([open], [], { ...open });
+      vi.spyOn(contactsService, 'updateCategories').mockRejectedValue(failure());
+      const reread = vi.spyOn(contactsService, 'fetchContact').mockResolvedValue({ ...open, categories: [CATEGORY_FAVORITES], etag: 'v2' });
+
+      await el.handleToggleStar(new Event('click'), open);
+      await vi.waitFor(() => expect(reread).toHaveBeenCalledTimes(rereads ? 1 : 0));
+      await Promise.resolve();
+
+      expect(el.contacts[0].categories.includes(CATEGORY_FAVORITES)).toBe(rereads);
+      expect(el.selectedContact.categories.includes(CATEGORY_FAVORITES)).toBe(rereads);
+      if (rereads) expect(el.contacts[0].etag).toBe('v2');
+    });
+  }
+
+  it('a single star: a re-read overtaken by a newer change to the card is dropped', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const open = card('a');
+    const el = page([open]);
+    vi.spyOn(contactsService, 'updateCategories').mockRejectedValue(lost());
+    let answer!: (stored: any) => void;
+    vi.spyOn(contactsService, 'fetchContact').mockReturnValue(new Promise(resolve => { answer = resolve; }));
+
+    await el.handleToggleStar(new Event('click'), open);
+    el.contacts = [{ ...open, categories: ['Work'] }];
+    answer({ ...open, categories: [CATEGORY_FAVORITES] });
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(el.contacts[0].categories).toEqual(['Work']);
+  });
+
+  it('a star across cards that may have been written re-reads after the rollback', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const el = page([card('a'), card('b')], ['a', 'b']);
+    const reread = vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 2, done: 0, failed: 2, uncertain: 1 });
+
+    await el.handleToggleStarEvent();
+
+    expect(el.contacts.map((c: any) => c.categories)).toEqual([[], []]);
+    expect(reread).toHaveBeenCalledTimes(1);
+  });
+
+  it('a delete re-reads, and lets go of only the cards that went', async () => {
+    const el = page([card('a'), card('b')], ['a', 'b']);
+    const reread = vi.spyOn(el, 'fetchContacts').mockImplementation(async () => { el.contacts = [card('b')]; });
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 2, done: 0, failed: 2, uncertain: 2 });
+
+    await el.confirmDelete();
+
+    expect(reread).toHaveBeenCalledTimes(1);
+    expect([...el.selectedContacts]).toEqual(['b']);
+  });
+
+  it('a delete whose re-read fails too keeps the selection and the open card', async () => {
+    const open = card('a');
+    const el = page([open], [], { ...open });
+    vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 1, done: 0, failed: 1, uncertain: 1 });
+
+    await el.confirmDelete();
+
+    expect(el.selectedContact?.path).toBe('a');
+  });
+});
+
 describe('the bulk outcome', () => {
-  it('counts what was written as well as what was refused', async () => {
+  it('counts what was written as well as what was refused, and what may have been written', async () => {
     vi.spyOn(contactsService, 'deleteContact')
       .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error('refused'))
+      .mockRejectedValueOnce(new HttpStatusError(403, 'refused'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockResolvedValueOnce(undefined);
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    expect(await contactsService.bulkDeleteContacts(['a', 'b', 'c'])).toEqual({ total: 3, done: 2, failed: 1, deletedPaths: ['a', 'c'] });
+    expect(await contactsService.bulkDeleteContacts(['a', 'b', 'c', 'd'])).toEqual({
+      total: 4, done: 2, failed: 2, uncertain: 1, deletedPaths: ['a', 'd'],
+    });
+  });
+
+  it('tells a refusal from a failure that says nothing of what was done', () => {
+    expect(outcomeUnknown(new HttpStatusError(403, 'Forbidden'))).toBe(false);
+    expect(outcomeUnknown(new HttpStatusError(412, 'Precondition Failed'))).toBe(false);
+    expect(outcomeUnknown(new HttpStatusError(408, 'Request Timeout'))).toBe(true);
+    expect(outcomeUnknown(new HttpStatusError(500, 'Internal Server Error'))).toBe(true);
+    expect(outcomeUnknown(new TypeError('Failed to fetch'))).toBe(true);
+    expect(outcomeUnknown(new DOMException('The operation was aborted.', 'AbortError'))).toBe(true);
+  });
+
+  it('keeps the status of a refused delete', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 403, statusText: 'Forbidden' })));
+    try {
+      await expect(contactsService.deleteContact('a')).rejects.toMatchObject({ status: 403 });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
