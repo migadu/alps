@@ -5,7 +5,7 @@ import { settingsContext, SettingsStore } from '../store/settings-store';
 import type { SettingsState } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
-import { sidebarLayoutStyles } from '../components/alps-sidebar';
+import { closeSidebarPeek, sidebarLayoutStyles } from '../components/alps-sidebar';
 import '../components/alps-header';
 import '../components/alps-sidebar';
 import '../components/alps-category-item';
@@ -33,9 +33,8 @@ export class SettingsPage extends LitElement {
   @state() private sidebarWidth = 250;
   @state() private sidebarCollapsed = false;
   @state() private isSidebarDragging = false;
-  @state() private isSidebarHovered = false;
-  private hoverTimeout: any = null;
-  @state() private suppressSidebarHover = false;
+  /** Mirrors the sidebar's own hover overlay (`peek-change`). */
+  @state() private sidebarPeeking = false;
 
   static styles = [
     sidebarLayoutStyles,
@@ -248,9 +247,7 @@ export class SettingsPage extends LitElement {
     if (this.isMobile) {
       this.mobileSidebarOpen = false;
     }
-    if (this.sidebarCollapsed && !this.isMobile) {
-      this.suppressSidebarHover = true;
-    }
+    closeSidebarPeek(this.renderRoot);
   }
 
   private async handleUpdate(e: Event, key: keyof SettingsState) {
@@ -304,8 +301,6 @@ export class SettingsPage extends LitElement {
           class="${this.isMobile ? 'mobile-sidebar' : 'desktop-sidebar'} ${this.mobileSidebarOpen ? 'open' : ''}"
           .isMobile=${this.isMobile}
           .isOpen=${this.mobileSidebarOpen}
-          .isHovered=${this.isSidebarHovered}
-          .suppressHover=${this.suppressSidebarHover}
           .width=${this.sidebarWidth}
           .hideFooterDivider=${true}
           .showMobileBack=${true}
@@ -323,22 +318,10 @@ export class SettingsPage extends LitElement {
           @drag-start=${() => this.isSidebarDragging = true}
           @drag-end=${() => this.isSidebarDragging = false}
           @toggle-collapse=${() => this.settingsStore.updateSettings({ sidebarCollapsed: !this.sidebarCollapsed })}
-          @mouseenter=${() => {
-            if (this.hoverTimeout) {
-              clearTimeout(this.hoverTimeout);
-              this.hoverTimeout = null;
-            }
-            this.isSidebarHovered = true;
-            this.suppressSidebarHover = false;
-          }}
-          @mouseleave=${() => {
-            this.hoverTimeout = setTimeout(() => {
-              this.isSidebarHovered = false;
-            }, 300);
-          }}
+          @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
           @close-sidebar=${() => this.mobileSidebarOpen = false}
         >
-          <div class="sidebar-wrapper ${this.sidebarCollapsed && (!this.isSidebarHovered || this.suppressSidebarHover) && !this.isMobile ? 'collapsed' : ''}">
+          <div class="sidebar-wrapper ${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile ? 'collapsed' : ''}">
             <div class="sidebar-content">
               <div class="sidebar-scroll-content">
                 <alps-category-item 

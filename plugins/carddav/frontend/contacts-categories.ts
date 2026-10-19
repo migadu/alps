@@ -17,8 +17,8 @@ export class AlpsContactsCategories extends LitElement {
   @property({ type: String }) selectedCategory = '';
   @property({ type: String }) filterQuery = '';
   @property({ type: Boolean }) sidebarCollapsed = false;
-  @property({ type: Boolean }) isSidebarHovered = false;
-  @property({ type: Boolean }) suppressSidebarHover = false;
+  /** The collapsed sidebar is open as its hover overlay (alps-sidebar's `peeking`). */
+  @property({ type: Boolean }) sidebarPeeking = false;
   @property({ type: Boolean }) isMobile = false;
 
   @state() private activeKebabMenu: string | null = null;
@@ -137,11 +137,11 @@ export class AlpsContactsCategories extends LitElement {
 
   render() {
     return html`
-      <div class="sidebar-wrapper ${this.sidebarCollapsed && !this.isMobile && (!this.isSidebarHovered || this.suppressSidebarHover) ? 'collapsed' : ''}">
+      <div class="sidebar-wrapper ${this.sidebarCollapsed && !this.isMobile && !this.sidebarPeeking ? 'collapsed' : ''}">
         <alps-toolbar class="sidebar-header" ?scrolled=${this.sidebarScrolled}>
           <alps-create-button 
             icon="userPlus" 
-            ?collapsed=${this.sidebarCollapsed && !this.isMobile && (!this.isSidebarHovered || this.suppressSidebarHover)}
+            ?collapsed=${this.sidebarCollapsed && !this.isMobile && !this.sidebarPeeking}
             @click=${() => this.dispatchEvent(new CustomEvent('create-contact'))}
           >${this.i18nStore?.t('contacts.addContact')}</alps-create-button>
         </alps-toolbar>

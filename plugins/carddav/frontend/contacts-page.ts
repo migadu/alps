@@ -8,7 +8,7 @@ import '../../../frontend/src/components/app-header';
 import '../../../frontend/src/components/alps-input';
 import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-avatar';
-import '../../../frontend/src/components/alps-sidebar';
+import { closeSidebarPeek } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-icon-btn';
 import '../../../frontend/src/components/ui-prompt';
 import '../../../frontend/src/components/alps-initial-loader';
@@ -53,11 +53,10 @@ export class ContactsPage extends LitElement {
   @state() private sidebarWidth = 250;
   @state() private listWidth = 380;
   @state() private sidebarCollapsed = false;
-  @state() private isSidebarHovered = false;
+  /** Mirrors the sidebar's own hover overlay (`peek-change`). */
+  @state() private sidebarPeeking = false;
   @state() private isMobile = window.innerWidth <= 768;
   @state() private mobileSidebarOpen = false;
-  private hoverTimeout: any = null;
-  @state() private suppressSidebarHover = false;
   @state() private isSidebarDragging = false;
   @state() private isPaneDragging = false;
   @state() private densityMode: 'loose' | 'normal' | 'compact' | 'ultra-compact' = 'compact';
@@ -1016,13 +1015,11 @@ export class ContactsPage extends LitElement {
         this.fetchContacts();
       }}
       ></app-header>
-      <div class="app-container layout-vertical ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isPaneDragging || this.isSidebarDragging ? 'dragging' : ''} ${this.isMobile ? 'mobile-view' : ''} ${this.suppressSidebarHover ? 'suppress-sidebar-hover' : ''} ${this.isMobile && this.selectedContact ? 'reading' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
+      <div class="app-container layout-vertical ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isPaneDragging || this.isSidebarDragging ? 'dragging' : ''} ${this.isMobile ? 'mobile-view' : ''} ${this.isMobile && this.selectedContact ? 'reading' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
         <alps-sidebar 
           class="${this.isMobile ? 'mobile-sidebar' : 'desktop-sidebar'} ${this.mobileSidebarOpen ? 'open' : ''}"
           .isMobile=${this.isMobile}
           .isOpen=${this.mobileSidebarOpen}
-          .isHovered=${this.isSidebarHovered}
-          .suppressHover=${this.suppressSidebarHover}
           .width=${this.sidebarWidth}
           .collapsed=${this.sidebarCollapsed && !this.isMobile}
           @sidebar-resize=${(e: CustomEvent) => {
@@ -1039,19 +1036,7 @@ export class ContactsPage extends LitElement {
           @drag-end=${() => this.isSidebarDragging = false}
           @toggle-collapse=${() => this.settingsStore?.updateSettings({ sidebarCollapsed: !this.sidebarCollapsed })}
           @close-sidebar=${() => this.mobileSidebarOpen = false}
-          @mouseenter=${() => {
-        if (this.hoverTimeout) {
-          clearTimeout(this.hoverTimeout);
-          this.hoverTimeout = null;
-        }
-        this.isSidebarHovered = true;
-        this.suppressSidebarHover = false;
-      }}
-          @mouseleave=${() => {
-        this.hoverTimeout = setTimeout(() => {
-          this.isSidebarHovered = false;
-        }, 300); // 300ms delay before collapsing
-      }}
+          @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
         >
           <alps-contacts-categories
             .contacts=${this.contacts}
@@ -1059,8 +1044,7 @@ export class ContactsPage extends LitElement {
             .selectedCategory=${this.selectedCategory}
             .filterQuery=${this.filterQuery}
             .sidebarCollapsed=${this.sidebarCollapsed}
-            .isSidebarHovered=${this.isSidebarHovered}
-            .suppressSidebarHover=${this.suppressSidebarHover}
+            .sidebarPeeking=${this.sidebarPeeking}
             .isMobile=${this.isMobile}
             @create-contact=${this.handleCreateNew}
             @select-category=${(e: CustomEvent) => {
@@ -1071,17 +1055,18 @@ export class ContactsPage extends LitElement {
         } else {
           window.location.hash = `/contacts/${encodeURIComponent(cat)}`;
         }
+        closeSidebarPeek(this.renderRoot);
       }}
             @drag-start=${() => {
         this.isSidebarDragging = true;
-        this.suppressSidebarHover = true;
+        closeSidebarPeek(this.renderRoot);
       }}
             @drag-end=${() => {
         this.isSidebarDragging = false;
         if (this.isMobile) {
           this.mobileSidebarOpen = false;
         } else {
-          this.suppressSidebarHover = true;
+          closeSidebarPeek(this.renderRoot);
         }
       }}
             @rename-category=${(e: CustomEvent) => {

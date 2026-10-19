@@ -7,7 +7,7 @@ import '../components/message-reader';
 import type { MessageReader, ReaderActionDetail } from '../components/message-reader';
 import '../components/ui-confirm.js';
 import '../components/app-header';
-import '../components/alps-sidebar';
+import { closeSidebarPeek } from '../components/alps-sidebar';
 import { consume } from '@lit/context';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { messageSync } from '../services/message-sync';
@@ -266,7 +266,7 @@ export class MailboxPage extends LitElement {
       z-index: 20;
     }
 
-    alps-sidebar.desktop-sidebar[collapsed]:hover {
+    alps-sidebar.desktop-sidebar[collapsed][peeking] {
       transition: width 0.2s, z-index 0s 0s;
     }
 
@@ -333,13 +333,13 @@ export class MailboxPage extends LitElement {
   @state() private isSidebarDragging = false;
   @state() private isPaneDragging = false;
   @state() private sidebarWidth = SIDEBAR_WIDTH_DEFAULT;
-  @state() private isSidebarHovered = false;
-  private hoverTimeout: any = null;
+  /** The collapsed sidebar is open as its hover overlay. The sidebar decides;
+   * this mirrors it so the folder list renders expanded meanwhile. */
+  @state() private sidebarPeeking = false;
   @state() private densityMode: DensityMode = 'compact';
   @state() private showSenderAvatars = true;
   @state() private isSyncing = false;
   @state() private sidebarCollapsed = false;
-  @state() private suppressSidebarHover = false;
   @state() private sortOrder: 'asc' | 'desc' = 'desc';
   @state() private listScrolled = false;
   @state() private targetUid: string | null = null;
@@ -2090,13 +2090,11 @@ export class MailboxPage extends LitElement {
         this.updateUrl(mailbox, 0, null, newFilter);
       }}
       ></app-header>
-      <div class="app-container layout-${effectiveLayoutMode} ${isReadingFull ? 'reading' : ''} ${this.isPaneDragging || this.isSidebarDragging ? 'dragging' : ''} ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isMobile ? 'mobile-view' : ''} ${this.suppressSidebarHover ? 'suppress-sidebar-hover' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
+      <div class="app-container layout-${effectiveLayoutMode} ${isReadingFull ? 'reading' : ''} ${this.isPaneDragging || this.isSidebarDragging ? 'dragging' : ''} ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isMobile ? 'mobile-view' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
         <alps-sidebar 
           class="${this.isMobile ? 'mobile-sidebar' : 'desktop-sidebar'} ${this.mobileSidebarOpen ? 'open' : ''}"
           .isMobile=${this.isMobile}
           .isOpen=${this.mobileSidebarOpen}
-          .isHovered=${this.isSidebarHovered}
-          .suppressHover=${this.suppressSidebarHover}
           .collapsed=${this.sidebarCollapsed && !this.isMobile}
           .width=${this.sidebarWidth}
           @sidebar-resize=${(e: CustomEvent) => {
@@ -2114,19 +2112,7 @@ export class MailboxPage extends LitElement {
           @drag-end=${() => this.isSidebarDragging = false}
           @toggle-collapse=${() => this.settingsStore.updateSettings({ sidebarCollapsed: !this.sidebarCollapsed })}
           @close-sidebar=${() => this.mobileSidebarOpen = false}
-          @mouseenter=${() => {
-            if (this.hoverTimeout) {
-              clearTimeout(this.hoverTimeout);
-              this.hoverTimeout = null;
-            }
-            this.isSidebarHovered = true;
-            this.suppressSidebarHover = false;
-          }}
-          @mouseleave=${() => {
-            this.hoverTimeout = setTimeout(() => {
-              this.isSidebarHovered = false;
-            }, 300);
-          }}
+          @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
         >
           <alps-folder-list
             .mailboxes=${this.mailboxes}
@@ -2134,7 +2120,7 @@ export class MailboxPage extends LitElement {
             .expandedFolders=${this.expandedFolders}
             .layoutMode=${effectiveLayoutMode}
             .syncing=${this.isSyncing}
-            ?collapsed=${this.sidebarCollapsed && !this.isMobile && !this.isSidebarHovered}
+            ?collapsed=${this.sidebarCollapsed && !this.isMobile && !this.sidebarPeeking}
             @select-mailbox=${(e: CustomEvent) => {
         if (this.currentMailbox === e.detail.name) {
           this.currentPage = 0;
@@ -2151,9 +2137,7 @@ export class MailboxPage extends LitElement {
           this.updateUrl(e.detail.name, 0, null);
         }
 
-        if (this.sidebarCollapsed && !this.isMobile) {
-          this.suppressSidebarHover = true;
-        }
+        closeSidebarPeek(this.renderRoot);
         if (this.isMobile) {
           this.mobileSidebarOpen = false;
         }

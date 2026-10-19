@@ -86,7 +86,8 @@ export class CalendarPage extends LitElement {
 
     @state() private sidebarWidth = 250;
     @state() private sidebarCollapsed = false;
-    @state() private isSidebarHovered = false;
+    /** Mirrors the sidebar's own hover overlay (`peek-change`). */
+    @state() private sidebarPeeking = false;
     @state() private isMobile = window.innerWidth <= 768;
     @state() private mobileSidebarOpen = false;
     @state() private promptOpen = false;
@@ -100,8 +101,6 @@ export class CalendarPage extends LitElement {
     /** Who tells guests about changes, as the calendar listing says: the server, or alps by email. */
     @state() private scheduling: 'server' | 'email' = 'email';
     @state() private activeKebabMenu: string | null = null;
-    private hoverTimeout: any = null;
-    @state() private suppressSidebarHover = false;
     @state() private isSidebarDragging = false;
 
     static styles = [
@@ -537,23 +536,6 @@ export class CalendarPage extends LitElement {
         this.isMobile = window.innerWidth <= 768;
     };
 
-    private handleSidebarMouseEnter() {
-        if (this.sidebarCollapsed && !this.isSidebarDragging) {
-            clearTimeout(this.hoverTimeout);
-            this.hoverTimeout = setTimeout(() => {
-                this.isSidebarHovered = true;
-                this.suppressSidebarHover = false;
-            }, 300);
-        }
-    }
-
-    private handleSidebarMouseLeave() {
-        if (this.sidebarCollapsed) {
-            clearTimeout(this.hoverTimeout);
-            this.isSidebarHovered = false;
-        }
-    }
-
     private async fetchData() {
         this.loading = true;
         this.isSpinning = true;
@@ -940,8 +922,6 @@ export class CalendarPage extends LitElement {
                         .isMobile=${this.isMobile}
                         .isOpen=${this.mobileSidebarOpen}
                         .collapsed=${this.sidebarCollapsed && !this.isMobile}
-                        .isHovered=${this.isSidebarHovered}
-                        .suppressHover=${this.suppressSidebarHover}
                         .width=${this.sidebarWidth}
                         @toggle-collapse=${() => {
                 const newState = !this.sidebarCollapsed;
@@ -969,14 +949,13 @@ export class CalendarPage extends LitElement {
                         @drag-start=${() => this.isSidebarDragging = true}
                         @drag-end=${() => this.isSidebarDragging = false}
                         @close-sidebar=${() => this.mobileSidebarOpen = false}
-                        @mouseenter=${() => this.handleSidebarMouseEnter()}
-                        @mouseleave=${() => this.handleSidebarMouseLeave()}
+                        @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
                     >
-                    <div class="sidebar-wrapper ${this.sidebarCollapsed && (!this.isSidebarHovered || this.suppressSidebarHover) && !this.isMobile ? 'collapsed' : ''}">
+                    <div class="sidebar-wrapper ${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile ? 'collapsed' : ''}">
                         <alps-toolbar class="sidebar-header">
                             <alps-create-button 
                                 icon="calendarPlus" 
-                                ?collapsed=${this.sidebarCollapsed && (!this.isSidebarHovered || this.suppressSidebarHover) && !this.isMobile}
+                                ?collapsed=${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile}
                                 @click=${() => this.openCreateModal()}
                             >${this.i18nStore?.t('calendar.addEvent')}</alps-create-button>
                         </alps-toolbar>

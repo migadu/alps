@@ -1,4 +1,4 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -22,7 +22,7 @@ export const sidebarLayoutStyles = css`
     position: relative;
     z-index: 20;
   }
-  alps-sidebar.desktop-sidebar[collapsed]:hover {
+  alps-sidebar.desktop-sidebar[collapsed][peeking] {
     transition: width 0.2s, z-index 0s 0s;
   }
   .app-container.dragging alps-sidebar.desktop-sidebar {
@@ -58,6 +58,34 @@ export const sidebarLayoutStyles = css`
   }
 `;
 
+/** How long the pointer rests on the collapsed strip before the overlay opens.
+ *  Passing along the window's left edge on the way elsewhere opens nothing. */
+export const PEEK_OPEN_DELAY_MS = 300;
+/** How long after the pointer leaves the overlay closes. Coming back within it
+ *  keeps the overlay open. */
+export const PEEK_CLOSE_DELAY_MS = 300;
+
+/** Shuts the sidebar's hover overlay from the page that renders it, after a
+ *  choice made in the overlay, so it does not stay open over what was chosen. */
+export function closeSidebarPeek(root: ParentNode | null | undefined): void {
+  root?.querySelector<AlpsSidebar>('alps-sidebar')?.closePeek();
+}
+
+/**
+ * The sidebar: a docked column, or, collapsed, a narrow strip that opens as an
+ * overlay ("peeks") while the pointer rests on it.
+ *
+ * The peek is decided here and nowhere else. Each page used to keep its own
+ * copy of the hover handling, and the copies had drifted: some opened the
+ * overlay the instant the pointer crossed the strip, some waited; some closed
+ * it after a choice, some never did. Clicking the footer's collapse button left
+ * the pointer inside a sidebar that the copies still counted as hovered, so it
+ * collapsed straight into its full-width overlay. Now only a fresh pointer
+ * entry, held for PEEK_OPEN_DELAY_MS, opens the overlay; collapsing never does.
+ * Pages pass `collapsed` in, listen for `peek-change` (`detail.peeking`) to
+ * render their content expanded or as the strip, and call closePeek() when a
+ * choice made in the overlay should shut it.
+ */
 @customElement('alps-sidebar')
 export class AlpsSidebar extends LitElement {
   @consume({ context: i18nContext })
@@ -66,8 +94,9 @@ export class AlpsSidebar extends LitElement {
   @property({ type: Boolean }) isMobile = false;
   @property({ type: Boolean }) isOpen = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
-  @property({ type: Boolean, reflect: true }) suppressHover = false;
-  @property({ type: Boolean, reflect: true }) isHovered = false;
+  /** Whether the collapsed sidebar is open as its hover overlay. The sidebar
+   *  owns this: read it, or listen for `peek-change`, but do not set it. */
+  @property({ type: Boolean, reflect: true }) peeking = false;
   @property({ type: Number }) width = 250;
   @property({ type: Boolean }) hideFooterDivider = false;
 
@@ -84,7 +113,7 @@ export class AlpsSidebar extends LitElement {
       transition: z-index 0s 0.2s;
     }
 
-    :host([collapsed][ishovered]:not([suppresshover])) {
+    :host([collapsed][peeking]) {
       z-index: 30 !important;
       transition: z-index 0s 0s;
     }
@@ -111,8 +140,7 @@ export class AlpsSidebar extends LitElement {
       width: var(--sidebar-width-expanded, 250px);
     }
 
-    :host([collapsed]:not([ishovered])) .sidebar,
-    :host([collapsed][suppresshover]) .sidebar {
+    :host([collapsed]:not([peeking])) .sidebar {
       border-right: none;
       width: 100%;
       position: absolute;
@@ -122,7 +150,7 @@ export class AlpsSidebar extends LitElement {
       box-shadow: rgba(95, 95, 95, 0) 4px 0 4px -2px;
     }
 
-    :host([collapsed][ishovered]:not([suppresshover])) .sidebar {
+    :host([collapsed][peeking]) .sidebar {
       width: var(--sidebar-width-expanded, 250px);
       box-shadow: rgba(95, 95, 95, 0.1) 4px 0 4px -2px;
       z-index: 30;
@@ -233,8 +261,8 @@ export class AlpsSidebar extends LitElement {
       flex-shrink: 0;
     }
 
-    :host([collapsed]:not([ishovered])) .footer-divider,
-    :host([collapsed]:not([ishovered])) ::slotted([slot="footer-actions"]) {
+    :host([collapsed]:not([peeking])) .footer-divider,
+    :host([collapsed]:not([peeking])) ::slotted([slot="footer-actions"]) {
       display: none;
     }
 
@@ -261,6 +289,73 @@ export class AlpsSidebar extends LitElement {
       fill: currentColor;
     }
   `;
+
+  private openTimer: ReturnType<typeof setTimeout> | null = null;
+  private closeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor() {
+    super();
+    this.addEventListener('mouseenter', this.onPointerEnter);
+    this.addEventListener('mouseleave', this.onPointerLeave);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.clearPeekTimers();
+  }
+
+  /** Shuts the overlay, because a choice was made in it, and keeps it shut
+   *  until the pointer leaves and enters again. */
+  closePeek() {
+    this.clearPeekTimers();
+    this.peeking = false;
+  }
+
+  protected willUpdate(changed: PropertyValues<this>) {
+    // Collapsing or expanding is never a peek, wherever the pointer is: the
+    // overlay takes a fresh entry.
+    if (changed.has('collapsed') || changed.has('isMobile')) {
+      this.clearPeekTimers();
+      this.peeking = false;
+    }
+  }
+
+  protected updated(changed: PropertyValues<this>) {
+    if (changed.has('peeking') && changed.get('peeking') !== undefined) {
+      this.dispatchEvent(new CustomEvent('peek-change', { detail: { peeking: this.peeking } }));
+    }
+  }
+
+  private onPointerEnter = () => {
+    if (this.closeTimer !== null) {
+      clearTimeout(this.closeTimer);
+      this.closeTimer = null;
+    }
+    if (this.peeking || !this.collapsed || this.isMobile || this.isDragging) return;
+    this.openTimer ??= setTimeout(() => {
+      this.openTimer = null;
+      this.peeking = true;
+    }, PEEK_OPEN_DELAY_MS);
+  };
+
+  private onPointerLeave = () => {
+    if (this.openTimer !== null) {
+      clearTimeout(this.openTimer);
+      this.openTimer = null;
+    }
+    if (!this.peeking) return;
+    this.closeTimer ??= setTimeout(() => {
+      this.closeTimer = null;
+      this.peeking = false;
+    }, PEEK_CLOSE_DELAY_MS);
+  };
+
+  private clearPeekTimers() {
+    if (this.openTimer !== null) clearTimeout(this.openTimer);
+    if (this.closeTimer !== null) clearTimeout(this.closeTimer);
+    this.openTimer = null;
+    this.closeTimer = null;
+  }
 
   private startResize(e: MouseEvent) {
     if (this.isMobile || this.collapsed) return;
