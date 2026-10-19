@@ -640,9 +640,17 @@ export class ContactsPage extends LitElement {
     const customEvent = e as CustomEvent;
     const checked = customEvent.detail ? customEvent.detail.checked : (e.target as HTMLInputElement).checked;
     if (checked) {
+      // The rows the list shows, when it says which.
+      if (Array.isArray(customEvent.detail?.paths)) {
+        this.selectedContacts = new Set(customEvent.detail.paths);
+        return;
+      }
       const filteredContacts = this.contacts.filter(c => {
         if (this.selectedCategory) {
           if (!c.categories || !c.categories.includes(this.selectedCategory)) return false;
+        }
+        if (this.showOnlyStarred) {
+          if (!c.categories || !c.categories.includes(CATEGORY_FAVORITES)) return false;
         }
         return true;
       });
