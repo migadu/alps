@@ -25,6 +25,21 @@ export class MessageSyncService extends EventTarget {
    */
   private listed: boolean = false;
 
+  constructor() {
+    super();
+    // Signing out does not reload the page, and the next user's mail page
+    // listens on this same service. A read still out when the session ended
+    // is the previous user's mail: its tickets are taken here so that it
+    // cannot land. The next page's first listing supersedes a listing, but
+    // nothing superseded the folder list a create or rename re-reads, and it
+    // became the next user's sidebar.
+    window.addEventListener('session-cleared', () => {
+      this.currentFetchId++;
+      this.currentLabelsId++;
+      this.listed = false;
+    });
+  }
+
   /**
    * Updates the current context for background polling.
    */

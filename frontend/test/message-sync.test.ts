@@ -286,6 +286,39 @@ describe('syncLabels', () => {
   });
 });
 
+describe('across a sign-out', () => {
+  it('drops a folder list read for the session that ended', async () => {
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    let release: (r: Response) => void = () => {};
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { release = resolve; }));
+
+    // A rename re-reads the folder list, and the user signs out before it answers.
+    const read = svc.syncLabels();
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    release(new Response(JSON.stringify({ Mailboxes: [{ Name: 'INBOX' }, { Name: 'Payroll' }] }), { status: 200 }));
+    await read;
+
+    // The next user's mail page listens on this same service.
+    expect(seen).toEqual([]);
+  });
+
+  it('drops a listing read for the session that ended, and holds no rows for the next', async () => {
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    let release: (r: Response) => void = () => {};
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { release = resolve; }));
+
+    const read = svc.fetch('INBOX', 0, '', false, true);
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    release(listing('INBOX'));
+    await read;
+
+    expect(seen.map((e) => e.type)).toEqual(['sync-start']);
+    expect((svc as any).listed).toBe(false);
+  });
+});
+
 describe('the check-for-new-mail button', () => {
   /** A landed foreground read, which is what a check checks against. */
   async function landed(svc: MessageSyncService, mailbox = 'INBOX', page = 0, query = '') {
