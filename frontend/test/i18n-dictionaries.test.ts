@@ -772,3 +772,12 @@ describe('Serbian terms, titles and twins', () => {
     expect([lookup(sr, 'folderList.spam'), lookup(rs, 'folderList.spam')]).toEqual(['Spam', 'Спам']);
   });
 });
+
+describe('terms within one locale', () => {
+  it('fr calls calendars "calendrier", the calendar feature\'s own name', () => {
+    // French names the feature "Calendrier" on its tab and throughout its
+    // plugin; the load error alone called the same calendar an "agenda".
+    expect(stringsOf('fr').filter(([, text]) => /(?<!\p{L})agendas?(?!\p{L})/iu.test(text))).toEqual([]);
+    expect(lookup(fr, 'navigation.calendar')).toBe('Calendrier');
+  });
+});
