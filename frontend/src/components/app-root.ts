@@ -387,7 +387,12 @@ export class AppRoot extends LitElement {
     // answers instantly while the first paint never waited on it. Idle time
     // only — a prefetch that competes with the message list has moved the cost
     // rather than removed it.
-    const prefetch = () => { void this.ensureComposerLoaded().catch(() => {}); };
+    const prefetch = () => {
+      // The idle callback can outlive this shell, a test's included, and a
+      // shell no longer in the document has no composer to warm.
+      if (!this.isConnected) return;
+      void this.ensureComposerLoaded().catch(() => {});
+    };
     const idle = (window as any).requestIdleCallback;
     if (typeof idle === 'function') {
       idle(prefetch, { timeout: COMPOSER_PREFETCH_TIMEOUT_MS });

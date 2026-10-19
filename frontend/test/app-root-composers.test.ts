@@ -74,3 +74,33 @@ describe('composer windows', () => {
     expect(win.instance.minimized).toBe(true);
   });
 });
+
+describe('the composer warmed while the app is idle', () => {
+  let idle: Array<() => void>;
+
+  beforeEach(() => {
+    idle = [];
+    vi.stubGlobal('requestIdleCallback', vi.fn((callback: () => void) => idle.push(callback)));
+  });
+
+  it('is not fetched for a shell that has left the document', async () => {
+    const root = await mount<El>('app-root');
+    expect(idle).toHaveLength(1);
+    const load = vi.spyOn(root, 'ensureComposerLoaded').mockResolvedValue(undefined);
+    root.remove();
+
+    idle.forEach(callback => callback());
+
+    expect(load).not.toHaveBeenCalled();
+    expect(root.composerReady).toBe(false);
+  });
+
+  it('is fetched for a shell still on screen', async () => {
+    const root = await mount<El>('app-root');
+    const load = vi.spyOn(root, 'ensureComposerLoaded').mockResolvedValue(undefined);
+
+    idle.forEach(callback => callback());
+
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+});
