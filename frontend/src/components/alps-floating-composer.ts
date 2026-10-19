@@ -591,6 +591,24 @@ export class AlpsFloatingComposer extends LitElement {
 
 
 
+  /**
+   * Tab from the subject goes to the body.
+   *
+   * The formatting toolbar renders above the editor, so in document order it
+   * sits between the two, and every one of its buttons is a tab stop: a plain
+   * Tab landed on the first of them, and reaching the body took a dozen more.
+   * The toolbar stays reachable with Shift+Tab from the body. `keepCaret`
+   * puts the caret back where the user left it, as a native Tab into the
+   * editor would.
+   */
+  private _handleSubjectKeydown = (e: KeyboardEvent) => {
+    if (e.key !== 'Tab' || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+    const composer = this.composer;
+    if (!composer?.focusEditor) return;
+    e.preventDefault();
+    composer.focusEditor(true);
+  };
+
   private async _handleSend() {
     const hasUploading = (this.instance.attachments || []).some(a => a.uploading);
     if (hasUploading) {
@@ -1390,6 +1408,7 @@ export class AlpsFloatingComposer extends LitElement {
               placeholder=${this.i18nStore?.t('floatingComposer.subject')} 
               .value=${this.instance.subject || ''}
               @input=${(e: any) => this.composeStore.updateComposer(this.instance.id, { subject: e.target.value })}
+              @keydown=${this._handleSubjectKeydown}
               ?disabled=${this.instance.isSending}
             />
           </div>
