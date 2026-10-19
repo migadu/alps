@@ -191,11 +191,11 @@ export const da: TranslationDictionary = {
     pleaseWait: 'Vent venligst',
     wait: 'Vent',
     signedOut: 'Du er blevet logget ud.',
-    signedOutDraftsLost: 'Du er blevet logget ud. Nogle kladder, der ikke var sendt, kunne ikke gemmes og er gået tabt.',
+    signedOutDraftsKept: 'Du er blevet logget ud. Nogle kladder, der ikke var sendt, kunne ikke gemmes på serveren. De ligger på denne enhed og åbnes igen, når du logger ind igen.',
     sessionExpired: 'Din session er udløbet. Log ind igen.',
     secondFactorExpired: 'Dit login udløb, før sikkerhedsnøglen blev kontrolleret. Log ind igen.',
     inactivitySignedOut: 'Du er blevet logget ud på grund af inaktivitet.',
-    inactivitySignedOutDraftsLost: 'Du er blevet logget ud på grund af inaktivitet. Nogle kladder, der ikke var sendt, kunne ikke gemmes og er gået tabt.'
+    inactivitySignedOutDraftsKept: 'Du er blevet logget ud på grund af inaktivitet. Nogle kladder, der ikke var sendt, kunne ikke gemmes på serveren. De ligger på denne enhed og åbnes igen, når du logger ind igen.'
   },
   folderList: {
     compose: 'Skriv',
@@ -471,6 +471,9 @@ export const da: TranslationDictionary = {
   userMenu: {
     settings: 'Indstillinger',
     signOut: 'Log ud',
+    unsavedDraftsTitle: 'Log ud med kladder, der ikke er gemt?',
+    unsavedDraftsMessage: 'En kladde kunne ikke gemmes på serveren. Hvis du logger ud nu, bliver den på denne enhed og åbnes igen, næste gang du logger ind på denne konto.',
+    signOutAnyway: 'Log ud alligevel',
     profileOptions: 'Profilindstillinger'
   },
   pagination: {

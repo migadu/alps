@@ -139,11 +139,11 @@ export const sr = {
     pleaseWait: 'Molimo sačekajte',
     wait: 'Sačekajte',
     signedOut: 'Odjavljeni ste.',
-    signedOutDraftsLost: 'Odjavljeni ste. Neke neposlate nacrte nije bilo moguće sačuvati i izgubljeni su.',
+    signedOutDraftsKept: 'Odjavljeni ste. Neke neposlate nacrte nije bilo moguće sačuvati na serveru. Ostaju na ovom uređaju i otvoriće se ponovo kada se sledeći put prijavite.',
     sessionExpired: 'Vaša sesija je istekla. Prijavite se ponovo.',
     secondFactorExpired: 'Prijava je istekla pre nego što je bezbednosni ključ proveren. Prijavite se ponovo.',
     inactivitySignedOut: 'Odjavljeni ste zbog neaktivnosti.',
-    inactivitySignedOutDraftsLost: "Odjavljeni ste zbog neaktivnosti. Neke neposlate nacrte nije bilo moguće sačuvati i izgubljeni su."
+    inactivitySignedOutDraftsKept: "Odjavljeni ste zbog neaktivnosti. Neke neposlate nacrte nije bilo moguće sačuvati na serveru. Ostaju na ovom uređaju i otvoriće se ponovo kada se sledeći put prijavite."
   },
   folderList: {
     compose: 'Napiši',
@@ -435,6 +435,9 @@ export const sr = {
   userMenu: {
     settings: 'Podešavanja',
     signOut: 'Odjava',
+    unsavedDraftsTitle: 'Odjaviti se sa nesačuvanim nacrtima?',
+    unsavedDraftsMessage: 'Nacrt nije mogao da se sačuva na serveru. Ako se sada odjavite, ostaje na ovom uređaju i otvoriće se ponovo kada se sledeći put prijavite na ovaj nalog.',
+    signOutAnyway: 'Ipak se odjavi',
     profileOptions: 'Opcije profila'
   },
   pagination: {

@@ -141,11 +141,11 @@ export const de: TranslationDictionary = {
     pleaseWait: 'Bitte warten',
     wait: 'Warten',
     signedOut: 'Sie wurden abgemeldet.',
-    signedOutDraftsLost: 'Sie wurden abgemeldet. Einige ungesendete Entwürfe konnten nicht gespeichert werden und gingen verloren.',
+    signedOutDraftsKept: 'Sie wurden abgemeldet. Einige ungesendete Entwürfe konnten nicht auf dem Server gespeichert werden. Sie bleiben auf diesem Gerät und werden bei der nächsten Anmeldung wieder geöffnet.',
     sessionExpired: 'Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.',
     secondFactorExpired: 'Ihre Anmeldung ist abgelaufen, bevor der Sicherheitsschlüssel geprüft wurde. Bitte melden Sie sich erneut an.',
     inactivitySignedOut: 'Sie wurden wegen Inaktivität abgemeldet.',
-    inactivitySignedOutDraftsLost: "Sie wurden wegen Inaktivität abgemeldet. Einige ungesendete Entwürfe konnten nicht gespeichert werden und gingen verloren."
+    inactivitySignedOutDraftsKept: "Sie wurden wegen Inaktivität abgemeldet. Einige ungesendete Entwürfe konnten nicht auf dem Server gespeichert werden. Sie bleiben auf diesem Gerät und werden bei der nächsten Anmeldung wieder geöffnet."
   },
   folderList: {
     compose: 'Verfassen',
@@ -428,6 +428,9 @@ export const de: TranslationDictionary = {
   userMenu: {
     settings: 'Einstellungen',
     signOut: 'Abmelden',
+    unsavedDraftsTitle: 'Mit ungespeicherten Entwürfen abmelden?',
+    unsavedDraftsMessage: 'Ein Entwurf konnte nicht auf dem Server gespeichert werden. Wenn Sie sich jetzt abmelden, bleibt er auf diesem Gerät und wird bei der nächsten Anmeldung bei diesem Konto wieder geöffnet.',
+    signOutAnyway: 'Trotzdem abmelden',
     profileOptions: 'Profiloptionen'
   },
   pagination: {

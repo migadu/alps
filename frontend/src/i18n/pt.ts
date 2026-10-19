@@ -182,11 +182,11 @@ export const pt = {
     pleaseWait: 'Por favor, aguarde',
     wait: 'Aguarde',
     signedOut: 'Você foi desconectado.',
-    signedOutDraftsLost: 'Você saiu da sua conta. Alguns rascunhos não enviados não puderam ser salvos e foram perdidos.',
+    signedOutDraftsKept: 'Você saiu da sua conta. Alguns rascunhos não enviados não puderam ser salvos no servidor. Eles ficam neste dispositivo e serão reabertos quando você entrar novamente.',
     sessionExpired: 'A sua sessão expirou. Inicie sessão novamente.',
     secondFactorExpired: 'O início de sessão expirou antes da verificação da chave de segurança. Inicie sessão novamente.',
     inactivitySignedOut: 'Você foi desconectado por inatividade.',
-    inactivitySignedOutDraftsLost: "Você foi desconectado por inatividade. Alguns rascunhos não enviados não puderam ser salvos e foram perdidos."
+    inactivitySignedOutDraftsKept: "Você foi desconectado por inatividade. Alguns rascunhos não enviados não puderam ser salvos no servidor. Eles ficam neste dispositivo e serão reabertos quando você entrar novamente."
   },
   folderList: {
     compose: 'Escrever',
@@ -469,6 +469,9 @@ export const pt = {
   userMenu: {
     settings: 'Configurações',
     signOut: 'Sair',
+    unsavedDraftsTitle: 'Sair com rascunhos não salvos?',
+    unsavedDraftsMessage: 'Não foi possível salvar um rascunho no servidor. Se você sair agora, ele fica neste dispositivo e será reaberto na próxima vez que você entrar nesta conta.',
+    signOutAnyway: 'Sair mesmo assim',
     profileOptions: 'Opções de Perfil'
   },
   pagination: {

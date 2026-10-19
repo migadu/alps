@@ -139,11 +139,11 @@ export const es = {
     pleaseWait: 'Por favor espere',
     wait: 'Esperar',
     signedOut: 'Has cerrado sesión.',
-    signedOutDraftsLost: 'Se ha cerrado tu sesión. Algunos borradores sin enviar no se pudieron guardar y se perdieron.',
+    signedOutDraftsKept: 'Se ha cerrado tu sesión. Algunos borradores sin enviar no se pudieron guardar en el servidor. Se quedan en este dispositivo y se vuelven a abrir cuando inicies sesión de nuevo.',
     sessionExpired: 'Tu sesión ha expirado. Por favor, inicia sesión de nuevo.',
     secondFactorExpired: 'El inicio de sesión ha caducado antes de comprobar la clave de seguridad. Vuelve a iniciar sesión.',
     inactivitySignedOut: 'Has cerrado sesión por inactividad.',
-    inactivitySignedOutDraftsLost: "Has cerrado sesión por inactividad. Algunos borradores sin enviar no se pudieron guardar y se perdieron."
+    inactivitySignedOutDraftsKept: "Has cerrado sesión por inactividad. Algunos borradores sin enviar no se pudieron guardar en el servidor. Se quedan en este dispositivo y se vuelven a abrir cuando inicies sesión de nuevo."
   },
   folderList: {
     compose: 'Redactar',
@@ -426,6 +426,9 @@ export const es = {
   userMenu: {
     settings: 'Configuración',
     signOut: 'Cerrar sesión',
+    unsavedDraftsTitle: '¿Cerrar sesión con borradores sin guardar?',
+    unsavedDraftsMessage: 'No se pudo guardar un borrador en el servidor. Si cierras sesión ahora, se queda en este dispositivo y se vuelve a abrir la próxima vez que inicies sesión en esta cuenta.',
+    signOutAnyway: 'Cerrar sesión de todos modos',
     profileOptions: 'Opciones de perfil'
   },
   pagination: {

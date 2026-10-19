@@ -5,6 +5,7 @@ import { abortUploads } from '../utils/attachment-utils';
 import { Logger } from '../utils/logger';
 import { appendReplyFields } from '../utils/reply-context';
 import { escapeHtml } from '../utils/html-sanitizer';
+import { DraftFlushError } from '../utils/draft-flush-error';
 
 /**
  * Where a user's unsent drafts are kept, scoped to WHOSE they are.
@@ -92,6 +93,8 @@ export interface ComposerInstance {
   replyMailbox?: string;
   replyUid?: string;
   isSending?: boolean;
+  /** A save of this draft is on the wire, by its window or by the sign-out flush. */
+  isSaving?: boolean;
   closing?: boolean;
   [key: string]: any;
 }
@@ -111,6 +114,14 @@ export class ComposeStore extends EventTarget {
    * sign-out — in which case nothing is persisted at all, rather than persisted
    * somewhere shared. */
   private username: string | null = null;
+
+  /**
+   * Set when a sign-out goes ahead past a failed flush (see
+   * {@link DraftFlushError.keepRecoveryCopy}), and consumed by the very next
+   * `session-cleared`. While set, that sign-out empties the screen but leaves
+   * the stored drafts on disk, under this account's key, for its next sign-in.
+   */
+  private keepDraftsOnSignOut = false;
 
   constructor() {
     super();
@@ -155,7 +166,11 @@ export class ComposeStore extends EventTarget {
 
   /**
    * Sign-out: the drafts leave the screen AND the disk. Expiry — a
-   * `session-cleared` carrying `reason: 'expired'` — the screen only.
+   * `session-cleared` carrying `reason: 'expired'` — the screen only. So does
+   * a sign-out that went ahead although its flush could not store every draft
+   * (the idle timeout, or a user who confirmed): those drafts exist nowhere
+   * else, so the disk copy stays under this account's key, where only this
+   * account's next sign-in reads it.
    *
    * Cancelling the debounced writer is not tidiness — it is the difference
    * between erasing and appearing to. A save armed moments before the logout
@@ -182,7 +197,9 @@ export class ComposeStore extends EventTarget {
     // isSending on the way back in.
     const expired = (event as CustomEvent | undefined)?.detail?.reason === 'expired';
     if (expired) this.saveDrafts();
-    const key = this.username && !expired ? draftsKeyFor(this.username) : null;
+    const keep = expired || this.keepDraftsOnSignOut;
+    this.keepDraftsOnSignOut = false;
+    const key = this.username && !keep ? draftsKeyFor(this.username) : null;
     this.username = null;
     // An upload still streaming would otherwise finish (or 401) into a composer
     // that no longer exists, and deposit its bytes in a server-side session that
@@ -212,6 +229,10 @@ export class ComposeStore extends EventTarget {
             ...draft,
             attachments: draft.attachments?.filter(att => !att.uploading && att.uuid) || [],
             isSending: false,
+            // A save or a deferred close the tab or the session went away in.
+            // Kept, it would refuse every later save, or hide the window.
+            isSaving: false,
+            closing: false,
             minimized: wasSending ? false : draft.minimized
           };
         });
@@ -417,85 +438,149 @@ export class ComposeStore extends EventTarget {
   }
 
   /**
-   * Saves every dirty composer, and reports how many could NOT be saved.
+   * Saves every dirty composer, closing each one the server stored, and
+   * throws a {@link DraftFlushError} when any could not be stored.
    *
-   * The result used to be discarded and `activeComposers` emptied regardless:
+   * The only caller is sign-out. This used to empty every composer whatever
+   * the saves answered, and sign-out then deleted the drafts key outright, so
+   * a draft that failed to reach the server (offline, a 500, a full mailbox)
+   * was destroyed from the screen and from localStorage at once, and the
+   * login screen could only report it lost. A composer still sending in its
+   * undo window, or still uploading, was "saved" without what made it so.
    *
-   *     await messageOperations.saveDraft(formData);   // result ignored
-   *     …
-   *     this.state = { ...this.state, activeComposers: [] };
-   *     this.saveDrafts();
-   *
-   * The only caller is sign-out, which then dispatches `session-cleared` and
-   * deletes the drafts key outright. So a draft that failed to reach the server
-   * — offline, a 500, a full mailbox — was destroyed in the same breath, from
-   * the screen, from localStorage and from the server all at once, silently.
-   * This is the third place this exact mistake lived; the other two were the
-   * close button (e85d153) and the deferred close (63c1515).
-   *
-   * A local session that is ending cannot keep the draft, so the honest answer
-   * is not to silently keep going: the count travels back and the caller tells
-   * the user on the login screen they are about to land on.
+   * Now a composer that cannot be stored stays open, and so does its copy on
+   * disk: one sending, saving, closing behind an upload, or still uploading,
+   * and one whose save failed or that was edited while its save was out. The
+   * rest still go, one at a time, because the idle sign-out goes ahead
+   * whatever this answers, and every draft that can reach the server should.
+   * The error carries the hook that keeps the copy through the sign-out.
    */
-  async saveAllDirtyDrafts(): Promise<{ failed: number }> {
-    let failed = 0;
-    const dirtyComposers = this.state.activeComposers.filter(c => c.dirty);
-    if (dirtyComposers.length > 0) {
-      for (const composer of dirtyComposers) {
+  async saveAllDirtyDrafts(): Promise<void> {
+    // Decided afresh by each sign-out, never inherited from one that did not
+    // happen.
+    this.keepDraftsOnSignOut = false;
+    const username = this.username;
+    let failed = false;
+    try {
+      for (const id of this.state.activeComposers.map(c => c.id)) {
+        // Signed out, or someone else signed in, during a save: nothing here
+        // is this flush's to store any more.
+        if (this.username !== username) throw new DraftFlushError();
+        const composer = this.getComposer(id);
+        if (!composer) continue;
+        if (composer.isSending || composer.isSaving || composer.closing || composer.attachments?.some(a => a.uploading)) {
+          failed = true;
+          continue;
+        }
+        // Only what was touched: an opened but unanswered reply is not filed
+        // as a draft, and a draft already saved is on the server.
+        if (!composer.dirty) {
+          this.closeComposer(id);
+          continue;
+        }
         const hasRecipient = (composer.to?.length || 0) > 0 || (composer.cc?.length || 0) > 0 || (composer.bcc?.length || 0) > 0;
         const textIsJustInitial = composer.text?.trim() === composer.initialText?.trim();
         const hasContent = !textIsJustInitial || (composer.subject?.trim().length || 0) > 0;
-        if (!hasRecipient && !hasContent && !(composer.attachments && composer.attachments.length > 0)) continue;
+        if (!hasRecipient && !hasContent && !(composer.attachments && composer.attachments.length > 0)) {
+          this.closeComposer(id);
+          continue;
+        }
 
-        const formData = new FormData();
-        let bcc = [...(composer.bcc || [])];
-        let replyToSetting = '';
-        {
-          // Same correction as the composer defaults above: `bccMyself`,
-          // `loginUsername` and `replyTo` all live in the per-user record, never
-          // in `alps_settings`, so "BCC myself" and a custom Reply-To silently
-          // did nothing on every message sent.
-          const sendSettings = readUserSettings();
-          const self = sendSettings.loginUsername;
-          if (sendSettings.bccMyself && self && !bcc.some(addr => bareAddress(addr) === bareAddress(self))) {
-            bcc.push(self);
+        const contentKey = draftContentKey(composer);
+        this.updateComposer(id, { isSaving: true });
+        try {
+          const saved = await messageOperations.saveDraft(this.draftForm(composer));
+          if (this.username !== username) throw new DraftFlushError();
+          if (!saved) {
+            failed = true;
+            continue;
           }
-          if (sendSettings.replyTo) {
-            replyToSetting = sendSettings.replyTo;
+          const current = this.getComposer(id);
+          if (current && draftContentKey(current) !== contentKey) {
+            // Stored, but not as it is now: record the stored draft, so the
+            // next save replaces it, without marking the newer edit clean.
+            this.updateComposer(id, { draftUid: saved.uid, draftMailbox: saved.mailbox });
+            failed = true;
+            continue;
           }
+          this.closeComposer(id);
+        } finally {
+          if (this.getComposer(id)) this.updateComposer(id, { isSaving: false });
         }
+      }
+      if (failed || this.state.activeComposers.length > 0) throw new DraftFlushError();
+    } catch (error) {
+      if (!(error instanceof DraftFlushError)) Logger.error('Failed to save drafts before signing out', error);
+      this.saveDrafts();
+      // The keep hook only while the account the flush began for is still
+      // the one signed in: armed for another, it would spare the wrong
+      // account's drafts.
+      throw new DraftFlushError(this.username === username && username !== null
+        ? () => this.retainDraftsForSignOut(username)
+        : undefined);
+    }
+  }
 
-        formData.append('to', (composer.to || []).join(', '));
-        formData.append('cc', (composer.cc || []).join(', '));
-        formData.append('bcc', bcc.join(', '));
-        if (replyToSetting) {
-          formData.append('reply_to', replyToSetting);
-        }
-        formData.append('subject', (composer.subject || '').trim());
-        formData.append('text', composer.text || '');
-        if (composer.html && composer.format === 'html') {
-          formData.append('html', composer.html);
-        }
-        formData.append('save_as_draft', '1');
+  /**
+   * The keep hook a failed flush hands its caller. Writes the composers as
+   * they are now, since the user may have edited one between the failure and
+   * a confirmed sign-out and `handleSessionCleared` cancels the debounced
+   * writer, and marks the coming `session-cleared` as one that leaves them.
+   */
+  private retainDraftsForSignOut(username: string): void {
+    if (this.username !== username) return;
+    if (this.saveTimeout !== null) {
+      window.clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    this.saveDrafts();
+    this.keepDraftsOnSignOut = true;
+  }
 
-        const attachments = composer.attachments || [];
-        const uuids = attachments.map(a => a.uuid).filter(Boolean).join(',');
-        if (uuids) formData.append('attachment-uuids', uuids);
-        
-        const prev = attachments.map(a => a.partPath).filter(Boolean).join(',');
-        if (prev) formData.append('prev_attachments', prev);
-
-        if (composer.draftMailbox) formData.append('draft_mailbox', composer.draftMailbox);
-        if (composer.draftUid) formData.append('draft_uid', composer.draftUid);
-        appendReplyFields(formData, composer);
-
-        if (!(await messageOperations.saveDraft(formData))) failed++;
+  /** A composer as the form a draft save posts. */
+  private draftForm(composer: ComposerInstance): FormData {
+    const formData = new FormData();
+    let bcc = [...(composer.bcc || [])];
+    let replyToSetting = '';
+    {
+      // Same correction as the composer defaults above: `bccMyself`,
+      // `loginUsername` and `replyTo` all live in the per-user record, never
+      // in `alps_settings`, so "BCC myself" and a custom Reply-To silently
+      // did nothing on every message sent.
+      const sendSettings = readUserSettings();
+      const self = sendSettings.loginUsername;
+      if (sendSettings.bccMyself && self && !bcc.some(addr => bareAddress(addr) === bareAddress(self))) {
+        bcc.push(self);
+      }
+      if (sendSettings.replyTo) {
+        replyToSetting = sendSettings.replyTo;
       }
     }
-    this.state = { ...this.state, activeComposers: [] };
-    this.saveDrafts();
-    this.notify();
-    return { failed };
+
+    formData.append('to', (composer.to || []).join(', '));
+    formData.append('cc', (composer.cc || []).join(', '));
+    formData.append('bcc', bcc.join(', '));
+    if (replyToSetting) {
+      formData.append('reply_to', replyToSetting);
+    }
+    formData.append('subject', (composer.subject || '').trim());
+    formData.append('text', composer.text || '');
+    if (composer.html && composer.format === 'html') {
+      formData.append('html', composer.html);
+    }
+    formData.append('save_as_draft', '1');
+
+    const attachments = composer.attachments || [];
+    const uuids = attachments.map(a => a.uuid).filter(Boolean).join(',');
+    if (uuids) formData.append('attachment-uuids', uuids);
+
+    const prev = attachments.map(a => a.partPath).filter(Boolean).join(',');
+    if (prev) formData.append('prev_attachments', prev);
+
+    if (composer.draftMailbox) formData.append('draft_mailbox', composer.draftMailbox);
+    if (composer.draftUid) formData.append('draft_uid', composer.draftUid);
+    appendReplyFields(formData, composer);
+    return formData;
   }
 
   bringComposerToFront(id: string) {

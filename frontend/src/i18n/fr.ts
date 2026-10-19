@@ -139,11 +139,11 @@ export const fr = {
     pleaseWait: 'Veuillez patienter',
     wait: 'Patienter',
     signedOut: 'Vous avez été déconnecté.',
-    signedOutDraftsLost: 'Vous avez été déconnecté. Certains brouillons non envoyés n’ont pas pu être enregistrés et ont été perdus.',
+    signedOutDraftsKept: 'Vous avez été déconnecté. Certains brouillons non envoyés n’ont pas pu être enregistrés sur le serveur. Ils restent sur cet appareil et se rouvrent à votre prochaine connexion.',
     sessionExpired: 'Votre session a expiré. Veuillez vous reconnecter.',
     secondFactorExpired: 'Votre connexion a expiré avant la vérification de la clé de sécurité. Veuillez vous reconnecter.',
     inactivitySignedOut: "Vous avez été déconnecté pour cause d'inactivité.",
-    inactivitySignedOutDraftsLost: "Vous avez été déconnecté pour cause d'inactivité. Certains brouillons non envoyés n’ont pas pu être enregistrés et ont été perdus."
+    inactivitySignedOutDraftsKept: "Vous avez été déconnecté pour cause d'inactivité. Certains brouillons non envoyés n’ont pas pu être enregistrés sur le serveur. Ils restent sur cet appareil et se rouvrent à votre prochaine connexion."
   },
   folderList: {
     compose: 'Nouveau message',
@@ -426,6 +426,9 @@ export const fr = {
   userMenu: {
     settings: 'Paramètres',
     signOut: 'Se déconnecter',
+    unsavedDraftsTitle: 'Se déconnecter avec des brouillons non enregistrés ?',
+    unsavedDraftsMessage: 'Un brouillon n’a pas pu être enregistré sur le serveur. Si vous vous déconnectez maintenant, il reste sur cet appareil et se rouvre à votre prochaine connexion à ce compte.',
+    signOutAnyway: 'Se déconnecter quand même',
     profileOptions: 'Options du profil'
   },
   pagination: {

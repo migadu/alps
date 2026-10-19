@@ -189,11 +189,11 @@ export const en = {
     pleaseWait: 'Please wait',
     wait: 'Wait',
     signedOut: 'You have been signed out.',
-    signedOutDraftsLost: 'You have been signed out. Some unsent drafts could not be saved and were lost.',
+    signedOutDraftsKept: 'You have been signed out. Some unsent drafts could not be saved to the server. They are kept on this device and reopen when you sign in again.',
     sessionExpired: 'Your session has expired. Please sign in again.',
     secondFactorExpired: 'Your sign-in timed out before the security key was checked. Please sign in again.',
     inactivitySignedOut: "You've been signed out due to inactivity.",
-    inactivitySignedOutDraftsLost: "You've been signed out due to inactivity. Some unsent drafts could not be saved and were lost."
+    inactivitySignedOutDraftsKept: "You've been signed out due to inactivity. Some unsent drafts could not be saved to the server. They are kept on this device and reopen when you sign in again."
   },
   folderList: {
     compose: 'Compose',
@@ -469,6 +469,9 @@ export const en = {
   userMenu: {
     settings: 'Settings',
     signOut: 'Sign Out',
+    unsavedDraftsTitle: 'Sign out with unsaved drafts?',
+    unsavedDraftsMessage: 'A draft could not be saved to the server. If you sign out now, it stays on this device and reopens the next time you sign in to this account.',
+    signOutAnyway: 'Sign out anyway',
     profileOptions: 'Profile options'
   },
   pagination: {

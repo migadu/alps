@@ -146,8 +146,8 @@ export class AppRoot extends LitElement {
     // Initialize auto-logout
     const autoLogoutTime = this.settingsStore.getState().autoLogout ?? 0;
     autoLogoutService.setLogoutTime(autoLogoutTime);
-    // Returns the count, so auto-logout can say drafts were lost exactly as the
-    // Sign Out button does. The wrapper used to await it and discard the answer.
+    // Throws for drafts it could not store, so auto-logout can keep them on
+    // this device and say so, as the Sign Out button does.
     autoLogoutService.onBeforeLogout = () => this.composeStore.saveAllDirtyDrafts();
 
     // Initialize language

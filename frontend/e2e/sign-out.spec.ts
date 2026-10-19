@@ -102,3 +102,43 @@ test("the notice does not survive into a later login", async ({ page }) => {
   await signIn(page);
   await expect(archiveFolder(page)).toBeVisible();
 });
+
+test("a draft the server will not take is asked about, and kept on this device for the next sign-in", async ({ page }) => {
+  await login(page);
+  await expect(archiveFolder(page)).toBeVisible();
+  allowConsoleErrors(page, ...EXPECTED_REFUSALS, /status of 500/, /Failed to save draft/);
+  // Every draft save is refused, as it is with the mail server down.
+  const drafts = (url: URL) => url.pathname === "/messages";
+  await page.route(drafts, (route) =>
+    route.request().method() === "POST" ? route.fulfill({ status: 500, body: "{}" }) : route.fallback());
+
+  await page.locator("alps-folder-list alps-create-button").click();
+  const subject = page.locator("alps-floating-composer").getByPlaceholder("Subject");
+  await subject.fill("Kept through a sign-out");
+
+  // Asked, and Cancel stays: the window is still open with what was typed.
+  await signOut(page);
+  const asked = page.locator("alps-header ui-confirm");
+  await expect(asked.getByText("Sign out with unsaved drafts?")).toBeVisible();
+  await asked.getByRole("button", { name: "Cancel" }).click();
+  await expect(asked).toHaveCount(0);
+  await expect(subject).toHaveValue("Kept through a sign-out");
+
+  // Signing out anyway says where the draft is.
+  await signOut(page);
+  await page.locator("alps-header ui-confirm").getByRole("button", { name: "Sign out anyway" }).click();
+  await page.waitForURL(/#\/login/, { timeout: 15_000 });
+  await expect(page.locator("login-page").getByText(/kept on this device/)).toBeVisible();
+  await expect(page.locator("alps-floating-composer")).toHaveCount(0);
+
+  // And the next sign-in to the account reopens it.
+  await page.unroute(drafts);
+  await signIn(page);
+  await expect(subject).toHaveValue("Kept through a sign-out");
+
+  // Discarded, so no other test meets it in Drafts.
+  const composer = page.locator("alps-floating-composer");
+  await composer.locator(".send-actions").getByRole("button", { name: "Discard", exact: true }).click();
+  await composer.locator("ui-confirm").getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(composer).toHaveCount(0);
+});

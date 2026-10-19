@@ -1,13 +1,15 @@
 import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import { MessageCache } from '../utils/message-cache';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { clearSessionSettings } from '../store/settings-store';
 import { setLoginNotice } from '../utils/login-notice';
+import { DraftFlushError } from '../utils/draft-flush-error';
 import './user-profile-menu';
 import './alps-icon-btn';
+import './ui-confirm';
 import { Logger } from '../utils/logger';
 
 @customElement('alps-header')
@@ -22,6 +24,13 @@ export class AlpsHeader extends LitElement {
 
   @consume({ context: composeContext })
   composeStore!: ComposeStore;
+
+  /**
+   * A sign-out held back by drafts the server does not have, waiting for the
+   * user to choose. Staying keeps the windows open; signing out anyway keeps
+   * the drafts on this device for this account's next sign-in.
+   */
+  @state() private unsavedDraftsFailure: DraftFlushError | null = null;
 
   connectedCallback() {
     super.connectedCallback();
@@ -103,6 +112,33 @@ export class AlpsHeader extends LitElement {
   }
 
   private async handleSignOut() {
+    try {
+      await this.composeStore?.saveAllDirtyDrafts();
+    } catch (err) {
+      // A draft the server does not have is the user's to decide about. It
+      // used to be lost with the session, and the login screen said so
+      // afterwards, when nothing could be done about it any more.
+      this.unsavedDraftsFailure = err instanceof DraftFlushError ? err : new DraftFlushError();
+      return;
+    }
+    await this.endSession('signedOut');
+  }
+
+  /** The user chose to leave with drafts the server does not have. */
+  private confirmSignOutWithUnsavedDrafts = async () => {
+    const failure = this.unsavedDraftsFailure;
+    this.unsavedDraftsFailure = null;
+    if (!failure) return;
+    // Before the session ends: ending it is what erases the stored drafts.
+    failure.keepRecoveryCopy();
+    await this.endSession('signedOutDraftsKept');
+  };
+
+  private cancelSignOutWithUnsavedDrafts = () => {
+    this.unsavedDraftsFailure = null;
+  };
+
+  private async endSession(notice: 'signedOut' | 'signedOutDraftsKept') {
     // Every step that can fail is isolated, because none of their failures is a
     // reason to stay signed in.
     //
@@ -116,23 +152,11 @@ export class AlpsHeader extends LitElement {
     //
     // The same fix auto-logout got in 6cdf808; this is the path a user takes
     // deliberately, and it was missed there.
-    let draftsLost = 0;
-    try {
-      if (this.composeStore) {
-        draftsLost = (await this.composeStore.saveAllDirtyDrafts()).failed;
-      }
-    } catch (err) {
-      Logger.error('Could not save drafts before signing out', err);
-    }
-
-    // Ahead of the request: the login page is mounted by the redirect below and
-    // reads its notice exactly once, so a notice set after a slow DELETE loses
-    // the race.
     //
-    // A draft that could not be saved is gone — the session ending takes the
-    // local copy with it — so say so rather than let the user discover an empty
-    // Drafts folder later.
-    setLoginNotice(draftsLost > 0 ? 'signedOutDraftsLost' : 'signedOut');
+    // The notice goes ahead of the request: the login page is mounted by the
+    // redirect below and reads its notice exactly once, so a notice set after
+    // a slow DELETE loses the race.
+    setLoginNotice(notice);
 
     try {
       await fetch('/session', { method: 'DELETE' });
@@ -150,6 +174,17 @@ export class AlpsHeader extends LitElement {
 
   render() {
     return html`
+      ${this.unsavedDraftsFailure ? html`
+        <ui-confirm
+          title=${this.i18nStore?.t('userMenu.unsavedDraftsTitle')}
+          message=${this.i18nStore?.t('userMenu.unsavedDraftsMessage')}
+          confirmText=${this.i18nStore?.t('userMenu.signOutAnyway')}
+          cancelText=${this.i18nStore?.t('general.cancel')}
+          .isDanger=${true}
+          @confirm=${this.confirmSignOutWithUnsavedDrafts}
+          @cancel=${this.cancelSignOutWithUnsavedDrafts}
+        ></ui-confirm>
+      ` : ''}
       <div class="header-container">
         <div class="left-section">
           ${this.isMobile ? html`

@@ -15,8 +15,8 @@ describe('login notice', () => {
 
   it('keeps only the latest notice', () => {
     setLoginNotice('signedOut');
-    setLoginNotice('signedOutDraftsLost');
-    expect(takeLoginNotice()).toBe('signedOutDraftsLost');
+    setLoginNotice('signedOutDraftsKept');
+    expect(takeLoginNotice()).toBe('signedOutDraftsKept');
   });
 
   it('is empty when nothing was set', () => {

@@ -164,7 +164,7 @@ export class AlpsFloatingComposer extends LitElement {
   }
 
   updated(changedProperties: Map<string, any>) {
-    if (changedProperties.has('instance') && this.instance.dirty && !this.instance.isSending) {
+    if (changedProperties.has('instance') && this.instance.dirty && !this.instance.isSending && !this.instance.isSaving) {
       this._scheduleAutoSave();
     }
   }
@@ -196,8 +196,11 @@ export class AlpsFloatingComposer extends LitElement {
   }
 
   private async _doSaveDraft(): Promise<boolean> {
-    const currentInstance = this.composeStore.getComposer(this.instance.id) || this.instance;
-    if (currentInstance.isSending || this.discarding) return false;
+    const id = this.instance.id;
+    const currentInstance = this.composeStore.getComposer(id) || this.instance;
+    // `isSaving` in the store is the sign-out flush saving this draft, which a
+    // second save beside it would race.
+    if (currentInstance.isSending || currentInstance.isSaving || this.discarding) return false;
 
     // Check if we have anything to save
     const hasRecipient = (currentInstance.to?.length || 0) > 0 || (currentInstance.cc?.length || 0) > 0 || (currentInstance.bcc?.length || 0) > 0;
@@ -209,6 +212,8 @@ export class AlpsFloatingComposer extends LitElement {
     }
 
     this.isSaving = true;
+    // In the store too, so the sign-out flush leaves this draft to this save.
+    this.composeStore.updateComposer(id, { isSaving: true });
     try {
       const sentUuids = (currentInstance.attachments || []).map(a => a.uuid).filter(Boolean);
       const contentKey = draftContentKey(currentInstance);
@@ -276,6 +281,7 @@ export class AlpsFloatingComposer extends LitElement {
       return !!result;
     } finally {
       this.isSaving = false;
+      if (this.composeStore.getComposer(id)) this.composeStore.updateComposer(id, { isSaving: false });
     }
   }
 
