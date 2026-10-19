@@ -449,6 +449,31 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
   return doc.documentElement.outerHTML;
 }
 
+/** Does this URL run script, or a document that can, when it is followed? */
+function isScriptUrl(value: string): boolean {
+  const scheme = urlScheme(value);
+  return scheme.startsWith('javascript:') || scheme.startsWith('vbscript:') || scheme.startsWith('data:text/html');
+}
+
+/** The attributes that hold a single URL to follow or load. */
+const URL_ATTRIBUTES = new Set(['href', 'src', 'action', 'formaction', 'xlink:href', 'poster']);
+
+/**
+ * The style with every `url()` in it removed.
+ *
+ * A quoted URL can hold a `)`, as in `url("https://x.test/img?(1)")`, and a
+ * pattern that stopped at the first `)` left `")` behind, which opens a CSS
+ * string that swallows the rest of the declaration. A backslash inside the
+ * quotes escapes the next character, a line break included. A `url(` left
+ * unclosed is closed by the end of the value, as CSS closes it, so it goes
+ * with everything after it.
+ */
+export function stripCssUrls(style: string): string {
+  return style
+    .replace(/url\s*\(\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^)'"]*)\s*\)/gis, '')
+    .replace(/url\s*\(.*$/is, '');
+}
+
 /**
  * Strips executable content from HTML about to be QUOTED into a draft.
  *
@@ -489,7 +514,7 @@ export function sanitizeQuotedHTML(rawHtml: string): string {
   // Active content. `style` goes too: quoted CSS escapes the blockquote and
   // restyles the reply around it, and its url() values fetch just like an img.
   doc
-    .querySelectorAll('script, style, link, iframe, object, embed, form, meta, base')
+    .querySelectorAll('script, style, link, iframe, object, embed, frame, frameset, applet, form, meta, base')
     .forEach((el) => el.remove());
 
   for (const el of Array.from(doc.querySelectorAll('*'))) {
@@ -502,21 +527,23 @@ export function sanitizeQuotedHTML(rawHtml: string): string {
         el.removeAttribute(attr.name);
         continue;
       }
-      if (name === 'href' || name === 'src' || name === 'srcset' || name === 'action') {
-        const scheme = urlScheme(attr.value);
-        if (scheme.startsWith('javascript:') || scheme.startsWith('vbscript:') || scheme.startsWith('data:text/html')) {
-          el.removeAttribute(attr.name);
-        }
-      }
+      // Every attribute a click or a load follows as a URL. A srcset is a
+      // list, and a script URL can be any of its candidates, not just the
+      // first.
+      const isScript = name === 'srcset'
+        ? parseSrcset(attr.value).some((candidate) => isScriptUrl(candidate.url))
+        : URL_ATTRIBUTES.has(name) && isScriptUrl(attr.value);
+      if (isScript) el.removeAttribute(attr.name);
     }
     // Inline styles survive as formatting, not as a fetch: see the docstring.
     const style = el.getAttribute('style');
     if (style && /url\s*\(/i.test(style)) {
-      el.setAttribute('style', style.replace(/url\s*\([^)]*\)/gi, ''));
+      el.setAttribute('style', stripCssUrls(style));
     }
   }
 
-  return doc.body.innerHTML;
+  // A frameset document has no body once its frameset is gone.
+  return doc.body?.innerHTML ?? '';
 }
 
 /**

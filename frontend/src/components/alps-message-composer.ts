@@ -26,7 +26,7 @@ import { readUserSettings, settingsContext } from '../store/settings-store';
 import type { SettingsStore } from '../store/settings-store';
 import type { QuoteSource } from '../store/compose-store';
 import { QUOTE_ATTRIBUTE } from '../utils/email-quote';
-import { sanitizeMessageHTML, sanitizeQuotedHTML } from '../utils/html-sanitizer';
+import { sanitizeMessageHTML, sanitizeQuotedHTML, stripCssUrls } from '../utils/html-sanitizer';
 import type { SanitizeOptions } from '../utils/html-sanitizer';
 import { applyThemeToIframe, htmlToPlainText, setupIframeSizing } from '../utils/reader-utils';
 
@@ -325,7 +325,7 @@ const QuoteBar = Extension.create({
           },
           style: {
             default: null,
-            parseHTML: (element) => element.getAttribute('style')?.replace(/url\s*\([^)]*\)/gi, '') || null,
+            parseHTML: (element) => stripCssUrls(element.getAttribute('style') ?? '') || null,
             renderHTML: (attributes) => (attributes.style ? { style: attributes.style } : {}),
           },
         },

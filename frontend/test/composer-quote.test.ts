@@ -342,4 +342,17 @@ describe('a text-only original', () => {
     expect(quote?.textContent).toContain('line one');
     expect(sent.body.textContent).toContain('Ada Lovelace wrote:');
   });
+
+  it('loses a url() in its style whole, even one with a parenthesis in it', async () => {
+    const composer = await openComposer(
+      '<blockquote class="gmail_quote" style=\'border-left:1px solid #ccc; background-image: url("https://tracker.test/p.gif?(1)"); color: red\'>' +
+      '<p>quoted</p></blockquote>',
+    );
+    const style = parse(typeLine(composer, 'Agreed.').html).querySelector('blockquote')?.getAttribute('style') ?? '';
+    expect(style).not.toContain('tracker.test');
+    // Left behind, `")` opens a CSS string that swallows the rest of the style.
+    expect(style).not.toContain('")');
+    expect(style).toContain('border-left');
+    expect(style).toContain('color: red');
+  });
 });

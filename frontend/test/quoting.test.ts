@@ -7,7 +7,7 @@
  * sender's display name, subject and addresses are interpolated into markup.
  */
 import { describe, expect, it } from 'vitest';
-import { escapeHtml, sanitizeQuotedHTML } from '../src/utils/html-sanitizer';
+import { escapeHtml, sanitizeQuotedHTML, stripCssUrls } from '../src/utils/html-sanitizer';
 import { QUOTE_ATTRIBUTE, formatAddrs, generateQuote } from '../src/utils/email-quote';
 
 const parse = (html: string) => new DOMParser().parseFromString(html, 'text/html');
@@ -52,6 +52,79 @@ describe('sanitizeQuotedHTML', () => {
   it('returns a fragment, and nothing for nothing', () => {
     expect(sanitizeQuotedHTML('<p>hi</p>').toLowerCase()).not.toContain('<body');
     expect(sanitizeQuotedHTML('')).toBe('');
+  });
+
+  it('removes frames, framesets and applets, and survives a document that was only a frameset', () => {
+    const doc = parse(sanitizeQuotedHTML(
+      '<svg><frame src="https://evil.test"></frame><frameset></frameset></svg><applet code="Evil.class"></applet><p>ok</p>',
+    ));
+    expect(doc.querySelectorAll('frame, frameset, applet')).toHaveLength(0);
+    expect(doc.body.textContent).toContain('ok');
+    // Such a document has no body once its frameset is gone.
+    expect(sanitizeQuotedHTML('<frameset><frame src="https://evil.test"></frameset>')).toBe('');
+  });
+
+  it('removes script-bearing URLs from formaction, xlink:href and poster', () => {
+    const doc = parse(sanitizeQuotedHTML(
+      '<button formaction="javascript:alert(1)">go</button>' +
+      '<svg><a xlink:href="javascript:alert(1)"><text>x</text></a></svg>' +
+      '<video poster="javascript:alert(1)"></video>',
+    ));
+    expect(doc.querySelector('button')?.getAttribute('formaction')).toBeNull();
+    expect(doc.querySelector('a')?.getAttribute('xlink:href')).toBeNull();
+    expect(doc.querySelector('video')?.getAttribute('poster')).toBeNull();
+  });
+
+  it('removes a srcset whose script URL is any candidate, not only the first', () => {
+    const img = parse(sanitizeQuotedHTML(
+      '<img srcset="https://cdn.test/w_800,c_limit/a.png 1x, javascript:alert(1) 2x">',
+    )).querySelector('img')!;
+    expect(img.getAttribute('srcset')).toBeNull();
+  });
+
+  it('keeps a srcset of ordinary candidates as written', () => {
+    const srcset = 'https://cdn.test/w_800,c_limit/a.png 1x, data:image/png;base64,iVBORw0KGgo= 2x';
+    expect(parse(sanitizeQuotedHTML(`<img srcset="${srcset}">`)).querySelector('img')?.getAttribute('srcset')).toBe(srcset);
+  });
+
+  it('removes a url() with a parenthesis inside its quotes, and nothing after it', () => {
+    const style = parse(sanitizeQuotedHTML(
+      '<div style=\'background-image: url("https://tracker.test/img?(1)"); color: red\'>x</div>',
+    )).querySelector('div')?.getAttribute('style') ?? '';
+    expect(style).not.toContain('tracker.test');
+    // Left behind, `")` opens a CSS string that swallows the rest of the style.
+    expect(style).not.toContain('")');
+    expect(style).toContain('color: red');
+  });
+
+  it('removes a url() continued over an escaped line break', () => {
+    const out = sanitizeQuotedHTML('<div style=\'background-image: url("https://tracker.test/a\\\nb.png"); color: red\'>x</div>');
+    expect(out).not.toContain('tracker.test');
+    expect(out).toContain('color: red');
+  });
+});
+
+describe('stripCssUrls', () => {
+  it('removes url() in every form CSS writes it', () => {
+    for (const url of [
+      'url(https://tracker.test/p.gif)',
+      'url( "https://tracker.test/p.gif" )',
+      "url('https://tracker.test/p.gif?(1)')",
+      'URL("https://tracker.test/a\\"b.gif")',
+    ]) {
+      const out = stripCssUrls(`color: red; background: ${url}; margin: 0`);
+      expect(out, url).not.toContain('tracker.test');
+      expect(out, url).toContain('color: red');
+      expect(out, url).toContain('margin: 0');
+    }
+  });
+
+  it('removes an unclosed url() to the end of the value, as CSS closes it there', () => {
+    for (const style of ['color: red; background: url("https://tracker.test/p.gif', 'color: red; background: url(https://tracker.test/p.gif']) {
+      const out = stripCssUrls(style);
+      expect(out, style).not.toContain('tracker.test');
+      expect(out, style).toContain('color: red');
+    }
   });
 });
 
