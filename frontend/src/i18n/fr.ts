@@ -104,8 +104,8 @@ export const fr = {
       german: 'Deutsch',
       italian: 'Italiano',
       spanish: 'Español',
-      serbian: 'Српски (Ћирилица)',
-      serbianLatin: 'Srpski (Latinica)',
+      serbian: 'Српски (ћирилица)',
+      serbianLatin: 'Srpski (latinica)',
       french: 'Français',
       portuguese: 'Português',
       danish: 'Dansk'

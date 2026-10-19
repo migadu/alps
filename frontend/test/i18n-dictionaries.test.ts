@@ -353,3 +353,31 @@ describe('example domains', () => {
     }
   });
 });
+
+/**
+ * The language picker names each language in its own words, the same in
+ * every locale. Someone who lands in a language they cannot read is looking
+ * for the name of their own, and German offered "Dänisch" and "Serbisch
+ * (Lateinisch)", Spanish "Danés", and the Cyrillic dictionary wrote the Latin
+ * option in Cyrillic. Serbian gets one option per script, each written in the
+ * script it selects, the script named in lower case as Serbian writes it.
+ */
+const ENDONYMS: Record<string, string> = {
+  english: 'English',
+  german: 'Deutsch',
+  italian: 'Italiano',
+  spanish: 'Español',
+  french: 'Français',
+  portuguese: 'Português',
+  danish: 'Dansk',
+  serbian: 'Српски (ћирилица)',
+  serbianLatin: 'Srpski (latinica)',
+};
+
+describe('the language picker', () => {
+  it.each(ALL_CORE.map(([code]) => code))('%s names every language in its own words', (code) => {
+    const dict = ALL_CORE.find(([c]) => c === code)![1];
+    const labels = Object.fromEntries(Object.keys(ENDONYMS).map((key) => [key, lookup(dict, `settings.localization.${key}`)]));
+    expect(labels).toEqual(ENDONYMS);
+  });
+});

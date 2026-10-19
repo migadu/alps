@@ -112,8 +112,8 @@ export const da: TranslationDictionary = {
       german: 'Deutsch',
       italian: 'Italiano',
       spanish: 'Español',
-      serbian: 'Српски',
-      serbianLatin: 'Srpski (Latinica)',
+      serbian: 'Српски (ћирилица)',
+      serbianLatin: 'Srpski (latinica)',
       french: 'Français',
       portuguese: 'Português',
       danish: 'Dansk'

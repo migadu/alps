@@ -104,11 +104,11 @@ export const es = {
       german: 'Deutsch',
       italian: 'Italiano',
       spanish: 'Español',
-      serbian: 'Serbio',
-      serbianLatin: 'Serbio (Latino)',
-      french: 'Francés',
-      portuguese: 'Portugués',
-      danish: 'Danés'
+      serbian: 'Српски (ћирилица)',
+      serbianLatin: 'Srpski (latinica)',
+      french: 'Français',
+      portuguese: 'Português',
+      danish: 'Dansk'
     },
   },
   linkedAccounts: {

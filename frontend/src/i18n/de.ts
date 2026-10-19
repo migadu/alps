@@ -102,15 +102,15 @@ export const de: TranslationDictionary = {
       monday: 'Montag',
       format12h: '12-Stunden (AM/PM)',
       format24h: '24-Stunden',
-      english: 'Englisch',
+      english: 'English',
       german: 'Deutsch',
-      italian: 'Italienisch',
-      spanish: 'Spanisch',
-      serbian: 'Serbisch',
-      serbianLatin: 'Serbisch (Lateinisch)',
-      french: 'Französisch',
-      portuguese: 'Portugiesisch',
-      danish: 'Dänisch'
+      italian: 'Italiano',
+      spanish: 'Español',
+      serbian: 'Српски (ћирилица)',
+      serbianLatin: 'Srpski (latinica)',
+      french: 'Français',
+      portuguese: 'Português',
+      danish: 'Dansk'
     },
   },
   linkedAccounts: {
