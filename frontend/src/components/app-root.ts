@@ -112,6 +112,14 @@ export class AppRoot extends LitElement {
     }
   `;
 
+  constructor() {
+    super();
+    // The router hears `hashchange` only while this shell is in the document:
+    // Lit connects and disconnects it with the shell. The field initializers
+    // have run by now, so the router exists.
+    this.addController(this.router);
+  }
+
   connectedCallback() {
     super.connectedCallback();
     

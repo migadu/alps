@@ -67,9 +67,51 @@ describe('Router', () => {
 
   it('tells the app when the hash changes', () => {
     const onChange = vi.fn();
-    router(onChange);
+    const r = router(onChange);
+    r.hostConnected();
+    onChange.mockClear();
     window.dispatchEvent(new HashChangeEvent('hashchange'));
     expect(onChange).toHaveBeenCalledOnce();
+    r.hostDisconnected();
+  });
+
+  it('listens only while its host is connected', () => {
+    // The listener was added at construction and never removed, so a shell
+    // taken out of the document went on re-rendering on every hash change.
+    // The shell now adds the router as a controller and Lit connects and
+    // disconnects it with the shell. Built is not connected: a shell created
+    // and never attached routes nothing.
+    const onChange = vi.fn();
+    const r = router(onChange);
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(onChange).not.toHaveBeenCalled();
+
+    r.hostConnected();
+    onChange.mockClear();
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(onChange).toHaveBeenCalledOnce();
+
+    r.hostDisconnected();
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(onChange).toHaveBeenCalledOnce();
+
+    // Put back, it listens again, and once however often it is connected.
+    r.hostConnected();
+    r.hostConnected();
+    onChange.mockClear();
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(onChange).toHaveBeenCalledOnce();
+    r.hostDisconnected();
+  });
+
+  it('asks for a render when its host is put back', () => {
+    // The hash may have moved while the shell was out of the document, and a
+    // shell put back must show what the URL names now, not what it last drew.
+    const onChange = vi.fn();
+    const r = router(onChange);
+    r.hostConnected();
+    expect(onChange).toHaveBeenCalledOnce();
+    r.hostDisconnected();
   });
 
   it('navigates by setting the hash', () => {
