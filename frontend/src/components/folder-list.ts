@@ -136,13 +136,22 @@ export class FolderList extends LitElement {
       color: var(--text-color);
       margin-bottom: 2px;
       user-select: none;
-      transition: background 0.15s;
       gap: 4px;
     }
 
+    /* The fade belongs to the hover only. On the base rule it also eased the
+       row that lost .active down over 150ms while the new one came up, so a
+       folder switch showed two rows lit at once, the old one reading as still
+       selected. A transition is taken from the state being entered, so the
+       base and .active have none, and only entering :hover animates. */
     @media (hover: hover) {
       .folder-item:hover {
         background: var(--hover-color);
+        transition: background 0.15s;
+      }
+
+      .folder-item.active:hover {
+        transition: none;
       }
     }
 
