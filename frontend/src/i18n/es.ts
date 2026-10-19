@@ -141,6 +141,7 @@ export const es = {
     signedOut: 'Has cerrado sesión.',
     signedOutDraftsLost: 'Se ha cerrado tu sesión. Algunos borradores sin enviar no se pudieron guardar y se perdieron.',
     sessionExpired: 'Tu sesión ha expirado. Por favor, inicia sesión de nuevo.',
+    secondFactorExpired: 'El inicio de sesión ha caducado antes de comprobar la clave de seguridad. Vuelve a iniciar sesión.',
     inactivitySignedOut: 'Has cerrado sesión por inactividad.',
     inactivitySignedOutDraftsLost: "Has cerrado sesión por inactividad. Algunos borradores sin enviar no se pudieron guardar y se perdieron."
   },
@@ -542,6 +543,7 @@ export const es = {
       begin_failed: 'Error al iniciar la autenticación.',
       invalid_options: 'Se recibieron opciones de autenticación no válidas.',
       verification_failed: 'Error en la verificación. Por favor, inténtalo de nuevo.',
+      unavailable: 'El servidor no ha podido comprobar tu clave de seguridad ahora mismo. Inténtalo de nuevo dentro de un momento.',
       register_failed: 'Hubo un error al registrar su clave de seguridad. Por favor, inténtelo de nuevo.',
       remove_failed: 'Error al eliminar la clave de seguridad.',
       wrong_password: 'Esa contraseña no es correcta.',

@@ -154,6 +154,7 @@ export const en = {
       begin_failed: 'Failed to initiate authentication.',
       invalid_options: 'Invalid authentication options received.',
       verification_failed: 'Verification failed. Please try again.',
+      unavailable: 'The server could not check your security key just now. Please try again in a moment.',
       register_failed: 'There was an error registering your security key. Please try again.',
       remove_failed: 'Failed to remove the security key.',
       wrong_password: 'That password is not right.',
@@ -190,6 +191,7 @@ export const en = {
     signedOut: 'You have been signed out.',
     signedOutDraftsLost: 'You have been signed out. Some unsent drafts could not be saved and were lost.',
     sessionExpired: 'Your session has expired. Please sign in again.',
+    secondFactorExpired: 'Your sign-in timed out before the security key was checked. Please sign in again.',
     inactivitySignedOut: "You've been signed out due to inactivity.",
     inactivitySignedOutDraftsLost: "You've been signed out due to inactivity. Some unsent drafts could not be saved and were lost."
   },

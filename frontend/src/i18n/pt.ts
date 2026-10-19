@@ -147,6 +147,7 @@ export const pt = {
       begin_failed: 'Falha ao iniciar autenticação.',
       invalid_options: 'Opções de autenticação inválidas recebidas.',
       verification_failed: 'Falha na verificação. Por favor, tente novamente.',
+      unavailable: 'O servidor não conseguiu verificar a chave de segurança neste momento. Tente novamente daqui a pouco.',
       register_failed: 'Ocorreu um erro ao registar a sua chave de segurança. Por favor, tente novamente.',
       remove_failed: 'Falha ao remover a chave de segurança.',
       wrong_password: 'Essa senha não está correta.',
@@ -183,6 +184,7 @@ export const pt = {
     signedOut: 'Você foi desconectado.',
     signedOutDraftsLost: 'Você saiu da sua conta. Alguns rascunhos não enviados não puderam ser salvos e foram perdidos.',
     sessionExpired: 'A sua sessão expirou. Inicie sessão novamente.',
+    secondFactorExpired: 'O início de sessão expirou antes da verificação da chave de segurança. Inicie sessão novamente.',
     inactivitySignedOut: 'Você foi desconectado por inatividade.',
     inactivitySignedOutDraftsLost: "Você foi desconectado por inatividade. Alguns rascunhos não enviados não puderam ser salvos e foram perdidos."
   },

@@ -141,6 +141,7 @@ export const sr = {
     signedOut: 'Odjavljeni ste.',
     signedOutDraftsLost: 'Odjavljeni ste. Neke neposlate skice nije bilo moguće sačuvati i izgubljene su.',
     sessionExpired: 'Vaša sesija je istekla. Prijavite se ponovo.',
+    secondFactorExpired: 'Prijava je istekla pre nego što je bezbednosni ključ proveren. Prijavite se ponovo.',
     inactivitySignedOut: 'Odjavljeni ste zbog neaktivnosti.',
     inactivitySignedOutDraftsLost: "Odjavljeni ste zbog neaktivnosti. Neke neposlate skice nije bilo moguće sačuvati i izgubljene su."
   },
@@ -554,6 +555,7 @@ export const sr = {
       begin_failed: 'Nije uspelo pokretanje autentifikacije.',
       invalid_options: 'Primljene su nevažeće opcije autentifikacije.',
       verification_failed: 'Verifikacija nije uspela. Pokušajte ponovo.',
+      unavailable: 'Server trenutno nije mogao da proveri vaš bezbednosni ključ. Pokušajte ponovo za trenutak.',
       register_failed: 'Došlo je do greške prilikom registracije bezbednosnog ključa. Pokušajte ponovo.',
       remove_failed: 'Nije uspelo uklanjanje bezbednosnog ključa.',
       wrong_password: 'Ta lozinka nije ispravna.',

@@ -141,6 +141,7 @@ export const fr = {
     signedOut: 'Vous avez été déconnecté.',
     signedOutDraftsLost: 'Vous avez été déconnecté. Certains brouillons non envoyés n’ont pas pu être enregistrés et ont été perdus.',
     sessionExpired: 'Votre session a expiré. Veuillez vous reconnecter.',
+    secondFactorExpired: 'Votre connexion a expiré avant la vérification de la clé de sécurité. Veuillez vous reconnecter.',
     inactivitySignedOut: "Vous avez été déconnecté pour cause d'inactivité.",
     inactivitySignedOutDraftsLost: "Vous avez été déconnecté pour cause d'inactivité. Certains brouillons non envoyés n’ont pas pu être enregistrés et ont été perdus."
   },
@@ -542,6 +543,7 @@ export const fr = {
       begin_failed: 'Échec de l\'initiation de l\'authentification.',
       invalid_options: 'Options d\'authentification invalides reçues.',
       verification_failed: 'La vérification a échoué. Veuillez réessayer.',
+      unavailable: "Le serveur n'a pas pu vérifier votre clé de sécurité pour le moment. Veuillez réessayer dans un instant.",
       register_failed: 'Une erreur s\'est produite lors de l\'enregistrement de votre clé de sécurité. Veuillez réessayer.',
       remove_failed: 'Échec de la suppression de la clé de sécurité.',
       wrong_password: "Ce mot de passe n'est pas correct.",

@@ -9,7 +9,8 @@ export type LoginNotice =
   | 'signedOutDraftsLost'
   | 'sessionExpired'
   | 'inactivitySignedOut'
-  | 'inactivitySignedOutDraftsLost';
+  | 'inactivitySignedOutDraftsLost'
+  | 'secondFactorExpired';
 
 export function setLoginNotice(notice: LoginNotice) {
   try {

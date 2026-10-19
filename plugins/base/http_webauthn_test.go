@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/go-webauthn/webauthn/webauthn"
+
 	"github.com/migadu/alps/provider"
 )
 
@@ -124,4 +126,82 @@ func TestHTTP_ATokenFromASignInWithout2FADoesNotVouchForIt(t *testing.T) {
 		t.Fatalf("signing in from the token answered %v, want requires_2fa", got)
 	}
 	s.expect(s.do("GET", "/mailboxes/INBOX", nil), http.StatusUnauthorized)
+}
+
+// signInToTheSecondFactor turns the second factor on for the account, gives the
+// server what the WebAuthn ceremony needs, and signs in as far as the key.
+func (s *testServer) signInToTheSecondFactor() {
+	s.t.Helper()
+	wa, err := webauthn.New(&webauthn.Config{RPDisplayName: "alps", RPID: "localhost", RPOrigins: []string{s.url}})
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	s.server.WebAuthn = wa
+	store, err := s.store.GetStore()
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	key := map[string]any{"name": "key", "credential": map[string]any{"id": "a2V5"}}
+	if err := store.Put("webauthn", map[string]any{"enabled": true, "credentials": []any{key}}); err != nil {
+		s.t.Fatal(err)
+	}
+	r := s.signIn()
+	s.expect(r, http.StatusOK)
+	var got map[string]any
+	r.json(s.t, &got)
+	if got["requires_2fa"] != true {
+		s.t.Fatalf("signing in answered %v, want requires_2fa", got)
+	}
+}
+
+// An assertion that does not verify, as from a key the account does not know.
+var refusedAssertion = map[string]any{"id": "a2V5", "rawId": "a2V5", "type": "public-key", "response": map[string]any{}}
+
+// A key that is refused is a 400: it was a 500, the same answer as an outage,
+// so the page could not tell the two apart. The pending sign-in stays, and
+// the ceremony can be run again.
+func TestHTTP_ARefusedSecurityKeyIsNotAnOutage(t *testing.T) {
+	s := newTestServer(t)
+	s.signInToTheSecondFactor()
+
+	// No ceremony begun, none to finish.
+	s.expect(s.do("POST", "/webauthn/verify/finish", refusedAssertion), http.StatusBadRequest)
+
+	s.expect(s.do("POST", "/webauthn/verify/begin", nil), http.StatusOK)
+	s.expect(s.do("POST", "/webauthn/verify/finish", refusedAssertion), http.StatusBadRequest)
+
+	s.expect(s.do("GET", "/mailboxes/INBOX", nil), http.StatusUnauthorized)
+	s.expect(s.do("POST", "/webauthn/verify/begin", nil), http.StatusOK)
+}
+
+// When the account's keys cannot be read, the second factor answers 503,
+// not a refusal, and the pending sign-in is still there once they can be.
+func TestHTTP_AnOutageDuringTheSecondFactorIsNotARefusal(t *testing.T) {
+	s := newTestServer(t)
+	s.signInToTheSecondFactor()
+	s.expect(s.do("POST", "/webauthn/verify/begin", nil), http.StatusOK)
+
+	// The store's file cannot be read.
+	path := filepath.Join(s.dir, "alps_store.json")
+	record, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	s.expect(s.do("POST", "/webauthn/verify/finish", refusedAssertion), http.StatusServiceUnavailable)
+	s.expect(s.do("POST", "/webauthn/verify/begin", nil), http.StatusServiceUnavailable)
+
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, record, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.expect(s.do("POST", "/webauthn/verify/begin", nil), http.StatusOK)
 }

@@ -156,6 +156,7 @@ export const da: TranslationDictionary = {
       begin_failed: 'Kunne ikke starte godkendelse.',
       invalid_options: 'Ugyldige godkendelsesindstillinger modtaget.',
       verification_failed: 'Bekræftelse mislykkedes. Prøv igen.',
+      unavailable: 'Serveren kunne ikke kontrollere din sikkerhedsnøgle lige nu. Prøv igen om et øjeblik.',
       register_failed: 'Der opstod en fejl under registrering af din sikkerhedsnøgle. Prøv igen.',
       remove_failed: 'Kunne ikke fjerne sikkerhedsnøglen.',
       wrong_password: 'Adgangskoden er forkert.',
@@ -192,6 +193,7 @@ export const da: TranslationDictionary = {
     signedOut: 'Du er blevet logget ud.',
     signedOutDraftsLost: 'Du er blevet logget ud. Nogle kladder, der ikke var sendt, kunne ikke gemmes og er gået tabt.',
     sessionExpired: 'Din session er udløbet. Log ind igen.',
+    secondFactorExpired: 'Dit login udløb, før sikkerhedsnøglen blev kontrolleret. Log ind igen.',
     inactivitySignedOut: 'Du er blevet logget ud på grund af inaktivitet.',
     inactivitySignedOutDraftsLost: 'Du er blevet logget ud på grund af inaktivitet. Nogle kladder, der ikke var sendt, kunne ikke gemmes og er gået tabt.'
   },

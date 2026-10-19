@@ -392,10 +392,13 @@ func handleVerifyBegin(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusUnauthorized, "invalid 2FA session")
 	}
 
-	// Load user credentials from IMAP METADATA
+	// Load user credentials from IMAP METADATA. Failing to is an outage, not
+	// a refusal: the page says so and stays on the key, and the pending sign-in
+	// is kept for the next try.
 	creds, err := loadCredentials(session)
 	if err != nil {
-		return fmt.Errorf("failed to load credentials: %v", err)
+		ctx.Server.Logger().Errorf("WebAuthn begin: failed to load credentials for user %s: %v", session.Username(), err)
+		return alps.NewHTTPError(http.StatusServiceUnavailable, "security keys unavailable")
 	}
 
 	if !creds.Enabled || len(creds.Credentials) == 0 {
@@ -445,10 +448,11 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusUnauthorized, "invalid 2FA session")
 	}
 
-	// Load session data from IMAP METADATA
+	// The challenge handed out by begin. Without one there is no ceremony to
+	// finish, which the page answers by running a new one.
 	sessionDataStored, err := loadSessionData(session)
 	if err != nil {
-		return fmt.Errorf("failed to load session: %v", err)
+		return alps.NewHTTPError(http.StatusBadRequest, "no verification in progress")
 	}
 
 	var sessionData webauthn.SessionData
@@ -456,11 +460,13 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		return fmt.Errorf("failed to unmarshal session: %v", err)
 	}
 
-	// Load credentials
+	// Load credentials. Failing to is an outage, and must not read as a key
+	// that was refused: both were a 500, and the page told someone whose key
+	// works that its verification had failed.
 	creds, err := loadCredentials(session)
 	if err != nil {
 		ctx.Server.Logger().Errorf("WebAuthn verify: failed to load credentials for user %s: %v", session.Username(), err)
-		return fmt.Errorf("failed to load credentials: %v", err)
+		return alps.NewHTTPError(http.StatusServiceUnavailable, "security keys unavailable")
 	}
 
 	user := &webauthnUser{
@@ -468,10 +474,12 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		credentials: creds,
 	}
 
-	// Verify WebAuthn assertion
+	// Verify WebAuthn assertion. A 400 rather than a 401, which says the
+	// pending sign-in itself is gone.
 	_, err = ctx.Server.WebAuthn.FinishLogin(user, sessionData, ctx.Request)
 	if err != nil {
-		return fmt.Errorf("failed to finish login: %v", err)
+		ctx.Server.Logger().Debugf("WebAuthn verify: key refused for user %s: %v", session.Username(), err)
+		return alps.NewHTTPError(http.StatusBadRequest, "verification failed")
 	}
 
 	// Success! Mark session as authenticated with 2FA

@@ -143,6 +143,7 @@ export const de: TranslationDictionary = {
     signedOut: 'Sie wurden abgemeldet.',
     signedOutDraftsLost: 'Sie wurden abgemeldet. Einige ungesendete Entwürfe konnten nicht gespeichert werden und gingen verloren.',
     sessionExpired: 'Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.',
+    secondFactorExpired: 'Ihre Anmeldung ist abgelaufen, bevor der Sicherheitsschlüssel geprüft wurde. Bitte melden Sie sich erneut an.',
     inactivitySignedOut: 'Sie wurden wegen Inaktivität abgemeldet.',
     inactivitySignedOutDraftsLost: "Sie wurden wegen Inaktivität abgemeldet. Einige ungesendete Entwürfe konnten nicht gespeichert werden und gingen verloren."
   },
@@ -544,6 +545,7 @@ export const de: TranslationDictionary = {
       begin_failed: 'Fehler beim Starten der Authentifizierung.',
       invalid_options: 'Ungültige Authentifizierungsoptionen erhalten.',
       verification_failed: 'Überprüfung fehlgeschlagen. Bitte versuchen Sie es erneut.',
+      unavailable: 'Der Server konnte Ihren Sicherheitsschlüssel gerade nicht prüfen. Bitte versuchen Sie es gleich noch einmal.',
       register_failed: 'Beim Registrieren Ihres Sicherheitsschlüssels ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.',
       remove_failed: 'Fehler beim Entfernen des Sicherheitsschlüssels.',
       wrong_password: 'Dieses Passwort ist nicht richtig.',

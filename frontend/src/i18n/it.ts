@@ -141,6 +141,7 @@ export const it = {
     signedOut: 'Sei stato disconnesso.',
     signedOutDraftsLost: 'La sessione è stata chiusa. Alcune bozze non inviate non sono state salvate e sono andate perse.',
     sessionExpired: "La tua sessione è scaduta. Effettua di nuovo l'accesso.",
+    secondFactorExpired: "L'accesso è scaduto prima che la chiave di sicurezza fosse verificata. Effettua di nuovo l'accesso.",
     inactivitySignedOut: 'Sei stato disconnesso per inattività.',
     inactivitySignedOutDraftsLost: "Sei stato disconnesso per inattività. Alcune bozze non inviate non sono state salvate e sono andate perse."
   },
@@ -542,6 +543,7 @@ export const it = {
       begin_failed: 'Impossibile avviare l\'autenticazione.',
       invalid_options: 'Opzioni di autenticazione non valide ricevute.',
       verification_failed: 'Verifica non riuscita. Per favore riprova.',
+      unavailable: 'Il server non è riuscito a verificare la tua chiave di sicurezza in questo momento. Riprova tra poco.',
       register_failed: 'Si è verificato un errore durante la registrazione della chiave di sicurezza. Riprova.',
       remove_failed: 'Impossibile rimuovere la chiave di sicurezza.',
       wrong_password: 'La password non è corretta.',
