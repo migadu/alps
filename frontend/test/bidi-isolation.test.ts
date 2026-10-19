@@ -14,6 +14,10 @@ import '../src/components/alps-address-input';
 import '../src/components/message-list';
 import '../src/components/alps-thread-card';
 import '../src/pages/print-page';
+import '../../plugins/caldav/frontend/calendar-event-preview';
+import '../../plugins/caldav/frontend/task-modal';
+import '../../plugins/caldav/frontend/tasks-list';
+import '../../plugins/carddav/frontend/contact-view';
 import { cleanup, mount, shadow, shadowAll, text, update } from './helpers/dom';
 import { generateQuote } from '../src/utils/email-quote';
 
@@ -185,6 +189,60 @@ describe('the quote header', () => {
         if (type === 'replyAll') expect(q.to).toContain('Bob <bob\u2067@remote.test>');
       }
     }
+  });
+});
+
+describe('people in calendar events, tasks and contacts', () => {
+  const i18nStore = { t: (key: string) => key, getLanguage: () => 'en', getIntlLanguage: () => 'en' };
+  const pairs = (root: ParentNode) => [...root.querySelectorAll('bdi')].map((node) => [node.textContent, node.getAttribute('dir')]);
+
+  it("isolates an event's organizer and each attendee before their answer", async () => {
+    const el = await mount<HTMLElement & Record<string, any>>('calendar-event-preview', {
+      i18nStore,
+      event: {
+        uid: 'review', summary: 'Review', start: '2026-09-16T08:00:00Z', end: '2026-09-16T09:00:00Z',
+        path: '/cal/work/review.ics', calendarPath: '/cal/work/', role: 'organizer',
+        organizer: { email: 'grace@example.org', name: OVERRIDE },
+        attendees: [{ email: 'grace@example.org', name: OVERRIDE, status: 'accepted' }, { email: 'שלום@example.com', status: 'tentative' }],
+      },
+    });
+    expect(pairs(shadow(el, '.meeting'))).toEqual([
+      [OVERRIDE, null], [OVERRIDE, null], ['שלום@example.com', 'ltr'],
+    ]);
+  });
+
+  it('isolates who assigned a task, and each assignee before their answer', async () => {
+    const task = {
+      uid: 'report', title: 'Write the report', allDay: false, status: 'needs-action',
+      path: '/cal/work/report.ics', calendarPath: '/cal/work/', etag: 'v1',
+    };
+    const lists = [{ name: 'Work', description: '', path: '/cal/work/' }];
+    const assigned = await mount<HTMLElement & Record<string, any>>('task-modal', {
+      i18nStore, lists, open: true,
+      task: { ...task, role: 'attendee', organizer: { email: 'grace@example.org', name: OVERRIDE }, attendees: [{ email: 'ada@example.com' }] },
+    });
+    expect(pairs(shadow(assigned, '.assigned'))).toEqual([[OVERRIDE, null]]);
+    cleanup();
+
+    const mine = { ...task, role: 'organizer', organizer: { email: 'ada@example.com' }, attendees: [{ email: 'grace@example.org', name: OVERRIDE, status: 'completed' }, { email: 'bob@example.org' }] };
+    const organized = await mount<HTMLElement & Record<string, any>>('task-modal', { i18nStore, lists, open: true, task: mine });
+    expect(pairs(shadow(organized, '.assigned.answers'))).toEqual([[OVERRIDE, null], ['bob@example.org', 'ltr']]);
+
+    const list = await mount<HTMLElement & Record<string, any>>('tasks-list', { i18nStore, tasks: [mine], now: new Date(2026, 8, 14) });
+    expect(pairs(shadow(list, '.assigned'))).toEqual([[OVERRIDE, null], ['bob@example.org', 'ltr']]);
+  });
+
+  it("isolates a contact's name from its nickname, and an address standing in for it left to right", async () => {
+    const named = await mount<HTMLElement>('alps-contact-view', {
+      contact: { path: '/book/ada.vcf', name: OVERRIDE, email: 'ada@example.test', nickname: 'Ada', categories: [], etag: 'v1' },
+    });
+    expect(pairs(shadow(named, '.view-name'))).toEqual([[OVERRIDE, null]]);
+    expect(text(named, '.view-name')).toBe(`${OVERRIDE} (Ada)`);
+
+    const unnamed = await mount<HTMLElement>('alps-contact-view', {
+      contact: { path: '/book/s.vcf', name: '', email: 'שלום@example.test', categories: [], etag: 'v1' },
+    });
+    expect(pairs(shadow(unnamed, '.view-name'))).toEqual([['שלום@example.test', 'ltr']]);
   });
 });
 

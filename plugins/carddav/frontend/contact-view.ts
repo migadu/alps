@@ -13,6 +13,7 @@ import '../../../frontend/src/components/alps-avatar';
 import '../../../frontend/src/components/alps-toolbar';
 import '../../../frontend/src/components/alps-popup';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
+import { isolatedCaption } from '../../../frontend/src/utils/bidi';
 
 @customElement('alps-contact-view')
 export class AlpsContactView extends LitElement {
@@ -574,7 +575,7 @@ export class AlpsContactView extends LitElement {
         ` : html`
           <div class="view-header" style="margin-top: -32px;">
             <div class="view-name">
-              ${(this.contact.name || this.contact.email) || this.i18nStore?.t('contacts.unnamedContact') || 'Unnamed Contact'} ${this.contact.nickname ? `(${this.contact.nickname})` : ''}
+              ${this.contact.name || this.contact.email ? isolatedCaption(this.contact.name, this.contact.email) : this.i18nStore?.t('contacts.unnamedContact') || 'Unnamed Contact'} ${this.contact.nickname ? `(${this.contact.nickname})` : ''}
             </div>
             ${this.contact.organization || this.contact.title ? html`
               <div class="view-organization">

@@ -4,6 +4,7 @@ import { repeat } from 'lit/directives/repeat.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { renderIcon } from '../../../frontend/src/utils/ui';
+import { isolatedCaption } from '../../../frontend/src/utils/bidi';
 import '../../../frontend/src/components/alps-loader';
 import { compareClosed, compareTasks, formatDue, groupOf, intlLocale, priorityBand, TASK_GROUP_ORDER } from './tasks-service';
 import type { TaskData, TaskGroup } from './tasks-service';
@@ -307,9 +308,9 @@ export class TasksList extends LitElement {
                             ? html`<span class="repeats" role="img" aria-label=${t('tasks.repeats')} title=${t('tasks.repeats')}>${renderIcon('arrowsClockwise')}</span>`
                             : ''}
                         ${task.role === 'attendee' && task.organizer
-                            ? html`<span class="assigned">${t('tasks.assignedBy')}: ${task.organizer.name || task.organizer.email}</span>`
+                            ? html`<span class="assigned">${t('tasks.assignedBy')}: ${isolatedCaption(task.organizer.name, task.organizer.email)}</span>`
                             : task.role === 'organizer' && task.attendees?.length
-                                ? html`<span class="assigned">${t('tasks.assignedTo')}: ${task.attendees.map(a => a.name || a.email).join(', ')}</span>`
+                                ? html`<span class="assigned">${t('tasks.assignedTo')}: ${task.attendees.map((a, i) => html`${i ? ', ' : ''}${isolatedCaption(a.name, a.email)}`)}</span>`
                                 : ''}
                         ${band
                             ? html`<span class="priority ${band}" role="img" aria-label=${t(PRIORITY_LABELS[band])} title=${t(PRIORITY_LABELS[band])}>${PRIORITY_MARKS[band]}</span>`
