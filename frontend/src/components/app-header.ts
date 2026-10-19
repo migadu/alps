@@ -4,6 +4,7 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { registry } from '../plugin-registry';
 import { renderIcon, getMailboxLabel } from '../utils/ui';
+import { matchesTabRoute } from '../utils/routes';
 import './alps-header';
 import './alps-input';
 import './alps-icon-btn';
@@ -120,6 +121,12 @@ export class AppHeader extends LitElement {
     }
   `;
   private handleTabClick(tab: string) {
+    // A plugin tab clicked on its own page goes nowhere. Its bare `#/<tab>` is
+    // the page the user is already on under another spelling: setting it was
+    // a history entry, which the page then completed in place to the very
+    // view beneath it, so the history held that address twice and the first
+    // Back appeared to do nothing.
+    if (matchesTabRoute(window.location.hash, tab)) return;
     this.currentTab = tab;
     this.dispatchEvent(new CustomEvent('change-tab', { detail: { tab } }));
     if (tab === 'messages') {

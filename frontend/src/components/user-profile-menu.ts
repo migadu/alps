@@ -10,6 +10,7 @@ import './alps-popup';
 import './alps-icon-btn';
 import { renderIcon } from '../utils/ui';
 import { registry } from '../plugin-registry';
+import { matchesTabRoute } from '../utils/routes';
 
 @customElement('user-profile-menu')
 export class UserProfileMenu extends LitElement {
@@ -142,7 +143,10 @@ export class UserProfileMenu extends LitElement {
       if (!window.location.hash.startsWith('#/mailbox/')) {
         window.location.hash = '#/';
       }
-    } else {
+    } else if (!matchesTabRoute(window.location.hash, tab)) {
+      // A plugin's entry on its own page stays put, as Messages does on an
+      // open folder: its bare `#/<tab>` would be a second history entry for
+      // the page already on screen.
       window.location.hash = '#/' + tab;
     }
     this.dispatchEvent(new CustomEvent('change-tab', { detail: { tab }, bubbles: true, composed: true }));
