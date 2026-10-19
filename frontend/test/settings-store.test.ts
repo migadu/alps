@@ -302,6 +302,144 @@ describe('signing in', () => {
   });
 });
 
+describe('a read that answers into the next session', () => {
+  /**
+   * Signing out and in again does not reload the page, so a read of the
+   * session or the record that is still out at that moment answers after it.
+   * Its answer is the previous account's.
+   */
+  const OTHER = 'grace@example.com';
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+
+  /**
+   * Holds the first read of `/settings`, which is the store's own at sign-in,
+   * until the test releases it, and answers the rest with `later`. The stores
+   * of earlier tests still listen on the window, so the later reads are not
+   * all this store's and are not counted.
+   */
+  function heldFirstRead(later: () => Response | Promise<Response>) {
+    let release!: (r: Response) => void;
+    let reads = 0;
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => (++reads === 1 ? new Promise<Response>((resolve) => { release = resolve; }) : later()),
+      'PUT /settings': () => json(200, {}),
+    });
+    return { calls, reads: () => reads, release: (r: Response) => release(r) };
+  }
+
+  const signOut = () => {
+    clearSessionSettings();
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+  };
+
+  const adasRecord = () => json(200, { Settings: { from: 'Ada Lovelace', signature: 'Ada', reply_to: 'ada@example.org', language: 'en', ui: { themeMode: 'dark' } } });
+  const gracesRecord = () => json(200, { Settings: { from: 'Grace Hopper', signature: 'Grace', language: 'en' } });
+
+  it('does not bring the signed-out account\'s settings back', async () => {
+    signedIn();
+    const read = heldFirstRead(gracesRecord);
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(read.reads()).toBe(1));
+
+    signOut();
+    read.release(adasRecord());
+    await settle();
+
+    expect(store.getState()).toMatchObject({ name: '', signature: '', themeMode: 'auto' });
+    expect(store.getState().loginUsername).toBeUndefined();
+    // Not even the look of the page, which the sign-in page would have worn.
+    expect(JSON.parse(localStorage.getItem('alps_settings') ?? '{}').themeMode).not.toBe('dark');
+    expect(document.body.classList.contains('theme-dark')).toBe(false);
+  });
+
+  it('does not put the previous account\'s settings into the next account\'s', async () => {
+    signedIn();
+    const read = heldFirstRead(gracesRecord);
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(read.reads()).toBe(1));
+
+    signOut();
+    signedIn();
+    window.dispatchEvent(new CustomEvent('user-logged-in', { detail: { username: OTHER } }));
+    await vi.waitFor(() => expect(store.getState().name).toBe('Grace Hopper'));
+
+    read.release(adasRecord());
+    await settle();
+
+    expect(store.getState()).toMatchObject({ loginUsername: OTHER, name: 'Grace Hopper', signature: 'Grace', replyTo: '', themeMode: 'auto' });
+    expect(JSON.parse(localStorage.getItem(`alps_settings_${OTHER}`)!)).toMatchObject({ name: 'Grace Hopper', signature: 'Grace', replyTo: '' });
+    // Nothing of it went to the server under the next account's name either.
+    expect(read.calls.filter((c) => c.key === 'PUT /settings')).toEqual([]);
+  });
+
+  it('does not let the previous session\'s read stand in for the next one\'s', async () => {
+    // The previous read lands while the next session's is still out: it must
+    // not mark the next account's record as read, which would let a change go
+    // out before that record is in.
+    signedIn();
+    const next: ((r: Response) => void)[] = [];
+    const read = heldFirstRead(() => new Promise<Response>((resolve) => { next.push(resolve); }));
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(read.reads()).toBe(1));
+
+    signOut();
+    signedIn();
+    window.dispatchEvent(new CustomEvent('user-logged-in', { detail: { username: OTHER } }));
+    await vi.waitFor(() => expect(next.length).toBeGreaterThan(0));
+    read.release(adasRecord());
+    await settle();
+
+    expect((store as any).initialFetchCompleted).toBe(false);
+    for (const release of next) release(gracesRecord());
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    expect(store.getState().name).toBe('Grace Hopper');
+  });
+
+  it('does not put the previous username back after a sign-in with a second factor', async () => {
+    signedIn();
+    let releaseSession!: (r: Response) => void;
+    let sessionReads = 0;
+    serve({
+      'GET /session': () => (++sessionReads === 1 ? new Promise<Response>((resolve) => { releaseSession = resolve; }) : json(200, { Username: OTHER })),
+      'GET /settings': () => gracesRecord(),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(sessionReads).toBe(1));
+
+    // The second factor's page announces the account it signed in.
+    window.dispatchEvent(new CustomEvent('user-logged-in', { detail: { username: OTHER } }));
+    await vi.waitFor(() => expect(store.getState().name).toBe('Grace Hopper'));
+
+    releaseSession(json(200, { Username: USER }));
+    await settle();
+
+    expect(store.getState().loginUsername).toBe(OTHER);
+    expect(activeUsername()).toBe(OTHER);
+    expect(localStorage.getItem(`alps_settings_${USER}`)).toBeNull();
+  });
+
+  it('does not send the next session to sign-in for the previous one\'s 401', async () => {
+    signedIn();
+    const authErrors = record('auth-error');
+    const read = heldFirstRead(gracesRecord);
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(read.reads()).toBe(1));
+
+    signOut();
+    signedIn();
+    window.dispatchEvent(new CustomEvent('user-logged-in'));
+    await vi.waitFor(() => expect(store.getState().name).toBe('Grace Hopper'));
+
+    read.release(json(401));
+    await settle();
+
+    expect(authErrors).toHaveLength(0);
+  });
+});
+
 describe('saving', () => {
   it('never replaces the server record after failing to read it', async () => {
     signedIn();

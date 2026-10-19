@@ -172,6 +172,16 @@ export class SettingsStore extends EventTarget {
    * of the record keeps these over the server's values, and a save sends them
    * and nothing else. */
   private unsaved = new Set<ServerKey>();
+  /**
+   * Moves when a session ends and when another begins. Signing out and in
+   * again does not reload the page, so a read of `/session` or `/settings`
+   * still out at that moment answers into the next session: it put the
+   * previous account's name, signature and reply-to into the next account's
+   * settings and saved them under its name, or the previous username back
+   * into the store. A read takes this before it asks, and applies its answer
+   * only if it has not moved.
+   */
+  private epoch = 0;
 
   constructor() {
     super();
@@ -186,6 +196,7 @@ export class SettingsStore extends EventTarget {
     });
 
     window.addEventListener('session-cleared', () => {
+      this.epoch++;
       this.initialFetchCompleted = false;
       this.settingsReadFailed = false;
       this.unsaved.clear();
@@ -196,6 +207,7 @@ export class SettingsStore extends EventTarget {
 
     window.addEventListener('user-logged-in', (e: Event) => {
       const username = (e as CustomEvent).detail?.username;
+      this.epoch++;
       this.initializeSession(username);
     });
 
@@ -203,6 +215,7 @@ export class SettingsStore extends EventTarget {
   }
 
   private async initializeSession(knownUsername?: string) {
+    const epoch = this.epoch;
     this.initialFetchCompleted = false;
 
     if (knownUsername) {
@@ -235,8 +248,10 @@ export class SettingsStore extends EventTarget {
     if (!knownUsername) {
       try {
         const response = await fetch('/session');
+        if (epoch !== this.epoch) return;
         if (response.ok) {
           const data = await response.json();
+          if (epoch !== this.epoch) return;
           const username = data.Username || data.username;
           if (username) {
             this.state.loginUsername = username;
@@ -404,17 +419,22 @@ export class SettingsStore extends EventTarget {
       return;
     }
 
+    const epoch = this.epoch;
     let needLanguage = false;
     let readOk = false;
 
     try {
       const response = await fetch('/settings');
+      // Ahead of the 401 too: the previous session's refusal is no reason to
+      // send the next one to the sign-in page.
+      if (epoch !== this.epoch) return;
       if (response.status === 401) {
         window.dispatchEvent(new CustomEvent('auth-error'));
         return;
       }
       if (response.ok) {
         const data = await response.json();
+        if (epoch !== this.epoch) return;
         readOk = true;
         const updates: Partial<SettingsState> = {};
         
@@ -507,10 +527,14 @@ export class SettingsStore extends EventTarget {
       Logger.error('Failed to fetch backend settings', e);
     } finally {
       // Only a record actually READ unblocks saving: a change made before it is
-      // kept here, and is saved over the server's values once they are in.
-      this.initialFetchCompleted = readOk;
-      this.settingsReadFailed = !readOk;
+      // kept here, and is saved over the server's values once they are in. A
+      // read for an ended session says nothing about the current one's record.
+      if (epoch === this.epoch) {
+        this.initialFetchCompleted = readOk;
+        this.settingsReadFailed = !readOk;
+      }
     }
+    if (epoch !== this.epoch) return;
 
     if (needLanguage) this.unsaved.add('language');
     if (readOk && this.unsaved.size > 0) {
