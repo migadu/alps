@@ -91,7 +91,9 @@ export class CalendarPage extends LitElement {
     @state() private isMobile = window.innerWidth <= 768;
     @state() private mobileSidebarOpen = false;
     @state() private promptOpen = false;
-    @state() private promptFields: Array<{ id: string; label: string; autofocus?: boolean; value?: string }> = [{ id: 'name', label: 'Calendar Name', autofocus: true }];
+    // Empty until a prompt opens: adding and renaming each set the field, with
+    // its label read from the dictionary at that moment.
+    @state() private promptFields: Array<{ id: string; label: string; autofocus?: boolean; value?: string }> = [];
 
     private syncIntervalTimer: ReturnType<typeof setInterval> | null = null;
     @state() private promptMode: 'add' | 'rename' | null = null;
@@ -1159,7 +1161,7 @@ export class CalendarPage extends LitElement {
             ${this.calendarToDelete ? html`
                 <ui-confirm
                     title="${this.i18nStore?.t('calendar.deleteCalendar')}"
-                    message="Are you sure you want to delete the calendar &quot;${this.calendarToDelete.name}&quot;?"
+                    .message=${this.i18nStore?.t('calendar.deleteCalendarConfirm', { name: this.calendarToDelete.name }) ?? ''}
                     confirmText="${this.i18nStore?.t('calendar.delete')}"
                     isDanger
                     @confirm=${this._executeDeleteCalendar}
@@ -1183,8 +1185,8 @@ export class CalendarPage extends LitElement {
                 ></ui-confirm>
             ` : this.eventToDelete ? html`
                 <ui-confirm
-                    title="${this.i18nStore?.t('calendar.deleteEvent')}"
-                    message="Are you sure you want to delete this event?"
+                    title="${this.i18nStore?.t(this.eventToDelete.task ? 'tasks.deleteTask' : 'calendar.deleteEvent')}"
+                    .message=${this.i18nStore?.t(this.eventToDelete.task ? 'tasks.deleteTaskConfirm' : 'calendar.deleteEventConfirm') ?? ''}
                     confirmText="${this.i18nStore?.t('calendar.delete')}"
                     isDanger
                     @confirm=${() => this._executeDeleteEvent()}
