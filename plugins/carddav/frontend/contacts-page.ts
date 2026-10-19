@@ -27,6 +27,12 @@ const categoriesKeyFor = (username: string) => `alps_contacts_categories_${usern
 /** The pre-scoping, browser-wide key: read by no one now, only deleted. */
 const LEGACY_CATEGORIES_KEY = 'contacts_categories_cache';
 
+/** `#/contacts/<category>/<card>`, both optional and both encoded. */
+const CONTACTS_ROUTE = /^#\/contacts\/?([^\/]*)\/?(.*)$/;
+
+/** How an address write lands in the session history; see writeHash. */
+type HashEntry = 'push' | 'replace';
+
 @customElement('contacts-page')
 export class ContactsPage extends LitElement {
   @consume({ context: i18nContext })
@@ -330,7 +336,7 @@ export class ContactsPage extends LitElement {
     this.contacts = this.contacts.filter((c: any) => !c.isTemporary);
 
     const hash = window.location.hash;
-    const match = hash.match(/^#\/contacts\/?([^\/]*)\/?(.*)$/);
+    const match = hash.match(CONTACTS_ROUTE);
     if (match) {
       const catParam = match[1] ? decodeURIComponent(match[1]) : '';
       const uidParam = match[2] ? decodeURIComponent(match[2]) : '';
@@ -367,6 +373,49 @@ export class ContactsPage extends LitElement {
       this.isEditing = false;
     }
   };
+
+  /**
+   * Puts `hash` in the address bar, and nothing when it is already there.
+   * Every address this page writes goes through here, saying which of the two
+   * it is.
+   *
+   * `push` is the user going somewhere, an entry Back returns from: a card or
+   * a category clicked, the pane closed. `replace` is the page correcting the
+   * address the user is already on after a gesture changed what it names: the
+   * open category renamed or deleted, the open card deleted or filed out of
+   * the open category. Assigned, each of those left an entry naming something
+   * no longer there, and Back onto it showed an empty list under a category
+   * the sidebar no longer had, or an empty pane for a card that is gone.
+   *
+   * The page renders from the address, in _handleHashChange, and replaceState
+   * fires no `hashchange`, so a rewrite reads its own address back, as the
+   * event did after the assignment it replaces.
+   */
+  private writeHash(hash: string, entry: HashEntry) {
+    if (window.location.hash === hash) return;
+    if (entry === 'push') {
+      window.location.hash = hash;
+      return;
+    }
+    history.replaceState(null, '', hash);
+    this._handleHashChange();
+  }
+
+  /** The open category's list with no card open: where the pane's close goes,
+   * and what a deleted card's address becomes. */
+  private listHash(): string {
+    return `#/contacts/${encodeURIComponent(this.selectedCategory || 'all')}`;
+  }
+
+  /**
+   * The open card is gone and the address may still name it, so it is
+   * rewritten in place to the card's list. Left alone, a reload or Back onto
+   * it asked for a card that no longer exists and showed an empty pane.
+   */
+  private leaveDeletedCard() {
+    if (!window.location.hash.match(CONTACTS_ROUTE)?.[2]) return;
+    this.writeHash(this.listHash(), 'replace');
+  }
 
   get uniqueCategories() {
     const cats = new Set<string>(this.addedCategories);
@@ -414,7 +463,7 @@ export class ContactsPage extends LitElement {
     if (updateHash) {
       const catUrl = this.selectedCategory ? encodeURIComponent(this.selectedCategory) : 'all';
       const cleanUid = contact.uid?.replace(/^urn:uuid:/, '') || contact.path;
-      window.location.hash = `/contacts/${catUrl}/${encodeURIComponent(cleanUid)}`;
+      this.writeHash(`#/contacts/${catUrl}/${encodeURIComponent(cleanUid)}`, 'push');
       return;
     }
     if (this.selectedContacts.size > 0) {
@@ -580,7 +629,9 @@ export class ContactsPage extends LitElement {
 
     if (this.selectedCategory === oldName) {
       this.selectedCategory = newName;
-      window.location.hash = `/contacts/${encodeURIComponent(newName)}`;
+      // In place: the old name is a category that no longer exists, and Back
+      // onto it showed an empty list the sidebar did not have.
+      this.writeHash(`#/contacts/${encodeURIComponent(newName)}`, 'replace');
     }
 
     let contactsToUpdate: any[];
@@ -624,7 +675,8 @@ export class ContactsPage extends LitElement {
 
     if (this.selectedCategory === oldName) {
       this.selectedCategory = '';
-      window.location.hash = `/contacts/all`;
+      // In place, as for a rename: the category is gone.
+      this.writeHash('#/contacts/all', 'replace');
     }
 
     let contactsToUpdate: any[];
@@ -667,7 +719,7 @@ export class ContactsPage extends LitElement {
       this.contacts = this.contacts.filter((c: any) => !c.isTemporary);
 
       if (!this.selectedCategory) {
-        window.location.hash = `/contacts/all`;
+        this.writeHash('#/contacts/all', 'push');
       }
     } else if (this.selectedContact?.path && this.selectedContact.path === this.conflictedPath) {
       this.conflictedPath = null;
@@ -872,6 +924,7 @@ export class ContactsPage extends LitElement {
   private async confirmDelete() {
     this.showDeleteConfirm = false;
     this.saving = true;
+    const open = this.selectedContact?.path;
     try {
       const pathsToDelete = this.gestureTargets;
       const { total, done, failed } = await contactsService.bulkDeleteContacts(pathsToDelete);
@@ -886,6 +939,10 @@ export class ContactsPage extends LitElement {
           this.selectedContacts = new Set();
         }
         this.isEditing = false;
+        // Before the re-read, whose hash handler would open a card the address
+        // still names. An open card the delete was not aimed at keeps its
+        // address, and the re-read brings it back.
+        if (open && pathsToDelete.includes(open)) this.leaveDeletedCard();
         this.fetchContacts();
       }
       if (failed > 0) {
@@ -953,7 +1010,10 @@ export class ContactsPage extends LitElement {
         if (!hasCategory) {
           const uid = this.selectedContact.uid?.replace(/^urn:uuid:/, '') || this.selectedContact.path;
           if (uid) {
-            window.location.hash = `#/contacts/all/${encodeURIComponent(uid)}`;
+            // In place: the page follows the card to a list that still holds
+            // it, which is not a place the user asked to go, and the old
+            // address named it under a category it no longer carries.
+            this.writeHash(`#/contacts/all/${encodeURIComponent(uid)}`, 'replace');
           }
         }
       }
@@ -1060,9 +1120,9 @@ export class ContactsPage extends LitElement {
         this.filterQuery = '';
         const cat = e.detail.category;
         if (cat === CATEGORY_ALL_CONTACTS) {
-          window.location.hash = `/contacts/all`;
+          this.writeHash('#/contacts/all', 'push');
         } else {
-          window.location.hash = `/contacts/${encodeURIComponent(cat)}`;
+          this.writeHash(`#/contacts/${encodeURIComponent(cat)}`, 'push');
         }
         closeSidebarPeek(this.renderRoot);
       }}
@@ -1147,7 +1207,7 @@ export class ContactsPage extends LitElement {
               @close=${() => {
                 this.selectedContact = null;
                 this.isEditing = false;
-                window.location.hash = `/contacts/${encodeURIComponent(this.selectedCategory || 'all')}`;
+                this.writeHash(this.listHash(), 'push');
               }}
             ></alps-contact-view>
           </div>
