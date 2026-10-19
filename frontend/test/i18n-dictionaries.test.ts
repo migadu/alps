@@ -609,3 +609,77 @@ describe('Serbian register and spelling', () => {
     expect(stringsOf(code).filter(([, text]) => text.includes('—'))).toEqual([]);
   });
 });
+
+/** A Serbian string in Latin letters, case kept: "ЊИВА" is "NJIVA", "Џеп" is "Džep". */
+function transliterate(text: string): string {
+  const letters = [...text];
+  return letters
+    .map((letter, i) => {
+      const lower = letter.toLowerCase();
+      const latin = CYRILLIC_TO_LATIN[lower];
+      if (latin === undefined || letter === lower) return latin ?? letter;
+      const next = letters[i + 1];
+      return next !== undefined && next !== next.toLowerCase() ? latin.toUpperCase() : latin[0].toUpperCase() + latin.slice(1);
+    })
+    .join('');
+}
+
+/**
+ * One concept, one word, in both scripts, taken from the UI's own heading.
+ *
+ *  - spam: "nepoželjno", the Junk folder's own name. The verdict buttons said
+ *    "Spem", a transcription of the English sound that no other string used.
+ */
+const SERBIAN_TERMS: { term: string; not: string; marker: RegExp; caught: string[]; spared: string[]; heading: [key: string, latin: string] }[] = [
+  {
+    term: 'nepoželjno',
+    not: 'Spem, neželjena pošta',
+    marker: /(?<!\p{L})(?:spem|neželjen)/iu,
+    caught: ['Prijavi kao Spem', 'Пријави као Спем', 'filter za neželjenu poštu'],
+    spared: ['Prijavi kao nepoželjno', 'Пријави као непожељно', 'filter za nepoželjnu poštu', 'Spam', 'Спам'],
+    heading: ['folderList.junk', 'Nepoželjno'],
+  },
+];
+
+/**
+ * English keeps two words for spam: the verdict ("Report Spam", "Not Spam")
+ * and the folder it files into, which IMAP calls Junk. Serbian keeps one: the
+ * verdict names the folder, "Prijavi kao nepoželjno" beside "Nepoželjno".
+ * `folderList.spam` is a different folder, one literally named Spam, which the
+ * sidebar keeps apart from Junk as English does; it keeps its own word,
+ * spelled as Serbian spells the loanword.
+ */
+const SPAM_VERDICTS = ['messageReader.reportSpam', 'messageReader.notSpam'];
+
+describe('Serbian terms and twins', () => {
+  it('has term markers that catch the other word and spare the chosen one, in both scripts', () => {
+    for (const { term, marker, caught, spared } of SERBIAN_TERMS) {
+      for (const text of caught) expect(marker.test(toLatin(text)), `${term}: "${text}"`).toBe(true);
+      for (const text of spared) expect(marker.test(toLatin(text)), `${term}: "${text}"`).toBe(false);
+      expect(caught.some((text) => /\p{Script=Cyrillic}/u.test(text)), term).toBe(true);
+    }
+  });
+
+  it.each(SERBIAN_TERMS.map((t) => [t.term, t.not, t.marker] as const))('rs and sr say "%s", not "%s"', (_term, _not, marker) => {
+    expect(usingSerbian(marker)).toEqual([]);
+  });
+
+  it("takes each term from the UI's own heading, in both scripts", () => {
+    for (const { heading: [key, latin] } of SERBIAN_TERMS) {
+      expect(lookup(sr, key), key).toBe(latin);
+      expect(transliterate(String(lookup(rs, key))), key).toBe(latin);
+    }
+  });
+
+  it('transliterates case by case, so capitals compare too', () => {
+    expect(transliterate('Љубав, ЊИВА, Џеп и Бцц')).toBe('Ljubav, NJIVA, Džep i Bcc');
+  });
+
+  it('names the spam verdict with the folder it files into, where English does not', () => {
+    for (const [code, dict] of [['rs', rs], ['sr', sr]] as const) {
+      const folder = transliterate(String(lookup(dict, 'folderList.junk'))).toLowerCase();
+      for (const key of SPAM_VERDICTS) expect(transliterate(String(lookup(dict, key))).toLowerCase(), `${code}:${key}`).toContain(folder);
+    }
+    expect([lookup(sr, 'folderList.spam'), lookup(rs, 'folderList.spam')]).toEqual(['Spam', 'Спам']);
+  });
+});
