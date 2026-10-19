@@ -186,7 +186,7 @@ export default {
         deleteTellOrganizer: 'Organizatoru možete javiti da nećete doći.',
         deleteAndTell: 'Obriši i javi',
         deleteOnly: 'Samo obriši',
-        notTold: 'Urađeno, ali imejl o tome nije mogao biti poslat.',
+        notTold: 'Urađeno, ali obaveštenje e-poštom nije moglo biti poslato.',
         changedElsewhere: 'Ovo je u međuvremenu promenjeno na drugom uređaju. Ponovo otvorite poruku da vidite trenutno stanje.',
     },
 };

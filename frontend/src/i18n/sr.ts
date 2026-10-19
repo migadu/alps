@@ -139,11 +139,11 @@ export const sr = {
     pleaseWait: 'Molimo sačekajte',
     wait: 'Sačekajte',
     signedOut: 'Odjavljeni ste.',
-    signedOutDraftsLost: 'Odjavljeni ste. Neke neposlate skice nije bilo moguće sačuvati i izgubljene su.',
+    signedOutDraftsLost: 'Odjavljeni ste. Neke neposlate nacrte nije bilo moguće sačuvati i izgubljeni su.',
     sessionExpired: 'Vaša sesija je istekla. Prijavite se ponovo.',
     secondFactorExpired: 'Prijava je istekla pre nego što je bezbednosni ključ proveren. Prijavite se ponovo.',
     inactivitySignedOut: 'Odjavljeni ste zbog neaktivnosti.',
-    inactivitySignedOutDraftsLost: "Odjavljeni ste zbog neaktivnosti. Neke neposlate skice nije bilo moguće sačuvati i izgubljene su."
+    inactivitySignedOutDraftsLost: "Odjavljeni ste zbog neaktivnosti. Neke neposlate nacrte nije bilo moguće sačuvati i izgubljeni su."
   },
   folderList: {
     compose: 'Napiši',
@@ -250,9 +250,9 @@ export const sr = {
     emptyMailboxSlow: 'Pražnjenje fascikle {folder} je još u toku. Server i dalje radi; proverite ponovo za trenutak.'
   },
   composer: {
-    discardFailed: 'Skicu nije bilo moguće obrisati sa servera i još uvek je u skicama.',
+    discardFailed: 'Nacrt nije bilo moguće obrisati sa servera i još uvek je u Nacrtima.',
     attachmentsTooLarge: 'Prilozi prelaze maksimalnu dozvoljenu veličinu.',
-    draftSaveFailedKeepOpen: 'Nije moguće sačuvati ovu skicu, pa prozor ostaje otvoren da se ništa ne izgubi',
+    draftSaveFailedKeepOpen: 'Nije moguće sačuvati ovaj nacrt, pa prozor ostaje otvoren da se ništa ne izgubi',
     attachmentsWait: 'Molimo sačekajte da se prilozi učitaju pre slanja.',
     sending: 'Slanje poruke...',
     undo: 'Opozovi',
@@ -299,7 +299,7 @@ export const sr = {
     later: 'Kasnije',
   },
   floatingComposer: {
-    discardDraftTitle: 'Odbaci nacrt?',
+    discardDraftTitle: 'Odbaciti nacrt?',
     discardDraftMessage: 'Da li ste sigurni da želite da odbacite ovaj nacrt? Ova akcija se ne može poništiti.',
     discard: 'Odbaci',
     dropFiles: 'Prevucite datoteke ovde da biste ih priložili',
@@ -349,10 +349,10 @@ export const sr = {
     loadingMessage: 'Učitavanje poruke...',
     remoteContentWarning: 'Ova poruka sadrži udaljeni sadržaj. Radi vaše privatnosti, blokiran je.',
     loadRemoteContent: 'Učitaj udaljeni sadržaj',
-    isDraft: 'Ovo je radna verzija poruke.',
-    editDraft: 'Uredi radnu verziju',
+    isDraft: 'Ovo je nacrt poruke.',
+    editDraft: 'Uredi nacrt',
     noRecipients: '(Nema primalaca)',
-    discardDraft: 'Odbaci radnu verziju',
+    discardDraft: 'Odbaci nacrt',
     noReadableText: 'Ova poruka ne sadrži čitljiv tekst, već samo priloge.',
     attachments: 'Prilozi',
     downloadAllAttachments: 'Preuzmi sve priloge',
@@ -451,9 +451,9 @@ export const sr = {
   },
   toast: {
     messagePermanentlyDeleted: 'Poruka trajno obrisana',
-    draftDiscarded: 'Radna verzija odbačena',
+    draftDiscarded: 'Nacrt odbačen',
     folderRenamed: 'Fascikla preimenovana',
-    tagNotSupported: 'Ovaj mejl server ne podržava tu oznaku',
+    tagNotSupported: 'Ovaj server pošte ne podržava tu oznaku',
     flagChangeFailed: 'Nije moguće ažurirati poruke',
     folderCreated: 'Fascikla je kreirana',
     folderExists: 'Fascikla sa tim imenom već postoji',

@@ -629,6 +629,11 @@ function transliterate(text: string): string {
  *
  *  - spam: "nepoželjno", the Junk folder's own name. The verdict buttons said
  *    "Spem", a transcription of the English sound that no other string used.
+ *  - draft: "nacrt", the folder's own name ("Nacrti") and the composer's
+ *    ("Odbaciti nacrt?"), over "radna verzija" in the reader's draft banner
+ *    and "skica" in the sign-out notices, so one draft had three names.
+ *  - e-mail: "e-pošta", as the sign-in field says ("Adresa e-pošte"), over
+ *    "mejl server", "imejl" and "email poruke".
  */
 const SERBIAN_TERMS: { term: string; not: string; marker: RegExp; caught: string[]; spared: string[]; heading: [key: string, latin: string] }[] = [
   {
@@ -638,6 +643,22 @@ const SERBIAN_TERMS: { term: string; not: string; marker: RegExp; caught: string
     caught: ['Prijavi kao Spem', 'Пријави као Спем', 'filter za neželjenu poštu'],
     spared: ['Prijavi kao nepoželjno', 'Пријави као непожељно', 'filter za nepoželjnu poštu', 'Spam', 'Спам'],
     heading: ['folderList.junk', 'Nepoželjno'],
+  },
+  {
+    term: 'nacrt',
+    not: 'radna verzija, skica',
+    marker: /(?<!\p{L})(?:radn\p{L}* verzij|skic)/iu,
+    caught: ['Odbaci radnu verziju', 'Одбаци радну верзију', 'Neke neposlate skice', 'још увек је у скицама'],
+    spared: ['Odbaci nacrt', 'Одбаци нацрт', 'Neke neposlate nacrte', 'још увек је у Нацртима'],
+    heading: ['folderList.drafts', 'Nacrti'],
+  },
+  {
+    term: 'e-pošta',
+    not: 'imejl, mejl, email, e-adresa',
+    marker: /(?<!\p{L})(?:i?mejl(?!ing)|e-?mail|e-adres)/iu,
+    caught: ['Ovaj mejl server', 'имејл о томе', 'Раније криптоване емаил поруке', 'Kontakt sa tom e-adresom'],
+    spared: ['Ovaj server pošte', 'обавештење е-поштом', 'Адреса е-поште', 'Prijavite se na svoj vebmejl.'],
+    heading: ['login.emailPlaceholder', 'Adresa e-pošte'],
   },
 ];
 
@@ -651,7 +672,30 @@ const SERBIAN_TERMS: { term: string; not: string; marker: RegExp; caught: string
  */
 const SPAM_VERDICTS = ['messageReader.reportSpam', 'messageReader.notSpam'];
 
-describe('Serbian terms and twins', () => {
+/**
+ * A dialog's title names the action the dialog performs, as its button does,
+ * so it takes the button's bare imperative: "Prebaci u sirovi režim" over a
+ * "Prebaci" button, where it said "Prebacite". A title that asks opens on the
+ * infinitive, as "Poslati izmene gostima?" does, not on the imperative
+ * ("Odbaci nacrt?"). A title that is a sentence, ending in a full stop, is
+ * said to the user and is formal ("Prijavite se na svoj vebmejl.").
+ */
+function titleSlip(text: string): string | null {
+  const first = toLatin(text).split(/\s+/)[0];
+  if (text.endsWith('?')) return /(?:ti|ći)$/u.test(first) ? null : 'asks without the infinitive';
+  if (text.endsWith('.')) return null;
+  return /(?:ite|jte)$/u.test(first) ? 'names its action in the formal imperative' : null;
+}
+
+/** Every title in both scripts' dictionaries, as `file:key` and text. Not the field labels. */
+function serbianTitles(): [where: string, text: string][] {
+  return ['rs', 'sr'].flatMap((code) => stringsOf(code).filter(([where]) => {
+    const last = where.split('.').at(-1)!;
+    return /title(?:Add|Edit)?$/i.test(last) && !['noTitle', 'eventTitle'].includes(last);
+  }));
+}
+
+describe('Serbian terms, titles and twins', () => {
   it('has term markers that catch the other word and spare the chosen one, in both scripts', () => {
     for (const { term, marker, caught, spared } of SERBIAN_TERMS) {
       for (const text of caught) expect(marker.test(toLatin(text)), `${term}: "${text}"`).toBe(true);
@@ -669,6 +713,23 @@ describe('Serbian terms and twins', () => {
       expect(lookup(sr, key), key).toBe(latin);
       expect(transliterate(String(lookup(rs, key))), key).toBe(latin);
     }
+  });
+
+  it('has a title rule that catches the formal imperative and the imperative question', () => {
+    expect(titleSlip('Prebacite u sirovi režim')).not.toBeNull();
+    expect(titleSlip('Пребаците у сирови режим')).not.toBeNull();
+    expect(titleSlip('Odbaci nacrt?')).not.toBeNull();
+    expect(titleSlip('Одбаци нацрт?')).not.toBeNull();
+    for (const text of ['Prebaci u sirovi režim', 'Odbaciti nacrt?', 'Poslati izmene gostima?', 'Подешавања', 'Prijavite se na svoj vebmejl.']) {
+      expect(titleSlip(text), text).toBeNull();
+    }
+  });
+
+  it("names a dialog's action as its button does, and asks in the infinitive", () => {
+    const titles = serbianTitles();
+    expect(titles.length).toBeGreaterThan(30);
+    const slips = titles.map(([where, text]) => [`${where}="${text}"`, titleSlip(text)] as const).filter(([, slip]) => slip !== null);
+    expect(slips).toEqual([]);
   });
 
   it('transliterates case by case, so capitals compare too', () => {

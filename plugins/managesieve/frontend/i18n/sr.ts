@@ -10,7 +10,7 @@ export default {
     "tabs": {
       "switchToRaw": "Sirov uređivač"
     },
-    "warningRawSwitchTitle": "Prebacite u sirovi režim",
+    "warningRawSwitchTitle": "Prebaci u sirovi režim",
     "warningRawSwitchConfirm": "Prebaci",
     "warningRawSwitch": "Prelazak na sirovi režim znači da se skripta više neće moći vizuelno uređivati. Nastaviti?",
     "toast": {

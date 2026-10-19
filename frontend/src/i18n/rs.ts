@@ -139,11 +139,11 @@ export const rs = {
     pleaseWait: 'Молимо сачекајте',
     wait: 'Сачекајте',
     signedOut: 'Одјављени сте.',
-    signedOutDraftsLost: 'Одјављени сте. Неке непослате скице није било могуће сачувати и изгубљене су.',
+    signedOutDraftsLost: 'Одјављени сте. Неке непослате нацрте није било могуће сачувати и изгубљени су.',
     sessionExpired: 'Ваша сесија је истекла. Пријавите се поново.',
     secondFactorExpired: 'Пријава је истекла пре него што је безбедносни кључ проверен. Пријавите се поново.',
     inactivitySignedOut: 'Одјављени сте због неактивности.',
-    inactivitySignedOutDraftsLost: "Одјављени сте због неактивности. Неке непослате скице није било могуће сачувати и изгубљене су."
+    inactivitySignedOutDraftsLost: "Одјављени сте због неактивности. Неке непослате нацрте није било могуће сачувати и изгубљени су."
   },
   folderList: {
     compose: 'Напиши',
@@ -250,9 +250,9 @@ export const rs = {
     emptyMailboxSlow: 'Пражњење фасцикле {folder} је још у току. Сервер и даље ради; проверите поново за тренутак.'
   },
   composer: {
-    discardFailed: 'Скицу није било могуће обрисати са сервера и још увек је у скицама.',
+    discardFailed: 'Нацрт није било могуће обрисати са сервера и још увек је у Нацртима.',
     attachmentsTooLarge: 'Прилози прелазе максималну дозвољену величину.',
-    draftSaveFailedKeepOpen: 'Није могуће сачувати ову скицу, па прозор остаје отворен да се ништа не изгуби',
+    draftSaveFailedKeepOpen: 'Није могуће сачувати овај нацрт, па прозор остаје отворен да се ништа не изгуби',
     attachmentsWait: 'Молимо сачекајте да се прилози учитају пре слања.',
     sending: 'Слање поруке...',
     undo: 'Опозови',
@@ -299,7 +299,7 @@ export const rs = {
     later: 'Касније',
   },
   floatingComposer: {
-    discardDraftTitle: 'Одбаци нацрт?',
+    discardDraftTitle: 'Одбацити нацрт?',
     discardDraftMessage: 'Да ли сте сигурни да желите да одбаците овај нацрт? Ова акција се не може поништити.',
     discard: 'Одбаци',
     dropFiles: 'Превуците датотеке овде да бисте их приложили',
@@ -349,10 +349,10 @@ export const rs = {
     loadingMessage: 'Учитавање поруке...',
     remoteContentWarning: 'Ова порука садржи удаљени садржај. Ради ваше приватности, блокиран је.',
     loadRemoteContent: 'Учитај удаљени садржај',
-    isDraft: 'Ово је радна верзија поруке.',
-    editDraft: 'Уреди радну верзију',
+    isDraft: 'Ово је нацрт поруке.',
+    editDraft: 'Уреди нацрт',
     noRecipients: '(Нема прималаца)',
-    discardDraft: 'Одбаци радну верзију',
+    discardDraft: 'Одбаци нацрт',
     noReadableText: 'Ова порука не садржи читљив текст, већ само прилоге.',
     attachments: 'Прилози',
     downloadAllAttachments: 'Преузми све прилоге',
@@ -451,9 +451,9 @@ export const rs = {
   },
   toast: {
     messagePermanentlyDeleted: 'Порука трајно обрисана',
-    draftDiscarded: 'Радна верзија одбачена',
+    draftDiscarded: 'Нацрт одбачен',
     folderRenamed: 'Фасцикла преименована',
-    tagNotSupported: 'Овај мејл сервер не подржава ту ознаку',
+    tagNotSupported: 'Овај сервер поште не подржава ту ознаку',
     flagChangeFailed: 'Није могуће ажурирати поруке',
     folderCreated: 'Фасцикла је креирана',
     folderExists: 'Фасцикла са тим именом већ постоји',

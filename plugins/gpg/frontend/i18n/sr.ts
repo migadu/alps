@@ -32,7 +32,7 @@ export default {
     importUnencryptedDesc: 'Nalepite blokove javnog i privatnog ključa, npr. iz "gpg --armor --export-secret-keys". Ako je privatni ključ zaštićen lozinkom, zatražićemo trenutnu lozinku, a zatim da postavite novu.',
     importIncorrectPassphrase: 'Pogrešna lozinka za privatni ključ. Pokušajte ponovo.',
     importKeysBtn: 'Uvezi Ključeve',
-    purgeConfirm: 'Da li ste sigurni da želite trajno obrisati GPG ključeve sa servera? Ranije kriptovane email poruke će postati nečitljive.',
+    purgeConfirm: 'Da li ste sigurni da želite trajno obrisati GPG ključeve sa servera? Ranije kriptovane poruke će postati nečitljive.',
     passphraseMissing: 'Lozinka je obavezna za kriptovanje vašeg novog privatnog ključa.',
     importMissing: 'I javni i privatni blokovi su obavezni za uvoz.',
     generateFailed: 'Generisanje ključeva nije uspelo: {error}',
