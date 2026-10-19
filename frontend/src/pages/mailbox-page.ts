@@ -5,6 +5,7 @@ import '../components/folder-list';
 import '../components/message-list';
 import '../components/message-reader';
 import type { MessageReader, ReaderActionDetail } from '../components/message-reader';
+import type { MessageList } from '../components/message-list';
 import '../components/ui-confirm.js';
 import '../components/app-header';
 import { closeSidebarPeek } from '../components/alps-sidebar';
@@ -654,6 +655,7 @@ export class MailboxPage extends LitElement {
 
     document.addEventListener('click', this.unlockAudio);
     document.addEventListener('keydown', this.unlockAudio);
+    document.addEventListener('keydown', this.handleStrayArrow);
 
     this._mql.addEventListener('change', this._handleMediaQuery);
     this._handleMediaQuery(this._mql);
@@ -687,6 +689,7 @@ export class MailboxPage extends LitElement {
     
     document.removeEventListener('click', this.unlockAudio);
     document.removeEventListener('keydown', this.unlockAudio);
+    document.removeEventListener('keydown', this.handleStrayArrow);
 
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
@@ -1064,6 +1067,32 @@ export class MailboxPage extends LitElement {
       // had just failed to read, with nothing offered to try again.
       this.listLoadFailed = true;
     }
+  };
+
+  /**
+   * ArrowDown or ArrowUp pressed where nothing else takes it: the list's.
+   *
+   * The list moves its cursor only on keys pressed inside it, and opening a
+   * folder from the sidebar leaves focus on the page itself, so the arrows
+   * did nothing until the list had been clicked. Only a key from the page
+   * body or a link is passed on; a field, a button, a menu or a dialog keeps
+   * its own arrows, and so does the list.
+   */
+  private handleStrayArrow = (e: KeyboardEvent) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (this.showDeleteConfirm) return;
+    // The composed path, because the list, the sidebar and every popup are
+    // shadow roots that `closest()` cannot see out of.
+    const path = e.composedPath().filter((n): n is HTMLElement => n instanceof HTMLElement);
+    const origin = path[0];
+    if (!origin || (origin !== document.body && origin.tagName !== 'A')) return;
+    if (path.some(n => n.tagName === 'ALPS-MESSAGE-LIST' || n.tagName === 'DIALOG'
+      || ['dialog', 'menu', 'listbox'].includes(n.getAttribute('role') ?? ''))) return;
+    const list = this.renderRoot.querySelector('alps-message-list') as MessageList | null;
+    if (!list) return;
+    e.preventDefault();
+    list.step(e.key === 'ArrowDown' ? 1 : -1);
   };
 
   private handleMailboxNotFound = () => {

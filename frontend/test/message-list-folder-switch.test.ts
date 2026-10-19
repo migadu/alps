@@ -109,3 +109,45 @@ describe('the Delete All banner during a folder switch', () => {
   });
 });
 
+describe('the keyboard cursor', () => {
+  const focused = (el: El) => shadowAll(el, '.message-item.focused').map(r => r.querySelector('.message-subject')?.textContent?.trim());
+  const press = async (el: El, key: string) => {
+    shadowAll(el, '.list-content')[0].dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+    await el.updateComplete;
+  };
+
+  it('starts again from the first row in another folder', async () => {
+    const el = await mount<El>(TAG, {
+      i18nStore,
+      messages: [row('1', 'INBOX'), row('2', 'INBOX'), row('3', 'INBOX')],
+      currentMailbox: 'INBOX',
+      showSenderAvatars: false,
+    });
+    await press(el, 'ArrowDown');
+    await press(el, 'ArrowDown');
+    await press(el, 'ArrowDown');
+    expect(focused(el)).toEqual(['message 3']);
+
+    await update(el, { currentMailbox: 'Archive', messages: [row('7', 'Archive'), row('8', 'Archive'), row('9', 'Archive')] });
+    await press(el, 'ArrowDown');
+    expect(focused(el)).toEqual(['message 7']);
+  });
+
+  it('is moved by an arrow the page passes on, which puts focus in the list', async () => {
+    const el = await mount<El>(TAG, {
+      i18nStore,
+      messages: [row('1', 'INBOX'), row('2', 'INBOX')],
+      currentMailbox: 'INBOX',
+      showSenderAvatars: false,
+    });
+    el.step(1);
+    await el.updateComplete;
+    expect(focused(el)).toEqual(['message 1']);
+    expect(el.shadowRoot!.activeElement?.classList.contains('list-content')).toBe(true);
+
+    // From there on the keys are the list's own.
+    await press(el, 'ArrowDown');
+    expect(focused(el)).toEqual(['message 2']);
+  });
+});
+

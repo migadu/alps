@@ -973,6 +973,9 @@ export class MessageList extends LitElement {
       // query changes. Clearing it here would report every row of the new page
       // as unchecked, which the page would take for exceptions.
       if (!this.selectAllMatching && this.selectedMessages.size > 0) this.setSelection(new Set());
+      // The previous listing's row means nothing in this one: the first arrow
+      // key went to row N of the folder left behind instead of the first row.
+      this.focusedIndex = -1;
       this._shouldScrollToTop = true;
       // Another listing altogether, already shown from its top.
       this._uidsBeforeCheck = null;
@@ -1128,18 +1131,36 @@ export class MessageList extends LitElement {
     }));
   }
 
+  /** Moves the keyboard cursor one row down (1) or up (-1), and shows the row. */
+  private moveCursor(direction: 1 | -1) {
+    const visible = this.visibleMessages;
+    this.focusedIndex = direction > 0
+      ? Math.min(visible.length - 1, this.focusedIndex + 1)
+      : Math.max(0, this.focusedIndex - 1);
+    this.scrollToFocused();
+  }
+
+  /**
+   * An arrow key pressed outside the list, which the page passes on: the
+   * cursor moves, and focus goes into the list so the next key, Enter
+   * included, is the list's own.
+   */
+  step(direction: 1 | -1) {
+    if (this.visibleMessages.length === 0) return;
+    this.renderRoot.querySelector<HTMLElement>('.list-content')?.focus({ preventScroll: true });
+    this.moveCursor(direction);
+  }
+
   private handleKeyDown(e: KeyboardEvent) {
     const visible = this.visibleMessages;
     if (!visible || visible.length === 0) return;
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      this.focusedIndex = Math.min(visible.length - 1, this.focusedIndex + 1);
-      this.scrollToFocused();
+      this.moveCursor(1);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      this.focusedIndex = Math.max(0, this.focusedIndex - 1);
-      this.scrollToFocused();
+      this.moveCursor(-1);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (this.focusedIndex >= 0 && this.focusedIndex < visible.length) {
