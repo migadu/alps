@@ -75,6 +75,11 @@ describe('getMailboxLabel', () => {
     expect(getMailboxLabel('INBOX.Receipts')).toBe('Receipts');
   });
 
+  it('titles the search across every folder, which has no name to show', () => {
+    expect(getMailboxLabel('*', i18n)).toBe('<folderList.allFolders>');
+    expect(getMailboxLabel('*')).toBe('All Folders');
+  });
+
   it('answers an empty name with an empty label', () => {
     expect(getMailboxLabel('')).toBe('');
   });

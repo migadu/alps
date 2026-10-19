@@ -154,6 +154,7 @@ export const rs = {
     spam: 'Спам',
     junk: 'Непожељно',
     trash: 'Отпад',
+    allFolders: 'Све фасцикле',
     title: 'Фасцикле',
     rename: 'Преименуј',
     delete: 'Обриши',

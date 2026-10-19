@@ -206,6 +206,7 @@ export const da: TranslationDictionary = {
     spam: 'Spam',
     junk: 'Uønsket',
     trash: 'Papirkurv',
+    allFolders: 'Alle mapper',
     title: 'Mapper',
     rename: 'Omdøb',
     delete: 'Slet',

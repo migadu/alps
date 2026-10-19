@@ -154,6 +154,7 @@ export const sr = {
     spam: 'Spam',
     junk: 'Nepoželjno',
     trash: 'Otpad',
+    allFolders: 'Sve fascikle',
     title: 'Fascikle',
     rename: 'Preimenuj',
     delete: 'Obriši',

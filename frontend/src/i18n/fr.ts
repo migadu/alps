@@ -154,6 +154,7 @@ export const fr = {
     spam: 'Spam',
     junk: 'Indésirables',
     trash: 'Corbeille',
+    allFolders: 'Tous les dossiers',
     title: 'Dossiers',
     rename: 'Renommer',
     delete: 'Supprimer',

@@ -1,6 +1,6 @@
 import { html, type TemplateResult } from 'lit';
 import type { I18nStore } from '../store/i18n-store';
-import { FOLDER_SPAM, mailboxDelimiter, mailboxRoleByName, type MailboxRole } from './folders';
+import { ALL_MAILBOXES, FOLDER_SPAM, mailboxDelimiter, mailboxRoleByName, type MailboxRole } from './folders';
 
 export function renderIcon(name: string): TemplateResult {
   return html`
@@ -108,6 +108,9 @@ const ROLE_CAPTIONS: Partial<Record<MailboxRole, string>> = {
  */
 export function getMailboxLabel(name: string, i18nStore?: I18nStore, mailboxes: any[] = []): string {
   if (!name) return '';
+  // Not a folder, so there is no name to split: the header and the caption
+  // above the list read a bare `*` through a search across every folder.
+  if (name === ALL_MAILBOXES) return i18nStore?.t('folderList.allFolders') || 'All Folders';
   const role = mailboxRoleByName(name, mailboxes);
   const key = role === 'junk' && name === FOLDER_SPAM ? 'folderList.spam' : role ? ROLE_CAPTIONS[role] : undefined;
   const caption = key ? i18nStore?.t(key) : undefined;

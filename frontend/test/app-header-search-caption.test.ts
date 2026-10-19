@@ -32,4 +32,8 @@ describe('the search box names the folder on screen', () => {
     const mailboxes = [mb('INBOX'), mb('Bin', ['\\Trash']), mb('Trash')];
     expect(await placeholder({ currentMailbox: 'Trash', mailboxes })).toBe('Trash');
   });
+
+  it('as All Folders during a search across every folder, not as a bare *', async () => {
+    expect(await placeholder({ currentMailbox: '*', mailboxes: [mb('INBOX')] })).toBe('folderList.allFolders');
+  });
 });

@@ -154,6 +154,7 @@ export const it = {
     spam: 'Spam',
     junk: 'Indesiderata',
     trash: 'Cestino',
+    allFolders: 'Tutte le cartelle',
     title: 'Cartelle',
     rename: 'Rinomina',
     delete: 'Elimina',

@@ -8,6 +8,13 @@ export const FOLDER_JUNK = 'Junk';
 export const FOLDER_TRASH = 'Trash';
 
 /**
+ * What the view of a search across every folder is called where a folder's
+ * name would be, in the URL and in what the page hands its components. Not a
+ * folder: the server answers it with a search over all of them.
+ */
+export const ALL_MAILBOXES = '*';
+
+/**
  * Encodes a mailbox name for use as a single path segment in a backend URL
  * (e.g. `/mailboxes/${encodeMailboxPath(name)}/status`).
  *

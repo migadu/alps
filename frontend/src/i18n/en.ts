@@ -204,6 +204,7 @@ export const en = {
     spam: 'Spam',
     junk: 'Junk',
     trash: 'Trash',
+    allFolders: 'All Folders',
     title: 'Folders',
     rename: 'Rename',
     delete: 'Delete',

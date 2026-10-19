@@ -197,6 +197,7 @@ export const pt = {
     spam: 'Spam',
     junk: 'Lixo Eletrônico',
     trash: 'Lixeira',
+    allFolders: 'Todas as Pastas',
     title: 'Pastas',
     rename: 'Renomear',
     delete: 'Excluir',

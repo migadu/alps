@@ -156,6 +156,7 @@ export const de: TranslationDictionary = {
     spam: 'Spam',
     junk: 'Junk',
     trash: 'Papierkorb',
+    allFolders: 'Alle Ordner',
     title: 'Ordner',
     rename: 'Umbenennen',
     delete: 'Löschen',
