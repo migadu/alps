@@ -387,7 +387,7 @@ export class PrintPage extends LitElement {
     } else if (this.mimeType?.toLowerCase().startsWith('multipart/')) {
       bodyTemplate = html`<div style="font-style: italic; color: #666;">${this.i18nStore?.t('messageReader.noReadableText')}</div>`;
     } else {
-      bodyTemplate = html`<pre style="white-space: pre-wrap; font-family: inherit; margin: 0;">${this.content}</pre>`;
+      bodyTemplate = html`<pre dir="auto" style="unicode-bidi: plaintext; white-space: pre-wrap; font-family: inherit; margin: 0;">${this.content}</pre>`;
     }
 
     return html`
@@ -401,7 +401,7 @@ export class PrintPage extends LitElement {
       ` : ''}
       <div class="print-container">
         <div class="print-header">
-          <h2>${subject}</h2>
+          <h2><bdi>${subject}</bdi></h2>
           <div class="print-divider"></div>
           <div class="print-meta-row">
             <div><strong>${senderName}</strong> ${senderAddress ? `<${senderAddress}>` : ''}</div>

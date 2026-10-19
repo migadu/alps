@@ -281,9 +281,12 @@ export class AlpsThreadCard extends LitElement {
       overflow-x: auto;
     }
 
+    /* Each paragraph of a plain-text body runs the way its first letter
+       does, as in the reader. */
     .reader-preformatted {
       margin: 0;
       white-space: pre-wrap;
+      unicode-bidi: plaintext;
       word-wrap: break-word;
       font-family: inherit;
       font-size: 14px;
@@ -490,7 +493,7 @@ export class AlpsThreadCard extends LitElement {
             </div>
           ` : html`
             <div class="reader-text-wrapper">
-              <pre class="reader-preformatted">${this.item.content}</pre>
+              <pre dir="auto" class="reader-preformatted">${this.item.content}</pre>
             </div>
           `}
         </div>
@@ -532,12 +535,12 @@ export class AlpsThreadCard extends LitElement {
             ` : ''}
             <div class="thread-card-sender ${isUnread ? 'unread' : ''}" title=${senderTitle}>
               <div class="thread-card-sender-heading">
-                <span class="thread-card-sender-name">${senderName}</span>
+                <span class="thread-card-sender-name" dir="auto">${senderName}</span>
                 <alps-sender-auth-badge ?verified=${!!msg.HasBimiPotential} ?failed=${!!msg.HasBimiFailed}></alps-sender-auth-badge>
               </div>
               ${hasDistinctName ? html`<span class="thread-card-sender-address">${senderAddress}</span>` : ''}
             </div>
-            ${!this.item.expanded ? html`<div class="thread-card-snippet">${snippet}</div>` : ''}
+            ${!this.item.expanded ? html`<div class="thread-card-snippet" dir="auto">${snippet}</div>` : ''}
           </div>
           <div class="thread-card-meta">
             ${this.item.isSent ? html`<span class="thread-card-badge">${this.i18nStore?.t('folderList.sent') || 'Sent'}</span>` : ''}

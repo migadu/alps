@@ -827,8 +827,12 @@ export class MessageReader extends LitElement {
       padding: 24px;
     }
 
+    /* A plain-text body has no markup to say which way it runs. Each
+       paragraph takes the direction of its own first letter, so a Hebrew or
+       Arabic line reads right to left beside English ones. */
     .reader-preformatted {
       white-space: pre-wrap;
+      unicode-bidi: plaintext;
       font-family: inherit;
       margin: 0;
       color: inherit;
@@ -2426,7 +2430,7 @@ export class MessageReader extends LitElement {
                   `)}
                 </div>
               ` : ''}
-              ${msg.Envelope?.Subject || (this.i18nStore?.t('messageList.noSubject'))}
+              <bdi>${msg.Envelope?.Subject || (this.i18nStore?.t('messageList.noSubject'))}</bdi>
             </div>
           </div>
           <div class="thread-container">
@@ -2446,7 +2450,7 @@ export class MessageReader extends LitElement {
               </div>
             ` : ''}
 
-            ${msg.Envelope?.Subject || (this.i18nStore?.t('messageList.noSubject'))}
+            <bdi>${msg.Envelope?.Subject || (this.i18nStore?.t('messageList.noSubject'))}</bdi>
           </div>
           <div class="reader-meta">
             <div class="reader-sender-block">
@@ -2459,13 +2463,13 @@ export class MessageReader extends LitElement {
                 <div class="reader-sender-info">
                   ${sender.Name && sender.Name !== senderAddress ? html`
                     <div class="reader-sender-line">
-                      <span class="reader-sender-name">${sender.Name}</span>
+                      <span class="reader-sender-name" dir="auto">${sender.Name}</span>
                       <alps-sender-auth-badge ?verified=${!!msg.HasBimiPotential} ?failed=${!!msg.HasBimiFailed}></alps-sender-auth-badge>
                     </div>
-                    ${senderAddress ? html`<alps-recipient-pill address="${senderAddress}"></alps-recipient-pill>` : html`<span class="reader-sender-name">${senderName}</span>`}
+                    ${senderAddress ? html`<alps-recipient-pill address="${senderAddress}"></alps-recipient-pill>` : html`<span class="reader-sender-name" dir="auto">${senderName}</span>`}
                   ` : html`
                     <div class="reader-sender-line">
-                      ${senderAddress ? html`<alps-recipient-pill address="${senderAddress}"></alps-recipient-pill>` : html`<span class="reader-sender-name">${senderName}</span>`}
+                      ${senderAddress ? html`<alps-recipient-pill address="${senderAddress}"></alps-recipient-pill>` : html`<span class="reader-sender-name" dir="auto">${senderName}</span>`}
                       <alps-sender-auth-badge ?verified=${!!msg.HasBimiPotential} ?failed=${!!msg.HasBimiFailed}></alps-sender-auth-badge>
                     </div>
                   `}
@@ -2559,7 +2563,7 @@ export class MessageReader extends LitElement {
               </div>
             ` : html`
               <div class="reader-text-wrapper">
-                <pre class="reader-preformatted">${this.content}</pre>
+                <pre dir="auto" class="reader-preformatted">${this.content}</pre>
               </div>
             `}
           </div>

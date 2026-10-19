@@ -1409,7 +1409,7 @@ export class MessageList extends LitElement {
         ${this.currentMailbox === '*' && msg.Mailbox ? html`
           <span class="mailbox-badge" title="Folder: ${msg.Mailbox}">${msg.Mailbox}</span>
         ` : ''}
-        <div class="message-subject">
+        <div class="message-subject" dir="auto">
           ${subject}
         </div>
         <div class="message-indicators">
@@ -1494,7 +1494,7 @@ export class MessageList extends LitElement {
           ${this.currentMailbox === '*' && msg.Mailbox ? html`
             <span class="mailbox-badge" title="Folder: ${msg.Mailbox}">${msg.Mailbox}</span>
           ` : ''}
-          <div class="message-subject">
+          <div class="message-subject" dir="auto">
             ${subject}
           </div>
           ${sizeStr ? html`<div class="message-size">${sizeStr}</div>` : ''}
