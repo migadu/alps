@@ -1,6 +1,6 @@
 import { html, type TemplateResult } from 'lit';
 import type { I18nStore } from '../store/i18n-store';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH } from './folders';
+import { FOLDER_SPAM, mailboxDelimiter, mailboxRoleByName, type MailboxRole } from './folders';
 
 export function renderIcon(name: string): TemplateResult {
   return html`
@@ -79,31 +79,49 @@ export function formatFullDate(dateInput: string | Date, dateFormatStr: string =
   return `${datePart} ${timePart}`;
 }
 
-export function getMailboxLabel(name: string, i18nStore?: I18nStore, delimiter?: string): string {
+/** The caption of each special folder, by its role. A \All folder has none:
+ * the sidebar draws it under its own name. */
+const ROLE_CAPTIONS: Partial<Record<MailboxRole, string>> = {
+  inbox: 'folderList.inbox',
+  drafts: 'folderList.drafts',
+  sent: 'folderList.sent',
+  archive: 'folderList.archive',
+  junk: 'folderList.junk',
+  trash: 'folderList.trash',
+};
+
+/**
+ * What a folder is CALLED on screen: in the header's search box, above the
+ * list, and in what the list and the page say about it.
+ *
+ * A special folder is named by its ROLE, in the user's language, whatever the
+ * server calls it ("Papierkorb", "[Gmail]/Sent Mail"). A folder without a role
+ * keeps its own name, even one that spells a special folder's. This used to
+ * read the name alone, so beside a \Trash called "Papierkorb" the user's own
+ * folder called "Trash" was captioned as the Trash, while the sidebar drew it
+ * as the ordinary folder it is and Delete filed mail into Papierkorb. A junk
+ * folder that is literally called Spam keeps that word, as its sidebar row does.
+ *
+ * `mailboxes` is the folder list the name belongs to; its entry gives both the
+ * role and the delimiter. Before a list has loaded, a well-known English name
+ * stands for its role, the same guess `mailboxRoleByName` makes.
+ */
+export function getMailboxLabel(name: string, i18nStore?: I18nStore, mailboxes: any[] = []): string {
   if (!name) return '';
-  const stdMap: Record<string, string | undefined> = {
-    [FOLDER_INBOX]: i18nStore?.t('folderList.inbox'),
-    [FOLDER_DRAFTS]: i18nStore?.t('folderList.drafts'),
-    [FOLDER_SENT]: i18nStore?.t('folderList.sent'),
-    [FOLDER_ARCHIVE]: i18nStore?.t('folderList.archive'),
-    [FOLDER_ARCHIVES]: i18nStore?.t('folderList.archive'),
-    [FOLDER_SPAM]: i18nStore?.t('folderList.spam'),
-    [FOLDER_JUNK]: i18nStore?.t('folderList.junk'),
-    [FOLDER_TRASH]: i18nStore?.t('folderList.trash')
-  };
-  // Own keys only: a folder called "constructor" found Object's function here,
-  // and the header drew its source text as the folder's name.
-  const known = Object.hasOwn(stdMap, name) ? stdMap[name] : undefined;
-  if (known) return known;
-  // Split on the delimiter the SERVER reported, when the caller knows it.
+  const role = mailboxRoleByName(name, mailboxes);
+  const key = role === 'junk' && name === FOLDER_SPAM ? 'folderList.spam' : role ? ROLE_CAPTIONS[role] : undefined;
+  const caption = key ? i18nStore?.t(key) : undefined;
+  if (caption) return caption;
+  // Split on the delimiter the SERVER reported for this folder.
   //
   // This split on `[.\/]` unconditionally, which is a guess at two of the
   // several delimiters IMAP allows — and it is wrong in both directions. On a
   // `/`-delimited server a folder legitimately named "Invoices v1.2" was drawn
   // whole in the sidebar (which has always used `mb.Delimiter`) and truncated
   // to "2" in the header and the search placeholder: the same folder, two
-  // different names, in the same app. The loose split stays as the fallback for
-  // callers that cannot reach the mailbox list.
+  // different names, in the same app. The loose split stays as the fallback
+  // for a name the list does not hold.
+  const delimiter = mailboxDelimiter(name, mailboxes);
   const parts = delimiter ? name.split(delimiter) : name.split(/[.\/]/);
   return parts[parts.length - 1] || name;
 }

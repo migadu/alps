@@ -15,9 +15,9 @@ export class AppHeader extends LitElement {
   @property({ type: String }) currentTab = 'messages';
   @property({ type: Boolean }) isMobile = false;
   @property({ type: String }) currentMailbox = '';
-  /** The server-reported hierarchy delimiter for `currentMailbox`, so the
-   * placeholder splits the name where the sidebar splits it. */
-  @property({ type: String }) currentMailboxDelimiter = '';
+  /** The folder list, so the placeholder names `currentMailbox` as the
+   * sidebar does: by its role, and split where the server splits it. */
+  @property({ type: Array }) mailboxes: any[] = [];
   @property({ type: String }) searchQuery = '';
   @property({ type: Boolean }) scrolled = false;
 
@@ -178,7 +178,7 @@ export class AppHeader extends LitElement {
           icon="magnifyingGlass"
           ?clearable=${true}
           .value=${this.searchQuery}
-          .placeholder=${this.currentTab === 'contacts' ? (this.i18nStore?.t('contacts.title') || 'Contacts') : this.currentTab === 'calendar' ? (this.i18nStore?.t('calendar.title') || 'Search Calendar') : this.currentTab === 'tasks' ? this.i18nStore?.t('tasks.title') : (this.currentMailbox ? getMailboxLabel(this.currentMailbox, this.i18nStore, this.currentMailboxDelimiter) : (this.i18nStore?.t('search.placeholder')))}
+          .placeholder=${this.currentTab === 'contacts' ? (this.i18nStore?.t('contacts.title') || 'Contacts') : this.currentTab === 'calendar' ? (this.i18nStore?.t('calendar.title') || 'Search Calendar') : this.currentTab === 'tasks' ? this.i18nStore?.t('tasks.title') : (this.currentMailbox ? getMailboxLabel(this.currentMailbox, this.i18nStore, this.mailboxes) : (this.i18nStore?.t('search.placeholder')))}
           @keydown=${(e: KeyboardEvent) => {
             if (e.key === 'Enter') {
               e.preventDefault();

@@ -33,8 +33,8 @@ export class MessageList extends LitElement {
 
   @property({ type: Array }) messages: any[] = [];
   @property({ type: String }) currentMailbox = '';
-  /** As in `app-header` — the delimiter the server reported for this mailbox. */
-  @property({ type: String }) currentMailboxDelimiter = '';
+  /** The folder list, which says what a folder is called: see `getMailboxLabel`. */
+  @property({ type: Array }) mailboxes: any[] = [];
   // Special-use role of the current mailbox ('drafts'|'sent'|...), resolved by the
   // parent from IMAP attributes so Gmail's "[Gmail]/Sent Mail" etc. are recognized.
   @property({ type: String }) currentMailboxRole = '';
@@ -1562,7 +1562,7 @@ export class MessageList extends LitElement {
           ></alps-icon-btn>
           ${this.sidebarCollapsed ? html`
             <div class="current-mailbox-label">
-              ${getMailboxLabel(this.currentMailbox, this.i18nStore, this.currentMailboxDelimiter)}
+              ${getMailboxLabel(this.currentMailbox, this.i18nStore, this.mailboxes)}
             </div>
           ` : ''}
           <alps-pagination 
@@ -1590,7 +1590,7 @@ export class MessageList extends LitElement {
         ` : ''}
         ${this.selectAllMatching ? html`
           <alps-banner>
-            <span>${this.i18nStore?.t('messageList.allMatchingSelected', { count: this.matchingCount, folder: getMailboxLabel(this.currentMailbox, this.i18nStore, this.currentMailboxDelimiter) })}</span>
+            <span>${this.i18nStore?.t('messageList.allMatchingSelected', { count: this.matchingCount, folder: getMailboxLabel(this.currentMailbox, this.i18nStore, this.mailboxes) })}</span>
             <alps-button slot="action" variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('clear-selection'))}>
               ${this.i18nStore?.t('messageList.clearSelection')}
             </alps-button>
@@ -1599,7 +1599,7 @@ export class MessageList extends LitElement {
           <alps-banner>
             <span>${this.i18nStore?.t('messageList.allOnPageSelected', { count: this.pageKeys.length })}</span>
             <alps-button slot="action" variant="normal" @click=${() => this.dispatchEvent(new CustomEvent('select-all-matching'))}>
-              ${this.i18nStore?.t('messageList.selectAllMatching', { count: this.totalMessages, folder: getMailboxLabel(this.currentMailbox, this.i18nStore, this.currentMailboxDelimiter) })}
+              ${this.i18nStore?.t('messageList.selectAllMatching', { count: this.totalMessages, folder: getMailboxLabel(this.currentMailbox, this.i18nStore, this.mailboxes) })}
             </alps-button>
           </alps-banner>
         ` : ''}
