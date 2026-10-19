@@ -9,6 +9,7 @@ import { popupStyles } from './alps-popup';
 import './alps-popup';
 import './alps-icon-btn';
 import { renderIcon } from '../utils/ui';
+import { MessageCache } from '../utils/message-cache';
 import { registry } from '../plugin-registry';
 import { matchesTabRoute } from '../utils/routes';
 
@@ -196,7 +197,12 @@ export class UserProfileMenu extends LitElement {
          // new account's inbox could render the old account's message. The
          // per-user settings pointer likewise still named the old account, so
          // the compose store would restore THEIR drafts.
+         //
+         // Through MessageCache as well as wholesale: this page stays up through
+         // the second factor, and a body the old account's reader is still
+         // waiting on must not be written back for the new one to open.
          clearSessionSettings(false);
+         MessageCache.clear();
          sessionStorage.clear();
          try {
            sessionStorage.setItem('pending_2fa_username', username);
