@@ -42,4 +42,35 @@ describe('composer windows', () => {
     expect(a.instance.subject).toBe('A');
     expect(c.instance.subject).toBe('C');
   });
+
+  it('are drawn again for a change of shape, not for every keystroke', async () => {
+    // Each keystroke is a store change, and each one re-rendered the whole
+    // shell, the page under the windows included, while the user typed.
+    const root = await mount<El>('app-root');
+    const store = root.composeStore;
+    store.openComposer({ subject: 'Engines', to: ['ada@example.com'] });
+    await waitFor(() => windows(root).length === 1, 'the window');
+    const [win] = windows(root);
+    const id = store.getState().activeComposers[0].id;
+    store.updateComposer(id, { text: 'D' });
+    await root.updateComplete;
+
+    const render = vi.spyOn(root, 'render');
+    store.updateComposer(id, { text: 'Dear Ada' });
+    store.updateComposer(id, { subject: 'Engines, again' });
+    store.bringComposerToFront(id);
+    await root.updateComplete;
+    await win.updateComplete;
+
+    expect(render).not.toHaveBeenCalled();
+    // The window follows its composer by itself.
+    expect(win.instance).toBe(store.getComposer(id));
+    expect(win.instance.text).toBe('Dear Ada');
+
+    store.updateComposer(id, { minimized: true });
+    await root.updateComplete;
+    expect(render).toHaveBeenCalled();
+    expect(windows(root)).toEqual([win]);
+    expect(win.instance.minimized).toBe(true);
+  });
 });

@@ -71,6 +71,7 @@ export class AlpsFloatingComposer extends LitElement {
     window.addEventListener('dragover', this._handleWindowDragOver);
     window.addEventListener('dragleave', this._handleWindowDragLeave);
     window.addEventListener('alps-composer-drop', this._handleGlobalDropHandled as EventListener);
+    this.composeStore?.addEventListener?.('change', this._handleStoreChange);
     this.updateComplete.then(() => {
       if (!this.isConnected) return;
       this.i18nStore?.addEventListener('change', this._handleI18nChange);
@@ -85,6 +86,7 @@ export class AlpsFloatingComposer extends LitElement {
     window.removeEventListener('dragover', this._handleWindowDragOver);
     window.removeEventListener('dragleave', this._handleWindowDragLeave);
     window.removeEventListener('alps-composer-drop', this._handleGlobalDropHandled as EventListener);
+    this.composeStore?.removeEventListener?.('change', this._handleStoreChange);
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
     this._clearAutoSave();
     // A send still in its undo window goes no further once the window is
@@ -92,6 +94,16 @@ export class AlpsFloatingComposer extends LitElement {
     // anyway, under whichever session was signed in by then.
     this._clearUndoSend();
   }
+
+  /**
+   * Follows this window's composer through the store. The shell passes a new
+   * composer only when the set of windows changes, not for each keystroke,
+   * so what was typed, and where the window sits, arrive here.
+   */
+  private _handleStoreChange = () => {
+    const next = this.composeStore.getComposer(this.instance.id);
+    if (next && next !== this.instance) this.instance = next;
+  };
 
   private _handleWindowDragOver = () => {
     // If window receives dragover, it means the drag is outside the composer

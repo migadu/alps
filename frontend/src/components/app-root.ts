@@ -424,12 +424,35 @@ export class AppRoot extends LitElement {
     return this.composerModule;
   }
 
+  /**
+   * Whether the windows this shell draws, or where it puts them, changed.
+   *
+   * Every keystroke in a composer is a store change, and reassigning the list
+   * for each one re-rendered the whole shell while the user typed. A window
+   * follows its own composer through the store (see the floating composer's
+   * `_handleStoreChange`), so the shell needs only what decides the windows:
+   * which there are, which are minimized and sending, and what is unsaved.
+   */
+  private _hasStructuralComposeChange(prev: ComposerInstance[], next: ComposerInstance[]): boolean {
+    if (prev.length !== next.length) return true;
+    return next.some((b, i) => {
+      const a = prev[i];
+      return a.id !== b.id ||
+        !!a.minimized !== !!b.minimized ||
+        !!a.isSending !== !!b.isSending ||
+        !!a.dirty !== !!b.dirty ||
+        (!!b.minimized && (a.subject ?? '') !== (b.subject ?? ''));
+    });
+  }
+
   private _handleComposeChange = () => {
     const composers = this.composeStore.getState().activeComposers;
     if (composers.length > 0) {
       void this.ensureComposerLoaded();
     }
-    this.activeComposers = composers;
+    if (this._hasStructuralComposeChange(this.activeComposers, composers)) {
+      this.activeComposers = composers;
+    }
   };
 
   private _handleSettingsChange = () => {
@@ -519,7 +542,7 @@ export class AppRoot extends LitElement {
 
         return html`
           <alps-floating-composer
-            .instance=${composer}
+            .instance=${this.composeStore.getComposer(composer.id) ?? composer}
             .index=${index}
             .totalOpen=${totalOpen}
             .totalMinimized=${totalMinimized}
