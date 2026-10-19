@@ -227,7 +227,11 @@ export class ComposeStore extends EventTarget {
           const wasSending = draft.isSending;
           return {
             ...draft,
-            attachments: draft.attachments?.filter(att => !att.uploading && att.uuid) || [],
+            // An upload the tab went away in never finished. One already in the
+            // stored draft (a part path, as each save answers) is kept: dropped
+            // here, the next save, which carries only what the window lists,
+            // stored the draft without it.
+            attachments: draft.attachments?.filter(att => !att.uploading && (att.uuid || att.partPath)) || [],
             isSending: false,
             // A save or a deferred close the tab or the session went away in.
             // Kept, it would refuse every later save, or hide the window.

@@ -57,6 +57,17 @@ describe('whose drafts', () => {
     expect(draft).toMatchObject({ subject: 'Hi', isSending: false, minimized: false, attachments: [{ uuid: 'u1' }] });
   });
 
+  it('restores the attachments a saved draft already holds', () => {
+    // A save answers with the draft's parts by path. Dropped on the way
+    // back in, the next save stored the draft without them.
+    signIn('ada');
+    localStorage.setItem('alps_compose_drafts_ada', JSON.stringify([
+      { id: 'c1', subject: 'Hi', draftUid: '7', attachments: [{ name: 'ledger.txt', partPath: '2' }, { name: 'logo.png', partPath: '3', inline: true }] },
+    ]));
+    const [draft] = composers(makeStore());
+    expect(draft.attachments).toEqual([{ name: 'ledger.txt', partPath: '2' }, { name: 'logo.png', partPath: '3', inline: true }]);
+  });
+
   it('deletes drafts stored under the old shared key rather than adopting them', () => {
     localStorage.setItem('alps_compose_drafts', JSON.stringify([{ id: 'x', subject: 'someone else\'s' }]));
     signIn('ada');
