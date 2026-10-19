@@ -81,6 +81,53 @@ function rewriteSingleUrl(value: string, options: SanitizeOptions): string | nul
 }
 
 /**
+ * The candidates of a `srcset`, read as a browser reads them (the WHATWG
+ * "parse a srcset attribute" steps).
+ *
+ * A candidate's URL runs to the first whitespace, and a comma inside it is
+ * part of it: image CDNs put commas in their paths (`/w_1456,c_limit/pic.jpg`)
+ * and a `data:` URL has one before its payload. Only a comma that ends the URL
+ * token, or one after the descriptors, separates candidates. Splitting the
+ * whole value on commas cut such a URL in two, and the browser was handed a
+ * broken image and a relative URL that was never in the message.
+ */
+function parseSrcset(value: string): Array<{ url: string; descriptor: string }> {
+  const candidates: Array<{ url: string; descriptor: string }> = [];
+  const isSpace = (ch: string) => ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' || ch === '\f';
+  let i = 0;
+  while (i < value.length) {
+    while (i < value.length && (isSpace(value[i]) || value[i] === ',')) i++;
+    if (i >= value.length) break;
+
+    const start = i;
+    while (i < value.length && !isSpace(value[i])) i++;
+    let url = value.slice(start, i);
+
+    let descriptor = '';
+    if (url.endsWith(',')) {
+      // A URL that ends in commas has no descriptors: the commas end it.
+      url = url.replace(/,+$/, '');
+    } else {
+      // Descriptors run to the next comma outside parentheses.
+      const from = i;
+      let inParens = false;
+      while (i < value.length) {
+        const ch = value[i];
+        if (ch === '(') inParens = true;
+        else if (ch === ')') inParens = false;
+        else if (ch === ',' && !inParens) break;
+        i++;
+      }
+      const raw = value.slice(from, i).trim();
+      if (raw) descriptor = ` ${raw}`;
+      i++;
+    }
+    if (url) candidates.push({ url, descriptor });
+  }
+  return candidates;
+}
+
+/**
  * The same for a `srcset`, which is a COMMA-SEPARATED list of
  * `<url> <descriptor>` pairs, so it cannot go through the single-URL path
  * without collapsing every candidate but one.
@@ -89,16 +136,12 @@ function rewriteSingleUrl(value: string, options: SanitizeOptions): string | nul
  * candidate the browser picks even when every URL is fine.
  */
 function rewriteSrcset(value: string, options: SanitizeOptions): string | null {
-  const candidates = value.split(',').map((c) => c.trim()).filter(Boolean);
+  const candidates = parseSrcset(value);
   if (candidates.length === 0) return null;
 
   let sawRemote = false;
-  const rewritten = candidates.map((candidate) => {
-    // The URL runs to the first whitespace; anything after it is the descriptor.
-    const split = candidate.search(/\s/);
-    const url = split === -1 ? candidate : candidate.slice(0, split);
-    const descriptor = split === -1 ? '' : candidate.slice(split);
-    if (!isRemoteUrl(url)) return candidate;
+  const rewritten = candidates.map(({ url, descriptor }) => {
+    if (!isRemoteUrl(url)) return `${url}${descriptor}`;
     sawRemote = true;
     return options.allowRemoteResources ? `${proxied(url)}${descriptor}` : BLOCKED_PIXEL;
   });

@@ -150,6 +150,23 @@ describe('addresses outside img[src]', () => {
     expect(srcset).toBe('/local.png 1x, /proxy?url=https%3A%2F%2Fcdn.test%2Fb.png 2x, /proxy?url=%2F%2Fcdn.test%2Fc.png 640w');
   });
 
+  it('keeps a comma inside a candidate URL, as an image CDN or a data: URL writes one', () => {
+    const srcset = attr(allowed(
+      '<img srcset="https://cdn.test/fetch/w_1456,c_limit,f_auto/pic.jpg 1456w, ' +
+      'https://cdn.test/fetch/w_800,c_limit/pic.jpg 800w, data:image/png;base64,iVBORw0KGgo= 1x">',
+    ), 'img', 'srcset');
+    expect(srcset).toBe([
+      `/proxy?url=${encodeURIComponent('https://cdn.test/fetch/w_1456,c_limit,f_auto/pic.jpg')} 1456w`,
+      `/proxy?url=${encodeURIComponent('https://cdn.test/fetch/w_800,c_limit/pic.jpg')} 800w`,
+      'data:image/png;base64,iVBORw0KGgo= 1x',
+    ].join(', '));
+  });
+
+  it('ends a candidate at a comma that ends its URL', () => {
+    const srcset = attr(allowed('<img srcset="https://cdn.test/a.png, https://cdn.test/b.png 2x">'), 'img', 'srcset');
+    expect(srcset).toBe(`/proxy?url=${encodeURIComponent('https://cdn.test/a.png')}, /proxy?url=${encodeURIComponent('https://cdn.test/b.png')} 2x`);
+  });
+
   it('rewrites a picture source, a video poster and a media source', () => {
     const html =
       '<picture><source srcset="https://cdn.test/a.webp"><img src="https://cdn.test/a.png"></picture>' +
