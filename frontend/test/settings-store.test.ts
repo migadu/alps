@@ -580,6 +580,115 @@ describe('saving', () => {
   });
 });
 
+describe('a change the server has not taken', () => {
+  const UNSAVED = `alps_unsaved_settings_${USER}`;
+  const stored = () => JSON.parse(localStorage.getItem(UNSAVED) ?? 'null');
+
+  /** Signs in to a record holding `signature`, with saves answered by `put`. */
+  async function signIn(signature: string, put: () => Response | Promise<Response>) {
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', signature } }),
+      'PUT /settings': put,
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    return { store, calls };
+  }
+
+  const puts = (calls: { key: string; body?: any }[]) => calls.filter((c) => c.key === 'PUT /settings').map((c) => c.body);
+
+  it('is still set after a reload, and is sent then', async () => {
+    const before = await signIn('server', () => json(503));
+    await before.store.updateSettings({ signature: 'typed here' });
+    expect(stored()).toEqual({ signature: { value: 'typed here', base: 'server' } });
+
+    // The reload: the record still holds what the change was made from.
+    const after = await signIn('server', () => json(200, {}));
+    await vi.waitFor(() => expect(puts(after.calls)).toEqual([{ signature: 'typed here' }]));
+    expect(after.store.getState().signature).toBe('typed here');
+    await vi.waitFor(() => expect(stored()).toBeNull());
+  });
+
+  it('gives way to a value another browser has saved for it since', async () => {
+    const before = await signIn('server', () => json(503));
+    await before.store.updateSettings({ signature: 'typed here' });
+
+    const after = await signIn('from the phone', () => json(200, {}));
+    await Promise.resolve();
+    expect(after.store.getState().signature).toBe('from the phone');
+    expect(puts(after.calls)).toEqual([]);
+    expect(stored()).toBeNull();
+  });
+
+  it('stands when it was made before the record could be read', async () => {
+    // Nothing is known of what it was changed from, so nothing can say it has
+    // been overtaken.
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(500),
+    });
+    const before = new SettingsStore();
+    await vi.waitFor(() => expect((before as any).settingsReadFailed).toBe(true));
+    await before.updateSettings({ signature: 'typed here' });
+    expect(stored()).toEqual({ signature: { value: 'typed here' } });
+
+    const after = await signIn('from the phone', () => json(200, {}));
+    await vi.waitFor(() => expect(puts(after.calls)).toEqual([{ signature: 'typed here' }]));
+    expect(after.store.getState().signature).toBe('typed here');
+  });
+
+  it('is forgotten once it is saved, so the next load takes the record as it is', async () => {
+    const before = await signIn('server', () => json(200, {}));
+    await before.store.updateSettings({ signature: 'typed here' });
+    expect(stored()).toBeNull();
+
+    const after = await signIn('from the phone', () => json(200, {}));
+    await Promise.resolve();
+    expect(after.store.getState().signature).toBe('from the phone');
+    expect(puts(after.calls)).toEqual([]);
+  });
+
+  it('stays unsaved while a save of an older value is answered', async () => {
+    const releases: ((r: Response) => void)[] = [];
+    const { store } = await signIn('server', () => new Promise<Response>((resolve) => releases.push(resolve)));
+
+    void store.updateSettings({ messagesPerPage: 10 });
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    void store.updateSettings({ messagesPerPage: 30 });
+    releases[0](json(200, {}));
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+    // The save that landed carried 10, so 30 is still this browser's to send.
+    expect(stored()).toEqual({ messagesPerPage: { value: 30, base: 10 } });
+
+    releases[1](json(200, {}));
+    await vi.waitFor(() => expect(stored()).toBeNull());
+  });
+
+  it('is not carried into the next sign-in', async () => {
+    const before = await signIn('server', () => json(503));
+    await before.store.updateSettings({ signature: 'typed here' });
+
+    clearSessionSettings();
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    expect(stored()).toBeNull();
+
+    const after = await signIn('server', () => json(200, {}));
+    await Promise.resolve();
+    expect(after.store.getState().signature).toBe('server');
+    expect(puts(after.calls)).toEqual([]);
+  });
+
+  it('is not one when the setting is set to the value it already has', async () => {
+    const { store, calls } = await signIn('server', () => json(503));
+    await store.updateSettings({ signature: 'server' });
+    expect(stored()).toBeNull();
+    expect(puts(calls)).toEqual([]);
+  });
+});
+
 describe('local records', () => {
   it('starts from the browser-wide preferences before anyone signs in', () => {
     serve({});
