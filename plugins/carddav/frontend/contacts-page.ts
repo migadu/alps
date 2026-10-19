@@ -78,7 +78,7 @@ export class ContactsPage extends LitElement {
   private loadedQuery = '';
   /** The whole book as last read, beside a search or without one; see allContacts. */
   private wholeBook: any[] = [];
-  private mergedBook: { contacts: any[]; wholeBook: any[]; merged: any[] } | null = null;
+  private mergedBook: { contacts: any[]; wholeBook: any[]; open: any; merged: any[] } | null = null;
 
   static styles = [
     MailboxPage.styles,
@@ -441,21 +441,26 @@ export class ContactsPage extends LitElement {
    * was built from it: a category carried only by cards the search did not
    * match left the sidebar, so it could not be clicked, and every count was
    * counted over the matches. Under one, this is the whole book read beside
-   * the search, with each card the list also holds taken from the list, which
-   * carries the page's own edits since that read.
+   * the search, with each card the list also holds taken from the list, and
+   * the open card taken as it is open, since those carry the page's own edits
+   * since that read.
    */
   get allContacts(): any[] {
     if (!this.loadedQuery) return this.contacts;
+    const open = this.selectedContact;
     const cached = this.mergedBook;
-    if (cached && cached.contacts === this.contacts && cached.wholeBook === this.wholeBook) return cached.merged;
+    if (cached && cached.contacts === this.contacts && cached.wholeBook === this.wholeBook && cached.open === open) {
+      return cached.merged;
+    }
     const listed = new Map(this.contacts.filter(c => c.path).map(c => [c.path, c]));
+    if (open?.path && !listed.has(open.path)) listed.set(open.path, open);
     const inBook = new Set(this.wholeBook.map(c => c.path));
     const merged = [
       // A card created during the search is in the list and not yet in the book.
       ...this.contacts.filter(c => !c.path || !inBook.has(c.path)),
       ...this.wholeBook.map(c => listed.get(c.path) ?? c),
     ];
-    this.mergedBook = { contacts: this.contacts, wholeBook: this.wholeBook, merged };
+    this.mergedBook = { contacts: this.contacts, wholeBook: this.wholeBook, open, merged };
     return merged;
   }
 
@@ -589,10 +594,24 @@ export class ContactsPage extends LitElement {
       : [this.selectedContact?.path].filter(Boolean) as string[];
   }
 
+  /**
+   * The card a gesture acts on, wherever the page holds it.
+   *
+   * A search narrows `contacts` to the server's matches but keeps the open
+   * card and the ticked ones, which need not be among them. Star and category
+   * gestures looked only in `contacts`, so on such a card they did nothing:
+   * no write, and no word that nothing was written.
+   */
+  private findContact(path: string): any {
+    return this.contacts.find((c: any) => c.path === path)
+      ?? this.allContacts.find((c: any) => c.path === path)
+      ?? (this.selectedContact?.path === path ? this.selectedContact : undefined);
+  }
+
   private get allSelectedStarred() {
     if (this.selectedContacts.size === 0) return false;
     for (const path of this.selectedContacts) {
-      const contact = this.contacts.find((c: any) => c.path === path);
+      const contact = this.findContact(path);
       if (!contact || !contact.categories?.includes(CATEGORY_FAVORITES)) {
         return false;
       }
@@ -947,7 +966,7 @@ export class ContactsPage extends LitElement {
 
     const isStarred = pathsToUpdate.length > 1 
       ? this.allSelectedStarred 
-      : (this.contacts.find((c: any) => c.path === pathsToUpdate[0])?.categories?.includes(CATEGORY_FAVORITES) || false);
+      : (this.findContact(pathsToUpdate[0])?.categories?.includes(CATEGORY_FAVORITES) || false);
 
     this.saving = true;
     // Taken before the optimistic paint, so a refusal of every card has
@@ -957,10 +976,9 @@ export class ContactsPage extends LitElement {
     const previousSelected = this.selectedContact ? { ...this.selectedContact } : null;
     try {
       const contactsToModify = pathsToUpdate.map((path) => {
-        const contactIndex = this.contacts.findIndex((c: any) => c.path === path);
-        if (contactIndex === -1) return;
+        const contact = this.findContact(path);
+        if (!contact) return;
 
-        const contact = this.contacts[contactIndex];
         let categories = contact.categories ? [...contact.categories] : [];
         if (isStarred) {
           categories = categories.filter((c: string) => c !== CATEGORY_FAVORITES);
@@ -969,7 +987,8 @@ export class ContactsPage extends LitElement {
         }
 
         // Optimistic UI update
-        this.contacts[contactIndex] = { ...contact, categories };
+        const contactIndex = this.contacts.findIndex((c: any) => c.path === path);
+        if (contactIndex !== -1) this.contacts[contactIndex] = { ...contact, categories };
         if (this.selectedContact?.path === path) {
           this.selectedContact = { ...this.selectedContact, categories };
         }
@@ -1080,10 +1099,9 @@ export class ContactsPage extends LitElement {
     this.saving = true;
     try {
       const contactsToModify = pathsToUpdate.map((path) => {
-        const contactIndex = this.contacts.findIndex((c: any) => c.path === path);
-        if (contactIndex === -1) return;
+        const contact = this.findContact(path);
+        if (!contact) return;
 
-        const contact = this.contacts[contactIndex];
         let categories = contact.categories ? [...contact.categories] : [];
 
         if (cat === '') {
@@ -1095,7 +1113,8 @@ export class ContactsPage extends LitElement {
         }
 
         // Optimistic UI update
-        this.contacts[contactIndex] = { ...contact, categories };
+        const contactIndex = this.contacts.findIndex((c: any) => c.path === path);
+        if (contactIndex !== -1) this.contacts[contactIndex] = { ...contact, categories };
         if (this.selectedContact?.path === path) {
           this.selectedContact = { ...this.selectedContact, categories };
         }

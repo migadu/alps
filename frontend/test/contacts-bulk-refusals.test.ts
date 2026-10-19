@@ -113,6 +113,68 @@ describe('deleting contacts', () => {
   });
 });
 
+describe('a search that narrowed the list', () => {
+  // The search kept the open card and the ticked ones, which need not be among
+  // its matches. The gestures looked only in the matches, so on such a card
+  // they wrote nothing and said nothing.
+  const ada = card('ada', ['Friends']);
+  const bob = card('bob');
+
+  /** Searched for "bob": the list holds Bob, the whole book both. */
+  function searched(selected: string[] = [], open: any = null): Page {
+    const el = page([{ ...bob }], selected, open);
+    el.filterQuery = 'bob';
+    el.loadedQuery = 'bob';
+    el.wholeBook = [{ ...ada }, { ...bob }];
+    vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
+    return el;
+  }
+
+  it('files the open card into a category', async () => {
+    const el = searched([], { ...ada });
+    const write = vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 1, failed: 0 });
+
+    await el.handleUpdateCategories(new CustomEvent('update-categories', { detail: { category: 'Work' } }));
+
+    expect(write).toHaveBeenCalledWith([expect.objectContaining({ path: 'ada', categories: ['Friends', 'Work'] })]);
+    expect(el.selectedContact.categories).toEqual(['Friends', 'Work']);
+  });
+
+  it('stars the open card, and the sidebar counts it', async () => {
+    const el = searched([], { ...ada });
+    const write = vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 1, failed: 0 });
+
+    await el.handleToggleStarEvent();
+
+    expect(write).toHaveBeenCalledWith([expect.objectContaining({ path: 'ada', categories: ['Friends', CATEGORY_FAVORITES] })]);
+    expect(el.selectedContact.categories).toEqual(['Friends', CATEGORY_FAVORITES]);
+    expect(el.allContacts.find((c: any) => c.path === 'ada').categories).toContain(CATEGORY_FAVORITES);
+  });
+
+  it('says so when the open card refused the star', async () => {
+    const el = searched([], { ...ada });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(contactsService, 'bulkUpdateCategories')
+      .mockImplementation(async cards => ({ total: cards.length, done: 0, failed: cards.length }));
+    const toasts: CustomEvent[] = [];
+    const onToast = (e: Event) => toasts.push(e as CustomEvent);
+    window.addEventListener('show-toast', onToast);
+
+    await el.handleToggleStarEvent();
+    window.removeEventListener('show-toast', onToast);
+
+    expect(toasts).toHaveLength(1);
+    expect(el.selectedContact.categories).toEqual(['Friends']);
+  });
+
+  it('knows whether ticked cards outside the matches are starred', () => {
+    const el = searched(['ada', 'bob']);
+    el.wholeBook = [card('ada', [CATEGORY_FAVORITES]), card('bob', [CATEGORY_FAVORITES])];
+    el.contacts = [card('bob', [CATEGORY_FAVORITES])];
+    expect(el.allSelectedStarred).toBe(true);
+  });
+});
+
 describe('the bulk outcome', () => {
   it('counts what was written as well as what was refused', async () => {
     vi.spyOn(contactsService, 'deleteContact')
