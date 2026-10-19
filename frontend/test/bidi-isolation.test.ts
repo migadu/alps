@@ -15,6 +15,7 @@ import '../src/components/message-list';
 import '../src/components/alps-thread-card';
 import '../src/pages/print-page';
 import { cleanup, mount, shadow, shadowAll, text, update } from './helpers/dom';
+import { generateQuote } from '../src/utils/email-quote';
 
 const OVERRIDE = 'Pay‮ments';
 
@@ -140,3 +141,50 @@ describe('the print page', () => {
     expect(line.querySelector('bdi')?.getAttribute('dir')).toBe('ltr');
   });
 });
+
+describe('the quote header', () => {
+  const message = (from: Record<string, string>, to: Record<string, string>[] = []) => ({
+    Envelope: { Subject: 'Engines', Date: '2024-01-05T14:07:00Z', From: [from], To: to, Cc: [] },
+  });
+  const bodyText = (html: string) => new DOMParser().parseFromString(html, 'text/html').body.textContent ?? '';
+
+  it('keeps right-to-left letters in a quoted name', () => {
+    const name = 'שלום مرحبا';
+    const q = generateQuote('reply', message({ Name: name, Mailbox: 'ada', Host: 'remote.test' }), 'body', null, false);
+    expect(q.quotedText).toContain(`${name} wrote:`);
+    expect(q.quotedHtml).toContain(`${name} wrote:`);
+  });
+
+  it.each(['reply', 'replyAll', 'forward'] as const)('drops direction controls from the names in a %s header, not from its recipients', (type) => {
+    const name = 'Pay\u202e\u2069ments';
+    const original = message({ Name: name, Mailbox: 'ada', Host: 'remote.test' }, [{ Name: 'Ali\u202ece', Mailbox: 'alice', Host: 'example.test' }]);
+    for (const html of [null, '<p>original body</p>']) {
+      const q = generateQuote(type, original, 'original body', html, html !== null);
+      expect(q.quotedText).not.toMatch(/\p{Bidi_Control}/u);
+      expect(q.quotedHtml).not.toMatch(/\p{Bidi_Control}/u);
+      expect(q.quotedText).toContain('Payments');
+      if (type === 'forward') expect(q.quotedText).toContain('Alice <alice@example.test>');
+      else expect(q.to).toContain(`${name} <ada@remote.test>`);
+    }
+    expect(original.Envelope.From[0].Name).toBe(name);
+  });
+
+  it.each(['reply', 'replyAll', 'forward'] as const)('drops direction controls from the addresses in a %s header, not from where it goes', (type) => {
+    const original = message({ Name: 'Ada', Mailbox: 'ada\u202e', Host: 'remote.test' },
+      [{ Name: 'Bob', Mailbox: 'bob\u2067', Host: 'remote.test' }, { Name: 'Carol', Mailbox: 'carol', Host: 'remote.test' }]);
+    for (const html of [null, '<p>original body</p>']) {
+      const q = generateQuote(type, original, 'original body', html, html !== null);
+      expect(q.quotedText).not.toMatch(/\p{Bidi_Control}/u);
+      expect(q.quotedHtml).not.toMatch(/\p{Bidi_Control}/u);
+      if (type === 'forward') {
+        expect(q.quotedText).toContain('From: Ada <ada@remote.test>');
+        expect(q.quotedText).toContain('To: Bob <bob@remote.test>, Carol <carol@remote.test>');
+        expect(bodyText(q.quotedHtml)).toContain('To: Bob <bob@remote.test>, Carol <carol@remote.test>');
+      } else {
+        expect(q.to).toContain('Ada <ada\u202e@remote.test>');
+        if (type === 'replyAll') expect(q.to).toContain('Bob <bob\u2067@remote.test>');
+      }
+    }
+  });
+});
+

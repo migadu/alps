@@ -38,3 +38,12 @@ export function isolatedMailbox(mailbox: { name?: string | null; email: string }
 export function isolatedMailboxes(mailboxes: { name?: string | null; email: string }[]) {
   return mailboxes.map((mailbox, i) => html`${i ? ', ' : ''}${isolatedMailbox(mailbox)}`);
 }
+
+/**
+ * The text with its explicit direction controls removed, for a name or an
+ * address that goes into plain text, where no isolate can contain them.
+ * Right-to-left letters stay as they are.
+ */
+export function stripBidiControls(value: string): string {
+  return value.replace(/\p{Bidi_Control}/gu, '');
+}

@@ -1,6 +1,7 @@
 import { formatFullDate } from './ui';
 import { escapeHtml, sanitizeQuotedHTML } from './html-sanitizer';
 import { createDOMDirectionResolver } from './content-direction';
+import { stripBidiControls } from './bidi';
 
 /**
  * Marks the element that holds a quoted original. The composer keeps what is
@@ -79,14 +80,19 @@ export function generateQuote(
   }
 
   const dateStr = message?.Envelope?.Date ? formatFullDate(message.Envelope.Date, dateFormat, hourFormat) : '';
+  // The names and addresses in the quote header are plain text in the
+  // text/plain part, where nothing can isolate them, so their direction
+  // controls go: an override in a sender's name reordered the rest of the
+  // header in the message the user sends. Only the header is cleaned; the
+  // reply is addressed as the original was.
   const sender = message?.Envelope?.From?.[0];
-  const senderAddress = sender?.Mailbox && sender?.Host ? `${sender.Mailbox}@${sender.Host}` : '';
-  const senderName = sender?.Name || senderAddress || 'Unknown Sender';
+  const senderAddress = stripBidiControls(sender?.Mailbox && sender?.Host ? `${sender.Mailbox}@${sender.Host}` : '');
+  const senderName = stripBidiControls(sender?.Name || senderAddress || 'Unknown Sender');
+  const quotedTo = formatAddrs(message?.Envelope?.To).map(stripBidiControls).join(', ');
   
   let quoteHeader = `On ${dateStr}, ${senderName} wrote:`;
   if (type === 'forward') {
-    const toStrs = formatAddrs(message?.Envelope?.To).join(', ');
-    quoteHeader = `---------- Forwarded message ---------\nFrom: ${senderName} <${senderAddress}>\nDate: ${dateStr}\nSubject: ${originalSubject}\nTo: ${toStrs}\n`;
+    quoteHeader = `---------- Forwarded message ---------\nFrom: ${senderName} <${senderAddress}>\nDate: ${dateStr}\nSubject: ${originalSubject}\nTo: ${quotedTo}\n`;
   }
 
   const quotedText = `\n\n${quoteHeader}\n` + textBody.split('\n').map(line => `> ${line}`).join('\n');
@@ -130,7 +136,7 @@ export function generateQuote(
   let quotedHtml = '';
   if (safeHtml) {
     if (type === 'forward') {
-      const toStrs = escapeHtml(formatAddrs(message?.Envelope?.To).join(', '));
+      const toStrs = escapeHtml(quotedTo);
       quotedHtml = `<br><br><div class="gmail_quote" ${QUOTE_ATTRIBUTE} dir="auto"><div dir="ltr" class="gmail_attr">---------- Forwarded message ---------<br>From: ${eSenderName} &lt;${eSenderAddress}&gt;<br>Date: ${eDate}<br>Subject: ${eSubject}<br>To: ${toStrs}<br></div><br>${safeHtml}</div>`;
     } else {
       quotedHtml = `<br><br><div class="gmail_quote" ${QUOTE_ATTRIBUTE} dir="auto"><div dir="ltr" class="gmail_attr">On ${eDate}, ${eSenderName} wrote:<br></div><blockquote class="gmail_quote" dir="${direction}" style="${quoteStyle}">${safeHtml}</blockquote></div>`;
