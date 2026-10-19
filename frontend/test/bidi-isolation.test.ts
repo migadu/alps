@@ -13,7 +13,8 @@ import '../src/components/alps-recipient-pill';
 import '../src/components/alps-address-input';
 import '../src/components/message-list';
 import '../src/components/alps-thread-card';
-import { cleanup, mount, shadow, shadowAll } from './helpers/dom';
+import '../src/pages/print-page';
+import { cleanup, mount, shadow, shadowAll, text, update } from './helpers/dom';
 
 const OVERRIDE = 'Pay‮ments';
 
@@ -94,5 +95,48 @@ describe('a thread card', () => {
     const heading = shadow(el, '.thread-card-sender-name bdi');
     expect(heading.getAttribute('dir')).toBe('ltr');
     expect(heading.textContent).toBe('שלום@brand.test');
+  });
+});
+
+describe('the print page', () => {
+  const i18nStore = Object.assign(new EventTarget(), { t: (key: string) => key });
+  const settingsStore = Object.assign(new EventTarget(), { getState: () => ({ showRemoteContent: 'never' }) });
+  const print = async (from: unknown) => {
+    const el = await mount<HTMLElement & Record<string, any>>('print-page', { settingsStore, i18nStore });
+    return update(el, {
+      loading: false, error: '', content: 'body', mimeType: 'text/plain',
+      message: {
+        UID: '7',
+        Envelope: {
+          Subject: 'Hello', Date: '2026-09-01T10:00:00Z', From: [from],
+          To: [{ Name: OVERRIDE, Mailbox: 'ada', Host: 'example.test' }, { Name: '', Mailbox: 'bob', Host: 'example.test' }],
+          Cc: [{ Name: 'Carol', Mailbox: 'carol', Host: 'example.test' }],
+        },
+      },
+    });
+  };
+
+  it('prints the recipients with their angle brackets, each name and address isolated', async () => {
+    const el = await print({ Name: 'Ada', Mailbox: 'ada', Host: 'example.test' });
+    expect(text(el, '.print-to-row')).toContain(`${OVERRIDE} <ada@example.test>, bob@example.test`);
+    expect(text(el, '.print-to-row')).not.toContain('&lt;');
+    expect(text(el, '.print-cc')).toContain('Carol <carol@example.test>');
+    expect([...shadow(el, '.print-to-row').querySelectorAll('bdi')].map((node) => [node.textContent, node.getAttribute('dir')]))
+      .toEqual([[OVERRIDE, null], ['ada@example.test', 'ltr'], ['bob@example.test', 'ltr'], ['Carol', null], ['carol@example.test', 'ltr']]);
+  });
+
+  it("isolates the sender's name and address", async () => {
+    const el = await print({ Name: OVERRIDE, Mailbox: 'ada', Host: 'example.test' });
+    const line = shadow(el, '.print-meta-row > div');
+    expect([...line.querySelectorAll('bdi')].map((node) => [node.textContent, node.getAttribute('dir')]))
+      .toEqual([[OVERRIDE, null], ['ada@example.test', 'ltr']]);
+    expect(line.textContent?.replace(/\s+/g, ' ').trim()).toBe(`${OVERRIDE} <ada@example.test>`);
+  });
+
+  it('prints a sender with no name once, left to right', async () => {
+    const el = await print({ Name: '', Mailbox: 'ada', Host: 'example.test' });
+    const line = shadow(el, '.print-meta-row > div');
+    expect(line.textContent?.replace(/\s+/g, ' ').trim()).toBe('ada@example.test');
+    expect(line.querySelector('bdi')?.getAttribute('dir')).toBe('ltr');
   });
 });

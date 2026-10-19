@@ -10,6 +10,7 @@ import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { formatFullDate, renderIcon } from '../utils/ui';
 import { sanitizeMessageHTML } from '../utils/html-sanitizer';
+import { isolatedCaption, isolatedEmail, isolatedMailboxes } from '../utils/bidi';
 import '../components/alps-banner';
 import '../components/alps-button';
 
@@ -360,19 +361,28 @@ export class PrintPage extends LitElement {
     const subject = msg.Envelope?.Subject || (this.i18nStore?.t('messageList.noSubject'));
     const sender = msg.Envelope?.From?.[0] || {};
     const senderAddress = sender.Mailbox && sender.Host ? `${sender.Mailbox}@${sender.Host}` : '';
-    const senderName = sender.Name || senderAddress || (this.i18nStore?.t('messageList.unknownSender'));
+    // The address is printed after the name only when there is one: without
+    // a name the caption IS the address, and was printed twice.
+    const senderCaption = sender.Name || senderAddress
+      ? isolatedCaption(sender.Name, senderAddress)
+      : this.i18nStore?.t('messageList.unknownSender');
 
     const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
     const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
     const dateStr = msg.Envelope?.Date ? formatFullDate(msg.Envelope.Date, dateFormat, hourFormat) : '';
 
+    // Each name and each address in an isolate of its own (see utils/bidi),
+    // with the angle brackets written as template text: these used to be
+    // `&lt;` inside one interpolated string, which a text binding escapes,
+    // so the page printed "Name &lt;a@b&gt;".
+    const mailboxes = (list: any[]) => isolatedMailboxes(list.map((t: any) => ({ name: t.Name, email: `${t.Mailbox}@${t.Host}` })));
     const toList = msg.Envelope?.To && msg.Envelope.To.length > 0
-      ? msg.Envelope.To.map((t: any) => t.Name ? `${t.Name} &lt;${t.Mailbox}@${t.Host}&gt;` : `${t.Mailbox}@${t.Host}`).join(', ')
+      ? mailboxes(msg.Envelope.To)
       : (this.i18nStore?.t('messageReader.undisclosed'));
 
     let ccHtml = html``;
     if (msg.Envelope?.Cc && msg.Envelope.Cc.length > 0) {
-      const ccList = msg.Envelope.Cc.map((t: any) => t.Name ? `${t.Name} &lt;${t.Mailbox}@${t.Host}&gt;` : `${t.Mailbox}@${t.Host}`).join(', ');
+      const ccList = mailboxes(msg.Envelope.Cc);
       ccHtml = html`<div class="print-cc"><strong>${this.i18nStore?.t('messageReader.cc')}</strong> ${ccList}</div>`;
     }
 
@@ -404,7 +414,7 @@ export class PrintPage extends LitElement {
           <h2><bdi>${subject}</bdi></h2>
           <div class="print-divider"></div>
           <div class="print-meta-row">
-            <div><strong>${senderName}</strong> ${senderAddress ? `<${senderAddress}>` : ''}</div>
+            <div><strong>${senderCaption}</strong> ${sender.Name && senderAddress ? html`&lt;${isolatedEmail(senderAddress)}&gt;` : ''}</div>
             <div class="print-date">${dateStr}</div>
           </div>
           <div class="print-to-row">

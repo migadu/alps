@@ -24,3 +24,17 @@ export function isolatedEmail(email: string) {
 export function isolatedCaption(name: string | null | undefined, email: string) {
   return name ? html`<bdi>${name}</bdi>` : isolatedEmail(email);
 }
+
+/**
+ * `Name <address>` as written, the name and the address each isolated, or
+ * the address alone. The angle brackets are template text: inside a binding
+ * an entity is escaped, and printed as `&lt;` literally.
+ */
+export function isolatedMailbox(mailbox: { name?: string | null; email: string }) {
+  return mailbox.name ? html`<bdi>${mailbox.name}</bdi> &lt;${isolatedEmail(mailbox.email)}&gt;` : isolatedEmail(mailbox.email);
+}
+
+/** {@link isolatedMailbox} for each, comma separated. */
+export function isolatedMailboxes(mailboxes: { name?: string | null; email: string }[]) {
+  return mailboxes.map((mailbox, i) => html`${i ? ', ' : ''}${isolatedMailbox(mailbox)}`);
+}

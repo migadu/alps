@@ -1,10 +1,18 @@
 import PostalMime from 'postal-mime';
+import type { Address } from 'postal-mime';
+
+/** One mailbox of an address header, as written. */
+export interface HeaderMailbox {
+  name: string;
+  email: string;
+}
 
 export interface ParsedHeaders {
   messageId: string;
   date: string;
-  from: string;
-  to: string;
+  /** One entry per mailbox, so each name and address can be shown isolated. */
+  from: HeaderMailbox[];
+  to: HeaderMailbox[];
   subject: string;
   spf: string;
   spfDetail: string;
@@ -15,6 +23,11 @@ export interface ParsedHeaders {
   fromAddress: string;
   bimiSelector: string;
   hasBimiPotential: boolean;
+}
+
+/** The mailboxes of an address list, a group's members in its place. */
+function mailboxesOf(addresses: Address[] | undefined): HeaderMailbox[] {
+  return (addresses ?? []).flatMap((a) => a.group ?? [a]).map((m) => ({ name: m.name, email: m.address }));
 }
 
 export async function parseEmailHeaders(rawEmail: string): Promise<ParsedHeaders> {
@@ -35,9 +48,9 @@ export async function parseEmailHeaders(rawEmail: string): Promise<ParsedHeaders
   const result: ParsedHeaders = {
     messageId: email.messageId || '',
     date: email.date || '',
-    from: email.from ? (email.from.name ? `${email.from.name} <${email.from.address || ''}>` : (email.from.address || '')) : '',
+    from: mailboxesOf(email.from ? [email.from] : []),
     fromAddress,
-    to: email.to ? email.to.map(t => t.name ? `${t.name} <${t.address}>` : t.address).join(', ') : '',
+    to: mailboxesOf(email.to),
     subject: email.subject || '',
     spf: 'none',
     spfDetail: '',
