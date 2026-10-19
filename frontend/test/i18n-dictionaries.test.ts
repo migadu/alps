@@ -381,3 +381,85 @@ describe('the language picker', () => {
     expect(labels).toEqual(ENDONYMS);
   });
 });
+
+/**
+ * The Cyrillic dictionary writes Cyrillic. rs carried Latin words a Serbian
+ * reader of Cyrillic would not write: "BCC" beside the composer's own "Бцц",
+ * a "Cc:" label, a "uid" in an error, an "inline" in the GPG warning.
+ *
+ * Some words do stay Latin in Cyrillic text, so the rule is not "no Latin
+ * letter". Each string is read as tokens, a run of Latin letters with the
+ * digits and punctuation that hold an address or a command together, and
+ * every token must be on the list below, which says why it stays Latin.
+ * Tokens, not whole strings: a Latin word must not pass because it shares a
+ * string with HTML. `{placeholders}` are code, not text, and are dropped first.
+ */
+const LATIN_IN_CYRILLIC = new Set([
+  // Protocols, standards and formats, spelled as their specifications spell them.
+  '2FA', 'DKIM', 'DMARC', 'GPG', 'HTML', 'PGP', 'SPF', 'URL', 'WebAuthn',
+  // The Message-ID header ("ID поруке").
+  'ID',
+  // What the user types or copies: example addresses, a URL, a command.
+  'odgovor@primer.example', 'https://example.com', 'gpg --armor --export-secret-keys',
+  // A unit symbol and the 12-hour clock's markers, which the browser prints in Latin too.
+  '64KB', 'AM/PM',
+  // A product, by its own name.
+  'YubiKey',
+  // The language picker names each language in its own words.
+  ...Object.values(ENDONYMS).filter((name) => /\p{Script=Latin}/u.test(name)),
+]);
+const LATIN_RUN = /[\p{Script=Latin}\d@._:/+-]+/gu;
+
+/** The Latin tokens of one string, a multi-word name counted as one. */
+function latinTokens(text: string): string[] {
+  let rest = text.replace(/\{[^}]*\}/g, ' ');
+  const tokens: string[] = [];
+  for (const name of LATIN_IN_CYRILLIC) {
+    if (name.includes(' ') && rest.includes(name)) {
+      tokens.push(name);
+      rest = rest.split(name).join(' ');
+    }
+  }
+  for (const [run] of rest.matchAll(LATIN_RUN)) {
+    // A sentence's full stop, or the hyphen before a Cyrillic case ending
+    // ("GPG-а"), is not part of the name.
+    const token = run.replace(/[.-]+$/, '');
+    if (/\p{Script=Latin}/u.test(token)) tokens.push(token);
+  }
+  return tokens;
+}
+
+const strayLatin = (text: string) => latinTokens(text).filter((token) => !LATIN_IN_CYRILLIC.has(token));
+
+describe('Serbian Cyrillic in its own script', () => {
+  const RS_FILES = dictionariesOf('rs').map(([file]) => file);
+
+  it('reads every rs dictionary through, so an empty scan cannot pass', () => {
+    expect(RS_FILES).toEqual(expect.arrayContaining(['core/rs', 'caldav/rs', 'carddav/rs', 'gpg/rs', 'managesieve/rs', 'password/rs']));
+    for (const [file, dict] of dictionariesOf('rs')) expect(leaves(dict).length, file).toBeGreaterThan(0);
+  });
+
+  it('catches a Latin word, even beside an allowed name or inside a Cyrillic word', () => {
+    expect(strayLatin('Увек додај мене у BCC')).toEqual(['BCC']);
+    expect(strayLatin('Недостају параметри фасцикле или uid')).toEqual(['uid']);
+    expect(strayLatin('Прилози се не могу криптовати inline PGP-ом')).toEqual(['inline']);
+    expect(strayLatin('Cc:')).toEqual(['Cc:']);
+    // "Цц" spelled with a Latin "c": it looks right, and it is a Latin letter.
+    expect(strayLatin('Цc')).toEqual(['c']);
+    expect(strayLatin('{count} помоћу GPG-а, YubiKey и odgovor@primer.example.')).toEqual([]);
+  });
+
+  it.each(RS_FILES)('%s writes every string in Cyrillic', (file) => {
+    const dict = dictionariesOf('rs').find(([f]) => f === file)![1];
+    const latin = leaves(dict)
+      .map(([key, text]) => [key, strayLatin(text as string)] as const)
+      .filter(([, stray]) => stray.length > 0)
+      .map(([key, stray]) => `${key}: ${stray.join(' ')}`);
+    expect(latin).toEqual([]);
+  });
+
+  it('allows only tokens an rs string still uses, so the list cannot go stale', () => {
+    const used = new Set(stringsOf('rs').flatMap(([, text]) => latinTokens(text)));
+    expect([...LATIN_IN_CYRILLIC].filter((token) => !used.has(token))).toEqual([]);
+  });
+});

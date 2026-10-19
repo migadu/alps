@@ -41,7 +41,7 @@ export const sr = {
       signatureDesc: 'Dodaje se na kraj poslatih poruka.',
       replyTo: 'Adresa za odgovor',
       replyToDesc: 'Opciono: navedite drugu adresu za odgovore.',
-      bccMyself: 'Uvek dodaj mene u BCC za odlaznu poštu',
+      bccMyself: 'Uvek dodaj mene u Bcc za odlaznu poštu',
     },
     reading: {
       messagesPerPage: 'Poruka po stranici',
@@ -381,7 +381,7 @@ export const sr = {
   originalMessage: {
     title: 'Originalna poruka',
     loading: 'Učitavanje originalne poruke...',
-    errorMissingParams: 'Nedostaju parametri fascikle ili uid',
+    errorMissingParams: 'Nedostaje fascikla ili ID poruke',
     errorFailedToFetch: 'Nije moguće preuzeti originalnu poruku',
     messageId: 'ID poruke',
     createdAt: 'Napravljeno',

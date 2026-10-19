@@ -41,7 +41,7 @@ export const rs = {
       signatureDesc: 'Додаје се на крај послатих порука.',
       replyTo: 'Адреса за одговор',
       replyToDesc: 'Опционо: наведите другу адресу за одговоре.',
-      bccMyself: 'Увек додај мене у BCC за одлазну пошту',
+      bccMyself: 'Увек додај мене у Бцц за одлазну пошту',
     },
     reading: {
       messagesPerPage: 'Порука по страници',
@@ -343,7 +343,7 @@ export const rs = {
     replyAll: 'Одговори свима',
     forward: 'Проследи',
     to: 'За:',
-    cc: 'Cc:',
+    cc: 'Цц:',
     date: 'Датум:',
     undisclosed: 'Скривено',
     loadingMessage: 'Учитавање поруке...',
@@ -381,7 +381,7 @@ export const rs = {
   originalMessage: {
     title: 'Оригинална порука',
     loading: 'Учитавање оригиналне поруке...',
-    errorMissingParams: 'Недостају параметри фасцикле или uid',
+    errorMissingParams: 'Недостаје фасцикла или ID поруке',
     errorFailedToFetch: 'Није могуће преузети оригиналну поруку',
     messageId: 'ID поруке',
     createdAt: 'Направљено',
