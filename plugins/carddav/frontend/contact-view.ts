@@ -384,7 +384,13 @@ export class AlpsContactView extends LitElement {
 
   private get formattedBirthday() {
     if (!this.contact?.birthday) return '';
-    const d = new Date(this.contact.birthday);
+    // A date with no time, `1990-05-15` or the vCard basic `19900515`, is that
+    // day where the reader is. `new Date` reads the dashed form as UTC
+    // midnight, which west of UTC is the evening before, so the birthday
+    // showed a day early; and it cannot read the basic form at all.
+    const raw = String(this.contact.birthday);
+    const day = /^(\d{4})-?(\d{2})-?(\d{2})$/.exec(raw);
+    const d = day ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])) : new Date(raw);
     if (isNaN(d.getTime())) return this.contact.birthday; // fallback if invalid like --10-31
     const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
     return formatFullDate(d, dateFormat, '24').split(' ')[0];
