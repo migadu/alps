@@ -688,6 +688,13 @@ function titleSlip(text: string): string | null {
 }
 
 /** Every title in both scripts' dictionaries, as `file:key` and text. Not the field labels. */
+/**
+ * Keys where the two scripts must differ: each alphabet sorts its own way, the
+ * Latin abeceda ending at Ž, the Cyrillic azbuka at Ш, and the language picker
+ * names Cyrillic Serbian in Cyrillic in both dictionaries.
+ */
+const SCRIPT_OWN: string[] = ['carddav:contacts.sortAz', 'carddav:contacts.sortZa', 'core:settings.localization.serbian'];
+
 function serbianTitles(): [where: string, text: string][] {
   return ['rs', 'sr'].flatMap((code) => stringsOf(code).filter(([where]) => {
     const last = where.split('.').at(-1)!;
@@ -734,6 +741,27 @@ describe('Serbian terms, titles and twins', () => {
 
   it('transliterates case by case, so capitals compare too', () => {
     expect(transliterate('Љубав, ЊИВА, Џеп и Бцц')).toBe('Ljubav, NJIVA, Džep i Bcc');
+  });
+
+  it('sr says what rs says, letter for letter', () => {
+    // A string fixed in one script and not the other drifts: sr said "Obriši
+    // pretragu" where rs said "Очисти претрагу", and rs misspelled "Празњење".
+    const latin = new Map(dictionariesOf('sr').map(([file, dict]) => [file.replace(/\/sr$/, ''), dict]));
+    const apart = dictionariesOf('rs').flatMap(([file, dict]) => {
+      const name = file.replace(/\/rs$/, '');
+      return leaves(dict)
+        .filter(([key]) => !SCRIPT_OWN.includes(`${name}:${key}`))
+        .filter(([key, text]) => transliterate(String(text)) !== lookup(latin.get(name), key))
+        .map(([key, text]) => `${name}:${key}: "${text}" / "${lookup(latin.get(name), key)}"`);
+    });
+    expect(apart).toEqual([]);
+  });
+
+  it('orders each alphabet its own way: A-Ž in Latin, А-Ш in Cyrillic', () => {
+    const latin = byPlugin.get('carddav')!.get('sr');
+    const cyrillic = byPlugin.get('carddav')!.get('rs');
+    expect([lookup(latin, 'contacts.sortAz'), lookup(latin, 'contacts.sortZa')]).toEqual(['Sortiraj A-Ž', 'Sortiraj Ž-A']);
+    expect([lookup(cyrillic, 'contacts.sortAz'), lookup(cyrillic, 'contacts.sortZa')]).toEqual(['Сортирај А-Ш', 'Сортирај Ш-А']);
   });
 
   it('names the spam verdict with the folder it files into, where English does not', () => {

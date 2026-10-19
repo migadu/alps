@@ -214,7 +214,7 @@ export const sr = {
     replied: 'Odgovoreno',
     forwarded: 'Prosleđeno',
     searchResultsFor: 'Rezultati pretrage za:',
-    clearSearch: 'Obriši pretragu',
+    clearSearch: 'Očisti pretragu',
     searchAllMailboxes: 'Pretraži sve',
     totalMessagesIn: {
       one: '{count} poruka u {folder}',
@@ -245,7 +245,7 @@ export const sr = {
     },
     emptyingMailbox: 'Pražnjenje sandučeta...',
     mailboxEmptied: 'Sanduče je uspešno ispražnjeno.',
-    emptyMailboxFailed: 'Nije moguće isprazniti sanduče. Proverite da li je Otpad ili Nepoželjna pošta.',
+    emptyMailboxFailed: 'Nije moguće isprazniti sanduče. Proverite da li je Otpad ili Nepoželjno.',
     mailboxAlreadyEmpty: '{folder} je već bio prazan, pa ništa nije obrisano.',
     emptyMailboxSlow: 'Pražnjenje fascikle {folder} je još u toku. Server i dalje radi; proverite ponovo za trenutak.'
   },
@@ -345,7 +345,7 @@ export const sr = {
     to: 'Za:',
     cc: 'Cc:',
     date: 'Datum:',
-    undisclosed: 'Sakriveno',
+    undisclosed: 'Skriveno',
     loadingMessage: 'Učitavanje poruke...',
     remoteContentWarning: 'Ova poruka sadrži udaljeni sadržaj. Radi vaše privatnosti, blokiran je.',
     loadRemoteContent: 'Učitaj udaljeni sadržaj',
