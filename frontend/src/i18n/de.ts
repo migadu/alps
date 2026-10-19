@@ -17,7 +17,7 @@ export const de: TranslationDictionary = {
     },
     loading: 'Laden...',
     placeholderName: 'Ihr Name',
-    placeholderReplyTo: 'antwort@beispiel.de',
+    placeholderReplyTo: 'antwort@beispiel.example',
     general: {
       checkMailInterval: 'Intervall für E-Mail-Prüfung',
       checkMailIntervalDesc: 'Wie oft automatisch nach neuen E-Mails gesucht werden soll.',

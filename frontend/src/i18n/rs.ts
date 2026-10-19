@@ -15,7 +15,7 @@ export const rs = {
     },
     loading: 'Учитавање...',
     placeholderName: 'Твоје име',
-    placeholderReplyTo: 'odgovor@primer.com',
+    placeholderReplyTo: 'odgovor@primer.example',
     general: {
       checkMailInterval: 'Интервал провере поште',
       checkMailIntervalDesc: 'Колико често аутоматски проверавати нову пошту.',

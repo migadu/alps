@@ -15,7 +15,7 @@ export const sr = {
     },
     loading: 'Učitavanje...',
     placeholderName: 'Tvoje ime',
-    placeholderReplyTo: 'odgovor@primer.com',
+    placeholderReplyTo: 'odgovor@primer.example',
     general: {
       checkMailInterval: 'Interval provere pošte',
       checkMailIntervalDesc: 'Koliko često automatski proveravati novu poštu.',

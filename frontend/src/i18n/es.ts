@@ -15,7 +15,7 @@ export const es = {
     },
     loading: 'Cargando...',
     placeholderName: 'Tu nombre',
-    placeholderReplyTo: 'responder@ejemplo.com',
+    placeholderReplyTo: 'responder@ejemplo.example',
     general: {
       checkMailInterval: 'Intervalo de comprobación de correo',
       checkMailIntervalDesc: 'Con qué frecuencia buscar correo nuevo automáticamente.',

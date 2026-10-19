@@ -23,7 +23,7 @@ export const da: TranslationDictionary = {
     },
     loading: 'Indlæser...',
     placeholderName: 'Dit navn',
-    placeholderReplyTo: 'svar@eksempel.dk',
+    placeholderReplyTo: 'svar@eksempel.example',
     general: {
       checkMailInterval: 'Interval for mailtjek',
       checkMailIntervalDesc: 'Hvor ofte der automatisk skal tjekkes for ny mail.',
@@ -357,7 +357,7 @@ export const da: TranslationDictionary = {
     insertEmoji: 'Indsæt emoji',
     send: 'Send',
     linkUrl: 'Link-URL',
-    linkUrlPlaceholder: 'https://eksempel.dk',
+    linkUrlPlaceholder: 'https://eksempel.example',
     displayText: 'Visningstekst',
     displayTextPlaceholder: 'Mit website',
     apply: 'Anvend',

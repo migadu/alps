@@ -15,7 +15,7 @@ export const it = {
     },
     loading: 'Caricamento...',
     placeholderName: 'Il tuo nome',
-    placeholderReplyTo: 'rispondi@esempio.com',
+    placeholderReplyTo: 'rispondi@esempio.example',
     general: {
       checkMailInterval: 'Intervallo di controllo posta',
       checkMailIntervalDesc: 'Con quale frequenza controllare automaticamente la nuova posta.',

@@ -15,7 +15,7 @@ export const fr = {
     },
     loading: 'Chargement...',
     placeholderName: 'Votre Nom',
-    placeholderReplyTo: 'reponse@exemple.com',
+    placeholderReplyTo: 'reponse@exemple.example',
     general: {
       checkMailInterval: 'Intervalle de vérification du courrier',
       checkMailIntervalDesc: 'À quelle fréquence vérifier automatiquement les nouveaux messages.',

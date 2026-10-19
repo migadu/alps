@@ -281,3 +281,75 @@ describe('Serbian scripts', () => {
     expect(problems).toEqual([]);
   });
 });
+
+const ALL_CORE: [string, Dict][] = [['en', en as unknown as Dict], ...CORE];
+
+/** Every dictionary of one locale, the app's own and each plugin's, by the file it comes from. */
+function dictionariesOf(code: string): [file: string, dict: Dict][] {
+  const out: [string, Dict][] = [[`core/${code}`, ALL_CORE.find(([c]) => c === code)![1]]];
+  for (const [plugin, locales] of byPlugin) if (locales.has(code)) out.push([`${plugin}/${code}`, locales.get(code)!]);
+  return out;
+}
+
+/** Every string of one locale, plural forms included, as `file:key` and text. */
+function stringsOf(code: string): [where: string, text: string][] {
+  return dictionariesOf(code).flatMap(([file, dict]) =>
+    leaves(dict).filter(([, v]) => typeof v === 'string').map(([key, v]) => [`${file}:${key}`, v as string] as [string, string]));
+}
+
+/**
+ * Example domains are reserved ones. A placeholder is text a user copies, into
+ * the reply-to field or a link, and seven locales wrote theirs under real,
+ * registrable domains (beispiel.de, ejemplo.com, primer.com, eksempel.dk), so a
+ * copied example sent mail to whoever owns them. RFC 2606 and RFC 6761 reserve
+ * example.com, .net, .org and the .example TLD for this; the localized word
+ * stays, under .example.
+ *
+ * A string is read in three shapes: whatever follows an @, the host of a URL,
+ * and a bare host of three or more labels. A bare name of two labels is left
+ * alone, since it cannot be told from a file name ("invite.ics").
+ */
+const DOMAIN_SHAPES = [
+  /@([\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+)/gu,
+  /[a-z][a-z\d+.-]*:\/\/([\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+)/giu,
+  /(?<![\p{L}\p{N}@./:-])([\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+){2,})/gu,
+];
+const RESERVED_DOMAIN = /(?:^|\.)(?:example\.(?:com|net|org)|example)$/;
+
+/** The domains one string names, lower-cased, `{placeholders}` dropped first. */
+function domainsIn(text: string): string[] {
+  const plain = text.replace(/\{[^}]*\}/g, ' ');
+  return DOMAIN_SHAPES.flatMap((shape) => [...plain.matchAll(shape)].map((match) => match[1]!.toLowerCase()))
+    // A top-level label is letters: "1.2.3" is a version, not a host.
+    .filter((domain) => /\.\p{L}{2,}$/u.test(domain));
+}
+
+describe('example domains', () => {
+  const LOCALES = ALL_CORE.map(([code]) => code);
+
+  it('are read in every shape a string writes them, and only there', () => {
+    expect(domainsIn('user@beispiel.de oder @beispiel.de')).toEqual(['beispiel.de', 'beispiel.de']);
+    expect(domainsIn('pop.ejemplo.com')).toEqual(['pop.ejemplo.com']);
+    expect(domainsIn('Voir https://eksempel.dk/hjaelp.')).toEqual(['eksempel.dk']);
+    expect(domainsIn('invite.ics, z. B., e.g., f.eks., v1.2.3, {host}.')).toEqual([]);
+  });
+
+  it('are found in every locale, so an empty scan cannot pass', () => {
+    for (const code of LOCALES) expect(stringsOf(code).flatMap(([, text]) => domainsIn(text)).length, code).toBeGreaterThan(0);
+  });
+
+  it.each(LOCALES)('%s writes every example under a reserved domain', (code) => {
+    const real = stringsOf(code).flatMap(([where, text]) =>
+      domainsIn(text).filter((domain) => !RESERVED_DOMAIN.test(domain)).map((domain) => `${where}: ${domain}`));
+    expect(real).toEqual([]);
+  });
+
+  it('accepts exactly the reserved names', () => {
+    for (const domain of ['example.com', 'pop.example.net', 'example.org', 'beispiel.example', 'primer.example']) {
+      expect(RESERVED_DOMAIN.test(domain), domain).toBe(true);
+    }
+    for (const domain of ['beispiel.de', 'ejemplo.com', 'notexample.com', 'example.com.evil.de', 'example.co']) {
+      expect(RESERVED_DOMAIN.test(domain), domain).toBe(false);
+    }
+  });
+});
