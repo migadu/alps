@@ -148,3 +148,49 @@ describe('the conversation of an opened message', () => {
     expect(cards(el)[1].item.message.Flags).not.toContain('\\Flagged');
   });
 });
+
+describe('the cards already drawn when the conversation answers', () => {
+  // The list's thread: two Inbox messages, the later one opened.
+  const first = { UID: '8', Mailbox: 'INBOX', Flags: ['\\Seen'], Envelope: { ...envelope('Engines', '2026-09-01T10:00:00Z', 'charles'), MessageID: 'a@example.com' } };
+  const opened = { UID: '9', Mailbox: 'INBOX', Flags: ['\\Seen'], Envelope: { ...envelope('Re: Engines', '2026-09-03T10:00:00Z', 'charles'), MessageID: 'c@example.com' } };
+  // The user's reply between them, in Sent: the list cannot know of it.
+  const between = { UID: '3', Mailbox: 'Sent', Flags: ['\\Seen'], Envelope: { ...envelope('Re: Engines', '2026-09-02T10:00:00Z', 'ada'), MessageID: 'b@example.com' } };
+
+  it('keep their elements, the opened card included, when a reply lands between them', async () => {
+    let answer!: () => void;
+    const held = new Promise<void>(resolve => { answer = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u.startsWith('/mailboxes/INBOX/messages/9/thread')) {
+        await held;
+        return json({ Messages: [first, between, opened] });
+      }
+      if (u.includes('/raw')) return new Response('the body', { status: 200 });
+      const uid = u.match(/\/messages\/(\d+)\?/)?.[1];
+      const msg = [first, opened].find(m => m.UID === uid);
+      if (msg) return json({ Message: msg, Part: { Path: [1], MIMEType: 'text/plain' }, HasText: true, Attachments: [] });
+      return new Response('{}', { status: 404 });
+    }));
+    const el = await mount<El>('alps-message-reader', {
+      settingsStore: settingsStore(),
+      i18nStore,
+      composeStore: new EventTarget(),
+      mailbox: 'INBOX',
+      mailboxes: [{ Name: 'INBOX', Attrs: [] }, { Name: 'Sent', Attrs: ['\\Sent'] }],
+      messages: [{ ...opened, SubMessages: [first] }],
+      message: opened,
+    });
+    await waitFor(() => cards(el).length === 2, 'the cards the list gave');
+    const openCard = cards(el).find(c => c.item.message.UID === '9')!;
+    const firstCard = cards(el).find(c => c.item.message.UID === '8')!;
+
+    answer();
+    await waitFor(() => cards(el).length === 3, 'the reply from Sent');
+
+    expect(cards(el).map(c => `${c.item.mailbox}/${c.item.message.UID}`)).toEqual(['INBOX/8', 'Sent/3', 'INBOX/9']);
+    // The same elements: the open card's body is not rebuilt in another one.
+    expect(cards(el)[2]).toBe(openCard);
+    expect(cards(el)[0]).toBe(firstCard);
+  });
+});
+

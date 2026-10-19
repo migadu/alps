@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { live } from 'lit/directives/live.js';
+import { repeat } from 'lit/directives/repeat.js';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName, getRemovableTags } from '../utils/flags';
 import { FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
 import { fetchWithTimeout } from '../utils/fetch-utils';
@@ -2158,6 +2159,14 @@ export class MessageReader extends LitElement {
     `;
   }
 
+  /**
+   * One card. Rendered keyed by message (see the thread container below): the
+   * conversation's answer puts the replies filed in Sent, and members from
+   * other pages, among the cards already drawn, in date order. Unkeyed, Lit
+   * handed each card element after an insertion to the next message, so the
+   * open card's element took another message, and its body was rebuilt in a
+   * new one while it was being read: a flash, and a jump in the scroll.
+   */
   private renderThreadCard(item: ThreadMessageItem) {
     return html`
       <alps-thread-card
@@ -2434,7 +2443,7 @@ export class MessageReader extends LitElement {
             </div>
           </div>
           <div class="thread-container">
-            ${this.threadItems.map(item => this.renderThreadCard(item))}
+            ${repeat(this.threadItems, item => this.itemKey(item), item => this.renderThreadCard(item))}
           </div>
           ${this.renderConversationReply()}
         </div>
