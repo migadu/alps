@@ -3,7 +3,7 @@ import { customElement, state, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import type { SettingsState } from '../store/settings-store';
-import { i18nContext, I18nStore } from '../store/i18n-store';
+import { i18nContext, I18nStore, intlTag } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
 import { closeSidebarPeek, sidebarLayoutStyles } from '../components/alps-sidebar';
 import '../components/alps-header';
@@ -611,17 +611,20 @@ export class SettingsPage extends LitElement {
   renderLocalization() {
     return html`
         <alps-setting-group label="${this.i18nStore?.t('settings.localization.language')}">
+          <!-- Each language is named in its own words and marked with its own
+               language, so a screen reader reads "Deutsch" in German rather
+               than in the language of the page around it. -->
           <alps-select @change=${(e: Event) => this.handleUpdate(e, 'language')} .value=${this.settingsState.language}
             .options=${[
-            {value: "en", label: this.i18nStore?.t('settings.localization.english') || "en"},
-            {value: "de", label: this.i18nStore?.t('settings.localization.german') || "de"},
-            {value: "it", label: this.i18nStore?.t('settings.localization.italian') || "it"},
-            {value: "es", label: this.i18nStore?.t('settings.localization.spanish') || "es"},
-            {value: "rs", label: this.i18nStore?.t('settings.localization.serbian') || "rs"},
-            {value: "sr", label: this.i18nStore?.t('settings.localization.serbianLatin') || "sr"},
-            {value: "fr", label: this.i18nStore?.t('settings.localization.french') || "fr"},
-            {value: "pt", label: this.i18nStore?.t('settings.localization.portuguese') || "pt"},
-            {value: "da", label: this.i18nStore?.t('settings.localization.danish') || "da"}
+            {value: "en", lang: intlTag("en"), label: this.i18nStore?.t('settings.localization.english') || "en"},
+            {value: "de", lang: intlTag("de"), label: this.i18nStore?.t('settings.localization.german') || "de"},
+            {value: "it", lang: intlTag("it"), label: this.i18nStore?.t('settings.localization.italian') || "it"},
+            {value: "es", lang: intlTag("es"), label: this.i18nStore?.t('settings.localization.spanish') || "es"},
+            {value: "rs", lang: intlTag("rs"), label: this.i18nStore?.t('settings.localization.serbian') || "rs"},
+            {value: "sr", lang: intlTag("sr"), label: this.i18nStore?.t('settings.localization.serbianLatin') || "sr"},
+            {value: "fr", lang: intlTag("fr"), label: this.i18nStore?.t('settings.localization.french') || "fr"},
+            {value: "pt", lang: intlTag("pt"), label: this.i18nStore?.t('settings.localization.portuguese') || "pt"},
+            {value: "da", lang: intlTag("da"), label: this.i18nStore?.t('settings.localization.danish') || "da"}
           ]}>
           </alps-select>
         </alps-setting-group>

@@ -1,11 +1,14 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
 
 @customElement('alps-select')
 export class AlpsSelect extends LitElement {
 	@property({ type: String }) value = '';
-	@property({ type: Array }) options: Array<{label: string, value: string, disabled?: boolean}> = [];
+	/** `lang` marks an option written in another language than the page, as the
+	 * language picker's names are, so a screen reader reads it in that language
+	 * rather than the page's. Omitted, the option inherits the page's. */
+	@property({ type: Array }) options: Array<{label: string, value: string, disabled?: boolean, lang?: string}> = [];
 
 	static styles = css`
 		:host {
@@ -78,7 +81,7 @@ export class AlpsSelect extends LitElement {
 		return html`
 			<div class="select-wrapper">
 				<select .value=${this.value} @change=${this.handleChange}>
-					${this.options.map(opt => html`<option value=${opt.value} ?selected=${opt.value === this.value} ?disabled=${opt.disabled}>${opt.label}</option>`)}
+					${this.options.map(opt => html`<option value=${opt.value} lang=${opt.lang ?? nothing} ?selected=${opt.value === this.value} ?disabled=${opt.disabled}>${opt.label}</option>`)}
 				</select>
 				<span class="caret">
 					${renderIcon('caret-down')}
