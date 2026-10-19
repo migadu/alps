@@ -224,10 +224,24 @@ const QuotedMessage = TiptapNode.create<QuotedMessageOptions>({
         }}
       ></iframe>`, dom);
 
-      return { dom, ignoreMutation: () => true };
+      return {
+        dom,
+        ignoreMutation: () => true,
+        // The frame's observers watch its document and this block, and
+        // nothing else lets go of them: a quote deleted, or a composer closed,
+        // kept both alive and measuring.
+        destroy: () => {
+          const frame = dom.querySelector('iframe') as ObservedFrame | null;
+          frame?._ro?.disconnect();
+          frame?._widthRo?.disconnect();
+        },
+      };
     };
   },
 });
+
+/** A quote's frame, with the observers that size it. */
+type ObservedFrame = HTMLIFrameElement & { _ro?: ResizeObserver; _widthRo?: ResizeObserver };
 
 /**
  * Lets a quote wider than the composer scroll sideways.
@@ -240,9 +254,12 @@ const QuotedMessage = TiptapNode.create<QuotedMessageOptions>({
  * is measured at the block's width each time, so content that fits the block
  * again once it grows is not held at an old width.
  */
-function fitQuoteWidth(frame: HTMLIFrameElement, block: HTMLElement): void {
+function fitQuoteWidth(frame: ObservedFrame, block: HTMLElement): void {
   const doc = frame.contentDocument;
   if (!doc?.body) return;
+  // Each load of the frame calls this again, as setupIframeSizing is called
+  // again, and the observer of the load before must not outlive it.
+  frame._widthRo?.disconnect();
   const fit = () => {
     frame.style.width = '100%';
     const width = Math.max(doc.documentElement?.scrollWidth || 0, doc.body?.scrollWidth || 0);
@@ -252,6 +269,7 @@ function fitQuoteWidth(frame: HTMLIFrameElement, block: HTMLElement): void {
   const observer = new ResizeObserver(fit);
   observer.observe(doc.body);
   observer.observe(block);
+  frame._widthRo = observer;
 }
 
 /** The markup as DOM nodes of a document with no browsing context, so an

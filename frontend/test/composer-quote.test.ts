@@ -327,6 +327,40 @@ describe('the quote frame', () => {
     expect(readerUtils.applyThemeToIframe).toHaveBeenCalledWith(frame, false);
   });
 
+  it('lets go of its observers when it loads again and when the quote goes', async () => {
+    // Each load sized the frame with two new observers, of its height and of
+    // its width, and the width one was never disconnected: not on the next
+    // load, and not when the quote was deleted or the composer closed.
+    const observers: { disconnect: ReturnType<typeof vi.fn> }[] = [];
+    const Original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+      constructor() {
+        observers.push(this);
+      }
+    } as unknown as typeof ResizeObserver;
+    try {
+      const composer = await openComposer(forward());
+      const frame = composer.shadowRoot!.querySelector<HTMLIFrameElement>('.quoted-message iframe')!;
+      Object.defineProperty(frame, 'contentDocument', { value: parse('<p>quote</p>'), configurable: true });
+
+      frame.dispatchEvent(new Event('load'));
+      expect(observers).toHaveLength(2);
+      frame.dispatchEvent(new Event('load'));
+      expect(observers).toHaveLength(4);
+      expect(observers[0].disconnect, 'the first height observer').toHaveBeenCalledOnce();
+      expect(observers[1].disconnect, 'the first width observer').toHaveBeenCalledOnce();
+
+      composer.editor!.commands.clearContent();
+      expect(observers[2].disconnect, 'the height observer').toHaveBeenCalledOnce();
+      expect(observers[3].disconnect, 'the width observer').toHaveBeenCalledOnce();
+    } finally {
+      globalThis.ResizeObserver = Original;
+    }
+  });
+
   it("carries the editor's own selection and cursor rules, which it no longer injects into the page", async () => {
     await openComposer(forward());
     // Injected into document.head, the editor's stylesheet never reaches this
