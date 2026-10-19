@@ -1303,7 +1303,14 @@ export class MessageList extends LitElement {
     return this.currentMailboxRole === 'trash' || this.currentMailboxRole === 'junk';
   }
 
-  /** Whether the rows on screen were read from the folder on screen. */
+  /**
+   * Whether the rows on screen were read from the folder on screen.
+   *
+   * False for the length of a folder switch. The Delete All banner reports on
+   * the rows and their count, and during a switch into Trash or Junk it showed
+   * "N total messages in Trash, Delete All Now" over the previous folder's
+   * rows and with that folder's count, until the real listing replaced both.
+   */
   private get rowsAreCurrent(): boolean {
     return !this.listedMailbox || this.listedMailbox === this.currentMailbox;
   }
@@ -1652,7 +1659,7 @@ export class MessageList extends LitElement {
             </alps-button>
           </alps-banner>
         ` : ''}
-        ${!this.filterQuery && this.isDiscardableFolder && this.totalMessages > 0 ? html`
+        ${!this.filterQuery && this.isDiscardableFolder && this.totalMessages > 0 && this.rowsAreCurrent ? html`
           <alps-banner variant="warning">
             <span>${this.i18nStore?.t(
               this.countsConversations ? 'messageList.totalConversationsIn' : 'messageList.totalMessagesIn',

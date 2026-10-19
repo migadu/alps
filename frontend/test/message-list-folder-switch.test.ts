@@ -86,3 +86,26 @@ describe('rows kept on screen during a folder switch', () => {
     expect(shadowAll(el, '.mailbox-badge').map(b => b.textContent?.trim())).toEqual(['Work']);
   });
 });
+
+describe('the Delete All banner during a folder switch', () => {
+  const banner = (el: El) => shadowAll(el, 'alps-banner span').map(s => s.textContent?.trim()).join(' ');
+
+  it('waits for the Trash listing, rather than counting the folder left behind', async () => {
+    const el = await mount<El>(TAG, {
+      i18nStore,
+      messages: [row('1', 'INBOX'), row('2', 'INBOX')],
+      currentMailbox: 'INBOX',
+      currentMailboxRole: 'inbox',
+      listedMailbox: 'INBOX',
+      listedMailboxRole: 'inbox',
+      totalMessages: 40,
+      showSenderAvatars: false,
+    });
+    await update(el, { currentMailbox: 'Trash', currentMailboxRole: 'trash', loading: true });
+    expect(banner(el)).toBe('');
+
+    await update(el, { messages: [row('5', 'Trash')], listedMailbox: 'Trash', listedMailboxRole: 'trash', totalMessages: 1, loading: false });
+    expect(banner(el)).toContain('messageList.totalMessagesIn');
+  });
+});
+
