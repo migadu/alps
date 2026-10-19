@@ -250,6 +250,28 @@ describe('week view', () => {
     expect(dayNames).toEqual(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
     expect(dayNums).toEqual(['1', '2', '3', '4', '5', '6', '7']);
   });
+
+  const columns = async (date: Date, weekStart: number) => {
+    const el = await mount('calendar-week-view', { date, weekStart, i18nStore: i18n });
+    return (shadow<HTMLElement>(el, 'calendar-time-grid') as unknown as { days: Date[] }).days;
+  };
+
+  it('starts each column at its own midnight in the week the clocks skip one', async () => {
+    // Santiago moved to summer time at 00:00 on Sunday 8 September 2024.
+    inZone('America/Santiago');
+    const fromMonday = await columns(new Date(2024, 8, 4), 1);
+    expect(fromMonday.map((d) => d.getDate())).toEqual([2, 3, 4, 5, 6, 7, 8]);
+    expect(fromMonday.slice(0, 6).map((d) => d.getHours())).toEqual([0, 0, 0, 0, 0, 0]);
+
+    // The transition Sunday opens the week: it is the one column with no
+    // midnight, and the six after it must not take its 01:00.
+    const fromSunday = await columns(new Date(2024, 8, 10), 0);
+    expect(fromSunday.map((d) => d.getDate())).toEqual([8, 9, 10, 11, 12, 13, 14]);
+    expect(fromSunday.slice(1).map((d) => d.getHours())).toEqual([0, 0, 0, 0, 0, 0]);
+
+    const next = await columns(new Date(2024, 8, 11), 1);
+    expect(next.map((d) => d.getHours())).toEqual([0, 0, 0, 0, 0, 0, 0]);
+  });
 });
 
 describe('list view', () => {

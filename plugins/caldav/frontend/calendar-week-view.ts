@@ -27,16 +27,20 @@ export class CalendarWeekView extends LitElement {
         }
     `;
 
+    /**
+     * Each column is counted from the week's first day, not walked to from the
+     * column before. A cursor advanced by `setDate(getDate() + 1)` keeps its
+     * time of day, so in a zone whose clocks skip midnight (Santiago, early
+     * September) the transition day comes out at 01:00, and when the week
+     * starts on that Sunday every later column inherits the hour.
+     * `new Date(y, m, d + i)` lands each day on its own first minute.
+     */
     private getWeekDays() {
-        const days = [];
-        const firstDayOfWeek = this.getFirstDayOfWeek();
-        const current = weekStart(this.date, firstDayOfWeek);
-
-        for (let i = 0; i < 7; i++) {
-            days.push(new Date(current));
-            current.setDate(current.getDate() + 1);
-        }
-        return days;
+        const start = weekStart(this.date, this.getFirstDayOfWeek());
+        const year = start.getFullYear();
+        const month = start.getMonth();
+        const first = start.getDate();
+        return Array.from({ length: 7 }, (_, i) => new Date(year, month, first + i));
     }
 
     render() {
