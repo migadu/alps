@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
+import { isolatedCaption, isolatedEmail } from '../utils/bidi';
 import { registry } from '../plugin-registry';
 import { popupStyles } from './alps-popup.js';
 
@@ -63,10 +64,10 @@ export class AlpsAddressInput extends LitElement {
         const namePart = trimmed.substring(0, startObj).trim();
         const emailPart = trimmed.substring(startObj + 1, trimmed.length - 1);
         const name = namePart.replace(/^["']|["']$/g, '').trim();
-        return name || emailPart;
+        return isolatedCaption(name, emailPart);
       }
     }
-    return addr;
+    return isolatedEmail(addr);
   }
 
   /** Invalidates any lookup still debouncing or in flight, so it cannot land. */
@@ -347,7 +348,7 @@ export class AlpsAddressInput extends LitElement {
                     const addr = s.name ? '"' + s.name + '" <' + s.address + '>' : s.address;
                     this._addAddress(addr);
                   }}>
-                  <span class="item-text"><b>${s.name}</b> &lt;${s.address}&gt;</span>
+                  <span class="item-text"><b><bdi>${s.name}</bdi></b> &lt;${isolatedEmail(s.address)}&gt;</span>
                 </button>
               `)}
             </div>

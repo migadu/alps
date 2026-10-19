@@ -2,6 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { composeContext, ComposeStore } from '../store/compose-store';
+import { isolatedEmail } from '../utils/bidi';
 
 @customElement('alps-recipient-pill')
 export class RecipientPill extends LitElement {
@@ -46,17 +47,19 @@ export class RecipientPill extends LitElement {
       displayName = '';
     }
 
+    // The name and the address each in an isolate, so a direction override
+    // in either cannot reverse the other, or the recipients listed after it.
     if (displayName) {
       return html`
         <a class="recipient-link" title="${this.address}" @click=${this.handleClick}>
-          <span class="recipient-name">${displayName}</span>
-          <span class="recipient-address">&lt;${this.address}&gt;</span>
+          <bdi class="recipient-name">${displayName}</bdi>
+          <span class="recipient-address">&lt;${isolatedEmail(this.address)}&gt;</span>
         </a>
       `;
     } else {
       return html`
         <a class="recipient-link" title="${this.address}" @click=${this.handleClick}>
-          ${this.address}
+          ${isolatedEmail(this.address)}
         </a>
       `;
     }

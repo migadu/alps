@@ -1,0 +1,26 @@
+import { html } from 'lit';
+
+/**
+ * Names and addresses, each in a bidi isolate of its own.
+ *
+ * A display name is whatever the sender wrote, and an RFC 2047 encoded word
+ * can carry any character, a direction override such as U+202E among them.
+ * An override applies to the rest of its paragraph, so a name shown as plain
+ * text beside an address, a status or another name reversed everything after
+ * it: `Pay<U+202E>ments <ada@example.com>, Bob` read backwards from the name
+ * on. In an isolate it ends where the name does.
+ *
+ * A name takes the direction of its own first letter. An address is always
+ * left to right, as it is written: a Hebrew or Arabic local part would
+ * otherwise put the domain first.
+ */
+
+/** An address, laid out left to right in an isolate. */
+export function isolatedEmail(email: string) {
+  return html`<bdi dir="ltr">${email}</bdi>`;
+}
+
+/** A name, or the address when there is none, for a line that goes on after it. */
+export function isolatedCaption(name: string | null | undefined, email: string) {
+  return name ? html`<bdi>${name}</bdi>` : isolatedEmail(email);
+}

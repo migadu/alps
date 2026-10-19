@@ -6,6 +6,7 @@ import { messageSync } from '../services/message-sync';
 import { mailboxOperations } from '../services/mailbox-operations';
 import { fetchAuthVerdicts, VERDICT_BATCH, type AuthVerdict } from '../services/auth-verdicts';
 import { mailboxOf, messageKey } from '../utils/message-key';
+import { isolatedCaption } from '../utils/bidi';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -1327,11 +1328,15 @@ export class MessageList extends LitElement {
     // reaches t() through a variable, as this one does.
     const fallbackKey = isDraftOrSent ? 'messageReader.noRecipients' : 'messageList.unknownSender';
 
-    const displayNames = allContacts.map(c => {
+    // Each name in an isolate of its own. Joined into one string, a direction
+    // override in one name reversed every name after it.
+    const senderCaption = allContacts.map((c, i) => {
       const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
-      return c.Name || addr || (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
+      const caption = c.Name || addr
+        ? isolatedCaption(c.Name, addr)
+        : (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
+      return html`${i ? ', ' : ''}${caption}`;
     });
-    const senderName = displayNames.join(', ');
 
     const maxAvatars = this.isMobile ? 1 : 3;
     const displayAvatars = allContacts.slice(0, maxAvatars);
@@ -1389,7 +1394,7 @@ export class MessageList extends LitElement {
           </div>
         ` : isSubMessage ? html`<div class="caret-col empty"></div>` : ''}
 
-        <div class="message-sender">${senderName}</div>
+        <div class="message-sender">${senderCaption}</div>
         <div @click=${(e: Event) => this.toggleStar(e, msg)} class="star-btn ${isStarred ? 'starred' : ''} star-btn-wrapper-ultra">
           ${renderIcon(isStarred ? 'starFourFill' : 'starFour')}
         </div>
@@ -1465,7 +1470,7 @@ export class MessageList extends LitElement {
       <div class="message-details">
         <div class="message-header-row">
           <div class="message-header-inner">
-            <div class="message-sender">${senderName}</div>
+            <div class="message-sender">${senderCaption}</div>
             <div @click=${(e: Event) => this.toggleStar(e, msg)} class="star-btn ${isStarred ? 'starred' : ''}">
               ${renderIcon(isStarred ? 'starFourFill' : 'starFour')}
             </div>

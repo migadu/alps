@@ -8,6 +8,7 @@ import { composeContext, ComposeStore } from '../store/compose-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
 import { renderIcon, formatFullDate, bimiAvatarUrlFor } from '../utils/ui';
 import { extractSnippet, setupIframeSizing } from '../utils/reader-utils';
+import { isolatedEmail } from '../utils/bidi';
 
 import './alps-recipient-pill';
 import './alps-attachment-list';
@@ -535,10 +536,10 @@ export class AlpsThreadCard extends LitElement {
             ` : ''}
             <div class="thread-card-sender ${isUnread ? 'unread' : ''}" title=${senderTitle}>
               <div class="thread-card-sender-heading">
-                <span class="thread-card-sender-name" dir="auto">${senderName}</span>
+                <span class="thread-card-sender-name" dir="auto">${hasDistinctName || !senderAddress ? senderName : isolatedEmail(senderAddress)}</span>
                 <alps-sender-auth-badge ?verified=${!!msg.HasBimiPotential} ?failed=${!!msg.HasBimiFailed}></alps-sender-auth-badge>
               </div>
-              ${hasDistinctName ? html`<span class="thread-card-sender-address">${senderAddress}</span>` : ''}
+              ${hasDistinctName ? html`<span class="thread-card-sender-address">${isolatedEmail(senderAddress)}</span>` : ''}
             </div>
             ${!this.item.expanded ? html`<div class="thread-card-snippet" dir="auto">${snippet}</div>` : ''}
           </div>
