@@ -90,6 +90,13 @@ const ROLE_CAPTIONS: Partial<Record<MailboxRole, string>> = {
   trash: 'folderList.trash',
 };
 
+/** A special folder's caption, by its role; null for a folder without one. */
+function roleCaption(name: string, i18nStore: I18nStore | undefined, mailboxes: any[]): string | null {
+  const role = mailboxRoleByName(name, mailboxes);
+  const key = role === 'junk' && name === FOLDER_SPAM ? 'folderList.spam' : role ? ROLE_CAPTIONS[role] : undefined;
+  return (key && i18nStore?.t(key)) || null;
+}
+
 /**
  * What a folder is CALLED on screen: in the header's search box, above the
  * list, and in what the list and the page say about it.
@@ -111,9 +118,7 @@ export function getMailboxLabel(name: string, i18nStore?: I18nStore, mailboxes: 
   // Not a folder, so there is no name to split: the header and the caption
   // above the list read a bare `*` through a search across every folder.
   if (name === ALL_MAILBOXES) return i18nStore?.t('folderList.allFolders') || 'All Folders';
-  const role = mailboxRoleByName(name, mailboxes);
-  const key = role === 'junk' && name === FOLDER_SPAM ? 'folderList.spam' : role ? ROLE_CAPTIONS[role] : undefined;
-  const caption = key ? i18nStore?.t(key) : undefined;
+  const caption = roleCaption(name, i18nStore, mailboxes);
   if (caption) return caption;
   // Split on the delimiter the SERVER reported for this folder.
   //
@@ -127,6 +132,17 @@ export function getMailboxLabel(name: string, i18nStore?: I18nStore, mailboxes: 
   const delimiter = mailboxDelimiter(name, mailboxes);
   const parts = delimiter ? name.split(delimiter) : name.split(/[.\/]/);
   return parts[parts.length - 1] || name;
+}
+
+/**
+ * What a folder is called in a list of destinations, and in the toast that
+ * says where mail went: a special folder by its role, as everywhere else, and
+ * any other folder by its whole path. A flat list has no tree to tell
+ * "Clients/Receipts" from "Vendors/Receipts", so the last level alone would
+ * not do.
+ */
+export function getDestinationLabel(name: string, i18nStore?: I18nStore, mailboxes: any[] = []): string {
+  return roleCaption(name, i18nStore, mailboxes) ?? name;
 }
 
 const SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];

@@ -2,7 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state, query } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
-import { renderIcon } from '../utils/ui';
+import { getDestinationLabel, renderIcon } from '../utils/ui';
 import './alps-popup';
 
 @customElement('alps-folder-selector-popup')
@@ -161,10 +161,15 @@ export class AlpsFolderSelectorPopup extends LitElement {
   }
 
   render() {
+    // Each destination as the sidebar names a special folder, in the user's
+    // language, where this listed raw IMAP names ("INBOX", "[Gmail]/Trash");
+    // any other folder by its whole path. The filter matches either, so typing
+    // the server's name still finds the folder.
     const filteredFolders = this.mailboxes
       .map(mb => mb.Name || mb.Mailbox || '')
       .filter(name => name !== '' && name !== this.currentMailbox)
-      .filter(name => name.toLowerCase().includes(this.filterQuery));
+      .map(name => ({ name, caption: getDestinationLabel(name, this.i18nStore, this.mailboxes) }))
+      .filter(({ name, caption }) => name.toLowerCase().includes(this.filterQuery) || caption.toLowerCase().includes(this.filterQuery));
 
     return html`
       <alps-popup align="right" @click=${this._handlePopupToggle}>
@@ -207,10 +212,10 @@ export class AlpsFolderSelectorPopup extends LitElement {
           `}
           
           <div class="folder-list">
-            ${filteredFolders.length > 0 ? filteredFolders.map(folderName => html`
-              <button class="folder-item" @click=${() => this._handleSelect(folderName)}>
+            ${filteredFolders.length > 0 ? filteredFolders.map(({ name, caption }) => html`
+              <button class="folder-item" title=${name} @click=${() => this._handleSelect(name)}>
                 ${renderIcon('folder')}
-                <span class="folder-name">${folderName}</span>
+                <span class="folder-name">${caption}</span>
               </button>
             `) : html`
               <div class="no-results">${this.i18nStore?.t('folderSelector.noResults')}</div>
