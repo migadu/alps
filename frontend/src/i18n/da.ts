@@ -355,7 +355,10 @@ export const da: TranslationDictionary = {
     removeAllTags: 'Fjern alle mærker',
     removeTag: 'Fjern mærke',
     selectMessage: 'Vælg en besked at læse',
-    messagesSelected: 'beskeder valgt',
+    messagesSelected: {
+      one: '{count} besked valgt',
+      other: '{count} beskeder valgt'
+    },
     back: 'Tilbage',
     reply: 'Svar',
     replyAll: 'Svar alle',

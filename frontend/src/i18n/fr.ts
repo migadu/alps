@@ -310,7 +310,10 @@ export const fr = {
     removeAllTags: 'Supprimer toutes les étiquettes',
     removeTag: 'Supprimer l\'étiquette',
     selectMessage: 'Sélectionnez un message à lire',
-    messagesSelected: 'messages sélectionnés',
+    messagesSelected: {
+      one: '{count} message sélectionné',
+      other: '{count} messages sélectionnés'
+    },
     back: 'Retour',
     reply: 'Répondre',
     replyAll: 'Répondre à tous',

@@ -353,7 +353,10 @@ export const pt = {
     removeAllTags: 'Remover todas as etiquetas',
     removeTag: 'Remover etiqueta',
     selectMessage: 'Selecione uma mensagem para ler',
-    messagesSelected: 'mensagens selecionadas',
+    messagesSelected: {
+      one: '{count} mensagem selecionada',
+      other: '{count} mensagens selecionadas'
+    },
     back: 'Voltar',
     reply: 'Responder',
     replyAll: 'Responder a Todos',

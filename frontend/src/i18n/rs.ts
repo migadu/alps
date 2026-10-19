@@ -313,7 +313,11 @@ export const rs = {
     removeAllTags: 'Уклони све ознаке',
     removeTag: 'Уклони ознаку',
     selectMessage: 'Изаберите поруку за читање',
-    messagesSelected: 'изабраних порука',
+    messagesSelected: {
+      one: '{count} изабрана порука',
+      few: '{count} изабране поруке',
+      other: '{count} изабраних порука'
+    },
     back: 'Назад',
     reply: 'Одговори',
     replyAll: 'Одговори свима',

@@ -353,7 +353,10 @@ export const en = {
     removeAllTags: 'Remove all tags',
     removeTag: 'Remove tag',
     selectMessage: 'Select a message to read',
-    messagesSelected: 'messages selected',
+    messagesSelected: {
+      one: '{count} message selected',
+      other: '{count} messages selected'
+    },
     back: 'Back',
     reply: 'Reply',
     replyAll: 'Reply All',

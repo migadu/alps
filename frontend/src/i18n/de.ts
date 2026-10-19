@@ -312,7 +312,10 @@ export const de: TranslationDictionary = {
     removeAllTags: 'Alle Schlagwörter entfernen',
     removeTag: 'Schlagwort entfernen',
     selectMessage: 'Wählen Sie eine Nachricht zum Lesen aus',
-    messagesSelected: 'Nachrichten ausgewählt',
+    messagesSelected: {
+      one: '{count} Nachricht ausgewählt',
+      other: '{count} Nachrichten ausgewählt'
+    },
     back: 'Zurück',
     reply: 'Antworten',
     replyAll: 'Allen antworten',

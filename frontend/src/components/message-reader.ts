@@ -2408,7 +2408,11 @@ export class MessageReader extends LitElement {
             ` : html`
               <alps-icon-btn icon="envelopeSimple" style="pointer-events: none;"></alps-icon-btn>
             `}
-            <span>${this.selectedCount} ${this.i18nStore?.t('messageReader.messagesSelected')}</span>
+            <!-- One sentence with the number inside it. The number followed by
+                 a bare "messages selected" read "1 messages selected", and a
+                 language whose noun changes with the count had no form to
+                 agree with a number it never saw. -->
+            <span>${this.i18nStore?.t('messageReader.messagesSelected', { count: this.selectedCount })}</span>
           </div>
         </div>
       ` : (enableThreading && (this.threadItems.length > 1 || this._isThread)) ? html`
