@@ -19,7 +19,7 @@ import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxP
 import type { LayoutMode, DensityMode } from '../store/settings-store';
 import '../components/alps-initial-loader';
 import { Logger } from '../utils/logger';
-import { getFlexContainerMinWidth } from '../utils/ui';
+import { getDestinationLabel, getFlexContainerMinWidth } from '../utils/ui';
 import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/message-key';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
@@ -1517,7 +1517,7 @@ export class MailboxPage extends LitElement {
       }
     } : undefined;
     this.showGlobalToast(
-      this.i18nStore?.t('toast.messageMovedToTrash'),
+      this.movedMessage(false, 1, trash),
       undoFn ? this.i18nStore?.t('mailboxPage.undo') : '',
       undoFn,
       UNDO_TOAST_TIMEOUT_MS,
@@ -1812,15 +1812,27 @@ export class MailboxPage extends LitElement {
     return role === 'trash' || role === 'drafts' || role === 'junk';
   }
 
-  /** What a toast says of messages filed away by `action`. */
-  private movedMessage(action: string, many: boolean, count: number, folder = ''): string {
-    const [several, one] = ({
-      archive: ['toast.messagesMovedToArchive', 'toast.messageMovedToArchive'],
-      reportSpam: ['toast.messagesMovedToSpam', 'toast.messageMovedToSpam'],
-      notSpam: ['toast.messagesMovedToInbox', 'toast.messageMovedToInbox'],
-      moveTo: ['toast.messagesMovedToFolder', 'toast.messageMovedToFolder'],
-    } as Record<string, [string, string]>)[action] ?? ['toast.messagesMovedToTrash', 'toast.messageMovedToTrash'];
-    return many ? this.i18nStore?.t(several, { count, folder }) : this.i18nStore?.t(one, { folder });
+  /**
+   * What a folder is called in a toast: a special folder as the sidebar and
+   * the header call it, any other as the Move-to row the user picked it from.
+   *
+   * The toasts had words of their own for the special folders, and they were
+   * not the sidebar's. Report as spam said "moved to Spam" beside a sidebar
+   * saying "Junk" (in Spanish "No deseado", in Italian "Indesiderata"), and
+   * Not spam said "Recibidos" where the sidebar says "Entrada". A move or copy
+   * into a special folder picked from the list printed its IMAP name,
+   * "[Gmail]/Trash" or "INBOX".
+   */
+  private folderCaption(folder: string): string {
+    return getDestinationLabel(folder, this.i18nStore, this.mailboxes);
+  }
+
+  /** What a toast says of messages filed away into `folder`. */
+  private movedMessage(many: boolean, count: number, folder: string): string {
+    const name = this.folderCaption(folder);
+    return many
+      ? this.i18nStore?.t('toast.messagesMovedToFolder', { count, folder: name })
+      : this.i18nStore?.t('toast.messageMovedToFolder', { folder: name });
   }
 
   private async _handleReaderAction(e: CustomEvent<ReaderActionDetail>) {
@@ -1933,21 +1945,21 @@ export class MailboxPage extends LitElement {
           }
         }
 
-        await this.fileAway(targets, destinationFolder, isBulk, count => this.movedMessage(action, many, count));
+        await this.fileAway(targets, destinationFolder, isBulk, count => this.movedMessage(many, count, destinationFolder));
       } else if (action === 'moveTo' || action === 'copyTo') {
         const destinationFolder = e.detail.folder;
         if (!destinationFolder) return;
 
         if (action === 'moveTo') {
-          await this.fileAway(targets, destinationFolder, isBulk, count => this.movedMessage(action, many, count, destinationFolder));
+          await this.fileAway(targets, destinationFolder, isBulk, count => this.movedMessage(many, count, destinationFolder));
         } else if (this.selectAllMatching) {
           const result = await messageOperations.copyMatching(this.currentMailbox, this.matchingScope, destinationFolder);
           if (result.success) {
             const count = result.count ?? 0;
             this.showGlobalToast(
               many
-                ? this.i18nStore?.t('toast.messagesCopiedToFolder', { count, folder: destinationFolder })
-                : this.i18nStore?.t('toast.messageCopiedToFolder', { folder: destinationFolder }),
+                ? this.i18nStore?.t('toast.messagesCopiedToFolder', { count, folder: this.folderCaption(destinationFolder) })
+                : this.i18nStore?.t('toast.messageCopiedToFolder', { folder: this.folderCaption(destinationFolder) }),
               '', undefined, UNDO_TOAST_TIMEOUT_MS);
           } else if (result.reason !== 'auth') {
             this.reportActionFailed('toast.copyFailed', 'Could not copy that');
@@ -1960,8 +1972,8 @@ export class MailboxPage extends LitElement {
           const copied = this.writtenKeys(done).length;
           if (copied > 0) {
             const toastMessage = many
-              ? this.i18nStore?.t('toast.messagesCopiedToFolder', { count: copied, folder: destinationFolder })
-              : this.i18nStore?.t('toast.messageCopiedToFolder', { folder: destinationFolder });
+              ? this.i18nStore?.t('toast.messagesCopiedToFolder', { count: copied, folder: this.folderCaption(destinationFolder) })
+              : this.i18nStore?.t('toast.messageCopiedToFolder', { folder: this.folderCaption(destinationFolder) });
             this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
           }
           if (refused && refused.reason !== 'auth') this.reportActionFailed('toast.copyFailed', 'Could not copy that');
@@ -2053,7 +2065,7 @@ export class MailboxPage extends LitElement {
       // The rest of the same Delete, in folders where it is a move to Trash.
       if (toTrash.length > 0) {
         const trash = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
-        await this.fileAway(toTrash, trash, isBulk, count => this.movedMessage('delete', isBulk || toTrash.length > 1, count));
+        await this.fileAway(toTrash, trash, isBulk, count => this.movedMessage(isBulk || toTrash.length > 1, count, trash));
       }
     } finally {
       if (isBulk) this.bulkProcessing = false;

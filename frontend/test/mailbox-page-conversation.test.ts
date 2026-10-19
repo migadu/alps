@@ -138,7 +138,7 @@ describe('the conversation toolbar\'s gestures', () => {
     expect(writes()).toEqual([
       { url: '/mailboxes/INBOX/messages/move', method: 'PUT', body: { uids: ['5', '9'], to: 'Archive' } },
     ]);
-    expect(toasts.at(-1)!.detail.message).toBe('toast.messagesMovedToArchive');
+    expect(toasts.at(-1)!.detail.message).toBe('toast.messagesMovedToFolder');
     expect(el.selectedMessage).toBeNull();
   });
 
@@ -232,7 +232,7 @@ describe('a card\'s own verbs', () => {
       expect(writes()).toEqual([{ url: '/mailboxes/INBOX/messages/move', method: 'PUT', body: { uids: ['5'], to: 'Trash' } }]);
       expect(done).toHaveBeenCalledWith(true);
       expect(el.selectedMessage).toBe(open);
-      expect(toasts.at(-1)!.detail.message).toBe('toast.messageMovedToTrash');
+      expect(toasts.at(-1)!.detail.message).toBe('toast.messageMovedToFolder');
     });
 
     it('beats a checked row: the card names what it deletes', async () => {
@@ -548,7 +548,7 @@ describe('a checked thread row', () => {
     expect(writes()).toEqual([
       { url: '/mailboxes/INBOX/messages/move', method: 'PUT', body: { uids: ['5', '9'], to: 'Archive' } },
     ]);
-    expect(toasts.at(-1)!.detail.message).toBe('toast.messagesMovedToArchive');
+    expect(toasts.at(-1)!.detail.message).toBe('toast.messagesMovedToFolder');
     expect(el.selectedKeys.size).toBe(0);
   });
 });
