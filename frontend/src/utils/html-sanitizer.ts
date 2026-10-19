@@ -307,13 +307,31 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
   base.target = '_blank';
   doc.head.prepend(base);
 
+  // Where this message's inline parts are served from: a `cid:` image below is
+  // pointed here, with the part in the query.
+  const partsPath = `/mailboxes/${encodeMailboxPath(options.mailbox)}/messages/${options.messageUid}/raw`;
+
   const csp = doc.createElement('meta');
   csp.httpEquiv = 'Content-Security-Policy';
   // Default-deny: without `default-src 'none'` an iframe/object/@font-face/link
   // still reaches the network even with images "blocked", which is a read
   // receipt by another name. `style-src 'unsafe-inline'` keeps sender CSS working
   // (its url()s are already rewritten to the proxy or blocked below).
-  csp.content = `default-src 'none'; img-src ${window.location.origin} data: blob: cid:; media-src ${window.location.origin} data: blob: cid:; style-src 'unsafe-inline'; font-src ${window.location.origin} data:; script-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; form-action 'none'; base-uri 'none';`;
+  //
+  // Resources load from this message's own parts, and from the proxy only once
+  // the reader has allowed remote content; never from the whole origin. Only
+  // absolute and `//` URLs count as remote, so a sender who writes a relative
+  // `/proxy?url=https://tracker…` in an image, a srcset, a CSS url() or an SVG
+  // image is neither counted nor rewritten, and an origin-wide source let the
+  // browser fetch it through our own proxy with remote content blocked. A
+  // source with a path matches that path whatever the query, so the parts URL
+  // covers every part of this message and no other message's.
+  const resourceSources = [
+    ...(options.messageUid ? [new URL(partsPath, window.location.origin).href] : []),
+    ...(options.allowRemoteResources ? [`${window.location.origin}/proxy`] : []),
+    'data:', 'blob:', 'cid:',
+  ].join(' ');
+  csp.content = `default-src 'none'; img-src ${resourceSources}; media-src ${resourceSources}; style-src 'unsafe-inline'; font-src ${resourceSources}; script-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; form-action 'none'; base-uri 'none';`;
   doc.head.prepend(csp);
 
   const style = doc.createElement('style');
@@ -340,7 +358,7 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
       if (options.messageStructure) {
         const partPath = findPartPathByCID(options.messageStructure, cid);
         if (partPath) {
-          img.src = `/mailboxes/${encodeMailboxPath(options.mailbox)}/messages/${options.messageUid}/raw?part=${partPath}`;
+          img.src = `${partsPath}?part=${partPath}`;
         }
       }
     } else if (isRemoteUrl(src)) {

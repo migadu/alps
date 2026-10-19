@@ -25,6 +25,12 @@ function countBlocked(html: string, allowRemoteResources = false): number {
   return n;
 }
 
+/** The sources a policy lists for one directive. */
+function sourcesOf(policy: string, directive: string): string[] {
+  const match = new RegExp(`(?:^|;)\\s*${directive}\\s+([^;]+)`).exec(policy);
+  return match ? match[1].trim().split(/\s+/) : [];
+}
+
 /** The output with every proxied URL removed, so a host left in it is one the browser would fetch directly. */
 const withoutProxied = (html: string) => html.replace(/\/proxy\?url=[^"')\s,]+/g, '');
 
@@ -41,11 +47,61 @@ describe('the injected policy', () => {
     }
   });
 
-  it('lets images and media load only from this origin and inline data', () => {
+  it('lets images, media and fonts load from this message\'s parts and inline data, not the whole origin', () => {
     const policy = csp('<p>hi</p>');
-    expect(policy).toContain(`img-src ${window.location.origin} data: blob: cid:`);
-    expect(policy).toContain(`media-src ${window.location.origin} data: blob: cid:`);
+    const parts = `${window.location.origin}/mailboxes/INBOX/messages/42/raw`;
+    for (const directive of ['img-src', 'media-src', 'font-src']) {
+      expect(sourcesOf(policy, directive), directive).toEqual([parts, 'data:', 'blob:', 'cid:']);
+    }
   });
+
+  it('lets the proxy in only once the reader has allowed remote content', () => {
+    const policy = (html: string) => attr(allowed(html), 'meta[http-equiv="Content-Security-Policy"]', 'content');
+    for (const directive of ['img-src', 'media-src', 'font-src']) {
+      expect(sourcesOf(csp('<p>hi</p>'), directive), directive).not.toContain(`${window.location.origin}/proxy`);
+      expect(sourcesOf(policy('<p>hi</p>'), directive), directive).toContain(`${window.location.origin}/proxy`);
+      expect(sourcesOf(policy('<p>hi</p>'), directive), directive).not.toContain(window.location.origin);
+    }
+  });
+
+  it('names the parts by the very URL an inline image is pointed at, mailbox encoding and all', () => {
+    const structure = { Children: [{ MIMEType: 'text' }, { ID: '<logo@sender.test>' }] };
+    const out = blocked('<img src="cid:logo@sender.test">', { mailbox: '[Gmail]/All Mail', messageStructure: structure });
+    const image = new URL(attr(out, 'img', 'src'), window.location.origin);
+    const policy = attr(out, 'meta[http-equiv="Content-Security-Policy"]', 'content');
+    // A source with a path matches the path and ignores the query.
+    expect(sourcesOf(policy, 'img-src')).toContain(`${image.origin}${image.pathname}`);
+  });
+
+  it('names no parts for a document that is not a stored message', () => {
+    const out = sanitizeMessageHTML('<p>hi</p>', { mailbox: '', messageUid: '', allowRemoteResources: false });
+    expect(sourcesOf(attr(out, 'meta[http-equiv="Content-Security-Policy"]', 'content'), 'img-src')).toEqual(['data:', 'blob:', 'cid:']);
+  });
+
+  // The sanitizer counts and rewrites only absolute and `//` URLs, so these
+  // are left as the sender wrote them, and only the policy keeps the browser
+  // from fetching them through our own proxy with remote content blocked.
+  const relativeProxy = '/proxy?url=https%3A%2F%2Ftracker.test%2Funique';
+  for (const html of [
+    `<img src="${relativeProxy}">`,
+    `<img srcset="${relativeProxy} 2x">`,
+    `<div style="background:url('${relativeProxy}')">body</div>`,
+    `<style>body { background: image-set('${relativeProxy}' 1x) }</style>`,
+    `<svg><image href="${relativeProxy}" /></svg>`,
+    `<video><source src="${relativeProxy}"></video>`,
+  ]) {
+    it(`does not let a sender's relative proxy URL load with remote content blocked: ${html}`, () => {
+      const policy = csp(html);
+      for (const directive of ['img-src', 'media-src', 'font-src']) {
+        const sources = sourcesOf(policy, directive);
+        expect(sources, directive).not.toContain(window.location.origin);
+        expect(sources, directive).not.toContain(`${window.location.origin}/proxy`);
+        expect(sources.filter((source) => source.startsWith(window.location.origin)), directive).toEqual([
+          `${window.location.origin}/mailboxes/INBOX/messages/42/raw`,
+        ]);
+      }
+    });
+  }
 
   it('comes before any of the sender\'s markup', () => {
     // A meta CSP governs only what follows it.

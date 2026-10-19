@@ -145,7 +145,9 @@ test.describe("a message cannot run code", () => {
        <img src="x" onerror="document.getElementById('safe').textContent='EXECUTED'">`,
     );
     await login(page);
-    allowConsoleErrors(page, /Blocked script execution/i, /ERR_|Failed to load/i);
+    // The image is refused by the message's policy, which only lets in its
+    // own parts: the error event fires all the same.
+    allowConsoleErrors(page, /Blocked script execution/i, /ERR_|Failed to load|Content Security Policy/i);
     await open(page, subject);
 
     const body = frame(page).contentFrame().locator("body");
@@ -224,6 +226,87 @@ test.describe("a message cannot run code", () => {
     expect(page.url()).toContain("#/mailbox");
     await expect(doc.locator("body")).toContainText("Body");
     expect(offsite).toEqual([]);
+  });
+});
+
+test.describe("a message cannot fetch around the remote-content block", () => {
+  test("a relative proxy URL fetches nothing, and the message's own image still loads", async ({ page }) => {
+    // The sanitizer counts and rewrites absolute and `//` URLs only, so a
+    // relative `/proxy?url=…` reaches the frame as the sender wrote it. Under a
+    // policy that let in the whole origin, the browser fetched the tracker
+    // through alps's own proxy while remote content was blocked. The inline
+    // image is the control: the policy that refuses the proxy still has to let
+    // the message's own parts in.
+    const subject = `Relative proxy ${Date.now()}`;
+    const proxy = "/proxy?url=https%3A%2F%2Ftracker.remote.test%2Fopen.gif";
+    const boundary = "alps-e2e-relative-proxy";
+    const html =
+      "<p>Body</p>" +
+      '<img src="cid:logo@remote.test" alt="logo">' +
+      `<img src="${proxy}&amp;via=img" alt="pixel">` +
+      `<img srcset="${proxy}&amp;via=srcset 2x" alt="pixel">` +
+      `<div style="width:10px;height:10px;background:url('${proxy}&amp;via=css')"></div>` +
+      `<style>body { background: image-set('${proxy}&via=image-set' 1x) }</style>` +
+      `<svg width="10" height="10"><image href="${proxy}&amp;via=svg" width="10" height="10"/></svg>`;
+    await deliver({
+      subject,
+      raw: [
+        "From: Ada Lovelace <ada@remote.test>",
+        `To: ${USER.address}`,
+        `Subject: ${subject}`,
+        `Message-ID: <relativeproxy${Date.now()}@remote.test>`,
+        `Date: ${new Date().toUTCString()}`,
+        "MIME-Version: 1.0",
+        `Content-Type: multipart/related; boundary="${boundary}"`,
+        "",
+        `--${boundary}`,
+        "Content-Type: text/html; charset=utf-8",
+        "",
+        html,
+        "",
+        `--${boundary}`,
+        'Content-Type: image/png; name="logo.png"',
+        'Content-Disposition: inline; filename="logo.png"',
+        "Content-ID: <logo@remote.test>",
+        "Content-Transfer-Encoding: base64",
+        "",
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+        "",
+        `--${boundary}--`,
+        "",
+      ].join("\r\n"),
+    });
+    // Routed rather than watched: a request the policy refuses is still
+    // reported as a request, and only one that reaches the network is routed.
+    const proxied: string[] = [];
+    await page.route(
+      (url) => url.pathname === "/proxy",
+      (route) => {
+        proxied.push(route.request().url());
+        return route.fulfill({ status: 404 });
+      },
+    );
+
+    await login(page);
+    // Each refused fetch is a console line: the policy doing its job.
+    allowConsoleErrors(page, /Content Security Policy/i);
+    await open(page, subject);
+
+    await expect
+      .poll(() =>
+        frame(page).evaluate((el) => {
+          const doc = (el as HTMLIFrameElement).contentDocument;
+          const logo = doc?.querySelector<HTMLImageElement>('img[alt="logo"]');
+          return doc?.readyState === "complete" && logo?.complete ? logo.naturalWidth : 0;
+        }),
+      )
+      .toBeGreaterThan(0);
+    // Two rendering turns, so a fetch the styles start after load has had
+    // its chance to go out before its absence is concluded.
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
+    expect(proxied).toEqual([]);
   });
 });
 
