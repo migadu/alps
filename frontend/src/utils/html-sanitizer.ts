@@ -1,5 +1,6 @@
 import * as cssParser from 'css';
 import { encodeMailboxPath } from './folders';
+import { applyAutoDirections, AUTO_DIRECTION_STYLES } from './content-direction';
 
 export interface SanitizeOptions {
   mailbox: string;
@@ -285,9 +286,43 @@ function processCSS(cssText: string, options: SanitizeOptions): string {
   return modified;
 }
 
+/**
+ * Does a stylesheet in the message set the direction of the document itself?
+ * Only a rule that targets `<html>` or `<body>` counts: a direction on some
+ * element inside says nothing about the rest of the message.
+ */
+function hasDocumentDirectionRule(doc: Document): boolean {
+  const matchesDocument = (selector: string): boolean => {
+    try { return doc.documentElement.matches(selector) || doc.body.matches(selector); }
+    catch { return false; }
+  };
+  const containsDirection = (rules: any[]): boolean => rules.some((rule) =>
+    (rule.type === 'rule'
+      && rule.selectors?.some(matchesDocument)
+      && rule.declarations?.some((declaration: any) => declaration.property?.toLowerCase() === 'direction'))
+    || (Array.isArray(rule.rules) && containsDirection(rule.rules)),
+  );
+  return [...doc.querySelectorAll('style')].some((sheet) => {
+    if (!/\bdirection\s*:/i.test(sheet.textContent ?? '')) return false;
+    try { return containsDirection(cssParser.parse(sheet.textContent ?? '', { silent: true }).stylesheet?.rules ?? []); }
+    catch { return false; }
+  });
+}
+
 export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(rawHtml, 'text/html');
+
+  // A message runs the way its author wrote it, not the way this page does.
+  // One that sets no direction for itself takes the direction of its first
+  // letter, so a message in Arabic is laid out right to left whatever the
+  // interface's language. A direction the author did set is kept.
+  const authoredDirection = doc.documentElement.hasAttribute('dir') || doc.body.hasAttribute('dir')
+    || doc.documentElement.style.direction || doc.body.style.direction
+    || hasDocumentDirectionRule(doc);
+  if (!authoredDirection) {
+    doc.body.dir = 'auto';
+  }
 
   // Strip everything that fetches or renders on its own, BEFORE the base/CSP/style
   // this function injects go in — so the strip cannot remove our own tags, and the
@@ -343,7 +378,8 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
     p:last-child { margin-bottom: 0; }
     a[href] { color: #3781b8; text-decoration: none; }
     a[href]:hover { text-decoration: underline; }
-    blockquote[type='cite'] { margin: 0 0 0 0.8ex; border-left: 1px #ccc solid; padding-left: 1ex; }
+    blockquote[type='cite'] { margin: 0; margin-inline-start: 0.8ex; border-inline-start: 1px #ccc solid; padding-inline-start: 1ex; }
+    ${AUTO_DIRECTION_STYLES}
     img { max-width: 100%; height: auto; }
   `;
   doc.head.prepend(style);
@@ -464,6 +500,7 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
     }
   });
 
+  applyAutoDirections(doc);
   return doc.documentElement.outerHTML;
 }
 
