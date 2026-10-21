@@ -347,9 +347,10 @@ func handleDeleteCredential(ctx *alps.Context) error {
 		return respondTwoFactorRequired(ctx)
 	}
 
-	// Find and remove the credential
+	// Find and remove the credential. The capacity is not one less than the
+	// count: for an account with no keys that was -1, and a panic.
 	found := false
-	newCreds := make([]CredentialInfo, 0, len(creds.Credentials)-1)
+	newCreds := make([]CredentialInfo, 0, len(creds.Credentials))
 	for _, info := range creds.Credentials {
 		if string(info.Credential.ID) != string(credIDBytes) {
 			newCreds = append(newCreds, info)

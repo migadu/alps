@@ -1,6 +1,7 @@
 package alpsbase
 
 import (
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"net/url"
@@ -204,4 +205,43 @@ func TestHTTP_AnOutageDuringTheSecondFactorIsNotARefusal(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.expect(s.do("POST", "/webauthn/verify/begin", nil), http.StatusOK)
+}
+
+// withSecurityKeys signs in to an account that has the named keys, as a
+// session that has already given its second factor would be. The keys are put
+// in after the sign-in, so that it is not asked for one.
+func (s *testServer) withSecurityKeys(names ...string) {
+	s.t.Helper()
+	s.login()
+	keys := make([]any, 0, len(names))
+	for _, name := range names {
+		keys = append(keys, map[string]any{"name": name, "credential": map[string]any{"id": base64.StdEncoding.EncodeToString([]byte(name))}})
+	}
+	store, err := s.store.GetStore()
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	if err := store.Put("webauthn", map[string]any{"enabled": true, "credentials": keys}); err != nil {
+		s.t.Fatal(err)
+	}
+	// Changing the keys of an account that has some takes a session that gave
+	// the second factor.
+	s.giveSecondFactor()
+}
+
+// removeKey asks for the named key to be removed, giving body as the request.
+func (s *testServer) removeKey(name string, body any) response {
+	s.t.Helper()
+	return s.do("POST", "/settings/2fa/credential/"+base64.URLEncoding.EncodeToString([]byte(name))+"/delete", body)
+}
+
+// A key the account does not have is a 404, and an account with none at all
+// is no exception. That one used to panic, for a slice of capacity -1.
+func TestHTTP_RemovingAnUnknownSecurityKeyIsNotFound(t *testing.T) {
+	s := newTestServer(t)
+	s.withSecurityKeys("laptop")
+	s.expect(s.removeKey("tablet", nil), http.StatusNotFound)
+
+	s.expect(s.removeKey("laptop", nil), http.StatusOK)
+	s.expect(s.removeKey("laptop", nil), http.StatusNotFound)
 }
