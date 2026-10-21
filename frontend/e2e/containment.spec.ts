@@ -349,6 +349,50 @@ test.describe("a message cannot fetch around the remote-content block", () => {
   });
 });
 
+test.describe("a message cannot hide remote content from the banner", () => {
+  test("a CSS address written with escapes is counted, and fetches nothing", async ({ page }) => {
+    // A browser reads `\75 rl(` and `u\rl(` as `url(`, and fetches the plain
+    // strings of an image-set(). Uncounted, a message whose only remote
+    // content was written that way showed no banner, so the reader was never
+    // told it had any. The policy refused the fetches all the same, each one
+    // a console error, which this test does not allow.
+    const subject = `Escaped CSS ${Date.now()}`;
+    const tracker = "https://tracker.remote.test";
+    await deliverHtml(
+      subject,
+      `<style>p { background: u\\rl(${tracker}/block.gif) }</style>
+       <p>Body</p>
+       <div style="width:10px;height:10px;background:\\75 rl(${tracker}/attribute.gif)"></div>
+       <div style="width:10px;height:10px;background-image:image-set('${tracker}/set.gif' 1x)"></div>`,
+    );
+    const fetched: string[] = [];
+    await page.route(
+      (url) => url.hostname === "tracker.remote.test",
+      (route) => {
+        fetched.push(route.request().url());
+        return route.abort();
+      },
+    );
+
+    await login(page);
+    await open(page, subject);
+
+    await expect(frame(page).contentFrame().locator("body")).toContainText("Body");
+    await expect(
+      page.locator("alps-message-reader .message-content alps-banner", { hasText: "remote content" }),
+    ).toBeVisible();
+    await expect
+      .poll(() => frame(page).evaluate((el) => (el as HTMLIFrameElement).contentDocument?.readyState))
+      .toBe("complete");
+    // Two rendering turns, so a fetch the styles start after load has had
+    // its chance to go out before its absence is concluded.
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
+    expect(fetched).toEqual([]);
+  });
+});
+
 test.describe("what a message may still do", () => {
   test("ordinary markup renders as markup", async ({ page }) => {
     // The containment must not be achieved by refusing to render HTML at all;

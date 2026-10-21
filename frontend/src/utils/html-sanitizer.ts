@@ -1,4 +1,5 @@
 import * as cssParser from 'css';
+import { cssUrls, loadsResource, withoutDeclarations } from './css-syntax';
 import { encodeMailboxPath } from './folders';
 import { applyAutoDirections, AUTO_DIRECTION_STYLES, getAuthoredDirection } from './content-direction';
 
@@ -69,6 +70,22 @@ const REMOTE_URL_IN_CSS = () => /url\(\s*(['"]?)((?:https?:)?\/\/[^'"\)]+)\1\s*\
 /** The same for `@import`, which may or may not wrap its target in `url()`. */
 const REMOTE_IMPORT_IN_CSS = () =>
   /@import\s+(?:url\(\s*)?(['"]?)((?:https?:)?\/\/[^'"\)]+)\1\s*\)?\s*;?/gi;
+
+/**
+ * Does this CSS fetch from somewhere the sender controls, however it is
+ * written?
+ *
+ * The two patterns above find a remote `url()` as it is usually written, so
+ * that it can be rewritten in place. A browser also fetches one written with
+ * escapes (`u\rl(…)`, `\75 rl(…)`, an address spelled `h\74tps:`), the plain
+ * strings of an `image-set()`, and an `@import` named that way, and neither
+ * pattern sees those. This reads the CSS as a browser does (see css-syntax.ts)
+ * and is asked after the rewrite, so what it still finds is what the rewrite
+ * could not reach: the declaration holding it is dropped and counted.
+ */
+function namesRemote(css: string): boolean {
+  return cssUrls(css).some((url) => isRemoteUrl(urlScheme(url)));
+}
 
 function proxied(url: string): string {
   return `/proxy?url=${encodeURIComponent(url.trim())}`;
@@ -196,6 +213,17 @@ function findPartPathByCID(structure: any, cid: string, currentPath: string = ''
 function processCSS(cssText: string, options: SanitizeOptions): string {
   if (!cssText) return cssText;
 
+  // The finished sheet, read once more as a browser reads it. The parser
+  // below matches CSS with regular expressions and decodes no escapes, so
+  // what it takes for a selector can be an `@import` to a browser:
+  // `@\69mport` is one. A sheet that would still fetch from the sender after
+  // everything below is dropped whole.
+  const settled = (css: string): string => {
+    if (!namesRemote(css)) return css;
+    if (options.onRemoteResourceBlocked) options.onRemoteResourceBlocked();
+    return '';
+  };
+
   try {
     const ast = cssParser.parse(cssText, { silent: true });
     if (ast && ast.stylesheet && ast.stylesheet.rules) {
@@ -227,29 +255,28 @@ function processCSS(cssText: string, options: SanitizeOptions): string {
           }
 
           if (rule.type === 'import') {
+            // REMOVED whatever it names and whether or not the reader opted
+            // in — the treatment `<link rel="stylesheet">` gets in
+            // sanitizeMessageHTML, for the same reason: `style-src
+            // 'unsafe-inline'` governs `@import` as much as `<link>`, and
+            // matches no URL, so no import can load, not even through the
+            // proxy. The `/proxy?url=…` rewrite this used to make on opt-in
+            // produced an import the browser refused, left in the sheet
+            // looking handled. Opting in cannot bring a remote sheet back; it
+            // can only stop pretending to. A remote one is still counted.
             const importRule = rule as cssParser.Import;
-            // `(?:https?:)?\/\/` for the same reason as everywhere else in this
-            // file: a protocol-relative `@import "//host/x.css"` fetches just
-            // like an absolute one.
-            if (importRule.import && importRule.import.match(/(?:https?:)?\/\//i)) {
-              // Counted, and REMOVED whether or not the reader opted in — the
-              // treatment `<link rel="stylesheet">` gets in sanitizeMessageHTML,
-              // for the same reason: `style-src 'unsafe-inline'` governs
-              // `@import` as much as `<link>`, so the `/proxy?url=…` rewrite
-              // this used to make on opt-in produced an import the browser
-              // refused, left in the sheet looking handled. Opting in cannot
-              // bring a remote sheet back; it can only stop pretending to.
-              if (options.onRemoteResourceBlocked) options.onRemoteResourceBlocked();
-              rules.splice(i, 1);
-              continue;
+            if (namesRemote(`@import ${importRule.import ?? ''};`) && options.onRemoteResourceBlocked) {
+              options.onRemoteResourceBlocked();
             }
+            rules.splice(i, 1);
+            continue;
           }
           else if (rule.type === 'font-face') {
             const fontRule = rule as cssParser.FontFace;
             if (fontRule.declarations) {
               let hasRemoteFont = false;
               for (const dec of fontRule.declarations) {
-                if (dec.type === 'declaration' && (dec as cssParser.Declaration).value?.match(urlRegex)) {
+                if (dec.type === 'declaration' && namesRemote((dec as cssParser.Declaration).value ?? '')) {
                   if (options.onRemoteResourceBlocked) options.onRemoteResourceBlocked();
                   hasRemoteFont = true;
                 }
@@ -262,20 +289,32 @@ function processCSS(cssText: string, options: SanitizeOptions): string {
           }
 
           if (rule.declarations) {
-            for (const dec of rule.declarations) {
-              if (dec.type === 'declaration' && dec.value && dec.value.match(urlRegex)) {
+            for (let d = rule.declarations.length - 1; d >= 0; d--) {
+              const dec = rule.declarations[d];
+              if (dec.type !== 'declaration' || !dec.value) continue;
+              if (dec.value.match(urlRegex)) {
                 dec.value = replaceUrl(dec.value);
+              }
+              // What the rewrite could not reach goes with its declaration.
+              if (namesRemote(dec.value)) {
+                if (options.onRemoteResourceBlocked) options.onRemoteResourceBlocked();
+                rule.declarations.splice(d, 1);
               }
             }
           }
           if (rule.rules) {
             walkRules(rule.rules);
           }
+          // An @keyframes keeps its frames apart from `rules`, and a url() in
+          // one fetches like any other.
+          if (rule.keyframes) {
+            walkRules(rule.keyframes);
+          }
         }
       };
 
       walkRules(ast.stylesheet.rules);
-      return cssParser.stringify(ast);
+      return settled(cssParser.stringify(ast));
     }
   } catch (err) {
     console.warn('AST CSS parsing failed, falling back to regex sanitizer', err);
@@ -304,7 +343,7 @@ function processCSS(cssText: string, options: SanitizeOptions): string {
     }
   }
 
-  return modified;
+  return settled(modified);
 }
 
 /**
@@ -510,9 +549,9 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
   const urlRegex = REMOTE_URL_IN_CSS();
   const elementsWithStyle = doc.querySelectorAll('[style]');
   elementsWithStyle.forEach(el => {
-    let styleAttr = el.getAttribute('style');
-    if (styleAttr && styleAttr.match(urlRegex)) {
-      if (options.onRemoteResourceBlocked) options.onRemoteResourceBlocked();
+    const original = el.getAttribute('style') ?? '';
+    let styleAttr = original;
+    if (styleAttr.match(urlRegex)) {
       if (!options.allowRemoteResources) {
         styleAttr = styleAttr.replace(urlRegex, `url(${BLOCKED_PIXEL})`);
       } else {
@@ -521,8 +560,14 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
           return `url(${q}${proxied(url)}${q})`;
         });
       }
-      el.setAttribute('style', styleAttr);
     }
+    // What the rewrite could not reach goes with its declaration, as in a
+    // style block.
+    styleAttr = withoutDeclarations(styleAttr, namesRemote);
+    if (styleAttr === original) return;
+    if (options.onRemoteResourceBlocked) options.onRemoteResourceBlocked();
+    if (styleAttr) el.setAttribute('style', styleAttr);
+    else el.removeAttribute('style');
   });
 
   applyAutoDirections(doc);
@@ -539,19 +584,20 @@ function isScriptUrl(value: string): boolean {
 const URL_ATTRIBUTES = new Set(['href', 'src', 'action', 'formaction', 'xlink:href', 'poster']);
 
 /**
- * The style with every `url()` in it removed.
+ * The style without the declarations that would load something: a `url()`,
+ * an `image-set()` or any other function that takes an image or an address,
+ * an `@import`, or old Internet Explorer's `expression()` and `behavior`. The
+ * style comes back as written when it has none.
  *
- * A quoted URL can hold a `)`, as in `url("https://x.test/img?(1)")`, and a
- * pattern that stopped at the first `)` left `")` behind, which opens a CSS
- * string that swallows the rest of the declaration. A backslash inside the
- * quotes escapes the next character, a line break included. A `url(` left
- * unclosed is closed by the end of the value, as CSS closes it, so it goes
- * with everything after it.
+ * They are found as a browser reads CSS, escapes decoded and comments taken
+ * out (see css-syntax.ts): matching the text `url(` missed `u\rl(` and
+ * `\75 rl(`, which a browser reads as `url(`. And they go whole, because
+ * cutting a value short is how a pattern that stopped at the first `)` of
+ * `url("https://x.test/img?(1)")` left `")` behind, a CSS string that
+ * swallowed the rest of the declaration.
  */
 export function stripCssUrls(style: string): string {
-  return style
-    .replace(/url\s*\(\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^)'"]*)\s*\)/gis, '')
-    .replace(/url\s*\(.*$/is, '');
+  return withoutDeclarations(style, loadsResource);
 }
 
 /**
@@ -579,8 +625,8 @@ export function stripCssUrls(style: string): string {
  * original is a tracking pixel in the quote is the trade-off of quoting at
  * all; the reader's block protects the reader, not the reply's recipients.
  * A `<style>` block goes because quoted CSS escapes the quote and restyles the
- * reply around it, and a `url()` in an inline style goes with it: it fetches
- * without being content.
+ * reply around it, and an inline declaration that loads something, a `url()`
+ * however it is written, goes with it: it fetches without being content.
  *
  * A `cid:` image names a part of the message it came in, which is why a reply
  * or forward carries the original's inline parts (see inlinePartsOf).
@@ -620,8 +666,10 @@ export function sanitizeQuotedHTML(rawHtml: string): string {
     }
     // Inline styles survive as formatting, not as a fetch: see the docstring.
     const style = el.getAttribute('style');
-    if (style && /url\s*\(/i.test(style)) {
-      el.setAttribute('style', stripCssUrls(style));
+    const formatting = style && stripCssUrls(style);
+    if (formatting !== style) {
+      if (formatting) el.setAttribute('style', formatting);
+      else el.removeAttribute('style');
     }
   }
 

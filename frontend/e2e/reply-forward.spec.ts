@@ -654,6 +654,22 @@ test("forwarding leaves an SVG animation behind, and keeps the drawing it was in
   expect(sent).not.toMatch(/<set|<animate|javascript:/i);
 });
 
+test("forwarding leaves a CSS address written with escapes behind, and keeps the formatting around it", async ({ page }) => {
+  // `\75 rl(` is `url(` to the recipient's client, which would fetch it; so
+  // are the plain strings of an image-set().
+  const sent = await forwardHtml(
+    page,
+    `Hidden pixel ${Date.now()}`,
+    '<p>See the notes.</p>' +
+      '<div style="color:#c00;background:\\75 rl(https://tracker.remote.test/escaped.gif)">red note</div>' +
+      "<div style=\"background-image:image-set('https://tracker.remote.test/set.gif' 1x);font-weight:bold\">bold note</div>",
+    "red note",
+  );
+  expect(sent).toMatch(/<div style="color:\s*(?:#c00|rgb\(204, 0, 0\));?">red note</);
+  expect(sent).toMatch(/<div style="font-weight:\s*(?:bold|700);?">bold note</);
+  expect(sent).not.toContain("tracker.remote.test");
+});
+
 // The image has to leave under the Content-ID the quote names it by: without
 // it the reference resolves for nobody, and the arrived copy's frame logs a
 // CSP refusal for the unresolved `cid:` image, which fails this test too.

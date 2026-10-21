@@ -157,6 +157,59 @@ describe('sanitizeQuotedHTML', () => {
     expect(out).not.toContain('tracker.test');
     expect(out).toContain('color: red');
   });
+
+  describe('an inline declaration that loads something', () => {
+    // A browser decodes escapes before it reads a name, so `u\rl(` is `url(`;
+    // a lenient client may also join a name across a comment or skip a space
+    // before the parenthesis. Each goes with its declaration, whatever it
+    // names: the recipient's client would fetch it, or run it.
+    const style = (html: string) => parse(sanitizeQuotedHTML(html)).querySelector('div')?.getAttribute('style') ?? null;
+
+    for (const value of [
+      'u\\rl(https://tracker.test/p.gif)',
+      '\\75 rl(https://tracker.test/p.gif)',
+      '\\000055RL("https://tracker.test/p.gif")',
+      'url (https://tracker.test/p.gif)',
+      'u/**/rl(https://tracker.test/p.gif)',
+      'url/**/(https://tracker.test/p.gif)',
+      'image-set("https://tracker.test/p.gif" 1x)',
+      '-webkit-image-set("https://tracker.test/p.gif" 1x)',
+      '\\69mage-set("https://tracker.test/p.gif" 1x)',
+      'image("https://tracker.test/p.gif")',
+      'cross-fade(url(https://tracker.test/a.gif), url(https://tracker.test/b.gif), 50%)',
+      'element(#tracker-test)',
+      '-moz-element(#tracker-test)',
+      'ex/**/pression(alert("tracker.test"))',
+    ]) {
+      it(`goes whole: ${value}`, () => {
+        const out = style(`<div style='color: #c00; background: ${value}; margin: 0'>x</div>`);
+        expect(out).toBe('color: #c00; margin: 0');
+      });
+    }
+
+    it('goes whole as a behavior or an @import too', () => {
+      expect(style("<div style='b\\65havior: url(https://tracker.test/x.htc); color: #c00'>x</div>")).toBe('color: #c00');
+      expect(style("<div style='color: #c00; @import \"https://tracker.test/s.css\"'>x</div>")).toBe('color: #c00');
+    });
+
+    it('takes the style attribute with it when nothing else is left', () => {
+      expect(style('<div style="background: \\75 rl(https://tracker.test/p.gif)">x</div>')).toBeNull();
+    });
+  });
+
+  it('keeps an inline style that loads nothing exactly as written, escapes and all', () => {
+    const css = 'font-family: \\5B8B\\4F53, "\\5FAE\\8F6F\\96C5\\9ED1"; quotes: "\\201C" "\\201D"; content: "url(x)"; scroll-behavior: smooth';
+    expect(parse(sanitizeQuotedHTML(`<q style='${css}'>x</q>`)).querySelector('q')?.getAttribute('style')).toBe(css);
+  });
+
+  it('keeps cid: and data: images as written', () => {
+    const gif = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+    const images = parse(sanitizeQuotedHTML(`<img src="cid:logo@sender.test"><img src="${gif}"><img srcset="${gif} 2x">`))
+      .querySelectorAll('img');
+    expect([...images].map((img) => img.getAttribute('src') ?? img.getAttribute('srcset'))).toEqual([
+      'cid:logo@sender.test', gif, `${gif} 2x`,
+    ]);
+  });
 });
 
 describe('stripCssUrls', () => {
@@ -180,6 +233,20 @@ describe('stripCssUrls', () => {
       expect(out, style).not.toContain('tracker.test');
       expect(out, style).toContain('color: red');
     }
+  });
+
+  it('removes a url() written with escapes, with the declaration it is in', () => {
+    expect(stripCssUrls('color: red; background: #fff \\75 rl(https://tracker.test/p.gif) no-repeat; margin: 0')).toBe('color: red; margin: 0');
+  });
+
+  it('keeps a url() inside a string, which is only text', () => {
+    const style = 'font-family: "url(https://tracker.test/p.gif)"';
+    expect(stripCssUrls(style)).toBe(style);
+  });
+
+  it('returns a style with nothing to remove unchanged', () => {
+    const style = ' color: red;;  border-left: 1px solid #ccc ';
+    expect(stripCssUrls(style)).toBe(style);
   });
 });
 

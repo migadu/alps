@@ -400,4 +400,25 @@ describe('a text-only original', () => {
     expect(style).toContain('border-left');
     expect(style).toContain('color: red');
   });
+
+  it('loses a url() written with escapes as well', async () => {
+    // `\75 rl(` is `url(` to a browser, and to the recipient's client.
+    const composer = await openComposer(
+      '<blockquote class="gmail_quote" style=\'border-left:1px solid #ccc; background-image: \\75 rl("https://tracker.test/p.gif"); color: red\'>' +
+      '<p>quoted</p></blockquote>',
+    );
+    // Read off the node, as the editor holds it: the HTML handed on below
+    // passes through jsdom's style parser, which drops what it cannot read,
+    // where a browser's would read this one as a plain url().
+    let held = '';
+    composer.editor!.state.doc.descendants((node) => {
+      if (node.type.name === 'blockquote') held = node.attrs.style ?? '';
+      return !held;
+    });
+    expect(held).toBe('border-left:1px solid #ccc; color: red');
+    const style = parse(typeLine(composer, 'Agreed.').html).querySelector('blockquote')?.getAttribute('style') ?? '';
+    expect(style).not.toContain('tracker.test');
+    expect(style).toContain('border-left');
+    expect(style).toContain('color: red');
+  });
 });

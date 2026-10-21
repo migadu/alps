@@ -273,6 +273,7 @@ describe('remote addresses in CSS', () => {
       ['a style attribute', `<p style="background: url(${url})">x</p>`],
       ['an @import', `<style>@import url("${url}");</style>`],
       ['an @font-face', `<style>@font-face { font-family: x; src: url(${url}); }</style>`],
+      ['an @keyframes', `<style>@keyframes k { from { background: url(${url}); } }</style>`],
       ['a stylesheet link', `<link rel="stylesheet" href="${url}">`],
     ];
     for (const [where, html] of cases) {
@@ -296,6 +297,98 @@ describe('remote addresses in CSS', () => {
     expect(out).toContain('/local/x.gif');
     expect(out).toContain('cid:logo@sender.test');
     expect(countBlocked(html)).toBe(0);
+  });
+
+  it('leaves a data: url() and an SVG fragment alone, whatever the reader chose', () => {
+    const gif = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+    const html =
+      `<style>p { background: url(${gif}) } rect { fill: url(#g) }</style>` +
+      `<p style="background: url('${gif}') no-repeat">a</p><svg><rect style="fill: url(#g)"/></svg>`;
+    for (const out of [blocked(html), allowed(html)]) {
+      expect(out).toContain(`background: url(${gif})`);
+      expect(out).toContain('fill: url(#g)');
+      expect(attr(out, 'p', 'style')).toBe(`background: url('${gif}') no-repeat`);
+      expect(attr(out, 'rect', 'style')).toBe('fill: url(#g)');
+    }
+    expect(countBlocked(html)).toBe(0);
+    expect(countBlocked(html, true)).toBe(0);
+  });
+});
+
+describe('remote addresses in CSS written so that a pattern misses them', () => {
+  // A browser decodes escapes before it reads a name or an address, and
+  // fetches the plain strings of an image-set(), so each of these loads as
+  // surely as a plain url(). The rewrite finds the usual spelling; what it
+  // cannot reach goes with its declaration, and is counted.
+  const url = 'https://tracker.example/p.gif';
+  for (const value of [
+    `u\\rl(${url})`,
+    `\\75 rl(${url})`,
+    `\\000055RL("${url}")`,
+    'url(h\\74tps://tracker.example/p.gif)',
+    'url("\\2f\\2ftracker.example/p.gif")',
+    `image-set("${url}" 1x)`,
+    `-webkit-image-set("${url}" 1x, "${url}" 2x)`,
+  ]) {
+    const cases: [string, string][] = [
+      ['a style attribute', `<p style='color: #c00; background: ${value}'>x</p>`],
+      ['a style block', `<style>p { color: #c00; background: ${value} }</style><p>x</p>`],
+      ['an @font-face', `<style>@font-face { font-family: x; src: ${value} }</style><p style="color: #c00">x</p>`],
+    ];
+    for (const [where, html] of cases) {
+      it(`counts ${value} in ${where}, and keeps the rest of the style`, () => {
+        expect(countBlocked(html)).toBeGreaterThan(0);
+        expect(countBlocked(html, true)).toBeGreaterThan(0);
+        expect(blocked(html)).toMatch(/color: #c00/);
+        expect(allowed(html)).toMatch(/color: #c00/);
+      });
+
+      it(`does not leave ${value} in ${where}, blocked or allowed`, () => {
+        expect(blocked(html)).not.toContain('tracker.example');
+        expect(withoutProxied(allowed(html))).not.toContain('tracker.example');
+      });
+    }
+  }
+
+  it('drops a sheet whose @import is written with escapes, which the parser takes for a selector', () => {
+    const html = `<style>@\\69mport url(${url}); p { color: red }</style><p>x</p>`;
+    expect(countBlocked(html)).toBeGreaterThan(0);
+    expect(blocked(html)).not.toContain('tracker.example');
+    expect(withoutProxied(allowed(html))).not.toContain('tracker.example');
+  });
+
+  it('removes an @import whose address is written with escapes, and counts it', () => {
+    const html = '<style>@import "\\2f\\2ftracker.example/s.css"; p { color: red }</style>';
+    expect(countBlocked(html)).toBeGreaterThan(0);
+    const out = allowed(html);
+    expect(out).not.toContain('@import');
+    expect(out).toMatch(/color:\s*red/);
+  });
+
+  it('leaves a url( that a browser does not read as one', () => {
+    // A space before the parenthesis, or a comment inside the name, makes
+    // something else of it: nothing is fetched, so nothing is counted.
+    const html = `<p style="background: url (${url})">a</p><p style="background: u/**/rl(${url})">b</p>`;
+    expect(countBlocked(html)).toBe(0);
+  });
+
+  it('keeps styles that use escapes for text, and counts nothing', () => {
+    const html =
+      '<style>q::before { content: "\\201C" } p { font-family: \\5B8B\\4F53, "\\5FAE\\8F6F\\96C5\\9ED1" }</style>' +
+      '<p style=\'font-family: \\5B8B\\4F53; color: #c00\'>x</p><q style=\'quotes: "\\201C" "\\201D"\'>y</q>';
+    for (const out of [blocked(html), allowed(html)]) {
+      expect(out).toContain('content: "\\201C"');
+      expect(out).toContain('font-family: \\5B8B\\4F53, "\\5FAE\\8F6F\\96C5\\9ED1"');
+      expect(attr(out, 'p', 'style')).toBe('font-family: \\5B8B\\4F53; color: #c00');
+      expect(attr(out, 'q', 'style')).toBe('quotes: "\\201C" "\\201D"');
+    }
+    expect(countBlocked(html)).toBe(0);
+  });
+
+  it('keeps a namespace rule, whose URL is a name and not a fetch', () => {
+    const html = '<style>@namespace svg url(http://www.w3.org/2000/svg); p { color: red }</style>';
+    expect(countBlocked(html)).toBe(0);
+    expect(blocked(html)).toMatch(/color:\s*red/);
   });
 });
 

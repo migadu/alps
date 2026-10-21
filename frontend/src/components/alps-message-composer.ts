@@ -388,9 +388,10 @@ function paragraphsOf(text: string): string {
  * A text-only original is quoted as an editable blockquote, so it can be
  * trimmed, and the editor's blockquote kept none of what marks it as a quote
  * to the recipient's client: the `gmail_quote` class and the bar down its
- * left. Both are kept on the node and go out with it. A `url()` in the style
- * is dropped, as the quote sanitizer drops it: pasted markup comes this way
- * too, and a background is a fetch on the recipient's side.
+ * left. Both are kept on the node and go out with it. A declaration in the
+ * style that loads something, a `url()` however it is written, is dropped, as
+ * the quote sanitizer drops it: pasted markup comes this way too, and a
+ * background is a fetch on the recipient's side.
  */
 const QuoteBar = Extension.create({
   name: 'quoteBar',
