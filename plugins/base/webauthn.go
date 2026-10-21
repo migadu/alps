@@ -290,9 +290,11 @@ func handleDeleteCredential(ctx *alps.Context) error {
 
 	creds.Credentials = newCreds
 
-	// If no credentials left, disable 2FA
+	// If no credentials left, disable 2FA, and with it the trust that waived
+	// it for linked accounts: it must not come back with the next key.
 	if len(newCreds) == 0 {
 		creds.Enabled = false
+		creds.TrustLinkedAccounts = false
 	}
 
 	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {

@@ -46,5 +46,5 @@ ALPS is stateless and does not use a database. All WebAuthn data is persisted di
 
 The `webauthn` metadata key stores a JSON payload containing:
 - `enabled`: Boolean indicating if 2FA is active.
-- `trust_linked_accounts`: Boolean indicating if linked accounts can bypass 2FA.
+- `trust_linked_accounts`: Boolean indicating if linked accounts can bypass 2FA. It is only kept beside at least one credential: removing the last one removes the record, trust included, and a record without credentials is read as trusting no one.
 - `credentials`: An array of enrolled authenticators (storing the public key, credential ID, transport types, and an assigned nickname).

@@ -57,6 +57,10 @@ func (u *webauthnUser) WebAuthnCredentials() []webauthn.Credential {
 
 // loadCredentials reads the account's WebAuthn credentials. An account
 // without a record, or whose record was unreadable and so removed, has none.
+//
+// A record without a key trusts no linked account, whatever it says: such a
+// record could be written before, and enrolling a first key into it carried
+// the trust over, granted by a session that never gave a second factor.
 func loadCredentials(session *alps.Session) (*UserCredentials, error) {
 	var creds UserCredentials
 	if err := session.ReadWebAuthn(&creds); errors.Is(err, provider.ErrNoStoreEntry) {
@@ -64,11 +68,17 @@ func loadCredentials(session *alps.Session) (*UserCredentials, error) {
 	} else if err != nil {
 		return nil, err
 	}
+	if len(creds.Credentials) == 0 {
+		creds.TrustLinkedAccounts = false
+	}
 	return &creds, nil
 }
 
+// saveCredentials stores the account's WebAuthn record, or removes it when
+// there is no key left in it. Trust in linked accounts waives a second factor,
+// so it means nothing without one and is not kept on its own.
 func saveCredentials(store provider.Store, creds *UserCredentials) error {
-	if creds == nil || (len(creds.Credentials) == 0 && !creds.TrustLinkedAccounts) {
+	if creds == nil || len(creds.Credentials) == 0 {
 		return store.Put("webauthn", nil)
 	}
 	return store.Put("webauthn", creds)
