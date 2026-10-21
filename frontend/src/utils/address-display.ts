@@ -1,7 +1,7 @@
 import { css, html } from 'lit';
 import { en } from '../i18n/en';
 import { isolatedEmail } from './bidi';
-import { domainPresentation, isHighlyRestrictive, type DomainWarning } from './idn';
+import { canonicalAddress, domainPresentation, isHighlyRestrictive, type DomainWarning } from './idn';
 
 /**
  * An address as a person reads it, and the warning beside one that may not be
@@ -69,6 +69,24 @@ export function parseWrittenAddress(pill: string): { name: string; email: string
     }
   }
   return { name: '', email: trimmed };
+}
+
+/**
+ * A recipient pill as it is sent: the address's domain in A-label form, the
+ * rest as typed.
+ *
+ * The A-label is the domain's own spelling in DNS, and it is plain ASCII, so a
+ * mail server that does not take internationalized addresses (SMTPUTF8) still
+ * takes `ada@bücher.example` as `ada@xn--bcher-kva.example`. An address that
+ * does not convert is sent as typed, for the server to judge.
+ */
+export function canonicalRecipient(pill: string): string {
+  const trimmed = pill.trim();
+  const lt = trimmed.endsWith('>') ? trimmed.lastIndexOf('<') : -1;
+  const email = lt === -1 ? trimmed : trimmed.slice(lt + 1, -1).trim();
+  const canonical = canonicalAddress(email);
+  if (canonical === null || canonical === email) return trimmed;
+  return lt === -1 ? canonical : `${trimmed.slice(0, lt + 1)}${canonical}>`;
 }
 
 /**

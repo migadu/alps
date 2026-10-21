@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
-import { bareAddress, composeContext, draftContentKey } from '../store/compose-store';
+import { bareAddress, composeContext, draftContentKey, recipientField } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
 import { messageOperations } from '../services/message-operations';
@@ -324,9 +324,9 @@ export class AlpsFloatingComposer extends LitElement {
     const text = currentInstance.text || '';
     const subject = (currentInstance.subject || '').trim();
 
-    formData.append('to', to.join(', '));
-    formData.append('cc', cc.join(', '));
-    formData.append('bcc', bcc.join(', '));
+    formData.append('to', recipientField(to));
+    formData.append('cc', recipientField(cc));
+    formData.append('bcc', recipientField(bcc));
     
     if (replyToSetting) {
       formData.append('reply_to', replyToSetting);

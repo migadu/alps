@@ -6,6 +6,7 @@ import { Logger } from '../utils/logger';
 import { appendReplyFields } from '../utils/reply-context';
 import { escapeHtml } from '../utils/html-sanitizer';
 import { DraftFlushError } from '../utils/draft-flush-error';
+import { canonicalRecipient } from '../utils/address-display';
 
 /**
  * Where a user's unsent drafts are kept, scoped to WHOSE they are.
@@ -35,6 +36,12 @@ export const bareAddress = (addr: string): string => {
   }
   return rawEmail.trim().toLowerCase();
 };
+
+/**
+ * A recipient field as a send or a draft save posts it, each address's domain
+ * in its A-label form (see canonicalRecipient). The pills keep what was typed.
+ */
+export const recipientField = (addrs?: string[]): string => (addrs || []).map(canonicalRecipient).join(', ');
 
 /**
  * What a draft save stores of a composer: the message, not where its window
@@ -567,9 +574,9 @@ export class ComposeStore extends EventTarget {
       }
     }
 
-    formData.append('to', (composer.to || []).join(', '));
-    formData.append('cc', (composer.cc || []).join(', '));
-    formData.append('bcc', bcc.join(', '));
+    formData.append('to', recipientField(composer.to));
+    formData.append('cc', recipientField(composer.cc));
+    formData.append('bcc', recipientField(bcc));
     if (replyToSetting) {
       formData.append('reply_to', replyToSetting);
     }

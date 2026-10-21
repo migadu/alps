@@ -14,14 +14,16 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, type CSSResult, type LitElement } from 'lit';
-import { cleanup, click, mount, shadow, shadowAll, text } from './helpers/dom';
+import { cleanup, click, mount, record, shadow, shadowAll, text, waitFor } from './helpers/dom';
 import { backgroundOf, backgroundsOf, ruleMatches, rulesOf } from './helpers/styles';
 import { readSources } from './helpers/sources';
-import { canonicalDomain, domainPresentation, isHighlyRestrictive, toUnicodeLabel } from '../src/utils/idn';
+import { canonicalAddress, canonicalDomain, domainPresentation, isHighlyRestrictive, toUnicodeLabel } from '../src/utils/idn';
 import {
-  addressText, addressWarning, addressWarnings, displayAddress, mixedScriptStyles,
+  addressText, addressWarning, addressWarnings, canonicalRecipient, displayAddress, mixedScriptStyles,
 } from '../src/utils/address-display';
+import { recipientField, type ComposerInstance } from '../src/store/compose-store';
 import { I18nStore } from '../src/store/i18n-store';
+import { messageOperations } from '../src/services/message-operations';
 import { en } from '../src/i18n/en';
 import { da } from '../src/i18n/da';
 import { de } from '../src/i18n/de';
@@ -37,6 +39,11 @@ import '../src/components/alps-recipient-pill';
 import '../src/components/alps-address-input';
 import '../src/components/alps-thread-card';
 import '../src/components/message-list';
+import '../src/components/alps-floating-composer';
+
+// The emoji picker builds its whole grid when it connects, which takes jsdom
+// seconds per composer. Nothing here opens it.
+vi.mock('unicode-emoji-picker', () => ({}));
 
 /** CYRILLIC SMALL LETTER A, which looks exactly like the Latin `a`. */
 const A = 'а';
@@ -488,6 +495,66 @@ describe('a list row', () => {
     const el = await list({ Name: 'Payments', Mailbox: 'service', Host: LOOKALIKE }, await german());
     expect(text(el, '.message-sender')).toContain(de.address!.mixedScript);
     expect(text(el, '.message-sender')).not.toContain(en.address.mixedScript);
+  });
+});
+
+describe('what the composer sends', () => {
+  it.each([
+    ['ada@bücher.example', 'ada@xn--bcher-kva.example'],
+    ['José <José@Bücher.Example>', 'José <José@xn--bcher-kva.example>'],
+    ['"Lovelace, Ada" <ada@bücher.example>', '"Lovelace, Ada" <ada@xn--bcher-kva.example>'],
+    [`service@${LOOKALIKE}`, `service@${LOOKALIKE_ASCII}`],
+  ])('sends %s with its domain in A-label form', (pill, sent) => {
+    expect(canonicalRecipient(pill)).toBe(sent);
+  });
+
+  it.each([
+    'ada@example.com',
+    'Ada <ada@example.com>',
+    // Nothing to convert, or nothing that converts as written: the server judges.
+    'root@localhost',
+    'user@ⓔxample.com',
+    'user@bücher_buch.example',
+  ])('sends %s as typed', (pill) => {
+    expect(canonicalRecipient(pill)).toBe(pill);
+  });
+
+  it('converts the domain of one plain address, and nothing that is not one', () => {
+    expect(canonicalAddress('José@Bücher.Example')).toBe('José@xn--bcher-kva.example');
+    for (const address of ['ada lovelace@example.com', 'ada@bob@example.com', '@example.com', 'ada@localhost', 'ada@\u24d4xample.com', 'ada\u202e@example.com']) {
+      expect(canonicalAddress(address), address).toBeNull();
+    }
+  });
+
+  it('joins a field as the server splits it', () => {
+    expect(recipientField(['ada@bücher.example', 'bob@example.com'])).toBe('ada@xn--bcher-kva.example, bob@example.com');
+    expect(recipientField(undefined)).toBe('');
+  });
+
+  it('posts the A-label and leaves the pill as typed', async () => {
+    const instance: ComposerInstance = { id: 'c1', to: ['Ada <ada@bücher.example>'], cc: ['bob@bücher.example'], subject: 'Hi', text: 'Hello', format: 'text' };
+    const composeStore = {
+      getState: () => ({ activeComposers: [instance] }),
+      getComposer: (id: string) => (id === instance.id ? instance : undefined),
+      updateComposer: vi.fn(),
+      bringComposerToFront: vi.fn(),
+      closeComposer: vi.fn(),
+    };
+    const i18nStore = { t: (key: string) => key, addEventListener: () => {}, removeEventListener: () => {} };
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const sendDraft = vi.spyOn(messageOperations, 'sendDraft').mockResolvedValue(true);
+    const toasts = record<CustomEvent>(window, 'show-toast');
+
+    const el = await mount('alps-floating-composer', { instance, composeStore, i18nStore });
+    await click(shadow(el, '.send-actions alps-button[variant="primary"]'), el);
+    await waitFor(() => toasts.length > 0, 'the undo toast');
+    toasts[0].detail.dismissFn();
+    await waitFor(() => sendDraft.mock.calls.length > 0, 'the send');
+
+    const form = sendDraft.mock.calls[0][0] as FormData;
+    expect(form.get('to')).toBe('Ada <ada@xn--bcher-kva.example>');
+    expect(form.get('cc')).toBe('bob@xn--bcher-kva.example');
+    expect(instance.to).toEqual(['Ada <ada@bücher.example>']);
   });
 });
 
