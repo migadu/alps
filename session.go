@@ -91,10 +91,12 @@ type Session struct {
 	requires2FA      atomic.Bool
 
 	// When this session last read, from the server, whether the account has a
-	// key, on the manager's clock; and whether one of its requests is reading
-	// it now. See needsSecondFactor.
+	// key, on the manager's clock; whether one of its requests is reading it
+	// now; and whether another node has said since that the account enrolled
+	// one. See needsSecondFactor.
 	secondFactorReadAt  atomic.Pointer[time.Time]
 	secondFactorReading atomic.Bool
+	secondFactorNews    atomic.Bool
 
 	// The wall-clock instant past which this session ends no matter how much it
 	// is used. Fixed at login and never moved — see SessionManager's
@@ -221,7 +223,9 @@ const secondFactorRecheckInterval = time.Minute
 // reads it again from the server, not from its connection's copy, at most once
 // every secondFactorRecheckInterval while it is used; once the account has a
 // key, the session needs it from then on. A session that has given the second
-// factor, or that already needs it, reads nothing.
+// factor, or that already needs it, reads nothing. When another node says the
+// account has enrolled a key (see readSecondFactorAgain), the next request
+// reads at once rather than at the end of the interval.
 //
 // Only one request of a session reads; its other requests meanwhile go on as
 // the session stood, rather than wait on the read. A read that fails says
@@ -238,8 +242,12 @@ func (s *Session) needsSecondFactor() bool {
 }
 
 // secondFactorReadDue reports whether the account's record is to be read
-// again: it has not been for an interval, or it never was.
+// again: it has not been for an interval, or it never was, or another node
+// has said since that the account enrolled a key.
 func (s *Session) secondFactorReadDue() bool {
+	if s.secondFactorNews.Load() {
+		return true
+	}
 	last := s.secondFactorReadAt.Load()
 	return last == nil || s.manager.now().Sub(*last) >= secondFactorRecheckInterval
 }
@@ -265,6 +273,8 @@ func (s *Session) recheckSecondFactor() {
 	if !s.secondFactorReadDue() {
 		return
 	}
+	// Cleared before the read, so that news arriving during it is read again.
+	s.secondFactorNews.Store(false)
 
 	enabled, err := s.webAuthnEnabled()
 	s.noteSecondFactorRead()
@@ -670,6 +680,10 @@ type SessionManager struct {
 	// WebAuthn record again (see needsSecondFactor), so that a test can move
 	// it on rather than wait.
 	now func() time.Time
+
+	// broadcaster reaches the other nodes of a cluster, or is nil when this
+	// node is alone. See RequireSecondFactor.
+	broadcaster ClusterBroadcaster
 
 	locker       sync.RWMutex
 	sessions     map[string]*Session // token -> Session, protected by locker
@@ -1125,13 +1139,45 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 // Sessions are kept in this node's memory, so this reaches the sessions on
 // this node only. A session another node holds finds the key when it next
 // reads the account's record, within secondFactorRecheckInterval of being
-// used: see needsSecondFactor.
+// used: see needsSecondFactor. In a cluster, the other nodes are told as
+// well, and their sessions of the account read the record on their next
+// request (see readSecondFactorAgain); the message may be lost, or reach a
+// node that does not know it, and the interval still holds.
 func (sm *SessionManager) RequireSecondFactor(username string) {
+	sm.locker.RLock()
+	for _, s := range sm.sessions {
+		if strings.EqualFold(s.username, username) {
+			s.requires2FA.Store(true)
+		}
+	}
+	sm.locker.RUnlock()
+
+	if sm.broadcaster == nil {
+		return
+	}
+	msg, err := encodeSecondFactorMessage(username)
+	if err != nil {
+		sm.logger.Printf("Second factor: could not tell the cluster that %s enrolled a key: %v", username, err)
+		return
+	}
+	sm.broadcaster.Broadcast(msg)
+}
+
+// readSecondFactorAgain has every session of username on this node that may
+// read the account's WebAuthn record read it on its next request, rather than
+// at the end of its interval. Another node calls it, through the cluster,
+// once the account has enrolled a key there.
+//
+// It does not mark the sessions as needing the key itself: the record on the
+// server says whether the account has one, and a message, delayed or sent
+// again, is not let decide that. A session that has given the second factor,
+// or already needs it, still reads nothing.
+func (sm *SessionManager) readSecondFactorAgain(username string) {
 	sm.locker.RLock()
 	defer sm.locker.RUnlock()
 	for _, s := range sm.sessions {
 		if strings.EqualFold(s.username, username) {
-			s.requires2FA.Store(true)
+			s.secondFactorNews.Store(true)
 		}
 	}
 }

@@ -69,6 +69,7 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 	if options.AbsoluteSessionDuration != 0 {
 		s.Sessions.absoluteSessionDuration = options.AbsoluteSessionDuration
 	}
+	s.Sessions.broadcaster = options.ClusterBroadcaster
 
 	// Initialize rate limiter if enabled
 	if options.RateLimitEnabled {

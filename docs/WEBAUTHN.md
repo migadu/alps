@@ -23,6 +23,8 @@ Once an account has a security key, its keys can only be changed from a session 
 
 Whether a session needs the second factor is otherwise decided when it is opened. So that a session opened before the account enrolled a key does not keep full access, enrolling a key asks every other session of the account for it before it goes on (its next request is answered `401`, and signing in again asks for the key). Sessions live in each node's memory, so this reaches at once only the sessions on the node where the key was enrolled. For the others, a session that has not passed the second factor reads the account's `webauthn` record again from the IMAP server, at most once a minute while it is in use, and is asked for the key from the first read that finds one. A read that fails changes nothing and is tried again a minute later. A session that has passed the second factor, or already needs it, reads nothing.
 
+In a cluster, the node where the key was enrolled also tells the other nodes over gossip, and the account's sessions there read the record on their next request instead of at the end of the minute. The message only prompts the read; the record decides. It starts with a tag byte (`0x02`) that no JSON text starts with, so a node that knows only rate-limit events, which are bare JSON, fails to decode it and drops it. If the message is lost or dropped, the minute still holds.
+
 ---
 
 ## Account Switching with 2FA

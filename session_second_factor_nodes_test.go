@@ -53,6 +53,7 @@ func (s *countingStore) Get(key string, out interface{}) error {
 // testNode is one alps node.
 type testNode struct {
 	t        *testing.T
+	server   *Server
 	sessions *SessionManager
 	router   *Router
 	store    *countingStore
@@ -78,7 +79,7 @@ func newTestNode(t *testing.T, mail *rawStore, clock *fakeClock) *testNode {
 	router.Add(http.MethodGet, "/mailboxes/INBOX", func(ctx *Context) error {
 		return ctx.String(http.StatusOK, "the inbox")
 	})
-	return &testNode{t: t, sessions: sm, router: router, store: store}
+	return &testNode{t: t, server: server, sessions: sm, router: router, store: store}
 }
 
 // open signs in to username on this node.

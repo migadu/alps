@@ -164,8 +164,8 @@ func main() {
 		logger.Fatal(err)
 	}
 
-	if clusterMgr != nil && s.RateLimiter != nil {
-		clusterMgr.SetMessageHandler(s.RateLimiter.HandleClusterMessage)
+	if clusterMgr != nil {
+		clusterMgr.SetMessageHandler(s.HandleClusterMessage)
 	}
 
 	// Initialize WebAuthn
