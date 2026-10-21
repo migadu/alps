@@ -141,6 +141,7 @@ export const pt = {
     trust_linked: 'Confiar em Contas Vinculadas',
     trust_linked_desc: 'Se ativado, você pode alternar para esta conta a partir de uma conta vinculada sem fornecer uma credencial 2FA novamente.',
     trust_linked_checkbox: 'Permitir alternar para esta conta sem 2FA',
+    trust_password_label: 'Insira a sua senha para confirmar',
     confirm_remove: 'Tem certeza de que deseja remover esta chave de segurança?',
     errors: {
       begin_failed: 'Falha ao iniciar autenticação.',
@@ -148,6 +149,12 @@ export const pt = {
       verification_failed: 'Falha na verificação. Por favor, tente novamente.',
       register_failed: 'Ocorreu um erro ao registar a sua chave de segurança. Por favor, tente novamente.',
       remove_failed: 'Falha ao remover a chave de segurança.',
+      wrong_password: 'Essa senha não está correta.',
+      password_required: 'Insira a sua senha atual.',
+      rate_limited: 'Muitas tentativas. Aguarde alguns minutos e tente novamente.',
+      two_factor_required: 'Inicie sessão com a sua chave de segurança para alterar esta configuração.',
+      no_security_key: 'Adicione primeiro uma chave de segurança.',
+      trust_failed: 'Não foi possível alterar a configuração. Tente novamente.',
       general: 'Ocorreu um erro.',
     },
     settings: {

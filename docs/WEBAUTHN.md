@@ -35,6 +35,13 @@ The bypass only occurs if **both** of the following conditions are met:
 
 If these conditions are met, the server skips the WebAuthn challenge, immediately logs the user into the target account, and marks the new session as 2FA-authenticated as well.
 
+Because trust waives the target account's own second factor, turning it on (`POST /settings/2fa/trust-linked-accounts` with `{"trust": true, "current_password": "..."}`) requires all of:
+- at least one enrolled security key on the account (otherwise `409 no_security_key`);
+- a session that has passed the second factor (otherwise `403 two_factor_required`);
+- the account's current password, checked against the session's in constant time (`400 password_required`, `403 wrong_password`). Attempts count against the login rate limits (`429 rate_limited`, with `Retry-After`).
+
+Turning it off (`{"trust": false}`) needs only a session.
+
 > [!TIP]
 > This creates a seamless "single sign-on" experience across linked ALPS accounts. You only need to touch your YubiKey or fingerprint reader once when logging into your primary account.
 

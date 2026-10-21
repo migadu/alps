@@ -548,6 +548,7 @@ export const sr = {
     trust_linked: 'Veruj povezanim nalozima',
     trust_linked_desc: 'Ako je omogućeno, možete da se prebacite na ovaj nalog sa povezanog naloga bez ponovnog unosa 2FA akreditiva.',
     trust_linked_checkbox: 'Dozvoli prebacivanje na ovaj nalog bez 2FA',
+    trust_password_label: 'Unesite svoju lozinku da biste potvrdili',
     confirm_remove: 'Da li ste sigurni da želite da uklonite ovaj bezbednosni ključ?',
     errors: {
       begin_failed: 'Nije uspelo pokretanje autentifikacije.',
@@ -555,6 +556,12 @@ export const sr = {
       verification_failed: 'Verifikacija nije uspela. Pokušajte ponovo.',
       register_failed: 'Došlo je do greške prilikom registracije bezbednosnog ključa. Pokušajte ponovo.',
       remove_failed: 'Nije uspelo uklanjanje bezbednosnog ključa.',
+      wrong_password: 'Ta lozinka nije ispravna.',
+      password_required: 'Unesite svoju trenutnu lozinku.',
+      rate_limited: 'Previše pokušaja. Sačekajte nekoliko minuta i pokušajte ponovo.',
+      two_factor_required: 'Prijavite se svojim bezbednosnim ključem da biste promenili ovo podešavanje.',
+      no_security_key: 'Prvo dodajte bezbednosni ključ.',
+      trust_failed: 'Podešavanje nije moguće promeniti. Pokušajte ponovo.',
       general: 'Došlo je do greške.',
     },
     settings: {

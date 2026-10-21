@@ -51,6 +51,13 @@ func newTestServer(t *testing.T) *testServer {
 
 func newTestServerWithSMTP(t *testing.T, smtpServer string) *testServer {
 	t.Helper()
+	return newTestServerWithLogger(t, smtpServer, alps.NewLogger())
+}
+
+// newTestServerWithLogger is newTestServerWithSMTP for a test that reads what
+// the server logs.
+func newTestServerWithLogger(t *testing.T, smtpServer string, logger alps.Logger) *testServer {
+	t.Helper()
 	base := t.TempDir()
 	passwd := filepath.Join(base, "passwd")
 	if err := os.WriteFile(passwd, []byte(testUser+":{PLAIN}"+testPassword+"\n"), 0o600); err != nil {
@@ -90,7 +97,7 @@ func newTestServerWithSMTP(t *testing.T, smtpServer string) *testServer {
 		CacheEnabled: true,
 	}
 
-	srv, err := alps.New(alps.NewLogger(), opts)
+	srv, err := alps.New(logger, opts)
 	if err != nil {
 		t.Fatal(err)
 	}

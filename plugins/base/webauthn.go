@@ -251,6 +251,49 @@ func handleDisable(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})
 }
 
+// confirmCurrentPassword checks that whoever asks for a change to the
+// account's second factor knows its password, and writes the refusal when they
+// do not. It reports whether the request may go on.
+//
+// The session alone is not enough: a browser left signed in, or a session
+// taken over, would otherwise strip the very factor meant to stand in its way.
+// The password is checked against the one the session signed in with, as the
+// password plugin does before a change, so it never leaves this process and
+// the check cannot fail for want of a server. Each attempt counts against the
+// login rate limits for the account and the address it comes from: guessing
+// the password here is no different from guessing it at the login form, and
+// gets no budget of its own.
+//
+// The refusals carry stable codes the page translates: password_required (400),
+// wrong_password (403) and rate_limited (429). Never a 401, which the page
+// takes as the session having ended.
+func confirmCurrentPassword(ctx *alps.Context, password string) (bool, error) {
+	if password == "" {
+		return false, ctx.JSON(http.StatusBadRequest, map[string]string{"error": "password_required"})
+	}
+
+	username := ctx.Session.Username()
+	if allowed, _, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username); !allowed {
+		ctx.Server.Logger().Printf("WebAuthn: password confirmation rate limited for %s", username)
+		seconds := int(retryAfter.Seconds())
+		if seconds > 0 {
+			ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", seconds))
+		}
+		return false, ctx.JSON(http.StatusTooManyRequests, map[string]interface{}{
+			"error":       "rate_limited",
+			"retry_after": seconds,
+		})
+	}
+
+	ok := ctx.Session.CheckPassword(password)
+	ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, ok)
+	if !ok {
+		ctx.Server.Logger().Printf("WebAuthn: password confirmation refused for %s", username)
+		return false, ctx.JSON(http.StatusForbidden, map[string]string{"error": "wrong_password"})
+	}
+	return true, nil
+}
+
 // handleDeleteCredential removes a specific credential by ID
 func handleDeleteCredential(ctx *alps.Context) error {
 	if ctx.Session == nil {
@@ -501,15 +544,30 @@ func handleVerifyFinish(ctx *alps.Context) error {
 	})
 }
 
-// handleLinkedAccountsTrust updates the trust setting for linked accounts
+// trustRequest is the body of a change to trust in linked accounts.
+type trustRequest struct {
+	Trust           bool   `json:"trust"`
+	CurrentPassword string `json:"current_password"`
+}
+
+// handleLinkedAccountsTrust turns trust in linked accounts on or off.
+//
+// Trust lets a linked account that gave its own second factor switch to this
+// one without giving this one's, so turning it on is as strong a change as
+// removing a key, and asks as much: the account must have a key, the session
+// must have given it, and the account's password must be given again (see
+// confirmCurrentPassword). Any session of the account could turn it on before,
+// with no key and no password. Turning it off waives nothing, so the session
+// is enough.
+//
+// The refusals carry stable codes for the page, besides the password's:
+// no_security_key (409) and two_factor_required (403).
 func handleLinkedAccountsTrust(ctx *alps.Context) error {
 	if ctx.Session == nil {
 		return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
 	}
 
-	var req struct {
-		Trust bool `json:"trust"`
-	}
+	var req trustRequest
 	if err := ctx.BindJSON(&req); err != nil {
 		return ctx.RespondBindError(err)
 	}
@@ -517,6 +575,20 @@ func handleLinkedAccountsTrust(ctx *alps.Context) error {
 	creds, err := loadCredentials(ctx.Session)
 	if err != nil {
 		return fmt.Errorf("failed to load credentials: %v", err)
+	}
+
+	if req.Trust {
+		if len(creds.Credentials) == 0 {
+			return ctx.JSON(http.StatusConflict, map[string]string{"error": "no_security_key"})
+		}
+		// Checked before the password, so that a session without the second
+		// factor cannot use this to find out whether a password is right.
+		if !ctx.Session.IsAuthenticated2FA() {
+			return ctx.JSON(http.StatusForbidden, map[string]string{"error": "two_factor_required"})
+		}
+		if ok, err := confirmCurrentPassword(ctx, req.CurrentPassword); !ok {
+			return err
+		}
 	}
 
 	creds.TrustLinkedAccounts = req.Trust

@@ -538,6 +538,7 @@ export const de: TranslationDictionary = {
     trust_linked: 'Verknüpften Konten vertrauen',
     trust_linked_desc: 'Wenn aktiviert, können Sie von einem verknüpften Konto zu diesem Konto wechseln, ohne erneut 2FA-Anmeldeinformationen anzugeben.',
     trust_linked_checkbox: 'Wechsel zu diesem Konto ohne 2FA erlauben',
+    trust_password_label: 'Geben Sie zur Bestätigung Ihr Passwort ein',
     confirm_remove: 'Möchten Sie diesen Sicherheitsschlüssel wirklich entfernen?',
     errors: {
       begin_failed: 'Fehler beim Starten der Authentifizierung.',
@@ -545,6 +546,12 @@ export const de: TranslationDictionary = {
       verification_failed: 'Überprüfung fehlgeschlagen. Bitte versuchen Sie es erneut.',
       register_failed: 'Beim Registrieren Ihres Sicherheitsschlüssels ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.',
       remove_failed: 'Fehler beim Entfernen des Sicherheitsschlüssels.',
+      wrong_password: 'Dieses Passwort ist nicht richtig.',
+      password_required: 'Geben Sie Ihr aktuelles Passwort ein.',
+      rate_limited: 'Zu viele Versuche. Bitte warten Sie einige Minuten und versuchen Sie es dann erneut.',
+      two_factor_required: 'Melden Sie sich mit Ihrem Sicherheitsschlüssel an, um diese Einstellung zu ändern.',
+      no_security_key: 'Fügen Sie zuerst einen Sicherheitsschlüssel hinzu.',
+      trust_failed: 'Die Einstellung konnte nicht geändert werden. Bitte versuchen Sie es erneut.',
       general: 'Ein Fehler ist aufgetreten.',
     },
     settings: {

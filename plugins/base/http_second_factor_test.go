@@ -11,12 +11,16 @@ import (
 	"errors"
 	"net/http"
 	"net/http/cookiejar"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/go-webauthn/webauthn/protocol/webauthncbor"
 	"github.com/go-webauthn/webauthn/protocol/webauthncose"
 	"github.com/go-webauthn/webauthn/webauthn"
 
+	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
 )
 
@@ -269,5 +273,150 @@ func TestHTTP_TrustWithoutAKeyIsNotCarriedOverToTheFirstKey(t *testing.T) {
 	record, _ := s.storedWebAuthn()
 	if record["trust_linked_accounts"] != false {
 		t.Errorf("stored trust_linked_accounts %v", record["trust_linked_accounts"])
+	}
+}
+
+// setTrust asks for trust in linked accounts to be turned on or off, giving
+// password, or none when it is empty.
+func (s *testServer) setTrust(trust bool, password string) response {
+	s.t.Helper()
+	body := map[string]any{"trust": trust}
+	if password != "" {
+		body["current_password"] = password
+	}
+	return s.do("POST", "/settings/2fa/trust-linked-accounts", body)
+}
+
+// errorCode is the stable code a refusal carries for the page to translate.
+func errorCode(t *testing.T, r response) string {
+	t.Helper()
+	var got struct {
+		Error string `json:"error"`
+	}
+	r.json(t, &got)
+	return got.Error
+}
+
+// expectRefusal checks that r is a refusal with status and code.
+func (s *testServer) expectRefusal(r response, status int, code string) {
+	s.t.Helper()
+	s.expect(r, status)
+	if got := errorCode(s.t, r); got != code {
+		s.t.Errorf("refused with %q, want %q", got, code)
+	}
+}
+
+// Trust waives a second factor, so an account without one has nothing to
+// trust with. It could be turned on there before, ready for the first key.
+func TestHTTP_TrustingLinkedAccountsTakesAKey(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
+
+	s.expectRefusal(s.setTrust(true, testPassword), http.StatusConflict, "no_security_key")
+	if record, ok := s.storedWebAuthn(); ok {
+		t.Fatalf("stored %v", record)
+	}
+}
+
+// A session that has not given the second factor, as one opened before the
+// account had a key, cannot turn trust on, even with the password; and the
+// password is not checked for it.
+func TestHTTP_TrustingLinkedAccountsTakesTheSecondFactor(t *testing.T) {
+	s := newTestServer(t)
+	s.signInBeforeKeys(false, "laptop")
+
+	s.expectRefusal(s.setTrust(true, testPassword), http.StatusForbidden, "two_factor_required")
+	s.expectRefusal(s.setTrust(true, "not the password"), http.StatusForbidden, "two_factor_required")
+	if s.webAuthnSettings().TrustLinkedAccounts {
+		t.Fatal("trust was turned on")
+	}
+	s.mailbox("INBOX") // a refusal, not a sign-out
+}
+
+// With the second factor given, trust still takes the account's password: it
+// is missing, wrong, or right, and only the right one turns trust on.
+func TestHTTP_TrustingLinkedAccountsTakesThePassword(t *testing.T) {
+	s := newTestServer(t)
+	s.signInBeforeKeys(false, "laptop")
+	s.giveSecondFactor()
+
+	s.expectRefusal(s.setTrust(true, ""), http.StatusBadRequest, "password_required")
+	s.expectRefusal(s.do("POST", "/settings/2fa/trust-linked-accounts", map[string]any{"trust": true, "current_password": ""}), http.StatusBadRequest, "password_required")
+	// Not a 401, which the page would take as the session having ended.
+	s.expectRefusal(s.setTrust(true, "not the password"), http.StatusForbidden, "wrong_password")
+	s.expectRefusal(s.setTrust(true, testPassword[:4]), http.StatusForbidden, "wrong_password")
+	if s.webAuthnSettings().TrustLinkedAccounts {
+		t.Fatal("trust was turned on without the password")
+	}
+
+	s.expect(s.setTrust(true, testPassword), http.StatusOK)
+	if !s.webAuthnSettings().TrustLinkedAccounts {
+		t.Fatal("the right password did not turn trust on")
+	}
+	s.mailbox("INBOX")
+}
+
+// Turning trust off waives nothing: the session is enough, with no second
+// factor and no password.
+func TestHTTP_TurningTrustOffTakesOnlyTheSession(t *testing.T) {
+	s := newTestServer(t)
+	s.signInBeforeKeys(true, "laptop")
+
+	s.expect(s.setTrust(false, ""), http.StatusOK)
+	if s.webAuthnSettings().TrustLinkedAccounts {
+		t.Fatal("trust is still on")
+	}
+	record, _ := s.storedWebAuthn()
+	if keys, _ := record["credentials"].([]any); len(keys) != 1 {
+		t.Errorf("the account has %v keys left, want 1", record["credentials"])
+	}
+}
+
+// Every password attempt counts against the account's login limits, so the
+// password cannot be guessed here any faster than at the login form. Once they
+// are spent even the right password waits.
+func TestHTTP_PasswordGuessesForTrustAreRateLimited(t *testing.T) {
+	s := newTestServer(t)
+	s.signInBeforeKeys(false, "laptop")
+	s.giveSecondFactor()
+	s.server.RateLimiter = alps.NewRateLimiter(alps.RateLimitConfig{UsernameFailsPerQuarter: 2}, s.server.Logger(), nil)
+
+	for i := 0; i < 2; i++ {
+		s.expectRefusal(s.setTrust(true, "guess"), http.StatusForbidden, "wrong_password")
+	}
+	r := s.setTrust(true, testPassword)
+	s.expectRefusal(r, http.StatusTooManyRequests, "rate_limited")
+	if r.header.Get("Retry-After") == "" {
+		t.Error("no Retry-After")
+	}
+	if s.webAuthnSettings().TrustLinkedAccounts {
+		t.Fatal("trust was turned on past the limit")
+	}
+	// The login form is held to the same count.
+	s.expect(s.do("POST", "/session", map[string]string{"username": testUser, "password": testPassword}), http.StatusTooManyRequests)
+}
+
+// Neither a wrong password nor the right one reaches the log, at any level.
+func TestHTTP_ThePasswordForTrustIsNotLogged(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "alps.log")
+	s := newTestServerWithLogger(t, "smtp://127.0.0.1:1", alps.NewLoggerWithOptions(alps.LoggerOptions{Output: logPath, Format: "console", Level: "debug"}))
+	s.signInBeforeKeys(false, "laptop")
+	s.giveSecondFactor()
+	const guess = "a-guess-that-must-not-be-logged"
+
+	s.expect(s.setTrust(true, guess), http.StatusForbidden)
+	s.expect(s.setTrust(true, testPassword), http.StatusOK)
+
+	logged, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(logged), "password confirmation refused") {
+		t.Fatalf("the refusal was not logged, so this test reads the wrong log:\n%s", logged)
+	}
+	for _, secret := range []string{guess, testPassword} {
+		if strings.Contains(string(logged), secret) {
+			t.Errorf("the log contains %q", secret)
+		}
 	}
 }

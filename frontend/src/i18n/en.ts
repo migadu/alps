@@ -148,6 +148,7 @@ export const en = {
     trust_linked: 'Trust Linked Accounts',
     trust_linked_desc: 'If enabled, you can switch to this account from a linked account without providing a 2FA credential again.',
     trust_linked_checkbox: 'Allow switching to this account without 2FA',
+    trust_password_label: 'Enter your password to confirm',
     confirm_remove: 'Are you sure you want to remove this security key?',
     errors: {
       begin_failed: 'Failed to initiate authentication.',
@@ -155,6 +156,12 @@ export const en = {
       verification_failed: 'Verification failed. Please try again.',
       register_failed: 'There was an error registering your security key. Please try again.',
       remove_failed: 'Failed to remove the security key.',
+      wrong_password: 'That password is not right.',
+      password_required: 'Enter your current password.',
+      rate_limited: 'Too many attempts. Please wait a few minutes and try again.',
+      two_factor_required: 'Sign in with your security key to change this setting.',
+      no_security_key: 'Add a security key first.',
+      trust_failed: 'The setting could not be changed. Please try again.',
       general: 'An error occurred.',
     },
     settings: {
