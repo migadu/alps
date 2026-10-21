@@ -347,38 +347,6 @@ func handleDeleteCredential(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})
 }
 
-// handleTrustLinkedAccounts toggles the trust_linked_accounts setting
-func handleTrustLinkedAccounts(ctx *alps.Context) error {
-	if ctx.Session == nil {
-		return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
-	}
-
-	var req struct {
-		Trust bool `json:"trust"`
-	}
-	if err := ctx.BindJSON(&req); err != nil {
-		return ctx.RespondBindError(err)
-	}
-
-	// Only allow enabling this setting if session is 2FA authenticated
-	if req.Trust && !ctx.Session.IsAuthenticated2FA() {
-		return alps.NewHTTPError(http.StatusForbidden, "2FA authentication required to change this setting")
-	}
-
-	creds, err := loadCredentials(ctx.Session)
-	if err != nil {
-		return fmt.Errorf("failed to load credentials: %v", err)
-	}
-
-	creds.TrustLinkedAccounts = req.Trust
-
-	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {
-		return fmt.Errorf("failed to save credentials: %v", err)
-	}
-
-	return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})
-}
-
 // handleVerifyBegin initiates WebAuthn authentication during login
 func handleVerifyBegin(ctx *alps.Context) error {
 	// Get pending 2FA session cookie
