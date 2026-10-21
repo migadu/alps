@@ -90,6 +90,12 @@ type Session struct {
 	authenticated2FA atomic.Bool
 	requires2FA      atomic.Bool
 
+	// When this session last read, from the server, whether the account has a
+	// key, on the manager's clock; and whether one of its requests is reading
+	// it now. See needsSecondFactor.
+	secondFactorReadAt  atomic.Pointer[time.Time]
+	secondFactorReading atomic.Bool
+
 	// The wall-clock instant past which this session ends no matter how much it
 	// is used. Fixed at login and never moved — see SessionManager's
 	// absoluteSessionDuration for why an idle window alone is not enough.
@@ -192,6 +198,84 @@ func (s *Session) IsAuthenticated2FA() bool {
 // Requires2FA returns whether this session requires 2FA verification.
 func (s *Session) Requires2FA() bool {
 	return s.requires2FA.Load()
+}
+
+// secondFactorRecheckInterval is how often a session that has not given the
+// second factor, of an account not known to have a key, reads the account's
+// WebAuthn record again while it is being used.
+//
+// It bounds how long a session opened before the account's first key keeps
+// its access on the nodes RequireSecondFactor does not reach. A minute is
+// short beside the days such a session could otherwise last, and long enough
+// that the read, one small METADATA fetch on the session's own connection,
+// costs little beside the mail requests a session in use makes meanwhile. A
+// tab left open and unused asks only every five minutes, and reads no oftener.
+const secondFactorRecheckInterval = time.Minute
+
+// needsSecondFactor reports whether this session must give the account's
+// second factor before it goes on. The auth middleware asks it on every
+// request.
+//
+// Whether the account has a key is read when the session is opened. A session
+// that has not given the second factor, of an account that had no key then,
+// reads it again from the server, not from its connection's copy, at most once
+// every secondFactorRecheckInterval while it is used; once the account has a
+// key, the session needs it from then on. A session that has given the second
+// factor, or that already needs it, reads nothing.
+//
+// Only one request of a session reads; its other requests meanwhile go on as
+// the session stood, rather than wait on the read. A read that fails says
+// nothing either way: the session goes on as it stood, and the next interval
+// reads again. A failure here must not sign anyone out.
+func (s *Session) needsSecondFactor() bool {
+	if s.IsAuthenticated2FA() {
+		return false
+	}
+	if !s.Requires2FA() && s.manager != nil {
+		s.recheckSecondFactor()
+	}
+	return s.Requires2FA() && !s.IsAuthenticated2FA()
+}
+
+// secondFactorReadDue reports whether the account's record is to be read
+// again: it has not been for an interval, or it never was.
+func (s *Session) secondFactorReadDue() bool {
+	last := s.secondFactorReadAt.Load()
+	return last == nil || s.manager.now().Sub(*last) >= secondFactorRecheckInterval
+}
+
+// noteSecondFactorRead records that the account's record was read, or that a
+// read was tried, just now.
+func (s *Session) noteSecondFactorRead() {
+	now := s.manager.now()
+	s.secondFactorReadAt.Store(&now)
+}
+
+// recheckSecondFactor reads the account's record again when it is due, and
+// marks the session as needing the second factor when the account has a key.
+func (s *Session) recheckSecondFactor() {
+	if !s.secondFactorReadDue() {
+		return
+	}
+	if !s.secondFactorReading.CompareAndSwap(false, true) {
+		return // another request of this session is reading it
+	}
+	defer s.secondFactorReading.Store(false)
+	// Read by a request that finished while this one got here.
+	if !s.secondFactorReadDue() {
+		return
+	}
+
+	enabled, err := s.webAuthnEnabled()
+	s.noteSecondFactorRead()
+	if err != nil {
+		s.manager.logger.Debugf("Second factor: could not read whether %s has a security key, reading again in %v: %v",
+			s.username, secondFactorRecheckInterval, err)
+		return
+	}
+	if enabled {
+		s.requires2FA.Store(true)
+	}
 }
 
 // DoMail executes a mail operation using the provider. The provider can only
@@ -582,6 +666,11 @@ type SessionManager struct {
 
 	globalAttachmentSize atomic.Int64 // Tracks current total attachment size across all sessions
 
+	// now is the clock that decides when a session reads its account's
+	// WebAuthn record again (see needsSecondFactor), so that a test can move
+	// it on rather than wait.
+	now func() time.Time
+
 	locker       sync.RWMutex
 	sessions     map[string]*Session // token -> Session, protected by locker
 	userSessions map[string][]string // username -> []token, protected by locker
@@ -624,6 +713,7 @@ func newSessionManager(connectProviderFunc provider.AuthenticatedProviderFactory
 		maxAttachmentSize:        int64(maxAttachmentMiB) << 20,
 		maxSessionAttachmentSize: int64(maxSessionAttachmentMiB) << 20,
 		maxGlobalAttachmentSize:  int64(maxGlobalAttachmentMiB) << 20,
+		now:                      time.Now,
 	}
 }
 
@@ -913,6 +1003,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 		return nil, fmt.Errorf("failed to check whether %s signs in with 2FA: %w", username, err)
 	}
 	s.requires2FA.Store(requires2FA)
+	s.noteSecondFactorRead()
 
 	sm.locker.Lock()
 	defer sm.locker.Unlock()
@@ -1032,9 +1123,9 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 // Usernames are matched without regard to case, as mail servers sign them in.
 //
 // Sessions are kept in this node's memory, so this reaches the sessions on
-// this node only. A session another node holds keeps its access there until
-// it ends; opened again from its login token, as after a restart, it is asked
-// for the key.
+// this node only. A session another node holds finds the key when it next
+// reads the account's record, within secondFactorRecheckInterval of being
+// used: see needsSecondFactor.
 func (sm *SessionManager) RequireSecondFactor(username string) {
 	sm.locker.RLock()
 	defer sm.locker.RUnlock()
