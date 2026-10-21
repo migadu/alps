@@ -205,10 +205,12 @@ describe('remote images', () => {
     expect(attr(allowed('<img src="https://cdn.test/a.png">'), 'img', 'src')).toBe('/proxy?url=https%3A%2F%2Fcdn.test%2Fa.png');
   });
 
-  it('treats a protocol-relative address as remote', () => {
-    // A browser resolves //host/path against the page's scheme.
+  it('treats a protocol-relative address as remote, and proxies it with the page\'s scheme', () => {
+    // A browser resolves //host/path against the page's scheme; the proxy
+    // fetches only an address that has one.
     expect(attr(blocked('<img src="//tracker.test/p.gif">'), 'img', 'src')).toMatch(PIXEL);
-    expect(attr(allowed('<img src="//cdn.test/a.png">'), 'img', 'src')).toBe('/proxy?url=%2F%2Fcdn.test%2Fa.png');
+    expect(attr(allowed('<img src="//cdn.test/a.png">'), 'img', 'src'))
+      .toBe(`/proxy?url=${encodeURIComponent(`${window.location.protocol}//cdn.test/a.png`)}`);
     expect(countBlocked('<img src="//tracker.test/p.gif">')).toBe(1);
   });
 
@@ -222,6 +224,66 @@ describe('remote images', () => {
   });
 });
 
+describe('addresses read as the URL parser reads them', () => {
+  // Before it reads a scheme, a browser strips C0 controls and spaces from
+  // both ends of an address and removes every tab and line break inside it,
+  // and in an http(s) URL it reads a backslash as a slash. Judged as written,
+  // each of these was a local address: neither counted nor rewritten, so the
+  // policy refused a fetch the reader was never told of.
+  const written: [string, string][] = [
+    ['a tab inside the scheme', 'ht&#9;tps://tracker.test/p.gif'],
+    ['a line feed before it', '&#10;https://tracker.test/p.gif'],
+    ['a carriage return between the slashes', 'https:/&#13;/tracker.test/p.gif'],
+    ['a control character before it', '&#1;https://tracker.test/p.gif'],
+    ['a control character and a space after it', 'https://tracker.test/p.gif&#31; '],
+    ['an upper-case scheme with a tab in it', 'HT&#9;TP://tracker.test/p.gif'],
+    ['two backslashes for the slashes', '\\\\tracker.test/p.gif'],
+    ['a slash and a backslash', '/\\tracker.test/p.gif'],
+    ['a line feed between the slashes', '/&#10;/tracker.test/p.gif'],
+  ];
+  /** The address an allowed image was handed to the proxy with. */
+  const proxiedAddress = (src: string) => decodeURIComponent(src.replace(/^\/proxy\?url=/, ''));
+
+  for (const [how, src] of written) {
+    it(`blocks and counts an image with ${how}`, () => {
+      const html = `<img src="${src}">`;
+      expect(attr(blocked(html), 'img', 'src')).toMatch(PIXEL);
+      expect(countBlocked(html)).toBe(1);
+      expect(countBlocked(html, true)).toBe(1);
+    });
+
+    it(`hands the proxy the address the browser reads in an image with ${how}`, () => {
+      const proxiedSrc = attr(allowed(`<img src="${src}">`), 'img', 'src');
+      expect(proxiedSrc).toMatch(/^\/proxy\?url=/);
+      expect(proxiedAddress(proxiedSrc)).toMatch(/^https?:\/\/tracker\.test\/p\.gif$/);
+    });
+  }
+
+  it('reads a srcset candidate, a poster, a media source and a stylesheet the same way', () => {
+    const html =
+      '<img srcset="&#1;https://tracker.test/a.gif 2x"><video poster="ht&#9;tps://tracker.test/p.jpg">' +
+      '<source src="&#10;//tracker.test/v.mp4"></video><link rel="stylesheet" href="\\\\tracker.test/s.css">';
+    expect(countBlocked(html)).toBe(4);
+    expect(blocked(html)).not.toContain('tracker.test');
+    expect(withoutProxied(allowed(html))).not.toContain('tracker.test');
+  });
+
+  it('reads an address in CSS the same way', () => {
+    // `\\\\` in CSS is two backslashes, a scheme-relative address to the URL parser.
+    const html = "<p style=\"color: #c00; background: url('\\\\\\\\tracker.test/p.gif')\">x</p>";
+    expect(countBlocked(html)).toBe(1);
+    expect(attr(blocked(html), 'p', 'style')).toBe('color: #c00');
+  });
+
+  it('leaves a local address with a tab or a space in it alone', () => {
+    const html = '<img src="/assets/lo&#9;go.png"><img src=" /assets/logo.png"><img src="&#9;cid:logo@sender.test">';
+    expect(countBlocked(html)).toBe(0);
+    expect([...parse(blocked(html)).querySelectorAll('img')].map((img) => img.getAttribute('src'))).toEqual([
+      '/assets/lo\tgo.png', ' /assets/logo.png', '\tcid:logo@sender.test',
+    ]);
+  });
+});
+
 describe('addresses outside img[src]', () => {
   it('replaces a blocked srcset with a single pixel', () => {
     const out = blocked('<img srcset="https://tracker.test/p.gif 1x, https://tracker.test/p2.gif 2x">');
@@ -232,7 +294,8 @@ describe('addresses outside img[src]', () => {
 
   it('proxies every remote candidate of an allowed srcset, keeping descriptors and local candidates', () => {
     const srcset = attr(allowed('<img srcset="/local.png 1x, https://cdn.test/b.png 2x, //cdn.test/c.png 640w">'), 'img', 'srcset');
-    expect(srcset).toBe('/local.png 1x, /proxy?url=https%3A%2F%2Fcdn.test%2Fb.png 2x, /proxy?url=%2F%2Fcdn.test%2Fc.png 640w');
+    const relative = encodeURIComponent(`${window.location.protocol}//cdn.test/c.png`);
+    expect(srcset).toBe(`/local.png 1x, /proxy?url=https%3A%2F%2Fcdn.test%2Fb.png 2x, /proxy?url=${relative} 640w`);
   });
 
   it('keeps a comma inside a candidate URL, as an image CDN or a data: URL writes one', () => {

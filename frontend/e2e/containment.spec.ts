@@ -61,6 +61,54 @@ async function deliverHtml(subject: string, html: string): Promise<void> {
   });
 }
 
+/** The reader's remote-content banner, which carries "Load remote content". */
+function remoteBanner(page: Page): Locator {
+  return page.locator("alps-message-reader .message-content alps-banner", { hasText: "remote content" });
+}
+
+/** A 1×1 GIF, what the routed proxy answers with. */
+const GIF = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
+
+/**
+ * Routes the sender's host and the proxy. A request straight to the sender is
+ * recorded and refused; one through the proxy is recorded by the address it
+ * names and answered with a GIF. Routed rather than watched: a request the
+ * frame's policy refuses is still reported as a request, and only one that
+ * reaches the network is routed.
+ */
+async function watchRemote(page: Page): Promise<{ direct: string[]; proxied: string[] }> {
+  const remote = { direct: [] as string[], proxied: [] as string[] };
+  await page.route(
+    (url) => url.hostname === "tracker.remote.test",
+    (route) => {
+      remote.direct.push(route.request().url());
+      return route.abort();
+    },
+  );
+  await page.route(
+    (url) => url.pathname === "/proxy",
+    (route) => {
+      remote.proxied.push(new URL(route.request().url()).searchParams.get("url") ?? "");
+      return route.fulfill({ status: 200, contentType: "image/gif", body: GIF });
+    },
+  );
+  return remote;
+}
+
+/**
+ * Waits for the message frame to finish loading, and then two rendering
+ * turns, so a fetch its styles start after load has had its chance to go out
+ * before its absence is concluded.
+ */
+async function frameSettled(page: Page): Promise<void> {
+  await expect
+    .poll(() => frame(page).evaluate((el) => (el as HTMLIFrameElement).contentDocument?.readyState))
+    .toBe("complete");
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  );
+}
+
 test.describe("the containment checks can actually detect execution", () => {
   test("the same payload DOES run when the sandbox permits scripts", async ({ page }) => {
     // A control, and the reason to trust every assertion below it.
@@ -390,6 +438,30 @@ test.describe("a message cannot hide remote content from the banner", () => {
       () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
     );
     expect(fetched).toEqual([]);
+  });
+
+  test("an image address with a tab in its scheme is counted, and loads through the proxy as the browser reads it", async ({ page }) => {
+    // A browser removes a tab from an address before it reads the scheme, so
+    // this is an https image to it. Taken for a local one, it was neither
+    // counted, so no banner, nor rewritten, so the frame's policy refused it:
+    // a console error, which this test does not allow.
+    const subject = `Tab in address ${Date.now()}`;
+    await deliverHtml(
+      subject,
+      '<p>Body</p><img src="ht&#9;tps://tracker.remote.test/tab.gif" width="10" height="10" alt="pixel">',
+    );
+    const remote = await watchRemote(page);
+
+    await login(page);
+    await open(page, subject);
+    await expect(frame(page).contentFrame().locator("body")).toContainText("Body");
+    await expect(remoteBanner(page)).toBeVisible();
+    await frameSettled(page);
+    expect(remote).toEqual({ direct: [], proxied: [] });
+
+    await remoteBanner(page).locator("alps-button").click();
+    await expect.poll(() => remote.proxied).toEqual(["https://tracker.remote.test/tab.gif"]);
+    expect(remote.direct).toEqual([]);
   });
 });
 

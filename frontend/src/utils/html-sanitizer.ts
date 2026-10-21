@@ -17,24 +17,43 @@ const BLOCKED_PIXEL =
   'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
 /**
+ * The URL as the URL parser has it before it reads a scheme (the WHATWG URL
+ * Standard's basic URL parser, its first steps): C0 controls and spaces
+ * stripped from both ends, and every tab, line feed and carriage return
+ * removed wherever it stands. To a browser `ht\ttps://host` is
+ * `https://host`, and so is `\x01https://host`.
+ */
+function urlInput(value: string): string {
+  return value.replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '').replace(/[\t\n\r]/g, '');
+}
+
+/**
  * Does this URL cause a fetch to somewhere the sender controls?
+ *
+ * Read as the URL parser reads it (see urlInput). Trimming, as this used to,
+ * left a tab or a line break inside the scheme and a control character
+ * before it, and a URL a browser fetches from the sender was taken for a
+ * local one, neither counted nor rewritten.
  *
  * The `//host/path` form matters as much as the absolute one: a browser
  * resolves it against the PAGE's scheme, so it is https in practice, and the
  * `startsWith('http')` checks this replaces saw neither prefix and let it
- * through entirely uncounted.
+ * through entirely uncounted. In a URL of the page's scheme a backslash is a
+ * slash to the parser, so `\\host/path` and `/\host/path` are the same.
  */
 function isRemoteUrl(value: string): boolean {
-  const url = value.trim().toLowerCase();
-  return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('//');
+  const url = urlInput(value).toLowerCase();
+  return url.startsWith('http:') || url.startsWith('https:') || /^[\\/]{2}/.test(url);
 }
 
 /**
  * The URL as a browser reads its scheme: lower-cased, with every ASCII
  * whitespace and control character removed. A browser ignores those before
  * resolving a scheme, so `java\tscript:` is a live URL and ` cid:x` names a
- * part, and a check that only trims would miss both. Every scheme test in this
- * file goes through here, so the two sanitizers cannot disagree about one.
+ * part, and a check that only trims would miss both. This removes more than
+ * the URL parser does, a space inside the URL as well, and so errs towards
+ * finding the scheme it looks for: what the script and `cid:` checks, in both
+ * sanitizers, want from it.
  */
 function urlScheme(value: string): string {
   return value.toLowerCase().replace(/[^\x21-\x7e]/g, '');
@@ -87,8 +106,20 @@ function namesRemote(css: string): boolean {
   return cssUrls(css).some((url) => isRemoteUrl(urlScheme(url)));
 }
 
+/**
+ * The proxy's address for a remote URL. The proxy is handed the URL the
+ * browser would have fetched, resolved against this page as the frame
+ * resolves it: it fetches an absolute http or https URL and nothing else, so
+ * the address as written, a `//host/path` or a tab in the scheme, was refused.
+ */
 function proxied(url: string): string {
-  return `/proxy?url=${encodeURIComponent(url.trim())}`;
+  let absolute: string;
+  try {
+    absolute = new URL(url, document.baseURI).href;
+  } catch {
+    absolute = urlInput(url);
+  }
+  return `/proxy?url=${encodeURIComponent(absolute)}`;
 }
 
 /**
