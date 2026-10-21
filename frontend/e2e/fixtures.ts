@@ -232,6 +232,26 @@ export async function resetSettings(account = USER): Promise<void> {
   if (account.address === USER.address) cachedCookies = null;
 }
 
+/**
+ * Does to a folder what another client would, behind alps's back: `create`
+ * makes it with CREATE alone, which sora leaves unsubscribed, as alps itself
+ * did before it subscribed the folders it made.
+ *
+ * alps keeps the folder list in its session for minutes, so a test that wants
+ * the sidebar to see the change asks for a refreshed listing first.
+ */
+export async function mailboxElsewhere(
+  verb: "create" | "subscribe" | "unsubscribe",
+  mailbox: string,
+  account = USER,
+): Promise<void> {
+  await control(`/mailbox/${verb}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: account.address, password: account.password, mailbox }),
+  });
+}
+
 /** Deactivates and deletes every Sieve script on the account. */
 export async function resetSieve(account = USER): Promise<void> {
   await control("/reset/sieve", asAccount(account));
