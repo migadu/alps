@@ -74,6 +74,27 @@ function proxied(url: string): string {
   return `/proxy?url=${encodeURIComponent(url.trim())}`;
 }
 
+/**
+ * SVG's animation elements. An `<animate>` or a `<set>` changes an attribute
+ * of the element it animates while the document is shown: its
+ * `attributeName` can be `href`, and its `values`, `from`, `to` or `by` a
+ * script URL, so a link written as harmless becomes one that runs script when
+ * clicked. Every URL check in this file reads the attribute as written, and
+ * never sees that. `animateMotion`, `animateTransform` and SVG 1.1's
+ * `animateColor` animate the same way, and `discard` removes an element on a
+ * timer. None of them is content.
+ *
+ * Matched by name in any case and namespace. One outside `<svg>` does nothing
+ * here, but a client that parses the markup differently may file it inside.
+ */
+const SVG_ANIMATIONS = new Set(['animate', 'animatecolor', 'animatemotion', 'animatetransform', 'discard', 'set']);
+
+function removeSvgAnimations(doc: Document): void {
+  for (const el of Array.from(doc.querySelectorAll('*'))) {
+    if (SVG_ANIMATIONS.has(el.localName.toLowerCase())) el.remove();
+  }
+}
+
 /** The rewritten value for a single-URL attribute, or null to leave it be. */
 function rewriteSingleUrl(value: string, options: SanitizeOptions): string | null {
   if (!isRemoteUrl(value)) return null;
@@ -332,6 +353,10 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
   // a meta refresh that navigates the pane), not the XSS boundary — that is the
   // CSP and the sandbox.
   doc.querySelectorAll('iframe, object, embed, frame, frameset, applet, meta[http-equiv]').forEach(el => el.remove());
+  // The frame's policy refuses a script URL however it got into a link, and
+  // its sandbox would refuse it without the policy. An animation still goes:
+  // it sets attributes after every check here has read them.
+  removeSvgAnimations(doc);
   // Only real stylesheet links survive; preload/prefetch/dns-prefetch/preconnect
   // are fetches dressed as links.
   doc.querySelectorAll('link').forEach(link => {
@@ -568,9 +593,12 @@ export function sanitizeQuotedHTML(rawHtml: string): string {
 
   // Active content. `style` goes too: quoted CSS escapes the blockquote and
   // restyles the reply around it, and its url() values fetch just like an img.
+  // A `template` holds its contents apart from the document, where no check
+  // below reaches them, so they would go out exactly as the sender wrote them.
   doc
-    .querySelectorAll('script, style, link, iframe, object, embed, frame, frameset, applet, form, meta, base')
+    .querySelectorAll('script, style, link, iframe, object, embed, frame, frameset, applet, form, meta, base, template')
     .forEach((el) => el.remove());
+  removeSvgAnimations(doc);
 
   for (const el of Array.from(doc.querySelectorAll('*'))) {
     for (const attr of Array.from(el.attributes)) {

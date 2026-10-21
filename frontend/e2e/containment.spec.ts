@@ -155,6 +155,45 @@ test.describe("a message cannot run code", () => {
     await expect(body).not.toContainText("EXECUTED");
   });
 
+  test("an SVG animation cannot turn a link into script", async ({ page }) => {
+    // An animation sets the link's address while the message is shown, after
+    // the sanitizer has read it. The frame's policy and sandbox would each
+    // refuse the script it names; the animation itself never reaches the
+    // frame, so the link is left with no address at all and a click does
+    // nothing.
+    const subject = `SVG animation ${Date.now()}`;
+    const script = "javascript:document.getElementById('safe').textContent='EXECUTED'";
+    await deliverHtml(
+      subject,
+      `<p id="safe">This is the message.</p>
+       <svg width="200" height="40"><a id="link">
+         <set attributeName="href" to="${script}"/>
+         <animate attributeName="href" values="${script}" dur="1s" fill="freeze"/>
+         <rect width="200" height="40" fill="#36c"/>
+       </a></svg>`,
+    );
+    await login(page);
+    await open(page, subject);
+
+    const doc = frame(page).contentFrame();
+    await expect(doc.locator("body")).toContainText("This is the message.");
+    const link = await frame(page).evaluate((el) => {
+      const inner = (el as HTMLIFrameElement).contentDocument;
+      const anchor = inner?.querySelector<SVGAElement>("a#link");
+      return { animations: inner?.querySelectorAll("set, animate").length, href: anchor?.href.animVal ?? null };
+    });
+    expect(link).toEqual({ animations: 0, href: "" });
+
+    await doc.locator("rect").click();
+    // Two rendering turns, so a navigation the click queued has had its
+    // chance to run before its absence is concluded.
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
+    await expect(doc.locator("body")).toContainText("This is the message.");
+    await expect(doc.locator("body")).not.toContainText("EXECUTED");
+  });
+
   test("the frame is sandboxed, and never granted script permission", async ({ page }) => {
     // The attribute itself, stated as a contract. `allow-same-origin` appears
     // here and is only safe BECAUSE `allow-scripts` does not: granting both

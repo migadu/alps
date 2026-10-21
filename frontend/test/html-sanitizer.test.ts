@@ -160,6 +160,35 @@ describe('elements that fetch or render on their own', () => {
   });
 });
 
+describe('SVG animations', () => {
+  // The frame's policy and sandbox refuse a script URL however it got into a
+  // link; the animations go all the same, since they change attributes after
+  // every check here has read them.
+  const svgNames = (html: string) => [...parse(html).querySelectorAll('svg *')].map((el) => el.localName);
+
+  for (const animation of [
+    '<animate attributeName="href" values="javascript:alert(1)"/>',
+    '<set attributeName="href" to="javascript:alert(1)"/>',
+    '<set attributeName="xlink:href" from="javascript:alert(1)" by="javascript:alert(1)"/>',
+    '<animateMotion dur="1s"/>',
+    '<animateTransform attributeName="transform" type="rotate" to="90"/>',
+    '<animateColor attributeName="fill" to="red"/>',
+    '<discard href="#link"/>',
+  ]) {
+    it(`removes ${animation}, and keeps the link it was in`, () => {
+      const out = blocked(`<svg><a id="link">${animation}<text y="20">Open</text></a></svg>`);
+      expect(svgNames(out)).toEqual(['a', 'text']);
+      expect(parse(out).querySelector('text')?.textContent).toBe('Open');
+    });
+  }
+
+  it('keeps an SVG that only draws', () => {
+    const out = blocked('<svg width="20" height="20"><rect width="20" height="20" fill="#c00"/><text y="15">A</text></svg>');
+    expect(svgNames(out)).toEqual(['rect', 'text']);
+    expect(attr(out, 'rect', 'fill')).toBe('#c00');
+  });
+});
+
 describe('remote images', () => {
   it('blocks one by default, keeping the original address for later', () => {
     const out = blocked('<img src="https://tracker.test/pixel.gif">');

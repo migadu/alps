@@ -75,6 +75,61 @@ describe('sanitizeQuotedHTML', () => {
     expect(doc.querySelector('video')?.getAttribute('poster')).toBeNull();
   });
 
+  describe('SVG animations', () => {
+    // An animation changes the attribute it names once the document is shown,
+    // after every URL check has read that attribute as written.
+    const script = 'javascript:alert(1)';
+    const svgNames = (html: string) => [...parse(html).querySelectorAll('svg *')].map((el) => el.localName);
+
+    for (const animation of [
+      `<animate attributeName="href" values="${script}"/>`,
+      `<animate attributeName="href" from="${script}" to="${script}"/>`,
+      `<animate attributeName="href" by="${script}"/>`,
+      `<set attributeName="href" to="${script}"/>`,
+      `<set attributeName="xlink:href" to="${script}"/>`,
+      `<animate attributeName="xlink:href" values="${script}"/>`,
+      `<animateMotion attributeName="href" values="${script}"/>`,
+      `<animateTransform attributeName="href" values="${script}"/>`,
+      `<animateColor attributeName="href" values="${script}"/>`,
+      `<SET attributeName="href" to="${script}"/>`,
+      '<discard href="#link"/>',
+    ]) {
+      it(`removes ${animation}, and keeps the link it was in`, () => {
+        const out = sanitizeQuotedHTML(`<svg><a id="link">${animation}<text y="20">Open</text></a></svg>`);
+        expect(svgNames(out)).toEqual(['a', 'text']);
+        expect(out).not.toMatch(/javascript:/i);
+        expect(parse(out).querySelector('text')?.textContent).toBe('Open');
+      });
+    }
+
+    it('removes one aimed at its link from elsewhere, one inside another, and one outside an svg', () => {
+      const out = sanitizeQuotedHTML(
+        `<svg><a id="link"><text>Open</text></a><set href="#link" attributeName="href" to="${script}"/>` +
+        `<animateMotion dur="1s"><mpath href="#path"/><set attributeName="href" to="${script}"/></animateMotion></svg>` +
+        `<p>after</p><set attributeName="href" to="${script}"></set>`,
+      );
+      expect(svgNames(out)).toEqual(['a', 'text']);
+      expect(out).not.toMatch(/javascript:|<set|<animate/i);
+      expect(parse(out).body.textContent).toContain('after');
+    });
+
+    it('removes one inside a template, along with the template', () => {
+      // A template's contents are a fragment of their own, which no check of
+      // the document reaches: a handler in there went out untouched too.
+      const out = sanitizeQuotedHTML(
+        `<p>ok</p><template><svg><a><set attributeName="href" to="${script}"/><text>x</text></a></svg>` +
+        '<img src="x" onerror="alert(1)"></template>',
+      );
+      expect(out).not.toMatch(/template|javascript:|onerror/i);
+      expect(parse(out).body.textContent).toBe('ok');
+    });
+
+    it('keeps an SVG that only draws', () => {
+      const svg = '<svg width="20" height="20"><rect width="20" height="20" fill="#c00"></rect><text y="15">A</text></svg>';
+      expect(sanitizeQuotedHTML(svg)).toBe(svg);
+    });
+  });
+
   it('removes a srcset whose script URL is any candidate, not only the first', () => {
     const img = parse(sanitizeQuotedHTML(
       '<img srcset="https://cdn.test/w_800,c_limit/a.png 1x, javascript:alert(1) 2x">',

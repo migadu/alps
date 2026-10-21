@@ -591,6 +591,69 @@ test("replying to an HTML message keeps its layout and its images in the quote",
   await expect.poll(async () => (await frameLayout(quoteFrame(page))).cells).toEqual(["cell A", "cell B"]);
 });
 
+/** The text/html part of a submission, its quoted-printable undone. */
+function htmlPart(message: SentMessage): string {
+  const start = message.data.search(/Content-Type:\s*text\/html/i);
+  const decoded = message.data
+    .slice(start)
+    .replace(/=\r?\n/g, "")
+    .replace(/=([0-9A-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+  return Buffer.from(decoded, "latin1").toString("utf8");
+}
+
+/**
+ * Delivers an HTML message whose body is `html`, forwards it to this account,
+ * and returns the HTML that was sent. `shown` is text in the body, waited for
+ * in the reader before Forward and in the quote before Send.
+ */
+async function forwardHtml(page: Page, subject: string, html: string, shown: string): Promise<string> {
+  await deliver({
+    subject,
+    raw: [
+      `From: ${SENDER}`,
+      `To: ${USER.address}`,
+      `Subject: ${subject}`,
+      `Message-ID: <${unique()}@remote.test>`,
+      `Date: ${new Date().toUTCString()}`,
+      "MIME-Version: 1.0",
+      'Content-Type: text/html; charset="utf-8"',
+      "",
+      html,
+      "",
+    ].join("\r\n"),
+  });
+  const text = (frame: Locator) =>
+    frame.evaluate((el) => (el as HTMLIFrameElement).contentDocument?.body?.innerText ?? "");
+
+  await login(page);
+  await page.locator("alps-message-list .message-subject", { hasText: subject }).first().click();
+  await expect.poll(() => text(readerFrame(page))).toContain(shown);
+  await chooseFromMoreMenu(page, "Forward");
+  await expect(composerSubject(page)).toHaveValue(`Fwd: ${subject}`);
+  await expect.poll(() => text(quoteFrame(page))).toContain(shown);
+
+  await addTo(page, USER.address);
+  await sendNow(page);
+  return htmlPart(await sentWithSubject(`Fwd: ${subject}`));
+}
+
+test("forwarding leaves an SVG animation behind, and keeps the drawing it was in", async ({ page }) => {
+  // An animation changes an attribute after the quote has been checked, so a
+  // link it rode out on would point at a script in the recipient's client.
+  const script = "javascript:alert(document.domain)";
+  const sent = await forwardHtml(
+    page,
+    `Animated chart ${Date.now()}`,
+    '<p>Chart below.</p><svg width="200" height="40"><a>' +
+      `<set attributeName="href" to="${script}"/><animate attributeName="href" values="${script}"/>` +
+      '<rect width="200" height="40" fill="#36c"/></a></svg>',
+    "Chart below.",
+  );
+  expect(sent).toContain("Chart below.");
+  expect(sent).toMatch(/<svg[^>]*>\s*<a[^>]*>\s*<rect/);
+  expect(sent).not.toMatch(/<set|<animate|javascript:/i);
+});
+
 // The image has to leave under the Content-ID the quote names it by: without
 // it the reference resolves for nobody, and the arrived copy's frame logs a
 // CSP refusal for the unresolved `cid:` image, which fails this test too.
