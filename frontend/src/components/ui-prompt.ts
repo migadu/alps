@@ -13,6 +13,13 @@ export interface PromptField {
   type?: string;
   placeholder?: string;
   autofocus?: boolean;
+  autocomplete?: string;
+  /**
+   * Checked when the prompt is submitted: an answer is the field's error, and
+   * the prompt keeps it instead of submitting. So a value the owner would only
+   * refuse never leaves the dialog.
+   */
+  validate?: (value: string, values: Record<string, string>) => string | null | undefined;
 }
 
 @customElement('ui-prompt')
@@ -35,8 +42,21 @@ export class UIPrompt extends LitElement {
    * the request twice: two folders created, or a rename racing itself.
    */
   @property({ type: Boolean }) busy: boolean = false;
+  /**
+   * Errors to show under fields, by field id: the owner's answer to a submit
+   * it refused, such as a wrong password, which keeps the prompt open.
+   *
+   * Taken when the object changes, and a field's error goes once the user
+   * types in it. An owner should therefore hand over a new object only when a
+   * new refusal arrives, not one built afresh on each of its renders, which
+   * would bring back an error the user had already typed past.
+   */
+  @property({ type: Object }) errors: Record<string, string> = {};
+  /** A destructive commit: styled as ui-confirm's `isDanger` is. */
+  @property({ type: Boolean }) isDanger: boolean = false;
 
   @state() private values: Record<string, string> = {};
+  @state() private fieldErrors: Record<string, string> = {};
 
   static styles = [
     modalButtonStyles,
@@ -55,6 +75,11 @@ export class UIPrompt extends LitElement {
       }
       .field-input {
         margin-top: 8px;
+      }
+      .field-error {
+        margin-top: 6px;
+        font-size: 13px;
+        color: var(--error, #ef4444);
       }
     `
   ];
@@ -82,6 +107,9 @@ export class UIPrompt extends LitElement {
         this.values = initialValues;
       }
     }
+    if (changedProperties.has('errors')) {
+      this.fieldErrors = { ...this.fieldErrors, ...(this.errors || {}) };
+    }
   }
 
   firstUpdated() {
@@ -100,6 +128,9 @@ export class UIPrompt extends LitElement {
   private _handleInput(e: Event, id: string) {
     const el = e.target as HTMLInputElement;
     this.values = { ...this.values, [id]: el.value };
+    if (this.fieldErrors[id]) {
+      this.fieldErrors = { ...this.fieldErrors, [id]: '' };
+    }
   }
 
   private _handleKeyDown(e: KeyboardEvent) {
@@ -127,6 +158,15 @@ export class UIPrompt extends LitElement {
 
   private _handleSubmit() {
     if (this.busy || this.submitted) return;
+    const refused: Record<string, string> = {};
+    for (const f of this.fields) {
+      const error = f.validate?.(this.values[f.id] || '', this.values);
+      if (error) refused[f.id] = error;
+    }
+    if (Object.keys(refused).length > 0) {
+      this.fieldErrors = { ...this.fieldErrors, ...refused };
+      return;
+    }
     this.submitted = true;
     this.dispatchEvent(new CustomEvent('submit', { 
       detail: this.values,
@@ -136,14 +176,17 @@ export class UIPrompt extends LitElement {
   }
 
   updated(changed: Map<string, any>) {
-    // The owner finished (or never started): let the form be used again.
-    if (changed.has('busy') && !this.busy) this.submitted = false;
+    // The owner finished (or never started): let the form be used again. An
+    // owner that answers with an error is finished with that submit too, even
+    // one that refused it without ever setting `busy`.
+    if ((changed.has('busy') && !this.busy) || changed.has('errors')) this.submitted = false;
   }
 
   render() {
     return html`
       <ui-modal 
         .title=${this.title}
+        .isDanger=${this.isDanger}
         .dismissible=${!this.busy}
         @cancel=${this._handleCancel}>
         
@@ -156,17 +199,19 @@ export class UIPrompt extends LitElement {
                 class="field-input"
                 type=${f.type || 'text'}
                 placeholder=${f.placeholder || ''}
+                autocomplete=${f.autocomplete || ''}
                 .value=${this.values[f.id] || ''}
                 ?autofocus=${f.autofocus}
                 @input=${(e: Event) => this._handleInput(e, f.id)}
                 @keydown=${this._handleKeyDown}
               ></alps-input>
+              ${this.fieldErrors[f.id] ? html`<div class="field-error" role="alert">${this.fieldErrors[f.id]}</div>` : ''}
             </div>
           `)}
         </div>
         
         <alps-button slot="actions" variant="text" ?disabled=${this.busy} @click=${this._handleCancel}>${this.cancelText || this.i18nStore?.t('general.cancel') || 'Cancel'}</alps-button>
-        <alps-button slot="actions" variant="normal" ?disabled=${this.busy || this.submitted} @click=${this._handleSubmit}>${this.confirmText || this.i18nStore?.t('general.save') || 'Save'}</alps-button>
+        <alps-button slot="actions" variant=${this.isDanger ? 'danger' : 'normal'} ?disabled=${this.busy || this.submitted} @click=${this._handleSubmit}>${this.confirmText || this.i18nStore?.t('general.save') || 'Save'}</alps-button>
       </ui-modal>
     `;
   }
