@@ -175,7 +175,10 @@ export const fr = {
     moveToTop: "Placer en haut",
     moveUp: "Monter",
     moveDown: "Descendre",
-    moveToBottom: "Placer en bas"
+    moveToBottom: "Placer en bas",
+    more: "Plus",
+    less: "Moins",
+    unsubscribedFolders: "Dossiers sans abonnement"
   },
   search: {
     placeholder: 'Rechercher des messages',

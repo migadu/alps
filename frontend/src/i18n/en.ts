@@ -227,7 +227,10 @@ export const en = {
     moveToTop: "Move to Top",
     moveUp: "Move Up",
     moveDown: "Move Down",
-    moveToBottom: "Move to Bottom"
+    moveToBottom: "Move to Bottom",
+    more: "More",
+    less: "Less",
+    unsubscribedFolders: "Unsubscribed folders"
   },
   search: {
     placeholder: 'Search mail',

@@ -162,6 +162,22 @@ export function advertisedRoles(mailboxes: any[] = []): Set<MailboxRole> {
 }
 
 /**
+ * Whether the folder listing says which folders are subscribed.
+ *
+ * The server reports a subscription as the \Subscribed attribute on LIST,
+ * which alps asks for with RETURN (SUBSCRIBED), and the listing carries it on
+ * as `Subscribed`. A server that answers without it — one that ignores the
+ * option, or a store that keeps no subscriptions — leaves every folder false,
+ * which reads exactly like "subscribed to nothing". So a listing in which no
+ * folder at all is subscribed is taken to say nothing, and no folder is put
+ * away on its word. An account really subscribed to nothing is shown whole,
+ * which is the safe reading of that too.
+ */
+export function reportsSubscriptions(mailboxes: any[] = []): boolean {
+  return (mailboxes || []).some(mb => mb?.Subscribed === true);
+}
+
+/**
  * Whether messages dragged onto this folder's row in the sidebar may be filed
  * there. `mb` is the listed mailbox, or undefined for a path segment drawn only
  * because a deeper folder is named through it.

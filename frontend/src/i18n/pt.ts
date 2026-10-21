@@ -220,7 +220,10 @@ export const pt = {
     moveToTop: "Mover para o topo",
     moveUp: "Mover para cima",
     moveDown: "Mover para baixo",
-    moveToBottom: "Mover para o final"
+    moveToBottom: "Mover para o final",
+    more: "Mais",
+    less: "Menos",
+    unsubscribedFolders: "Pastas sem assinatura"
   },
   search: {
     placeholder: 'Pesquisar e-mails',

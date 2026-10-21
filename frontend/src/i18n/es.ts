@@ -175,7 +175,10 @@ export const es = {
     moveToTop: "Mover al principio",
     moveUp: "Subir",
     moveDown: "Bajar",
-    moveToBottom: "Mover al final"
+    moveToBottom: "Mover al final",
+    more: "Más",
+    less: "Menos",
+    unsubscribedFolders: "Carpetas sin suscripción"
   },
   search: {
     placeholder: 'Buscar correo',

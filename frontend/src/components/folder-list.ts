@@ -6,9 +6,10 @@ import { composeContext } from '../store/compose-store';
 import type { ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { mailboxOperations } from '../services/mailbox-operations';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels, acceptsDroppedMessages } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels, acceptsDroppedMessages, advertisedRoles, mailboxRole, reportsSubscriptions } from '../utils/folders';
 import { carriesMessages, dropCopies, readMessageDrag } from '../utils/message-drag';
 import { settingsContext, SettingsStore } from '../store/settings-store';
+import { confirmUnsubscribed, forgetUnsubscribedTree, renameUnsubscribedTree, settleUnsubscribedFolders, withUnsubscribedFolder, withoutUnsubscribedFolder } from '../utils/unsubscribed-folders';
 import './alps-icon-btn';
 import './ui-prompt';
 import './alps-toolbar';
@@ -56,10 +57,82 @@ export class FolderList extends LitElement {
   /** Stops watching the window for the end of the drag that lit a folder;
    * null when no folder is lit. */
   private stopDropWatch: (() => void) | null = null;
+  /**
+   * Whether the unsubscribed folders are showing under More. Not kept between
+   * visits: it is a disclosure, and a sidebar that remembered it open would
+   * soon stop putting anything away.
+   */
+  @state() private showUnsubscribed = false;
+  /** Folders just unsubscribed here that no listing has yet shown
+   * unsubscribed; see confirmUnsubscribed. */
+  private unconfirmedUnsubscribes = new Set<string>();
   private primaryFullNames = new Set<string>();
 
   willUpdate(changedProperties: Map<string, any>) {
     super.willUpdate(changedProperties);
+  }
+
+  updated(changedProperties: Map<string, any>) {
+    super.updated(changedProperties);
+    this.settleUnsubscribed();
+  }
+
+  /** The folders unsubscribed from here, as the account's settings hold them;
+   * see utils/unsubscribed-folders. */
+  private get unsubscribedHere(): string[] {
+    return this.settingsStore?.getState()?.unsubscribedFolders ?? [];
+  }
+
+  private saveUnsubscribedHere(list: string[]) {
+    const current = this.unsubscribedHere;
+    if (list.length === current.length && list.every((name, i) => name === current[i])) return;
+    void this.settingsStore?.updateSettings({ unsubscribedFolders: list });
+  }
+
+  /**
+   * Drops the entries of folders the listing shows subscribed again, by
+   * another client or by this one in another browser.
+   *
+   * Only once the account's record has been read: before that, the list is
+   * this browser's copy, and one worked out from it would be saved over the
+   * account's.
+   */
+  private settleUnsubscribed() {
+    if (!this.settingsStore?.recordRead || this.mailboxes.length === 0) return;
+    if (this.unsubscribedHere.length === 0 && this.unconfirmedUnsubscribes.size === 0) return;
+    confirmUnsubscribed(this.unconfirmedUnsubscribes, this.mailboxes);
+    this.saveUnsubscribedHere(settleUnsubscribedFolders(this.unsubscribedHere, this.mailboxes, this.unconfirmedUnsubscribes));
+  }
+
+  /** A subscription changed here, and the server took it. */
+  private subscriptionChanged(name: string, subscribed: boolean) {
+    if (subscribed) {
+      this.unconfirmedUnsubscribes.delete(name);
+      this.saveUnsubscribedHere(withoutUnsubscribedFolder(this.unsubscribedHere, name));
+    } else {
+      this.unconfirmedUnsubscribes.add(name);
+      this.saveUnsubscribedHere(withUnsubscribedFolder(this.unsubscribedHere, name));
+    }
+  }
+
+  /** A folder renamed here: what was unsubscribed under the old names is
+   * unsubscribed under the new ones. */
+  private renamedHere(from: string, to: string, delimiter: string) {
+    for (const name of [...this.unconfirmedUnsubscribes]) {
+      if (!isSelfOrDescendantMailbox(name, from, delimiter)) continue;
+      this.unconfirmedUnsubscribes.delete(name);
+      this.unconfirmedUnsubscribes.add(to + name.slice(from.length));
+    }
+    this.saveUnsubscribedHere(renameUnsubscribedTree(this.unsubscribedHere, from, to, delimiter));
+  }
+
+  /** A folder deleted here, or moved to Trash: it and what was under it are
+   * not unsubscribed folders of this account any more. */
+  private goneHere(name: string, delimiter: string) {
+    for (const entry of [...this.unconfirmedUnsubscribes]) {
+      if (isSelfOrDescendantMailbox(entry, name, delimiter)) this.unconfirmedUnsubscribes.delete(entry);
+    }
+    this.saveUnsubscribedHere(forgetUnsubscribedTree(this.unsubscribedHere, name, delimiter));
   }
 
 
@@ -182,6 +255,21 @@ export class FolderList extends LitElement {
 
     .folder-item.drop-target.drop-copy {
       outline-color: var(--success);
+    }
+
+    /* The More row: a button, so the keyboard reaches it, drawn as a row. */
+    button.more-row {
+      width: 100%;
+      border: none;
+      background: none;
+      font: inherit;
+      color: var(--text-muted);
+      text-align: start;
+    }
+
+    .more-caret {
+      display: flex;
+      padding: 2px;
     }
 
     .folder-item .icon {
@@ -399,7 +487,11 @@ export class FolderList extends LitElement {
       // The result was discarded entirely: creating a folder that already
       // exists, or any server refusal, closed the prompt and said nothing.
       const outcome = await mailboxOperations.createMailbox(name);
-      if (outcome === 'exists') {
+      if (outcome === 'ok') {
+        // An entry left by a folder of the same name deleted elsewhere is not
+        // this one's.
+        this.saveUnsubscribedHere(withoutUnsubscribedFolder(this.unsubscribedHere, name));
+      } else if (outcome === 'exists') {
         this.toast(this.i18nStore?.t('toast.folderExists'), 'A folder with that name already exists', { type: 'error' });
       } else if (outcome === 'failed') {
         this.toast(this.i18nStore?.t('toast.folderCreateFailed'), 'Could not create the folder', { type: 'error' });
@@ -426,6 +518,7 @@ export class FolderList extends LitElement {
     const newName = e.detail.name;
     if (newName && this.mailboxToRename) {
       const oldName = this.mailboxToRename;
+      const delimiter = delimiterOf(this.mailboxes.find(m => (m.Name || m.Mailbox) === oldName));
       // Taken down before the request here, so there is no double-submit window
       // to guard — unlike the create path above.
       this.showRenamePrompt = false;
@@ -436,6 +529,7 @@ export class FolderList extends LitElement {
       } else if (outcome === 'failed') {
         this.toast(this.i18nStore?.t('toast.folderRenameFailed'), 'Could not rename the folder', { type: 'error' });
       } else {
+        this.renamedHere(oldName, newName, delimiter);
         if (isSelfOrDescendantMailbox(this.currentMailbox, oldName)) {
           this.selectMailbox(newName + this.currentMailbox.slice(oldName.length));
         }
@@ -446,6 +540,7 @@ export class FolderList extends LitElement {
             this.toast(this.i18nStore?.t('toast.folderUndoFailed'), 'Could not undo that', { type: 'error' });
             return;
           }
+          this.renamedHere(newName, oldName, delimiter);
           if (isSelfOrDescendantMailbox(this.currentMailbox, newName)) {
             this.selectMailbox(oldName + this.currentMailbox.slice(newName.length));
           }
@@ -470,8 +565,11 @@ export class FolderList extends LitElement {
 
   private async handleDeleteConfirm() {
     if (this.mailboxToDelete) {
-      const success = await mailboxOperations.deleteMailbox(this.mailboxToDelete);
+      const deleted = this.mailboxToDelete;
+      const delimiter = delimiterOf(this.mailboxes.find(m => (m.Name || m.Mailbox) === deleted));
+      const success = await mailboxOperations.deleteMailbox(deleted);
       if (success) {
+        this.goneHere(deleted, delimiter);
         // `startsWith` alone also matched a sibling that merely shares a prefix,
         // so deleting `Arch` navigated away from `Archive`.
         if (isSelfOrDescendantMailbox(this.currentMailbox, this.mailboxToDelete)) {
@@ -521,6 +619,10 @@ export class FolderList extends LitElement {
       if (outcome !== 'ok') {
         this.toast(this.i18nStore?.t('toast.folderRenameFailed'), 'Could not rename the folder', { type: 'error' });
       } else {
+        // The server takes a folder moved into Trash out of the subscriptions,
+        // and puts it back when it leaves, by Undo or by hand: there is
+        // nothing left for the list to hold.
+        this.goneHere(this.mailboxToDelete, delimiter);
         // Same prefix guard as the permanent delete above.
         if (isSelfOrDescendantMailbox(this.currentMailbox, this.mailboxToDelete, delimiter)) {
           this.selectMailbox(FOLDER_INBOX);
@@ -843,6 +945,52 @@ export class FolderList extends LitElement {
       return a.name.localeCompare(b.name);
     });
 
+    /*
+     * UNSUBSCRIBED FOLDERS, and where they go.
+     *
+     * IMAP keeps a list of the folders the user is subscribed to, and the
+     * folder menu's Unsubscribe has always written to it. The sidebar ignored
+     * it: the row stayed exactly where it was, and the only sign the gesture
+     * had landed was that the menu now said Subscribe. So a folder unsubscribed
+     * here goes behind a More row at the end of the list, and Subscribe brings
+     * it back.
+     *
+     * UNSUBSCRIBED HERE, AND STILL UNSUBSCRIBED. The server's list alone would
+     * also send behind More every folder unsubscribed in another client, and
+     * every folder a server that does not subscribe on CREATE made
+     * unsubscribed, which is most folders ever created here. So a folder goes
+     * only when alps's own list has it (see utils/unsubscribed-folders) and
+     * the server still lists it unsubscribed; subscribed again anywhere, it
+     * is back.
+     *
+     * TOP LEVEL ONLY, with its subfolders. A row is captioned with the last
+     * level of its name, and the parent it sits under is what says which
+     * folder it is; pulled out to sit flat under More, it would lose that. A
+     * nested folder unsubscribed stays under its parent.
+     *
+     * NEVER ONE WITH A SPECIAL USE, the Inbox included, nor a folder that
+     * holds one: Gmail's "[Gmail]" holds Sent and Trash.
+     *
+     * ONLY ON A LISTING THAT SAYS: see reportsSubscriptions. Without an
+     * answer every folder reads as unsubscribed, the one subscribed again
+     * elsewhere included.
+     *
+     * More is open WHILE THE FOLDER ON SCREEN IS UNDER IT. Unsubscribing the
+     * folder being read is one menu away, and a sidebar that answered by
+     * taking the current row away would read as having lost it.
+     */
+    const unsubscribedHere = new Set(this.unsubscribedHere);
+    const advertised = advertisedRoles(this.mailboxes);
+    const holdsSpecialUse = (node: TreeNode): boolean =>
+      mailboxRole(node.mb, advertised) !== null || Object.values(node.children).some(holdsSpecialUse);
+    const behindMore = (node: TreeNode): boolean =>
+      !!node.mb && node.mb.Subscribed !== true && unsubscribedHere.has(node.fullName) && !holdsSpecialUse(node);
+    const unsubscribedNodes = reportsSubscriptions(this.mailboxes) ? customNodes.filter(behindMore) : [];
+    const subscribedNodes = customNodes.filter(node => !unsubscribedNodes.includes(node));
+    const viewingUnsubscribed = unsubscribedNodes.some(node =>
+      isSelfOrDescendantMailbox(this.currentMailbox, node.fullName, delimiterOf(node.mb)));
+    const unsubscribedOpen = this.showUnsubscribed || viewingUnsubscribed;
+
     const renderTree = (nodes: TreeNode[], depth: number = 0): TemplateResult[] => {
       return nodes.map(node => {
         const hasChildren = Object.keys(node.children).length > 0;
@@ -967,6 +1115,7 @@ export class FolderList extends LitElement {
               // on screen and said nothing. Quiet on `auth`, which the shell answers.
               const subscribing = !node.mb?.Subscribed;
               void mailboxOperations.setSubscribed(node.fullName, subscribing).then(result => {
+                if (result.ok) this.subscriptionChanged(node.fullName, subscribing);
                 if (result.ok || result.reason === 'auth') return;
                 if (subscribing) this.toast(this.i18nStore?.t('toast.subscribeFailed'), 'Could not subscribe');
                 else this.toast(this.i18nStore?.t('toast.unsubscribeFailed'), 'Could not unsubscribe');
@@ -1115,7 +1264,21 @@ export class FolderList extends LitElement {
             <div class="sidebar-header-title">
               <span>${this.i18nStore?.t('folderList.title')}</span>
             </div>
-            ${renderTree(customNodes)}
+            ${renderTree(subscribedNodes)}
+            ${unsubscribedNodes.length > 0 ? html`
+              <button
+                type="button"
+                class="folder-item more-row"
+                aria-expanded=${unsubscribedOpen ? 'true' : 'false'}
+                title=${this.i18nStore?.t('folderList.unsubscribedFolders')}
+                @click=${() => { this.showUnsubscribed = !unsubscribedOpen; }}
+              >
+                <div class="more-caret">${renderIcon(unsubscribedOpen ? 'caretDown' : 'caretRight')}</div>
+                <div class="folder-icon icon-default">${renderIcon('eyeSlash')}</div>
+                <div class="folder-name">${unsubscribedOpen ? this.i18nStore?.t('folderList.less') : this.i18nStore?.t('folderList.more')}</div>
+              </button>
+              ${unsubscribedOpen ? renderTree(unsubscribedNodes) : ''}
+            ` : ''}
           </div>
         </div>
       </div>

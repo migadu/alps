@@ -12,7 +12,7 @@
 // when it was not.
 
 import type { Locator, Page } from "@playwright/test";
-import { deliver, expect, login, test, toast } from "./fixtures";
+import { deliver, expect, login, mailboxElsewhere, test, toast } from "./fixtures";
 
 /** The six special-use folders, in the fixed order the sidebar renders them,
  * spelled as the UI displays them (INBOX shows as "Inbox"). */
@@ -389,4 +389,174 @@ test("deleting a folder inside the Trash deletes it for good", async ({ page }) 
   const names = await mailboxNames(page);
   expect(names).not.toContain(name);
   expect(names).not.toContain(`Trash/${name}`);
+});
+
+/** The server's word on whether a folder is subscribed, as the listing reports it. */
+async function subscribed(page: Page, name: string): Promise<boolean | null> {
+  const response = await page.request.get("/mailboxes");
+  if (!response.ok()) return null;
+  const { Mailboxes } = (await response.json()) as { Mailboxes: { Mailbox: string; Subscribed: boolean }[] | null };
+  return (Mailboxes ?? []).find((m) => m.Mailbox === name)?.Subscribed ?? null;
+}
+
+/** The folders the account's settings hold as unsubscribed here. */
+async function unsubscribedHere(page: Page): Promise<string[] | null> {
+  const response = await page.request.get("/settings");
+  if (!response.ok()) return null;
+  const { Settings } = (await response.json()) as { Settings: { ui?: { unsubscribedFolders?: string[] } } };
+  return Settings.ui?.unsubscribedFolders ?? [];
+}
+
+/** The page drawn again from a listing read now: alps keeps the folder list
+ * in its session, and a change made behind its back is not in that copy. */
+async function relist(page: Page) {
+  await mailboxNames(page);
+  await page.reload();
+  await expect(folder(page, "Trash")).toBeVisible();
+}
+
+/** The row at the end of the list that the unsubscribed folders sit behind. */
+function moreRow(page: Page) {
+  return page.locator("alps-folder-list button.more-row");
+}
+
+// The subscription list is IMAP's, read by every client, and the folder menu
+// has always written to it — while the sidebar went on drawing the folder
+// exactly where it was. A folder unsubscribed here now waits behind More, on
+// every page drawn after, and subscribing to it again brings it back.
+test("unsubscribing a folder puts it behind More, and subscribing brings it back", async ({ page }) => {
+  const name = `${PREFIX}subscription-${Date.now()}`;
+  await login(page);
+  await expect(folder(page, "Trash")).toBeVisible();
+
+  // A folder made here is subscribed: the server does not do that by itself.
+  await createFolder(page, name);
+  await expect.poll(() => subscribed(page, name)).toBe(true);
+
+  const item = await openFolderMenu(page, name);
+  await menuItem(item, "Unsubscribe").click();
+  await expect.poll(() => subscribed(page, name)).toBe(false);
+  await expect(folder(page, name)).toHaveCount(0);
+  await expect(moreRow(page)).toHaveAttribute("aria-expanded", "false");
+  await expect.poll(() => unsubscribedHere(page)).toContain(name);
+
+  // Kept with the account, not with this page.
+  await page.reload();
+  await expect(moreRow(page)).toHaveAttribute("aria-expanded", "false");
+  await expect(folder(page, name)).toHaveCount(0);
+
+  await moreRow(page).click();
+  await expect(moreRow(page)).toHaveAttribute("aria-expanded", "true");
+  await expect(folder(page, name)).toBeVisible();
+
+  const behindMore = await openFolderMenu(page, name);
+  await menuItem(behindMore, "Subscribe").click();
+  await expect.poll(() => subscribed(page, name)).toBe(true);
+  await expect.poll(() => unsubscribedHere(page)).not.toContain(name);
+
+  // In the list again: drawn with More shut, as a fresh page draws it.
+  await page.reload();
+  await expect(folder(page, name)).toBeVisible();
+});
+
+// Unsubscribing the folder being read is one menu away, and a sidebar that
+// answered by taking the current row away would read as having lost it.
+test("a folder unsubscribed while it is open stays in sight, under an open More", async ({ page }) => {
+  const name = `${PREFIX}open-${Date.now()}`;
+  await login(page);
+  await expect(folder(page, "Trash")).toBeVisible();
+  await createFolder(page, name);
+  await folder(page, name).click();
+  await expect(page).toHaveURL(new RegExp(`#/mailbox/${name}(\\?|$)`));
+
+  const item = await openFolderMenu(page, name);
+  await menuItem(item, "Unsubscribe").click();
+  await expect.poll(() => subscribed(page, name)).toBe(false);
+
+  await expect(moreRow(page)).toHaveAttribute("aria-expanded", "true");
+  await expect(folder(page, name)).toBeVisible();
+  await expect(folder(page, name)).toHaveClass(/\bactive\b/);
+
+  // Teardown deletes the folder, and a list still on it would re-sync into a 404.
+  await folder(page, "Inbox").click();
+  await expect(page).toHaveURL(/#\/mailbox\/INBOX/);
+});
+
+// The server's subscription list is not alps's to empty into More. It holds
+// the folders unsubscribed in other clients, where the user chose what THOSE
+// show, and on a server that does not subscribe on CREATE, every folder alps
+// made before it asked for the subscription itself.
+test("a folder unsubscribed only on the server stays in the list", async ({ page }) => {
+  const stamp = Date.now();
+  const createdBare = `${PREFIX}bare-${stamp}`;
+  const elsewhere = `${PREFIX}elsewhere-${stamp}`;
+  await login(page);
+  await expect(folder(page, "Trash")).toBeVisible();
+
+  litter.add(createdBare);
+  await mailboxElsewhere("create", createdBare);
+  await createFolder(page, elsewhere);
+  await mailboxElsewhere("unsubscribe", elsewhere);
+  await relist(page);
+
+  expect(await subscribed(page, createdBare)).toBe(false);
+  expect(await subscribed(page, elsewhere)).toBe(false);
+  // More is shut on a fresh page, so a row in sight is a row in the list.
+  await expect(folder(page, createdBare)).toBeVisible();
+  await expect(folder(page, elsewhere)).toBeVisible();
+});
+
+// Subscribed again in another client, a folder is back here as well, and alps
+// forgets that it was ever unsubscribed here: unsubscribing it in that client
+// later is that client's business, and leaves it in this list.
+test("a folder subscribed again elsewhere comes back, and stays when unsubscribed there", async ({ page }) => {
+  const name = `${PREFIX}resubscribed-${Date.now()}`;
+  await login(page);
+  await expect(folder(page, "Trash")).toBeVisible();
+  await createFolder(page, name);
+
+  const item = await openFolderMenu(page, name);
+  await menuItem(item, "Unsubscribe").click();
+  await expect.poll(() => unsubscribedHere(page)).toContain(name);
+  await expect(folder(page, name)).toHaveCount(0);
+
+  await mailboxElsewhere("subscribe", name);
+  await relist(page);
+  await expect(folder(page, name)).toBeVisible();
+  await expect.poll(() => unsubscribedHere(page)).not.toContain(name);
+
+  await mailboxElsewhere("unsubscribe", name);
+  await relist(page);
+  expect(await subscribed(page, name)).toBe(false);
+  await expect(folder(page, name)).toBeVisible();
+});
+
+// A rename moves no subscription the user did not ask to move: a folder put
+// behind More here is still there under its new name.
+test("a folder renamed behind More stays there under its new name", async ({ page }) => {
+  const name = `${PREFIX}renamed-away-${Date.now()}`;
+  const renamed = `${name}-renamed`;
+  await login(page);
+  await expect(folder(page, "Trash")).toBeVisible();
+  await createFolder(page, name);
+
+  const item = await openFolderMenu(page, name);
+  await menuItem(item, "Unsubscribe").click();
+  await expect.poll(() => unsubscribedHere(page)).toContain(name);
+  await moreRow(page).click();
+
+  const behindMore = await openFolderMenu(page, name);
+  await menuItem(behindMore, "Rename").click();
+  const prompt = page.locator("alps-folder-list ui-prompt");
+  await prompt.locator("input").fill(renamed);
+  litter.add(renamed);
+  await prompt.getByRole("button", { name: "Rename", exact: true }).click();
+  await expect.poll(() => unsubscribedHere(page)).toContain(renamed);
+  expect(await unsubscribedHere(page)).not.toContain(name);
+
+  await page.reload();
+  await expect(moreRow(page)).toHaveAttribute("aria-expanded", "false");
+  await expect(folder(page, renamed)).toHaveCount(0);
+  await moreRow(page).click();
+  await expect(folder(page, renamed)).toBeVisible();
 });

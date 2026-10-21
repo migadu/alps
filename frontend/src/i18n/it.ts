@@ -175,7 +175,10 @@ export const it = {
     moveToTop: "Sposta in cima",
     moveUp: "Sposta su",
     moveDown: "Sposta giù",
-    moveToBottom: "Sposta in fondo"
+    moveToBottom: "Sposta in fondo",
+    more: "Altro",
+    less: "Meno",
+    unsubscribedFolders: "Cartelle non sottoscritte"
   },
   search: {
     placeholder: 'Cerca nella posta',

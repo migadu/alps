@@ -177,7 +177,10 @@ export const de: TranslationDictionary = {
     moveToTop: "Ganz nach oben",
     moveUp: "Nach oben",
     moveDown: "Nach unten",
-    moveToBottom: "Ganz nach unten"
+    moveToBottom: "Ganz nach unten",
+    more: "Mehr",
+    less: "Weniger",
+    unsubscribedFolders: "Nicht abonnierte Ordner"
   },
   search: {
     placeholder: 'E-Mails durchsuchen',

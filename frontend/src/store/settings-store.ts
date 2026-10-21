@@ -558,6 +558,15 @@ export class SettingsStore extends EventTarget {
     return this.state;
   }
 
+  /**
+   * Whether this session has read the account's record. Until it has, the
+   * state is this browser's copy, and a change worked out from it is saved
+   * over the account's values when the record arrives.
+   */
+  get recordRead(): boolean {
+    return this.initialFetchCompleted;
+  }
+
   async updateSettings(updates: Partial<SettingsState>) {
     const oldUsername = this.state.loginUsername;
     const newUsername = updates.loginUsername;

@@ -175,7 +175,10 @@ export const sr = {
     moveToTop: "Pomeri na vrh",
     moveUp: "Pomeri nagore",
     moveDown: "Pomeri nadole",
-    moveToBottom: "Pomeri na dno"
+    moveToBottom: "Pomeri na dno",
+    more: "Više",
+    less: "Manje",
+    unsubscribedFolders: "Fascikle bez pretplate"
   },
   search: {
     placeholder: 'Pretraži poštu',

@@ -175,7 +175,10 @@ export const rs = {
     moveToTop: "Помери на врх",
     moveUp: "Помери нагоре",
     moveDown: "Помери надоле",
-    moveToBottom: "Помери на дно"
+    moveToBottom: "Помери на дно",
+    more: "Више",
+    less: "Мање",
+    unsubscribedFolders: "Фасцикле без претплате"
   },
   search: {
     placeholder: 'Претражи пошту',

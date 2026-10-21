@@ -229,7 +229,10 @@ export const da: TranslationDictionary = {
     moveToTop: 'Flyt øverst',
     moveUp: 'Flyt op',
     moveDown: 'Flyt ned',
-    moveToBottom: 'Flyt nederst'
+    moveToBottom: 'Flyt nederst',
+    more: 'Mere',
+    less: 'Mindre',
+    unsubscribedFolders: 'Mapper uden abonnement'
   },
   search: {
     placeholder: 'Søg i mail',
