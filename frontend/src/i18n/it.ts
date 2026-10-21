@@ -558,6 +558,7 @@ export const it = {
     trust_linked_checkbox: 'Consenti di passare a questo account senza 2FA',
     trust_password_label: 'Inserisci la tua password per confermare',
     confirm_remove: 'Sei sicuro di voler rimuovere questa chiave di sicurezza?',
+    remove_password_label: 'Inserisci la tua password per rimuovere questa chiave di sicurezza',
     errors: {
       begin_failed: 'Impossibile avviare l\'autenticazione.',
       invalid_options: 'Opzioni di autenticazione non valide ricevute.',
@@ -571,6 +572,7 @@ export const it = {
       two_factor_required: 'Accedi con la tua chiave di sicurezza per modificare questa impostazione.',
       no_security_key: 'Aggiungi prima una chiave di sicurezza.',
       trust_failed: "Non è stato possibile modificare l'impostazione. Riprova.",
+      remove_unavailable: 'Non è stato possibile rimuovere la chiave di sicurezza in questo momento. Riprova tra poco.',
       general: 'Si è verificato un errore.',
     },
     settings: {

@@ -560,6 +560,7 @@ export const de: TranslationDictionary = {
     trust_linked_checkbox: 'Wechsel zu diesem Konto ohne 2FA erlauben',
     trust_password_label: 'Geben Sie zur Bestätigung Ihr Passwort ein',
     confirm_remove: 'Möchten Sie diesen Sicherheitsschlüssel wirklich entfernen?',
+    remove_password_label: 'Geben Sie Ihr Passwort ein, um diesen Sicherheitsschlüssel zu entfernen',
     errors: {
       begin_failed: 'Fehler beim Starten der Authentifizierung.',
       invalid_options: 'Ungültige Authentifizierungsoptionen erhalten.',
@@ -573,6 +574,7 @@ export const de: TranslationDictionary = {
       two_factor_required: 'Melden Sie sich mit Ihrem Sicherheitsschlüssel an, um diese Einstellung zu ändern.',
       no_security_key: 'Fügen Sie zuerst einen Sicherheitsschlüssel hinzu.',
       trust_failed: 'Die Einstellung konnte nicht geändert werden. Bitte versuchen Sie es erneut.',
+      remove_unavailable: 'Der Sicherheitsschlüssel konnte gerade nicht entfernt werden. Bitte versuchen Sie es gleich noch einmal.',
       general: 'Ein Fehler ist aufgetreten.',
     },
     settings: {

@@ -152,6 +152,7 @@ export const da: TranslationDictionary = {
     trust_linked_checkbox: 'Tillad skift til denne konto uden 2FA',
     trust_password_label: 'Indtast din adgangskode for at bekræfte',
     confirm_remove: 'Er du sikker på, at du vil fjerne denne sikkerhedsnøgle?',
+    remove_password_label: 'Indtast din adgangskode for at fjerne denne sikkerhedsnøgle',
     errors: {
       begin_failed: 'Kunne ikke starte godkendelse.',
       invalid_options: 'Ugyldige godkendelsesindstillinger modtaget.',
@@ -165,6 +166,7 @@ export const da: TranslationDictionary = {
       two_factor_required: 'Log ind med din sikkerhedsnøgle for at ændre denne indstilling.',
       no_security_key: 'Tilføj først en sikkerhedsnøgle.',
       trust_failed: 'Indstillingen kunne ikke ændres. Prøv igen.',
+      remove_unavailable: 'Sikkerhedsnøglen kunne ikke fjernes lige nu. Prøv igen om et øjeblik.',
       general: 'Der opstod en fejl.',
     },
     settings: {

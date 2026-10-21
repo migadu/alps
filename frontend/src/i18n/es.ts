@@ -558,6 +558,7 @@ export const es = {
     trust_linked_checkbox: 'Permitir cambiar a esta cuenta sin 2FA',
     trust_password_label: 'Introduce tu contraseña para confirmar',
     confirm_remove: '¿Seguro que quieres eliminar esta clave de seguridad?',
+    remove_password_label: 'Introduce tu contraseña para eliminar esta clave de seguridad',
     errors: {
       begin_failed: 'Error al iniciar la autenticación.',
       invalid_options: 'Se recibieron opciones de autenticación no válidas.',
@@ -571,6 +572,7 @@ export const es = {
       two_factor_required: 'Inicia sesión con tu clave de seguridad para cambiar este ajuste.',
       no_security_key: 'Añade primero una clave de seguridad.',
       trust_failed: 'No se ha podido cambiar el ajuste. Inténtalo de nuevo.',
+      remove_unavailable: 'No se ha podido eliminar la clave de seguridad ahora mismo. Inténtalo de nuevo dentro de un momento.',
       general: 'Se ha producido un error.',
     },
     settings: {

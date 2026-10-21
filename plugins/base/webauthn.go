@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -279,6 +280,11 @@ func handleDisable(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})
 }
 
+// deleteCredentialRequest is the body of a security key removal.
+type deleteCredentialRequest struct {
+	CurrentPassword string `json:"current_password"`
+}
+
 // confirmCurrentPassword checks that whoever asks for a change to the
 // account's second factor knows its password, and writes the refusal when they
 // do not. It reports whether the request may go on.
@@ -322,7 +328,10 @@ func confirmCurrentPassword(ctx *alps.Context, password string) (bool, error) {
 	return true, nil
 }
 
-// handleDeleteCredential removes a specific credential by ID
+// handleDeleteCredential removes one of the account's security keys. It takes
+// a session that has given the second factor, and then the account's password
+// (see confirmCurrentPassword). Removing the last one turns the second factor
+// off.
 func handleDeleteCredential(ctx *alps.Context) error {
 	if ctx.Session == nil {
 		return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
@@ -339,12 +348,26 @@ func handleDeleteCredential(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusBadRequest, "invalid credential ID")
 	}
 
+	// No body at all is a request without a password, the way a page from
+	// before the password was asked for sends it, and is answered as one.
+	var req deleteCredentialRequest
+	if err := ctx.BindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		return ctx.RespondBindError(err)
+	}
+	// The keys cannot be read or written: an outage, answered as one with a
+	// code of its own, so the page does not mistake it for a wrong password.
 	creds, err := loadCredentials(ctx.Session)
 	if err != nil {
-		return fmt.Errorf("failed to load credentials: %v", err)
+		ctx.Server.Logger().Errorf("WebAuthn delete: failed to load credentials for user %s: %v", ctx.Session.Username(), err)
+		return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
 	}
+	// Checked before the password, so that a session without the second
+	// factor cannot use this to find out whether a password is right.
 	if lacksSecondFactor(ctx, creds) {
 		return respondTwoFactorRequired(ctx)
+	}
+	if ok, err := confirmCurrentPassword(ctx, req.CurrentPassword); !ok {
+		return err
 	}
 
 	// Find and remove the credential. The capacity is not one less than the
@@ -373,7 +396,8 @@ func handleDeleteCredential(ctx *alps.Context) error {
 	}
 
 	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {
-		return fmt.Errorf("failed to save credentials: %v", err)
+		ctx.Server.Logger().Errorf("WebAuthn delete: failed to save credentials for user %s: %v", ctx.Session.Username(), err)
+		return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})

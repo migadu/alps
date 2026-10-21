@@ -558,6 +558,7 @@ export const fr = {
     trust_linked_checkbox: 'Autoriser le passage à ce compte sans 2FA',
     trust_password_label: 'Saisissez votre mot de passe pour confirmer',
     confirm_remove: 'Êtes-vous sûr de vouloir supprimer cette clé de sécurité ?',
+    remove_password_label: 'Saisissez votre mot de passe pour supprimer cette clé de sécurité',
     errors: {
       begin_failed: 'Échec de l\'initiation de l\'authentification.',
       invalid_options: 'Options d\'authentification invalides reçues.',
@@ -571,6 +572,7 @@ export const fr = {
       two_factor_required: 'Connectez-vous avec votre clé de sécurité pour modifier ce paramètre.',
       no_security_key: "Ajoutez d'abord une clé de sécurité.",
       trust_failed: "Le paramètre n'a pas pu être modifié. Veuillez réessayer.",
+      remove_unavailable: "La clé de sécurité n'a pas pu être supprimée pour le moment. Veuillez réessayer dans un instant.",
       general: 'Une erreur s\'est produite.',
     },
     settings: {

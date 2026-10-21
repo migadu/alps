@@ -143,6 +143,7 @@ export const pt = {
     trust_linked_checkbox: 'Permitir alternar para esta conta sem 2FA',
     trust_password_label: 'Insira a sua senha para confirmar',
     confirm_remove: 'Tem certeza de que deseja remover esta chave de segurança?',
+    remove_password_label: 'Insira a sua senha para remover esta chave de segurança',
     errors: {
       begin_failed: 'Falha ao iniciar autenticação.',
       invalid_options: 'Opções de autenticação inválidas recebidas.',
@@ -156,6 +157,7 @@ export const pt = {
       two_factor_required: 'Inicie sessão com a sua chave de segurança para alterar esta configuração.',
       no_security_key: 'Adicione primeiro uma chave de segurança.',
       trust_failed: 'Não foi possível alterar a configuração. Tente novamente.',
+      remove_unavailable: 'Não foi possível remover a chave de segurança neste momento. Tente novamente daqui a pouco.',
       general: 'Ocorreu um erro.',
     },
     settings: {

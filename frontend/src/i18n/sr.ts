@@ -574,6 +574,7 @@ export const sr = {
     trust_linked_checkbox: 'Dozvoli prebacivanje na ovaj nalog bez 2FA',
     trust_password_label: 'Unesite svoju lozinku da biste potvrdili',
     confirm_remove: 'Da li ste sigurni da želite da uklonite ovaj bezbednosni ključ?',
+    remove_password_label: 'Unesite svoju lozinku da biste uklonili ovaj bezbednosni ključ',
     errors: {
       begin_failed: 'Nije uspelo pokretanje autentifikacije.',
       invalid_options: 'Primljene su nevažeće opcije autentifikacije.',
@@ -587,6 +588,7 @@ export const sr = {
       two_factor_required: 'Prijavite se svojim bezbednosnim ključem da biste promenili ovo podešavanje.',
       no_security_key: 'Prvo dodajte bezbednosni ključ.',
       trust_failed: 'Podešavanje nije moguće promeniti. Pokušajte ponovo.',
+      remove_unavailable: 'Bezbednosni ključ trenutno nije moguće ukloniti. Pokušajte ponovo za trenutak.',
       general: 'Došlo je do greške.',
     },
     settings: {

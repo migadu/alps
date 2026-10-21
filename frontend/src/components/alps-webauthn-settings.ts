@@ -12,7 +12,6 @@ import './alps-icon-btn';
 import './alps-button';
 import './ui-prompt';
 import './ui-modal';
-import './ui-confirm';
 
 interface CredentialDisplay {
     ID: string;
@@ -41,6 +40,14 @@ export class AlpsWebauthnSettings extends LitElement {
     @state() private pendingDeleteId: string | null = null;
     @state() private showTrustPrompt = false;
     @state() private trustBusy = false;
+    @state() private removeBusy = false;
+    /**
+     * The removal prompt's field errors. Assigned only when a refusal arrives,
+     * never rebuilt on render: ui-prompt takes its errors again whenever this
+     * object changes, and a fresh one would bring back an error the user had
+     * already typed past.
+     */
+    @state() private removeErrors: Record<string, string> = {};
 
     static styles = css`
         :host { display: block; }
@@ -222,21 +229,72 @@ export class AlpsWebauthnSettings extends LitElement {
     }
 
     removeCredential(id: string) {
+        this.error = '';
+        this.removeErrors = {};
         this.pendingDeleteId = id;
     }
 
-    async executeRemoveCredential() {
-        if (!this.pendingDeleteId) return;
+    private t(key: string): string {
+        return this.i18nStore?.t(key) ?? key;
+    }
+
+    /**
+     * Removing a key takes the account's password, which the server checks: a
+     * browser left signed in must not be enough to strip the second factor.
+     * A refusal stays in the prompt, under the field, so the password can be
+     * typed again; only success closes it.
+     */
+    async executeRemoveCredential(e: CustomEvent) {
         const id = this.pendingDeleteId;
-        this.pendingDeleteId = null;
-        try {
-            this.error = '';
-            const res = await fetch(`/settings/2fa/credential/${encodeURIComponent(id)}/delete`, { method: 'POST' });
-            if (!res.ok) throw new Error(await res.text());
-            this.fetchData();
-        } catch (err: any) {
-            this.error = err.message || this.i18nStore?.t('webauthn.errors.remove_failed');
+        if (!id || this.removeBusy) return;
+        const password = typeof e.detail?.password === 'string' ? e.detail.password : '';
+        // The prompt's own check catches this first. Kept so that an empty
+        // password is never sent, whatever route the submit took.
+        if (!password) {
+            this.removeErrors = { password: this.t('webauthn.errors.password_required') };
+            return;
         }
+        this.removeBusy = true;
+        try {
+            const res = await fetchWithTimeout(`/settings/2fa/credential/${encodeURIComponent(id)}/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ current_password: password }),
+            });
+            // A key already gone, removed from another tab, is what was asked.
+            if (res.ok || res.status === 404) {
+                this.pendingDeleteId = null;
+                this.fetchData();
+                return;
+            }
+            // An ended session is handled by fetchWithTimeout, which sends the
+            // user to the login screen with a notice saying why.
+            if (res.status === 401) {
+                this.pendingDeleteId = null;
+                return;
+            }
+            const code = await res.json().then((body) => body?.error, () => undefined);
+            this.removeErrors = { password: this.removeRefusal(res.status, code) };
+        } catch {
+            // The server was not reached, so nothing was decided.
+            this.removeErrors = { password: this.t('webauthn.errors.remove_unavailable') };
+        } finally {
+            this.removeBusy = false;
+        }
+    }
+
+    /** The words for a refused removal, by the server's stable code. */
+    private removeRefusal(status: number, code: unknown): string {
+        if (code === 'wrong_password') return this.t('webauthn.errors.wrong_password');
+        if (code === 'password_required') return this.t('webauthn.errors.password_required');
+        // A session that has not given the second factor: no password helps,
+        // so it is not told to type one again.
+        if (code === 'two_factor_required') return this.t('webauthn.errors.two_factor_required');
+        if (status === 429) return this.t('webauthn.errors.rate_limited');
+        // Not "wrong password": the password may well be right, and saying
+        // otherwise sends the user to retype one that works.
+        if (status >= 500) return this.t('webauthn.errors.remove_unavailable');
+        return this.t('webauthn.errors.remove_failed');
     }
 
     render() {
@@ -295,15 +353,26 @@ export class AlpsWebauthnSettings extends LitElement {
             ` : ''}
 
             ${this.pendingDeleteId ? html`
-                <ui-confirm
-                    title="${this.i18nStore?.t('webauthn.settings.remove_btn') || 'Remove Key'}"
-                    message="${this.i18nStore?.t('webauthn.confirm_remove')}"
-                    confirmText="${this.i18nStore?.t('general.delete') || 'Delete'}"
-                    cancelText="${this.i18nStore?.t('general.cancel')}"
-                    isDanger
-                    @confirm=${this.executeRemoveCredential}
-                    @cancel=${() => this.pendingDeleteId = null}
-                ></ui-confirm>
+                <ui-prompt
+                    title="${this.t('webauthn.confirm_remove')}"
+                    confirmText="${this.t('webauthn.settings.remove_btn')}"
+                    cancelText="${this.t('general.cancel')}"
+                    .isDanger=${true}
+                    .busy=${this.removeBusy}
+                    .errors=${this.removeErrors}
+                    .fields=${[
+                    {
+                        id: 'password',
+                        type: 'password',
+                        label: this.t('webauthn.remove_password_label'),
+                        autocomplete: 'current-password',
+                        autofocus: true,
+                        validate: (value: string) => (value ? null : this.t('webauthn.errors.password_required')),
+                    }
+                ]}
+                    @submit=${this.executeRemoveCredential}
+                    @cancel=${() => { if (!this.removeBusy) this.pendingDeleteId = null; }}
+                ></ui-prompt>
             ` : ''}
 
             <alps-setting-group 

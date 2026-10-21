@@ -150,6 +150,7 @@ export const en = {
     trust_linked_checkbox: 'Allow switching to this account without 2FA',
     trust_password_label: 'Enter your password to confirm',
     confirm_remove: 'Are you sure you want to remove this security key?',
+    remove_password_label: 'Enter your password to remove this security key',
     errors: {
       begin_failed: 'Failed to initiate authentication.',
       invalid_options: 'Invalid authentication options received.',
@@ -163,6 +164,7 @@ export const en = {
       two_factor_required: 'Sign in with your security key to change this setting.',
       no_security_key: 'Add a security key first.',
       trust_failed: 'The setting could not be changed. Please try again.',
+      remove_unavailable: 'The security key could not be removed just now. Please try again in a moment.',
       general: 'An error occurred.',
     },
     settings: {
