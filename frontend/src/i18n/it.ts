@@ -196,6 +196,10 @@ export const it = {
       other: 'Tutti i {count} messaggi in {folder} sono selezionati'
     },
     clearSelection: 'Annulla la selezione',
+    dragCount: {
+      one: '{count} messaggio',
+      other: '{count} messaggi'
+    },
     checkNew: 'Controlla nuovi messaggi',
     sortDesc: 'Ordina decrescente per data',
     sortAsc: 'Ordina crescente per data',

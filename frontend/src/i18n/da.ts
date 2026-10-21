@@ -250,6 +250,10 @@ export const da: TranslationDictionary = {
       other: 'Alle {count} beskeder i {folder} er valgt'
     },
     clearSelection: 'Ryd markeringen',
+    dragCount: {
+      one: '{count} besked',
+      other: '{count} beskeder'
+    },
     checkNew: 'Tjek for nye beskeder',
     sortDesc: 'Sortér faldende efter dato',
     sortAsc: 'Sortér stigende efter dato',

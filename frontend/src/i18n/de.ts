@@ -198,6 +198,10 @@ export const de: TranslationDictionary = {
       other: 'Alle {count} Nachrichten in {folder} sind ausgewählt'
     },
     clearSelection: 'Auswahl aufheben',
+    dragCount: {
+      one: '{count} Nachricht',
+      other: '{count} Nachrichten'
+    },
     checkNew: 'Nach neuen Nachrichten suchen',
     sortDesc: 'Nach Datum absteigend sortieren',
     sortAsc: 'Nach Datum aufsteigend sortieren',

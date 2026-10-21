@@ -196,6 +196,10 @@ export const es = {
       other: 'Los {count} mensajes de {folder} están seleccionados'
     },
     clearSelection: 'Borrar la selección',
+    dragCount: {
+      one: '{count} mensaje',
+      other: '{count} mensajes'
+    },
     checkNew: 'Comprobar mensajes nuevos',
     sortDesc: 'Ordenar descendente por fecha',
     sortAsc: 'Ordenar ascendente por fecha',

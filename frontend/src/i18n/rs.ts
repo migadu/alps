@@ -199,6 +199,11 @@ export const rs = {
       other: 'Свих {count} порука у фасцикли {folder} је изабрано'
     },
     clearSelection: 'Поништи избор',
+    dragCount: {
+      one: '{count} порука',
+      few: '{count} поруке',
+      other: '{count} порука'
+    },
     checkNew: 'Провери нове поруке',
     sortDesc: 'Сортирај опадајуће по датуму',
     sortAsc: 'Сортирај растуће по датуму',

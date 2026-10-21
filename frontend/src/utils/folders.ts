@@ -162,6 +162,33 @@ export function advertisedRoles(mailboxes: any[] = []): Set<MailboxRole> {
 }
 
 /**
+ * Whether messages dragged onto this folder's row in the sidebar may be filed
+ * there. `mb` is the listed mailbox, or undefined for a path segment drawn only
+ * because a deeper folder is named through it.
+ *
+ * Not the folder on screen, which the Move to picker leaves out as well: a move
+ * into it changes nothing. Not a \Noselect or \NonExistent entry, nor a segment
+ * with no mailbox at all, since neither can hold a message and the server would
+ * refuse the MOVE after the rows had already left the list. And not Drafts or
+ * Sent, decided by ROLE: what they hold is alps's own filing of what the user
+ * wrote, a received message dropped among the drafts would be offered for
+ * editing, and both sit right under the Inbox, where a drag aimed at the Inbox
+ * ends up by a few pixels. A user's own folder that is merely called "Drafts",
+ * beside a server that marks another one \Drafts, takes mail like any other:
+ * mailboxRole guesses by name only for a role no folder carries.
+ */
+export function acceptsDroppedMessages(mb: any, mailboxes: any[], viewing: string): boolean {
+  if (!mb) return false;
+  const name: string = mb.Name || mb.Mailbox || '';
+  if (!name || name === viewing) return false;
+  const attrs: any[] = Array.isArray(mb.Attrs) ? mb.Attrs : [];
+  const lowerAttrs = attrs.map(a => (typeof a === 'string' ? a.toLowerCase() : ''));
+  if (lowerAttrs.includes('\\noselect') || lowerAttrs.includes('\\nonexistent')) return false;
+  const role = mailboxRole(mb, advertisedRoles(mailboxes));
+  return role !== 'drafts' && role !== 'sent';
+}
+
+/**
  * Is `name` a folder nested under `parent`?
  *
  * A bare `name.startsWith(parent)` is what the folder verbs used, and it is

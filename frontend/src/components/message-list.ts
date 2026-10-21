@@ -8,6 +8,7 @@ import { fetchAuthVerdicts, VERDICT_BATCH, type AuthVerdict } from '../services/
 import { mailboxOf, messageKey } from '../utils/message-key';
 import { addressText, addressWarning, displayAddress, mixedScriptStyles } from '../utils/address-display';
 import { ALL_MAILBOXES } from '../utils/folders';
+import { MESSAGE_DRAG_TYPE, type MessageDrag } from '../utils/message-drag';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -98,6 +99,9 @@ export class MessageList extends LitElement {
    */
   @state() private emptying = false;
   @state() private expandedThreads = new Set<string>();
+  /** The messages a drag out of the list is carrying, by key; their rows are
+   * dimmed until it ends. Null when nothing is being dragged. */
+  @state() private draggingKeys: string[] | null = null;
   // Verdicts for listed messages and the earlier messages of expanded threads,
   // keyed by mailbox and UID, as answered under that mailbox's scope. Listings
   // carry none: a mail server reads the header from each stored message, and
@@ -180,6 +184,11 @@ export class MessageList extends LitElement {
       align-items: center;
       gap: 16px;
       transition: background 0.15s, padding 0.2s, gap 0.2s;
+    }
+
+    /* What a drag is carrying, left in place until the drop files it. */
+    .message-item.is-dragging {
+      opacity: 0.4;
     }
 
     /* Density: Loose */
@@ -940,6 +949,9 @@ export class MessageList extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    // A list that leaves the page mid-drag would keep its window listeners
+    // until some later drag ended.
+    this.endDrag();
     messageSync.removeEventListener('sync-start', this.handleSyncStart);
     messageSync.removeEventListener('sync-success', this.handleSyncEnd);
     messageSync.removeEventListener('sync-error', this.handleSyncEnd);
@@ -994,6 +1006,13 @@ export class MessageList extends LitElement {
         const idx = (this.messages || []).findIndex(m => Number(m.UID) > (before.get(this.mailboxOf(m)) ?? 0));
         if (idx !== -1) this._arrivedIndex = this.visibleMessages.indexOf(this.messages[idx]);
       }
+    }
+
+    // Every dragged row has left the list, so the drag is over as far as the
+    // list can tell, whether or not its dragend ever arrives (see endDrag).
+    if (changedProperties.has('messages') && this.draggingKeys) {
+      const listed = new Set(this.pageKeys);
+      if (!this.draggingKeys.some(key => listed.has(key))) this.endDrag();
     }
 
     if (changedProperties.has('selectedMessage') || changedProperties.has('messages')) {
@@ -1457,7 +1476,11 @@ export class MessageList extends LitElement {
 
     if (this.densityMode === 'ultra-compact') {
       return html`
-      <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.isOpen(msg)) || rowSelection !== 'none' ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
+      <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.isOpen(msg)) || rowSelection !== 'none' ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''} ${this.isDragged(msg) ? 'is-dragging' : ''}"
+        draggable=${this.isMobile ? 'false' : 'true'}
+        @dragstart=${(e: DragEvent) => this.handleDragStart(e, msg)}
+        @dragend=${this.endDrag}
+        @click=${() => this.selectMessage(msg)}>
         <div class="checkbox-col" @click=${(e: Event) => {
           e.stopPropagation();
           this.toggleRow(msg);
@@ -1511,7 +1534,11 @@ export class MessageList extends LitElement {
     }
 
     return html`
-    <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.isOpen(msg)) || rowSelection !== 'none' ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''}" @click=${() => this.selectMessage(msg)}>
+    <div class="message-item ${isSubMessage ? 'sub-message-item' : ''} ${isFirstSub ? 'first-sub-item' : ''} ${isLastSub ? 'last-sub-item' : ''} ${(this.selectedMessages.size === 0 && this.isOpen(msg)) || rowSelection !== 'none' ? 'active' : ''} ${isUnseen ? 'unread' : ''} ${isStarred ? 'starred' : ''} ${this.focusedIndex === this.visibleMessages.indexOf(msg) ? 'focused' : ''} ${this.isDragged(msg) ? 'is-dragging' : ''}"
+        draggable=${this.isMobile ? 'false' : 'true'}
+        @dragstart=${(e: DragEvent) => this.handleDragStart(e, msg)}
+        @dragend=${this.endDrag}
+        @click=${() => this.selectMessage(msg)}>
       <div class="checkbox-col" @click=${(e: Event) => {
         e.stopPropagation();
         this.toggleRow(msg);
@@ -1590,6 +1617,95 @@ export class MessageList extends LitElement {
       </div>
     </div>
     `;
+  }
+
+  /**
+   * A row dragged towards a folder in the sidebar.
+   *
+   * It carries the checked rows when it is one of them, as the selection bar
+   * would act on them, and otherwise what the row stands for: the whole
+   * conversation when it is collapsed, each message under its own key and so
+   * from its own folder. The drop is the folder list's to decide.
+   *
+   * Rows are draggable on a desktop layout only. On a phone the sidebar is
+   * shut while the list is up, so there is nowhere to drop, and a long press
+   * that began a drag would be taken from scrolling.
+   */
+  private handleDragStart(e: DragEvent, msg: any) {
+    const data = e.dataTransfer;
+    if (!data) return;
+    const own = this.rowKeys(msg);
+    const selection = own.some(key => this.selectedMessages.has(key));
+    const keys = selection ? [...this.selectedMessages] : own;
+    const drag: MessageDrag = { keys, selection };
+    // A whole-folder selection is more than the page holds; say how much.
+    const count = selection && this.selectAllMatching ? this.matchingCount : keys.length;
+    const caption = count > 1
+      ? this.i18nStore?.t('messageList.dragCount', { count }) || `${count}`
+      : msg.Envelope?.Subject || this.i18nStore?.t('messageList.noSubject') || '';
+
+    data.setData(MESSAGE_DRAG_TYPE, JSON.stringify(drag));
+    // Plain text as well, which some browsers need before they start a drag
+    // at all; dropped into another application it is only the caption.
+    data.setData('text/plain', caption);
+    data.effectAllowed = 'copyMove';
+    this.setDragImage(data, caption);
+
+    this.draggingKeys = keys;
+    window.addEventListener('drop', this.endDrag, true);
+    window.addEventListener('dragend', this.endDrag, true);
+  }
+
+  /**
+   * What follows the pointer: a pill saying what is being carried, rather than
+   * a picture of the one row the drag started on, which for a selection of
+   * twenty showed one message. The browser takes its picture of the element
+   * at once, so it is in the document only for this turn.
+   */
+  private setDragImage(data: DataTransfer, caption: string) {
+    if (typeof data.setDragImage !== 'function') return;
+    const pill = document.createElement('div');
+    pill.textContent = caption;
+    Object.assign(pill.style, {
+      position: 'absolute',
+      top: '-1000px',
+      left: '-1000px',
+      maxWidth: '280px',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      padding: '6px 12px',
+      borderRadius: '16px',
+      background: 'var(--accent-color, #005A9E)',
+      color: '#fff',
+      font: '500 13px/1.4 var(--font-base, sans-serif)',
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.18)',
+      pointerEvents: 'none',
+    });
+    pill.dir = 'auto';
+    document.body.appendChild(pill);
+    data.setDragImage(pill, 15, 15);
+    setTimeout(() => pill.remove(), 0);
+  }
+
+  /**
+   * Undims the dragged rows however the drag ends.
+   *
+   * The row's own dragend is not enough. A drop that moves the messages takes
+   * their rows off the list while the drag is still finishing, and an event
+   * fired at a node that has left the document reaches no listener. The drop
+   * itself reaches the window, and a drag abandoned after its rows left the
+   * list is caught in willUpdate.
+   */
+  private endDrag = () => {
+    this.draggingKeys = null;
+    window.removeEventListener('drop', this.endDrag, true);
+    window.removeEventListener('dragend', this.endDrag, true);
+  };
+
+  /** Whether a row is part of the drag in progress. */
+  private isDragged(msg: any): boolean {
+    return !!this.draggingKeys && this.rowKeys(msg).some(key => this.draggingKeys!.includes(key));
   }
 
   /**

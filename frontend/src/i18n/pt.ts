@@ -241,6 +241,10 @@ export const pt = {
       other: 'As {count} mensagens em {folder} estão selecionadas'
     },
     clearSelection: 'Limpar a seleção',
+    dragCount: {
+      one: '{count} mensagem',
+      other: '{count} mensagens'
+    },
     checkNew: 'Verificar novas mensagens',
     sortDesc: 'Classificar por data decrescente',
     sortAsc: 'Classificar por data crescente',

@@ -16,7 +16,7 @@ import { messageOperations, type FlagResult, type MatchingScope, type MoveResult
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
-import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxPath, mailboxRoleByName, findMailboxNameByRole } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxPath, mailboxRoleByName, findMailboxNameByRole, acceptsDroppedMessages } from '../utils/folders';
 import type { LayoutMode, DensityMode } from '../store/settings-store';
 import '../components/alps-initial-loader';
 import { Logger } from '../utils/logger';
@@ -1823,13 +1823,16 @@ export class MailboxPage extends LitElement {
    * The undo of a move: each folder's messages go back to that folder. After
    * the open message, alone or with the rest of its conversation, the reader
    * reopens on the message that was being read (`reopen`, its key before the
-   * move); after checked rows, they are checked again where they are listed.
+   * move); after checked rows, they are checked again where they are listed,
+   * unless `recheck` is off because they were never checked — a row dragged
+   * away by itself comes back as it left.
    */
   private undoMoves(
     moved: { from: string; mapping: Record<string, string> }[],
     to: string,
     view: string,
     reopen: string | undefined,
+    recheck = true,
   ): (() => Promise<void>) | undefined {
     const back = moved.filter(({ mapping }) => Object.keys(mapping).length > 0);
     if (back.length === 0) return undefined;
@@ -1857,7 +1860,7 @@ export class MailboxPage extends LitElement {
         if (reopen !== undefined) {
           const page = this.currentMailbox === view ? this.currentPage : 0;
           this.openKeyInUrl(view, page, reopened);
-        } else if (this.currentMailbox === view) {
+        } else if (recheck && this.currentMailbox === view) {
           this.selectedKeys = new Set([...this.selectedKeys, ...restored]);
         }
       } catch (err) {
@@ -1865,6 +1868,87 @@ export class MailboxPage extends LitElement {
         this.reportActionFailed('toast.undoFailed', 'Could not undo that');
       }
     };
+  }
+
+  /** Copies the messages the keys name into `to`, each from its own folder, and says so. */
+  private async copyKeys(keys: string[], to: string, many: boolean) {
+    const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
+      const result = await messageOperations.copyMessages(from, uids, to);
+      return { ok: result.success, reason: result.reason, uidMapping: {} };
+    });
+    const copied = this.writtenKeys(done).length;
+    if (copied > 0) {
+      const toastMessage = many
+        ? this.i18nStore?.t('toast.messagesCopiedToFolder', { count: copied, folder: this.folderCaption(to) })
+        : this.i18nStore?.t('toast.messageCopiedToFolder', { folder: this.folderCaption(to) });
+      this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
+    }
+    if (refused && refused.reason !== 'auth') this.reportActionFailed('toast.copyFailed', 'Could not copy that');
+  }
+
+  /**
+   * Messages dropped on a folder in the sidebar: moved there, or copied with
+   * Alt (Option) held.
+   *
+   * Checked rows are acted on as the selection bar's Move to acts on them, a
+   * selection of the whole folder included, so a drop and the picker cannot
+   * disagree about what was filed. Any other row is its own operand — a
+   * collapsed conversation all of its messages, each from the folder it is in
+   * — and only those of them not already in the folder go: copying a message
+   * into its own folder would make a second one.
+   */
+  private handleDroppedMessages = (e: CustomEvent<{ folder: string; copy: boolean; keys: string[]; selection: boolean }>) => {
+    const { folder, copy, keys, selection } = e.detail;
+    // The folder list refuses these already; this is the page's own word on
+    // it, for a drop that arrives some other way.
+    const target = this.mailboxes.find(m => (m.Name || m.Mailbox) === folder);
+    if (!acceptsDroppedMessages(target, this.mailboxes, this.currentMailbox)) return;
+    if (selection && this.selectionCount > 0) {
+      void this._handleReaderAction(new CustomEvent('action', { detail: { action: copy ? 'copyTo' : 'moveTo', folder } }));
+      return;
+    }
+    const away = keys.filter(key => parseMessageKey(key).mailbox !== folder);
+    if (away.length === 0) return;
+    void (copy ? this.copyKeys(away, folder, away.length > 1) : this.fileDropped(away, folder));
+  };
+
+  /**
+   * Files dragged rows that were not the checked ones in `to`, says so, and
+   * offers to put each back where it came from.
+   *
+   * fileAway's work, with two differences that follow from the rows not being
+   * the selection. The reader stays on the message it shows unless that
+   * message was among them, since dragging one row away while reading another
+   * is not a gesture about the one being read. And an undo brings the rows
+   * back unchecked, as they left.
+   */
+  private async fileDropped(keys: string[], to: string) {
+    const view = this.currentMailbox;
+    const open = this.selectedMessage ? this.keyOf(this.selectedMessage) : undefined;
+    // The rows leave with the gesture, as checked ones do: see takeRowsOut.
+    const putBack = this.takeRowsOut(keys);
+    const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
+      const result = await messageOperations.moveMessages(from, uids, to);
+      return { ok: result.success, reason: result.reason, uidMapping: result.uidMapping ?? {} };
+    });
+
+    const filed = this.writtenKeys(done);
+    if (filed.length > 0) {
+      const wasOpen = open !== undefined && filed.includes(open);
+      if (wasOpen) {
+        this.selectedMessage = null;
+        this.updateUrl(this.currentMailbox, this.currentPage, null);
+      }
+      const moved = done.map(({ mailbox, result }) => ({ from: mailbox, mapping: result.uidMapping }));
+      const undoFn = this.undoMoves(moved, to, view, wasOpen ? open : undefined, false);
+      this.showGlobalToast(this.movedMessage(filed.length > 1, filed.length, to), undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
+    }
+    if (refused && refused.reason !== 'auth') {
+      this.reportActionFailed('toast.moveFailed', 'Could not move that');
+      // What the refusing folder held is still in it, and its rows come back.
+      const went = new Set(filed);
+      if (!putBack(keys.filter(key => went.has(key)))) messageSync.sync();
+    }
   }
 
   /**
@@ -2030,18 +2114,7 @@ export class MailboxPage extends LitElement {
             this.reportActionFailed('toast.copyFailed', 'Could not copy that');
           }
         } else {
-          const { done, refused } = await this.eachFolder(targets, async (from, uids): Promise<MoveOutcome> => {
-            const result = await messageOperations.copyMessages(from, uids, destinationFolder);
-            return { ok: result.success, reason: result.reason, uidMapping: {} };
-          });
-          const copied = this.writtenKeys(done).length;
-          if (copied > 0) {
-            const toastMessage = many
-              ? this.i18nStore?.t('toast.messagesCopiedToFolder', { count: copied, folder: this.folderCaption(destinationFolder) })
-              : this.i18nStore?.t('toast.messageCopiedToFolder', { folder: this.folderCaption(destinationFolder) });
-            this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
-          }
-          if (refused && refused.reason !== 'auth') this.reportActionFailed('toast.copyFailed', 'Could not copy that');
+          await this.copyKeys(targets, destinationFolder, many);
         }
       } else if (action === 'downloadMessage' && !isBulk) {
         const url = `/mailboxes/${encodeMailboxPath(this.mailboxOf(currentMsg))}/messages/${currentMsg.UID}/raw`;
@@ -2267,6 +2340,7 @@ export class MailboxPage extends LitElement {
         }
       }}
             @toast=${this._relayToast}
+            @drop-messages=${this.handleDroppedMessages}
           ></alps-folder-list>
           <alps-icon-btn 
             slot="footer-actions"

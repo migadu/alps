@@ -199,6 +199,11 @@ export const sr = {
       other: 'Svih {count} poruka u fascikli {folder} je izabrano'
     },
     clearSelection: 'Poništi izbor',
+    dragCount: {
+      one: '{count} poruka',
+      few: '{count} poruke',
+      other: '{count} poruka'
+    },
     checkNew: 'Proveri nove poruke',
     sortDesc: 'Sortiraj opadajuće po datumu',
     sortAsc: 'Sortiraj rastuće po datumu',

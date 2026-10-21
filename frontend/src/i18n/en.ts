@@ -248,6 +248,10 @@ export const en = {
       other: 'All {count} messages in {folder} are selected'
     },
     clearSelection: 'Clear selection',
+    dragCount: {
+      one: '{count} message',
+      other: '{count} messages'
+    },
     checkNew: 'Check for new messages',
     sortDesc: 'Sort descending by date',
     sortAsc: 'Sort ascending by date',

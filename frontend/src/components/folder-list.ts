@@ -6,7 +6,8 @@ import { composeContext } from '../store/compose-store';
 import type { ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { mailboxOperations } from '../services/mailbox-operations';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels, acceptsDroppedMessages } from '../utils/folders';
+import { carriesMessages, dropCopies, readMessageDrag } from '../utils/message-drag';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import './alps-icon-btn';
 import './ui-prompt';
@@ -48,6 +49,13 @@ export class FolderList extends LitElement {
   @state() private mailboxToDelete = '';
   @state() private parentForNewFolder = '';
   @state() private activeKebabMenu: string | null = null;
+  /** The folder a drag of messages is over and may be dropped on, by name. */
+  @state() private dropTarget: string | null = null;
+  /** Whether that drop would copy (Alt held) rather than move. */
+  @state() private dropCopy = false;
+  /** Stops watching the window for the end of the drag that lit a folder;
+   * null when no folder is lit. */
+  private stopDropWatch: (() => void) | null = null;
   private primaryFullNames = new Set<string>();
 
   willUpdate(changedProperties: Map<string, any>) {
@@ -82,6 +90,9 @@ export class FolderList extends LitElement {
     }
     this.i18nStore?.removeEventListener('change', this._handleStoreChange);
     this.settingsStore?.removeEventListener('change', this._handleStoreChange);
+    // A list that leaves the page while a folder is lit would otherwise keep
+    // its window listeners until some later drag ended.
+    this.clearDropTarget();
   }
 
   private _handleStoreChange = () => {
@@ -159,6 +170,18 @@ export class FolderList extends LitElement {
       background: var(--bg-selected);
       color: var(--accent-hover);
       font-weight: 600;
+    }
+
+    /* The folder a drop would file into. Dashed for a move, and in another
+       colour for a copy, so the modifier can be seen to have been taken. */
+    .folder-item.drop-target {
+      background: var(--hover-color);
+      outline: 2px dashed var(--accent-color);
+      outline-offset: -2px;
+    }
+
+    .folder-item.drop-target.drop-copy {
+      outline-color: var(--success);
     }
 
     .folder-item .icon {
@@ -598,6 +621,84 @@ export class FolderList extends LitElement {
     this.settingsStore?.updateSettings({ customMailboxOrder: updatedOrder });
   }
 
+  /**
+   * Whether the drag over a folder's row is messages that may be filed there.
+   * The rules are in {@link acceptsDroppedMessages}; a collapsed strip takes
+   * nothing, being inert.
+   */
+  private takesDrop(e: DragEvent, mb: any): boolean {
+    return !this.collapsed && carriesMessages(e.dataTransfer) && acceptsDroppedMessages(mb, this.mailboxes, this.currentMailbox);
+  }
+
+  /**
+   * dragenter and dragover alike. Refusing to call preventDefault is how a row
+   * says no: the browser then shows the no-drop cursor and never sends it the
+   * drop. Asked on every dragover, so that letting go of Alt over a row turns
+   * a copy back into a move as the pointer rests there.
+   */
+  private handleDragOver(e: DragEvent, name: string, mb: any) {
+    if (!this.takesDrop(e, mb)) {
+      if (this.dropTarget === name) this.clearDropTarget();
+      return;
+    }
+    e.preventDefault();
+    const copy = dropCopies(e);
+    e.dataTransfer!.dropEffect = copy ? 'copy' : 'move';
+    if (this.dropTarget !== name) this.dropTarget = name;
+    if (this.dropCopy !== copy) this.dropCopy = copy;
+    this.watchDragEnd();
+  }
+
+  private handleDragLeave(e: DragEvent, name: string) {
+    // Into the row's own caret or caption is still over the row.
+    const row = e.currentTarget as HTMLElement | null;
+    const into = e.relatedTarget as Node | null;
+    if (row && into && row.contains(into)) return;
+    if (this.dropTarget === name) this.clearDropTarget();
+  }
+
+  private handleDrop(e: DragEvent, name: string, mb: any) {
+    if (!this.takesDrop(e, mb)) return;
+    e.preventDefault();
+    const copy = dropCopies(e);
+    const drag = readMessageDrag(e.dataTransfer);
+    this.clearDropTarget();
+    if (!drag || drag.keys.length === 0) return;
+    this.dispatchEvent(new CustomEvent('drop-messages', {
+      detail: { folder: name, copy, keys: drag.keys, selection: drag.selection },
+      bubbles: true,
+      composed: true,
+    }));
+  }
+
+  /**
+   * Puts the lit row out however the drag ends without leaving it: dropped
+   * somewhere else, or called off with Escape, which the browser reports as a
+   * dragend at the row the drag started from. The key itself is watched too,
+   * for a browser that lets the page see it. Held only while a row is lit,
+   * and let go with it.
+   */
+  private watchDragEnd() {
+    if (this.stopDropWatch) return;
+    const end = () => this.clearDropTarget();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') end(); };
+    window.addEventListener('dragend', end, true);
+    window.addEventListener('drop', end, true);
+    window.addEventListener('keydown', onKey, true);
+    this.stopDropWatch = () => {
+      window.removeEventListener('dragend', end, true);
+      window.removeEventListener('drop', end, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }
+
+  private clearDropTarget() {
+    this.stopDropWatch?.();
+    this.stopDropWatch = null;
+    this.dropTarget = null;
+    this.dropCopy = false;
+  }
+
 
   render() {
     // A special-mailbox "slot" can be claimed by an IMAP special-use attribute
@@ -798,6 +899,7 @@ export class FolderList extends LitElement {
         const unseenCount = node.mb?.Unseen || 0;
         const attrs: string[] = node.mb?.Attrs || [];
         const isNoSelect = attrs.some(a => typeof a === 'string' && a.toLowerCase() === '\\noselect');
+        const isDropTarget = this.dropTarget === node.fullName;
 
         const handleClick = (e: Event) => {
           if (isNoSelect) {
@@ -812,9 +914,13 @@ export class FolderList extends LitElement {
 
         return html`
           <div 
-            class="folder-item ${isActive ? 'active' : ''} ${isNoSelect ? 'no-select' : ''} ${hasActions ? 'has-actions' : ''}"
+            class="folder-item ${isActive ? 'active' : ''} ${isNoSelect ? 'no-select' : ''} ${hasActions ? 'has-actions' : ''} ${isDropTarget ? 'drop-target' : ''} ${isDropTarget && this.dropCopy ? 'drop-copy' : ''}"
             title=${label}
             @click=${handleClick}
+            @dragenter=${(e: DragEvent) => this.handleDragOver(e, node.fullName, node.mb)}
+            @dragover=${(e: DragEvent) => this.handleDragOver(e, node.fullName, node.mb)}
+            @dragleave=${(e: DragEvent) => this.handleDragLeave(e, node.fullName)}
+            @drop=${(e: DragEvent) => this.handleDrop(e, node.fullName, node.mb)}
           >
             <alps-icon-btn 
               class="folder-toggle-btn" 
