@@ -510,19 +510,20 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
   `;
   doc.head.prepend(style);
 
+  /** Where the part a `cid:` URL names is served from; null when there is no such part. */
+  const partUrl = (value: string): string | null => {
+    const partPath = options.messageStructure ? findPartPathByCID(options.messageStructure, cidOf(value)) : null;
+    return partPath ? `${partsPath}?part=${partPath}` : null;
+  };
+
   const images = doc.querySelectorAll('img');
   images.forEach(img => {
     const src = img.getAttribute('src');
     if (!src) return;
 
     if (isCidUrl(src)) {
-      const cid = cidOf(src);
-      if (options.messageStructure) {
-        const partPath = findPartPathByCID(options.messageStructure, cid);
-        if (partPath) {
-          img.src = `${partsPath}?part=${partPath}`;
-        }
-      }
+      const part = partUrl(src);
+      if (part) img.src = part;
     } else if (isRemoteUrl(src)) {
       if (options.onRemoteResourceBlocked) options.onRemoteResourceBlocked();
       if (!options.allowRemoteResources) {
@@ -558,6 +559,18 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
       if (rewritten !== null) el.setAttribute(attr, rewritten);
     }
   }
+
+  // The `background` attribute of a body, table, row or cell is an image
+  // source as surely as an img's src: the browser fetches it and paints the
+  // element with it. It was never read, so a background on another host went
+  // uncounted, and the frame's policy refused it with no banner. It is an
+  // image here: a part it names is pointed at, and a remote one is counted,
+  // and blocked or sent through the proxy.
+  doc.querySelectorAll('[background]').forEach(el => {
+    const value = el.getAttribute('background') ?? '';
+    const rewritten = isCidUrl(value) ? partUrl(value) : rewriteSingleUrl(value, options);
+    if (rewritten !== null) el.setAttribute('background', rewritten);
+  });
 
   // An external stylesheet is REMOVED, opted in or not.
   //
@@ -755,7 +768,15 @@ export function sanitizeQuotedHTML(rawHtml: string): string {
       // another document is a fetch, as one in a style is: the attribute goes
       // as such a declaration goes. `url(#gradient)` names an element of the
       // quote itself, and stays.
-      if (SVG_URL_ATTRIBUTES.has(name) && loadsResource(attr.value)) el.removeAttribute(attr.name);
+      if (SVG_URL_ATTRIBUTES.has(name) && loadsResource(attr.value)) {
+        el.removeAttribute(attr.name);
+        continue;
+      }
+      // A table or a cell paints itself with the image its `background`
+      // names: a remote one is a fetch that is not content, and goes as a
+      // background in a style goes. A `cid:` one names a part the reply
+      // carries, and stays.
+      if (name === 'background' && isRemoteUrl(attr.value)) el.removeAttribute(attr.name);
     }
     // Inline styles survive as formatting, not as a fetch: see the docstring.
     const style = el.getAttribute('style');

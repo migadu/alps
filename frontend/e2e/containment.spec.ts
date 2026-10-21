@@ -493,6 +493,35 @@ test.describe("a message cannot hide remote content from the banner", () => {
     await expect.poll(() => remote.proxied).toContain("https://tracker.remote.test/cursor.png");
     expect(remote.direct).toEqual([]);
   });
+
+  test("a background attribute is counted, and loads only through the proxy", async ({ page }) => {
+    // A table or a cell paints itself with the image its `background` names,
+    // fetched as an img's src is. Unread, it went uncounted, so no banner,
+    // and the frame's policy refused it: a console error, which this test
+    // does not allow.
+    const subject = `Background attribute ${Date.now()}`;
+    await deliverHtml(
+      subject,
+      '<table background="https://tracker.remote.test/table.gif" width="80" height="40"><tr>' +
+        '<td background="//tracker.remote.test/cell.gif">Body</td></tr></table>',
+    );
+    const remote = await watchRemote(page);
+
+    await login(page);
+    await open(page, subject);
+    await expect(frame(page).contentFrame().locator("body")).toContainText("Body");
+    await expect(remoteBanner(page)).toBeVisible();
+    await frameSettled(page);
+    expect(remote).toEqual({ direct: [], proxied: [] });
+
+    await remoteBanner(page).locator("alps-button").click();
+    // `//host` is resolved against the page, as the frame resolves it.
+    const scheme = new URL(page.url()).protocol;
+    await expect
+      .poll(() => [...remote.proxied].sort())
+      .toEqual([`${scheme}//tracker.remote.test/cell.gif`, "https://tracker.remote.test/table.gif"].sort());
+    expect(remote.direct).toEqual([]);
+  });
 });
 
 test.describe("what a message may still do", () => {

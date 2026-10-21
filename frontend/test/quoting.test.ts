@@ -177,6 +177,24 @@ describe('sanitizeQuotedHTML', () => {
     });
   });
 
+  describe('the background attribute', () => {
+    // A table or a cell paints itself with the image its `background` names:
+    // in the recipient's client, a fetch that is not content.
+    it('removes a remote one, however it is written, and keeps the table', () => {
+      const out = sanitizeQuotedHTML(
+        '<table background="https://tracker.test/bg.gif" bgcolor="#eee"><tr background="//tracker.test/r.gif">' +
+        '<td background="ht&#9;tps://tracker.test/c.gif">x</td><th background="\\\\tracker.test/h.gif">y</th></tr></table>',
+      );
+      expect(out).toBe('<table bgcolor="#eee"><tbody><tr><td>x</td><th>y</th></tr></tbody></table>');
+    });
+
+    it('keeps a cid: one, which names a part the reply carries, and a data: one', () => {
+      const gif = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+      const html = `<table background="cid:bg@sender.test"><tbody><tr><td background="${gif}">x</td></tr></tbody></table>`;
+      expect(sanitizeQuotedHTML(html)).toBe(html);
+    });
+  });
+
   describe('SVG attributes that take a url()', () => {
     // A presentation attribute is CSS, and a url() in one that names another
     // document is a fetch in the recipient's client, as one in a style is.

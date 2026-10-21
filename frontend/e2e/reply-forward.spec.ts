@@ -670,6 +670,23 @@ test("forwarding leaves a CSS address written with escapes behind, and keeps the
   expect(sent).not.toContain("tracker.remote.test");
 });
 
+test("forwarding leaves a remote background and an SVG paint behind, and keeps the table and the drawing", async ({ page }) => {
+  // Each is a fetch in the recipient's client that is not content. A
+  // reference to an element of the drawing itself fetches nothing, and stays.
+  const sent = await forwardHtml(
+    page,
+    `Backgrounds ${Date.now()}`,
+    '<table background="https://tracker.remote.test/table.gif" bgcolor="#eeeeee"><tr>' +
+      '<td background="//tracker.remote.test/cell.gif">table cell</td></tr></table>' +
+      '<svg width="20" height="20"><defs><linearGradient id="g"><stop offset="0" stop-color="#c00"/></linearGradient></defs>' +
+      '<rect width="20" height="20" fill="url(#g)" stroke="url(https://tracker.remote.test/paint.svg#p)"/></svg>',
+    "table cell",
+  );
+  expect(sent).toMatch(/<table bgcolor="#eeeeee"><tbody><tr><td>table cell<\/td>/);
+  expect(sent).toMatch(/<rect width="20" height="20" fill="url\(#g\)"><\/rect>/);
+  expect(sent).not.toContain("tracker.remote.test");
+});
+
 test("forwarding leaves a noscript behind, which a client that runs script reads differently", async ({ page }) => {
   // The quote is parsed with scripting disabled, so what a <noscript> holds
   // is markup to it, and checked as markup. A client that runs script reads

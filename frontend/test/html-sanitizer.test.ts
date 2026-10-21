@@ -532,6 +532,63 @@ describe('remote addresses in CSS written so that a pattern misses them', () => 
   });
 });
 
+describe('the background attribute', () => {
+  // A body, table, row or cell paints itself with the image its `background`
+  // names, fetched as an img's src is. Unread, a remote one went uncounted,
+  // and the policy refused it with no banner.
+  const cases: [string, string][] = [
+    ['body', '<body background="https://tracker.test/bg.gif"><p>x</p></body>'],
+    ['table', '<table background="https://tracker.test/bg.gif"><tr><td>x</td></tr></table>'],
+    ['tr', '<table><tr background="https://tracker.test/bg.gif"><td>x</td></tr></table>'],
+    ['td', '<table><tr><td background="//tracker.test/bg.gif">x</td></tr></table>'],
+    ['th', '<table><tr><th background="ht&#9;tps://tracker.test/bg.gif">x</th></tr></table>'],
+  ];
+  for (const [tag, html] of cases) {
+    it(`counts a remote background on a ${tag}, and blocks it`, () => {
+      expect(countBlocked(html)).toBe(1);
+      expect(attr(blocked(html), tag, 'background')).toMatch(PIXEL);
+      expect(blocked(html)).not.toContain('tracker.test');
+    });
+
+    it(`sends a remote background on a ${tag} through the proxy once allowed`, () => {
+      expect(countBlocked(html, true)).toBe(1);
+      expect(attr(allowed(html), tag, 'background')).toMatch(/^\/proxy\?url=https?%3A%2F%2Ftracker\.test%2Fbg\.gif$/);
+    });
+  }
+
+  it('points a cid: background at the part carrying that Content-ID, as it does an image', () => {
+    const structure = { Children: [{ MIMEType: 'text' }, { ID: '<bg@sender.test>' }] };
+    const html = '<body background="cid:bg@sender.test"><table background=" CID:bg@sender.test"><tr><td>x</td></tr></table></body>';
+    const out = blocked(html, { messageStructure: structure });
+    expect(attr(out, 'body', 'background')).toBe('/mailboxes/INBOX/messages/42/raw?part=2');
+    expect(attr(out, 'table', 'background')).toBe('/mailboxes/INBOX/messages/42/raw?part=2');
+    expect(countBlocked(html)).toBe(0);
+  });
+
+  it('leaves a local, a data: or an unresolvable cid: background alone, uncounted', () => {
+    const gif = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+    const html =
+      `<table background="${gif}"><tr><td background="/assets/bg.gif">x</td>` +
+      '<td background="cid:missing@sender.test">y</td></tr></table>';
+    const out = blocked(html);
+    expect(attr(out, 'table', 'background')).toBe(gif);
+    expect([...parse(out).querySelectorAll('td')].map((td) => td.getAttribute('background'))).toEqual([
+      '/assets/bg.gif', 'cid:missing@sender.test',
+    ]);
+    expect(countBlocked(html)).toBe(0);
+  });
+
+  it('keeps an ordinary table as written, and counts nothing', () => {
+    const table =
+      '<table width="100%" bgcolor="#eeeeee" cellpadding="4"><tbody><tr>' +
+      '<td align="center" style="color: #c00">x</td></tr></tbody></table>';
+    for (const out of [blocked(table), allowed(table)]) {
+      expect(parse(out).querySelector('table')?.outerHTML).toBe(table);
+    }
+    expect(countBlocked(table)).toBe(0);
+  });
+});
+
 describe('inline images', () => {
   const structure = { Children: [{ MIMEType: 'text' }, { ID: '<logo@sender.test>' }] };
 
