@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, type CSSResult, type LitElement } from 'lit';
 import { cleanup, click, mount, shadow, shadowAll, text } from './helpers/dom';
-import { backgroundOf, ruleMatches, rulesOf } from './helpers/styles';
+import { backgroundOf, backgroundsOf, ruleMatches, rulesOf } from './helpers/styles';
 import { readSources } from './helpers/sources';
 import { canonicalDomain, domainPresentation, isHighlyRestrictive, toUnicodeLabel } from '../src/utils/idn';
 import {
@@ -35,6 +35,8 @@ import { sr } from '../src/i18n/sr';
 // which names any it finds that is not imported here.
 import '../src/components/alps-recipient-pill';
 import '../src/components/alps-address-input';
+import '../src/components/alps-thread-card';
+import '../src/components/message-list';
 
 /** CYRILLIC SMALL LETTER A, which looks exactly like the Latin `a`. */
 const A = 'а';
@@ -294,6 +296,8 @@ describe('the cue has one look everywhere', () => {
     expect(consumers.map(([file]) => file).sort()).toEqual(expect.arrayContaining([
       'src/components/alps-address-input.ts',
       'src/components/alps-recipient-pill.ts',
+      'src/components/alps-thread-card.ts',
+      'src/components/message-list.ts',
     ]));
   });
 
@@ -392,6 +396,98 @@ describe('the address field in the composer', () => {
     const warning = shadow(el, '.address-warning');
     expect(warning.textContent).toBe(`⚠ ${de.address!.mixedScript}`);
     expect(warning.title).toBe(`${de.address!.mixedScriptTooltip}\n${de.address!.unusualDomainTooltip}`);
+  });
+});
+
+describe('a thread card', () => {
+  const item = (from: unknown) => ({
+    message: { UID: '7', Flags: ['\\Seen'], Envelope: { From: [from], To: [], Cc: [], Subject: 'Offer', Date: '2026-09-01T10:00:00Z' } },
+    content: 'hello', mimeType: 'text/plain', loading: false, attachments: [], rawMessageHtml: '', hasHtml: false,
+    hasText: true, activeBanners: [], allowRemoteResources: false, hasRemoteResources: false, isSent: false,
+    mailbox: 'INBOX', expanded: false,
+  });
+  const card = (from: unknown, i18nStore: I18nStore = english) => mount('alps-thread-card', { item: item(from), mailbox: 'INBOX', i18nStore });
+
+  it('shows a lookalike domain under the name as its A-label, and warns', async () => {
+    const el = await card({ Name: 'Payments', Mailbox: 'service', Host: LOOKALIKE });
+    expect(text(el, '.thread-card-sender-address')).toBe(`service@${LOOKALIKE_ASCII}`);
+    expect(text(el, '.thread-card-sender')).toContain(english.t('address.mixedScript'));
+    // The title keeps the address as the message carries it.
+    expect(shadow(el, '.thread-card-sender').getAttribute('title')).toBe(`Payments <service@${LOOKALIKE}>`);
+  });
+
+  it('paints the marked letters from the theme\'s warning colour', async () => {
+    const el = await card({ Name: 'Payments', Mailbox: `p${A}ypal`, Host: 'example.com' });
+    expect(backgroundsOf(el, shadow(el, '.thread-card-sender-address mark')).join(' | ')).toContain('--warning');
+  });
+
+  it('marks a lookalike address that stands in for a name', async () => {
+    const el = await card({ Mailbox: `p${A}ypal`, Host: 'example.com' });
+    expect(shadow(el, '.thread-card-sender-name mark').textContent).toBe(A);
+    expect(shadowAll(el, '.address-warning')).toHaveLength(1);
+  });
+
+  it('warns about nothing for a plain ASCII domain the check cannot convert', async () => {
+    const el = await card({ Name: 'Cron', Mailbox: 'root', Host: 'localhost' });
+    expect(text(el, '.thread-card-sender-address')).toBe('root@localhost');
+    expect(shadowAll(el, '.address-warning')).toHaveLength(0);
+  });
+
+  it('calls a non-ASCII domain it cannot convert unusual, not mixed', async () => {
+    const el = await card({ Name: 'Books', Mailbox: 'user', Host: 'bücher_buch.example' });
+    expect(text(el, '.thread-card-sender-address')).toBe('user@bücher_buch.example');
+    expect(text(el, '.thread-card-sender')).toContain(english.t('address.unusualDomain'));
+    expect(text(el, '.thread-card-sender')).not.toContain(english.t('address.mixedScript'));
+  });
+
+  it('says it in the reader\'s language', async () => {
+    const el = await card({ Name: 'Payments', Mailbox: 'service', Host: LOOKALIKE }, await german());
+    expect(text(el, '.thread-card-sender')).toContain(de.address!.mixedScript);
+    expect(text(el, '.thread-card-sender')).not.toContain(en.address.mixedScript);
+  });
+});
+
+describe('a list row', () => {
+  const row = (from: unknown) => ({
+    UID: '1', Flags: ['\\Seen'],
+    Envelope: { From: [from], To: [], Cc: [], Subject: 'Hello', Date: '2026-09-01T10:00:00Z' },
+  });
+  const list = (from: unknown, i18nStore: I18nStore = english) =>
+    mount('alps-message-list', { messages: [row(from)], currentMailbox: 'INBOX', totalMessages: 1, showSenderAvatars: false, i18nStore });
+
+  it('shows a lookalike address beside the sender\'s name, and warns', async () => {
+    const el = await list({ Name: 'Payments', Mailbox: 'service', Host: LOOKALIKE });
+    // No space before the label: its margin is the gap.
+    expect(text(el, '.message-sender')).toBe(`Payments <service@${LOOKALIKE_ASCII}>⚠ ${english.t('address.mixedScript')}`);
+    expect(shadow(el, '.message-sender span').title).toBe(`service@${LOOKALIKE}`);
+  });
+
+  it('shows a sender with an ordinary address by name alone', async () => {
+    const el = await list({ Name: 'Ada', Mailbox: 'ada', Host: 'xn--bcher-kva.example' });
+    expect(text(el, '.message-sender')).toBe('Ada');
+  });
+
+  it('warns about nothing for a plain ASCII domain the check cannot convert', async () => {
+    const el = await list({ Name: 'Cron', Mailbox: 'root', Host: 'localhost' });
+    expect(text(el, '.message-sender')).toBe('Cron');
+  });
+
+  it('calls a non-ASCII domain it cannot convert unusual, not mixed', async () => {
+    const el = await list({ Name: 'Books', Mailbox: 'user', Host: 'bücher_buch.example' });
+    expect(text(el, '.message-sender')).toContain('user@bücher_buch.example');
+    expect(text(el, '.message-sender')).toContain(english.t('address.unusualDomain'));
+    expect(text(el, '.message-sender')).not.toContain(english.t('address.mixedScript'));
+  });
+
+  it('paints a marked letter from the theme\'s warning colour', async () => {
+    const el = await list({ Name: '', Mailbox: `p${A}ypal`, Host: 'example.com' });
+    expect(backgroundsOf(el, shadow(el, '.message-sender mark')).join(' | ')).toContain('--warning');
+  });
+
+  it('says it in the reader\'s language', async () => {
+    const el = await list({ Name: 'Payments', Mailbox: 'service', Host: LOOKALIKE }, await german());
+    expect(text(el, '.message-sender')).toContain(de.address!.mixedScript);
+    expect(text(el, '.message-sender')).not.toContain(en.address.mixedScript);
   });
 });
 

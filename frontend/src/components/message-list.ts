@@ -1,4 +1,4 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { formatDateList, formatSize, getMailboxLabel, renderIcon, bimiAvatarUrlFor, mayShowBimiLogo } from '../utils/ui';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED, getMessageTags } from '../utils/flags';
@@ -6,7 +6,7 @@ import { messageSync } from '../services/message-sync';
 import { mailboxOperations } from '../services/mailbox-operations';
 import { fetchAuthVerdicts, VERDICT_BATCH, type AuthVerdict } from '../services/auth-verdicts';
 import { mailboxOf, messageKey } from '../utils/message-key';
-import { isolatedCaption } from '../utils/bidi';
+import { addressText, addressWarning, displayAddress, mixedScriptStyles } from '../utils/address-display';
 import { ALL_MAILBOXES } from '../utils/folders';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
@@ -121,7 +121,7 @@ export class MessageList extends LitElement {
   // The row of the first message that check found, to be scrolled to once drawn.
   private _arrivedIndex = -1;
 
-  static styles = css`
+  static styles = [mixedScriptStyles, css`
     :host {
       display: flex;
       flex-direction: column;
@@ -686,7 +686,7 @@ export class MessageList extends LitElement {
     .message-item.sub-message-item.active {
       background: var(--bg-selected);
     }
-  `;
+  `];
 
   private get visibleMessages(): any[] {
     const list: any[] = [];
@@ -1407,12 +1407,18 @@ export class MessageList extends LitElement {
 
     // Each name in an isolate of its own. Joined into one string, a direction
     // override in one name reversed every name after it.
+    //
+    // An address that may not be the one it looks like is warned about, and
+    // shown beside the sender's name, which alone would hide what the warning
+    // is about. The title keeps the address as the message carries it.
     const senderCaption = allContacts.map((c, i) => {
       const addr = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}` : '';
-      const caption = c.Name || addr
-        ? isolatedCaption(c.Name, addr)
-        : (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
-      return html`${i ? ', ' : ''}${caption}`;
+      const caption = c.Name
+        ? html`<bdi>${c.Name}</bdi>${addr && displayAddress(addr).warning ? html` &lt;${addressText(addr)}&gt;` : ''}`
+        : addr
+          ? addressText(addr)
+          : (this.i18nStore?.t(fallbackKey)) || this.i18nStore?.t('messageList.unknown');
+      return html`${i ? ', ' : ''}<span title=${addr || nothing}>${caption}${addressWarning(addr, this.i18nStore)}</span>`;
     });
 
     const maxAvatars = this.isMobile ? 1 : 3;
