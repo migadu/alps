@@ -55,6 +55,23 @@ export function displayAddress(address: string): { text: string; ascii: string; 
 }
 
 /**
+ * A recipient pill (`Name <address>`, `"Name" <address>` or a bare address)
+ * split into the name and the address exactly as they were typed.
+ */
+export function parseWrittenAddress(pill: string): { name: string; email: string } {
+  const trimmed = pill.trim();
+  if (trimmed.endsWith('>')) {
+    const lt = trimmed.lastIndexOf('<');
+    if (lt !== -1) {
+      const email = trimmed.slice(lt + 1, -1).trim();
+      const name = trimmed.slice(0, lt).trim().replace(/^["']|["']$/g, '').trim();
+      return { name, email };
+    }
+  }
+  return { name: '', email: trimmed };
+}
+
+/**
  * The address to show, left to right in an isolate of its own, with each
  * letter from another alphabet in a mixed-script local part marked.
  *

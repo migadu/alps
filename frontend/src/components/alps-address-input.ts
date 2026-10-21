@@ -1,12 +1,18 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { consume } from '@lit/context';
 import { renderIcon } from '../utils/ui';
-import { isolatedCaption, isolatedEmail } from '../utils/bidi';
+import { addressText, addressWarning, displayAddress, mixedScriptStyles, parseWrittenAddress } from '../utils/address-display';
+import { i18nContext, I18nStore } from '../store/i18n-store';
 import { registry } from '../plugin-registry';
 import { popupStyles } from './alps-popup.js';
 
 @customElement('alps-address-input')
 export class AlpsAddressInput extends LitElement {
+  /** For the warning beside a lookalike address, the field's one string. */
+  @consume({ context: i18nContext })
+  i18nStore!: I18nStore;
+
   @property({ type: Array }) addresses: string[] = [];
   @property({ type: Boolean }) disabled = false;
   
@@ -22,6 +28,18 @@ export class AlpsAddressInput extends LitElement {
       input.focus();
     }
   }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.i18nStore?.addEventListener('change', this._handleI18nChange);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.i18nStore?.removeEventListener('change', this._handleI18nChange);
+  }
+
+  private _handleI18nChange = () => this.requestUpdate();
 
   updated(changedProperties: Map<string, any>) {
     super.updated(changedProperties);
@@ -56,18 +74,16 @@ export class AlpsAddressInput extends LitElement {
     return false;
   }
 
+  /**
+   * The pill's caption: the name, or the address when there is none. An
+   * address that may not be the one it looks like is shown beside the name
+   * all the same, with its warning, since the name alone would hide what the
+   * warning is about.
+   */
   private _displayAddr(addr: string) {
-    const trimmed = addr.trim();
-    if (trimmed.endsWith('>')) {
-      const startObj = trimmed.lastIndexOf('<');
-      if (startObj !== -1) {
-        const namePart = trimmed.substring(0, startObj).trim();
-        const emailPart = trimmed.substring(startObj + 1, trimmed.length - 1);
-        const name = namePart.replace(/^["']|["']$/g, '').trim();
-        return isolatedCaption(name, emailPart);
-      }
-    }
-    return isolatedEmail(addr);
+    const { name, email } = parseWrittenAddress(addr);
+    if (!displayAddress(email).warning) return name ? html`<bdi>${name}</bdi>` : addressText(email);
+    return html`${name ? html`<bdi>${name}</bdi> &lt;` : ''}${addressText(email)}${name ? '>' : ''}${addressWarning(email, this.i18nStore)}`;
   }
 
   /** Invalidates any lookup still debouncing or in flight, so it cannot land. */
@@ -208,6 +224,7 @@ export class AlpsAddressInput extends LitElement {
 
   static styles = [
     popupStyles,
+    mixedScriptStyles,
     css`
     :host {
       display: block;
@@ -348,7 +365,7 @@ export class AlpsAddressInput extends LitElement {
                     const addr = s.name ? '"' + s.name + '" <' + s.address + '>' : s.address;
                     this._addAddress(addr);
                   }}>
-                  <span class="item-text"><b><bdi>${s.name}</bdi></b> &lt;${isolatedEmail(s.address)}&gt;</span>
+                  <span class="item-text"><b><bdi>${s.name}</bdi></b> &lt;${addressText(s.address)}&gt;${addressWarning(s.address, this.i18nStore)}</span>
                 </button>
               `)}
             </div>

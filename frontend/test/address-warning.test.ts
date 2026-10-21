@@ -34,6 +34,7 @@ import { sr } from '../src/i18n/sr';
 // Every component that renders addressText, for the shared-style check below,
 // which names any it finds that is not imported here.
 import '../src/components/alps-recipient-pill';
+import '../src/components/alps-address-input';
 
 /** CYRILLIC SMALL LETTER A, which looks exactly like the Latin `a`. */
 const A = 'а';
@@ -291,6 +292,7 @@ describe('the cue has one look everywhere', () => {
 
   it('found the components that render addressText', () => {
     expect(consumers.map(([file]) => file).sort()).toEqual(expect.arrayContaining([
+      'src/components/alps-address-input.ts',
       'src/components/alps-recipient-pill.ts',
     ]));
   });
@@ -349,6 +351,47 @@ describe('a recipient pill in the reader', () => {
     await store.setLanguage('de');
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete;
     expect(label()).toBe(`⚠ ${de.address!.mixedScript}`);
+  });
+});
+
+describe('the address field in the composer', () => {
+  it('marks a lookalike letter in a pill', async () => {
+    const el = await mount('alps-address-input', { addresses: [`p${A}ypal@example.com`] });
+    expect(shadow(el, '.pill mark').textContent).toBe(A);
+    expect(shadowAll(el, '.pill .address-warning')).toHaveLength(1);
+  });
+
+  it('shows a named pill\'s lookalike address beside the name, without changing what it holds', async () => {
+    const pill = `Payments <service@${LOOKALIKE}>`;
+    const el = await mount<HTMLElement & { addresses: string[] }>('alps-address-input', { addresses: [pill], i18nStore: english });
+    expect(text(el, '.pill-addr')).toContain('Payments');
+    expect(text(el, '.pill-addr')).toContain(`service@${LOOKALIKE_ASCII}`);
+    // Named as typed, beside its A-label.
+    expect(shadow(el, '.pill .address-warning').title).toBe(`${english.t('address.mixedScriptTooltip')}\n${english.t('address.mixedScriptAscii', { domain: LOOKALIKE, ascii: LOOKALIKE_ASCII })}`);
+    expect(shadow(el, '.pill').title).toBe(pill);
+    expect(el.addresses).toEqual([pill]);
+  });
+
+  it('shows a named pill with an ordinary address by its name alone', async () => {
+    const el = await mount('alps-address-input', { addresses: ['"Ada" <ada@xn--bcher-kva.example>'] });
+    expect(text(el, '.pill-addr')).toBe('Ada');
+    expect(shadowAll(el, '.address-warning')).toHaveLength(0);
+  });
+
+  it('warns about a lookalike suggestion before it becomes a pill', async () => {
+    const el = await mount('alps-address-input', { suggestions: [{ name: 'Payments', address: `service@${LOOKALIKE}` }, { name: 'Ada', address: 'ada@example.com' }] });
+    const rows = shadowAll(el, '.suggestions-dropdown .item-text');
+    expect(rows[0].textContent).toContain(`service@${LOOKALIKE_ASCII}`);
+    expect(rows[0].querySelector('.address-warning')?.textContent).toBe(`⚠ ${en.address.mixedScript}`);
+    expect(rows[1].querySelector('.address-warning')).toBeNull();
+  });
+
+  it('says it in the reader\'s language', async () => {
+    const store = await german();
+    const el = await mount('alps-address-input', { addresses: [`p${A}ypal@bücher_buch.example`], i18nStore: store });
+    const warning = shadow(el, '.address-warning');
+    expect(warning.textContent).toBe(`⚠ ${de.address!.mixedScript}`);
+    expect(warning.title).toBe(`${de.address!.mixedScriptTooltip}\n${de.address!.unusualDomainTooltip}`);
   });
 });
 
