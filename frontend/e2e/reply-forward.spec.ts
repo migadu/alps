@@ -670,6 +670,29 @@ test("forwarding leaves a CSS address written with escapes behind, and keeps the
   expect(sent).not.toContain("tracker.remote.test");
 });
 
+test("forwarding leaves a noscript behind, which a client that runs script reads differently", async ({ page }) => {
+  // The quote is parsed with scripting disabled, so what a <noscript> holds
+  // is markup to it, and checked as markup. A client that runs script reads
+  // it as text up to the first `</noscript>`, here the one in a comment, and
+  // what follows is live markup in the recipient's client.
+  const sent = await forwardHtml(
+    page,
+    `Fallback ${Date.now()}`,
+    '<p>See below.</p><noscript><!-- </noscript><b id="live">live</b> --></noscript><p>The end.</p>',
+    "The end.",
+  );
+  expect(sent).toContain("See below.");
+  expect(sent).toContain("The end.");
+  expect(sent).not.toMatch(/noscript|id="live"/i);
+  // This page runs script, so it reads the HTML as such a client does.
+  const live = await page.evaluate((html) => {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return div.querySelector("#live") !== null;
+  }, sent);
+  expect(live).toBe(false);
+});
+
 // The image has to leave under the Content-ID the quote names it by: without
 // it the reference resolves for nobody, and the arrived copy's frame logs a
 // CSP refusal for the unresolved `cid:` image, which fails this test too.

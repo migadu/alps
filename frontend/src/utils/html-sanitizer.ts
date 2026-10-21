@@ -391,6 +391,10 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
   // privacy control (a framed remote page, an @font-face or link[preload] beacon,
   // a meta refresh that navigates the pane), not the XSS boundary — that is the
   // CSP and the sandbox.
+  //
+  // A <noscript> stays, unlike in a quote (see sanitizeQuotedHTML): without
+  // allow-scripts the frame runs no script either, so it parses one as this
+  // parser did, and shows the markup that was checked here.
   doc.querySelectorAll('iframe, object, embed, frame, frameset, applet, meta[http-equiv]').forEach(el => el.remove());
   // The frame's policy refuses a script URL however it got into a link, and
   // its sandbox would refuse it without the policy. An animation still goes:
@@ -645,6 +649,24 @@ export function sanitizeQuotedHTML(rawHtml: string): string {
     .querySelectorAll('script, style, link, iframe, object, embed, frame, frameset, applet, form, meta, base, template')
     .forEach((el) => el.remove());
   removeSvgAnimations(doc);
+
+  // Content another client parses differently. This parser runs no script, so
+  // it reads what a <noscript> holds as markup, and the checks below see
+  // markup. A recipient's client that runs script reads it as text up to the
+  // first `</noscript>`, wherever that stands, in a comment or an attribute
+  // value as well, and takes what follows for markup nothing here checked. A
+  // <noembed> or <noframes> holds text, which goes out as written, markup
+  // characters and all, for a client that does not know the element to read
+  // as markup; a client that does never shows it. All three are fallback for
+  // a client that lacks something, and go whole.
+  doc.querySelectorAll('noscript, noembed, noframes').forEach((el) => el.remove());
+  // An <xmp> or a <plaintext> shows its text as text, and that text goes out
+  // as written too. A <pre> shows the same, and goes out escaped.
+  for (const el of Array.from(doc.querySelectorAll('xmp, plaintext'))) {
+    const pre = doc.createElement('pre');
+    pre.textContent = el.textContent;
+    el.replaceWith(pre);
+  }
 
   for (const el of Array.from(doc.querySelectorAll('*'))) {
     for (const attr of Array.from(el.attributes)) {

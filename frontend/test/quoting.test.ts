@@ -130,6 +130,53 @@ describe('sanitizeQuotedHTML', () => {
     });
   });
 
+  describe('content another client parses differently', () => {
+    // The quote is parsed here with scripting disabled, so what a <noscript>
+    // holds is markup to it, and checked as markup. A recipient's client that
+    // runs script reads it as text up to the first `</noscript>`, wherever
+    // that stands, and what follows is markup no check here has seen. This
+    // test document runs script, so it reads the quote as such a client does.
+    const asReadWithScripting = (html: string) => {
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      return div;
+    };
+
+    for (const fallback of [
+      '<noscript><!-- </noscript><b id="live">x</b><img src="x" onerror="alert(1)"> --></noscript>',
+      '<noscript><p title="</noscript><b id=live>x</b><img src=x onerror=alert(1)>">fallback</p></noscript>',
+      '<noscript><noscript><p title="</noscript></noscript><b id=live>x</b>">fallback</p></noscript></noscript>',
+    ]) {
+      it(`removes ${fallback}`, () => {
+        const out = sanitizeQuotedHTML(`<p>Body</p>${fallback}<p>After</p>`);
+        expect(out).toBe('<p>Body</p><p>After</p>');
+        expect(asReadWithScripting(out).querySelector('#live')).toBeNull();
+      });
+    }
+
+    it('removes noembed and noframes, whose text goes out as written', () => {
+      // A client that knows them shows neither; one that does not may take
+      // their text for markup.
+      const out = sanitizeQuotedHTML(
+        '<p>Body</p><noembed><b id="live">x</b></noembed><noframes><img src=x onerror=alert(1)></noframes><p>After</p>',
+      );
+      expect(out).toBe('<p>Body</p><p>After</p>');
+    });
+
+    it('keeps the text of xmp and plaintext as text, escaped', () => {
+      expect(sanitizeQuotedHTML('<p>Body</p><xmp><b id="live">x</b> & y</xmp><p>After</p>'))
+        .toBe('<p>Body</p><pre>&lt;b id="live"&gt;x&lt;/b&gt; &amp; y</pre><p>After</p>');
+      // A plaintext runs to the end of the document, whatever follows it.
+      expect(sanitizeQuotedHTML('<p>Body</p><plaintext><img src=x onerror=alert(1)></body>'))
+        .toBe('<p>Body</p><pre>&lt;img src=x onerror=alert(1)&gt;&lt;/body&gt;</pre>');
+    });
+
+    it('keeps markup that parses the same everywhere as written', () => {
+      const html = '<p title="a b">Body</p><!-- a comment --><pre>&lt;code&gt;</pre><textarea>&lt;/textarea&gt;</textarea>';
+      expect(sanitizeQuotedHTML(html)).toBe(html);
+    });
+  });
+
   it('removes a srcset whose script URL is any candidate, not only the first', () => {
     const img = parse(sanitizeQuotedHTML(
       '<img srcset="https://cdn.test/w_800,c_limit/a.png 1x, javascript:alert(1) 2x">',
