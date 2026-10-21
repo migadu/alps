@@ -379,6 +379,15 @@ export const sr = {
     senderUnverifiedWarning: 'Vaš server pošte nije mogao da verifikuje ovog pošiljaoca. Poruka možda nije od onoga za koga se predstavlja, zato budite oprezni sa vezama i prilozima.',
     clickToExpand: 'Kliknite da proširite sadržaj poruke'
   },
+  address: {
+    directionalControl: 'skrivene oznake smera',
+    directionalControlTooltip: 'Skrivene oznake smera mogu promeniti redosled prikaza ove adrese.',
+    mixedScript: 'adresa meša pisma',
+    mixedScriptTooltip: 'Ova adresa meša slova iz različitih pisama, pa može da liči na adresu koju poznajete.',
+    mixedScriptAscii: 'Domen {domain} se u ASCII zapisu piše {ascii}.',
+    unusualDomain: 'neobičan domen',
+    unusualDomainTooltip: 'Ovaj domen nije važeće ime internet domena i sadrži znakove van običnog ASCII skupa, pa možda nije domen na koji liči.'
+  },
   originalMessage: {
     title: 'Originalna poruka',
     loading: 'Učitavanje originalne poruke...',

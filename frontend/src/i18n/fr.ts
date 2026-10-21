@@ -370,6 +370,15 @@ export const fr = {
     senderUnverifiedWarning: 'Votre serveur de messagerie n\'a pas pu vérifier cet expéditeur. Le message ne vient peut-être pas de qui il prétend être, soyez donc prudent avec ses liens et ses pièces jointes.',
     clickToExpand: 'Cliquer pour développer le contenu du message'
   },
+  address: {
+    directionalControl: 'marques de direction invisibles',
+    directionalControlTooltip: "Des marques de direction invisibles peuvent modifier l'ordre d'affichage de cette adresse.",
+    mixedScript: "l'adresse mélange des alphabets",
+    mixedScriptTooltip: 'Cette adresse mélange des lettres de différents alphabets, ce qui peut la faire ressembler à une adresse que vous connaissez.',
+    mixedScriptAscii: "En ASCII, le domaine {domain} s'écrit {ascii}.",
+    unusualDomain: 'domaine inhabituel',
+    unusualDomainTooltip: "Ce domaine n'est pas un nom de domaine Internet valide et contient des caractères hors de l'ASCII de base, il n'est donc peut-être pas le domaine qu'il semble être."
+  },
   originalMessage: {
     title: 'Message original',
     loading: 'Chargement du message original...',

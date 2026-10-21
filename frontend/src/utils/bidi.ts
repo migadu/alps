@@ -1,4 +1,4 @@
-import { html } from 'lit';
+import { html, type TemplateResult } from 'lit';
 
 /**
  * Names and addresses, each in a bidi isolate of its own.
@@ -15,8 +15,9 @@ import { html } from 'lit';
  * otherwise put the domain first.
  */
 
-/** An address, laid out left to right in an isolate. */
-export function isolatedEmail(email: string) {
+/** An address, laid out left to right in an isolate. A template stands in for
+ * the text where some of its letters are marked (see address-display.ts). */
+export function isolatedEmail(email: string | TemplateResult) {
   return html`<bdi dir="ltr">${email}</bdi>`;
 }
 

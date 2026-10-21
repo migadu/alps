@@ -413,6 +413,15 @@ export const pt = {
     senderUnverifiedWarning: 'O seu servidor de correio não conseguiu verificar este remetente. A mensagem pode não ser de quem diz ser, por isso tenha cuidado com os links e os anexos.',
     clickToExpand: 'Clique para expandir o conteúdo da mensagem'
   },
+  address: {
+    directionalControl: 'marcas de direção ocultas',
+    directionalControlTooltip: 'As marcas de direção ocultas podem alterar a ordem em que este endereço é mostrado.',
+    mixedScript: 'o endereço mistura alfabetos',
+    mixedScriptTooltip: 'Este endereço mistura letras de alfabetos diferentes, o que pode fazê-lo parecer um endereço conhecido.',
+    mixedScriptAscii: 'Em ASCII, o domínio {domain} corresponde a {ascii}.',
+    unusualDomain: 'domínio pouco comum',
+    unusualDomainTooltip: 'Este domínio não é um nome de domínio da Internet válido e tem caracteres fora do ASCII simples, por isso pode não ser o domínio que parece.'
+  },
   originalMessage: {
     title: 'Mensagem Original',
     loading: 'Carregando mensagem original...',

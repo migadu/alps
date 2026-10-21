@@ -396,7 +396,7 @@ describe('the language picker', () => {
  */
 const LATIN_IN_CYRILLIC = new Set([
   // Protocols, standards and formats, spelled as their specifications spell them.
-  '2FA', 'DKIM', 'DMARC', 'GPG', 'HTML', 'PGP', 'SPF', 'URL', 'WebAuthn',
+  '2FA', 'ASCII', 'DKIM', 'DMARC', 'GPG', 'HTML', 'PGP', 'SPF', 'URL', 'WebAuthn',
   // The Message-ID header ("ID поруке").
   'ID',
   // What the user types or copies: example addresses, a URL, a command.

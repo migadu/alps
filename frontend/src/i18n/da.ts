@@ -415,6 +415,15 @@ export const da: TranslationDictionary = {
     senderUnverifiedWarning: 'Din mailserver kunne ikke bekræfte afsenderen. Beskeden er muligvis ikke fra den, den udgiver sig for at være, så vær forsigtig med links og vedhæftede filer.',
     clickToExpand: 'Klik for at udvide beskedindholdet'
   },
+  address: {
+    directionalControl: 'skjulte retningstegn',
+    directionalControlTooltip: 'Skjulte retningstegn kan ændre den rækkefølge, som denne adresse vises i.',
+    mixedScript: 'adressen blander alfabeter',
+    mixedScriptTooltip: 'Denne adresse blander bogstaver fra forskellige alfabeter, så den kan ligne en adresse, du kender.',
+    mixedScriptAscii: 'I ASCII staves domænet {domain} {ascii}.',
+    unusualDomain: 'usædvanligt domæne',
+    unusualDomainTooltip: 'Dette domæne er ikke et gyldigt internetdomænenavn og indeholder tegn uden for almindelig ASCII, så det er måske ikke det domæne, det ligner.'
+  },
   originalMessage: {
     title: 'Original besked',
     loading: 'Indlæser original besked...',

@@ -413,6 +413,15 @@ export const en = {
     senderUnverifiedWarning: 'Your mail server could not verify this sender. The message may not be from who it claims to be, so be careful with its links and attachments.',
     clickToExpand: 'Click to expand message content'
   },
+  address: {
+    directionalControl: 'hidden direction marks',
+    directionalControlTooltip: 'Hidden direction marks can reorder how this address is displayed.',
+    mixedScript: 'address mixes alphabets',
+    mixedScriptTooltip: 'This address mixes letters from different alphabets, which can make it look like an address you know.',
+    mixedScriptAscii: 'In ASCII, the domain {domain} is spelled {ascii}.',
+    unusualDomain: 'unusual domain',
+    unusualDomainTooltip: 'This domain is not a valid internet domain name and has characters outside plain ASCII, so it may not be the domain it looks like.'
+  },
   originalMessage: {
     title: 'Original Message',
     loading: 'Loading original message...',

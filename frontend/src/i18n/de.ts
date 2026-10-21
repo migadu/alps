@@ -372,6 +372,15 @@ export const de: TranslationDictionary = {
     senderUnverifiedWarning: 'Ihr Mailserver konnte diesen Absender nicht verifizieren. Die Nachricht stammt möglicherweise nicht von dem, der sie zu senden vorgibt. Seien Sie daher vorsichtig mit Links und Anhängen.',
     clickToExpand: 'Klicken, um den Nachrichteninhalt zu erweitern'
   },
+  address: {
+    directionalControl: 'versteckte Richtungszeichen',
+    directionalControlTooltip: 'Versteckte Richtungszeichen können die angezeigte Reihenfolge dieser Adresse verändern.',
+    mixedScript: 'Adresse mischt Alphabete',
+    mixedScriptTooltip: 'Diese Adresse mischt Buchstaben aus verschiedenen Alphabeten und kann dadurch wie eine Adresse aussehen, die Sie kennen.',
+    mixedScriptAscii: 'Die Domain {domain} lautet in ASCII {ascii}.',
+    unusualDomain: 'ungewöhnliche Domain',
+    unusualDomainTooltip: 'Diese Domain ist kein gültiger Internet-Domainname und enthält Zeichen außerhalb von einfachem ASCII. Sie ist daher möglicherweise nicht die Domain, nach der sie aussieht.'
+  },
   originalMessage: {
     title: 'Originalnachricht',
     loading: 'Originalnachricht wird geladen...',
