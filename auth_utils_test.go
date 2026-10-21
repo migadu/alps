@@ -111,3 +111,53 @@ func TestSessionManagerPut_SecondFactor(t *testing.T) {
 		})
 	}
 }
+
+// copyingStore keeps a copy of each entry it has read, as the IMAP store does
+// for as long as its connection lasts, and reads past it only when asked to.
+type copyingStore struct {
+	*rawStore
+	copies map[string]string
+}
+
+func (s *copyingStore) Get(key string, out interface{}) error {
+	if raw, ok := s.copies[key]; ok {
+		return json.Unmarshal([]byte(raw), out)
+	}
+	if err := s.rawStore.Get(key, out); err != nil {
+		return err
+	}
+	s.copies[key] = s.entries[key]
+	return nil
+}
+
+func (s *copyingStore) GetFresh(key string, out interface{}) error {
+	delete(s.copies, key)
+	return s.Get(key, out)
+}
+
+// A key enrolled from another session is seen by this one: whether the
+// account has a key decides what a session may change, and the copy this
+// session's connection keeps predates it.
+func TestReadWebAuthn_SeesAKeyEnrolledElsewhere(t *testing.T) {
+	store := &copyingStore{rawStore: &rawStore{entries: map[string]string{}}, copies: map[string]string{}}
+	store.entries[webAuthnKey] = `{"enabled": false, "credentials": []}`
+	mockProvider := &provider.MockProvider{}
+	mockProvider.On("Close").Return(nil)
+	mockProvider.On("GetStore").Return(store, nil)
+	mockProvider.On("HasThreadCapability").Return(false).Maybe()
+	sm := newSessionManager(
+		func(string, string) (provider.MailProvider, error) { return mockProvider, nil },
+		nil, &NilLogger{}, time.Minute, false, nil, time.Hour, 24*time.Hour, 0, 0, 0, 0, 0,
+	)
+	s, err := sm.Put("ada@example.com", "pass")
+	if !assert.NoError(t, err) {
+		return
+	}
+	defer s.Close()
+	assert.False(t, s.Requires2FA())
+
+	store.entries[webAuthnKey] = `{"enabled": true, "credentials": [{"name": "key"}]}`
+	enabled, err := s.webAuthnEnabled()
+	assert.NoError(t, err)
+	assert.True(t, enabled, "the session read its own copy of the record")
+}

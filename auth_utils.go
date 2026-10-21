@@ -14,13 +14,18 @@ const webAuthnKey = "webauthn"
 // ReadWebAuthn reads the account's WebAuthn record into out, and returns
 // provider.ErrNoStoreEntry when there is none.
 //
+// The record is read from the server every time, not from what this session's
+// connection last saw. Another session, on this node or another, may have
+// added or removed a key since, and what a session may change depends on
+// whether the account has one.
+//
 // A record that does not decode at all is removed, and reads as none. No
 // version of alps can check a credential in it, and kept, it would stop every
 // sign-in to the account. A value of the wrong type inside the record keeps
 // what out held, and the rest is read.
 func (s *Session) ReadWebAuthn(out interface{}) error {
 	store := s.Store()
-	err := store.Get(webAuthnKey, out)
+	err := provider.GetFresh(store, webAuthnKey, out)
 	var typeErr *json.UnmarshalTypeError
 	var syntaxErr *json.SyntaxError
 	switch {
