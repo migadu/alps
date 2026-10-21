@@ -1,9 +1,11 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
+import { live } from 'lit/directives/live.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { registerCredential } from '../utils/webauthn-utils';
 import { renderIcon } from '../utils/ui';
+import { fetchWithTimeout } from '../utils/fetch-utils';
 
 import './alps-setting-group';
 import './alps-icon-btn';
@@ -37,6 +39,8 @@ export class AlpsWebauthnSettings extends LitElement {
     @state() private showNamePrompt = false;
     @state() private pendingCredential: any = null;
     @state() private pendingDeleteId: string | null = null;
+    @state() private showTrustPrompt = false;
+    @state() private trustBusy = false;
 
     static styles = css`
         :host { display: block; }
@@ -89,14 +93,73 @@ export class AlpsWebauthnSettings extends LitElement {
 
 
 
+    /**
+     * The box shows what the server holds, never what was clicked: it is put
+     * back at once, and changes only once the server has agreed and the
+     * settings are read again. Turning trust on waives this account's second
+     * factor for its linked accounts, so it takes the password, asked for
+     * first; turning it off takes nothing.
+     */
     async handleTrustToggle(e: Event) {
         const target = e.target as HTMLInputElement;
-        await fetch('/settings/2fa/trust-linked-accounts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ trust: target.checked })
-        });
-        this.fetchData();
+        const wanted = target.checked;
+        target.checked = !!this.data?.trustLinkedAccounts;
+        if (this.trustBusy) return;
+        if (wanted) {
+            this.showTrustPrompt = true;
+            return;
+        }
+        await this.sendTrust({ trust: false });
+    }
+
+    private async _handleTrustPromptSubmit(e: CustomEvent) {
+        const password = typeof e.detail?.password === 'string' ? e.detail.password : '';
+        this.showTrustPrompt = false;
+        if (!password) {
+            this.showTrustError('webauthn.errors.password_required');
+            return;
+        }
+        await this.sendTrust({ trust: true, current_password: password });
+    }
+
+    private async sendTrust(body: { trust: boolean; current_password?: string }) {
+        this.trustBusy = true;
+        this.error = '';
+        try {
+            const res = await fetchWithTimeout('/settings/2fa/trust-linked-accounts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            // An ended session is handled by fetchWithTimeout, which sends the
+            // user to the login screen with a notice saying why.
+            if (res.status === 401) return;
+            if (!res.ok) {
+                const code = await res.json().then((b) => b?.error, () => undefined);
+                this.showTrustError(this.trustRefusal(res.status, code));
+            }
+        } catch {
+            this.showTrustError('webauthn.errors.trust_failed');
+        } finally {
+            this.trustBusy = false;
+        }
+        await this.fetchData();
+    }
+
+    /** The message for a refused change of trust, by the server's stable code. */
+    private trustRefusal(status: number, code: unknown): string {
+        switch (code) {
+            case 'wrong_password': return 'webauthn.errors.wrong_password';
+            case 'password_required': return 'webauthn.errors.password_required';
+            case 'two_factor_required': return 'webauthn.errors.two_factor_required';
+            case 'no_security_key': return 'webauthn.errors.no_security_key';
+        }
+        if (status === 429) return 'webauthn.errors.rate_limited';
+        return 'webauthn.errors.trust_failed';
+    }
+
+    private showTrustError(key: string) {
+        this.error = this.i18nStore?.t(key) ?? key;
     }
 
     async addCredential() {
@@ -198,6 +261,24 @@ export class AlpsWebauthnSettings extends LitElement {
                 ></ui-prompt>
             ` : ''}
 
+            ${this.showTrustPrompt ? html`
+                <ui-prompt
+                    title=${this.i18nStore?.t('webauthn.trust_linked_checkbox')}
+                    confirmText=${this.i18nStore?.t('general.save')}
+                    cancelText=${this.i18nStore?.t('general.cancel')}
+                    .fields=${[
+                    {
+                        id: 'password',
+                        type: 'password',
+                        label: this.i18nStore?.t('webauthn.trust_password_label'),
+                        autofocus: true
+                    }
+                ]}
+                    @submit=${this._handleTrustPromptSubmit}
+                    @cancel=${() => this.showTrustPrompt = false}
+                ></ui-prompt>
+            ` : ''}
+
             ${this.error ? html`
                 <ui-modal 
                     title="${this.i18nStore?.t('general.error') || 'Error'}" 
@@ -253,7 +334,7 @@ export class AlpsWebauthnSettings extends LitElement {
             ${(this.data?.credentialCount ?? 0) > 0 ? html`
                 <alps-setting-group label="${this.i18nStore?.t('webauthn.trust_linked')}" description="${this.i18nStore?.t('webauthn.trust_linked_desc')}">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
-                        <input type="checkbox" .checked=${this.data?.trustLinkedAccounts} @change=${this.handleTrustToggle}>
+                        <input type="checkbox" .checked=${live(!!this.data?.trustLinkedAccounts)} ?disabled=${this.trustBusy} @change=${this.handleTrustToggle}>
                         ${this.i18nStore?.t('webauthn.trust_linked_checkbox')}
                     </label>
                 </alps-setting-group>

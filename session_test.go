@@ -365,3 +365,24 @@ func TestSession_UpdateDurationZeroDoesNotTerminateSession(t *testing.T) {
 	assert.NotNil(t, retrieved)
 }
 
+
+// CheckPassword takes the session's own password and nothing else: not a
+// prefix, not an extension, and not an empty guess at a session that somehow
+// has none.
+func TestSession_CheckPassword(t *testing.T) {
+	s := &Session{password: "correct horse"}
+	for guess, want := range map[string]bool{
+		"correct horse":  true,
+		"correct":        false,
+		"correct horse ": false,
+		"Correct horse":  false,
+		"":               false,
+	} {
+		if got := s.CheckPassword(guess); got != want {
+			t.Errorf("CheckPassword(%q) = %v, want %v", guess, got, want)
+		}
+	}
+	if (&Session{}).CheckPassword("") {
+		t.Error("an empty guess matched a session without a password")
+	}
+}

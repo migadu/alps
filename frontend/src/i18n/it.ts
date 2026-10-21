@@ -536,6 +536,7 @@ export const it = {
     trust_linked: 'Fidati degli account collegati',
     trust_linked_desc: 'Se abilitato, puoi passare a questo account da un account collegato senza fornire nuovamente una credenziale 2FA.',
     trust_linked_checkbox: 'Consenti di passare a questo account senza 2FA',
+    trust_password_label: 'Inserisci la tua password per confermare',
     confirm_remove: 'Sei sicuro di voler rimuovere questa chiave di sicurezza?',
     errors: {
       begin_failed: 'Impossibile avviare l\'autenticazione.',
@@ -543,6 +544,12 @@ export const it = {
       verification_failed: 'Verifica non riuscita. Per favore riprova.',
       register_failed: 'Si è verificato un errore durante la registrazione della chiave di sicurezza. Riprova.',
       remove_failed: 'Impossibile rimuovere la chiave di sicurezza.',
+      wrong_password: 'La password non è corretta.',
+      password_required: 'Inserisci la tua password attuale.',
+      rate_limited: 'Troppi tentativi. Attendi qualche minuto e riprova.',
+      two_factor_required: 'Accedi con la tua chiave di sicurezza per modificare questa impostazione.',
+      no_security_key: 'Aggiungi prima una chiave di sicurezza.',
+      trust_failed: "Non è stato possibile modificare l'impostazione. Riprova.",
       general: 'Si è verificato un errore.',
     },
     settings: {

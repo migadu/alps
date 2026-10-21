@@ -69,6 +69,7 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 	if options.AbsoluteSessionDuration != 0 {
 		s.Sessions.absoluteSessionDuration = options.AbsoluteSessionDuration
 	}
+	s.Sessions.broadcaster = options.ClusterBroadcaster
 
 	// Initialize rate limiter if enabled
 	if options.RateLimitEnabled {
@@ -430,7 +431,7 @@ func (s *Server) setupMiddleware(router *Router) {
 					})
 					// The restored session takes the same gate as every other:
 					// the request that restored it used to run regardless.
-					if session.Requires2FA() && !session.IsAuthenticated2FA() {
+					if session.needsSecondFactor() {
 						s.logger.Debugf("Auth middleware: restored session needs 2FA for %s", ctx.Request.URL.Path)
 						return handleUnauthenticated(next, ctx)
 					}
@@ -448,8 +449,10 @@ func (s *Server) setupMiddleware(router *Router) {
 			}
 			s.logger.Debugf("Auth middleware: session OK for %s", ctx.Request.URL.Path)
 
-			// Enforce 2FA verification if required
-			if ctx.Session.Requires2FA() && !ctx.Session.IsAuthenticated2FA() {
+			// Enforce 2FA verification if required. The account may have
+			// enrolled a key since this session was opened, on another node;
+			// needsSecondFactor looks again, now and then.
+			if ctx.Session.needsSecondFactor() {
 				s.logger.Debugf("Auth middleware: 2FA required but not verified for %s", ctx.Request.URL.Path)
 				return handleUnauthenticated(next, ctx)
 			}

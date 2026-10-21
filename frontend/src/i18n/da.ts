@@ -150,6 +150,7 @@ export const da: TranslationDictionary = {
     trust_linked: 'Hav tillid til tilknyttede konti',
     trust_linked_desc: 'Hvis dette er slået til, kan du skifte til denne konto fra en tilknyttet konto uden at angive 2FA igen.',
     trust_linked_checkbox: 'Tillad skift til denne konto uden 2FA',
+    trust_password_label: 'Indtast din adgangskode for at bekræfte',
     confirm_remove: 'Er du sikker på, at du vil fjerne denne sikkerhedsnøgle?',
     errors: {
       begin_failed: 'Kunne ikke starte godkendelse.',
@@ -157,6 +158,12 @@ export const da: TranslationDictionary = {
       verification_failed: 'Bekræftelse mislykkedes. Prøv igen.',
       register_failed: 'Der opstod en fejl under registrering af din sikkerhedsnøgle. Prøv igen.',
       remove_failed: 'Kunne ikke fjerne sikkerhedsnøglen.',
+      wrong_password: 'Adgangskoden er forkert.',
+      password_required: 'Indtast din nuværende adgangskode.',
+      rate_limited: 'For mange forsøg. Vent et par minutter, og prøv igen.',
+      two_factor_required: 'Log ind med din sikkerhedsnøgle for at ændre denne indstilling.',
+      no_security_key: 'Tilføj først en sikkerhedsnøgle.',
+      trust_failed: 'Indstillingen kunne ikke ændres. Prøv igen.',
       general: 'Der opstod en fejl.',
     },
     settings: {

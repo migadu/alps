@@ -56,7 +56,7 @@ func (s *rawStore) Put(key string, v interface{}) error {
 // kept it would stop every sign-in; a record that cannot be fetched stops the
 // sign-in, which used to go ahead without the second factor.
 func TestSessionManagerPut_SecondFactor(t *testing.T) {
-	const on = `{"enabled": true, "credentials": [{"name": "key"}], "trust_linked_accounts": true}`
+	const on = `{"enabled": true, "credentials": [{"name": "key"}], "trust_linked_accounts": true, "trust_linked_accounts_version": 1}`
 	cases := []struct {
 		name       string
 		record     string // none when empty
@@ -67,9 +67,15 @@ func TestSessionManagerPut_SecondFactor(t *testing.T) {
 		wantErr    bool
 	}{
 		{name: "on", record: on, want2FA: true, wantTrust: true, wantRecord: true},
+		// Trust turned on before it took a key, the second factor and the
+		// password is not marked, and counts for nothing.
+		{name: "trust from before the rules", record: `{"enabled": true, "credentials": [{"name": "key"}], "trust_linked_accounts": true}`, want2FA: true, wantRecord: true},
+		{name: "trust under later rules", record: `{"enabled": true, "credentials": [{"name": "key"}], "trust_linked_accounts": true, "trust_linked_accounts_version": 2}`, want2FA: true, wantTrust: true, wantRecord: true},
+		{name: "trust marked, without a key", record: `{"enabled": true, "credentials": [], "trust_linked_accounts": true, "trust_linked_accounts_version": 1}`, wantRecord: true},
+		{name: "trust marked with something else", record: `{"enabled": true, "credentials": [{"name": "key"}], "trust_linked_accounts": true, "trust_linked_accounts_version": "1"}`, want2FA: true, wantRecord: true},
 		{name: "off", record: `{"enabled": false, "credentials": [{"name": "key"}]}`, wantRecord: true},
 		{name: "without credentials", record: `{"enabled": true, "credentials": []}`, wantRecord: true},
-		{name: "a value of another type", record: `{"enabled": "yes", "credentials": [{"name": "key"}], "trust_linked_accounts": true}`, wantTrust: true, wantRecord: true},
+		{name: "a value of another type", record: `{"enabled": "yes", "credentials": [{"name": "key"}], "trust_linked_accounts": true, "trust_linked_accounts_version": 1}`, wantTrust: true, wantRecord: true},
 		{name: "none"},
 		{name: "not JSON", record: `{"enabled": true, "credentials": [`},
 		{name: "not an object", record: `"on"`},
@@ -110,4 +116,54 @@ func TestSessionManagerPut_SecondFactor(t *testing.T) {
 			assert.Equal(t, c.wantRecord, kept, "whether the record is still there")
 		})
 	}
+}
+
+// copyingStore keeps a copy of each entry it has read, as the IMAP store does
+// for as long as its connection lasts, and reads past it only when asked to.
+type copyingStore struct {
+	*rawStore
+	copies map[string]string
+}
+
+func (s *copyingStore) Get(key string, out interface{}) error {
+	if raw, ok := s.copies[key]; ok {
+		return json.Unmarshal([]byte(raw), out)
+	}
+	if err := s.rawStore.Get(key, out); err != nil {
+		return err
+	}
+	s.copies[key] = s.entries[key]
+	return nil
+}
+
+func (s *copyingStore) GetFresh(key string, out interface{}) error {
+	delete(s.copies, key)
+	return s.Get(key, out)
+}
+
+// A key enrolled from another session is seen by this one: whether the
+// account has a key decides what a session may change, and the copy this
+// session's connection keeps predates it.
+func TestReadWebAuthn_SeesAKeyEnrolledElsewhere(t *testing.T) {
+	store := &copyingStore{rawStore: &rawStore{entries: map[string]string{}}, copies: map[string]string{}}
+	store.entries[webAuthnKey] = `{"enabled": false, "credentials": []}`
+	mockProvider := &provider.MockProvider{}
+	mockProvider.On("Close").Return(nil)
+	mockProvider.On("GetStore").Return(store, nil)
+	mockProvider.On("HasThreadCapability").Return(false).Maybe()
+	sm := newSessionManager(
+		func(string, string) (provider.MailProvider, error) { return mockProvider, nil },
+		nil, &NilLogger{}, time.Minute, false, nil, time.Hour, 24*time.Hour, 0, 0, 0, 0, 0,
+	)
+	s, err := sm.Put("ada@example.com", "pass")
+	if !assert.NoError(t, err) {
+		return
+	}
+	defer s.Close()
+	assert.False(t, s.Requires2FA())
+
+	store.entries[webAuthnKey] = `{"enabled": true, "credentials": [{"name": "key"}]}`
+	enabled, err := s.webAuthnEnabled()
+	assert.NoError(t, err)
+	assert.True(t, enabled, "the session read its own copy of the record")
 }

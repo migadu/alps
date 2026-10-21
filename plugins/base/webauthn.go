@@ -62,6 +62,22 @@ func handleSetupPage(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, data)
 }
 
+// lacksSecondFactor reports whether this session may not change the
+// account's keys: once the account has one, only a session that has given it
+// may add or remove any. Without this, a session opened before the first key
+// was enrolled, or one that never gave it, could remove the keys or plant one
+// of its own. A first key needs no second factor, for there is none yet.
+func lacksSecondFactor(ctx *alps.Context, creds *UserCredentials) bool {
+	return len(creds.Credentials) > 0 && !ctx.Session.IsAuthenticated2FA()
+}
+
+// respondTwoFactorRequired refuses a change that takes the second factor, with
+// a stable code for the page. Not a 401, which the page takes as the session
+// having ended.
+func respondTwoFactorRequired(ctx *alps.Context) error {
+	return ctx.JSON(http.StatusForbidden, map[string]string{"error": "two_factor_required"})
+}
+
 // handleSetupBegin initiates WebAuthn registration
 func handleSetupBegin(ctx *alps.Context) error {
 	if ctx.Session == nil {
@@ -71,6 +87,9 @@ func handleSetupBegin(ctx *alps.Context) error {
 	creds, err := loadCredentials(ctx.Session)
 	if err != nil {
 		return fmt.Errorf("failed to load credentials: %v", err)
+	}
+	if lacksSecondFactor(ctx, creds) {
+		return respondTwoFactorRequired(ctx)
 	}
 
 	// Generate user ID if this is first registration
@@ -125,6 +144,16 @@ func handleSetupFinish(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
 	}
 
+	// Checked again, not only at the beginning: a key may have been enrolled
+	// elsewhere since this session began its own.
+	creds, err := loadCredentials(ctx.Session)
+	if err != nil {
+		return fmt.Errorf("failed to load credentials: %v", err)
+	}
+	if lacksSecondFactor(ctx, creds) {
+		return respondTwoFactorRequired(ctx)
+	}
+
 	// Parse request body first to get the name and transports before FinishRegistration consumes it
 	var requestData struct {
 		ID         string   `json:"id"`
@@ -170,11 +199,6 @@ func handleSetupFinish(ctx *alps.Context) error {
 		return fmt.Errorf("failed to unmarshal session: %v", err)
 	}
 
-	// Load credentials
-	creds, err := loadCredentials(ctx.Session)
-	if err != nil {
-		return fmt.Errorf("failed to load credentials: %v", err)
-	}
 	creds.UserID = sessionDataStored.UserID
 
 	user := &webauthnUser{
@@ -221,6 +245,10 @@ func handleSetupFinish(ctx *alps.Context) error {
 	// Elevate the session to 2FA authenticated since the user proved physical presence
 	ctx.Session.SetAuthenticated2FA(true)
 
+	// Every other session of the account was opened without this key, or
+	// before the account had one, and is asked for it before it goes on.
+	ctx.Server.Sessions.RequireSecondFactor(ctx.Session.Username())
+
 	// Update the login token so the session restoration knows 2FA is verified
 	tokenUser, tokenPass, _, isPersistent := ctx.GetLoginToken()
 	if tokenUser != "" && tokenPass != "" {
@@ -251,6 +279,49 @@ func handleDisable(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})
 }
 
+// confirmCurrentPassword checks that whoever asks for a change to the
+// account's second factor knows its password, and writes the refusal when they
+// do not. It reports whether the request may go on.
+//
+// The session alone is not enough: a browser left signed in, or a session
+// taken over, would otherwise strip the very factor meant to stand in its way.
+// The password is checked against the one the session signed in with, as the
+// password plugin does before a change, so it never leaves this process and
+// the check cannot fail for want of a server. Each attempt counts against the
+// login rate limits for the account and the address it comes from: guessing
+// the password here is no different from guessing it at the login form, and
+// gets no budget of its own.
+//
+// The refusals carry stable codes the page translates: password_required (400),
+// wrong_password (403) and rate_limited (429). Never a 401, which the page
+// takes as the session having ended.
+func confirmCurrentPassword(ctx *alps.Context, password string) (bool, error) {
+	if password == "" {
+		return false, ctx.JSON(http.StatusBadRequest, map[string]string{"error": "password_required"})
+	}
+
+	username := ctx.Session.Username()
+	if allowed, _, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username); !allowed {
+		ctx.Server.Logger().Printf("WebAuthn: password confirmation rate limited for %s", username)
+		seconds := int(retryAfter.Seconds())
+		if seconds > 0 {
+			ctx.Response.Header().Set("Retry-After", fmt.Sprintf("%d", seconds))
+		}
+		return false, ctx.JSON(http.StatusTooManyRequests, map[string]interface{}{
+			"error":       "rate_limited",
+			"retry_after": seconds,
+		})
+	}
+
+	ok := ctx.Session.CheckPassword(password)
+	ctx.Server.RateLimiter.RecordLoginAttempt(ctx.Request, username, ok)
+	if !ok {
+		ctx.Server.Logger().Printf("WebAuthn: password confirmation refused for %s", username)
+		return false, ctx.JSON(http.StatusForbidden, map[string]string{"error": "wrong_password"})
+	}
+	return true, nil
+}
+
 // handleDeleteCredential removes a specific credential by ID
 func handleDeleteCredential(ctx *alps.Context) error {
 	if ctx.Session == nil {
@@ -272,6 +343,9 @@ func handleDeleteCredential(ctx *alps.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to load credentials: %v", err)
 	}
+	if lacksSecondFactor(ctx, creds) {
+		return respondTwoFactorRequired(ctx)
+	}
 
 	// Find and remove the credential
 	found := false
@@ -290,42 +364,12 @@ func handleDeleteCredential(ctx *alps.Context) error {
 
 	creds.Credentials = newCreds
 
-	// If no credentials left, disable 2FA
+	// If no credentials left, disable 2FA, and with it the trust that waived
+	// it for linked accounts: it must not come back with the next key.
 	if len(newCreds) == 0 {
 		creds.Enabled = false
+		creds.setTrust(false)
 	}
-
-	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {
-		return fmt.Errorf("failed to save credentials: %v", err)
-	}
-
-	return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})
-}
-
-// handleTrustLinkedAccounts toggles the trust_linked_accounts setting
-func handleTrustLinkedAccounts(ctx *alps.Context) error {
-	if ctx.Session == nil {
-		return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
-	}
-
-	var req struct {
-		Trust bool `json:"trust"`
-	}
-	if err := ctx.BindJSON(&req); err != nil {
-		return ctx.RespondBindError(err)
-	}
-
-	// Only allow enabling this setting if session is 2FA authenticated
-	if req.Trust && !ctx.Session.IsAuthenticated2FA() {
-		return alps.NewHTTPError(http.StatusForbidden, "2FA authentication required to change this setting")
-	}
-
-	creds, err := loadCredentials(ctx.Session)
-	if err != nil {
-		return fmt.Errorf("failed to load credentials: %v", err)
-	}
-
-	creds.TrustLinkedAccounts = req.Trust
 
 	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {
 		return fmt.Errorf("failed to save credentials: %v", err)
@@ -499,15 +543,30 @@ func handleVerifyFinish(ctx *alps.Context) error {
 	})
 }
 
-// handleLinkedAccountsTrust updates the trust setting for linked accounts
+// trustRequest is the body of a change to trust in linked accounts.
+type trustRequest struct {
+	Trust           bool   `json:"trust"`
+	CurrentPassword string `json:"current_password"`
+}
+
+// handleLinkedAccountsTrust turns trust in linked accounts on or off.
+//
+// Trust lets a linked account that gave its own second factor switch to this
+// one without giving this one's, so turning it on is as strong a change as
+// removing a key, and asks as much: the account must have a key, the session
+// must have given it, and the account's password must be given again (see
+// confirmCurrentPassword). Any session of the account could turn it on before,
+// with no key and no password. Turning it off waives nothing, so the session
+// is enough.
+//
+// The refusals carry stable codes for the page, besides the password's:
+// no_security_key (409) and two_factor_required (403).
 func handleLinkedAccountsTrust(ctx *alps.Context) error {
 	if ctx.Session == nil {
 		return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
 	}
 
-	var req struct {
-		Trust bool `json:"trust"`
-	}
+	var req trustRequest
 	if err := ctx.BindJSON(&req); err != nil {
 		return ctx.RespondBindError(err)
 	}
@@ -517,7 +576,21 @@ func handleLinkedAccountsTrust(ctx *alps.Context) error {
 		return fmt.Errorf("failed to load credentials: %v", err)
 	}
 
-	creds.TrustLinkedAccounts = req.Trust
+	if req.Trust {
+		if len(creds.Credentials) == 0 {
+			return ctx.JSON(http.StatusConflict, map[string]string{"error": "no_security_key"})
+		}
+		// Checked before the password, so that a session without the second
+		// factor cannot use this to find out whether a password is right.
+		if !ctx.Session.IsAuthenticated2FA() {
+			return respondTwoFactorRequired(ctx)
+		}
+		if ok, err := confirmCurrentPassword(ctx, req.CurrentPassword); !ok {
+			return err
+		}
+	}
+
+	creds.setTrust(req.Trust)
 	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {
 		return fmt.Errorf("failed to save credentials: %v", err)
 	}

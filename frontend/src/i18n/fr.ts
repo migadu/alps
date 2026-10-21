@@ -536,6 +536,7 @@ export const fr = {
     trust_linked: 'Faire confiance aux comptes liés',
     trust_linked_desc: 'Si activé, vous pouvez basculer vers ce compte depuis un compte lié sans avoir à fournir de nouveau un identifiant 2FA.',
     trust_linked_checkbox: 'Autoriser le passage à ce compte sans 2FA',
+    trust_password_label: 'Saisissez votre mot de passe pour confirmer',
     confirm_remove: 'Êtes-vous sûr de vouloir supprimer cette clé de sécurité ?',
     errors: {
       begin_failed: 'Échec de l\'initiation de l\'authentification.',
@@ -543,6 +544,12 @@ export const fr = {
       verification_failed: 'La vérification a échoué. Veuillez réessayer.',
       register_failed: 'Une erreur s\'est produite lors de l\'enregistrement de votre clé de sécurité. Veuillez réessayer.',
       remove_failed: 'Échec de la suppression de la clé de sécurité.',
+      wrong_password: "Ce mot de passe n'est pas correct.",
+      password_required: 'Saisissez votre mot de passe actuel.',
+      rate_limited: 'Trop de tentatives. Veuillez patienter quelques minutes, puis réessayer.',
+      two_factor_required: 'Connectez-vous avec votre clé de sécurité pour modifier ce paramètre.',
+      no_security_key: "Ajoutez d'abord une clé de sécurité.",
+      trust_failed: "Le paramètre n'a pas pu être modifié. Veuillez réessayer.",
       general: 'Une erreur s\'est produite.',
     },
     settings: {
