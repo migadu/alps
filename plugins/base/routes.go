@@ -911,18 +911,22 @@ func handleRenameMailbox(ctx *alps.Context) error {
 	}
 
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		// "Is this rename a move into Trash?" resolved by IMAP special-use,
-		// not by testing whether the new name starts with the English word
-		// "trash". The frontend already resolves the real Trash folder by
-		// attribute — see findMailboxNameByRole and the issue #4 comment it
-		// carries — so the two halves of one feature disagreed: on Gmail, where
-		// Trash is `[Gmail]/Trash`, the unsubscribe that is supposed to
-		// accompany the move never happened, and a user's own folder named
-		// "Trash notes" got it when it should not have.
-		if isMoveIntoTrash(p, req.NewName) {
+		// Read fresh rather than from the session's cache: which folders are
+		// subscribed is the point, and another client may have changed that.
+		// A listing that fails leaves the rename to go ahead on the Trash
+		// guess by name alone, as it always could.
+		mailboxes, _ := p.ListMailboxes()
+		plan := planRenameSubscriptions(mailboxes, mboxName, req.NewName)
+		if plan.unsubscribeOld {
 			_ = unsubscribeMailboxWithProvider(p, mboxName)
 		}
-		return renameMailboxWithProvider(p, mboxName, req.NewName)
+		if err := renameMailboxWithProvider(p, mboxName, req.NewName); err != nil {
+			return err
+		}
+		for _, name := range plan.subscribe {
+			_ = subscribeMailboxWithProvider(p, name)
+		}
+		return nil
 	})
 	if err != nil {
 		return respondMailboxError(ctx, "rename mailbox", err)
@@ -2593,18 +2597,64 @@ func handleSetFlags(ctx *alps.Context) error {
 // accord, so the HTTP layer can answer 403 instead of relaying it as a 500.
 var errEmptyNotAllowed = errors.New("emptying is only allowed for Trash and Junk mailboxes")
 
-// isMoveIntoTrash reports whether `name` is the Trash mailbox or sits beneath
-// it, with Trash identified by its \Trash special-use attribute and only
-// falling back to the English name when the server advertises none.
-func isMoveIntoTrash(p provider.MailProvider, name string) bool {
-	mailboxes, err := p.ListMailboxes()
-	if err != nil {
-		// Unknown rather than false would be more honest, but the only
-		// consequence of guessing wrong here is a missed unsubscribe, and the
-		// English name is the best guess available.
-		return strings.HasPrefix(strings.ToLower(name), "trash")
-	}
+// renameSubscriptions is what a folder rename does to subscriptions, worked
+// out before the RENAME from the listing as it stood.
+type renameSubscriptions struct {
+	// unsubscribeOld: the folder is going into Trash, and leaves the
+	// subscriptions on its way, so that other clients stop showing a deleted
+	// folder among the live ones.
+	unsubscribeOld bool
+	// subscribe: the names, after the rename, to subscribe to.
+	subscribe []string
+}
 
+// planRenameSubscriptions keeps a renamed folder's subscriptions with it.
+//
+// IMAP does not say whether a subscription follows a RENAME, and a server is
+// forbidden to drop one by itself (RFC 3501 §6.3.6), so on a server that does
+// not carry them over the old name stays subscribed and the new one is not: a
+// folder renamed here dropped out of every client that shows subscribed
+// folders only. So every folder of the renamed subtree that was subscribed is
+// subscribed again under its new name, which is harmless where the server
+// has already done it.
+//
+// Two cases are Trash's. A folder deleted into Trash leaves the subscriptions,
+// as it always has here. One taken back out of Trash — the deletion's Undo,
+// or a rename by hand — is subscribed again, because it was this unsubscribe
+// that took it out of them, and a restored folder would otherwise come back
+// missing from those clients.
+//
+// "Is this rename a move into Trash?" is resolved by IMAP special-use, not by
+// testing whether the new name starts with the English word "trash". The
+// frontend already resolves the real Trash folder by attribute — see
+// findMailboxNameByRole and the issue #4 comment it carries — so the two
+// halves of one feature disagreed: on Gmail, where Trash is `[Gmail]/Trash`,
+// the unsubscribe that is supposed to accompany the move never happened, and a
+// user's own folder named "Trash notes" got it when it should not have.
+func planRenameSubscriptions(mailboxes []provider.Mailbox, oldName, newName string) renameSubscriptions {
+	if isInTrash(mailboxes, newName) {
+		return renameSubscriptions{unsubscribeOld: true}
+	}
+	outOfTrash := isInTrash(mailboxes, oldName)
+	var plan renameSubscriptions
+	for _, mb := range mailboxes {
+		rest, ok := strings.CutPrefix(mb.Name, oldName)
+		if !ok || (rest != "" && (mb.Delimiter == 0 || !strings.HasPrefix(rest, string(mb.Delimiter)))) {
+			continue
+		}
+		if mb.Subscribed || (rest == "" && outOfTrash) {
+			plan.subscribe = append(plan.subscribe, newName+rest)
+		}
+	}
+	return plan
+}
+
+// isInTrash reports whether `name` is the Trash mailbox or sits beneath it,
+// with Trash identified by its \Trash special-use attribute and only falling
+// back to the English name when the server advertises none — or when there is
+// no listing to read, where unknown would be more honest, but the English name
+// is the best guess available.
+func isInTrash(mailboxes []provider.Mailbox, name string) bool {
 	trash := ""
 	for _, mb := range mailboxes {
 		for _, attr := range mb.Attributes {
