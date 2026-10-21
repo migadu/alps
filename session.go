@@ -82,9 +82,13 @@ type Session struct {
 	pings              chan struct{}
 	durationUpdate     chan time.Duration
 	notice             string
-	authenticated2FA   bool          // Set to true after successful 2FA verification
-	requires2FA        bool          // Set to true if 2FA is enabled for this account
 	duration           time.Duration // Effective idle window for this user
+
+	// Whether this session has given the account's second factor, and whether
+	// it must before it goes on. Atomic, because requires2FA can be set by a
+	// request of another session: see RequireSecondFactor.
+	authenticated2FA atomic.Bool
+	requires2FA      atomic.Bool
 
 	// The wall-clock instant past which this session ends no matter how much it
 	// is used. Fixed at login and never moved — see SessionManager's
@@ -177,17 +181,17 @@ func (s *Session) Cache() *Cache {
 
 // SetAuthenticated2FA marks this session as having completed 2FA verification.
 func (s *Session) SetAuthenticated2FA(authenticated bool) {
-	s.authenticated2FA = authenticated
+	s.authenticated2FA.Store(authenticated)
 }
 
 // IsAuthenticated2FA returns whether this session has completed 2FA verification.
 func (s *Session) IsAuthenticated2FA() bool {
-	return s.authenticated2FA
+	return s.authenticated2FA.Load()
 }
 
 // Requires2FA returns whether this session requires 2FA verification.
 func (s *Session) Requires2FA() bool {
-	return s.requires2FA
+	return s.requires2FA.Load()
 }
 
 // DoMail executes a mail operation using the provider. The provider can only
@@ -908,7 +912,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 		s.teardown() // the read may have replaced or dropped p
 		return nil, fmt.Errorf("failed to check whether %s signs in with 2FA: %w", username, err)
 	}
-	s.requires2FA = requires2FA
+	s.requires2FA.Store(requires2FA)
 
 	sm.locker.Lock()
 	defer sm.locker.Unlock()
@@ -1015,6 +1019,30 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	}()
 
 	return s, nil
+}
+
+// RequireSecondFactor asks every session of username for the account's second
+// factor before it goes on, unless it has given it already. It is called once
+// the account has enrolled a key: whether a session needs the second factor
+// was decided when it was opened, so a session opened before the key kept full
+// access until it ended, and was never asked for the key at all. The session
+// that enrolled the key proved it in doing so, and is to be marked as having
+// given it first.
+//
+// Usernames are matched without regard to case, as mail servers sign them in.
+//
+// Sessions are kept in this node's memory, so this reaches the sessions on
+// this node only. A session another node holds keeps its access there until
+// it ends; opened again from its login token, as after a restart, it is asked
+// for the key.
+func (sm *SessionManager) RequireSecondFactor(username string) {
+	sm.locker.RLock()
+	defer sm.locker.RUnlock()
+	for _, s := range sm.sessions {
+		if strings.EqualFold(s.username, username) {
+			s.requires2FA.Store(true)
+		}
+	}
 }
 
 // SwitchAccount creates a new session for a linked account.

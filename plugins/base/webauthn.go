@@ -245,6 +245,10 @@ func handleSetupFinish(ctx *alps.Context) error {
 	// Elevate the session to 2FA authenticated since the user proved physical presence
 	ctx.Session.SetAuthenticated2FA(true)
 
+	// Every other session of the account was opened without this key, or
+	// before the account had one, and is asked for it before it goes on.
+	ctx.Server.Sessions.RequireSecondFactor(ctx.Session.Username())
+
 	// Update the login token so the session restoration knows 2FA is verified
 	tokenUser, tokenPass, _, isPersistent := ctx.GetLoginToken()
 	if tokenUser != "" && tokenPass != "" {

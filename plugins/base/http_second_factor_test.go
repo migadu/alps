@@ -490,3 +490,30 @@ func TestHTTP_TheFirstKeyTakesNoSecondFactor(t *testing.T) {
 	// Enrolling it proved the key, so the session goes on.
 	s.mailbox("INBOX")
 }
+
+// A session opened before the account enrolled its first key does not keep
+// its access: it is asked for the key, while the session that enrolled it,
+// having just proved it, goes on.
+func TestHTTP_EnrollingAKeyAsksTheAccountsOtherSessionsForIt(t *testing.T) {
+	s := newTestServer(t)
+	s.withWebAuthn()
+	s.login()
+	other := s.anotherBrowser()
+	other.login()
+	other.mailbox("INBOX")
+
+	s.enrolKey(newSoftKey(t), "laptop")
+
+	s.mailbox("INBOX")
+	other.expect(other.do("GET", "/mailboxes/INBOX", nil), http.StatusUnauthorized)
+	other.expect(other.do("POST", "/settings/2fa/trust-linked-accounts", map[string]any{"trust": false}), http.StatusUnauthorized)
+
+	// Signing in again there asks for the key.
+	r := other.signIn()
+	other.expect(r, http.StatusOK)
+	var got map[string]any
+	r.json(t, &got)
+	if got["requires_2fa"] != true {
+		t.Fatalf("signing in again answered %v, want requires_2fa", got)
+	}
+}
