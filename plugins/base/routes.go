@@ -163,6 +163,59 @@ type CachedMessages struct {
 	// Threaded records what Total counts, so a cache hit reports the same
 	// kind of row the live listing would have. See provider.PageInfo.
 	Threaded bool
+	// Counts are the folder's message and unseen counts as they stood when
+	// the page was read, and the page is served only while the folder still
+	// has them.
+	//
+	// A check for new mail drops the pages when the counts it reads differ
+	// from the ones the session holds (handleMailboxStatus). But the check is
+	// not the only reader of those counts: the folder list that comes with
+	// every message and part read fetches them whenever they are missing, and
+	// reading a message no page holds is one way they go missing (see
+	// applyFlagsToCache). Mail that arrived in between was counted there and
+	// nowhere else, the check then saw no change, and the list went on
+	// answering from a page that did not hold the new mail until the cache
+	// expired. Held by the page itself, the counts tell it that it is out of
+	// date, whoever read them.
+	Counts mailboxCounts
+}
+
+// mailboxCounts is a folder's message and unseen counts, held by value: the
+// cached status is a pointer that a flag change moves in place.
+type mailboxCounts struct {
+	Known    bool
+	Messages uint32
+	Unseen   uint32
+}
+
+// countsOf reads the counts out of a status. A status without them (the
+// search across every folder has none) gives counts that match only each
+// other, so such a page is served as it always was.
+func countsOf(status *MailboxStatus) mailboxCounts {
+	if status == nil || status.StatusData == nil || status.NumMessages == nil || status.NumUnseen == nil {
+		return mailboxCounts{}
+	}
+	return mailboxCounts{Known: true, Messages: *status.NumMessages, Unseen: *status.NumUnseen}
+}
+
+// shiftListedUnseen moves the unseen count every cached page of a mailbox was
+// read at by step, for a message whose \Seen the pages have been brought in
+// line with. The server's count moved by the same step, and the pages are
+// still what it would list; left behind, they would be read again for a
+// change they already show.
+func shiftListedUnseen(cache *alps.Cache, mailbox string, step int) {
+	for _, key := range cache.GetKeysWithPrefix("messages:" + mailbox + ":") {
+		cached, ok := cache.Get(key)
+		if !ok {
+			continue
+		}
+		page, ok := cached.(CachedMessages)
+		if !ok || !page.Counts.Known || (step < 0 && page.Counts.Unseen == 0) {
+			continue
+		}
+		page.Counts.Unseen = uint32(int64(page.Counts.Unseen) + int64(step))
+		cache.Set(key, page)
+	}
 }
 
 // CachedMessagePart holds a cached individual message with optional body data
@@ -337,6 +390,18 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 	seenRemoved := slices.Contains(removeFlags, imap.FlagSeen)
 	if !seenAdded && !seenRemoved {
 		return
+	}
+
+	// The pages move with the server's count, cached status or not. When the
+	// copies cannot say what the message was, they keep the count they were
+	// read at: if the message was unseen, the next count read is not theirs,
+	// and they are read again.
+	switch {
+	case cachedSeen == cachedUnseen:
+	case seenAdded && cachedUnseen:
+		shiftListedUnseen(cache, mailbox, -1)
+	case seenRemoved && cachedSeen:
+		shiftListedUnseen(cache, mailbox, 1)
 	}
 
 	statusKey := "status:" + mailbox
@@ -748,14 +813,19 @@ func handleGetMailbox(ctx *alps.Context) error {
 	// A search is never answered from the cache, and never stored in it.
 	//
 	// A cached page is dropped when the mailbox changes — a write here, or its
-	// counts moving (handleMailboxStatus). A search's answer changes without
-	// either: a body word is matched through a full-text index the server
-	// builds after delivery, so the message is counted well before its body can
-	// be found. The first search for it was empty, correctly, and that empty
-	// page was then the answer to every search after it until something else
-	// in the mailbox moved. A search is a question asked on purpose; it goes to
-	// the server each time.
+	// counts moving (handleMailboxStatus, CachedMessages.Counts). A search's
+	// answer changes without either: a body word is matched through a
+	// full-text index the server builds after delivery, so the message is
+	// counted well before its body can be found. The first search for it was
+	// empty, correctly, and that empty page was then the answer to every
+	// search after it until something else in the mailbox moved. A search is
+	// a question asked on purpose; it goes to the server each time.
 	cacheable := query == ""
+
+	// The counts this page is answered beside, taken before the listing is
+	// read so that a page never claims counts newer than its rows. A cached
+	// page is served only while they are still the ones it was read at.
+	counts := countsOf(mbox)
 
 	// Try to get messages from cache
 	cached, hit := ctx.Session.Cache().Get(msgCacheKey)
@@ -763,7 +833,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 		hit = false
 	}
 	if hit {
-		if cachedData, ok := cached.(CachedMessages); ok {
+		if cachedData, ok := cached.(CachedMessages); ok && cachedData.Counts == counts {
 			total = cachedData.Total
 			threaded = cachedData.Threaded
 
@@ -799,6 +869,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 					Messages: providerMsgs,
 					Total:    total,
 					Threaded: threaded,
+					Counts:   counts,
 				})
 			}
 
