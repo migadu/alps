@@ -2,6 +2,7 @@ import { formatFullDate } from './ui';
 import { escapeHtml, sanitizeQuotedHTML } from './html-sanitizer';
 import { createDOMDirectionResolver } from './content-direction';
 import { stripBidiControls } from './bidi';
+import { displayAddress } from './address-display';
 
 /**
  * Marks the element that holds a quoted original. The composer keeps what is
@@ -85,10 +86,17 @@ export function generateQuote(
   // controls go: an override in a sender's name reordered the rest of the
   // header in the message the user sends. Only the header is cleaned; the
   // reply is addressed as the original was.
+  //
+  // The addresses are written as the reader reads them too, a domain that
+  // mixes alphabets in its A-label form: a lookalike is not passed on to the
+  // next reader in the letters that imitate another domain.
+  const quotedAddress = (a: any) => displayAddress(stripBidiControls(`${a.Mailbox}@${a.Host}`)).text;
   const sender = message?.Envelope?.From?.[0];
-  const senderAddress = stripBidiControls(sender?.Mailbox && sender?.Host ? `${sender.Mailbox}@${sender.Host}` : '');
+  const senderAddress = sender?.Mailbox && sender?.Host ? quotedAddress(sender) : '';
   const senderName = stripBidiControls(sender?.Name || senderAddress || 'Unknown Sender');
-  const quotedTo = formatAddrs(message?.Envelope?.To).map(stripBidiControls).join(', ');
+  const quotedTo = (message?.Envelope?.To || [])
+    .map((a: any) => a.Name ? `${stripBidiControls(a.Name)} <${quotedAddress(a)}>` : quotedAddress(a))
+    .join(', ');
   
   let quoteHeader = `On ${dateStr}, ${senderName} wrote:`;
   if (type === 'forward') {

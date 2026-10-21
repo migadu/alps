@@ -23,6 +23,7 @@ import {
 } from '../src/utils/address-display';
 import { recipientField, type ComposerInstance } from '../src/store/compose-store';
 import { I18nStore } from '../src/store/i18n-store';
+import { generateQuote } from '../src/utils/email-quote';
 import { messageOperations } from '../src/services/message-operations';
 import { en } from '../src/i18n/en';
 import { da } from '../src/i18n/da';
@@ -495,6 +496,30 @@ describe('a list row', () => {
     const el = await list({ Name: 'Payments', Mailbox: 'service', Host: LOOKALIKE }, await german());
     expect(text(el, '.message-sender')).toContain(de.address!.mixedScript);
     expect(text(el, '.message-sender')).not.toContain(en.address.mixedScript);
+  });
+});
+
+describe('a quoted original', () => {
+  const message = {
+    Envelope: {
+      Subject: 'Invoice', Date: '2024-01-05T14:07:00Z',
+      From: [{ Name: 'Payments', Mailbox: 'service', Host: LOOKALIKE }],
+      To: [{ Name: 'Ada', Mailbox: 'ada', Host: 'xn--bcher-kva.example' }],
+      Cc: [],
+    },
+  };
+
+  it('names a lookalike domain in a forward\'s header by its A-label, and an ordinary one in Unicode', () => {
+    const q = generateQuote('forward', message, 'body', '<p>body</p>', true);
+    for (const quoted of [q.quotedText, q.quotedHtml]) {
+      expect(quoted).toContain(`service@${LOOKALIKE_ASCII}`);
+      expect(quoted).not.toContain(LOOKALIKE);
+      expect(quoted).toContain('ada@bücher.example');
+    }
+  });
+
+  it('answers the address as the message carries it', () => {
+    expect(generateQuote('reply', message, 'body', null, false).to).toEqual([`Payments <service@${LOOKALIKE}>`]);
   });
 });
 
