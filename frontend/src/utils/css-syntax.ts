@@ -354,6 +354,26 @@ export function cssUrls(css: string): string[] {
 const LOADS = /(?:url|src|image|image-set|cross-fade|element|expression)\s*\(|@import|(?:^|[^\w-])(?:-ms-)?behavior\s*:/i;
 
 /**
+ * Where the url() at `tokens[k]` ends, if it names an element of the document
+ * the style is in, as `url(#gradient)` does; -1 if it is not one. CSS reads a
+ * url() whose address starts with `#` as such a reference whatever the
+ * document's base URL (CSS Values 4, the "local url flag"), so it fetches
+ * nothing. Written as a url token or as `url(` holding one string, as a
+ * browser reads them, and no other way.
+ */
+function localReferenceEnd(tokens: CssToken[], k: number): number {
+  const token = tokens[k];
+  if (token.type === 'url') return token.value.startsWith('#') ? k : -1;
+  if (token.type !== 'function' || asciiLower(token.value) !== 'url') return -1;
+  let j = k + 1;
+  while (tokens[j]?.type === 'whitespace') j++;
+  if (tokens[j]?.type !== 'string' || !tokens[j].value.startsWith('#')) return -1;
+  j++;
+  while (tokens[j]?.type === 'whitespace') j++;
+  return tokens[j]?.type === ')' ? j : -1;
+}
+
+/**
  * Could this CSS make a client load or run anything at all, whatever the
  * address and however leniently the client reads it?
  *
@@ -362,19 +382,31 @@ const LOADS = /(?:url|src|image|image-set|cross-fade|element|expression)\s*\(|@i
  * the halves again, and a space before the parenthesis does not hide one from
  * a client that tolerates it. A string is only text unless one of these
  * functions holds it, and the function is enough to find.
+ *
+ * A url() that names an element of the same document, `url(#gradient)`, is
+ * not a load: an SVG paint, filter, mask, clip path or marker takes one.
  */
 export function loadsResource(css: string): boolean {
-  const text = cssTokens(css).map((token) => {
-    switch (token.type) {
-      case 'function': return `${token.value}(`;
-      case 'at-keyword': return `@${token.value}`;
-      case 'hash': return `#${token.value}`;
-      case 'url':
-      case 'bad-url': return 'url()';
-      case 'string':
-      case 'bad-string': return '""';
-      default: return token.value;
+  const tokens = cssTokens(css);
+  let text = '';
+  for (let k = 0; k < tokens.length; k++) {
+    const local = localReferenceEnd(tokens, k);
+    if (local !== -1) {
+      text += ' ';
+      k = local;
+      continue;
     }
-  }).join('');
+    const token = tokens[k];
+    switch (token.type) {
+      case 'function': text += `${token.value}(`; break;
+      case 'at-keyword': text += `@${token.value}`; break;
+      case 'hash': text += `#${token.value}`; break;
+      case 'url':
+      case 'bad-url': text += 'url()'; break;
+      case 'string':
+      case 'bad-string': text += '""'; break;
+      default: text += token.value;
+    }
+  }
   return LOADS.test(text);
 }

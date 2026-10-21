@@ -143,6 +143,33 @@ function removeSvgAnimations(doc: Document): void {
   }
 }
 
+/**
+ * SVG's presentation attributes that take a url(): the paint server of a
+ * `fill` or a `stroke`, the element a `filter`, `mask`, `clip-path` or marker
+ * applies, and the image a `cursor` shows. Each is CSS, read as a declaration
+ * of its property is, escapes and all, and a url() in it that names another
+ * document fetches that document.
+ */
+const SVG_URL_ATTRIBUTES = new Set([
+  'fill', 'stroke', 'filter', 'mask', 'clip-path', 'marker-start', 'marker-mid', 'marker-end', 'cursor',
+]);
+
+/**
+ * Inline CSS with each remote url() sent through the proxy or to a blank
+ * pixel, and with what that rewrite cannot reach taken out by `settle`. The
+ * new CSS, counted once, when anything changed; null when nothing did.
+ */
+function rewriteInlineCss(css: string, options: SanitizeOptions, settle: (css: string) => string): string | null {
+  const rewritten = settle(css.replace(REMOTE_URL_IN_CSS(), (_match, quote, url) => {
+    if (!options.allowRemoteResources) return `url(${BLOCKED_PIXEL})`;
+    const q = quote || '"';
+    return `url(${q}${proxied(url)}${q})`;
+  }));
+  if (rewritten === css) return null;
+  if (options.onRemoteResourceBlocked) options.onRemoteResourceBlocked();
+  return rewritten;
+}
+
 /** The rewritten value for a single-URL attribute, or null to leave it be. */
 function rewriteSingleUrl(value: string, options: SanitizeOptions): string | null {
   if (!isRemoteUrl(value)) return null;
@@ -581,28 +608,31 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
     }
   });
 
-  const urlRegex = REMOTE_URL_IN_CSS();
-  const elementsWithStyle = doc.querySelectorAll('[style]');
-  elementsWithStyle.forEach(el => {
-    const original = el.getAttribute('style') ?? '';
-    let styleAttr = original;
-    if (styleAttr.match(urlRegex)) {
-      if (!options.allowRemoteResources) {
-        styleAttr = styleAttr.replace(urlRegex, `url(${BLOCKED_PIXEL})`);
-      } else {
-        styleAttr = styleAttr.replace(urlRegex, (_match, quote, url) => {
-          const q = quote || '"';
-          return `url(${q}${proxied(url)}${q})`;
-        });
-      }
-    }
+  doc.querySelectorAll('[style]').forEach(el => {
     // What the rewrite could not reach goes with its declaration, as in a
     // style block.
-    styleAttr = withoutDeclarations(styleAttr, namesRemote);
-    if (styleAttr === original) return;
-    if (options.onRemoteResourceBlocked) options.onRemoteResourceBlocked();
-    if (styleAttr) el.setAttribute('style', styleAttr);
+    const style = rewriteInlineCss(el.getAttribute('style') ?? '', options, (css) => withoutDeclarations(css, namesRemote));
+    if (style === null) return;
+    if (style) el.setAttribute('style', style);
     else el.removeAttribute('style');
+  });
+
+  // SVG's presentation attributes are CSS too, one property each, and were
+  // never read: a paint server, filter or cursor image on another host went
+  // uncounted, and the frame's policy refused it with no banner. A remote
+  // url() in one is rewritten as in a style, and one the rewrite cannot reach
+  // takes the attribute with it. `url(#gradient)` names an element of this
+  // document, and stays as any address does that is not remote.
+  const svgUrlAttributes = [...SVG_URL_ATTRIBUTES];
+  doc.querySelectorAll(svgUrlAttributes.map((name) => `[${name}]`).join(', ')).forEach(el => {
+    for (const name of svgUrlAttributes) {
+      const value = el.getAttribute(name);
+      if (!value) continue;
+      const rewritten = rewriteInlineCss(value, options, (css) => (namesRemote(css) ? '' : css));
+      if (rewritten === null) continue;
+      if (rewritten) el.setAttribute(name, rewritten);
+      else el.removeAttribute(name);
+    }
   });
 
   applyAutoDirections(doc);
@@ -622,7 +652,9 @@ const URL_ATTRIBUTES = new Set(['href', 'src', 'action', 'formaction', 'xlink:hr
  * The style without the declarations that would load something: a `url()`,
  * an `image-set()` or any other function that takes an image or an address,
  * an `@import`, or old Internet Explorer's `expression()` and `behavior`. The
- * style comes back as written when it has none.
+ * style comes back as written when it has none. A `url(#gradient)` loads
+ * nothing: it names an element of the document the style is in, and an SVG
+ * drawing's paint, filter, mask, clip path or marker stays with it.
  *
  * They are found as a browser reads CSS, escapes decoded and comments taken
  * out (see css-syntax.ts): matching the text `url(` missed `u\rl(` and
@@ -715,7 +747,15 @@ export function sanitizeQuotedHTML(rawHtml: string): string {
       const isScript = name === 'srcset'
         ? parseSrcset(attr.value).some((candidate) => isScriptUrl(candidate.url))
         : URL_ATTRIBUTES.has(name) && isScriptUrl(attr.value);
-      if (isScript) el.removeAttribute(attr.name);
+      if (isScript) {
+        el.removeAttribute(attr.name);
+        continue;
+      }
+      // SVG's presentation attributes are CSS, and a url() in one that names
+      // another document is a fetch, as one in a style is: the attribute goes
+      // as such a declaration goes. `url(#gradient)` names an element of the
+      // quote itself, and stays.
+      if (SVG_URL_ATTRIBUTES.has(name) && loadsResource(attr.value)) el.removeAttribute(attr.name);
     }
     // Inline styles survive as formatting, not as a fetch: see the docstring.
     const style = el.getAttribute('style');

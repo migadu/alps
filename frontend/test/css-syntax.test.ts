@@ -163,6 +163,10 @@ describe('loadsResource', () => {
     'b\\65havior: x',
     '-ms-behavior: x',
     '@import "x.css"',
+    'background: url(#a), url(x)',
+    'fill: url(" #g")',
+    'fill: url(#g x)',
+    'cursor: image-set(url(#c) 1x), auto',
   ]) {
     it(`finds a load in ${css}`, () => {
       expect(loadsResource(css)).toBe(true);
@@ -180,6 +184,12 @@ describe('loadsResource', () => {
     'overscroll-behavior: contain',
     'list-style-image: none',
     'width: calc(100% - 2px)',
+    // A reference to an element of the same document fetches nothing.
+    'fill: url(#gradient)',
+    'stroke: url("#gradient") #c00',
+    "marker-end: URL( '#arrow' )",
+    'clip-path: \\75 rl(\\23 clip)',
+    'filter: url(#a) url(#b)',
   ]) {
     it(`finds no load in ${css}`, () => {
       expect(loadsResource(css)).toBe(false);

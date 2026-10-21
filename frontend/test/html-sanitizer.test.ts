@@ -189,6 +189,83 @@ describe('SVG animations', () => {
   });
 });
 
+describe('SVG attributes that take a url()', () => {
+  // A presentation attribute is CSS, one property each, and a url() in it
+  // that names another document fetches that document: a paint server, a
+  // filter, a mask, a clip path, a marker, a cursor image. Uncounted, a
+  // message whose only remote content was in a drawing showed no banner, and
+  // the policy refused the fetch.
+  const url = 'https://tracker.test/paint.svg#p';
+  const names = ['fill', 'stroke', 'filter', 'mask', 'clip-path', 'marker-start', 'marker-mid', 'marker-end', 'cursor'];
+  for (const name of names) {
+    const html = `<svg><rect width="10" height="10" ${name}="url(${url})"/></svg>`;
+
+    it(`counts a remote url() in ${name}, and blocks it`, () => {
+      expect(countBlocked(html)).toBe(1);
+      expect(attr(blocked(html), 'rect', name)).toMatch(/^url\(data:image\/gif;base64,[^)]*\)$/);
+      expect(blocked(html)).not.toContain('tracker.test');
+    });
+
+    it(`sends a remote url() in ${name} through the proxy once allowed`, () => {
+      expect(countBlocked(html, true)).toBe(1);
+      expect(attr(allowed(html), 'rect', name)).toBe(`url("/proxy?url=${encodeURIComponent(url)}")`);
+    });
+  }
+
+  for (const value of [
+    `u\\rl(${url})`,
+    `\\75 rl(${url}) #c00`,
+    'url(h\\74tps://tracker.test/paint.svg#p)',
+    'url("\\2f\\2ftracker.test/paint.svg#p")',
+  ]) {
+    it(`counts ${value}, which the rewrite cannot reach, and removes it with its attribute`, () => {
+      const html = `<svg><rect width="10" fill='${value}' stroke="#c00"/></svg>`;
+      expect(countBlocked(html)).toBe(1);
+      expect(countBlocked(html, true)).toBe(1);
+      for (const out of [blocked(html), allowed(html)]) {
+        expect(out).not.toContain('tracker.test');
+        expect(attr(out, 'rect', 'stroke')).toBe('#c00');
+        expect(parse(out).querySelector('rect')?.hasAttribute('fill')).toBe(false);
+      }
+    });
+  }
+
+  it('counts a cursor image named in an image-set(), and removes it', () => {
+    const html = '<svg><rect width="10" cursor="image-set(\'https://tracker.test/c.png\' 1x), auto"/></svg>';
+    expect(countBlocked(html)).toBe(1);
+    expect(parse(blocked(html)).querySelector('rect')?.hasAttribute('cursor')).toBe(false);
+  });
+
+  it('keeps references to elements of the message, and counts nothing', () => {
+    const html =
+      '<svg><defs><linearGradient id="g"></linearGradient><filter id="f"></filter><mask id="m"></mask>' +
+      '<clipPath id="c"></clipPath><marker id="a"></marker></defs>' +
+      '<rect fill="url(#g)" stroke="url(\'#g\') #c00" filter="url(#f)" mask="URL( #m )" clip-path="url(#c)" ' +
+      'marker-start="url(#a)" marker-mid="url(#a)" marker-end="url(#a)" cursor="pointer"></rect></svg>';
+    const rect = parse(html).querySelector('rect')!.outerHTML;
+    for (const out of [blocked(html), allowed(html)]) expect(parse(out).querySelector('rect')?.outerHTML).toBe(rect);
+    expect(countBlocked(html)).toBe(0);
+    expect(countBlocked(html, true)).toBe(0);
+  });
+
+  it('leaves a data: cursor and a cid: reference to the policy, as it leaves such an image', () => {
+    const cursor = 'url(data:image/png;base64,iVBORw0KGgo=), auto';
+    const html = `<svg><rect cursor="${cursor}" fill="url(cid:paint@sender.test#p)"></rect></svg>`;
+    expect(attr(blocked(html), 'rect', 'cursor')).toBe(cursor);
+    expect(attr(blocked(html), 'rect', 'fill')).toBe('url(cid:paint@sender.test#p)');
+    expect(countBlocked(html)).toBe(0);
+  });
+
+  it('reads the same properties in the style of an SVG element', () => {
+    const html =
+      `<svg><rect style="fill: url(#g); stroke: url(${url}); cursor: u\\rl(https://tracker.test/c.png), auto"></rect></svg>`;
+    expect(countBlocked(html)).toBe(1);
+    const style = attr(blocked(html), 'rect', 'style');
+    expect(style).toMatch(/^fill: url\(#g\); stroke: url\(data:image\/gif;base64,[^)]*\)$/);
+    expect(withoutProxied(allowed(html))).not.toContain('tracker.test');
+  });
+});
+
 describe('remote images', () => {
   it('blocks one by default, keeping the original address for later', () => {
     const out = blocked('<img src="https://tracker.test/pixel.gif">');

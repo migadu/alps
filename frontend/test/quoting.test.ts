@@ -177,6 +177,49 @@ describe('sanitizeQuotedHTML', () => {
     });
   });
 
+  describe('SVG attributes that take a url()', () => {
+    // A presentation attribute is CSS, and a url() in one that names another
+    // document is a fetch in the recipient's client, as one in a style is.
+    for (const name of ['fill', 'stroke', 'filter', 'mask', 'clip-path', 'marker-start', 'marker-mid', 'marker-end', 'cursor']) {
+      it(`removes a url() to another document from ${name}, and keeps the drawing`, () => {
+        const out = sanitizeQuotedHTML(`<svg><rect width="10" ${name}="url(https://tracker.test/p.svg#p)"></rect></svg>`);
+        expect(out).toBe('<svg><rect width="10"></rect></svg>');
+      });
+    }
+
+    for (const value of [
+      'u\\rl(https://tracker.test/p.svg#p)',
+      '\\75 rl(//tracker.test/p.svg#p) #c00',
+      'url (https://tracker.test/p.svg#p)',
+      'u/**/rl(https://tracker.test/p.svg#p)',
+      'url(paint.svg#p)',
+      'url(data:image/svg+xml;base64,PHN2Zy8+#p)',
+      'url(cid:paint@sender.test#p)',
+      'url(" #p")',
+      "image-set('https://tracker.test/c.png' 1x), auto",
+    ]) {
+      it(`removes ${value}`, () => {
+        const out = sanitizeQuotedHTML(`<svg><rect width="10" fill="${value.replace(/"/g, '&quot;')}" stroke="#c00"></rect></svg>`);
+        expect(out).toBe('<svg><rect width="10" stroke="#c00"></rect></svg>');
+      });
+    }
+
+    it('keeps a reference to an element of the quote', () => {
+      const svg =
+        '<svg><defs><linearGradient id="g"></linearGradient></defs>' +
+        '<rect fill="url(#g)" stroke="url(\'#g\') #c00" filter="URL( #f )" clip-path="\\75 rl(#c)" cursor="pointer"></rect></svg>';
+      expect(sanitizeQuotedHTML(svg)).toBe(svg);
+    });
+
+    it('keeps one in the style of an SVG element, and removes a url() to another document there', () => {
+      const style = parse(sanitizeQuotedHTML(
+        '<svg><rect style="fill: url(#g); stroke: url(https://tracker.test/p.svg#s); ' +
+        'cursor: \\75 rl(https://tracker.test/c.png), auto; opacity: 0.5"></rect></svg>',
+      )).querySelector('rect')?.getAttribute('style');
+      expect(style).toBe('fill: url(#g); opacity: 0.5');
+    });
+  });
+
   it('removes a srcset whose script URL is any candidate, not only the first', () => {
     const img = parse(sanitizeQuotedHTML(
       '<img srcset="https://cdn.test/w_800,c_limit/a.png 1x, javascript:alert(1) 2x">',

@@ -463,6 +463,36 @@ test.describe("a message cannot hide remote content from the banner", () => {
     await expect.poll(() => remote.proxied).toEqual(["https://tracker.remote.test/tab.gif"]);
     expect(remote.direct).toEqual([]);
   });
+
+  test("a url() in an SVG attribute is counted, and loads only through the proxy", async ({ page }) => {
+    // An SVG presentation attribute is CSS, and a url() in it that names
+    // another document fetches it: here a cursor image, and a paint server
+    // whose fallback colour is drawn while it is not loaded. Neither was
+    // read, so neither was counted, and the frame's policy refused the
+    // cursor: a console error, which this test does not allow.
+    const subject = `SVG paint ${Date.now()}`;
+    await deliverHtml(
+      subject,
+      '<p>Body</p><svg width="40" height="40"><rect id="shape" width="40" height="40" ' +
+        'fill="url(https://tracker.remote.test/paint.svg#p) #c00" ' +
+        'cursor="url(https://tracker.remote.test/cursor.png), auto"/></svg>',
+    );
+    const remote = await watchRemote(page);
+
+    await login(page);
+    await open(page, subject);
+    const doc = frame(page).contentFrame();
+    await expect(doc.locator("body")).toContainText("Body");
+    await expect(remoteBanner(page)).toBeVisible();
+    await doc.locator("#shape").hover();
+    await frameSettled(page);
+    expect(remote).toEqual({ direct: [], proxied: [] });
+
+    await remoteBanner(page).locator("alps-button").click();
+    await doc.locator("#shape").hover();
+    await expect.poll(() => remote.proxied).toContain("https://tracker.remote.test/cursor.png");
+    expect(remote.direct).toEqual([]);
+  });
 });
 
 test.describe("what a message may still do", () => {
