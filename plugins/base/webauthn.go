@@ -62,6 +62,22 @@ func handleSetupPage(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, data)
 }
 
+// lacksSecondFactor reports whether this session may not change the
+// account's keys: once the account has one, only a session that has given it
+// may add or remove any. Without this, a session opened before the first key
+// was enrolled, or one that never gave it, could remove the keys or plant one
+// of its own. A first key needs no second factor, for there is none yet.
+func lacksSecondFactor(ctx *alps.Context, creds *UserCredentials) bool {
+	return len(creds.Credentials) > 0 && !ctx.Session.IsAuthenticated2FA()
+}
+
+// respondTwoFactorRequired refuses a change that takes the second factor, with
+// a stable code for the page. Not a 401, which the page takes as the session
+// having ended.
+func respondTwoFactorRequired(ctx *alps.Context) error {
+	return ctx.JSON(http.StatusForbidden, map[string]string{"error": "two_factor_required"})
+}
+
 // handleSetupBegin initiates WebAuthn registration
 func handleSetupBegin(ctx *alps.Context) error {
 	if ctx.Session == nil {
@@ -71,6 +87,9 @@ func handleSetupBegin(ctx *alps.Context) error {
 	creds, err := loadCredentials(ctx.Session)
 	if err != nil {
 		return fmt.Errorf("failed to load credentials: %v", err)
+	}
+	if lacksSecondFactor(ctx, creds) {
+		return respondTwoFactorRequired(ctx)
 	}
 
 	// Generate user ID if this is first registration
@@ -125,6 +144,16 @@ func handleSetupFinish(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
 	}
 
+	// Checked again, not only at the beginning: a key may have been enrolled
+	// elsewhere since this session began its own.
+	creds, err := loadCredentials(ctx.Session)
+	if err != nil {
+		return fmt.Errorf("failed to load credentials: %v", err)
+	}
+	if lacksSecondFactor(ctx, creds) {
+		return respondTwoFactorRequired(ctx)
+	}
+
 	// Parse request body first to get the name and transports before FinishRegistration consumes it
 	var requestData struct {
 		ID         string   `json:"id"`
@@ -170,11 +199,6 @@ func handleSetupFinish(ctx *alps.Context) error {
 		return fmt.Errorf("failed to unmarshal session: %v", err)
 	}
 
-	// Load credentials
-	creds, err := loadCredentials(ctx.Session)
-	if err != nil {
-		return fmt.Errorf("failed to load credentials: %v", err)
-	}
 	creds.UserID = sessionDataStored.UserID
 
 	user := &webauthnUser{
@@ -314,6 +338,9 @@ func handleDeleteCredential(ctx *alps.Context) error {
 	creds, err := loadCredentials(ctx.Session)
 	if err != nil {
 		return fmt.Errorf("failed to load credentials: %v", err)
+	}
+	if lacksSecondFactor(ctx, creds) {
+		return respondTwoFactorRequired(ctx)
 	}
 
 	// Find and remove the credential
@@ -552,7 +579,7 @@ func handleLinkedAccountsTrust(ctx *alps.Context) error {
 		// Checked before the password, so that a session without the second
 		// factor cannot use this to find out whether a password is right.
 		if !ctx.Session.IsAuthenticated2FA() {
-			return ctx.JSON(http.StatusForbidden, map[string]string{"error": "two_factor_required"})
+			return respondTwoFactorRequired(ctx)
 		}
 		if ok, err := confirmCurrentPassword(ctx, req.CurrentPassword); !ok {
 			return err

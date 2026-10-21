@@ -17,6 +17,10 @@ The 2FA implementation in ALPS spans multiple steps to ensure security:
 4. **Verification**: The frontend redirects the user to the WebAuthn verification prompt. The browser requests an assertion from the authenticator and posts it to `POST /webauthn/verify/finish`.
 5. **Session Elevation**: Once verified, the backend elevates the session to a 2FA-authenticated state (`SetAuthenticated2FA(true)`). It then retrieves the temporarily stored credentials, issues the real `alps_session` cookie, generates the encrypted `alps_login_token` (for session restoration), and clears the pending cookies.
 
+### Changing the Keys
+
+Once an account has a security key, its keys can only be changed from a session that has passed the second factor: adding one (`/settings/2fa/begin` and `/finish`) and removing one (`/settings/2fa/credential/{id}/delete`) are otherwise refused with `403 two_factor_required`. The first key needs none, since there is none yet; enrolling it counts as passing the second factor for the session that does it.
+
 ---
 
 ## Account Switching with 2FA

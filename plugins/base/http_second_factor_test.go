@@ -420,3 +420,73 @@ func TestHTTP_ThePasswordForTrustIsNotLogged(t *testing.T) {
 		}
 	}
 }
+
+// storedKeyNames are the names of the keys the account has, as stored.
+func (s *testServer) storedKeyNames() []string {
+	s.t.Helper()
+	record, _ := s.storedWebAuthn()
+	keys, _ := record["credentials"].([]any)
+	names := []string{}
+	for _, k := range keys {
+		key, _ := k.(map[string]any)
+		name, _ := key["name"].(string)
+		names = append(names, name)
+	}
+	return names
+}
+
+// Once the account has a key, a session that has not given it, as one opened
+// before the key was enrolled, can neither add a key nor remove one.
+func TestHTTP_KeysChangeOnlyWithTheSecondFactorOnceThereIsOne(t *testing.T) {
+	s := newTestServer(t)
+	s.withWebAuthn()
+	s.signInBeforeKeys(false, "laptop")
+
+	r, _ := s.beginEnrolment()
+	s.expectRefusal(r, http.StatusForbidden, "two_factor_required")
+	s.expectRefusal(s.finishEnrolment(newSoftKey(t), "a challenge", "planted"), http.StatusForbidden, "two_factor_required")
+	s.expectRefusal(s.removeKeyNamed("laptop"), http.StatusForbidden, "two_factor_required")
+	if got := s.storedKeyNames(); len(got) != 1 || got[0] != "laptop" {
+		t.Fatalf("the account has %v, want [laptop]", got)
+	}
+	s.mailbox("INBOX") // a refusal, not a sign-out
+
+	// Given the second factor, the same session can do both.
+	s.giveSecondFactor()
+	s.enrolKey(newSoftKey(t), "phone")
+	s.expect(s.removeKeyNamed("laptop"), http.StatusOK)
+	if got := s.storedKeyNames(); len(got) != 1 || got[0] != "phone" {
+		t.Fatalf("the account has %v, want [phone]", got)
+	}
+}
+
+// An enrolment begun while the account had no key is not finished once it has
+// one: the key enrolled meanwhile, elsewhere, is what the second factor is now.
+func TestHTTP_AnEnrolmentBegunBeforeTheFirstKeyIsNotFinishedAfterIt(t *testing.T) {
+	s := newTestServer(t)
+	s.withWebAuthn()
+	s.login()
+
+	r, challenge := s.beginEnrolment()
+	s.expect(r, http.StatusOK)
+	s.putWebAuthn(map[string]any{"enabled": true, "credentials": []any{keyRecord("laptop")}})
+
+	s.expectRefusal(s.finishEnrolment(newSoftKey(t), challenge, "planted"), http.StatusForbidden, "two_factor_required")
+	if got := s.storedKeyNames(); len(got) != 1 || got[0] != "laptop" {
+		t.Fatalf("the account has %v, want [laptop]", got)
+	}
+}
+
+// The first key takes no second factor: there is none to give yet.
+func TestHTTP_TheFirstKeyTakesNoSecondFactor(t *testing.T) {
+	s := newTestServer(t)
+	s.withWebAuthn()
+	s.login()
+
+	s.enrolKey(newSoftKey(t), "laptop")
+	if got := s.storedKeyNames(); len(got) != 1 || got[0] != "laptop" {
+		t.Fatalf("the account has %v, want [laptop]", got)
+	}
+	// Enrolling it proved the key, so the session goes on.
+	s.mailbox("INBOX")
+}
