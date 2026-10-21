@@ -344,6 +344,7 @@ func (l *NilLogger) Fatalf(format string, v ...interface{}) {}
 func (l *NilLogger) Warn(i ...interface{})                  {}
 func (l *NilLogger) Warnf(format string, v ...interface{})  {}
 func (l *NilLogger) SetLevel(level slog.Level)              {}
+func (l *NilLogger) Slog() *slog.Logger                     { return slog.New(slog.DiscardHandler) }
 
 // A body over the cap must fail the READ, not be decoded and refused after the
 // fact — that is the whole point of MaxBytesReader over a Content-Length check,

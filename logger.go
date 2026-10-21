@@ -24,6 +24,9 @@ type Logger interface {
 	Fatal(i ...interface{})
 	Fatalf(format string, args ...interface{})
 	SetLevel(level slog.Level)
+	// Slog is the structured logger underneath, for lines whose parts are
+	// fields to search by (who signed in, from where) rather than a sentence.
+	Slog() *slog.Logger
 }
 
 type logger struct {
@@ -133,6 +136,10 @@ func (l *logger) SetLevel(level slog.Level) {
 	l.level.Set(level)
 }
 
+func (l *logger) Slog() *slog.Logger {
+	return l.slog
+}
+
 func (l *logger) Print(i ...interface{}) {
 	l.slog.Info(fmt.Sprint(i...))
 }
@@ -219,3 +226,4 @@ func (discardLogger) Errorf(format string, args ...interface{}) {}
 func (discardLogger) Fatal(i ...interface{})                    {}
 func (discardLogger) Fatalf(format string, args ...interface{}) {}
 func (discardLogger) SetLevel(level slog.Level)                 {}
+func (discardLogger) Slog() *slog.Logger                        { return slog.New(slog.DiscardHandler) }

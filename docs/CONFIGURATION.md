@@ -79,6 +79,21 @@ Configures output destination, format, and verbosity.
 | `output` | String | `"stderr"` | Destination for log output (`"stdout"`, `"stderr"`, `"syslog"`, or a file path like `"/var/log/alps.log"`). |
 | `format` | String | `"console"`| Log format: `"json"` (structured, for production) or `"console"` (human-readable). |
 | `level` | String | `"info"` | Minimum log severity: `"debug"`, `"info"`, `"warn"`, or `"error"`. |
+| `access` | Boolean | `true` | Logs one `request` line per HTTP request at `info`: method, path (without the query string), status, bytes, `duration_ms`, client `ip` and, once signed in, `user` and `session`. |
+
+What is logged about users, whatever `access` says:
+
+| Message | Level | Fields |
+| :--- | :--- | :--- |
+| `sign-in` | info | `user`, `ip`, `session`, `2fa`, `remember`, `restored`, `agent` |
+| `sign-in awaits second factor` | info | `user`, `ip`, `session` |
+| `sign-in failed` | warn | `user`, `ip`, `reason` (`bad credentials`, `rate limited`, `second factor refused`, `error`), plus `agent`, `detail`, `session` or `error` |
+| `session restored` | info | `user`, `ip`, `session` — a browser signed back in with its login token, e.g. after a restart |
+| `account switch` | info | `user`, `to`, `ip`, `session` (the new one), `2fa_trusted` |
+| `account switch awaits second factor` | info | `user`, `to`, `ip`, `session` (the new one) |
+| `session ended` | info | `user`, `session`, `duration`, `reason` (`sign-out`, `idle`, `max-age`, `switched`, `evicted`, `auth-error`, `mail-server-unavailable`) |
+
+`session` is a short hash of the session token, which ties a session's lines together; the token itself is never logged. `ip` is the peer's address, or the client address forwarded by a proxy listed in `trusted_proxies`.
 
 ---
 

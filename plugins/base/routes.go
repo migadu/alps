@@ -1085,8 +1085,11 @@ func handleLogin(ctx *alps.Context) error {
 	if ctx.Server.RateLimiter != nil {
 		allowed, reason, retryAfter := ctx.Server.RateLimiter.CheckLoginAllowed(ctx.Request, username)
 		if !allowed {
-			ctx.Server.Logger().Printf("Rate limit exceeded for login attempt: username=%s, ip=%s, reason=%s",
-				username, ctx.Request.RemoteAddr, reason)
+			ctx.Server.Logger().Slog().Warn("sign-in failed",
+				"user", username,
+				"ip", ctx.ClientIP(),
+				"reason", "rate limited",
+				"detail", reason)
 
 			// Set Retry-After header
 			if retryAfter > 0 {
@@ -1113,8 +1116,18 @@ func handleLogin(ctx *alps.Context) error {
 		if err != nil {
 			var authErr provider.AuthError
 			if errors.As(err, &authErr) {
+				ctx.Server.Logger().Slog().Warn("sign-in failed",
+					"user", username,
+					"ip", ctx.ClientIP(),
+					"reason", "bad credentials",
+					"agent", ctx.Request.UserAgent())
 				return ctx.JSON(http.StatusUnauthorized, map[string]interface{}{"error": "Failed to login"})
 			}
+			ctx.Server.Logger().Slog().Warn("sign-in failed",
+				"user", username,
+				"ip", ctx.ClientIP(),
+				"reason", "error",
+				"error", err.Error())
 			return fmt.Errorf("failed to put connection in pool: %v", err)
 		}
 
@@ -1157,6 +1170,10 @@ func handleLogin(ctx *alps.Context) error {
 				"password": password,
 			})
 
+			ctx.Server.Logger().Slog().Info("sign-in awaits second factor",
+				"user", username,
+				"ip", ctx.ClientIP(),
+				"session", s.ID())
 			return ctx.JSON(http.StatusOK, map[string]interface{}{"requires_2fa": true})
 		}
 
@@ -1170,6 +1187,14 @@ func handleLogin(ctx *alps.Context) error {
 		// Set session cookie: persistent if "remember me" checked, browser session otherwise
 		ctx.SetSessionWithExpiry(s, persistent)
 
+		ctx.Server.Logger().Slog().Info("sign-in",
+			"user", username,
+			"ip", ctx.ClientIP(),
+			"session", s.ID(),
+			"2fa", s.IsAuthenticated2FA(),
+			"remember", persistent,
+			"restored", restoredFromToken,
+			"agent", ctx.Request.UserAgent())
 		return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
 	}
 
@@ -1178,7 +1203,7 @@ func handleLogin(ctx *alps.Context) error {
 
 func handleLogout(ctx *alps.Context) error {
 	if ctx.Session != nil {
-		ctx.Session.Close()
+		ctx.Session.CloseWithReason("sign-out")
 		ctx.SetSession(nil)
 	}
 	ctx.SetLoginToken("", "", false, false)
@@ -3400,7 +3425,6 @@ func handleSwitchAccount(ctx *alps.Context) error {
 		// 2. Current session was authenticated with 2FA
 		if trustLinked && ctx.Session.IsAuthenticated2FA() {
 			skipTwoFA = true
-			ctx.Server.Logger().Printf("Skipping 2FA for %s (trusted linked account, source authenticated)", targetUsername)
 		}
 	}
 
@@ -3423,8 +3447,14 @@ func handleSwitchAccount(ctx *alps.Context) error {
 			"password": password,
 		})
 
+		ctx.Server.Logger().Slog().Info("account switch awaits second factor",
+			"user", ctx.Session.Username(),
+			"to", targetUsername,
+			"ip", ctx.ClientIP(),
+			"session", newSession.ID())
+
 		// Close the old session
-		ctx.Session.Close()
+		ctx.Session.CloseWithReason("switched")
 
 		// Clear the old session cookie so Auth middleware doesn't try to restore it
 		ctx.SetSession(nil)
@@ -3434,8 +3464,15 @@ func handleSwitchAccount(ctx *alps.Context) error {
 	}
 
 	// No 2FA (or trusted linked account) - complete the switch immediately
+	ctx.Server.Logger().Slog().Info("account switch",
+		"user", ctx.Session.Username(),
+		"to", targetUsername,
+		"ip", ctx.ClientIP(),
+		"session", newSession.ID(),
+		"2fa_trusted", skipTwoFA)
+
 	// Close the old session
-	ctx.Session.Close()
+	ctx.Session.CloseWithReason("switched")
 
 	// If we skipped 2FA due to trust, mark new session as 2FA authenticated
 	if skipTwoFA {

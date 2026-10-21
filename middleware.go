@@ -384,6 +384,10 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		// app already makes, so noticing costs no request of its own.
 		w.Header().Set(BuildHeader, r.build)
 	}
+	if r.server.accessLogEnabled() {
+		r.server.serveLogged(r.mux, w, req)
+		return
+	}
 	r.mux.ServeHTTP(w, req)
 }
 

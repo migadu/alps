@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -61,6 +62,14 @@ func generateToken() (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
+// sessionLogID names a session in the log. The token is the bearer credential
+// and never goes there; a hash of it ties one session's lines together without
+// giving any of it away.
+func sessionLogID(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:6])
+}
+
 var (
 	ErrSessionExpired      = errors.New("session expired")
 	ErrAttachmentCacheSize = errors.New("Attachments on session exceed maximum file size")
@@ -78,6 +87,8 @@ type Session struct {
 	manager            *SessionManager
 	username, password string
 	token              string
+	id                 string    // names the session in the log, see sessionLogID
+	created            time.Time // when the password was accepted
 	closed             chan struct{}
 	pings              chan struct{}
 	durationUpdate     chan time.Duration
@@ -119,6 +130,15 @@ type Session struct {
 
 	closeOnce    sync.Once // guards close(s.closed)
 	teardownOnce sync.Once // guards releasing attachments/provider/cache
+
+	// Why the session was closed, for the line that records its end. Written
+	// once, inside closeOnce, and read only after s.closed is.
+	endReason string
+
+	// Set once a browser holds the session. Only such a session's end is
+	// logged: the ones alps opens for itself, to read a linked account, are not
+	// anyone's sign-in.
+	issued atomic.Bool
 }
 
 type Attachment struct {
@@ -175,6 +195,11 @@ func (s *Session) CheckPassword(password string) bool {
 // Token returns the session's token.
 func (s *Session) Token() string {
 	return s.token
+}
+
+// ID names the session in the log without giving away its token.
+func (s *Session) ID() string {
+	return s.id
 }
 
 // GetSessionDuration returns the effective session duration for this user.
@@ -304,7 +329,7 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 		var err error
 		s.provider, err = s.manager.connectProvider(s.username, s.password)
 		if err != nil {
-			s.Close()
+			s.CloseWithReason("mail-server-unavailable")
 			// Wrap with %w so errors.As can still recover an AuthError (bad
 			// credentials), and join the sentinel so handleError logs the user
 			// out on a dead connection instead of looping on 500s.
@@ -349,7 +374,7 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 		var reErr error
 		s.provider, reErr = s.manager.connectProvider(s.username, s.password)
 		if reErr != nil {
-			s.Close()
+			s.CloseWithReason("mail-server-unavailable")
 			return fmt.Errorf("failed to re-connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, reErr))
 		}
 
@@ -487,7 +512,14 @@ func (s *Session) teardown() {
 // sm.locker (e.g. eviction), which would stall every other session. Close is
 // safe to call more than once and from multiple goroutines concurrently.
 func (s *Session) Close() {
+	s.CloseWithReason("closed")
+}
+
+// CloseWithReason is Close, saying why for the line that records the session's
+// end. Only the first close's reason counts.
+func (s *Session) CloseWithReason(reason string) {
 	s.closeOnce.Do(func() {
+		s.endReason = reason
 		close(s.closed)
 	})
 }
@@ -744,7 +776,7 @@ func (sm *SessionManager) Close() {
 	sm.locker.Unlock()
 
 	for _, s := range sessions {
-		s.Close()
+		s.CloseWithReason("shutdown")
 	}
 }
 
@@ -831,6 +863,20 @@ func (s *Session) nextTimeout() time.Duration {
 	return s.duration
 }
 
+// ending says why the session's timeout goroutine stopped: the reason it was
+// closed with, or, when its timer ran out, which of its two limits was reached.
+func (s *Session) ending() string {
+	select {
+	case <-s.closed:
+		return s.endReason
+	default:
+	}
+	if !s.absoluteDeadline.IsZero() && !time.Now().Before(s.absoluteDeadline) {
+		return "max-age"
+	}
+	return "idle"
+}
+
 func (sm *SessionManager) connectProvider(username, password string) (provider.MailProvider, error) {
 	return sm.connectProviderFunc(username, password)
 }
@@ -865,14 +911,10 @@ func (sm *SessionManager) evictOldestSession() {
 
 	if oldestToken != "" {
 		if session, ok := sm.sessions[oldestToken]; ok {
-			tokenPrefix := oldestToken
-			if len(oldestToken) > 8 {
-				tokenPrefix = oldestToken[:8]
-			}
 			t := time.Unix(0, oldestTime)
-			sm.logger.Printf("Evicting oldest session due to global limit: token=%s, username=%s, last_access=%v",
-				tokenPrefix, session.username, t)
-			session.Close()
+			sm.logger.Printf("Evicting oldest session due to global limit: session=%s, username=%s, last_access=%v",
+				session.id, session.username, t)
+			session.CloseWithReason("evicted")
 			sm.removeSession(oldestToken)
 		}
 	}
@@ -899,14 +941,10 @@ func (sm *SessionManager) evictOldestUserSession(username string) {
 
 	if oldestToken != "" {
 		if session, ok := sm.sessions[oldestToken]; ok {
-			tokenPrefix := oldestToken
-			if len(oldestToken) > 8 {
-				tokenPrefix = oldestToken[:8]
-			}
 			t := time.Unix(0, oldestTime)
-			sm.logger.Printf("Evicting oldest session for user due to per-user limit: token=%s, username=%s, last_access=%v",
-				tokenPrefix, username, t)
-			session.Close()
+			sm.logger.Printf("Evicting oldest session for user due to per-user limit: session=%s, username=%s, last_access=%v",
+				session.id, username, t)
+			session.CloseWithReason("evicted")
 			sm.removeSession(oldestToken)
 		}
 	}
@@ -1001,8 +1039,9 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 		cache:          cache,
 		duration:       sm.sessionDuration, // updated from user settings below
 	}
-	s.absoluteDeadline = sm.absoluteDeadlineFrom(time.Now())
-	s.lastAccess.Store(time.Now().UnixNano())
+	s.created = time.Now()
+	s.absoluteDeadline = sm.absoluteDeadlineFrom(s.created)
+	s.lastAccess.Store(s.created.UnixNano())
 
 	// Read the user's settings (auto-logout duration, 2FA) BEFORE taking the
 	// manager lock: these go through the session's provider as IMAP round trips,
@@ -1067,6 +1106,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	}
 
 	s.token = token
+	s.id = sessionLogID(token)
 
 	// Track the session
 	sm.sessions[token] = s
@@ -1117,6 +1157,16 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 		// Release all resources (attachments — including natural expiry, which
 		// previously leaked them — the provider connection, and the cache).
 		s.teardown()
+
+		// A session is not ended by a restart: the browser's login token signs
+		// it back in, and that is logged as a restore.
+		if reason := s.ending(); s.issued.Load() && reason != "shutdown" {
+			sm.logger.Slog().Info("session ended",
+				"user", s.username,
+				"session", s.id,
+				"reason", reason,
+				"duration", time.Since(s.created).Round(time.Second).String())
+		}
 
 		sm.locker.Lock()
 		sm.removeSession(token)

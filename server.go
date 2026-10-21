@@ -336,6 +336,7 @@ type Options struct {
 	MaxGlobalAttachmentMiB  int                     // Max global attachment size in MiB
 	RateLimitConfig         *RateLimitConfig        // Rate limiting config, nil = use defaults
 	RateLimitEnabled        bool                    // If false, rate limiting is disabled
+	AccessLog               bool                    // If true, every request is logged at info level: who, from where, how answered
 	TrustedProxies          []*net.IPNet            // Proxy IPs/CIDRs whose X-Forwarded-Proto/Host headers are trusted (e.g. for CSRF origin computation behind a TLS-terminating reverse proxy)
 	TrustedOrigins          []string                // Additional origins accepted by the CSRF check (e.g. "https://webmail.example.com"), normalized to lowercase without a trailing slash
 	ReadTimeout             time.Duration           // HTTP read timeout, 0 means use default (10 seconds)
@@ -388,6 +389,9 @@ func (s *Server) setupMiddleware(router *Router) {
 
 			s.logger.Debugf("Auth middleware: found cookie for %s", ctx.Request.URL.Path)
 			ctx.Session, err = ctx.Server.Sessions.get(cookie.Value)
+			if err == nil {
+				ctx.access.noteSession(ctx.Session)
+			}
 			if errors.Is(err, ErrSessionExpired) {
 				s.logger.Debugf("Auth middleware: session expired for %s", ctx.Request.URL.Path)
 				ctx.SetSession(nil)
@@ -407,6 +411,10 @@ func (s *Server) setupMiddleware(router *Router) {
 					session.SetAuthenticated2FA(verified2FA)
 
 					s.logger.Debugf("Auth middleware: session restored successfully for %s", ctx.Request.URL.Path)
+					s.logger.Slog().Info("session restored",
+						"user", username,
+						"ip", ctx.ClientIP(),
+						"session", session.ID())
 					// Restore session with original persistence setting
 					ctx.Session = session
 					ctx.SetSessionWithExpiry(session, persistent)
@@ -535,19 +543,19 @@ func (s *Server) handleError(err error, ctx *Context) {
 	// Check if this is an authentication or connection error - if so, log out the user
 	// to prevent endless loops
 	var authErr provider.AuthError
-	shouldLogout := false
+	logoutReason := ""
 
 	if errors.As(err, &authErr) {
 		s.logger.Debugf("Authentication error detected, logging out user")
-		shouldLogout = true
+		logoutReason = "auth-error"
 	} else if errors.Is(err, ErrMailProviderUnavailable) {
 		s.logger.Debugf("Mail provider connection lost, logging out user")
-		shouldLogout = true
+		logoutReason = "mail-server-unavailable"
 	}
 
-	if shouldLogout {
+	if logoutReason != "" {
 		if ctx.Session != nil {
-			ctx.Session.Close()
+			ctx.Session.CloseWithReason(logoutReason)
 			ctx.SetSession(nil)
 		}
 		ctx.SetLoginToken("", "", false, false)
