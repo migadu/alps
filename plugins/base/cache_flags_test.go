@@ -49,6 +49,23 @@ func TestReadingAMessageLowersTheUnseenCountOnce(t *testing.T) {
 	}
 }
 
+// A listing caches each row twice, in the page and as the message on its
+// own, and the two are the same message in memory. They are one copy, not two
+// that disagree: reading the message lowers the count rather than dropping it.
+func TestReadingAListedMessageLowersTheCount(t *testing.T) {
+	uid := provider.MockMessageID{ID: "7"}
+	msgs := []provider.Message{{ID: uid}, {ID: provider.MockMessageID{ID: "8"}}}
+	cache := flagCache(t, 3, nil)
+	cache.Set("messages:INBOX:0", CachedMessages{Messages: msgs, Total: len(msgs)})
+	cache.Set("message:INBOX:7:[]", CachedMessagePart{Message: &msgs[0], Mailbox: "INBOX"})
+
+	applyFlagsToCache(cache, noDebug, "INBOX", uid, seen, nil)
+
+	if got, ok := cachedUnseen(t, cache); !ok || got != 2 {
+		t.Fatalf("unseen = %d (cached %v), want 2", got, ok)
+	}
+}
+
 func TestReadingAReadMessageLeavesTheCountAlone(t *testing.T) {
 	uid := provider.MockMessageID{ID: "7"}
 	cache := flagCache(t, 3, map[string][]provider.Message{

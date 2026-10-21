@@ -285,6 +285,19 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 	// Convert UID to MessageID for comparison
 	uidStr := uid.String()
 
+	// The message's own entry is asked before any page is touched. A listing
+	// caches each row twice, in the page and as the message on its own, and
+	// the two are one message in memory (handleGetMailbox): updating the page
+	// first made the entry report the change as the state before it. The
+	// copies then disagreed, and reading a listed message dropped the count
+	// instead of lowering it.
+	msgKey := fmt.Sprintf("message:%s:%s:[]", mailbox, uidStr)
+	if cached, ok := cache.Get(msgKey); ok {
+		if cachedPart, ok := cached.(CachedMessagePart); ok && cachedPart.Message != nil {
+			noteSeen(cachedPart.Message.Flags)
+		}
+	}
+
 	messageUpdated := false
 	for _, key := range keys {
 		if cached, ok := cache.Get(key); ok {
@@ -304,11 +317,9 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 	}
 
 	// Update individual message cache (metadata only)
-	msgKey := fmt.Sprintf("message:%s:%s:[]", mailbox, uidStr)
 	if cached, ok := cache.Get(msgKey); ok {
 		cachedPart := cached.(CachedMessagePart)
 		if cachedPart.Message != nil {
-			noteSeen(cachedPart.Message.Flags)
 			cachedPart.Message.Flags = updateFlags(cachedPart.Message.Flags)
 			cache.Set(msgKey, cachedPart)
 			debugf("Updated flags for message %s in individual cache", uidStr)
