@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -319,4 +320,57 @@ func TestSettingsCheckWeekStart(t *testing.T) {
 	}
 }
 
+// The folders unsubscribed here are kept with the account, a list over its
+// cap is refused without touching the one kept, and an empty list clears it.
+func TestHTTP_SettingsKeepTheFoldersUnsubscribedHere(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
 
+	saved := func() []string {
+		t.Helper()
+		var got struct {
+			Settings struct {
+				UI struct {
+					UnsubscribedFolders []string `json:"unsubscribedFolders"`
+				} `json:"ui"`
+			}
+		}
+		r := s.do("GET", "/settings", nil)
+		s.expect(r, http.StatusOK)
+		r.json(t, &got)
+		return got.Settings.UI.UnsubscribedFolders
+	}
+	save := func(names []string) response {
+		t.Helper()
+		return s.do("PUT", "/settings", map[string]any{"ui": map[string]any{"unsubscribedFolders": names}})
+	}
+
+	if got := saved(); len(got) != 0 {
+		t.Fatalf("a new account already has folders unsubscribed here: %v", got)
+	}
+	s.expect(save([]string{"Old", "Work/2019"}), http.StatusOK)
+	if got := saved(); !slices.Equal(got, []string{"Old", "Work/2019"}) {
+		t.Fatalf("kept %v", got)
+	}
+
+	// A save that does not name the list leaves it as it is.
+	s.expect(s.do("PUT", "/settings", map[string]any{"ui": map[string]any{"themeMode": "dark"}}), http.StatusOK)
+	if got := saved(); !slices.Equal(got, []string{"Old", "Work/2019"}) {
+		t.Fatalf("after another setting was saved: %v", got)
+	}
+
+	tooMany := make([]string, maxUnsubscribedFolders+1)
+	for i := range tooMany {
+		tooMany[i] = "Folder " + strconv.Itoa(i)
+	}
+	s.expect(save(tooMany), http.StatusBadRequest)
+	s.expect(save([]string{"Old", "Old"}), http.StatusBadRequest)
+	if got := saved(); !slices.Equal(got, []string{"Old", "Work/2019"}) {
+		t.Fatalf("after refused saves: %v", got)
+	}
+
+	s.expect(save([]string{}), http.StatusOK)
+	if got := saved(); len(got) != 0 {
+		t.Fatalf("an empty list kept %v", got)
+	}
+}

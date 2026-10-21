@@ -110,6 +110,37 @@ describe('signing in', () => {
     expect(put).toEqual({ ui: { showSenderAvatars: true } });
   });
 
+  it('applies the account\'s folders unsubscribed here, and saves a change to them', async () => {
+    signedIn();
+    const calls = serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', ui: { themeMode: 'auto', unsubscribedFolders: ['Old'] } } }),
+      'PUT /settings': () => json(200, {}),
+    });
+    const store = new SettingsStore();
+    expect(store.getState().unsubscribedFolders).toEqual([]);
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    expect(store.getState().unsubscribedFolders).toEqual(['Old']);
+
+    await store.updateSettings({ unsubscribedFolders: ['Old', 'Work'] });
+    const put = calls.find((c) => c.key === 'PUT /settings')!.body;
+    expect(put).toEqual({ ui: { unsubscribedFolders: ['Old', 'Work'] } });
+  });
+
+  it('reads a record without folders unsubscribed here as having none', async () => {
+    // The server leaves an empty list out of the record, so its absence is the
+    // record's answer, and newer than this browser's copy.
+    localStorage.setItem(`alps_settings_${USER}`, JSON.stringify({ loginUsername: USER, unsubscribedFolders: ['Old'] }));
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', ui: { themeMode: 'auto' } } }),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    expect(store.getState().unsubscribedFolders).toEqual([]);
+  });
+
   it('applies the account\'s choice about weekStart, and saves a change to it', async () => {
     signedIn();
     const calls = serve({

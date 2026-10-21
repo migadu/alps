@@ -57,6 +57,13 @@ export interface SettingsState {
   hasThreadCapability?: boolean;
   hasESearchCapability?: boolean;
   customMailboxOrder?: string[];
+  /**
+   * The folders unsubscribed from here, oldest first, which the sidebar puts
+   * behind More while the server still lists them unsubscribed. The server
+   * caps the list, and refuses a save past the caps with every setting it
+   * carries; see utils/unsubscribed-folders, which keeps it within them.
+   */
+  unsubscribedFolders: string[];
 }
 
 const DEFAULT_SETTINGS: SettingsState = {
@@ -93,7 +100,8 @@ const DEFAULT_SETTINGS: SettingsState = {
   sortOrder: 'desc',
   messageSortCriteria: 'date',
   maxAttachmentMiB: 32,
-  customMailboxOrder: []
+  customMailboxOrder: [],
+  unsubscribedFolders: []
 };
 
 type ServerField = { ui?: true; name: string; value: (s: SettingsState) => unknown };
@@ -118,6 +126,7 @@ const SERVER_FIELDS: { [K in keyof SettingsState]?: ServerField } = {
   themeIframeContent: { ui: true, name: 'themeIframeContent', value: s => s.themeIframeContent },
   showSenderAvatars: { ui: true, name: 'showSenderAvatars', value: s => s.showSenderAvatars },
   customMailboxOrder: { ui: true, name: 'customMailboxOrder', value: s => s.customMailboxOrder },
+  unsubscribedFolders: { ui: true, name: 'unsubscribedFolders', value: s => s.unsubscribedFolders },
   checkMailInterval: { name: 'check_mail_interval', value: s => Number(s.checkMailInterval) || 0 },
   autoLogout: { name: 'auto_logout', value: s => Number(s.autoLogout) || 0 },
   desktopNotifications: { name: 'desktop_notifications', value: s => Boolean(s.desktopNotifications) },
@@ -650,6 +659,11 @@ export class SettingsStore extends EventTarget {
             if (ui.themeIframeContent !== undefined) updates.themeIframeContent = ui.themeIframeContent;
             if (ui.showSenderAvatars !== undefined) updates.showSenderAvatars = ui.showSenderAvatars;
             if (ui.customMailboxOrder !== undefined) updates.customMailboxOrder = ui.customMailboxOrder;
+            // Missing is empty: the server leaves an empty list out of the
+            // record, and this browser's copy is older than the record.
+            updates.unsubscribedFolders = Array.isArray(ui.unsubscribedFolders)
+              ? ui.unsubscribedFolders.filter((name: unknown): name is string => typeof name === 'string')
+              : [];
           }
 
           if (s.check_mail_interval !== undefined && s.check_mail_interval !== 0) updates.checkMailInterval = s.check_mail_interval;

@@ -2714,6 +2714,15 @@ func isValidIMAPKeyword(s string) bool {
 const settingsKey = "base.settings"
 const maxMessagesPerPage = 100
 
+// The most folders UnsubscribedFolders holds, and the most bytes their names
+// take together. The record is one METADATA entry, which servers cap (64 KiB
+// on sora), and every other setting has to fit in it as well. The frontend
+// keeps the newest names that fit.
+const (
+	maxUnsubscribedFolders      = 200
+	maxUnsubscribedFoldersBytes = 16 << 10
+)
+
 // The largest UID list a single flag/delete/move/copy request may carry. The
 // frontend chunks at the same number, so an ordinary selection is still one
 // round trip and only a select-everything gesture is split.
@@ -2728,6 +2737,14 @@ type UIPreferences struct {
 	ThemeIframeContent *bool    `json:"themeIframeContent,omitempty"`
 	ShowSenderAvatars  *bool    `json:"showSenderAvatars,omitempty"`
 	CustomMailboxOrder []string `json:"customMailboxOrder,omitempty"`
+
+	// UnsubscribedFolders names the folders the user unsubscribed from in
+	// alps, oldest first. The sidebar puts such a folder behind its More row
+	// for as long as the server still lists it unsubscribed. The server's own
+	// subscription list cannot answer that by itself: it also holds every
+	// folder unsubscribed in another client, and every folder a server that
+	// does not subscribe on CREATE was given unsubscribed.
+	UnsubscribedFolders []string `json:"unsubscribedFolders,omitempty"`
 }
 
 type Settings struct {
@@ -2884,6 +2901,33 @@ func (s *Settings) check() error {
 	if s.WeekStart != nil && *s.WeekStart != 0 && *s.WeekStart != 1 {
 		return fmt.Errorf("week_start must be 0 or 1")
 	}
+	if err := checkUnsubscribedFolders(s.UI.UnsubscribedFolders); err != nil {
+		return err
+	}
+	return nil
+}
+
+// checkUnsubscribedFolders holds the list to its caps, and to one entry per
+// folder: a name is a folder's, and the list is a set kept in order.
+func checkUnsubscribedFolders(names []string) error {
+	if len(names) > maxUnsubscribedFolders {
+		return fmt.Errorf("unsubscribed folders: at most %d, not %d", maxUnsubscribedFolders, len(names))
+	}
+	seen := make(map[string]bool, len(names))
+	size := 0
+	for _, name := range names {
+		if name == "" {
+			return fmt.Errorf("unsubscribed folders: a folder without a name")
+		}
+		if seen[name] {
+			return fmt.Errorf("unsubscribed folders: %q twice", name)
+		}
+		seen[name] = true
+		size += len(name)
+	}
+	if size > maxUnsubscribedFoldersBytes {
+		return fmt.Errorf("unsubscribed folders: names take %d bytes, at most %d", size, maxUnsubscribedFoldersBytes)
+	}
 	return nil
 }
 
@@ -3001,6 +3045,10 @@ func handleSettings(ctx *alps.Context) error {
 				}
 				if req.UI.CustomMailboxOrder != nil {
 					settings.UI.CustomMailboxOrder = req.UI.CustomMailboxOrder
+				}
+				// An empty list is a list: the last folder subscribed to again.
+				if req.UI.UnsubscribedFolders != nil {
+					settings.UI.UnsubscribedFolders = req.UI.UnsubscribedFolders
 				}
 			}
 
