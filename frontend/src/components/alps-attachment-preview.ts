@@ -174,6 +174,12 @@ export class AttachmentPreview extends LitElement {
       e.stopPropagation();
       if (e.key === 'ArrowLeft') this.prev();
       else this.next();
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      // Kept from the page too: the mailbox steps the message list on an
+      // arrow pressed from the page body, which is where focus goes after a
+      // click on anything here that takes no focus, the image itself for one.
+      // Not cancelled, so a long text attachment still scrolls with them.
+      e.stopPropagation();
     }
   };
 
