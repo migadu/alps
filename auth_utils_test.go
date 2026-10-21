@@ -56,7 +56,7 @@ func (s *rawStore) Put(key string, v interface{}) error {
 // kept it would stop every sign-in; a record that cannot be fetched stops the
 // sign-in, which used to go ahead without the second factor.
 func TestSessionManagerPut_SecondFactor(t *testing.T) {
-	const on = `{"enabled": true, "credentials": [{"name": "key"}], "trust_linked_accounts": true}`
+	const on = `{"enabled": true, "credentials": [{"name": "key"}], "trust_linked_accounts": true, "trust_linked_accounts_version": 1}`
 	cases := []struct {
 		name       string
 		record     string // none when empty
@@ -67,9 +67,15 @@ func TestSessionManagerPut_SecondFactor(t *testing.T) {
 		wantErr    bool
 	}{
 		{name: "on", record: on, want2FA: true, wantTrust: true, wantRecord: true},
+		// Trust turned on before it took a key, the second factor and the
+		// password is not marked, and counts for nothing.
+		{name: "trust from before the rules", record: `{"enabled": true, "credentials": [{"name": "key"}], "trust_linked_accounts": true}`, want2FA: true, wantRecord: true},
+		{name: "trust under later rules", record: `{"enabled": true, "credentials": [{"name": "key"}], "trust_linked_accounts": true, "trust_linked_accounts_version": 2}`, want2FA: true, wantTrust: true, wantRecord: true},
+		{name: "trust marked, without a key", record: `{"enabled": true, "credentials": [], "trust_linked_accounts": true, "trust_linked_accounts_version": 1}`, wantRecord: true},
+		{name: "trust marked with something else", record: `{"enabled": true, "credentials": [{"name": "key"}], "trust_linked_accounts": true, "trust_linked_accounts_version": "1"}`, want2FA: true, wantRecord: true},
 		{name: "off", record: `{"enabled": false, "credentials": [{"name": "key"}]}`, wantRecord: true},
 		{name: "without credentials", record: `{"enabled": true, "credentials": []}`, wantRecord: true},
-		{name: "a value of another type", record: `{"enabled": "yes", "credentials": [{"name": "key"}], "trust_linked_accounts": true}`, wantTrust: true, wantRecord: true},
+		{name: "a value of another type", record: `{"enabled": "yes", "credentials": [{"name": "key"}], "trust_linked_accounts": true, "trust_linked_accounts_version": 1}`, wantTrust: true, wantRecord: true},
 		{name: "none"},
 		{name: "not JSON", record: `{"enabled": true, "credentials": [`},
 		{name: "not an object", record: `"on"`},

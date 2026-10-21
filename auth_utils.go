@@ -58,15 +58,40 @@ func (s *Session) webAuthnEnabled() (bool, error) {
 	return enabled && len(credentials) > 0, nil
 }
 
+// TrustLinkedAccountsVersion is stored beside trust in linked accounts, as
+// trust_linked_accounts_version, when it is turned on. It names the rules
+// trust was turned on under: on an account with a key, by a session that gave
+// it, with the account's password.
+//
+// Trust stored without it was turned on before those rules, when any session
+// of the account could turn it on, one that never gave the second factor
+// included, and with no key on the account at all. Such trust is read as off
+// (see TrustCounts), and the record's next save drops it: the account's owner
+// turns it on again, under the rules, if they want it.
+const TrustLinkedAccountsVersion = 1
+
+// TrustCounts reports whether trust in linked accounts, as stored in an
+// account's WebAuthn record with keys keys, lets a linked account that gave
+// its own second factor switch to the account without giving the account's.
+// It must be on, beside a key, and turned on under the rules that hold now.
+// This is the one place that decides it.
+func TrustCounts(trust bool, version, keys int) bool {
+	return trust && keys > 0 && version >= TrustLinkedAccountsVersion
+}
+
 // TrustsLinkedAccounts reports whether the account lets a linked account that
-// signed in with its second factor switch to it without asking for one.
+// signed in with its second factor switch to it without asking for one. See
+// TrustCounts.
 func (s *Session) TrustsLinkedAccounts() (bool, error) {
-	var data map[string]interface{}
+	var data struct {
+		Credentials []json.RawMessage `json:"credentials"`
+		Trust       bool              `json:"trust_linked_accounts"`
+		Version     int               `json:"trust_linked_accounts_version"`
+	}
 	if err := s.ReadWebAuthn(&data); errors.Is(err, provider.ErrNoStoreEntry) {
 		return false, nil
 	} else if err != nil {
 		return false, err
 	}
-	trust, _ := data["trust_linked_accounts"].(bool)
-	return trust, nil
+	return TrustCounts(data.Trust, data.Version, len(data.Credentials)), nil
 }

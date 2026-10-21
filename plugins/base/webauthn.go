@@ -368,7 +368,7 @@ func handleDeleteCredential(ctx *alps.Context) error {
 	// it for linked accounts: it must not come back with the next key.
 	if len(newCreds) == 0 {
 		creds.Enabled = false
-		creds.TrustLinkedAccounts = false
+		creds.setTrust(false)
 	}
 
 	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {
@@ -590,7 +590,7 @@ func handleLinkedAccountsTrust(ctx *alps.Context) error {
 		}
 	}
 
-	creds.TrustLinkedAccounts = req.Trust
+	creds.setTrust(req.Trust)
 	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {
 		return fmt.Errorf("failed to save credentials: %v", err)
 	}

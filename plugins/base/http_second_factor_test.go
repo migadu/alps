@@ -159,17 +159,28 @@ func keyRecord(name string) map[string]any {
 	return map[string]any{"name": name, "credential": map[string]any{"id": base64.StdEncoding.EncodeToString([]byte(name))}}
 }
 
+// webAuthnRecord is a stored record with the named keys, trusting linked
+// accounts or not, as trust is turned on now: marked as turned on under the
+// rules that hold.
+func webAuthnRecord(trust bool, names ...string) map[string]any {
+	keys := []any{}
+	for _, name := range names {
+		keys = append(keys, keyRecord(name))
+	}
+	record := map[string]any{"enabled": len(keys) > 0, "credentials": keys, "trust_linked_accounts": trust}
+	if trust {
+		record["trust_linked_accounts_version"] = alps.TrustLinkedAccountsVersion
+	}
+	return record
+}
+
 // signInBeforeKeys signs in to the account and then gives it the named keys,
 // as another device enrolling them would: the session predates them and has
 // not given a second factor.
 func (s *testServer) signInBeforeKeys(trust bool, names ...string) {
 	s.t.Helper()
 	s.login()
-	keys := []any{}
-	for _, name := range names {
-		keys = append(keys, keyRecord(name))
-	}
-	s.putWebAuthn(map[string]any{"enabled": len(keys) > 0, "credentials": keys, "trust_linked_accounts": trust})
+	s.putWebAuthn(webAuthnRecord(trust, names...))
 }
 
 // giveSecondFactor marks this browser's session as having given the second
