@@ -2,7 +2,6 @@ package password
 
 import (
 	"bytes"
-	"crypto/subtle"
 	"encoding/json"
 	"github.com/migadu/alps/provider"
 	"io"
@@ -67,9 +66,9 @@ func handlePasswordChange(ctx *alps.Context) error {
 	// before contacting the backend. Without this, a hijacked or CSRF'd (but
 	// authenticated) session could set a new password without proving knowledge
 	// of the current one — the backend only enforces old_password if the
-	// deployment's payload_mapping happens to forward it. Constant-time compare
-	// to avoid leaking the password via response timing.
-	if subtle.ConstantTimeCompare([]byte(req.OldPassword), []byte(ctx.Session.Password())) != 1 {
+	// deployment's payload_mapping happens to forward it. The check takes the
+	// same time whatever was typed; see CheckPassword.
+	if !ctx.Session.CheckPassword(req.OldPassword) {
 		return ctx.JSON(http.StatusForbidden, map[string]string{"error": "Current password is incorrect"})
 	}
 

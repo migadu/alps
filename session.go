@@ -3,6 +3,8 @@ package alps
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -142,6 +144,20 @@ func (s *Session) Username() string {
 // Password returns the session's password.
 func (s *Session) Password() string {
 	return s.password
+}
+
+// CheckPassword reports whether password is the one this session signed in
+// with, for a change that must be confirmed by someone who knows it rather
+// than by whoever holds the session.
+//
+// Both sides are hashed before the constant-time comparison, because
+// subtle.ConstantTimeCompare returns at once when the lengths differ, and so
+// would tell a guesser the password's length. The password is never sent
+// anywhere to be checked, so a check cannot fail for want of a server.
+func (s *Session) CheckPassword(password string) bool {
+	given := sha256.Sum256([]byte(password))
+	held := sha256.Sum256([]byte(s.password))
+	return s.password != "" && subtle.ConstantTimeCompare(given[:], held[:]) == 1
 }
 
 // Token returns the session's token.
