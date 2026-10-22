@@ -50,8 +50,11 @@ export class AttachmentPill extends LitElement {
       left: 0;
       top: 0;
       bottom: 0;
-      background: var(--bg-selected);
-      opacity: 0.3;
+      /* A tint of the theme's accent. It was --bg-selected at 30%: #EFF6FF
+         over a white pill, a fill drawn at the right width that nobody could
+         see. 18% is what the palest accent, ocean-light's, needs to stand out
+         from its pill; attachment-pill-progress.test.ts checks every theme. */
+      background: color-mix(in srgb, var(--accent-color, #2563eb) 18%, transparent);
       transition: width 0.1s linear;
       pointer-events: none;
       z-index: 0;

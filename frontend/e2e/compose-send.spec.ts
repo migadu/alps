@@ -324,3 +324,95 @@ test("a link inserted from the toolbar is sent as a link", async ({ page }) => {
   const sent = await sentWithSubject(subject);
   expect(sent.data).toMatch(/<p[^>]*>See <a [^>]*href="https:\/\/plans\.example\/friday"[^>]*>the plan<\/a><\/p>/);
 });
+
+/**
+ * Picks files through the composer's paperclip, as a user does. The button
+ * opens a file input the composer never adds to the page, so the chooser is
+ * caught on the page rather than on an element.
+ */
+async function attachFiles(
+  page: Page,
+  composer: Locator,
+  files: { name: string; mimeType: string; buffer: Buffer }[],
+): Promise<void> {
+  const chooser = page.waitForEvent("filechooser");
+  await composer.locator('alps-icon-btn[icon="paperclip"]').click();
+  await (await chooser).setFiles(files);
+}
+
+/** Slows every upload from the page to `bytesPerSecond`, until the returned function lifts it. */
+async function throttleUploads(page: Page, bytesPerSecond: number): Promise<() => Promise<void>> {
+  const cdp = await page.context().newCDPSession(page);
+  const conditions = (uploadThroughput: number) => ({ offline: false, latency: 0, downloadThroughput: -1, uploadThroughput });
+  await cdp.send("Network.enable");
+  await cdp.send("Network.emulateNetworkConditions", conditions(bytesPerSecond));
+  return async () => {
+    await cdp.send("Network.emulateNetworkConditions", conditions(-1));
+    await cdp.detach();
+  };
+}
+
+/**
+ * The colour the progress fill paints over its pill, composited, and its
+ * contrast with the pill's own background (WCAG relative luminance). Parses
+ * the computed forms Chromium returns: rgb()/rgba(), and color(srgb …) for a
+ * color-mix().
+ */
+function fillContrast(pill: Locator) {
+  return pill.evaluate((host) => {
+    const root = host.shadowRoot!;
+    const bar = root.querySelector<HTMLElement>(".progress-bar")!;
+    const chip = root.querySelector<HTMLElement>(".attachment-chip")!;
+    const rgba = (css: string): [number, number, number, number] => {
+      const srgb = css.match(/^color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)$/);
+      if (srgb) return [+srgb[1] * 255, +srgb[2] * 255, +srgb[3] * 255, srgb[4] === undefined ? 1 : +srgb[4]];
+      const n = css.match(/[\d.]+/g)!.map(Number);
+      return [n[0], n[1], n[2], n[3] ?? 1];
+    };
+    const [br, bg, bb] = rgba(getComputedStyle(chip).backgroundColor);
+    const [fr, fg, fb, fa] = rgba(getComputedStyle(bar).backgroundColor);
+    const alpha = fa * Number(getComputedStyle(bar).opacity);
+    const mix = (f: number, b: number) => f * alpha + b * (1 - alpha);
+    const lum = (r: number, g: number, b: number) => {
+      const lin = (c: number) => {
+        c /= 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    };
+    const a = lum(br, bg, bb);
+    const b = lum(mix(fr, br), mix(fg, bg), mix(fb, bb));
+    return {
+      contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+      barWidth: bar.getBoundingClientRect().width,
+      chipWidth: chip.getBoundingClientRect().width,
+    };
+  });
+}
+
+test("an upload in flight fills its pill with a fill you can see", async ({ page }) => {
+  // The fill was drawn at the right width all along, in --bg-selected at 30%
+  // over a white pill: about 1.03:1, so the pill read as its percentage alone.
+  await login(page);
+  const composer = await openComposer(page);
+  const pill = composer.locator("alps-attachment-pill");
+
+  const lift = await throttleUploads(page, 64 * 1024);
+  try {
+    await attachFiles(page, composer, [
+      { name: "slow.bin", mimeType: "application/octet-stream", buffer: Buffer.alloc(768 * 1024, 7) },
+    ]);
+    await expect(pill.locator(".attachment-size")).toHaveText(/^[2-7]\d% of /, { timeout: 15_000 });
+
+    const seen = await fillContrast(pill);
+    // Filled from the start edge, part of the way.
+    expect(seen.barWidth).toBeGreaterThan(seen.chipWidth * 0.15);
+    expect(seen.barWidth).toBeLessThan(seen.chipWidth * 0.9);
+    // And a tint the eye picks out against the pill.
+    expect(seen.contrast).toBeGreaterThanOrEqual(1.15);
+  } finally {
+    await lift();
+  }
+  await expect(pill.locator(".progress-bar")).toHaveCount(0, { timeout: 15_000 });
+  await discardDraft(composer);
+});
