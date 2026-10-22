@@ -17,7 +17,41 @@ export interface MailboxData {
    * is drawn by the rules of the folder it came from.
    */
   ListedMailbox?: string;
+  /** The counts the listing was read at, of the mailbox and of the Inbox. */
+  Mailbox?: { NumMessages?: number; NumUnseen?: number } | null;
+  Inbox?: { NumMessages?: number; NumUnseen?: number } | null;
 }
+
+/** A folder's counts, as a status check answers them. */
+interface Counts {
+  total: number;
+  unseen: number;
+}
+
+/**
+ * The lock the tab that polls holds. Every tab of a session shares one
+ * connection to the mail server, and each polled on its own: one poll per tab,
+ * one after another on that connection, and one chime per tab for the same
+ * arrival.
+ */
+const POLL_LOCK = 'alps-mail-poll';
+
+/** How old what a tab shows may be when it comes back into view, before it is checked. */
+const STALE_ON_SHOW_MS = 60 * 1000;
+
+/**
+ * How old a listing may be before a poll reads it again, whatever the counts
+ * say. Unchanged counts do not prove an unchanged listing: a star or a label
+ * set in another tab or another program moves neither count, nor does mail
+ * filed into a folder other than the Inbox and the one on screen (whose count
+ * the sidebar shows), and a body search can have missed a message the server
+ * had not yet indexed when the counts moved.
+ *
+ * It is the server's default cache lifetime. When every poll read the
+ * listing, that cache answered most of them, and the mail server was read
+ * again about this often.
+ */
+const RELIST_AFTER_MS = 10 * 60 * 1000;
 
 export class MessageSyncService extends EventTarget {
   private interval: ReturnType<typeof setInterval> | null = null;
@@ -33,6 +67,25 @@ export class MessageSyncService extends EventTarget {
    */
   private listed: boolean = false;
 
+  /**
+   * The view the last landed listing was of, the counts it was read at, when
+   * it landed (`read`), and when it was last found current (`at`: when it
+   * landed, or when a check found the counts it was read at). A poll whose
+   * counts match does not read the listing again until it is due
+   * ({@link relistDue}).
+   */
+  private heard: { view: string; inbox: Counts | null; mailbox: Counts | null; read: number; at: number } | null = null;
+
+  /** The check a tab that came into view started, while it is out. */
+  private shownCheck: Promise<boolean> | null = null;
+
+  /** The minutes between polls, 0 for none. */
+  private pollMinutes = 0;
+  /** This tab holds the poll lock; `releaseLead` gives it up. */
+  private leading = false;
+  private releaseLead: (() => void) | null = null;
+  private seekingLead = false;
+
   constructor() {
     super();
     // Signing out does not reload the page, and the next user's mail page
@@ -45,6 +98,7 @@ export class MessageSyncService extends EventTarget {
       this.currentFetchId++;
       this.currentLabelsId++;
       this.listed = false;
+      this.heard = null;
     });
   }
 
@@ -60,23 +114,122 @@ export class MessageSyncService extends EventTarget {
   /**
    * Starts background polling every N minutes.
    * If minutes <= 0, background polling is disabled.
+   *
+   * Only one tab polls: the one holding {@link POLL_LOCK}, which the next tab
+   * waiting for it takes over when that tab closes or leaves the mail page. It
+   * polls hidden as well, since new-mail sounds and notifications come from its
+   * polls. The other tabs check when they come back into view (see
+   * {@link handleShown}). A browser without `navigator.locks` polls from every
+   * tab, as before.
    */
   start(minutes: number = 5) {
-    this.stop();
-    if (minutes <= 0) return;
-    const ms = minutes * 60 * 1000;
-    this.interval = setInterval(() => void this.backgroundSync(), ms);
+    this.stopTimer();
+    this.pollMinutes = minutes;
+    if (minutes <= 0) {
+      this.giveUpLead();
+      this.watchShown(false);
+      return;
+    }
+    this.watchShown(true);
+    const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+    if (!locks || this.leading) {
+      this.startTimer();
+      return;
+    }
+    if (this.seekingLead) return;
+    this.seekingLead = true;
+    locks.request(POLL_LOCK, () => new Promise<void>((release) => {
+      this.seekingLead = false;
+      // Stopped while waiting its turn.
+      if (this.pollMinutes <= 0) {
+        release();
+        return;
+      }
+      this.leading = true;
+      this.releaseLead = () => {
+        this.leading = false;
+        this.releaseLead = null;
+        release();
+      };
+      this.startTimer();
+    })).catch((err) => {
+      this.seekingLead = false;
+      Logger.error('Failed to take the poll lock', err);
+      // Polled from here, as without `navigator.locks`, rather than from no
+      // tab at all.
+      if (this.pollMinutes > 0 && !this.leading) this.startTimer();
+    });
   }
 
   /**
    * Stops background polling.
    */
   stop() {
+    this.pollMinutes = 0;
+    this.stopTimer();
+    this.giveUpLead();
+    this.watchShown(false);
+  }
+
+  private startTimer() {
+    this.stopTimer();
+    this.interval = setInterval(() => void this.backgroundSync({ scheduled: true }), this.pollMinutes * 60 * 1000);
+  }
+
+  private stopTimer() {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
     }
   }
+
+  private giveUpLead() {
+    this.releaseLead?.();
+  }
+
+  /**
+   * Whether what this tab finds is announced with a sound or a notification:
+   * it is the tab that polls, or no tab polls and the reader's own check is
+   * the only one there is. Another tab that polls has announced the same
+   * arrival, or will.
+   */
+  private get announces(): boolean {
+    return this.interval !== null || this.pollMinutes <= 0;
+  }
+
+  private watching = false;
+
+  private watchShown(on: boolean) {
+    if (on === this.watching || typeof document === 'undefined') return;
+    this.watching = on;
+    if (on) {
+      document.addEventListener('visibilitychange', this.handleShown);
+      window.addEventListener('focus', this.handleShown);
+    } else {
+      document.removeEventListener('visibilitychange', this.handleShown);
+      window.removeEventListener('focus', this.handleShown);
+    }
+  }
+
+  /**
+   * A tab come back into view, or into focus, checks for new mail at once
+   * when what it shows is more than a minute old: the tab that polls may be
+   * another, and a poll may be minutes away. Only over a view that has landed;
+   * a read on its way will bring the news itself.
+   *
+   * Announced only from the tab that polls: the arrival was, or will be,
+   * chimed there.
+   *
+   * One switch to the tab fires both `visibilitychange` and `focus`. The
+   * second is not sent while the first is out: it would take the first one's
+   * place after its status request had already gone to the server.
+   */
+  private handleShown = () => {
+    if (this.shownCheck || document.hidden || !this.listed || !this.heard) return;
+    if (Date.now() - this.heard.at < STALE_ON_SHOW_MS) return;
+    this.shownCheck = this.backgroundSync({ announce: this.announces })
+      .finally(() => { this.shownCheck = null; });
+  };
 
   /**
    * The folder on screen has been renamed.
@@ -239,6 +392,7 @@ export class MessageSyncService extends EventTarget {
 
       this.listed = true;
       data.ListedMailbox = mailbox;
+      this.hear(mailbox, page, query, data);
       this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: false, quiet } }));
     } catch (err) {
       if (this.currentFetchId !== fetchId) return;
@@ -249,6 +403,52 @@ export class MessageSyncService extends EventTarget {
 
       this.dispatchEvent(new CustomEvent('sync-error', { detail: { error: err, background: false, quiet } }));
     }
+  }
+
+  private viewKey(mailbox: string, page: number, query: string): string {
+    return [mailbox, page, query].join('\0');
+  }
+
+  /** A listing of the view landed, read at the counts it carries. */
+  private hear(mailbox: string, page: number, query: string, data: MailboxData) {
+    const now = Date.now();
+    this.heard = {
+      view: this.viewKey(mailbox, page, query),
+      inbox: countsOf(data.Inbox),
+      mailbox: countsOf(data.Mailbox),
+      read: now,
+      at: now,
+    };
+  }
+
+  /**
+   * Whether a listing that landed at `read` is to be read again, its counts
+   * unchanged, by a check that started at `started`. A poll on the timer
+   * reads it at the poll nearest {@link RELIST_AFTER_MS} after it, not the
+   * first one past it; any other check (the check-for-new-mail button, a tab
+   * come back into view) once it is that old.
+   *
+   * Polls start a whole interval apart, but a listing lands some way into
+   * its poll, after the status checks and its own round trip, and a timer
+   * can fire late, a hidden tab's in particular. Without slack, the poll ten
+   * minutes on finds the listing a moment short of ten minutes old, and at
+   * the default five-minute interval a view is read again every fifteen
+   * minutes, not every ten. Half an interval absorbs both. A check off the
+   * timer runs at any moment, and with the slack of a long interval it would
+   * read a listing seconds old again.
+   */
+  private relistDue(read: number, started: number, scheduled: boolean): boolean {
+    const slack = scheduled ? Math.max(this.pollMinutes, 0) * 60 * 1000 / 2 : 0;
+    return started - read >= RELIST_AFTER_MS - slack;
+  }
+
+  /** A folder's counts as the server reads them now; null when it does not say. */
+  private async askCounts(mailbox: string): Promise<Counts | null> {
+    const response = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/status`);
+    if (!response.ok) return null;
+    const body = await response.json().catch(() => null);
+    if (typeof body?.total !== 'number' || typeof body?.unseen !== 'number') return null;
+    return { total: body.total, unseen: body.unseen };
   }
 
   /**
@@ -280,7 +480,7 @@ export class MessageSyncService extends EventTarget {
     if (!held) return this.fetch(mailbox, page, query, true);
 
     this.dispatchEvent(new CustomEvent('sync-start', { detail: { background: true } }));
-    if (await this.backgroundSync()) return;
+    if (await this.backgroundSync({ announce: this.announces })) return;
     // Logged where it failed. The rows on screen stand, as they do after any
     // background failure; this is only the end the chip is waiting for.
     this.dispatchEvent(new CustomEvent('sync-error', { detail: { error: null, background: true } }));
@@ -292,8 +492,14 @@ export class MessageSyncService extends EventTarget {
    * Answers whether the sync is ACCOUNTED FOR: it dispatched an event, or
    * another fetch superseded it and will announce its own end. False is the
    * failure nobody hears about, which only `check` has a listener waiting on.
+   * One that found the counts the view was read at, and read nothing more,
+   * ends on `sync-unchanged`.
+   *
+   * `announce: false` asks the page not to chime or notify for what it finds
+   * (see {@link announces}). `scheduled` marks the poll on the timer (see
+   * {@link relistDue}).
    */
-  private async backgroundSync(): Promise<boolean> {
+  private async backgroundSync({ announce = true, scheduled = false }: { announce?: boolean; scheduled?: boolean } = {}): Promise<boolean> {
     // The poll takes a ticket from the same counter the foreground fetch uses.
     //
     // It did not, and nothing else made the two agree, so a background response
@@ -304,16 +510,43 @@ export class MessageSyncService extends EventTarget {
     const mailbox = this.currentMailbox;
     const page = this.currentPage;
     const query = this.currentQuery;
+    const started = Date.now();
     try {
+      let inbox: Counts | null = null;
       if (mailbox !== FOLDER_INBOX) {
-        await fetchWithTimeout(`/mailboxes/${FOLDER_INBOX}/status`).catch(() => {});
+        inbox = await this.askCounts(FOLDER_INBOX).catch(() => null);
       }
       if (this.currentFetchId !== fetchId) return true;
-      await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/status`);
+      const counts = await this.askCounts(mailbox);
       if (this.currentFetchId !== fetchId) return true;
+
+      // The listing is read again only when the counts moved since it was
+      // read, or it is due for its age (relistDue). It was read on every
+      // poll, a search run again in full each time, and the answers to the
+      // checks were never looked at. A search across every folder has no
+      // counts of its own to go by, and is read as before. So is a view whose
+      // read is still on its way: this poll has taken its place, and is the
+      // answer the page waits for.
+      const heard = this.heard;
+      const unchanged = heard !== null && this.listed
+        && heard.view === this.viewKey(mailbox, page, query)
+        && sameCounts(counts, heard.mailbox)
+        && (mailbox === FOLDER_INBOX || sameCounts(inbox, heard.inbox));
+      if (heard && unchanged && !this.relistDue(heard.read, started, scheduled)) {
+        heard.at = Date.now();
+        // Announced whoever asked: a check this poll took the place of left
+        // its chip waiting for this one's end.
+        this.dispatchEvent(new CustomEvent('sync-unchanged', { detail: { background: true } }));
+        return true;
+      }
 
       let url = `/mailboxes/${encodeMailboxPath(mailbox)}?page=${page}`;
       if (query) url += `&query=${encodeURIComponent(query)}`;
+      // Read again for its age alone, and past the server's caches. They
+      // kept the page when this view was last read, and live about as long
+      // as RELIST_AFTER_MS: often they would still answer with that page,
+      // and what changed since would wait for the next round.
+      if (unchanged) url += '&refresh=true';
 
       const response = await fetchWithTimeout(url);
       if (this.currentFetchId !== fetchId) return true;
@@ -335,7 +568,8 @@ export class MessageSyncService extends EventTarget {
       const data: MailboxData = await response.json();
       if (this.currentFetchId !== fetchId) return true;
       data.ListedMailbox = mailbox;
-      this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: true } }));
+      this.hear(mailbox, page, query, data);
+      this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: true, announce } }));
       return true;
     } catch (err) {
       if (this.currentFetchId !== fetchId) return true;
@@ -343,6 +577,16 @@ export class MessageSyncService extends EventTarget {
       return false;
     }
   }
+}
+
+function countsOf(status: MailboxData['Mailbox']): Counts | null {
+  if (typeof status?.NumMessages !== 'number' || typeof status?.NumUnseen !== 'number') return null;
+  return { total: status.NumMessages, unseen: status.NumUnseen };
+}
+
+/** Whether a check's answer is the counts held; neither unknown. */
+function sameCounts(answer: Counts | null, held: Counts | null): boolean {
+  return !!answer && !!held && answer.total === held.total && answer.unseen === held.unseen;
 }
 
 export const messageSync = new MessageSyncService();
