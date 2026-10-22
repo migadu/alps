@@ -1255,15 +1255,11 @@ func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessag
 		return nil, nil, 0, err
 	}
 
-	// Try to get UID from APPENDUID response
+	// Try to get UID from APPENDUID response. No NOOP is needed after it: an
+	// append to the selected mailbox is announced to it with EXISTS.
 	var uid provider.MessageID
 	if appendData != nil && appendData.UID != 0 {
 		uid = IMAPUID(appendData.UID)
-	}
-
-	// Force synchronization of mailbox state if the destination mailbox is currently selected
-	if currentMbox := p.client.Mailbox(); currentMbox != nil && currentMbox.Name == mbox.Name {
-		p.client.Noop().Wait()
 	}
 
 	return mbox, uid, size, nil

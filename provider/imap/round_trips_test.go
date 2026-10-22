@@ -6,6 +6,7 @@
 package imap
 
 import (
+	"io"
 	"regexp"
 	"testing"
 
@@ -43,5 +44,40 @@ func TestAMoveTheServerAccountedForIsNotSearchedFor(t *testing.T) {
 	}
 	if n := len(searchCommands.FindAllString(sent, -1)); n != 0 {
 		t.Errorf("the move sent %d UID SEARCH, want none:\n%s", n, sent)
+	}
+}
+
+// rawMessage is an outgoing message as AppendMessage takes one.
+type rawMessage string
+
+func (m rawMessage) WriteTo(w io.Writer) (int64, error) {
+	n, err := io.WriteString(w, string(m))
+	return int64(n), err
+}
+
+// The server's APPENDUID names the message an append stored, and an append
+// to the selected folder is announced with EXISTS; nothing needs asking after.
+func TestAnAppendToTheSelectedFolderSendsNoNOOP(t *testing.T) {
+	s := &memServer{caps: imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapUIDPlus: {}}}
+	p := memIMAP(t, s)
+	if err := p.CreateMailbox("Drafts"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.ensureMailboxSelected("Drafts"); err != nil {
+		t.Fatal(err)
+	}
+
+	before := len(s.traffic.String())
+	_, uid, _, err := p.AppendMessage("", rawMessage(conversation("Draft", "draft@example.test", "")), provider.MailboxTypeDrafts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent := s.traffic.String()[before:]
+
+	if uid != IMAPUID(1) {
+		t.Errorf("the append answered UID %v, want 1", uid)
+	}
+	if n := len(noopCommands.FindAllString(sent, -1)); n != 0 {
+		t.Errorf("the append sent %d NOOP, want none:\n%s", n, sent)
 	}
 }
