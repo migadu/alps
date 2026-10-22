@@ -1,21 +1,25 @@
 export default {
   contacts: {
     deleteFailed: {
-      one: 'No se pudo eliminar {failed} de {count} contacto.',
-      other: 'No se pudieron eliminar {failed} de {count} contactos.'
+      one: 'No se pudo eliminar {count} de {total} contactos.',
+      other: 'No se pudieron eliminar {count} de {total} contactos.'
     },
     categoryRenameFailed: {
-      one: 'No se pudo actualizar {failed} de {count} contacto, la categoría solo se renombró parcialmente.',
-      other: 'No se pudieron actualizar {failed} de {count} contactos, la categoría solo se renombró parcialmente.'
+      one: 'No se pudo actualizar {count} de {total} contactos, la categoría solo se renombró parcialmente.',
+      other: 'No se pudieron actualizar {count} de {total} contactos, la categoría solo se renombró parcialmente.'
     },
     categoryDeleteFailed: {
-      one: 'No se pudo actualizar {failed} de {count} contacto, la categoría solo se eliminó parcialmente.',
-      other: 'No se pudieron actualizar {failed} de {count} contactos, la categoría solo se eliminó parcialmente.'
+      one: 'No se pudo actualizar {count} de {total} contactos, la categoría solo se eliminó parcialmente.',
+      other: 'No se pudieron actualizar {count} de {total} contactos, la categoría solo se eliminó parcialmente.'
     },
     categoryUpdateFailed: {
-      one: 'No se pudo actualizar {failed} de {count} contacto.',
-      other: 'No se pudieron actualizar {failed} de {count} contactos.'
+      one: 'No se pudo actualizar {count} de {total} contactos.',
+      other: 'No se pudieron actualizar {count} de {total} contactos.'
     },
+    deleteOneFailed: 'No se pudo eliminar el contacto.',
+    categoryRenameOneFailed: 'No se pudo actualizar un contacto, la categoría solo se renombró parcialmente.',
+    categoryDeleteOneFailed: 'No se pudo actualizar un contacto, la categoría solo se eliminó parcialmente.',
+    categoryUpdateOneFailed: 'No se pudo actualizar el contacto.',
     saveFailed: 'No se pudo guardar el contacto.',
     saveConflict: 'El contacto se modificó en otro dispositivo, así que tu cambio no se guardó. Cancela la edición para ver la última versión.',
     starFailed: 'No se pudo actualizar el contacto.',
