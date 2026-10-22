@@ -1,6 +1,7 @@
 import { fetchWithTimeout } from '../utils/fetch-utils';
-import { FOLDER_INBOX, encodeMailboxPath, isDescendantMailbox } from '../utils/folders';
+import { ALL_MAILBOXES, FOLDER_INBOX, encodeMailboxPath, isDescendantMailbox } from '../utils/folders';
 import { Logger } from '../utils/logger';
+import { mailboxOf, messageKey } from '../utils/message-key';
 
 export interface MailboxData {
   Username?: string;
@@ -19,6 +20,9 @@ export interface MailboxData {
   ListedMailbox?: string;
 }
 
+/** How many listings {@link MessageSyncService} keeps; the one read longest ago goes first. */
+const MAX_KEPT_LISTINGS = 30;
+
 export class MessageSyncService extends EventTarget {
   private interval: ReturnType<typeof setInterval> | null = null;
   private currentMailbox: string = FOLDER_INBOX;
@@ -33,6 +37,46 @@ export class MessageSyncService extends EventTarget {
    */
   private listed: boolean = false;
 
+  /**
+   * The listings answered in this session, by view, in memory only. Going back
+   * to a folder or a page waited for the server, even where the server answered
+   * from its own cache. A view held here is shown at once and read again
+   * quietly (see {@link fetch}).
+   *
+   * Kept without the folder list every answer carries: a kept listing is shown
+   * with the latest one, so the sidebar's counts never go back in time.
+   */
+  private listings = new Map<string, MailboxData>();
+  private latestMailboxes: any[] | null = null;
+  private listingSettingsKey = '';
+
+  /**
+   * The foreground listing request out at the server, if any: one asked for
+   * meanwhile waits for it, and a newer one takes the place of one waiting
+   * (see {@link fetch}). The poll's listing and the check-for-new-mail
+   * button's do not wait for it yet.
+   */
+  private listingOut: Promise<void> | null = null;
+
+  /**
+   * What changed in the rows on screen while a listing was out, in order: a
+   * flag set or cleared, rows taken out for a write, and changes that only
+   * make an answer not worth keeping (an autosave, other listing settings).
+   *
+   * The server reads a session's requests one at a time, so a write sent
+   * while a listing is out is read after it, and the listing's answer shows
+   * the rows as they were before the write. Shown from memory, a view's rows
+   * can be used at once, while its quiet re-read is out: a star set then went
+   * out again when the answer landed, the answer was kept so, and a row filed
+   * away came back until the write's own re-read. Each change is played again
+   * over an answer that was sent before it, and such an answer is shown but
+   * not kept; the views kept were patched as the change was made.
+   */
+  private changes: { seq: number; replay?: (data: MailboxData) => void }[] = [];
+  private changeSeq = 0;
+  /** How many listings are out, foreground or not; `changes` is kept while any is. */
+  private listingsOut = 0;
+
   constructor() {
     super();
     // Signing out does not reload the page, and the next user's mail page
@@ -45,7 +89,126 @@ export class MessageSyncService extends EventTarget {
       this.currentFetchId++;
       this.currentLabelsId++;
       this.listed = false;
+      this.forgetListings();
+      this.latestMailboxes = null;
     });
+    // A sign-in that does not follow a sign-out on this page, as a switch to
+    // a linked account is, starts with nothing of the account before it.
+    window.addEventListener('user-logged-in', () => {
+      this.forgetListings();
+      this.latestMailboxes = null;
+    });
+
+    // A message read, starred or marked unread on screen is so in every view
+    // kept, so that going back to one does not show it as it was.
+    window.addEventListener('external-message-flags-changed', (e: Event) => {
+      const { keys, flag, action } = (e as CustomEvent).detail ?? {};
+      if (!Array.isArray(keys) || typeof flag !== 'string') return;
+      const named = new Set<string>(keys);
+      for (const data of this.listings.values()) patchFlags(data, named, flag, action);
+      this.noteChange((data) => patchFlags(data, named, flag, action));
+    });
+    // An autosave replaces a draft under a new UID.
+    window.addEventListener('draft-autosaved', (e: Event) => {
+      const { mailbox, oldMailbox } = (e as CustomEvent).detail ?? {};
+      this.forgetListings((listed) => listed === mailbox || listed === oldMailbox || listed === ALL_MAILBOXES);
+      this.noteChange();
+    });
+  }
+
+  /**
+   * Rows the page has taken off the list for a move or a delete, before the
+   * write runs. An answer sent before it is shown without them, as the list is.
+   * Answers a put-back, for rows the write refused, which then stay.
+   */
+  rowsTakenOut(keys: string[]): () => void {
+    const gone = new Set(keys);
+    this.noteChange((data) => removeRows(data, gone));
+    return () => gone.clear();
+  }
+
+  /** Records a change for the listings out (see {@link changes}). */
+  private noteChange(replay?: (data: MailboxData) => void) {
+    if (this.listingsOut === 0) return;
+    this.changes.push({ seq: ++this.changeSeq, replay });
+  }
+
+  /** A listing is sent: answers the place in {@link changes} it was read at. */
+  private listingSent(): number {
+    this.listingsOut++;
+    return this.changeSeq;
+  }
+
+  private listingDone() {
+    this.listingsOut--;
+    if (this.listingsOut === 0) this.changes = [];
+  }
+
+  /**
+   * Plays the changes made since `sentAt` over an answer, and answers whether
+   * there were any: an answer read before a change is not kept.
+   */
+  private replayChanges(data: MailboxData, sentAt: number): boolean {
+    let changed = false;
+    for (const change of this.changes) {
+      if (change.seq <= sentAt) continue;
+      changed = true;
+      change.replay?.(data);
+    }
+    return changed;
+  }
+
+  /**
+   * The settings a listing is read under (order, page size, threading). The
+   * listings kept were read under the previous ones, and are dropped when they
+   * change.
+   */
+  setListingSettings(key: string) {
+    if (key === this.listingSettingsKey) return;
+    this.listingSettingsKey = key;
+    this.forgetListings();
+    // A listing out now was read under the old ones.
+    this.noteChange();
+  }
+
+  private listingKey(mailbox: string, page: number, query: string): string {
+    return [mailbox, page, query].join('\0');
+  }
+
+  /** The kept listing of a view, as a copy of its own, with the latest folder list. */
+  private keptListing(mailbox: string, page: number, query: string): MailboxData | undefined {
+    const key = this.listingKey(mailbox, page, query);
+    const kept = this.listings.get(key);
+    if (!kept) return undefined;
+    // Read last, so kept longest.
+    this.listings.delete(key);
+    this.listings.set(key, kept);
+    const data: MailboxData = JSON.parse(JSON.stringify(kept));
+    if (this.latestMailboxes) data.Mailboxes = this.latestMailboxes;
+    return data;
+  }
+
+  private keepListing(mailbox: string, page: number, query: string, data: MailboxData) {
+    if (data.Mailboxes) this.latestMailboxes = data.Mailboxes;
+    const kept: MailboxData = JSON.parse(JSON.stringify(data));
+    delete kept.Mailboxes;
+    const key = this.listingKey(mailbox, page, query);
+    this.listings.delete(key);
+    this.listings.set(key, kept);
+    while (this.listings.size > MAX_KEPT_LISTINGS) {
+      this.listings.delete(this.listings.keys().next().value!);
+    }
+  }
+
+  /** Drops the kept listings, or those of the mailboxes `which` names. */
+  private forgetListings(which?: (mailbox: string) => boolean) {
+    if (!which) {
+      this.listings.clear();
+      return;
+    }
+    for (const [key, data] of [...this.listings]) {
+      if (which(data.ListedMailbox ?? '')) this.listings.delete(key);
+    }
   }
 
   /**
@@ -88,6 +251,8 @@ export class MessageSyncService extends EventTarget {
    * a moment before the UI navigates to the new name anyway.
    */
   mailboxRenamed(oldName: string, newName: string) {
+    // The views kept are named by the old names. Rare enough to start over.
+    this.forgetListings();
     if (this.currentMailbox === oldName) {
       this.currentMailbox = newName;
     } else if (this.currentMailbox.startsWith(oldName)) {
@@ -106,6 +271,7 @@ export class MessageSyncService extends EventTarget {
    * it runs, rather than letting it ask for a mailbox that is gone.
    */
   mailboxDeleted(name: string) {
+    this.forgetListings();
     if (this.currentMailbox === name || isDescendantMailbox(this.currentMailbox, name)) {
       this.currentMailbox = FOLDER_INBOX;
       this.currentPage = 0;
@@ -126,8 +292,13 @@ export class MessageSyncService extends EventTarget {
    * about to change because of something the user just did, and the dim that
    * announced them was the same half-second flash a folder switch makes, over
    * rows they were reading.
+   *
+   * The listings kept of other views are dropped: the write may have moved
+   * mail in or out of any of them, and one shown from memory would show a
+   * message the user has just moved or deleted.
    */
   sync() {
+    this.forgetListings();
     this.fetch(this.currentMailbox, this.currentPage, this.currentQuery, true, true);
   }
 
@@ -180,6 +351,7 @@ export class MessageSyncService extends EventTarget {
       if (this.currentLabelsId !== labelsId) return;
       if (!data.Mailboxes) return;
 
+      this.latestMailboxes = data.Mailboxes;
       this.dispatchEvent(new CustomEvent('labels-success', { detail: { mailboxes: data.Mailboxes } }));
     } catch (err) {
       Logger.error('Failed to refresh folder list', err);
@@ -201,7 +373,18 @@ export class MessageSyncService extends EventTarget {
     this.listed = false;
     const fetchId = ++this.currentFetchId;
 
+    // A view read before in this session is shown at once from memory, and
+    // read again quietly: its rows stay readable while the answer is on its
+    // way, and the answer replaces them where it differs. Not for a refresh,
+    // which is asked for when what is held may be what is wrong.
+    const kept = checkStatus ? undefined : this.keptListing(mailbox, page, query);
+    if (kept) quiet = true;
+
     this.dispatchEvent(new CustomEvent('sync-start', { detail: { background: false, quiet } }));
+    if (kept) {
+      kept.ListedMailbox = mailbox;
+      this.dispatchEvent(new CustomEvent('sync-success', { detail: { data: kept, background: false, quiet, kept: true } }));
+    }
     const startTime = Date.now();
 
     // A dim shorter than the eye can read it is a flicker, so a foreground read
@@ -213,12 +396,35 @@ export class MessageSyncService extends EventTarget {
       if (elapsed < 200) await new Promise(r => setTimeout(r, 200 - elapsed));
     };
 
+    // Where in `changes` the listing was sent, once it is.
+    let sentAt: number | null = null;
     try {
+      // The server reads a session's listings one after another, on its one
+      // connection to the mail server, so a listing sent while another was
+      // out only waited there; clicking through three folders, the third
+      // waited for the first two. A listing asked for while the foreground one
+      // is out waits here instead, and a newer one takes its place before it
+      // is sent, so only the first and the latest are sent. The one out is not
+      // aborted: the server would read it all the same.
+      while (this.listingOut) {
+        await this.listingOut;
+        if (this.currentFetchId !== fetchId) return;
+      }
+
       let url = `/mailboxes/${encodeMailboxPath(mailbox)}?page=${page}`;
       if (query) url += `&query=${encodeURIComponent(query)}`;
       if (checkStatus) url += `&refresh=true`;
 
-      const response = await fetchWithTimeout(url);
+      const request = fetchWithTimeout(url);
+      const out = request.then(() => {}, () => {});
+      this.listingOut = out;
+      sentAt = this.listingSent();
+      let response: Response;
+      try {
+        response = await request;
+      } finally {
+        if (this.listingOut === out) this.listingOut = null;
+      }
       if (this.currentFetchId !== fetchId) return; // Prevent race conditions
 
       if (response.status === 401) {
@@ -227,6 +433,7 @@ export class MessageSyncService extends EventTarget {
       }
 
       if (response.status === 404) {
+        this.forgetListings((listed) => listed === mailbox);
         this.dispatchEvent(new CustomEvent('mailbox-not-found'));
         return;
       }
@@ -239,6 +446,8 @@ export class MessageSyncService extends EventTarget {
 
       this.listed = true;
       data.ListedMailbox = mailbox;
+      const changed = this.replayChanges(data, sentAt);
+      if (response.ok && !changed) this.keepListing(mailbox, page, query, data);
       this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: false, quiet } }));
     } catch (err) {
       if (this.currentFetchId !== fetchId) return;
@@ -248,6 +457,8 @@ export class MessageSyncService extends EventTarget {
       if (this.currentFetchId !== fetchId) return; // Re-check after artificial delay
 
       this.dispatchEvent(new CustomEvent('sync-error', { detail: { error: err, background: false, quiet } }));
+    } finally {
+      if (sentAt !== null) this.listingDone();
     }
   }
 
@@ -304,6 +515,7 @@ export class MessageSyncService extends EventTarget {
     const mailbox = this.currentMailbox;
     const page = this.currentPage;
     const query = this.currentQuery;
+    let sentAt: number | null = null;
     try {
       if (mailbox !== FOLDER_INBOX) {
         await fetchWithTimeout(`/mailboxes/${FOLDER_INBOX}/status`).catch(() => {});
@@ -315,6 +527,7 @@ export class MessageSyncService extends EventTarget {
       let url = `/mailboxes/${encodeMailboxPath(mailbox)}?page=${page}`;
       if (query) url += `&query=${encodeURIComponent(query)}`;
 
+      sentAt = this.listingSent();
       const response = await fetchWithTimeout(url);
       if (this.currentFetchId !== fetchId) return true;
 
@@ -335,14 +548,55 @@ export class MessageSyncService extends EventTarget {
       const data: MailboxData = await response.json();
       if (this.currentFetchId !== fetchId) return true;
       data.ListedMailbox = mailbox;
+      const changed = this.replayChanges(data, sentAt);
+      if (response.ok && !changed) this.keepListing(mailbox, page, query, data);
       this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: true } }));
       return true;
     } catch (err) {
       if (this.currentFetchId !== fetchId) return true;
       Logger.error('Background sync failed', err);
       return false;
+    } finally {
+      if (sentAt !== null) this.listingDone();
     }
   }
+}
+
+/** Sets or clears a flag on the messages of a listing that `keys` names. */
+function patchFlags(data: MailboxData, keys: Set<string>, flag: string, action: 'add' | 'remove') {
+  const listed = data.ListedMailbox ?? '';
+  const patch = (msg: any) => {
+    if (!keys.has(messageKey(mailboxOf(msg, listed), msg?.UID))) return;
+    const flags: string[] = Array.isArray(msg.Flags) ? msg.Flags : [];
+    if (action === 'add' && !flags.includes(flag)) msg.Flags = [...flags, flag];
+    if (action === 'remove') msg.Flags = flags.filter((f) => f !== flag);
+  };
+  for (const msg of data.Messages ?? []) {
+    patch(msg);
+    (msg?.SubMessages ?? []).forEach(patch);
+  }
+}
+
+/**
+ * Takes the messages `gone` names out of a listing, as the page takes their
+ * rows out: a row goes when every message it stands for goes, and counts as
+ * one off the total.
+ */
+function removeRows(data: MailboxData, gone: Set<string>) {
+  if (gone.size === 0 || !data.Messages) return;
+  const listed = data.ListedMailbox ?? '';
+  const keyOf = (msg: any) => messageKey(mailboxOf(msg, listed), msg?.UID);
+  let removed = 0;
+  data.Messages = data.Messages.flatMap((msg: any) => {
+    const subs: any[] = msg?.SubMessages ?? [];
+    const staying = subs.filter((sub) => !gone.has(keyOf(sub)));
+    if (gone.has(keyOf(msg)) && staying.length === 0) {
+      removed++;
+      return [];
+    }
+    return [staying.length === subs.length ? msg : { ...msg, SubMessages: staying }];
+  });
+  if (removed > 0 && typeof data.Total === 'number') data.Total = Math.max(0, data.Total - removed);
 }
 
 export const messageSync = new MessageSyncService();

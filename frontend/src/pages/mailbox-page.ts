@@ -873,6 +873,10 @@ export class MailboxPage extends LitElement {
       this.messagesPerPage = state.messagesPerPage;
     }
 
+    // What a listing is read under: the listings kept in memory are dropped
+    // when it changes.
+    messageSync.setListingSettings([state.sortOrder, state.messageSortCriteria, state.messagesPerPage, state.enableThreading].join(' '));
+
     // Restart background polling with the configured interval
     if (state.checkMailInterval !== undefined) {
       messageSync.start(state.checkMailInterval);
@@ -1727,8 +1731,11 @@ export class MailboxPage extends LitElement {
   private takeRowsOut(keys: string[]): (written: string[]) => boolean {
     const before = this.messages;
     const beforeTotal = this.totalMessages;
+    // A listing out now was read with the rows, and is answered without them.
+    const keepOut = keys.length > 0 ? messageSync.rowsTakenOut(keys) : () => {};
     const putBack = (written: string[]) => {
       if (this.messages !== this.rowsAfterTakeOut) return false;
+      keepOut();
       this.messages = before;
       this.totalMessages = beforeTotal;
       this.takeRowsOut(written);
