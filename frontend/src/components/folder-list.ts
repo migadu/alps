@@ -913,18 +913,35 @@ export class FolderList extends LitElement {
       }
     });
 
+    // How a folder in slot `i` is drawn: the name's own entry only when the
+    // name is one of this slot's, which is how a \Junk called Spam keeps that
+    // word. Looked up by any name, a \Trash called "constructor" found
+    // Object's function in the table and drew a row with no caption and no icon.
+    const slotDisplay = (node: TreeNode, i: number) =>
+      (specialSlots[i].names.includes(node.name) && stdMap[node.name]) || specialSlots[i].display;
+
     const standardNodes: TreeNode[] = [];
     for (let i = 0; i < specialSlots.length; i++) {
       const node = standardBySlot.get(i);
       if (!node) continue;
-      // The name's own entry only when the name is one of this slot's, which
-      // is how a \Junk called Spam keeps that word. Looked up by any name, a
-      // \Trash called "constructor" found Object's function in the table and
-      // drew a row with no caption and no icon.
-      node.primary = (specialSlots[i].names.includes(node.name) && stdMap[node.name]) || specialSlots[i].display;
+      node.primary = slotDisplay(node, i);
       standardNodes.push(node);
     }
     this.primaryFullNames = new Set(standardNodes.map(n => n.fullName));
+
+    // Below the top level, too, one folder per role is drawn as special: for
+    // each role no top-level folder holds, the one the actions use. Two can
+    // carry the same attribute (Dovecot's stock INBOX.Sent and INBOX.Sent
+    // Messages are both \Sent), and drawn alike they could not be told apart,
+    // though the actions file into only one. Every other folder of the role
+    // keeps its own name. Only nested folders are found here: a role a
+    // top-level folder has is a slot held above.
+    const nestedSlots = new Map<string, number>();
+    specialSlots.forEach((slot, i) => {
+      if (standardBySlot.has(i)) return;
+      const name = findMailboxNameByRole(slot.role, this.mailboxes, '');
+      if (name) nestedSlots.set(name, i);
+    });
 
     const customOrder = this.settingsStore?.getState()?.customMailboxOrder || [];
 
@@ -1025,14 +1042,23 @@ export class FolderList extends LitElement {
           isLast = index === -1 || index === siblings.length - 1;
         }
 
+        // A special folder below the top level, such as Gmail's [Gmail]/Sent
+        // Mail or INBOX.Trash on a server that keeps every folder under the
+        // Inbox, stays under its parent but is drawn as the folder it is. Only
+        // top-level folders were asked for a role, so it had the folder icon
+        // and the server's name for it, whatever alps's language, while the
+        // actions filed mail into it by its role.
+        const slot = nestedSlots.get(node.fullName);
+        const display = node.primary ?? (slot !== undefined ? slotDisplay(node, slot) : undefined);
+
         let icon = renderIcon('folder');
         let colorClass = 'icon-default';
         let label = node.name;
 
-        if (node.primary) {
-          icon = renderIcon(node.primary.icon);
-          colorClass = node.primary.colorClass;
-          label = node.primary.label;
+        if (display) {
+          icon = renderIcon(display.icon);
+          colorClass = display.colorClass;
+          label = display.label;
         }
 
         const unseenCount = node.mb?.Unseen || 0;

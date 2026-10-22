@@ -108,3 +108,114 @@ describe('the sidebar decides a top-level folder\'s role as the actions do', () 
     expect(rows[2].classList.contains('has-actions')).toBe(true);
   });
 });
+
+/**
+ * A special folder below the top level. Only top-level folders were asked for
+ * a role, so Gmail's [Gmail]/Sent Mail, and INBOX.Sent on a server that keeps
+ * every folder under the Inbox, were drawn as ordinary folders: the folder
+ * icon and the server's name, whatever alps's language, while Delete filed
+ * mail into [Gmail]/Trash. They stay where they are, under their parent, and
+ * are drawn as what they are, one folder per role, as at the top level.
+ */
+describe('the sidebar draws a special folder below the top level as one', () => {
+  /** Every row, as its caption and the icon it draws. */
+  async function rows(mailboxes: unknown[], expanded: string[]): Promise<[string, string][]> {
+    const el = await mount<El>('alps-folder-list', {
+      i18nStore, settingsStore, composeStore, mailboxes, expandedFolders: new Set(expanded),
+    });
+    return shadowAll(el, '.folder-item').map(row => [
+      row.getAttribute('title') ?? '',
+      (row.querySelector('.folder-icon use')?.getAttribute('href') ?? '').split('#')[1],
+    ]);
+  }
+
+  it('in Gmail\'s [Gmail] group, by special-use attribute, keeping their folder menu', async () => {
+    const gmail = [
+      mb('INBOX'),
+      mb('[Gmail]', ['\\Noselect', '\\HasChildren']),
+      mb('[Gmail]/All Mail', ['\\All']),
+      mb('[Gmail]/Drafts', ['\\Drafts']),
+      mb('[Gmail]/Important', ['\\Important']),
+      mb('[Gmail]/Sent Mail', ['\\Sent']),
+      mb('[Gmail]/Spam', ['\\Junk']),
+      mb('[Gmail]/Starred', ['\\Flagged']),
+      mb('[Gmail]/Trash', ['\\Trash']),
+    ];
+    expect(await rows(gmail, ['[Gmail]'])).toEqual([
+      ['folderList.inbox', 'tray'],
+      ['[Gmail]', 'folder'],
+      ['All Mail', 'folder'],
+      ['folderList.drafts', 'fileText'],
+      ['Important', 'folder'],
+      ['folderList.sent', 'paperPlaneTilt'],
+      ['folderList.spam', 'warningDiamond'],
+      ['Starred', 'folder'],
+      ['folderList.trash', 'trash'],
+    ]);
+    const el = await mount<El>('alps-folder-list', {
+      i18nStore, settingsStore, composeStore, mailboxes: gmail, expandedFolders: new Set(['[Gmail]']),
+    });
+    const sent = shadowAll(el, '.folder-item').find(row => row.getAttribute('title') === 'folderList.sent');
+    expect(sent?.classList.contains('has-actions')).toBe(true);
+  });
+
+  it('under the Inbox, and only by attribute there, as the actions decide', async () => {
+    const dotted = (Name: string, Attrs: string[] = []) => ({ Name, Attrs, Delimiter: '.' });
+    const courier = [
+      dotted('INBOX', ['\\HasChildren']),
+      dotted('INBOX.Archive', ['\\Archive']),
+      dotted('INBOX.Drafts'),
+      dotted('INBOX.Sent', ['\\Sent']),
+      dotted('INBOX.Trash', ['\\Trash']),
+    ];
+    expect(await rows(courier, ['INBOX'])).toEqual([
+      ['folderList.inbox', 'tray'],
+      ['folderList.archive', 'archiveBox'],
+      ['Drafts', 'folder'],
+      ['folderList.sent', 'paperPlaneTilt'],
+      ['folderList.trash', 'trash'],
+    ]);
+  });
+
+  it('once per role: the second folder carrying it keeps its own name', async () => {
+    const dotted = (Name: string, Attrs: string[] = []) => ({ Name, Attrs, Delimiter: '.' });
+    const dovecot = [
+      dotted('INBOX', ['\\HasChildren']),
+      dotted('INBOX.Sent', ['\\Sent']),
+      dotted('INBOX.Sent Messages', ['\\Sent']),
+    ];
+    expect(findMailboxNameByRole('sent', dovecot, '')).toBe('INBOX.Sent');
+    expect(await rows(dovecot, ['INBOX'])).toEqual([
+      ['folderList.inbox', 'tray'],
+      ['folderList.sent', 'paperPlaneTilt'],
+      ['Sent Messages', 'folder'],
+    ]);
+  });
+
+  it('and not where a top-level folder holds the role', async () => {
+    const mailboxes = [mb('INBOX'), mb('Trash', ['\\Trash']), mb('Work'), mb('Work/Trash', ['\\Trash'])];
+    expect(findMailboxNameByRole('trash', mailboxes, '')).toBe('Trash');
+    expect(await rows(mailboxes, ['Work'])).toEqual([
+      ['folderList.inbox', 'tray'],
+      ['folderList.trash', 'trash'],
+      ['Work', 'folder'],
+      ['Trash', 'folder'],
+    ]);
+    // Even listed before it: the top-level folder keeps the slot.
+    const first = [mb('INBOX'), mb('Projects'), mb('Projects/Trash', ['\\Trash']), mb('Trash', ['\\Trash'])];
+    expect(await rows(first, ['Projects'])).toEqual([
+      ['folderList.inbox', 'tray'],
+      ['folderList.trash', 'trash'],
+      ['Projects', 'folder'],
+      ['Trash', 'folder'],
+    ]);
+  });
+
+  it('while at the top level a second folder of a role stays ordinary', async () => {
+    expect(await rows([mb('INBOX'), mb('Junk'), mb('Spam')], [])).toEqual([
+      ['folderList.inbox', 'tray'],
+      ['folderList.junk', 'warningDiamond'],
+      ['Spam', 'folder'],
+    ]);
+  });
+});
