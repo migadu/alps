@@ -51,6 +51,9 @@ type memBooks struct {
 	// beforePut, when set, runs inside each PUT before its precondition is
 	// checked: another device saving between alps's read and its write.
 	beforePut func()
+	// refuseDelete, when set, is the status every DELETE is refused with: a
+	// read-only address book answers 403.
+	refuseDelete int
 }
 
 func (b *memBooks) CurrentUserPrincipal(context.Context) (string, error)   { return "/ada/", nil }
@@ -133,6 +136,12 @@ func (b *memBooks) PutAddressObject(_ context.Context, p string, card vcard.Card
 func (b *memBooks) DeleteAddressObject(_ context.Context, p string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.refuseDelete != 0 {
+		return webdav.NewHTTPError(b.refuseDelete, nil)
+	}
+	if _, ok := b.objects[p]; !ok {
+		return webdav.NewHTTPError(http.StatusNotFound, nil)
+	}
 	delete(b.objects, p)
 	return nil
 }
