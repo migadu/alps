@@ -340,6 +340,8 @@ export class MailboxPage extends LitElement {
    * came from. '' until anything has been listed.
    */
   @state() private listedMailbox = '';
+  /** The search the rows were read under, trailing `filterQuery` the same way. */
+  private listedQuery = '';
   @state() private totalMessages = 0;
   @state() private messagesPerPage = 50;
   @state() private resizerPositionX = SIDEBAR_WIDTH_DEFAULT + Math.max(MESSAGE_LIST_WIDTH_MIN, (window.innerWidth - SIDEBAR_WIDTH_DEFAULT) * 0.4);
@@ -814,8 +816,11 @@ export class MailboxPage extends LitElement {
       }
     }
 
-    // A save that matched no row is a new row only where drafts are listed.
-    if (!found && this.currentMailbox === mailbox) {
+    // A save that matched no row is a new row only where drafts are listed,
+    // and only over rows that were read: put in where Drafts could not be
+    // read, it took the error's place, and the folder looked as if it held
+    // that one draft.
+    if (!found && this.currentMailbox === mailbox && !(this.listLoadFailed && this.messages.length === 0)) {
       const draftName = this.settingsStore?.getState().name || this.username;
       const draftEmailParts = (this.username || '').split('@');
       const draftMailboxStr = draftEmailParts[0] || '';
@@ -1031,6 +1036,7 @@ export class MailboxPage extends LitElement {
       if (data.Page !== undefined) this.currentPage = data.Page;
       this.listedPage = data.Page !== undefined ? data.Page : this.currentPage;
       this.listedMailbox = data.ListedMailbox || this.currentMailbox;
+      this.listedQuery = this.filterQuery;
       if (data.Total !== undefined) this.totalMessages = data.Total;
       if (data.MessagesPerPage !== undefined) this.messagesPerPage = data.MessagesPerPage;
       if (data.Messages) {
@@ -1094,6 +1100,14 @@ export class MailboxPage extends LitElement {
       // no spinner it painted "No messages", a claim about a folder this client
       // had just failed to read, with nothing offered to try again.
       this.listLoadFailed = true;
+      // The rows still up are another view's when the read was of a folder,
+      // a page or a search they were not read from: left up, dimmed, while it
+      // loaded, and then undimmed, they passed for its contents under its
+      // name, and the list, which says a load failed only when it has no
+      // rows, said nothing. They go, and the list says so and offers a retry.
+      if (this.listedMailbox !== this.currentMailbox || this.listedPage !== this.currentPage || this.listedQuery !== this.filterQuery) {
+        this.messages = [];
+      }
     }
   };
 
@@ -2380,6 +2394,15 @@ export class MailboxPage extends LitElement {
               .syncing=${this.isSyncing}
               .loadFailed=${this.listLoadFailed}
               @refresh=${() => {
+        // Try again, over a view that could not be read: that view is read
+        // again, as asked. Turned back to the first page as a check for new
+        // mail is, a retry after a failed page change listed page 0 under the
+        // address of the page that failed, and Next, which asks for that same
+        // address, then changed nothing.
+        if (this.listLoadFailed && this.messages.length === 0) {
+          messageSync.fetch(this.currentMailbox, this.currentPage, this.filterQuery, true);
+          return;
+        }
         this.currentPage = 0;
 
         // A check, not a fetch: over a list that is already current the rows
