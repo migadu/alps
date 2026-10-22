@@ -1435,14 +1435,7 @@ func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (m
 	scope := strconv.FormatUint(uint64(p.selectedUIDValidity), 10)
 
 	p.verdictLock.Lock()
-	if p.verdicts == nil {
-		p.verdicts = make(map[string]*mailboxVerdicts)
-	}
-	cache := p.verdicts[mailbox]
-	if cache == nil || cache.uidValidity != p.selectedUIDValidity || len(cache.byUID) > maxCachedVerdicts {
-		cache = &mailboxVerdicts{uidValidity: p.selectedUIDValidity, byUID: make(map[imap.UID]provider.AuthVerdict)}
-		p.verdicts[mailbox] = cache
-	}
+	cache := p.selectedVerdicts(mailbox)
 	verdicts := make(map[string]provider.AuthVerdict, len(ids))
 	var missing imap.UIDSet
 	for _, id := range ids {
@@ -1479,6 +1472,37 @@ func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (m
 		verdicts[IMAPUID(f.UID).String()] = v
 	}
 	return verdicts, scope, nil
+}
+
+// selectedVerdicts returns the verdict cache of mailbox, the selected mailbox,
+// under its UIDVALIDITY. The caller holds verdictLock.
+func (p *IMAPProvider) selectedVerdicts(mailbox string) *mailboxVerdicts {
+	if p.verdicts == nil {
+		p.verdicts = make(map[string]*mailboxVerdicts)
+	}
+	cache := p.verdicts[mailbox]
+	if cache == nil || cache.uidValidity != p.selectedUIDValidity || len(cache.byUID) > maxCachedVerdicts {
+		cache = &mailboxVerdicts{uidValidity: p.selectedUIDValidity, byUID: make(map[imap.UID]provider.AuthVerdict)}
+		p.verdicts[mailbox] = cache
+	}
+	return cache
+}
+
+// rememberVerdict records the verdict of a message whose
+// Authentication-Results another fetch read (a message opened, the members of
+// a conversation, a page of a search across every mailbox), so that the
+// list's request for it is answered without reading them again. Only while
+// mailbox is the one selected: the UIDVALIDITY known is that mailbox's.
+func (p *IMAPProvider) rememberVerdict(mailbox string, uid imap.UID, v provider.AuthVerdict) {
+	if uid == 0 || p.client == nil {
+		return
+	}
+	if selected := p.client.Mailbox(); selected == nil || selected.Name != mailbox {
+		return
+	}
+	p.verdictLock.Lock()
+	defer p.verdictLock.Unlock()
+	p.selectedVerdicts(mailbox).byUID[uid] = v
 }
 
 // WithAuthservIDs sets the authserv-ids of the receiving mail servers whose
@@ -1614,6 +1638,10 @@ func (p *IMAPProvider) convertIMAPMessage(msg *imapclient.FetchMessageBuffer, ma
 			fmt.Printf("BIMI debug: Auth-Results for %d: %q\n", msg.UID, string(b))
 		}
 		converted.BimiPotential, converted.BimiFailed = authVerdict(b, p.authservIDs)
+		p.rememberVerdict(mailbox, msg.UID, provider.AuthVerdict{
+			BimiPotential: converted.BimiPotential,
+			BimiFailed:    converted.BimiFailed,
+		})
 	}
 
 	refSection := &imap.FetchItemBodySection{
