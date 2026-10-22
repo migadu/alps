@@ -102,6 +102,19 @@ export class AlpsContactView extends LitElement {
       color: var(--text-muted, #9ca3af);
     }
 
+    /* Decoration, drawn as alps-icon-btn draws its icon, without the button. */
+    .selection-icon {
+      display: flex;
+      padding: 6px;
+      margin-right: 8px;
+    }
+
+    .selection-icon .icon {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
     .contact-detail-header {
       font-size: 24px;
       font-weight: 600;
@@ -501,7 +514,7 @@ export class AlpsContactView extends LitElement {
       }}>
         ${this.selectedCount > 0 ? html`
           <div class="empty-state" style="flex-direction: column; gap: 16px;">
-            <alps-icon-btn icon="users" style="pointer-events: none; margin-right: 8px;"></alps-icon-btn>
+            <div class="selection-icon">${renderIcon('users')}</div>
             <span>${this.i18nStore?.t('contacts.selectedContacts', { count: this.selectedCount })}</span>
           </div>
         ` : html`
