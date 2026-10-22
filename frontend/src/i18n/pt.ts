@@ -288,9 +288,9 @@ export const pt = {
       one: 'Isso inclui a mensagem que você selecionou.',
       other: 'Isso inclui as {count} mensagens que você selecionou.'
     },
-    emptyingMailbox: 'Esvaziando a caixa de correio...',
-    mailboxEmptied: 'Caixa de correio esvaziada com sucesso.',
-    emptyMailboxFailed: 'Falha ao esvaziar a caixa de correio. Certifique-se de que é Lixeira ou Lixo Eletrônico.',
+    emptyingMailbox: 'Esvaziando {folder}...',
+    mailboxEmptied: 'Esvaziamento de {folder} concluído.',
+    emptyMailboxFailed: 'Falha ao esvaziar {folder}.',
     mailboxAlreadyEmpty: '{folder} já estava vazia — nada foi excluído.',
     emptyMailboxSlow: 'Ainda esvaziando {folder}. O servidor está trabalhando nisso — verifique novamente em instantes.'
   },
