@@ -157,3 +157,29 @@ func TestScheduler_StopIsIdempotent(t *testing.T) {
 	s.Stop()
 	s.Stop() // would panic without the guard
 }
+
+// A value patched from the one the cache held keeps that one's lifetime.
+func TestCacheReplaceKeepsTheExpiry(t *testing.T) {
+	c := NewCache(200 * time.Millisecond)
+	defer c.Close()
+
+	if c.Replace("list", "patched") {
+		t.Fatal("Replace stored a key the cache did not hold")
+	}
+	if _, ok := c.Get("list"); ok {
+		t.Fatal("Replace stored a key the cache did not hold")
+	}
+
+	c.Set("list", "read")
+	time.Sleep(120 * time.Millisecond)
+	if !c.Replace("list", "patched") {
+		t.Fatal("Replace refused a live entry")
+	}
+	if v, ok := c.Get("list"); !ok || v != "patched" {
+		t.Fatalf("the entry is %v (%v) after Replace, want the patched value", v, ok)
+	}
+	time.Sleep(120 * time.Millisecond)
+	if _, ok := c.Get("list"); ok {
+		t.Error("the replaced entry outlived the one it replaced")
+	}
+}
