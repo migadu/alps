@@ -572,6 +572,7 @@ export const de: TranslationDictionary = {
       begin_failed: 'Fehler beim Starten der Authentifizierung.',
       invalid_options: 'Ungültige Authentifizierungsoptionen erhalten.',
       verification_failed: 'Überprüfung fehlgeschlagen. Bitte versuchen Sie es erneut.',
+      cancelled: 'Der Sicherheitsschlüssel wurde nicht verwendet. Klicken Sie auf "Identität überprüfen", um es erneut zu versuchen.',
       unavailable: 'Der Server konnte Ihren Sicherheitsschlüssel gerade nicht prüfen. Bitte versuchen Sie es gleich noch einmal.',
       register_failed: 'Beim Registrieren Ihres Sicherheitsschlüssels ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.',
       remove_failed: 'Fehler beim Entfernen des Sicherheitsschlüssels.',

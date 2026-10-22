@@ -148,6 +148,7 @@ export const pt = {
       begin_failed: 'Falha ao iniciar autenticação.',
       invalid_options: 'Opções de autenticação inválidas recebidas.',
       verification_failed: 'Falha na verificação. Por favor, tente novamente.',
+      cancelled: 'A chave de segurança não foi usada. É possível tentar novamente com "Verificar Identidade".',
       unavailable: 'O servidor não conseguiu verificar a chave de segurança neste momento. Tente novamente daqui a pouco.',
       register_failed: 'Ocorreu um erro ao registar a sua chave de segurança. Por favor, tente novamente.',
       remove_failed: 'Falha ao remover a chave de segurança.',
