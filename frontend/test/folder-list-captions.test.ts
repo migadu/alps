@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import '../src/components/folder-list';
 import { findMailboxNameByRole, mailboxRoleByName, type MailboxRole } from '../src/utils/folders';
+import { getDestinationLabel, getMailboxLabel } from '../src/utils/ui';
 import { cleanup, click, mount, record, shadowAll } from './helpers/dom';
 
 type El = HTMLElement & Record<string, any>;
@@ -217,5 +218,65 @@ describe('the sidebar draws a special folder below the top level as one', () => 
       ['folderList.junk', 'warningDiamond'],
       ['Spam', 'folder'],
     ]);
+  });
+});
+
+/**
+ * The page names a folder as the sidebar draws it: the header above the list,
+ * the search box and the toasts call a folder what its row is called.
+ *
+ * They decided by the folder's role alone. So of two folders with one role,
+ * the second, which the sidebar draws under its own name, was captioned as
+ * the special folder when opened (INBOX.Sent Messages read "Sent", the
+ * "Trash" beside an Exchange "Deleted Items" read as the Trash in any
+ * language), and [Gmail]/Spam was "Junk" above the list while its row said
+ * "Spam": that check compared the whole path, not the folder's own name.
+ */
+describe('the page names every folder as the sidebar draws it', () => {
+  const dotted = (Name: string, Attrs: string[] = []) => ({ Name, Attrs, Delimiter: '.' });
+  const listings: [string, ReturnType<typeof mb>[]][] = [
+    ['Gmail', [
+      mb('INBOX'),
+      mb('[Gmail]', ['\\Noselect', '\\HasChildren']),
+      mb('[Gmail]/All Mail', ['\\All']),
+      mb('[Gmail]/Drafts', ['\\Drafts']),
+      mb('[Gmail]/Sent Mail', ['\\Sent']),
+      mb('[Gmail]/Spam', ['\\Junk']),
+      mb('[Gmail]/Trash', ['\\Trash']),
+    ]],
+    ["Dovecot's stock two Sent folders", [
+      dotted('INBOX', ['\\HasChildren']),
+      dotted('INBOX.Sent', ['\\Sent']),
+      dotted('INBOX.Sent Messages', ['\\Sent']),
+    ]],
+    ['a second Trash below a top-level one', [mb('INBOX'), mb('Trash', ['\\Trash']), mb('Work'), mb('Work/Trash', ['\\Trash'])]],
+    ['a second Trash listed before the top-level one', [mb('INBOX'), mb('Projects'), mb('Projects/Trash', ['\\Trash']), mb('Trash', ['\\Trash'])]],
+    ['Deleted Items and Trash, by name', [mb('INBOX'), mb('Deleted Items'), mb('Trash')]],
+    ['Junk and Spam, by name', [mb('INBOX'), mb('Junk'), mb('Spam')]],
+    ['Archive and Archives, by name', [mb('INBOX'), mb('Archive'), mb('Archives')]],
+  ];
+
+  it.each(listings)('%s', async (_, mailboxes) => {
+    const el = await mount<El>('alps-folder-list', {
+      i18nStore, settingsStore, composeStore, mailboxes,
+      expandedFolders: new Set(['INBOX', '[Gmail]', 'Work', 'Projects']),
+    });
+    const selected = record<CustomEvent>(el, 'select-mailbox');
+    const named: [string, string][] = [];
+    for (const row of shadowAll(el, '.folder-item:not(.no-select)')) {
+      await click(row);
+      const name = selected.at(-1)!.detail.name;
+      named.push([row.getAttribute('title')!, getMailboxLabel(name, i18nStore as any, mailboxes)]);
+    }
+    expect(named.length).toBe(mailboxes.filter(m => !m.Attrs.includes('\\Noselect')).length);
+    for (const [row, caption] of named) expect(caption).toBe(row);
+  });
+
+  it('and so does a list of destinations, a second folder of a role by its path', () => {
+    const [, dovecot] = listings[1];
+    expect(getDestinationLabel('INBOX.Sent', i18nStore as any, dovecot)).toBe('folderList.sent');
+    expect(getDestinationLabel('INBOX.Sent Messages', i18nStore as any, dovecot)).toBe('INBOX.Sent Messages');
+    const [, gmail] = listings[0];
+    expect(getDestinationLabel('[Gmail]/Spam', i18nStore as any, gmail)).toBe('folderList.spam');
   });
 });
