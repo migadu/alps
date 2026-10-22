@@ -30,6 +30,26 @@ const FILTER_TOGGLES = new Set(['is:starred', 'is:unread']);
  * past it starts over. */
 const MAX_KEPT_VERDICTS = 5000;
 
+/**
+ * Moves whenever the account signed in may have changed, and the list's
+ * verdicts with it: they are keyed by mailbox and UID and no account, and
+ * INBOX and UID 1 are in every account. On `user-logged-in` as well as on
+ * `session-cleared`: a switch to a linked account that asks for its second
+ * factor ends nothing, and the sign-in its "Back to Login" leads to comes
+ * back to the same mail page. That page is off the document meanwhile, so the
+ * list could not hear either event itself.
+ */
+let signIns = 0;
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('session-cleared', () => {
+    signIns++;
+  });
+  window.addEventListener('user-logged-in', () => {
+    signIns++;
+  });
+}
+
 @customElement('alps-message-list')
 export class MessageList extends LitElement {
   @consume({ context: settingsContext })
@@ -125,6 +145,8 @@ export class MessageList extends LitElement {
   private verdictScopes = new Map<string, string>();
   private verdictsAsked = new Set<string>();
   private verdictsConfirmed = new Set<string>();
+  /** The sign-in the verdicts were answered in (see signIns). */
+  private verdictsSignIn = signIns;
   private verdictGeneration = 0;
   private verdictsRunning = false;
   private verdictsRerun = false;
@@ -734,6 +756,20 @@ export class MessageList extends LitElement {
     this.verdictsAsked = new Set([...this.verdictsAsked].filter((key) => this.verdicts.has(key)));
   }
 
+  /**
+   * Another sign-in since the verdicts were answered: drops every one of them,
+   * and stops any request still asking, whose answer is about the messages of
+   * the account signed in when it was asked.
+   */
+  private forgetVerdicts() {
+    this.verdictGeneration++;
+    this.verdictsSignIn = signIns;
+    this.verdicts = new Map();
+    this.verdictScopes = new Map();
+    this.verdictsAsked = new Set();
+    this.verdictsConfirmed = new Set();
+  }
+
   /** The mailbox a listed message is in: its own, since a search across mailboxes lists several. */
   private mailboxOf(msg: any): string {
     return mailboxOf(msg, this.currentMailbox);
@@ -770,7 +806,8 @@ export class MessageList extends LitElement {
     const shown = this.currentMailbox;
     if (!shown || !this.drawsAvatars) return;
     const generation = this.verdictGeneration;
-    const current = () => shown === this.currentMailbox && generation === this.verdictGeneration;
+    const signIn = signIns;
+    const current = () => shown === this.currentMailbox && generation === this.verdictGeneration && signIn === signIns;
 
     // Each message is asked about in its own mailbox. A row from another
     // mailbox than the one shown belongs to the previous folder, still on
@@ -1011,7 +1048,9 @@ export class MessageList extends LitElement {
 
   willUpdate(changedProperties: Map<string, any>) {
     super.willUpdate(changedProperties);
-    if (changedProperties.has('currentMailbox')) {
+    if (this.verdictsSignIn !== signIns) {
+      this.forgetVerdicts();
+    } else if (changedProperties.has('currentMailbox')) {
       this.leaveVerdicts();
     }
     if (changedProperties.has('currentMailbox') ||

@@ -320,3 +320,48 @@ describe('verdicts and the requests a user waits for', () => {
     await waitFor(() => asked.length === 2 && logos(el) === n, 'the rest once the message has opened', 1000);
   });
 });
+
+describe('verdicts and another sign-in', () => {
+  // The mail page is kept while a sign-in page shows: a switch to a linked
+  // account that asks for its second factor leaves it, and "Back to Login"
+  // leads to a sign-in as anyone. The keys name a mailbox and a UID and no
+  // account, and INBOX and UID 1 are in every account.
+  const signIn = async (el: HTMLElement, event: string) => {
+    el.remove();
+    window.dispatchEvent(new CustomEvent(event, { detail: { username: 'carol@example.test' } }));
+    document.body.appendChild(el);
+  };
+
+  it.each(['session-cleared', 'user-logged-in'])("draws none of the previous account's answers after %s, and asks again", async (event) => {
+    let account = 'ada';
+    const server = verdictServer(() => (account === 'ada' ? pass : fail));
+    const el = await mount(TAG, { messages: rows(2), currentMailbox: 'INBOX', totalMessages: 2 });
+    await waitFor(() => logos(el) === 2, "ada's answers", 1000);
+
+    await signIn(el, event);
+    account = 'carol';
+    await update(el, { messages: rows(2) });
+    expect(logos(el)).toBe(0);
+    await waitFor(() => server.asked.flat().length === 4, "carol's rows asked about", 1000);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(logos(el)).toBe(0);
+  });
+
+  it("does not take the previous account's answers for a folder it had left", async () => {
+    let account = 'ada';
+    const server = verdictServer(() => (account === 'ada' ? pass : fail));
+    const inbox = rows(2).map((m) => ({ ...m, Mailbox: 'INBOX' }));
+    const el = await mount(TAG, { messages: inbox, currentMailbox: 'INBOX', totalMessages: 2 });
+    await waitFor(() => logos(el) === 2, "ada's INBOX answers", 1000);
+    await update(el, { currentMailbox: 'Archive', messages: [{ ...row(20), Mailbox: 'Archive' }] });
+    await waitFor(() => server.asked.length === 2 && logos(el) === 1, "ada's Archive answer", 1000);
+
+    await signIn(el, 'user-logged-in');
+    account = 'carol';
+    await update(el, { currentMailbox: 'INBOX', messages: rows(2).map((m) => ({ ...m, Mailbox: 'INBOX' })) });
+    await waitFor(() => server.asked.length === 3, "carol's INBOX asked about", 1000);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(logos(el)).toBe(0);
+    expect(new Set(server.asked.slice(2).flat())).toEqual(new Set(['1', '2']));
+  });
+});
