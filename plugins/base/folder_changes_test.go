@@ -215,6 +215,44 @@ func (s *testServer) rawMessage(mailbox, uid string) string {
 	return string(r.body)
 }
 
+// listing is the answer to a mailbox listing at path.
+func (s *testServer) listing(path string) mailboxPage {
+	s.t.Helper()
+	r := s.do("GET", path, nil)
+	s.expect(r, http.StatusOK)
+	var page mailboxPage
+	r.json(s.t, &page)
+	return page
+}
+
+// remakeElsewhere deletes mailbox in another client and makes it again with
+// one message, which takes UID 1 under a new UIDVALIDITY.
+func remakeElsewhere(t *testing.T, c *imapclient.Client, mailbox, message string, flags ...imap.Flag) {
+	t.Helper()
+	if err := c.Delete(mailbox).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Create(mailbox, nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	deliverElsewhere(t, c, mailbox, message, flags...)
+}
+
+// opensAsItself fails the test unless page lists only the message with
+// subject, at uid, and that message opens as itself.
+func (s *testServer) opensAsItself(page mailboxPage, mailbox, subject, uid string) {
+	s.t.Helper()
+	if got := subjectsOf(page); got != subject {
+		s.t.Fatalf("after %s was made again elsewhere, it shows %q, want %s", mailbox, got, subject)
+	}
+	if got := page.Messages[0].UID; got != uid {
+		s.t.Fatalf("%s took UID %s, not %s, the UID the old message had; the test needs the two to be the same", subject, got, uid)
+	}
+	if got := s.rawMessage(mailbox, uid); !strings.Contains(got, "Subject: "+subject) {
+		s.t.Errorf("%s, listed as UID %s of the new %s, opens as:\n%s", subject, uid, mailbox, got)
+	}
+}
+
 // A folder deleted and made again keeps its name and may hold as many
 // messages, under UIDs that name other messages now: UIDVALIDITY moves. The
 // folder lists its new messages, and a message it lists opens as itself, not
@@ -222,19 +260,31 @@ func (s *testServer) rawMessage(mailbox, uid string) string {
 // session through the check for new mail, or through the folder list, read
 // again with every folder's counts after a refresh, when the folder is then
 // opened without a check.
+//
+// Or the folder itself is opened with a refresh, as the mail page does when it
+// is shown again: that drops the status and the pages the new UIDVALIDITY
+// would be compared with. Before it, a check of the Inbox that finds new mail
+// may have dropped the folder's status, or had the folder list read it again
+// under the new UIDVALIDITY, leaving only the pages to tell.
 func TestHTTP_AFolderMadeAgainElsewhereIsListedAfresh(t *testing.T) {
 	ways := []struct {
 		name string
-		list func(s *testServer) mailboxPage
+		list func(s *testServer, c *imapclient.Client) mailboxPage
 	}{
-		{"checked", func(s *testServer) mailboxPage { return s.checkForNewMail("Work") }},
-		{"opened", func(s *testServer) mailboxPage {
+		{"checked", func(s *testServer, _ *imapclient.Client) mailboxPage { return s.checkForNewMail("Work") }},
+		{"opened", func(s *testServer, _ *imapclient.Client) mailboxPage {
 			s.expect(s.do("GET", "/mailboxes/INBOX?page=0&refresh=1", nil), http.StatusOK)
-			r := s.do("GET", "/mailboxes/Work?page=0", nil)
-			s.expect(r, http.StatusOK)
-			var page mailboxPage
-			r.json(s.t, &page)
-			return page
+			return s.listing("/mailboxes/Work?page=0")
+		}},
+		{"refreshed", func(s *testServer, _ *imapclient.Client) mailboxPage {
+			return s.listing("/mailboxes/Work?page=0&refresh=1")
+		}},
+		{"refreshed after new mail", func(s *testServer, c *imapclient.Client) mailboxPage {
+			deliverElsewhere(s.t, c, "INBOX", letter("Arrival"))
+			if got := subjectsOf(s.checkForNewMail("INBOX")); got != "Arrival" {
+				s.t.Fatalf("the Inbox shows %q, want Arrival", got)
+			}
+			return s.listing("/mailboxes/Work?page=0&refresh=1")
 		}},
 	}
 	for _, server := range countingServers {
@@ -264,27 +314,41 @@ func TestHTTP_AFolderMadeAgainElsewhereIsListedAfresh(t *testing.T) {
 				// Away from Work, as the user is while another client replaces it.
 				s.checkForNewMail("INBOX")
 
-				if err := c.Delete("Work").Wait(); err != nil {
-					t.Fatal(err)
-				}
-				if err := c.Create("Work", nil).Wait(); err != nil {
-					t.Fatal(err)
-				}
-				deliverElsewhere(t, c, "Work", letter("New plans"), imap.FlagSeen)
-
-				page = way.list(s)
-				if got := subjectsOf(page); got != "New plans" {
-					t.Fatalf("after Work was made again elsewhere, it shows %q, want New plans", got)
-				}
-				uid := page.Messages[0].UID
-				if uid != old {
-					t.Fatalf("New plans took UID %s, not %s, the UID Old plans had; the test needs the two to be the same", uid, old)
-				}
-				if got := s.rawMessage("Work", uid); !strings.Contains(got, "Subject: New plans") {
-					t.Errorf("New plans, listed as UID %s of the new Work, opens as:\n%s", uid, got)
-				}
+				remakeElsewhere(t, c, "Work", letter("New plans"), imap.FlagSeen)
+				s.opensAsItself(way.list(s, c), "Work", "New plans", old)
 			})
 		}
+	}
+}
+
+// A folder only searched holds no page in the session, only its status, read
+// with the search, and the messages opened from the results. When the folder
+// is made again elsewhere and then opened with a refresh, that status is all
+// there is to tell.
+func TestHTTP_AFolderSearchedAndMadeAgainElsewhereIsListedAfresh(t *testing.T) {
+	for _, server := range countingServers {
+		t.Run(server.name, func(t *testing.T) {
+			s, _, elsewhere := newIMAPAccountServer(t, server.caps)
+			c := elsewhere()
+			if err := c.Create("Work", nil).Wait(); err != nil {
+				t.Fatal(err)
+			}
+			deliverElsewhere(t, c, "Work", letter("Old plans"))
+			s.login()
+			found := s.listing("/mailboxes/Work?page=0&query=plans")
+			if got := subjectsOf(found); got != "Old plans" {
+				t.Fatalf("a search of Work finds %q", got)
+			}
+			old := found.Messages[0].UID
+			if got := s.rawMessage("Work", old); !strings.Contains(got, "Subject: Old plans") {
+				t.Fatalf("Old plans, UID %s of Work, opens as:\n%s", old, got)
+			}
+			// Away from Work, as the user is while another client replaces it.
+			s.checkForNewMail("INBOX")
+
+			remakeElsewhere(t, c, "Work", letter("New plans"))
+			s.opensAsItself(s.listing("/mailboxes/Work?page=0&refresh=1"), "Work", "New plans", old)
+		})
 	}
 }
 
