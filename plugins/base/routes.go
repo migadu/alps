@@ -209,6 +209,17 @@ func heldUIDValidities(cache *alps.Cache, mailbox string) []uint32 {
 	return held
 }
 
+// renumberedSince reports whether any of the held UIDVALIDITY values moved to
+// now.
+func renumberedSince(held []uint32, now uint32) bool {
+	for _, prev := range held {
+		if uidMoved(prev, now) {
+			return true
+		}
+	}
+	return false
+}
+
 // CachedMessages holds cached message list data
 type CachedMessages struct {
 	Messages []provider.Message
@@ -769,6 +780,10 @@ func handleMailboxStatus(ctx *alps.Context) error {
 		}
 		prevUIDValidity, prevUIDNext = prev.UIDValidity, prev.UIDNext
 	}
+	// The folder's pages tell a new UIDVALIDITY too: the status may be gone,
+	// dropped by a check of another folder that found a change, as the poll
+	// checks the Inbox before the folder on screen.
+	heldValidities := heldUIDValidities(cache, mboxName)
 
 	// Clear cached status so the provider call goes to IMAP.
 	cache.Delete("status:" + mboxName)
@@ -794,7 +809,7 @@ func handleMailboxStatus(ctx *alps.Context) error {
 	// were, and moves UIDNEXT; a folder deleted and made again elsewhere
 	// with as many messages moves UIDVALIDITY.
 	newUIDValidity, newUIDNext := status.UIDValidity, status.UIDNext
-	renumbered := uidMoved(prevUIDValidity, newUIDValidity)
+	renumbered := renumberedSince(heldValidities, newUIDValidity)
 
 	// If counts changed, invalidate message-page caches and mailbox list
 	// so the next full-page fetch will return fresh data.
@@ -925,11 +940,8 @@ func handleGetMailbox(ctx *alps.Context) error {
 	// Opened with a refresh, a folder made again elsewhere has no cached page
 	// left to be turned down below, and its messages read before are dropped
 	// here instead.
-	for _, held := range heldValidities {
-		if uidMoved(held, counts.UIDValidity) {
-			dropRenumberedMailbox(ctx.Session.Cache(), mbox.Name())
-			break
-		}
+	if renumberedSince(heldValidities, counts.UIDValidity) {
+		dropRenumberedMailbox(ctx.Session.Cache(), mbox.Name())
 	}
 
 	// Try to get messages from cache

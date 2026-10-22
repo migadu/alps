@@ -259,7 +259,9 @@ func (s *testServer) opensAsItself(page mailboxPage, mailbox, subject, uid strin
 // as the message that had its UID before. The new UIDVALIDITY reaches the
 // session through the check for new mail, or through the folder list, read
 // again with every folder's counts after a refresh, when the folder is then
-// opened without a check.
+// opened without a check. The poll checks the Inbox before the folder on
+// screen, and new mail found there drops the folder's status first, leaving
+// the folder's own check only its pages to tell.
 //
 // Or the folder itself is opened with a refresh, as the mail page does when it
 // is shown again: that drops the status and the pages the new UIDVALIDITY
@@ -272,6 +274,13 @@ func TestHTTP_AFolderMadeAgainElsewhereIsListedAfresh(t *testing.T) {
 		list func(s *testServer, c *imapclient.Client) mailboxPage
 	}{
 		{"checked", func(s *testServer, _ *imapclient.Client) mailboxPage { return s.checkForNewMail("Work") }},
+		{"polled with new mail", func(s *testServer, c *imapclient.Client) mailboxPage {
+			// The poll with Work on screen checks the Inbox first, which finds
+			// the new mail and drops every folder's status.
+			deliverElsewhere(s.t, c, "INBOX", letter("Arrival"))
+			s.expect(s.do("GET", "/mailboxes/INBOX/status", nil), http.StatusOK)
+			return s.checkForNewMail("Work")
+		}},
 		{"opened", func(s *testServer, _ *imapclient.Client) mailboxPage {
 			s.expect(s.do("GET", "/mailboxes/INBOX?page=0&refresh=1", nil), http.StatusOK)
 			return s.listing("/mailboxes/Work?page=0")
