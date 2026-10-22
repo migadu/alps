@@ -28,6 +28,9 @@ type memServer struct {
 	// subscriptions of its own may.
 	refuseSubscribe bool
 	traffic         lockedBuffer
+	// addr is where the account is served, for a test that logs in to it a
+	// second time, as another mail program would.
+	addr string
 }
 
 type lockedBuffer struct {
@@ -121,8 +124,9 @@ func memIMAP(t *testing.T, s *memServer, messages ...string) *IMAPProvider {
 	}
 	go srv.Serve(ln)
 	t.Cleanup(func() { srv.Close() })
+	s.addr = ln.Addr().String()
 
-	client, err := imapclient.DialInsecure(ln.Addr().String(), nil)
+	client, err := imapclient.DialInsecure(s.addr, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
