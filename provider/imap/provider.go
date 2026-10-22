@@ -1344,6 +1344,12 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 			}
 		}
 
+		// MOVE is atomic (RFC 6851), and a COPYUID answer names the messages
+		// that moved, so they are not searched for in the source again.
+		if len(uidMapping) > 0 {
+			return uidMapping, nil
+		}
+
 		// Robust fallback: Some IMAP servers (or specific mailboxes) might copy but not expunge immediately on MOVE.
 		// We explicitly verify if the source messages are still present and delete them if necessary.
 		searchCmd := p.client.UIDSearch(&imap.SearchCriteria{UID: []imap.UIDSet{uidSet}}, nil)

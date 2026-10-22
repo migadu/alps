@@ -93,6 +93,12 @@ func (s *threadedSession) SetMetadata(ctx context.Context, mailbox string, entri
 	return s.Session.(imapserver.SessionMetadata).SetMetadata(ctx, mailbox, entries)
 }
 
+// Move passes MOVE through too; a server offers it only when these tests list
+// imap.CapMove.
+func (s *threadedSession) Move(ctx context.Context, w *imapserver.MoveWriter, numSet imap.NumSet, dest string) error {
+	return s.Session.(imapserver.SessionMove).Move(ctx, w, numSet, dest)
+}
+
 // memIMAP serves the account with messages in INBOX and returns a provider
 // logged in to it.
 func memIMAP(t *testing.T, s *memServer, messages ...string) *IMAPProvider {
