@@ -167,10 +167,12 @@ export class RawEditor extends LitElement {
 		// went back to disabled, and those characters never reached the server.
 		const sent = this.script;
 		try {
-			await managesieveService.saveScript(sent, 'PUT');
+			const { autoReplyOn } = await managesieveService.saveScript(sent, 'PUT');
 			this.stored = sent;
 			this.dispatchEvent(new CustomEvent('script-saved', { detail: { script: sent } }));
-			const msgKey = sent.trim() === '' ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
+			// As on the visual editor's save: an empty script is switched off,
+			// unless an auto-reply that is on goes on running in it.
+			const msgKey = sent.trim() === '' && !autoReplyOn ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), timeout: 3000 } }));
 		} catch (e: any) {
 			const message = e instanceof TwoVacationsError

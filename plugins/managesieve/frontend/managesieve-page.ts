@@ -110,9 +110,11 @@ export class ManageSievePage extends LitElement {
 			// must still read as unsaved when it lands.
 			const sentSnapshot = JSON.stringify(this.visualState);
 
-			await managesieveService.saveScript(compiled, 'PUT');
+			const { autoReplyOn } = await managesieveService.saveScript(compiled, 'PUT');
 			this.storedScript = compiled;
-			const msgKey = compiled.trim() === '' ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
+			// Without rules the script is switched off, unless an auto-reply that
+			// is on goes on running in it.
+			const msgKey = compiled.trim() === '' && !autoReplyOn ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), timeout: 3000 } }));
 			const editor = this.shadowRoot?.querySelector('alps-visual-editor') as any;
 			if (editor && editor.markClean) editor.markClean(sentSnapshot);

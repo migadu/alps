@@ -10,7 +10,9 @@
  * assertions name them.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ContextProvider } from '@lit/context';
 import { cleanup, mount, record, shadow, shadowAll, text, waitFor } from './helpers/dom';
+import { i18nContext, type I18nStore } from '../src/store/i18n-store';
 import {
   compileAutoReply,
   DEFAULT_AUTO_REPLY,
@@ -18,7 +20,9 @@ import {
   type AutoReply,
 } from '../../plugins/managesieve/frontend/auto-reply';
 import { managesieveService, TwoVacationsError } from '../../plugins/managesieve/frontend/managesieve-service';
+import { SieveCompiler } from '../../plugins/managesieve/frontend/sieve-compiler';
 import '../../plugins/managesieve/frontend/auto-reply-page';
+import '../../plugins/managesieve/frontend/managesieve-page';
 import '../../plugins/managesieve/frontend/raw-editor';
 
 type El = HTMLElement & Record<string, any>;
@@ -26,6 +30,15 @@ type El = HTMLElement & Record<string, any>;
 const ADDRESS = 'alice@example.test';
 const ALL = ['fileinto', 'vacation', 'date', 'relational'];
 const FILTERS = 'require "fileinto";\nif header :contains "Subject" "invoice" { fileinto "Receipts"; }\n';
+/** A rule as the visual editor writes it, so Filters opens it in that editor. */
+const RULES = SieveCompiler.compile({
+  rules: [{
+    id: 'invoices',
+    matchType: 'all',
+    conditions: [{ field: 'Subject', operator: 'contains', value: 'invoice' }],
+    actions: [{ type: 'fileinto', value: 'Receipts' }],
+  }],
+});
 /** Filters that send a vacation reply of their own, as another client writes them. */
 const OWN_VACATION = 'require "vacation";\nvacation :days 3 "Written elsewhere.";\n';
 const i18nStore = {
@@ -51,6 +64,8 @@ beforeEach(() => {
   getStatus = 200;
   puts = [];
   vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    // The Filters page reads the folders a rule can file into.
+    if (String(url) === '/mailboxes/INBOX') return json(200, { Mailboxes: [] });
     if (String(url) !== '/managesieve/script') throw new Error(`unexpected request to ${String(url)}`);
     if ((init?.method ?? 'GET') === 'PUT') {
       const { content } = JSON.parse(String(init!.body));
@@ -114,6 +129,53 @@ describe('the Filters page\'s script', () => {
     expect(toasts[0].detail).toMatchObject({ message: 'managesieve.toast.autoReplyOn', type: 'error' });
     expect(puts).toEqual([]);
   });
+
+  // With every rule gone, the server switches the script off only when the
+  // upload is empty. An auto-reply that is on stays in it and goes on
+  // answering, so "Rules deactivated." would say the opposite of what the
+  // server did; a reply that is off leaves nothing running, as before.
+  const emptied = [
+    { auto: 'on', block: () => block(), said: 'managesieve.toast.saved' },
+    { auto: 'off', block: () => block({ enabled: false }), said: 'managesieve.toast.deactivated' },
+    { auto: 'absent', block: () => '', said: 'managesieve.toast.deactivated' },
+  ];
+
+  /** The Filters page, inside an i18n provider: its visual editor takes the
+   * dictionary from the context alone, as it does under the app's root. */
+  async function openFilters(): Promise<El> {
+    const root = document.createElement('div');
+    new ContextProvider(root, { context: i18nContext, initialValue: i18nStore as unknown as I18nStore });
+    document.body.appendChild(root);
+    const el = document.createElement('alps-managesieve-page') as El;
+    root.appendChild(el);
+    await el.updateComplete;
+    return el;
+  }
+
+  for (const { auto, block: around, said } of emptied) {
+    it(`emptied in the visual editor with the auto-reply ${auto}, says ${said}`, async () => {
+      stored = mergeAutoReply(around(), RULES);
+      const toasts = record<CustomEvent>(window, 'show-toast');
+      const el = await openFilters();
+      await waitFor(() => !!el.shadowRoot!.querySelector('alps-visual-editor'), 'the rules to load');
+      const editor = shadow<El>(el, 'alps-visual-editor');
+      editor.dispatchEvent(new CustomEvent('state-changed', { detail: { state: { rules: [] } } }));
+      editor.dispatchEvent(new CustomEvent('save-requested'));
+      await waitFor(() => toasts.length > 0, 'the save');
+      expect(puts).toEqual([around()]);
+      expect(toasts.map(t => t.detail.message)).toEqual([said]);
+    });
+
+    it(`emptied in the raw editor with the auto-reply ${auto}, says ${said}`, async () => {
+      stored = mergeAutoReply(around(), FILTERS);
+      const toasts = record<CustomEvent>(window, 'show-toast');
+      const el = await mount<El>('alps-raw-editor', { i18nStore, stored: FILTERS, script: '' });
+      shadow<El>(el, 'alps-button[variant="primary"]').click();
+      await waitFor(() => toasts.length > 0, 'the save');
+      expect(puts).toEqual([around()]);
+      expect(toasts.map(t => t.detail.message)).toEqual([said]);
+    });
+  }
 });
 
 /** Mounts the page and waits for it to have read the script. */

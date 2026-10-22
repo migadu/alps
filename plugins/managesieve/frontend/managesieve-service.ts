@@ -45,12 +45,18 @@ class ManageSieveService {
    *
    * Filters that send a vacation of their own are refused while the reply is
    * on; switched off, its block holds no vacation and they go through.
+   *
+   * Resolves to whether the reply is on in the script saved. Filters emptied
+   * around a reply that is on are not a script switched off: the reply stays
+   * in it and goes on answering.
    */
-  async saveScript(script: string, method: 'PUT' | 'POST' = 'PUT') {
+  async saveScript(script: string, method: 'PUT' | 'POST' = 'PUT'): Promise<{ autoReplyOn: boolean }> {
     const { content } = await this.fetchStored();
     const { block } = splitAutoReply(content);
-    if (hasVacation(block) && hasVacation(script)) throw new TwoVacationsError();
-    return this.putScript(mergeAutoReply(block, script), method);
+    const autoReplyOn = hasVacation(block);
+    if (autoReplyOn && hasVacation(script)) throw new TwoVacationsError();
+    await this.putScript(mergeAutoReply(block, script), method);
+    return { autoReplyOn };
   }
 
   /**
