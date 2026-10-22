@@ -1018,14 +1018,14 @@ export class MailboxPage extends LitElement {
       // A later page that has emptied, which the server answers as asked: no
       // rows. Moving or deleting every row on the last page re-read that page,
       // and the list said "No messages" with only Previous offered while the
-      // folder still held mail. The last page that exists is read instead, in
-      // full and quietly as the re-read was, and the address says so without
-      // adding a step to go back to.
+      // folder still held mail. The last page that exists is read instead,
+      // quietly and without a refresh as the re-read was, and the address says
+      // so without adding a step to go back to.
       const perPage = data.MessagesPerPage || this.messagesPerPage;
       const last = Math.max(0, Math.ceil(data.Total / perPage) - 1);
       this.currentPage = last;
       window.history.replaceState(null, '', this.hashFor(this.currentMailbox, last, this.targetUid, this.filterQuery, this.targetMailbox));
-      messageSync.fetch(this.currentMailbox, last, this.filterQuery, true, true);
+      messageSync.fetch(this.currentMailbox, last, this.filterQuery, false, true);
       return;
     } else {
       if (data.Page !== undefined) this.currentPage = data.Page;
@@ -1614,15 +1614,18 @@ export class MailboxPage extends LitElement {
   ): Promise<{ done: { mailbox: string; uids: string[]; result: R }[]; refused?: R }> {
     const done: { mailbox: string; uids: string[]; result: R }[] = [];
     let refused: R | undefined;
-    for (const [mailbox, uids] of uidsByMailbox(keys)) {
-      const result = await write(mailbox, uids);
-      if (result.ok) {
-        done.push({ mailbox, uids, result });
-        continue;
+    // One re-read of the list for the whole gesture, not one per folder.
+    await messageSync.afterWrites(async () => {
+      for (const [mailbox, uids] of uidsByMailbox(keys)) {
+        const result = await write(mailbox, uids);
+        if (result.ok) {
+          done.push({ mailbox, uids, result });
+          continue;
+        }
+        refused ??= result;
+        if (result.reason === 'auth') break;
       }
-      refused ??= result;
-      if (result.reason === 'auth') break;
-    }
+    });
     return { done, refused };
   }
 
@@ -1788,35 +1791,40 @@ export class MailboxPage extends LitElement {
     // paths say so their own way, by closing the reader on the message.
     const leaving = isBulk ? keys.filter(key => parseMessageKey(key).mailbox !== to) : [];
     const putBack = isBulk ? this.takeRowsOut(leaving) : undefined;
-    const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
-      if (from === to) return { ok: true, uidMapping: {} };
-      const result = await messageOperations.moveMessages(from, uids, to);
-      return { ok: result.success, reason: result.reason, uidMapping: result.uidMapping ?? {} };
-    });
+    // One re-read for the gesture, the one rows that could not be put back
+    // ask for included (see messageSync.afterWrites).
+    await messageSync.afterWrites(async () => {
+      const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
+        if (from === to) return { ok: true, uidMapping: {} };
+        const result = await messageOperations.moveMessages(from, uids, to);
+        return { ok: result.success, reason: result.reason, uidMapping: result.uidMapping ?? {} };
+      });
 
-    const filed = this.writtenKeys(done);
-    if (filed.length > 0) {
-      if (isBulk) this.selectedKeys = new Set([...this.selectedKeys].filter(key => !filed.includes(key)));
-      this.selectedMessage = null;
-      this.updateUrl(this.currentMailbox, this.currentPage, null);
+      const filed = this.writtenKeys(done);
+      if (filed.length > 0) {
+        if (isBulk) this.selectedKeys = new Set([...this.selectedKeys].filter(key => !filed.includes(key)));
+        this.selectedMessage = null;
+        this.updateUrl(this.currentMailbox, this.currentPage, null);
 
-      const moved = done
-        .filter(({ mailbox }) => mailbox !== to)
-        .map(({ mailbox, result }) => ({ from: mailbox, mapping: result.uidMapping }));
-      const undoFn = this.undoMoves(moved, to, view, isBulk ? undefined : open);
-      this.showGlobalToast(say(filed.length), undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
-    }
-    if (refused && refused.reason !== 'auth') {
-      this.reportActionFailed('toast.moveFailed', 'Could not move that');
-      if (putBack) {
-        // What the refusing folder held is still in it: its rows come back, and
-        // come back CHECKED, which is the state the user needs to try again.
-        const went = new Set(filed);
-        const stayed = keys.filter(key => !went.has(key));
-        if (putBack(leaving.filter(key => went.has(key)))) this.selectedKeys = new Set(stayed);
-        else messageSync.sync();
+        const moved = done
+          .filter(({ mailbox }) => mailbox !== to)
+          .map(({ mailbox, result }) => ({ from: mailbox, mapping: result.uidMapping }));
+        const undoFn = this.undoMoves(moved, to, view, isBulk ? undefined : open);
+        this.showGlobalToast(say(filed.length), undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
       }
-    }
+      if (refused && refused.reason !== 'auth') {
+        this.reportActionFailed('toast.moveFailed', 'Could not move that');
+        if (putBack) {
+          // What the refusing folder held is still in it: its rows come back,
+          // and come back CHECKED, which is the state the user needs to try
+          // again.
+          const went = new Set(filed);
+          const stayed = keys.filter(key => !went.has(key));
+          if (putBack(leaving.filter(key => went.has(key)))) this.selectedKeys = new Set(stayed);
+          else messageSync.sync();
+        }
+      }
+    });
   }
 
   /**
@@ -1841,20 +1849,24 @@ export class MailboxPage extends LitElement {
         const restored: string[] = [];
         let reopened: string | null = null;
         let refused: MoveResult | undefined;
-        for (const { from, mapping } of back) {
-          const result = await messageOperations.moveMessages(to, Object.values(mapping), from);
-          if (!result.success) {
-            refused ??= result;
-            if (result.reason === 'auth') break;
-            continue;
+        // One re-read for the undo, however many folders it puts messages
+        // back into.
+        await messageSync.afterWrites(async () => {
+          for (const { from, mapping } of back) {
+            const result = await messageOperations.moveMessages(to, Object.values(mapping), from);
+            if (!result.success) {
+              refused ??= result;
+              if (result.reason === 'auth') break;
+              continue;
+            }
+            for (const [was, now] of Object.entries(mapping)) {
+              const again = result.uidMapping?.[now];
+              if (!again) continue;
+              restored.push(messageKey(from, again));
+              if (reopen === messageKey(from, was)) reopened = messageKey(from, again);
+            }
           }
-          for (const [was, now] of Object.entries(mapping)) {
-            const again = result.uidMapping?.[now];
-            if (!again) continue;
-            restored.push(messageKey(from, again));
-            if (reopen === messageKey(from, was)) reopened = messageKey(from, again);
-          }
-        }
+        });
         if (refused && refused.reason !== 'auth') this.reportActionFailed('toast.undoFailed', 'Could not undo that');
         if (restored.length === 0) return;
         if (reopen !== undefined) {
@@ -1927,28 +1939,31 @@ export class MailboxPage extends LitElement {
     const open = this.selectedMessage ? this.keyOf(this.selectedMessage) : undefined;
     // The rows leave with the gesture, as checked ones do: see takeRowsOut.
     const putBack = this.takeRowsOut(keys);
-    const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
-      const result = await messageOperations.moveMessages(from, uids, to);
-      return { ok: result.success, reason: result.reason, uidMapping: result.uidMapping ?? {} };
-    });
+    // One re-read for the gesture, as in fileAway.
+    await messageSync.afterWrites(async () => {
+      const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
+        const result = await messageOperations.moveMessages(from, uids, to);
+        return { ok: result.success, reason: result.reason, uidMapping: result.uidMapping ?? {} };
+      });
 
-    const filed = this.writtenKeys(done);
-    if (filed.length > 0) {
-      const wasOpen = open !== undefined && filed.includes(open);
-      if (wasOpen) {
-        this.selectedMessage = null;
-        this.updateUrl(this.currentMailbox, this.currentPage, null);
+      const filed = this.writtenKeys(done);
+      if (filed.length > 0) {
+        const wasOpen = open !== undefined && filed.includes(open);
+        if (wasOpen) {
+          this.selectedMessage = null;
+          this.updateUrl(this.currentMailbox, this.currentPage, null);
+        }
+        const moved = done.map(({ mailbox, result }) => ({ from: mailbox, mapping: result.uidMapping }));
+        const undoFn = this.undoMoves(moved, to, view, wasOpen ? open : undefined, false);
+        this.showGlobalToast(this.movedMessage(filed.length > 1, filed.length, to), undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
       }
-      const moved = done.map(({ mailbox, result }) => ({ from: mailbox, mapping: result.uidMapping }));
-      const undoFn = this.undoMoves(moved, to, view, wasOpen ? open : undefined, false);
-      this.showGlobalToast(this.movedMessage(filed.length > 1, filed.length, to), undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
-    }
-    if (refused && refused.reason !== 'auth') {
-      this.reportActionFailed('toast.moveFailed', 'Could not move that');
-      // What the refusing folder held is still in it, and its rows come back.
-      const went = new Set(filed);
-      if (!putBack(keys.filter(key => went.has(key)))) messageSync.sync();
-    }
+      if (refused && refused.reason !== 'auth') {
+        this.reportActionFailed('toast.moveFailed', 'Could not move that');
+        // What the refusing folder held is still in it, and its rows come back.
+        const went = new Set(filed);
+        if (!putBack(keys.filter(key => went.has(key)))) messageSync.sync();
+      }
+    });
   }
 
   /**
@@ -2163,48 +2178,52 @@ export class MailboxPage extends LitElement {
         return;
       }
 
-      // Checked rows leave with the gesture. Not a card's Delete, which is
-      // about one message inside a conversation the reader is showing and has
-      // its own way of leaving it (`leaveDeletedMessage`).
-      const putBack = isBulk && !named ? this.takeRowsOut(doomed) : undefined;
-      const { done, refused } = await this.eachFolder(doomed, (mailbox, uids) =>
-        messageOperations.deleteMessagesResult(mailbox, uids));
-      named?.done?.(!refused);
+      // One re-read for the whole Delete: the folders where it is for good, and
+      // those where it is a move to Trash (see messageSync.afterWrites).
+      await messageSync.afterWrites(async () => {
+        // Checked rows leave with the gesture. Not a card's Delete, which is
+        // about one message inside a conversation the reader is showing and has
+        // its own way of leaving it (`leaveDeletedMessage`).
+        const putBack = isBulk && !named ? this.takeRowsOut(doomed) : undefined;
+        const { done, refused } = await this.eachFolder(doomed, (mailbox, uids) =>
+          messageOperations.deleteMessagesResult(mailbox, uids));
+        named?.done?.(!refused);
 
-      const deleted = this.writtenKeys(done);
-      if (deleted.length > 0) {
-        if (named) {
-          // A card's Delete: the rest of the conversation stays on screen.
-          if (named.isOpen) this.leaveDeletedMessage(named.nextUid);
-        } else {
-          if (isBulk) this.selectedKeys = new Set([...this.selectedKeys].filter(key => !deleted.includes(key)));
-          this.selectedMessage = null;
-          this.updateUrl(this.currentMailbox, this.currentPage, null);
+        const deleted = this.writtenKeys(done);
+        if (deleted.length > 0) {
+          if (named) {
+            // A card's Delete: the rest of the conversation stays on screen.
+            if (named.isOpen) this.leaveDeletedMessage(named.nextUid);
+          } else {
+            if (isBulk) this.selectedKeys = new Set([...this.selectedKeys].filter(key => !deleted.includes(key)));
+            this.selectedMessage = null;
+            this.updateUrl(this.currentMailbox, this.currentPage, null);
+          }
+
+          let toastMessage = '';
+          if (isDrafts) {
+            toastMessage = many ? this.i18nStore?.t('toast.draftsDiscarded', { count: deleted.length }) : (this.i18nStore?.t('toast.draftDiscarded'));
+          } else {
+            toastMessage = many ? this.i18nStore?.t('toast.messagesPermanentlyDeleted', { count: deleted.length }) : (this.i18nStore?.t('toast.messagePermanentlyDeleted'));
+          }
+          this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
+        }
+        if (refused && refused.reason !== 'auth') {
+          this.reportActionFailed('toast.messageDeleteFailed', 'The message could not be deleted');
+          if (putBack) {
+            // As in fileAway: back where they were, and checked.
+            const went = new Set(deleted);
+            if (putBack(deleted)) this.selectedKeys = new Set(doomed.filter(key => !went.has(key)));
+            else messageSync.sync();
+          }
         }
 
-        let toastMessage = '';
-        if (isDrafts) {
-          toastMessage = many ? this.i18nStore?.t('toast.draftsDiscarded', { count: deleted.length }) : (this.i18nStore?.t('toast.draftDiscarded'));
-        } else {
-          toastMessage = many ? this.i18nStore?.t('toast.messagesPermanentlyDeleted', { count: deleted.length }) : (this.i18nStore?.t('toast.messagePermanentlyDeleted'));
+        // The rest of the same Delete, in folders where it is a move to Trash.
+        if (toTrash.length > 0) {
+          const trash = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
+          await this.fileAway(toTrash, trash, isBulk, count => this.movedMessage(isBulk || toTrash.length > 1, count, trash));
         }
-        this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
-      }
-      if (refused && refused.reason !== 'auth') {
-        this.reportActionFailed('toast.messageDeleteFailed', 'The message could not be deleted');
-        if (putBack) {
-          // As in fileAway: back where they were, and checked.
-          const went = new Set(deleted);
-          if (putBack(deleted)) this.selectedKeys = new Set(doomed.filter(key => !went.has(key)));
-          else messageSync.sync();
-        }
-      }
-
-      // The rest of the same Delete, in folders where it is a move to Trash.
-      if (toTrash.length > 0) {
-        const trash = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
-        await this.fileAway(toTrash, trash, isBulk, count => this.movedMessage(isBulk || toTrash.length > 1, count, trash));
-      }
+      });
     } finally {
       if (isBulk) this.bulkProcessing = false;
     }
