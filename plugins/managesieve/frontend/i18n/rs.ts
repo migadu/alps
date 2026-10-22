@@ -8,6 +8,8 @@ export default {
   "managesieve": {
     "title": "Филтери",
     "description": "Додајте прилагођена правила о томе како се поруке обрађују и одлажу.",
+    "loadError": "Филтери нису могли да се учитају.",
+    "loadErrorRetry": "Покушај поново",
     "tabs": {
       "switchToRaw": "Сиров уређивач"
     },

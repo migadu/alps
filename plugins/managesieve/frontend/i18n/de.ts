@@ -8,6 +8,8 @@ export default {
   "managesieve": {
     "title": "Filter",
     "description": "Fügen Sie benutzerdefinierte Regeln hinzu, wie Nachrichten verarbeitet und abgelegt werden.",
+    "loadError": "Die Filter konnten nicht geladen werden.",
+    "loadErrorRetry": "Erneut versuchen",
     "tabs": {
       "switchToRaw": "Raw-Editor"
     },

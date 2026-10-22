@@ -8,6 +8,8 @@ export default {
   "managesieve": {
     "title": "Filtri",
     "description": "Aggiungi regole personalizzate su come i messaggi vengono elaborati e archiviati.",
+    "loadError": "Impossibile caricare i filtri.",
+    "loadErrorRetry": "Riprova",
     "tabs": {
       "switchToRaw": "Editor Grezzo"
     },
