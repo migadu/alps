@@ -55,6 +55,13 @@ export class AlpsFloatingComposer extends LitElement {
   private autoSaveTimer: number | null = null;
   /** The save on the wire, for a close or a discard to wait out. */
   private savingPromise: Promise<boolean> | null = null;
+  /**
+   * The draft the last save stored, by its UID and its content key as the
+   * composer holds it once the answer is applied. `null` when that is not
+   * known, as before the first save from this window, or after one that left
+   * edits unsaved.
+   */
+  private storedDraft: { uid: string; key: string } | null = null;
   /** Set once a discard is under way: no save may store the draft again. */
   private discarding = false;
   /** The undo window of a send, and how to end it as Undo does. */
@@ -102,6 +109,10 @@ export class AlpsFloatingComposer extends LitElement {
    */
   private _handleStoreChange = () => {
     const next = this.composeStore.getComposer(this.instance.id);
+    // Saved by someone else, the sign-out flush: whether or not this window
+    // hears how that save went, the server may hold a newer draft than the
+    // one this window last stored, under a new UID.
+    if (next?.isSaving && !this.isSaving) this.storedDraft = null;
     if (next && next !== this.instance) this.instance = next;
   };
 
@@ -223,15 +234,28 @@ export class AlpsFloatingComposer extends LitElement {
       return true; // nothing to lose
     }
 
+    // Already stored as it is. Each save rewrites the whole message on the
+    // server, reading back every part the draft holds, so one that stores
+    // nothing new is all cost: the timer an upload's progress armed fired
+    // after that upload's own save, and stored the same draft again.
+    const contentKey = draftContentKey(currentInstance);
+    if (this.storedDraft && this.storedDraft.uid === currentInstance.draftUid && this.storedDraft.key === contentKey) {
+      // An edit undone leaves the composer marked unsaved, with nothing to save.
+      if (currentInstance.dirty) this.composeStore.updateComposer(id, { dirty: false });
+      return true;
+    }
+
     this.isSaving = true;
     // In the store too, so the sign-out flush leaves this draft to this save.
     this.composeStore.updateComposer(id, { isSaving: true });
     try {
       const sentUuids = (currentInstance.attachments || []).map(a => a.uuid).filter(Boolean);
-      const contentKey = draftContentKey(currentInstance);
       const formData = this._buildFormData(currentInstance);
       formData.append('save_as_draft', '1');
 
+      // Not known again until this save is answered: one that fails or times
+      // out may still have been stored by the server, under a new UID.
+      this.storedDraft = null;
       const result = await messageOperations.saveDraft(formData);
 
       if (result) {
@@ -285,6 +309,9 @@ export class AlpsFloatingComposer extends LitElement {
 
         // If the composer became dirty while saving, or new attachments were added, schedule another save
         const latestComposer = this.composeStore.getComposer(this.instance.id);
+        this.storedDraft = latestComposer && !latestComposer.dirty
+          ? { uid: result.uid, key: draftContentKey(latestComposer) }
+          : null;
         const hasUnsavedAttachments = (latestComposer?.attachments || []).some(a => a.uuid && !sentUuids.includes(a.uuid));
         if (latestComposer?.dirty || hasUnsavedAttachments) {
           this._scheduleAutoSave();
@@ -940,7 +967,13 @@ export class AlpsFloatingComposer extends LitElement {
 
           const latestComposer = this.composeStore.getComposer(this.instance.id);
           const stillUploading = (latestComposer?.attachments || []).some(a => a.uploading);
-          if (latestComposer?.closing && !stillUploading) {
+          // Saved once the last of the files picked together is in, as the
+          // close waits for. A save per finished upload rewrote the whole
+          // draft once per file, each time larger. The others' progress keeps
+          // re-arming the autosave timer, so the draft is saved here, and the
+          // timer saves it first only if the remaining uploads stall or fail.
+          if (stillUploading) return;
+          if (latestComposer?.closing) {
             void this._finishDeferredClose();
           } else {
             this._saveDraft();
