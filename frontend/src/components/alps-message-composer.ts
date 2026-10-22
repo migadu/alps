@@ -343,10 +343,16 @@ function serializeEditorHtml(editor: Editor): string {
  * newline, throughout the markup, and a quote is read off its element after
  * that: `<b>Total:</b>\n<span>$5</span>` went out as `Total:$5`. Parsed here,
  * in an inert document, the quote is read as it was written.
+ *
+ * Markup made from plain text by paragraphsOf keeps its spaces: the parser
+ * otherwise drops the space at the end of a paragraph and at the start of a
+ * line, and runs of spaces, and the text the editor gives back would not be
+ * the text it was given. HTML, a saved draft's included, is read as HTML, its
+ * spaces collapsed as a browser collapses them.
  */
-function contentFromHtml(schema: Schema, markup: string): JSONContent {
+function contentFromHtml(schema: Schema, markup: string, preserveWhitespace = false): JSONContent {
   const body = new DOMParser().parseFromString(markup, 'text/html').body;
-  const doc = SchemaParser.fromSchema(schema).parse(body).toJSON();
+  const doc = SchemaParser.fromSchema(schema).parse(body, { preserveWhitespace }).toJSON();
   // A block with no direction of its own inside one that has a fixed
   // direction takes it, through every level, so that it is written out when
   // the draft is saved: see TextDirection.
@@ -377,11 +383,21 @@ function readIndent(element: HTMLElement) {
 }
 
 /**
- * Plain text as the editor's paragraphs, one a line, escaped so that it reads
- * as it was typed: a line with `<b>` or `a<b` in it is text, not markup.
+ * Plain text as the editor's paragraphs, escaped so that it reads as it was
+ * typed: a line with `<b>` or `a<b` in it is text, not markup.
+ *
+ * A blank line ends a paragraph and any other line break is a `<br>` within
+ * one, as in the signature an HTML message is given. The editor's text, which
+ * is the message's text/plain part, separates paragraphs with a blank line: a
+ * paragraph a line put a blank line between every two, and a separator `-- `
+ * alone in its paragraph lost its space.
  */
 function paragraphsOf(text: string): string {
-  return text.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('');
+  return text
+    .replace(/\r\n?/g, '\n')
+    .split('\n\n')
+    .map(block => `<p>${block.split('\n').map(escapeHtml).join('<br>')}</p>`)
+    .join('');
 }
 
 /**
@@ -816,7 +832,7 @@ export class AlpsMessageComposer extends LitElement {
       const oldFormat = changedProperties.get('format');
       if (oldFormat === 'text' && this.format === 'html') {
         if (this.editor && this.editor.getText() !== this.text) {
-          this.editor.commands.setContent(contentFromHtml(this.editor.schema, paragraphsOf(this.text)));
+          this.editor.commands.setContent(contentFromHtml(this.editor.schema, paragraphsOf(this.text), true));
           this.htmlText = serializeEditorHtml(this.editor);
         }
       } else if (oldFormat === 'html' && this.format === 'text') {
@@ -861,13 +877,14 @@ export class AlpsMessageComposer extends LitElement {
           },
         }),
     ];
-    const initial = this.htmlText || (this.format === 'html' ? paragraphsOf(this.text) : this.text);
+    const fromText = !this.htmlText && this.format === 'html';
+    const initial = this.htmlText || (fromText ? paragraphsOf(this.text) : this.text);
     this.editor = new Editor({
       element: this.editorContainerRef.value,
       extensions,
       // Parsed here rather than by the editor: see contentFromHtml. The schema
       // is the same one the editor builds from these extensions.
-      content: contentFromHtml(getSchema(extensions), initial),
+      content: contentFromHtml(getSchema(extensions), initial, fromText),
       editorProps: { attributes: { dir: 'auto' } },
       // The editor's stylesheet goes into document.head, which this shadow root
       // never sees; the rules it needs are in this component's own CSS.
