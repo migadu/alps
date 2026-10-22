@@ -1963,6 +1963,14 @@ func handleComposeNew(ctx *alps.Context) error {
 		})
 	}
 
+	// A send the browser has given up on before the message goes is not
+	// sent. The composer has already said that the send failed, and is open
+	// again for the user to send the message once more: sent now as well, it
+	// would go twice. Nothing has changed yet; the draft is where it was.
+	if err := ctx.Request.Context().Err(); err != nil {
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "message not sent: " + err.Error()})
+	}
+
 	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
 		return sendMessage(c, msg)
 	})
@@ -1974,9 +1982,14 @@ func handleComposeNew(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to send message: " + err.Error()})
 	}
 
+	// The message has gone. What is left of sending it, the mark on the
+	// message it answers, the copy in Sent and the removal of its draft, is
+	// done whether or not the browser still waits for the answer. A request
+	// given up on does no mail work it has not begun (see DoMailWithContext),
+	// but this is the end of work that has: see FinishMail.
 	answered := false
 	if inReplyToPath != nil {
-		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		err := ctx.Session.FinishMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 			parsedReplyUid, err := p.ParseMessageID(inReplyToPath.Uid)
 			if err != nil {
 				return err
@@ -1991,7 +2004,7 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	var sentName string
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.FinishMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 		sent, _, _, err := appendMessageWithProvider(p, msg, provider.MailboxTypeSent)
 		if err != nil {
 			return err

@@ -319,11 +319,43 @@ func (s *Session) DoMail(f func(provider.MailProvider) error) error {
 	return s.DoMailWithContext(context.Background(), f)
 }
 
-// DoMailWithContext executes a mail operation and safely closes the provider
-// if the context is cancelled (e.g. client disconnects).
+// DoMailWithContext executes a mail operation for a request whose context is
+// ctx.
+//
+// A request given up on (the browser timed out, or the page went away) while
+// it waited for the connection, or while the connection was opened for it,
+// does no mail work: no one will read the answer, and the requests queued
+// behind it would wait for it. One given up on while its operation runs lets
+// the operation finish, and the connection stays open: see runMail. Mail work
+// that ends something already done elsewhere, such as filing a message the
+// SMTP server has taken, is not the request's to give up: it runs with
+// FinishMail.
 func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailProvider) error) error {
+	return s.doMail(ctx, f, true)
+}
+
+// FinishMail is DoMailWithContext for mail work that finishes something
+// already done elsewhere, such as filing a message the SMTP server has taken.
+// It runs even when its request was given up on before its turn, and after a
+// network error it is tried again on a new connection as if the request still
+// waited. Once its request is given up on, it holds the connection no longer
+// than any other operation whose request was given up on (see runMail). Run
+// with DoMail, which never gives up, an operation on a connection that no
+// longer answers would hold every request of the session for good, where the
+// browser giving up used to let that connection go.
+func (s *Session) FinishMail(ctx context.Context, f func(provider.MailProvider) error) error {
+	return s.doMail(ctx, f, false)
+}
+
+// doMail runs f on the session's connection for DoMailWithContext, and for
+// FinishMail when mayGiveUp is false.
+func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) error, mayGiveUp bool) error {
 	s.providerLocker.Lock()
 	defer s.providerLocker.Unlock()
+
+	if err := ctx.Err(); err != nil && mayGiveUp {
+		return fmt.Errorf("context cancelled: %w", err)
+	}
 
 	if s.provider == nil {
 		var err error
@@ -343,33 +375,22 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 		}
 	}
 
-	done := make(chan error, 1)
-	go func(p provider.MailProvider) {
-		defer func() {
-			if r := recover(); r != nil {
-				done <- fmt.Errorf("panic in IMAP operation: %v", r)
-			}
-		}()
-		done <- f(p)
-	}(s.provider)
-
-	var err error
-	select {
-	case <-ctx.Done():
-		// The operation goroutine may still be using the provider. Detach it and
-		// close only after f() has returned, otherwise we would close the client
-		// out from under an in-flight command (a use-after-close race). done is
-		// buffered, so f's send never blocks even though we have returned.
-		closeProviderAfter(s.provider, done)
-		s.provider = nil
-		return fmt.Errorf("context cancelled: %w", ctx.Err())
-	case err = <-done:
+	// Given up on while the connection was opened for it, a request does no
+	// mail work either. The connection stays open for the next one.
+	if err := ctx.Err(); err != nil && mayGiveUp {
+		return fmt.Errorf("context cancelled: %w", err)
 	}
+
+	err := s.runMail(ctx, f, "IMAP operation")
 
 	// If we get a connection error, try once more with a fresh connection
 	if err != nil && isNetworkError(err) {
 		s.provider.Close()
 		s.provider = nil
+		// No one is waiting for the retry; the next request connects.
+		if ctx.Err() != nil && mayGiveUp {
+			return err
+		}
 
 		var reErr error
 		s.provider, reErr = s.manager.connectProvider(s.username, s.password)
@@ -378,23 +399,7 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 			return fmt.Errorf("failed to re-connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, reErr))
 		}
 
-		done2 := make(chan error, 1)
-		go func(p provider.MailProvider) {
-			defer func() {
-				if r := recover(); r != nil {
-					done2 <- fmt.Errorf("panic in IMAP operation (retry): %v", r)
-				}
-			}()
-			done2 <- f(p)
-		}(s.provider)
-
-		select {
-		case <-ctx.Done():
-			closeProviderAfter(s.provider, done2)
-			s.provider = nil
-			return fmt.Errorf("context cancelled during retry: %w", ctx.Err())
-		case err = <-done2:
-		}
+		err = s.runMail(ctx, f, "IMAP operation (retry)")
 	}
 
 	return err
@@ -411,6 +416,56 @@ func closeProviderAfter(p provider.MailProvider, done <-chan error) {
 		<-done
 		p.Close()
 	}()
+}
+
+// abandonedOperationWait is how long a mail operation whose request was given
+// up on may go on holding the session's connection.
+//
+// A request is given up on when the browser stops waiting for it (after 25
+// seconds), or when the page goes away. Neither says anything about the
+// connection, and closing it cost the next request a new connection and
+// sign-in, and everything the old one had learned: its cache of the store,
+// the verdicts and dates it had read. So the operation is let finish, and the
+// connection kept. But one that does not finish, on a connection that no
+// longer answers, would hold the session's every request; past this wait the
+// connection is let go as it used to be.
+const abandonedOperationWait = 10 * time.Second
+
+// runMail runs f on the session's connection, waits for it and returns what
+// it returned. The caller holds providerLocker.
+//
+// When ctx is done first, it waits on for up to abandonedOperationWait. If f
+// has not returned by then, the connection is let go: it is closed once f
+// returns, never while a command of f's is still in flight on it, and the next
+// request opens another.
+func (s *Session) runMail(ctx context.Context, f func(provider.MailProvider) error, what string) error {
+	// done is buffered, so f's send never blocks once runMail has returned.
+	done := make(chan error, 1)
+	go func(p provider.MailProvider) {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("panic in %s: %v", what, r)
+			}
+		}()
+		done <- f(p)
+	}(s.provider)
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+	}
+
+	wait := time.NewTimer(s.manager.abandonedWait)
+	defer wait.Stop()
+	select {
+	case err := <-done:
+		return err
+	case <-wait.C:
+		closeProviderAfter(s.provider, done)
+		s.provider = nil
+		return fmt.Errorf("context cancelled: %w", ctx.Err())
+	}
 }
 
 // smtpMaxAttempts is the number of times DoSMTP tries an operation before
@@ -713,6 +768,10 @@ type SessionManager struct {
 	// it on rather than wait.
 	now func() time.Time
 
+	// abandonedWait is abandonedOperationWait, held here so that a test can
+	// shorten it rather than wait.
+	abandonedWait time.Duration
+
 	// broadcaster reaches the other nodes of a cluster, or is nil when this
 	// node is alone. See RequireSecondFactor.
 	broadcaster ClusterBroadcaster
@@ -760,6 +819,7 @@ func newSessionManager(connectProviderFunc provider.AuthenticatedProviderFactory
 		maxSessionAttachmentSize: int64(maxSessionAttachmentMiB) << 20,
 		maxGlobalAttachmentSize:  int64(maxGlobalAttachmentMiB) << 20,
 		now:                      time.Now,
+		abandonedWait:            abandonedOperationWait,
 	}
 }
 
