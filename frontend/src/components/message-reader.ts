@@ -1500,6 +1500,22 @@ export class MessageReader extends LitElement {
     if (opening && this.message && this.keyOf(this.message) === key) this.settleOpenedConversation();
   }
 
+  /**
+   * The flags a card holds now. A flag change replaces the card in the card
+   * list rather than editing it, so a read that started before the change
+   * still holds the card as it was: the one in the card list is looked up by
+   * key.
+   *
+   * Null is an answer, not a gap: the server sends a message with no flags as
+   * `Flags: null`, and read as unknown it let the read's own, older flags back
+   * in. Undefined only when the card carries no flags at all.
+   */
+  private liveFlags(key: string, item: ThreadMessageItem): string[] | undefined {
+    const live = this.threadItems.find(i => this.itemKey(i) === key) ?? item;
+    if (!live.message || !('Flags' in live.message)) return undefined;
+    return live.message.Flags ?? [];
+  }
+
   private updateThreadItemReference(item: ThreadMessageItem) {
     if (!item.message) return;
     // The card list is what Lit renders from, so replacing its reference IS a
@@ -1646,7 +1662,12 @@ export class MessageReader extends LitElement {
       item.attachments = read.Attachments || [];
       item.hasHtml = hasHtml;
       item.hasText = hasText;
-      item.message = message;
+      // Everything the read says about the message except its flags. Those are
+      // what the server had when it answered, and a cached read is up to half an
+      // hour old; the flags the card holds now are kept current by the message
+      // list and by every flag change since, including one made while this read
+      // was out. The read's flags count only for a card that carries none.
+      item.message = { ...message, Flags: this.liveFlags(key, item) ?? message.Flags };
       item.mimeType = mimeType;
       item.content = content;
       item.rawMessageHtml = rawMessageHtml;
