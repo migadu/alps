@@ -12,6 +12,7 @@ import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-address-input';
 import '../../../frontend/src/components/ui-confirm';
 import { modalButtonStyles } from '../../../frontend/src/components/ui-modal';
+import { isolatedCaption, isolatedSentence } from '../../../frontend/src/utils/bidi';
 
 @customElement('calendar-event-modal')
 export class CalendarEventModal extends LitElement {
@@ -343,7 +344,9 @@ export class CalendarEventModal extends LitElement {
 
                 ${this.othersMeeting ? html`
                     <div class="form-group organized-by">
-                        ${this.i18nStore?.t('invitations.organizedBy', { name: this.event?.organizer?.name || this.event?.organizer?.email || '' })}
+                        ${isolatedSentence(this.i18nStore, 'invitations.organizedBy', {
+                            name: this.event?.organizer ? isolatedCaption(this.event.organizer.name, this.event.organizer.email) : '',
+                        })}
                     </div>
                 ` : html`
                     <div class="form-group">
