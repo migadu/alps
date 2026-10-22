@@ -245,12 +245,19 @@ export class AlpsFloatingComposer extends LitElement {
             oldMailbox: this.instance.draftMailbox,
             newUid: result.uid,
             mailbox: result.mailbox,
-            subject: this.instance.subject,
-            to: this.instance.to,
-            cc: this.instance.cc,
-            bcc: this.instance.bcc,
+            // The draft the request stored, as it posted it. The window as it
+            // is now may hold edits made while the save was out, which are not
+            // in this draft; they leave the composer dirty, and the next save
+            // brings the row up to date. The recipients come from the same
+            // snapshot, so the event describes one draft.
+            subject: (currentInstance.subject || '').trim(),
+            to: currentInstance.to,
+            cc: currentInstance.cc,
+            bcc: currentInstance.bcc,
             size: result.size,
-            hasAttachments: (this.instance.attachments && this.instance.attachments.length > 0)
+            // A file the request carried: an upload still in flight is not in
+            // this draft, and the quote's own images are not files.
+            hasAttachments: (currentInstance.attachments || []).some(a => !a.inline && (a.uuid || a.partPath))
           }
         }));
       }
