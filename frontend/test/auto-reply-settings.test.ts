@@ -212,6 +212,27 @@ describe('the auto-reply page', () => {
     expect(puts[0]).not.toMatch(/^\s*vacation\b/m);
   });
 
+  // The text of a reply that is off is kept for next time, and can be edited
+  // and saved while it stays off. That save turns nothing off, and a toast
+  // saying it did reads as though the reply had been on until then.
+  it('says it was turned off only when it was on', async () => {
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    stored = mergeAutoReply(block({ enabled: false }), FILTERS);
+    let el = await openPage();
+    await type(el, textarea(el), 'Back next week.');
+    await save(el);
+    expect(puts).toEqual([mergeAutoReply(block({ enabled: false, message: 'Back next week.' }), FILTERS)]);
+    expect(toasts.map(t => t.detail.message)).toEqual(['managesieve.autoReply.saved']);
+    cleanup();
+
+    stored = mergeAutoReply(block(), FILTERS);
+    el = await openPage();
+    checkbox(el)!.click();
+    await el.updateComplete;
+    await save(el);
+    expect(toasts.map(t => t.detail.message)).toEqual(['managesieve.autoReply.saved', 'managesieve.autoReply.turnedOff']);
+  });
+
   it('refuses to switch on without a message', async () => {
     const el = await openPage();
     checkbox(el)!.click();

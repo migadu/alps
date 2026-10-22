@@ -188,12 +188,15 @@ export class AutoReplyPage extends LitElement {
 			return;
 		}
 		this.saving = true;
+		// Turned off only when it was on: a reply that is off keeps its text,
+		// and saving an edit to that text turns nothing off.
+		const turnedOff = this.stored.enabled && !reply.enabled;
 		try {
 			await managesieveService.saveAutoReply(reply, this.address);
 			// What was SENT is what is stored now; an edit made while the save was
 			// in flight still reads as unsaved.
 			this.stored = reply;
-			const message = this.t(reply.enabled ? 'managesieve.autoReply.saved' : 'managesieve.autoReply.turnedOff');
+			const message = this.t(turnedOff ? 'managesieve.autoReply.turnedOff' : 'managesieve.autoReply.saved');
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, timeout: 3000 } }));
 		} catch (e) {
 			if (e instanceof TwoVacationsError) {
