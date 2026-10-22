@@ -38,7 +38,8 @@ export async function fetchAuthVerdicts(mailbox: string, uids: string[]): Promis
   let scope: string | null = null;
   for (let i = 0; i < uids.length; i += VERDICT_CHUNK) {
     const chunk = uids.slice(i, i + VERDICT_CHUNK).map(encodeURIComponent).join(',');
-    const response = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/verdicts?uids=${chunk}`);
+    // Nobody waits on a verdict: it only picks an avatar's logo.
+    const response = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/verdicts?uids=${chunk}`, {}, undefined, { background: true });
     if (!response.ok) throw new Error(`verdicts request failed: ${response.status}`);
     const data = await response.json();
     const chunkScope = typeof data?.Scope === 'string' ? data.Scope : '';

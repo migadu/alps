@@ -5,6 +5,7 @@ import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED, getMessageTags 
 import { messageSync } from '../services/message-sync';
 import { mailboxOperations } from '../services/mailbox-operations';
 import { fetchAuthVerdicts, VERDICT_BATCH, type AuthVerdict } from '../services/auth-verdicts';
+import { foregroundSettled } from '../utils/fetch-utils';
 import { mailboxOf, messageKey } from '../utils/message-key';
 import { addressText, addressWarning, displayAddress, mixedScriptStyles } from '../utils/address-display';
 import { ALL_MAILBOXES } from '../utils/folders';
@@ -24,6 +25,10 @@ import { repeat } from 'lit/directives/repeat.js';
 
 /** The filter bar's own toggles, which narrow a FOLDER rather than search it. */
 const FILTER_TOGGLES = new Set(['is:starred', 'is:unread']);
+
+/** How many sender verdicts the list keeps across folder switches; a switch
+ * past it starts over. */
+const MAX_KEPT_VERDICTS = 5000;
 
 @customElement('alps-message-list')
 export class MessageList extends LitElement {
@@ -111,9 +116,15 @@ export class MessageList extends LitElement {
   // logo, and once each: a reload asks only about messages not asked about.
   // A new scope means the mailbox's UIDs name other messages, and that
   // mailbox's answers are dropped.
+  //
+  // The answers outlive a folder switch, in memory only: a message's headers
+  // never change, and going back to a folder asked about every row again. They
+  // are drawn again once an answer in that folder has shown its scope is still
+  // the one they were answered under (verdictsConfirmed).
   @state() private verdicts = new Map<string, AuthVerdict>();
   private verdictScopes = new Map<string, string>();
   private verdictsAsked = new Set<string>();
+  private verdictsConfirmed = new Set<string>();
   private verdictGeneration = 0;
   private verdictsRunning = false;
   private verdictsRerun = false;
@@ -708,12 +719,19 @@ export class MessageList extends LitElement {
     return list;
   }
 
-  /** Drops every verdict, and stops any request still asking for them. */
-  private resetVerdicts() {
-    this.verdicts = new Map();
-    this.verdictsAsked = new Set();
-    this.verdictScopes = new Map();
+  /**
+   * Another folder is shown: stops any request still asking for verdicts, and
+   * keeps the answers, undrawn until each folder's scope is confirmed again.
+   * What was asked and not answered is asked again on the way back.
+   */
+  private leaveVerdicts() {
     this.verdictGeneration++;
+    this.verdictsConfirmed = new Set();
+    if (this.verdicts.size > MAX_KEPT_VERDICTS) {
+      this.verdicts = new Map();
+      this.verdictScopes = new Map();
+    }
+    this.verdictsAsked = new Set([...this.verdictsAsked].filter((key) => this.verdicts.has(key)));
   }
 
   /** The mailbox a listed message is in: its own, since a search across mailboxes lists several. */
@@ -759,12 +777,19 @@ export class MessageList extends LitElement {
     // screen until the new folder's list arrives, and asking the new folder
     // about its UID would answer for a different message.
     const byMailbox = new Map<string, string[]>();
+    // A message per mailbox whose kept answer can confirm the scope, for a
+    // mailbox with nothing new to ask about.
+    const confirmers = new Map<string, string>();
     const consider = (msg: any) => {
       const uid = msg?.UID == null ? '' : String(msg.UID);
       const mailbox = this.mailboxOf(msg);
       if (!uid || (shown !== '*' && mailbox !== shown)) return;
       const key = messageKey(mailbox, uid);
-      if (this.verdictsAsked.has(key) || !mayShowBimiLogo(msg)) return;
+      if (!mayShowBimiLogo(msg)) return;
+      if (this.verdictsAsked.has(key)) {
+        if (!this.verdictsConfirmed.has(mailbox) && this.verdicts.has(key) && !confirmers.has(mailbox)) confirmers.set(mailbox, uid);
+        return;
+      }
       this.verdictsAsked.add(key);
       if (!byMailbox.has(mailbox)) byMailbox.set(mailbox, []);
       byMailbox.get(mailbox)!.push(uid);
@@ -772,6 +797,11 @@ export class MessageList extends LitElement {
     for (const msg of this.messages || []) {
       consider(msg);
       if (msg?.SubMessages?.length && this.isThreadExpanded(String(msg.UID))) msg.SubMessages.forEach(consider);
+    }
+    // One message asked again is enough to learn whether the kept answers
+    // still stand: the scope comes with every answer.
+    for (const [mailbox, uid] of confirmers) {
+      if (!byMailbox.has(mailbox)) byMailbox.set(mailbox, [uid]);
     }
 
     const queue: { mailbox: string; uid: string }[] = [];
@@ -782,6 +812,11 @@ export class MessageList extends LitElement {
 
     let i = 0;
     while (i < queue.length) {
+      // Nothing is sent while a request the user waits on is out either, a
+      // message being opened above all: on the session's one connection to
+      // the mail server, it would wait behind the batch.
+      await foregroundSettled();
+      if (!current()) return;
       // A folder's list is loading. Its request waits behind every verdict
       // request sent before it, so nothing more is sent until the list has
       // arrived; the rest is asked for then.
@@ -818,6 +853,7 @@ export class MessageList extends LitElement {
         startOver = true;
       }
       if (answer.scope) this.verdictScopes.set(mailbox, answer.scope);
+      this.verdictsConfirmed.add(mailbox);
       for (const [uid, verdict] of answer.verdicts) next.set(messageKey(mailbox, uid), verdict);
       this.verdicts = next;
       if (startOver) {
@@ -828,9 +864,11 @@ export class MessageList extends LitElement {
     }
   }
 
-  /** msg with the verdict answered for it, if one has arrived. */
+  /** msg with the verdict answered for it, if one has arrived under its mailbox's current scope. */
   private withVerdict(msg: any): any {
-    const verdict = this.verdicts.get(messageKey(this.mailboxOf(msg), String(msg?.UID)));
+    const mailbox = this.mailboxOf(msg);
+    if (!this.verdictsConfirmed.has(mailbox)) return msg;
+    const verdict = this.verdicts.get(messageKey(mailbox, String(msg?.UID)));
     return verdict ? { ...msg, ...verdict } : msg;
   }
 
@@ -974,7 +1012,7 @@ export class MessageList extends LitElement {
   willUpdate(changedProperties: Map<string, any>) {
     super.willUpdate(changedProperties);
     if (changedProperties.has('currentMailbox')) {
-      this.resetVerdicts();
+      this.leaveVerdicts();
     }
     if (changedProperties.has('currentMailbox') ||
       changedProperties.has('currentPage') ||
