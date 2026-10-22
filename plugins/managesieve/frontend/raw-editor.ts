@@ -151,10 +151,10 @@ export class RawEditor extends LitElement {
 		try {
 			await managesieveService.validateScript(sent);
 			if (this.script !== sent) return;
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t('managesieve.toast.valid'), timeout: 3000 } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t('managesieve.toast.valid'), duration: 3000 } }));
 		} catch (e: any) {
 			if (this.script !== sent) return;
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: e.message || this.i18nStore.t('managesieve.toast.networkError'), timeout: 5000, type: 'error' } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: e.message || this.i18nStore.t('managesieve.toast.networkError'), duration: 5000, type: 'error' } }));
 		} finally {
 			this.isValidating = false;
 		}
@@ -173,12 +173,12 @@ export class RawEditor extends LitElement {
 			// As on the visual editor's save: an empty script is switched off,
 			// unless an auto-reply that is on goes on running in it.
 			const msgKey = sent.trim() === '' && !autoReplyOn ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), timeout: 3000 } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), duration: 3000 } }));
 		} catch (e: any) {
 			const message = e instanceof TwoVacationsError
 				? this.i18nStore.t('managesieve.toast.autoReplyOn')
 				: e.message || this.i18nStore.t('managesieve.toast.networkError');
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, timeout: 5000, type: 'error' } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, duration: 5000, type: 'error' } }));
 		} finally {
 			this.isSaving = false;
 		}

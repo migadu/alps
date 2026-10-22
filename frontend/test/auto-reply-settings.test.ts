@@ -56,18 +56,21 @@ const json = (status: number, body: unknown) =>
 let stored: string;
 let extensions: string[];
 let getStatus: number;
+let putStatus: number;
 let puts: string[];
 
 beforeEach(() => {
   stored = '';
   extensions = ALL;
   getStatus = 200;
+  putStatus = 200;
   puts = [];
   vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     // The Filters page reads the folders a rule can file into.
     if (String(url) === '/mailboxes/INBOX') return json(200, { Mailboxes: [] });
     if (String(url) !== '/managesieve/script') throw new Error(`unexpected request to ${String(url)}`);
     if ((init?.method ?? 'GET') === 'PUT') {
+      if (putStatus !== 200) return json(putStatus, { error: 'sieve_unavailable' });
       const { content } = JSON.parse(String(init!.body));
       puts.push(content);
       stored = content;
@@ -86,6 +89,18 @@ afterEach(() => {
 
 const block = (overrides: Partial<AutoReply> = {}) =>
   compileAutoReply({ ...DEFAULT_AUTO_REPLY, enabled: true, subject: 'Away', message: 'Back soon.', ...overrides }, { address: ADDRESS });
+
+/** The Filters page, inside an i18n provider: its visual editor takes the
+ * dictionary from the context alone, as it does under the app's root. */
+async function openFilters(): Promise<El> {
+  const root = document.createElement('div');
+  new ContextProvider(root, { context: i18nContext, initialValue: i18nStore as unknown as I18nStore });
+  document.body.appendChild(root);
+  const el = document.createElement('alps-managesieve-page') as El;
+  root.appendChild(el);
+  await el.updateComplete;
+  return el;
+}
 
 describe('the Filters page\'s script', () => {
   it('is shown without the auto-reply', async () => {
@@ -139,18 +154,6 @@ describe('the Filters page\'s script', () => {
     { auto: 'off', block: () => block({ enabled: false }), said: 'managesieve.toast.deactivated' },
     { auto: 'absent', block: () => '', said: 'managesieve.toast.deactivated' },
   ];
-
-  /** The Filters page, inside an i18n provider: its visual editor takes the
-   * dictionary from the context alone, as it does under the app's root. */
-  async function openFilters(): Promise<El> {
-    const root = document.createElement('div');
-    new ContextProvider(root, { context: i18nContext, initialValue: i18nStore as unknown as I18nStore });
-    document.body.appendChild(root);
-    const el = document.createElement('alps-managesieve-page') as El;
-    root.appendChild(el);
-    await el.updateComplete;
-    return el;
-  }
 
   for (const { auto, block: around, said } of emptied) {
     it(`emptied in the visual editor with the auto-reply ${auto}, says ${said}`, async () => {
@@ -375,5 +378,41 @@ describe('the auto-reply page', () => {
     expect(text(el)).toContain('managesieve.autoReply.ownVacation');
     expect(text(el)).not.toContain('managesieve.autoReply.errors.saveError');
     expect(checkbox(el)).toBeNull();
+  });
+});
+
+// The app's toasts take how long to stay up from `duration`. These were
+// given a `timeout`, which nothing reads, so each went after the default
+// three seconds: a refusal several lines long among them.
+describe('a toast that says a save failed', () => {
+  it('stays up for five seconds, on the auto-reply page and in both Filters editors', async () => {
+    const toasts = record<CustomEvent>(window, 'show-toast');
+
+    putStatus = 500;
+    const page = await openPage();
+    checkbox(page)!.click();
+    await page.updateComplete;
+    await type(page, textarea(page), 'Back soon.');
+    await save(page);
+    cleanup();
+
+    stored = RULES;
+    const filters = await openFilters();
+    await waitFor(() => !!filters.shadowRoot!.querySelector('alps-visual-editor'), 'the rules to load');
+    shadow<El>(filters, 'alps-visual-editor').dispatchEvent(new CustomEvent('save-requested'));
+    await waitFor(() => toasts.length > 1, 'the failed save');
+    cleanup();
+
+    putStatus = 200;
+    stored = mergeAutoReply(block(), FILTERS);
+    const raw = await mount<El>('alps-raw-editor', { i18nStore, stored: FILTERS, script: OWN_VACATION });
+    shadow<El>(raw, 'alps-button[variant="primary"]').click();
+    await waitFor(() => toasts.length > 2, 'the refusal');
+
+    expect(toasts.map(t => [t.detail.message, t.detail.duration])).toEqual([
+      ['managesieve.autoReply.errors.saveError', 5000],
+      ['sieve_unavailable', 5000],
+      ['managesieve.toast.autoReplyOn', 5000],
+    ]);
   });
 });

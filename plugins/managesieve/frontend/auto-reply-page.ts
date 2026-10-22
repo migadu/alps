@@ -205,7 +205,7 @@ export class AutoReplyPage extends LitElement {
 			// in flight still reads as unsaved.
 			this.stored = reply;
 			const message = this.t(turnedOff ? 'managesieve.autoReply.turnedOff' : 'managesieve.autoReply.saved');
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, timeout: 3000 } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, duration: 3000 } }));
 		} catch (e) {
 			if (e instanceof TwoVacationsError) {
 				// The filters gained a vacation of their own since the page
@@ -215,7 +215,7 @@ export class AutoReplyPage extends LitElement {
 				return;
 			}
 			console.error('Failed to save the auto-reply', e);
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.t('managesieve.autoReply.errors.saveError'), timeout: 5000, type: 'error' } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.t('managesieve.autoReply.errors.saveError'), duration: 5000, type: 'error' } }));
 		} finally {
 			this.saving = false;
 		}

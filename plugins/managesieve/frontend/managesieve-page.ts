@@ -115,14 +115,14 @@ export class ManageSievePage extends LitElement {
 			// Without rules the script is switched off, unless an auto-reply that
 			// is on goes on running in it.
 			const msgKey = compiled.trim() === '' && !autoReplyOn ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), timeout: 3000 } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), duration: 3000 } }));
 			const editor = this.shadowRoot?.querySelector('alps-visual-editor') as any;
 			if (editor && editor.markClean) editor.markClean(sentSnapshot);
 		} catch (e: any) {
 			const message = e instanceof TwoVacationsError
 				? this.i18nStore.t('managesieve.toast.autoReplyOn')
 				: e.message || this.i18nStore.t('managesieve.toast.networkError');
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, timeout: 5000, type: 'error' } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, duration: 5000, type: 'error' } }));
 		} finally {
 			this.isSaving = false;
 		}
