@@ -208,7 +208,17 @@ export class AlpsFloatingComposer extends LitElement {
           draftMailbox: result.mailbox
         };
         if (result.attachments) {
-          const unsavedAttachments = (currentInstance.attachments || []).filter(a => {
+          // Merged against the composer as it is NOW, not as it was when the
+          // save began. A multi-file selection starts every upload at once;
+          // the first to finish triggers this save, and the rest finish while
+          // it waits on the IMAP append — within milliseconds for small files.
+          // Their UUIDs are in the store by then, but the snapshot still had
+          // them at "uploading, 0%", and merging from it put them back there:
+          // no event would ever move them again, and their files sat on the
+          // server under UUIDs nothing referenced.
+          const liveAttachments = this.composeStore.getComposer(this.instance.id)?.attachments
+            || currentInstance.attachments || [];
+          const unsavedAttachments = liveAttachments.filter(a => {
             if (a._tempId) return true; // Still uploading
             if (a.uuid && !sentUuids.includes(a.uuid)) return true; // Uploaded but not included in this save
             return false;
