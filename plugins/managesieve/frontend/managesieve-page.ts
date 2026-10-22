@@ -7,7 +7,7 @@ import { SieveCompiler } from './sieve-compiler';
 import '../../../frontend/src/components/alps-setting-group';
 import './raw-editor';
 import './visual-editor';
-import { managesieveService } from './managesieve-service';
+import { managesieveService, TwoVacationsError } from './managesieve-service';
 import '../../../frontend/src/components/ui-confirm';
 
 @customElement('alps-managesieve-page')
@@ -117,7 +117,10 @@ export class ManageSievePage extends LitElement {
 			const editor = this.shadowRoot?.querySelector('alps-visual-editor') as any;
 			if (editor && editor.markClean) editor.markClean(sentSnapshot);
 		} catch (e: any) {
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: e.message || this.i18nStore.t('managesieve.toast.networkError'), timeout: 5000, type: 'error' } }));
+			const message = e instanceof TwoVacationsError
+				? this.i18nStore.t('managesieve.toast.autoReplyOn')
+				: e.message || this.i18nStore.t('managesieve.toast.networkError');
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, timeout: 5000, type: 'error' } }));
 		} finally {
 			this.isSaving = false;
 		}

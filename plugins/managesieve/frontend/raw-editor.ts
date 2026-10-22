@@ -3,7 +3,7 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
-import { managesieveService } from './managesieve-service';
+import { managesieveService, TwoVacationsError } from './managesieve-service';
 import '../../../frontend/src/components/alps-button';
 
 @customElement('alps-raw-editor')
@@ -173,7 +173,10 @@ export class RawEditor extends LitElement {
 			const msgKey = sent.trim() === '' ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), timeout: 3000 } }));
 		} catch (e: any) {
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: e.message || this.i18nStore.t('managesieve.toast.networkError'), timeout: 5000, type: 'error' } }));
+			const message = e instanceof TwoVacationsError
+				? this.i18nStore.t('managesieve.toast.autoReplyOn')
+				: e.message || this.i18nStore.t('managesieve.toast.networkError');
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, timeout: 5000, type: 'error' } }));
 		} finally {
 			this.isSaving = false;
 		}
