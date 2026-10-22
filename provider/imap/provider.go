@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"sort"
 	"strconv"
@@ -37,6 +36,9 @@ type IMAPProvider struct {
 	store       provider.Store
 	debug       bool
 	authservIDs []string
+	// specialMailboxes remembers the folder FindMailboxByType found for each
+	// type on this connection.
+	specialMailboxes map[provider.MailboxType]provider.Mailbox
 
 	// selectedUIDValidity is the UIDVALIDITY the selected mailbox was
 	// selected with; ensureMailboxSelected is the only place that selects.
@@ -163,7 +165,51 @@ func (p *IMAPProvider) GetMailboxStatus(name string) (*provider.MailboxStatus, e
 }
 
 // FindMailboxByType finds a mailbox by its type (Sent, Drafts, etc.)
+//
+// The answer is remembered for the connection. Which folder is Drafts or Sent
+// does not change from one save to the next, and every send and every draft
+// autosave, seconds after typing stops, asked the server again. Creating,
+// renaming or deleting a folder here forgets it, and an append that finds the
+// remembered folder gone looks it up again (see AppendMessage).
 func (p *IMAPProvider) FindMailboxByType(mboxType provider.MailboxType) (*provider.Mailbox, error) {
+	mbox, _, err := p.findMailboxByType(mboxType)
+	return mbox, err
+}
+
+// findMailboxByType is FindMailboxByType, and reports whether the answer was
+// remembered rather than listed.
+func (p *IMAPProvider) findMailboxByType(mboxType provider.MailboxType) (*provider.Mailbox, bool, error) {
+	p.cacheLock.RLock()
+	known, ok := p.specialMailboxes[mboxType]
+	p.cacheLock.RUnlock()
+	if ok {
+		return &known, true, nil
+	}
+
+	mbox, err := p.listMailboxByType(mboxType)
+	if err != nil || mbox == nil {
+		// No such folder is not remembered: one may be created elsewhere.
+		return mbox, false, err
+	}
+	p.cacheLock.Lock()
+	if p.specialMailboxes == nil {
+		p.specialMailboxes = make(map[provider.MailboxType]provider.Mailbox)
+	}
+	p.specialMailboxes[mboxType] = *mbox
+	p.cacheLock.Unlock()
+	return mbox, false, nil
+}
+
+// forgetSpecialMailboxes drops what FindMailboxByType remembered, for a change
+// to which folders exist.
+func (p *IMAPProvider) forgetSpecialMailboxes() {
+	p.cacheLock.Lock()
+	p.specialMailboxes = nil
+	p.cacheLock.Unlock()
+}
+
+// listMailboxByType asks the server which top-level folder has the type.
+func (p *IMAPProvider) listMailboxByType(mboxType provider.MailboxType) (*provider.Mailbox, error) {
 	var attr imap.MailboxAttr
 	var fallbackNames []string
 
@@ -243,6 +289,7 @@ func (p *IMAPProvider) FindMailboxByType(mboxType provider.MailboxType) (*provid
 // SUBSCRIBE does not undo or fail the create, since the folder exists either
 // way and saying it could not be created would be untrue.
 func (p *IMAPProvider) CreateMailbox(name string) error {
+	defer p.forgetSpecialMailboxes()
 	if err := p.client.Create(name, nil).Wait(); err != nil {
 		return err
 	}
@@ -254,6 +301,7 @@ func (p *IMAPProvider) CreateMailbox(name string) error {
 
 // DeleteMailbox deletes a mailbox
 func (p *IMAPProvider) DeleteMailbox(name string) error {
+	defer p.forgetSpecialMailboxes()
 	cmd := p.client.Delete(name)
 	return cmd.Wait()
 }
@@ -300,6 +348,7 @@ func (p *IMAPProvider) EmptyMailbox(name string) (int, error) {
 
 // RenameMailbox renames a mailbox
 func (p *IMAPProvider) RenameMailbox(oldName, newName string) error {
+	defer p.forgetSpecialMailboxes()
 	cmd := p.client.Rename(oldName, newName, nil)
 	return cmd.Wait()
 }
@@ -1221,7 +1270,7 @@ func (p *IMAPProvider) MarkAnswered(mailbox string, id provider.MessageID) error
 
 // AppendMessage appends a message to a mailbox and returns the UID
 func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessageWriter, mboxType provider.MailboxType) (*provider.Mailbox, provider.MessageID, uint32, error) {
-	mbox, err := p.FindMailboxByType(mboxType)
+	mbox, remembered, err := p.findMailboxByType(mboxType)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -1241,16 +1290,20 @@ func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessag
 		flags = append(flags, imap.FlagDraft)
 	}
 	options := imap.AppendOptions{Flags: flags}
-	appendCmd := p.client.Append(mbox.Name, int64(buf.Len()), &options)
-	if _, err := io.Copy(appendCmd, &buf); err != nil {
-		appendCmd.Close()
-		return nil, nil, 0, err
+	appendData, err := p.appendTo(mbox.Name, buf.Bytes(), &options)
+	var imapErr *imap.Error
+	if remembered && errors.As(err, &imapErr) && imapErr.Code == imap.ResponseCodeTryCreate {
+		// The remembered folder is gone, renamed or deleted by another
+		// client: look it up again, once.
+		p.forgetSpecialMailboxes()
+		if mbox, _, err = p.findMailboxByType(mboxType); err == nil && mbox == nil {
+			err = fmt.Errorf("unable to resolve mailbox")
+		}
+		if err != nil {
+			return nil, nil, 0, err
+		}
+		appendData, err = p.appendTo(mbox.Name, buf.Bytes(), &options)
 	}
-	if err := appendCmd.Close(); err != nil {
-		return nil, nil, 0, err
-	}
-
-	appendData, err := appendCmd.Wait()
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -1263,6 +1316,19 @@ func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessag
 	}
 
 	return mbox, uid, size, nil
+}
+
+// appendTo stores one message in the named mailbox.
+func (p *IMAPProvider) appendTo(name string, message []byte, options *imap.AppendOptions) (*imap.AppendData, error) {
+	appendCmd := p.client.Append(name, int64(len(message)), options)
+	if _, err := appendCmd.Write(message); err != nil {
+		appendCmd.Close()
+		return nil, err
+	}
+	if err := appendCmd.Close(); err != nil {
+		return nil, err
+	}
+	return appendCmd.Wait()
 }
 
 // DeleteMessages deletes multiple messages

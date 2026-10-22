@@ -81,3 +81,61 @@ func TestAnAppendToTheSelectedFolderSendsNoNOOP(t *testing.T) {
 		t.Errorf("the append sent %d NOOP, want none:\n%s", n, sent)
 	}
 }
+
+// listCommands matches a LIST the client sent, not the server's answers.
+var listCommands = regexp.MustCompile(`(?m)^[^*\s]\S* LIST `)
+
+func appendDraft(t *testing.T, p *IMAPProvider, subject string) string {
+	t.Helper()
+	mbox, _, _, err := p.AppendMessage("", rawMessage(conversation(subject, subject+"@example.test", "")), provider.MailboxTypeDrafts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return mbox.Name
+}
+
+// Which folder is Drafts does not change from one save to the next, and an
+// autosave runs seconds after typing stops, so the folder is looked up once.
+func TestDraftSavesLookUpDraftsOnce(t *testing.T) {
+	s := &memServer{caps: imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapUIDPlus: {}}}
+	p := memIMAP(t, s)
+	if err := p.CreateMailbox("Drafts"); err != nil {
+		t.Fatal(err)
+	}
+
+	before := len(s.traffic.String())
+	for _, subject := range []string{"first", "second", "third"} {
+		if got := appendDraft(t, p, subject); got != "Drafts" {
+			t.Fatalf("saved %s to %q, want Drafts", subject, got)
+		}
+	}
+	if n := len(listCommands.FindAllString(s.traffic.String()[before:], -1)); n != 1 {
+		t.Errorf("three draft saves sent %d LIST, want 1", n)
+	}
+
+	// A folder created, renamed or deleted here may be the one remembered.
+	if err := p.RenameMailbox("Drafts", "Draft"); err != nil {
+		t.Fatal(err)
+	}
+	if got := appendDraft(t, p, "fourth"); got != "Draft" {
+		t.Errorf("after the rename, saved to %q, want Draft", got)
+	}
+}
+
+// Another client may rename the folder too. The append that finds it gone
+// looks the folder up again rather than failing the save.
+func TestADraftsFolderRenamedElsewhereIsLookedUpAgain(t *testing.T) {
+	s := &memServer{caps: imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapUIDPlus: {}}}
+	p := memIMAP(t, s)
+	if err := p.CreateMailbox("Drafts"); err != nil {
+		t.Fatal(err)
+	}
+	appendDraft(t, p, "first")
+
+	if err := p.client.Rename("Drafts", "Draft", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if got := appendDraft(t, p, "second"); got != "Draft" {
+		t.Errorf("saved to %q, want the folder under its new name", got)
+	}
+}
