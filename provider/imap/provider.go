@@ -1240,6 +1240,73 @@ func (p *IMAPProvider) getMessagePartWithData(mailbox string, uid imap.UID, part
 	return msg, part, headerBuf, bodyBuf, nil
 }
 
+// GetMessageParts reads several parts of one message, each with its MIME
+// header, in one FETCH, and returns them in the order of paths.
+//
+// A draft save carries the parts of the message it forwards, or of the draft
+// saved before it, and reads them all on every save. Read one at a time with
+// GetMessagePartWithData, that was a round trip per part, and each one also
+// fetched the message's envelope and structure, which the save does not use.
+// The parts are peeked at, so reading them does not mark the message seen.
+func (p *IMAPProvider) GetMessageParts(mailbox string, id provider.MessageID, paths [][]int) ([]*message.Entity, error) {
+	if err := p.ensureMailboxSelected(mailbox); err != nil {
+		return nil, err
+	}
+	uid := imap.UID(id.(IMAPUID))
+
+	type partItems struct{ header, body *imap.FetchItemBodySection }
+	items := make([]partItems, len(paths))
+	var sections []*imap.FetchItemBodySection
+	for i, path := range paths {
+		header := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierMIME, Part: path, Peek: true}
+		body := &imap.FetchItemBodySection{Specifier: imap.PartSpecifierNone, Part: path, Peek: true}
+		if len(path) == 0 {
+			header.Specifier = imap.PartSpecifierHeader
+			body.Specifier = imap.PartSpecifierText
+		}
+		items[i] = partItems{header, body}
+		sections = append(sections, header, body)
+	}
+	options := imap.FetchOptions{UID: true, BodySection: sections}
+
+	msgs, err := p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch message parts: %v", err)
+	} else if len(msgs) == 0 {
+		// As in GetMessageMetadata, for a message the session may not have
+		// been told about yet.
+		if p.arrivedSinceSelect(uid) {
+			if err := p.client.Noop().Wait(); err == nil {
+				msgs, err = p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
+				if err != nil {
+					return nil, fmt.Errorf("failed to fetch message parts after NOOP: %v", err)
+				}
+			}
+		}
+		if len(msgs) == 0 {
+			return nil, fmt.Errorf("UID %d: %w", uid, provider.ErrMessageNotFound)
+		}
+	}
+	msg := msgs[0]
+
+	parts := make([]*message.Entity, len(paths))
+	for i, item := range items {
+		headerBuf := msg.FindBodySection(item.header)
+		bodyBuf := msg.FindBodySection(item.body)
+		if headerBuf == nil || bodyBuf == nil {
+			return nil, fmt.Errorf("server didn't return header and body of part %v", paths[i])
+		}
+		h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headerBuf)))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read header of part %v: %v", paths[i], err)
+		}
+		if parts[i], err = message.New(message.Header{Header: h}, bytes.NewReader(bodyBuf)); err != nil {
+			return nil, fmt.Errorf("failed to create reader for part %v: %v", paths[i], err)
+		}
+	}
+	return parts, nil
+}
+
 // SetMessagesFlags sets flags for multiple messages
 func (p *IMAPProvider) SetMessagesFlags(mailbox string, ids []provider.MessageID, op provider.FlagOperation) error {
 	if len(ids) == 0 {
