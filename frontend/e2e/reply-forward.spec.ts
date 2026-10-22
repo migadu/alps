@@ -292,6 +292,27 @@ test("replying answers Reply-To, not From", async ({ page }) => {
   expect(sent.recipients).toEqual(["support@remote.test"]);
 });
 
+test("replying to a sender named \"Lovelace, Ada\" sends, under that name", async ({ page }) => {
+  // The reply's pill wrote the name bare, `Lovelace, Ada <ada@remote.test>`,
+  // and the comma read as the end of a recipient: the server was handed
+  // "Lovelace" and "Ada <ada@remote.test>", and the reply could not be sent.
+  const subject = `Directory reply ${Date.now()}`;
+  const body = "Signed the way the directory writes it.";
+  await deliver({ subject, body, from: '"Lovelace, Ada" <ada@remote.test>' });
+
+  await login(page);
+  await openMessage(page, subject, body);
+  await replyButton(page).click();
+
+  await expect(shown(toPills(page))).toHaveText(["Lovelace, Ada"]);
+  await expect(toPills(page)).toHaveAttribute("title", '"Lovelace, Ada" <ada@remote.test>');
+
+  await sendNow(page);
+  const sent = await sentWithSubject(`Re: ${subject}`);
+  expect(sent.recipients).toEqual(["ada@remote.test"]);
+  expect(header(sent, "To")).toBe('"Lovelace, Ada" <ada@remote.test>');
+});
+
 test("replying to a Re: subject does not stack a second prefix", async ({ page }) => {
   const subject = `Re: Quarterly review ${Date.now()}`;
   const body = "Agreed, let us meet on Thursday.";

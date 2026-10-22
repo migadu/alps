@@ -2,7 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { renderIcon } from '../utils/ui';
-import { addressText, addressWarning, displayAddress, mixedScriptStyles, parseWrittenAddress } from '../utils/address-display';
+import { addressText, addressWarning, displayAddress, mixedScriptStyles, parseWrittenAddress, writtenAddress } from '../utils/address-display';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { registry } from '../plugin-registry';
 import { popupStyles } from './alps-popup.js';
@@ -149,7 +149,7 @@ export class AlpsAddressInput extends LitElement {
         e.preventDefault();
         this._cancelSuggestions();
         const s = this.suggestions[this.focusedSuggestionIndex];
-        const addr = s.name ? '"' + s.name + '" <' + s.address + '>' : s.address;
+        const addr = writtenAddress(s.name, s.address);
         this._addAddress(addr);
         return;
       } else if (e.key === 'Escape') {
@@ -362,7 +362,7 @@ export class AlpsAddressInput extends LitElement {
                   @click=${(e: Event) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    const addr = s.name ? '"' + s.name + '" <' + s.address + '>' : s.address;
+                    const addr = writtenAddress(s.name, s.address);
                     this._addAddress(addr);
                   }}>
                   <span class="item-text"><b><bdi>${s.name}</bdi></b> &lt;${addressText(s.address)}&gt;${addressWarning(s.address, this.i18nStore)}</span>

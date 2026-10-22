@@ -248,6 +248,30 @@ test("a message sent to your own address comes back to the inbox", async ({ page
   await expect(page.locator("alps-message-list").getByText(subject).first()).toBeVisible({ timeout: 20_000 });
 });
 
+test("a recipient whose name holds a comma is sent to, under that name", async ({ page }) => {
+  // "Lovelace, Ada" is how a company directory writes a name. A field's
+  // recipients travel as one string, separated by commas, and the server
+  // split it at the comma inside the quotes too: neither half was an address,
+  // so the send failed, and so did every draft save.
+  const subject = `Compose directory name ${Date.now()}`;
+  await login(page);
+  const composer = await openComposer(page);
+  const input = composer.locator("alps-address-input input").first();
+  for (const address of ['"Lovelace, Ada" <ada@remote.test>', USER.address]) {
+    await input.fill(address);
+    await input.press("Enter");
+  }
+  await expect(pills(composer).locator(".pill-addr")).toHaveText(["Lovelace, Ada", USER.address]);
+  await fillMessage(composer, subject, "Names as the directory writes them.");
+
+  await sendNow(page, composer);
+  await expect(composer).toHaveCount(0, { timeout: 20_000 });
+
+  const sent = await sentWithSubject(subject);
+  expect(sent.recipients).toEqual(["ada@remote.test", USER.address]);
+  expect(header(sent, "To")).toContain('"Lovelace, Ada" <ada@remote.test>');
+});
+
 test("Undo cancels the send and gives the composer back intact", async ({ page }) => {
   const subject = `Compose undo ${Date.now()}`;
   const body = "This one should never leave.";

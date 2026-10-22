@@ -64,11 +64,36 @@ export function parseWrittenAddress(pill: string): { name: string; email: string
     const lt = trimmed.lastIndexOf('<');
     if (lt !== -1) {
       const email = trimmed.slice(lt + 1, -1).trim();
-      const name = trimmed.slice(0, lt).trim().replace(/^["']|["']$/g, '').trim();
+      let name = trimmed.slice(0, lt).trim();
+      // In a quoted name a backslash escapes the character after it, as
+      // {@link writtenAddress} writes a quote or a backslash.
+      name = /^".*"$/s.test(name)
+        ? name.slice(1, -1).replace(/\\(.)/gs, '$1').trim()
+        : name.replace(/^["']|["']$/g, '').trim();
       return { name, email };
     }
   }
   return { name: '', email: trimmed };
+}
+
+/** RFC 5322's specials: a name that holds one is written in quotes. */
+const NAME_SPECIALS = /[()<>[\]:;@\\,."]/;
+
+/**
+ * A recipient pill written from a name and an address: `Name <address>`, or
+ * the address alone when there is no name.
+ *
+ * The recipients of a field are sent as one string, separated by commas, and
+ * the server reads it as an address list, so a name is part of that syntax.
+ * Written bare, "Lovelace, Ada" was two recipients, the first with no
+ * address, and the message could be neither sent nor saved as a draft. A name
+ * that holds a comma or another special is written as a quoted string, a
+ * quote or a backslash in it escaped, which the server reads back as it was.
+ */
+export function writtenAddress(name: string | undefined, address: string): string {
+  if (!name) return address;
+  if (!NAME_SPECIALS.test(name)) return `${name} <${address}>`;
+  return `"${name.replace(/["\\]/g, '\\$&')}" <${address}>`;
 }
 
 /**

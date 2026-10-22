@@ -1745,11 +1745,23 @@ func handleComposeNew(ctx *alps.Context) error {
 		}
 	}
 
+	// A field that does not read as addresses is refused here, for what it
+	// is, rather than as a failure to send or to store the draft. A draft
+	// does not carry Bcc, so Bcc does not stop one being saved.
+	recipients := map[string][]string{}
+	for _, field := range []string{"to", "cc", "bcc"} {
+		list, err := parseAddressList(ctx.FormValue(field))
+		if err != nil && !(saveAsDraft && field == "bcc") {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid %s address: %v", field, err)})
+		}
+		recipients[field] = list
+	}
+
 	msg := &OutgoingMessage{
 		From:       fromAddr,
-		To:         parseAddressList(ctx.FormValue("to")),
-		Cc:         parseAddressList(ctx.FormValue("cc")),
-		Bcc:        parseAddressList(ctx.FormValue("bcc")),
+		To:         recipients["to"],
+		Cc:         recipients["cc"],
+		Bcc:        recipients["bcc"],
 		Subject:    ctx.FormValue("subject"),
 		Text:       ctx.FormValue("text"),
 		HTML:       ctx.FormValue("html"),
