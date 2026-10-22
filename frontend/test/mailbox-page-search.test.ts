@@ -178,7 +178,7 @@ describe('checked rows from several folders', () => {
       { url: '/mailboxes/INBOX/messages/move', method: 'PUT', body: { uids: ['5'], to: 'Archive' } },
       { url: '/mailboxes/Sent/messages/move', method: 'PUT', body: { uids: ['5'], to: 'Archive' } },
     ]);
-    expect(toasts.at(-1)!.detail.message).toBe('toast.messagesMovedToArchive');
+    expect(toasts.at(-1)!.detail.message).toBe('toast.messagesMovedToFolder');
     expect(el.selectedKeys.size).toBe(0);
   });
 
@@ -263,7 +263,7 @@ describe('checked rows from several folders', () => {
         { url: '/mailboxes/Trash/messages', method: 'DELETE', body: { uids: ['3'] } },
         { url: '/mailboxes/INBOX/messages/move', method: 'PUT', body: { uids: ['5'], to: 'Trash' } },
       ]);
-      expect(toasts.map(t => t.detail.message)).toEqual(['toast.messagePermanentlyDeleted', 'toast.messagesMovedToTrash']);
+      expect(toasts.map(t => t.detail.message)).toEqual(['toast.messagePermanentlyDeleted', 'toast.messagesMovedToFolder']);
       expect(el.selectedKeys.size).toBe(0);
     });
 

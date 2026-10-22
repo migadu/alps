@@ -3,9 +3,39 @@ import { customElement, state } from 'lit/decorators.js';
 import { authenticateCredential, isWebAuthnSupported } from '../utils/webauthn-utils';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
+import { setLoginNotice } from '../utils/login-notice';
 
 
 import '../components/alps-auth-card';
+
+/** A POST's answer, with its body read as JSON: `null` when it was not JSON,
+ * as from a proxy's error page. */
+interface Answer {
+  ok: boolean;
+  status: number;
+  body: any;
+}
+
+/** Null when there was no answer at all: offline, or a dropped connection. */
+async function post(url: string, init: RequestInit = {}): Promise<Answer | null> {
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, method: 'POST' });
+  } catch {
+    return null;
+  }
+  let body: any = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  return { ok: response.ok, status: response.status, body };
+}
+
+/** The server, or a proxy in front of it, could not answer: not a verdict on
+ * the key. */
+const isOutage = (answer: Answer) => answer.status >= 500 || (answer.ok && answer.body === null);
 
 @customElement('login-webauthn-page')
 export class LoginWebAuthnPage extends LitElement {
@@ -85,6 +115,32 @@ export class LoginWebAuthnPage extends LitElement {
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
   }
 
+  /**
+   * The password was accepted; the pending sign-in it left behind has expired
+   * or is gone, so there is no key left to check. Back to the password, with
+   * a word on why.
+   */
+  private _backToPassword() {
+    try {
+      sessionStorage.removeItem('pending_2fa_username');
+      sessionStorage.removeItem('pending_2fa_is_switch');
+    } catch {}
+    setLoginNotice('secondFactorExpired');
+    window.location.hash = '#/login';
+  }
+
+  /**
+   * One run of the ceremony: options from the server, the key, the server's
+   * verdict on it.
+   *
+   * An outage is told apart from a verdict. Neither answer's status was
+   * checked before its body was read, so an outage the server reported as
+   * JSON read as a refused key, "Verification failed", to someone whose key
+   * works; a proxy's HTML error page showed the parser's SyntaxError; and a
+   * dropped connection showed the browser's "Failed to fetch". An outage now
+   * says so and stays here, where Verify runs the ceremony again without the
+   * password being asked for twice.
+   */
   private async _handleVerify() {
     this.isLoading = true;
     this.statusMessage = this.i18nStore?.t('webauthn.requesting');
@@ -92,12 +148,15 @@ export class LoginWebAuthnPage extends LitElement {
 
     try {
       // 1. Begin authentication
-      const beginResponse = await fetch('/webauthn/verify/begin', { method: 'POST' });
-      if (!beginResponse.ok) {
+      const begin = await post('/webauthn/verify/begin');
+      if (begin === null) throw new Error(this.i18nStore?.t('login.networkError'));
+      if (begin.status === 401) return this._backToPassword();
+      if (isOutage(begin)) throw new Error(this.i18nStore?.t('webauthn.errors.unavailable'));
+      if (!begin.ok) {
         throw new Error(this.i18nStore?.t('webauthn.errors.begin_failed'));
       }
 
-      const credentialRequestOptions = await beginResponse.json();
+      const credentialRequestOptions = begin.body;
 
       if (!credentialRequestOptions || !credentialRequestOptions.publicKey) {
         throw new Error(this.i18nStore?.t('webauthn.errors.invalid_options'));
@@ -109,15 +168,17 @@ export class LoginWebAuthnPage extends LitElement {
 
       // 3. Finish authentication
       this.statusMessage = this.i18nStore?.t('webauthn.verifying');
-      const finishResponse = await fetch('/webauthn/verify/finish', {
-        method: 'POST',
+      const finish = await post('/webauthn/verify/finish', {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credential)
       });
+      if (finish === null) throw new Error(this.i18nStore?.t('login.networkError'));
+      if (finish.status === 401) return this._backToPassword();
+      if (isOutage(finish)) throw new Error(this.i18nStore?.t('webauthn.errors.unavailable'));
 
-      const result = await finishResponse.json();
+      const result = finish.body;
 
-      if (result.success) {
+      if (finish.ok && result?.success) {
         this.statusMessage = this.i18nStore?.t('webauthn.success');
         this.statusType = 'success';
         this.isSuccess = true;

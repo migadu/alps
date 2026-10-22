@@ -68,6 +68,14 @@ export class CalendarInvitationBanner extends LitElement {
 
     /** Drops a read that a newer one for another message has overtaken. */
     private loadSeq = 0;
+    /**
+     * Counts the messages the banner has been handed. The reader keeps one
+     * banner and hands it each message it opens, so an answer or an update can
+     * come back after the user moved on, or moved on and came back to the same
+     * message. What it says belongs to the visit that asked, and so does the
+     * lock it holds on the buttons.
+     */
+    private visit = 0;
     /** Messages applied on opening once already, so a failure is not retried in a loop. */
     private autoApplied = new Set<string>();
 
@@ -140,10 +148,18 @@ export class CalendarInvitationBanner extends LitElement {
 
     protected willUpdate(changed: PropertyValues<this>) {
         if (changed.has('mailbox') || changed.has('uid')) {
+            this.visit++;
             this.view = null;
             this.notice = null;
+            // A request still on its way for the last message must not keep
+            // this one's buttons disabled.
+            this.busy = false;
             void this.load();
         }
+    }
+
+    private isCurrent(visit: number): boolean {
+        return visit === this.visit;
     }
 
     private t(key: string, params?: Record<string, unknown>): string {
@@ -178,6 +194,7 @@ export class CalendarInvitationBanner extends LitElement {
     private async respond(status: Answer) {
         const view = this.view;
         if (!view || this.busy) return;
+        const visit = this.visit;
         this.busy = true;
         this.notice = null;
         try {
@@ -188,14 +205,18 @@ export class CalendarInvitationBanner extends LitElement {
                 calendarPath: view.copy ? undefined : this.calendarPath,
                 lang: this.i18nStore?.getLanguage?.(),
             });
+            // Answered all the same once the user has moved on: the next read
+            // of that message shows the answer.
+            if (!this.isCurrent(visit)) return;
             this.notice = saved.sendFailed
                 ? { key: 'invitations.sendFailed', tone: 'error' }
                 : { key: saved.sent ? 'invitations.sent' : 'invitations.saved', tone: 'info' };
         } catch (err) {
             console.error('Failed to answer the invitation', err);
+            if (!this.isCurrent(visit)) return;
             this.notice = { key: isVersionConflict(err) ? 'invitations.changedElsewhere' : 'invitations.answerFailed', tone: 'error' };
         } finally {
-            this.busy = false;
+            if (this.isCurrent(visit)) this.busy = false;
         }
         await this.load();
     }
@@ -203,17 +224,20 @@ export class CalendarInvitationBanner extends LitElement {
     private async apply() {
         const view = this.view;
         if (!view || this.busy) return;
+        const visit = this.visit;
         this.busy = true;
         this.notice = null;
         try {
             const saved = await invitationService.apply({ mailbox: this.mailbox, uid: this.uid, calendarPath: this.calendarPath });
+            if (!this.isCurrent(visit)) return;
             const key = saved.removed ? 'invitations.removed' : view.state === 'add' ? 'invitations.added' : 'invitations.updated';
             this.notice = { key, tone: 'info' };
         } catch (err) {
             console.error('Failed to update the calendar', err);
+            if (!this.isCurrent(visit)) return;
             this.notice = { key: isVersionConflict(err) ? 'invitations.changedElsewhere' : 'invitations.applyFailed', tone: 'error' };
         } finally {
-            this.busy = false;
+            if (this.isCurrent(visit)) this.busy = false;
         }
         await this.load();
     }

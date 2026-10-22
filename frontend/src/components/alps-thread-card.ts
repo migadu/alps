@@ -8,6 +8,7 @@ import { composeContext, ComposeStore } from '../store/compose-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
 import { renderIcon, formatFullDate, bimiAvatarUrlFor } from '../utils/ui';
 import { extractSnippet, setupIframeSizing } from '../utils/reader-utils';
+import { addressText, addressWarning, mixedScriptStyles } from '../utils/address-display';
 
 import './alps-recipient-pill';
 import './alps-attachment-list';
@@ -58,7 +59,7 @@ export class AlpsThreadCard extends LitElement {
    */
   @property({ type: Boolean }) canToggleRead = false;
 
-  static styles = css`
+  static styles = [mixedScriptStyles, css`
     :host {
       display: block;
       scroll-margin-top: 32px;
@@ -281,9 +282,12 @@ export class AlpsThreadCard extends LitElement {
       overflow-x: auto;
     }
 
+    /* Each paragraph of a plain-text body runs the way its first letter
+       does, as in the reader. */
     .reader-preformatted {
       margin: 0;
       white-space: pre-wrap;
+      unicode-bidi: plaintext;
       word-wrap: break-word;
       font-family: inherit;
       font-size: 14px;
@@ -336,7 +340,7 @@ export class AlpsThreadCard extends LitElement {
         display: flex;
       }
     }
-  `;
+  `];
 
   private onIframeLoad(e: Event) {
     const iframe = e.target as HTMLIFrameElement;
@@ -473,6 +477,9 @@ export class AlpsThreadCard extends LitElement {
           <alps-banner style="margin-bottom: 12px;">
             <span>${this.i18nStore?.t('messageReader.isDraft')}</span>
             <alps-button slot="action" variant="normal" @click=${this.handleEditDraftClick}>${this.i18nStore?.t('messageReader.editDraft')}</alps-button>
+            <!-- The menu's Delete is the same gesture. This is where a draft is
+                 looked at, and Edit Draft alone left no way to drop one in sight. -->
+            <alps-button slot="action" variant="normal" @click=${() => this.handleDeleteItem()}>${this.i18nStore?.t('messageReader.discardDraft')}</alps-button>
           </alps-banner>
         ` : ''}
         
@@ -490,7 +497,7 @@ export class AlpsThreadCard extends LitElement {
             </div>
           ` : html`
             <div class="reader-text-wrapper">
-              <pre class="reader-preformatted">${this.item.content}</pre>
+              <pre dir="auto" class="reader-preformatted">${this.item.content}</pre>
             </div>
           `}
         </div>
@@ -532,12 +539,14 @@ export class AlpsThreadCard extends LitElement {
             ` : ''}
             <div class="thread-card-sender ${isUnread ? 'unread' : ''}" title=${senderTitle}>
               <div class="thread-card-sender-heading">
-                <span class="thread-card-sender-name">${senderName}</span>
+                <span class="thread-card-sender-name" dir="auto">${hasDistinctName || !senderAddress ? senderName : addressText(senderAddress)}</span>
                 <alps-sender-auth-badge ?verified=${!!msg.HasBimiPotential} ?failed=${!!msg.HasBimiFailed}></alps-sender-auth-badge>
               </div>
-              ${hasDistinctName ? html`<span class="thread-card-sender-address">${senderAddress}</span>` : ''}
+              ${hasDistinctName ? html`<span class="thread-card-sender-address">${addressText(senderAddress)}</span>` : ''}
+              <!-- On a line of its own, where the address's ellipsis cannot cut it off. -->
+              ${addressWarning(senderAddress, this.i18nStore)}
             </div>
-            ${!this.item.expanded ? html`<div class="thread-card-snippet">${snippet}</div>` : ''}
+            ${!this.item.expanded ? html`<div class="thread-card-snippet" dir="auto">${snippet}</div>` : ''}
           </div>
           <div class="thread-card-meta">
             ${this.item.isSent ? html`<span class="thread-card-badge">${this.i18nStore?.t('folderList.sent') || 'Sent'}</span>` : ''}
@@ -594,8 +603,9 @@ export class AlpsThreadCard extends LitElement {
                   ${renderIcon('codeBlock')} <span class="item-text">${this.i18nStore?.t('messageReader.showOriginal')}</span>
                 </button>
                 <div class="dropdown-divider"></div>
+                <!-- Named for what it does to a draft, as the toolbar's is. -->
                 <button class="dropdown-item" @click=${() => this.handleDeleteItem()}>
-                  ${renderIcon('trash')} <span class="item-text">${this.i18nStore?.t('messageReader.delete')}</span>
+                  ${renderIcon('trash')} <span class="item-text">${this.i18nStore?.t(msg.Flags?.includes(FLAG_DRAFT) ? 'messageReader.discardDraft' : 'messageReader.delete')}</span>
                 </button>
               </alps-popup>
             ` : ''}

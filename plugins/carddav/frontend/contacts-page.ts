@@ -8,7 +8,7 @@ import '../../../frontend/src/components/app-header';
 import '../../../frontend/src/components/alps-input';
 import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-avatar';
-import '../../../frontend/src/components/alps-sidebar';
+import { closeSidebarPeek } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-icon-btn';
 import '../../../frontend/src/components/ui-prompt';
 import '../../../frontend/src/components/alps-initial-loader';
@@ -20,12 +20,18 @@ import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { MailboxPage } from '../../../frontend/src/pages/mailbox-page';
 import { MessageList } from '../../../frontend/src/components/message-list';
 import { contactsService } from './contacts-service';
-import { isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
+import { isVersionConflict, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
 
 /** Where the categories this user created, with no one filed into them yet, are kept. */
 const categoriesKeyFor = (username: string) => `alps_contacts_categories_${username}`;
 /** The pre-scoping, browser-wide key: read by no one now, only deleted. */
 const LEGACY_CATEGORIES_KEY = 'contacts_categories_cache';
+
+/** `#/contacts/<category>/<card>`, both optional and both encoded. */
+const CONTACTS_ROUTE = /^#\/contacts\/?([^\/]*)\/?(.*)$/;
+
+/** How an address write lands in the session history; see writeHash. */
+type HashEntry = 'push' | 'replace';
 
 @customElement('contacts-page')
 export class ContactsPage extends LitElement {
@@ -53,11 +59,10 @@ export class ContactsPage extends LitElement {
   @state() private sidebarWidth = 250;
   @state() private listWidth = 380;
   @state() private sidebarCollapsed = false;
-  @state() private isSidebarHovered = false;
+  /** Mirrors the sidebar's own hover overlay (`peek-change`). */
+  @state() private sidebarPeeking = false;
   @state() private isMobile = window.innerWidth <= 768;
   @state() private mobileSidebarOpen = false;
-  private hoverTimeout: any = null;
-  @state() private suppressSidebarHover = false;
   @state() private isSidebarDragging = false;
   @state() private isPaneDragging = false;
   @state() private densityMode: 'loose' | 'normal' | 'compact' | 'ultra-compact' = 'compact';
@@ -67,6 +72,13 @@ export class ContactsPage extends LitElement {
   @state() private categoryToDelete: string | null = null;
   
   private syncIntervalTimer: ReturnType<typeof setInterval> | null = null;
+  /** Bumped by every read of the list; only the newest read's answer is painted. */
+  private readEpoch = 0;
+  /** The search `contacts` answers: '' when it holds the whole book. */
+  private loadedQuery = '';
+  /** The whole book as last read, beside a search or without one; see allContacts. */
+  private wholeBook: any[] = [];
+  private mergedBook: { contacts: any[]; wholeBook: any[]; open: any; merged: any[] } | null = null;
 
   static styles = [
     MailboxPage.styles,
@@ -81,6 +93,8 @@ export class ContactsPage extends LitElement {
       background-color: var(--bg-primary, #ffffff);
       color: var(--text-primary);
       overflow: hidden;
+      /* Not a scroll container: see the mailbox page's host. */
+      overflow: clip;
     }
     .folder-name {
       flex: 1;
@@ -245,7 +259,16 @@ export class ContactsPage extends LitElement {
         messageListPane.classList.add(`density-${mode}`);
       }
     }
+  }
 
+  /**
+   * In willUpdate, not updated: a property set in updated() lands after the
+   * render that saw `loading` turn on, so every fetch, the mount's own
+   * included, rendered the whole page a second time. Here the spinner starts
+   * in the same render.
+   */
+  willUpdate(changedProperties: Map<string, any>) {
+    super.willUpdate(changedProperties);
     if (changedProperties.has('loading') && this.loading) {
       this.isSpinning = true;
     }
@@ -281,6 +304,7 @@ export class ContactsPage extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.stopResize?.();
     window.removeEventListener('resize', this._handleWindowResize);
     window.removeEventListener('hashchange', this._handleHashChange);
     window.removeEventListener('alps-active-user-changed', this.loadAddedCategories);
@@ -330,7 +354,7 @@ export class ContactsPage extends LitElement {
     this.contacts = this.contacts.filter((c: any) => !c.isTemporary);
 
     const hash = window.location.hash;
-    const match = hash.match(/^#\/contacts\/?([^\/]*)\/?(.*)$/);
+    const match = hash.match(CONTACTS_ROUTE);
     if (match) {
       const catParam = match[1] ? decodeURIComponent(match[1]) : '';
       const uidParam = match[2] ? decodeURIComponent(match[2]) : '';
@@ -368,9 +392,83 @@ export class ContactsPage extends LitElement {
     }
   };
 
+  /**
+   * Puts `hash` in the address bar, and nothing when it is already there.
+   * Every address this page writes goes through here, saying which of the two
+   * it is.
+   *
+   * `push` is the user going somewhere, an entry Back returns from: a card or
+   * a category clicked, the pane closed. `replace` is the page correcting the
+   * address the user is already on after a gesture changed what it names: the
+   * open category renamed or deleted, the open card deleted or filed out of
+   * the open category. Assigned, each of those left an entry naming something
+   * no longer there, and Back onto it showed an empty list under a category
+   * the sidebar no longer had, or an empty pane for a card that is gone.
+   *
+   * The page renders from the address, in _handleHashChange, and replaceState
+   * fires no `hashchange`, so a rewrite reads its own address back, as the
+   * event did after the assignment it replaces.
+   */
+  private writeHash(hash: string, entry: HashEntry) {
+    if (window.location.hash === hash) return;
+    if (entry === 'push') {
+      window.location.hash = hash;
+      return;
+    }
+    history.replaceState(null, '', hash);
+    this._handleHashChange();
+  }
+
+  /** The open category's list with no card open: where the pane's close goes,
+   * and what a deleted card's address becomes. */
+  private listHash(): string {
+    return `#/contacts/${encodeURIComponent(this.selectedCategory || 'all')}`;
+  }
+
+  /**
+   * The open card is gone and the address may still name it, so it is
+   * rewritten in place to the card's list. Left alone, a reload or Back onto
+   * it asked for a card that no longer exists and showed an empty pane.
+   */
+  private leaveDeletedCard() {
+    if (!window.location.hash.match(CONTACTS_ROUTE)?.[2]) return;
+    this.writeHash(this.listHash(), 'replace');
+  }
+
+  /**
+   * Every card in the book, whatever the search: what the sidebar and the
+   * category picker describe.
+   *
+   * Under a search `contacts` is only the server's matches, and the sidebar
+   * was built from it: a category carried only by cards the search did not
+   * match left the sidebar, so it could not be clicked, and every count was
+   * counted over the matches. Under one, this is the whole book read beside
+   * the search, with each card the list also holds taken from the list, and
+   * the open card taken as it is open, since those carry the page's own edits
+   * since that read.
+   */
+  get allContacts(): any[] {
+    if (!this.loadedQuery) return this.contacts;
+    const open = this.selectedContact;
+    const cached = this.mergedBook;
+    if (cached && cached.contacts === this.contacts && cached.wholeBook === this.wholeBook && cached.open === open) {
+      return cached.merged;
+    }
+    const listed = new Map(this.contacts.filter(c => c.path).map(c => [c.path, c]));
+    if (open?.path && !listed.has(open.path)) listed.set(open.path, open);
+    const inBook = new Set(this.wholeBook.map(c => c.path));
+    const merged = [
+      // A card created during the search is in the list and not yet in the book.
+      ...this.contacts.filter(c => !c.path || !inBook.has(c.path)),
+      ...this.wholeBook.map(c => listed.get(c.path) ?? c),
+    ];
+    this.mergedBook = { contacts: this.contacts, wholeBook: this.wholeBook, open, merged };
+    return merged;
+  }
+
   get uniqueCategories() {
     const cats = new Set<string>(this.addedCategories);
-    for (const c of this.contacts) {
+    for (const c of this.allContacts) {
       if (c.categories) {
         for (const cat of c.categories) {
           cats.add(cat);
@@ -384,17 +482,44 @@ export class ContactsPage extends LitElement {
     return this.settingsStore?.getState().loginUsername || '';
   }
 
+  /**
+   * Reads the list, with the search when there is one.
+   *
+   * Only the newest read is painted. The list is read from a search, a search
+   * ended, a refresh, the sync timer and the reconciles after writes, with no
+   * ordering between their answers, so the slowest one won: a search's
+   * matches landing after the read that ended it left them on screen under
+   * an empty search box.
+   */
   async fetchContacts() {
+    const epoch = ++this.readEpoch;
     this.loading = true;
     try {
-      const data = await contactsService.fetchContacts(this.filterQuery);
+      const query = this.filterQuery;
+      const [data, whole] = await Promise.all([
+        contactsService.fetchContacts(query),
+        // The whole book beside a search, for the sidebar (see allContacts).
+        // Never fatal to the search: on failure the sidebar keeps the book it
+        // last had.
+        query
+          ? contactsService.fetchContacts().catch((e: unknown) => {
+            console.error('Failed to read the whole address book beside a search', e);
+            return null;
+          })
+          : null,
+      ]);
+      if (epoch !== this.readEpoch) return;
 
       this.contacts = data.contacts || [];
+      this.loadedQuery = query;
+      if (!query) this.wholeBook = this.contacts;
+      else if (whole) this.wholeBook = whole.contacts || [];
       this._handleHashChange(); // Trigger selection if a deep link was used
     } catch (e) {
+      if (epoch !== this.readEpoch) return;
       console.error('Failed to fetch contacts', e);
     } finally {
-      this.loading = false;
+      if (epoch === this.readEpoch) this.loading = false;
       if (this.showInitialLoader) {
         setTimeout(() => {
           this.showInitialLoader = false;
@@ -402,6 +527,26 @@ export class ContactsPage extends LitElement {
         }, 100);
       }
     }
+  }
+
+  /**
+   * Ends the search, for the banner's "clear search" and for a category
+   * clicked in the sidebar alike.
+   *
+   * Clearing `filterQuery` is not enough on its own: under a search
+   * `this.contacts` is the server's answer to the query. The sidebar cleared
+   * it and read nothing, so the box and the banner said there was no search
+   * while the list went on showing the old query's matches, and of the
+   * category clicked only the cards that matched it.
+   *
+   * With no search active there is nothing to read: `contacts` is already the
+   * whole book. The search box needs nothing either; it shows the header's
+   * `searchQuery`, which is bound to `filterQuery`.
+   */
+  private clearSearch() {
+    if (!this.filterQuery) return;
+    this.filterQuery = '';
+    void this.fetchContacts();
   }
 
   async selectContact(contact: any, updateHash: boolean = true) {
@@ -414,7 +559,7 @@ export class ContactsPage extends LitElement {
     if (updateHash) {
       const catUrl = this.selectedCategory ? encodeURIComponent(this.selectedCategory) : 'all';
       const cleanUid = contact.uid?.replace(/^urn:uuid:/, '') || contact.path;
-      window.location.hash = `/contacts/${catUrl}/${encodeURIComponent(cleanUid)}`;
+      this.writeHash(`#/contacts/${catUrl}/${encodeURIComponent(cleanUid)}`, 'push');
       return;
     }
     if (this.selectedContacts.size > 0) {
@@ -451,10 +596,24 @@ export class ContactsPage extends LitElement {
       : [this.selectedContact?.path].filter(Boolean) as string[];
   }
 
+  /**
+   * The card a gesture acts on, wherever the page holds it.
+   *
+   * A search narrows `contacts` to the server's matches but keeps the open
+   * card and the ticked ones, which need not be among them. Star and category
+   * gestures looked only in `contacts`, so on such a card they did nothing:
+   * no write, and no word that nothing was written.
+   */
+  private findContact(path: string): any {
+    return this.contacts.find((c: any) => c.path === path)
+      ?? this.allContacts.find((c: any) => c.path === path)
+      ?? (this.selectedContact?.path === path ? this.selectedContact : undefined);
+  }
+
   private get allSelectedStarred() {
     if (this.selectedContacts.size === 0) return false;
     for (const path of this.selectedContacts) {
-      const contact = this.contacts.find((c: any) => c.path === path);
+      const contact = this.findContact(path);
       if (!contact || !contact.categories?.includes(CATEGORY_FAVORITES)) {
         return false;
       }
@@ -495,6 +654,30 @@ export class ContactsPage extends LitElement {
       // a contact with no categories the revert itself threw.
       const original = contact.categories;
       this.contacts = this.contacts.map((c: any) => c.path === contact.path ? { ...c, categories: original } : c);
+      // The rollback is the truth only for a refusal. A lost response may hide
+      // a star that was written, which would otherwise show off until the next
+      // read of the list.
+      if (outcomeUnknown(err)) void this.rereadCategories(contact.path);
+    }
+  }
+
+  /**
+   * One card's stored categories and version, after a write whose outcome is
+   * unknown. Dropped if anything repainted the card meanwhile: a newer
+   * gesture or read is the newer truth.
+   */
+  private async rereadCategories(path: string) {
+    const row = this.contacts.find((c: any) => c.path === path);
+    try {
+      const card = await contactsService.fetchContact(path);
+      if (!row || this.contacts.find((c: any) => c.path === path) !== row) return;
+      const stored = { categories: card.categories ?? [], ...(card.etag ? { etag: card.etag } : {}) };
+      this.contacts = this.contacts.map((c: any) => c.path === path ? { ...c, ...stored } : c);
+      if (this.selectedContact?.path === path) {
+        this.selectedContact = { ...this.selectedContact, ...stored };
+      }
+    } catch (e) {
+      console.error('Failed to re-read a contact after a write that may have landed', e);
     }
   }
 
@@ -502,9 +685,17 @@ export class ContactsPage extends LitElement {
     const customEvent = e as CustomEvent;
     const checked = customEvent.detail ? customEvent.detail.checked : (e.target as HTMLInputElement).checked;
     if (checked) {
+      // The rows the list shows, when it says which.
+      if (Array.isArray(customEvent.detail?.paths)) {
+        this.selectedContacts = new Set(customEvent.detail.paths);
+        return;
+      }
       const filteredContacts = this.contacts.filter(c => {
         if (this.selectedCategory) {
           if (!c.categories || !c.categories.includes(this.selectedCategory)) return false;
+        }
+        if (this.showOnlyStarred) {
+          if (!c.categories || !c.categories.includes(CATEGORY_FAVORITES)) return false;
         }
         return true;
       });
@@ -580,7 +771,9 @@ export class ContactsPage extends LitElement {
 
     if (this.selectedCategory === oldName) {
       this.selectedCategory = newName;
-      window.location.hash = `/contacts/${encodeURIComponent(newName)}`;
+      // In place: the old name is a category that no longer exists, and Back
+      // onto it showed an empty list the sidebar did not have.
+      this.writeHash(`#/contacts/${encodeURIComponent(newName)}`, 'replace');
     }
 
     let contactsToUpdate: any[];
@@ -588,7 +781,7 @@ export class ContactsPage extends LitElement {
       contactsToUpdate = await this.cardsCarrying(oldName);
     } catch (e) {
       console.error('Could not read the address book for a category change', e);
-      this.reportFailure('contacts.categoryRenameFailed', { failed: 1, total: 1 });
+      this.reportFailure('contacts.categoryRenameFailed', { failed: 1, count: 1 });
       return;
     }
     if (contactsToUpdate.length > 0) {
@@ -601,11 +794,11 @@ export class ContactsPage extends LitElement {
         const { total, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
         this.fetchContacts();
-        if (failed > 0) this.reportFailure('contacts.categoryRenameFailed', { failed, total });
+        if (failed > 0) this.reportFailure('contacts.categoryRenameFailed', { failed, count: total });
       } catch (e) {
         console.error('Error renaming category', e);
         this.fetchContacts();
-        this.reportFailure('contacts.categoryRenameFailed', { failed: 1, total: 1 });
+        this.reportFailure('contacts.categoryRenameFailed', { failed: 1, count: 1 });
       } finally {
         this.saving = false;
       }
@@ -624,7 +817,8 @@ export class ContactsPage extends LitElement {
 
     if (this.selectedCategory === oldName) {
       this.selectedCategory = '';
-      window.location.hash = `/contacts/all`;
+      // In place, as for a rename: the category is gone.
+      this.writeHash('#/contacts/all', 'replace');
     }
 
     let contactsToUpdate: any[];
@@ -632,7 +826,7 @@ export class ContactsPage extends LitElement {
       contactsToUpdate = await this.cardsCarrying(oldName);
     } catch (e) {
       console.error('Could not read the address book for a category change', e);
-      this.reportFailure('contacts.categoryDeleteFailed', { failed: 1, total: 1 });
+      this.reportFailure('contacts.categoryDeleteFailed', { failed: 1, count: 1 });
       return;
     }
     if (contactsToUpdate.length > 0) {
@@ -645,11 +839,11 @@ export class ContactsPage extends LitElement {
         const { total, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
         this.fetchContacts();
-        if (failed > 0) this.reportFailure('contacts.categoryDeleteFailed', { failed, total });
+        if (failed > 0) this.reportFailure('contacts.categoryDeleteFailed', { failed, count: total });
       } catch (e) {
         console.error('Error deleting category', e);
         this.fetchContacts();
-        this.reportFailure('contacts.categoryDeleteFailed', { failed: 1, total: 1 });
+        this.reportFailure('contacts.categoryDeleteFailed', { failed: 1, count: 1 });
       } finally {
         this.saving = false;
       }
@@ -667,7 +861,7 @@ export class ContactsPage extends LitElement {
       this.contacts = this.contacts.filter((c: any) => !c.isTemporary);
 
       if (!this.selectedCategory) {
-        window.location.hash = `/contacts/all`;
+        this.writeHash('#/contacts/all', 'push');
       }
     } else if (this.selectedContact?.path && this.selectedContact.path === this.conflictedPath) {
       this.conflictedPath = null;
@@ -798,7 +992,7 @@ export class ContactsPage extends LitElement {
 
     const isStarred = pathsToUpdate.length > 1 
       ? this.allSelectedStarred 
-      : (this.contacts.find((c: any) => c.path === pathsToUpdate[0])?.categories?.includes(CATEGORY_FAVORITES) || false);
+      : (this.findContact(pathsToUpdate[0])?.categories?.includes(CATEGORY_FAVORITES) || false);
 
     this.saving = true;
     // Taken before the optimistic paint, so a refusal of every card has
@@ -808,10 +1002,9 @@ export class ContactsPage extends LitElement {
     const previousSelected = this.selectedContact ? { ...this.selectedContact } : null;
     try {
       const contactsToModify = pathsToUpdate.map((path) => {
-        const contactIndex = this.contacts.findIndex((c: any) => c.path === path);
-        if (contactIndex === -1) return;
+        const contact = this.findContact(path);
+        if (!contact) return;
 
-        const contact = this.contacts[contactIndex];
         let categories = contact.categories ? [...contact.categories] : [];
         if (isStarred) {
           categories = categories.filter((c: string) => c !== CATEGORY_FAVORITES);
@@ -820,7 +1013,8 @@ export class ContactsPage extends LitElement {
         }
 
         // Optimistic UI update
-        this.contacts[contactIndex] = { ...contact, categories };
+        const contactIndex = this.contacts.findIndex((c: any) => c.path === path);
+        if (contactIndex !== -1) this.contacts[contactIndex] = { ...contact, categories };
         if (this.selectedContact?.path === path) {
           this.selectedContact = { ...this.selectedContact, categories };
         }
@@ -831,15 +1025,18 @@ export class ContactsPage extends LitElement {
 
       this.contacts = [...this.contacts]; // Trigger re-render immediately
 
-      const { total, done, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+      const { total, done, failed, uncertain, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
       this.applyETags(etags);
       if (failed > 0) {
         if (done === 0) {
-          // Nothing was written, so the snapshot is the truth: both panes go
-          // back at once. A re-read would leave the star lit until it answered,
+          // Nothing is known to have been written, so both panes go back at
+          // once. A re-read alone would leave the star lit until it answered,
           // and for good when it failed too, as it does offline.
           this.contacts = previousContacts;
           this.selectedContact = previousSelected;
+          // But a timeout or a lost response may hide a star that was written,
+          // and only a read can tell.
+          if (uncertain > 0) this.fetchContacts();
         } else {
           // Some cards took the change, and the snapshot would un-star them.
           this.fetchContacts();
@@ -872,29 +1069,59 @@ export class ContactsPage extends LitElement {
   private async confirmDelete() {
     this.showDeleteConfirm = false;
     this.saving = true;
+    // What the confirmed delete was aimed at, taken before the request: the
+    // user can open another card, or tick others, while it is on its way, and
+    // the answer must not clear those.
+    const open = this.selectedContact?.path;
+    const openedHash = window.location.hash;
+    const selection = this.selectedContacts;
     try {
       const pathsToDelete = this.gestureTargets;
-      const { total, done, failed } = await contactsService.bulkDeleteContacts(pathsToDelete);
+      const { total, done, failed, uncertain, deletedPaths = [] } = await contactsService.bulkDeleteContacts(pathsToDelete);
 
-      // Only when something went. The outcome is a count, not which cards, so
-      // after any deletion the selection cannot be trimmed to the survivors and
-      // the list is re-read. A delete that removed nothing (offline, say)
-      // leaves every card there, and the selection the user built stays too.
+      // Only when something went, and the list is re-read. A delete that
+      // removed nothing (offline, say) leaves every card there, and the
+      // selection the user built stays too.
       if (done > 0) {
-        this.selectedContact = null;
-        if (this.selectedContacts.size > 0) {
+        // The open card closes only if it is still the one that was open and
+        // it is gone: a card the batch failed to delete is still there, and
+        // one opened meanwhile was never a target.
+        if (open && this.selectedContact?.path === open && deletedPaths.includes(open)) {
+          this.selectedContact = null;
+          this.isEditing = false;
+          // Before the re-read, whose hash handler would open a card the
+          // address still names; and only the address the delete was made
+          // from, not one the user has since moved to.
+          if (window.location.hash === openedHash) this.leaveDeletedCard();
+        }
+        // The ticked batch was the target. A selection built since is not.
+        if (this.selectedContacts === selection && selection.size > 0) {
           this.selectedContacts = new Set();
         }
-        this.isEditing = false;
         this.fetchContacts();
+      } else if (uncertain > 0) {
+        // Nothing is known to have gone, but a lost response may hide a delete
+        // that was made. Read again, then let go of only the targets the book
+        // no longer has: offline the read fails too, and everything stays.
+        await this.fetchContacts();
+        const book = new Set(this.allContacts.map((c: any) => c.path));
+        const gone = (path?: string) => !!path && pathsToDelete.includes(path) && !book.has(path);
+        if (open && this.selectedContact?.path === open && gone(open)) {
+          this.selectedContact = null;
+          this.isEditing = false;
+          if (window.location.hash === openedHash) this.leaveDeletedCard();
+        }
+        if (this.selectedContacts === selection && [...selection].some(gone)) {
+          this.selectedContacts = new Set([...selection].filter(path => !gone(path)));
+        }
       }
       if (failed > 0) {
-        this.reportFailure('contacts.deleteFailed', { failed, total });
+        this.reportFailure('contacts.deleteFailed', { failed, count: total });
       }
     } catch (e) {
       console.error('Error deleting contacts', e);
       this.fetchContacts();
-      this.reportFailure('contacts.deleteFailed', { failed: 1, total: 1 });
+      this.reportFailure('contacts.deleteFailed', { failed: 1, count: 1 });
     } finally {
       this.saving = false;
     }
@@ -916,10 +1143,9 @@ export class ContactsPage extends LitElement {
     this.saving = true;
     try {
       const contactsToModify = pathsToUpdate.map((path) => {
-        const contactIndex = this.contacts.findIndex((c: any) => c.path === path);
-        if (contactIndex === -1) return;
+        const contact = this.findContact(path);
+        if (!contact) return;
 
-        const contact = this.contacts[contactIndex];
         let categories = contact.categories ? [...contact.categories] : [];
 
         if (cat === '') {
@@ -931,7 +1157,8 @@ export class ContactsPage extends LitElement {
         }
 
         // Optimistic UI update
-        this.contacts[contactIndex] = { ...contact, categories };
+        const contactIndex = this.contacts.findIndex((c: any) => c.path === path);
+        if (contactIndex !== -1) this.contacts[contactIndex] = { ...contact, categories };
         if (this.selectedContact?.path === path) {
           this.selectedContact = { ...this.selectedContact, categories };
         }
@@ -945,7 +1172,7 @@ export class ContactsPage extends LitElement {
       this.applyETags(etags);
       if (failed > 0) {
         this.fetchContacts();
-        this.reportFailure('contacts.categoryUpdateFailed', { failed, total });
+        this.reportFailure('contacts.categoryUpdateFailed', { failed, count: total });
       }
 
       if (this.selectedContact && this.selectedContacts.size <= 1 && this.selectedCategory !== '') {
@@ -953,7 +1180,10 @@ export class ContactsPage extends LitElement {
         if (!hasCategory) {
           const uid = this.selectedContact.uid?.replace(/^urn:uuid:/, '') || this.selectedContact.path;
           if (uid) {
-            window.location.hash = `#/contacts/all/${encodeURIComponent(uid)}`;
+            // In place: the page follows the card to a list that still holds
+            // it, which is not a place the user asked to go, and the old
+            // address named it under a category it no longer carries.
+            this.writeHash(`#/contacts/all/${encodeURIComponent(uid)}`, 'replace');
           }
         }
       }
@@ -963,14 +1193,23 @@ export class ContactsPage extends LitElement {
       }
     } catch (e) {
       console.error('Error updating categories', e);
-      this.reportFailure('contacts.categoryUpdateFailed');
+      // The bulk update threw before reporting any outcome, so none of the
+      // cards can be counted as done. Without numbers the toast showed its
+      // own "{failed} of {total}" placeholders.
+      this.reportFailure('contacts.categoryUpdateFailed', { failed: pathsToUpdate.length, count: pathsToUpdate.length });
     } finally {
       this.saving = false;
     }
   }
 
+  /** Ends the pane drag in progress, if any; null when there is none. A page
+   * that leaves the screen mid-drag calls it, or its window listeners would
+   * keep running against it until the next mouseup. */
+  private stopResize: (() => void) | null = null;
+
   private startResize = (e: MouseEvent) => {
     e.preventDefault();
+    this.stopResize?.();
     this.isPaneDragging = true;
 
     const startX = e.clientX;
@@ -982,11 +1221,13 @@ export class ContactsPage extends LitElement {
     };
 
     const onMouseUp = () => {
+      this.stopResize = null;
       this.isPaneDragging = false;
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
 
+    this.stopResize = onMouseUp;
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
   };
@@ -1016,13 +1257,11 @@ export class ContactsPage extends LitElement {
         this.fetchContacts();
       }}
       ></app-header>
-      <div class="app-container layout-vertical ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isPaneDragging || this.isSidebarDragging ? 'dragging' : ''} ${this.isMobile ? 'mobile-view' : ''} ${this.suppressSidebarHover ? 'suppress-sidebar-hover' : ''} ${this.isMobile && this.selectedContact ? 'reading' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
+      <div class="app-container layout-vertical ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isPaneDragging || this.isSidebarDragging ? 'dragging' : ''} ${this.isMobile ? 'mobile-view' : ''} ${this.isMobile && this.selectedContact ? 'reading' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
         <alps-sidebar 
           class="${this.isMobile ? 'mobile-sidebar' : 'desktop-sidebar'} ${this.mobileSidebarOpen ? 'open' : ''}"
           .isMobile=${this.isMobile}
           .isOpen=${this.mobileSidebarOpen}
-          .isHovered=${this.isSidebarHovered}
-          .suppressHover=${this.suppressSidebarHover}
           .width=${this.sidebarWidth}
           .collapsed=${this.sidebarCollapsed && !this.isMobile}
           @sidebar-resize=${(e: CustomEvent) => {
@@ -1039,49 +1278,37 @@ export class ContactsPage extends LitElement {
           @drag-end=${() => this.isSidebarDragging = false}
           @toggle-collapse=${() => this.settingsStore?.updateSettings({ sidebarCollapsed: !this.sidebarCollapsed })}
           @close-sidebar=${() => this.mobileSidebarOpen = false}
-          @mouseenter=${() => {
-        if (this.hoverTimeout) {
-          clearTimeout(this.hoverTimeout);
-          this.hoverTimeout = null;
-        }
-        this.isSidebarHovered = true;
-        this.suppressSidebarHover = false;
-      }}
-          @mouseleave=${() => {
-        this.hoverTimeout = setTimeout(() => {
-          this.isSidebarHovered = false;
-        }, 300); // 300ms delay before collapsing
-      }}
+          @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
         >
           <alps-contacts-categories
-            .contacts=${this.contacts}
+            .contacts=${this.allContacts}
             .uniqueCategories=${this.uniqueCategories}
             .selectedCategory=${this.selectedCategory}
             .filterQuery=${this.filterQuery}
             .sidebarCollapsed=${this.sidebarCollapsed}
-            .isSidebarHovered=${this.isSidebarHovered}
-            .suppressSidebarHover=${this.suppressSidebarHover}
+            .sidebarPeeking=${this.sidebarPeeking}
             .isMobile=${this.isMobile}
             @create-contact=${this.handleCreateNew}
             @select-category=${(e: CustomEvent) => {
-        this.filterQuery = '';
+        this.clearSearch();
         const cat = e.detail.category;
         if (cat === CATEGORY_ALL_CONTACTS) {
-          window.location.hash = `/contacts/all`;
+          this.writeHash('#/contacts/all', 'push');
         } else {
-          window.location.hash = `/contacts/${encodeURIComponent(cat)}`;
+          this.writeHash(`#/contacts/${encodeURIComponent(cat)}`, 'push');
         }
+        closeSidebarPeek(this.renderRoot);
       }}
             @drag-start=${() => {
         this.isSidebarDragging = true;
-        this.suppressSidebarHover = true;
+        closeSidebarPeek(this.renderRoot);
       }}
             @drag-end=${() => {
         this.isSidebarDragging = false;
         if (this.isMobile) {
           this.mobileSidebarOpen = false;
         } else {
-          this.suppressSidebarHover = true;
+          closeSidebarPeek(this.renderRoot);
         }
       }}
             @rename-category=${(e: CustomEvent) => {
@@ -1124,12 +1351,7 @@ export class ContactsPage extends LitElement {
               @spin-iteration=${this.handleSpinIteration}
               @sort-toggle=${() => this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc'}
               @filter-star-toggle=${() => this.showOnlyStarred = !this.showOnlyStarred}
-              @clear-search=${() => {
-        this.filterQuery = '';
-        this.fetchContacts();
-        const appHeader = document.querySelector('app-header');
-        if (appHeader) appHeader.shadowRoot?.querySelector('alps-input')?.shadowRoot?.querySelector('input')?.setAttribute('value', '');
-      }}
+              @clear-search=${() => this.clearSearch()}
               @list-scrolled=${(e: CustomEvent) => this.listScrolled = e.detail.scrolled}
             ></alps-contacts-list>
           </div>
@@ -1153,7 +1375,7 @@ export class ContactsPage extends LitElement {
               @close=${() => {
                 this.selectedContact = null;
                 this.isEditing = false;
-                window.location.hash = `/contacts/${encodeURIComponent(this.selectedCategory || 'all')}`;
+                this.writeHash(this.listHash(), 'push');
               }}
             ></alps-contact-view>
           </div>

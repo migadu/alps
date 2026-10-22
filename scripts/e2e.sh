@@ -285,6 +285,12 @@ output = "stderr"
 format = "console"
 level = "info"
 
+# The tests that register a security key reach alps as localhost: a key is
+# bound to a hostname, and the browser takes no IP address as one.
+[webauthn]
+rpid = "localhost"
+origins = ["http://localhost:$ALPS_PORT"]
+
 [provider]
 type = "imap"
 

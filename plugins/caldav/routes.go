@@ -35,6 +35,28 @@ func resolveDAVPath(base *url.URL, href string) string {
 	return path.Join(base.Path, href)
 }
 
+// mkcalendarBody is the MKCALENDAR request for a collection named name. Given
+// components, it asks that the collection take only those (RFC 4791 sections
+// 5.2.3 and 5.3.1); given none, the server decides.
+func mkcalendarBody(name string, components []string) string {
+	var comps strings.Builder
+	if len(components) > 0 {
+		comps.WriteString("\n      <C:supported-calendar-component-set>")
+		for _, comp := range components {
+			fmt.Fprintf(&comps, `<C:comp name="%s"/>`, xmlEscape(comp))
+		}
+		comps.WriteString("</C:supported-calendar-component-set>")
+	}
+	return fmt.Sprintf(`<?xml version="1.0" encoding="utf-8" ?>
+<C:mkcalendar xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:set>
+    <D:prop>
+      <D:displayname>%s</D:displayname>%s
+    </D:prop>
+  </D:set>
+</C:mkcalendar>`, xmlEscape(name), comps.String())
+}
+
 // xmlEscape returns s escaped for inclusion in XML character data.
 func xmlEscape(s string) string {
 	var b bytes.Buffer
@@ -172,6 +194,11 @@ func eventIsAllDay(event *ical.Event) bool {
 	return end != nil && isUTCMidnight(start.Value) && isUTCMidnight(end.Value)
 }
 
+// dateOf is t's calendar date, at midnight in t's own location.
+func dateOf(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
 func isUTCMidnight(value string) bool {
 	return len(value) == len("20060102T150405Z") && strings.HasSuffix(value, "T000000Z")
 }
@@ -182,10 +209,19 @@ func isUTCMidnight(value string) bool {
 // which the frontend builds as UTC midnight of the day the user picked. Both
 // setters replace the property whole, so switching an event between all-day and
 // timed leaves no stale VALUE or TZID parameter behind.
+//
+// DTEND is exclusive, so an all-day event ends on the day after its last at
+// the earliest. Written on its first day instead, it lasts no time at all, and
+// calendars draw it on no day.
 func setEventTimes(event *ical.Event, start, end time.Time, allDay bool) {
 	if allDay {
-		event.Props.SetDate(ical.PropDateTimeStart, start.UTC())
-		event.Props.SetDate(ical.PropDateTimeEnd, end.UTC())
+		first := dateOf(start.UTC())
+		after := dateOf(end.UTC())
+		if !after.After(first) {
+			after = first.AddDate(0, 0, 1)
+		}
+		event.Props.SetDate(ical.PropDateTimeStart, first)
+		event.Props.SetDate(ical.PropDateTimeEnd, after)
 		return
 	}
 	event.Props.SetDateTime(ical.PropDateTimeStart, start)
@@ -248,12 +284,22 @@ func registerRoutes(p *plugin) {
 	p.POST("/calendar/calendars", func(ctx *alps.Context) error {
 		var req struct {
 			Name string `json:"name"`
+			// Components, when given, is all the new collection takes, out of
+			// VEVENT and VTODO. The Tasks tab makes its lists for VTODO alone,
+			// so a list does not also show on the Calendar tab as an empty
+			// calendar. None given leaves it to the server.
+			Components []string `json:"components"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
 		}
 		if req.Name == "" {
 			return alps.NewHTTPError(http.StatusBadRequest, "Calendar name is required")
+		}
+		for _, comp := range req.Components {
+			if comp != ical.CompEvent && comp != ical.CompToDo {
+				return alps.NewHTTPError(http.StatusBadRequest, "Unknown calendar component")
+			}
 		}
 
 		_, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
@@ -282,15 +328,6 @@ func registerRoutes(p *plugin) {
 			targetURL.Path += "/"
 		}
 
-		xmlPayload := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8" ?>
-<C:mkcalendar xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
-  <D:set>
-    <D:prop>
-      <D:displayname>%s</D:displayname>
-    </D:prop>
-  </D:set>
-</C:mkcalendar>`, xmlEscape(req.Name))
-
 		rt := authRoundTripper{
 			server:  http.DefaultTransport,
 			session: ctx.Session,
@@ -298,34 +335,41 @@ func registerRoutes(p *plugin) {
 		}
 		hc := &http.Client{Transport: &rt}
 
-		httpReq, err := http.NewRequestWithContext(ctx.Request.Context(), "MKCALENDAR", targetURL.String(), strings.NewReader(xmlPayload))
-		if err != nil {
-			return err
-		}
-		httpReq.Header.Set("Content-Type", "application/xml; charset=utf-8")
-
-		resp, err := hc.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusNotImplemented {
-			httpReq, err = http.NewRequestWithContext(ctx.Request.Context(), "POST", targetURL.String(), strings.NewReader(xmlPayload))
+		send := func(method, xmlPayload string) (*http.Response, error) {
+			httpReq, err := http.NewRequestWithContext(ctx.Request.Context(), method, targetURL.String(), strings.NewReader(xmlPayload))
 			if err != nil {
-				return err
+				return nil, err
 			}
 			httpReq.Header.Set("Content-Type", "application/xml; charset=utf-8")
-			resp2, err := hc.Do(httpReq)
+			resp, err := hc.Do(httpReq)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			defer resp2.Body.Close()
-			if resp2.StatusCode/100 != 2 {
-				return fmt.Errorf("failed to create calendar via POST: %s", resp2.Status)
+			resp.Body.Close()
+			return resp, nil
+		}
+		// create sends the MKCALENDAR, or the same body as a POST to a server
+		// that has no MKCALENDAR.
+		create := func(xmlPayload string) (*http.Response, error) {
+			resp, err := send("MKCALENDAR", xmlPayload)
+			if err != nil || (resp.StatusCode != http.StatusMethodNotAllowed && resp.StatusCode != http.StatusNotImplemented) {
+				return resp, err
 			}
-		} else if resp.StatusCode/100 != 2 {
-			return fmt.Errorf("failed to create calendar via MKCALENDAR: %s", resp.Status)
+			return send("POST", xmlPayload)
+		}
+
+		resp, err := create(mkcalendarBody(req.Name, req.Components))
+		// A server that will not restrict what a collection takes refuses the
+		// whole MKCALENDAR with 403 (RFC 4791 section 5.3.1). A list that takes
+		// events as well is still a list, so it is made without the restriction.
+		if err == nil && resp.StatusCode == http.StatusForbidden && len(req.Components) > 0 {
+			resp, err = create(mkcalendarBody(req.Name, nil))
+		}
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode/100 != 2 {
+			return fmt.Errorf("failed to create calendar via %s: %s", resp.Request.Method, resp.Status)
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true", "path": newPath})

@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ComposeStore, bareAddress } from '../src/store/compose-store';
 import { messageOperations } from '../src/services/message-operations';
+import { DraftFlushError } from '../src/utils/draft-flush-error';
 
 const stores: ComposeStore[] = [];
 function makeStore(): ComposeStore {
@@ -54,6 +55,17 @@ describe('whose drafts', () => {
     ]));
     const [draft] = composers(makeStore());
     expect(draft).toMatchObject({ subject: 'Hi', isSending: false, minimized: false, attachments: [{ uuid: 'u1' }] });
+  });
+
+  it('restores the attachments a saved draft already holds', () => {
+    // A save answers with the draft's parts by path. Dropped on the way
+    // back in, the next save stored the draft without them.
+    signIn('ada');
+    localStorage.setItem('alps_compose_drafts_ada', JSON.stringify([
+      { id: 'c1', subject: 'Hi', draftUid: '7', attachments: [{ name: 'ledger.txt', partPath: '2' }, { name: 'logo.png', partPath: '3', inline: true }] },
+    ]));
+    const [draft] = composers(makeStore());
+    expect(draft.attachments).toEqual([{ name: 'ledger.txt', partPath: '2' }, { name: 'logo.png', partPath: '3', inline: true }]);
   });
 
   it('deletes drafts stored under the old shared key rather than adopting them', () => {
@@ -109,6 +121,15 @@ describe('leaving', () => {
     expect(storedDrafts('ada').map((c: any) => c.subject)).toEqual(['typed just before the 401']);
   });
 
+  it('clears no windows quietly, announcing no change', () => {
+    signIn('ada');
+    const store = makeStore();
+    const changes: Event[] = [];
+    store.addEventListener('change', e => changes.push(e));
+    store.clearAllComposers();
+    expect(changes).toHaveLength(0);
+  });
+
   it('clears the windows for the login screen without touching what is stored', () => {
     signIn('ada');
     const store = makeStore();
@@ -128,6 +149,17 @@ describe('opening a composer', () => {
     expect(c.format).toBe('text');
     expect(c.text).toBe('\n\n-- \nAda\nEngines\n');
     expect(c.html).toContain('<div class="alps-signature">-- <br>Ada<br>Engines</div>');
+  });
+
+  it('writes the signature into the HTML as the text it is, never as markup', () => {
+    signIn('ada', { signature: 'Ada <ada@example.com>\r\nR&D <b>dept</b>\n<img src=x onerror="steal()">' });
+    const store = makeStore();
+    store.openComposer();
+    const [c] = composers(store);
+    const sig = new DOMParser().parseFromString(c.html!, 'text/html').querySelector('.alps-signature')!;
+    expect([...sig.children].map((el) => el.tagName)).toEqual(['BR', 'BR', 'BR']);
+    expect(sig.textContent).toBe('-- Ada <ada@example.com>R&D <b>dept</b><img src=x onerror="steal()">');
+    expect(c.text).toContain('-- \nAda <ada@example.com>\r\nR&D <b>dept</b>\n');
   });
 
   it('adds no signature to a draft being reopened, and reuses its window', () => {
@@ -180,6 +212,41 @@ describe('editing', () => {
     expect(composers(store)[0].dirty).toBe(false);
   });
 
+  it.each([
+    ['bold over unchanged words', { html: '<p><strong>body</strong></p>' }],
+    ['a switch to plain text', { format: 'text' as const }],
+  ])('marks %s as unsaved', (_name, edit) => {
+    signIn('ada');
+    const store = makeStore();
+    store.openComposer({ text: 'body', html: '<p>body</p>', format: 'html', draftUid: '7' });
+    const id = composers(store)[0].id;
+    store.updateComposer(id, { text: 'body', ...edit });
+    expect(composers(store)[0].dirty).toBe(true);
+  });
+
+  it('marks an edit back to the opening text as unsaved once a draft is stored', () => {
+    // The stored draft holds the intermediate text, so going back is a change.
+    signIn('ada');
+    const store = makeStore();
+    store.openComposer({ text: 'original', draftUid: '7' });
+    const id = composers(store)[0].id;
+    store.updateComposer(id, { text: 'intermediate' });
+    store.updateComposer(id, { draftUid: '8', dirty: false });
+    store.updateComposer(id, { text: 'original' });
+    expect(composers(store)[0].dirty).toBe(true);
+  });
+
+  it('leaves a saved revision clean when the editor reports the text it already has', () => {
+    signIn('ada');
+    const store = makeStore();
+    store.openComposer({ text: 'original', draftUid: '7' });
+    const id = composers(store)[0].id;
+    store.updateComposer(id, { text: 'intermediate' });
+    store.updateComposer(id, { draftUid: '8', dirty: false });
+    store.updateComposer(id, { text: 'intermediate' });
+    expect(composers(store)[0].dirty).toBe(false);
+  });
+
   it('saves edits after a pause rather than on every keystroke', async () => {
     vi.useFakeTimers();
     signIn('ada');
@@ -195,7 +262,7 @@ describe('editing', () => {
 });
 
 describe('saving everything at sign-out', () => {
-  it('saves each composer worth saving and counts the ones that failed', async () => {
+  it('saves each composer worth saving, and keeps open the one the server refused', async () => {
     signIn('ada@example.com');
     const store = makeStore();
     const saveDraft = vi.spyOn(messageOperations, 'saveDraft')
@@ -206,9 +273,114 @@ describe('saving everything at sign-out', () => {
     store.openComposer({ subject: 'a subject only' });
     for (const c of composers(store)) store.updateComposer(c.id, { dirty: true });
 
-    expect(await store.saveAllDirtyDrafts()).toEqual({ failed: 1 });
+    await expect(store.saveAllDirtyDrafts()).rejects.toBeInstanceOf(DraftFlushError);
     expect(saveDraft).toHaveBeenCalledTimes(2);
+    // The refused one is still on screen, and on disk, not saving.
+    expect(composers(store).map(c => c.subject)).toEqual(['with a recipient']);
+    expect(composers(store)[0].isSaving).toBe(false);
+    expect(storedDrafts('ada@example.com').map((c: any) => c.subject)).toEqual(['with a recipient']);
+  });
+
+  it('closes every composer once all of them are stored, untouched ones unsaved', async () => {
+    signIn('ada@example.com');
+    const store = makeStore();
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '1', mailbox: 'Drafts' });
+    store.openComposer({ subject: 'Re: an opened reply', to: ['charles@example.com'], text: 'quote' });
+    store.openComposer({ subject: 'edited', to: ['charles@example.com'] });
+    store.updateComposer(composers(store)[1].id, { text: 'written' });
+
+    await store.saveAllDirtyDrafts();
+
+    expect(saveDraft).toHaveBeenCalledTimes(1);
     expect(composers(store)).toEqual([]);
+  });
+
+  it('leaves a send in its undo window, and an upload, to the user rather than storing them', async () => {
+    signIn('ada@example.com');
+    const store = makeStore();
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '1', mailbox: 'Drafts' });
+    store.openComposer({ subject: 'sending', to: ['charles@example.com'], text: 'hi' });
+    store.openComposer({ subject: 'uploading', to: ['charles@example.com'], text: 'hi' });
+    const [sending, uploading] = composers(store);
+    store.updateComposer(sending.id, { isSending: true, dirty: true });
+    store.updateComposer(uploading.id, { attachments: [{ _tempId: 't1', uploading: true }] });
+
+    await expect(store.saveAllDirtyDrafts()).rejects.toBeInstanceOf(DraftFlushError);
+
+    expect(saveDraft).not.toHaveBeenCalled();
+    expect(composers(store).map(c => c.subject)).toEqual(['sending', 'uploading']);
+  });
+
+  it('keeps open a composer edited while its save was out, knowing the draft it stored', async () => {
+    signIn('ada@example.com');
+    const store = makeStore();
+    store.openComposer({ subject: 'Engines', to: ['charles@example.com'], text: 'first' });
+    const id = composers(store)[0].id;
+    store.updateComposer(id, { text: 'first draft' });
+    vi.spyOn(messageOperations, 'saveDraft').mockImplementationOnce(async () => {
+      store.updateComposer(id, { text: 'first draft, and more' });
+      return { uid: '8', mailbox: 'Drafts' };
+    });
+
+    await expect(store.saveAllDirtyDrafts()).rejects.toBeInstanceOf(DraftFlushError);
+
+    expect(composers(store)[0]).toMatchObject({ text: 'first draft, and more', dirty: true, draftUid: '8', draftMailbox: 'Drafts' });
+  });
+
+  it('keeps the unsaved drafts on disk through a sign-out it was told to keep them for', async () => {
+    signIn('ada@example.com');
+    const store = makeStore();
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue(null);
+    store.openComposer({ subject: 'offline', to: ['charles@example.com'] });
+    store.updateComposer(composers(store)[0].id, { dirty: true });
+
+    const failure = await store.saveAllDirtyDrafts().catch((e: DraftFlushError) => e);
+    (failure as DraftFlushError).keepRecoveryCopy();
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+
+    expect(composers(store)).toEqual([]);
+    expect(storedDrafts('ada@example.com').map((c: any) => c.subject)).toEqual(['offline']);
+    // For that sign-out only: the next one erases as before.
+    announceUser();
+    expect(composers(store).map(c => c.subject)).toEqual(['offline']);
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    expect(storedDrafts('ada@example.com')).toBeNull();
+  });
+
+  it('erases them as before when the user does not ask to keep them', async () => {
+    signIn('ada@example.com');
+    const store = makeStore();
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue(null);
+    store.openComposer({ subject: 'offline', to: ['charles@example.com'] });
+    store.updateComposer(composers(store)[0].id, { dirty: true });
+
+    await expect(store.saveAllDirtyDrafts()).rejects.toBeInstanceOf(DraftFlushError);
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+
+    expect(storedDrafts('ada@example.com')).toBeNull();
+  });
+
+  it('offers no keeping once the account has changed under the flush', async () => {
+    signIn('ada@example.com');
+    const store = makeStore();
+    store.openComposer({ subject: 'Engines', to: ['charles@example.com'] });
+    store.updateComposer(composers(store)[0].id, { dirty: true });
+    vi.spyOn(messageOperations, 'saveDraft').mockImplementationOnce(async () => {
+      window.dispatchEvent(new CustomEvent('session-cleared'));
+      signIn('bob@example.com');
+      announceUser();
+      return { uid: '8', mailbox: 'Drafts' };
+    });
+
+    const failure = await store.saveAllDirtyDrafts().catch((e: DraftFlushError) => e);
+    expect(failure).toBeInstanceOf(DraftFlushError);
+    store.openComposer({ subject: 'Bob\'s' });
+    expect(storedDrafts('bob@example.com')).toHaveLength(1);
+    // Armed for Ada, it would spare Bob's drafts at Bob's sign-out.
+    (failure as DraftFlushError).keepRecoveryCopy();
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+
+    expect(storedDrafts('bob@example.com')).toBeNull();
   });
 
   it('adds the user to Bcc once, however their address is spelled, and sets Reply-To', async () => {

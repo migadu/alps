@@ -591,6 +591,125 @@ test("replying to an HTML message keeps its layout and its images in the quote",
   await expect.poll(async () => (await frameLayout(quoteFrame(page))).cells).toEqual(["cell A", "cell B"]);
 });
 
+/** The text/html part of a submission, its quoted-printable undone. */
+function htmlPart(message: SentMessage): string {
+  const start = message.data.search(/Content-Type:\s*text\/html/i);
+  const decoded = message.data
+    .slice(start)
+    .replace(/=\r?\n/g, "")
+    .replace(/=([0-9A-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+  return Buffer.from(decoded, "latin1").toString("utf8");
+}
+
+/**
+ * Delivers an HTML message whose body is `html`, forwards it to this account,
+ * and returns the HTML that was sent. `shown` is text in the body, waited for
+ * in the reader before Forward and in the quote before Send.
+ */
+async function forwardHtml(page: Page, subject: string, html: string, shown: string): Promise<string> {
+  await deliver({
+    subject,
+    raw: [
+      `From: ${SENDER}`,
+      `To: ${USER.address}`,
+      `Subject: ${subject}`,
+      `Message-ID: <${unique()}@remote.test>`,
+      `Date: ${new Date().toUTCString()}`,
+      "MIME-Version: 1.0",
+      'Content-Type: text/html; charset="utf-8"',
+      "",
+      html,
+      "",
+    ].join("\r\n"),
+  });
+  const text = (frame: Locator) =>
+    frame.evaluate((el) => (el as HTMLIFrameElement).contentDocument?.body?.innerText ?? "");
+
+  await login(page);
+  await page.locator("alps-message-list .message-subject", { hasText: subject }).first().click();
+  await expect.poll(() => text(readerFrame(page))).toContain(shown);
+  await chooseFromMoreMenu(page, "Forward");
+  await expect(composerSubject(page)).toHaveValue(`Fwd: ${subject}`);
+  await expect.poll(() => text(quoteFrame(page))).toContain(shown);
+
+  await addTo(page, USER.address);
+  await sendNow(page);
+  return htmlPart(await sentWithSubject(`Fwd: ${subject}`));
+}
+
+test("forwarding leaves an SVG animation behind, and keeps the drawing it was in", async ({ page }) => {
+  // An animation changes an attribute after the quote has been checked, so a
+  // link it rode out on would point at a script in the recipient's client.
+  const script = "javascript:alert(document.domain)";
+  const sent = await forwardHtml(
+    page,
+    `Animated chart ${Date.now()}`,
+    '<p>Chart below.</p><svg width="200" height="40"><a>' +
+      `<set attributeName="href" to="${script}"/><animate attributeName="href" values="${script}"/>` +
+      '<rect width="200" height="40" fill="#36c"/></a></svg>',
+    "Chart below.",
+  );
+  expect(sent).toContain("Chart below.");
+  expect(sent).toMatch(/<svg[^>]*>\s*<a[^>]*>\s*<rect/);
+  expect(sent).not.toMatch(/<set|<animate|javascript:/i);
+});
+
+test("forwarding leaves a CSS address written with escapes behind, and keeps the formatting around it", async ({ page }) => {
+  // `\75 rl(` is `url(` to the recipient's client, which would fetch it; so
+  // are the plain strings of an image-set().
+  const sent = await forwardHtml(
+    page,
+    `Hidden pixel ${Date.now()}`,
+    '<p>See the notes.</p>' +
+      '<div style="color:#c00;background:\\75 rl(https://tracker.remote.test/escaped.gif)">red note</div>' +
+      "<div style=\"background-image:image-set('https://tracker.remote.test/set.gif' 1x);font-weight:bold\">bold note</div>",
+    "red note",
+  );
+  expect(sent).toMatch(/<div style="color:\s*(?:#c00|rgb\(204, 0, 0\));?">red note</);
+  expect(sent).toMatch(/<div style="font-weight:\s*(?:bold|700);?">bold note</);
+  expect(sent).not.toContain("tracker.remote.test");
+});
+
+test("forwarding leaves a remote background and an SVG paint behind, and keeps the table and the drawing", async ({ page }) => {
+  // Each is a fetch in the recipient's client that is not content. A
+  // reference to an element of the drawing itself fetches nothing, and stays.
+  const sent = await forwardHtml(
+    page,
+    `Backgrounds ${Date.now()}`,
+    '<table background="https://tracker.remote.test/table.gif" bgcolor="#eeeeee"><tr>' +
+      '<td background="//tracker.remote.test/cell.gif">table cell</td></tr></table>' +
+      '<svg width="20" height="20"><defs><linearGradient id="g"><stop offset="0" stop-color="#c00"/></linearGradient></defs>' +
+      '<rect width="20" height="20" fill="url(#g)" stroke="url(https://tracker.remote.test/paint.svg#p)"/></svg>',
+    "table cell",
+  );
+  expect(sent).toMatch(/<table bgcolor="#eeeeee"><tbody><tr><td>table cell<\/td>/);
+  expect(sent).toMatch(/<rect width="20" height="20" fill="url\(#g\)"><\/rect>/);
+  expect(sent).not.toContain("tracker.remote.test");
+});
+
+test("forwarding leaves a noscript behind, which a client that runs script reads differently", async ({ page }) => {
+  // The quote is parsed with scripting disabled, so what a <noscript> holds
+  // is markup to it, and checked as markup. A client that runs script reads
+  // it as text up to the first `</noscript>`, here the one in a comment, and
+  // what follows is live markup in the recipient's client.
+  const sent = await forwardHtml(
+    page,
+    `Fallback ${Date.now()}`,
+    '<p>See below.</p><noscript><!-- </noscript><b id="live">live</b> --></noscript><p>The end.</p>',
+    "The end.",
+  );
+  expect(sent).toContain("See below.");
+  expect(sent).toContain("The end.");
+  expect(sent).not.toMatch(/noscript|id="live"/i);
+  // This page runs script, so it reads the HTML as such a client does.
+  const live = await page.evaluate((html) => {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return div.querySelector("#live") !== null;
+  }, sent);
+  expect(live).toBe(false);
+});
+
 // The image has to leave under the Content-ID the quote names it by: without
 // it the reference resolves for nobody, and the arrived copy's frame logs a
 // CSP refusal for the unresolved `cid:` image, which fails this test too.

@@ -205,9 +205,29 @@ describe('time grid', () => {
     inZone('Europe/Belgrade');
     const el = await grid([new Date(2024, 8, 10), new Date(2024, 8, 11)], [event({ start: '2024-09-10T23:00:00', end: '2024-09-11T01:00:00' })]);
     const [first, second] = shadowAll(el, '.time-column').map((col) => placement(col.querySelector('.time-event-popup')!));
-    expect(first.top).toBe(23 * 48);
-    expect(first.top + first.height).toBeLessThanOrEqual(24 * 48);
+    expect(first).toEqual({ top: 23 * 48, height: 48 });
     expect(second).toEqual({ top: 0, height: 48 });
+  });
+
+  it('runs an event that ends at midnight to the foot of the day', async () => {
+    inZone('Europe/Belgrade');
+    const el = await grid([new Date(2024, 8, 10)], [event({ start: '2024-09-10T22:00:00', end: '2024-09-11T00:00:00' })]);
+    expect(shadowAll(el, '.time-event-popup').map(placement)).toEqual([{ top: 22 * 48, height: 96 }]);
+  });
+
+  it('starts an event from the day before at the head of a day whose midnight the clocks skip', async () => {
+    // Santiago's 8 September 2024 began at 01:00.
+    inZone('America/Santiago');
+    const el = await grid([new Date(2024, 8, 8)], [event({ start: '2024-09-07T22:00:00', end: '2024-09-08T02:00:00' })]);
+    expect(shadowAll(el, '.time-event-popup').map(placement)).toEqual([{ top: 0, height: 96 }]);
+  });
+
+  it('sizes an event inside the hour a fall-back night repeats by its real length', async () => {
+    // Belgrade's clocks went from 03:00 back to 02:00 on 27 October 2024:
+    // 02:30 summer time to 02:15 winter time is three quarters of an hour.
+    inZone('Europe/Belgrade');
+    const el = await grid([new Date(2024, 9, 27)], [event({ start: '2024-10-27T00:30:00Z', end: '2024-10-27T01:15:00Z' })]);
+    expect(shadowAll(el, '.time-event-popup').map(placement)).toEqual([{ top: 2.5 * 48, height: 36 }]);
   });
 
   it('keeps a very short event visible', async () => {
@@ -249,6 +269,28 @@ describe('week view', () => {
     const dayNums = dayHeaders.map((h) => h.querySelector('.time-grid-day-number')?.textContent?.trim());
     expect(dayNames).toEqual(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
     expect(dayNums).toEqual(['1', '2', '3', '4', '5', '6', '7']);
+  });
+
+  const columns = async (date: Date, weekStart: number) => {
+    const el = await mount('calendar-week-view', { date, weekStart, i18nStore: i18n });
+    return (shadow<HTMLElement>(el, 'calendar-time-grid') as unknown as { days: Date[] }).days;
+  };
+
+  it('starts each column at its own midnight in the week the clocks skip one', async () => {
+    // Santiago moved to summer time at 00:00 on Sunday 8 September 2024.
+    inZone('America/Santiago');
+    const fromMonday = await columns(new Date(2024, 8, 4), 1);
+    expect(fromMonday.map((d) => d.getDate())).toEqual([2, 3, 4, 5, 6, 7, 8]);
+    expect(fromMonday.slice(0, 6).map((d) => d.getHours())).toEqual([0, 0, 0, 0, 0, 0]);
+
+    // The transition Sunday opens the week: it is the one column with no
+    // midnight, and the six after it must not take its 01:00.
+    const fromSunday = await columns(new Date(2024, 8, 10), 0);
+    expect(fromSunday.map((d) => d.getDate())).toEqual([8, 9, 10, 11, 12, 13, 14]);
+    expect(fromSunday.slice(1).map((d) => d.getHours())).toEqual([0, 0, 0, 0, 0, 0]);
+
+    const next = await columns(new Date(2024, 8, 11), 1);
+    expect(next.map((d) => d.getHours())).toEqual([0, 0, 0, 0, 0, 0, 0]);
   });
 });
 

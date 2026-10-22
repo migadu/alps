@@ -110,8 +110,8 @@ export const en = {
       german: 'Deutsch',
       italian: 'Italiano',
       spanish: 'Español',
-      serbian: 'Српски',
-      serbianLatin: 'Srpski (Latinica)',
+      serbian: 'Српски (ћирилица)',
+      serbianLatin: 'Srpski (latinica)',
       french: 'Français',
       portuguese: 'Português',
       danish: 'Dansk'
@@ -150,10 +150,12 @@ export const en = {
     trust_linked_checkbox: 'Allow switching to this account without 2FA',
     trust_password_label: 'Enter your password to confirm',
     confirm_remove: 'Are you sure you want to remove this security key?',
+    remove_password_label: 'Enter your password to remove this security key',
     errors: {
       begin_failed: 'Failed to initiate authentication.',
       invalid_options: 'Invalid authentication options received.',
       verification_failed: 'Verification failed. Please try again.',
+      unavailable: 'The server could not check your security key just now. Please try again in a moment.',
       register_failed: 'There was an error registering your security key. Please try again.',
       remove_failed: 'Failed to remove the security key.',
       wrong_password: 'That password is not right.',
@@ -162,6 +164,7 @@ export const en = {
       two_factor_required: 'Sign in with your security key to change this setting.',
       no_security_key: 'Add a security key first.',
       trust_failed: 'The setting could not be changed. Please try again.',
+      remove_unavailable: 'The security key could not be removed just now. Please try again in a moment.',
       general: 'An error occurred.',
     },
     settings: {
@@ -188,10 +191,11 @@ export const en = {
     pleaseWait: 'Please wait',
     wait: 'Wait',
     signedOut: 'You have been signed out.',
-    signedOutDraftsLost: 'You have been signed out. Some unsent drafts could not be saved and were lost.',
+    signedOutDraftsKept: 'You have been signed out. Some unsent drafts could not be saved to the server. They are kept on this device and reopen when you sign in again.',
     sessionExpired: 'Your session has expired. Please sign in again.',
+    secondFactorExpired: 'Your sign-in timed out before the security key was checked. Please sign in again.',
     inactivitySignedOut: "You've been signed out due to inactivity.",
-    inactivitySignedOutDraftsLost: "You've been signed out due to inactivity. Some unsent drafts could not be saved and were lost."
+    inactivitySignedOutDraftsKept: "You've been signed out due to inactivity. Some unsent drafts could not be saved to the server. They are kept on this device and reopen when you sign in again."
   },
   folderList: {
     compose: 'Compose',
@@ -202,6 +206,7 @@ export const en = {
     spam: 'Spam',
     junk: 'Junk',
     trash: 'Trash',
+    allFolders: 'All Folders',
     title: 'Folders',
     rename: 'Rename',
     delete: 'Delete',
@@ -222,7 +227,10 @@ export const en = {
     moveToTop: "Move to Top",
     moveUp: "Move Up",
     moveDown: "Move Down",
-    moveToBottom: "Move to Bottom"
+    moveToBottom: "Move to Bottom",
+    more: "More",
+    less: "Less",
+    unsubscribedFolders: "Unsubscribed folders"
   },
   search: {
     placeholder: 'Search mail',
@@ -230,10 +238,23 @@ export const en = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Select all messages',
-    allOnPageSelected: 'All {count} messages on this page are selected',
-    selectAllMatching: 'Select all {count} in {folder}',
-    allMatchingSelected: 'All {count} messages in {folder} are selected',
+    allOnPageSelected: {
+      one: '{count} message on this page is selected',
+      other: 'All {count} messages on this page are selected'
+    },
+    selectAllMatching: {
+      one: 'Select {count} in {folder}',
+      other: 'Select all {count} in {folder}'
+    },
+    allMatchingSelected: {
+      one: '{count} message in {folder} is selected',
+      other: 'All {count} messages in {folder} are selected'
+    },
     clearSelection: 'Clear selection',
+    dragCount: {
+      one: '{count} message',
+      other: '{count} messages'
+    },
     checkNew: 'Check for new messages',
     sortDesc: 'Sort descending by date',
     sortAsc: 'Sort ascending by date',
@@ -252,14 +273,20 @@ export const en = {
     searchResultsFor: 'Search results for:',
     clearSearch: 'Clear search',
     searchAllMailboxes: 'Search All',
-    totalMessagesIn: '{count} total messages in {folder}',
+    totalMessagesIn: {
+      one: '{count} message in {folder}',
+      other: '{count} total messages in {folder}'
+    },
     totalConversationsIn: {
       one: '{count} conversation in {folder}',
       other: '{count} total conversations in {folder}'
     },
     deleteAllNow: 'Delete All Now',
     emptyMailboxTitle: 'Empty {folder}',
-    emptyMailboxConfirm: 'Are you sure you want to permanently delete all {count} messages in {folder}? This action cannot be undone.',
+    emptyMailboxConfirm: {
+      one: 'Are you sure you want to permanently delete the one message in {folder}? This action cannot be undone.',
+      other: 'Are you sure you want to permanently delete all {count} messages in {folder}? This action cannot be undone.'
+    },
     emptyMailboxConfirmConversations: {
       one: 'Are you sure you want to permanently delete the one conversation in {folder}, and every message in it? This action cannot be undone.',
       other: 'Are you sure you want to permanently delete all {count} conversations in {folder}, and every message in them? This action cannot be undone.'
@@ -351,7 +378,10 @@ export const en = {
     removeAllTags: 'Remove all tags',
     removeTag: 'Remove tag',
     selectMessage: 'Select a message to read',
-    messagesSelected: 'messages selected',
+    messagesSelected: {
+      one: '{count} message selected',
+      other: '{count} messages selected'
+    },
     back: 'Back',
     reply: 'Reply',
     replyAll: 'Reply All',
@@ -391,6 +421,15 @@ export const en = {
     unverifiedSender: 'Unverified Sender',
     senderUnverifiedWarning: 'Your mail server could not verify this sender. The message may not be from who it claims to be, so be careful with its links and attachments.',
     clickToExpand: 'Click to expand message content'
+  },
+  address: {
+    directionalControl: 'hidden direction marks',
+    directionalControlTooltip: 'Hidden direction marks can reorder how this address is displayed.',
+    mixedScript: 'address mixes alphabets',
+    mixedScriptTooltip: 'This address mixes letters from different alphabets, which can make it look like an address you know.',
+    mixedScriptAscii: 'In ASCII, the domain {domain} is spelled {ascii}.',
+    unusualDomain: 'unusual domain',
+    unusualDomainTooltip: 'This domain is not a valid internet domain name and has characters outside plain ASCII, so it may not be the domain it looks like.'
   },
   originalMessage: {
     title: 'Original Message',
@@ -449,6 +488,9 @@ export const en = {
   userMenu: {
     settings: 'Settings',
     signOut: 'Sign Out',
+    unsavedDraftsTitle: 'Sign out with unsaved drafts?',
+    unsavedDraftsMessage: 'A draft could not be saved to the server. If you sign out now, it stays on this device and reopens the next time you sign in to this account.',
+    signOutAnyway: 'Sign out anyway',
     profileOptions: 'Profile options'
   },
   pagination: {
@@ -456,7 +498,10 @@ export const en = {
     nextPage: 'Next page',
     zeroMessages: '0 messages',
     totalCount: '{total} total',
-    searchResults: '{total} results',
+    searchResults: {
+      one: '{count} result',
+      other: '{count} results'
+    },
     rangeOfTotal: '{start}–{end} of {total}'
   },
   toast: {
@@ -475,26 +520,6 @@ export const en = {
     folderPermanentlyDeleted: 'Folder permanently deleted',
     undo: 'Undo',
     dismiss: 'Dismiss',
-    messageMovedToArchive: 'Message moved to Archive',
-    messagesMovedToArchive: {
-      one: "{count} message moved to Archive",
-      other: "{count} messages moved to Archive"
-    },
-    messageMovedToSpam: 'Message moved to Spam',
-    messagesMovedToSpam: {
-      one: "{count} message moved to Spam",
-      other: "{count} messages moved to Spam"
-    },
-    messageMovedToInbox: 'Message moved to Inbox',
-    messagesMovedToInbox: {
-      one: "{count} message moved to Inbox",
-      other: "{count} messages moved to Inbox"
-    },
-    messageMovedToTrash: 'Message moved to Trash',
-    messagesMovedToTrash: {
-      one: "{count} message moved to Trash",
-      other: "{count} messages moved to Trash"
-    },
     messageMovedToFolder: 'Message moved to {folder}',
     messagesMovedToFolder: {
       one: "{count} message moved to {folder}",
@@ -534,12 +559,17 @@ export const en = {
     refresh: 'Refresh',
     permanentlyDelete: 'Permanently Delete?',
     deletePermanently: 'Delete Permanently',
+    discardDraftsTitle: 'Discard Drafts?',
+    discardDraftsMessage: 'Are you sure you want to discard these drafts? This action cannot be undone.',
     undo: 'Undo'
   },
   offline: {
     title: 'Connection Lost',
     description: 'Network connectivity lost',
-    tryingAgain: 'Trying again in {seconds} seconds...'
+    tryingAgain: {
+      one: 'Trying again in {count} second...',
+      other: 'Trying again in {count} seconds...'
+    }
   },
   update: {
     available: 'A new version is available.',

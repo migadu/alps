@@ -1,9 +1,21 @@
 export default {
   contacts: {
-    deleteFailed: '{failed} of {total} contacts could not be deleted.',
-    categoryRenameFailed: '{failed} of {total} contacts could not be updated, so the category was only partly renamed.',
-    categoryDeleteFailed: '{failed} of {total} contacts could not be updated, so the category was only partly removed.',
-    categoryUpdateFailed: '{failed} of {total} contacts could not be updated.',
+    deleteFailed: {
+      one: '{failed} of {count} contact could not be deleted.',
+      other: '{failed} of {count} contacts could not be deleted.'
+    },
+    categoryRenameFailed: {
+      one: '{failed} of {count} contact could not be updated, so the category was only partly renamed.',
+      other: '{failed} of {count} contacts could not be updated, so the category was only partly renamed.'
+    },
+    categoryDeleteFailed: {
+      one: '{failed} of {count} contact could not be updated, so the category was only partly removed.',
+      other: '{failed} of {count} contacts could not be updated, so the category was only partly removed.'
+    },
+    categoryUpdateFailed: {
+      one: '{failed} of {count} contact could not be updated.',
+      other: '{failed} of {count} contacts could not be updated.'
+    },
     saveFailed: 'The contact could not be saved.',
     saveConflict: 'This contact was changed on another device, so your edit was not saved. Cancel the edit to see the latest version.',
     starFailed: 'The contact could not be updated.',

@@ -171,6 +171,27 @@ describe('the event editor\'s guests', () => {
         expect(update.mock.calls[0][1].attendees).toBeUndefined();
     });
 
+    it('leaves the guests alone on a colleague\'s meeting in a shared calendar, which does not name the user', async () => {
+        const update = vi.spyOn(calendarService, 'updateEvent').mockResolvedValue({ ok: 'true', path: meeting.path });
+        const colleagues = { ...meeting, role: '' as const, organizer: { email: 'grace@example.org', name: 'Grace Hopper' }, attendees: [{ email: 'charles@example.com', status: 'accepted' }] };
+        const el = await editor({ event: colleagues, scheduling: 'email' });
+        expect(shadowAll(el, 'alps-address-input')).toHaveLength(0);
+        expect(text(el, '.organized-by')).toBe('invitations.organizedBy {"name":"Grace Hopper"}');
+        await el.handleSave();
+        expect(shadowAll(el, 'ui-confirm')).toHaveLength(0);
+        expect(update.mock.calls[0][1].attendees).toBeUndefined();
+    });
+
+    it('offers the guests of an event of the user\'s own that names no organizer', async () => {
+        const update = vi.spyOn(calendarService, 'updateEvent').mockResolvedValue({ ok: 'true', path: meeting.path });
+        const own = { ...meeting, role: '' as const, organizer: undefined, attendees: [] };
+        const el = await editor({ event: own, scheduling: 'email' });
+        expect(shadowAll(el, 'alps-address-input.guests')).toHaveLength(1);
+        el.attendees = ['grace@example.org'];
+        await el.handleSave();
+        expect(update.mock.calls[0][1].attendees).toEqual([{ email: 'grace@example.org' }]);
+    });
+
     it('says when the change was saved but the guests could not be told', async () => {
         vi.spyOn(calendarService, 'createEvent').mockResolvedValue({ ok: 'true', path: '/cal/work/x.ics', sendFailed: true });
         const toasts = record<CustomEvent>(window, 'show-toast');

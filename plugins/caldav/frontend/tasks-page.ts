@@ -3,7 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
+import { closeSidebarPeek, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-toolbar';
 import '../../../frontend/src/components/alps-create-button';
@@ -67,13 +67,12 @@ export class TasksPage extends LitElement {
     @state() private listPromptOpen = false;
     @state() private sidebarWidth = SIDEBAR_WIDTH_DEFAULT;
     @state() private sidebarCollapsed = false;
-    @state() private isSidebarHovered = false;
-    @state() private suppressSidebarHover = false;
+    /** Mirrors the sidebar's own hover overlay (`peek-change`). */
+    @state() private sidebarPeeking = false;
     @state() private isSidebarDragging = false;
     @state() private isMobile = window.innerWidth <= 768;
     @state() private mobileSidebarOpen = false;
 
-    private hoverTimeout?: ReturnType<typeof setTimeout>;
     private syncTimer: ReturnType<typeof setInterval> | null = null;
     /** Bumped by every read. Only the newest read's answer is painted. */
     private readEpoch = 0;
@@ -263,7 +262,6 @@ export class TasksPage extends LitElement {
             clearInterval(this.syncTimer);
             this.syncTimer = null;
         }
-        clearTimeout(this.hoverTimeout);
     }
 
     /** The tasks the current view needs loaded. A search looks through both halves:
@@ -281,11 +279,17 @@ export class TasksPage extends LitElement {
         const params = new URLSearchParams(query);
         const calendar = params.get('list') ?? '';
         const search = params.get('q') ?? '';
-        if (!SMART_LISTS.some(list => list.id === segment)) {
-            this.navigate('all', calendar, search);
-            return false;
+        let list = segment as SmartList;
+        if (!SMART_LISTS.some(smart => smart.id === segment)) {
+            // A bare `#/tasks`, which is what the Tasks tab sets, or a list this
+            // page does not have, is completed IN PLACE to All. Assigning the
+            // hash pushed a second entry, and Back onto the bare one ran this
+            // again and pushed All forward, so Back could never leave the page.
+            // `replaceState` fires no `hashchange`, so the view is read here,
+            // and the caller fetches on the answer as the event would have.
+            list = 'all';
+            history.replaceState(null, '', this.hashFor(list, calendar, search));
         }
-        const list = segment as SmartList;
         if (list !== this.selectedList || calendar !== this.selectedCalendar || search !== this.searchQuery) {
             this.settling = new Set();
         }
@@ -295,12 +299,19 @@ export class TasksPage extends LitElement {
         return this.wantedScope !== this.loadedScope;
     }
 
-    navigate(list: SmartList, calendar = this.selectedCalendar, query = this.searchQuery) {
+    /** The address of a view: the list, then the calendar and the search. */
+    private hashFor(list: SmartList, calendar: string, query: string): string {
         const params = new URLSearchParams();
         if (calendar) params.set('list', calendar);
         if (query) params.set('q', query);
         const search = params.toString();
-        const hash = `#/tasks/${list}${search ? `?${search}` : ''}`;
+        return `#/tasks/${list}${search ? `?${search}` : ''}`;
+    }
+
+    /** Goes to a view. The user's own move, so a history entry; completing a
+     * bare address is not (see parseHash). */
+    navigate(list: SmartList, calendar = this.selectedCalendar, query = this.searchQuery) {
+        const hash = this.hashFor(list, calendar, query);
         if (window.location.hash !== hash) window.location.hash = hash;
     }
 
@@ -430,7 +441,7 @@ export class TasksPage extends LitElement {
         const name = String(e.detail?.name ?? '').trim();
         if (!name) return;
         try {
-            await calendarService.createCalendar(name);
+            await calendarService.createCalendar(name, ['VTODO']);
             await this.fetchTasks();
         } catch (err) {
             console.error('Failed to create list', err);
@@ -456,11 +467,13 @@ export class TasksPage extends LitElement {
 
     private selectList(list: SmartList) {
         this.mobileSidebarOpen = false;
+        closeSidebarPeek(this.renderRoot);
         this.navigate(list, this.selectedCalendar, '');
     }
 
     private selectCalendar(path: string) {
         this.mobileSidebarOpen = false;
+        closeSidebarPeek(this.renderRoot);
         this.navigate(this.selectedList, this.selectedCalendar === path ? '' : path, this.searchQuery);
     }
 
@@ -480,23 +493,6 @@ export class TasksPage extends LitElement {
         }));
     }
 
-    private handleSidebarMouseEnter() {
-        if (this.sidebarCollapsed && !this.isSidebarDragging) {
-            clearTimeout(this.hoverTimeout);
-            this.hoverTimeout = setTimeout(() => {
-                this.isSidebarHovered = true;
-                this.suppressSidebarHover = false;
-            }, 300);
-        }
-    }
-
-    private handleSidebarMouseLeave() {
-        if (this.sidebarCollapsed) {
-            clearTimeout(this.hoverTimeout);
-            this.isSidebarHovered = false;
-        }
-    }
-
     private handleSidebarResize(e: CustomEvent) {
         const width = e.detail.newWidth;
         const collapse = width < SIDEBAR_COLLAPSE_THRESHOLD;
@@ -513,7 +509,7 @@ export class TasksPage extends LitElement {
 
     render() {
         const t = (key: string) => this.i18nStore?.t(key) ?? key;
-        const collapsed = this.sidebarCollapsed && (!this.isSidebarHovered || this.suppressSidebarHover) && !this.isMobile;
+        const collapsed = this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile;
         const current = SMART_LISTS.find(list => list.id === this.selectedList) ?? SMART_LISTS[0];
         const calendarName = this.lists.find(list => list.path === this.selectedCalendar)?.name ?? '';
         const defaultList = this.selectedCalendar || this.lists[0]?.path || '';
@@ -537,8 +533,6 @@ export class TasksPage extends LitElement {
                         .isMobile=${this.isMobile}
                         .isOpen=${this.mobileSidebarOpen}
                         .collapsed=${this.sidebarCollapsed && !this.isMobile}
-                        .isHovered=${this.isSidebarHovered}
-                        .suppressHover=${this.suppressSidebarHover}
                         .width=${this.sidebarWidth}
                         @toggle-collapse=${() => {
                             this.sidebarCollapsed = !this.sidebarCollapsed;
@@ -548,8 +542,7 @@ export class TasksPage extends LitElement {
                         @drag-start=${() => { this.isSidebarDragging = true; }}
                         @drag-end=${() => { this.isSidebarDragging = false; }}
                         @close-sidebar=${() => { this.mobileSidebarOpen = false; }}
-                        @mouseenter=${() => this.handleSidebarMouseEnter()}
-                        @mouseleave=${() => this.handleSidebarMouseLeave()}
+                        @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
                     >
                         <div class="sidebar-wrapper ${collapsed ? 'collapsed' : ''}">
                             <alps-toolbar class="sidebar-header">
@@ -560,7 +553,8 @@ export class TasksPage extends LitElement {
                                     @click=${() => this.openCreate()}
                                 >${t('tasks.addTask')}</alps-create-button>
                             </alps-toolbar>
-                            <div class="sidebar-content">
+                            <!-- Inert in the strip, as it is dimmed there. -->
+                            <div class="sidebar-content" ?inert=${collapsed}>
                                 <div class="sidebar-scroll-content">
                                     <nav class="smart-lists">
                                         ${SMART_LISTS.map(list => {

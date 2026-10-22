@@ -7,6 +7,10 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../../plugins/caldav/frontend/calendar-page';
+import { calendarService } from '../../plugins/caldav/frontend/calendar-service';
+import { tasksService } from '../../plugins/caldav/frontend/tasks-service';
+import { I18nStore } from '../src/store/i18n-store';
+import { cleanup, mount, shadow, waitFor } from './helpers/dom';
 
 type Page = HTMLElement & { currentDate: Date; viewMode: string; searchQuery: string };
 
@@ -87,9 +91,23 @@ describe('reading a link', () => {
     expect(el.viewMode).toBe('month');
   });
 
-  it('completes a bare calendar link to the current view and date', () => {
+  it('completes a bare calendar link to the current view and date, in place', () => {
     const el = page(new Date(2024, 6, 4), 'week');
-    expect(read(el, '#/calendar')).toBe(false);
+    window.location.hash = '#/calendar';
+    const before = history.length;
+    // Nothing on screen changes, so there is nothing to fetch.
+    expect(call(el, 'parseHash')).toBe(false);
+    expect(window.location.hash).toBe('#/calendar/week/2024-07-04');
+    // The tab's link is the entry; the completion is not a second one.
+    expect(history.length).toBe(before);
+  });
+
+  it('asks for a fetch when completing a bare link ends a search', () => {
+    // replaceState fires no hashchange, so the answer is the only thing that
+    // makes the caller load what the completed address shows.
+    const el = page(new Date(2024, 6, 4), 'week');
+    el.searchQuery = 'standup';
+    expect(read(el, '#/calendar')).toBe(true);
     expect(window.location.hash).toBe('#/calendar/week/2024-07-04');
   });
 });
@@ -173,5 +191,57 @@ describe('week start dynamic change', () => {
     weekStartVal = 0;
     call(el, '_handleSettingsChange');
     expect(fetched).toBe(0);
+  });
+});
+
+/**
+ * The delete confirmations speak the user's language. Their messages were
+ * English literals in the page template, under a title and buttons that were
+ * already translated.
+ */
+describe('the delete confirmations', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    cleanup();
+  });
+
+  async function germanPage() {
+    vi.spyOn(calendarService, 'fetchCalendars').mockResolvedValue({ calendars: [{ name: 'Arbeit', description: '', path: '/cal/work/' }], scheduling: 'email' });
+    vi.spyOn(calendarService, 'fetchEvents').mockResolvedValue({ events: [] });
+    vi.spyOn(tasksService, 'fetchTasks').mockResolvedValue({ tasks: [], calendars: [], failedCalendars: 0 } as any);
+    const i18nStore = new I18nStore();
+    await i18nStore.setLanguage('de');
+    const el = await mount<any>('calendar-page', { i18nStore });
+    await waitFor(() => el.calendars.length === 1, 'the calendars to load');
+    return el;
+  }
+
+  /** What the dialog shows: its message is the fallback content of its slot. */
+  async function shown(el: any) {
+    const confirm = shadow<any>(el, 'ui-confirm');
+    await confirm.updateComplete;
+    return { title: confirm.title, message: confirm.shadowRoot.querySelector('slot:not([name])').textContent.trim() };
+  }
+
+  it('asks before deleting a calendar, naming it exactly as typed', async () => {
+    const el = await germanPage();
+    call(el, 'handleDeleteCalendar', { name: 'Q&A <team> "x"', path: '/cal/work/' });
+    await el.updateComplete;
+    expect(await shown(el)).toEqual({
+      title: 'Kalender löschen',
+      message: 'Möchten Sie den Kalender "Q&A <team> "x"" wirklich löschen?',
+    });
+  });
+
+  it('asks before deleting an event, or a task from the calendar, each by its own name', async () => {
+    const el = await germanPage();
+    el.eventToDelete = { uid: 'e', summary: 'Review', start: '2026-09-16T08:00:00Z', end: '2026-09-16T09:00:00Z', path: '/cal/work/e.ics' };
+    await el.updateComplete;
+    expect(await shown(el)).toEqual({ title: 'Ereignis löschen', message: 'Möchten Sie dieses Ereignis wirklich löschen?' });
+
+    const task = { uid: 't', summary: 'Report', path: '/cal/work/t.ics' };
+    el.eventToDelete = { ...task, task };
+    await el.updateComplete;
+    expect(await shown(el)).toEqual({ title: 'Aufgabe löschen', message: 'Möchten Sie diese Aufgabe wirklich löschen?' });
   });
 });

@@ -200,3 +200,101 @@ test("changing the password refuses a wrong one, then rotates without ending the
   await expect(page).toHaveURL(/#\/mailbox\/Archive/);
   await expect(page.locator("login-page")).toHaveCount(0);
 });
+
+// A security key is bound to a hostname, and Chromium takes no IP address as
+// one, so these tests reach alps as localhost (which the harness configures as
+// the WebAuthn relying party) rather than at the suite's 127.0.0.1.
+test.describe("with a security key", () => {
+  test.use({ baseURL: (process.env.ALPS_URL ?? "http://127.0.0.1:8900").replace("127.0.0.1", "localhost") });
+
+  /**
+   * Gives the page an authenticator of its own, through the DevTools
+   * protocol: a platform key that is always present and always verifies the
+   * user, so a registration completes without anyone touching anything.
+   */
+  async function withAuthenticator(page: Page): Promise<void> {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("WebAuthn.enable");
+    await cdp.send("WebAuthn.addVirtualAuthenticator", {
+      options: {
+        protocol: "ctap2",
+        transport: "internal",
+        hasResidentKey: true,
+        hasUserVerification: true,
+        isUserVerified: true,
+        automaticPresenceSimulation: true,
+      },
+    });
+  }
+
+  /** Registers a key under `name` from the WebAuthn pane, and waits for it to be listed. */
+  async function addKey(page: Page, name: string): Promise<Locator> {
+    const pane = page.locator("alps-webauthn-settings");
+    await action(pane, "Add Security Key").click();
+    const naming = pane.locator("ui-prompt");
+    await field(naming, "Device name (e.g. YubiKey)").fill(name);
+    const finished = page.waitForResponse((r) => new URL(r.url()).pathname === "/settings/2fa/finish");
+    await action(naming, "Save").click();
+    expect((await finished).status()).toBe(200);
+    const row = pane.locator(".setting-row").filter({ hasText: name });
+    await expect(row).toBeVisible();
+    return row;
+  }
+
+  test("removing a key asks for the password, refuses a wrong one, and takes the right one", async ({
+    page,
+    browser,
+  }) => {
+    const address = await freshAccount(page, "key");
+    await withAuthenticator(page);
+    // The wrong password is a 403 the prompt HANDLES; Chromium logs every
+    // non-2xx response as a console error, which the fixture is strict about.
+    allowConsoleErrors(page, /status of 403/);
+    await page.goto("/#/settings/webauthn");
+
+    const pane = page.locator("alps-webauthn-settings");
+    const row = await addKey(page, "Laptop");
+
+    // Every removal the page asks for, so a check meant to stay in the
+    // browser can be held to it.
+    const removals: string[] = [];
+    page.on("request", (r) => {
+      if (/\/settings\/2fa\/credential\/.+\/delete$/.test(new URL(r.url()).pathname)) removals.push(r.postData() ?? "");
+    });
+
+    await action(row, "Remove").click();
+    const prompt = pane.locator("ui-prompt");
+    await expect(prompt.locator("h3")).toHaveText("Are you sure you want to remove this security key?");
+    await expect(prompt).toContainText("Enter your password to remove this security key");
+    const password = prompt.locator('input[type="password"]');
+    const remove = action(prompt, "Remove");
+
+    // An empty password is answered in the prompt and never sent.
+    await remove.click();
+    await expect(prompt.getByRole("alert")).toHaveText("Enter your current password.");
+    expect(removals, "an empty password reached the server").toEqual([]);
+
+    // A wrong one is refused by the server: the prompt stays, says so, and
+    // the key is still there.
+    await password.fill("not-the-password");
+    const refused = page.waitForResponse((r) => new URL(r.url()).pathname.endsWith("/delete"));
+    await remove.click();
+    expect((await refused).status()).toBe(403);
+    await expect(prompt.getByRole("alert")).toHaveText("That password is not right.");
+    await expect(row).toBeVisible();
+
+    // Typing again clears the error; the right password removes the key.
+    await password.fill(PASSWORD);
+    await expect(prompt.getByRole("alert")).toHaveCount(0);
+    const accepted = page.waitForResponse((r) => new URL(r.url()).pathname.endsWith("/delete"));
+    await remove.click();
+    expect((await accepted).status()).toBe(200);
+    await expect(prompt).toHaveCount(0);
+    await expect(pane).toContainText("No registered keys.");
+    expect(removals.map((body) => JSON.parse(body).current_password)).toEqual(["not-the-password", PASSWORD]);
+
+    // It was the last key, so the second factor is off: a browser that has
+    // never seen the account signs in with the password alone.
+    expect(await signInStatus(browser, address, PASSWORD)).toBe(200);
+  });
+});

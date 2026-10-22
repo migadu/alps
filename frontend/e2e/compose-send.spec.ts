@@ -322,5 +322,5 @@ test("a link inserted from the toolbar is sent as a link", async ({ page }) => {
 
   await sendNow(page, composer);
   const sent = await sentWithSubject(subject);
-  expect(sent.data).toMatch(/<p>See <a [^>]*href="https:\/\/plans\.example\/friday"[^>]*>the plan<\/a><\/p>/);
+  expect(sent.data).toMatch(/<p[^>]*>See <a [^>]*href="https:\/\/plans\.example\/friday"[^>]*>the plan<\/a><\/p>/);
 });

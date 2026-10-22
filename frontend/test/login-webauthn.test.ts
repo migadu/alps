@@ -145,4 +145,97 @@ describe('login-webauthn-page', () => {
       (window as any).location = origLocation;
     }
   });
+
+  describe('an answer that is not a verdict on the key', () => {
+    const answer = (status: number, body?: unknown) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => {
+        if (body === undefined) throw new SyntaxError('Unexpected token < in JSON at position 0');
+        return body;
+      },
+    }) as any;
+
+    const options = () => answer(200, { publicKey: { challenge: 'challenge' } });
+
+    /** Mounts the page with the two answers, and waits for what it says. */
+    async function verify(begin: () => any, finish: () => any = () => answer(200, { success: true })) {
+      vi.spyOn(webauthnUtils, 'isWebAuthnSupported').mockReturnValue(true);
+      const key = vi.spyOn(webauthnUtils, 'authenticateCredential').mockResolvedValue({ id: 'cred-1' } as any);
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        if (String(url).endsWith('/webauthn/verify/begin')) return begin();
+        if (String(url).endsWith('/webauthn/verify/finish')) return finish();
+        return answer(404, {});
+      });
+      const el = document.createElement('login-webauthn-page') as LoginWebAuthnPage & Record<string, any>;
+      el.i18nStore = { t: (k: string) => k, addEventListener() {}, removeEventListener() {} };
+      document.body.appendChild(el);
+      return { el, key };
+    }
+
+    const said = async (el: Record<string, any>, message: string) => {
+      await vi.waitFor(() => expect(el.statusMessage).toBe(message), { timeout: 2000 });
+      expect(el.statusType).toBe('error');
+      // Still on the key: Verify runs the ceremony again, no password asked.
+      expect(window.location.hash).toBe('#/login/webauthn');
+    };
+
+    it('says the server could not check the key when the options cannot be had', async () => {
+      const { el, key } = await verify(() => answer(503, { error: 'Service temporarily unavailable' }));
+      try {
+        await said(el, 'webauthn.errors.unavailable');
+        expect(key).not.toHaveBeenCalled();
+      } finally {
+        el.remove();
+      }
+    });
+
+    it('does not call an outage during verification a failed verification', async () => {
+      const { el } = await verify(options, () => answer(500, { error: 'An internal error occurred' }));
+      try {
+        await said(el, 'webauthn.errors.unavailable');
+      } finally {
+        el.remove();
+      }
+    });
+
+    it('does not show a proxy\'s error page as a parser error', async () => {
+      const { el } = await verify(options, () => answer(502));
+      try {
+        await said(el, 'webauthn.errors.unavailable');
+      } finally {
+        el.remove();
+      }
+    });
+
+    it('says the network failed, not the browser\'s "Failed to fetch", when nothing answered', async () => {
+      const { el } = await verify(options, () => { throw new TypeError('Failed to fetch'); });
+      try {
+        await said(el, 'login.networkError');
+      } finally {
+        el.remove();
+      }
+    });
+
+    it('still says a key the server refused failed verification', async () => {
+      const { el } = await verify(options, () => answer(400, { error: 'verification failed' }));
+      try {
+        await said(el, 'webauthn.errors.verification_failed');
+      } finally {
+        el.remove();
+      }
+    });
+
+    it('goes back to the password, and says why, when the pending sign-in is gone', async () => {
+      sessionStorage.setItem('pending_2fa_username', 'ada@example.com');
+      const { el } = await verify(options, () => answer(401, { error: 'no pending 2FA session' }));
+      try {
+        await vi.waitFor(() => expect(window.location.hash).toBe('#/login'), { timeout: 2000 });
+        expect(sessionStorage.getItem('alps-login-notice')).toBe('secondFactorExpired');
+        expect(sessionStorage.getItem('pending_2fa_username')).toBeNull();
+      } finally {
+        el.remove();
+      }
+    });
+  });
 });

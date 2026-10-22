@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -279,6 +280,11 @@ func handleDisable(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})
 }
 
+// deleteCredentialRequest is the body of a security key removal.
+type deleteCredentialRequest struct {
+	CurrentPassword string `json:"current_password"`
+}
+
 // confirmCurrentPassword checks that whoever asks for a change to the
 // account's second factor knows its password, and writes the refusal when they
 // do not. It reports whether the request may go on.
@@ -322,7 +328,10 @@ func confirmCurrentPassword(ctx *alps.Context, password string) (bool, error) {
 	return true, nil
 }
 
-// handleDeleteCredential removes a specific credential by ID
+// handleDeleteCredential removes one of the account's security keys. It takes
+// a session that has given the second factor, and then the account's password
+// (see confirmCurrentPassword). Removing the last one turns the second factor
+// off.
 func handleDeleteCredential(ctx *alps.Context) error {
 	if ctx.Session == nil {
 		return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
@@ -339,17 +348,32 @@ func handleDeleteCredential(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusBadRequest, "invalid credential ID")
 	}
 
+	// No body at all is a request without a password, the way a page from
+	// before the password was asked for sends it, and is answered as one.
+	var req deleteCredentialRequest
+	if err := ctx.BindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		return ctx.RespondBindError(err)
+	}
+	// The keys cannot be read or written: an outage, answered as one with a
+	// code of its own, so the page does not mistake it for a wrong password.
 	creds, err := loadCredentials(ctx.Session)
 	if err != nil {
-		return fmt.Errorf("failed to load credentials: %v", err)
+		ctx.Server.Logger().Errorf("WebAuthn delete: failed to load credentials for user %s: %v", ctx.Session.Username(), err)
+		return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
 	}
+	// Checked before the password, so that a session without the second
+	// factor cannot use this to find out whether a password is right.
 	if lacksSecondFactor(ctx, creds) {
 		return respondTwoFactorRequired(ctx)
 	}
+	if ok, err := confirmCurrentPassword(ctx, req.CurrentPassword); !ok {
+		return err
+	}
 
-	// Find and remove the credential
+	// Find and remove the credential. The capacity is not one less than the
+	// count: for an account with no keys that was -1, and a panic.
 	found := false
-	newCreds := make([]CredentialInfo, 0, len(creds.Credentials)-1)
+	newCreds := make([]CredentialInfo, 0, len(creds.Credentials))
 	for _, info := range creds.Credentials {
 		if string(info.Credential.ID) != string(credIDBytes) {
 			newCreds = append(newCreds, info)
@@ -372,7 +396,8 @@ func handleDeleteCredential(ctx *alps.Context) error {
 	}
 
 	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {
-		return fmt.Errorf("failed to save credentials: %v", err)
+		ctx.Server.Logger().Errorf("WebAuthn delete: failed to save credentials for user %s: %v", ctx.Session.Username(), err)
+		return ctx.JSON(http.StatusServiceUnavailable, map[string]string{"error": "keys_unavailable"})
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})
@@ -392,10 +417,13 @@ func handleVerifyBegin(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusUnauthorized, "invalid 2FA session")
 	}
 
-	// Load user credentials from IMAP METADATA
+	// Load user credentials from IMAP METADATA. Failing to is an outage, not
+	// a refusal: the page says so and stays on the key, and the pending sign-in
+	// is kept for the next try.
 	creds, err := loadCredentials(session)
 	if err != nil {
-		return fmt.Errorf("failed to load credentials: %v", err)
+		ctx.Server.Logger().Errorf("WebAuthn begin: failed to load credentials for user %s: %v", session.Username(), err)
+		return alps.NewHTTPError(http.StatusServiceUnavailable, "security keys unavailable")
 	}
 
 	if !creds.Enabled || len(creds.Credentials) == 0 {
@@ -445,10 +473,11 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		return alps.NewHTTPError(http.StatusUnauthorized, "invalid 2FA session")
 	}
 
-	// Load session data from IMAP METADATA
+	// The challenge handed out by begin. Without one there is no ceremony to
+	// finish, which the page answers by running a new one.
 	sessionDataStored, err := loadSessionData(session)
 	if err != nil {
-		return fmt.Errorf("failed to load session: %v", err)
+		return alps.NewHTTPError(http.StatusBadRequest, "no verification in progress")
 	}
 
 	var sessionData webauthn.SessionData
@@ -456,11 +485,13 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		return fmt.Errorf("failed to unmarshal session: %v", err)
 	}
 
-	// Load credentials
+	// Load credentials. Failing to is an outage, and must not read as a key
+	// that was refused: both were a 500, and the page told someone whose key
+	// works that its verification had failed.
 	creds, err := loadCredentials(session)
 	if err != nil {
 		ctx.Server.Logger().Errorf("WebAuthn verify: failed to load credentials for user %s: %v", session.Username(), err)
-		return fmt.Errorf("failed to load credentials: %v", err)
+		return alps.NewHTTPError(http.StatusServiceUnavailable, "security keys unavailable")
 	}
 
 	user := &webauthnUser{
@@ -468,10 +499,12 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		credentials: creds,
 	}
 
-	// Verify WebAuthn assertion
+	// Verify WebAuthn assertion. A 400 rather than a 401, which says the
+	// pending sign-in itself is gone.
 	_, err = ctx.Server.WebAuthn.FinishLogin(user, sessionData, ctx.Request)
 	if err != nil {
-		return fmt.Errorf("failed to finish login: %v", err)
+		ctx.Server.Logger().Debugf("WebAuthn verify: key refused for user %s: %v", session.Username(), err)
+		return alps.NewHTTPError(http.StatusBadRequest, "verification failed")
 	}
 
 	// Success! Mark session as authenticated with 2FA

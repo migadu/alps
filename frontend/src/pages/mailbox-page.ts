@@ -5,21 +5,22 @@ import '../components/folder-list';
 import '../components/message-list';
 import '../components/message-reader';
 import type { MessageReader, ReaderActionDetail } from '../components/message-reader';
+import type { MessageList } from '../components/message-list';
 import '../components/ui-confirm.js';
 import '../components/app-header';
-import '../components/alps-sidebar';
+import { closeSidebarPeek } from '../components/alps-sidebar';
 import { consume } from '@lit/context';
 import { composeContext, ComposeStore } from '../store/compose-store';
-import { messageSync } from '../services/message-sync';
+import { messageSync, type MailboxData } from '../services/message-sync';
 import { messageOperations, type FlagResult, type MatchingScope, type MoveResult } from '../services/message-operations';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
-import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxPath, mailboxRoleByName, findMailboxNameByRole, mailboxDelimiter } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxPath, mailboxRoleByName, findMailboxNameByRole, acceptsDroppedMessages } from '../utils/folders';
 import type { LayoutMode, DensityMode } from '../store/settings-store';
 import '../components/alps-initial-loader';
 import { Logger } from '../utils/logger';
-import { getFlexContainerMinWidth } from '../utils/ui';
+import { getDestinationLabel, getFlexContainerMinWidth } from '../utils/ui';
 import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/message-key';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
@@ -141,6 +142,12 @@ export class MailboxPage extends LitElement {
       background-color: var(--bg-primary);
       color: var(--text-primary);
       overflow: hidden;
+      /* Clip, where the browser knows it: a hidden host is still a scroll
+         container, so a scrollIntoView() or focus() on anything at its clipped
+         edge scrolled the whole page by what overflowed, cutting off the top
+         of the header until the next navigation. Clip cuts the same and
+         cannot be scrolled at all. */
+      overflow: clip;
       font-size: 14px;
     }
     
@@ -266,7 +273,7 @@ export class MailboxPage extends LitElement {
       z-index: 20;
     }
 
-    alps-sidebar.desktop-sidebar[collapsed]:hover {
+    alps-sidebar.desktop-sidebar[collapsed][peeking] {
       transition: width 0.2s, z-index 0s 0s;
     }
 
@@ -326,6 +333,13 @@ export class MailboxPage extends LitElement {
    * correcting itself when the answer landed. This moves with the rows.
    */
   @state() private listedPage = 0;
+  /**
+   * The folder the rows were read from, which trails `currentMailbox` the same
+   * way and for the same reason: a folder switch leaves the previous folder's
+   * rows up until the new ones land, and the list draws a row by the folder it
+   * came from. '' until anything has been listed.
+   */
+  @state() private listedMailbox = '';
   @state() private totalMessages = 0;
   @state() private messagesPerPage = 50;
   @state() private resizerPositionX = SIDEBAR_WIDTH_DEFAULT + Math.max(MESSAGE_LIST_WIDTH_MIN, (window.innerWidth - SIDEBAR_WIDTH_DEFAULT) * 0.4);
@@ -333,13 +347,13 @@ export class MailboxPage extends LitElement {
   @state() private isSidebarDragging = false;
   @state() private isPaneDragging = false;
   @state() private sidebarWidth = SIDEBAR_WIDTH_DEFAULT;
-  @state() private isSidebarHovered = false;
-  private hoverTimeout: any = null;
+  /** The collapsed sidebar is open as its hover overlay. The sidebar decides;
+   * this mirrors it so the folder list renders expanded meanwhile. */
+  @state() private sidebarPeeking = false;
   @state() private densityMode: DensityMode = 'compact';
   @state() private showSenderAvatars = true;
   @state() private isSyncing = false;
   @state() private sidebarCollapsed = false;
-  @state() private suppressSidebarHover = false;
   @state() private sortOrder: 'asc' | 'desc' = 'desc';
   @state() private listScrolled = false;
   @state() private targetUid: string | null = null;
@@ -647,6 +661,7 @@ export class MailboxPage extends LitElement {
 
     document.addEventListener('click', this.unlockAudio);
     document.addEventListener('keydown', this.unlockAudio);
+    document.addEventListener('keydown', this.handleStrayArrow);
 
     this._mql.addEventListener('change', this._handleMediaQuery);
     this._handleMediaQuery(this._mql);
@@ -674,11 +689,13 @@ export class MailboxPage extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.stopResize?.();
     window.removeEventListener('hashchange', this.handleHashChange);
     this._mql.removeEventListener('change', this._handleMediaQuery);
     
     document.removeEventListener('click', this.unlockAudio);
     document.removeEventListener('keydown', this.unlockAudio);
+    document.removeEventListener('keydown', this.handleStrayArrow);
 
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
@@ -997,9 +1014,23 @@ export class MailboxPage extends LitElement {
         );
       }
       // Do NOT update this.messages, this.totalMessages, or this.currentPage
+    } else if (this.pastTheLastPage(data)) {
+      // A later page that has emptied, which the server answers as asked: no
+      // rows. Moving or deleting every row on the last page re-read that page,
+      // and the list said "No messages" with only Previous offered while the
+      // folder still held mail. The last page that exists is read instead, in
+      // full and quietly as the re-read was, and the address says so without
+      // adding a step to go back to.
+      const perPage = data.MessagesPerPage || this.messagesPerPage;
+      const last = Math.max(0, Math.ceil(data.Total / perPage) - 1);
+      this.currentPage = last;
+      window.history.replaceState(null, '', this.hashFor(this.currentMailbox, last, this.targetUid, this.filterQuery, this.targetMailbox));
+      messageSync.fetch(this.currentMailbox, last, this.filterQuery, true, true);
+      return;
     } else {
       if (data.Page !== undefined) this.currentPage = data.Page;
       this.listedPage = data.Page !== undefined ? data.Page : this.currentPage;
+      this.listedMailbox = data.ListedMailbox || this.currentMailbox;
       if (data.Total !== undefined) this.totalMessages = data.Total;
       if (data.MessagesPerPage !== undefined) this.messagesPerPage = data.MessagesPerPage;
       if (data.Messages) {
@@ -1045,6 +1076,15 @@ export class MailboxPage extends LitElement {
     }
   };
 
+  /** Whether a listing is of a page beyond the folder's last. */
+  private pastTheLastPage(data: MailboxData): data is MailboxData & { Total: number } {
+    const page = data.Page ?? this.currentPage;
+    const perPage = data.MessagesPerPage || this.messagesPerPage;
+    if (page <= 0 || (data.Messages?.length ?? 0) > 0) return false;
+    if (data.Total === undefined || data.Total <= 0 || perPage <= 0) return false;
+    return Math.ceil(data.Total / perPage) - 1 < page;
+  }
+
   private handleSyncError = (e: Event) => {
     this.isSyncing = false;
     const { background } = (e as CustomEvent).detail;
@@ -1055,6 +1095,32 @@ export class MailboxPage extends LitElement {
       // had just failed to read, with nothing offered to try again.
       this.listLoadFailed = true;
     }
+  };
+
+  /**
+   * ArrowDown or ArrowUp pressed where nothing else takes it: the list's.
+   *
+   * The list moves its cursor only on keys pressed inside it, and opening a
+   * folder from the sidebar leaves focus on the page itself, so the arrows
+   * did nothing until the list had been clicked. Only a key from the page
+   * body or a link is passed on; a field, a button, a menu or a dialog keeps
+   * its own arrows, and so does the list.
+   */
+  private handleStrayArrow = (e: KeyboardEvent) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (this.showDeleteConfirm) return;
+    // The composed path, because the list, the sidebar and every popup are
+    // shadow roots that `closest()` cannot see out of.
+    const path = e.composedPath().filter((n): n is HTMLElement => n instanceof HTMLElement);
+    const origin = path[0];
+    if (!origin || (origin !== document.body && origin.tagName !== 'A')) return;
+    if (path.some(n => n.tagName === 'ALPS-MESSAGE-LIST' || n.tagName === 'DIALOG'
+      || ['dialog', 'menu', 'listbox'].includes(n.getAttribute('role') ?? ''))) return;
+    const list = this.renderRoot.querySelector('alps-message-list') as MessageList | null;
+    if (!list) return;
+    e.preventDefault();
+    list.step(e.key === 'ArrowDown' ? 1 : -1);
   };
 
   private handleMailboxNotFound = () => {
@@ -1093,8 +1159,14 @@ export class MailboxPage extends LitElement {
     }
   };
 
+  /** Ends the pane drag in progress, if any; null when there is none. A page
+   * that leaves the screen mid-drag calls it, or its window listeners would
+   * keep running against it until the next mouseup. */
+  private stopResize: (() => void) | null = null;
+
   private startResize = (e: MouseEvent) => {
     e.preventDefault();
+    this.stopResize?.();
     this.isPaneDragging = true;
     
     // Ensure we have the latest width before drag
@@ -1111,11 +1183,13 @@ export class MailboxPage extends LitElement {
     };
 
     const onMouseUp = () => {
+      this.stopResize = null;
       this.isPaneDragging = false;
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
 
+    this.stopResize = onMouseUp;
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
   };
@@ -1508,7 +1582,7 @@ export class MailboxPage extends LitElement {
       }
     } : undefined;
     this.showGlobalToast(
-      this.i18nStore?.t('toast.messageMovedToTrash'),
+      this.movedMessage(false, 1, trash),
       undoFn ? this.i18nStore?.t('mailboxPage.undo') : '',
       undoFn,
       UNDO_TOAST_TIMEOUT_MS,
@@ -1749,13 +1823,16 @@ export class MailboxPage extends LitElement {
    * The undo of a move: each folder's messages go back to that folder. After
    * the open message, alone or with the rest of its conversation, the reader
    * reopens on the message that was being read (`reopen`, its key before the
-   * move); after checked rows, they are checked again where they are listed.
+   * move); after checked rows, they are checked again where they are listed,
+   * unless `recheck` is off because they were never checked — a row dragged
+   * away by itself comes back as it left.
    */
   private undoMoves(
     moved: { from: string; mapping: Record<string, string> }[],
     to: string,
     view: string,
     reopen: string | undefined,
+    recheck = true,
   ): (() => Promise<void>) | undefined {
     const back = moved.filter(({ mapping }) => Object.keys(mapping).length > 0);
     if (back.length === 0) return undefined;
@@ -1783,7 +1860,7 @@ export class MailboxPage extends LitElement {
         if (reopen !== undefined) {
           const page = this.currentMailbox === view ? this.currentPage : 0;
           this.openKeyInUrl(view, page, reopened);
-        } else if (this.currentMailbox === view) {
+        } else if (recheck && this.currentMailbox === view) {
           this.selectedKeys = new Set([...this.selectedKeys, ...restored]);
         }
       } catch (err) {
@@ -1791,6 +1868,87 @@ export class MailboxPage extends LitElement {
         this.reportActionFailed('toast.undoFailed', 'Could not undo that');
       }
     };
+  }
+
+  /** Copies the messages the keys name into `to`, each from its own folder, and says so. */
+  private async copyKeys(keys: string[], to: string, many: boolean) {
+    const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
+      const result = await messageOperations.copyMessages(from, uids, to);
+      return { ok: result.success, reason: result.reason, uidMapping: {} };
+    });
+    const copied = this.writtenKeys(done).length;
+    if (copied > 0) {
+      const toastMessage = many
+        ? this.i18nStore?.t('toast.messagesCopiedToFolder', { count: copied, folder: this.folderCaption(to) })
+        : this.i18nStore?.t('toast.messageCopiedToFolder', { folder: this.folderCaption(to) });
+      this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
+    }
+    if (refused && refused.reason !== 'auth') this.reportActionFailed('toast.copyFailed', 'Could not copy that');
+  }
+
+  /**
+   * Messages dropped on a folder in the sidebar: moved there, or copied with
+   * Alt (Option) held.
+   *
+   * Checked rows are acted on as the selection bar's Move to acts on them, a
+   * selection of the whole folder included, so a drop and the picker cannot
+   * disagree about what was filed. Any other row is its own operand — a
+   * collapsed conversation all of its messages, each from the folder it is in
+   * — and only those of them not already in the folder go: copying a message
+   * into its own folder would make a second one.
+   */
+  private handleDroppedMessages = (e: CustomEvent<{ folder: string; copy: boolean; keys: string[]; selection: boolean }>) => {
+    const { folder, copy, keys, selection } = e.detail;
+    // The folder list refuses these already; this is the page's own word on
+    // it, for a drop that arrives some other way.
+    const target = this.mailboxes.find(m => (m.Name || m.Mailbox) === folder);
+    if (!acceptsDroppedMessages(target, this.mailboxes, this.currentMailbox)) return;
+    if (selection && this.selectionCount > 0) {
+      void this._handleReaderAction(new CustomEvent('action', { detail: { action: copy ? 'copyTo' : 'moveTo', folder } }));
+      return;
+    }
+    const away = keys.filter(key => parseMessageKey(key).mailbox !== folder);
+    if (away.length === 0) return;
+    void (copy ? this.copyKeys(away, folder, away.length > 1) : this.fileDropped(away, folder));
+  };
+
+  /**
+   * Files dragged rows that were not the checked ones in `to`, says so, and
+   * offers to put each back where it came from.
+   *
+   * fileAway's work, with two differences that follow from the rows not being
+   * the selection. The reader stays on the message it shows unless that
+   * message was among them, since dragging one row away while reading another
+   * is not a gesture about the one being read. And an undo brings the rows
+   * back unchecked, as they left.
+   */
+  private async fileDropped(keys: string[], to: string) {
+    const view = this.currentMailbox;
+    const open = this.selectedMessage ? this.keyOf(this.selectedMessage) : undefined;
+    // The rows leave with the gesture, as checked ones do: see takeRowsOut.
+    const putBack = this.takeRowsOut(keys);
+    const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
+      const result = await messageOperations.moveMessages(from, uids, to);
+      return { ok: result.success, reason: result.reason, uidMapping: result.uidMapping ?? {} };
+    });
+
+    const filed = this.writtenKeys(done);
+    if (filed.length > 0) {
+      const wasOpen = open !== undefined && filed.includes(open);
+      if (wasOpen) {
+        this.selectedMessage = null;
+        this.updateUrl(this.currentMailbox, this.currentPage, null);
+      }
+      const moved = done.map(({ mailbox, result }) => ({ from: mailbox, mapping: result.uidMapping }));
+      const undoFn = this.undoMoves(moved, to, view, wasOpen ? open : undefined, false);
+      this.showGlobalToast(this.movedMessage(filed.length > 1, filed.length, to), undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
+    }
+    if (refused && refused.reason !== 'auth') {
+      this.reportActionFailed('toast.moveFailed', 'Could not move that');
+      // What the refusing folder held is still in it, and its rows come back.
+      const went = new Set(filed);
+      if (!putBack(keys.filter(key => went.has(key)))) messageSync.sync();
+    }
   }
 
   /**
@@ -1803,15 +1961,27 @@ export class MailboxPage extends LitElement {
     return role === 'trash' || role === 'drafts' || role === 'junk';
   }
 
-  /** What a toast says of messages filed away by `action`. */
-  private movedMessage(action: string, many: boolean, count: number, folder = ''): string {
-    const [several, one] = ({
-      archive: ['toast.messagesMovedToArchive', 'toast.messageMovedToArchive'],
-      reportSpam: ['toast.messagesMovedToSpam', 'toast.messageMovedToSpam'],
-      notSpam: ['toast.messagesMovedToInbox', 'toast.messageMovedToInbox'],
-      moveTo: ['toast.messagesMovedToFolder', 'toast.messageMovedToFolder'],
-    } as Record<string, [string, string]>)[action] ?? ['toast.messagesMovedToTrash', 'toast.messageMovedToTrash'];
-    return many ? this.i18nStore?.t(several, { count, folder }) : this.i18nStore?.t(one, { folder });
+  /**
+   * What a folder is called in a toast: a special folder as the sidebar and
+   * the header call it, any other as the Move-to row the user picked it from.
+   *
+   * The toasts had words of their own for the special folders, and they were
+   * not the sidebar's. Report as spam said "moved to Spam" beside a sidebar
+   * saying "Junk" (in Spanish "No deseado", in Italian "Indesiderata"), and
+   * Not spam said "Recibidos" where the sidebar says "Entrada". A move or copy
+   * into a special folder picked from the list printed its IMAP name,
+   * "[Gmail]/Trash" or "INBOX".
+   */
+  private folderCaption(folder: string): string {
+    return getDestinationLabel(folder, this.i18nStore, this.mailboxes);
+  }
+
+  /** What a toast says of messages filed away into `folder`. */
+  private movedMessage(many: boolean, count: number, folder: string): string {
+    const name = this.folderCaption(folder);
+    return many
+      ? this.i18nStore?.t('toast.messagesMovedToFolder', { count, folder: name })
+      : this.i18nStore?.t('toast.messageMovedToFolder', { folder: name });
   }
 
   private async _handleReaderAction(e: CustomEvent<ReaderActionDetail>) {
@@ -1924,38 +2094,27 @@ export class MailboxPage extends LitElement {
           }
         }
 
-        await this.fileAway(targets, destinationFolder, isBulk, count => this.movedMessage(action, many, count));
+        await this.fileAway(targets, destinationFolder, isBulk, count => this.movedMessage(many, count, destinationFolder));
       } else if (action === 'moveTo' || action === 'copyTo') {
         const destinationFolder = e.detail.folder;
         if (!destinationFolder) return;
 
         if (action === 'moveTo') {
-          await this.fileAway(targets, destinationFolder, isBulk, count => this.movedMessage(action, many, count, destinationFolder));
+          await this.fileAway(targets, destinationFolder, isBulk, count => this.movedMessage(many, count, destinationFolder));
         } else if (this.selectAllMatching) {
           const result = await messageOperations.copyMatching(this.currentMailbox, this.matchingScope, destinationFolder);
           if (result.success) {
             const count = result.count ?? 0;
             this.showGlobalToast(
               many
-                ? this.i18nStore?.t('toast.messagesCopiedToFolder', { count, folder: destinationFolder })
-                : this.i18nStore?.t('toast.messageCopiedToFolder', { folder: destinationFolder }),
+                ? this.i18nStore?.t('toast.messagesCopiedToFolder', { count, folder: this.folderCaption(destinationFolder) })
+                : this.i18nStore?.t('toast.messageCopiedToFolder', { folder: this.folderCaption(destinationFolder) }),
               '', undefined, UNDO_TOAST_TIMEOUT_MS);
           } else if (result.reason !== 'auth') {
             this.reportActionFailed('toast.copyFailed', 'Could not copy that');
           }
         } else {
-          const { done, refused } = await this.eachFolder(targets, async (from, uids): Promise<MoveOutcome> => {
-            const result = await messageOperations.copyMessages(from, uids, destinationFolder);
-            return { ok: result.success, reason: result.reason, uidMapping: {} };
-          });
-          const copied = this.writtenKeys(done).length;
-          if (copied > 0) {
-            const toastMessage = many
-              ? this.i18nStore?.t('toast.messagesCopiedToFolder', { count: copied, folder: destinationFolder })
-              : this.i18nStore?.t('toast.messageCopiedToFolder', { folder: destinationFolder });
-            this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
-          }
-          if (refused && refused.reason !== 'auth') this.reportActionFailed('toast.copyFailed', 'Could not copy that');
+          await this.copyKeys(targets, destinationFolder, many);
         }
       } else if (action === 'downloadMessage' && !isBulk) {
         const url = `/mailboxes/${encodeMailboxPath(this.mailboxOf(currentMsg))}/messages/${currentMsg.UID}/raw`;
@@ -2044,11 +2203,37 @@ export class MailboxPage extends LitElement {
       // The rest of the same Delete, in folders where it is a move to Trash.
       if (toTrash.length > 0) {
         const trash = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
-        await this.fileAway(toTrash, trash, isBulk, count => this.movedMessage('delete', isBulk || toTrash.length > 1, count));
+        await this.fileAway(toTrash, trash, isBulk, count => this.movedMessage(isBulk || toTrash.length > 1, count, trash));
       }
     } finally {
       if (isBulk) this.bulkProcessing = false;
     }
+  }
+
+  /**
+   * What the delete dialog says, by what confirming it does.
+   *
+   * Drafts are deleted for good like Trash, but a draft is discarded, not a
+   * message received, and the toast that follows already says so. The dialog
+   * asked "Permanently Delete?" over a single draft whose own Discard, in the
+   * composer, asks "Discard Draft?" for the same deletion.
+   */
+  private get deleteDialogWords(): { title?: string; message?: string; confirm?: string } {
+    const t = (key: string) => this.i18nStore?.t(key);
+    const details = this.pendingDeleteDetails;
+    const many = ((details?.matching?.count ?? details?.doomed.length) ?? 0) > 1;
+    if (details?.isDrafts) {
+      return {
+        title: t(many ? 'mailboxPage.discardDraftsTitle' : 'floatingComposer.discardDraftTitle'),
+        message: t(many ? 'mailboxPage.discardDraftsMessage' : 'floatingComposer.discardDraftMessage'),
+        confirm: t('floatingComposer.discard'),
+      };
+    }
+    return {
+      title: t('mailboxPage.permanentlyDelete'),
+      message: t(many ? 'messageReader.deleteConfirmMultiple' : 'messageReader.deleteConfirmSingle'),
+      confirm: t('mailboxPage.deletePermanently'),
+    };
   }
 
   private _cancelDelete() {
@@ -2079,7 +2264,7 @@ export class MailboxPage extends LitElement {
         .username=${this.username}
         .isMobile=${this.isMobile}
         .currentMailbox=${this.currentMailbox}
-        .currentMailboxDelimiter=${mailboxDelimiter(this.currentMailbox, this.mailboxes)}
+        .mailboxes=${this.mailboxes}
         .searchQuery=${this.filterQuery}
         .scrolled=${this.listScrolled}
         @toggle-sidebar=${() => this.mobileSidebarOpen = !this.mobileSidebarOpen}
@@ -2090,13 +2275,11 @@ export class MailboxPage extends LitElement {
         this.updateUrl(mailbox, 0, null, newFilter);
       }}
       ></app-header>
-      <div class="app-container layout-${effectiveLayoutMode} ${isReadingFull ? 'reading' : ''} ${this.isPaneDragging || this.isSidebarDragging ? 'dragging' : ''} ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isMobile ? 'mobile-view' : ''} ${this.suppressSidebarHover ? 'suppress-sidebar-hover' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
+      <div class="app-container layout-${effectiveLayoutMode} ${isReadingFull ? 'reading' : ''} ${this.isPaneDragging || this.isSidebarDragging ? 'dragging' : ''} ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isMobile ? 'mobile-view' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
         <alps-sidebar 
           class="${this.isMobile ? 'mobile-sidebar' : 'desktop-sidebar'} ${this.mobileSidebarOpen ? 'open' : ''}"
           .isMobile=${this.isMobile}
           .isOpen=${this.mobileSidebarOpen}
-          .isHovered=${this.isSidebarHovered}
-          .suppressHover=${this.suppressSidebarHover}
           .collapsed=${this.sidebarCollapsed && !this.isMobile}
           .width=${this.sidebarWidth}
           @sidebar-resize=${(e: CustomEvent) => {
@@ -2114,19 +2297,7 @@ export class MailboxPage extends LitElement {
           @drag-end=${() => this.isSidebarDragging = false}
           @toggle-collapse=${() => this.settingsStore.updateSettings({ sidebarCollapsed: !this.sidebarCollapsed })}
           @close-sidebar=${() => this.mobileSidebarOpen = false}
-          @mouseenter=${() => {
-            if (this.hoverTimeout) {
-              clearTimeout(this.hoverTimeout);
-              this.hoverTimeout = null;
-            }
-            this.isSidebarHovered = true;
-            this.suppressSidebarHover = false;
-          }}
-          @mouseleave=${() => {
-            this.hoverTimeout = setTimeout(() => {
-              this.isSidebarHovered = false;
-            }, 300);
-          }}
+          @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
         >
           <alps-folder-list
             .mailboxes=${this.mailboxes}
@@ -2134,7 +2305,7 @@ export class MailboxPage extends LitElement {
             .expandedFolders=${this.expandedFolders}
             .layoutMode=${effectiveLayoutMode}
             .syncing=${this.isSyncing}
-            ?collapsed=${this.sidebarCollapsed && !this.isMobile && !this.isSidebarHovered}
+            ?collapsed=${this.sidebarCollapsed && !this.isMobile && !this.sidebarPeeking}
             @select-mailbox=${(e: CustomEvent) => {
         if (this.currentMailbox === e.detail.name) {
           this.currentPage = 0;
@@ -2151,9 +2322,7 @@ export class MailboxPage extends LitElement {
           this.updateUrl(e.detail.name, 0, null);
         }
 
-        if (this.sidebarCollapsed && !this.isMobile) {
-          this.suppressSidebarHover = true;
-        }
+        closeSidebarPeek(this.renderRoot);
         if (this.isMobile) {
           this.mobileSidebarOpen = false;
         }
@@ -2171,6 +2340,7 @@ export class MailboxPage extends LitElement {
         }
       }}
             @toast=${this._relayToast}
+            @drop-messages=${this.handleDroppedMessages}
           ></alps-folder-list>
           <alps-icon-btn 
             slot="footer-actions"
@@ -2188,7 +2358,9 @@ export class MailboxPage extends LitElement {
               .messages=${this.messages}
               .currentMailbox=${this.currentMailbox}
               .currentMailboxRole=${mailboxRoleByName(this.currentMailbox, this.mailboxes) || ''}
-              .currentMailboxDelimiter=${mailboxDelimiter(this.currentMailbox, this.mailboxes)}
+              .listedMailbox=${this.listedMailbox}
+              .listedMailboxRole=${mailboxRoleByName(this.listedMailbox, this.mailboxes) || ''}
+              .mailboxes=${this.mailboxes}
               .sidebarCollapsed=${this.sidebarCollapsed && !this.isMobile}
               .loading=${this.loadingMessages}
               .selectedMessage=${this.selectedMessage}
@@ -2296,9 +2468,9 @@ export class MailboxPage extends LitElement {
       </div>
       ${this.showDeleteConfirm ? html`
         <ui-confirm
-          title="${this.i18nStore?.t('mailboxPage.permanentlyDelete')}"
-          message=${((this.pendingDeleteDetails?.matching?.count ?? this.pendingDeleteDetails?.doomed.length) ?? 0) > 1 ? (this.i18nStore?.t('messageReader.deleteConfirmMultiple')) : (this.i18nStore?.t('messageReader.deleteConfirmSingle'))}
-          confirmText=${this.i18nStore?.t('mailboxPage.deletePermanently')}
+          title=${this.deleteDialogWords.title}
+          message=${this.deleteDialogWords.message}
+          confirmText=${this.deleteDialogWords.confirm}
           cancelText=${this.i18nStore?.t('general.cancel')}
           .isDanger=${true}
           @confirm=${this._confirmDelete}

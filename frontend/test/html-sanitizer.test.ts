@@ -25,6 +25,12 @@ function countBlocked(html: string, allowRemoteResources = false): number {
   return n;
 }
 
+/** The sources a policy lists for one directive. */
+function sourcesOf(policy: string, directive: string): string[] {
+  const match = new RegExp(`(?:^|;)\\s*${directive}\\s+([^;]+)`).exec(policy);
+  return match ? match[1].trim().split(/\s+/) : [];
+}
+
 /** The output with every proxied URL removed, so a host left in it is one the browser would fetch directly. */
 const withoutProxied = (html: string) => html.replace(/\/proxy\?url=[^"')\s,]+/g, '');
 
@@ -41,11 +47,61 @@ describe('the injected policy', () => {
     }
   });
 
-  it('lets images and media load only from this origin and inline data', () => {
+  it('lets images, media and fonts load from this message\'s parts and inline data, not the whole origin', () => {
     const policy = csp('<p>hi</p>');
-    expect(policy).toContain(`img-src ${window.location.origin} data: blob: cid:`);
-    expect(policy).toContain(`media-src ${window.location.origin} data: blob: cid:`);
+    const parts = `${window.location.origin}/mailboxes/INBOX/messages/42/raw`;
+    for (const directive of ['img-src', 'media-src', 'font-src']) {
+      expect(sourcesOf(policy, directive), directive).toEqual([parts, 'data:', 'blob:', 'cid:']);
+    }
   });
+
+  it('lets the proxy in only once the reader has allowed remote content', () => {
+    const policy = (html: string) => attr(allowed(html), 'meta[http-equiv="Content-Security-Policy"]', 'content');
+    for (const directive of ['img-src', 'media-src', 'font-src']) {
+      expect(sourcesOf(csp('<p>hi</p>'), directive), directive).not.toContain(`${window.location.origin}/proxy`);
+      expect(sourcesOf(policy('<p>hi</p>'), directive), directive).toContain(`${window.location.origin}/proxy`);
+      expect(sourcesOf(policy('<p>hi</p>'), directive), directive).not.toContain(window.location.origin);
+    }
+  });
+
+  it('names the parts by the very URL an inline image is pointed at, mailbox encoding and all', () => {
+    const structure = { Children: [{ MIMEType: 'text' }, { ID: '<logo@sender.test>' }] };
+    const out = blocked('<img src="cid:logo@sender.test">', { mailbox: '[Gmail]/All Mail', messageStructure: structure });
+    const image = new URL(attr(out, 'img', 'src'), window.location.origin);
+    const policy = attr(out, 'meta[http-equiv="Content-Security-Policy"]', 'content');
+    // A source with a path matches the path and ignores the query.
+    expect(sourcesOf(policy, 'img-src')).toContain(`${image.origin}${image.pathname}`);
+  });
+
+  it('names no parts for a document that is not a stored message', () => {
+    const out = sanitizeMessageHTML('<p>hi</p>', { mailbox: '', messageUid: '', allowRemoteResources: false });
+    expect(sourcesOf(attr(out, 'meta[http-equiv="Content-Security-Policy"]', 'content'), 'img-src')).toEqual(['data:', 'blob:', 'cid:']);
+  });
+
+  // The sanitizer counts and rewrites only absolute and `//` URLs, so these
+  // are left as the sender wrote them, and only the policy keeps the browser
+  // from fetching them through our own proxy with remote content blocked.
+  const relativeProxy = '/proxy?url=https%3A%2F%2Ftracker.test%2Funique';
+  for (const html of [
+    `<img src="${relativeProxy}">`,
+    `<img srcset="${relativeProxy} 2x">`,
+    `<div style="background:url('${relativeProxy}')">body</div>`,
+    `<style>body { background: image-set('${relativeProxy}' 1x) }</style>`,
+    `<svg><image href="${relativeProxy}" /></svg>`,
+    `<video><source src="${relativeProxy}"></video>`,
+  ]) {
+    it(`does not let a sender's relative proxy URL load with remote content blocked: ${html}`, () => {
+      const policy = csp(html);
+      for (const directive of ['img-src', 'media-src', 'font-src']) {
+        const sources = sourcesOf(policy, directive);
+        expect(sources, directive).not.toContain(window.location.origin);
+        expect(sources, directive).not.toContain(`${window.location.origin}/proxy`);
+        expect(sources.filter((source) => source.startsWith(window.location.origin)), directive).toEqual([
+          `${window.location.origin}/mailboxes/INBOX/messages/42/raw`,
+        ]);
+      }
+    });
+  }
 
   it('comes before any of the sender\'s markup', () => {
     // A meta CSP governs only what follows it.
@@ -104,6 +160,112 @@ describe('elements that fetch or render on their own', () => {
   });
 });
 
+describe('SVG animations', () => {
+  // The frame's policy and sandbox refuse a script URL however it got into a
+  // link; the animations go all the same, since they change attributes after
+  // every check here has read them.
+  const svgNames = (html: string) => [...parse(html).querySelectorAll('svg *')].map((el) => el.localName);
+
+  for (const animation of [
+    '<animate attributeName="href" values="javascript:alert(1)"/>',
+    '<set attributeName="href" to="javascript:alert(1)"/>',
+    '<set attributeName="xlink:href" from="javascript:alert(1)" by="javascript:alert(1)"/>',
+    '<animateMotion dur="1s"/>',
+    '<animateTransform attributeName="transform" type="rotate" to="90"/>',
+    '<animateColor attributeName="fill" to="red"/>',
+    '<discard href="#link"/>',
+  ]) {
+    it(`removes ${animation}, and keeps the link it was in`, () => {
+      const out = blocked(`<svg><a id="link">${animation}<text y="20">Open</text></a></svg>`);
+      expect(svgNames(out)).toEqual(['a', 'text']);
+      expect(parse(out).querySelector('text')?.textContent).toBe('Open');
+    });
+  }
+
+  it('keeps an SVG that only draws', () => {
+    const out = blocked('<svg width="20" height="20"><rect width="20" height="20" fill="#c00"/><text y="15">A</text></svg>');
+    expect(svgNames(out)).toEqual(['rect', 'text']);
+    expect(attr(out, 'rect', 'fill')).toBe('#c00');
+  });
+});
+
+describe('SVG attributes that take a url()', () => {
+  // A presentation attribute is CSS, one property each, and a url() in it
+  // that names another document fetches that document: a paint server, a
+  // filter, a mask, a clip path, a marker, a cursor image. Uncounted, a
+  // message whose only remote content was in a drawing showed no banner, and
+  // the policy refused the fetch.
+  const url = 'https://tracker.test/paint.svg#p';
+  const names = ['fill', 'stroke', 'filter', 'mask', 'clip-path', 'marker-start', 'marker-mid', 'marker-end', 'cursor'];
+  for (const name of names) {
+    const html = `<svg><rect width="10" height="10" ${name}="url(${url})"/></svg>`;
+
+    it(`counts a remote url() in ${name}, and blocks it`, () => {
+      expect(countBlocked(html)).toBe(1);
+      expect(attr(blocked(html), 'rect', name)).toMatch(/^url\(data:image\/gif;base64,[^)]*\)$/);
+      expect(blocked(html)).not.toContain('tracker.test');
+    });
+
+    it(`sends a remote url() in ${name} through the proxy once allowed`, () => {
+      expect(countBlocked(html, true)).toBe(1);
+      expect(attr(allowed(html), 'rect', name)).toBe(`url("/proxy?url=${encodeURIComponent(url)}")`);
+    });
+  }
+
+  for (const value of [
+    `u\\rl(${url})`,
+    `\\75 rl(${url}) #c00`,
+    'url(h\\74tps://tracker.test/paint.svg#p)',
+    'url("\\2f\\2ftracker.test/paint.svg#p")',
+  ]) {
+    it(`counts ${value}, which the rewrite cannot reach, and removes it with its attribute`, () => {
+      const html = `<svg><rect width="10" fill='${value}' stroke="#c00"/></svg>`;
+      expect(countBlocked(html)).toBe(1);
+      expect(countBlocked(html, true)).toBe(1);
+      for (const out of [blocked(html), allowed(html)]) {
+        expect(out).not.toContain('tracker.test');
+        expect(attr(out, 'rect', 'stroke')).toBe('#c00');
+        expect(parse(out).querySelector('rect')?.hasAttribute('fill')).toBe(false);
+      }
+    });
+  }
+
+  it('counts a cursor image named in an image-set(), and removes it', () => {
+    const html = '<svg><rect width="10" cursor="image-set(\'https://tracker.test/c.png\' 1x), auto"/></svg>';
+    expect(countBlocked(html)).toBe(1);
+    expect(parse(blocked(html)).querySelector('rect')?.hasAttribute('cursor')).toBe(false);
+  });
+
+  it('keeps references to elements of the message, and counts nothing', () => {
+    const html =
+      '<svg><defs><linearGradient id="g"></linearGradient><filter id="f"></filter><mask id="m"></mask>' +
+      '<clipPath id="c"></clipPath><marker id="a"></marker></defs>' +
+      '<rect fill="url(#g)" stroke="url(\'#g\') #c00" filter="url(#f)" mask="URL( #m )" clip-path="url(#c)" ' +
+      'marker-start="url(#a)" marker-mid="url(#a)" marker-end="url(#a)" cursor="pointer"></rect></svg>';
+    const rect = parse(html).querySelector('rect')!.outerHTML;
+    for (const out of [blocked(html), allowed(html)]) expect(parse(out).querySelector('rect')?.outerHTML).toBe(rect);
+    expect(countBlocked(html)).toBe(0);
+    expect(countBlocked(html, true)).toBe(0);
+  });
+
+  it('leaves a data: cursor and a cid: reference to the policy, as it leaves such an image', () => {
+    const cursor = 'url(data:image/png;base64,iVBORw0KGgo=), auto';
+    const html = `<svg><rect cursor="${cursor}" fill="url(cid:paint@sender.test#p)"></rect></svg>`;
+    expect(attr(blocked(html), 'rect', 'cursor')).toBe(cursor);
+    expect(attr(blocked(html), 'rect', 'fill')).toBe('url(cid:paint@sender.test#p)');
+    expect(countBlocked(html)).toBe(0);
+  });
+
+  it('reads the same properties in the style of an SVG element', () => {
+    const html =
+      `<svg><rect style="fill: url(#g); stroke: url(${url}); cursor: u\\rl(https://tracker.test/c.png), auto"></rect></svg>`;
+    expect(countBlocked(html)).toBe(1);
+    const style = attr(blocked(html), 'rect', 'style');
+    expect(style).toMatch(/^fill: url\(#g\); stroke: url\(data:image\/gif;base64,[^)]*\)$/);
+    expect(withoutProxied(allowed(html))).not.toContain('tracker.test');
+  });
+});
+
 describe('remote images', () => {
   it('blocks one by default, keeping the original address for later', () => {
     const out = blocked('<img src="https://tracker.test/pixel.gif">');
@@ -120,10 +282,12 @@ describe('remote images', () => {
     expect(attr(allowed('<img src="https://cdn.test/a.png">'), 'img', 'src')).toBe('/proxy?url=https%3A%2F%2Fcdn.test%2Fa.png');
   });
 
-  it('treats a protocol-relative address as remote', () => {
-    // A browser resolves //host/path against the page's scheme.
+  it('treats a protocol-relative address as remote, and proxies it with the page\'s scheme', () => {
+    // A browser resolves //host/path against the page's scheme; the proxy
+    // fetches only an address that has one.
     expect(attr(blocked('<img src="//tracker.test/p.gif">'), 'img', 'src')).toMatch(PIXEL);
-    expect(attr(allowed('<img src="//cdn.test/a.png">'), 'img', 'src')).toBe('/proxy?url=%2F%2Fcdn.test%2Fa.png');
+    expect(attr(allowed('<img src="//cdn.test/a.png">'), 'img', 'src'))
+      .toBe(`/proxy?url=${encodeURIComponent(`${window.location.protocol}//cdn.test/a.png`)}`);
     expect(countBlocked('<img src="//tracker.test/p.gif">')).toBe(1);
   });
 
@@ -137,6 +301,66 @@ describe('remote images', () => {
   });
 });
 
+describe('addresses read as the URL parser reads them', () => {
+  // Before it reads a scheme, a browser strips C0 controls and spaces from
+  // both ends of an address and removes every tab and line break inside it,
+  // and in an http(s) URL it reads a backslash as a slash. Judged as written,
+  // each of these was a local address: neither counted nor rewritten, so the
+  // policy refused a fetch the reader was never told of.
+  const written: [string, string][] = [
+    ['a tab inside the scheme', 'ht&#9;tps://tracker.test/p.gif'],
+    ['a line feed before it', '&#10;https://tracker.test/p.gif'],
+    ['a carriage return between the slashes', 'https:/&#13;/tracker.test/p.gif'],
+    ['a control character before it', '&#1;https://tracker.test/p.gif'],
+    ['a control character and a space after it', 'https://tracker.test/p.gif&#31; '],
+    ['an upper-case scheme with a tab in it', 'HT&#9;TP://tracker.test/p.gif'],
+    ['two backslashes for the slashes', '\\\\tracker.test/p.gif'],
+    ['a slash and a backslash', '/\\tracker.test/p.gif'],
+    ['a line feed between the slashes', '/&#10;/tracker.test/p.gif'],
+  ];
+  /** The address an allowed image was handed to the proxy with. */
+  const proxiedAddress = (src: string) => decodeURIComponent(src.replace(/^\/proxy\?url=/, ''));
+
+  for (const [how, src] of written) {
+    it(`blocks and counts an image with ${how}`, () => {
+      const html = `<img src="${src}">`;
+      expect(attr(blocked(html), 'img', 'src')).toMatch(PIXEL);
+      expect(countBlocked(html)).toBe(1);
+      expect(countBlocked(html, true)).toBe(1);
+    });
+
+    it(`hands the proxy the address the browser reads in an image with ${how}`, () => {
+      const proxiedSrc = attr(allowed(`<img src="${src}">`), 'img', 'src');
+      expect(proxiedSrc).toMatch(/^\/proxy\?url=/);
+      expect(proxiedAddress(proxiedSrc)).toMatch(/^https?:\/\/tracker\.test\/p\.gif$/);
+    });
+  }
+
+  it('reads a srcset candidate, a poster, a media source and a stylesheet the same way', () => {
+    const html =
+      '<img srcset="&#1;https://tracker.test/a.gif 2x"><video poster="ht&#9;tps://tracker.test/p.jpg">' +
+      '<source src="&#10;//tracker.test/v.mp4"></video><link rel="stylesheet" href="\\\\tracker.test/s.css">';
+    expect(countBlocked(html)).toBe(4);
+    expect(blocked(html)).not.toContain('tracker.test');
+    expect(withoutProxied(allowed(html))).not.toContain('tracker.test');
+  });
+
+  it('reads an address in CSS the same way', () => {
+    // `\\\\` in CSS is two backslashes, a scheme-relative address to the URL parser.
+    const html = "<p style=\"color: #c00; background: url('\\\\\\\\tracker.test/p.gif')\">x</p>";
+    expect(countBlocked(html)).toBe(1);
+    expect(attr(blocked(html), 'p', 'style')).toBe('color: #c00');
+  });
+
+  it('leaves a local address with a tab or a space in it alone', () => {
+    const html = '<img src="/assets/lo&#9;go.png"><img src=" /assets/logo.png"><img src="&#9;cid:logo@sender.test">';
+    expect(countBlocked(html)).toBe(0);
+    expect([...parse(blocked(html)).querySelectorAll('img')].map((img) => img.getAttribute('src'))).toEqual([
+      '/assets/lo\tgo.png', ' /assets/logo.png', '\tcid:logo@sender.test',
+    ]);
+  });
+});
+
 describe('addresses outside img[src]', () => {
   it('replaces a blocked srcset with a single pixel', () => {
     const out = blocked('<img srcset="https://tracker.test/p.gif 1x, https://tracker.test/p2.gif 2x">');
@@ -147,7 +371,25 @@ describe('addresses outside img[src]', () => {
 
   it('proxies every remote candidate of an allowed srcset, keeping descriptors and local candidates', () => {
     const srcset = attr(allowed('<img srcset="/local.png 1x, https://cdn.test/b.png 2x, //cdn.test/c.png 640w">'), 'img', 'srcset');
-    expect(srcset).toBe('/local.png 1x, /proxy?url=https%3A%2F%2Fcdn.test%2Fb.png 2x, /proxy?url=%2F%2Fcdn.test%2Fc.png 640w');
+    const relative = encodeURIComponent(`${window.location.protocol}//cdn.test/c.png`);
+    expect(srcset).toBe(`/local.png 1x, /proxy?url=https%3A%2F%2Fcdn.test%2Fb.png 2x, /proxy?url=${relative} 640w`);
+  });
+
+  it('keeps a comma inside a candidate URL, as an image CDN or a data: URL writes one', () => {
+    const srcset = attr(allowed(
+      '<img srcset="https://cdn.test/fetch/w_1456,c_limit,f_auto/pic.jpg 1456w, ' +
+      'https://cdn.test/fetch/w_800,c_limit/pic.jpg 800w, data:image/png;base64,iVBORw0KGgo= 1x">',
+    ), 'img', 'srcset');
+    expect(srcset).toBe([
+      `/proxy?url=${encodeURIComponent('https://cdn.test/fetch/w_1456,c_limit,f_auto/pic.jpg')} 1456w`,
+      `/proxy?url=${encodeURIComponent('https://cdn.test/fetch/w_800,c_limit/pic.jpg')} 800w`,
+      'data:image/png;base64,iVBORw0KGgo= 1x',
+    ].join(', '));
+  });
+
+  it('ends a candidate at a comma that ends its URL', () => {
+    const srcset = attr(allowed('<img srcset="https://cdn.test/a.png, https://cdn.test/b.png 2x">'), 'img', 'srcset');
+    expect(srcset).toBe(`/proxy?url=${encodeURIComponent('https://cdn.test/a.png')}, /proxy?url=${encodeURIComponent('https://cdn.test/b.png')} 2x`);
   });
 
   it('rewrites a picture source, a video poster and a media source', () => {
@@ -171,6 +413,7 @@ describe('remote addresses in CSS', () => {
       ['a style attribute', `<p style="background: url(${url})">x</p>`],
       ['an @import', `<style>@import url("${url}");</style>`],
       ['an @font-face', `<style>@font-face { font-family: x; src: url(${url}); }</style>`],
+      ['an @keyframes', `<style>@keyframes k { from { background: url(${url}); } }</style>`],
       ['a stylesheet link', `<link rel="stylesheet" href="${url}">`],
     ];
     for (const [where, html] of cases) {
@@ -194,6 +437,155 @@ describe('remote addresses in CSS', () => {
     expect(out).toContain('/local/x.gif');
     expect(out).toContain('cid:logo@sender.test');
     expect(countBlocked(html)).toBe(0);
+  });
+
+  it('leaves a data: url() and an SVG fragment alone, whatever the reader chose', () => {
+    const gif = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+    const html =
+      `<style>p { background: url(${gif}) } rect { fill: url(#g) }</style>` +
+      `<p style="background: url('${gif}') no-repeat">a</p><svg><rect style="fill: url(#g)"/></svg>`;
+    for (const out of [blocked(html), allowed(html)]) {
+      expect(out).toContain(`background: url(${gif})`);
+      expect(out).toContain('fill: url(#g)');
+      expect(attr(out, 'p', 'style')).toBe(`background: url('${gif}') no-repeat`);
+      expect(attr(out, 'rect', 'style')).toBe('fill: url(#g)');
+    }
+    expect(countBlocked(html)).toBe(0);
+    expect(countBlocked(html, true)).toBe(0);
+  });
+});
+
+describe('remote addresses in CSS written so that a pattern misses them', () => {
+  // A browser decodes escapes before it reads a name or an address, and
+  // fetches the plain strings of an image-set(), so each of these loads as
+  // surely as a plain url(). The rewrite finds the usual spelling; what it
+  // cannot reach goes with its declaration, and is counted.
+  const url = 'https://tracker.example/p.gif';
+  for (const value of [
+    `u\\rl(${url})`,
+    `\\75 rl(${url})`,
+    `\\000055RL("${url}")`,
+    'url(h\\74tps://tracker.example/p.gif)',
+    'url("\\2f\\2ftracker.example/p.gif")',
+    `image-set("${url}" 1x)`,
+    `-webkit-image-set("${url}" 1x, "${url}" 2x)`,
+  ]) {
+    const cases: [string, string][] = [
+      ['a style attribute', `<p style='color: #c00; background: ${value}'>x</p>`],
+      ['a style block', `<style>p { color: #c00; background: ${value} }</style><p>x</p>`],
+      ['an @font-face', `<style>@font-face { font-family: x; src: ${value} }</style><p style="color: #c00">x</p>`],
+    ];
+    for (const [where, html] of cases) {
+      it(`counts ${value} in ${where}, and keeps the rest of the style`, () => {
+        expect(countBlocked(html)).toBeGreaterThan(0);
+        expect(countBlocked(html, true)).toBeGreaterThan(0);
+        expect(blocked(html)).toMatch(/color: #c00/);
+        expect(allowed(html)).toMatch(/color: #c00/);
+      });
+
+      it(`does not leave ${value} in ${where}, blocked or allowed`, () => {
+        expect(blocked(html)).not.toContain('tracker.example');
+        expect(withoutProxied(allowed(html))).not.toContain('tracker.example');
+      });
+    }
+  }
+
+  it('drops a sheet whose @import is written with escapes, which the parser takes for a selector', () => {
+    const html = `<style>@\\69mport url(${url}); p { color: red }</style><p>x</p>`;
+    expect(countBlocked(html)).toBeGreaterThan(0);
+    expect(blocked(html)).not.toContain('tracker.example');
+    expect(withoutProxied(allowed(html))).not.toContain('tracker.example');
+  });
+
+  it('removes an @import whose address is written with escapes, and counts it', () => {
+    const html = '<style>@import "\\2f\\2ftracker.example/s.css"; p { color: red }</style>';
+    expect(countBlocked(html)).toBeGreaterThan(0);
+    const out = allowed(html);
+    expect(out).not.toContain('@import');
+    expect(out).toMatch(/color:\s*red/);
+  });
+
+  it('leaves a url( that a browser does not read as one', () => {
+    // A space before the parenthesis, or a comment inside the name, makes
+    // something else of it: nothing is fetched, so nothing is counted.
+    const html = `<p style="background: url (${url})">a</p><p style="background: u/**/rl(${url})">b</p>`;
+    expect(countBlocked(html)).toBe(0);
+  });
+
+  it('keeps styles that use escapes for text, and counts nothing', () => {
+    const html =
+      '<style>q::before { content: "\\201C" } p { font-family: \\5B8B\\4F53, "\\5FAE\\8F6F\\96C5\\9ED1" }</style>' +
+      '<p style=\'font-family: \\5B8B\\4F53; color: #c00\'>x</p><q style=\'quotes: "\\201C" "\\201D"\'>y</q>';
+    for (const out of [blocked(html), allowed(html)]) {
+      expect(out).toContain('content: "\\201C"');
+      expect(out).toContain('font-family: \\5B8B\\4F53, "\\5FAE\\8F6F\\96C5\\9ED1"');
+      expect(attr(out, 'p', 'style')).toBe('font-family: \\5B8B\\4F53; color: #c00');
+      expect(attr(out, 'q', 'style')).toBe('quotes: "\\201C" "\\201D"');
+    }
+    expect(countBlocked(html)).toBe(0);
+  });
+
+  it('keeps a namespace rule, whose URL is a name and not a fetch', () => {
+    const html = '<style>@namespace svg url(http://www.w3.org/2000/svg); p { color: red }</style>';
+    expect(countBlocked(html)).toBe(0);
+    expect(blocked(html)).toMatch(/color:\s*red/);
+  });
+});
+
+describe('the background attribute', () => {
+  // A body, table, row or cell paints itself with the image its `background`
+  // names, fetched as an img's src is. Unread, a remote one went uncounted,
+  // and the policy refused it with no banner.
+  const cases: [string, string][] = [
+    ['body', '<body background="https://tracker.test/bg.gif"><p>x</p></body>'],
+    ['table', '<table background="https://tracker.test/bg.gif"><tr><td>x</td></tr></table>'],
+    ['tr', '<table><tr background="https://tracker.test/bg.gif"><td>x</td></tr></table>'],
+    ['td', '<table><tr><td background="//tracker.test/bg.gif">x</td></tr></table>'],
+    ['th', '<table><tr><th background="ht&#9;tps://tracker.test/bg.gif">x</th></tr></table>'],
+  ];
+  for (const [tag, html] of cases) {
+    it(`counts a remote background on a ${tag}, and blocks it`, () => {
+      expect(countBlocked(html)).toBe(1);
+      expect(attr(blocked(html), tag, 'background')).toMatch(PIXEL);
+      expect(blocked(html)).not.toContain('tracker.test');
+    });
+
+    it(`sends a remote background on a ${tag} through the proxy once allowed`, () => {
+      expect(countBlocked(html, true)).toBe(1);
+      expect(attr(allowed(html), tag, 'background')).toMatch(/^\/proxy\?url=https?%3A%2F%2Ftracker\.test%2Fbg\.gif$/);
+    });
+  }
+
+  it('points a cid: background at the part carrying that Content-ID, as it does an image', () => {
+    const structure = { Children: [{ MIMEType: 'text' }, { ID: '<bg@sender.test>' }] };
+    const html = '<body background="cid:bg@sender.test"><table background=" CID:bg@sender.test"><tr><td>x</td></tr></table></body>';
+    const out = blocked(html, { messageStructure: structure });
+    expect(attr(out, 'body', 'background')).toBe('/mailboxes/INBOX/messages/42/raw?part=2');
+    expect(attr(out, 'table', 'background')).toBe('/mailboxes/INBOX/messages/42/raw?part=2');
+    expect(countBlocked(html)).toBe(0);
+  });
+
+  it('leaves a local, a data: or an unresolvable cid: background alone, uncounted', () => {
+    const gif = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+    const html =
+      `<table background="${gif}"><tr><td background="/assets/bg.gif">x</td>` +
+      '<td background="cid:missing@sender.test">y</td></tr></table>';
+    const out = blocked(html);
+    expect(attr(out, 'table', 'background')).toBe(gif);
+    expect([...parse(out).querySelectorAll('td')].map((td) => td.getAttribute('background'))).toEqual([
+      '/assets/bg.gif', 'cid:missing@sender.test',
+    ]);
+    expect(countBlocked(html)).toBe(0);
+  });
+
+  it('keeps an ordinary table as written, and counts nothing', () => {
+    const table =
+      '<table width="100%" bgcolor="#eeeeee" cellpadding="4"><tbody><tr>' +
+      '<td align="center" style="color: #c00">x</td></tr></tbody></table>';
+    for (const out of [blocked(table), allowed(table)]) {
+      expect(parse(out).querySelector('table')?.outerHTML).toBe(table);
+    }
+    expect(countBlocked(table)).toBe(0);
   });
 });
 

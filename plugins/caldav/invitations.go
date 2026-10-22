@@ -426,18 +426,28 @@ func itemTimes(cal *ical.Calendar, item *ical.Component) (start, end time.Time, 
 	}
 	if endProp := item.Props.Get(ical.PropDateTimeEnd); endProp != nil {
 		if t, _, err := itip.Time(cal, endProp); err == nil {
-			return start, t, allDay, true
+			return start, allDayEnd(item, start, t, allDay), allDay, true
 		}
 	}
 	if durProp := item.Props.Get(ical.PropDuration); durProp != nil {
 		if d, err := durProp.Duration(); err == nil {
-			return start, start.Add(d), allDay, true
+			return start, allDayEnd(item, start, start.Add(d), allDay), allDay, true
 		}
 	}
 	if allDay {
 		return start, start.AddDate(0, 0, 1), true, true
 	}
 	return start, start, false, true
+}
+
+// allDayEnd is when an all-day event ends: the day after it starts, at the
+// earliest. One written with its DTEND on its DTSTART, or with a DURATION of
+// nothing, otherwise has no length, and the calendar draws it on no day.
+func allDayEnd(item *ical.Component, start, end time.Time, allDay bool) time.Time {
+	if allDay && item.Name == ical.CompEvent && !end.After(start) {
+		return start.AddDate(0, 0, 1)
+	}
+	return end
 }
 
 // Clash is an event in the user's calendar at the same time as an

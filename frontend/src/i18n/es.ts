@@ -15,7 +15,7 @@ export const es = {
     },
     loading: 'Cargando...',
     placeholderName: 'Tu nombre',
-    placeholderReplyTo: 'responder@ejemplo.com',
+    placeholderReplyTo: 'responder@ejemplo.example',
     general: {
       checkMailInterval: 'Intervalo de comprobación de correo',
       checkMailIntervalDesc: 'Con qué frecuencia buscar correo nuevo automáticamente.',
@@ -104,11 +104,11 @@ export const es = {
       german: 'Deutsch',
       italian: 'Italiano',
       spanish: 'Español',
-      serbian: 'Serbio',
-      serbianLatin: 'Serbio (Latino)',
-      french: 'Francés',
-      portuguese: 'Portugués',
-      danish: 'Danés'
+      serbian: 'Српски (ћирилица)',
+      serbianLatin: 'Srpski (latinica)',
+      french: 'Français',
+      portuguese: 'Português',
+      danish: 'Dansk'
     },
   },
   linkedAccounts: {
@@ -139,10 +139,11 @@ export const es = {
     pleaseWait: 'Por favor espere',
     wait: 'Esperar',
     signedOut: 'Has cerrado sesión.',
-    signedOutDraftsLost: 'Se ha cerrado tu sesión. Algunos borradores sin enviar no se pudieron guardar y se perdieron.',
+    signedOutDraftsKept: 'Se ha cerrado tu sesión. Algunos borradores sin enviar no se pudieron guardar en el servidor. Se quedan en este dispositivo y se vuelven a abrir cuando inicies sesión de nuevo.',
     sessionExpired: 'Tu sesión ha expirado. Por favor, inicia sesión de nuevo.',
+    secondFactorExpired: 'El inicio de sesión ha caducado antes de comprobar la clave de seguridad. Vuelve a iniciar sesión.',
     inactivitySignedOut: 'Has cerrado sesión por inactividad.',
-    inactivitySignedOutDraftsLost: "Has cerrado sesión por inactividad. Algunos borradores sin enviar no se pudieron guardar y se perdieron."
+    inactivitySignedOutDraftsKept: "Has cerrado sesión por inactividad. Algunos borradores sin enviar no se pudieron guardar en el servidor. Se quedan en este dispositivo y se vuelven a abrir cuando inicies sesión de nuevo."
   },
   folderList: {
     compose: 'Redactar',
@@ -153,6 +154,7 @@ export const es = {
     spam: 'Spam',
     junk: 'No deseado',
     trash: 'Papelera',
+    allFolders: 'Todas las carpetas',
     title: 'Carpetas',
     rename: 'Renombrar',
     delete: 'Eliminar',
@@ -173,7 +175,10 @@ export const es = {
     moveToTop: "Mover al principio",
     moveUp: "Subir",
     moveDown: "Bajar",
-    moveToBottom: "Mover al final"
+    moveToBottom: "Mover al final",
+    more: "Más",
+    less: "Menos",
+    unsubscribedFolders: "Carpetas sin suscripción"
   },
   search: {
     placeholder: 'Buscar correo',
@@ -181,10 +186,23 @@ export const es = {
   messageList: {
     menu: 'Menú',
     selectAll: 'Seleccionar todos los mensajes',
-    allOnPageSelected: 'Los {count} mensajes de esta página están seleccionados',
-    selectAllMatching: 'Seleccionar los {count} de {folder}',
-    allMatchingSelected: 'Los {count} mensajes de {folder} están seleccionados',
+    allOnPageSelected: {
+      one: '{count} mensaje de esta página está seleccionado',
+      other: 'Los {count} mensajes de esta página están seleccionados'
+    },
+    selectAllMatching: {
+      one: 'Seleccionar {count} de {folder}',
+      other: 'Seleccionar los {count} de {folder}'
+    },
+    allMatchingSelected: {
+      one: '{count} mensaje de {folder} está seleccionado',
+      other: 'Los {count} mensajes de {folder} están seleccionados'
+    },
     clearSelection: 'Borrar la selección',
+    dragCount: {
+      one: '{count} mensaje',
+      other: '{count} mensajes'
+    },
     checkNew: 'Comprobar mensajes nuevos',
     sortDesc: 'Ordenar descendente por fecha',
     sortAsc: 'Ordenar ascendente por fecha',
@@ -203,14 +221,20 @@ export const es = {
     searchResultsFor: 'Resultados de búsqueda para:',
     clearSearch: 'Borrar búsqueda',
     searchAllMailboxes: 'Buscar en todo',
-    totalMessagesIn: '{count} mensajes en total en {folder}',
+    totalMessagesIn: {
+      one: '{count} mensaje en {folder}',
+      other: '{count} mensajes en total en {folder}'
+    },
     totalConversationsIn: {
       one: '{count} conversación en {folder}',
       other: '{count} conversaciones en total en {folder}'
     },
     deleteAllNow: 'Eliminar todos ahora',
     emptyMailboxTitle: 'Vaciar {folder}',
-    emptyMailboxConfirm: '¿Estás seguro de que quieres eliminar permanentemente todos los {count} mensajes en {folder}? Esta acción no se puede deshacer.',
+    emptyMailboxConfirm: {
+      one: '¿Estás seguro de que quieres eliminar permanentemente el único mensaje en {folder}? Esta acción no se puede deshacer.',
+      other: '¿Estás seguro de que quieres eliminar permanentemente todos los {count} mensajes en {folder}? Esta acción no se puede deshacer.'
+    },
     emptyMailboxConfirmConversations: {
       one: '¿Estás seguro de que quieres eliminar permanentemente la única conversación en {folder} y todos sus mensajes? Esta acción no se puede deshacer.',
       other: '¿Estás seguro de que quieres eliminar permanentemente las {count} conversaciones en {folder} y todos sus mensajes? Esta acción no se puede deshacer.'
@@ -309,7 +333,10 @@ export const es = {
     removeAllTags: 'Eliminar todas las etiquetas',
     removeTag: 'Eliminar etiqueta',
     selectMessage: 'Seleccione un mensaje para leer',
-    messagesSelected: 'mensajes seleccionados',
+    messagesSelected: {
+      one: '{count} mensaje seleccionado',
+      other: '{count} mensajes seleccionados'
+    },
     back: 'Volver',
     reply: 'Responder',
     replyAll: 'Responder a todos',
@@ -349,6 +376,15 @@ export const es = {
     unverifiedSender: 'Remitente no verificado',
     senderUnverifiedWarning: 'Tu servidor de correo no pudo verificar este remitente. Puede que el mensaje no sea de quien dice ser, así que ten cuidado con sus enlaces y archivos adjuntos.',
     clickToExpand: 'Clic para expandir el contenido del mensaje'
+  },
+  address: {
+    directionalControl: 'marcas de dirección ocultas',
+    directionalControlTooltip: 'Las marcas de dirección ocultas pueden cambiar el orden en que se muestra esta dirección.',
+    mixedScript: 'la dirección mezcla alfabetos',
+    mixedScriptTooltip: 'Esta dirección mezcla letras de distintos alfabetos, lo que puede hacer que parezca una dirección que conoces.',
+    mixedScriptAscii: 'En ASCII, el dominio {domain} se escribe {ascii}.',
+    unusualDomain: 'dominio inusual',
+    unusualDomainTooltip: 'Este dominio no es un nombre de dominio de Internet válido y tiene caracteres fuera del ASCII básico, así que puede no ser el dominio que parece.'
   },
   originalMessage: {
     title: 'Mensaje original',
@@ -407,6 +443,9 @@ export const es = {
   userMenu: {
     settings: 'Configuración',
     signOut: 'Cerrar sesión',
+    unsavedDraftsTitle: '¿Cerrar sesión con borradores sin guardar?',
+    unsavedDraftsMessage: 'No se pudo guardar un borrador en el servidor. Si cierras sesión ahora, se queda en este dispositivo y se vuelve a abrir la próxima vez que inicies sesión en esta cuenta.',
+    signOutAnyway: 'Cerrar sesión de todos modos',
     profileOptions: 'Opciones de perfil'
   },
   pagination: {
@@ -414,7 +453,10 @@ export const es = {
     nextPage: 'Página siguiente',
     zeroMessages: '0 mensajes',
     totalCount: '{total} en total',
-    searchResults: '{total} resultados',
+    searchResults: {
+      one: '{count} resultado',
+      other: '{count} resultados'
+    },
     rangeOfTotal: '{start}–{end} de {total}'
   },
   toast: {
@@ -433,26 +475,6 @@ export const es = {
     folderPermanentlyDeleted: 'Carpeta eliminada de forma permanente',
     undo: 'Deshacer',
     dismiss: 'Ocultar',
-    messageMovedToArchive: 'Mensaje movido a Archivo',
-    messagesMovedToArchive: {
-      one: "{count} mensaje movido a Archivo",
-      other: "{count} mensajes movidos a Archivo"
-    },
-    messageMovedToSpam: 'Mensaje movido a Spam',
-    messagesMovedToSpam: {
-      one: "{count} mensaje movido a Spam",
-      other: "{count} mensajes movidos a Spam"
-    },
-    messageMovedToInbox: 'Mensaje movido a Recibidos',
-    messagesMovedToInbox: {
-      one: "{count} mensaje movido a Recibidos",
-      other: "{count} mensajes movidos a Recibidos"
-    },
-    messageMovedToTrash: 'Mensaje movido a Papelera',
-    messagesMovedToTrash: {
-      one: "{count} mensaje movido a Papelera",
-      other: "{count} mensajes movidos a Papelera"
-    },
     messageMovedToFolder: 'Mensaje movido a {folder}',
     messagesMovedToFolder: {
       one: "{count} mensaje movido a {folder}",
@@ -492,12 +514,17 @@ export const es = {
     refresh: 'Actualizar',
     permanentlyDelete: '¿Eliminar de forma permanente?',
     deletePermanently: 'Eliminar de forma permanente',
+    discardDraftsTitle: '¿Descartar borradores?',
+    discardDraftsMessage: '¿Estás seguro de que quieres descartar estos borradores? Esta acción no se puede deshacer.',
     undo: 'Deshacer'
   },
   offline: {
     title: 'Conexión perdida',
     description: 'Se ha perdido la conexión de red',
-    tryingAgain: 'Reintentando en {seconds} segundos...'
+    tryingAgain: {
+      one: 'Reintentando en {count} segundo...',
+      other: 'Reintentando en {count} segundos...'
+    }
   },
   update: {
     available: 'Hay una nueva versión disponible.',
@@ -538,10 +565,12 @@ export const es = {
     trust_linked_checkbox: 'Permitir cambiar a esta cuenta sin 2FA',
     trust_password_label: 'Introduce tu contraseña para confirmar',
     confirm_remove: '¿Seguro que quieres eliminar esta clave de seguridad?',
+    remove_password_label: 'Introduce tu contraseña para eliminar esta clave de seguridad',
     errors: {
       begin_failed: 'Error al iniciar la autenticación.',
       invalid_options: 'Se recibieron opciones de autenticación no válidas.',
       verification_failed: 'Error en la verificación. Por favor, inténtalo de nuevo.',
+      unavailable: 'El servidor no ha podido comprobar tu clave de seguridad ahora mismo. Inténtalo de nuevo dentro de un momento.',
       register_failed: 'Hubo un error al registrar su clave de seguridad. Por favor, inténtelo de nuevo.',
       remove_failed: 'Error al eliminar la clave de seguridad.',
       wrong_password: 'Esa contraseña no es correcta.',
@@ -550,6 +579,7 @@ export const es = {
       two_factor_required: 'Inicia sesión con tu clave de seguridad para cambiar este ajuste.',
       no_security_key: 'Añade primero una clave de seguridad.',
       trust_failed: 'No se ha podido cambiar el ajuste. Inténtalo de nuevo.',
+      remove_unavailable: 'No se ha podido eliminar la clave de seguridad ahora mismo. Inténtalo de nuevo dentro de un momento.',
       general: 'Se ha producido un error.',
     },
     settings: {

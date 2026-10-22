@@ -17,7 +17,7 @@ export const de: TranslationDictionary = {
     },
     loading: 'Laden...',
     placeholderName: 'Ihr Name',
-    placeholderReplyTo: 'antwort@beispiel.de',
+    placeholderReplyTo: 'antwort@beispiel.example',
     general: {
       checkMailInterval: 'Intervall für E-Mail-Prüfung',
       checkMailIntervalDesc: 'Wie oft automatisch nach neuen E-Mails gesucht werden soll.',
@@ -102,15 +102,15 @@ export const de: TranslationDictionary = {
       monday: 'Montag',
       format12h: '12-Stunden (AM/PM)',
       format24h: '24-Stunden',
-      english: 'Englisch',
+      english: 'English',
       german: 'Deutsch',
-      italian: 'Italienisch',
-      spanish: 'Spanisch',
-      serbian: 'Serbisch',
-      serbianLatin: 'Serbisch (Lateinisch)',
-      french: 'Französisch',
-      portuguese: 'Portugiesisch',
-      danish: 'Dänisch'
+      italian: 'Italiano',
+      spanish: 'Español',
+      serbian: 'Српски (ћирилица)',
+      serbianLatin: 'Srpski (latinica)',
+      french: 'Français',
+      portuguese: 'Português',
+      danish: 'Dansk'
     },
   },
   linkedAccounts: {
@@ -141,10 +141,11 @@ export const de: TranslationDictionary = {
     pleaseWait: 'Bitte warten',
     wait: 'Warten',
     signedOut: 'Sie wurden abgemeldet.',
-    signedOutDraftsLost: 'Sie wurden abgemeldet. Einige ungesendete Entwürfe konnten nicht gespeichert werden und gingen verloren.',
+    signedOutDraftsKept: 'Sie wurden abgemeldet. Einige ungesendete Entwürfe konnten nicht auf dem Server gespeichert werden. Sie bleiben auf diesem Gerät und werden bei der nächsten Anmeldung wieder geöffnet.',
     sessionExpired: 'Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.',
+    secondFactorExpired: 'Ihre Anmeldung ist abgelaufen, bevor der Sicherheitsschlüssel geprüft wurde. Bitte melden Sie sich erneut an.',
     inactivitySignedOut: 'Sie wurden wegen Inaktivität abgemeldet.',
-    inactivitySignedOutDraftsLost: "Sie wurden wegen Inaktivität abgemeldet. Einige ungesendete Entwürfe konnten nicht gespeichert werden und gingen verloren."
+    inactivitySignedOutDraftsKept: "Sie wurden wegen Inaktivität abgemeldet. Einige ungesendete Entwürfe konnten nicht auf dem Server gespeichert werden. Sie bleiben auf diesem Gerät und werden bei der nächsten Anmeldung wieder geöffnet."
   },
   folderList: {
     compose: 'Verfassen',
@@ -155,6 +156,7 @@ export const de: TranslationDictionary = {
     spam: 'Spam',
     junk: 'Junk',
     trash: 'Papierkorb',
+    allFolders: 'Alle Ordner',
     title: 'Ordner',
     rename: 'Umbenennen',
     delete: 'Löschen',
@@ -175,7 +177,10 @@ export const de: TranslationDictionary = {
     moveToTop: "Ganz nach oben",
     moveUp: "Nach oben",
     moveDown: "Nach unten",
-    moveToBottom: "Ganz nach unten"
+    moveToBottom: "Ganz nach unten",
+    more: "Mehr",
+    less: "Weniger",
+    unsubscribedFolders: "Nicht abonnierte Ordner"
   },
   search: {
     placeholder: 'E-Mails durchsuchen',
@@ -183,10 +188,23 @@ export const de: TranslationDictionary = {
   messageList: {
     menu: 'Menü',
     selectAll: 'Alle Nachrichten auswählen',
-    allOnPageSelected: 'Alle {count} Nachrichten auf dieser Seite sind ausgewählt',
-    selectAllMatching: 'Alle {count} in {folder} auswählen',
-    allMatchingSelected: 'Alle {count} Nachrichten in {folder} sind ausgewählt',
+    allOnPageSelected: {
+      one: '{count} Nachricht auf dieser Seite ist ausgewählt',
+      other: 'Alle {count} Nachrichten auf dieser Seite sind ausgewählt'
+    },
+    selectAllMatching: {
+      one: '{count} in {folder} auswählen',
+      other: 'Alle {count} in {folder} auswählen'
+    },
+    allMatchingSelected: {
+      one: '{count} Nachricht in {folder} ist ausgewählt',
+      other: 'Alle {count} Nachrichten in {folder} sind ausgewählt'
+    },
     clearSelection: 'Auswahl aufheben',
+    dragCount: {
+      one: '{count} Nachricht',
+      other: '{count} Nachrichten'
+    },
     checkNew: 'Nach neuen Nachrichten suchen',
     sortDesc: 'Nach Datum absteigend sortieren',
     sortAsc: 'Nach Datum aufsteigend sortieren',
@@ -205,14 +223,20 @@ export const de: TranslationDictionary = {
     searchResultsFor: 'Suchergebnisse für:',
     clearSearch: 'Suche löschen',
     searchAllMailboxes: 'Alle durchsuchen',
-    totalMessagesIn: '{count} Nachrichten insgesamt in {folder}',
+    totalMessagesIn: {
+      one: '{count} Nachricht in {folder}',
+      other: '{count} Nachrichten insgesamt in {folder}'
+    },
     totalConversationsIn: {
       one: '{count} Konversation in {folder}',
       other: '{count} Konversationen insgesamt in {folder}'
     },
     deleteAllNow: 'Jetzt alle löschen',
     emptyMailboxTitle: '{folder} leeren',
-    emptyMailboxConfirm: 'Sind Sie sicher, dass Sie alle {count} Nachrichten in {folder} dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
+    emptyMailboxConfirm: {
+      one: 'Sind Sie sicher, dass Sie die eine Nachricht in {folder} dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
+      other: 'Sind Sie sicher, dass Sie alle {count} Nachrichten in {folder} dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.'
+    },
     emptyMailboxConfirmConversations: {
       one: 'Sind Sie sicher, dass Sie die eine Konversation in {folder} mit allen ihren Nachrichten dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
       other: 'Sind Sie sicher, dass Sie alle {count} Konversationen in {folder} mit allen ihren Nachrichten dauerhaft löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.'
@@ -311,7 +335,10 @@ export const de: TranslationDictionary = {
     removeAllTags: 'Alle Schlagwörter entfernen',
     removeTag: 'Schlagwort entfernen',
     selectMessage: 'Wählen Sie eine Nachricht zum Lesen aus',
-    messagesSelected: 'Nachrichten ausgewählt',
+    messagesSelected: {
+      one: '{count} Nachricht ausgewählt',
+      other: '{count} Nachrichten ausgewählt'
+    },
     back: 'Zurück',
     reply: 'Antworten',
     replyAll: 'Allen antworten',
@@ -351,6 +378,15 @@ export const de: TranslationDictionary = {
     unverifiedSender: 'Unverifizierter Absender',
     senderUnverifiedWarning: 'Ihr Mailserver konnte diesen Absender nicht verifizieren. Die Nachricht stammt möglicherweise nicht von dem, der sie zu senden vorgibt. Seien Sie daher vorsichtig mit Links und Anhängen.',
     clickToExpand: 'Klicken, um den Nachrichteninhalt zu erweitern'
+  },
+  address: {
+    directionalControl: 'versteckte Richtungszeichen',
+    directionalControlTooltip: 'Versteckte Richtungszeichen können die angezeigte Reihenfolge dieser Adresse verändern.',
+    mixedScript: 'Adresse mischt Alphabete',
+    mixedScriptTooltip: 'Diese Adresse mischt Buchstaben aus verschiedenen Alphabeten und kann dadurch wie eine Adresse aussehen, die Sie kennen.',
+    mixedScriptAscii: 'Die Domain {domain} lautet in ASCII {ascii}.',
+    unusualDomain: 'ungewöhnliche Domain',
+    unusualDomainTooltip: 'Diese Domain ist kein gültiger Internet-Domainname und enthält Zeichen außerhalb von einfachem ASCII. Sie ist daher möglicherweise nicht die Domain, nach der sie aussieht.'
   },
   originalMessage: {
     title: 'Originalnachricht',
@@ -409,6 +445,9 @@ export const de: TranslationDictionary = {
   userMenu: {
     settings: 'Einstellungen',
     signOut: 'Abmelden',
+    unsavedDraftsTitle: 'Mit ungespeicherten Entwürfen abmelden?',
+    unsavedDraftsMessage: 'Ein Entwurf konnte nicht auf dem Server gespeichert werden. Wenn Sie sich jetzt abmelden, bleibt er auf diesem Gerät und wird bei der nächsten Anmeldung bei diesem Konto wieder geöffnet.',
+    signOutAnyway: 'Trotzdem abmelden',
     profileOptions: 'Profiloptionen'
   },
   pagination: {
@@ -416,7 +455,10 @@ export const de: TranslationDictionary = {
     nextPage: 'Nächste Seite',
     zeroMessages: '0 Nachrichten',
     totalCount: '{total} insgesamt',
-    searchResults: '{total} Ergebnisse',
+    searchResults: {
+      one: '{count} Ergebnis',
+      other: '{count} Ergebnisse'
+    },
     rangeOfTotal: '{start}–{end} von {total}'
   },
   toast: {
@@ -435,26 +477,6 @@ export const de: TranslationDictionary = {
     folderPermanentlyDeleted: 'Ordner endgültig gelöscht',
     undo: 'Rückgängig',
     dismiss: 'Schließen',
-    messageMovedToArchive: 'Nachricht ins Archiv verschoben',
-    messagesMovedToArchive: {
-      one: "{count} Nachricht ins Archiv verschoben",
-      other: "{count} Nachrichten ins Archiv verschoben"
-    },
-    messageMovedToSpam: 'Nachricht in Spam verschoben',
-    messagesMovedToSpam: {
-      one: "{count} Nachricht in Spam verschoben",
-      other: "{count} Nachrichten in Spam verschoben"
-    },
-    messageMovedToInbox: 'Nachricht in Posteingang verschoben',
-    messagesMovedToInbox: {
-      one: "{count} Nachricht in Posteingang verschoben",
-      other: "{count} Nachrichten in Posteingang verschoben"
-    },
-    messageMovedToTrash: 'Nachricht in Papierkorb verschoben',
-    messagesMovedToTrash: {
-      one: "{count} Nachricht in Papierkorb verschoben",
-      other: "{count} Nachrichten in Papierkorb verschoben"
-    },
     messageMovedToFolder: 'Nachricht nach {folder} verschoben',
     messagesMovedToFolder: {
       one: "{count} Nachricht nach {folder} verschoben",
@@ -494,12 +516,17 @@ export const de: TranslationDictionary = {
     refresh: 'Aktualisieren',
     permanentlyDelete: 'Endgültig löschen?',
     deletePermanently: 'Endgültig löschen',
+    discardDraftsTitle: 'Entwürfe verwerfen?',
+    discardDraftsMessage: 'Sind Sie sicher, dass Sie diese Entwürfe verwerfen möchten? Diese Aktion kann nicht rückgängig gemacht werden.',
     undo: 'Rückgängig'
   },
   offline: {
     title: 'Verbindung verloren',
     description: 'Netzwerkverbindung unterbrochen',
-    tryingAgain: 'Nächster Versuch in {seconds} Sekunden...'
+    tryingAgain: {
+      one: 'Nächster Versuch in {count} Sekunde...',
+      other: 'Nächster Versuch in {count} Sekunden...'
+    }
   },
   update: {
     available: 'Eine neue Version ist verfügbar.',
@@ -540,10 +567,12 @@ export const de: TranslationDictionary = {
     trust_linked_checkbox: 'Wechsel zu diesem Konto ohne 2FA erlauben',
     trust_password_label: 'Geben Sie zur Bestätigung Ihr Passwort ein',
     confirm_remove: 'Möchten Sie diesen Sicherheitsschlüssel wirklich entfernen?',
+    remove_password_label: 'Geben Sie Ihr Passwort ein, um diesen Sicherheitsschlüssel zu entfernen',
     errors: {
       begin_failed: 'Fehler beim Starten der Authentifizierung.',
       invalid_options: 'Ungültige Authentifizierungsoptionen erhalten.',
       verification_failed: 'Überprüfung fehlgeschlagen. Bitte versuchen Sie es erneut.',
+      unavailable: 'Der Server konnte Ihren Sicherheitsschlüssel gerade nicht prüfen. Bitte versuchen Sie es gleich noch einmal.',
       register_failed: 'Beim Registrieren Ihres Sicherheitsschlüssels ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.',
       remove_failed: 'Fehler beim Entfernen des Sicherheitsschlüssels.',
       wrong_password: 'Dieses Passwort ist nicht richtig.',
@@ -552,6 +581,7 @@ export const de: TranslationDictionary = {
       two_factor_required: 'Melden Sie sich mit Ihrem Sicherheitsschlüssel an, um diese Einstellung zu ändern.',
       no_security_key: 'Fügen Sie zuerst einen Sicherheitsschlüssel hinzu.',
       trust_failed: 'Die Einstellung konnte nicht geändert werden. Bitte versuchen Sie es erneut.',
+      remove_unavailable: 'Der Sicherheitsschlüssel konnte gerade nicht entfernt werden. Bitte versuchen Sie es gleich noch einmal.',
       general: 'Ein Fehler ist aufgetreten.',
     },
     settings: {

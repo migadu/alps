@@ -123,6 +123,9 @@ export class CalendarEventModal extends LitElement {
                     const end = new Date(this.event.end);
                     end.setUTCDate(end.getUTCDate() - 1);
                     this.endDate = `${end.getUTCFullYear()}-${pad(end.getUTCMonth() + 1)}-${pad(end.getUTCDate())}`;
+                    // An event another client wrote with no length would
+                    // otherwise open ending the day before it starts.
+                    if (this.endDate < this.startDate) this.endDate = this.startDate;
                     this.endTime = '00:00';
                 } else {
                     const start = new Date(this.event.start);
@@ -190,20 +193,57 @@ export class CalendarEventModal extends LitElement {
         };
     }
 
-    /** Someone else's meeting: its guest list is its organizer's. */
-    private get invited(): boolean {
-        return this.event?.role === 'attendee';
+    /**
+     * Sets the start, and takes the end along when the start moves past it:
+     * the end date up to the start date and, on that one day, the end time up
+     * to the start time. Left behind, the end made an event that finishes
+     * before it begins.
+     */
+    private setStart(change: { startDate?: string; startTime?: string; isAllDay?: boolean }) {
+        Object.assign(this, change);
+        if (this.startDate && this.endDate < this.startDate) this.endDate = this.startDate;
+        if (!this.isAllDay && this.startDate && this.endDate === this.startDate
+            && this.startTime && this.endTime && this.endTime < this.startTime) {
+            this.endTime = this.startTime;
+        }
+    }
+
+    /** Whether the form ends before it starts, which no event can. */
+    private endsBeforeStart(): boolean {
+        if (this.isAllDay) return this.endDate < this.startDate;
+        const { startISO, endISO } = this.formTimes();
+        return new Date(endISO).getTime() < new Date(startISO).getTime();
+    }
+
+    /**
+     * Someone else's meeting: its guest list is its organizer's. That is one
+     * the user is invited to, and also a colleague's in a calendar shared
+     * with the user, which names an organizer and not the user at all; the
+     * server keeps the guests of both as they are, whatever is sent.
+     */
+    private get othersMeeting(): boolean {
+        const event = this.event;
+        return event?.role === 'attendee' || (!!event?.organizer && event.role !== 'organizer');
     }
 
     private async handleSave() {
         if (!this.summary.trim() || !this.startDate || !this.endDate) return;
+        // Said here, in the user's words: the server refuses an event that
+        // ends before it starts with a failure that does not say why, or
+        // quietly makes an all-day one a single day.
+        if (this.endsBeforeStart()) {
+            window.dispatchEvent(new CustomEvent('show-toast', {
+                detail: { message: this.i18nStore?.t('calendar.endBeforeStart'), duration: 8000 }
+            }));
+            return;
+        }
         // A change to a meeting that already has guests is theirs to hear about
         // or not; a new meeting's guests are invited, which is what adding them
         // asked for.
         // An event that is over, and stays over, tells nobody: moved to a time
         // still to come, it is news again.
         const staysOver = !!this.event?.ended && new Date(this.formTimes().endISO) <= new Date();
-        if (this.event?.path && !this.invited && tellsSomeone({ ...this.event, ended: staysOver }, this.scheduling)) {
+        if (this.event?.path && !this.othersMeeting && tellsSomeone({ ...this.event, ended: staysOver }, this.scheduling)) {
             this.askNotify = true;
             return;
         }
@@ -236,7 +276,7 @@ export class CalendarEventModal extends LitElement {
                 // The version this editor opened; see EventData.etag.
                 etag: this.event?.etag,
                 // Left out for someone else's meeting, whose list stays as it is.
-                attendees: this.invited
+                attendees: this.othersMeeting
                     ? undefined
                     : this.attendees.map(personFromAddress).filter((p): p is NonNullable<typeof p> => p !== null),
                 notify,
@@ -301,7 +341,7 @@ export class CalendarEventModal extends LitElement {
                     </div>
                 ` : ''}
 
-                ${this.invited ? html`
+                ${this.othersMeeting ? html`
                     <div class="form-group organized-by">
                         ${this.i18nStore?.t('invitations.organizedBy', { name: this.event?.organizer?.name || this.event?.organizer?.email || '' })}
                     </div>
@@ -322,7 +362,7 @@ export class CalendarEventModal extends LitElement {
                         <alps-input 
                             type="date"
                             .value=${this.startDate} 
-                            @input=${(e: any) => this.startDate = e.target.value}
+                            @input=${(e: any) => this.setStart({ startDate: e.target.value })}
                         ></alps-input>
                     </div>
                     ${!this.isAllDay ? html`
@@ -331,7 +371,7 @@ export class CalendarEventModal extends LitElement {
                         <alps-input 
                             type="time"
                             .value=${this.startTime} 
-                            @input=${(e: any) => this.startTime = e.target.value}
+                            @input=${(e: any) => this.setStart({ startTime: e.target.value })}
                         ></alps-input>
                     </div>
                     ` : ''}
@@ -359,7 +399,7 @@ export class CalendarEventModal extends LitElement {
                 </div>
 
                 <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="allday-checkbox" .checked=${this.isAllDay} @change=${(e: any) => this.isAllDay = e.target.checked}>
+                    <input type="checkbox" id="allday-checkbox" .checked=${this.isAllDay} @change=${(e: any) => this.setStart({ isAllDay: e.target.checked })}>
                     <label for="allday-checkbox" style="margin-bottom: 0; cursor: pointer;">${this.i18nStore?.t('calendar.allDay')}</label>
                 </div>
 

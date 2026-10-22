@@ -1,6 +1,7 @@
 import { html, css, LitElement } from 'lit';
 import { renderIcon } from '../utils/ui';
 import { customElement, state } from 'lit/decorators.js';
+import { repeat } from 'lit/directives/repeat.js';
 import { Router } from '../router';
 import { registry } from '../plugin-registry';
 
@@ -112,6 +113,14 @@ export class AppRoot extends LitElement {
     }
   `;
 
+  constructor() {
+    super();
+    // The router hears `hashchange` only while this shell is in the document:
+    // Lit connects and disconnects it with the shell. The field initializers
+    // have run by now, so the router exists.
+    this.addController(this.router);
+  }
+
   connectedCallback() {
     super.connectedCallback();
     
@@ -137,8 +146,8 @@ export class AppRoot extends LitElement {
     // Initialize auto-logout
     const autoLogoutTime = this.settingsStore.getState().autoLogout ?? 0;
     autoLogoutService.setLogoutTime(autoLogoutTime);
-    // Returns the count, so auto-logout can say drafts were lost exactly as the
-    // Sign Out button does. The wrapper used to await it and discard the answer.
+    // Throws for drafts it could not store, so auto-logout can keep them on
+    // this device and say so, as the Sign Out button does.
     autoLogoutService.onBeforeLogout = () => this.composeStore.saveAllDirtyDrafts();
 
     // Initialize language
@@ -378,7 +387,12 @@ export class AppRoot extends LitElement {
     // answers instantly while the first paint never waited on it. Idle time
     // only — a prefetch that competes with the message list has moved the cost
     // rather than removed it.
-    const prefetch = () => { void this.ensureComposerLoaded().catch(() => {}); };
+    const prefetch = () => {
+      // The idle callback can outlive this shell, a test's included, and a
+      // shell no longer in the document has no composer to warm.
+      if (!this.isConnected) return;
+      void this.ensureComposerLoaded().catch(() => {});
+    };
     const idle = (window as any).requestIdleCallback;
     if (typeof idle === 'function') {
       idle(prefetch, { timeout: COMPOSER_PREFETCH_TIMEOUT_MS });
@@ -415,12 +429,35 @@ export class AppRoot extends LitElement {
     return this.composerModule;
   }
 
+  /**
+   * Whether the windows this shell draws, or where it puts them, changed.
+   *
+   * Every keystroke in a composer is a store change, and reassigning the list
+   * for each one re-rendered the whole shell while the user typed. A window
+   * follows its own composer through the store (see the floating composer's
+   * `_handleStoreChange`), so the shell needs only what decides the windows:
+   * which there are, which are minimized and sending, and what is unsaved.
+   */
+  private _hasStructuralComposeChange(prev: ComposerInstance[], next: ComposerInstance[]): boolean {
+    if (prev.length !== next.length) return true;
+    return next.some((b, i) => {
+      const a = prev[i];
+      return a.id !== b.id ||
+        !!a.minimized !== !!b.minimized ||
+        !!a.isSending !== !!b.isSending ||
+        !!a.dirty !== !!b.dirty ||
+        (!!b.minimized && (a.subject ?? '') !== (b.subject ?? ''));
+    });
+  }
+
   private _handleComposeChange = () => {
     const composers = this.composeStore.getState().activeComposers;
     if (composers.length > 0) {
       void this.ensureComposerLoaded();
     }
-    this.activeComposers = composers;
+    if (this._hasStructuralComposeChange(this.activeComposers, composers)) {
+      this.activeComposers = composers;
+    }
   };
 
   private _handleSettingsChange = () => {
@@ -499,14 +536,18 @@ export class AppRoot extends LitElement {
     return html`
       ${this.router.render()}
       
-      ${!this.composerReady ? '' : this.activeComposers.map((composer, index) => {
+      <!-- Keyed by composer: a window's element is that composer's for its
+           whole life. By position, closing the first of three handed the
+           second window's element to the third composer, and a send counting
+           down in it went on to send the wrong message. -->
+      ${!this.composerReady ? '' : repeat(this.activeComposers, (composer) => composer.id, (composer, index) => {
         const isMinimized = composer.minimized;
         const currentOpenIndex = isMinimized ? 0 : openIndex++;
         const currentMinimizedIndex = isMinimized ? minimizedIndex++ : 0;
 
         return html`
           <alps-floating-composer
-            .instance=${composer}
+            .instance=${this.composeStore.getComposer(composer.id) ?? composer}
             .index=${index}
             .totalOpen=${totalOpen}
             .totalMinimized=${totalMinimized}
@@ -548,7 +589,7 @@ export class AppRoot extends LitElement {
               ${this.i18nStore.t('offline.description')}
             </div>
             <div style="color: var(--text-secondary, #4b5563); font-size: 14px;">
-              ${this.i18nStore.t('offline.tryingAgain', { seconds: this.offlineCountdown })}
+              ${this.i18nStore.t('offline.tryingAgain', { count: this.offlineCountdown })}
             </div>
           </div>
         </ui-modal>

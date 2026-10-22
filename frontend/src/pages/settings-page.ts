@@ -3,9 +3,9 @@ import { customElement, state, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import type { SettingsState } from '../store/settings-store';
-import { i18nContext, I18nStore } from '../store/i18n-store';
+import { i18nContext, I18nStore, intlTag } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
-import { sidebarLayoutStyles } from '../components/alps-sidebar';
+import { closeSidebarPeek, sidebarLayoutStyles } from '../components/alps-sidebar';
 import '../components/alps-header';
 import '../components/alps-sidebar';
 import '../components/alps-category-item';
@@ -33,9 +33,8 @@ export class SettingsPage extends LitElement {
   @state() private sidebarWidth = 250;
   @state() private sidebarCollapsed = false;
   @state() private isSidebarDragging = false;
-  @state() private isSidebarHovered = false;
-  private hoverTimeout: any = null;
-  @state() private suppressSidebarHover = false;
+  /** Mirrors the sidebar's own hover overlay (`peek-change`). */
+  @state() private sidebarPeeking = false;
 
   static styles = [
     sidebarLayoutStyles,
@@ -48,6 +47,8 @@ export class SettingsPage extends LitElement {
       background-color: var(--bg-primary);
       color: var(--text-primary);
       overflow: hidden;
+      /* Not a scroll container: see the mailbox page's host. */
+      overflow: clip;
       font-size: 14px;
     }
 
@@ -248,9 +249,7 @@ export class SettingsPage extends LitElement {
     if (this.isMobile) {
       this.mobileSidebarOpen = false;
     }
-    if (this.sidebarCollapsed && !this.isMobile) {
-      this.suppressSidebarHover = true;
-    }
+    closeSidebarPeek(this.renderRoot);
   }
 
   private async handleUpdate(e: Event, key: keyof SettingsState) {
@@ -304,8 +303,6 @@ export class SettingsPage extends LitElement {
           class="${this.isMobile ? 'mobile-sidebar' : 'desktop-sidebar'} ${this.mobileSidebarOpen ? 'open' : ''}"
           .isMobile=${this.isMobile}
           .isOpen=${this.mobileSidebarOpen}
-          .isHovered=${this.isSidebarHovered}
-          .suppressHover=${this.suppressSidebarHover}
           .width=${this.sidebarWidth}
           .hideFooterDivider=${true}
           .showMobileBack=${true}
@@ -323,23 +320,12 @@ export class SettingsPage extends LitElement {
           @drag-start=${() => this.isSidebarDragging = true}
           @drag-end=${() => this.isSidebarDragging = false}
           @toggle-collapse=${() => this.settingsStore.updateSettings({ sidebarCollapsed: !this.sidebarCollapsed })}
-          @mouseenter=${() => {
-            if (this.hoverTimeout) {
-              clearTimeout(this.hoverTimeout);
-              this.hoverTimeout = null;
-            }
-            this.isSidebarHovered = true;
-            this.suppressSidebarHover = false;
-          }}
-          @mouseleave=${() => {
-            this.hoverTimeout = setTimeout(() => {
-              this.isSidebarHovered = false;
-            }, 300);
-          }}
+          @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
           @close-sidebar=${() => this.mobileSidebarOpen = false}
         >
-          <div class="sidebar-wrapper ${this.sidebarCollapsed && (!this.isSidebarHovered || this.suppressSidebarHover) && !this.isMobile ? 'collapsed' : ''}">
-            <div class="sidebar-content">
+          <div class="sidebar-wrapper ${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile ? 'collapsed' : ''}">
+            <!-- Inert in the strip, as it is dimmed there. -->
+            <div class="sidebar-content" ?inert=${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile}>
               <div class="sidebar-scroll-content">
                 <alps-category-item 
             ?active=${this.category === 'general'}
@@ -627,17 +613,20 @@ export class SettingsPage extends LitElement {
   renderLocalization() {
     return html`
         <alps-setting-group label="${this.i18nStore?.t('settings.localization.language')}">
+          <!-- Each language is named in its own words and marked with its own
+               language, so a screen reader reads "Deutsch" in German rather
+               than in the language of the page around it. -->
           <alps-select @change=${(e: Event) => this.handleUpdate(e, 'language')} .value=${this.settingsState.language}
             .options=${[
-            {value: "en", label: this.i18nStore?.t('settings.localization.english') || "en"},
-            {value: "de", label: this.i18nStore?.t('settings.localization.german') || "de"},
-            {value: "it", label: this.i18nStore?.t('settings.localization.italian') || "it"},
-            {value: "es", label: this.i18nStore?.t('settings.localization.spanish') || "es"},
-            {value: "rs", label: this.i18nStore?.t('settings.localization.serbian') || "rs"},
-            {value: "sr", label: this.i18nStore?.t('settings.localization.serbianLatin') || "sr"},
-            {value: "fr", label: this.i18nStore?.t('settings.localization.french') || "fr"},
-            {value: "pt", label: this.i18nStore?.t('settings.localization.portuguese') || "pt"},
-            {value: "da", label: this.i18nStore?.t('settings.localization.danish') || "da"}
+            {value: "en", lang: intlTag("en"), label: this.i18nStore?.t('settings.localization.english') || "en"},
+            {value: "de", lang: intlTag("de"), label: this.i18nStore?.t('settings.localization.german') || "de"},
+            {value: "it", lang: intlTag("it"), label: this.i18nStore?.t('settings.localization.italian') || "it"},
+            {value: "es", lang: intlTag("es"), label: this.i18nStore?.t('settings.localization.spanish') || "es"},
+            {value: "rs", lang: intlTag("rs"), label: this.i18nStore?.t('settings.localization.serbian') || "rs"},
+            {value: "sr", lang: intlTag("sr"), label: this.i18nStore?.t('settings.localization.serbianLatin') || "sr"},
+            {value: "fr", lang: intlTag("fr"), label: this.i18nStore?.t('settings.localization.french') || "fr"},
+            {value: "pt", lang: intlTag("pt"), label: this.i18nStore?.t('settings.localization.portuguese') || "pt"},
+            {value: "da", lang: intlTag("da"), label: this.i18nStore?.t('settings.localization.danish') || "da"}
           ]}>
           </alps-select>
         </alps-setting-group>

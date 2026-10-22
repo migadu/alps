@@ -329,12 +329,23 @@ export class AlpsContactsList extends LitElement {
   }
 
   render() {
+    const filteredContacts = this.getFilteredContacts();
+    // Select All is about the rows on screen: the category, the starred filter
+    // and the search all narrow it. It compared the selection with every
+    // contact loaded, so in a category it never showed ticked and could not
+    // clear, and the page ticked rows the starred filter hid, which a Delete
+    // then removed unseen. The rows go with the event, so the page ticks
+    // exactly these. A new card not yet saved has no box to tick.
+    const selectable = filteredContacts.filter(c => c.path && !c.isTemporary);
+    const allSelected = selectable.length > 0 && selectable.every(c => this.selectedContacts.has(c.path));
     return html`
       ${!this.isMobile ? html`
         <alps-toolbar class="list-header" ?scrolled=${this.listScrolled}>
           <input type="checkbox" class="select-all-checkbox" title=${this.i18nStore?.t('messageList.selectAll')}
-            .checked=${this.contacts.length > 0 && this.selectedContacts.size === this.contacts.length}
-            @change=${(e: Event) => this.dispatchEvent(new CustomEvent('select-all', { detail: { checked: (e.target as HTMLInputElement).checked } }))}>
+            .checked=${allSelected}
+            @change=${(e: Event) => this.dispatchEvent(new CustomEvent('select-all', {
+              detail: { checked: (e.target as HTMLInputElement).checked, paths: selectable.map(c => c.path) },
+            }))}>
           <alps-icon-btn 
             title="${this.i18nStore?.t('contacts.refreshContacts')}"
             @click=${() => this.dispatchEvent(new CustomEvent('refresh'))}
@@ -360,10 +371,7 @@ export class AlpsContactsList extends LitElement {
       <div class="list-content" tabindex="0" @keydown=${this.handleKeyDown} @scroll=${this.handleListScroll} style="flex: 1; overflow-y: auto; transition: opacity 0.2s ease-in-out; opacity: ${this.loading && this.contacts.length > 0 ? 0.5 : 1}; pointer-events: ${this.loading ? 'none' : 'auto'};">
         ${this.loading && this.contacts.length === 0
         ? html`<alps-loader full-height .text=${this.i18nStore?.t('messageList.loading')}></alps-loader>`
-        : (() => {
-          const filteredContacts = this.getFilteredContacts();
-
-          return html`
+        : html`
               ${this.filterQuery ? html`
                 <alps-banner>
                   <span>${this.i18nStore?.t('messageList.searchResultsFor')} <strong>${this.filterQuery}</strong></span>
@@ -412,8 +420,7 @@ export class AlpsContactsList extends LitElement {
                     </div>
                   </div>
                 `)}
-            `;
-        })()
+            `
       }
       </div>
     `;

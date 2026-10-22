@@ -14,7 +14,7 @@ export const pt = {
     },
     loading: 'Carregando...',
     placeholderName: 'Seu Nome',
-    placeholderReplyTo: 'responder@exemplo.com',
+    placeholderReplyTo: 'responder@exemplo.example',
     general: {
       checkMailInterval: 'Intervalo de verificação de e-mail',
       checkMailIntervalDesc: 'Com que frequência verificar novos e-mails automaticamente.',
@@ -103,8 +103,8 @@ export const pt = {
       german: 'Deutsch',
       italian: 'Italiano',
       spanish: 'Español',
-      serbian: 'Српски',
-      serbianLatin: 'Srpski (Latinica)',
+      serbian: 'Српски (ћирилица)',
+      serbianLatin: 'Srpski (latinica)',
       french: 'Français',
       portuguese: 'Português',
       danish: 'Dansk'
@@ -143,10 +143,12 @@ export const pt = {
     trust_linked_checkbox: 'Permitir alternar para esta conta sem 2FA',
     trust_password_label: 'Insira a sua senha para confirmar',
     confirm_remove: 'Tem certeza de que deseja remover esta chave de segurança?',
+    remove_password_label: 'Insira a sua senha para remover esta chave de segurança',
     errors: {
       begin_failed: 'Falha ao iniciar autenticação.',
       invalid_options: 'Opções de autenticação inválidas recebidas.',
       verification_failed: 'Falha na verificação. Por favor, tente novamente.',
+      unavailable: 'O servidor não conseguiu verificar a chave de segurança neste momento. Tente novamente daqui a pouco.',
       register_failed: 'Ocorreu um erro ao registar a sua chave de segurança. Por favor, tente novamente.',
       remove_failed: 'Falha ao remover a chave de segurança.',
       wrong_password: 'Essa senha não está correta.',
@@ -155,6 +157,7 @@ export const pt = {
       two_factor_required: 'Inicie sessão com a sua chave de segurança para alterar esta configuração.',
       no_security_key: 'Adicione primeiro uma chave de segurança.',
       trust_failed: 'Não foi possível alterar a configuração. Tente novamente.',
+      remove_unavailable: 'Não foi possível remover a chave de segurança neste momento. Tente novamente daqui a pouco.',
       general: 'Ocorreu um erro.',
     },
     settings: {
@@ -181,10 +184,11 @@ export const pt = {
     pleaseWait: 'Por favor, aguarde',
     wait: 'Aguarde',
     signedOut: 'Você foi desconectado.',
-    signedOutDraftsLost: 'Você saiu da sua conta. Alguns rascunhos não enviados não puderam ser salvos e foram perdidos.',
+    signedOutDraftsKept: 'Você saiu da sua conta. Alguns rascunhos não enviados não puderam ser salvos no servidor. Eles ficam neste dispositivo e serão reabertos quando você entrar novamente.',
     sessionExpired: 'A sua sessão expirou. Inicie sessão novamente.',
+    secondFactorExpired: 'O início de sessão expirou antes da verificação da chave de segurança. Inicie sessão novamente.',
     inactivitySignedOut: 'Você foi desconectado por inatividade.',
-    inactivitySignedOutDraftsLost: "Você foi desconectado por inatividade. Alguns rascunhos não enviados não puderam ser salvos e foram perdidos."
+    inactivitySignedOutDraftsKept: "Você foi desconectado por inatividade. Alguns rascunhos não enviados não puderam ser salvos no servidor. Eles ficam neste dispositivo e serão reabertos quando você entrar novamente."
   },
   folderList: {
     compose: 'Escrever',
@@ -195,6 +199,7 @@ export const pt = {
     spam: 'Spam',
     junk: 'Lixo Eletrônico',
     trash: 'Lixeira',
+    allFolders: 'Todas as Pastas',
     title: 'Pastas',
     rename: 'Renomear',
     delete: 'Excluir',
@@ -215,7 +220,10 @@ export const pt = {
     moveToTop: "Mover para o topo",
     moveUp: "Mover para cima",
     moveDown: "Mover para baixo",
-    moveToBottom: "Mover para o final"
+    moveToBottom: "Mover para o final",
+    more: "Mais",
+    less: "Menos",
+    unsubscribedFolders: "Pastas sem assinatura"
   },
   search: {
     placeholder: 'Pesquisar e-mails',
@@ -223,10 +231,23 @@ export const pt = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Selecionar todas as mensagens',
-    allOnPageSelected: 'As {count} mensagens desta página estão selecionadas',
-    selectAllMatching: 'Selecionar todas as {count} em {folder}',
-    allMatchingSelected: 'As {count} mensagens em {folder} estão selecionadas',
+    allOnPageSelected: {
+      one: '{count} mensagem desta página está selecionada',
+      other: 'As {count} mensagens desta página estão selecionadas'
+    },
+    selectAllMatching: {
+      one: 'Selecionar {count} em {folder}',
+      other: 'Selecionar todas as {count} em {folder}'
+    },
+    allMatchingSelected: {
+      one: '{count} mensagem em {folder} está selecionada',
+      other: 'As {count} mensagens em {folder} estão selecionadas'
+    },
     clearSelection: 'Limpar a seleção',
+    dragCount: {
+      one: '{count} mensagem',
+      other: '{count} mensagens'
+    },
     checkNew: 'Verificar novas mensagens',
     sortDesc: 'Classificar por data decrescente',
     sortAsc: 'Classificar por data crescente',
@@ -245,14 +266,20 @@ export const pt = {
     searchResultsFor: 'Resultados da pesquisa para:',
     clearSearch: 'Limpar pesquisa',
     searchAllMailboxes: 'Pesquisar tudo',
-    totalMessagesIn: '{count} mensagens no total em {folder}',
+    totalMessagesIn: {
+      one: '{count} mensagem em {folder}',
+      other: '{count} mensagens no total em {folder}'
+    },
     totalConversationsIn: {
       one: '{count} conversa em {folder}',
       other: '{count} conversas no total em {folder}'
     },
     deleteAllNow: 'Excluir tudo agora',
     emptyMailboxTitle: 'Esvaziar {folder}',
-    emptyMailboxConfirm: 'Tem certeza de que deseja excluir permanentemente todas as {count} mensagens em {folder}? Esta ação não pode ser desfeita.',
+    emptyMailboxConfirm: {
+      one: 'Tem certeza de que deseja excluir permanentemente a única mensagem em {folder}? Esta ação não pode ser desfeita.',
+      other: 'Tem certeza de que deseja excluir permanentemente todas as {count} mensagens em {folder}? Esta ação não pode ser desfeita.'
+    },
     emptyMailboxConfirmConversations: {
       one: 'Tem certeza de que deseja excluir permanentemente a única conversa em {folder} e todas as suas mensagens? Esta ação não pode ser desfeita.',
       other: 'Tem certeza de que deseja excluir permanentemente todas as {count} conversas em {folder} e todas as suas mensagens? Esta ação não pode ser desfeita.'
@@ -351,7 +378,10 @@ export const pt = {
     removeAllTags: 'Remover todas as etiquetas',
     removeTag: 'Remover etiqueta',
     selectMessage: 'Selecione uma mensagem para ler',
-    messagesSelected: 'mensagens selecionadas',
+    messagesSelected: {
+      one: '{count} mensagem selecionada',
+      other: '{count} mensagens selecionadas'
+    },
     back: 'Voltar',
     reply: 'Responder',
     replyAll: 'Responder a Todos',
@@ -391,6 +421,15 @@ export const pt = {
     unverifiedSender: 'Remetente Não Verificado',
     senderUnverifiedWarning: 'O seu servidor de correio não conseguiu verificar este remetente. A mensagem pode não ser de quem diz ser, por isso tenha cuidado com os links e os anexos.',
     clickToExpand: 'Clique para expandir o conteúdo da mensagem'
+  },
+  address: {
+    directionalControl: 'marcas de direção ocultas',
+    directionalControlTooltip: 'As marcas de direção ocultas podem alterar a ordem em que este endereço é mostrado.',
+    mixedScript: 'o endereço mistura alfabetos',
+    mixedScriptTooltip: 'Este endereço mistura letras de alfabetos diferentes, o que pode fazê-lo parecer um endereço conhecido.',
+    mixedScriptAscii: 'Em ASCII, o domínio {domain} corresponde a {ascii}.',
+    unusualDomain: 'domínio pouco comum',
+    unusualDomainTooltip: 'Este domínio não é um nome de domínio da Internet válido e tem caracteres fora do ASCII simples, por isso pode não ser o domínio que parece.'
   },
   originalMessage: {
     title: 'Mensagem Original',
@@ -449,6 +488,9 @@ export const pt = {
   userMenu: {
     settings: 'Configurações',
     signOut: 'Sair',
+    unsavedDraftsTitle: 'Sair com rascunhos não salvos?',
+    unsavedDraftsMessage: 'Não foi possível salvar um rascunho no servidor. Se você sair agora, ele fica neste dispositivo e será reaberto na próxima vez que você entrar nesta conta.',
+    signOutAnyway: 'Sair mesmo assim',
     profileOptions: 'Opções de Perfil'
   },
   pagination: {
@@ -456,7 +498,10 @@ export const pt = {
     nextPage: 'Próxima página',
     zeroMessages: '0 mensagens',
     totalCount: '{total} no total',
-    searchResults: '{total} resultados',
+    searchResults: {
+      one: '{count} resultado',
+      other: '{count} resultados'
+    },
     rangeOfTotal: '{start}–{end} de {total}'
   },
   toast: {
@@ -475,26 +520,6 @@ export const pt = {
     messagePermanentlyDeleted: 'Mensagem excluída permanentemente',
     undo: 'Desfazer',
     dismiss: 'Fechar',
-    messageMovedToArchive: 'Mensagem movida para Arquivo',
-    messagesMovedToArchive: {
-      one: "{count} mensagem movida para Arquivo",
-      other: "{count} mensagens movidas para Arquivo"
-    },
-    messageMovedToSpam: 'Mensagem movida para Spam',
-    messagesMovedToSpam: {
-      one: "{count} mensagem movida para Spam",
-      other: "{count} mensagens movidas para Spam"
-    },
-    messageMovedToInbox: 'Mensagem movida para Entrada',
-    messagesMovedToInbox: {
-      one: "{count} mensagem movida para Entrada",
-      other: "{count} mensagens movidas para Entrada"
-    },
-    messageMovedToTrash: 'Mensagem movida para Lixeira',
-    messagesMovedToTrash: {
-      one: "{count} mensagem movida para Lixeira",
-      other: "{count} mensagens movidas para Lixeira"
-    },
     messageMovedToFolder: 'Mensagem movida para {folder}',
     messagesMovedToFolder: {
       one: "{count} mensagem movida para {folder}",
@@ -534,12 +559,17 @@ export const pt = {
     refresh: 'Atualizar',
     permanentlyDelete: 'Excluir permanentemente?',
     deletePermanently: 'Excluir permanentemente',
+    discardDraftsTitle: 'Descartar Rascunhos?',
+    discardDraftsMessage: 'Tem certeza de que deseja descartar estes rascunhos? Esta ação não pode ser desfeita.',
     undo: 'Desfazer'
   },
   offline: {
     title: 'Conexão Perdida',
     description: 'A conexão de rede foi perdida',
-    tryingAgain: 'Tentando novamente em {seconds} segundos...'
+    tryingAgain: {
+      one: 'Tentando novamente em {count} segundo...',
+      other: 'Tentando novamente em {count} segundos...'
+    }
   },
   update: {
     available: 'Está disponível uma nova versão.',

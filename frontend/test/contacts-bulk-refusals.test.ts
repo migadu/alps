@@ -8,6 +8,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../../plugins/carddav/frontend/contacts-page';
 import { contactsService } from '../../plugins/carddav/frontend/contacts-service';
 import { CATEGORY_FAVORITES } from '../../plugins/carddav/frontend/constants';
+import { HttpStatusError, outcomeUnknown } from '../src/utils/fetch-utils';
+import { I18nStore } from '../src/store/i18n-store';
 
 type Page = HTMLElement & Record<string, any>;
 
@@ -83,6 +85,24 @@ describe('deleting contacts', () => {
     expect(reread).not.toHaveBeenCalled();
   });
 
+  it('keeps a selection built while the delete was on its way', async () => {
+    // The open card was the target. The user ticked another while the request
+    // was out, and the answer used to clear that too.
+    const open = card('a');
+    const el = page([open, card('b')], [], open);
+    vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
+    let answer!: (outcome: any) => void;
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockReturnValue(new Promise(resolve => { answer = resolve; }));
+
+    const deleting = el.confirmDelete();
+    el.selectedContacts = new Set(['b']);
+    answer({ total: 1, done: 1, failed: 0, deletedPaths: ['a'] });
+    await deleting;
+
+    expect(el.selectedContact).toBeNull();
+    expect([...el.selectedContacts]).toEqual(['b']);
+  });
+
   it('clears the selection and re-reads when any card went', async () => {
     const el = page([card('a'), card('b')], ['a', 'b']);
     const reread = vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
@@ -95,14 +115,216 @@ describe('deleting contacts', () => {
   });
 });
 
+describe('a search that narrowed the list', () => {
+  // The search kept the open card and the ticked ones, which need not be among
+  // its matches. The gestures looked only in the matches, so on such a card
+  // they wrote nothing and said nothing.
+  const ada = card('ada', ['Friends']);
+  const bob = card('bob');
+
+  /** Searched for "bob": the list holds Bob, the whole book both. */
+  function searched(selected: string[] = [], open: any = null): Page {
+    const el = page([{ ...bob }], selected, open);
+    el.filterQuery = 'bob';
+    el.loadedQuery = 'bob';
+    el.wholeBook = [{ ...ada }, { ...bob }];
+    vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
+    return el;
+  }
+
+  it('files the open card into a category', async () => {
+    const el = searched([], { ...ada });
+    const write = vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 1, failed: 0 });
+
+    await el.handleUpdateCategories(new CustomEvent('update-categories', { detail: { category: 'Work' } }));
+
+    expect(write).toHaveBeenCalledWith([expect.objectContaining({ path: 'ada', categories: ['Friends', 'Work'] })]);
+    expect(el.selectedContact.categories).toEqual(['Friends', 'Work']);
+  });
+
+  it('stars the open card, and the sidebar counts it', async () => {
+    const el = searched([], { ...ada });
+    const write = vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 1, failed: 0 });
+
+    await el.handleToggleStarEvent();
+
+    expect(write).toHaveBeenCalledWith([expect.objectContaining({ path: 'ada', categories: ['Friends', CATEGORY_FAVORITES] })]);
+    expect(el.selectedContact.categories).toEqual(['Friends', CATEGORY_FAVORITES]);
+    expect(el.allContacts.find((c: any) => c.path === 'ada').categories).toContain(CATEGORY_FAVORITES);
+  });
+
+  it('says so when the open card refused the star', async () => {
+    const el = searched([], { ...ada });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(contactsService, 'bulkUpdateCategories')
+      .mockImplementation(async cards => ({ total: cards.length, done: 0, failed: cards.length }));
+    const toasts: CustomEvent[] = [];
+    const onToast = (e: Event) => toasts.push(e as CustomEvent);
+    window.addEventListener('show-toast', onToast);
+
+    await el.handleToggleStarEvent();
+    window.removeEventListener('show-toast', onToast);
+
+    expect(toasts).toHaveLength(1);
+    expect(el.selectedContact.categories).toEqual(['Friends']);
+  });
+
+  it('knows whether ticked cards outside the matches are starred', () => {
+    const el = searched(['ada', 'bob']);
+    el.wholeBook = [card('ada', [CATEGORY_FAVORITES]), card('bob', [CATEGORY_FAVORITES])];
+    el.contacts = [card('bob', [CATEGORY_FAVORITES])];
+    expect(el.allSelectedStarred).toBe(true);
+  });
+});
+
+describe('a write whose outcome is unknown', () => {
+  // A timeout, a lost connection or a 5xx says nothing about what the server
+  // did. The page rolled every such failure back as if it were a refusal, so
+  // a star or a delete that was made behind a lost response showed undone
+  // until the next read of the list.
+  const lost = () => new TypeError('Failed to fetch');
+  const refused = () => new HttpStatusError(403, 'Forbidden');
+
+  for (const [name, failure, rereads] of [['lost', lost, true], ['refused', refused, false]] as const) {
+    it(`a single star, ${name}: ${rereads ? 're-reads the card and shows what was stored' : 'keeps the rollback without a read'}`, async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const open = card('a');
+      const el = page([open], [], { ...open });
+      vi.spyOn(contactsService, 'updateCategories').mockRejectedValue(failure());
+      const reread = vi.spyOn(contactsService, 'fetchContact').mockResolvedValue({ ...open, categories: [CATEGORY_FAVORITES], etag: 'v2' });
+
+      await el.handleToggleStar(new Event('click'), open);
+      await vi.waitFor(() => expect(reread).toHaveBeenCalledTimes(rereads ? 1 : 0));
+      await Promise.resolve();
+
+      expect(el.contacts[0].categories.includes(CATEGORY_FAVORITES)).toBe(rereads);
+      expect(el.selectedContact.categories.includes(CATEGORY_FAVORITES)).toBe(rereads);
+      if (rereads) expect(el.contacts[0].etag).toBe('v2');
+    });
+  }
+
+  it('a single star: a re-read overtaken by a newer change to the card is dropped', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const open = card('a');
+    const el = page([open]);
+    vi.spyOn(contactsService, 'updateCategories').mockRejectedValue(lost());
+    let answer!: (stored: any) => void;
+    vi.spyOn(contactsService, 'fetchContact').mockReturnValue(new Promise(resolve => { answer = resolve; }));
+
+    await el.handleToggleStar(new Event('click'), open);
+    el.contacts = [{ ...open, categories: ['Work'] }];
+    answer({ ...open, categories: [CATEGORY_FAVORITES] });
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(el.contacts[0].categories).toEqual(['Work']);
+  });
+
+  it('a star across cards that may have been written re-reads after the rollback', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const el = page([card('a'), card('b')], ['a', 'b']);
+    const reread = vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 2, done: 0, failed: 2, uncertain: 1 });
+
+    await el.handleToggleStarEvent();
+
+    expect(el.contacts.map((c: any) => c.categories)).toEqual([[], []]);
+    expect(reread).toHaveBeenCalledTimes(1);
+  });
+
+  it('a delete re-reads, and lets go of only the cards that went', async () => {
+    const el = page([card('a'), card('b')], ['a', 'b']);
+    const reread = vi.spyOn(el, 'fetchContacts').mockImplementation(async () => { el.contacts = [card('b')]; });
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 2, done: 0, failed: 2, uncertain: 2 });
+
+    await el.confirmDelete();
+
+    expect(reread).toHaveBeenCalledTimes(1);
+    expect([...el.selectedContacts]).toEqual(['b']);
+  });
+
+  it('a delete whose re-read fails too keeps the selection and the open card', async () => {
+    const open = card('a');
+    const el = page([open], [], { ...open });
+    vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 1, done: 0, failed: 1, uncertain: 1 });
+
+    await el.confirmDelete();
+
+    expect(el.selectedContact?.path).toBe('a');
+  });
+});
+
 describe('the bulk outcome', () => {
-  it('counts what was written as well as what was refused', async () => {
+  it('counts what was written as well as what was refused, and what may have been written', async () => {
     vi.spyOn(contactsService, 'deleteContact')
       .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error('refused'))
+      .mockRejectedValueOnce(new HttpStatusError(403, 'refused'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockResolvedValueOnce(undefined);
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    expect(await contactsService.bulkDeleteContacts(['a', 'b', 'c'])).toEqual({ total: 3, done: 2, failed: 1 });
+    expect(await contactsService.bulkDeleteContacts(['a', 'b', 'c', 'd'])).toEqual({
+      total: 4, done: 2, failed: 2, uncertain: 1, deletedPaths: ['a', 'd'],
+    });
+  });
+
+  it('tells a refusal from a failure that says nothing of what was done', () => {
+    expect(outcomeUnknown(new HttpStatusError(403, 'Forbidden'))).toBe(false);
+    expect(outcomeUnknown(new HttpStatusError(412, 'Precondition Failed'))).toBe(false);
+    expect(outcomeUnknown(new HttpStatusError(408, 'Request Timeout'))).toBe(true);
+    expect(outcomeUnknown(new HttpStatusError(500, 'Internal Server Error'))).toBe(true);
+    expect(outcomeUnknown(new TypeError('Failed to fetch'))).toBe(true);
+    expect(outcomeUnknown(new DOMException('The operation was aborted.', 'AbortError'))).toBe(true);
+  });
+
+  it('keeps the status of a refused delete', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 403, statusText: 'Forbidden' })));
+    try {
+      await expect(contactsService.deleteContact('a')).rejects.toMatchObject({ status: 403 });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+/**
+ * What the refusal toast says. The counts went in as {failed} and {total},
+ * and the noun beside them could only be right for one number; the total is
+ * now the plural key's {count}. One path passed no numbers at all and showed
+ * the placeholders themselves.
+ */
+describe('the refusal toast', () => {
+  async function toastFrom(language: string, act: (el: Page) => Promise<void>, contacts = [card('a'), card('b')]) {
+    const el = page(contacts, contacts.map((c) => c.path));
+    el.i18nStore = new I18nStore();
+    await el.i18nStore.setLanguage(language);
+    vi.spyOn(el, 'fetchContacts').mockResolvedValue(undefined as never);
+    const shown: string[] = [];
+    const listen = (e: Event) => shown.push((e as CustomEvent).detail.message);
+    window.addEventListener('show-toast', listen);
+    try {
+      await act(el);
+    } finally {
+      window.removeEventListener('show-toast', listen);
+    }
+    return shown;
+  }
+
+  it('counts a partial delete in words that agree with the total', async () => {
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 2, done: 1, failed: 1 });
+    expect(await toastFrom('en', (el) => el.confirmDelete())).toEqual(['1 of 2 contacts could not be deleted.']);
+  });
+
+  it('agrees in Serbian too, where 3 takes another form than 5', async () => {
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 3, done: 2, failed: 1 });
+    const three = [card('a'), card('b'), card('c')];
+    expect(await toastFrom('sr', (el) => el.confirmDelete(), three)).toEqual(['1 od 3 kontakta nije moglo biti obrisano.']);
+  });
+
+  it('names the numbers when a category change fails outright', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockRejectedValue(new Error('offline'));
+    const shown = await toastFrom('en', (el) => el.handleUpdateCategories(new CustomEvent('x', { detail: { category: 'Work' } })));
+    expect(shown).toEqual(['2 of 2 contacts could not be updated.']);
   });
 });

@@ -86,11 +86,14 @@ export class CalendarPage extends LitElement {
 
     @state() private sidebarWidth = 250;
     @state() private sidebarCollapsed = false;
-    @state() private isSidebarHovered = false;
+    /** Mirrors the sidebar's own hover overlay (`peek-change`). */
+    @state() private sidebarPeeking = false;
     @state() private isMobile = window.innerWidth <= 768;
     @state() private mobileSidebarOpen = false;
     @state() private promptOpen = false;
-    @state() private promptFields: Array<{ id: string; label: string; autofocus?: boolean; value?: string }> = [{ id: 'name', label: 'Calendar Name', autofocus: true }];
+    // Empty until a prompt opens: adding and renaming each set the field, with
+    // its label read from the dictionary at that moment.
+    @state() private promptFields: Array<{ id: string; label: string; autofocus?: boolean; value?: string }> = [];
 
     private syncIntervalTimer: ReturnType<typeof setInterval> | null = null;
     @state() private promptMode: 'add' | 'rename' | null = null;
@@ -100,8 +103,6 @@ export class CalendarPage extends LitElement {
     /** Who tells guests about changes, as the calendar listing says: the server, or alps by email. */
     @state() private scheduling: 'server' | 'email' = 'email';
     @state() private activeKebabMenu: string | null = null;
-    private hoverTimeout: any = null;
-    @state() private suppressSidebarHover = false;
     @state() private isSidebarDragging = false;
 
     static styles = [
@@ -494,11 +495,17 @@ export class CalendarPage extends LitElement {
             changed = true;
         }
 
+        // A bare `#/calendar`, which is what the Calendar tab sets, is completed
+        // IN PLACE with the view and date the page is showing. That is not a
+        // place the user went, so it must not be a history entry. Assigning the
+        // hash made it one: Back returned to the bare URL, whose `hashchange`
+        // ran this again and pushed the view forward, and Back could never
+        // leave the calendar. `replaceState` fires no `hashchange`, so the
+        // caller fetches on `changed` as the event would have.
         if (pathStr === '/calendar' || pathStr === '/calendar/') {
-            this.navigate(this.viewMode, this.currentDate, this.searchQuery);
-            return false;
+            history.replaceState(null, '', this.hashFor(this.viewMode, this.currentDate, this.searchQuery));
         }
-        
+
         return changed;
     }
 
@@ -508,11 +515,13 @@ export class CalendarPage extends LitElement {
         }
     };
 
-    private navigate(mode: ViewMode, date: Date, query: string = '') {
+    /** The address of a view: its mode, the date as that mode spells it, and
+     * the search. */
+    private hashFor(mode: ViewMode, date: Date, query: string = ''): string {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
-        
+
         let hash = `#/calendar/${mode}`;
         if (mode === 'year') {
             hash += `/${year}`;
@@ -521,11 +530,18 @@ export class CalendarPage extends LitElement {
         } else {
             hash += `/${year}-${month}-${day}`;
         }
-        
+
         if (query) {
             hash += `?q=${encodeURIComponent(query)}`;
         }
-        
+        return hash;
+    }
+
+    /** Goes to a view. Another view, date or search is the user's own move, so
+     * it is a history entry, the one Back returns from; completing a bare
+     * address is not (see parseHash). */
+    private navigate(mode: ViewMode, date: Date, query: string = '') {
+        const hash = this.hashFor(mode, date, query);
         if (window.location.hash !== hash) {
             window.location.hash = hash;
         } else {
@@ -536,23 +552,6 @@ export class CalendarPage extends LitElement {
     private handleResize = () => {
         this.isMobile = window.innerWidth <= 768;
     };
-
-    private handleSidebarMouseEnter() {
-        if (this.sidebarCollapsed && !this.isSidebarDragging) {
-            clearTimeout(this.hoverTimeout);
-            this.hoverTimeout = setTimeout(() => {
-                this.isSidebarHovered = true;
-                this.suppressSidebarHover = false;
-            }, 300);
-        }
-    }
-
-    private handleSidebarMouseLeave() {
-        if (this.sidebarCollapsed) {
-            clearTimeout(this.hoverTimeout);
-            this.isSidebarHovered = false;
-        }
-    }
 
     private async fetchData() {
         this.loading = true;
@@ -940,8 +939,6 @@ export class CalendarPage extends LitElement {
                         .isMobile=${this.isMobile}
                         .isOpen=${this.mobileSidebarOpen}
                         .collapsed=${this.sidebarCollapsed && !this.isMobile}
-                        .isHovered=${this.isSidebarHovered}
-                        .suppressHover=${this.suppressSidebarHover}
                         .width=${this.sidebarWidth}
                         @toggle-collapse=${() => {
                 const newState = !this.sidebarCollapsed;
@@ -969,18 +966,19 @@ export class CalendarPage extends LitElement {
                         @drag-start=${() => this.isSidebarDragging = true}
                         @drag-end=${() => this.isSidebarDragging = false}
                         @close-sidebar=${() => this.mobileSidebarOpen = false}
-                        @mouseenter=${() => this.handleSidebarMouseEnter()}
-                        @mouseleave=${() => this.handleSidebarMouseLeave()}
+                        @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
                     >
-                    <div class="sidebar-wrapper ${this.sidebarCollapsed && (!this.isSidebarHovered || this.suppressSidebarHover) && !this.isMobile ? 'collapsed' : ''}">
+                    <div class="sidebar-wrapper ${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile ? 'collapsed' : ''}">
                         <alps-toolbar class="sidebar-header">
                             <alps-create-button 
                                 icon="calendarPlus" 
-                                ?collapsed=${this.sidebarCollapsed && (!this.isSidebarHovered || this.suppressSidebarHover) && !this.isMobile}
+                                ?collapsed=${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile}
                                 @click=${() => this.openCreateModal()}
                             >${this.i18nStore?.t('calendar.addEvent')}</alps-create-button>
                         </alps-toolbar>
-                        <div class="sidebar-content">
+                        <!-- Inert in the strip, as it is dimmed there: the
+                             calendars, their menus and the mini-month. -->
+                        <div class="sidebar-content" ?inert=${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile}>
                             <div class="sidebar-scroll-content">
                                 <div class="calendars-list">
                                     <h3>${this.i18nStore?.t('calendar.myCalendars')}</h3>
@@ -1178,7 +1176,7 @@ export class CalendarPage extends LitElement {
             ${this.calendarToDelete ? html`
                 <ui-confirm
                     title="${this.i18nStore?.t('calendar.deleteCalendar')}"
-                    message="Are you sure you want to delete the calendar &quot;${this.calendarToDelete.name}&quot;?"
+                    .message=${this.i18nStore?.t('calendar.deleteCalendarConfirm', { name: this.calendarToDelete.name }) ?? ''}
                     confirmText="${this.i18nStore?.t('calendar.delete')}"
                     isDanger
                     @confirm=${this._executeDeleteCalendar}
@@ -1202,8 +1200,8 @@ export class CalendarPage extends LitElement {
                 ></ui-confirm>
             ` : this.eventToDelete ? html`
                 <ui-confirm
-                    title="${this.i18nStore?.t('calendar.deleteEvent')}"
-                    message="Are you sure you want to delete this event?"
+                    title="${this.i18nStore?.t(this.eventToDelete.task ? 'tasks.deleteTask' : 'calendar.deleteEvent')}"
+                    .message=${this.i18nStore?.t(this.eventToDelete.task ? 'tasks.deleteTaskConfirm' : 'calendar.deleteEventConfirm') ?? ''}
                     confirmText="${this.i18nStore?.t('calendar.delete')}"
                     isDanger
                     @confirm=${() => this._executeDeleteEvent()}

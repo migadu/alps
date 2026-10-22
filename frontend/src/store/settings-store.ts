@@ -57,6 +57,13 @@ export interface SettingsState {
   hasThreadCapability?: boolean;
   hasESearchCapability?: boolean;
   customMailboxOrder?: string[];
+  /**
+   * The folders unsubscribed from here, oldest first, which the sidebar puts
+   * behind More while the server still lists them unsubscribed. The server
+   * caps the list, and refuses a save past the caps with every setting it
+   * carries; see utils/unsubscribed-folders, which keeps it within them.
+   */
+  unsubscribedFolders: string[];
 }
 
 const DEFAULT_SETTINGS: SettingsState = {
@@ -93,7 +100,8 @@ const DEFAULT_SETTINGS: SettingsState = {
   sortOrder: 'desc',
   messageSortCriteria: 'date',
   maxAttachmentMiB: 32,
-  customMailboxOrder: []
+  customMailboxOrder: [],
+  unsubscribedFolders: []
 };
 
 type ServerField = { ui?: true; name: string; value: (s: SettingsState) => unknown };
@@ -118,6 +126,7 @@ const SERVER_FIELDS: { [K in keyof SettingsState]?: ServerField } = {
   themeIframeContent: { ui: true, name: 'themeIframeContent', value: s => s.themeIframeContent },
   showSenderAvatars: { ui: true, name: 'showSenderAvatars', value: s => s.showSenderAvatars },
   customMailboxOrder: { ui: true, name: 'customMailboxOrder', value: s => s.customMailboxOrder },
+  unsubscribedFolders: { ui: true, name: 'unsubscribedFolders', value: s => s.unsubscribedFolders },
   checkMailInterval: { name: 'check_mail_interval', value: s => Number(s.checkMailInterval) || 0 },
   autoLogout: { name: 'auto_logout', value: s => Number(s.autoLogout) || 0 },
   desktopNotifications: { name: 'desktop_notifications', value: s => Boolean(s.desktopNotifications) },
@@ -161,6 +170,71 @@ function serverFields(state: SettingsState, keys: Iterable<ServerKey>): Record<s
   return body;
 }
 
+/** `key`'s value in the account's record as `GET /settings` gives it. */
+function recordValue(record: Record<string, any>, key: ServerKey): unknown {
+  const field = SERVER_FIELDS[key]!;
+  return field.ui ? record.ui?.[field.name] : record[field.name];
+}
+
+/** Settings are JSON by construction, so their JSON is their identity. */
+function sameValue(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
+/**
+ * A change made in this browser that the server is not known to have taken.
+ *
+ * `base` is the setting's value in the account's record when the change was
+ * made, which is what lets a later load tell "nobody else has touched this"
+ * from "another browser has saved its own value since". It is missing when
+ * the record had not been read.
+ */
+interface Unsaved {
+  value: unknown;
+  base?: unknown;
+}
+
+/** How long a save that failed waits before it is tried again, by attempt; the
+ * last one repeats. A server that names its own wait (`Retry-After`) is
+ * believed when it asks for longer. */
+const RETRY_DELAYS_MS = [5_000, 30_000, 120_000, 300_000];
+
+/** How a save ended: taken; refused, which the same request would be again;
+ * worth another try, after the wait the server asked for if it named one; or
+ * answered after its session ended, which is nobody's business now. */
+type SaveOutcome = 'saved' | 'refused' | 'ended' | { retryAfterMs: number | null };
+
+/** `Retry-After` in milliseconds: seconds, or a date. */
+function retryAfterMs(response: Response): number | null {
+  const header = response.headers.get('Retry-After');
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const at = Date.parse(header);
+  return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
+}
+
+/** Not under the `alps_settings_` prefix, which is followed by a username. */
+const unsavedKeyFor = (username: string) => `alps_unsaved_settings_${username}`;
+
+function readUnsaved(username: string): Map<ServerKey, Unsaved> {
+  const unsaved = new Map<ServerKey, Unsaved>();
+  try {
+    const stored = localStorage.getItem(unsavedKeyFor(username));
+    const parsed: unknown = stored ? JSON.parse(stored) : null;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      for (const [key, entry] of Object.entries(parsed)) {
+        if (isServerKey(key) && entry && typeof entry === 'object' && 'value' in entry) {
+          unsaved.set(key, entry as Unsaved);
+        }
+      }
+    }
+  } catch (e) {
+    Logger.error('Failed to read unsaved settings', e);
+  }
+  return unsaved;
+}
+
 export class SettingsStore extends EventTarget {
   private state: SettingsState;
   private initialFetchCompleted = false;
@@ -170,8 +244,30 @@ export class SettingsStore extends EventTarget {
   private rereadInFlight = false;
   /** Settings changed in this browser that the server has not yet taken. A read
    * of the record keeps these over the server's values, and a save sends them
-   * and nothing else. */
-  private unsaved = new Set<ServerKey>();
+   * and nothing else.
+   *
+   * Kept in localStorage as well ({@link unsavedKeyFor}), and a setting leaves
+   * only when a save that carried its current value is answered. It lived in
+   * memory alone, so a save that failed, or one cut off by closing the tab,
+   * was lost on reload: the next read let the server's value win, and the
+   * change was undone in the browser that made it. */
+  private unsaved = new Map<ServerKey, Unsaved>();
+  /** The account's record as last read, and as since saved, in this session. */
+  private record: Record<string, any> | null = null;
+  /** The retry of a save that failed, if one is waiting, and how many saves
+   * have failed in a row; see {@link retryLater}. */
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private failures = 0;
+  /**
+   * Moves when a session ends and when another begins. Signing out and in
+   * again does not reload the page, so a read of `/session` or `/settings`
+   * still out at that moment answers into the next session: it put the
+   * previous account's name, signature and reply-to into the next account's
+   * settings and saved them under its name, or the previous username back
+   * into the store. A read takes this before it asks, and applies its answer
+   * only if it has not moved.
+   */
+  private epoch = 0;
 
   constructor() {
     super();
@@ -186,9 +282,13 @@ export class SettingsStore extends EventTarget {
     });
 
     window.addEventListener('session-cleared', () => {
+      this.epoch++;
       this.initialFetchCompleted = false;
       this.settingsReadFailed = false;
       this.unsaved.clear();
+      this.record = null;
+      this.cancelRetry();
+      this.failures = 0;
       this.state = this.loadSettings();
       this.applyTheme();
       this.notify();
@@ -196,14 +296,27 @@ export class SettingsStore extends EventTarget {
 
     window.addEventListener('user-logged-in', (e: Event) => {
       const username = (e as CustomEvent).detail?.username;
+      this.epoch++;
+      this.cancelRetry();
+      this.failures = 0;
       this.initializeSession(username);
+    });
+
+    // Back online is the best moment there is to retry: whatever the back-off
+    // had worked up to, its reason has probably just gone.
+    window.addEventListener('online', () => {
+      if (this.unsaved.size === 0 || !this.initialFetchCompleted) return;
+      this.cancelRetry();
+      void this._saveBackendSettings();
     });
 
     this.initializeSession();
   }
 
   private async initializeSession(knownUsername?: string) {
+    const epoch = this.epoch;
     this.initialFetchCompleted = false;
+    this.record = null;
 
     if (knownUsername) {
       this.state.loginUsername = knownUsername;
@@ -218,6 +331,7 @@ export class SettingsStore extends EventTarget {
       }
       const userSettings = this.loadSettings(knownUsername);
       this.state = { ...this.state, ...userSettings, loginUsername: knownUsername };
+      this.adoptUnsaved(knownUsername);
       this.applyTheme();
       this.notify();
     }
@@ -235,8 +349,10 @@ export class SettingsStore extends EventTarget {
     if (!knownUsername) {
       try {
         const response = await fetch('/session');
+        if (epoch !== this.epoch) return;
         if (response.ok) {
           const data = await response.json();
+          if (epoch !== this.epoch) return;
           const username = data.Username || data.username;
           if (username) {
             this.state.loginUsername = username;
@@ -251,6 +367,7 @@ export class SettingsStore extends EventTarget {
             }
             const userSettings = this.loadSettings(username);
             this.state = { ...this.state, ...userSettings, loginUsername: username };
+            this.adoptUnsaved(username);
             this.applyTheme();
             this.notify();
           }
@@ -262,6 +379,89 @@ export class SettingsStore extends EventTarget {
 
     // Now fetch backend settings (which will merge with the loaded user settings)
     await this._fetchBackendSettings();
+  }
+
+  /**
+   * Takes up what `username` left unsaved in this browser: a save that failed,
+   * or a tab closed before one was answered. The read that follows decides
+   * which of it still stands, and sends that.
+   */
+  private adoptUnsaved(username: string) {
+    const stored = readUnsaved(username);
+    if (stored.size === 0) return;
+    const state = this.state as unknown as Record<string, unknown>;
+    for (const [key, entry] of stored) {
+      if (this.unsaved.has(key)) continue;
+      this.unsaved.set(key, entry);
+      state[key] = entry.value;
+    }
+    this.saveSettings();
+  }
+
+  /**
+   * Writes the unsaved settings through to localStorage, minus `forgotten`.
+   *
+   * Read, changed and written rather than overwritten: another tab of the same
+   * user keeps its own unsaved settings under the same key, and only that tab
+   * may remove them.
+   */
+  private storeUnsaved(forgotten: ServerKey[] = []) {
+    const username = this.state.loginUsername;
+    if (!username) return;
+    const stored = readUnsaved(username);
+    for (const key of forgotten) stored.delete(key);
+    for (const [key, entry] of this.unsaved) stored.set(key, entry);
+    try {
+      if (stored.size === 0) {
+        localStorage.removeItem(unsavedKeyFor(username));
+      } else {
+        localStorage.setItem(unsavedKeyFor(username), JSON.stringify(Object.fromEntries(stored)));
+      }
+    } catch (e) {
+      Logger.error('Failed to record unsaved settings', e);
+    }
+  }
+
+  /** `key` has been changed here, and the server has yet to take it. A setting
+   * already unsaved keeps its base: that is still the last value the record
+   * was seen to hold. */
+  private markUnsaved(key: ServerKey) {
+    const value = this.state[key];
+    const entry = this.unsaved.get(key);
+    if (entry) {
+      entry.value = value;
+    } else if (this.record) {
+      this.unsaved.set(key, { value, base: recordValue(this.record, key) ?? null });
+    } else {
+      this.unsaved.set(key, { value });
+    }
+  }
+
+  /**
+   * Drops the unsaved settings the account's record has moved past, and
+   * re-bases the rest on it.
+   *
+   * An unsaved change can be seconds old (a reload after a failed save) or
+   * weeks old (a laptop opened again), and this browser cannot tell which.
+   * What it can tell is whether the record still holds the value the change
+   * was made from. If it does, nobody has touched the setting since and the
+   * change stands. If it holds anything else, another browser has saved that
+   * setting since, or this one's save landed and only its answer was lost,
+   * and either way the record's value is the newer one.
+   */
+  private yieldToRecord(record: Record<string, any>) {
+    if (this.unsaved.size === 0) return;
+    const superseded: ServerKey[] = [];
+    for (const [key, entry] of this.unsaved) {
+      const current = recordValue(record, key) ?? null;
+      if ('base' in entry && !sameValue(current, entry.base)) {
+        superseded.push(key);
+      } else {
+        entry.base = current;
+      }
+    }
+    for (const key of superseded) this.unsaved.delete(key);
+    this.storeUnsaved(superseded);
   }
 
   private loadSettings(username?: string): SettingsState {
@@ -358,6 +558,15 @@ export class SettingsStore extends EventTarget {
     return this.state;
   }
 
+  /**
+   * Whether this session has read the account's record. Until it has, the
+   * state is this browser's copy, and a change worked out from it is saved
+   * over the account's values when the record arrives.
+   */
+  get recordRead(): boolean {
+    return this.initialFetchCompleted;
+  }
+
   async updateSettings(updates: Partial<SettingsState>) {
     const oldUsername = this.state.loginUsername;
     const newUsername = updates.loginUsername;
@@ -385,7 +594,8 @@ export class SettingsStore extends EventTarget {
         && JSON.stringify(before[key]) !== JSON.stringify(this.state[key]),
     );
     if (changed.length > 0) {
-      for (const key of changed) this.unsaved.add(key);
+      for (const key of changed) this.markUnsaved(key);
+      this.storeUnsaved();
       return this._saveBackendSettings();
     }
   }
@@ -404,17 +614,22 @@ export class SettingsStore extends EventTarget {
       return;
     }
 
+    const epoch = this.epoch;
     let needLanguage = false;
     let readOk = false;
 
     try {
       const response = await fetch('/settings');
+      // Ahead of the 401 too: the previous session's refusal is no reason to
+      // send the next one to the sign-in page.
+      if (epoch !== this.epoch) return;
       if (response.status === 401) {
         window.dispatchEvent(new CustomEvent('auth-error'));
         return;
       }
       if (response.ok) {
         const data = await response.json();
+        if (epoch !== this.epoch) return;
         readOk = true;
         const updates: Partial<SettingsState> = {};
         
@@ -453,6 +668,11 @@ export class SettingsStore extends EventTarget {
             if (ui.themeIframeContent !== undefined) updates.themeIframeContent = ui.themeIframeContent;
             if (ui.showSenderAvatars !== undefined) updates.showSenderAvatars = ui.showSenderAvatars;
             if (ui.customMailboxOrder !== undefined) updates.customMailboxOrder = ui.customMailboxOrder;
+            // Missing is empty: the server leaves an empty list out of the
+            // record, and this browser's copy is older than the record.
+            updates.unsubscribedFolders = Array.isArray(ui.unsubscribedFolders)
+              ? ui.unsubscribedFolders.filter((name: unknown): name is string => typeof name === 'string')
+              : [];
           }
 
           if (s.check_mail_interval !== undefined && s.check_mail_interval !== 0) updates.checkMailInterval = s.check_mail_interval;
@@ -486,8 +706,11 @@ export class SettingsStore extends EventTarget {
           }
 
           // What was changed here and not yet saved wins over the server's copy
-          // of those keys; everything else is the server's.
-          for (const key of this.unsaved) {
+          // of those keys, unless the server's copy has moved since; everything
+          // else is the server's.
+          this.record = s;
+          this.yieldToRecord(s);
+          for (const key of this.unsaved.keys()) {
             delete (updates as Record<string, unknown>)[key];
           }
 
@@ -507,12 +730,19 @@ export class SettingsStore extends EventTarget {
       Logger.error('Failed to fetch backend settings', e);
     } finally {
       // Only a record actually READ unblocks saving: a change made before it is
-      // kept here, and is saved over the server's values once they are in.
-      this.initialFetchCompleted = readOk;
-      this.settingsReadFailed = !readOk;
+      // kept here, and is saved over the server's values once they are in. A
+      // read for an ended session says nothing about the current one's record.
+      if (epoch === this.epoch) {
+        this.initialFetchCompleted = readOk;
+        this.settingsReadFailed = !readOk;
+      }
     }
+    if (epoch !== this.epoch) return;
 
-    if (needLanguage) this.unsaved.add('language');
+    if (needLanguage && !this.unsaved.has('language')) {
+      this.markUnsaved('language');
+      this.storeUnsaved();
+    }
     if (readOk && this.unsaved.size > 0) {
       await this._saveBackendSettings();
     }
@@ -529,8 +759,11 @@ export class SettingsStore extends EventTarget {
    *
    * A change arriving mid-flight sets `savePending` rather than racing, and the
    * trailing save reads the values when it runs, so intermediate values are
-   * coalesced away. A save that fails leaves its settings unsaved, so the next
-   * one carries them too.
+   * coalesced away. A setting stays unsaved until a save that carried its
+   * current value is answered, so a save that fails leaves its settings for
+   * the next one, and so does a reload. The next one is not left to the next
+   * change, which may never come: a save that failed is tried again by
+   * itself ({@link retryLater}).
    */
   private saveInFlight = false;
   private savePending = false;
@@ -557,14 +790,46 @@ export class SettingsStore extends EventTarget {
       this.savePending = true;
       return;
     }
-    const keys = [...this.unsaved];
+    const keys = [...this.unsaved.keys()];
     if (keys.length === 0) return;
-    this.unsaved.clear();
+    const epoch = this.epoch;
+    const body = serverFields(this.state, keys);
+    const sent = new Map(keys.map(key => [key, this.state[key]]));
     this.saveInFlight = true;
     try {
-      if (!(await this._putBackendSettings(serverFields(this.state, keys)))) {
-        for (const key of keys) this.unsaved.add(key);
+      const outcome = await this._putBackendSettings(body, epoch);
+      // An answer for a session that has ended is not this one's to act on.
+      if (outcome === 'ended' || epoch !== this.epoch) return;
+      if (outcome === 'saved') {
+        this.failures = 0;
+        this.cancelRetry();
+        this.noteSaved(body);
+      } else if (outcome !== 'refused') {
+        // Said once for a run of failures, not once for every retry of it.
+        if (this.failures === 0) this.reportSaveFailure();
+        this.retryLater(outcome.retryAfterMs);
+        return;
+      } else {
+        this.reportSaveFailure();
       }
+      // Taken, or refused outright, which the same values would be again.
+      // A refused setting kept unsaved went with every later save and had it
+      // refused too, and, now that unsaved settings outlive a reload, with
+      // every load as well.
+      const settled: ServerKey[] = [];
+      for (const key of keys) {
+        const entry = this.unsaved.get(key);
+        if (!entry) continue;
+        if (sameValue(this.state[key], sent.get(key))) {
+          settled.push(key);
+        } else if (outcome === 'saved' && this.record) {
+          // Changed again while the save was out: the value it carried is
+          // now the record's, and the one the newer change is made from.
+          entry.base = recordValue(this.record, key) ?? null;
+        }
+      }
+      for (const key of settled) this.unsaved.delete(key);
+      this.storeUnsaved(settled);
     } finally {
       this.saveInFlight = false;
       if (this.savePending) {
@@ -574,8 +839,46 @@ export class SettingsStore extends EventTarget {
     }
   }
 
-  /** Whether the server took the save. A refusal has been reported. */
-  private async _putBackendSettings(body: Record<string, unknown>): Promise<boolean> {
+  /**
+   * Tries a failed save again, later and by itself.
+   *
+   * The change is on screen already, and nothing tells the user it is not on
+   * the server, so nothing should depend on their happening to change another
+   * setting. Backed off, because the usual reason is a server or a network
+   * that is down.
+   */
+  private retryLater(retryAfterMs: number | null) {
+    this.cancelRetry();
+    if (this.unsaved.size === 0) return;
+    const backoff = RETRY_DELAYS_MS[Math.min(this.failures, RETRY_DELAYS_MS.length - 1)];
+    this.failures++;
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      void this._saveBackendSettings();
+    }, Math.max(backoff, retryAfterMs ?? 0));
+  }
+
+  private cancelRetry() {
+    if (!this.retryTimer) return;
+    clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+  }
+
+  /** What a save put in the account's record, which is now the value a change
+   * to those settings is made from. */
+  private noteSaved(body: Record<string, any>) {
+    if (!this.record) return;
+    for (const [name, value] of Object.entries(body)) {
+      if (name === 'ui') {
+        this.record.ui = { ...(this.record.ui ?? {}), ...value };
+      } else {
+        this.record[name] = value;
+      }
+    }
+  }
+
+  /** How the save ended; see {@link SaveOutcome}. */
+  private async _putBackendSettings(body: Record<string, unknown>, epoch: number): Promise<SaveOutcome> {
     try {
       const response = await fetch('/settings', {
         method: 'PUT',
@@ -584,10 +887,11 @@ export class SettingsStore extends EventTarget {
         },
         body: JSON.stringify(body)
       });
+      if (epoch !== this.epoch) return 'ended';
       
       if (response.status === 401) {
         window.dispatchEvent(new CustomEvent('auth-error'));
-        return false;
+        return 'ended';
       }
 
       // `response.ok` was never consulted. A 400, a 413 or a 500 passed through
@@ -598,14 +902,17 @@ export class SettingsStore extends EventTarget {
       // was also the only one that could fail without saying so.
       if (!response.ok) {
         Logger.error('Failed to save backend settings', response.status);
-        this.reportSaveFailure();
-        return false;
+        // Worth another try: a server in trouble, a timeout, a rate limit. Not
+        // worth one: a refusal of these values, too large or malformed, which
+        // the same request would get again.
+        const transient = response.status >= 500 || response.status === 408 || response.status === 429;
+        return transient ? { retryAfterMs: retryAfterMs(response) } : 'refused';
       }
-      return true;
+      return 'saved';
     } catch (e) {
+      // No answer at all: offline, or the connection dropped.
       Logger.error('Failed to save backend settings', e);
-      this.reportSaveFailure();
-      return false;
+      return epoch === this.epoch ? { retryAfterMs: null } : 'ended';
     }
   }
 
@@ -742,10 +1049,12 @@ export function clearSessionSettings(clearAuthCookies: boolean = true) {
   // The per-user record and the pointer to it go with the session. Leaving them
   // meant the next person to use this browser had the previous user's address
   // and preferences sitting in storage — and, before the compose store was
-  // scoped, their unsent drafts alongside.
+  // scoped, their unsent drafts alongside. So do the changes the server never
+  // took: they are the same record's.
   try {
     const username = localStorage.getItem(ACTIVE_USER_KEY);
     if (username) localStorage.removeItem(`alps_settings_${username}`);
+    if (username) localStorage.removeItem(unsavedKeyFor(username));
     localStorage.removeItem(ACTIVE_USER_KEY);
   } catch (e) {
     Logger.error('Failed to clear the per-user settings record', e);

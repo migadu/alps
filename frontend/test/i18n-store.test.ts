@@ -114,9 +114,9 @@ describe('plurals', () => {
 
   it('picks the same forms in Latin Serbian', async () => {
     const sr = await withLanguage('sr');
-    expect(sr.t('toast.messagesMovedToFolder', { count: 1, folder: 'Posao' })).toBe('1 poruka premeštena u Posao');
-    expect(sr.t('toast.messagesMovedToFolder', { count: 3, folder: 'Posao' })).toBe('3 poruke premeštene u Posao');
-    expect(sr.t('toast.messagesMovedToFolder', { count: 9, folder: 'Posao' })).toBe('9 poruka premešteno u Posao');
+    expect(sr.t('toast.messagesMovedToFolder', { count: 1, folder: 'Posao' })).toBe('1 poruka premeštena u fasciklu Posao');
+    expect(sr.t('toast.messagesMovedToFolder', { count: 3, folder: 'Posao' })).toBe('3 poruke premeštene u fasciklu Posao');
+    expect(sr.t('toast.messagesMovedToFolder', { count: 9, folder: 'Posao' })).toBe('9 poruka premešteno u fasciklu Posao');
   });
 
   it('falls back to other for a form the locale does not spell out', async () => {

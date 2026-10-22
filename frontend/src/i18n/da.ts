@@ -23,7 +23,7 @@ export const da: TranslationDictionary = {
     },
     loading: 'Indlæser...',
     placeholderName: 'Dit navn',
-    placeholderReplyTo: 'svar@eksempel.dk',
+    placeholderReplyTo: 'svar@eksempel.example',
     general: {
       checkMailInterval: 'Interval for mailtjek',
       checkMailIntervalDesc: 'Hvor ofte der automatisk skal tjekkes for ny mail.',
@@ -112,8 +112,8 @@ export const da: TranslationDictionary = {
       german: 'Deutsch',
       italian: 'Italiano',
       spanish: 'Español',
-      serbian: 'Српски',
-      serbianLatin: 'Srpski (Latinica)',
+      serbian: 'Српски (ћирилица)',
+      serbianLatin: 'Srpski (latinica)',
       french: 'Français',
       portuguese: 'Português',
       danish: 'Dansk'
@@ -152,10 +152,12 @@ export const da: TranslationDictionary = {
     trust_linked_checkbox: 'Tillad skift til denne konto uden 2FA',
     trust_password_label: 'Indtast din adgangskode for at bekræfte',
     confirm_remove: 'Er du sikker på, at du vil fjerne denne sikkerhedsnøgle?',
+    remove_password_label: 'Indtast din adgangskode for at fjerne denne sikkerhedsnøgle',
     errors: {
       begin_failed: 'Kunne ikke starte godkendelse.',
       invalid_options: 'Ugyldige godkendelsesindstillinger modtaget.',
       verification_failed: 'Bekræftelse mislykkedes. Prøv igen.',
+      unavailable: 'Serveren kunne ikke kontrollere din sikkerhedsnøgle lige nu. Prøv igen om et øjeblik.',
       register_failed: 'Der opstod en fejl under registrering af din sikkerhedsnøgle. Prøv igen.',
       remove_failed: 'Kunne ikke fjerne sikkerhedsnøglen.',
       wrong_password: 'Adgangskoden er forkert.',
@@ -164,6 +166,7 @@ export const da: TranslationDictionary = {
       two_factor_required: 'Log ind med din sikkerhedsnøgle for at ændre denne indstilling.',
       no_security_key: 'Tilføj først en sikkerhedsnøgle.',
       trust_failed: 'Indstillingen kunne ikke ændres. Prøv igen.',
+      remove_unavailable: 'Sikkerhedsnøglen kunne ikke fjernes lige nu. Prøv igen om et øjeblik.',
       general: 'Der opstod en fejl.',
     },
     settings: {
@@ -190,10 +193,11 @@ export const da: TranslationDictionary = {
     pleaseWait: 'Vent venligst',
     wait: 'Vent',
     signedOut: 'Du er blevet logget ud.',
-    signedOutDraftsLost: 'Du er blevet logget ud. Nogle kladder, der ikke var sendt, kunne ikke gemmes og er gået tabt.',
+    signedOutDraftsKept: 'Du er blevet logget ud. Nogle kladder, der ikke var sendt, kunne ikke gemmes på serveren. De ligger på denne enhed og åbnes igen, når du logger ind igen.',
     sessionExpired: 'Din session er udløbet. Log ind igen.',
+    secondFactorExpired: 'Dit login udløb, før sikkerhedsnøglen blev kontrolleret. Log ind igen.',
     inactivitySignedOut: 'Du er blevet logget ud på grund af inaktivitet.',
-    inactivitySignedOutDraftsLost: 'Du er blevet logget ud på grund af inaktivitet. Nogle kladder, der ikke var sendt, kunne ikke gemmes og er gået tabt.'
+    inactivitySignedOutDraftsKept: 'Du er blevet logget ud på grund af inaktivitet. Nogle kladder, der ikke var sendt, kunne ikke gemmes på serveren. De ligger på denne enhed og åbnes igen, når du logger ind igen.'
   },
   folderList: {
     compose: 'Skriv',
@@ -204,6 +208,7 @@ export const da: TranslationDictionary = {
     spam: 'Spam',
     junk: 'Uønsket',
     trash: 'Papirkurv',
+    allFolders: 'Alle mapper',
     title: 'Mapper',
     rename: 'Omdøb',
     delete: 'Slet',
@@ -224,7 +229,10 @@ export const da: TranslationDictionary = {
     moveToTop: 'Flyt øverst',
     moveUp: 'Flyt op',
     moveDown: 'Flyt ned',
-    moveToBottom: 'Flyt nederst'
+    moveToBottom: 'Flyt nederst',
+    more: 'Mere',
+    less: 'Mindre',
+    unsubscribedFolders: 'Mapper uden abonnement'
   },
   search: {
     placeholder: 'Søg i mail',
@@ -232,10 +240,23 @@ export const da: TranslationDictionary = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Vælg alle beskeder',
-    allOnPageSelected: 'Alle {count} beskeder på denne side er valgt',
-    selectAllMatching: 'Vælg alle {count} i {folder}',
-    allMatchingSelected: 'Alle {count} beskeder i {folder} er valgt',
+    allOnPageSelected: {
+      one: '{count} besked på denne side er valgt',
+      other: 'Alle {count} beskeder på denne side er valgt'
+    },
+    selectAllMatching: {
+      one: 'Vælg {count} i {folder}',
+      other: 'Vælg alle {count} i {folder}'
+    },
+    allMatchingSelected: {
+      one: '{count} besked i {folder} er valgt',
+      other: 'Alle {count} beskeder i {folder} er valgt'
+    },
     clearSelection: 'Ryd markeringen',
+    dragCount: {
+      one: '{count} besked',
+      other: '{count} beskeder'
+    },
     checkNew: 'Tjek for nye beskeder',
     sortDesc: 'Sortér faldende efter dato',
     sortAsc: 'Sortér stigende efter dato',
@@ -254,14 +275,20 @@ export const da: TranslationDictionary = {
     searchResultsFor: 'Søgeresultater for:',
     clearSearch: 'Ryd søgning',
     searchAllMailboxes: 'Søg i alle',
-    totalMessagesIn: '{count} beskeder i alt i {folder}',
+    totalMessagesIn: {
+      one: '{count} besked i {folder}',
+      other: '{count} beskeder i alt i {folder}'
+    },
     totalConversationsIn: {
       one: '{count} samtale i {folder}',
       other: '{count} samtaler i alt i {folder}'
     },
     deleteAllNow: 'Slet alle nu',
     emptyMailboxTitle: 'Tøm {folder}',
-    emptyMailboxConfirm: 'Er du sikker på, at du vil slette alle {count} beskeder i {folder} permanent? Denne handling kan ikke fortrydes.',
+    emptyMailboxConfirm: {
+      one: 'Er du sikker på, at du vil slette den ene besked i {folder} permanent? Denne handling kan ikke fortrydes.',
+      other: 'Er du sikker på, at du vil slette alle {count} beskeder i {folder} permanent? Denne handling kan ikke fortrydes.'
+    },
     emptyMailboxConfirmConversations: {
       one: 'Er du sikker på, at du vil slette den ene samtale i {folder} og alle dens beskeder permanent? Denne handling kan ikke fortrydes.',
       other: 'Er du sikker på, at du vil slette alle {count} samtaler i {folder} og alle deres beskeder permanent? Denne handling kan ikke fortrydes.'
@@ -340,7 +367,7 @@ export const da: TranslationDictionary = {
     insertEmoji: 'Indsæt emoji',
     send: 'Send',
     linkUrl: 'Link-URL',
-    linkUrlPlaceholder: 'https://eksempel.dk',
+    linkUrlPlaceholder: 'https://eksempel.example',
     displayText: 'Visningstekst',
     displayTextPlaceholder: 'Mit website',
     apply: 'Anvend',
@@ -353,7 +380,10 @@ export const da: TranslationDictionary = {
     removeAllTags: 'Fjern alle mærker',
     removeTag: 'Fjern mærke',
     selectMessage: 'Vælg en besked at læse',
-    messagesSelected: 'beskeder valgt',
+    messagesSelected: {
+      one: '{count} besked valgt',
+      other: '{count} beskeder valgt'
+    },
     back: 'Tilbage',
     reply: 'Svar',
     replyAll: 'Svar alle',
@@ -393,6 +423,15 @@ export const da: TranslationDictionary = {
     unverifiedSender: 'Ubekræftet afsender',
     senderUnverifiedWarning: 'Din mailserver kunne ikke bekræfte afsenderen. Beskeden er muligvis ikke fra den, den udgiver sig for at være, så vær forsigtig med links og vedhæftede filer.',
     clickToExpand: 'Klik for at udvide beskedindholdet'
+  },
+  address: {
+    directionalControl: 'skjulte retningstegn',
+    directionalControlTooltip: 'Skjulte retningstegn kan ændre den rækkefølge, som denne adresse vises i.',
+    mixedScript: 'adressen blander alfabeter',
+    mixedScriptTooltip: 'Denne adresse blander bogstaver fra forskellige alfabeter, så den kan ligne en adresse, du kender.',
+    mixedScriptAscii: 'I ASCII staves domænet {domain} {ascii}.',
+    unusualDomain: 'usædvanligt domæne',
+    unusualDomainTooltip: 'Dette domæne er ikke et gyldigt internetdomænenavn og indeholder tegn uden for almindelig ASCII, så det er måske ikke det domæne, det ligner.'
   },
   originalMessage: {
     title: 'Original besked',
@@ -451,6 +490,9 @@ export const da: TranslationDictionary = {
   userMenu: {
     settings: 'Indstillinger',
     signOut: 'Log ud',
+    unsavedDraftsTitle: 'Log ud med kladder, der ikke er gemt?',
+    unsavedDraftsMessage: 'En kladde kunne ikke gemmes på serveren. Hvis du logger ud nu, bliver den på denne enhed og åbnes igen, næste gang du logger ind på denne konto.',
+    signOutAnyway: 'Log ud alligevel',
     profileOptions: 'Profilindstillinger'
   },
   pagination: {
@@ -458,7 +500,10 @@ export const da: TranslationDictionary = {
     nextPage: 'Næste side',
     zeroMessages: '0 beskeder',
     totalCount: '{total} i alt',
-    searchResults: '{total} resultater',
+    searchResults: {
+      one: '{count} resultat',
+      other: '{count} resultater'
+    },
     rangeOfTotal: '{start}–{end} af {total}'
   },
   toast: {
@@ -477,26 +522,6 @@ export const da: TranslationDictionary = {
     folderPermanentlyDeleted: 'Mappe slettet permanent',
     undo: 'Fortryd',
     dismiss: 'Luk',
-    messageMovedToArchive: 'Besked flyttet til arkiv',
-    messagesMovedToArchive: {
-      one: '{count} besked flyttet til arkiv',
-      other: '{count} beskeder flyttet til arkiv'
-    },
-    messageMovedToSpam: 'Besked flyttet til spam',
-    messagesMovedToSpam: {
-      one: '{count} besked flyttet til spam',
-      other: '{count} beskeder flyttet til spam'
-    },
-    messageMovedToInbox: 'Besked flyttet til indbakke',
-    messagesMovedToInbox: {
-      one: '{count} besked flyttet til indbakke',
-      other: '{count} beskeder flyttet til indbakke'
-    },
-    messageMovedToTrash: 'Besked flyttet til papirkurv',
-    messagesMovedToTrash: {
-      one: '{count} besked flyttet til papirkurv',
-      other: '{count} beskeder flyttet til papirkurv'
-    },
     messageMovedToFolder: 'Besked flyttet til {folder}',
     messagesMovedToFolder: {
       one: '{count} besked flyttet til {folder}',
@@ -536,12 +561,17 @@ export const da: TranslationDictionary = {
     refresh: 'Opdater',
     permanentlyDelete: 'Slet permanent?',
     deletePermanently: 'Slet permanent',
+    discardDraftsTitle: 'Kassér kladder?',
+    discardDraftsMessage: 'Er du sikker på, at du vil kassere disse kladder? Denne handling kan ikke fortrydes.',
     undo: 'Fortryd'
   },
   offline: {
     title: 'Forbindelsen er afbrudt',
     description: 'Netværksforbindelsen er mistet',
-    tryingAgain: 'Prøver igen om {seconds} sekunder...'
+    tryingAgain: {
+      one: 'Prøver igen om {count} sekund...',
+      other: 'Prøver igen om {count} sekunder...'
+    }
   },
   update: {
     available: 'En ny version er tilgængelig.',

@@ -377,11 +377,25 @@ describe('the tasks page', () => {
         expect([el.wantedScope, el.selectedList, el.searchQuery]).toEqual(['all', 'today', 'milk']);
     });
 
-    it('sends an address naming no list to All, keeping its filter', () => {
-        const el = page([]);
+    it('sends an address naming no list to All in place, keeping its filter', () => {
+        // In place: the Tasks tab sets a bare #/tasks, and completing it by
+        // assignment was a second entry that Back onto the bare one pushed
+        // again, so Back could never leave the page.
+        const el = page([], { selectedList: 'today' });
         window.location.hash = '#/tasks?list=%2Fcal%2Fwork%2F';
-        el.parseHash();
+        const before = history.length;
+        expect(el.parseHash()).toBe(false);
         expect(window.location.hash).toBe('#/tasks/all?list=%2Fcal%2Fwork%2F');
+        expect(history.length).toBe(before);
+        expect([el.selectedList, el.selectedCalendar]).toEqual(['all', '/cal/work/']);
+
+        // replaceState fires no hashchange, so the answer is what asks for a
+        // fetch when the completed view needs tasks not yet loaded.
+        const done = page([], { selectedList: 'completed', loadedScope: 'closed' });
+        window.location.hash = '#/tasks/someday';
+        expect(done.parseHash()).toBe(true);
+        expect(window.location.hash).toBe('#/tasks/all');
+        expect(done.wantedScope).toBe('active');
     });
 
     it('narrows to one list, and searches titles and notes', () => {
@@ -410,6 +424,19 @@ describe('the tasks page', () => {
         const el = page([task('milk'), task('done', { status: 'completed' })]);
         expect(el.countFor('undated')).toBe(1);
         expect(el.countFor('completed')).toBeNull();
+    });
+
+    it('makes a new list one that takes tasks alone, so the Calendar tab leaves it out', async () => {
+        const posted = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ ok: 'true', path: '/cal/errands/' }));
+        const el = page([]);
+        el.fetchTasks = vi.fn().mockResolvedValue(undefined);
+
+        await el.handleListPromptSubmit(new CustomEvent('submit', { detail: { name: '  Errands ' } }));
+        expect(posted).toHaveBeenCalledTimes(1);
+        const [url, init] = posted.mock.calls[0];
+        expect(url).toBe('/calendar/calendars');
+        expect(JSON.parse(String(init?.body))).toEqual({ name: 'Errands', components: ['VTODO'] });
+        expect(el.fetchTasks).toHaveBeenCalled();
     });
 });
 

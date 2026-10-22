@@ -214,7 +214,7 @@ describe('a gesture over the folder', () => {
       method: 'PUT',
       body: { all: true, query: '', except: [], to: 'Archive' },
     }]);
-    expect(toasts.at(-1)!.detail.message).toBe('toast.messagesMovedToArchive');
+    expect(toasts.at(-1)!.detail.message).toBe('toast.messagesMovedToFolder');
     expect(el.selectAllMatching).toBe(false);
     expect(el.selectionCount).toBe(0);
 

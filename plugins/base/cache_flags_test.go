@@ -49,6 +49,23 @@ func TestReadingAMessageLowersTheUnseenCountOnce(t *testing.T) {
 	}
 }
 
+// A listing caches each row twice, in the page and as the message on its
+// own, and the two are the same message in memory. They are one copy, not two
+// that disagree: reading the message lowers the count rather than dropping it.
+func TestReadingAListedMessageLowersTheCount(t *testing.T) {
+	uid := provider.MockMessageID{ID: "7"}
+	msgs := []provider.Message{{ID: uid}, {ID: provider.MockMessageID{ID: "8"}}}
+	cache := flagCache(t, 3, nil)
+	cache.Set("messages:INBOX:0", CachedMessages{Messages: msgs, Total: len(msgs)})
+	cache.Set("message:INBOX:7:[]", CachedMessagePart{Message: &msgs[0], Mailbox: "INBOX"})
+
+	applyFlagsToCache(cache, noDebug, "INBOX", uid, seen, nil)
+
+	if got, ok := cachedUnseen(t, cache); !ok || got != 2 {
+		t.Fatalf("unseen = %d (cached %v), want 2", got, ok)
+	}
+}
+
 func TestReadingAReadMessageLeavesTheCountAlone(t *testing.T) {
 	uid := provider.MockMessageID{ID: "7"}
 	cache := flagCache(t, 3, map[string][]provider.Message{
@@ -112,5 +129,56 @@ func TestOtherFlagsLeaveTheCountAlone(t *testing.T) {
 
 	if got, ok := cachedUnseen(t, cache); !ok || got != 3 {
 		t.Fatalf("unseen = %d (cached %v), want 3", got, ok)
+	}
+}
+
+// The pages a mailbox has cached move with its count. A page was read at a
+// count, and is served only while the server still answers it (see
+// CachedMessages.Counts); reading a message changes that answer, and a page
+// left at the old one would be read again for a change it already shows.
+func TestReadingAMessageMovesThePagesWithTheCount(t *testing.T) {
+	uid := provider.MockMessageID{ID: "7"}
+	at := mailboxCounts{Known: true, Messages: 5, Unseen: 3}
+	cache := flagCache(t, 3, nil)
+	cache.Set("messages:INBOX:page0", CachedMessages{Messages: []provider.Message{{ID: uid}}, Counts: at})
+	// Another page, which does not list the message but counts it all the same.
+	cache.Set("messages:INBOX:page1", CachedMessages{Messages: []provider.Message{{ID: provider.MockMessageID{ID: "8"}}}, Counts: at})
+	// Another folder's page is not this count's.
+	cache.Set("messages:INBOX2:page0", CachedMessages{Counts: at})
+
+	applyFlagsToCache(cache, noDebug, "INBOX", uid, seen, nil)
+	applyFlagsToCache(cache, noDebug, "INBOX", uid, seen, nil)
+
+	want := map[string]mailboxCounts{
+		"messages:INBOX:page0":  {Known: true, Messages: 5, Unseen: 2},
+		"messages:INBOX:page1":  {Known: true, Messages: 5, Unseen: 2},
+		"messages:INBOX2:page0": at,
+	}
+	for key, counts := range want {
+		cached, _ := cache.Get(key)
+		if got := cached.(CachedMessages).Counts; got != counts {
+			t.Errorf("%s was read at %+v, want %+v", key, got, counts)
+		}
+	}
+
+	applyFlagsToCache(cache, noDebug, "INBOX", uid, nil, seen)
+	cached, _ := cache.Get("messages:INBOX:page1")
+	if got := cached.(CachedMessages).Counts; got != at {
+		t.Errorf("marked unread again, the page was read at %+v, want %+v", got, at)
+	}
+}
+
+// When the copies cannot say what the message was, the pages keep the count
+// they were read at, and the server's next answer decides whether they stand.
+func TestAnUnknownPreviousStateLeavesThePagesAtTheirCount(t *testing.T) {
+	at := mailboxCounts{Known: true, Messages: 5, Unseen: 3}
+	cache := flagCache(t, 3, nil)
+	cache.Set("messages:INBOX:page0", CachedMessages{Messages: []provider.Message{{ID: provider.MockMessageID{ID: "8"}}}, Counts: at})
+
+	applyFlagsToCache(cache, noDebug, "INBOX", provider.MockMessageID{ID: "7"}, seen, nil)
+
+	cached, _ := cache.Get("messages:INBOX:page0")
+	if got := cached.(CachedMessages).Counts; got != at {
+		t.Errorf("the page was read at %+v, want %+v", got, at)
 	}
 }

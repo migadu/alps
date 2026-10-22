@@ -5,6 +5,7 @@ import '../components/alps-loader';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { encodeMailboxPath } from '../utils/folders';
 import { parseEmailHeaders, type ParsedHeaders } from '../utils/email-parser';
+import { isolatedMailboxes } from '../utils/bidi';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import '../components/alps-button';
@@ -255,11 +256,11 @@ export class OriginalMessagePage extends LitElement {
               </tr>
               <tr>
                 <th>${this.i18nStore?.t('originalMessage.from')}</th>
-                <td>${this.parsedHeaders.from}</td>
+                <td>${isolatedMailboxes(this.parsedHeaders.from)}</td>
               </tr>
               <tr>
                 <th>${this.i18nStore?.t('originalMessage.to')}</th>
-                <td>${this.parsedHeaders.to}</td>
+                <td>${isolatedMailboxes(this.parsedHeaders.to)}</td>
               </tr>
               <tr>
                 <th>${this.i18nStore?.t('originalMessage.subject')}</th>

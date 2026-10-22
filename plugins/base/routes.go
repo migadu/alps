@@ -163,6 +163,59 @@ type CachedMessages struct {
 	// Threaded records what Total counts, so a cache hit reports the same
 	// kind of row the live listing would have. See provider.PageInfo.
 	Threaded bool
+	// Counts are the folder's message and unseen counts as they stood when
+	// the page was read, and the page is served only while the folder still
+	// has them.
+	//
+	// A check for new mail drops the pages when the counts it reads differ
+	// from the ones the session holds (handleMailboxStatus). But the check is
+	// not the only reader of those counts: the folder list that comes with
+	// every message and part read fetches them whenever they are missing, and
+	// reading a message no page holds is one way they go missing (see
+	// applyFlagsToCache). Mail that arrived in between was counted there and
+	// nowhere else, the check then saw no change, and the list went on
+	// answering from a page that did not hold the new mail until the cache
+	// expired. Held by the page itself, the counts tell it that it is out of
+	// date, whoever read them.
+	Counts mailboxCounts
+}
+
+// mailboxCounts is a folder's message and unseen counts, held by value: the
+// cached status is a pointer that a flag change moves in place.
+type mailboxCounts struct {
+	Known    bool
+	Messages uint32
+	Unseen   uint32
+}
+
+// countsOf reads the counts out of a status. A status without them (the
+// search across every folder has none) gives counts that match only each
+// other, so such a page is served as it always was.
+func countsOf(status *MailboxStatus) mailboxCounts {
+	if status == nil || status.StatusData == nil || status.NumMessages == nil || status.NumUnseen == nil {
+		return mailboxCounts{}
+	}
+	return mailboxCounts{Known: true, Messages: *status.NumMessages, Unseen: *status.NumUnseen}
+}
+
+// shiftListedUnseen moves the unseen count every cached page of a mailbox was
+// read at by step, for a message whose \Seen the pages have been brought in
+// line with. The server's count moved by the same step, and the pages are
+// still what it would list; left behind, they would be read again for a
+// change they already show.
+func shiftListedUnseen(cache *alps.Cache, mailbox string, step int) {
+	for _, key := range cache.GetKeysWithPrefix("messages:" + mailbox + ":") {
+		cached, ok := cache.Get(key)
+		if !ok {
+			continue
+		}
+		page, ok := cached.(CachedMessages)
+		if !ok || !page.Counts.Known || (step < 0 && page.Counts.Unseen == 0) {
+			continue
+		}
+		page.Counts.Unseen = uint32(int64(page.Counts.Unseen) + int64(step))
+		cache.Set(key, page)
+	}
 }
 
 // CachedMessagePart holds a cached individual message with optional body data
@@ -285,6 +338,19 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 	// Convert UID to MessageID for comparison
 	uidStr := uid.String()
 
+	// The message's own entry is asked before any page is touched. A listing
+	// caches each row twice, in the page and as the message on its own, and
+	// the two are one message in memory (handleGetMailbox): updating the page
+	// first made the entry report the change as the state before it. The
+	// copies then disagreed, and reading a listed message dropped the count
+	// instead of lowering it.
+	msgKey := fmt.Sprintf("message:%s:%s:[]", mailbox, uidStr)
+	if cached, ok := cache.Get(msgKey); ok {
+		if cachedPart, ok := cached.(CachedMessagePart); ok && cachedPart.Message != nil {
+			noteSeen(cachedPart.Message.Flags)
+		}
+	}
+
 	messageUpdated := false
 	for _, key := range keys {
 		if cached, ok := cache.Get(key); ok {
@@ -304,11 +370,9 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 	}
 
 	// Update individual message cache (metadata only)
-	msgKey := fmt.Sprintf("message:%s:%s:[]", mailbox, uidStr)
 	if cached, ok := cache.Get(msgKey); ok {
 		cachedPart := cached.(CachedMessagePart)
 		if cachedPart.Message != nil {
-			noteSeen(cachedPart.Message.Flags)
 			cachedPart.Message.Flags = updateFlags(cachedPart.Message.Flags)
 			cache.Set(msgKey, cachedPart)
 			debugf("Updated flags for message %s in individual cache", uidStr)
@@ -326,6 +390,18 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 	seenRemoved := slices.Contains(removeFlags, imap.FlagSeen)
 	if !seenAdded && !seenRemoved {
 		return
+	}
+
+	// The pages move with the server's count, cached status or not. When the
+	// copies cannot say what the message was, they keep the count they were
+	// read at: if the message was unseen, the next count read is not theirs,
+	// and they are read again.
+	switch {
+	case cachedSeen == cachedUnseen:
+	case seenAdded && cachedUnseen:
+		shiftListedUnseen(cache, mailbox, -1)
+	case seenRemoved && cachedSeen:
+		shiftListedUnseen(cache, mailbox, 1)
 	}
 
 	statusKey := "status:" + mailbox
@@ -737,14 +813,19 @@ func handleGetMailbox(ctx *alps.Context) error {
 	// A search is never answered from the cache, and never stored in it.
 	//
 	// A cached page is dropped when the mailbox changes — a write here, or its
-	// counts moving (handleMailboxStatus). A search's answer changes without
-	// either: a body word is matched through a full-text index the server
-	// builds after delivery, so the message is counted well before its body can
-	// be found. The first search for it was empty, correctly, and that empty
-	// page was then the answer to every search after it until something else
-	// in the mailbox moved. A search is a question asked on purpose; it goes to
-	// the server each time.
+	// counts moving (handleMailboxStatus, CachedMessages.Counts). A search's
+	// answer changes without either: a body word is matched through a
+	// full-text index the server builds after delivery, so the message is
+	// counted well before its body can be found. The first search for it was
+	// empty, correctly, and that empty page was then the answer to every
+	// search after it until something else in the mailbox moved. A search is
+	// a question asked on purpose; it goes to the server each time.
 	cacheable := query == ""
+
+	// The counts this page is answered beside, taken before the listing is
+	// read so that a page never claims counts newer than its rows. A cached
+	// page is served only while they are still the ones it was read at.
+	counts := countsOf(mbox)
 
 	// Try to get messages from cache
 	cached, hit := ctx.Session.Cache().Get(msgCacheKey)
@@ -752,7 +833,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 		hit = false
 	}
 	if hit {
-		if cachedData, ok := cached.(CachedMessages); ok {
+		if cachedData, ok := cached.(CachedMessages); ok && cachedData.Counts == counts {
 			total = cachedData.Total
 			threaded = cachedData.Threaded
 
@@ -788,6 +869,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 					Messages: providerMsgs,
 					Total:    total,
 					Threaded: threaded,
+					Counts:   counts,
 				})
 			}
 
@@ -911,18 +993,22 @@ func handleRenameMailbox(ctx *alps.Context) error {
 	}
 
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		// "Is this rename a move into Trash?" resolved by IMAP special-use,
-		// not by testing whether the new name starts with the English word
-		// "trash". The frontend already resolves the real Trash folder by
-		// attribute — see findMailboxNameByRole and the issue #4 comment it
-		// carries — so the two halves of one feature disagreed: on Gmail, where
-		// Trash is `[Gmail]/Trash`, the unsubscribe that is supposed to
-		// accompany the move never happened, and a user's own folder named
-		// "Trash notes" got it when it should not have.
-		if isMoveIntoTrash(p, req.NewName) {
+		// Read fresh rather than from the session's cache: which folders are
+		// subscribed is the point, and another client may have changed that.
+		// A listing that fails leaves the rename to go ahead on the Trash
+		// guess by name alone, as it always could.
+		mailboxes, _ := p.ListMailboxes()
+		plan := planRenameSubscriptions(mailboxes, mboxName, req.NewName)
+		if plan.unsubscribeOld {
 			_ = unsubscribeMailboxWithProvider(p, mboxName)
 		}
-		return renameMailboxWithProvider(p, mboxName, req.NewName)
+		if err := renameMailboxWithProvider(p, mboxName, req.NewName); err != nil {
+			return err
+		}
+		for _, name := range plan.subscribe {
+			_ = subscribeMailboxWithProvider(p, name)
+		}
+		return nil
 	})
 	if err != nil {
 		return respondMailboxError(ctx, "rename mailbox", err)
@@ -1623,8 +1709,14 @@ func handleComposeNew(ctx *alps.Context) error {
 	fromAddr := ctx.FormValue("from")
 	if fromAddr == "" {
 		fromAddr = ctx.Session.Username()
-		if settings, err := readSettings(ctx); err == nil && settings.From != "" {
-			fromAddr = fmt.Sprintf("%s <%s>", settings.From, ctx.Session.Username())
+		if settings, err := readSettings(ctx); err == nil {
+			// The display name is free text, so it is formatted as an address
+			// rather than pasted in front of one. Written bare, a comma in it
+			// ("Doe, Jane") read as two addresses, the first with none, and
+			// every send and draft save failed; quotes in it were lost.
+			if name := strings.TrimSpace(settings.From); name != "" {
+				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Username()}).String()
+			}
 		}
 	}
 
@@ -2587,18 +2679,64 @@ func handleSetFlags(ctx *alps.Context) error {
 // accord, so the HTTP layer can answer 403 instead of relaying it as a 500.
 var errEmptyNotAllowed = errors.New("emptying is only allowed for Trash and Junk mailboxes")
 
-// isMoveIntoTrash reports whether `name` is the Trash mailbox or sits beneath
-// it, with Trash identified by its \Trash special-use attribute and only
-// falling back to the English name when the server advertises none.
-func isMoveIntoTrash(p provider.MailProvider, name string) bool {
-	mailboxes, err := p.ListMailboxes()
-	if err != nil {
-		// Unknown rather than false would be more honest, but the only
-		// consequence of guessing wrong here is a missed unsubscribe, and the
-		// English name is the best guess available.
-		return strings.HasPrefix(strings.ToLower(name), "trash")
-	}
+// renameSubscriptions is what a folder rename does to subscriptions, worked
+// out before the RENAME from the listing as it stood.
+type renameSubscriptions struct {
+	// unsubscribeOld: the folder is going into Trash, and leaves the
+	// subscriptions on its way, so that other clients stop showing a deleted
+	// folder among the live ones.
+	unsubscribeOld bool
+	// subscribe: the names, after the rename, to subscribe to.
+	subscribe []string
+}
 
+// planRenameSubscriptions keeps a renamed folder's subscriptions with it.
+//
+// IMAP does not say whether a subscription follows a RENAME, and a server is
+// forbidden to drop one by itself (RFC 3501 §6.3.6), so on a server that does
+// not carry them over the old name stays subscribed and the new one is not: a
+// folder renamed here dropped out of every client that shows subscribed
+// folders only. So every folder of the renamed subtree that was subscribed is
+// subscribed again under its new name, which is harmless where the server
+// has already done it.
+//
+// Two cases are Trash's. A folder deleted into Trash leaves the subscriptions,
+// as it always has here. One taken back out of Trash — the deletion's Undo,
+// or a rename by hand — is subscribed again, because it was this unsubscribe
+// that took it out of them, and a restored folder would otherwise come back
+// missing from those clients.
+//
+// "Is this rename a move into Trash?" is resolved by IMAP special-use, not by
+// testing whether the new name starts with the English word "trash". The
+// frontend already resolves the real Trash folder by attribute — see
+// findMailboxNameByRole and the issue #4 comment it carries — so the two
+// halves of one feature disagreed: on Gmail, where Trash is `[Gmail]/Trash`,
+// the unsubscribe that is supposed to accompany the move never happened, and a
+// user's own folder named "Trash notes" got it when it should not have.
+func planRenameSubscriptions(mailboxes []provider.Mailbox, oldName, newName string) renameSubscriptions {
+	if isInTrash(mailboxes, newName) {
+		return renameSubscriptions{unsubscribeOld: true}
+	}
+	outOfTrash := isInTrash(mailboxes, oldName)
+	var plan renameSubscriptions
+	for _, mb := range mailboxes {
+		rest, ok := strings.CutPrefix(mb.Name, oldName)
+		if !ok || (rest != "" && (mb.Delimiter == 0 || !strings.HasPrefix(rest, string(mb.Delimiter)))) {
+			continue
+		}
+		if mb.Subscribed || (rest == "" && outOfTrash) {
+			plan.subscribe = append(plan.subscribe, newName+rest)
+		}
+	}
+	return plan
+}
+
+// isInTrash reports whether `name` is the Trash mailbox or sits beneath it,
+// with Trash identified by its \Trash special-use attribute and only falling
+// back to the English name when the server advertises none — or when there is
+// no listing to read, where unknown would be more honest, but the English name
+// is the best guess available.
+func isInTrash(mailboxes []provider.Mailbox, name string) bool {
 	trash := ""
 	for _, mb := range mailboxes {
 		for _, attr := range mb.Attributes {
@@ -2658,6 +2796,15 @@ func isValidIMAPKeyword(s string) bool {
 const settingsKey = "base.settings"
 const maxMessagesPerPage = 100
 
+// The most folders UnsubscribedFolders holds, and the most bytes their names
+// take together. The record is one METADATA entry, which servers cap (64 KiB
+// on sora), and every other setting has to fit in it as well. The frontend
+// keeps the newest names that fit.
+const (
+	maxUnsubscribedFolders      = 200
+	maxUnsubscribedFoldersBytes = 16 << 10
+)
+
 // The largest UID list a single flag/delete/move/copy request may carry. The
 // frontend chunks at the same number, so an ordinary selection is still one
 // round trip and only a select-everything gesture is split.
@@ -2672,6 +2819,14 @@ type UIPreferences struct {
 	ThemeIframeContent *bool    `json:"themeIframeContent,omitempty"`
 	ShowSenderAvatars  *bool    `json:"showSenderAvatars,omitempty"`
 	CustomMailboxOrder []string `json:"customMailboxOrder,omitempty"`
+
+	// UnsubscribedFolders names the folders the user unsubscribed from in
+	// alps, oldest first. The sidebar puts such a folder behind its More row
+	// for as long as the server still lists it unsubscribed. The server's own
+	// subscription list cannot answer that by itself: it also holds every
+	// folder unsubscribed in another client, and every folder a server that
+	// does not subscribe on CREATE was given unsubscribed.
+	UnsubscribedFolders []string `json:"unsubscribedFolders,omitempty"`
 }
 
 type Settings struct {
@@ -2828,6 +2983,33 @@ func (s *Settings) check() error {
 	if s.WeekStart != nil && *s.WeekStart != 0 && *s.WeekStart != 1 {
 		return fmt.Errorf("week_start must be 0 or 1")
 	}
+	if err := checkUnsubscribedFolders(s.UI.UnsubscribedFolders); err != nil {
+		return err
+	}
+	return nil
+}
+
+// checkUnsubscribedFolders holds the list to its caps, and to one entry per
+// folder: a name is a folder's, and the list is a set kept in order.
+func checkUnsubscribedFolders(names []string) error {
+	if len(names) > maxUnsubscribedFolders {
+		return fmt.Errorf("unsubscribed folders: at most %d, not %d", maxUnsubscribedFolders, len(names))
+	}
+	seen := make(map[string]bool, len(names))
+	size := 0
+	for _, name := range names {
+		if name == "" {
+			return fmt.Errorf("unsubscribed folders: a folder without a name")
+		}
+		if seen[name] {
+			return fmt.Errorf("unsubscribed folders: %q twice", name)
+		}
+		seen[name] = true
+		size += len(name)
+	}
+	if size > maxUnsubscribedFoldersBytes {
+		return fmt.Errorf("unsubscribed folders: names take %d bytes, at most %d", size, maxUnsubscribedFoldersBytes)
+	}
 	return nil
 }
 
@@ -2945,6 +3127,10 @@ func handleSettings(ctx *alps.Context) error {
 				}
 				if req.UI.CustomMailboxOrder != nil {
 					settings.UI.CustomMailboxOrder = req.UI.CustomMailboxOrder
+				}
+				// An empty list is a list: the last folder subscribed to again.
+				if req.UI.UnsubscribedFolders != nil {
+					settings.UI.UnsubscribedFolders = req.UI.UnsubscribedFolders
 				}
 			}
 

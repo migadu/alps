@@ -46,6 +46,17 @@ export function isVersionConflict(error: unknown): boolean {
 }
 
 /**
+ * May a write that failed have been made anyway?
+ *
+ * A timeout, a lost connection or a 5xx says nothing about what the server
+ * did, so a caller that rolls its screen back must read the stored state
+ * instead of trusting the rollback. A 4xx is the server's answer: it refused.
+ */
+export function outcomeUnknown(error: unknown): boolean {
+  return !(error instanceof HttpStatusError) || error.status >= 500 || error.status === 408;
+}
+
+/**
  * Did this fail because the session has ended?
  *
  * `fetchWithTimeout` has already announced it, and the user is on the way to

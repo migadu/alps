@@ -15,7 +15,7 @@ export const fr = {
     },
     loading: 'Chargement...',
     placeholderName: 'Votre Nom',
-    placeholderReplyTo: 'reponse@exemple.com',
+    placeholderReplyTo: 'reponse@exemple.example',
     general: {
       checkMailInterval: 'Intervalle de vérification du courrier',
       checkMailIntervalDesc: 'À quelle fréquence vérifier automatiquement les nouveaux messages.',
@@ -104,8 +104,8 @@ export const fr = {
       german: 'Deutsch',
       italian: 'Italiano',
       spanish: 'Español',
-      serbian: 'Српски (Ћирилица)',
-      serbianLatin: 'Srpski (Latinica)',
+      serbian: 'Српски (ћирилица)',
+      serbianLatin: 'Srpski (latinica)',
       french: 'Français',
       portuguese: 'Português',
       danish: 'Dansk'
@@ -139,10 +139,11 @@ export const fr = {
     pleaseWait: 'Veuillez patienter',
     wait: 'Patienter',
     signedOut: 'Vous avez été déconnecté.',
-    signedOutDraftsLost: 'Vous avez été déconnecté. Certains brouillons non envoyés n’ont pas pu être enregistrés et ont été perdus.',
+    signedOutDraftsKept: 'Vous avez été déconnecté. Certains brouillons non envoyés n’ont pas pu être enregistrés sur le serveur. Ils restent sur cet appareil et se rouvrent à votre prochaine connexion.',
     sessionExpired: 'Votre session a expiré. Veuillez vous reconnecter.',
+    secondFactorExpired: 'Votre connexion a expiré avant la vérification de la clé de sécurité. Veuillez vous reconnecter.',
     inactivitySignedOut: "Vous avez été déconnecté pour cause d'inactivité.",
-    inactivitySignedOutDraftsLost: "Vous avez été déconnecté pour cause d'inactivité. Certains brouillons non envoyés n’ont pas pu être enregistrés et ont été perdus."
+    inactivitySignedOutDraftsKept: "Vous avez été déconnecté pour cause d'inactivité. Certains brouillons non envoyés n’ont pas pu être enregistrés sur le serveur. Ils restent sur cet appareil et se rouvrent à votre prochaine connexion."
   },
   folderList: {
     compose: 'Nouveau message',
@@ -153,6 +154,7 @@ export const fr = {
     spam: 'Spam',
     junk: 'Indésirables',
     trash: 'Corbeille',
+    allFolders: 'Tous les dossiers',
     title: 'Dossiers',
     rename: 'Renommer',
     delete: 'Supprimer',
@@ -173,7 +175,10 @@ export const fr = {
     moveToTop: "Placer en haut",
     moveUp: "Monter",
     moveDown: "Descendre",
-    moveToBottom: "Placer en bas"
+    moveToBottom: "Placer en bas",
+    more: "Plus",
+    less: "Moins",
+    unsubscribedFolders: "Dossiers sans abonnement"
   },
   search: {
     placeholder: 'Rechercher des messages',
@@ -181,10 +186,23 @@ export const fr = {
   messageList: {
     menu: 'Menu',
     selectAll: 'Sélectionner tous les messages',
-    allOnPageSelected: 'Les {count} messages de cette page sont sélectionnés',
-    selectAllMatching: 'Sélectionner les {count} messages de {folder}',
-    allMatchingSelected: 'Les {count} messages de {folder} sont sélectionnés',
+    allOnPageSelected: {
+      one: '{count} message de cette page est sélectionné',
+      other: 'Les {count} messages de cette page sont sélectionnés'
+    },
+    selectAllMatching: {
+      one: 'Sélectionner {count} message de {folder}',
+      other: 'Sélectionner les {count} messages de {folder}'
+    },
+    allMatchingSelected: {
+      one: '{count} message de {folder} est sélectionné',
+      other: 'Les {count} messages de {folder} sont sélectionnés'
+    },
     clearSelection: 'Effacer la sélection',
+    dragCount: {
+      one: '{count} message',
+      other: '{count} messages'
+    },
     checkNew: 'Vérifier les nouveaux messages',
     sortDesc: 'Trier par date décroissante',
     sortAsc: 'Trier par date croissante',
@@ -203,14 +221,20 @@ export const fr = {
     searchResultsFor: 'Résultats de recherche pour:',
     clearSearch: 'Effacer la recherche',
     searchAllMailboxes: 'Tout rechercher',
-    totalMessagesIn: '{count} messages au total dans {folder}',
+    totalMessagesIn: {
+      one: '{count} message dans {folder}',
+      other: '{count} messages au total dans {folder}'
+    },
     totalConversationsIn: {
       one: '{count} conversation dans {folder}',
       other: '{count} conversations au total dans {folder}'
     },
     deleteAllNow: 'Tout supprimer maintenant',
     emptyMailboxTitle: 'Vider {folder}',
-    emptyMailboxConfirm: 'Êtes-vous sûr de vouloir supprimer définitivement les {count} messages dans {folder} ? Cette action ne peut pas être annulée.',
+    emptyMailboxConfirm: {
+      one: 'Êtes-vous sûr de vouloir supprimer définitivement l’unique message dans {folder} ? Cette action ne peut pas être annulée.',
+      other: 'Êtes-vous sûr de vouloir supprimer définitivement les {count} messages dans {folder} ? Cette action ne peut pas être annulée.'
+    },
     emptyMailboxConfirmConversations: {
       one: 'Êtes-vous sûr de vouloir supprimer définitivement l’unique conversation dans {folder}, et tous ses messages ? Cette action ne peut pas être annulée.',
       other: 'Êtes-vous sûr de vouloir supprimer définitivement les {count} conversations dans {folder}, et tous leurs messages ? Cette action ne peut pas être annulée.'
@@ -309,7 +333,10 @@ export const fr = {
     removeAllTags: 'Supprimer toutes les étiquettes',
     removeTag: 'Supprimer l\'étiquette',
     selectMessage: 'Sélectionnez un message à lire',
-    messagesSelected: 'messages sélectionnés',
+    messagesSelected: {
+      one: '{count} message sélectionné',
+      other: '{count} messages sélectionnés'
+    },
     back: 'Retour',
     reply: 'Répondre',
     replyAll: 'Répondre à tous',
@@ -349,6 +376,15 @@ export const fr = {
     unverifiedSender: 'Expéditeur non vérifié',
     senderUnverifiedWarning: 'Votre serveur de messagerie n\'a pas pu vérifier cet expéditeur. Le message ne vient peut-être pas de qui il prétend être, soyez donc prudent avec ses liens et ses pièces jointes.',
     clickToExpand: 'Cliquer pour développer le contenu du message'
+  },
+  address: {
+    directionalControl: 'marques de direction invisibles',
+    directionalControlTooltip: "Des marques de direction invisibles peuvent modifier l'ordre d'affichage de cette adresse.",
+    mixedScript: "l'adresse mélange des alphabets",
+    mixedScriptTooltip: 'Cette adresse mélange des lettres de différents alphabets, ce qui peut la faire ressembler à une adresse que vous connaissez.',
+    mixedScriptAscii: "En ASCII, le domaine {domain} s'écrit {ascii}.",
+    unusualDomain: 'domaine inhabituel',
+    unusualDomainTooltip: "Ce domaine n'est pas un nom de domaine Internet valide et contient des caractères hors de l'ASCII de base, il n'est donc peut-être pas le domaine qu'il semble être."
   },
   originalMessage: {
     title: 'Message original',
@@ -407,6 +443,9 @@ export const fr = {
   userMenu: {
     settings: 'Paramètres',
     signOut: 'Se déconnecter',
+    unsavedDraftsTitle: 'Se déconnecter avec des brouillons non enregistrés ?',
+    unsavedDraftsMessage: 'Un brouillon n’a pas pu être enregistré sur le serveur. Si vous vous déconnectez maintenant, il reste sur cet appareil et se rouvre à votre prochaine connexion à ce compte.',
+    signOutAnyway: 'Se déconnecter quand même',
     profileOptions: 'Options du profil'
   },
   pagination: {
@@ -414,7 +453,10 @@ export const fr = {
     nextPage: 'Page suivante',
     zeroMessages: '0 message',
     totalCount: '{total} au total',
-    searchResults: '{total} résultats',
+    searchResults: {
+      one: '{count} résultat',
+      other: '{count} résultats'
+    },
     rangeOfTotal: '{start}–{end} sur {total}'
   },
   toast: {
@@ -433,26 +475,6 @@ export const fr = {
     folderPermanentlyDeleted: 'Dossier définitivement supprimé',
     undo: 'Annuler',
     dismiss: 'Fermer',
-    messageMovedToArchive: 'Message déplacé dans les archives',
-    messagesMovedToArchive: {
-      one: "{count} message déplacé dans les archives",
-      other: "{count} messages déplacés dans les archives"
-    },
-    messageMovedToSpam: 'Message déplacé dans les indésirables',
-    messagesMovedToSpam: {
-      one: "{count} message déplacé dans les indésirables",
-      other: "{count} messages déplacés dans les indésirables"
-    },
-    messageMovedToInbox: 'Message déplacé dans la boîte de réception',
-    messagesMovedToInbox: {
-      one: "{count} message déplacé dans la boîte de réception",
-      other: "{count} messages déplacés dans la boîte de réception"
-    },
-    messageMovedToTrash: 'Message déplacé dans la corbeille',
-    messagesMovedToTrash: {
-      one: "{count} message déplacé dans la corbeille",
-      other: "{count} messages déplacés dans la corbeille"
-    },
     messageMovedToFolder: 'Message déplacé vers {folder}',
     messagesMovedToFolder: {
       one: "{count} message déplacé vers {folder}",
@@ -492,12 +514,17 @@ export const fr = {
     refresh: 'Actualiser',
     permanentlyDelete: 'Supprimer définitivement ?',
     deletePermanently: 'Supprimer définitivement',
+    discardDraftsTitle: 'Supprimer les brouillons ?',
+    discardDraftsMessage: 'Êtes-vous sûr de vouloir supprimer ces brouillons ? Cette action est irréversible.',
     undo: 'Annuler'
   },
   offline: {
     title: 'Connexion perdue',
     description: 'Connexion réseau interrompue',
-    tryingAgain: 'Nouvel essai dans {seconds} secondes...'
+    tryingAgain: {
+      one: 'Nouvel essai dans {count} seconde...',
+      other: 'Nouvel essai dans {count} secondes...'
+    }
   },
   update: {
     available: 'Une nouvelle version est disponible.',
@@ -538,10 +565,12 @@ export const fr = {
     trust_linked_checkbox: 'Autoriser le passage à ce compte sans 2FA',
     trust_password_label: 'Saisissez votre mot de passe pour confirmer',
     confirm_remove: 'Êtes-vous sûr de vouloir supprimer cette clé de sécurité ?',
+    remove_password_label: 'Saisissez votre mot de passe pour supprimer cette clé de sécurité',
     errors: {
       begin_failed: 'Échec de l\'initiation de l\'authentification.',
       invalid_options: 'Options d\'authentification invalides reçues.',
       verification_failed: 'La vérification a échoué. Veuillez réessayer.',
+      unavailable: "Le serveur n'a pas pu vérifier votre clé de sécurité pour le moment. Veuillez réessayer dans un instant.",
       register_failed: 'Une erreur s\'est produite lors de l\'enregistrement de votre clé de sécurité. Veuillez réessayer.',
       remove_failed: 'Échec de la suppression de la clé de sécurité.',
       wrong_password: "Ce mot de passe n'est pas correct.",
@@ -550,6 +579,7 @@ export const fr = {
       two_factor_required: 'Connectez-vous avec votre clé de sécurité pour modifier ce paramètre.',
       no_security_key: "Ajoutez d'abord une clé de sécurité.",
       trust_failed: "Le paramètre n'a pas pu être modifié. Veuillez réessayer.",
+      remove_unavailable: "La clé de sécurité n'a pas pu être supprimée pour le moment. Veuillez réessayer dans un instant.",
       general: 'Une erreur s\'est produite.',
     },
     settings: {

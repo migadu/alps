@@ -9,6 +9,14 @@ export interface MailboxData {
   MessagesPerPage?: number;
   Mailboxes?: any[];
   Messages?: any[];
+  /**
+   * The mailbox `Messages` were read from, stamped here from the read's own
+   * request rather than from {@link MessageSyncService.setContext}, which has
+   * moved on by the time a superseded read could land. A folder switch keeps
+   * the previous folder's rows on screen until the new ones arrive, and a row
+   * is drawn by the rules of the folder it came from.
+   */
+  ListedMailbox?: string;
 }
 
 export class MessageSyncService extends EventTarget {
@@ -24,6 +32,21 @@ export class MessageSyncService extends EventTarget {
    * new name.
    */
   private listed: boolean = false;
+
+  constructor() {
+    super();
+    // Signing out does not reload the page, and the next user's mail page
+    // listens on this same service. A read still out when the session ended
+    // is the previous user's mail: its tickets are taken here so that it
+    // cannot land. The next page's first listing supersedes a listing, but
+    // nothing superseded the folder list a create or rename re-reads, and it
+    // became the next user's sidebar.
+    window.addEventListener('session-cleared', () => {
+      this.currentFetchId++;
+      this.currentLabelsId++;
+      this.listed = false;
+    });
+  }
 
   /**
    * Updates the current context for background polling.
@@ -215,6 +238,7 @@ export class MessageSyncService extends EventTarget {
       if (this.currentFetchId !== fetchId) return; // Re-check after artificial delay
 
       this.listed = true;
+      data.ListedMailbox = mailbox;
       this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: false, quiet } }));
     } catch (err) {
       if (this.currentFetchId !== fetchId) return;
@@ -310,6 +334,7 @@ export class MessageSyncService extends EventTarget {
 
       const data: MailboxData = await response.json();
       if (this.currentFetchId !== fetchId) return true;
+      data.ListedMailbox = mailbox;
       this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: true } }));
       return true;
     } catch (err) {

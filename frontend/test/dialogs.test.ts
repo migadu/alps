@@ -209,6 +209,61 @@ describe('ui-prompt', () => {
     expect(buttons(el).map((b) => b.textContent?.trim())).toEqual(['Back', 'Create']);
   });
 
+  it('shows the owner\'s errors under their fields, and drops one once its field is typed in', async () => {
+    const el = await mount('ui-prompt', { fields: [...folderField(), { id: 'parent', label: 'Parent' }] });
+    await update(el, { errors: { name: 'Taken', parent: 'Missing' } });
+    expect(shadowAll(el, '.field-error').map((e) => [e.getAttribute('role'), e.textContent])).toEqual([['alert', 'Taken'], ['alert', 'Missing']]);
+
+    await typeInto(el, 'name', 'Receipts');
+    expect(shadowAll(el, '.field-error').map((e) => e.textContent)).toEqual(['Missing']);
+
+    // A re-render with the same errors object does not bring it back; a new
+    // refusal does.
+    const same = (el as any).errors;
+    await update(el, { errors: same, title: 'Again' });
+    expect(shadowAll(el, '.field-error')).toHaveLength(1);
+    await update(el, { errors: { name: 'Taken' } });
+    expect(shadowAll(el, '.field-error')).toHaveLength(2);
+  });
+
+  it('keeps a value its field refuses, with the field\'s words, and submits once it is put right', async () => {
+    const required = { id: 'name', label: 'Folder name', validate: (v: string) => (v ? null : 'Enter a name') };
+    const el = await mount('ui-prompt', { fields: [required] });
+    const submits = record<CustomEvent>(el, 'submit');
+    buttons(el)[1].click();
+    await (el as any).updateComplete;
+    expect(submits).toHaveLength(0);
+    expect(text(el, '.field-error')).toBe('Enter a name');
+    // The refusal is not a submit: the button is not left latched.
+    expect(buttons(el)[1].hasAttribute('disabled')).toBe(false);
+
+    await typeInto(el, 'name', 'Receipts');
+    buttons(el)[1].click();
+    expect(submits.map((e) => e.detail)).toEqual([{ name: 'Receipts' }]);
+  });
+
+  it('can be submitted again once the owner answers with an error, busy or not', async () => {
+    const el = await mount('ui-prompt', { fields: folderField() });
+    const submits = record(el, 'submit');
+    buttons(el)[1].click();
+    await (el as any).updateComplete;
+    expect(buttons(el)[1].hasAttribute('disabled')).toBe(true);
+
+    await update(el, { errors: { name: 'Taken' } });
+    await (el as any).updateComplete;
+    expect(buttons(el)[1].hasAttribute('disabled')).toBe(false);
+    buttons(el)[1].click();
+    expect(submits).toHaveLength(2);
+  });
+
+  it('styles a destructive prompt as ui-confirm does', async () => {
+    const el = await mount('ui-prompt', { fields: folderField(), title: 'Remove key', isDanger: true });
+    expect(shadow(shadow(el, 'ui-modal'), 'h3').classList.contains('danger')).toBe(true);
+    expect(buttons(el)[1].getAttribute('variant')).toBe('danger');
+    await update(el, { isDanger: false });
+    expect(buttons(el)[1].getAttribute('variant')).toBe('normal');
+  });
+
   it('survives an empty field list', async () => {
     const el = await mount('ui-prompt', { fields: [] });
     const submits = record<CustomEvent>(el, 'submit');

@@ -217,10 +217,11 @@ func (s *testServer) anotherBrowser() *testServer {
 	return &other
 }
 
-// removeKeyNamed asks for the key named name to be removed.
+// removeKeyNamed asks for the key named name to be removed, giving the
+// account's password, as removing a key takes.
 func (s *testServer) removeKeyNamed(name string) response {
 	s.t.Helper()
-	return s.do("POST", "/settings/2fa/credential/"+base64.URLEncoding.EncodeToString([]byte(name))+"/delete", nil)
+	return s.do("POST", "/settings/2fa/credential/"+base64.URLEncoding.EncodeToString([]byte(name))+"/delete", map[string]string{"current_password": testPassword})
 }
 
 // webAuthnSettings is what the settings page is told.

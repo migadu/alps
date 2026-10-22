@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
-import { bareAddress, composeContext } from '../store/compose-store';
+import { bareAddress, composeContext, draftContentKey, recipientField } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
 import { messageOperations } from '../services/message-operations';
@@ -53,6 +53,13 @@ export class AlpsFloatingComposer extends LitElement {
   @state() private isDragOver = false;
 
   private autoSaveTimer: number | null = null;
+  /** The save on the wire, for a close or a discard to wait out. */
+  private savingPromise: Promise<boolean> | null = null;
+  /** Set once a discard is under way: no save may store the draft again. */
+  private discarding = false;
+  /** The undo window of a send, and how to end it as Undo does. */
+  private undoSendTimer: number | null = null;
+  private cancelUndoSend: (() => void) | null = null;
 
   private _handleI18nChange = () => {
     this.requestUpdate();
@@ -64,6 +71,7 @@ export class AlpsFloatingComposer extends LitElement {
     window.addEventListener('dragover', this._handleWindowDragOver);
     window.addEventListener('dragleave', this._handleWindowDragLeave);
     window.addEventListener('alps-composer-drop', this._handleGlobalDropHandled as EventListener);
+    this.composeStore?.addEventListener?.('change', this._handleStoreChange);
     this.updateComplete.then(() => {
       if (!this.isConnected) return;
       this.i18nStore?.addEventListener('change', this._handleI18nChange);
@@ -78,9 +86,24 @@ export class AlpsFloatingComposer extends LitElement {
     window.removeEventListener('dragover', this._handleWindowDragOver);
     window.removeEventListener('dragleave', this._handleWindowDragLeave);
     window.removeEventListener('alps-composer-drop', this._handleGlobalDropHandled as EventListener);
+    this.composeStore?.removeEventListener?.('change', this._handleStoreChange);
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
     this._clearAutoSave();
+    // A send still in its undo window goes no further once the window is
+    // gone. A sign-out takes it away, and the timer used to send the message
+    // anyway, under whichever session was signed in by then.
+    this._clearUndoSend();
   }
+
+  /**
+   * Follows this window's composer through the store. The shell passes a new
+   * composer only when the set of windows changes, not for each keystroke,
+   * so what was typed, and where the window sits, arrive here.
+   */
+  private _handleStoreChange = () => {
+    const next = this.composeStore.getComposer(this.instance.id);
+    if (next && next !== this.instance) this.instance = next;
+  };
 
   private _handleWindowDragOver = () => {
     // If window receives dragover, it means the drag is outside the composer
@@ -130,14 +153,37 @@ export class AlpsFloatingComposer extends LitElement {
     }
   }
 
+  private _clearUndoSend() {
+    if (this.undoSendTimer !== null) {
+      window.clearTimeout(this.undoSendTimer);
+      this.undoSendTimer = null;
+    }
+    const cancel = this.cancelUndoSend;
+    this.cancelUndoSend = null;
+    cancel?.();
+  }
+
+  /**
+   * Whether a send has to stop after an await: this window is gone, or its
+   * composer has left the store, as a sign-out takes every composer. A
+   * composer still in the store is given back, so it is not left sending.
+   */
+  private _sendCutShort(id: string): boolean {
+    const current = this.composeStore.getComposer(id);
+    if (this.isConnected && current) return false;
+    if (current) this.composeStore.updateComposer(id, { isSending: false, minimized: false });
+    return true;
+  }
+
   updated(changedProperties: Map<string, any>) {
-    if (changedProperties.has('instance') && this.instance.dirty && !this.instance.isSending) {
+    if (changedProperties.has('instance') && this.instance.dirty && !this.instance.isSending && !this.instance.isSaving) {
       this._scheduleAutoSave();
     }
   }
 
   private _scheduleAutoSave() {
     this._clearAutoSave();
+    if (this.discarding) return;
     this.autoSaveTimer = window.setTimeout(() => {
       this._saveDraft();
     }, 3000); // 3 seconds auto-save
@@ -151,10 +197,22 @@ export class AlpsFloatingComposer extends LitElement {
    * not land, which is the one case where closing the window would destroy what
    * the user wrote. See `_handleCloseClick`.
    */
-  private async _saveDraft(): Promise<boolean> {
-    const currentInstance = this.composeStore.getComposer(this.instance.id) || this.instance;
-    // A save is already in flight; closing now would race it.
-    if (currentInstance.isSending || this.isSaving) return false;
+  private _saveDraft(): Promise<boolean> {
+    // A save is already in flight; a second one now would race it.
+    if (this.savingPromise) return Promise.resolve(false);
+    const running = this._doSaveDraft().finally(() => {
+      if (this.savingPromise === running) this.savingPromise = null;
+    });
+    this.savingPromise = running;
+    return running;
+  }
+
+  private async _doSaveDraft(): Promise<boolean> {
+    const id = this.instance.id;
+    const currentInstance = this.composeStore.getComposer(id) || this.instance;
+    // `isSaving` in the store is the sign-out flush saving this draft, which a
+    // second save beside it would race.
+    if (currentInstance.isSending || currentInstance.isSaving || this.discarding) return false;
 
     // Check if we have anything to save
     const hasRecipient = (currentInstance.to?.length || 0) > 0 || (currentInstance.cc?.length || 0) > 0 || (currentInstance.bcc?.length || 0) > 0;
@@ -166,8 +224,11 @@ export class AlpsFloatingComposer extends LitElement {
     }
 
     this.isSaving = true;
+    // In the store too, so the sign-out flush leaves this draft to this save.
+    this.composeStore.updateComposer(id, { isSaving: true });
     try {
       const sentUuids = (currentInstance.attachments || []).map(a => a.uuid).filter(Boolean);
+      const contentKey = draftContentKey(currentInstance);
       const formData = this._buildFormData(currentInstance);
       formData.append('save_as_draft', '1');
 
@@ -201,14 +262,19 @@ export class AlpsFloatingComposer extends LitElement {
       }
 
       if (result) {
-        // Mark as clean and update draft properties silently without triggering another auto-save
+        // Clean only if nothing changed while the request was out. What was
+        // typed meanwhile is not in this draft, and marking it clean let a
+        // close, which saves only a dirty composer, or a sign-out drop it.
+        const latest = this.composeStore.getComposer(this.instance.id) || currentInstance;
         const updates: any = {
-          dirty: false,
+          dirty: draftContentKey(latest) !== contentKey,
           draftUid: result.uid,
           draftMailbox: result.mailbox
         };
         if (result.attachments) {
-          const unsavedAttachments = (currentInstance.attachments || []).filter(a => {
+          // From the composer as it is now: one picked during the save is in
+          // neither the snapshot nor the server's answer.
+          const unsavedAttachments = (latest.attachments || []).filter(a => {
             if (a._tempId) return true; // Still uploading
             if (a.uuid && !sentUuids.includes(a.uuid)) return true; // Uploaded but not included in this save
             return false;
@@ -227,6 +293,7 @@ export class AlpsFloatingComposer extends LitElement {
       return !!result;
     } finally {
       this.isSaving = false;
+      if (this.composeStore.getComposer(id)) this.composeStore.updateComposer(id, { isSaving: false });
     }
   }
 
@@ -257,9 +324,9 @@ export class AlpsFloatingComposer extends LitElement {
     const text = currentInstance.text || '';
     const subject = (currentInstance.subject || '').trim();
 
-    formData.append('to', to.join(', '));
-    formData.append('cc', cc.join(', '));
-    formData.append('bcc', bcc.join(', '));
+    formData.append('to', recipientField(to));
+    formData.append('cc', recipientField(cc));
+    formData.append('bcc', recipientField(bcc));
     
     if (replyToSetting) {
       formData.append('reply_to', replyToSetting);
@@ -345,6 +412,7 @@ export class AlpsFloatingComposer extends LitElement {
    * when their message has attachments worth waiting for.
    */
   private async _finishDeferredClose() {
+    await this.savingPromise?.catch(() => false);
     if (await this._saveDraft()) {
       this.composeStore.closeComposer(this.instance.id);
       return;
@@ -376,7 +444,15 @@ export class AlpsFloatingComposer extends LitElement {
     // message gone from the screen AND gone from localStorage, having never
     // reached the server. Total, silent loss of what the user wrote, on the
     // gesture they use to put a message aside for later.
-    if (this.instance.dirty) {
+    //
+    // An autosave already on the wire is waited out first. Its answer decides
+    // whether anything is left to save, and a second save beside it was
+    // refused and reported as a failure while the first one was still running.
+    // Then the store's answer, not the rendered property's, which lags it: a
+    // save that has just landed may have left the composer dirty.
+    await this.savingPromise?.catch(() => false);
+    const current = this.composeStore.getComposer(this.instance.id) || this.instance;
+    if (current.dirty) {
       const saved = await this._saveDraft();
       if (!saved) {
         window.dispatchEvent(new CustomEvent('show-toast', {
@@ -432,9 +508,18 @@ export class AlpsFloatingComposer extends LitElement {
   }
 
   private async _performDiscard(type: 'close' | 'delete' | null) {
-    if (type === 'delete' && this.instance.draftUid && this.instance.draftMailbox) {
-      const mailbox = this.instance.draftMailbox;
-      const uid = String(this.instance.draftUid);
+    this.discarding = true;
+    this._clearAutoSave();
+    // A save already on the wire stores a new draft and deletes the one this
+    // window knew. Deleting before it lands deleted the old draft and left the
+    // new one in Drafts, after the user had discarded it. So the save is
+    // waited out, and the draft to delete is read from the store, which that
+    // save updates, not from the rendered property, which lags.
+    await this.savingPromise?.catch(() => false);
+    const current = this.composeStore.getComposer(this.instance.id) || this.instance;
+    if (type === 'delete' && current.draftUid && current.draftMailbox) {
+      const mailbox = current.draftMailbox;
+      const uid = String(current.draftUid);
       try {
         // `deleteMessages` reports a refusal by RETURNING false; it only throws
         // on a network error, so the catch below was the smaller half of the
@@ -456,8 +541,8 @@ export class AlpsFloatingComposer extends LitElement {
       }
     }
 
-    if (this.instance.attachments) {
-      for (const att of this.instance.attachments) {
+    if (current.attachments) {
+      for (const att of current.attachments) {
         if (att._tempId) abortUpload(att._tempId);
         else if (att.uuid) deleteAttachment(att.uuid);
       }
@@ -591,7 +676,28 @@ export class AlpsFloatingComposer extends LitElement {
 
 
 
+  /**
+   * Tab from the subject goes to the body.
+   *
+   * The formatting toolbar renders above the editor, so in document order it
+   * sits between the two, and every one of its buttons is a tab stop: a plain
+   * Tab landed on the first of them, and reaching the body took a dozen more.
+   * The toolbar stays reachable with Shift+Tab from the body. `keepCaret`
+   * puts the caret back where the user left it, as a native Tab into the
+   * editor would.
+   */
+  private _handleSubjectKeydown = (e: KeyboardEvent) => {
+    if (e.key !== 'Tab' || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+    const composer = this.composer;
+    if (!composer?.focusEditor) return;
+    e.preventDefault();
+    composer.focusEditor(true);
+  };
+
   private async _handleSend() {
+    // Captured once: the window may be gone, and its property with it, by the
+    // time the countdown ends.
+    const id = this.instance.id;
     const hasUploading = (this.instance.attachments || []).some(a => a.uploading);
     if (hasUploading) {
       window.dispatchEvent(new CustomEvent('show-toast', {
@@ -615,24 +721,27 @@ export class AlpsFloatingComposer extends LitElement {
     if (!text || allTo.length === 0) return;
 
     this._clearAutoSave();
-    this.composeStore.updateComposer(this.instance.id, { isSending: true, minimized: true });
+    this.composeStore.updateComposer(id, { isSending: true, minimized: true });
 
     try {
       let undoFn: (() => void) | undefined;
       let sendNowFn: (() => void) | undefined;
       const sendPromise = new Promise<boolean>((resolve) => {
-        let timeoutId = window.setTimeout(() => {
-          resolve(true);
-        }, UNDO_TOAST_TIMEOUT_MS);
-
-        undoFn = () => {
-          window.clearTimeout(timeoutId);
-          resolve(false);
+        let settled = false;
+        // Once only: a toast's Undo pressed late must not end the countdown
+        // of a later send from this window.
+        const settle = (send: boolean) => {
+          if (settled) return;
+          settled = true;
+          if (this.undoSendTimer !== null) window.clearTimeout(this.undoSendTimer);
+          this.undoSendTimer = null;
+          this.cancelUndoSend = null;
+          resolve(send);
         };
-        sendNowFn = () => {
-          window.clearTimeout(timeoutId);
-          resolve(true);
-        };
+        this.undoSendTimer = window.setTimeout(() => settle(true), UNDO_TOAST_TIMEOUT_MS);
+        undoFn = () => settle(false);
+        sendNowFn = () => settle(true);
+        this.cancelUndoSend = undoFn;
       });
 
       window.dispatchEvent(new CustomEvent('show-toast', {
@@ -651,13 +760,24 @@ export class AlpsFloatingComposer extends LitElement {
       }));
 
       const shouldSend = await sendPromise;
+      if (this._sendCutShort(id)) return;
       if (!shouldSend) {
-        this.composeStore.updateComposer(this.instance.id, { isSending: false, minimized: false });
-        this.composeStore.bringComposerToFront(this.instance.id);
+        this.composeStore.updateComposer(id, { isSending: false, minimized: false });
+        this.composeStore.bringComposerToFront(id);
         return;
       }
 
-      const currentInstance = this.composeStore.getComposer(this.instance.id) || this.instance;
+      // An autosave still on the wire stores a new draft and deletes the one
+      // the send would name. Sent before it landed, the message was built on
+      // the deleted draft, whose attachments it carries, and the new draft
+      // stayed in Drafts beside the sent message.
+      await this.savingPromise?.catch(() => false);
+      if (this._sendCutShort(id)) return;
+
+      // The store's composer, and no other. Falling back to the window's
+      // property sent whatever that property held, which need not be the
+      // message this send began with.
+      const currentInstance = this.composeStore.getComposer(id)!;
       let finalFormData = this._buildFormData(currentInstance);
 
       // invokeHookSettled, NOT invokeHookAsync: a presend hook that throws has
@@ -671,6 +791,7 @@ export class AlpsFloatingComposer extends LitElement {
       // plaintext send.)
       const { results: presendResults, failed: presendFailed } =
         await registry.invokeHookSettled('composer:presend', { composer: this, formData: finalFormData, instance: currentInstance });
+      if (this._sendCutShort(id)) return;
       let abortSend = presendFailed > 0;
       for (const res of presendResults) {
         if (res instanceof FormData) finalFormData = res;
@@ -678,8 +799,8 @@ export class AlpsFloatingComposer extends LitElement {
       }
 
       if (abortSend) {
-        this.composeStore.updateComposer(this.instance.id, { isSending: false, minimized: false });
-        this.composeStore.bringComposerToFront(this.instance.id);
+        this.composeStore.updateComposer(id, { isSending: false, minimized: false });
+        this.composeStore.bringComposerToFront(id);
         // A hook that threw refused nothing on purpose, so say so — an aborted
         // send with no explanation reads as the button not working.
         if (presendFailed > 0) {
@@ -698,7 +819,7 @@ export class AlpsFloatingComposer extends LitElement {
       // though it was sent.
       const sent = await messageOperations.sendDraft(finalFormData);
       if (!sent) {
-        this.composeStore.updateComposer(this.instance.id, { isSending: false });
+        this.composeStore.updateComposer(id, { isSending: false });
         return;
       }
 
@@ -708,11 +829,11 @@ export class AlpsFloatingComposer extends LitElement {
         messageSync.fetch(currentInstance.draftMailbox, 0, '', false);
       }
 
-      this.composeStore.closeComposer(this.instance.id);
+      this.composeStore.closeComposer(id);
     } catch (err: any) {
       Logger.error('Failed to send message:', err);
       // Bring back the composer window if it was minimized or hidden
-      this.composeStore.updateComposer(this.instance.id, { isSending: false, minimized: false, expanded: false });
+      this.composeStore.updateComposer(id, { isSending: false, minimized: false, expanded: false });
       this._bringToFront();
       window.dispatchEvent(new CustomEvent('show-toast', {
         detail: {
@@ -1385,10 +1506,12 @@ export class AlpsFloatingComposer extends LitElement {
 
           <div class="field-row">
             <input 
+              dir="auto"
               class="field-input" 
               placeholder=${this.i18nStore?.t('floatingComposer.subject')} 
               .value=${this.instance.subject || ''}
               @input=${(e: any) => this.composeStore.updateComposer(this.instance.id, { subject: e.target.value })}
+              @keydown=${this._handleSubjectKeydown}
               ?disabled=${this.instance.isSending}
             />
           </div>

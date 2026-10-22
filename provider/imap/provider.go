@@ -234,10 +234,22 @@ func (p *IMAPProvider) FindMailboxByType(mboxType provider.MailboxType) (*provid
 	return result, nil
 }
 
-// CreateMailbox creates a new mailbox
+// CreateMailbox creates a new mailbox and subscribes to it.
+//
+// IMAP leaves the two apart, and many servers do not subscribe a mailbox on
+// CREATE: a folder made here was then missing from every client that shows
+// subscribed folders only. Subscribing is what a mail client's New Folder
+// does. A refused
+// SUBSCRIBE does not undo or fail the create, since the folder exists either
+// way and saying it could not be created would be untrue.
 func (p *IMAPProvider) CreateMailbox(name string) error {
-	cmd := p.client.Create(name, nil)
-	return cmd.Wait()
+	if err := p.client.Create(name, nil).Wait(); err != nil {
+		return err
+	}
+	if err := p.client.Subscribe(name).Wait(); err != nil {
+		log.Printf("alps/provider: created %q, but the server refused to subscribe to it: %v", name, err)
+	}
+	return nil
 }
 
 // DeleteMailbox deletes a mailbox

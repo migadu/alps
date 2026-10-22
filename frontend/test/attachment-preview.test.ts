@@ -198,6 +198,23 @@ describe('alps-attachment-preview', () => {
     }
   });
 
+  it('keeps ArrowUp and ArrowDown from the message list underneath, and lets them scroll', async () => {
+    const el = await preview({ attachments: [part({ Filename: 'notes.txt', MIMEType: 'text/plain' })] });
+    const reached: string[] = [];
+    const listener = (e: KeyboardEvent) => reached.push(e.key);
+    document.addEventListener('keydown', listener);
+    try {
+      const events = ['ArrowUp', 'ArrowDown'].map(key => new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+      for (const event of events) document.body.dispatchEvent(event);
+      expect(reached).toEqual([]);
+      // Not cancelled: a long text attachment still scrolls with them.
+      expect(events.map(event => event.defaultPrevented)).toEqual([false, false]);
+    } finally {
+      document.removeEventListener('keydown', listener);
+      el.remove();
+    }
+  });
+
   it('stops listening for keys once it is closed', async () => {
     const el = await preview({ attachments: [part({ Filename: 'a.docx', MIMEType: '' })] });
     el.remove();
