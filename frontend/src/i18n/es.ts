@@ -246,7 +246,7 @@ export const es = {
     emptyingMailbox: 'Vaciando {folder}...',
     mailboxEmptied: 'Se ha vaciado {folder}.',
     emptyMailboxFailed: 'No se pudo vaciar {folder}.',
-    mailboxAlreadyEmpty: '{folder} ya estaba vacía: no se eliminó nada.',
+    mailboxAlreadyEmpty: 'La carpeta {folder} ya estaba vacía: no se eliminó nada.',
     emptyMailboxSlow: 'Todavía se está vaciando {folder}. El servidor sigue trabajando: vuelve a comprobarlo en un momento.'
   },
   composer: {

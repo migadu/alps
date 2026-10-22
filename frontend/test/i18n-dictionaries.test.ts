@@ -788,4 +788,53 @@ describe('terms within one locale', () => {
     expect(stringsOf('fr').filter(([, text]) => /(?<!\p{L})agendas?(?!\p{L})/iu.test(text))).toEqual([]);
     expect(lookup(fr, 'navigation.calendar')).toBe('Calendrier');
   });
+
+  it('pt names an attachment without a file name in sentence case, as en does', () => {
+    // "Anexo Desconhecido" took the English habit of a capital on every word.
+    expect(lookup(pt, 'messageReader.unknownAttachment')).toBe('Anexo desconhecido');
+  });
+});
+
+/**
+ * A folder's name has the gender and number of whatever word it is: French
+ * "Corbeille" is singular and "Indésirables" plural, Spanish "Papelera" is
+ * feminine and "Spam" masculine, Serbian "Otpad" is masculine and
+ * "Nepoželjno" neuter, and a folder the user named can be any of them. In
+ * these languages a sentence agrees with its subject, so one whose subject is
+ * the name fits some folders and misreads the rest: "{folder} ya estaba vacía"
+ * said "Spam ya estaba vacía". After the word for folder ("la carpeta
+ * {folder}", "fascikla {folder}") the name stands in apposition, and the
+ * sentence agrees with the noun, whatever the folder is called.
+ */
+const AGREEING_LOCALES = ['es', 'fr', 'it', 'pt', 'rs', 'sr'];
+
+/**
+ * Whether a sentence of `text` opens on a folder's name and goes on to say
+ * something of it. The name may be quoted, French guillemets with their inner
+ * (non-breaking) space included, and a Spanish question or exclamation opens
+ * on ¿ or ¡.
+ */
+const opensOnFolder = (text: string) =>
+  /(?:^|[.!?:;–—…]\s+|[¿¡])["«“„]?\s?\{folder\}\s?["»”]?\s+\p{L}/u.test(text);
+
+describe("a folder's name in a sentence", () => {
+  it('has a rule that catches the name as a subject and spares it after a noun or a verb', () => {
+    for (const text of [
+      '{folder} ya estaba vacía: no se eliminó nada.', 'Terminé. {folder} está vacía.', 'Terminé… {folder} está vacía.',
+      '¿{folder} ya estaba vacía?', '¡{folder} está vacía!', '«{folder}» était déjà vide.',
+      '«\u00a0{folder}\u00a0» était déjà vide.', '« {folder} » était déjà vide.',
+    ]) {
+      expect(opensOnFolder(text), text).toBe(true);
+    }
+    for (const text of [
+      'La carpeta {folder} ya estaba vacía.', 'Fascikla {folder} je već bila prazna.', 'Se ha vaciado {folder}.',
+      'Vidage du dossier {folder}...', '¿Mover "{folder}" a la Papelera?', '¿Vaciar {folder}?', '{folder}: {count}',
+    ]) {
+      expect(opensOnFolder(text), text).toBe(false);
+    }
+  });
+
+  it.each(AGREEING_LOCALES)("%s never opens a sentence on a folder's name", (code) => {
+    expect(stringsOf(code).filter(([, text]) => opensOnFolder(text))).toEqual([]);
+  });
 });
