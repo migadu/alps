@@ -60,7 +60,6 @@ export class CalendarEventPreview extends LitElement {
         }
 
         .edit-btn {
-            --icon-size: 16px;
             color: var(--text-secondary, #6b7280);
             margin-left: 12px;
             flex-shrink: 0;

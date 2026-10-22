@@ -1090,7 +1090,7 @@ export class FolderList extends LitElement {
             <alps-icon-btn 
               class="folder-toggle-btn" 
               icon=${isExpanded ? 'caretDown' : 'caretRight'}
-              style="visibility: ${hasChildren ? 'visible' : 'hidden'}; --btn-padding: 2px;" 
+              style="visibility: ${hasChildren ? 'visible' : 'hidden'};" 
               @click=${(e: Event) => {
             e.stopPropagation();
             if (hasChildren) this.toggleFolder(e, node.fullName);
@@ -1108,7 +1108,7 @@ export class FolderList extends LitElement {
                   @popup-open=${() => { this.activeKebabMenu = node.fullName; }}
                   @popup-close=${() => { if (this.activeKebabMenu === node.fullName) this.activeKebabMenu = null; }}
                 >
-                  <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" style="--btn-padding: 8px;"></alps-icon-btn>
+                  <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical"></alps-icon-btn>
                   <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
