@@ -909,6 +909,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Title":           title,
 		"Username":        ctx.Session.Username(),
+		"Address":         ctx.Session.Address(),
 		"Mailboxes":       ibase.Mailboxes,
 		"Mailbox":         ibase.Mailbox,
 		"Inbox":           ibase.Inbox,
@@ -2504,6 +2505,7 @@ func handleGetSession(ctx *alps.Context) error {
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Username":              ctx.Session.Username(),
+		"Address":               ctx.Session.Address(),
 		"PasswordChangeEnabled": passwordChangeEnabled,
 		"EnabledPlugins":        enabledPlugins,
 		"MaxAttachmentMiB":      maxAttachmentMiB,

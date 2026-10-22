@@ -1,6 +1,6 @@
 import { createContext } from '@lit/context';
 import { messageOperations } from '../services/message-operations';
-import { activeUsername, readUserSettings } from './settings-store';
+import { activeUsername, ownAddress, readUserSettings } from './settings-store';
 import { abortUploads } from '../utils/attachment-utils';
 import { Logger } from '../utils/logger';
 import { appendReplyFields } from '../utils/reply-context';
@@ -565,7 +565,8 @@ export class ComposeStore extends EventTarget {
       // in `alps_settings`, so "BCC myself" and a custom Reply-To silently
       // did nothing on every message sent.
       const sendSettings = readUserSettings();
-      const self = sendSettings.loginUsername;
+      // The address, not the login: see ownAddress.
+      const self = ownAddress(sendSettings);
       if (sendSettings.bccMyself && self && !bcc.some(addr => bareAddress(addr) === bareAddress(self))) {
         bcc.push(self);
       }

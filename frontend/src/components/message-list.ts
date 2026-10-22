@@ -10,7 +10,7 @@ import { addressText, addressWarning, displayAddress, mixedScriptStyles } from '
 import { ALL_MAILBOXES } from '../utils/folders';
 import { MESSAGE_DRAG_TYPE, type MessageDrag } from '../utils/message-drag';
 import { consume } from '@lit/context';
-import { settingsContext, SettingsStore } from '../store/settings-store';
+import { ownAddress, settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import './alps-avatar';
 import './alps-tag';
@@ -1400,7 +1400,7 @@ export class MessageList extends LitElement {
       }
     }
 
-    const loginUser = this.settingsStore?.getState()?.loginUsername?.toLowerCase() || '';
+    const loginUser = ownAddress(this.settingsStore?.getState()).toLowerCase();
 
     const isSelf = (c: any) => {
       const email = c.Mailbox && c.Host ? `${c.Mailbox}@${c.Host}`.toLowerCase() : '';

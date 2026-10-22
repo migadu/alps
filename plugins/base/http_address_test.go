@@ -90,6 +90,40 @@ func TestHTTP_ABareLoginSendsFromItsAddress(t *testing.T) {
 	s.expect(s.do("POST", "/messages", form), http.StatusOK)
 }
 
+// The browser is told the address beside the login, in the session and in
+// every folder listing: it needs one for "BCC myself" and to tell the user's
+// own address apart, and the login is no address. A login that is an address
+// is its own.
+func TestHTTP_TheSessionNamesTheUsersAddress(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		server  func(t *testing.T) *testServer
+		login   string
+		address string
+	}{
+		{"a bare login", func(t *testing.T) *testServer { return newBareLoginServer(t, "smtp://127.0.0.1:1", "example.com") }, "ada", "ada@example.com"},
+		{"an address", func(t *testing.T) *testServer { s := newTestServer(t); s.login(); return s }, testUser, testUser},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := c.server(t)
+			var who struct{ Username, Address string }
+			r := s.do("GET", "/session", nil)
+			s.expect(r, http.StatusOK)
+			r.json(t, &who)
+			if who.Username != c.login || who.Address != c.address {
+				t.Errorf("GET /session: %+v", who)
+			}
+			who.Username, who.Address = "", ""
+			r = s.do("GET", "/mailboxes/INBOX", nil)
+			s.expect(r, http.StatusOK)
+			r.json(t, &who)
+			if who.Username != c.login || who.Address != c.address {
+				t.Errorf("the listing: %+v", who)
+			}
+		})
+	}
+}
+
 // fromOf reads the one address a message's From names.
 func fromOf(raw string) (*mail.Address, error) {
 	r, err := mail.CreateReader(strings.NewReader(raw))
