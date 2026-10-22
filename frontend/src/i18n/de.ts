@@ -433,7 +433,8 @@ export const de: TranslationDictionary = {
     cannotPreview: 'Keine Vorschau für diesen Dateityp verfügbar',
     loadingPreview: 'Vorschau wird geladen...',
     errorLoading: 'Fehler beim Laden der Vorschau',
-    close: 'Schließen'
+    close: 'Schließen',
+    uploadProgress: '{percent}\u00a0% von {size}'
   },
 
   navigation: {

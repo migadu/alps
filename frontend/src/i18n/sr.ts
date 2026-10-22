@@ -441,7 +441,8 @@ export const sr = {
     cannotPreview: 'Pregled nije dostupan za ovaj tip datoteke',
     loadingPreview: 'Učitavanje pregleda...',
     errorLoading: 'Greška pri učitavanju pregleda',
-    close: 'Zatvori'
+    close: 'Zatvori',
+    uploadProgress: '{percent}% od {size}'
   },
 
   navigation: {

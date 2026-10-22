@@ -431,7 +431,8 @@ export const es = {
     cannotPreview: 'No hay vista previa disponible para este tipo de archivo',
     loadingPreview: 'Cargando vista previa...',
     errorLoading: 'Error al cargar la vista previa',
-    close: 'Cerrar'
+    close: 'Cerrar',
+    uploadProgress: '{percent}\u00a0% de {size}'
   },
 
   navigation: {

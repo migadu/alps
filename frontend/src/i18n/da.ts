@@ -478,7 +478,8 @@ export const da: TranslationDictionary = {
     cannotPreview: 'Ingen forhåndsvisning tilgængelig for denne filtype',
     loadingPreview: 'Indlæser forhåndsvisning...',
     errorLoading: 'Forhåndsvisningen kunne ikke indlæses',
-    close: 'Luk'
+    close: 'Luk',
+    uploadProgress: '{percent}\u00a0% af {size}'
   },
 
   navigation: {

@@ -431,7 +431,8 @@ export const it = {
     cannotPreview: 'Nessuna anteprima disponibile per questo tipo di file',
     loadingPreview: 'Caricamento anteprima...',
     errorLoading: 'Impossibile caricare l’anteprima',
-    close: 'Chiudi'
+    close: 'Chiudi',
+    uploadProgress: '{percent}% di {size}'
   },
 
   navigation: {
