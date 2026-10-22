@@ -335,12 +335,7 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 			// out on a dead connection instead of looping on 500s.
 			return fmt.Errorf("failed to connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, err))
 		}
-		type threadCapable interface {
-			HasThreadCapability() bool
-		}
-		if tc, ok := s.provider.(threadCapable); ok {
-			s.SetData("hasThreadCapability", tc.HasThreadCapability())
-		}
+		s.noteThreadCapability(s.provider)
 	}
 
 	done := make(chan error, 1)
@@ -398,6 +393,18 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 	}
 
 	return err
+}
+
+// noteThreadCapability records whether p's server can thread. Without a saved
+// threading preference that decides whether a listing is threaded, and the
+// listing's cached pages are named by it.
+func (s *Session) noteThreadCapability(p provider.MailProvider) {
+	type threadCapable interface {
+		HasThreadCapability() bool
+	}
+	if tc, ok := p.(threadCapable); ok {
+		s.SetData("hasThreadCapability", tc.HasThreadCapability())
+	}
 }
 
 // closeProviderAfter closes p once the pending operation (whose result lands on
@@ -1039,6 +1046,11 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 		cache:          cache,
 		duration:       sm.sessionDuration, // updated from user settings below
 	}
+	// Recorded here as well as on a reconnect, since the session keeps the
+	// connection it signed in with. Until it was, a new session without a
+	// saved preference filed its threaded pages as unthreaded, and served one
+	// of them when threading was turned off in another browser.
+	s.noteThreadCapability(p)
 	s.created = time.Now()
 	s.absoluteDeadline = sm.absoluteDeadlineFrom(s.created)
 	s.lastAccess.Store(s.created.UnixNano())
