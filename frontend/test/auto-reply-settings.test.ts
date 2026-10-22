@@ -179,8 +179,8 @@ describe('the Filters page\'s script', () => {
 });
 
 /** Mounts the page and waits for it to have read the script. */
-async function openPage(): Promise<El> {
-  const el = await mount<El>('alps-auto-reply-page', { i18nStore, settingsStore });
+async function openPage(settings: { getState: () => object } = settingsStore): Promise<El> {
+  const el = await mount<El>('alps-auto-reply-page', { i18nStore, settingsStore: settings });
   await waitFor(() => !el.shadowRoot!.querySelector('alps-loader'), 'the script to load');
   await el.updateComplete;
   return el;
@@ -261,6 +261,28 @@ describe('the auto-reply page', () => {
 
     expect(puts).toEqual([mergeAutoReply(block(), FILTERS)]);
     expect(puts[0]).toContain(`:from "${ADDRESS}"`);
+  });
+
+  // A bare login is not the account's address. When the settings hold the
+  // address the server gave for it, the reply comes from that, as a message
+  // the composer sends does; otherwise the server is left to choose.
+  it('for a bare login, saves the reply from the address the settings hold, or names none', async () => {
+    const switchOn = async (el: El) => {
+      checkbox(el)!.click();
+      await el.updateComplete;
+      await type(el, textarea(el), 'Back soon.');
+      await save(el);
+    };
+    let el = await openPage({ getState: () => ({ loginUsername: 'ada', loginAddress: 'ada@example.test' }) });
+    await switchOn(el);
+    expect(puts[0]).toContain(':from "ada@example.test" :addresses ["ada@example.test"]');
+    cleanup();
+
+    stored = '';
+    el = await openPage({ getState: () => ({ loginUsername: 'ada' }) });
+    await switchOn(el);
+    expect(puts[1]).toContain('vacation :days 7 "Back soon.";');
+    expect(puts[1]).not.toContain(':from');
   });
 
   it('switched off, keeps the text and stops the reply', async () => {

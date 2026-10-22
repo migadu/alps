@@ -126,7 +126,8 @@ function nextDay(day: string): [number, number, number] {
 }
 
 export interface AutoReplyOptions {
-	/** The account's address: the reply's From, and the address it answers for. */
+	/** The account's address: the reply's From, and the address it answers for.
+	 * Left out when it is not an address, such as a bare user name. */
 	address?: string;
 	/** The zone in force at the local midnight starting a day. The browser's, unless a test says otherwise. */
 	zoneOf?: (year: number, month: number, day: number) => string;
@@ -156,8 +157,11 @@ export function compileAutoReply(reply: AutoReply, options: AutoReplyOptions = {
 		lines.push(`require [${extensions.map(e => `"${e}"`).join(', ')}];`);
 
 		let vacation = `vacation :days ${r.days}`;
+		// A login can be a bare user name, which is no address: RFC 5230 asks
+		// the server to refuse it as :from (§4.3). Left out, the server sends
+		// from, and answers for, the account's own address.
 		const address = options.address?.trim();
-		if (address) vacation += ` :from ${sieveString(address)} :addresses [${sieveString(address)}]`;
+		if (address?.includes('@')) vacation += ` :from ${sieveString(address)} :addresses [${sieveString(address)}]`;
 		// Left out when empty, so the server words the subject itself; a blank
 		// one would answer with an empty Subject line.
 		const subject = r.subject.replace(/[\u0000-\u001f\u007f]/g, '').trim();

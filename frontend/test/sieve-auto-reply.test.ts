@@ -73,6 +73,16 @@ describe('the vacation block', () => {
     expect(block).toContain('vacation :days 7 :subject "Away" "Back on Monday.";');
   });
 
+  // Some servers sign users in with a bare user name. That is no address to
+  // send from, which RFC 5230 asks servers to refuse (§4.3), nor one to
+  // answer for (§4.5): left out, the server takes the account's own.
+  it('leaves the From to the server when the login is a bare user name', () => {
+    const block = compile(reply(), 'ada');
+    expect(block).toContain('vacation :days 7 :subject "Away" "Back on Monday.";');
+    expect(block).not.toContain(':from');
+    expect(block).not.toContain(':addresses');
+  });
+
   it('leaves the subject to the server when none is given', () => {
     expect(compile(reply({ subject: '  ' }))).toContain(`:addresses ["${ADDRESS}"] "Back on Monday.";`);
   });

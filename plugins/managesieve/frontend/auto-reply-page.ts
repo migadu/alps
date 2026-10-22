@@ -161,9 +161,17 @@ export class AutoReplyPage extends LitElement {
 		return JSON.stringify(this.draft) !== JSON.stringify(this.stored);
 	}
 
-	/** The account's own address: what the composer sends from, and so what the reply comes from. */
+	/**
+	 * The account's own address: what the reply comes from, and the address it
+	 * answers for. A login can be a bare user name, so the address the server
+	 * gave for it, `loginAddress`, comes first when the settings hold one. The
+	 * login is the fallback, and compileAutoReply leaves out one that is no
+	 * address. The state is read through these two fields alone, as the
+	 * settings may not declare the first.
+	 */
 	private get address(): string | undefined {
-		return this.settingsStore?.getState().loginUsername || undefined;
+		const state: { loginAddress?: string; loginUsername?: string } | undefined = this.settingsStore?.getState();
+		return state?.loginAddress || state?.loginUsername || undefined;
 	}
 
 	private edit(changes: Partial<AutoReply>) {
