@@ -1544,6 +1544,24 @@ export class MessageReader extends LitElement {
     return this.threadItems.find(item => this.itemKey(item) === key);
   }
 
+  /**
+   * Reads the card at once when it shows its loader with no read of it out.
+   *
+   * That is one of the unread a conversation opens expanded, still waiting
+   * its turn: it is marked loading when it is queued, and read only once the
+   * queue comes to it (see queueItemBody). Reply, Reply all and Forward on
+   * it found no read to wait for: the quote was empty, and a forward lost
+   * the original's attachments. Asked for, it is read now, as a card the
+   * user expands is, and the queue does not read it again.
+   */
+  private readWaitingCard(key: string) {
+    if (this.bodyLoads.has(key)) return;
+    const card = this.threadItems.find(item => this.itemKey(item) === key);
+    if (!card?.loading || card.content) return;
+    this.prefetchQueue = this.prefetchQueue.filter(item => this.itemKey(item) !== key);
+    void this.fetchItemBody(card);
+  }
+
   private async fetchItemBody(item: ThreadMessageItem) {
     if (!item.message) return;
     const msg = item.message;
@@ -1904,6 +1922,7 @@ export class MessageReader extends LitElement {
   private async _handleActionForItem(action: string, item: ThreadMessageItem) {
     if (action === 'reply' || action === 'replyAll' || action === 'forward') {
       const key = this.itemKey(item);
+      this.readWaitingCard(key);
       if (this.bodyLoads.has(key)) {
         const loaded = await this.loadedItem(key);
         // The card has left the conversation while its body was coming.

@@ -296,3 +296,89 @@ describe('clicked while the body is still being read', () => {
     });
   }
 });
+
+// The unread members a conversation opens expanded are read one at a time.
+// Each shows its loader from the moment it is queued, with its Reply on
+// screen, but has no read out until its turn comes. A reply to one whose
+// turn had not come found no read to wait for, and quoted nothing.
+describe('answering an unread card still waiting its turn to be read', () => {
+  const bodyOf = (uid: string) => `<p>Message ${uid} runs on cards.</p>`;
+  const member = (uid: string, day: number, flags: string[] = []) => ({
+    ...message(uid, flags),
+    Envelope: { ...message(uid).Envelope, Date: `2026-09-0${day}T10:00:00Z` },
+  });
+  /** The conversation's messages, by UID. */
+  let stored: Record<string, any>;
+  /** The member whose read the server holds: the queue's first, in flight. */
+  let busy: string;
+
+  beforeEach(() => {
+    MessageCache.clear();
+    stored = {};
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const u = String(url);
+      asked.push(u);
+      const read = u.match(/\/messages\/(\d+)\?view=html$/);
+      if (read && stored[read[1]]) {
+        if (read[1] === busy) await new Promise<void>(resolve => held.push(resolve));
+        return new Response(JSON.stringify({
+          Message: stored[read[1]], Part: { Path: [2], MIMEType: 'text/html' }, Attachments: [],
+          HasHTML: true, HasText: true,
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      const raw = u.match(/\/messages\/(\d+)\/raw\?part=2$/);
+      if (raw) return new Response(bodyOf(raw[1]), { status: 200 });
+      return new Response('{}', { status: 404 });
+    }));
+  });
+
+  const reads = (uid: string) => asked.filter(url => url.endsWith(`/messages/${uid}?view=html`));
+
+  /** Opens `open` in a conversation of `members`, oldest first, and waits
+   * until the first unread one is being read and the next is queued. */
+  async function openWithQueue(open: any, members: any[], waiting: string) {
+    for (const m of members) stored[m.UID] = m;
+    const openComposer = vi.fn();
+    const [root, ...rest] = members;
+    const el = await mount<El>('alps-message-reader', {
+      settingsStore: settingsStore(),
+      i18nStore,
+      composeStore: { openComposer },
+      mailbox: 'INBOX',
+      mailboxes: [{ Name: 'INBOX', Attrs: [] }],
+      messages: [{ ...root, SubMessages: rest }],
+      message: open,
+    });
+    await waitFor(() => reads(busy).length > 0, 'the first unread member to be read');
+    const card = el.threadItems.find((item: any) => item.message.UID === waiting);
+    expect(card.loading).toBe(true);
+    expect(reads(waiting)).toEqual([]);
+    return { el, openComposer, card };
+  }
+
+  it('reply from its card reads it then and quotes it', async () => {
+    busy = '5';
+    const { el, openComposer, card } = await openWithQueue(
+      member('7', 3, ['\\Seen']), [member('5', 1), member('6', 2), member('7', 3, ['\\Seen'])], '6');
+
+    void el._handleActionForItem('reply', card);
+    await waitFor(() => openComposer.mock.calls.length > 0, 'the composer to open');
+
+    expect(openComposer.mock.calls[0][0].text).toContain('Message 6 runs on cards.');
+    // Asked for once: the queue, once it is let go, does not ask for it again.
+    for (const resolve of held) resolve();
+    await waitFor(() => !el.prefetching, 'the queue to finish');
+    expect(reads('6')).toHaveLength(1);
+  });
+
+  it('reply under the conversation quotes the newest message', async () => {
+    busy = '6';
+    const { el, openComposer } = await openWithQueue(
+      member('5', 1, ['\\Seen']), [member('5', 1, ['\\Seen']), member('6', 2), member('7', 3)], '7');
+
+    void el.answerNewest('reply');
+    await waitFor(() => openComposer.mock.calls.length > 0, 'the composer to open');
+
+    expect(openComposer.mock.calls[0][0].text).toContain('Message 7 runs on cards.');
+  });
+});
