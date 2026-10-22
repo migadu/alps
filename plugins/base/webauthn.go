@@ -503,13 +503,17 @@ func handleVerifyFinish(ctx *alps.Context) error {
 	// pending sign-in itself is gone.
 	_, err = ctx.Server.WebAuthn.FinishLogin(user, sessionData, ctx.Request)
 	if err != nil {
-		ctx.Server.Logger().Debugf("WebAuthn verify: key refused for user %s: %v", session.Username(), err)
+		ctx.Server.Logger().Slog().Warn("sign-in failed",
+			"user", session.Username(),
+			"ip", ctx.ClientIP(),
+			"reason", "second factor refused",
+			"session", session.ID(),
+			"error", err.Error())
 		return alps.NewHTTPError(http.StatusBadRequest, "verification failed")
 	}
 
 	// Success! Mark session as authenticated with 2FA
 	session.SetAuthenticated2FA(true)
-	ctx.Server.Logger().Debugf("WebAuthn verify: successfully authenticated user %s with 2FA", session.Username())
 
 	// Clear session data and 2FA cookies
 	if err := clearSessionData(session); err != nil {
@@ -547,6 +551,14 @@ func handleVerifyFinish(ctx *alps.Context) error {
 	// Update session cookie to reflect the 2FA authenticated state
 	// This is necessary to ensure the session persists correctly
 	ctx.SetSessionWithExpiry(session, persistent)
+
+	ctx.Server.Logger().Slog().Info("sign-in",
+		"user", session.Username(),
+		"ip", ctx.ClientIP(),
+		"session", session.ID(),
+		"2fa", true,
+		"remember", persistent,
+		"agent", ctx.Request.UserAgent())
 
 	// Set login token for session restoration after server restart
 	// Retrieve credentials that were stored during initial login from session memory

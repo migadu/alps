@@ -141,6 +141,8 @@ type LoggingConfig struct {
 	Output string `toml:"output"` // "stderr", "stdout", "syslog", or file path
 	Format string `toml:"format"` // "json" or "console"
 	Level  string `toml:"level"`  // "debug", "info", "warn", "error"
+	// One line per request. A pointer so that leaving it out keeps it on.
+	Access *bool `toml:"access"`
 }
 
 type ProviderConfig struct {
@@ -375,6 +377,7 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	// comment here and the example config alike, and every page of every
 	// mailbox was then re-threaded from IMAP on every read.
 	options.CacheEnabled = c.Cache.Enabled == nil || *c.Cache.Enabled
+	options.AccessLog = c.Logging.Access == nil || *c.Logging.Access
 	if c.Cache.TTLMinutes > 0 {
 		options.CacheTTL = time.Duration(c.Cache.TTLMinutes) * time.Minute
 	}

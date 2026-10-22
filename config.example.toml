@@ -250,6 +250,14 @@ format = "console"
 # Note: When server.debug=true, the level defaults to "debug"
 level = "info"
 
+# Log every request at info level (default: true): method, path (without the
+# query string), status, bytes, duration, client IP and, once signed in, the
+# user and a session ID derived from the session token (never the token).
+# Sign-ins, failed sign-ins, account switches and session ends are logged at
+# info/warn whatever this says. Turn it off when a reverse proxy already keeps
+# an access log and the per-request lines are noise.
+# access = true
+
 [webauthn]
 # WebAuthn Configuration for Two-Factor Authentication (2FA)
 # Required for WebAuthn to work in production environments

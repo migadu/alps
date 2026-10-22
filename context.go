@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -24,6 +25,8 @@ type Context struct {
 	pathValues map[string]string
 	// store for arbitrary values
 	store map[string]interface{}
+	// who made the request, for the access log; nil when that is off
+	access *accessRecord
 }
 
 // NewContext creates a new Context.
@@ -34,7 +37,18 @@ func NewContext(w http.ResponseWriter, r *http.Request, server *Server) *Context
 		Server:     server,
 		pathValues: make(map[string]string),
 		store:      make(map[string]interface{}),
+		access:     accessRecordFrom(r),
 	}
+}
+
+// ClientIP is the address the request came from: the peer's, or behind a
+// trusted proxy the one that proxy forwarded.
+func (c *Context) ClientIP() string {
+	var trusted []*net.IPNet
+	if c.Server != nil && c.Server.Options != nil {
+		trusted = c.Server.Options.TrustedProxies
+	}
+	return getClientIP(c.Request, trusted)
 }
 
 // Set stores a value in the context.
@@ -251,6 +265,9 @@ func (c *Context) SetSessionWithExpiry(s *Session, persistent bool) {
 	}
 
 	if s != nil {
+		// A browser holds this session from here on, so its end is logged.
+		s.issued.Store(true)
+		c.access.noteSession(s)
 		cookie.Value = s.token
 		frontendCookie.Value = "1"
 		if persistent {
