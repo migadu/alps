@@ -40,6 +40,12 @@ import (
 // connection is busy, or still being opened, the session opens a connection
 // of its own beside the two, one more than it otherwise holds, until one of
 // those commands returns.
+//
+// The other way round, a session whose own connection is gone and that the
+// server will not let open another, for the account's connection limit,
+// carries on with its background connection rather than sign the user out:
+// at once when it is idle, and once the work running on it has returned when
+// it is busy (see reclaimBackground).
 const (
 	backgroundIdleTimeout = time.Minute
 	backgroundRetryAfter  = 5 * time.Minute
@@ -63,6 +69,11 @@ type backgroundConnection struct {
 	retire  bool                  // p is to be closed once its operation returns
 	ended   bool                  // the session has ended, and opens no other
 	refused time.Time             // when the mail server last did not open one
+
+	// claim is where the session's own work waits for p to be handed over
+	// once its operation returns, when the session has no connection of its
+	// own and the mail server will not open one (see reclaimBackground).
+	claim chan provider.MailProvider
 }
 
 // stopIdle stops the timer that would close the connection. The caller holds
@@ -72,6 +83,18 @@ func (bg *backgroundConnection) stopIdle() {
 		bg.idle.Stop()
 		bg.idle = nil
 	}
+}
+
+// answerClaim hands p, or nil when there is none to hand over, to the
+// session's own work when that waits for the connection (see
+// reclaimBackground), and reports whether it did. The caller holds mu.
+func (bg *backgroundConnection) answerClaim(p provider.MailProvider) bool {
+	if bg.claim == nil {
+		return false
+	}
+	bg.claim <- p
+	bg.claim = nil
+	return true
 }
 
 // DoBackgroundMail runs a mail operation the user is not waiting for on the
@@ -193,17 +216,27 @@ func (s *Session) useBackground() provider.MailProvider {
 // operation, and closes it once it has gone unused for the manager's
 // backgroundIdle. It closes it now when the session has ended or has asked
 // for it to be closed, and while the session holds a connection it has given
-// up on beside its own (see giveUpConnection). The caller holds jobs.
+// up on beside its own (see giveUpConnection). When the session's own work
+// waits for it, having no connection of its own, it hands it over instead
+// (see reclaimBackground). The caller holds jobs.
 func (s *Session) doneWithBackground() {
 	bg := &s.background
 	bg.mu.Lock()
 	bg.busy = false
 	p := bg.p
 	if p == nil {
+		bg.answerClaim(nil)
+		bg.mu.Unlock()
+		return
+	}
+	if !bg.ended && !bg.retire && bg.answerClaim(p) {
+		// The session's own connection from now on.
+		bg.p = nil
 		bg.mu.Unlock()
 		return
 	}
 	if bg.ended || bg.retire || s.givenUp.Load() > 0 {
+		bg.answerClaim(nil)
 		bg.p, bg.retire = nil, false
 		bg.mu.Unlock()
 		p.Close()
@@ -230,11 +263,13 @@ func (s *Session) doneWithBackground() {
 }
 
 // dropBackground lets go of the background connection an operation ran on,
-// which the caller closes. The caller holds jobs.
+// which the caller closes. The session's own work waiting for it gets none.
+// The caller holds jobs.
 func (s *Session) dropBackground() {
 	bg := &s.background
 	bg.mu.Lock()
 	defer bg.mu.Unlock()
+	bg.answerClaim(nil)
 	bg.p, bg.busy, bg.retire = nil, false, false
 }
 
@@ -254,6 +289,57 @@ func (s *Session) takeIdleBackground() provider.MailProvider {
 	p := bg.p
 	bg.p = nil
 	return p
+}
+
+// reclaimBackground hands the session's background connection over to the
+// session's own use, for a session that has no connection of its own and
+// that the mail server will not let open one, for the account's connection
+// limit (see atConnectionLimit). When an operation is running on it, it waits
+// for that operation to return: the session goes on with the connection it
+// holds rather than sign the user out, and holds no more than its two
+// meanwhile. It returns nil when the session has no background connection or
+// the operation loses it, and ctx's error when ctx is done first, with the
+// connection when it was handed over just then. The caller holds
+// providerLocker.
+//
+// It does not wait for jobs, which is taken before providerLocker (see
+// UpdatePassword), and so does not wait behind the background operations
+// still to start either: the operation running hands the connection over as
+// it returns (see doneWithBackground).
+func (s *Session) reclaimBackground(ctx context.Context) (provider.MailProvider, error) {
+	bg := &s.background
+	bg.mu.Lock()
+	if bg.p == nil || bg.ended {
+		bg.mu.Unlock()
+		return nil, nil
+	}
+	if !bg.busy {
+		bg.stopIdle()
+		p := bg.p
+		bg.p = nil
+		bg.mu.Unlock()
+		return p, nil
+	}
+	claim := make(chan provider.MailProvider, 1)
+	bg.claim = claim
+	bg.mu.Unlock()
+
+	select {
+	case p := <-claim:
+		return p, nil
+	case <-ctx.Done():
+	}
+	bg.mu.Lock()
+	if bg.claim == claim {
+		bg.claim = nil
+	}
+	bg.mu.Unlock()
+	select {
+	case p := <-claim:
+		return p, ctx.Err()
+	default:
+		return nil, ctx.Err()
+	}
 }
 
 // atConnectionLimit reports whether err is a mail server refusing a sign-in

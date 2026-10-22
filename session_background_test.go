@@ -426,6 +426,228 @@ func TestDoMailWithContext_ARefusedReconnectTakesTheBackgroundConnection(t *test
 	}
 }
 
+// busyBackgroundWork starts background work on s that runs until finish is
+// closed, and returns once it runs. Its result lands on the channel returned.
+func busyBackgroundWork(t *testing.T, s *Session, finish <-chan struct{}) <-chan error {
+	t.Helper()
+	busy, done := make(chan struct{}), make(chan error, 1)
+	go func() {
+		done <- s.DoBackgroundMail(context.Background(), func(provider.MailProvider) error {
+			close(busy)
+			<-finish
+			return nil
+		})
+	}()
+	<-busy
+	return done
+}
+
+// refuseForTheLimit has the mail server refuse every connection from now on,
+// for the account's connection limit.
+func refuseForTheLimit(c *mailConnections) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.refuse = func(int) error {
+		return loginRefused(imap.ResponseCodeLimit, "Maximum connections reached")
+	}
+}
+
+// A session whose own connection is gone, and that the server will not let
+// open another, carries on with its background connection when that is busy
+// too: it waits for the work running there to return, rather than sign the
+// user out while it holds a connection, and holds two at most meanwhile.
+// Whether the server dropped its own connection, or the session gave up on it
+// mid-command.
+func TestDoMailWithContext_ARefusedConnectionWaitsForBusyBackgroundWork(t *testing.T) {
+	for _, lost := range []string{"dropped", "given up on"} {
+		t.Run(lost, func(t *testing.T) {
+			var c mailConnections
+			s := newBackgroundSession(t, &c)
+			own := ownConnection(t, s)
+			background := backgroundConnectionOf(t, s)
+			backgroundFinish := make(chan struct{})
+			backgroundDone := busyBackgroundWork(t, s, backgroundFinish)
+
+			givenUpFinish := make(chan struct{})
+			defer close(givenUpFinish)
+			if lost == "given up on" {
+				ctx, cancel := context.WithCancel(context.Background())
+				busy := make(chan struct{})
+				given := make(chan error, 1)
+				go func() {
+					given <- s.DoMailWithContext(ctx, func(provider.MailProvider) error {
+						close(busy)
+						<-givenUpFinish
+						return nil
+					})
+				}()
+				<-busy
+				cancel()
+				if err := <-given; !errors.Is(err, context.Canceled) {
+					t.Fatalf("the request given up on answered %v", err)
+				}
+			}
+			refuseForTheLimit(&c)
+
+			var ranOn []provider.MailProvider
+			done := make(chan error, 1)
+			go func() {
+				done <- s.DoMail(func(p provider.MailProvider) error {
+					ranOn = append(ranOn, p)
+					if p == own {
+						return errors.New("read tcp: connection reset by peer")
+					}
+					return nil
+				})
+			}()
+			eventually(t, "the server to refuse a connection", func() bool {
+				dials, _, _, _ := c.counts()
+				return dials == 3
+			})
+			select {
+			case err := <-done:
+				select {
+				case <-s.closed:
+					t.Fatalf("the session ended (%s) while work ran on its background connection: %v", s.endReason, err)
+				default:
+					t.Fatalf("the session's own work answered %v while its background connection was busy", err)
+				}
+			case <-time.After(100 * time.Millisecond):
+			}
+
+			close(backgroundFinish)
+			if err := <-backgroundDone; err != nil {
+				t.Fatal(err)
+			}
+			if err := <-done; err != nil || len(ranOn) == 0 || ranOn[len(ranOn)-1] != background {
+				t.Fatalf("answered %v after running on %d connections; want it run on the background one once its work returned", err, len(ranOn))
+			}
+			select {
+			case <-s.closed:
+				t.Fatalf("the session ended (%s)", s.endReason)
+			default:
+			}
+			if p := ownConnection(t, s); p != background {
+				t.Error("the session's next work did not run on the connection it took")
+			}
+			if p := backgroundConnectionOf(t, s); p != background {
+				t.Error("background work did not run on the session's connection, the only one the server lets it hold")
+			}
+			if _, opened, _, mostOpen := c.counts(); opened != 2 || mostOpen != 2 {
+				t.Errorf("opened %d, at most %d at once; want 2", opened, mostOpen)
+			}
+		})
+	}
+}
+
+// A request given up on while it waits for the busy background connection
+// does not end the session either, and the session's next work takes that
+// connection once the work running there has returned.
+func TestDoMailWithContext_ARequestGivenUpOnWhileItWaitsForTheBackgroundConnection(t *testing.T) {
+	var c mailConnections
+	s := newBackgroundSession(t, &c)
+	own := ownConnection(t, s)
+	background := backgroundConnectionOf(t, s)
+	backgroundFinish := make(chan struct{})
+	backgroundDone := busyBackgroundWork(t, s, backgroundFinish)
+	refuseForTheLimit(&c)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- s.DoMailWithContext(ctx, func(p provider.MailProvider) error {
+			if p == own {
+				return errors.New("read tcp: connection reset by peer")
+			}
+			return nil
+		})
+	}()
+	eventually(t, "the server to refuse a connection", func() bool {
+		dials, _, _, _ := c.counts()
+		return dials == 3
+	})
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("the request given up on answered %v", err)
+	}
+	select {
+	case <-s.closed:
+		t.Fatalf("a request given up on ended the session (%s)", s.endReason)
+	default:
+	}
+
+	close(backgroundFinish)
+	if err := <-backgroundDone; err != nil {
+		t.Fatal(err)
+	}
+	if p := ownConnection(t, s); p != background {
+		t.Error("the session's next work did not take the background connection")
+	}
+	if _, opened, open, mostOpen := c.counts(); opened != 2 || open != 1 || mostOpen != 2 {
+		t.Errorf("opened %d, open %d, at most %d at once; want 2, 1 and 2", opened, open, mostOpen)
+	}
+}
+
+// A password change that waits for the busy background connection, and the
+// session's own work that waits for it after the server refused it another,
+// do not wait for each other: the work runs on that connection once the
+// operation there has returned, and the password change after it.
+func TestUpdatePassword_AndTheSessionsOwnWorkBothWaitingForTheBackgroundConnection(t *testing.T) {
+	var c mailConnections
+	s := newBackgroundSession(t, &c)
+	own := ownConnection(t, s)
+	background := backgroundConnectionOf(t, s)
+	backgroundFinish := make(chan struct{})
+	backgroundDone := busyBackgroundWork(t, s, backgroundFinish)
+
+	changed := make(chan error, 1)
+	go func() { changed <- s.manager.UpdatePassword(s, "new") }()
+	time.Sleep(50 * time.Millisecond)
+
+	refuseForTheLimit(&c)
+	var ranOn provider.MailProvider
+	done := make(chan error, 1)
+	go func() {
+		done <- s.DoMail(func(p provider.MailProvider) error {
+			if p == own {
+				return errors.New("read tcp: connection reset by peer")
+			}
+			ranOn = p
+			return nil
+		})
+	}()
+	eventually(t, "the session's own work to wait for the background connection", func() bool {
+		s.background.mu.Lock()
+		defer s.background.mu.Unlock()
+		return s.background.claim != nil
+	})
+	c.mu.Lock()
+	c.refuse = nil
+	c.mu.Unlock()
+	close(backgroundFinish)
+
+	timeout := time.After(2 * time.Second)
+	for _, ch := range []<-chan error{backgroundDone, done, changed} {
+		select {
+		case err := <-ch:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-timeout:
+			t.Fatal("the session's own work and the password change waited for each other")
+		}
+	}
+	if ranOn != background {
+		t.Error("the session's own work did not run on the background connection")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.mostOpen != 2 || c.passwords[len(c.passwords)-1] != "new" {
+		t.Errorf("at most %d connections at once, the last signed in with %q; want 2, and the new password", c.mostOpen, c.passwords[len(c.passwords)-1])
+	}
+}
+
 // A reconnect refused for anything but the connection limit still ends the
 // session, as it did before it had a background connection: a password
 // changed or revoked meanwhile is not carried on with by the connection that

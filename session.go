@@ -340,6 +340,18 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 		if s.provider = s.takeIdleBackground(); s.provider == nil {
 			s.provider, err = s.manager.connectProvider(s.username, s.password)
 		}
+		if err != nil && atConnectionLimit(err) {
+			// At the account's connection limit, the background connection
+			// instead, once the operation running on it has returned: see
+			// reclaimBackground.
+			var waitErr error
+			if s.provider, waitErr = s.reclaimBackground(ctx); waitErr != nil {
+				return fmt.Errorf("context cancelled: %w", waitErr)
+			}
+			if s.provider != nil {
+				err = nil
+			}
+		}
 		if err != nil {
 			s.CloseWithReason("mail-server-unavailable")
 			// Wrap with %w so errors.As can still recover an AuthError (bad
@@ -387,10 +399,15 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 		s.provider, reErr = s.manager.connectProvider(s.username, s.password)
 		if reErr != nil && atConnectionLimit(reErr) {
 			// A server that will not let the account open another connection
-			// still answers on the background one the session holds. Not a
-			// server that refused the password, nor one that could not be
-			// reached: the session ends then, as it did before it had one.
-			if s.provider = s.takeIdleBackground(); s.provider != nil {
+			// still answers on the background one the session holds, once the
+			// operation running on it has returned. Not a server that refused
+			// the password, nor one that could not be reached: the session
+			// ends then, as it did before it had one.
+			var waitErr error
+			if s.provider, waitErr = s.reclaimBackground(ctx); waitErr != nil {
+				return fmt.Errorf("context cancelled: %w", waitErr)
+			}
+			if s.provider != nil {
 				reErr = nil
 			}
 		}
