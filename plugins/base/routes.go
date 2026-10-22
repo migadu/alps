@@ -1733,14 +1733,16 @@ func handleComposeNew(ctx *alps.Context) error {
 
 	fromAddr := ctx.FormValue("from")
 	if fromAddr == "" {
-		fromAddr = ctx.Session.Username()
+		// The user's address, not the login: a login can be a bare user
+		// name, which is no address to send from (see Session.Address).
+		fromAddr = ctx.Session.Address()
 		if settings, err := readSettings(ctx); err == nil {
 			// The display name is free text, so it is formatted as an address
 			// rather than pasted in front of one. Written bare, a comma in it
 			// ("Doe, Jane") read as two addresses, the first with none, and
 			// every send and draft save failed; quotes in it were lost.
 			if name := strings.TrimSpace(settings.From); name != "" {
-				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Username()}).String()
+				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Address()}).String()
 			}
 		}
 	}

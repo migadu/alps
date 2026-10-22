@@ -86,6 +86,7 @@ var (
 type Session struct {
 	manager            *SessionManager
 	username, password string
+	address            string // see Address
 	token              string
 	id                 string    // names the session in the log, see sessionLogID
 	created            time.Time // when the password was accepted
@@ -171,6 +172,18 @@ func (s *Session) UpdateDuration(d time.Duration) {
 // Username returns the session's username.
 func (s *Session) Username() string {
 	return s.username
+}
+
+// Address returns the user's email address, worked out once, at sign-in. A
+// login with an "@" is its own address. One without is a user name, which
+// some IMAP servers sign users in with and which the multi provider completes
+// with its default_domain to choose a backend: the provider names the address
+// it stands for when it can. Otherwise the login is all there is.
+func (s *Session) Address() string {
+	if s.address == "" {
+		return s.username
+	}
+	return s.address
 }
 
 // Password returns the session's password.
@@ -717,6 +730,10 @@ type SessionManager struct {
 	// node is alone. See RequireSecondFactor.
 	broadcaster ClusterBroadcaster
 
+	// addresses completes a login that is not an address, or is nil when the
+	// provider cannot. See Session.Address.
+	addresses provider.AddressResolver
+
 	locker       sync.RWMutex
 	sessions     map[string]*Session // token -> Session, protected by locker
 	userSessions map[string][]string // username -> []token, protected by locker
@@ -881,6 +898,18 @@ func (sm *SessionManager) connectProvider(username, password string) (provider.M
 	return sm.connectProviderFunc(username, password)
 }
 
+// addressOf is the email address of the user who signs in as username: see
+// Session.Address.
+func (sm *SessionManager) addressOf(username string) string {
+	if strings.Contains(username, "@") || sm.addresses == nil {
+		return username
+	}
+	if addr := sm.addresses.AddressOf(username); addr != "" {
+		return addr
+	}
+	return username
+}
+
 func (sm *SessionManager) get(token string) (*Session, error) {
 	sm.locker.RLock()
 	defer sm.locker.RUnlock()
@@ -1035,6 +1064,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 		provider:       p,
 		username:       username,
 		password:       password,
+		address:        sm.addressOf(username),
 		attachments:    make(map[string]*Attachment),
 		cache:          cache,
 		duration:       sm.sessionDuration, // updated from user settings below

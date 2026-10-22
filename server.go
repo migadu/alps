@@ -64,6 +64,11 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 	providerFactory := options.Provider.CreateFactory(options.ProviderTimeout, options.Debug)
 
 	s.Sessions = newSessionManager(providerFactory, s.dialSMTP, logger, options.CacheTTL, options.CacheEnabled, options.LoginKey, options.SessionDuration, options.MaxSessionDuration, options.MaxSessions, options.MaxSessionsPerUser, options.MaxAttachmentMiB, options.MaxSessionAttachmentMiB, options.MaxGlobalAttachmentMiB)
+	// A provider that knows the address of a bare login says it: see
+	// Session.Address.
+	if r, ok := options.Provider.(provider.AddressResolver); ok {
+		s.Sessions.addresses = r
+	}
 	// Set after construction rather than as a fourteenth positional argument to
 	// newSessionManager, which every session test already calls.
 	if options.AbsoluteSessionDuration != 0 {

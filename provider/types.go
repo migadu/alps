@@ -291,6 +291,15 @@ type ServiceRouter interface {
 	ServiceOptions(service, username string) map[string]interface{}
 }
 
+// AddressResolver is implemented by provider Options that know the email
+// address of a login that is not one. The multi provider takes a bare user
+// name under its default_domain, and the address is the two together.
+type AddressResolver interface {
+	// AddressOf returns the address of a login with no "@" in it, or "" when
+	// the provider cannot tell.
+	AddressOf(username string) string
+}
+
 // Service names understood by ServiceRouter.
 const (
 	ServiceSMTP        = "smtp"
