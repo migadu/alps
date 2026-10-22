@@ -377,7 +377,9 @@ export const de: TranslationDictionary = {
     verifiedSender: 'Verifizierter Absender',
     unverifiedSender: 'Unverifizierter Absender',
     senderUnverifiedWarning: 'Ihr Mailserver konnte diesen Absender nicht verifizieren. Die Nachricht stammt möglicherweise nicht von dem, der sie zu senden vorgibt. Seien Sie daher vorsichtig mit Links und Anhängen.',
-    clickToExpand: 'Klicken, um den Nachrichteninhalt zu erweitern'
+    clickToExpand: 'Klicken, um den Nachrichteninhalt zu erweitern',
+    loadError: 'Diese Nachricht konnte nicht geladen werden.',
+    loadErrorRetry: 'Erneut versuchen'
   },
   address: {
     directionalControl: 'versteckte Richtungszeichen',

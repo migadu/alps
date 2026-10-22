@@ -375,7 +375,9 @@ export const es = {
     verifiedSender: 'Remitente verificado',
     unverifiedSender: 'Remitente no verificado',
     senderUnverifiedWarning: 'Tu servidor de correo no pudo verificar este remitente. Puede que el mensaje no sea de quien dice ser, así que ten cuidado con sus enlaces y archivos adjuntos.',
-    clickToExpand: 'Clic para expandir el contenido del mensaje'
+    clickToExpand: 'Clic para expandir el contenido del mensaje',
+    loadError: 'No se pudo cargar este mensaje.',
+    loadErrorRetry: 'Reintentar'
   },
   address: {
     directionalControl: 'marcas de dirección ocultas',

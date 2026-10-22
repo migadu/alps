@@ -420,7 +420,9 @@ export const pt = {
     verifiedSender: 'Remetente Verificado',
     unverifiedSender: 'Remetente Não Verificado',
     senderUnverifiedWarning: 'O seu servidor de correio não conseguiu verificar este remetente. A mensagem pode não ser de quem diz ser, por isso tenha cuidado com os links e os anexos.',
-    clickToExpand: 'Clique para expandir o conteúdo da mensagem'
+    clickToExpand: 'Clique para expandir o conteúdo da mensagem',
+    loadError: 'Não foi possível carregar esta mensagem.',
+    loadErrorRetry: 'Tentar novamente'
   },
   address: {
     directionalControl: 'marcas de direção ocultas',
