@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, click, mount, record, shadow, waitFor } from './helpers/dom';
 import type { ComposerInstance } from '../src/store/compose-store';
 import { messageOperations } from '../src/services/message-operations';
+import { messageSync } from '../src/services/message-sync';
 import { replyContext } from '../src/utils/reply-context';
 import '../src/components/alps-floating-composer';
 
@@ -224,5 +225,41 @@ describe('a send pressed during an autosave', () => {
 
     expect(sendDraft).toHaveBeenCalledTimes(1);
     expect((sendDraft.mock.calls[0][0] as FormData).get('draft_uid')).toBe('8');
+  });
+});
+
+describe('after a send of a message the autosave had stored', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('leaves the listing, and the polling, on the folder on screen', async () => {
+    // The first autosave tells the composer where its draft lives, and the
+    // send deletes that draft. Re-reading Drafts for it re-pointed the
+    // listing at Drafts: Drafts' rows went up under the folder on screen,
+    // and every poll and refresh after that read Drafts.
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ Messages: [] }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    messageSync.setContext('INBOX', 0);
+
+    const instance: ComposerInstance = {
+      id: 'c1', to: ['ada@example.com'], subject: 'Hi', text: 'Hello', format: 'text',
+      draftUid: '7', draftMailbox: 'Drafts',
+    };
+    const composeStore = storeFor(instance);
+    vi.spyOn(messageOperations, 'sendDraft').mockResolvedValue(true);
+    const toasts = record<CustomEvent>(window, 'show-toast');
+
+    const el = await mount('alps-floating-composer', { instance, composeStore, i18nStore });
+    await click(shadow(el, '.send-actions alps-button[variant="primary"]'), el);
+    await waitFor(() => toasts.length > 0, 'the undo toast');
+    toasts[0].detail.dismissFn();
+    await waitFor(() => composeStore.closeComposer.mock.calls.length > 0, 'the composer to close after sending');
+
+    // What the next refresh, or the next poll, lists.
+    messageSync.sync();
+    const listed = fetchMock.mock.calls.map(call => String((call as unknown[])[0]));
+    expect(listed.filter(url => url.startsWith('/mailboxes/Drafts'))).toEqual([]);
+    expect(listed.at(-1)).toMatch(/^\/mailboxes\/INBOX\?/);
   });
 });
