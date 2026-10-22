@@ -42,7 +42,10 @@ type IMAPProvider struct {
 
 	// selectedUIDValidity is the UIDVALIDITY the selected mailbox was
 	// selected with; ensureMailboxSelected is the only place that selects.
+	// selectedUIDNext is its UIDNEXT then, or 0 when the server did not say
+	// (see arrivedSinceSelect).
 	selectedUIDValidity uint32
+	selectedUIDNext     imap.UID
 	verdictLock         sync.Mutex
 	verdicts            map[string]*mailboxVerdicts
 	dateCache           map[string]map[uint32]time.Time
@@ -323,6 +326,7 @@ func (p *IMAPProvider) EmptyMailbox(name string) (int, error) {
 		return 0, fmt.Errorf("failed to select mailbox: %v", err)
 	}
 	p.selectedUIDValidity = data.UIDValidity
+	p.selectedUIDNext = data.UIDNext
 
 	if data.NumMessages == 0 {
 		return 0, nil
@@ -373,8 +377,18 @@ func (p *IMAPProvider) ensureMailboxSelected(mboxName string) error {
 			return fmt.Errorf("failed to select mailbox: %v", err)
 		}
 		p.selectedUIDValidity = data.UIDValidity
+		p.selectedUIDNext = data.UIDNext
 	}
 	return nil
+}
+
+// arrivedSinceSelect reports whether uid may name a message that came into
+// the selected mailbox after it was selected. Such a message may not be
+// announced to this session yet, and a UID FETCH that misses it is worth
+// asking again after a NOOP. Any other message that is still there is in the
+// session's view, so a UID FETCH that does not answer it means it is gone.
+func (p *IMAPProvider) arrivedSinceSelect(uid imap.UID) bool {
+	return p.selectedUIDNext == 0 || uid >= p.selectedUIDNext
 }
 
 type ThreadGroup struct {
@@ -1037,11 +1051,14 @@ func (p *IMAPProvider) GetMessageMetadata(mailbox string, id provider.MessageID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch message metadata: %v", err)
 	} else if len(msgs) == 0 {
-		// Try syncing state with NOOP and fetching again
-		if err := p.client.Noop().Wait(); err == nil {
-			msgs, err = p.client.Fetch(imap.UIDSetNum(imap.UID(uid)), &options).Collect()
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch message metadata after NOOP: %v", err)
+		// Try syncing state with NOOP and fetching again, for a message the
+		// session may not have been told about yet. Any other is gone.
+		if p.arrivedSinceSelect(imap.UID(uid)) {
+			if err := p.client.Noop().Wait(); err == nil {
+				msgs, err = p.client.Fetch(imap.UIDSetNum(imap.UID(uid)), &options).Collect()
+				if err != nil {
+					return nil, fmt.Errorf("failed to fetch message metadata after NOOP: %v", err)
+				}
 			}
 		}
 		if len(msgs) == 0 {
@@ -1126,11 +1143,14 @@ func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath 
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to fetch message: %v", err)
 	} else if len(msgs) == 0 {
-		// Try syncing state with NOOP and fetching again
-		if err := p.client.Noop().Wait(); err == nil {
-			msgs, err = p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
-			if err != nil {
-				return nil, nil, nil, fmt.Errorf("failed to fetch message after NOOP: %v", err)
+		// Try syncing state with NOOP and fetching again, for a message the
+		// session may not have been told about yet. Any other is gone.
+		if p.arrivedSinceSelect(uid) {
+			if err := p.client.Noop().Wait(); err == nil {
+				msgs, err = p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
+				if err != nil {
+					return nil, nil, nil, fmt.Errorf("failed to fetch message after NOOP: %v", err)
+				}
 			}
 		}
 		if len(msgs) == 0 {
@@ -1185,11 +1205,14 @@ func (p *IMAPProvider) getMessagePartWithData(mailbox string, uid imap.UID, part
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("failed to fetch message: %v", err)
 	} else if len(msgs) == 0 {
-		// Try syncing state with NOOP and fetching again
-		if err := p.client.Noop().Wait(); err == nil {
-			msgs, err = p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
-			if err != nil {
-				return nil, nil, nil, nil, fmt.Errorf("failed to fetch message after NOOP: %v", err)
+		// Try syncing state with NOOP and fetching again, for a message the
+		// session may not have been told about yet. Any other is gone.
+		if p.arrivedSinceSelect(uid) {
+			if err := p.client.Noop().Wait(); err == nil {
+				msgs, err = p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
+				if err != nil {
+					return nil, nil, nil, nil, fmt.Errorf("failed to fetch message after NOOP: %v", err)
+				}
 			}
 		}
 		if len(msgs) == 0 {

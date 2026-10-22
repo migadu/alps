@@ -6,6 +6,7 @@
 package imap
 
 import (
+	"errors"
 	"io"
 	"regexp"
 	"testing"
@@ -139,3 +140,44 @@ func TestADraftsFolderRenamedElsewhereIsLookedUpAgain(t *testing.T) {
 		t.Errorf("saved to %q, want the folder under its new name", got)
 	}
 }
+
+// A message that was in the folder when it was selected is in this session's
+// view of it until the session is told it is gone, so a UID FETCH that does
+// not answer it means it is gone. Asking again after a NOOP cost two round
+// trips on every read of a message expunged in the meantime.
+func TestReadingAMessageThatIsGoneAsksOnce(t *testing.T) {
+	s := &memServer{caps: imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapUIDPlus: {}}}
+	p := memIMAP(t, s,
+		conversation("Gone", "gone@remote.test", ""),
+		conversation("Kept", "kept@remote.test", ""),
+	)
+	if err := p.DeleteMessages("INBOX", []provider.MessageID{IMAPUID(1)}); err != nil {
+		t.Fatal(err)
+	}
+
+	reads := []struct {
+		how  string
+		read func() error
+	}{
+		{"metadata", func() error { _, err := p.GetMessageMetadata("INBOX", IMAPUID(1)); return err }},
+		{"part", func() error { _, _, err := p.GetMessagePart("INBOX", IMAPUID(1), []int{1}); return err }},
+		{"part with data", func() error { _, _, _, _, err := p.GetMessagePartWithData("INBOX", IMAPUID(1), []int{1}); return err }},
+		{"raw part", func() error { _, _, _, err := p.GetMessagePartRaw("INBOX", IMAPUID(1), []int{1}, 0); return err }},
+	}
+	for _, r := range reads {
+		before := len(s.traffic.String())
+		if err := r.read(); !errors.Is(err, provider.ErrMessageNotFound) {
+			t.Errorf("%s: err = %v, want ErrMessageNotFound", r.how, err)
+		}
+		sent := s.traffic.String()[before:]
+		if n := len(fetchCommands.FindAllString(sent, -1)); n != 1 {
+			t.Errorf("%s: %d UID FETCH for a message that is gone, want 1", r.how, n)
+		}
+		if n := len(noopCommands.FindAllString(sent, -1)); n != 0 {
+			t.Errorf("%s: %d NOOP for a message that is gone, want none", r.how, n)
+		}
+	}
+}
+
+// fetchCommands matches a UID FETCH the client sent.
+var fetchCommands = regexp.MustCompile(`(?m)^[^*\s]\S* UID FETCH `)
