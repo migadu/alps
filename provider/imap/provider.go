@@ -1052,7 +1052,14 @@ func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath 
 		headerItem.Specifier = imap.PartSpecifierHeader
 	}
 
+	// PEEK, like the header: a plain BODY[] fetch sets \Seen on the server as
+	// a side effect (RFC 3501, 6.4.5). A read of a message goes through here
+	// or through getMessagePartWithData — the reader opening it, an inline
+	// image, an attachment, a printout — and none of them is the user saying
+	// the message was read. The client sets \Seen itself, when the "Mark as
+	// read" setting says to.
 	bodyItem := &imap.FetchItemBodySection{
+		Peek: true,
 		Part: partPath,
 	}
 	if len(partPath) > 0 {
@@ -1114,7 +1121,9 @@ func (p *IMAPProvider) getMessagePartWithData(mailbox string, uid imap.UID, part
 		headerItem.Specifier = imap.PartSpecifierHeader
 	}
 
+	// PEEK, for the reason getMessagePartRaw gives.
 	bodyItem := &imap.FetchItemBodySection{
+		Peek: true,
 		Part: partPath,
 	}
 	if len(partPath) > 0 {
