@@ -224,6 +224,9 @@ type CachedMessagePart struct {
 	HeaderData []byte // nil if only envelope/flags are cached
 	BodyData   []byte // nil if only envelope/flags are cached
 	Mailbox    string
+	// UIDValidity is the mailbox's UIDVALIDITY the part was read under (see
+	// partUIDValidity), and zero when it was not known.
+	UIDValidity uint32
 }
 
 // updateCachedMessageFlags updates flags for specific messages in cached message lists
@@ -1357,10 +1360,27 @@ func cachedSentMailbox(cache *alps.Cache) string {
 }
 
 func handleGetPart(ctx *alps.Context, raw bool) error {
-	_, uidStr, err := parseMboxAndUidStr(ctx.Param("mbox"), ctx.Param("uid"))
+	mboxName, uidStr, err := parseMboxAndUidStr(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
 		return err
 	}
+
+	// A part the browser holds already is confirmed first, with nothing
+	// fetched: not the folder list, not the settings, not the part. Without
+	// it, every inline image of a message reopened after the session cache
+	// had let it go was one more FETCH on the session's one connection.
+	var validity uint32
+	if raw {
+		validity, err = mailboxUIDValidity(ctx, mboxName)
+		if err != nil {
+			return err
+		}
+		if etag := rawPartETag(ctx, validity); etag != "" && etagListed(ctx.Request.Header.Get("If-None-Match"), etag) {
+			setRawPartCaching(ctx.Response.Header(), etag)
+			return ctx.NoContent(http.StatusNotModified)
+		}
+	}
+
 	ibase, err := getBaseMailboxData(ctx)
 	if err != nil {
 		return err
@@ -1439,6 +1459,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 	var msg *IMAPMessage
 	var headerData, bodyData []byte
+	var partValidity uint32
 
 	limitStr := ctx.QueryParam("limit")
 	var limit int64
@@ -1453,10 +1474,13 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	partPathStr := fmt.Sprintf("%v", partPath)
 	msgCacheKey := fmt.Sprintf("message:%s:%s:%s:limit%d", mbox.Name(), uid.String(), partPathStr, limit)
 
-	// Try to get message from cache
+	// Try to get message from cache. /raw takes a part only from an entry
+	// read under the UIDVALIDITY the mailbox has now: an entry can outlive
+	// the cached UIDVALIDITY it was read under, and if the mailbox has been
+	// made again since, its bytes are another message's.
 	var cachedPart *CachedMessagePart
 	if cached, ok := ctx.Session.Cache().Get(msgCacheKey); ok {
-		if cp, ok := cached.(CachedMessagePart); ok {
+		if cp, ok := cached.(CachedMessagePart); ok && (!raw || cp.UIDValidity == validity) {
 			cachedPart = &cp
 		}
 	}
@@ -1477,6 +1501,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			msg = &imapMsg
 			headerData = cachedData.HeaderData
 			bodyData = cachedData.BodyData
+			partValidity = cachedData.UIDValidity
 
 			ctx.Server.Logger().Debugf("Cache HIT (full) for message %s/%v part %v", mbox.Name(), uid, partPath)
 		} else {
@@ -1498,13 +1523,15 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 				if err != nil {
 					return err
 				}
+				partValidity = partUIDValidity(ctx, p, mbox.Name(), validity)
 
 				// Update cache with body data using provider type
 				ctx.Session.Cache().Set(msgCacheKey, CachedMessagePart{
-					Message:    providerMsg,
-					HeaderData: headerData,
-					BodyData:   bodyData,
-					Mailbox:    mbox.Name(),
+					Message:     providerMsg,
+					HeaderData:  headerData,
+					BodyData:    bodyData,
+					Mailbox:     mbox.Name(),
+					UIDValidity: partValidity,
 				})
 				ctx.Server.Logger().Debugf("Cache HIT (metadata only), fetched body for message %s/%s part %v", mbox.Name(), uid.String(), partPath)
 				return nil
@@ -1546,6 +1573,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			if err != nil {
 				return err
 			}
+			partValidity = partUIDValidity(ctx, p, mbox.Name(), validity)
 
 			if tempMsg != nil {
 				providerMsg.BimiPotential = tempMsg.HasBimiPotential
@@ -1557,10 +1585,11 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 			// Cache the raw bytes using provider type so we can recreate fresh readers
 			ctx.Session.Cache().Set(msgCacheKey, CachedMessagePart{
-				Message:    providerMsg,
-				HeaderData: headerData,
-				BodyData:   bodyData,
-				Mailbox:    mbox.Name(),
+				Message:     providerMsg,
+				HeaderData:  headerData,
+				BodyData:    bodyData,
+				Mailbox:     mbox.Name(),
+				UIDValidity: partValidity,
 			})
 			ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched and cached", mbox.Name(), uid.String(), partPath)
 			return nil
@@ -1589,6 +1618,10 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	// The provider abstraction doesn't expose this, and we use standard flags below
 
 	if raw {
+		// Named by the UIDVALIDITY the part was read under, which is newer
+		// than the one looked up above when the cache held an older one.
+		etag := rawPartETag(ctx, partValidity)
+
 		// For raw mode, work directly with headerData and bodyData bytes
 		// Parse the MIME header
 		h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headerData)))
@@ -1626,6 +1659,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 			ctx.Response.Header().Set("Content-Type", mimeType)
 			ctx.Response.Header().Set("Content-Length", fmt.Sprintf("%d", len(headerData)+len(bodyData)))
+			setRawPartCaching(ctx.Response.Header(), etag)
 
 			dispParams := map[string]string{"filename": filename}
 			ctx.Response.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", dispParams))
@@ -1657,6 +1691,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		}
 		ctx.Response.Header().Set("Content-Type", mimeType)
 		ctx.Response.Header().Set("Content-Length", fmt.Sprintf("%d", len(decodedBody)))
+		setRawPartCaching(ctx.Response.Header(), etag)
 
 		// Get filename from Content-Disposition or Content-Type params
 		disp, dispParams, _ := msgHeader.ContentDisposition()

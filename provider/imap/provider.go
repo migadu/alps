@@ -328,6 +328,16 @@ func (p *IMAPProvider) ensureMailboxSelected(mboxName string) error {
 	return nil
 }
 
+// SelectedUIDValidity is the UIDVALIDITY mailbox is selected under, and so
+// the one the UIDs just read from it were given under. It is zero when
+// another mailbox, or none, is selected.
+func (p *IMAPProvider) SelectedUIDValidity(mailbox string) uint32 {
+	if mbox := p.client.Mailbox(); mbox == nil || mbox.Name != mailbox {
+		return 0
+	}
+	return p.selectedUIDValidity
+}
+
 type ThreadGroup struct {
 	RepUID uint32
 	UIDs   []uint32
