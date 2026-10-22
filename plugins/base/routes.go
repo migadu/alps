@@ -202,7 +202,9 @@ func heldUIDValidities(cache *alps.Cache, mailbox string) []uint32 {
 		if !ok {
 			continue
 		}
-		if page, ok := cached.(CachedMessages); ok && page.Counts.UIDValidity != 0 {
+		// Another folder's pages were read at its own UIDVALIDITY, and taken
+		// for this one's they would make it look made again.
+		if page, ok := cached.(CachedMessages); ok && page.Mailbox == mailbox && page.Counts.UIDValidity != 0 {
 			held = append(held, page.Counts.UIDValidity)
 		}
 	}
@@ -222,6 +224,11 @@ func renumberedSince(held []uint32, now uint32) bool {
 
 // CachedMessages holds cached message list data
 type CachedMessages struct {
+	// Mailbox is the folder the page lists. A page is found by the prefix of
+	// its key, "messages:<folder>:", and the pages of a folder whose name
+	// begins with another's and a colon, as "Work:Sub" begins with "Work",
+	// have keys with the other folder's prefix too.
+	Mailbox  string
 	Messages []provider.Message
 	Total    int
 	// Threaded records what Total counts, so a cache hit reports the same
@@ -990,6 +997,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 			// Cache the message list using provider types
 			if cacheable {
 				ctx.Session.Cache().Set(msgCacheKey, CachedMessages{
+					Mailbox:  mbox.Name(),
 					Messages: providerMsgs,
 					Total:    total,
 					Threaded: threaded,

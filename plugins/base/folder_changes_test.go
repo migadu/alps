@@ -385,6 +385,58 @@ func TestHTTP_ACheckThatFindsNothingNewReadsNoMessages(t *testing.T) {
 	}
 }
 
+// A folder's name may begin with another's and a colon, as "Work:Sub" begins
+// with "Work", and then the session's keys for its pages begin with the other
+// folder's. Its pages were read at its own UIDVALIDITY, not the other
+// folder's: taken for pages of Work, they made a check of Work, or a refresh
+// of it, see Work as made again elsewhere, which drops every message read
+// from it, and the next open read the message from the server again.
+func TestHTTP_AFolderNamedLikeAnotherIsNotTakenForIt(t *testing.T) {
+	ways := []struct {
+		name  string
+		visit func(s *testServer)
+	}{
+		{"checked", func(s *testServer) { s.statusCheck("Work") }},
+		{"refreshed", func(s *testServer) { s.listing("/mailboxes/Work?page=0&refresh=1") }},
+	}
+	for _, server := range countingServers {
+		for _, way := range ways {
+			t.Run(server.name+"/"+way.name, func(t *testing.T) {
+				s, wire, elsewhere := newIMAPAccountServer(t, server.caps)
+				c := elsewhere()
+				for _, name := range []string{"Work", "Work:Sub"} {
+					if err := c.Create(name, nil).Wait(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				deliverElsewhere(t, c, "Work", letter("Plans"))
+				deliverElsewhere(t, c, "Work:Sub", letter("Sub plans"))
+				s.login()
+				page := s.checkForNewMail("Work")
+				if got := subjectsOf(page); got != "Plans" {
+					t.Fatalf("Work shows %q", got)
+				}
+				uid := page.Messages[0].UID
+				if got := s.rawMessage("Work", uid); !strings.Contains(got, "Subject: Plans") {
+					t.Fatalf("Plans, UID %s of Work, opens as:\n%s", uid, got)
+				}
+				if got := subjectsOf(s.checkForNewMail("Work:Sub")); got != "Sub plans" {
+					t.Fatalf("Work:Sub shows %q", got)
+				}
+				way.visit(s)
+
+				before := len(wire.String())
+				if got := s.rawMessage("Work", uid); !strings.Contains(got, "Subject: Plans") {
+					t.Fatalf("Plans, UID %s of Work, opens as:\n%s", uid, got)
+				}
+				if reads := messageReads.FindAllString(wire.String()[before:], -1); len(reads) > 0 {
+					t.Errorf("with Work:Sub beside it, Work %s dropped the message read from it, read again with %q", way.name, reads)
+				}
+			})
+		}
+	}
+}
+
 // statusCheck is what a check for new mail answers about a folder, and the
 // answer as it came. UIDNext and UIDValidity are nil where it has none.
 type statusCheck struct {
