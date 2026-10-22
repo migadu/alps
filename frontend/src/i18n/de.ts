@@ -545,6 +545,7 @@ export const de: TranslationDictionary = {
     next: "Weiter",
     expand: "Aufklappen",
     collapse: "Zuklappen",
+    moreOptions: "Weitere Optionen",
     notFound: "Seite nicht gefunden"
   },
   webauthn: {

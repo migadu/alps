@@ -543,6 +543,7 @@ export const it = {
     next: "Successivo",
     expand: "Espandi",
     collapse: "Comprimi",
+    moreOptions: "Altre opzioni",
     notFound: "Pagina non trovata"
   },
   webauthn: {

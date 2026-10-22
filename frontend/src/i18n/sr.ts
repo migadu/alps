@@ -560,6 +560,7 @@ export const sr = {
     next: "Napred",
     expand: "Proširi",
     collapse: "Skupi",
+    moreOptions: "Više opcija",
     notFound: "Stranica nije pronađena"
   },
   webauthn: {

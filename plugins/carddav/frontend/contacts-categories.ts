@@ -118,6 +118,17 @@ export class AlpsContactsCategories extends LitElement {
     .category-actions.popup-open ~ .category-badge {
       display: none;
     }
+    /* The menu is shown while the keyboard is in its row, so that Tab
+       reaches it from the category's button: a button inside display: none
+       is no Tab stop, and so it could never take the focus that shows it.
+       Not while a click has put the focus on the button: a click leaves the
+       row as it was. */
+    .category-item:focus-within:not(:has(.category-control:focus:not(:focus-visible))) .category-actions {
+      display: flex;
+    }
+    .category-item.has-actions:focus-within:not(:has(.category-control:focus:not(:focus-visible))) .category-badge {
+      display: none;
+    }
     /* The part of the row that is its button: the icon and the name. The
        row's menu and count sit beside it, not in it. */
     .category-control {
@@ -228,7 +239,7 @@ export class AlpsContactsCategories extends LitElement {
                         @popup-open=${() => { this.activeKebabMenu = cat; }}
                         @popup-close=${() => { if (this.activeKebabMenu === cat) this.activeKebabMenu = null; }}
                       >
-                        <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical"></alps-icon-btn>
+                        <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" title=${this.i18nStore?.t('general.moreOptions')}></alps-icon-btn>
                         <button class="dropdown-item" @click=${(e: Event) => {
             const popup = (e.target as HTMLElement).closest('alps-popup') as any;
             if (popup) popup.close();

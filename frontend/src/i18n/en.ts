@@ -588,6 +588,7 @@ export const en = {
     next: "Next",
     expand: "Expand",
     collapse: "Collapse",
+    moreOptions: "More options",
     notFound: "Page not found"
   }
 };

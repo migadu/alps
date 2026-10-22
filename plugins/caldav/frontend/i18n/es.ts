@@ -18,6 +18,8 @@ export default {
         rename: 'Renombrar',
         delete: 'Eliminar',
         addCalendar: 'Añadir calendario',
+        previousMonth: 'Mes anterior',
+        nextMonth: 'Mes siguiente',
         renameCalendar: 'Renombrar calendario',
         deleteCalendar: 'Eliminar calendario',
         deleteCalendarConfirm: '¿Seguro que quieres eliminar el calendario "{name}"?',

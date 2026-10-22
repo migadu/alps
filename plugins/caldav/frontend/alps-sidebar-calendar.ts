@@ -66,9 +66,9 @@ export class AlpsSidebarCalendar extends LitElement {
         return html`
             <div class="mini-calendar-wrapper">
                 <div class="mini-header">
-                    <alps-icon-btn icon="caretLeft" @click=${() => this.changeMonth(-1)}></alps-icon-btn>
+                    <alps-icon-btn icon="caretLeft" title=${this.i18nStore?.t('calendar.previousMonth')} @click=${() => this.changeMonth(-1)}></alps-icon-btn>
                     <span>${monthName} ${year}</span>
-                    <alps-icon-btn icon="caretRight" @click=${() => this.changeMonth(1)}></alps-icon-btn>
+                    <alps-icon-btn icon="caretRight" title=${this.i18nStore?.t('calendar.nextMonth')} @click=${() => this.changeMonth(1)}></alps-icon-btn>
                 </div>
                 <calendar-mini-month
                     .year=${year}

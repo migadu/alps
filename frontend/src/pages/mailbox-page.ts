@@ -1101,9 +1101,11 @@ export class MailboxPage extends LitElement {
    * ArrowDown or ArrowUp pressed where nothing else takes it: the list's.
    *
    * The list moves its cursor only on keys pressed inside it, and opening a
-   * folder from the sidebar leaves focus on the page itself, so the arrows
-   * did nothing until the list had been clicked. Only a key from the page
-   * body or a link is passed on; a field, a button, a menu or a dialog keeps
+   * folder from the sidebar leaves the focus on the page or on the folder's
+   * name, neither of which the list hears, so the arrows did nothing until
+   * the list had been clicked. Only a key from the page body, a link or a
+   * folder's name in the sidebar is passed on: a folder's name is a button
+   * that takes no arrows. A field, another button, a menu or a dialog keeps
    * its own arrows, and so does the list.
    */
   private handleStrayArrow = (e: KeyboardEvent) => {
@@ -1114,7 +1116,8 @@ export class MailboxPage extends LitElement {
     // shadow roots that `closest()` cannot see out of.
     const path = e.composedPath().filter((n): n is HTMLElement => n instanceof HTMLElement);
     const origin = path[0];
-    if (!origin || (origin !== document.body && origin.tagName !== 'A')) return;
+    const folderName = origin?.classList.contains('folder-name') && path.some(n => n.tagName === 'ALPS-FOLDER-LIST');
+    if (!origin || (origin !== document.body && origin.tagName !== 'A' && !folderName)) return;
     if (path.some(n => n.tagName === 'ALPS-MESSAGE-LIST' || n.tagName === 'DIALOG'
       || ['dialog', 'menu', 'listbox'].includes(n.getAttribute('role') ?? ''))) return;
     const list = this.renderRoot.querySelector('alps-message-list') as MessageList | null;

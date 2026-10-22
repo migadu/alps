@@ -18,6 +18,8 @@ export default {
         rename: 'Umbenennen',
         delete: 'Löschen',
         addCalendar: 'Kalender hinzufügen',
+        previousMonth: 'Vorheriger Monat',
+        nextMonth: 'Nächster Monat',
         renameCalendar: 'Kalender umbenennen',
         deleteCalendar: 'Kalender löschen',
         deleteCalendarConfirm: 'Möchten Sie den Kalender "{name}" wirklich löschen?',
