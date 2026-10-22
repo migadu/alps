@@ -29,6 +29,8 @@ func providerMailboxToInfo(mbox provider.Mailbox) MailboxInfo {
 		listData.Status = &imap.StatusData{
 			NumMessages: &numMessages,
 			NumUnseen:   &numUnseen,
+			UIDValidity: mbox.UIDValidity,
+			UIDNext:     imap.UID(mbox.UIDNext),
 		}
 	}
 
@@ -52,6 +54,7 @@ func providerStatusToMailboxStatus(status *provider.MailboxStatus) *MailboxStatu
 			NumMessages: &status.NumMessages,
 			NumUnseen:   &status.NumUnseen,
 			UIDValidity: status.UIDValidity,
+			UIDNext:     imap.UID(status.UIDNext),
 		},
 	}
 }
