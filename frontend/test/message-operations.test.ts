@@ -7,7 +7,7 @@
  * re-read a list that is now wrong.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BATCH_MAX_UIDS, MessageOperationsService } from '../src/services/message-operations';
+import { BATCH_MAX_UIDS, MessageOperationsService, MissingUploadsError } from '../src/services/message-operations';
 import { messageSync } from '../src/services/message-sync';
 
 const json = (status: number, body?: unknown) =>
@@ -177,6 +177,16 @@ describe('saving and sending', () => {
     fetchMock.mockResolvedValueOnce(json(401)).mockResolvedValueOnce(json(500, {})).mockRejectedValueOnce(new TypeError('offline'));
     expect(await ops.saveDraft(new FormData())).toBeNull();
     expect(await ops.saveDraft(new FormData())).toBeNull();
+    expect(await ops.saveDraft(new FormData())).toBeNull();
+  });
+
+  it('names the uploads the server no longer holds, so a save or a send can go again without them', async () => {
+    const refusal = () => json(409, { error: 'unable to retrieve message attachment u1', missing_attachments: ['u1'] });
+    fetchMock.mockResolvedValueOnce(refusal()).mockResolvedValueOnce(refusal());
+    await expect(ops.saveDraft(new FormData())).rejects.toMatchObject({ name: 'MissingUploadsError', uuids: ['u1'] });
+    await expect(ops.sendDraft(new FormData())).rejects.toBeInstanceOf(MissingUploadsError);
+    // A 409 that names none is an ordinary refusal.
+    fetchMock.mockResolvedValueOnce(json(409, { error: 'conflict' }));
     expect(await ops.saveDraft(new FormData())).toBeNull();
   });
 

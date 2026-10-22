@@ -1,10 +1,10 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
-import { bareAddress, composeContext, draftContentKey, recipientField } from '../store/compose-store';
+import { bareAddress, composeContext, draftContentKey, recipientField, uploadGone } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
-import { messageOperations } from '../services/message-operations';
+import { messageOperations, MissingUploadsError } from '../services/message-operations';
 import { readUserSettings } from '../store/settings-store';
 import { messageSync } from '../services/message-sync';
 import './alps-address-input.js';
@@ -211,11 +211,61 @@ export class AlpsFloatingComposer extends LitElement {
   private _saveDraft(): Promise<boolean> {
     // A save is already in flight; a second one now would race it.
     if (this.savingPromise) return Promise.resolve(false);
-    const running = this._doSaveDraft().finally(() => {
+    const running = this._saveDraftWithoutGoneUploads().finally(() => {
       if (this.savingPromise === running) this.savingPromise = null;
     });
     this.savingPromise = running;
     return running;
+  }
+
+  /**
+   * `_doSaveDraft`, and once more when the server no longer holds uploads the
+   * save named, as after a session expired: those are listed as files to add
+   * again, and the rest of the draft is saved without them. Every save used
+   * to fail on them until the user removed them by hand. Twice at most: the
+   * server names every upload it lacks at once, so a second refusal is one
+   * more let go between the two requests, left to the next autosave.
+   */
+  private async _saveDraftWithoutGoneUploads(): Promise<boolean> {
+    const id = this.instance.id;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this._doSaveDraft();
+      } catch (error) {
+        if (!(error instanceof MissingUploadsError)) throw error;
+        this._markUploadsGone(id, error.uuids);
+        if (attempt === 2 || !this.isConnected || !this.composeStore.getComposer(id)) return false;
+      }
+    }
+  }
+
+  /**
+   * Lists the attachments whose uploads the server no longer holds as files
+   * to add again, and says so. They stay on screen under their names and are
+   * sent with nothing, which also leaves the composer unsaved.
+   */
+  private _markUploadsGone(id: string, uuids: string[]) {
+    const composer = this.composeStore.getComposer(id);
+    if (!composer) return;
+    const gone = new Set(uuids);
+    let count = 0;
+    const attachments = (composer.attachments || []).map(a => {
+      if (!a.uuid || !gone.has(a.uuid)) return a;
+      count++;
+      return uploadGone(a);
+    });
+    if (count === 0) return;
+    this.composeStore.updateComposer(id, { attachments });
+    this._toastUploadsGone(count);
+  }
+
+  private _toastUploadsGone(count: number) {
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: {
+        message: this.i18nStore?.t('composer.attachmentsGone', { count }),
+        duration: 8000
+      }
+    }));
   }
 
   private async _doSaveDraft(): Promise<boolean> {
@@ -745,6 +795,13 @@ export class AlpsFloatingComposer extends LitElement {
       }));
       return;
     }
+    // A file whose upload the server no longer holds would not go with the
+    // message. It is added again, or removed to send without it.
+    const gone = (this.instance.attachments || []).filter(a => a.missing).length;
+    if (gone > 0) {
+      this._toastUploadsGone(gone);
+      return;
+    }
 
     const text = this.instance.text || '';
     const to = this.instance.to || [];
@@ -811,6 +868,17 @@ export class AlpsFloatingComposer extends LitElement {
       await this.savingPromise?.catch(() => false);
       if (this._sendCutShort(id)) return;
 
+      // That save may have been refused over an upload the server no longer
+      // holds, and listed the file as one to add again. Sent now, the message
+      // would go without it.
+      const goneNow = (this.composeStore.getComposer(id)?.attachments || []).filter(a => a.missing).length;
+      if (goneNow > 0) {
+        this.composeStore.updateComposer(id, { isSending: false, minimized: false });
+        this.composeStore.bringComposerToFront(id);
+        this._toastUploadsGone(goneNow);
+        return;
+      }
+
       // The store's composer, and no other. Falling back to the window's
       // property sent whatever that property held, which need not be the
       // message this send began with.
@@ -868,6 +936,15 @@ export class AlpsFloatingComposer extends LitElement {
 
       this.composeStore.closeComposer(id);
     } catch (err: any) {
+      if (err instanceof MissingUploadsError) {
+        // Nothing was sent. The window comes back with those files listed
+        // as ones to add again; it is unsaved now, so the autosave stores
+        // the rest of the draft without them.
+        this.composeStore.updateComposer(id, { isSending: false, minimized: false, expanded: false });
+        this._bringToFront();
+        this._markUploadsGone(id, err.uuids);
+        return;
+      }
       Logger.error('Failed to send message:', err);
       // Bring back the composer window if it was minimized or hidden
       this.composeStore.updateComposer(id, { isSending: false, minimized: false, expanded: false });
@@ -902,9 +979,16 @@ export class AlpsFloatingComposer extends LitElement {
       || 'Attachments exceed the maximum allowed size.';
   }
 
+  /** What the composer's files take of its budget. One to add again is held
+   * by no upload, so it takes none: counted, adding it again could be refused
+   * as too large. */
+  private _attachedBytes(): number {
+    return (this.instance.attachments || []).reduce((sum, a) => sum + (a.missing ? 0 : (a.size || 0)), 0);
+  }
+
   private _handleAttachClick() {
     const maxBytes = (this.settingsStore?.getState()?.maxAttachmentMiB || 32) * 1024 * 1024;
-    const currentBytes = (this.instance.attachments || []).reduce((sum, a) => sum + (a.size || 0), 0);
+    const currentBytes = this._attachedBytes();
 
     handleAttachClick(
       this.instance.id,
@@ -917,7 +1001,7 @@ export class AlpsFloatingComposer extends LitElement {
 
   private _startUpload(files: File[]) {
     const maxBytes = (this.settingsStore?.getState()?.maxAttachmentMiB || 32) * 1024 * 1024;
-    const currentBytes = (this.instance.attachments || []).reduce((sum, a) => sum + (a.size || 0), 0);
+    const currentBytes = this._attachedBytes();
     
     uploadFiles(
       files,
@@ -947,7 +1031,13 @@ export class AlpsFloatingComposer extends LitElement {
           uploading: true,
           progress: 0
         };
-        const attachments = [...currentAttachments, newAttachment];
+        // A file added again takes the place of its entry listed as one to
+        // add again, which would otherwise stay, and keep Send refused. The
+        // entry is kept with it, for an upload that fails to give back.
+        const again = currentAttachments.findIndex(a => a.missing && a.filename === file.name && (!a.size || a.size === file.size));
+        const attachments = again === -1
+          ? [...currentAttachments, newAttachment]
+          : currentAttachments.map((a, i) => (i === again ? { ...newAttachment, _replaces: a } : a));
         this.composeStore.updateComposer(this.instance.id, { attachments });
       },
       (tempId, progress) => {
@@ -972,6 +1062,7 @@ export class AlpsFloatingComposer extends LitElement {
           delete newAtt.uploading;
           delete newAtt.progress;
           delete newAtt._tempId;
+          delete newAtt._replaces;
           attachments[idx] = newAtt;
           this.composeStore.updateComposer(this.instance.id, { attachments });
 
@@ -998,7 +1089,10 @@ export class AlpsFloatingComposer extends LitElement {
         const attachments = [...currentAttachments];
         const idx = attachments.findIndex(a => a._tempId === tempId);
         if (idx !== -1) {
-          attachments.splice(idx, 1);
+          // A file being added again is still one to add again.
+          const replaced = attachments[idx]._replaces;
+          if (replaced) attachments[idx] = replaced;
+          else attachments.splice(idx, 1);
           this.composeStore.updateComposer(this.instance.id, { attachments });
         }
 

@@ -254,6 +254,10 @@ export const fr = {
     attachmentsTooLarge: 'Les pièces jointes dépassent la taille maximale autorisée.',
     draftSaveFailedKeepOpen: 'Impossible d’enregistrer ce brouillon — la fenêtre reste ouverte pour ne rien perdre',
     attachmentsWait: 'Veuillez attendre que le téléchargement des pièces jointes soit terminé avant d\'envoyer.',
+    attachmentsGone: {
+      one: '{count} pièce jointe doit être jointe à nouveau : le serveur n’a plus le fichier envoyé.',
+      other: '{count} pièces jointes doivent être jointes à nouveau : le serveur n’a plus les fichiers envoyés.'
+    },
     sending: 'Envoi du message en cours...',
     undo: 'Annuler',
     sendError: 'Échec de l\'envoi du message : {error}',
@@ -417,6 +421,7 @@ export const fr = {
   },
   attachment: {
     remove: 'Supprimer',
+    addAgain: 'À joindre à nouveau',
     preview: 'Aperçu',
     download: 'Télécharger',
     zoomIn: 'Zoom avant',

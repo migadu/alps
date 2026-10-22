@@ -7,7 +7,7 @@
  * stores something the last one did not.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, mount } from './helpers/dom';
+import { cleanup, mount, record, text, waitFor } from './helpers/dom';
 import { ComposeStore } from '../src/store/compose-store';
 import { DraftFlushError } from '../src/utils/draft-flush-error';
 import { messageOperations } from '../src/services/message-operations';
@@ -51,6 +51,11 @@ class HeldUpload {
   finish(uuid: string) {
     this.status = 200;
     this.responseText = JSON.stringify([uuid]);
+    this.onload?.();
+  }
+  fail() {
+    this.status = 500;
+    this.responseText = JSON.stringify({ error: 'failed to store attachment' });
     this.onload?.();
   }
 }
@@ -262,5 +267,176 @@ describe('the answer to a save', () => {
     expect(sentForm(1).get('draft_uid')).toBe('8');
     expect(sentForm(1).has('attachment-uuids')).toBe(false);
     expect(store.getComposer(id)).toMatchObject({ draftUid: '9', dirty: false });
+  });
+});
+
+describe('an upload the server no longer holds', () => {
+  const answer = (status: number, body: unknown) =>
+    new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  const gone = (uuid: string) => answer(409, { error: `unable to retrieve message attachment ${uuid}`, missing_attachments: [uuid] });
+
+  /** The server, answering each POST /messages in turn; the forms it was sent. */
+  function server(...answers: Response[]) {
+    const posted: FormData[] = [];
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url !== '/messages') return answer(404, {});
+      posted.push(init!.body as FormData);
+      return answers.shift() ?? answer(500, {});
+    });
+    vi.stubGlobal('fetch', fetch);
+    return { posted, fetch };
+  }
+
+  it('is listed as a file to add again, and the rest of the draft is saved without it', async () => {
+    // As after the session it was uploaded in expired. The composer kept
+    // the id, and every autosave, and the send, failed on it until the user
+    // found the file and removed it.
+    const { posted } = server(gone('u1'), answer(200, {
+      draft_uid: '8', draft_mailbox: 'Drafts',
+      attachments: [{ name: 'ledger.txt', size: 16, type: 'text/plain', partPath: '2', source: { uuid: 'u2' } }],
+    }));
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const { store, instance, id } = composerIn({
+      attachments: [{ filename: 'notes.txt', size: 16, uuid: 'u1' }, { filename: 'ledger.txt', size: 16, uuid: 'u2' }],
+    });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(posted.map(form => form.get('attachment-uuids'))).toEqual(['u1,u2', 'u2']);
+    expect(store.getComposer(id)?.attachments).toEqual([
+      { filename: 'notes.txt', size: 16, missing: true },
+      { name: 'ledger.txt', size: 16, type: 'text/plain', partPath: '2' },
+    ]);
+    expect(store.getComposer(id)).toMatchObject({ draftUid: '8' });
+    expect(toasts.map(e => e.detail.message)).toEqual(['composer.attachmentsGone']);
+  });
+
+  it('reads so on its pill', async () => {
+    const pill = await mount('alps-attachment-pill', {
+      attachment: { filename: 'notes.txt', size: 16, missing: true }, removable: true, i18nStore,
+    });
+    expect(text(pill, '.attachment-size')).toBe('attachment.addAgain');
+  });
+
+  it('stops a send, which brings the window back with the file to add again, and sends nothing without it', async () => {
+    const { fetch } = server(gone('u1'));
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const { store, instance, id } = composerIn({
+      text: 'See the file.', attachments: [{ filename: 'notes.txt', size: 16, uuid: 'u1' }],
+    });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    const send = el._handleSend();
+    await waitFor(() => toasts.length > 0, 'the undo toast');
+    toasts[0].detail.dismissFn();
+    await send;
+
+    expect(store.getComposer(id)).toMatchObject({
+      isSending: false, minimized: false, attachments: [{ filename: 'notes.txt', size: 16, missing: true }],
+    });
+    expect(toasts.map(e => e.detail.message)).toEqual(['composer.sending', 'composer.attachmentsGone']);
+
+    // Send again: nothing goes until the file is added again, or removed.
+    await el.updateComplete;
+    await el._handleSend();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(toasts.map(e => e.detail.message)).toEqual(['composer.sending', 'composer.attachmentsGone', 'composer.attachmentsGone']);
+  });
+
+  it('stops a send when the save it waited for listed a file as one to add again', async () => {
+    // The autosave out when Send was pressed came back refused during the
+    // countdown. The file it listed had no id left to send, and the message
+    // went out without it.
+    let answerSave!: (res: Response) => void;
+    const posted: string[] = [];
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (url !== '/messages') return Promise.resolve(answer(404, {}));
+      const form = init!.body as FormData;
+      posted.push(form.has('save_as_draft') ? 'save' : 'send');
+      if (posted.length === 1) return new Promise<Response>(resolve => { answerSave = resolve; });
+      return Promise.resolve(answer(200, {}));
+    }));
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const { store, instance, id } = composerIn({
+      text: 'See the file.', attachments: [{ filename: 'notes.txt', size: 16, uuid: 'u1' }],
+    });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    const saving = el._saveDraft();
+    const send = el._handleSend();
+    await waitFor(() => toasts.length > 0, 'the undo toast');
+    answerSave(gone('u1'));
+    await saving;
+    toasts[0].detail.dismissFn();
+    await send;
+
+    expect(posted).toEqual(['save']);
+    expect(store.getComposer(id)).toMatchObject({
+      isSending: false, minimized: false, attachments: [{ filename: 'notes.txt', size: 16, missing: true }],
+    });
+    expect(toasts.at(-1)?.detail.message).toBe('composer.attachmentsGone');
+  });
+
+  it('is no longer listed once the file is added again, and the message goes with it', async () => {
+    // The pill and the notice ask for the file again. Added again, it stayed
+    // listed beside the new upload, and Send kept refusing.
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({
+      uid: '8', mailbox: 'Drafts', attachments: [storedPart('notes.txt', '2', { uuid: 'u9' })],
+    });
+    const sendDraft = vi.spyOn(messageOperations, 'sendDraft').mockResolvedValue(true);
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const { store, instance, id } = composerIn({
+      text: 'See the file.', attachments: [{ filename: 'notes.txt', size: 16, missing: true }],
+    });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    el._startUpload([file('notes.txt')]);
+    expect(store.getComposer(id)?.attachments).toHaveLength(1);
+    HeldUpload.all[0].finish('u9');
+    await waitFor(() => vi.mocked(messageOperations.saveDraft).mock.calls.length > 0, 'the save');
+    await el.updateComplete;
+
+    const send = el._handleSend();
+    await waitFor(() => toasts.length > 0, 'the undo toast');
+    toasts[0].detail.dismissFn();
+    await send;
+    expect(sendDraft).toHaveBeenCalledTimes(1);
+    expect((sendDraft.mock.calls[0][0] as FormData).get('prev_attachments')).toBe('2');
+  });
+
+  it('is listed again when adding it again fails', async () => {
+    // The failed upload took the entry it replaced with it, and with that
+    // the reminder, and the refusal of Send.
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const { store, instance, id } = composerIn({
+      text: 'See the file.', attachments: [{ filename: 'notes.txt', size: 16, missing: true }],
+    });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    el._startUpload([file('notes.txt')]);
+    HeldUpload.all[0].fail();
+    expect(store.getComposer(id)?.attachments).toEqual([{ filename: 'notes.txt', size: 16, missing: true }]);
+
+    await el.updateComplete;
+    await el._handleSend();
+    expect(toasts.at(-1)?.detail.message).toBe('composer.attachmentsGone');
+  });
+
+  it('takes no room in the budget, so a large file can be added again', async () => {
+    // Still counted, a 20 MiB file to add again and the same 20 MiB file
+    // added again came to more than the 32 MiB a composer may carry.
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const size = 20 << 20;
+    const { store, instance, id } = composerIn({ attachments: [{ filename: 'big.bin', size, missing: true }] });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    const big = file('big.bin');
+    Object.defineProperty(big, 'size', { value: size });
+    el._startUpload([big]);
+
+    expect(toasts.map(e => e.detail.message)).toEqual([]);
+    expect(HeldUpload.all).toHaveLength(1);
+    expect(store.getComposer(id)?.attachments).toMatchObject([{ filename: 'big.bin', size, uploading: true }]);
   });
 });

@@ -119,6 +119,7 @@ type Session struct {
 
 	attachmentsLocker sync.Mutex
 	attachments       map[string]*Attachment // protected by attachmentsLocker
+	attachmentsGone   bool                   // set by teardown; protected by attachmentsLocker
 
 	// Cache for mail data (mailbox lists, statuses, etc.)
 	cache *Cache
@@ -489,6 +490,7 @@ func (s *Session) teardown() {
 			s.manager.globalAttachmentSize.Add(-f.File.Size)
 		}
 		s.attachments = make(map[string]*Attachment)
+		s.attachmentsGone = true
 		s.attachmentsLocker.Unlock()
 
 		s.providerLocker.Lock()
@@ -617,6 +619,21 @@ func (s *Session) PopAttachment(uuid string) *Attachment {
 	s.manager.globalAttachmentSize.Add(-a.File.Size)
 
 	return a
+}
+
+// ReturnAttachment gives back, under its id, an attachment a request took
+// with PopAttachment and did not use up, as when the message it was for could
+// not be stored or sent: it is there for the next try. If the session has
+// ended meanwhile, its file is removed instead, as the session's own were.
+func (s *Session) ReturnAttachment(uuid string, a *Attachment) {
+	s.attachmentsLocker.Lock()
+	defer s.attachmentsLocker.Unlock()
+	if s.attachmentsGone {
+		a.Form.RemoveAll()
+		return
+	}
+	s.attachments[uuid] = a
+	s.manager.globalAttachmentSize.Add(a.File.Size)
 }
 
 // GetAttachment returns an attachment from the session without removing it.

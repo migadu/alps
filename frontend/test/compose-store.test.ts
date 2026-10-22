@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ComposeStore, bareAddress } from '../src/store/compose-store';
-import { messageOperations } from '../src/services/message-operations';
+import { messageOperations, MissingUploadsError } from '../src/services/message-operations';
 import { DraftFlushError } from '../src/utils/draft-flush-error';
 
 const stores: ComposeStore[] = [];
@@ -54,7 +54,28 @@ describe('whose drafts', () => {
       { id: 'c1', subject: 'Hi', isSending: true, minimized: true, attachments: [{ uuid: 'u1' }, { uuid: 'u2', uploading: true }, { name: 'no id' }] },
     ]));
     const [draft] = composers(makeStore());
-    expect(draft).toMatchObject({ subject: 'Hi', isSending: false, minimized: false, attachments: [{ uuid: 'u1' }] });
+    expect(draft).toMatchObject({ subject: 'Hi', isSending: false, minimized: false, attachments: [{ missing: true }] });
+  });
+
+  it('lists a file uploaded but not yet saved as one to add again', () => {
+    // Its upload was kept by the session it was uploaded in, and this may be
+    // another, after the session expired. Restored with its id, every save
+    // and the send were refused over it. One being added again when the tab
+    // went away is still to add again.
+    signIn('ada');
+    localStorage.setItem('alps_compose_drafts_ada', JSON.stringify([
+      { id: 'c1', subject: 'Hi', attachments: [
+        { filename: 'notes.txt', size: 16, uuid: 'u1' },
+        { filename: 'old.txt', size: 3, missing: true },
+        { _tempId: 't1', filename: 'big.bin', size: 9, uploading: true, _replaces: { filename: 'big.bin', size: 9, missing: true } },
+      ] },
+    ]));
+    const [draft] = composers(makeStore());
+    expect(draft.attachments).toEqual([
+      { filename: 'notes.txt', size: 16, missing: true },
+      { filename: 'old.txt', size: 3, missing: true },
+      { filename: 'big.bin', size: 9, missing: true },
+    ]);
   });
 
   it('restores the attachments a saved draft already holds', () => {
@@ -293,6 +314,20 @@ describe('saving everything at sign-out', () => {
 
     expect(saveDraft).toHaveBeenCalledTimes(1);
     expect(composers(store)).toEqual([]);
+  });
+
+  it('keeps open a composer refused over an upload the server no longer holds, with that file to add again', async () => {
+    signIn('ada@example.com');
+    const store = makeStore();
+    vi.spyOn(messageOperations, 'saveDraft').mockRejectedValue(new MissingUploadsError(['u1']));
+    store.openComposer({ subject: 'Notes', to: ['charles@example.com'], attachments: [{ filename: 'notes.txt', size: 16, uuid: 'u1' }] });
+    store.updateComposer(composers(store)[0].id, { dirty: true });
+
+    await expect(store.saveAllDirtyDrafts()).rejects.toBeInstanceOf(DraftFlushError);
+
+    expect(composers(store)).toHaveLength(1);
+    expect(composers(store)[0]).toMatchObject({ isSaving: false, attachments: [{ filename: 'notes.txt', size: 16, missing: true }] });
+    expect(composers(store)[0].attachments![0].uuid).toBeUndefined();
   });
 
   it('leaves a send in its undo window, and an upload, to the user rather than storing them', async () => {

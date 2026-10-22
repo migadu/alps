@@ -308,6 +308,10 @@ export const da: TranslationDictionary = {
     attachmentsTooLarge: 'De vedhæftede filer overskrider den maksimalt tilladte størrelse.',
     draftSaveFailedKeepOpen: 'Kladden kunne ikke gemmes — vinduet forbliver åbent, så intet går tabt',
     attachmentsWait: 'Vent, indtil vedhæftede filer er uploadet, før du sender.',
+    attachmentsGone: {
+      one: '{count} vedhæftet fil skal vedhæftes igen: serveren har ikke længere uploaden.',
+      other: '{count} vedhæftede filer skal vedhæftes igen: serveren har ikke længere uploadene.'
+    },
     sending: 'Beskeden sendes...',
     undo: 'Fortryd',
     sendError: 'Kunne ikke sende besked: {error}',
@@ -464,6 +468,7 @@ export const da: TranslationDictionary = {
   },
   attachment: {
     remove: 'Fjern',
+    addAgain: 'Vedhæft igen',
     preview: 'Forhåndsvisning',
     download: 'Download',
     zoomIn: 'Zoom ind',

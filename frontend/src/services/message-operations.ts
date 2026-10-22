@@ -40,6 +40,30 @@ async function readErrorBody(res: Response): Promise<Record<string, any>> {
 }
 
 /**
+ * A draft save or a send the server refused because it no longer holds some
+ * of the uploads the request named: the session they were uploaded in has
+ * ended, or the server let them go. Nothing was stored or sent, and the other
+ * uploads are still there, so the request can go again without these.
+ */
+export class MissingUploadsError extends Error {
+  readonly uuids: string[];
+
+  constructor(uuids: string[]) {
+    super(`unable to retrieve message attachment ${uuids.join(', ')}`);
+    this.name = 'MissingUploadsError';
+    this.uuids = uuids;
+  }
+}
+
+/** The refusal of a request that named uploads the server does not hold, if
+ * this answer is one. */
+function missingUploads(res: Response, body: Record<string, any>): MissingUploadsError | null {
+  const ids = body.missing_attachments;
+  if (res.status !== 409 || !Array.isArray(ids) || ids.length === 0) return null;
+  return new MissingUploadsError(ids.map(String));
+}
+
+/**
  * NOT an EventTarget.
  *
  * It extended one and dispatched `auth-error` on itself beside every
@@ -350,6 +374,10 @@ export class MessageOperationsService {
 
   /**
    * Saves a composer instance as a draft on the server.
+   *
+   * Answers null for a draft that was not saved, and throws a
+   * {@link MissingUploadsError} for one refused over uploads the server no
+   * longer holds, which the caller can save again without them.
    */
   async saveDraft(formData: FormData): Promise<{ uid: string; mailbox: string; size?: number; attachments?: any[] } | null> {
     try {
@@ -365,9 +393,13 @@ export class MessageOperationsService {
         const data = await res.json();
         return { uid: data.draft_uid, mailbox: data.draft_mailbox, size: data.draft_size, attachments: data.attachments };
       }
-      Logger.error('Failed to save draft:', res.status, await readErrorBody(res));
+      const body = await readErrorBody(res);
+      const missing = missingUploads(res, body);
+      if (missing) throw missing;
+      Logger.error('Failed to save draft:', res.status, body);
       return null;
     } catch (err) {
+      if (err instanceof MissingUploadsError) throw err;
       Logger.error('Failed to save draft:', err);
       return null;
     }
@@ -394,7 +426,7 @@ export class MessageOperationsService {
       // that the catch below rethrew, so the user was shown "Unexpected token
       // '<'" in place of whatever actually went wrong.
       const body = await readErrorBody(res);
-      throw new Error(body.error || `Failed to send message (${res.status})`);
+      throw missingUploads(res, body) || new Error(body.error || `Failed to send message (${res.status})`);
     } catch (err: any) {
       Logger.error('Failed to send message:', err);
       throw err;

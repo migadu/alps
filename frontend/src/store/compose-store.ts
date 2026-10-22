@@ -1,5 +1,5 @@
 import { createContext } from '@lit/context';
-import { messageOperations } from '../services/message-operations';
+import { messageOperations, MissingUploadsError } from '../services/message-operations';
 import { activeUsername, readUserSettings } from './settings-store';
 import { abortUploads } from '../utils/attachment-utils';
 import { Logger } from '../utils/logger';
@@ -52,6 +52,17 @@ export const draftContentKey = (c: ComposerInstance): string => JSON.stringify([
   c.subject, c.to, c.cc, c.bcc, c.text, c.format, c.html,
   (c.attachments || []).map(a => [a._tempId, a.uuid, a.partPath, a.filename]),
 ]);
+
+/**
+ * An attachment whose upload the server no longer holds, as one the user has
+ * to add again: shown with its name, and sent with nothing, so a save or a
+ * send no longer names an upload that is gone.
+ */
+export const uploadGone = (att: any): any => {
+  const gone = { ...att, missing: true };
+  delete gone.uuid;
+  return gone;
+};
 
 const isBlockedAddress = (addr: string): boolean => {
   const lowerEmail = bareAddress(addr);
@@ -237,8 +248,15 @@ export class ComposeStore extends EventTarget {
             // An upload the tab went away in never finished. One already in the
             // stored draft (a part path, as each save answers) is kept: dropped
             // here, the next save, which carries only what the window lists,
-            // stored the draft without it.
-            attachments: draft.attachments?.filter(att => !att.uploading && (att.uuid || att.partPath)) || [],
+            // stored the draft without it. One uploaded but not yet saved was
+            // kept by the session it was uploaded in, and this may be another,
+            // after the session expired: kept, it made every save and the send
+            // fail. So it is listed as one to add again; so is one that was
+            // being added again when the tab went away.
+            attachments: (draft.attachments || [])
+              .map(att => (att.uploading && att._replaces ? att._replaces : att))
+              .filter(att => !att.uploading && (att.uuid || att.partPath || att.missing))
+              .map(att => (att.uuid ? uploadGone(att) : att)),
             isSending: false,
             // A save or a deferred close the tab or the session went away in.
             // Kept, it would refuse every later save, or hide the window.
@@ -506,7 +524,22 @@ export class ComposeStore extends EventTarget {
         const contentKey = draftContentKey(composer);
         this.updateComposer(id, { isSaving: true });
         try {
-          const saved = await messageOperations.saveDraft(this.draftForm(composer));
+          let saved: Awaited<ReturnType<typeof messageOperations.saveDraft>>;
+          try {
+            saved = await messageOperations.saveDraft(this.draftForm(composer));
+          } catch (error) {
+            if (!(error instanceof MissingUploadsError)) throw error;
+            // Kept open, listing those files as ones to add again, so the
+            // window's next save stores the rest without them.
+            const gone = new Set(error.uuids);
+            const current = this.getComposer(id);
+            if (current) {
+              this.updateComposer(id, {
+                attachments: (current.attachments || []).map(a => (a.uuid && gone.has(a.uuid) ? uploadGone(a) : a)),
+              });
+            }
+            saved = null;
+          }
           if (this.username !== username) throw new DraftFlushError();
           if (!saved) {
             failed = true;
