@@ -416,3 +416,34 @@ test("an upload in flight fills its pill with a fill you can see", async ({ page
   await expect(pill.locator(".progress-bar")).toHaveCount(0, { timeout: 15_000 });
   await discardDraft(composer);
 });
+
+test("eight files picked at once all upload, and all eight go out", async ({ page }) => {
+  await login(page);
+  const composer = await openComposer(page);
+  const subject = `Eight attachments ${Date.now()}`;
+  await addRecipient(composer, USER.address);
+  await fillMessage(composer, subject, "Eight files.");
+
+  // Slowed so that all eight are in flight together: more than the six
+  // connections a browser opens to one host, so some wait in its queue.
+  const names = Array.from({ length: 8 }, (_, i) => `file-${i + 1}.bin`);
+  const lift = await throttleUploads(page, 256 * 1024);
+  try {
+    await attachFiles(page, composer, names.map((name, i) => ({
+      name, mimeType: "application/octet-stream", buffer: Buffer.alloc(128 * 1024, i + 1),
+    })));
+    await expect(composer.locator("alps-attachment-pill")).toHaveCount(8);
+    // Every one finishes: no fill left, and each shows its size, not a percentage.
+    await expect(composer.locator("alps-attachment-pill .progress-bar")).toHaveCount(0, { timeout: 30_000 });
+  } finally {
+    await lift();
+  }
+  // A size, not the 128 KB picked: once a draft save has stored them, each
+  // reads the size of its stored part.
+  await expect(composer.locator("alps-attachment-pill .attachment-size")).toHaveText(Array(8).fill(/^\d+ KB$/));
+
+  await sendNow(page, composer);
+  const sent = await sentWithSubject(subject);
+  const filed = [...sent.data.matchAll(/^Content-Disposition: attachment; filename="?([^"\r\n]+?)"?\r?$/gm)].map((m) => m[1]);
+  expect(filed.sort()).toEqual(names);
+});
