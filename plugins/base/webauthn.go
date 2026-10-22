@@ -262,24 +262,6 @@ func handleSetupFinish(ctx *alps.Context) error {
 	})
 }
 
-// handleDisable removes WebAuthn authentication
-func handleDisable(ctx *alps.Context) error {
-	if ctx.Session == nil {
-		return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
-	}
-
-	creds := &UserCredentials{
-		Enabled:     false,
-		Credentials: []CredentialInfo{},
-	}
-
-	if err := saveCredentials(ctx.Session.Store(), creds); err != nil {
-		return fmt.Errorf("failed to save credentials: %v", err)
-	}
-
-	return ctx.JSON(http.StatusOK, map[string]interface{}{"success": true})
-}
-
 // deleteCredentialRequest is the body of a security key removal.
 type deleteCredentialRequest struct {
 	CurrentPassword string `json:"current_password"`
