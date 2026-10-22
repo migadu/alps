@@ -1500,6 +1500,27 @@ export class MessageReader extends LitElement {
     if (opening && this.message && this.keyOf(this.message) === key) this.settleOpenedConversation();
   }
 
+  /**
+   * The message as a body read describes it, read or unread as its card is
+   * when the read lands.
+   *
+   * Reading a body leaves \Seen alone on the server, so the answer has the
+   * read state from before the page's own mark-as-read. That write can land
+   * while the read is out, and a read is cached for half an hour and served
+   * to every reopen: taken from the answer, a message just marked read showed
+   * unread, and the toolbar offered "Mark as read". A flag change replaces the
+   * card in the list rather than editing it, so a read that started before it
+   * still holds the card as it was: the one in the list is looked up by key.
+   */
+  private withCardSeen(key: string, item: ThreadMessageItem, message: any) {
+    const card = (this.threadItems.find(i => this.itemKey(i) === key) ?? item).message;
+    if (!card) return message;
+    const seen = !!card.Flags?.includes(FLAG_SEEN);
+    if (!!message?.Flags?.includes(FLAG_SEEN) === seen) return message;
+    const others = (message.Flags || []).filter((f: string) => f !== FLAG_SEEN);
+    return { ...message, Flags: seen ? [...others, FLAG_SEEN] : others };
+  }
+
   private updateThreadItemReference(item: ThreadMessageItem) {
     if (!item.message) return;
     // The card list is what Lit renders from, so replacing its reference IS a
@@ -1646,7 +1667,7 @@ export class MessageReader extends LitElement {
       item.attachments = read.Attachments || [];
       item.hasHtml = hasHtml;
       item.hasText = hasText;
-      item.message = message;
+      item.message = this.withCardSeen(key, item, message);
       item.mimeType = mimeType;
       item.content = content;
       item.rawMessageHtml = rawMessageHtml;
