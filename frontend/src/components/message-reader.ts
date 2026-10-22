@@ -2036,7 +2036,7 @@ export class MessageReader extends LitElement {
    */
   private async _handleEditDraft(item?: any) {
     const isItem = item && !(item instanceof Event);
-    const msg = isItem ? item.message : this.message;
+    let msg = isItem ? item.message : this.message;
     // The message's own mailbox, as its card has it. The one being viewed is
     // `*` in a search of all mailboxes, which is no mailbox at all: every save
     // of the draft failed on deleting the one it replaced, after storing a new
@@ -2058,6 +2058,10 @@ export class MessageReader extends LitElement {
       // Another message was opened while this draft's body was coming.
       else if (!this.message || this.keyOf(this.message) !== key) return;
     }
+    // The message as its read left it. The list's row it was opened from has
+    // no References, and a reply's draft edited from that row was saved and
+    // sent without them.
+    msg = isItem ? item.message : this.message;
 
     const content = isItem && item ? item.content : this.content;
     const mimeType = isItem && item ? item.mimeType : this.mimeType;

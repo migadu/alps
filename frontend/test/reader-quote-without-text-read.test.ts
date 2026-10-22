@@ -272,4 +272,27 @@ describe('clicked while the body is still being read', () => {
     expect(composed.html).toBe(html);
     expect(composed.text).toContain('The engine runs on cards.');
   });
+
+  // The list's row has no References: only the read of the message brings
+  // them. A reply's draft edited from the row as it was before its read
+  // landed lost them, and was saved and sent without them.
+  const editDraftFrom = {
+    toolbar: (el: El) => el._handleEditDraft(),
+    'its card': (el: El) => el._handleEditDraft(el.threadItems[0]),
+  };
+  for (const [from, editDraft] of Object.entries(editDraftFrom)) {
+    it(`edit draft from ${from} keeps the References its read brings`, async () => {
+      const references = ['<4@remote.test>', '<5@remote.test>'];
+      const draft = { ...message('6', ['\\Seen', '\\Draft']), Mailbox: 'Drafts' };
+      const { el, openComposer } = await openLoading(draft, [draft], 'Drafts');
+      // The server's copy, answered once the read is let go.
+      stored['6'] = { ...draft, References: references };
+
+      void editDraft(el);
+      const composed = await opened(openComposer);
+
+      expect(composed.draftUid).toBe('6');
+      expect(composed.references).toEqual(references);
+    });
+  }
 });
