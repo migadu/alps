@@ -117,6 +117,14 @@ type Session struct {
 	providerLocker sync.Mutex
 	provider       provider.MailProvider // protected by locker, can be nil
 
+	// The session's second connection, for mail work the user is not waiting
+	// for: see DoBackgroundMail.
+	background backgroundConnection
+
+	// How many connections the session has given up on that are not closed
+	// yet: see giveUpConnection.
+	givenUp atomic.Int32
+
 	attachmentsLocker sync.Mutex
 	attachments       map[string]*Attachment // protected by attachmentsLocker
 
@@ -327,7 +335,11 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 
 	if s.provider == nil {
 		var err error
-		s.provider, err = s.manager.connectProvider(s.username, s.password)
+		// The session's background connection, when it holds one that is
+		// idle, rather than another: see takeIdleBackground.
+		if s.provider = s.takeIdleBackground(); s.provider == nil {
+			s.provider, err = s.manager.connectProvider(s.username, s.password)
+		}
 		if err != nil {
 			s.CloseWithReason("mail-server-unavailable")
 			// Wrap with %w so errors.As can still recover an AuthError (bad
@@ -360,7 +372,7 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 		// close only after f() has returned, otherwise we would close the client
 		// out from under an in-flight command (a use-after-close race). done is
 		// buffered, so f's send never blocks even though we have returned.
-		closeProviderAfter(s.provider, done)
+		s.giveUpConnection(s.provider, done)
 		s.provider = nil
 		return fmt.Errorf("context cancelled: %w", ctx.Err())
 	case err = <-done:
@@ -373,6 +385,15 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 
 		var reErr error
 		s.provider, reErr = s.manager.connectProvider(s.username, s.password)
+		if reErr != nil && atConnectionLimit(reErr) {
+			// A server that will not let the account open another connection
+			// still answers on the background one the session holds. Not a
+			// server that refused the password, nor one that could not be
+			// reached: the session ends then, as it did before it had one.
+			if s.provider = s.takeIdleBackground(); s.provider != nil {
+				reErr = nil
+			}
+		}
 		if reErr != nil {
 			s.CloseWithReason("mail-server-unavailable")
 			return fmt.Errorf("failed to re-connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, reErr))
@@ -390,7 +411,7 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 
 		select {
 		case <-ctx.Done():
-			closeProviderAfter(s.provider, done2)
+			s.giveUpConnection(s.provider, done2)
 			s.provider = nil
 			return fmt.Errorf("context cancelled during retry: %w", ctx.Err())
 		case err = <-done2:
@@ -398,19 +419,6 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 	}
 
 	return err
-}
-
-// closeProviderAfter closes p once the pending operation (whose result lands on
-// done) has finished, so the provider is never closed while a command is still
-// in flight on it. The goroutine exits as soon as done is signalled.
-func closeProviderAfter(p provider.MailProvider, done <-chan error) {
-	if p == nil {
-		return
-	}
-	go func() {
-		<-done
-		p.Close()
-	}()
 }
 
 // smtpMaxAttempts is the number of times DoSMTP tries an operation before
@@ -497,6 +505,7 @@ func (s *Session) teardown() {
 			s.provider = nil
 		}
 		s.providerLocker.Unlock()
+		s.letGoOfBackground(true)
 
 		if s.cache != nil {
 			s.cache.Close()
@@ -717,6 +726,12 @@ type SessionManager struct {
 	// node is alone. See RequireSecondFactor.
 	broadcaster ClusterBroadcaster
 
+	// Whether sessions do the mail work the user is not waiting for on a
+	// background connection, and how long one may go unused before it is
+	// closed. See DoBackgroundMail.
+	backgroundConnections bool
+	backgroundIdle        time.Duration
+
 	locker       sync.RWMutex
 	sessions     map[string]*Session // token -> Session, protected by locker
 	userSessions map[string][]string // username -> []token, protected by locker
@@ -760,6 +775,7 @@ func newSessionManager(connectProviderFunc provider.AuthenticatedProviderFactory
 		maxSessionAttachmentSize: int64(maxSessionAttachmentMiB) << 20,
 		maxGlobalAttachmentSize:  int64(maxGlobalAttachmentMiB) << 20,
 		now:                      time.Now,
+		backgroundIdle:           backgroundIdleTimeout,
 	}
 }
 
@@ -1253,6 +1269,15 @@ func (sm *SessionManager) SwitchAccount(currentSession *Session, targetUsername 
 
 // UpdatePassword reconnects the session with a new password and updates the session state if successful.
 func (sm *SessionManager) UpdatePassword(s *Session, newPassword string) error {
+	// The background connection is closed first, once the operation running
+	// on it has returned: while the new password is checked the session holds
+	// its own connection and the new one, and no background connection beside
+	// them. The next background operation opens one with the password the
+	// session has then.
+	s.background.jobs.Lock()
+	defer s.background.jobs.Unlock()
+	s.letGoOfBackground(false)
+
 	s.providerLocker.Lock()
 	defer s.providerLocker.Unlock()
 

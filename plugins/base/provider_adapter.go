@@ -259,43 +259,6 @@ func copyMessagesWithProvider(p provider.MailProvider, srcMailbox, dstMailbox st
 	return p.CopyMessages(srcMailbox, dstMailbox, uids)
 }
 
-// getConversationWithProvider returns a message's conversation, oldest first:
-// its thread in mailbox, and the messages of it filed in Sent. Threading sees
-// one mailbox at a time, and the replies a user sends are not in the mailbox
-// of the messages they answer. A failed look in Sent is logged, and the thread
-// is returned as it is.
-func getConversationWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, known conversationHints, logf func(format string, args ...interface{})) ([]IMAPMessage, error) {
-	thread, err := messageThreadWithProvider(p, mailbox, uid, known.memberUIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	msgs := thread
-	if sent, err := sentOfConversation(p, mailbox, thread, known.sentMailbox); err != nil {
-		logf("looking in Sent for the conversation of %s/%s: %v", mailbox, uid, err)
-	} else {
-		msgs = mergeConversation(thread, sent)
-	}
-
-	result := make([]IMAPMessage, len(msgs))
-	for i, m := range msgs {
-		result[i] = providerMessageToIMAP(m)
-	}
-	return result, nil
-}
-
-// conversationHints is what the CALLER already knows, so the provider is not
-// asked to rediscover it. Both fields are optional; an empty one means "find
-// out", which is what every caller did before they were passed.
-type conversationHints struct {
-	// The conversation's UIDs in this mailbox, as a listing already established
-	// them. Saves a THREAD over the whole mailbox — see GetThreadMembers.
-	memberUIDs []provider.MessageID
-	// The Sent mailbox's name, from the mailbox list the session has cached.
-	// Saves a LIST on every conversation read.
-	sentMailbox string
-}
-
 // messageThreadWithProvider gets a message's thread in its mailbox. `known`
 // names the members when the caller already has them, in which case they are
 // read directly instead of threaded for.

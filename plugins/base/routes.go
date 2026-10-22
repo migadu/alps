@@ -447,7 +447,7 @@ func cachedMailboxList(ctx *alps.Context) ([]MailboxInfo, error) {
 	}
 
 	var mailboxes []MailboxInfo
-	err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err := doRequestMail(ctx, func(p provider.MailProvider) error {
 		var err error
 		mailboxes, err = listMailboxesWithProvider(p)
 		if err != nil {
@@ -537,7 +537,7 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 		// Everything is cached, skip provider call entirely
 		err = nil
 	} else {
-		err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		err = doRequestMail(ctx, func(p provider.MailProvider) error {
 			var err error
 			var needsMailboxListFetch = len(mailboxes) == 0
 
@@ -698,8 +698,10 @@ func handleMailboxStatus(ctx *alps.Context) error {
 	// Clear cached status so the provider call goes to IMAP.
 	cache.Delete("status:" + mboxName)
 
+	// On the background connection: the check runs every few minutes, and
+	// what the user opens meanwhile does not wait for it.
 	var status *MailboxStatus
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoBackgroundMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 		s, err := p.GetMailboxStatus(mboxName)
 		if err != nil {
 			return err
@@ -1235,26 +1237,46 @@ func handleGetThread(ctx *alps.Context) error {
 		}
 	}
 
-	var msgs []IMAPMessage
+	var thread []provider.Message
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		uid, parseErr := p.ParseMessageID(uidStr)
 		if parseErr != nil {
 			return parseErr
 		}
-
-		known := conversationHints{
-			memberUIDs:  listedThreadUIDs(p, cache, mboxName, uidStr),
-			sentMailbox: cachedSentMailbox(cache),
-		}
-		threadMsgs, threadErr := getConversationWithProvider(p, mboxName, uid, known, ctx.Server.Logger().Printf)
-		if threadErr != nil {
-			return threadErr
-		}
-		msgs = threadMsgs
-		return nil
+		var threadErr error
+		thread, threadErr = messageThreadWithProvider(p, mboxName, uid, listedThreadUIDs(p, cache, mboxName, uidStr))
+		return threadErr
 	})
 	if err != nil {
 		return err
+	}
+
+	// Threading sees one mailbox at a time, and the replies a user sends are
+	// not in the mailbox of the messages they answer. They are looked for in
+	// Sent on the session's background connection, which selects Sent to
+	// search it: the session's own keeps this mailbox selected, and the next
+	// request for the folder on screen does not select it again. A failed look
+	// is logged, and the thread is answered as it is.
+	var sent []provider.Message
+	var lookErr error
+	err = ctx.Session.DoBackgroundMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+		sent, lookErr = sentOfConversation(p, mboxName, thread, cachedSentMailbox(cache))
+		return lookErr
+	})
+	// Not the look's own failure but the connection's, or a request given up
+	// on, whose look may still be running: answered as any other.
+	if err != nil && (ctx.Request.Context().Err() != nil || lookErr == nil) {
+		return err
+	}
+	conversation := thread
+	if lookErr != nil {
+		ctx.Server.Logger().Printf("looking in Sent for the conversation of %s/%s: %v", mboxName, uidStr, lookErr)
+	} else {
+		conversation = mergeConversation(thread, sent)
+	}
+	msgs := make([]IMAPMessage, len(conversation))
+	for i, m := range conversation {
+		msgs[i] = providerMessageToIMAP(m)
 	}
 
 	// Under the message asked for, and under every member of the conversation
@@ -1356,6 +1378,21 @@ func cachedSentMailbox(cache *alps.Cache) string {
 	return ""
 }
 
+// backgroundRequestHeader marks a request the browser makes on its own, which
+// nobody waits for, such as a body a conversation reads ahead of the user.
+const backgroundRequestHeader = "X-Alps-Background"
+
+// doRequestMail runs f for the request ctx: on the session's background
+// connection when the browser marked the request as one nobody waits for (see
+// backgroundRequestHeader), so that what the user opens meanwhile does not
+// wait behind it, and on the session's own connection otherwise.
+func doRequestMail(ctx *alps.Context, f func(provider.MailProvider) error) error {
+	if ctx.Request.Header.Get(backgroundRequestHeader) != "" {
+		return ctx.Session.DoBackgroundMail(ctx.Request.Context(), f)
+	}
+	return ctx.Session.DoMailWithContext(ctx.Request.Context(), f)
+}
+
 func handleGetPart(ctx *alps.Context, raw bool) error {
 	_, uidStr, err := parseMboxAndUidStr(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
@@ -1385,7 +1422,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	var tempMsg *IMAPMessage
 	var uid provider.MessageID
 
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = doRequestMail(ctx, func(p provider.MailProvider) error {
 		var parseErr error
 		uid, parseErr = p.ParseMessageID(uidStr)
 		if parseErr != nil {
@@ -1482,7 +1519,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		} else {
 			// Only metadata cached, need to fetch body
 			var providerMsg *provider.Message
-			err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+			err = doRequestMail(ctx, func(p provider.MailProvider) error {
 				var err error
 				if raw {
 					// For raw mode, don't parse - just get bytes
@@ -1530,7 +1567,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	} else {
 		// Nothing cached, fetch everything
 		var providerMsg *provider.Message
-		err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		err = doRequestMail(ctx, func(p provider.MailProvider) error {
 			var err error
 			if raw {
 				// For raw mode, don't parse - just get bytes
@@ -1730,6 +1767,13 @@ func handleComposeNew(ctx *alps.Context) error {
 	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, maxComposeBodyBytes)
 
 	saveAsDraft := ctx.FormValue("save_as_draft") != ""
+	// A draft is saved as the user types, several megabytes of it with its
+	// attachments, and what they open meanwhile does not wait for it: a save
+	// does its mail work on the session's background connection.
+	doMail := ctx.Session.DoMailWithContext
+	if saveAsDraft {
+		doMail = ctx.Session.DoBackgroundMail
+	}
 
 	fromAddr := ctx.FormValue("from")
 	if fromAddr == "" {
@@ -1830,7 +1874,10 @@ func handleComposeNew(ctx *alps.Context) error {
 			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "attachments name a message part, but no message to take it from"})
 		}
 
-		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		err := doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+			// Added once every part is read: f runs again when its connection
+			// drops, and the parts a run read before the drop were added twice.
+			var parts []Attachment
 			for _, pathStr := range prevAttachments {
 				partPath, err := parsePartPath(pathStr)
 				if err != nil {
@@ -1870,7 +1917,7 @@ func handleComposeNew(ctx *alps.Context) error {
 					MIMEType: mimeType,
 					Filename: filename,
 				}
-				msg.Attachments = append(msg.Attachments, &imapAttachment{
+				parts = append(parts, &imapAttachment{
 					Mailbox: sourcePath.Mailbox,
 					Uid:     sourcePath.Uid,
 					Node:    node,
@@ -1882,6 +1929,7 @@ func handleComposeNew(ctx *alps.Context) error {
 					Inline: contentID != "" && !strings.EqualFold(disposition, "attachment"),
 				})
 			}
+			msg.Attachments = append(msg.Attachments, parts...)
 			return nil
 		})
 		if err != nil {
@@ -1895,7 +1943,7 @@ func handleComposeNew(ctx *alps.Context) error {
 		var size uint32
 		var respAttachments []map[string]interface{}
 
-		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		err := doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 			var err error
 			drafts, uid, size, err = appendMessageWithProvider(p, msg, provider.MailboxTypeDrafts)
 			if err != nil {

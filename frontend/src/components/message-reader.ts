@@ -4,7 +4,7 @@ import { live } from 'lit/directives/live.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName, getRemovableTags } from '../utils/flags';
 import { FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
-import { fetchWithTimeout } from '../utils/fetch-utils';
+import { BACKGROUND_REQUEST, fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
 import { activeUsername, settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -470,10 +470,11 @@ export class MessageReader extends LitElement {
     this.readDueAt.clear();
     // Nor does a reader that has left the page go on reading bodies nobody
     // asked for. The queue is drained one at a time (see queueItemBody), so
-    // what is left of it would keep taking the session's one connection for a
-    // conversation that is no longer on screen — the same competition the
-    // drop-on-open exists to prevent, for an element that cannot even show
-    // what it reads.
+    // what is left of it would keep a connection to the mail server busy for a
+    // conversation that is no longer on screen. For a session without a
+    // background connection (turned off, or refused by the mail server), that
+    // is the session's own: the same competition the drop-on-open exists to
+    // prevent, for an element that cannot even show what it reads.
     this.prefetchQueue = [];
     if (this.readTimer) clearTimeout(this.readTimer);
     this.readTimer = null;
@@ -1460,7 +1461,7 @@ export class MessageReader extends LitElement {
         // It may have been fetched since — by the user expanding it, or by a
         // re-resolve carrying the content over.
         if (item.content) continue;
-        await this.fetchItemBody(item);
+        await this.fetchItemBody(item, true);
       }
     } finally {
       this.prefetching = false;
@@ -1527,7 +1528,12 @@ export class MessageReader extends LitElement {
    */
   private bodyReads = new Map<string, number>();
 
-  private async fetchItemBody(item: ThreadMessageItem) {
+  /**
+   * Reads a card's body. `ahead` is a read nobody asked for (see
+   * queueItemBody), which the server does on the session's background
+   * connection, so the message the user opens next does not wait behind it.
+   */
+  private async fetchItemBody(item: ThreadMessageItem, ahead = false) {
     if (!item.message) return;
     const msg = item.message;
     const mailbox = item.mailbox;
@@ -1547,7 +1553,8 @@ export class MessageReader extends LitElement {
       if (cached) {
         read = cached;
       } else {
-        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}?view=${preferredView}`);
+        const request = ahead ? BACKGROUND_REQUEST : {};
+        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}?view=${preferredView}`, request);
         if (!current()) return;
         if (metadataRes.status === 401) {
           window.location.hash = '/login';
@@ -1562,7 +1569,7 @@ export class MessageReader extends LitElement {
         const part = data.Part;
         if (part) {
           const partPathStr = Array.isArray(part.Path) ? part.Path.join('.') : part.Path;
-          const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`);
+          const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`, request);
           if (!current()) return;
           if (rawRes.status === 401) {
             window.location.hash = '/login';
