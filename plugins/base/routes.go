@@ -733,6 +733,13 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 type MailboxStatusResponse struct {
 	Total  int `json:"total"`
 	Unseen int `json:"unseen"`
+	// UIDNext and UIDValidity are the ones read with the counts, 0 where
+	// they are not known, as a listing's Mailbox and Inbox carry them. A
+	// client that reads the listing again only when the folder changed can
+	// tell from them what the counts do not show: a message that arrived as
+	// another went, or a folder made again elsewhere.
+	UIDNext     uint32 `json:"uidnext"`
+	UIDValidity uint32 `json:"uidvalidity"`
 }
 
 // handleMailboxStatus returns a lightweight JSON response with the current
@@ -808,8 +815,10 @@ func handleMailboxStatus(ctx *alps.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, MailboxStatusResponse{
-		Total:  int(newTotal),
-		Unseen: int(newUnseen),
+		Total:       int(newTotal),
+		Unseen:      int(newUnseen),
+		UIDNext:     uint32(newUIDNext),
+		UIDValidity: newUIDValidity,
 	})
 }
 

@@ -375,3 +375,70 @@ func TestHTTP_ACheckThatFindsNothingNewReadsNoMessages(t *testing.T) {
 		})
 	}
 }
+
+// statusCheck is what a check for new mail answers about a folder, and the
+// answer as it came. UIDNext and UIDValidity are nil where it has none.
+type statusCheck struct {
+	Total       int
+	Unseen      int
+	UIDNext     *uint32 `json:"uidnext"`
+	UIDValidity *uint32 `json:"uidvalidity"`
+	raw         string
+}
+
+func (s *testServer) statusCheck(name string) statusCheck {
+	s.t.Helper()
+	r := s.do("GET", "/mailboxes/"+name+"/status", nil)
+	s.expect(r, http.StatusOK)
+	var check statusCheck
+	r.json(s.t, &check)
+	check.raw = string(r.body)
+	return check
+}
+
+// The check answers the UIDNEXT and UIDVALIDITY it read beside the counts, as
+// the listing carries them for the folder. A client that compares the check's
+// answer with the listing it shows, to read the listing again only when the
+// folder changed, can then tell a message that arrived as another went from
+// no change at all, as the session's own cache now does.
+func TestHTTP_ACheckAnswersTheUIDsItRead(t *testing.T) {
+	for _, server := range countingServers {
+		t.Run(server.name, func(t *testing.T) {
+			s, _, elsewhere := newIMAPAccountServer(t, server.caps, letter("Engines"), letter("Looms"))
+			s.login()
+			before := s.statusCheck("INBOX")
+			if before.UIDNext == nil || before.UIDValidity == nil {
+				t.Fatalf("the check answers %s, without uidnext and uidvalidity", strings.TrimSpace(before.raw))
+			}
+			r := s.do("GET", "/mailboxes/INBOX?page=0", nil)
+			s.expect(r, http.StatusOK)
+			var listed struct {
+				Mailbox struct {
+					UIDNext     uint32
+					UIDValidity uint32
+				}
+			}
+			r.json(t, &listed)
+			if *before.UIDNext != listed.Mailbox.UIDNext || *before.UIDValidity != listed.Mailbox.UIDValidity {
+				t.Errorf("the check answers uidnext %d and uidvalidity %d, the listing %d and %d",
+					*before.UIDNext, *before.UIDValidity, listed.Mailbox.UIDNext, listed.Mailbox.UIDValidity)
+			}
+
+			c := elsewhere()
+			deliverElsewhere(t, c, "INBOX", letter("Arrival"))
+			expungeElsewhere(t, c, "INBOX", 1)
+
+			after := s.statusCheck("INBOX")
+			if after.Total != before.Total || after.Unseen != before.Unseen {
+				t.Fatalf("the counts moved from %d, %d unseen to %d, %d unseen; the test needs them to stay",
+					before.Total, before.Unseen, after.Total, after.Unseen)
+			}
+			if after.UIDNext == nil || *after.UIDNext == *before.UIDNext {
+				t.Errorf("after a message arrived and another went, the check answers %s, uidnext as before", strings.TrimSpace(after.raw))
+			}
+			if after.UIDValidity == nil || *after.UIDValidity != *before.UIDValidity {
+				t.Errorf("after a message arrived and another went, the check answers %s, another uidvalidity", strings.TrimSpace(after.raw))
+			}
+		})
+	}
+}
