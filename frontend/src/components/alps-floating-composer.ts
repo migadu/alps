@@ -823,6 +823,17 @@ export class AlpsFloatingComposer extends LitElement {
         return;
       }
 
+      // The server deleted the draft this message was saved as. The re-sync
+      // takes its row off the list, but a reader showing it, on its own or as
+      // a card in a conversation, is told as a discard tells it
+      // (alps-message-reader's `_handleDraftDiscarded`): it stayed open on the
+      // deleted draft, still offering Edit Draft.
+      if (currentInstance.draftUid && currentInstance.draftMailbox) {
+        window.dispatchEvent(new CustomEvent('draft-discarded', {
+          detail: { mailbox: currentInstance.draftMailbox, uid: String(currentInstance.draftUid) }
+        }));
+      }
+
       registry.invokeHook('composer:send', { recipients: allTo });
 
       if (currentInstance.draftMailbox) {
