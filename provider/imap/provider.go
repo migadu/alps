@@ -47,7 +47,11 @@ type IMAPProvider struct {
 	// threadFallbacks names the mailboxes already reported as listing flat,
 	// so a server that refuses THREAD is logged once per session per mailbox.
 	threadFallbacks map[string]bool
-	cacheLock       sync.RWMutex
+	// listReturnRefused records that the server answered LIST's RETURN form
+	// with BAD although it advertises it, so later listings go straight to a
+	// plain LIST instead of paying for the refusal each time.
+	listReturnRefused bool
+	cacheLock         sync.RWMutex
 }
 
 func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
@@ -84,26 +88,73 @@ func (p *IMAPProvider) Close() error {
 
 // ListMailboxes returns all mailboxes
 func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
-	var options imap.ListOptions
-	options.ReturnSubscribed = true
-	if p.client.Caps().Has(imap.CapListStatus) {
-		options.ReturnStatus = &imap.StatusOptions{
-			NumMessages: true,
-			UIDValidity: true,
-			NumUnseen:   true,
+	// RETURN is LIST-EXTENDED syntax (RFC 5258), which IMAP4rev2 includes and
+	// CapSet.Has counts for it. LIST-STATUS (RFC 5819) is a RETURN option, so
+	// a server that offers it takes the RETURN form too, even where it does
+	// not advertise LIST-EXTENDED on its own. To an IMAP4rev1 server with
+	// neither, RETURN is two extra arguments to a two-argument command
+	// (RFC 3501 §6.3.8), which it may answer with BAD, so such a server is
+	// asked a plain LIST.
+	caps := p.client.Caps()
+	var options *imap.ListOptions
+	if (caps.Has(imap.CapListExtended) || caps.Has(imap.CapListStatus)) && !p.refusedListReturn() {
+		options = &imap.ListOptions{ReturnSubscribed: true}
+		if caps.Has(imap.CapListStatus) {
+			options.ReturnStatus = &imap.StatusOptions{
+				NumMessages: true,
+				UIDValidity: true,
+				NumUnseen:   true,
+			}
 		}
 	}
 
+	mailboxes, err := p.listMailboxes(options)
+	var imapErr *imap.Error
+	if options != nil && errors.As(err, &imapErr) && imapErr.Type == imap.StatusResponseTypeBad {
+		// A server that advertises the RETURN form and still refuses it is
+		// asked once more without it, rather than leaving the user with no
+		// folders at all, and is not asked for it again in this session.
+		log.Printf("alps/provider: IMAP server refused LIST with RETURN options, listing without them from now on: %v", err)
+		p.noteListReturnRefused()
+		mailboxes, err = p.listMailboxes(nil)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to list mailboxes: %v", err)
+	}
+	return mailboxes, nil
+}
+
+func (p *IMAPProvider) refusedListReturn() bool {
+	p.cacheLock.RLock()
+	defer p.cacheLock.RUnlock()
+	return p.listReturnRefused
+}
+
+func (p *IMAPProvider) noteListReturnRefused() {
+	p.cacheLock.Lock()
+	defer p.cacheLock.Unlock()
+	p.listReturnRefused = true
+}
+
+// listMailboxes lists every folder with one LIST "" "*", sending the given
+// RETURN options or, when they are nil, a plain LIST.
+func (p *IMAPProvider) listMailboxes(options *imap.ListOptions) ([]provider.Mailbox, error) {
 	var mailboxes []provider.Mailbox
-	list := p.client.List("", "*", &options)
+	list := p.client.List("", "*", options)
 	for {
 		data := list.Next()
 		if data == nil {
 			break
 		}
 
-		// Check if mailbox has \Subscribed attribute
-		subscribed := false
+		// A plain LIST says nothing about subscriptions. LSUB would (RFC 3501
+		// §6.3.9), but the client library cannot send it, so on such a server
+		// every folder counts as subscribed. Counting none would hide no more
+		// in the sidebar, which ignores a listing with nothing subscribed, but
+		// it would cost the sidebar every folder's unread count, read only
+		// for subscribed folders, and a rename would no longer carry a
+		// folder's subscription over to its new name.
+		subscribed := options == nil
 		for _, attr := range data.Attrs {
 			if string(attr) == "\\Subscribed" {
 				subscribed = true
@@ -129,7 +180,7 @@ func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
 		mailboxes = append(mailboxes, mbox)
 	}
 	if err := list.Close(); err != nil {
-		return nil, fmt.Errorf("failed to list mailboxes: %v", err)
+		return nil, err
 	}
 
 	sort.Slice(mailboxes, func(i, j int) bool {
