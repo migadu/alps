@@ -250,6 +250,7 @@ export class AlpsFloatingComposer extends LitElement {
     this.composeStore.updateComposer(id, { isSaving: true });
     try {
       const sentUuids = (currentInstance.attachments || []).map(a => a.uuid).filter(Boolean);
+      const sentParts = (currentInstance.attachments || []).map(a => a.partPath).filter(Boolean);
       const formData = this._buildFormData(currentInstance);
       formData.append('save_as_draft', '1');
 
@@ -296,14 +297,23 @@ export class AlpsFloatingComposer extends LitElement {
           draftMailbox: result.mailbox
         };
         if (result.attachments) {
-          // From the composer as it is now: one picked during the save is in
-          // neither the snapshot nor the server's answer.
-          const unsavedAttachments = (latest.attachments || []).filter(a => {
-            if (a._tempId) return true; // Still uploading
-            if (a.uuid && !sentUuids.includes(a.uuid)) return true; // Uploaded but not included in this save
-            return false;
+          // Entry by entry, from the composer as it is now. Each entry this
+          // save carried becomes the part it is stored as, which the answer
+          // names by the upload or the earlier part it came from; one picked
+          // during the save is kept as it is. One removed during the save
+          // stays removed, and leaves the composer unsaved, so the next save
+          // stores the draft without it. Rebuilt from the answer, the list
+          // had it back, and the next save and the send carried it again.
+          const storedFrom = new Map<string, any>();
+          for (const { source, ...part } of result.attachments) {
+            if (source?.uuid) storedFrom.set(`uuid:${source.uuid}`, part);
+            else if (source?.partPath) storedFrom.set(`part:${source.partPath}`, part);
+          }
+          updates.attachments = (latest.attachments || []).map(a => {
+            const sent = a.uuid && sentUuids.includes(a.uuid) ? `uuid:${a.uuid}`
+              : a.partPath && sentParts.includes(a.partPath) ? `part:${a.partPath}` : null;
+            return (sent && storedFrom.get(sent)) || a;
           });
-          updates.attachments = [...result.attachments, ...unsavedAttachments];
         }
         this.composeStore.updateComposer(this.instance.id, updates);
 

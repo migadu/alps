@@ -1766,6 +1766,11 @@ func handleComposeNew(ctx *alps.Context) error {
 		msg.MessageID = "<" + mid + ">"
 	}
 
+	// Where each of msg.Attachments comes from, in the same order: the upload
+	// or the earlier part the composer named it by. A draft save answers with
+	// it, so the composer can tell which stored part each of its entries became.
+	var sources []map[string]string
+
 	uuids := ctx.FormValue("attachment-uuids")
 	for _, uuid := range strings.Split(uuids, ",") {
 		uuid = strings.TrimSpace(uuid)
@@ -1778,6 +1783,7 @@ func handleComposeNew(ctx *alps.Context) error {
 			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "unable to retrieve message attachment " + uuid})
 		}
 		msg.Attachments = append(msg.Attachments, &formAttachment{attachment.File})
+		sources = append(sources, map[string]string{"uuid": uuid})
 		defer attachment.Form.RemoveAll()
 	}
 
@@ -1881,6 +1887,7 @@ func handleComposeNew(ctx *alps.Context) error {
 					// gives no disposition at all.
 					Inline: contentID != "" && !strings.EqualFold(disposition, "attachment"),
 				})
+				sources = append(sources, map[string]string{"partPath": pathStr})
 			}
 			return nil
 		})
@@ -1894,6 +1901,13 @@ func handleComposeNew(ctx *alps.Context) error {
 		var uid provider.MessageID
 		var size uint32
 		var respAttachments []map[string]interface{}
+
+		// The source of each attachment, by the part path WriteTo gives it
+		// (see partPaths).
+		sourceAt := make(map[string]map[string]string, len(sources))
+		for i, path := range msg.partPaths() {
+			sourceAt[path] = sources[i]
+		}
 
 		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 			var err error
@@ -1910,25 +1924,30 @@ func handleComposeNew(ctx *alps.Context) error {
 				ctx.Server.Logger().Errorf("Failed to fetch new attachments for draft %v: %v", uid, err)
 			} else if newMsg != nil {
 				msgIMAP := providerMessageToIMAP(*newMsg)
-				for _, a := range msgIMAP.Attachments() {
-					respAttachments = append(respAttachments, map[string]interface{}{
+				stored := func(a IMAPPartNode) map[string]interface{} {
+					path := formatPartPath(a.Path)
+					part := map[string]interface{}{
 						"name":     a.Filename,
 						"size":     a.Size,
 						"type":     a.MIMEType,
-						"partPath": formatPartPath(a.Path),
-					})
+						"partPath": path,
+					}
+					if source, ok := sourceAt[path]; ok {
+						part["source"] = source
+					}
+					return part
 				}
-				// The body's images too, marked inline: the composer replaces
-				// what it carries with this list, and left out they were not
-				// carried by the next save or by the send.
+				for _, a := range msgIMAP.Attachments() {
+					respAttachments = append(respAttachments, stored(a))
+				}
+				// The body's images too, marked inline, so that each inline
+				// entry the save carried finds the part it is now stored as.
+				// Left out, such an entry would keep a path the new draft does
+				// not have.
 				for _, a := range msgIMAP.EmbeddedParts() {
-					respAttachments = append(respAttachments, map[string]interface{}{
-						"name":     a.Filename,
-						"size":     a.Size,
-						"type":     a.MIMEType,
-						"partPath": formatPartPath(a.Path),
-						"inline":   true,
-					})
+					part := stored(a)
+					part["inline"] = true
+					respAttachments = append(respAttachments, part)
 				}
 			}
 
