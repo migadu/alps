@@ -31,6 +31,7 @@ export default {
       "any": "БИЛО КОЈИ",
       "ofTheFollowing": "од следећих услова подударају",
       "then": "ОНДА",
+      "value": "Вредност",
       "actions": {
         "fileinto": "Премести у фасциклу",
         "discard": "Одбаци (Обриши)",

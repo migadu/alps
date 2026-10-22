@@ -31,6 +31,7 @@ export default {
       "any": "QUALQUER",
       "ofTheFollowing": "das seguintes condições corresponderem",
       "then": "ENTÃO",
+      "value": "Valor",
       "actions": {
         "fileinto": "Mover para pasta",
         "discard": "Descartar (Excluir)",

@@ -31,6 +31,7 @@ export default {
       "any": "ANY",
       "ofTheFollowing": "of the following conditions match",
       "then": "THEN",
+      "value": "Value",
       "actions": {
         "fileinto": "Move to folder",
         "discard": "Discard (Delete)",

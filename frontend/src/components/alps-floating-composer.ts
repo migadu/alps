@@ -1468,6 +1468,7 @@ export class AlpsFloatingComposer extends LitElement {
             <span class="field-label">${this.i18nStore?.t('floatingComposer.to')}</span>
             <alps-address-input 
               class="address-input"
+              label=${this.i18nStore?.t('floatingComposer.to')}
               .addresses=${this.instance.to || []}
               @addresses-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { to: e.detail.addresses })}
               ?disabled=${this.instance.isSending}
@@ -1485,6 +1486,7 @@ export class AlpsFloatingComposer extends LitElement {
               <span class="field-label">${this.i18nStore?.t('floatingComposer.cc')}</span>
               <alps-address-input 
                 class="address-input"
+                label=${this.i18nStore?.t('floatingComposer.cc')}
                 .addresses=${this.instance.cc || []}
                 @addresses-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { cc: e.detail.addresses })}
                 ?disabled=${this.instance.isSending}
@@ -1497,6 +1499,7 @@ export class AlpsFloatingComposer extends LitElement {
               <span class="field-label">${this.i18nStore?.t('floatingComposer.bcc')}</span>
               <alps-address-input 
                 class="address-input"
+                label=${this.i18nStore?.t('floatingComposer.bcc')}
                 .addresses=${this.instance.bcc || []}
                 @addresses-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { bcc: e.detail.addresses })}
                 ?disabled=${this.instance.isSending}

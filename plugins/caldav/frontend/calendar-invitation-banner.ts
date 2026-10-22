@@ -318,6 +318,7 @@ export class CalendarInvitationBanner extends LitElement {
                 .value=${this.calendarPath}
                 .options=${v.calendars.map(c => ({ value: c.path, label: c.name }))}
                 title=${this.t('invitations.calendar')}
+                label=${this.t('invitations.calendar')}
                 ?disabled=${this.busy}
                 @change=${(e: Event) => { this.calendarPath = (e.target as HTMLSelectElement).value; }}
             ></alps-select>

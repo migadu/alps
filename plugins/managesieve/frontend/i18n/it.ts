@@ -31,6 +31,7 @@ export default {
       "any": "UNA QUALSIASI",
       "ofTheFollowing": "delle seguenti condizioni corrispondono",
       "then": "ALLORA",
+      "value": "Valore",
       "actions": {
         "fileinto": "Sposta nella cartella",
         "discard": "Scarta (Elimina)",
