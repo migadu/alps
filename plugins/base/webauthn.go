@@ -501,7 +501,7 @@ func handleVerifyFinish(ctx *alps.Context) error {
 
 	// Verify WebAuthn assertion. A 400 rather than a 401, which says the
 	// pending sign-in itself is gone.
-	_, err = ctx.Server.WebAuthn.FinishLogin(user, sessionData, ctx.Request)
+	credential, err := ctx.Server.WebAuthn.FinishLogin(user, sessionData, ctx.Request)
 	if err != nil {
 		ctx.Server.Logger().Slog().Warn("sign-in failed",
 			"user", session.Username(),
@@ -511,6 +511,7 @@ func handleVerifyFinish(ctx *alps.Context) error {
 			"error", err.Error())
 		return alps.NewHTTPError(http.StatusBadRequest, "verification failed")
 	}
+	recordKeyUse(ctx, session, creds, credential)
 
 	// Success! Mark session as authenticated with 2FA
 	session.SetAuthenticated2FA(true)
@@ -586,6 +587,55 @@ func handleVerifyFinish(ctx *alps.Context) error {
 		"success":  true,
 		"username": session.Username(),
 	})
+}
+
+// recordKeyUse keeps what a sign-in learnt about the key it was given: the
+// count of signatures the key reports, which FinishLogin has checked against
+// the stored one, and its flags. A key's count only goes up, so a count that
+// does not means that another authenticator may hold a copy of the key.
+// FinishLogin marks the credential so, for this sign-in alone (see
+// WebAuthnCredentials): each such sign-in is logged, and the mark is kept
+// with the key. The sign-in goes ahead regardless: a key's own counter can be
+// at fault.
+//
+// The record is saved only when the sign-in changed it: a key that always
+// reports a count of 0, as many passkeys do, changes nothing. Failing to save
+// is logged and is no reason to refuse a key that verified.
+func recordKeyUse(ctx *alps.Context, session *alps.Session, creds *UserCredentials, credential *webauthn.Credential) {
+	for i := range creds.Credentials {
+		stored := &creds.Credentials[i]
+		if !bytes.Equal(stored.Credential.ID, credential.ID) {
+			continue
+		}
+		if credential.Authenticator.CloneWarning {
+			ctx.Server.Logger().Slog().Warn("security key may have been copied",
+				"user", session.Username(),
+				"ip", ctx.ClientIP(),
+				"session", session.ID(),
+				"key", stored.Name)
+		}
+		was := stored.Credential
+		credential.Authenticator.CloneWarning = credential.Authenticator.CloneWarning || was.Authenticator.CloneWarning
+		if credential.Authenticator.SignCount == was.Authenticator.SignCount &&
+			credential.Authenticator.CloneWarning == was.Authenticator.CloneWarning &&
+			sameFlags(credential.Flags, was.Flags) {
+			return
+		}
+		stored.Credential = *credential
+		if err := saveCredentials(session.Store(), creds); err != nil {
+			ctx.Server.Logger().Errorf("WebAuthn verify: failed to save the key's signature count for user %s: %v", session.Username(), err)
+		}
+		return
+	}
+}
+
+// sameFlags is whether two sets of a key's flags say the same. Their raw byte
+// is left out, as the stored record does not keep it.
+func sameFlags(a, b webauthn.CredentialFlags) bool {
+	return a.UserPresent == b.UserPresent &&
+		a.UserVerified == b.UserVerified &&
+		a.BackupEligible == b.BackupEligible &&
+		a.BackupState == b.BackupState
 }
 
 // trustRequest is the body of a change to trust in linked accounts.
