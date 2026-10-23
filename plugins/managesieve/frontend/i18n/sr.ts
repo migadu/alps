@@ -21,7 +21,7 @@ export default {
       "deactivated": "Pravila su deaktivirana.",
       "valid": "Skripta je validna!",
       "networkError": "Došlo je do mrežne greške.",
-      "autoReplyOn": "Automatski odgovor je uključen. Isključite ga pod Automatski odgovor pre nego što filteri pošalju sopstveni."
+      "autoReplyOn": "Automatski odgovor je uključen. Isključite ga u podešavanjima automatskog odgovora pre nego što filteri pošalju sopstveni."
     },
     "visual": {
       "newRule": "Novo pravilo",
@@ -92,7 +92,7 @@ export default {
       "saved": "Automatski odgovor je sačuvan.",
       "turnedOff": "Automatski odgovor je isključen.",
       "unsupported": "Ovaj server pošte ne nudi automatske odgovore.",
-      "ownVacation": "Vaši filteri već šalju sopstveni automatski odgovor. Uklonite ga u sirovom uređivaču pod Filteri da biste ovde podesili novi.",
+      "ownVacation": "Vaši filteri već šalju sopstveni automatski odgovor. Uklonite ga u sirovom uređivaču filtera da biste ovde podesili novi.",
       "errors": {
         "emptyMessage": "Napišite poruku koju će pošiljaoci dobiti ili isključite automatski odgovor.",
         "invalidWindow": "Datum početka ne može biti posle datuma završetka.",
