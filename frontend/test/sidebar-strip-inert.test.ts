@@ -24,7 +24,6 @@ import type { AlpsSidebar } from '../src/components/alps-sidebar';
 import { readSources } from './helpers/sources';
 import { SettingsStore } from '../src/store/settings-store';
 import '../src/components/folder-list';
-import '../src/pages/settings-page';
 import '../../plugins/carddav/frontend/contacts-categories';
 import '../../plugins/caldav/frontend/tasks-page';
 import '../../plugins/caldav/frontend/calendar-page';
@@ -90,13 +89,13 @@ describe('every dimmed sidebar content is an <alps-sidebar-content> (source pin)
       [...source.matchAll(/<([a-z-]+)\s+class="sidebar-content"[^>]*>/g)].map((m) => [path, m[1]] as const),
     );
 
-  it('finds the five containers', () => {
+  // Settings is not among them: it is a window with a fixed section list.
+  it('finds the four containers', () => {
     expect(tags.map(([path]) => path).sort()).toEqual([
       'plugins/caldav/frontend/calendar-page.ts',
       'plugins/caldav/frontend/tasks-page.ts',
       'plugins/carddav/frontend/contacts-categories.ts',
       'src/components/folder-list.ts',
-      'src/pages/settings-page.ts',
     ]);
   });
 
@@ -173,21 +172,6 @@ describe('calendar (calendar-page)', () => {
     expect(inert(el)).toBe(true);
     expect(content(el).querySelector('alps-sidebar-calendar')).not.toBeNull();
     expect(createIsLive(el)).toBe(true);
-
-    await setSidebar(bar(el), { peeking: true });
-    expect(inert(el)).toBe(false);
-
-    await setSidebar(bar(el), { peeking: false });
-    await set(el, { isMobile: true });
-    expect(inert(el)).toBe(false);
-  });
-});
-
-describe('settings (settings-page)', () => {
-  it('is inert in the strip and live when it peeks or on mobile', async () => {
-    const el = await mount<El>('settings-page', { i18nStore, settingsStore: settingsStore() });
-    await settleSidebar(bar(el));
-    expect(inert(el)).toBe(true);
 
     await setSidebar(bar(el), { peeking: true });
     expect(inert(el)).toBe(false);

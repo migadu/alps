@@ -79,10 +79,12 @@ describe('a plugin page whose module could not be fetched', () => {
     await waitFor(() => page.load.mock.calls.length === 1, 'the import');
     await flush();
 
+    // Settings, a window over the page: the page is drawn again beneath it,
+    // and again once it closes.
     window.location.hash = '#/settings';
-    await waitFor(() => !!root.shadowRoot!.querySelector('settings-page'), 'another page');
+    await waitFor(() => !!root.shadowRoot!.querySelector('settings-window'), 'Settings over the page');
     window.location.hash = page.hash;
-    await waitFor(() => !root.shadowRoot!.querySelector('settings-page'), 'the page again');
+    await waitFor(() => !root.shadowRoot!.querySelector('settings-window'), 'the page again');
     await flush();
 
     expect(page.load).toHaveBeenCalledTimes(1);

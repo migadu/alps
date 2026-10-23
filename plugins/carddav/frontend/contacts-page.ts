@@ -22,6 +22,8 @@ import { MailboxPage } from '../../../frontend/src/pages/mailbox-page';
 import { MessageList } from '../../../frontend/src/components/message-list';
 import { contactsService } from './contacts-service';
 import { isVersionConflict, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
+import { isSettingsHash } from '../../../frontend/src/utils/routes';
+import { pageHash, updateSettingsBackground } from '../../../frontend/src/utils/settings-history';
 
 /** Where the categories this user created, with no one filed into them yet, are kept. */
 const categoriesKeyFor = (username: string) => `alps_contacts_categories_${username}`;
@@ -292,8 +294,12 @@ export class ContactsPage extends LitElement {
     this.isMobile = window.innerWidth <= 768;
   };
 
+  /** The first book read restores the page's address even beneath Settings. */
+  private restoringHash = true;
+
   connectedCallback() {
     super.connectedCallback();
+    this.restoringHash = true;
     this.showInitialLoader = !(window as any).alpsAppLoaded;
     this.classList.add('density-compact');
     this.loadAddedCategories();
@@ -307,7 +313,9 @@ export class ContactsPage extends LitElement {
     }
 
     // Initial hash check
-    setTimeout(() => this._handleHashChange(), 0);
+    setTimeout(() => {
+      if (this.restoringHash) this.readHash(pageHash() ?? '');
+    }, 0);
   }
 
   disconnectedCallback() {
@@ -358,10 +366,17 @@ export class ContactsPage extends LitElement {
   }
 
   private _handleHashChange = () => {
+    // The Settings window, opened over this page: the URL is the window's.
+    // Read as an address naming no card, it closed the card being read, and
+    // an edit with it.
+    if (isSettingsHash(window.location.hash)) return;
+    this.readHash(window.location.hash);
+  };
+
+  private readHash(hash: string) {
     // Remove any existing temporary contacts
     this.contacts = this.contacts.filter((c: any) => !c.isTemporary);
 
-    const hash = window.location.hash;
     const match = hash.match(CONTACTS_ROUTE);
     if (match) {
       const catParam = match[1] ? decodeURIComponent(match[1]) : '';
@@ -418,12 +433,18 @@ export class ContactsPage extends LitElement {
    * event did after the assignment it replaces.
    */
   private writeHash(hash: string, entry: HashEntry) {
+    // Keep Settings open, but retain the page's new address and state for
+    // Close/Back; a completed write can rename or remove its open category.
+    if (updateSettingsBackground(hash)) {
+      this.readHash(hash);
+      return;
+    }
     if (window.location.hash === hash) return;
     if (entry === 'push') {
       window.location.hash = hash;
       return;
     }
-    history.replaceState(null, '', hash);
+    history.replaceState(history.state, '', hash);
     this._handleHashChange();
   }
 
@@ -439,7 +460,7 @@ export class ContactsPage extends LitElement {
    * it asked for a card that no longer exists and showed an empty pane.
    */
   private leaveDeletedCard() {
-    if (!window.location.hash.match(CONTACTS_ROUTE)?.[2]) return;
+    if (!pageHash()?.match(CONTACTS_ROUTE)?.[2]) return;
     this.writeHash(this.listHash(), 'replace');
   }
 
@@ -522,7 +543,12 @@ export class ContactsPage extends LitElement {
       this.loadedQuery = query;
       if (!query) this.wholeBook = this.contacts;
       else if (whole) this.wholeBook = whole.contacts || [];
-      this._handleHashChange(); // Trigger selection if a deep link was used
+      if (this.restoringHash) {
+        this.restoringHash = false;
+        this.readHash(pageHash() ?? '');
+      } else {
+        this._handleHashChange(); // Keep live Settings edits untouched.
+      }
     } catch (e) {
       if (epoch !== this.readEpoch) return;
       console.error('Failed to fetch contacts', e);
@@ -801,7 +827,7 @@ export class ContactsPage extends LitElement {
    * rewrite to the bare list would close it and throw the edit away.
    */
   private categoryHash(category: string): string {
-    const card = window.location.hash.match(CONTACTS_ROUTE)?.[2];
+    const card = pageHash()?.match(CONTACTS_ROUTE)?.[2];
     return `#/contacts/${encodeURIComponent(category || 'all')}${card ? `/${card}` : ''}`;
   }
 
@@ -1226,7 +1252,7 @@ export class ContactsPage extends LitElement {
     // user can open another card, or tick others, while it is on its way, and
     // the answer must not clear those.
     const open = this.selectedContact?.path;
-    const openedHash = window.location.hash;
+    const openedHash = pageHash();
     const selection = this.selectedContacts;
     const pathsToDelete = this.gestureTargets;
     try {
@@ -1245,7 +1271,7 @@ export class ContactsPage extends LitElement {
           // Before the re-read, whose hash handler would open a card the
           // address still names; and only the address the delete was made
           // from, not one the user has since moved to.
-          if (window.location.hash === openedHash) this.leaveDeletedCard();
+          if (pageHash() === openedHash) this.leaveDeletedCard();
         }
         // The ticked batch was the target. A selection built since is not.
         if (this.selectedContacts === selection && selection.size > 0) {
@@ -1262,7 +1288,7 @@ export class ContactsPage extends LitElement {
         if (open && this.selectedContact?.path === open && gone(open)) {
           this.selectedContact = null;
           this.isEditing = false;
-          if (window.location.hash === openedHash) this.leaveDeletedCard();
+          if (pageHash() === openedHash) this.leaveDeletedCard();
         }
         if (this.selectedContacts === selection && [...selection].some(gone)) {
           this.selectedContacts = new Set([...selection].filter(path => !gone(path)));

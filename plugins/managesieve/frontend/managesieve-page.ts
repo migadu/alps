@@ -99,6 +99,18 @@ export class ManageSievePage extends LitElement {
 		}
 	}
 
+	/**
+	 * What the Settings window asks before a Close, an Escape or another
+	 * section would unmount the filters (its `UnsavedChanges`): the open
+	 * editor's own measure, the one that offers its Save.
+	 */
+	get hasUnsavedChanges(): boolean {
+		if (this.isLoading || this.loadFailed) return false;
+		if (this.mode === 'raw') return this.script !== this.storedScript;
+		const editor = this.shadowRoot?.querySelector('alps-visual-editor') as { isDirty?: boolean } | null;
+		return editor?.isDirty === true;
+	}
+
 	private handleVisualStateChange(e: CustomEvent) {
 		this.visualState = e.detail.state;
 	}
