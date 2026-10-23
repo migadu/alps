@@ -274,6 +274,10 @@ cat >"$STATE/alps.toml" <<EOF
 [server]
 addr = "127.0.0.1:$ALPS_PORT"
 temp_dir = "$STATE/alps-tmp"
+# On, unlike a deployment's default, so that every spec runs with the server's
+# change numbers (CONDSTORE); e2e/condstore.spec.ts is about them.
+condstore = true
+
 # On, unlike a deployment's default, so that every spec runs with the pages'
 # event stream open and the IDLE behind it; e2e/push.spec.ts is about them.
 push_new_mail = true
