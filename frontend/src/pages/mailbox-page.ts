@@ -1,6 +1,6 @@
 import { html, css, LitElement } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { fetchWithTimeout } from '../utils/fetch-utils';
+import { fetchWithTimeout, HttpStatusError } from '../utils/fetch-utils';
 import '../components/folder-list';
 import '../components/message-list';
 import '../components/message-reader';
@@ -112,6 +112,8 @@ export class MailboxPage extends LitElement {
   @state() private showDeleteConfirm = false;
   /** The last foreground listing failed; cleared when the next one starts. */
   @state() private listLoadFailed = false;
+  /** It was a search the mail server refused for its rate limit (a 429). */
+  @state() private listLoadLimited = false;
   @state() private pendingDeleteDetails: PendingDelete | null = null;
 
   private markReadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1225,9 +1227,12 @@ export class MailboxPage extends LitElement {
 
   private handleSyncError = (e: Event) => {
     this.isSyncing = false;
-    const { background } = (e as CustomEvent).detail;
+    const { background, error } = (e as CustomEvent).detail;
     if (!background) {
       this.loadingMessages = false;
+      // Not a failure to read the folder: the server asked to slow down, and
+      // the list says that instead.
+      this.listLoadLimited = error instanceof HttpStatusError && error.status === 429;
       // Said, rather than left to the list's empty branch: with no messages and
       // no spinner it painted "No messages", a claim about a folder this client
       // had just failed to read, with nothing offered to try again.
@@ -2603,6 +2608,7 @@ export class MailboxPage extends LitElement {
               .sortOrder=${this.sortOrder}
               .syncing=${this.isSyncing}
               .loadFailed=${this.listLoadFailed}
+              .loadLimited=${this.listLoadLimited}
               @refresh=${() => {
         // Try again, over a view that could not be read: that view is read
         // again, as asked. Turned back to the first page as a check for new

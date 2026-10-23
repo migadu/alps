@@ -1,4 +1,4 @@
-import { fetchWithTimeout } from '../utils/fetch-utils';
+import { fetchWithTimeout, HttpStatusError } from '../utils/fetch-utils';
 import { ALL_MAILBOXES, FOLDER_INBOX, encodeMailboxPath, isDescendantMailbox } from '../utils/folders';
 import { Logger } from '../utils/logger';
 import { mailboxOf, messageKey } from '../utils/message-key';
@@ -9,6 +9,8 @@ export interface MailboxData {
   Total?: number;
   MessagesPerPage?: number;
   Mailboxes?: any[];
+  /** What the server names the folder list by: sent back, it leaves out a list that is still that one. */
+  MailboxesVersion?: string;
   Messages?: any[];
   /**
    * The mailbox `Messages` were read from, stamped here from the read's own
@@ -19,8 +21,8 @@ export interface MailboxData {
    */
   ListedMailbox?: string;
   /** The counts the listing was read at, of the mailbox and of the Inbox. */
-  Mailbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number } | null;
-  Inbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number } | null;
+  Mailbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number; HighestModSeq?: number } | null;
+  Inbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number; HighestModSeq?: number } | null;
 }
 
 /** A folder's counts, as a status check answers them. */
@@ -29,6 +31,12 @@ interface Counts {
   unseen: number;
   uidnext?: number;
   uidvalidity?: number;
+  /**
+   * The folder's HIGHESTMODSEQ, where the server says it (#124): it moves
+   * when a flag changes in another client, which the counts and UIDNEXT do
+   * not show. Compared only where both answers carry it.
+   */
+  highestmodseq?: number;
 }
 
 /**
@@ -76,8 +84,30 @@ const PUSHED_POLL_SPACING = 3;
 /** How many listings {@link MessageSyncService} keeps; the one read longest ago goes first. */
 const MAX_KEPT_LISTINGS = 30;
 
+/** How far either way a poll's wait is spread, as a share of the interval. */
+const POLL_JITTER = 0.1;
+/** The longest wait after polls that failed, whatever the interval. */
+const MAX_POLL_BACKOFF_MS = 30 * 60 * 1000;
+
+/**
+ * How long the poll waits: the interval, doubled after each poll in a row that
+ * failed up to {@link MAX_POLL_BACKOFF_MS} (or the interval, when that is
+ * longer), and spread by up to {@link POLL_JITTER} of it either way, `random`
+ * being where in that spread. Tabs and clients started together polled in
+ * step for as long as they stayed open, and a server that failed was asked
+ * again at the same pace.
+ */
+export function pollDelay(intervalMs: number, failures: number, random: number): number {
+  const wait = Math.min(intervalMs * 2 ** failures, Math.max(intervalMs, MAX_POLL_BACKOFF_MS));
+  return Math.round(wait * (1 + POLL_JITTER * (2 * random - 1)));
+}
+
 export class MessageSyncService extends EventTarget {
-  private interval: ReturnType<typeof setInterval> | null = null;
+  private interval: ReturnType<typeof setTimeout> | null = null;
+  /** Polls in a row that failed, which the next one waits longer for (see pollDelay). */
+  private pollFailures = 0;
+  /** Taken by every start and stop of the timer, so that a poll still out schedules nothing after either. */
+  private timerGeneration = 0;
   private currentMailbox: string = FOLDER_INBOX;
   private currentPage: number = 0;
   private currentQuery: string = '';
@@ -131,13 +161,19 @@ export class MessageSyncService extends EventTarget {
    */
   private listings = new Map<string, MailboxData>();
   private latestMailboxes: any[] | null = null;
+  /**
+   * The version the server named `latestMailboxes` by, sent back with each
+   * listing so that it leaves out a folder list that is still that one; null
+   * when the list held is not exactly what the server sent.
+   */
+  private latestMailboxesVersion: string | null = null;
   private listingSettingsKey = '';
 
   /**
-   * The foreground listing request out at the server, if any: one asked for
+   * The listing request out at the server, if any, the poll's and the
+   * check-for-new-mail button's as well as a foreground one: one asked for
    * meanwhile waits for it, and a newer one takes the place of one waiting
-   * (see {@link fetch}). The poll's listing and the check-for-new-mail
-   * button's do not wait for it yet.
+   * (see {@link fetch} and {@link backgroundSync}).
    */
   private listingOut: Promise<void> | null = null;
 
@@ -178,6 +214,7 @@ export class MessageSyncService extends EventTarget {
       this.heard = null;
       this.forgetListings();
       this.latestMailboxes = null;
+      this.latestMailboxesVersion = null;
     });
     // A sign-in that does not follow a sign-out on this page, as a switch to
     // a linked account is, starts with nothing of the account before it.
@@ -191,6 +228,7 @@ export class MessageSyncService extends EventTarget {
       this.heard = null;
       this.forgetListings();
       this.latestMailboxes = null;
+      this.latestMailboxesVersion = null;
     });
 
     // A message read, starred or marked unread on screen is so in every view
@@ -287,7 +325,7 @@ export class MessageSyncService extends EventTarget {
   }
 
   private keepListing(mailbox: string, page: number, query: string, data: MailboxData) {
-    if (data.Mailboxes) this.latestMailboxes = data.Mailboxes;
+    if (data.Mailboxes) this.holdMailboxes(data);
     const kept: MailboxData = JSON.parse(JSON.stringify(data));
     delete kept.Mailboxes;
     const key = this.listingKey(mailbox, page, query);
@@ -295,6 +333,30 @@ export class MessageSyncService extends EventTarget {
     this.listings.set(key, kept);
     while (this.listings.size > MAX_KEPT_LISTINGS) {
       this.listings.delete(this.listings.keys().next().value!);
+    }
+  }
+
+  /** Holds an answer's folder list as the latest, by the version it came with. */
+  private holdMailboxes(data: MailboxData) {
+    this.latestMailboxes = data.Mailboxes ?? null;
+    this.latestMailboxesVersion = data.MailboxesVersion ?? null;
+  }
+
+  /** A listing's URL, asking the server to leave out the folder list held when it is still that one. */
+  private listingURL(mailbox: string, page: number, query: string, refresh: boolean): string {
+    let url = `/mailboxes/${encodeMailboxPath(mailbox)}?page=${page}`;
+    if (query) url += `&query=${encodeURIComponent(query)}`;
+    if (refresh) url += `&refresh=true`;
+    // Not for a refresh, which is asked for when what is held may be wrong.
+    else if (this.latestMailboxesVersion) url += `&mailboxes=${encodeURIComponent(this.latestMailboxesVersion)}`;
+    return url;
+  }
+
+  /** An answer that left the folder list out, as unchanged, is handed out with the one held. */
+  private fillMailboxes(data: MailboxData) {
+    if (!data.Mailboxes && this.latestMailboxes && data.MailboxesVersion
+        && data.MailboxesVersion === this.latestMailboxesVersion) {
+      data.Mailboxes = this.latestMailboxes;
     }
   }
 
@@ -400,23 +462,45 @@ export class MessageSyncService extends EventTarget {
   private startTimer() {
     this.stopTimer();
     this.roundsPassed = 0;
-    this.interval = setInterval(() => {
-      // Rounds are passed over, rather than the timer set again, so that a
-      // stream that comes and goes does not put the poll off each time.
-      if (this.foldersPushed && ++this.roundsPassed < PUSHED_POLL_SPACING) return;
-      this.roundsPassed = 0;
-      void this.poll();
-    }, this.pollMinutes * 60 * 1000);
+    this.pollFailures = 0;
+    this.scheduleNextPoll();
   }
 
-  /** The minutes between the polls that run (see {@link PUSHED_POLL_SPACING}). */
+  /**
+   * Sets the timer for the next poll. It is set as the poll starts, so the
+   * polls keep their pace as a fixed interval did, however long each takes;
+   * a poll that failed sets it again, further off (see pollDelay).
+   */
+  private scheduleNextPoll() {
+    const generation = this.timerGeneration;
+    this.interval = setTimeout(async () => {
+      if (generation !== this.timerGeneration) return;
+      this.scheduleNextPoll();
+      // Keep the base timer while push is up, so a stream ending restores
+      // the normal pace without a long timer left from a pushed round.
+      if (this.foldersPushed && ++this.roundsPassed < PUSHED_POLL_SPACING) return;
+      this.roundsPassed = 0;
+      const ok = await this.poll();
+      if (generation !== this.timerGeneration || ok === null) return;
+      // Its pace again once one gets through: the timer set as it started
+      // still waited as long as the failures before it asked.
+      const failed = this.pollFailures;
+      this.pollFailures = ok ? 0 : failed + 1;
+      if (ok && failed === 0) return;
+      if (this.interval) clearTimeout(this.interval);
+      this.scheduleNextPoll();
+    }, pollDelay(this.pollMinutes * 60 * 1000, this.pollFailures, Math.random()));
+  }
+
+  /** The minutes between the polls that run while the stream is up. */
   private get pollEveryMinutes(): number {
     return this.pollMinutes * (this.foldersPushed ? PUSHED_POLL_SPACING : 1);
   }
 
   private stopTimer() {
+    this.timerGeneration++;
     if (this.interval) {
-      clearInterval(this.interval);
+      clearTimeout(this.interval);
       this.interval = null;
     }
   }
@@ -525,35 +609,43 @@ export class MessageSyncService extends EventTarget {
       shared: { mailbox: checkedCounts(message.counts), inbox: checkedCounts(message.inbox) } });
   };
 
-  /** One leader probes each watched folder once, then each view uses those counts. */
-  private async poll() {
-    if (this.pollBusy || this.pollMinutes <= 0) return;
+  /**
+   * One leader probes each watched folder once, then each view uses those
+   * counts. Answers whether the poll got through, or null when it asked
+   * nothing (see scheduleNextPoll).
+   */
+  private async poll(): Promise<boolean | null> {
+    if (this.pollBusy || this.pollMinutes <= 0) return null;
     this.pollBusy = true;
     try {
       if (!this.leading || !this.channel || !this.username) {
-        if (!this.leading && navigator.locks && !this.lockFailed && document.hidden) return;
+        if (!this.leading && navigator.locks && !this.lockFailed && document.hidden) return null;
         this.tellView();
-        await this.backgroundSync({ announce: this.announces, scheduled: true });
-        return;
+        return await this.backgroundSync({ announce: this.announces, scheduled: true });
       }
       const generation = this.pollGeneration;
       const username = this.username;
+      // Followers renew their watch when counts arrive. A failed poll may
+      // wait longer than three base intervals, so those live tabs must stay
+      // watched through the backoff, including its longest jittered wait.
+      const peerInterval = this.pollFailures > 0
+        ? pollDelay(this.pollMinutes * 60_000, this.pollFailures, 1)
+        : this.pollMinutes * 60_000;
       const peers = [...this.peers.values()].filter((peer) => peer.visible && peer.username === username
-        && Date.now() - peer.seen <= Math.max(this.pollEveryMinutes * 3 * 60_000, 180_000));
+        && Date.now() - peer.seen <= Math.max(peerInterval * (this.foldersPushed ? PUSHED_POLL_SPACING : 1) * 3, 180_000));
       const mailbox = this.currentMailbox;
       const fetchId = this.currentFetchId;
-      const mailboxes = new Set([FOLDER_INBOX, mailbox, ...peers.map((peer) => peer.mailbox)]);
-      const counts = new Map<string, Counts | null>();
-      for (const name of mailboxes) {
-        counts.set(name, name === ALL_MAILBOXES ? null : await this.askCounts(name).catch(() => null));
-        if (!this.leading || generation !== this.pollGeneration) return;
-      }
+      // In one request: a request each waited its turn on the connection.
+      const mailboxes = [...new Set([mailbox, FOLDER_INBOX, ...peers.map((peer) => peer.mailbox)])]
+        .filter((name) => name !== ALL_MAILBOXES);
+      const counts = await this.askStatuses(mailboxes).catch(() => new Map<string, Counts | null>());
+      if (!this.leading || generation !== this.pollGeneration) return null;
       for (const peer of peers) this.postPoll({ type: 'counts', peer: peer.peer, epoch: peer.epoch,
         username, mailbox: peer.mailbox, counts: counts.get(peer.mailbox), inbox: counts.get(FOLDER_INBOX) });
       // A foreground navigation made while the probes were out owns its own
       // listing; do not supersede it using the previous view's counts.
-      if (mailbox !== this.currentMailbox || fetchId !== this.currentFetchId) return;
-      await this.backgroundSync({ announce: true, scheduled: true,
+      if (mailbox !== this.currentMailbox || fetchId !== this.currentFetchId) return null;
+      return await this.backgroundSync({ announce: true, scheduled: true,
         shared: { mailbox: counts.get(mailbox) ?? null, inbox: counts.get(FOLDER_INBOX) ?? null } });
     } finally {
       this.pollBusy = false;
@@ -711,7 +803,7 @@ export class MessageSyncService extends EventTarget {
       if (this.currentLabelsId !== labelsId) return;
       if (!data.Mailboxes) return;
 
-      this.latestMailboxes = data.Mailboxes;
+      this.holdMailboxes(data);
       this.dispatchEvent(new CustomEvent('labels-success', { detail: { mailboxes: data.Mailboxes } }));
     } catch (err) {
       Logger.error('Failed to refresh folder list', err);
@@ -858,6 +950,8 @@ export class MessageSyncService extends EventTarget {
     if (this.latestMailboxes) {
       this.latestMailboxes = this.latestMailboxes.map((mb: any) =>
         (named(mb) ? { ...mb, Total: counts.total, Unseen: counts.unseen } : mb));
+      // No longer the list the server named: the next listing brings it whole.
+      this.latestMailboxesVersion = null;
     }
     if (inbox) {
       this.dispatchEvent(new CustomEvent('inbox-counts', { detail: { counts, announce: this.announces } }));
@@ -930,18 +1024,15 @@ export class MessageSyncService extends EventTarget {
       }
 
       if (probe) {
-        // A probe that fails says nothing the listing will not say itself.
-        const ask = (name: string) => fetchWithTimeout(`/mailboxes/${encodeMailboxPath(name)}/status`).catch(() => {});
-        if (mailbox !== FOLDER_INBOX) await ask(FOLDER_INBOX);
-        if (this.currentFetchId !== fetchId) return;
-        if (mailbox !== ALL_MAILBOXES) await ask(mailbox);
-
+        // A probe that fails says nothing the listing will not say itself,
+        // and one that answers is not read: the listing carries the counts.
+        // The Inbox and the mailbox in one request, as the poll asks them.
+        const url = statusURL([mailbox, FOLDER_INBOX].filter((name) => name !== ALL_MAILBOXES));
+        if (url) await fetchWithTimeout(url).catch(() => {});
         if (this.currentFetchId !== fetchId) return;
       }
 
-      let url = `/mailboxes/${encodeMailboxPath(mailbox)}?page=${page}`;
-      if (query) url += `&query=${encodeURIComponent(query)}`;
-      if (checkStatus) url += `&refresh=true`;
+      const url = this.listingURL(mailbox, page, query, checkStatus);
 
       const request = fetchWithTimeout(url);
       const out = request.then(() => {}, () => {});
@@ -968,11 +1059,14 @@ export class MessageSyncService extends EventTarget {
 
       // Any other refusal is a failure. The server's errors are JSON too, and
       // announced as data an `{"error": …}` answer had no Messages: the page
-      // took it for an empty folder and cleared the rows on screen.
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      // took it for an empty folder and cleared the rows on screen. Its status
+      // goes with it: a 429 is a search the mail server refused for its rate
+      // limit, which the page says as that.
+      if (!response.ok) throw new HttpStatusError(response.status, `HTTP ${response.status}`);
 
       const data: MailboxData = await response.json();
       if (this.currentFetchId !== fetchId) return; // Re-check after json parsing
+      this.fillMailboxes(data);
 
       await settle();
       if (this.currentFetchId !== fetchId) return; // Re-check after artificial delay
@@ -1038,6 +1132,25 @@ export class MessageSyncService extends EventTarget {
   private relistDue(read: number, started: number, scheduled: boolean): boolean {
     const slack = scheduled ? Math.max(this.pollMinutes, 0) * 60 * 1000 / 2 : 0;
     return started - read >= RELIST_AFTER_MS - slack;
+  }
+
+  /**
+   * Folders' counts as the server reads them now, in one request: the first
+   * folder's are the answer, and the others' come under `with`. Null for a
+   * folder it does not say.
+   */
+  private async askStatuses(names: string[]): Promise<Map<string, Counts | null>> {
+    const unique = [...new Set(names)];
+    const counts = new Map<string, Counts | null>(unique.map((name) => [name, null]));
+    const url = statusURL(unique);
+    if (!url) return counts;
+    const [first, ...others] = unique;
+    const response = await fetchWithTimeout(url);
+    if (!response.ok) return counts;
+    const body = await response.json().catch(() => null);
+    counts.set(first, checkedCounts(body));
+    for (const name of others) counts.set(name, checkedCounts(body?.with?.[name]));
+    return counts;
   }
 
   /** A folder's counts as the server reads them now; null when it does not say. */
@@ -1117,15 +1230,18 @@ export class MessageSyncService extends EventTarget {
 
     try {
       let inbox: Counts | null = shared?.inbox ?? null;
-      if (!shared && mailbox !== FOLDER_INBOX) {
-        inbox = await this.askCounts(FOLDER_INBOX).catch(() => null);
+      let counts: Counts | null = shared?.mailbox ?? null;
+      if (!shared) {
+        // The Inbox's counts and the mailbox's in one request: a request
+        // each waited its turn on the connection. A search of all mailboxes
+        // is of no one mailbox: the server has no counts of `*`, and
+        // answered the question with a 500. Without counts the listing
+        // below is read, as it always was.
+        const asked = await this.askStatuses([mailbox, FOLDER_INBOX].filter((name) => name !== ALL_MAILBOXES))
+          .catch(() => new Map<string, Counts | null>());
+        if (mailbox !== FOLDER_INBOX) inbox = asked.get(FOLDER_INBOX) ?? null;
+        counts = mailbox === ALL_MAILBOXES ? null : asked.get(mailbox) ?? null;
       }
-      if (superseded()) return true;
-      // A search of all mailboxes is of no one mailbox: the server has no
-      // counts of `*`, and answered the question with a 500. Without counts
-      // the listing below is read, as it always was.
-      const counts = shared ? shared.mailbox
-        : mailbox === ALL_MAILBOXES ? null : await this.askCounts(mailbox);
       if (superseded()) return true;
 
       // The listing is read again only when the counts moved since it was
@@ -1148,16 +1264,31 @@ export class MessageSyncService extends EventTarget {
         return true;
       }
 
-      let url = `/mailboxes/${encodeMailboxPath(mailbox)}?page=${page}`;
-      if (query) url += `&query=${encodeURIComponent(query)}`;
       // Read again for its age alone, and past the server's caches. They
       // kept the page when this view was last read, and live about as long
       // as RELIST_AFTER_MS: often they would still answer with that page,
       // and what changed since would wait for the next round.
-      if (unchanged) url += '&refresh=true';
+      const url = this.listingURL(mailbox, page, query, unchanged);
 
+      // Behind the listing out, as a foreground one waits (see fetch), and
+      // out in its place: a navigation meanwhile waits for this one in turn,
+      // and the newest of those is the one sent. The server reads a session's
+      // listings one after another, so a listing sent beside another only
+      // waited there.
+      while (this.listingOut) {
+        await this.listingOut;
+        if (superseded()) return true;
+      }
       sentAt = this.listingSent();
-      const response = await fetchWithTimeout(url);
+      const request = fetchWithTimeout(url);
+      const out = request.then(() => {}, () => {});
+      this.listingOut = out;
+      let response: Response;
+      try {
+        response = await request;
+      } finally {
+        if (this.listingOut === out) this.listingOut = null;
+      }
       if (superseded()) return true;
 
       if (response.status === 401) {
@@ -1181,6 +1312,7 @@ export class MessageSyncService extends EventTarget {
 
       const data: MailboxData = await response.json();
       if (superseded()) return true;
+      this.fillMailboxes(data);
       // The view is listed now, whatever became of the read before: after a
       // failed one, the rows a poll brings back are this view's.
       this.listed = true;
@@ -1209,7 +1341,21 @@ function newPollToken(): string {
 
 function countsOf(status: MailboxData['Mailbox']): Counts | null {
   if (typeof status?.NumMessages !== 'number' || typeof status?.NumUnseen !== 'number') return null;
-  return { total: status.NumMessages, unseen: status.NumUnseen, uidnext: status.UIDNext, uidvalidity: status.UIDValidity };
+  return { total: status.NumMessages, unseen: status.NumUnseen, uidnext: status.UIDNext, uidvalidity: status.UIDValidity,
+    highestmodseq: knownModSeq(status.HighestModSeq) };
+}
+
+/** The one request for several folders' counts: the first's, and the others' under `with`. */
+function statusURL(names: string[]): string | null {
+  const [first, ...others] = [...new Set(names)];
+  if (first === undefined) return null;
+  const url = `/mailboxes/${encodeMailboxPath(first)}/status`;
+  return others.length > 0 ? url + '?' + others.map((name) => `with=${encodeURIComponent(name)}`).join('&') : url;
+}
+
+/** A HIGHESTMODSEQ, or undefined for none: 0 is a server that keeps none. */
+function knownModSeq(value: unknown): number | undefined {
+  return typeof value === 'number' && value > 0 ? value : undefined;
 }
 
 /** Validate messages from another tab as strictly as HTTP status answers. */
@@ -1217,13 +1363,17 @@ function checkedCounts(body: any): Counts | null {
   if (typeof body?.total !== 'number' || typeof body?.unseen !== 'number') return null;
   return { total: body.total, unseen: body.unseen,
     uidnext: typeof body.uidnext === 'number' ? body.uidnext : undefined,
-    uidvalidity: typeof body.uidvalidity === 'number' ? body.uidvalidity : undefined };
+    uidvalidity: typeof body.uidvalidity === 'number' ? body.uidvalidity : undefined,
+    highestmodseq: knownModSeq(body.highestmodseq) };
 }
 
 /** Whether a check's answer is the counts held; neither unknown. */
 function sameCounts(answer: Counts | null, held: Counts | null): boolean {
   return !!answer && !!held && answer.total === held.total && answer.unseen === held.unseen
-    && answer.uidnext === held.uidnext && answer.uidvalidity === held.uidvalidity;
+    && answer.uidnext === held.uidnext && answer.uidvalidity === held.uidvalidity
+    // Where both say it: the server says it once #124 has it ask.
+    && (answer.highestmodseq === undefined || held.highestmodseq === undefined
+      || answer.highestmodseq === held.highestmodseq);
 }
 
 /** Sets or clears a flag on the messages of a listing that `keys` names. */
