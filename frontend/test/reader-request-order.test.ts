@@ -337,6 +337,10 @@ describe('a read still running when its test ends', () => {
     if (leftRunning) await Promise.allSettled([...leftRunning]);
     await flush();
 
+    // Account-generation guards may cancel follow-on fetches even when
+    // teardown forgot to wait. The first test's own tracked reads must also
+    // have finished before beforeEach replaced the fixture's pending set.
+    expect(leftRunning?.size ?? 0).toBe(0);
     expect(asked).toEqual([]);
   });
 });
