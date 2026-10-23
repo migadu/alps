@@ -11,9 +11,9 @@ export default {
     "loadError": "No se pudieron cargar los filtros.",
     "loadErrorRetry": "Reintentar",
     "tabs": {
-      "switchToRaw": "Editor Raw"
+      "switchToRaw": "Editor raw"
     },
-    "warningRawSwitchTitle": "Cambiar a modo Raw",
+    "warningRawSwitchTitle": "Cambiar a modo raw",
     "warningRawSwitchConfirm": "Cambiar",
     "warningRawSwitch": "Cambiar al modo raw significa que el script ya no será editable visualmente. ¿Continuar?",
     "toast": {
@@ -24,10 +24,10 @@ export default {
       "autoReplyOn": "La respuesta automática está activada. Desactívela en Respuesta automática antes de que los filtros envíen una propia."
     },
     "visual": {
-      "newRule": "Nueva Regla",
+      "newRule": "Nueva regla",
       "noRules": "No hay reglas definidas.",
-      "saveFilters": "Guardar Reglas",
-      "deleteRule": "Eliminar Regla",
+      "saveFilters": "Guardar reglas",
+      "deleteRule": "Eliminar regla",
       "remove": "Eliminar",
       "add": "Añadir",
       "if": "SI",
@@ -38,7 +38,7 @@ export default {
       "value": "Valor",
       "actions": {
         "fileinto": "Mover a la carpeta",
-        "discard": "Descartar (Eliminar)",
+        "discard": "Descartar (eliminar)",
         "redirect": "Redirigir a correo",
         "stop": "Dejar de evaluar reglas"
       },
