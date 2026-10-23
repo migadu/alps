@@ -96,6 +96,12 @@ export class CalendarPage extends LitElement {
     @state() private promptFields: Array<{ id: string; label: string; autofocus?: boolean; value?: string }> = [];
 
     private syncIntervalTimer: ReturnType<typeof setInterval> | null = null;
+    /** Counts the reads fetchData starts. A navigation, the periodic refresh
+     * and a save each start one, and they can overlap: only the latest may
+     * draw its answer, end the loading or say that it failed, so an earlier
+     * view that answers late does not replace the one on screen, and its
+     * failure, which says nothing about that view, is not reported. */
+    private fetchSeq = 0;
     @state() private promptMode: 'add' | 'rename' | null = null;
     @state() private promptTarget: any = null;
     @state() private calendarToDelete: any = null;
@@ -554,6 +560,7 @@ export class CalendarPage extends LitElement {
     };
 
     private async fetchData() {
+        const seq = ++this.fetchSeq;
         this.loading = true;
         this.isSpinning = true;
         // Alongside the events, and apart from them: tasks that fail to load
@@ -562,12 +569,13 @@ export class CalendarPage extends LitElement {
         const tasksLoad = this.showTasks && !this.searchQuery
             ? tasksService.fetchTasks('active').catch(err => {
                 console.error('Failed to load tasks for the calendar', err);
-                this.reportFailure('tasks.loadFailed');
+                if (seq === this.fetchSeq) this.reportFailure('tasks.loadFailed');
                 return null;
             })
             : Promise.resolve(null);
         try {
             const calRes = await calendarService.fetchCalendars();
+            if (seq !== this.fetchSeq) return;
             this.scheduling = calRes.scheduling === 'server' ? 'server' : 'email';
             
             let start, end;
@@ -596,6 +604,7 @@ export class CalendarPage extends LitElement {
             }
 
             const evRes = await calendarService.fetchEvents(start, end, this.searchQuery);
+            if (seq !== this.fetchSeq) return;
             const rawEvents = evRes.events || [];
             const expandedEvents: EventData[] = [];
 
@@ -629,6 +638,7 @@ export class CalendarPage extends LitElement {
             }
 
             const tasks = (await tasksLoad)?.tasks ?? [];
+            if (seq !== this.fetchSeq) return;
             this.events = [...expandedEvents, ...taskChips(tasks)].map(ev => ({
                 ...ev,
                 color: ev.color || getCalendarColor(ev.calendarPath || ev.path)
@@ -646,9 +656,9 @@ export class CalendarPage extends LitElement {
             console.error(e);
             // Said, not stored: `error` was written here and rendered nowhere, so a
             // calendar that failed to load simply showed no events.
-            this.reportFailure('calendar.loadFailed');
+            if (seq === this.fetchSeq) this.reportFailure('calendar.loadFailed');
         } finally {
-            this.loading = false;
+            if (seq === this.fetchSeq) this.loading = false;
         }
     }
 
