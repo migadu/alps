@@ -74,7 +74,6 @@ export class AppHeader extends LitElement {
       align-items: center;
       justify-content: center;
       width: 36px;
-      --logo-color: var(--accent-color);
     }
 
     .logo svg,

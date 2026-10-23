@@ -33,8 +33,6 @@ export class AlpsAuthCard extends LitElement {
       display: flex;
       justify-content: center;
       margin-bottom: 12px;
-      /* The logo marks draw in this; elsewhere, as spinners, in currentColor. */
-      --logo-color: var(--accent-color);
     }
 
     .logo-container svg,

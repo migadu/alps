@@ -160,6 +160,12 @@ export class AlpsButton extends LitElement {
       display: flex;
     }
 
+    /* On the accent fill the logo colour would vanish: the spinner takes the
+       button's white text instead. */
+    :host([variant="primary"]) .spinner {
+      --logo-color: currentColor;
+    }
+
     @keyframes spin {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }

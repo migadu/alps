@@ -32,6 +32,8 @@
   --accent-fill: var(--accent-color);
   --accent-fill-hover: var(--accent-hover);
   --accent-fill-border: transparent;
+  /* The colour the logo marks draw in, as the logo and as the spinner. */
+  --logo-color: var(--accent-color);
 
   --success: #10b981;
   --warning: #f59e0b;
