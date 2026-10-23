@@ -774,3 +774,65 @@ test("forwarding an HTML message sends its layout and its inline image", async (
   // reader shows it blocked, as it shows any remote image.
   expect(layout.pixel).toMatch(/^data:/);
 });
+
+/** The draft saves the page sends from now on: POSTs to /messages that store, not send. */
+function draftSaves(page: Page): string[] {
+  const saves: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() !== "POST" || new URL(request.url()).pathname !== "/messages") return;
+    const body = request.postData() ?? "";
+    if (body.includes('name="save_as_draft"')) saves.push(body);
+  });
+  return saves;
+}
+
+// An answer the user has not touched is not a draft. The editor takes the
+// keyboard as the window opens, and on that first transaction adds an empty
+// paragraph after the quote, for the user to write below it. Reported as an
+// edit, it had the autosave file every reply and forward as a draft three
+// seconds after it opened.
+for (const kind of ["a reply to an HTML message", "a reply to a plain-text message", "a forward"] as const) {
+  test(`${kind}, left untouched, is not saved as a draft`, async ({ page }) => {
+    const subject = `Left untouched ${Date.now()}`;
+    const body = "The figures are in.";
+    const plain = kind === "a reply to a plain-text message";
+    if (plain) await deliverText({ subject, body });
+    else await deliver({ subject, raw: htmlMail(subject) });
+    await login(page);
+    if (plain) await openMessage(page, subject, body);
+    else await openHtmlMessage(page, subject);
+    const saves = draftSaves(page);
+    if (kind === "a forward") await chooseFromMoreMenu(page, "Forward");
+    else await replyButton(page).click();
+    await expect(composerSubject(page)).toHaveValue(`${kind === "a forward" ? "Fwd" : "Re"}: ${subject}`);
+    await expect(composer(page).locator(".ProseMirror")).toBeFocused();
+
+    // Absence takes waiting: the autosave runs three seconds after a change.
+    await page.waitForTimeout(4_000);
+    expect(saves.length, "draft saves sent").toBe(0);
+    await expect(composer(page).locator(".saving-indicator")).toHaveCount(0);
+
+    // Nor does closing it save it.
+    await composer(page).locator('alps-icon-btn[title="Save & close"]').click();
+    await expect(composer(page)).toHaveCount(0);
+    expect(saves.length, "draft saves sent").toBe(0);
+  });
+}
+
+test("an answer is saved as a draft once something is typed in it", async ({ page }) => {
+  const subject = `Answered ${Date.now()}`;
+  await deliver({ subject, raw: htmlMail(subject) });
+  await login(page);
+  await openHtmlMessage(page, subject);
+  const saves = draftSaves(page);
+  await replyButton(page).click();
+  await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
+
+  const editor = composer(page).locator(".ProseMirror");
+  await editor.locator("p").first().click();
+  await editor.pressSequentially("Sounds good.");
+
+  await expect(composer(page).locator(".saving-indicator")).toHaveText("Autosaved", { timeout: 10_000 });
+  expect(saves.length, "draft saves sent").toBe(1);
+  expect(saves[0]).toContain("Sounds good.");
+});

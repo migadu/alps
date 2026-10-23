@@ -257,7 +257,11 @@ export async function resetSieve(account = USER): Promise<void> {
   await control("/reset/sieve", asAccount(account));
 }
 
-/** Empties the account's calendar and address book. */
+/**
+ * Empties the account's calendar and address book, and drops the calendars
+ * made beside its own. Its own calendar keeps the path seeds go to, under its
+ * first name.
+ */
 export async function resetDav(account = USER): Promise<void> {
   await control("/reset/dav", asAccount(account));
 }

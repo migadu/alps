@@ -901,7 +901,7 @@ export class AlpsMessageComposer extends LitElement {
       // The editor's stylesheet goes into document.head, which this shadow root
       // never sees; the rules it needs are in this component's own CSS.
       injectCSS: false,
-      onUpdate: ({ editor }) => {
+      onUpdate: ({ editor, transaction }) => {
         // The TipTap editor is only the source of truth in HTML mode. In plaintext
         // mode the <textarea> owns the content, so ignore editor updates there;
         // otherwise a programmatic editor update (e.g. setEditable(false) on send)
@@ -911,7 +911,17 @@ export class AlpsMessageComposer extends LitElement {
         this.htmlText = serializeEditorHtml(editor);
         this.text = editor.getText();
         this.dispatchEvent(new CustomEvent('text-changed', {
-          detail: { text: this.text, html: this.htmlText },
+          detail: {
+            text: this.text,
+            html: this.htmlText,
+            // A change the transaction did not make itself is the editor's
+            // own, made by a plugin after it: the empty paragraph after a
+            // quote that ends the message, added on the first transaction,
+            // when the compose window gives the editor the keyboard. It is
+            // announced as `initial`, as no edit of the user's; counted as
+            // one, every reply and forward was saved as a draft as it opened.
+            ...(!transaction.docChanged && { initial: true }),
+          },
           bubbles: true,
           composed: true
         }));
