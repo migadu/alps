@@ -379,7 +379,7 @@ func addShown(card vcard.Card, field string, f *vcard.Field) {
 // The address keeps its parameters, its type among them, but for a label
 // and a position, which describe the address it was.
 func setAddress(card vcard.Card, f *vcard.Field, line string) {
-	line = strings.TrimSpace(strings.ReplaceAll(line, ";", ","))
+	line = strings.TrimSpace(line)
 	if f == nil {
 		if line != "" {
 			addShown(card, vcard.FieldAddress, &vcard.Field{Value: ";;" + componentValue(line) + ";;;;"})
