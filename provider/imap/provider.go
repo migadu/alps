@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -53,8 +54,11 @@ type IMAPProvider struct {
 	verdicts            *provider.VerdictCache // the session's, once it is shared: see ShareVerdicts
 	dateCache           map[string]*mailboxDates
 	threads             map[string]*threadCache
-	// threadUses counts uses of the kept conversations, to tell which were
-	// used least recently. It is guarded by cacheLock.
+	// sorts are the mailboxes' messages in date order, for listing them flat
+	// (see sortedMailboxUIDs).
+	sorts map[string]*sortCache
+	// threadUses counts uses of the kept conversations and orders, to tell
+	// which were used least recently. It is guarded by cacheLock.
 	threadUses uint64
 	// threadFallbacks names the mailboxes already reported as listing flat,
 	// so a server that refuses THREAD is logged once per session per mailbox.
@@ -112,14 +116,15 @@ type mailboxDates struct {
 }
 
 // forgetMailbox drops what this connection keeps of a mailbox it deleted or
-// renamed away: the dates its conversations were sorted by, and the
-// conversations. Neither would be taken for a new mailbox's, whose UIDVALIDITY
-// is another, but they would be kept for nothing.
+// renamed away: the dates its conversations were sorted by, the
+// conversations, and its messages' order. None would be taken for a new
+// mailbox's, whose UIDVALIDITY is another, but they would be kept for nothing.
 func (p *IMAPProvider) forgetMailbox(name string) {
 	p.cacheLock.Lock()
 	defer p.cacheLock.Unlock()
 	delete(p.dateCache, name)
 	delete(p.threads, name)
+	delete(p.sorts, name)
 }
 
 // GetStore returns the per-user store for this provider
@@ -981,6 +986,71 @@ func (p *IMAPProvider) mailboxThreads(mailbox string, fresh bool) (*threadCache,
 	return entry, groups, nil
 }
 
+// sortCache is one mailbox's UIDs in date order, as SORT answered them for
+// the whole mailbox, while the mailbox has the shape they were answered for.
+type sortCache struct {
+	shape   mailboxShape
+	reverse bool
+	uids    []imap.UID
+	used    uint64
+}
+
+// sortedMailboxUIDs answers the selected mailbox's UIDs in date order, newest
+// first when reverse, sorting them only when the mailbox's messages are not
+// the ones they were last sorted with, in that order.
+//
+// SORT is answered over the whole mailbox, as THREAD is (see mailboxThreads),
+// and a folder listed flat in date order was sorted again for every page and
+// every listing after a cached page was dropped. Its messages' dates are their
+// Date headers, which never change, so only another message moves the order.
+// One order is kept per mailbox: a page in the other sorts again. The UIDs are
+// shared: callers must not change them.
+func (p *IMAPProvider) sortedMailboxUIDs(mailbox string, reverse bool) ([]imap.UID, error) {
+	shape, shapeErr := p.currentShape(false)
+	if shapeErr == nil {
+		p.cacheLock.Lock()
+		entry := p.sorts[mailbox]
+		if entry != nil && entry.shape == shape && entry.reverse == reverse {
+			p.threadUses++
+			entry.used = p.threadUses
+			p.cacheLock.Unlock()
+			return entry.uids, nil
+		}
+		p.cacheLock.Unlock()
+	} else if p.debug {
+		fmt.Printf("sort cache: cannot tell what %s holds, sorting it: %v\n", mailbox, shapeErr)
+	}
+
+	data, err := p.client.UIDSort(&imapclient.SortOptions{
+		SearchCriteria: &imap.SearchCriteria{},
+		SortCriteria:   []imap.SortCriterion{{Key: imap.SortKeyDate, Reverse: reverse}},
+	}).Wait()
+	if err != nil {
+		return nil, err
+	}
+	if shapeErr != nil {
+		return data.UIDs, nil
+	}
+
+	p.cacheLock.Lock()
+	defer p.cacheLock.Unlock()
+	p.threadUses++
+	if p.sorts == nil {
+		p.sorts = make(map[string]*sortCache)
+	}
+	if _, ok := p.sorts[mailbox]; !ok && len(p.sorts) >= maxThreadCaches {
+		var oldest string
+		for name, e := range p.sorts {
+			if oldest == "" || e.used < p.sorts[oldest].used {
+				oldest = name
+			}
+		}
+		delete(p.sorts, oldest)
+	}
+	p.sorts[mailbox] = &sortCache{shape: shape, reverse: reverse, uids: data.UIDs, used: p.threadUses}
+	return data.UIDs, nil
+}
+
 // sortOrderKey names an order of a mailbox's conversations: the user's sort
 // setting and the direction.
 func sortOrderKey(sortCriteria, sortOrder string) string {
@@ -1363,73 +1433,80 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 	// costs at most the date order, not the folder. A search with a query has
 	// no such answer, since only the server knows what matches, and fails as
 	// before.
-	byNumber := func(command string, refusal error) ([]provider.Message, provider.PageInfo, error) {
+	// fresh says a NOOP has just been answered for the mailbox, as one is
+	// before the whole folder's order is looked up (see sortedMailboxUIDs).
+	byNumber := func(command string, refusal error, fresh bool) ([]provider.Message, provider.PageInfo, error) {
 		if p.debug {
 			fmt.Printf("flat list: %s refused, listing by number instead: %v\n", command, refusal)
 		}
 		// The NOOP ListMessages starts with, for mail that arrived since the
 		// mailbox was selected: the page is cut from the message count, and a
 		// refused command need not have brought news of it.
-		if err := p.client.Noop().Wait(); err != nil {
-			return nil, provider.PageInfo{}, err
+		if !fresh {
+			if err := p.client.Noop().Wait(); err != nil {
+				return nil, provider.PageInfo{}, err
+			}
 		}
 		return p.listByNumber(mailbox, sortOrder, page, pageSize)
 	}
 
-	var nums []uint32
+	reverse := sortOrder == "desc" || sortOrder == ""
+	var uids []imap.UID
 	if !p.client.Caps().Has(imap.CapSort) {
-		data, err := p.client.Search(searchCriteria, nil).Wait()
+		data, err := p.client.UIDSearch(searchCriteria, nil).Wait()
 		if err != nil {
 			if query == "" && refusedByServer(err) {
-				return byNumber("SEARCH", err)
+				return byNumber("SEARCH", err, false)
 			}
 			return nil, provider.PageInfo{}, fmt.Errorf("SEARCH failed: %v", err)
 		}
 		if data != nil {
-			nums = data.AllSeqNums()
+			uids = data.AllUIDs()
 		}
-		if sortOrder == "desc" || sortOrder == "" {
-			for i := len(nums)/2 - 1; i >= 0; i-- {
-				opp := len(nums) - 1 - i
-				nums[i], nums[opp] = nums[opp], nums[i]
+		if reverse {
+			slices.Reverse(uids)
+		}
+	} else if query == "" {
+		// The whole folder: its order is kept (see sortedMailboxUIDs).
+		var err error
+		uids, err = p.sortedMailboxUIDs(mailbox, reverse)
+		if err != nil {
+			if refusedByServer(err) {
+				return byNumber("SORT", err, true)
 			}
+			return nil, provider.PageInfo{}, fmt.Errorf("SORT failed: %v", err)
 		}
 	} else {
 		sortOptions := &imapclient.SortOptions{
 			SearchCriteria: searchCriteria,
 			SortCriteria: []imap.SortCriterion{
-				{Key: imap.SortKeyDate, Reverse: sortOrder == "desc" || sortOrder == ""},
+				{Key: imap.SortKeyDate, Reverse: reverse},
 			},
 		}
-		var err error
-		sortData, err := p.client.Sort(sortOptions).Wait()
+		sortData, err := p.client.UIDSort(sortOptions).Wait()
 		if err != nil {
-			if query == "" && refusedByServer(err) {
-				return byNumber("SORT", err)
-			}
 			return nil, provider.PageInfo{}, fmt.Errorf("SORT failed: %v", err)
 		}
-		nums = sortData.SeqNums
+		uids = sortData.UIDs
 	}
 
-	total := len(nums)
+	total := len(uids)
 
 	from := page * pageSize
 	to := from + pageSize
-	if from >= len(nums) {
+	if from >= len(uids) {
 		return nil, provider.PageInfo{Total: total}, nil
 	}
-	if to > len(nums) {
-		to = len(nums)
+	if to > len(uids) {
+		to = len(uids)
 	}
-	nums = nums[from:to]
+	uids = uids[from:to]
 
-	indexes := make(map[uint32]int)
-	for i, num := range nums {
-		indexes[num] = i
+	indexes := make(map[imap.UID]int)
+	for i, uid := range uids {
+		indexes[uid] = i
 	}
 
-	seqSet := imap.SeqSetNum(nums...)
 	options := imap.FetchOptions{
 		Envelope:      true,
 		Flags:         true,
@@ -1437,14 +1514,14 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		RFC822Size:    true,
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
 	}
-	results, err := p.client.Fetch(seqSet, &options).Collect()
+	results, err := p.client.Fetch(imap.UIDSetNum(uids...), &options).Collect()
 	if err != nil {
 		return nil, provider.PageInfo{}, fmt.Errorf("failed to fetch message list: %v", err)
 	}
 
-	msgs := make([]provider.Message, len(nums))
+	msgs := make([]provider.Message, len(uids))
 	for _, msg := range results {
-		i, ok := indexes[msg.SeqNum]
+		i, ok := indexes[msg.UID]
 		if !ok {
 			continue
 		}
