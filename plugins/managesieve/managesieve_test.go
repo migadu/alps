@@ -2,7 +2,9 @@ package managesieve
 
 import (
 	"bufio"
+	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 )
@@ -105,5 +107,91 @@ func TestListScriptsEmpty(t *testing.T) {
 	}
 	if len(scripts) != 0 {
 		t.Fatalf("expected 0 scripts, got %+v", scripts)
+	}
+}
+
+// withoutPanic runs read, and fails the test rather than the whole run when
+// it panics.
+func withoutPanic(t *testing.T, read func() error) error {
+	t.Helper()
+	var err error
+	func() {
+		defer func() {
+			if p := recover(); p != nil {
+				t.Fatalf("panicked: %v", p)
+			}
+		}()
+		err = read()
+	}()
+	return err
+}
+
+// A literal's size is the server's word, and the client reads that many bytes
+// into memory: a size that is no size, or more than a script alps could save
+// back, is refused instead. A negative size or one past what Go can allocate
+// panicked, and any other was allocated whole before a byte arrived.
+func TestGetScriptRefusesALiteralSizeItCannotRead(t *testing.T) {
+	for _, header := range []string{"{-1}", "{9223372036854775807}", "{+5}", "{}", "{5", "{5+}x"} {
+		c, cleanup := newTestClient(t, header+"\r\nhello\r\nOK\r\n")
+		err := withoutPanic(t, func() error {
+			_, err := c.GetScript("alps-filters")
+			return err
+		})
+		cleanup()
+		if err == nil {
+			t.Errorf("%s: read as a script", header)
+		}
+	}
+
+	big := maxScriptBytes + 1
+	c, cleanup := newTestClient(t, fmt.Sprintf("{%d}\r\n%s\r\nOK\r\n", big, strings.Repeat("#", big)))
+	defer cleanup()
+	if _, err := c.GetScript("alps-filters"); err == nil {
+		t.Errorf("a literal of %d bytes was read", big)
+	}
+
+	// The bound is on the script, not only on each literal: literals that fit
+	// one by one are not gathered past it.
+	half := maxScriptBytes/2 + 1
+	part := fmt.Sprintf("{%d}\r\n%s\r\n", half, strings.Repeat("#", half))
+	c, cleanup = newTestClient(t, part+part+"OK\r\n")
+	defer cleanup()
+	if _, err := c.GetScript("alps-filters"); err == nil {
+		t.Errorf("two literals of %d bytes were read as one script", half)
+	}
+}
+
+// A literal that fits is read as it was sent, in either form of its header.
+func TestGetScriptReadsALiteral(t *testing.T) {
+	for _, header := range []string{"{12}", "{12+}"} {
+		c, cleanup := newTestClient(t, header+"\r\nkeep;\r\nstop;\r\nOK\r\n")
+		got, err := c.GetScript("alps-filters")
+		cleanup()
+		if err != nil || got != "keep;\r\nstop;" {
+			t.Errorf("%s: read %q, %v", header, got, err)
+		}
+	}
+}
+
+// A literal in a list of strings, as in a capability or a script name, takes
+// the same checks. A header without its closing brace panicked, for a slice
+// that ended before it began.
+func TestALiteralInAResponseIsChecked(t *testing.T) {
+	for _, header := range []string{"{5", "{-1}", "{9223372036854775807}"} {
+		c, cleanup := newTestClient(t, "\"IMPLEMENTATION\" "+header+"\r\nhello\r\nOK\r\n")
+		err := withoutPanic(t, c.readResponse)
+		cleanup()
+		if err == nil {
+			t.Errorf("%s: read as a capability", header)
+		}
+	}
+
+	c, cleanup := newTestClient(t, "\"IMPLEMENTATION\" {5}\r\nhello\r\n\"SIEVE\" \"fileinto\"\r\nOK\r\n")
+	defer cleanup()
+	if err := c.readResponse(); err != nil {
+		t.Fatal(err)
+	}
+	if c.capabilities["IMPLEMENTATION"] != "hello" || c.capabilities["SIEVE"] != "fileinto" {
+		t.Errorf("read %v", c.capabilities)
 	}
 }

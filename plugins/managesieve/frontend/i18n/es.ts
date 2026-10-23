@@ -8,6 +8,8 @@ export default {
   "managesieve": {
     "title": "Filtros",
     "description": "Añada reglas personalizadas sobre cómo se procesan y archivan los mensajes.",
+    "loadError": "No se pudieron cargar los filtros.",
+    "loadErrorRetry": "Reintentar",
     "tabs": {
       "switchToRaw": "Editor Raw"
     },

@@ -8,6 +8,8 @@ export default {
   "managesieve": {
     "title": "Filtre",
     "description": "Tilføj egne regler for, hvordan beskeder behandles og sorteres.",
+    "loadError": "Filtrene kunne ikke indlæses.",
+    "loadErrorRetry": "Prøv igen",
     "tabs": {
       "switchToRaw": "Rå editor"
     },
