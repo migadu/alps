@@ -174,6 +174,32 @@ describe('leaving', () => {
     expect(storedDrafts('ada').map((c: any) => c.subject)).toEqual(['Engines and looms']);
   });
 
+  it('keeps the pending edit when the login screen clears the composers before departure', () => {
+    vi.useFakeTimers();
+    signIn('ada');
+    const store = makeStore();
+    store.openComposer({ subject: 'Engines' });
+    store.updateComposer(composers(store)[0].id, { subject: 'Engines and looms' });
+
+    store.clearAllComposers();
+    window.dispatchEvent(new Event('pagehide'));
+    vi.advanceTimersByTime(501);
+
+    expect(composers(store)).toEqual([]);
+    expect(storedDrafts('ada').map((c: any) => c.subject)).toEqual(['Engines and looms']);
+  });
+
+  it('a reload with no composers on the login screen leaves the stored drafts alone', () => {
+    signIn('ada');
+    const store = makeStore();
+    store.openComposer({ subject: 'keep me' });
+    store.clearAllComposers();
+
+    expect(store.persistNow()).toBe(true);
+
+    expect(storedDrafts('ada').map((c: any) => c.subject)).toEqual(['keep me']);
+  });
+
   it('writes nothing as the page goes when no save is pending', () => {
     // The login screen clears the windows from memory only, and a sign-out
     // erases the disk copy: written as the page went, the emptied list would

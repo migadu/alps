@@ -395,7 +395,7 @@ export class AppRoot extends LitElement {
             this._handleShowToast(new CustomEvent('show-toast', {
               detail: { i18nKey: 'composer.draftSaveFailedKeepOpen', duration: 6000 },
             }));
-            return;
+            return false;
           }
           applyUpdate();
         },

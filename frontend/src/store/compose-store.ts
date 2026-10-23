@@ -369,9 +369,10 @@ export class ComposeStore extends EventTarget {
       window.clearTimeout(this.saveTimeout);
       this.saveTimeout = null;
     }
-    // With no live windows there is nothing a reload can lose. Otherwise the
-    // caller must keep this document open when its recovery copy cannot be written.
-    return this.saveDrafts() || this.state.activeComposers.length === 0;
+    // The login screen clears only the live windows. Writing that empty list
+    // would erase its preserved recovery copy during an update-offer reload.
+    if (this.state.activeComposers.length === 0) return true;
+    return this.saveDrafts();
   }
 
   private notify() {
@@ -533,7 +534,7 @@ export class ComposeStore extends EventTarget {
   }
 
   /**
-   * Takes the composer windows off the screen WITHOUT touching what is on disk.
+   * Takes the composer windows off the screen, preserving their disk copy.
    *
    * The only caller is `login-page`'s connectedCallback, which runs every time
    * the login screen mounts — including on an ordinary boot redirect, when
@@ -548,7 +549,8 @@ export class ComposeStore extends EventTarget {
    *
    * Persisting is the sign-out path's job, and it already does it properly —
    * `handleSessionCleared` removes the key outright, after aborting uploads.
-   * Here, memory only.
+   * Here, settle any pending edit before clearing memory, so neither its timer
+   * nor pagehide writes the emptied list over that recovery copy.
    *
    * With nothing open it does nothing, not even announce a change. The login
    * page calls this as it connects, inside the shell's render, and the
@@ -556,6 +558,7 @@ export class ComposeStore extends EventTarget {
    * second time.
    */
   clearAllComposers() {
+    if (this.saveTimeout !== null) this.persistNow();
     if (this.state.activeComposers.length === 0) return;
     this.state = { ...this.state, activeComposers: [] };
     this.notify();
