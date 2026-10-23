@@ -59,7 +59,7 @@ func TestHTTP_ConcurrentStatusChecksKeepEveryFoldersListedCounts(t *testing.T) {
 					return
 				}
 				var answer MailboxStatusResponse
-				if err := json.Unmarshal(r.body, &answer); err != nil || answer.Messages != 1 || answer.Unseen != 1 {
+				if err := json.Unmarshal(r.body, &answer); err != nil || answer.Total != 1 || answer.Unseen != 1 {
 					t.Errorf("status %s returned %+v (%v), want 1 message/1 unread", name, answer, err)
 				}
 			}(name)
