@@ -177,6 +177,31 @@ test("an Apple birthday without a year stays without one through an edit", async
   expect(card).toMatch(/^BDAY;X-APPLE-OMIT-YEAR=1604:1604-12-10\r?$/m);
 });
 
+test("a star given while editing a contact stays through the edit's next save", async ({ page }) => {
+  // The editor's form held the categories it was opened with and sent them
+  // back on every save, so the first keystroke after a star took it away.
+  const name = `Hopper Star E2E ${run}`;
+  const uid = `e2e-hopper-star-${run}`;
+  await seedContact({ uid, name, email: `hopper.star.${run}@example.test`, lines: ["CATEGORIES:Navy"] });
+  await login(page);
+  await page.goto("/#/contacts");
+  await page.locator("alps-contacts-list .contact-item", { hasText: name }).click();
+  const view = page.locator("alps-contact-view");
+  await expect(view).toContainText(name);
+  await view.locator('alps-icon-btn[title="Edit Contact"]').click();
+
+  const starred = page.waitForResponse((r) => r.request().method() === "POST" && /\/contacts\/.+\/categories/.test(r.url()));
+  await view.locator('alps-icon-btn[title="Toggle Star"]').click();
+  expect((await starred).status()).toBe(200);
+  const saved = page.waitForResponse((r) => r.request().method() === "POST" && /\/contacts\/.+\/edit/.test(r.url()));
+  await view.locator('input[placeholder="Nickname"]').fill("Amazing Grace");
+  expect((await saved).status()).toBe(200);
+
+  const card = (await readContact(uid)) ?? "";
+  expect(card).toContain("NICKNAME:Amazing Grace");
+  expect(card).toMatch(/^CATEGORIES:Navy\b.*\bFavorites\r?$/m);
+});
+
 test("contacts feed the composer's recipient autocomplete", async ({ page }) => {
   // The composer's To field asks the `composer:suggest` hook, which only the
   // carddav plugin answers. This is that wiring, end to end.
