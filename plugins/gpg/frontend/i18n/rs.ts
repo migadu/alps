@@ -38,6 +38,7 @@ export default {
     importMissing: 'И јавни и приватни блокови су обавезни за увоз.',
     generateFailed: 'Генерисање кључева није успело: {error}',
     importFailed: 'Увоз није успео: {error}',
+    purgeFailed: 'Брисање кључева није успело: {error}',
     importFailedTitle: 'Увоз није успео',
     passphraseMismatch: 'Лозинке се не поклапају. Покушајте поново.',
     missingPublicKeys: 'Није могуће криптовати поруку: Недостају јавни кључеви за:\n{keys}',
