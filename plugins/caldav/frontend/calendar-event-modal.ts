@@ -10,6 +10,7 @@ import '../../../frontend/src/components/alps-input';
 import '../../../frontend/src/components/alps-select';
 import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-address-input';
+import type { AlpsAddressInput } from '../../../frontend/src/components/alps-address-input';
 import '../../../frontend/src/components/ui-confirm';
 import { modalButtonStyles } from '../../../frontend/src/components/ui-modal';
 import { isolatedCaption, isolatedSentence } from '../../../frontend/src/utils/bidi';
@@ -228,6 +229,9 @@ export class CalendarEventModal extends LitElement {
     }
 
     private async handleSave() {
+        // A guest typed and not yet a pill is one the user means to invite,
+        // whether or not the press on Save took the focus from the field.
+        this.shadowRoot?.querySelector<AlpsAddressInput>('alps-address-input.guests')?.commitPending();
         if (!this.summary.trim() || !this.startDate || !this.endDate) return;
         // Said here, in the user's words: the server refuses an event that
         // ends before it starts with a failure that does not say why, or
