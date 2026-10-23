@@ -361,6 +361,72 @@ func TestHTTP_AFolderSearchedAndMadeAgainElsewhereIsListedAfresh(t *testing.T) {
 	}
 }
 
+// A message read from a folder can outlive everything else the session held
+// about the folder. A folder only searched has no page, nor has one whose
+// message was opened straight from a link, and the folder's status goes with
+// a refresh of another folder, or with a check of one that finds new mail;
+// the folder list may then read it again, under the new UIDVALIDITY. When the
+// folder has been made again elsewhere, the message itself is all that is
+// left to tell: the list showed the new message at the old one's UID, and it
+// opened as the old one.
+func TestHTTP_AFolderMadeAgainWithNoPageHeldOpensItsNewMessages(t *testing.T) {
+	ways := []struct {
+		name string
+		// read reads Work's one message without a page of Work, and answers
+		// its UID.
+		read func(s *testServer) string
+		// after is what the session is asked once Work has been made again,
+		// before Work is opened.
+		after func(s *testServer, c *imapclient.Client)
+	}{
+		{"searched", func(s *testServer) string {
+			found := s.listing("/mailboxes/Work?page=0&query=plans")
+			if got := subjectsOf(found); got != "Old plans" {
+				s.t.Fatalf("a search of Work finds %q", got)
+			}
+			return found.Messages[0].UID
+		}, func(s *testServer, _ *imapclient.Client) {
+			// What the mail page asks whenever it is shown: every folder's
+			// status is dropped, and the folder list reads Work's again.
+			s.expect(s.do("GET", "/mailboxes/INBOX?page=0&refresh=1", nil), http.StatusOK)
+		}},
+		{"opened", func(s *testServer) string { return "1" }, func(s *testServer, c *imapclient.Client) {
+			// The poll's check of the Inbox finds new mail, and drops every
+			// folder's status.
+			deliverElsewhere(s.t, c, "INBOX", letter("Arrival"))
+			s.expect(s.do("GET", "/mailboxes/INBOX/status", nil), http.StatusOK)
+		}},
+	}
+	for _, server := range countingServers {
+		for _, way := range ways {
+			t.Run(server.name+"/"+way.name, func(t *testing.T) {
+				s, _, elsewhere := newIMAPAccountServer(t, server.caps)
+				c := elsewhere()
+				if err := c.Create("Work", nil).Wait(); err != nil {
+					t.Fatal(err)
+				}
+				// Subscribed, so that without LIST-STATUS the folder list reads
+				// Work's status too.
+				if err := c.Subscribe("Work").Wait(); err != nil {
+					t.Fatal(err)
+				}
+				deliverElsewhere(t, c, "Work", letter("Old plans"))
+				s.login()
+				old := way.read(s)
+				if got := s.rawMessage("Work", old); !strings.Contains(got, "Subject: Old plans") {
+					t.Fatalf("Old plans, UID %s of Work, opens as:\n%s", old, got)
+				}
+				// Away from Work, as the user is while another client replaces it.
+				s.checkForNewMail("INBOX")
+
+				remakeElsewhere(t, c, "Work", letter("New plans"))
+				way.after(s, c)
+				s.opensAsItself(s.listing("/mailboxes/Work?page=0&refresh=1"), "Work", "New plans", old)
+			})
+		}
+	}
+}
+
 // messageReads matches a command alps sends to read a folder's messages.
 var messageReads = regexp.MustCompile(`(?m)^[^*\s]\S* (UID )?(FETCH|SEARCH|SORT|THREAD) `)
 

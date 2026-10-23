@@ -308,6 +308,12 @@ type CachedMessagePart struct {
 	HeaderData []byte // nil if only envelope/flags are cached
 	BodyData   []byte // nil if only envelope/flags are cached
 	Mailbox    string
+	// UIDValidity is the folder's UIDVALIDITY as the session held it when the
+	// message was read, 0 where it was not known. The message is kept by its
+	// UID, which names another message once the UIDVALIDITY has moved, and it
+	// can outlive everything else the session held of the folder from before
+	// (see handleGetPart).
+	UIDValidity uint32
 }
 
 // updateCachedMessageFlags updates flags for specific messages in cached message lists
@@ -1017,10 +1023,11 @@ func handleGetMailbox(ctx *alps.Context) error {
 				}
 				// Cache just the metadata (no body)
 				ctx.Session.Cache().Set(msgKey, CachedMessagePart{
-					Message:    &providerMsgs[i],
-					HeaderData: nil, // No body data yet
-					BodyData:   nil,
-					Mailbox:    mbox.Name(),
+					Message:     &providerMsgs[i],
+					HeaderData:  nil, // No body data yet
+					BodyData:    nil,
+					Mailbox:     mbox.Name(),
+					UIDValidity: counts.UIDValidity,
 				})
 			}
 			return nil
@@ -1592,6 +1599,22 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			cachedPart = &cp
 		}
 	}
+	// A message read before the folder was made again elsewhere is the old
+	// folder's message, under a UID that may now name another. It can be all
+	// the session holds of the folder from before: a folder only searched, or
+	// a message opened from a link, has no page, a page may expire before a
+	// message read from it, a refresh of another folder or a check that finds
+	// new mail drops every status, and the folder list reads the statuses
+	// again without comparing them. The list then showed the new message, and
+	// opening it showed the old one. Held at another UIDVALIDITY than the
+	// folder has now, the message goes, with everything else read from the
+	// folder, and is read again.
+	if cachedPart != nil && uidMoved(cachedPart.UIDValidity, mbox.UIDValidity) {
+		ctx.Server.Logger().Debugf("Mailbox %s uidvalidity %d→%d since message %s was read — messages read from it dropped",
+			mbox.Name(), cachedPart.UIDValidity, mbox.UIDValidity, uidStr)
+		dropRenumberedMailbox(ctx.Session.Cache(), mbox.Name())
+		cachedPart = nil
+	}
 	if cachedPart != nil {
 		cachedData := *cachedPart
 
@@ -1633,10 +1656,11 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 				// Update cache with body data using provider type
 				ctx.Session.Cache().Set(msgCacheKey, CachedMessagePart{
-					Message:    providerMsg,
-					HeaderData: headerData,
-					BodyData:   bodyData,
-					Mailbox:    mbox.Name(),
+					Message:     providerMsg,
+					HeaderData:  headerData,
+					BodyData:    bodyData,
+					Mailbox:     mbox.Name(),
+					UIDValidity: mbox.UIDValidity,
 				})
 				ctx.Server.Logger().Debugf("Cache HIT (metadata only), fetched body for message %s/%s part %v", mbox.Name(), uid.String(), partPath)
 				return nil
@@ -1689,10 +1713,11 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 			// Cache the raw bytes using provider type so we can recreate fresh readers
 			ctx.Session.Cache().Set(msgCacheKey, CachedMessagePart{
-				Message:    providerMsg,
-				HeaderData: headerData,
-				BodyData:   bodyData,
-				Mailbox:    mbox.Name(),
+				Message:     providerMsg,
+				HeaderData:  headerData,
+				BodyData:    bodyData,
+				Mailbox:     mbox.Name(),
+				UIDValidity: mbox.UIDValidity,
 			})
 			ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched and cached", mbox.Name(), uid.String(), partPath)
 			return nil
