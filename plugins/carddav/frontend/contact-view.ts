@@ -4,7 +4,7 @@ import { CATEGORY_FAVORITES } from './constants';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { composeContext, ComposeStore } from '../../../frontend/src/store/compose-store';
-import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
+import { activeUsername, settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
 import { formatDayMonth, formatFullDate, renderIcon } from '../../../frontend/src/utils/ui';
 import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-icon-btn';
@@ -367,7 +367,7 @@ export class AlpsContactView extends LitElement {
         this.editForm = { ...this.editForm, path: this.contact.path };
       } else if (this.contact && this.isEditing && (startedEditing || !this.editForm || this.editForm.path !== this.contact.path)) {
         this.editContact = this.contact;
-        this.editUsername = this.settingsStore?.getState().loginUsername || '';
+        this.editUsername = activeUsername() ?? (this.settingsStore?.getState().loginUsername || '');
         this.editForm = { ...this.contact };
         this.birthday = birthdayFields(String(this.editForm.birthday || ''));
         this.isDirty = false;

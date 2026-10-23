@@ -1010,9 +1010,9 @@ export class ContactsPage extends LitElement {
   }
 
   private handleCancelEdit() {
-    this.cardGeneration++;
     this.isEditing = false;
     if (this.selectedContact?.isTemporary) {
+      this.cardGeneration++;
       this.selectedContact = null;
       this.contacts = this.contacts.filter((c: any) => !c.isTemporary);
 
@@ -1072,7 +1072,7 @@ export class ContactsPage extends LitElement {
   };
 
   private ownsSave(target: ContactSaveTarget): boolean {
-    return target.lifetime === this.saveLifetime && target.username === this.username;
+    return target.lifetime === this.saveLifetime && target.username === (activeUsername() ?? this.username);
   }
 
   private showingSave(target: ContactSaveTarget): boolean {
@@ -1100,7 +1100,7 @@ export class ContactsPage extends LitElement {
       target = {
         contact: { ...(showing ? this.selectedContact : source) }, original: source,
         generation: showing ? this.cardGeneration : -1, lifetime: this.saveLifetime,
-        username: this.username, conflicted: false,
+        username: activeUsername() ?? this.username, conflicted: false,
       };
       this.saveTargets.set(source, target);
     }
@@ -1202,7 +1202,7 @@ export class ContactsPage extends LitElement {
   }
 
   private handleSaveEvent(e: CustomEvent & { sourceContact?: any; sourceUsername?: string }) {
-    if (e.sourceUsername !== undefined && e.sourceUsername !== this.username) return;
+    if (e.sourceUsername !== undefined && e.sourceUsername !== (activeUsername() ?? this.username)) return;
     this.handleSave(e.detail, e.sourceContact);
   }
 
