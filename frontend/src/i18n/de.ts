@@ -245,9 +245,9 @@ export const de: TranslationDictionary = {
       one: 'Die markierte Nachricht ist darin enthalten.',
       other: 'Die {count} markierten Nachrichten sind darin enthalten.'
     },
-    emptyingMailbox: 'Postfach wird geleert...',
-    mailboxEmptied: 'Postfach erfolgreich geleert.',
-    emptyMailboxFailed: 'Postfach konnte nicht geleert werden. Stellen Sie sicher, dass es sich um Papierkorb oder Spam handelt.',
+    emptyingMailbox: '{folder} wird geleert...',
+    mailboxEmptied: '{folder} wurde geleert.',
+    emptyMailboxFailed: '{folder} konnte nicht geleert werden.',
     mailboxAlreadyEmpty: '{folder} war bereits leer – es wurde nichts gelöscht.',
     emptyMailboxSlow: '{folder} wird noch geleert. Der Server arbeitet daran – sehen Sie gleich noch einmal nach.'
   },
@@ -377,7 +377,9 @@ export const de: TranslationDictionary = {
     verifiedSender: 'Verifizierter Absender',
     unverifiedSender: 'Unverifizierter Absender',
     senderUnverifiedWarning: 'Ihr Mailserver konnte diesen Absender nicht verifizieren. Die Nachricht stammt möglicherweise nicht von dem, der sie zu senden vorgibt. Seien Sie daher vorsichtig mit Links und Anhängen.',
-    clickToExpand: 'Klicken, um den Nachrichteninhalt zu erweitern'
+    clickToExpand: 'Klicken, um den Nachrichteninhalt zu erweitern',
+    loadError: 'Diese Nachricht konnte nicht geladen werden.',
+    loadErrorRetry: 'Erneut versuchen'
   },
   address: {
     directionalControl: 'versteckte Richtungszeichen',
@@ -433,7 +435,8 @@ export const de: TranslationDictionary = {
     cannotPreview: 'Keine Vorschau für diesen Dateityp verfügbar',
     loadingPreview: 'Vorschau wird geladen...',
     errorLoading: 'Fehler beim Laden der Vorschau',
-    close: 'Schließen'
+    close: 'Schließen',
+    uploadProgress: '{percent}\u00a0% von {size}'
   },
 
   navigation: {
@@ -545,6 +548,7 @@ export const de: TranslationDictionary = {
     next: "Weiter",
     expand: "Aufklappen",
     collapse: "Zuklappen",
+    moreOptions: "Weitere Optionen",
     notFound: "Seite nicht gefunden"
   },
   webauthn: {
@@ -572,6 +576,7 @@ export const de: TranslationDictionary = {
       begin_failed: 'Fehler beim Starten der Authentifizierung.',
       invalid_options: 'Ungültige Authentifizierungsoptionen erhalten.',
       verification_failed: 'Überprüfung fehlgeschlagen. Bitte versuchen Sie es erneut.',
+      cancelled: 'Der Sicherheitsschlüssel wurde nicht verwendet. Klicken Sie auf "Identität überprüfen", um es erneut zu versuchen.',
       unavailable: 'Der Server konnte Ihren Sicherheitsschlüssel gerade nicht prüfen. Bitte versuchen Sie es gleich noch einmal.',
       register_failed: 'Beim Registrieren Ihres Sicherheitsschlüssels ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.',
       remove_failed: 'Fehler beim Entfernen des Sicherheitsschlüssels.',

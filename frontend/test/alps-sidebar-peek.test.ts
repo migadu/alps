@@ -23,17 +23,19 @@
  *  - on mobile there is no strip and no overlay.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, mount, record, shadow, update, waitFor } from './helpers/dom';
+import { cleanup, mount, record, shadow, shadowAll, update, waitFor } from './helpers/dom';
 import { readSources } from './helpers/sources';
 import { PEEK_CLOSE_DELAY_MS, PEEK_OPEN_DELAY_MS, type AlpsSidebar } from '../src/components/alps-sidebar';
 import '../src/pages/mailbox-page';
 import '../src/pages/settings-page';
 import '../../plugins/carddav/frontend/contacts-page';
 import '../../plugins/caldav/frontend/tasks-page';
+import '../../plugins/caldav/frontend/calendar-page';
 import { messageSync } from '../src/services/message-sync';
 import { SettingsStore } from '../src/store/settings-store';
 import { contactsService } from '../../plugins/carddav/frontend/contacts-service';
 import { tasksService } from '../../plugins/caldav/frontend/tasks-service';
+import { calendarService } from '../../plugins/caldav/frontend/calendar-service';
 
 type El = HTMLElement & Record<string, any>;
 
@@ -334,5 +336,57 @@ describe('the pages', () => {
     await el.updateComplete;
     expect(bar.peeking).toBe(false);
     expect(strip(el)).toBe(true);
+  });
+
+  describe('calendar: picking a day in the mini calendar', () => {
+    async function calendarPage(): Promise<El> {
+      window.location.hash = '#/calendar/month/2026-09';
+      vi.spyOn(calendarService, 'fetchCalendars').mockResolvedValue({ calendars: [] });
+      vi.spyOn(calendarService, 'fetchEvents').mockResolvedValue({ events: [] });
+      vi.spyOn(tasksService, 'fetchTasks').mockResolvedValue({ tasks: [], calendars: [], failedCalendars: 0 });
+      const el = await mount<El>('calendar-page', { i18nStore, settingsStore: settingsStore() });
+      await waitFor(() => el.loading === false, 'the calendar to load');
+      return el;
+    }
+
+    /** Clicks the 17th of the month the mini calendar shows. */
+    async function pickThe17th(el: El) {
+      const mini = shadow<El>(shadow<El>(el, 'alps-sidebar-calendar'), 'calendar-mini-month');
+      const day = shadowAll<HTMLElement>(mini, '.mini-day')
+        .find((cell) => !cell.style.opacity && cell.textContent?.trim() === '17');
+      expect(day, 'the 17th in the mini calendar').toBeDefined();
+      day!.click();
+      await el.updateComplete;
+      await shadow<AlpsSidebar>(el, 'alps-sidebar').updateComplete;
+    }
+
+    it('shuts the overlay', async () => {
+      const el = await calendarPage();
+      expect(strip(el)).toBe(true);
+
+      const bar = await peek(el);
+      expect(strip(el)).toBe(false);
+
+      await pickThe17th(el);
+      expect(window.location.hash).toBe('#/calendar/day/2026-09-17');
+      // The day view opened under an overlay that stayed until the pointer left.
+      expect(bar.peeking).toBe(false);
+      expect(strip(el)).toBe(true);
+    });
+
+    it('on a phone, closes the drawer', async () => {
+      const el = await calendarPage();
+      await update(el, { isMobile: true });
+      shadow(el, 'app-header').dispatchEvent(new CustomEvent('toggle-sidebar'));
+      await el.updateComplete;
+      const bar = shadow<AlpsSidebar>(el, 'alps-sidebar');
+      expect(bar.isOpen).toBe(true);
+
+      await pickThe17th(el);
+      expect(window.location.hash).toBe('#/calendar/day/2026-09-17');
+      // The drawer stayed open over the day view and had to be closed by hand.
+      expect(bar.isOpen).toBe(false);
+      expect(bar.classList.contains('open')).toBe(false);
+    });
   });
 });

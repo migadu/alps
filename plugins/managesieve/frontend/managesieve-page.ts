@@ -4,10 +4,11 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import type { VisualState } from './sieve-compiler';
 import { SieveCompiler } from './sieve-compiler';
+import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-setting-group';
 import './raw-editor';
 import './visual-editor';
-import { managesieveService } from './managesieve-service';
+import { managesieveService, TwoVacationsError } from './managesieve-service';
 import '../../../frontend/src/components/ui-confirm';
 
 @customElement('alps-managesieve-page')
@@ -23,6 +24,12 @@ export class ManageSievePage extends LitElement {
 	@state() folders: string[] = [];
 
 	@state() private isLoading = true;
+	/**
+	 * The script could not be read. No editor is offered then: a save writes
+	 * the whole filter set, and one made from an editor over a failed read
+	 * replaced every filter the server held with whatever was added there.
+	 */
+	@state() private loadFailed = false;
 	@state() private isSaving = false;
 	@state() private showSwitchRawConfirm = false;
 
@@ -32,6 +39,14 @@ export class ManageSievePage extends LitElement {
 			flex-direction: column;
 			gap: 20px;
 			padding-bottom: 32px;
+		}
+		.load-error {
+			display: flex;
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 12px;
+			color: var(--text-secondary);
+			line-height: 1.4;
 		}
 		.switch-btn-container {
 			margin-top: 16px;
@@ -47,6 +62,8 @@ export class ManageSievePage extends LitElement {
 	}
 
 	private async fetchScript() {
+		this.isLoading = true;
+		this.loadFailed = false;
 		try {
 			const data = await managesieveService.fetchScript();
 			this.script = data.content || '';
@@ -65,8 +82,7 @@ export class ManageSievePage extends LitElement {
 			}
 		} catch (e) {
 			console.error('Failed to fetch Sieve script', e);
-			this.visualState = { rules: [] };
-			this.mode = 'visual';
+			this.loadFailed = true;
 		} finally {
 			this.isLoading = false;
 		}
@@ -110,14 +126,19 @@ export class ManageSievePage extends LitElement {
 			// must still read as unsaved when it lands.
 			const sentSnapshot = JSON.stringify(this.visualState);
 
-			await managesieveService.saveScript(compiled, 'PUT');
+			const { autoReplyOn } = await managesieveService.saveScript(compiled, 'PUT');
 			this.storedScript = compiled;
-			const msgKey = compiled.trim() === '' ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), timeout: 3000 } }));
+			// Without rules the script is switched off, unless an auto-reply that
+			// is on goes on running in it.
+			const msgKey = compiled.trim() === '' && !autoReplyOn ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), duration: 3000 } }));
 			const editor = this.shadowRoot?.querySelector('alps-visual-editor') as any;
 			if (editor && editor.markClean) editor.markClean(sentSnapshot);
 		} catch (e: any) {
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: e.message || this.i18nStore.t('managesieve.toast.networkError'), timeout: 5000, type: 'error' } }));
+			const message = e instanceof TwoVacationsError
+				? this.i18nStore.t('managesieve.toast.autoReplyOn')
+				: e.message || this.i18nStore.t('managesieve.toast.networkError');
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, duration: 5000, type: 'error' } }));
 		} finally {
 			this.isSaving = false;
 		}
@@ -130,6 +151,13 @@ export class ManageSievePage extends LitElement {
 					${this.isLoading ? html`
 						<div style="display: flex; justify-content: center; align-items: center; min-height: 300px;">
 							<alps-loader></alps-loader>
+						</div>
+					` : this.loadFailed ? html`
+						<div class="load-error">
+							<div role="alert">${this.i18nStore.t('managesieve.loadError')}</div>
+							<alps-button variant="normal" @click=${() => this.fetchScript()}>
+								${this.i18nStore.t('managesieve.loadErrorRetry')}
+							</alps-button>
 						</div>
 					` : this.mode === 'visual' ? html`
 						<alps-visual-editor 

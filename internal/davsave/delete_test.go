@@ -46,7 +46,7 @@ func TestDeleteOutcomes(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusForbidden) }))
 	defer srv.Close()
 	var statusErr *StatusError
-	if err := Delete(context.Background(), srv.Client(), srv.URL, "", nil); !errors.As(err, &statusErr) {
+	if err := Delete(context.Background(), srv.Client(), srv.URL, "", nil); !errors.As(err, &statusErr) || statusErr.Code != http.StatusForbidden {
 		t.Fatalf("a refusal: %v", err)
 	}
 }

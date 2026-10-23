@@ -7,6 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MessageSyncService } from '../src/services/message-sync';
+import { messageKey } from '../src/utils/message-key';
 
 const listing = (mailbox: string) =>
   new Response(JSON.stringify({ Messages: [{ Mailbox: mailbox }], Total: 1 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -135,6 +136,19 @@ describe('fetch', () => {
     expect(seen.filter((e) => e.type !== 'sync-start').map((e) => e.type)).toEqual(['mailbox-not-found', 'sync-error']);
     expect(authErrors.length).toBeGreaterThan(0);
   });
+
+  it('reports a server error as a failure, not as an empty folder', async () => {
+    // A 500 with a JSON body, as the server answers when its IMAP connection
+    // fails. Announced as data, it had no Messages, and the page emptied the
+    // folder on screen.
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: 'failed to list messages' }), { status: 500, headers: { 'Content-Type': 'application/json' } }));
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    const failing = svc.fetch('INBOX', 0);
+    await vi.runAllTimersAsync();
+    await failing;
+    expect(seen.filter((e) => e.type !== 'sync-start').map((e) => e.type)).toEqual(['sync-error']);
+  });
 });
 
 describe('the background poll', () => {
@@ -184,6 +198,20 @@ describe('the background poll', () => {
     releaseListing(listing('Work'));
     await poll;
     expect(seen.find((e) => e.type === 'sync-success')!.detail.data.ListedMailbox).toBe('Work');
+  });
+
+  it('leaves the rows on screen when the server answers with an error', async () => {
+    fetchMock.mockImplementation(async (url: string) => (url.includes('/status')
+      ? new Response('{}', { status: 200 })
+      : new Response(JSON.stringify({ error: 'failed to list messages' }), { status: 502, headers: { 'Content-Type': 'application/json' } })));
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    svc.setContext('INBOX', 0);
+    // A 502 is retried after a pause before it counts.
+    const poll = (svc as any).backgroundSync();
+    await vi.runAllTimersAsync();
+    expect(await poll).toBe(false);
+    expect(seen.map((e) => e.type)).toEqual([]);
   });
 
   it('reports a folder that disappeared instead of failing quietly', async () => {
@@ -313,7 +341,7 @@ describe('syncLabels', () => {
   });
 });
 
-describe('across a sign-out', () => {
+describe.each(['session-cleared', 'user-logged-in'])('across %s', (event) => {
   it('drops a folder list read for the session that ended', async () => {
     const svc = new MessageSyncService();
     const seen = events(svc);
@@ -322,7 +350,7 @@ describe('across a sign-out', () => {
 
     // A rename re-reads the folder list, and the user signs out before it answers.
     const read = svc.syncLabels();
-    window.dispatchEvent(new CustomEvent('session-cleared'));
+    window.dispatchEvent(new CustomEvent(event));
     release(new Response(JSON.stringify({ Mailboxes: [{ Name: 'INBOX' }, { Name: 'Payroll' }] }), { status: 200 }));
     await read;
 
@@ -337,13 +365,41 @@ describe('across a sign-out', () => {
     fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { release = resolve; }));
 
     const read = svc.fetch('INBOX', 0, '', false, true);
-    window.dispatchEvent(new CustomEvent('session-cleared'));
+    window.dispatchEvent(new CustomEvent(event));
     release(listing('INBOX'));
     await read;
 
     expect(seen.map((e) => e.type)).toEqual(['sync-start']);
     expect((svc as any).listed).toBe(false);
   });
+});
+
+it('never paints or caches a previous account listing or labels after direct sign-in', async () => {
+  const svc = new MessageSyncService();
+  const seen = events(svc);
+  let oldListing!: (r: Response) => void;
+  let oldLabels!: (r: Response) => void;
+  fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { oldListing = resolve; }))
+    .mockImplementationOnce(() => new Promise<Response>((resolve) => { oldLabels = resolve; }));
+  const listingRead = svc.fetch('Archive', 0, '', false, true);
+  const labelsRead = svc.syncLabels();
+  window.dispatchEvent(new CustomEvent('user-logged-in', { detail: { username: 'grace@example.com' } }));
+  oldListing(new Response(JSON.stringify({ Username: 'ada@example.com', Messages: [{ UID: '1', Envelope: { Subject: 'Private Ada payroll' } }], Total: 1 })));
+  oldLabels(new Response(JSON.stringify({ Mailboxes: [{ Name: 'Private Ada payroll' }] })));
+  await Promise.all([listingRead, labelsRead]);
+  expect(seen.map((e) => e.type)).toEqual(['sync-start']);
+
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ Username: 'grace@example.com', Total: 0, Messages: [] })));
+  await svc.fetch('INBOX', 0, '', false, true);
+  seen.length = 0;
+  let release!: (r: Response) => void;
+  fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { release = resolve; }));
+  const back = svc.fetch('Archive', 0, '', false, true);
+  expect(seen.map((e) => e.type)).toEqual(['sync-start']);
+  release(new Response(JSON.stringify({ Total: 0, Messages: [] })));
+  await back;
+  expect(seen.at(-1)?.detail.data).toMatchObject({ Total: 0, Messages: [] });
+  expect(seen.at(-1)?.detail.data.Mailboxes).toBeUndefined();
 });
 
 describe('the check-for-new-mail button', () => {
@@ -456,7 +512,10 @@ describe('the check-for-new-mail button', () => {
 });
 
 describe('the re-read after a write', () => {
-  it('reads the folder in full, and asks the page not to dim for it', async () => {
+  // Not a refresh: the server has already dropped what the write changed, and
+  // read the counts of the folders it touched. A refresh dropped its folder
+  // list and every folder's counts on top, and read them all again.
+  it('reads the folder without a refresh, and asks the page not to dim for it', async () => {
     fetchMock.mockResolvedValue(listing('Work'));
     const svc = new MessageSyncService();
     svc.setContext('Work', 2, 'ada');
@@ -465,7 +524,9 @@ describe('the re-read after a write', () => {
     svc.sync();
     await vi.runAllTimersAsync();
 
-    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/Work?page=2&query=ada&refresh=true']);
+    // The counts first, as the poll asks them: a refresh also caught mail that
+    // arrived meanwhile, and a folder whose counts moved is read again.
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Work/status', '/mailboxes/Work?page=2&query=ada']);
     expect(seen.map((e) => e.type)).toEqual(['sync-start', 'sync-success']);
     expect(seen.every((e) => e.detail.quiet === true && e.detail.background === false)).toBe(true);
   });
@@ -488,6 +549,304 @@ describe('the re-read after a write', () => {
     await vi.runAllTimersAsync();
     await pending;
     expect(navigating.map((e) => e.type)).toEqual(['sync-start', 'sync-success']);
+  });
+
+  it('is made once for the writes of one gesture, when they are done', async () => {
+    fetchMock.mockImplementation(async () => listing('Work'));
+    const svc = new MessageSyncService();
+    svc.setContext('Work', 0);
+
+    let finish!: () => void;
+    const gesture = svc.afterWrites(async () => {
+      svc.sync();
+      svc.sync();
+      await new Promise<void>((resolve) => { finish = resolve; });
+      svc.sync();
+      return 'filed';
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    finish();
+    expect(await gesture).toBe('filed');
+    await vi.runAllTimersAsync();
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Work/status', '/mailboxes/Work?page=0']);
+  });
+
+  it('is not made for writes that asked for none, and is made when one fails', async () => {
+    fetchMock.mockImplementation(async () => listing('Work'));
+    const svc = new MessageSyncService();
+    svc.setContext('Work', 0);
+
+    await svc.afterWrites(async () => {});
+    await vi.runAllTimersAsync();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await expect(svc.afterWrites(async () => {
+      svc.sync();
+      throw new Error('refused');
+    })).rejects.toThrow('refused');
+    await vi.runAllTimersAsync();
+    expect(fetchMock.mock.calls.map((c) => c[0]).filter((url) => url.includes('?page='))).toEqual(['/mailboxes/Work?page=0']);
+  });
+
+  it('is a refresh when a write that failed part of the way asked for one', async () => {
+    fetchMock.mockImplementation(async () => listing('Work'));
+    const svc = new MessageSyncService();
+    svc.setContext('Work', 0);
+
+    await svc.afterWrites(async () => {
+      svc.sync();
+      svc.sync({ refresh: true });
+      svc.sync();
+    });
+    await vi.runAllTimersAsync();
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/Work?page=0&refresh=true']);
+
+    svc.sync({ refresh: true });
+    await vi.runAllTimersAsync();
+    expect(fetchMock.mock.calls.map((c) => c[0]).at(-1)).toBe('/mailboxes/Work?page=0&refresh=true');
+  });
+});
+
+describe('listings kept in memory', () => {
+  const page = (mailbox: string, uids: string[], mailboxes: any[] = [{ Name: mailbox }]) =>
+    new Response(JSON.stringify({ Mailboxes: mailboxes, Messages: uids.map((UID) => ({ UID, Flags: [] })), Total: uids.length }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+
+  /** Reads INBOX, then Archive, so the INBOX listing is one kept. */
+  async function keptInbox(svc: MessageSyncService) {
+    fetchMock.mockResolvedValueOnce(page('INBOX', ['1'], [{ Name: 'INBOX', Unseen: 1 }]));
+    fetchMock.mockResolvedValueOnce(page('Archive', ['7'], [{ Name: 'INBOX', Unseen: 0 }]));
+    const first = svc.fetch('INBOX', 0);
+    await vi.runAllTimersAsync();
+    await first;
+    const second = svc.fetch('Archive', 0);
+    await vi.runAllTimersAsync();
+    await second;
+  }
+
+  it('shows a view read before at once, without the dim, then its answer', async () => {
+    const svc = new MessageSyncService();
+    await keptInbox(svc);
+    const seen = events(svc);
+    let answer!: (r: Response) => void;
+    fetchMock.mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; }));
+
+    const back = svc.fetch('INBOX', 0);
+    expect(seen.map((e) => e.type)).toEqual(['sync-start', 'sync-success']);
+    expect(seen[0].detail).toMatchObject({ background: false, quiet: true });
+    expect(seen[1].detail).toMatchObject({ background: false, quiet: true, kept: true });
+    expect(seen[1].detail.data.Messages.map((m: any) => m.UID)).toEqual(['1']);
+    expect(seen[1].detail.data.ListedMailbox).toBe('INBOX');
+    // With the folder list the latest answer carried, not the one kept with it.
+    expect(seen[1].detail.data.Mailboxes).toEqual([{ Name: 'INBOX', Unseen: 0 }]);
+
+    answer(page('INBOX', ['2', '1']));
+    await vi.runAllTimersAsync();
+    await back;
+    expect(seen.map((e) => e.type)).toEqual(['sync-start', 'sync-success', 'sync-success']);
+    expect(seen[2].detail.data.Messages.map((m: any) => m.UID)).toEqual(['2', '1']);
+    expect(fetchMock.mock.calls.at(-1)![0]).toBe('/mailboxes/INBOX?page=0');
+  });
+
+  it('sends one listing at a time, and a newer one takes the place of one waiting', async () => {
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    let answer!: (r: Response) => void;
+    fetchMock
+      .mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; }))
+      .mockResolvedValue(page('Trash', ['5']));
+
+    const reads = [svc.fetch('INBOX', 0), svc.fetch('Archive', 0), svc.fetch('Trash', 0)];
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX?page=0']);
+
+    answer(page('INBOX', ['1']));
+    await vi.runAllTimersAsync();
+    await Promise.all(reads);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX?page=0', '/mailboxes/Trash?page=0']);
+    const shown = seen.filter((e) => e.type === 'sync-success').map((e) => e.detail.data.ListedMailbox);
+    expect(shown).toEqual(['Trash']);
+  });
+
+  it('keeps a flag changed on screen in the view kept', async () => {
+    const svc = new MessageSyncService();
+    await keptInbox(svc);
+    window.dispatchEvent(new CustomEvent('external-message-flags-changed', {
+      detail: { keys: [messageKey('INBOX', '1')], flag: '\\Seen', action: 'add' },
+    }));
+    const seen = events(svc);
+    fetchMock.mockImplementationOnce(() => new Promise(() => {}));
+    void svc.fetch('INBOX', 0);
+    expect(seen[1].detail.data.Messages[0].Flags).toEqual(['\\Seen']);
+  });
+
+  it('keeps nothing past a write, a refresh, other listing settings or a sign-out', async () => {
+    // What is asked after the two reads is never answered.
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+    const kept = async (svc: MessageSyncService, before: () => void) => {
+      await keptInbox(svc);
+      before();
+      const seen = events(svc);
+      void svc.fetch('INBOX', 0);
+      return seen.some((e) => e.detail?.kept);
+    };
+    expect(await kept(new MessageSyncService(), () => {})).toBe(true);
+
+    const written = new MessageSyncService();
+    expect(await kept(written, () => written.sync())).toBe(false);
+
+    const sorted = new MessageSyncService();
+    sorted.setListingSettings('desc');
+    expect(await kept(sorted, () => sorted.setListingSettings('asc'))).toBe(false);
+
+    const signedOut = new MessageSyncService();
+    expect(await kept(signedOut, () => window.dispatchEvent(new CustomEvent('session-cleared')))).toBe(false);
+
+    const refreshed = new MessageSyncService();
+    await keptInbox(refreshed);
+    const seen = events(refreshed);
+    void refreshed.fetch('INBOX', 0, '', true);
+    expect(seen.some((e) => e.detail?.kept)).toBe(false);
+  });
+
+  it('keeps nothing past a rename or a delete of a folder, a sign-in, or an autosave in the folder', async () => {
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+    const kept = async (before: (svc: MessageSyncService) => void) => {
+      const svc = new MessageSyncService();
+      await keptInbox(svc);
+      before(svc);
+      const seen = events(svc);
+      void svc.fetch('INBOX', 0);
+      return seen.some((e) => e.detail?.kept);
+    };
+    expect(await kept((svc) => svc.mailboxRenamed('Work', 'Jobs'))).toBe(false);
+    expect(await kept((svc) => svc.mailboxDeleted('Work'))).toBe(false);
+    expect(await kept(() => window.dispatchEvent(new CustomEvent('user-logged-in', { detail: {} })))).toBe(false);
+    expect(await kept(() => window.dispatchEvent(new CustomEvent('draft-autosaved', { detail: { mailbox: 'INBOX' } })))).toBe(false);
+    expect(await kept(() => window.dispatchEvent(new CustomEvent('draft-autosaved', { detail: { mailbox: 'Drafts' } })))).toBe(true);
+  });
+
+  it('drops a folder that answers that it is gone', async () => {
+    const svc = new MessageSyncService();
+    await keptInbox(svc);
+    fetchMock.mockResolvedValueOnce(new Response('{}', { status: 404 }));
+    const gone = svc.fetch('INBOX', 0);
+    await vi.runAllTimersAsync();
+    await gone;
+
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+    const seen = events(svc);
+    void svc.fetch('INBOX', 0);
+    expect(seen.some((e) => e.detail?.kept)).toBe(false);
+  });
+
+  it('keeps the 30 views read last, and hands each out as a copy of its own', async () => {
+    const svc = new MessageSyncService();
+    fetchMock.mockImplementation(async (url: string) => page(String(url), ['1']));
+    for (let n = 0; n <= 30; n++) {
+      const read = svc.fetch(`F${n}`, 0);
+      await vi.runAllTimersAsync();
+      await read;
+    }
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+    const shown = (mailbox: string) => {
+      const seen = events(svc);
+      void svc.fetch(mailbox, 0);
+      return seen.find((e) => e.detail?.kept)?.detail.data;
+    };
+    expect(shown('F0')).toBeUndefined();
+    const first = shown('F1');
+    expect(first.Messages.map((m: any) => m.UID)).toEqual(['1']);
+    first.Messages.push({ UID: '2' });
+    first.Messages[0].Flags.push('\\Flagged');
+    const again = shown('F1');
+    expect(again.Messages).toEqual([{ UID: '1', Flags: [] }]);
+  });
+
+  /**
+   * A view shown from memory can be used at once, while its quiet re-read is
+   * out, and the server reads a write sent then after that listing.
+   */
+  describe('a change made while its listing is out', () => {
+    async function heldRead(svc: MessageSyncService) {
+      let answer!: (r: Response) => void;
+      fetchMock.mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; }));
+      const seen = events(svc);
+      const read = svc.fetch('INBOX', 0);
+      await vi.advanceTimersByTimeAsync(0);
+      return {
+        seen,
+        async land(response: Response) {
+          answer(response);
+          await vi.runAllTimersAsync();
+          await read;
+          return seen.filter((e) => e.type === 'sync-success').at(-1)!.detail.data;
+        },
+      };
+    }
+
+    it('is played over the answer, which is shown and not kept', async () => {
+      const svc = new MessageSyncService();
+      await keptInbox(svc);
+      const read = await heldRead(svc);
+      window.dispatchEvent(new CustomEvent('external-message-flags-changed', {
+        detail: { keys: [messageKey('INBOX', '1')], flag: '\\Flagged', action: 'add' },
+      }));
+      const shown = await read.land(page('INBOX', ['2', '1']));
+      expect(shown.Messages.map((m: any) => [m.UID, m.Flags])).toEqual([['2', []], ['1', ['\\Flagged']]]);
+
+      // The view kept is the one the star was patched into.
+      fetchMock.mockImplementation(() => new Promise(() => {}));
+      const seen = events(svc);
+      void svc.fetch('INBOX', 0);
+      expect(seen[1].detail.data.Messages.map((m: any) => [m.UID, m.Flags])).toEqual([['1', ['\\Flagged']]]);
+    });
+
+    it('takes the rows a write took out off the answer, unless they are put back', async () => {
+      const svc = new MessageSyncService();
+      await keptInbox(svc);
+      const read = await heldRead(svc);
+      svc.rowsTakenOut([messageKey('INBOX', '1')]);
+      const shown = await read.land(page('INBOX', ['2', '1']));
+      expect(shown.Messages.map((m: any) => m.UID)).toEqual(['2']);
+      expect(shown.Total).toBe(1);
+
+      const again = await heldRead(svc);
+      const putBack = svc.rowsTakenOut([messageKey('INBOX', '2')]);
+      putBack();
+      expect((await again.land(page('INBOX', ['2', '1']))).Messages.map((m: any) => m.UID)).toEqual(['2', '1']);
+    });
+
+    it('keeps no answer read under the listing settings before', async () => {
+      const svc = new MessageSyncService();
+      svc.setListingSettings('desc');
+      const read = await heldRead(svc);
+      svc.setListingSettings('asc');
+      await read.land(page('INBOX', ['1']));
+
+      fetchMock.mockImplementation(() => new Promise(() => {}));
+      const seen = events(svc);
+      void svc.fetch('INBOX', 0);
+      expect(seen.some((e) => e.detail?.kept)).toBe(false);
+    });
+
+    it('is not played over an answer sent after it', async () => {
+      const svc = new MessageSyncService();
+      await keptInbox(svc);
+      const held = await heldRead(svc);
+      svc.rowsTakenOut([messageKey('INBOX', '1')]);
+      await held.land(page('INBOX', ['1']));
+
+      fetchMock.mockResolvedValueOnce(page('INBOX', ['1']));
+      const seen = events(svc);
+      const read = svc.fetch('INBOX', 0, '', true);
+      await vi.runAllTimersAsync();
+      await read;
+      expect(seen.filter((e) => e.type === 'sync-success').at(-1)!.detail.data.Messages.map((m: any) => m.UID)).toEqual(['1']);
+    });
   });
 });
 
@@ -513,14 +872,20 @@ describe('polling', () => {
 
   /** navigator.locks, as far as the poll uses it: one holder per name, the rest wait in turn. */
   function installLocks() {
+    vi.stubGlobal('BroadcastChannel', class {
+      onmessage = null;
+      postMessage() {}
+      close() {}
+    });
     const held = new Set<string>();
     const waiting = new Map<string, (() => void)[]>();
     const locks = {
-      request(name: string, callback: () => Promise<void>) {
+      request(name: string, options: any, callback?: () => Promise<void>) {
+        if (!callback) callback = options;
         return new Promise<void>((resolve, reject) => {
           const grant = () => {
             held.add(name);
-            Promise.resolve(callback()).then(resolve, reject).finally(() => {
+            Promise.resolve(callback!()).then(resolve, reject).finally(() => {
               held.delete(name);
               waiting.get(name)?.shift()?.();
             });

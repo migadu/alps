@@ -92,7 +92,7 @@ export class OriginalMessagePage extends LitElement {
       border-radius: 8px;
       border: 1px solid var(--border-color, #e5e7eb);
       overflow-x: auto;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: var(--font-mono);
       font-size: 13px;
       line-height: 1.5;
       white-space: pre-wrap;

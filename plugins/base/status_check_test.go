@@ -151,9 +151,9 @@ func TestHTTP_NewMailInTheInboxLeavesTheOtherFolderAlone(t *testing.T) {
 // A check that finds no earlier counts for the folder has nothing to compare
 // with, so it learns the counts and drops nothing else.
 //
-// Here the counts are missing because a message no page holds was marked
-// read, as the earlier messages of a conversation are when it is opened: what
-// it was before is unknown, so the unread count is dropped (applyFlagsToCache).
+// A message no page holds is marked read, then its refreshed status expires.
+// The page still carries its earlier unread count, so this checks the path
+// with a cold status and an existing page without re-reading the folder list.
 func TestHTTP_ACheckWithNoEarlierCountsKeepsTheFolderList(t *testing.T) {
 	s := newTestServer(t)
 	s.login()
@@ -165,6 +165,8 @@ func TestHTTP_ACheckWithNoEarlierCountsKeepsTheFolderList(t *testing.T) {
 		t.Fatalf("older message: %v %v", older, err)
 	}
 	s.markRead("INBOX", older[0].ID)
+	// Simulate this status expiring while the page and folder list remain.
+	s.forgetStatus("INBOX")
 
 	if err := s.store.CreateMailbox("Lists"); err != nil {
 		t.Fatal(err)
@@ -200,6 +202,8 @@ func TestHTTP_AMissingCountIsReadForItsFolderAlone(t *testing.T) {
 		t.Fatalf("older message: %v %v", older, err)
 	}
 	s.markRead("INBOX", older[0].ID)
+	// Simulate this status expiring while the page and folder list remain.
+	s.forgetStatus("INBOX")
 
 	if err := s.store.CreateMailbox("Lists"); err != nil {
 		t.Fatal(err)
@@ -231,6 +235,8 @@ func TestHTTP_ACheckWithNoEarlierCountsSeesNewMailByThePages(t *testing.T) {
 		t.Fatalf("older message: %v %v", older, err)
 	}
 	s.markRead("INBOX", older[0].ID)
+	// Simulate this status expiring while the page and folder list remain.
+	s.forgetStatus("INBOX")
 
 	s.deliver("INBOX", "Arrival")
 	if err := s.store.CreateMailbox("Lists"); err != nil {
@@ -347,4 +353,15 @@ func (s *testServer) markRead(mailbox string, id provider.MessageID) {
 	s.expect(s.do("PUT", "/mailboxes/"+mailbox+"/messages/flag", map[string]any{
 		"uids": []string{id.String()}, "flags": []string{`\Seen`}, "action": "add",
 	}), http.StatusOK)
+}
+
+// forgetStatus makes the cold-status path explicit: successful writes now
+// re-read unknown counts rather than leaving this entry absent.
+func (s *testServer) forgetStatus(mailbox string) {
+	s.t.Helper()
+	session, err := s.server.Sessions.Get(s.sessionToken())
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	session.Cache().Delete("status:" + mailbox)
 }

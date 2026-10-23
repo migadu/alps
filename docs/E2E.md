@@ -100,6 +100,10 @@ What `fixtures.ts` offers:
 | `allowConsoleErrors(page, /pattern/)` | Permit an expected console error in one test |
 | `toast(page, text)` | A visible toast |
 
+`sieve-server.ts` speaks ManageSieve to sora directly: `storedScripts()` and
+`storeActiveScript(name, content)` read and write the account's Sieve scripts as another client
+would, so a test can check what the server holds rather than what ALPS shows.
+
 Rules that keep a serial suite on one account reliable:
 
 - Use unique subjects; never assume the inbox is empty.

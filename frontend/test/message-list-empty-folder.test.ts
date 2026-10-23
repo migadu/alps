@@ -237,6 +237,48 @@ describe('the folder it names', () => {
     // The request still names the folder by its path.
     expect(mailboxOperations.emptyMailbox).toHaveBeenCalledWith('INBOX.Bin');
   });
+
+  it('is that name while it empties, once it has, and when it could not', async () => {
+    // These said "mailbox", which to a user is the whole account: a Delete
+    // All in Trash ended on "Mailbox emptied successfully."
+    vi.spyOn(mailboxOperations, 'emptyMailbox')
+      .mockResolvedValueOnce({ ok: true, discarded: 2 })
+      .mockResolvedValueOnce({ ok: false, reason: 'not_discardable' });
+    const el = await prefixedTrash();
+    const toasts = record<CustomEvent>(el, 'toast');
+
+    await emptyTheFolder(el);
+    await emptyTheFolder(el);
+
+    expect(messages(toasts)).toEqual(['Emptying Trash...', 'Trash emptied.', 'Emptying Trash...', 'Failed to empty Trash.']);
+  });
+
+  it('is the name in the language the sidebar speaks', async () => {
+    vi.spyOn(mailboxOperations, 'emptyMailbox')
+      .mockResolvedValueOnce({ ok: true, discarded: 2 })
+      .mockResolvedValueOnce({ ok: false, reason: 'failed' });
+    const i18nStore = new I18nStore();
+    await i18nStore.setLanguage('de');
+    const el = await mount<El>(TAG, {
+      i18nStore,
+      messages: [message('1'), message('2')],
+      currentMailbox: 'INBOX.Bin',
+      currentMailboxRole: 'trash',
+      mailboxes: [
+        { Name: 'INBOX', Attrs: [], Delimiter: '.' },
+        { Name: 'INBOX.Bin', Attrs: ['\\Trash'], Delimiter: '.' },
+      ],
+      totalMessages: 2,
+    });
+    const toasts = record<CustomEvent>(el, 'toast');
+
+    await el.handleEmptyMailbox();
+    await el.handleEmptyMailbox();
+
+    expect(messages(toasts)).toHaveLength(4);
+    expect(messages(toasts).filter(m => !m.includes('Papierkorb'))).toEqual([]);
+    expect(messages(toasts).join(' ')).not.toContain('Postfach');
+  });
 });
 
 describe('while the empty runs', () => {
@@ -309,5 +351,42 @@ describe('what the count is a count of', () => {
     expect(banner).toContain('2 total messages in Trash');
     await click(deleteAll(el), el);
     expect(shadow(el, 'ui-confirm').getAttribute('message')).toContain('all 2 messages in Trash');
+  });
+});
+
+/**
+ * Only the folder the sidebar draws as Trash or Junk offers it. Of two
+ * folders with the role, the other is drawn as an ordinary folder under its
+ * own name, yet opened it offered to delete everything in it for good, as if
+ * it were the Trash.
+ */
+describe('which folder offers it', () => {
+  const mb = (Name: string, Attrs: string[] = []) => ({ Name, Attrs, Delimiter: '.' });
+
+  async function folder(currentMailbox: string, currentMailboxRole: string, mailboxes: unknown[]): Promise<El> {
+    return mount<El>(TAG, {
+      i18nStore: new I18nStore(),
+      messages: [message('1'), message('2')],
+      currentMailbox,
+      currentMailboxRole,
+      mailboxes,
+      totalMessages: 2,
+    });
+  }
+
+  it('the Trash, and not a second folder that is Trash by name', async () => {
+    // Without special-use attributes both are Trash by name; Delete files
+    // into Deleted Items, which the server lists first.
+    const mailboxes = [mb('INBOX'), mb('Deleted Items'), mb('Trash')];
+    expect(deleteAll(await folder('Deleted Items', 'trash', mailboxes))).toBeDefined();
+    cleanup();
+    expect(deleteAll(await folder('Trash', 'trash', mailboxes))).toBeUndefined();
+  });
+
+  it('the Junk, and not a second folder carrying \\Junk', async () => {
+    const mailboxes = [mb('INBOX', ['\\HasChildren']), mb('INBOX.Junk', ['\\Junk']), mb('INBOX.Spam', ['\\Junk'])];
+    expect(deleteAll(await folder('INBOX.Junk', 'junk', mailboxes))).toBeDefined();
+    cleanup();
+    expect(deleteAll(await folder('INBOX.Spam', 'junk', mailboxes))).toBeUndefined();
   });
 });

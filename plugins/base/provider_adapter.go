@@ -1,11 +1,13 @@
 package alpsbase
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/emersion/go-message"
 	"github.com/migadu/alps/provider"
 	imapprovider "github.com/migadu/alps/provider/imap"
 )
@@ -29,6 +31,8 @@ func providerMailboxToInfo(mbox provider.Mailbox) MailboxInfo {
 		listData.Status = &imap.StatusData{
 			NumMessages: &numMessages,
 			NumUnseen:   &numUnseen,
+			UIDValidity: mbox.UIDValidity,
+			UIDNext:     imap.UID(mbox.UIDNext),
 		}
 	}
 
@@ -52,6 +56,7 @@ func providerStatusToMailboxStatus(status *provider.MailboxStatus) *MailboxStatu
 			NumMessages: &status.NumMessages,
 			NumUnseen:   &status.NumUnseen,
 			UIDValidity: status.UIDValidity,
+			UIDNext:     imap.UID(status.UIDNext),
 		},
 	}
 }
@@ -206,20 +211,54 @@ func getMailboxStatusesWithProvider(p provider.MailProvider, names []string) ([]
 	return statuses, errs
 }
 
-// getMessageMetadataWithProvider gets a message's metadata using the provider
-func getMessageMetadataWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID) (*IMAPMessage, error) {
-	msg, err := p.GetMessageMetadata(mailbox, uid)
-	if err != nil {
-		return nil, err
+// readerPartWithProvider reads the part of a message the reader shows, with
+// the verdict and References it shows beside it: in one read where the
+// provider can, else as the part and then the message's metadata.
+func readerPartWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, partPath []int) (*provider.Message, []byte, []byte, error) {
+	type readerPartReader interface {
+		GetMessagePartForReader(mailbox string, id provider.MessageID, partPath []int) (*provider.Message, []byte, []byte, error)
 	}
-
-	imapMsg := providerMessageToIMAP(*msg)
-	return &imapMsg, nil
+	if r, ok := p.(readerPartReader); ok {
+		return r.GetMessagePartForReader(mailbox, uid, partPath)
+	}
+	msg, _, headerData, bodyData, err := p.GetMessagePartWithData(mailbox, uid, partPath)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	meta, err := p.GetMessageMetadata(mailbox, uid)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	msg.BimiPotential, msg.BimiFailed = meta.BimiPotential, meta.BimiFailed
+	if len(msg.References) == 0 {
+		msg.References = meta.References
+	}
+	return msg, headerData, bodyData, nil
 }
 
 // deleteMessagesWithProvider deletes multiple messages using the provider
 func deleteMessagesWithProvider(p provider.MailProvider, mailbox string, uids []provider.MessageID) error {
 	return p.DeleteMessages(mailbox, uids)
+}
+
+// messagePartsWithProvider reads the parts of one message at paths, in that
+// order: with one read where the provider can, else one read per part.
+func messagePartsWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, paths [][]int) ([]*message.Entity, error) {
+	type partsReader interface {
+		GetMessageParts(mailbox string, id provider.MessageID, paths [][]int) ([]*message.Entity, error)
+	}
+	if r, ok := p.(partsReader); ok {
+		return r.GetMessageParts(mailbox, uid, paths)
+	}
+	parts := make([]*message.Entity, len(paths))
+	for i, path := range paths {
+		_, entity, _, _, err := p.GetMessagePartWithData(mailbox, uid, path)
+		if err != nil {
+			return nil, fmt.Errorf("part %s: %w", formatPartPath(path), err)
+		}
+		parts[i] = entity
+	}
+	return parts, nil
 }
 
 // markMessageAnsweredWithProvider marks a message as answered using the provider
@@ -280,43 +319,6 @@ func moveMessagesWithProvider(p provider.MailProvider, srcMailbox, dstMailbox st
 // copyMessagesWithProvider copies multiple messages using the provider
 func copyMessagesWithProvider(p provider.MailProvider, srcMailbox, dstMailbox string, uids []provider.MessageID) (map[provider.MessageID]provider.MessageID, error) {
 	return p.CopyMessages(srcMailbox, dstMailbox, uids)
-}
-
-// getConversationWithProvider returns a message's conversation, oldest first:
-// its thread in mailbox, and the messages of it filed in Sent. Threading sees
-// one mailbox at a time, and the replies a user sends are not in the mailbox
-// of the messages they answer. A failed look in Sent is logged, and the thread
-// is returned as it is.
-func getConversationWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, known conversationHints, logf func(format string, args ...interface{})) ([]IMAPMessage, error) {
-	thread, err := messageThreadWithProvider(p, mailbox, uid, known.memberUIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	msgs := thread
-	if sent, err := sentOfConversation(p, mailbox, thread, known.sentMailbox); err != nil {
-		logf("looking in Sent for the conversation of %s/%s: %v", mailbox, uid, err)
-	} else {
-		msgs = mergeConversation(thread, sent)
-	}
-
-	result := make([]IMAPMessage, len(msgs))
-	for i, m := range msgs {
-		result[i] = providerMessageToIMAP(m)
-	}
-	return result, nil
-}
-
-// conversationHints is what the CALLER already knows, so the provider is not
-// asked to rediscover it. Both fields are optional; an empty one means "find
-// out", which is what every caller did before they were passed.
-type conversationHints struct {
-	// The conversation's UIDs in this mailbox, as a listing already established
-	// them. Saves a THREAD over the whole mailbox — see GetThreadMembers.
-	memberUIDs []provider.MessageID
-	// The Sent mailbox's name, from the mailbox list the session has cached.
-	// Saves a LIST on every conversation read.
-	sentMailbox string
 }
 
 // messageThreadWithProvider gets a message's thread in its mailbox. `known`

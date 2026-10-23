@@ -2,9 +2,11 @@
  * The arrow keys, pressed before anything in the list has focus.
  *
  * The list moves its cursor on keys pressed inside it, and opening a folder
- * from the sidebar leaves focus on the page itself, so ArrowDown did nothing
- * until a row had been clicked. The page now passes on an arrow that nothing
- * else takes, and only that: a field keeps its own.
+ * from the sidebar leaves the focus on the page or on the folder's name,
+ * neither of which the list hears, so ArrowDown did nothing until a row had
+ * been clicked. The page now passes on an arrow that nothing else takes, and
+ * only that: a field keeps its own. A folder's name in the sidebar is a
+ * button that takes no arrows, so it passes them on too.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/pages/mailbox-page';
@@ -91,6 +93,17 @@ describe('an arrow key with nothing focused', () => {
     press(list.shadowRoot!.activeElement!, 'ArrowDown');
     await list.updateComplete;
     expect(focused(list)).toEqual(['message 8']);
+  });
+
+  it("is passed on from a folder's name in the sidebar, where opening a folder leaves the focus", async () => {
+    const { page, list } = await shownInbox();
+    const folders = shadow<El>(page, 'alps-folder-list');
+    const inbox = shadow<HTMLElement>(folders, '.folder-item .folder-name');
+    expect(inbox.getAttribute('role')).toBe('button');
+
+    expect(press(inbox, 'ArrowDown').defaultPrevented).toBe(true);
+    await list.updateComplete;
+    expect(focused(list)).toEqual(['message 9']);
   });
 
   it('is left alone when it comes from a field, or with a modifier', async () => {
