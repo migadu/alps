@@ -86,6 +86,77 @@ func TestFrontendServedCacheable(t *testing.T) {
 	})
 }
 
+// TestBrandedFrontendServedCacheable: with branding, the page and the icons
+// are other bytes than the ones built, and they are served as every other
+// file of the frontend is. They were answered by handlers of their own: the
+// page with no ETag, so a reload downloaded it whole, and uncompressed; the
+// icons with no Cache-Control and no ETag. And the build the frontend checks
+// for updates was named by the unbranded page, so a change of branding asked
+// nobody to reload.
+func TestBrandedFrontendServedCacheable(t *testing.T) {
+	serve := func(branding BrandingOptions) func(path string, header ...string) *httptest.ResponseRecorder {
+		s := &Server{logger: &NilLogger{}, Options: &Options{Branding: branding}}
+		require.NoError(t, s.loadPlugins())
+		return func(path string, header ...string) *httptest.ResponseRecorder {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			for i := 0; i+1 < len(header); i += 2 {
+				req.Header.Set(header[i], header[i+1])
+			}
+			w := httptest.NewRecorder()
+			s.router.ServeHTTP(w, req)
+			return w
+		}
+	}
+	get := serve(BrandingOptions{DefaultTheme: "migadu", LogoBuiltin: "migadu"})
+
+	t.Run("the branded page is revalidated", func(t *testing.T) {
+		w := get("/")
+		require.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `<meta name="alps-default-theme" content="migadu" />`)
+		assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
+		etag := w.Header().Get("ETag")
+		require.NotEmpty(t, etag, "the branded page carries a validator to revalidate with")
+
+		again := get("/", "If-None-Match", etag)
+		assert.Equal(t, http.StatusNotModified, again.Code)
+		assert.Empty(t, again.Body.Bytes())
+	})
+
+	t.Run("the branded page is sent compressed", func(t *testing.T) {
+		w := get("/", "Accept-Encoding", "gzip")
+		require.Equal(t, http.StatusOK, w.Code)
+		require.Equal(t, "gzip", w.Header().Get("Content-Encoding"))
+		zr, err := gzip.NewReader(bytes.NewReader(w.Body.Bytes()))
+		require.NoError(t, err)
+		page, err := io.ReadAll(zr)
+		require.NoError(t, err)
+		assert.Contains(t, string(page), `<meta name="alps-logo-builtin" content="migadu" />`)
+	})
+
+	t.Run("a branded icon is revalidated, and runs nothing", func(t *testing.T) {
+		w := get("/favicon.svg")
+		require.Equal(t, http.StatusOK, w.Code)
+		dist, err := fs.Sub(frontendFS, "frontend/dist")
+		require.NoError(t, err)
+		logo, err := fs.ReadFile(dist, "assets/logos/migadu/favicon.svg")
+		require.NoError(t, err)
+		assert.Equal(t, logo, w.Body.Bytes())
+		assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
+		assert.Contains(t, w.Header().Get("Content-Security-Policy"), "sandbox")
+		etag := w.Header().Get("ETag")
+		require.NotEmpty(t, etag, "the branded icon carries a validator to revalidate with")
+		assert.Equal(t, http.StatusNotModified, get("/favicon.svg", "If-None-Match", etag).Code)
+	})
+
+	t.Run("the build is named by the page served", func(t *testing.T) {
+		branded := get("/").Header().Get(BuildHeader)
+		plain := serve(BrandingOptions{})("/").Header().Get(BuildHeader)
+		require.NotEmpty(t, branded)
+		require.NotEmpty(t, plain)
+		assert.NotEqual(t, plain, branded, "a change of branding is a page to reload")
+	})
+}
+
 // TestFrontendFiles pins the edges of serving the frontend: what is not a
 // file stays with http.FileServer and is never marked as kept for good, a
 // client that refuses gzip is not sent it, and a file that does not compress

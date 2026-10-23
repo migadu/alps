@@ -74,6 +74,11 @@ export class Router implements ReactiveController {
     window.location.hash = path;
   }
 
+  /** Rebuilds the table after the session's enabled plugins change. */
+  setRoutes(routes: Record<string, () => unknown>) {
+    this.routes = routes;
+  }
+
   /**
    * Renders `path`: the one the browser is on unless told otherwise. The shell
    * names another while the Settings window is open, to draw the page beneath
