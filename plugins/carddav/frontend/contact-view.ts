@@ -275,18 +275,18 @@ export class AlpsContactView extends LitElement {
           this.editForm.categories = this.editForm.categories.join(', ');
         }
         if (Array.isArray(this.editForm.emails) && this.editForm.emails.length > 0) {
-          this.editForm.emails = this.editForm.emails.map((e: any) => ({ ...e }));
+          this.editForm.emails = this.editForm.emails.map((e: any, i: number) => ({ ...e, id: e.id || `emails:${i}` }));
         } else if (this.editForm.email) {
-          this.editForm.emails = [{ value: this.editForm.email, type: '' }];
+          this.editForm.emails = [{ value: this.editForm.email, type: '', id: 'emails:0' }];
         } else {
-          this.editForm.emails = [{ value: '', type: '' }];
+          this.editForm.emails = [{ value: '', type: '', id: crypto.randomUUID() }];
         }
         if (Array.isArray(this.editForm.phones) && this.editForm.phones.length > 0) {
-          this.editForm.phones = this.editForm.phones.map((p: any) => ({ ...p }));
+          this.editForm.phones = this.editForm.phones.map((p: any, i: number) => ({ ...p, id: p.id || `phones:${i}` }));
         } else if (this.editForm.phone) {
-          this.editForm.phones = [{ value: this.editForm.phone, type: '' }];
+          this.editForm.phones = [{ value: this.editForm.phone, type: '', id: 'phones:0' }];
         } else {
-          this.editForm.phones = [{ value: '', type: '' }];
+          this.editForm.phones = [{ value: '', type: '', id: crypto.randomUUID() }];
         }
       }
     }
@@ -325,7 +325,7 @@ export class AlpsContactView extends LitElement {
 
   private addMultiField(field: 'emails' | 'phones') {
     const list = [...(this.editForm[field] || [])];
-    list.push({ value: '', type: '' });
+    list.push({ value: '', type: '', id: crypto.randomUUID() });
     this.editForm = { ...this.editForm, [field]: list };
     this.requestUpdate();
   }

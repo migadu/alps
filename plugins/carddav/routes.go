@@ -22,6 +22,9 @@ import (
 type ContactProperty struct {
 	Value string `json:"value"`
 	Type  string `json:"type,omitempty"`
+	// Position among the last saved nonempty copies; -1 adds a new copy.
+	// Only newer editors send it. Legacy clients retain value/order matching.
+	SourceIndex *int `json:"source_index,omitempty"`
 }
 
 type ContactData struct {
@@ -652,7 +655,7 @@ func registerRoutes(p *plugin) {
 		// these fields: a second URL or key was dropped, and so were the
 		// types and languages of the rest, whatever had been edited.
 		setShownField := func(field, name, val string) {
-			if !changed(name) {
+			if name != "" && !changed(name) {
 				return
 			}
 			val = strings.TrimSpace(val)
@@ -687,17 +690,18 @@ func registerRoutes(p *plugin) {
 			}
 		}
 
-		updateMultiField := func(field string, explicitProps []ContactProperty, fallbackVal string) {
+		updateMultiField := func(field string, explicitProps []ContactProperty, fallbackVal string) error {
 			if explicitProps != nil {
 				// The page lists every copy with a value, in the card's order,
 				// and sends the list back. Rebuilt from the list's values and
 				// one type each, a save dropped a second type, a preference and
 				// an Apple group (and left the group's label behind), whatever
 				// had been edited. An entry sent back as it was given is now
-				// that copy, as stored. An edited entry takes the place of the
-				// first copy no entry is left for, in order, keeping its group
-				// and parameters: the page saves each edit as it is made, so
-				// that is the copy it was. A copy with no entry was removed.
+				// that copy, as stored. New editors identify the previous copy
+				// by position under the checked ETag: a debounce can combine a
+				// removal and an edit, so value/order matching is ambiguous.
+				// Legacy clients retain that matching. A copy with no entry
+				// was removed; an explicit -1 is a new, bare copy.
 				var given []*vcard.Field
 				for _, f := range card[field] {
 					if strings.TrimSpace(f.Value) != "" {
@@ -712,7 +716,27 @@ func registerRoutes(p *plugin) {
 				}
 				used := make(map[*vcard.Field]bool)
 				copies := make([]*vcard.Field, len(props))
+				indexed := false
+				for _, p := range props {
+					indexed = indexed || p.SourceIndex != nil
+				}
+				if indexed && ao != nil && req.ETag == "" {
+					return alps.NewHTTPError(http.StatusBadRequest, "indexed contact fields require an etag")
+				}
 				for i, p := range props {
+					if indexed {
+						if p.SourceIndex == nil || *p.SourceIndex < -1 || *p.SourceIndex >= len(given) {
+							return alps.NewHTTPError(http.StatusBadRequest, "invalid contact field source index")
+						}
+						if *p.SourceIndex >= 0 {
+							f := given[*p.SourceIndex]
+							if used[f] {
+								return alps.NewHTTPError(http.StatusBadRequest, "duplicate contact field source index")
+							}
+							copies[i], used[f] = f, true
+						}
+						continue
+					}
 					for _, f := range given {
 						if !used[f] && strings.TrimSpace(f.Value) == strings.TrimSpace(p.Value) {
 							copies[i], used[f] = f, true
@@ -724,16 +748,18 @@ func registerRoutes(p *plugin) {
 				next := 0
 				for i, p := range props {
 					f := copies[i]
-					if f == nil {
+					if f == nil && !indexed {
 						for next < len(given) && used[given[next]] {
 							next++
 						}
 						if next < len(given) {
 							f, used[given[next]] = given[next], true
-							f.Value = strings.TrimSpace(p.Value)
-						} else {
-							f = &vcard.Field{Value: strings.TrimSpace(p.Value)}
 						}
+					}
+					if f == nil {
+						f = &vcard.Field{Value: strings.TrimSpace(p.Value)}
+					} else if strings.TrimSpace(f.Value) != strings.TrimSpace(p.Value) {
+						f.Value = strings.TrimSpace(p.Value)
 					}
 					setShownType(f, p.Type)
 					fields = append(fields, f)
@@ -757,18 +783,23 @@ func registerRoutes(p *plugin) {
 						}
 					}
 					if !found {
-						setShownField(field, fallbackVal)
+						setShownField(field, "", fallbackVal)
 					}
 				} else {
-					setShownField(field, fallbackVal)
+					setShownField(field, "", fallbackVal)
 				}
 			} else {
 				setSimpleField(field, fallbackVal)
 			}
+			return nil
 		}
 
-		updateMultiField(vcard.FieldEmail, req.Emails, req.Email)
-		updateMultiField(vcard.FieldTelephone, req.Phones, req.Phone)
+		if err := updateMultiField(vcard.FieldEmail, req.Emails, req.Email); err != nil {
+			return err
+		}
+		if err := updateMultiField(vcard.FieldTelephone, req.Phones, req.Phone); err != nil {
+			return err
+		}
 		setShownField(vcard.FieldOrganization, "organization", req.Organization)
 		setShownField(vcard.FieldTitle, "title", req.Title)
 		// A birthday sent back as the page was given it is left as stored, its
