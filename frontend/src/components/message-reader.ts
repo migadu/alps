@@ -138,25 +138,21 @@ export class MessageReader extends LitElement {
     if (action === 'reply' || action === 'replyAll' || action === 'forward') {
       if (!this.message) return;
       this._closePopup();
+      const key = this.keyOf(this.message);
+      if (this.bodyLoads.has(key)) {
+        await this.loadedItem(key);
+        // Another message was opened while this one's body was coming.
+        if (!this.message || this.keyOf(this.message) !== key) return;
+      }
 
+      // From the body on screen. An HTML message used to be asked for again in
+      // its text view first, for a `RawText` that answer never carries: the
+      // composer waited on a round trip whose result was always thrown away.
       let textBody = '';
       if (this.mimeType === 'text/plain') {
         textBody = this.content;
-      } else {
-        try {
-          const textRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailboxOfMessage(this.message))}/messages/${this.message.UID}?view=text`);
-          if (textRes.ok) {
-            const textData = await textRes.json();
-            if (textData.Part && textData.RawText) {
-              textBody = textData.RawText;
-            }
-          }
-        } catch (e) {
-          Logger.error('Failed to fetch text body for quote', e);
-        }
-        if (!textBody && this.rawMessageHtml) {
-          textBody = htmlToPlainText(this.rawMessageHtml);
-        }
+      } else if (this.rawMessageHtml) {
+        textBody = htmlToPlainText(this.rawMessageHtml);
       }
 
       const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
@@ -1571,6 +1567,45 @@ export class MessageReader extends LitElement {
    */
   private bodyReads = new Map<string, number>();
 
+  /** The body read out for each card, by message key, until it lands. */
+  private bodyLoads = new Map<string, Promise<void>>();
+
+  /**
+   * Waits for the card's body when a read of it is out, and answers the card
+   * as it is then.
+   *
+   * Reply, Reply all, Forward and Edit draft are on screen while a body is
+   * still being read, and they take their text and attachments from the body
+   * the reader holds. Taken at once, a click before the body landed quoted
+   * nothing, a forward lost the original's attachments, and an edited draft
+   * opened empty, to be saved over the draft. The card is looked up again
+   * after the wait: a read that lands puts a new copy of it in the list.
+   */
+  private async loadedItem(key: string): Promise<ThreadMessageItem | undefined> {
+    let read: Promise<void> | undefined;
+    // The latest read, should another start while this one is awaited.
+    while ((read = this.bodyLoads.get(key))) await read;
+    return this.threadItems.find(item => this.itemKey(item) === key);
+  }
+
+  /**
+   * Reads the card at once when it shows its loader with no read of it out.
+   *
+   * That is one of the unread a conversation opens expanded, still waiting
+   * its turn: it is marked loading when it is queued, and read only once the
+   * queue comes to it (see queueItemBody). Reply, Reply all and Forward on
+   * it found no read to wait for: the quote was empty, and a forward lost
+   * the original's attachments. Asked for, it is read now, as a card the
+   * user expands is, and the queue does not read it again.
+   */
+  private readWaitingCard(key: string) {
+    if (this.bodyLoads.has(key)) return;
+    const card = this.threadItems.find(item => this.itemKey(item) === key);
+    if (!card?.loading || card.content) return;
+    this.prefetchQueue = this.prefetchQueue.filter(item => this.itemKey(item) !== key);
+    void this.fetchItemBody(card);
+  }
+
   private async fetchItemBody(item: ThreadMessageItem) {
     if (!item.message) return;
     const msg = item.message;
@@ -1579,6 +1614,9 @@ export class MessageReader extends LitElement {
     const seq = (this.bodyReads.get(key) ?? 0) + 1;
     this.bodyReads.set(key, seq);
     const current = () => this.bodyReads.get(key) === seq;
+    let landed!: () => void;
+    const inFlight = new Promise<void>(resolve => { landed = resolve; });
+    this.bodyLoads.set(key, inFlight);
 
     const preferredView = this.localPreferredView || this.settingsStore?.getState()?.preferredView || 'html';
     // Taken before asking: a body that answers after its user has signed out
@@ -1719,6 +1757,11 @@ export class MessageReader extends LitElement {
       Logger.error('Failed to fetch message:', e);
       item.loadFailed = true;
     } finally {
+      // Signalled first, so that nothing below can leave a waiter hanging.
+      // The waiter resumes once this block has run, with the card and the
+      // reader filled in (see loadedItem).
+      if (this.bodyLoads.get(key) === inFlight) this.bodyLoads.delete(key);
+      landed();
       // A read that was overtaken paints nothing and leaves the card list
       // alone: the newer read does both when it lands.
       if (current()) {
@@ -1957,24 +2000,20 @@ export class MessageReader extends LitElement {
 
   private async _handleActionForItem(action: string, item: ThreadMessageItem) {
     if (action === 'reply' || action === 'replyAll' || action === 'forward') {
+      const key = this.itemKey(item);
+      this.readWaitingCard(key);
+      if (this.bodyLoads.has(key)) {
+        const loaded = await this.loadedItem(key);
+        // The card has left the conversation while its body was coming.
+        if (!loaded) return;
+        item = loaded;
+      }
+      // From the card's body, as the toolbar's reply is (see _handleAction).
       let textBody = '';
       if (item.mimeType === 'text/plain') {
         textBody = item.content;
-      } else {
-        try {
-          const textRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(item.mailbox)}/messages/${item.message.UID}?view=text`);
-          if (textRes.ok) {
-            const textData = await textRes.json();
-            if (textData.Part && textData.RawText) {
-              textBody = textData.RawText;
-            }
-          }
-        } catch (e) {
-          Logger.error('Failed to fetch text body for quote', e);
-        }
-        if (!textBody && item.rawMessageHtml) {
-          textBody = htmlToPlainText(item.rawMessageHtml);
-        }
+      } else if (item.rawMessageHtml) {
+        textBody = htmlToPlainText(item.rawMessageHtml);
       }
 
       const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
@@ -2095,7 +2134,7 @@ export class MessageReader extends LitElement {
    */
   private async _handleEditDraft(item?: any) {
     const isItem = item && !(item instanceof Event);
-    const msg = isItem ? item.message : this.message;
+    let msg = isItem ? item.message : this.message;
     // The message's own mailbox, as its card has it. The one being viewed is
     // `*` in a search of all mailboxes, which is no mailbox at all: every save
     // of the draft failed on deleting the one it replaced, after storing a new
@@ -2109,31 +2148,30 @@ export class MessageReader extends LitElement {
       this.updateThreadItemReference(item);
       await this.fetchItemBody(item);
     }
+    const key = isItem ? this.itemKey(item) : this.keyOf(msg);
+    if (this.bodyLoads.has(key)) {
+      const loaded = await this.loadedItem(key);
+      if (!loaded) return;
+      if (isItem) item = loaded;
+      // Another message was opened while this draft's body was coming.
+      else if (!this.message || this.keyOf(this.message) !== key) return;
+    }
+    // The message as its read left it. The list's row it was opened from has
+    // no References, and a reply's draft edited from that row was saved and
+    // sent without them.
+    msg = isItem ? item.message : this.message;
 
     const content = isItem && item ? item.content : this.content;
     const mimeType = isItem && item ? item.mimeType : this.mimeType;
     const rawMessageHtml = isItem && item ? item.rawMessageHtml : this.rawMessageHtml;
     const itemAttachments = isItem && item ? item.attachments : this.attachments;
 
+    // From the draft on screen, as a reply is (see _handleAction).
     let textBody = '';
     if (mimeType === 'text/plain') {
       textBody = content;
     } else {
-      try {
-        const textRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}?view=text`);
-        if (textRes.ok) {
-          const textData = await textRes.json();
-          if (textData.Part && textData.RawText) {
-            textBody = textData.RawText;
-          }
-        }
-      } catch (e) {
-        Logger.error('Failed to fetch text body for draft', e);
-      }
-
-      if (!textBody) {
-        textBody = htmlToPlainText(rawMessageHtml);
-      }
+      textBody = htmlToPlainText(rawMessageHtml);
     }
 
     const attachments = (itemAttachments || []).map((a: any) => ({
