@@ -23,6 +23,7 @@ import { Logger } from '../utils/logger';
 import { MessageCache } from '../utils/message-cache';
 import { getDestinationLabel, getFlexContainerMinWidth } from '../utils/ui';
 import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/message-key';
+import { canonicalRecipient, parseWrittenAddress } from '../utils/address-display';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
@@ -47,6 +48,19 @@ function sameListing(shown: any[], answer: any[]): boolean {
   if (shown === answer) return true;
   if (!shown || shown.length !== answer.length) return false;
   return JSON.stringify(shown) === JSON.stringify(answer);
+}
+
+/**
+ * A field's recipient pills as a listing names the addresses a draft save
+ * stored: the name as it reads, and the address split at its last `@`, its
+ * domain in the A-label form the save posts (see canonicalRecipient).
+ */
+function listedAddresses(pills: string[] | undefined): { Name: string; Mailbox: string; Host: string }[] {
+  return (pills || []).map(pill => {
+    const { name, email } = parseWrittenAddress(canonicalRecipient(pill));
+    const at = email.lastIndexOf('@');
+    return { Name: name, Mailbox: at === -1 ? email : email.slice(0, at), Host: at === -1 ? '' : email.slice(at + 1) };
+  });
 }
 
 /** A Delete waiting on the question whether to delete for good. */
@@ -732,7 +746,7 @@ export class MailboxPage extends LitElement {
   }
 
   private handleDraftAutosaved = (e: CustomEvent) => {
-    const { oldUid, oldMailbox, newUid, mailbox, subject, hasAttachments, size } = e.detail;
+    const { oldUid, oldMailbox, newUid, mailbox, subject, to, cc, hasAttachments, size } = e.detail;
     if (!this.messages) return;
     // A string, as the listing sends every UID. A number here made the reader,
     // which compares UIDs as they are, take the same draft for a different
@@ -752,6 +766,13 @@ export class MailboxPage extends LitElement {
     // Matched on mailbox AND UID: a UID is unique only within its mailbox, and
     // a search of all mailboxes lists several.
     const oldKey = oldUid ? messageKey(oldMailbox || mailbox, oldUid) : null;
+    // The recipients the save stored, which a row in Drafts shows in place of
+    // its sender, and Edit Draft opens the composer with. Left out, a row kept
+    // the ones it was listed with, and a new one fell back to the sender, the
+    // user's own name. No Bcc: a draft is stored without one, and a listing
+    // names none.
+    const To = listedAddresses(to);
+    const Cc = listedAddresses(cc);
     const replaced = (m: any) => ({
       ...m,
       UID: nextUid,
@@ -768,7 +789,9 @@ export class MailboxPage extends LitElement {
       // "(No subject)" was written in as if it were the subject.
       Envelope: {
         ...m.Envelope,
-        Subject: subject
+        Subject: subject,
+        To,
+        Cc
       }
     });
 
@@ -841,7 +864,9 @@ export class MailboxPage extends LitElement {
         Envelope: {
           Subject: subject,
           Date: new Date().toISOString(),
-          From: [{ Name: draftName, Mailbox: draftMailboxStr, Host: draftHostStr }]
+          From: [{ Name: draftName, Mailbox: draftMailboxStr, Host: draftHostStr }],
+          To,
+          Cc
         }
       };
       // Also remove any existing draft with the same oldUid if it exists but wasn't caught
