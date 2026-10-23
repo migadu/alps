@@ -33,6 +33,8 @@ type scriptedIMAP struct {
 	list, lsub []string
 	// refuseLsub answers LSUB with NO, and hangLsub never answers it.
 	refuseLsub, hangLsub bool
+	// Status response text may itself end in a literal-looking "{number}".
+	greetingText, loginText, lsubText string
 
 	mu    sync.Mutex
 	lists []string // the arguments of each LIST, in the order received
@@ -66,7 +68,11 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 			conn.Write([]byte(l + "\r\n"))
 		}
 	}
-	reply("* OK [CAPABILITY " + s.caps + "] scripted server ready")
+	greetingText := s.greetingText
+	if greetingText == "" {
+		greetingText = "scripted server ready"
+	}
+	reply("* OK [CAPABILITY " + s.caps + "] " + greetingText)
 	for {
 		line, err := r.ReadString('\n')
 		if err != nil {
@@ -78,7 +84,11 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 		case "CAPABILITY":
 			reply("* CAPABILITY "+s.caps, tag+" OK CAPABILITY completed")
 		case "LOGIN":
-			reply(tag + " OK [CAPABILITY " + s.caps + "] LOGIN completed")
+			text := s.loginText
+			if text == "" {
+				text = "LOGIN completed"
+			}
+			reply(tag + " OK [CAPABILITY " + s.caps + "] " + text)
 		case "LIST":
 			s.mu.Lock()
 			s.lists = append(s.lists, args)
@@ -122,7 +132,11 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 				// RFC 3501 §6.3.9: the subscribed folders, INBOX alone.
 				lines = []string{`* LSUB () "/" INBOX`}
 			}
-			reply(append(lines, tag+" OK LSUB completed")...)
+			text := s.lsubText
+			if text == "" {
+				text = "LSUB completed"
+			}
+			reply(append(lines, tag+" OK "+text)...)
 		case "SUBSCRIBE", "UNSUBSCRIBE":
 			reply(tag + " OK " + name + " completed")
 		case "LOGOUT":

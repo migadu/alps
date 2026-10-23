@@ -91,6 +91,10 @@ func (p *IMAPProvider) subscriptions() map[string]bool {
 // took, in the subscriptions read with LSUB, so that the next listing shows
 // it without signing in again to read them.
 func (p *IMAPProvider) noteSubscribed(name string, subscribed bool) {
+	// INBOX is case-insensitive in commands, and LIST/LSUB normalize it.
+	if strings.EqualFold(name, "INBOX") {
+		name = "INBOX"
+	}
 	p.cacheLock.Lock()
 	defer p.cacheLock.Unlock()
 	if p.subscribed == nil {
@@ -313,12 +317,27 @@ func (s *lsubSession) readResponse() (string, []string, error) {
 		if err != nil {
 			return "", nil, err
 		}
+		if text.Len() == 0 && len(literals) == 0 {
+			// Only LSUB's mailbox name can be a literal here. Greetings,
+			// tagged replies and continuations carry resp-text, where a
+			// final "{number}" is just text (RFC 3501 section 9).
+			rest, ok := strings.CutPrefix(line, "* ")
+			if !ok || !strings.EqualFold(firstWord(rest), "LSUB") {
+				return line, nil, nil
+			}
+		}
 		size, rest, ok := literalAtEnd(line)
 		if !ok {
+			if text.Len()+len(line) > maxLsubLine {
+				return "", nil, errors.New("a response too long to read")
+			}
 			text.WriteString(line)
 			return text.String(), literals, nil
 		}
-		if size > maxLsubLiteral || text.Len()+len(rest) > maxLsubLine {
+		// LSUB has one mailbox name, hence at most one literal. Refusing
+		// a second also bounds the aggregate allocation of a malformed
+		// response, rather than only each literal on its own.
+		if len(literals) != 0 || size > maxLsubLiteral || text.Len()+len(rest)+1 > maxLsubLine {
 			return "", nil, errors.New("a response too long to read")
 		}
 		literal := make([]byte, size)
@@ -400,7 +419,7 @@ func lsubName(text string, literals []string) (string, error) {
 		return "", fmt.Errorf("LSUB: no name in %q", text)
 	}
 	name, ok := r.astring()
-	if !ok || name == "" {
+	if !ok || name == "" || r.i != len(r.text) || len(r.literals) != 0 {
 		return "", fmt.Errorf("LSUB: unreadable name in %q", text)
 	}
 	return decodeMailboxName(name)
