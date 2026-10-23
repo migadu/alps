@@ -42,7 +42,7 @@ import '../src/components/alps-address-input';
 import '../src/components/toast-notification';
 import '../src/components/ui-prompt';
 import '../src/components/alps-floating-composer';
-import '../src/pages/settings-page';
+import '../src/components/settings-window';
 import '../../plugins/caldav/frontend/calendar-event-modal';
 import '../../plugins/caldav/frontend/task-modal';
 import '../../plugins/carddav/frontend/contact-view';
@@ -311,12 +311,12 @@ describe("an invitation's calendar picker", () => {
 });
 
 describe('the settings', () => {
-  /** The defaults, as the settings page shows them. */
+  /** The defaults, as the Settings window shows them. */
   const settingsState = () => ({ ...new SettingsStore().getState(), loginUsername: 'ada@example.com' });
 
-  /** Each setting's label with the name of the field it holds, for every section of the page. */
+  /** Each setting's label with the name of the field it holds, for every section of the window. */
   async function settingFields(): Promise<[string, string][]> {
-    const page = document.createElement('settings-page') as El;
+    const page = document.createElement('settings-window') as El;
     Object.assign(page, { i18nStore, settingsState: settingsState() });
     const host = document.createElement('div');
     document.body.appendChild(host);

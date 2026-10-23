@@ -59,7 +59,7 @@ const saveBtn = (page: Page) => autoReply(page).getByRole("button", { name: "Sav
 async function openAutoReply(page: Page): Promise<void> {
   await login(page);
   await page.goto("/#/settings/general");
-  await page.locator("settings-page alps-category-item").filter({ hasText: /^\s*Auto-reply\s*$/ }).click();
+  await page.locator("settings-window alps-category-item").filter({ hasText: /^\s*Auto-reply\s*$/ }).click();
   await expect(enabled(page)).toBeVisible();
 }
 

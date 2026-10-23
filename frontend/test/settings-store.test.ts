@@ -627,6 +627,55 @@ describe('saving', () => {
   });
 });
 
+/**
+ * What reads the record on the server rather than this store hears when the
+ * server has a change: the mail listing is threaded and paged by the record,
+ * so it is read again once a save has landed, and not on the change itself,
+ * whose listing would still come back as it was.
+ */
+describe('a save that has landed', () => {
+  it('is announced once the server has it, naming what it carried', async () => {
+    signedIn();
+    const releases: (() => void)[] = [];
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en' } }),
+      'PUT /settings': () => new Promise((resolve) => releases.push(() => resolve(json(200, {})))),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    const saved: CustomEvent[] = [];
+    store.addEventListener('saved', (e) => saved.push(e as CustomEvent));
+
+    const done = store.updateSettings({ enableThreading: false });
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    expect(saved).toHaveLength(0);
+
+    releases[0]();
+    await done;
+    expect(saved.map((e) => e.detail.keys)).toEqual([['enableThreading']]);
+  });
+
+  it('is not announced for a save that failed or was refused', async () => {
+    signedIn();
+    let status = 503;
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en' } }),
+      'PUT /settings': () => json(status),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    const saved: CustomEvent[] = [];
+    store.addEventListener('saved', (e) => saved.push(e as CustomEvent));
+
+    await store.updateSettings({ messagesPerPage: 25 });
+    status = 400;
+    await store.updateSettings({ messagesPerPage: 100 });
+    expect(saved).toHaveLength(0);
+  });
+});
+
 describe('a change the server has not taken', () => {
   const UNSAVED = `alps_unsaved_settings_${USER}`;
   const stored = () => JSON.parse(localStorage.getItem(UNSAVED) ?? 'null');

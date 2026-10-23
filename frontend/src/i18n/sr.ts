@@ -2,6 +2,10 @@ export const sr = {
   settings: {
     saveFailed: 'Nije moguće sačuvati to podešavanje; možda neće preživeti odjavu',
     title: 'Podešavanja',
+    unsavedTitle: 'Odbaciti izmene?',
+    unsavedMessage: 'Imate nesačuvane izmene. Ako napustite ovaj odeljak, biće odbačene.',
+    discard: 'Odbaci',
+    keepEditing: 'Nastavi uređivanje',
     categories: {
       general: 'Opšte',
       identity: 'Identitet',
@@ -259,6 +263,7 @@ export const sr = {
     emptyMailboxSlow: 'Pražnjenje fascikle {folder} je još u toku. Server i dalje radi; proverite ponovo za trenutak.'
   },
   composer: {
+    windowLoadFailed: 'Prozor za poruku nije mogao da se učita.',
     discardFailed: 'Nacrt nije bilo moguće obrisati sa servera i još uvek je u Nacrtima.',
     attachmentsTooLarge: 'Prilozi prelaze maksimalnu dozvoljenu veličinu.',
     draftSaveFailedKeepOpen: 'Nije moguće sačuvati ovaj nacrt, pa prozor ostaje otvoren da se ništa ne izgubi',
@@ -582,7 +587,8 @@ export const sr = {
     expand: "Proširi",
     collapse: "Skupi",
     moreOptions: "Više opcija",
-    notFound: "Stranica nije pronađena"
+    notFound: "Stranica nije pronađena",
+    close: "Zatvori"
   },
   webauthn: {
     title: 'Verifikacija bezbednosnog ključa',

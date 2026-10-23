@@ -28,7 +28,6 @@ import { settleSidebar } from './helpers/sidebar';
 import { readSources } from './helpers/sources';
 import { PEEK_CLOSE_DELAY_MS, PEEK_OPEN_DELAY_MS, type AlpsSidebar } from '../src/components/alps-sidebar';
 import '../src/pages/mailbox-page';
-import '../src/pages/settings-page';
 import '../../plugins/carddav/frontend/contacts-page';
 import '../../plugins/caldav/frontend/tasks-page';
 import '../../plugins/caldav/frontend/calendar-page';
@@ -199,13 +198,13 @@ describe('one implementation', () => {
   const pages = Object.entries(readSources()).filter(([, source]) => /<alps-sidebar[\s>]/.test(source));
   const sidebarContents = Object.entries(readSources()).filter(([path]) => path.endsWith('contacts-categories.ts'));
 
-  it('covers the five pages with a sidebar', () => {
+  // Settings is not among them: it is a window with a fixed section list.
+  it('covers the four pages with a sidebar', () => {
     expect(pages.map(([path]) => path).sort()).toEqual([
       'plugins/caldav/frontend/calendar-page.ts',
       'plugins/caldav/frontend/tasks-page.ts',
       'plugins/carddav/frontend/contacts-page.ts',
       'src/pages/mailbox-page.ts',
-      'src/pages/settings-page.ts',
     ]);
   });
 
@@ -293,20 +292,6 @@ describe('the pages', () => {
     // The folder list used to stay expanded, undimmed and clickable in the
     // strip until the pointer left.
     expect(strip(folders)).toBe(true);
-  });
-
-  it('settings: picking a section shuts the overlay', async () => {
-    const el = await mount<El>('settings-page', { i18nStore, settingsStore: settingsStore() });
-    await settle(el);
-    expect(strip(el)).toBe(true);
-
-    const bar = await peek(el);
-    expect(strip(el)).toBe(false);
-
-    el.selectCategory('reading');
-    await settle(el);
-    expect(bar.peeking).toBe(false);
-    expect(strip(el)).toBe(true);
   });
 
   it('contacts: picking a category shuts the overlay', async () => {
