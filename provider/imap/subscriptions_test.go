@@ -1,6 +1,15 @@
 package imap
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/emersion/go-imap/v2"
+)
+
+// listsSubscriptions is a server whose LIST can report subscriptions: the
+// RETURN (SUBSCRIBED) option is LIST-EXTENDED, and alps asks for it only where
+// the server offers that.
+var listsSubscriptions = imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapListExtended: {}}
 
 // subscribedIn reports the listing's word on whether `name` is subscribed, and
 // whether it lists `name` at all.
@@ -22,7 +31,7 @@ func subscribedIn(t *testing.T, p *IMAPProvider, name string) (subscribed, liste
 // CREATE. A folder made in alps was then missing from every client that shows
 // subscribed folders only.
 func TestCreateMailboxSubscribesToIt(t *testing.T) {
-	p := memIMAP(t, &memServer{})
+	p := memIMAP(t, &memServer{caps: listsSubscriptions})
 	if err := p.CreateMailbox("Work"); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +66,7 @@ func TestCreateMailboxReportsARefusedCreate(t *testing.T) {
 
 // What the sidebar groups by: the listing says which folders are subscribed.
 func TestListMailboxesReportsSubscriptions(t *testing.T) {
-	p := memIMAP(t, &memServer{})
+	p := memIMAP(t, &memServer{caps: listsSubscriptions})
 	if err := p.CreateMailbox("Old"); err != nil {
 		t.Fatal(err)
 	}
