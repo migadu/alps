@@ -7,6 +7,7 @@ package imap
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"regexp"
 	"testing"
@@ -93,6 +94,37 @@ func appendDraft(t *testing.T, p *IMAPProvider, subject string) string {
 		t.Fatal(err)
 	}
 	return mbox.Name
+}
+
+type unreadableAppendBody struct{}
+
+func (unreadableAppendBody) WriteTo(io.Writer) (int64, error) { return 0, io.ErrUnexpectedEOF }
+
+func TestAppendFailuresBeforeTheCommandAreMarkedSafeToRetry(t *testing.T) {
+	for _, closed := range []bool{false, true} {
+		t.Run(fmt.Sprint("closed=", closed), func(t *testing.T) {
+			s := &memServer{caps: imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapUIDPlus: {}}}
+			p := memIMAP(t, s)
+			if err := p.CreateMailbox("Drafts"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := p.FindMailboxByType(provider.MailboxTypeDrafts); err != nil {
+				t.Fatal(err)
+			}
+			var msg provider.OutgoingMessageWriter = unreadableAppendBody{}
+			if closed {
+				p.client.Close()
+				msg = rawMessage(conversation("Draft", "draft@example.test", ""))
+			}
+			_, _, _, err := p.AppendMessage("", msg, provider.MailboxTypeDrafts)
+			if !errors.Is(err, provider.ErrAppendNotStarted) {
+				t.Errorf("a failure before APPEND returned %v without the safe-retry marker", err)
+			}
+			if !closed && !errors.Is(err, io.ErrUnexpectedEOF) {
+				t.Errorf("body error lost: %v", err)
+			}
+		})
+	}
 }
 
 // Which folder is Drafts does not change from one save to the next, and an

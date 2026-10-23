@@ -12,10 +12,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fernet/fernet-go"
 
 	"github.com/migadu/alps"
+	"github.com/migadu/alps/provider"
 	"github.com/migadu/alps/provider/maildir"
 )
 
@@ -27,6 +29,24 @@ const (
 	testUser     = "ada@example.com"
 	testPassword = "correct horse"
 )
+
+// wrappedOptions is a provider's options whose connections are passed
+// through wrap.
+type wrappedOptions struct {
+	provider.Options
+	wrap func(provider.MailProvider) provider.MailProvider
+}
+
+func (o wrappedOptions) CreateFactory(timeout time.Duration, debug bool) provider.AuthenticatedProviderFactory {
+	connect := o.Options.CreateFactory(timeout, debug)
+	return func(username, password string) (provider.MailProvider, error) {
+		p, err := connect(username, password)
+		if err != nil {
+			return nil, err
+		}
+		return o.wrap(p), nil
+	}
+}
 
 type rawMessage []byte
 
@@ -57,6 +77,13 @@ func newTestServerWithSMTP(t *testing.T, smtpServer string) *testServer {
 // newTestServerWithLogger is newTestServerWithSMTP for a test that reads what
 // the server logs.
 func newTestServerWithLogger(t *testing.T, smtpServer string, logger alps.Logger) *testServer {
+	t.Helper()
+	return newTestServerWrapping(t, smtpServer, logger, nil)
+}
+
+// newTestServerWrapping is newTestServerWithLogger whose every connection to
+// the maildir is passed through wrap, unless it is nil.
+func newTestServerWrapping(t *testing.T, smtpServer string, logger alps.Logger, wrap func(provider.MailProvider) provider.MailProvider) *testServer {
 	t.Helper()
 	base := t.TempDir()
 	passwd := filepath.Join(base, "passwd")
@@ -89,6 +116,9 @@ func newTestServerWithLogger(t *testing.T, smtpServer string, logger alps.Logger
 	popt, err := pcfg.ToOptions()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if wrap != nil {
+		popt = wrappedOptions{popt, wrap}
 	}
 	opts := &alps.Options{
 		Provider:     popt,
