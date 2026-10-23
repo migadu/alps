@@ -3,6 +3,10 @@ import { fetchWithTimeout, encodePathParam, HttpStatusError, outcomeUnknown } fr
 export interface ContactProperty {
   value: string;
   type?: string;
+  /** Local editor identity, retained across queued saves and reordering. */
+  id?: string;
+  /** Position in the last successfully saved list; -1 creates a new copy. */
+  source_index?: number;
 }
 
 export interface ContactPayload {
