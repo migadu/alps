@@ -138,6 +138,7 @@ export class MessageReader extends LitElement {
     if (action === 'reply' || action === 'replyAll' || action === 'forward') {
       if (!this.message) return;
       this._closePopup();
+      const stillAsked = this.intentCheck();
       const key = this.keyOf(this.message);
       // A body whose read failed is read again first, as Edit Draft reads it:
       // taken as it stood, a reply quoted nothing and a forward went out
@@ -149,6 +150,7 @@ export class MessageReader extends LitElement {
         // Another message was opened while this one's body was coming.
         if (!this.message || this.keyOf(this.message) !== key) return;
       }
+      if (!stillAsked()) return;
       if (this.loadFailed) {
         this._sayBodyUnread();
         return;
@@ -439,6 +441,12 @@ export class MessageReader extends LitElement {
   private readRefused = new Set<string>();
   /** Refusals and their notice belong to this opening, including its requests. */
   private readGeneration = 0;
+  /**
+   * Counts the openings of a message in this reader, and its leaving the
+   * page: an answer or Edit draft waiting for a body belongs to the one it
+   * was asked in (see intentCheck).
+   */
+  private openingGeneration = 0;
   private readRefusalSaid = false;
 
   private resetReadRefusals() {
@@ -496,6 +504,7 @@ export class MessageReader extends LitElement {
     // nobody is looking at.
     this.readDueAt.clear();
     this.resetReadRefusals();
+    this.openingGeneration++;
     // Nor does a reader that has left the page go on reading bodies nobody
     // asked for. The queue is drained one at a time (see queueItemBody), so
     // what is left of it would keep a connection to the mail server busy for a
@@ -1023,6 +1032,7 @@ export class MessageReader extends LitElement {
 
       if (!this.message) {
         this.resetReadRefusals();
+        this.openingGeneration++;
         this.localPreferredView = null;
         this.content = '';
         this.mimeType = '';
@@ -1042,6 +1052,7 @@ export class MessageReader extends LitElement {
 
         if (isNewMessage) {
           this.resetReadRefusals();
+          this.openingGeneration++;
           this.localPreferredView = null;
           this.fetchMessageBody(this.message, this.message._isAutosaveUpdate);
         } else {
@@ -1683,15 +1694,15 @@ export class MessageReader extends LitElement {
     const key = this.itemKey(item);
     const seq = (this.bodyReads.get(key) ?? 0) + 1;
     this.bodyReads.set(key, seq);
-    const current = () => this.bodyReads.get(key) === seq;
+    // Taken before asking: a body that answers after its user has signed out
+    // is not written to the cache the next user opens from, nor shown.
+    const cacheGeneration = MessageCache.generation();
+    const current = () => this.bodyReads.get(key) === seq && MessageCache.generation() === cacheGeneration;
     let landed!: () => void;
     const inFlight = new Promise<void>(resolve => { landed = resolve; });
     this.bodyLoads.set(key, inFlight);
 
     const preferredView = this.localPreferredView || this.settingsStore?.getState()?.preferredView || 'html';
-    // Taken before asking: a body that answers after its user has signed out
-    // is not written to the cache the next user opens from.
-    const cacheGeneration = MessageCache.generation();
 
     try {
       const cached = MessageCache.get(mailbox, msg.UID.toString(), preferredView);
@@ -2078,6 +2089,7 @@ export class MessageReader extends LitElement {
 
   private async _handleActionForItem(action: string, item: ThreadMessageItem) {
     if (action === 'reply' || action === 'replyAll' || action === 'forward') {
+      const stillAsked = this.intentCheck();
       const key = this.itemKey(item);
       this.readWaitingCard(key);
       // As from the toolbar: a body whose read failed is read again first.
@@ -2088,6 +2100,7 @@ export class MessageReader extends LitElement {
         if (!loaded) return;
         item = loaded;
       }
+      if (!stillAsked()) return;
       if (item.loadFailed) {
         this._sayBodyUnread();
         return;
@@ -2213,6 +2226,21 @@ export class MessageReader extends LitElement {
   };
 
   /**
+   * What an answer or Edit draft belongs to as it waits for a body: this
+   * reader on the page, this opening of the message, this account. The
+   * returned check answers whether all three still hold. The body read again
+   * for one used to open a composer when it landed, whatever had happened
+   * meanwhile: with the reader gone, another account signed in, or the
+   * message closed and opened again, for the old intent, with the old
+   * message's text, source and files.
+   */
+  private intentCheck(): () => boolean {
+    const opening = this.openingGeneration;
+    const account = MessageCache.generation();
+    return () => this.isConnected && opening === this.openingGeneration && account === MessageCache.generation();
+  }
+
+  /**
    * Says that a body an answer or a draft would be taken from could not be
    * read, as the reader says it over the body; nothing is opened.
    */
@@ -2236,6 +2264,7 @@ export class MessageReader extends LitElement {
     const mailbox = isItem ? item.mailbox : this.mailboxOfMessage(msg);
     if (!msg) return;
 
+    const stillAsked = this.intentCheck();
     const key = isItem ? this.itemKey(item) : this.keyOf(msg);
     // The draft is opened from its body, which is read first when the card has
     // none: never read, or read and failed. A failed read used to be opened as
@@ -2256,6 +2285,7 @@ export class MessageReader extends LitElement {
     // no References, and a reply's draft edited from that row was saved and
     // sent without them.
     msg = isItem ? item.message : this.message;
+    if (!stillAsked()) return;
     // Still not read: said, as the reader says it over the body, and nothing
     // is opened that could be saved over the draft.
     if (isItem ? item.loadFailed : this.loadFailed) {

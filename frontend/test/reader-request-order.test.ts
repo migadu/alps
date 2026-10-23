@@ -276,9 +276,10 @@ it('waits for released metadata to finish decoding before teardown restores the 
     while (pendingReads.size) await Promise.allSettled([...pendingReads]);
   }
 
-  // The old stub served the final raw request. It cannot enter the next
+  // The read finished under this test's stub: it cannot enter the next
   // test's recorder and turn that test's metadata/raw pair into three reads.
-  expect(asked.filter(url => url.includes('/messages/1/raw'))).toHaveLength(1);
+  // Nor, its account gone with the cache, does it ask for the body itself.
+  expect(asked.filter(url => url.includes('/messages/1/raw'))).toHaveLength(0);
   expect(pendingReads.size).toBe(0);
 });
 
