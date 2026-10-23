@@ -1569,8 +1569,9 @@ export class AlpsFloatingComposer extends LitElement {
                   <div class="popup-form" @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._handleLinkSubmit(); }}>
                     ${this.linkPromptFields.map(f => html`
                       <div class="field-group">
-                        <label for=${f.id}>${f.label}</label>
-                        <alps-input inputId=${f.id} type="text" placeholder=${f.placeholder}></alps-input>
+                        <!-- A label's "for" cannot reach the input inside alps-input's shadow root, so a click on the label focuses the field here. -->
+                        <label @click=${() => this._linkPromptFieldElements().find(field => field.inputId === f.id)?.focus()}>${f.label}</label>
+                        <alps-input inputId=${f.id} label=${f.label} type="text" placeholder=${f.placeholder}></alps-input>
                       </div>
                     `)}
                     <div class="popup-actions">

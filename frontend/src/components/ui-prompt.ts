@@ -5,6 +5,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { modalButtonStyles } from './ui-modal';
 import './alps-button';
 import './alps-input';
+import type { AlpsInput } from './alps-input';
 
 export interface PromptField {
   id: string;
@@ -133,6 +134,15 @@ export class UIPrompt extends LitElement {
     }
   }
 
+  /**
+   * A click on a field's label focuses the field, as `for` would have. `for`
+   * cannot reach the input inside alps-input's shadow root.
+   */
+  private _focusField(id: string) {
+    const fields = Array.from(this.shadowRoot?.querySelectorAll<AlpsInput>('alps-input') ?? []);
+    fields.find(field => field.inputId === id)?.focus();
+  }
+
   private _handleKeyDown(e: KeyboardEvent) {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -193,9 +203,10 @@ export class UIPrompt extends LitElement {
         <div class="prompt-form">
           ${this.fields.map(f => html`
             <div class="field-group">
-              <label class="field-label" for=${f.id}>${f.label}</label>
+              <label class="field-label" @click=${() => this._focusField(f.id)}>${f.label}</label>
               <alps-input 
                 inputId=${f.id}
+                label=${f.label}
                 class="field-input"
                 type=${f.type || 'text'}
                 placeholder=${f.placeholder || ''}

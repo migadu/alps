@@ -43,6 +43,8 @@ export default {
         startDate: 'Startdato',
         endDate: 'Slutdato',
         time: 'Tid',
+        startTime: 'Starttid',
+        endTime: 'Sluttid',
         addLocation: 'Tilføj sted',
         addDescription: 'Tilføj beskrivelse',
         description: 'Beskrivelse',
