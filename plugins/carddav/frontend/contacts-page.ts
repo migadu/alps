@@ -790,7 +790,10 @@ export class ContactsPage extends LitElement {
     const newContact = {
       name: this.i18nStore?.t('contacts.unnamedContact'),
       categories: this.selectedCategory ? [this.selectedCategory] : [],
-      isTemporary: true
+      isTemporary: true,
+      // Which card the editor's saves are for, until its create gives it a
+      // path; see saveKey.
+      draftKey: crypto.randomUUID(),
     };
 
     // Remove any existing temporary contacts first
@@ -1041,9 +1044,11 @@ export class ContactsPage extends LitElement {
     }
   }
 
-  /** The newest form state waiting for the save in flight; see handleSave. */
-  private queuedSave: any = null;
+  /** The newest form waiting for each card, in the order they came; see handleSave. */
+  private queuedSaves: Array<{ key: string; payload: any; account: string | null }> = [];
   private saveRunning = false;
+  /** The path each new contact's create answered, by its draft key. */
+  private draftPaths = new Map<string, string>();
   /** The card whose save was refused as changed elsewhere, until the edit is cancelled. */
   private conflictedPath: string | null = null;
 
@@ -1055,34 +1060,82 @@ export class ContactsPage extends LitElement {
    * second save carries the version the first is about to replace. (For a new
    * contact, an overlap made two contacts.) So a save now waits for the one in
    * flight, and only the newest form state queued behind it is sent.
+   *
+   * Each form is saved to the card it was made for, which it names: by its
+   * path, or by the draft key of a new contact. The page used to save
+   * whatever form came to the card open when the request was sent, and to
+   * paint the answer on the card open when it came back, and it queued only
+   * the newest form, whichever card it was for. A create answered after
+   * another contact had been opened gave that contact the new card's name,
+   * path and version; a form saved after another had been opened was written
+   * over it; and a form queued for one card was dropped for another's. So a
+   * form now waits behind the newest form for its own card only, and is sent
+   * and answered for that card, under the account it was made in.
    */
   private async handleSave(payload: any) {
-    this.queuedSave = payload;
+    // A form that names no card is the open card's, as every form was.
+    if (!payload.draftKey && !payload.path && this.selectedContact) {
+      if (!this.selectedContact.path && !this.selectedContact.draftKey) {
+        const draftKey = crypto.randomUUID();
+        this.contacts = this.contacts.map((c: any) => c === this.selectedContact ? { ...c, draftKey } : c);
+        this.selectedContact = { ...this.selectedContact, draftKey };
+      }
+      payload = { ...payload, draftKey: this.selectedContact.draftKey, path: this.selectedContact.path };
+    }
+    const key = this.saveKey(payload);
+    const account = activeUsername();
+    const queued = this.queuedSaves.find(s => s.key === key);
+    if (queued) {
+      queued.payload = payload;
+      queued.account = account;
+    } else {
+      this.queuedSaves.push({ key, payload, account });
+    }
     if (this.saveRunning) return;
     this.saveRunning = true;
     try {
-      while (this.queuedSave) {
-        const next = this.queuedSave;
-        this.queuedSave = null;
-        await this.saveOnce(next);
+      while (this.queuedSaves.length > 0) {
+        await this.saveOnce(this.queuedSaves.shift()!);
       }
     } finally {
       this.saveRunning = false;
     }
   }
 
-  private async saveOnce(payload: any) {
+  /** The card a form is for: a new contact's draft key, or the card's path. */
+  private saveKey(payload: any): string {
+    return payload.draftKey || payload.path || '';
+  }
+
+  /** Whether contact is the card key names. */
+  private isCard(contact: any, key: string): boolean {
+    return !!contact && !!key && (contact.draftKey === key || contact.path === key);
+  }
+
+  private async saveOnce({ key, payload, account }: { key: string; payload: any; account: string | null }) {
+    // Made under another account than the one now signed in: not a card of
+    // this one's.
+    if (account !== activeUsername()) return;
+    // The card as the page holds it: open, or a row of the list. A new
+    // contact's later forms name it by its draft key, and edit the card its
+    // create made.
+    const path = payload.path || this.draftPaths.get(payload.draftKey);
+    const card = this.isCard(this.selectedContact, key) && !this.selectedContact.isTemporary
+      ? this.selectedContact
+      : (path ? this.findContact(path) : undefined);
     // Keep the successful form snapshot independent of edits made while the
     // request is in flight. The queued form is compared to this snapshot next.
     payload = { ...payload };
     for (const field of ['emails', 'phones']) {
       if (Array.isArray(payload[field])) payload[field] = payload[field].map((p: any) => ({ ...p }));
     }
-    const editing = !!this.selectedContact && !this.selectedContact.isTemporary;
+    const editing = !!path;
+    // A card deleted meanwhile has nothing left to save to.
+    if (editing && !card) return;
     // After a refusal every autosave would be refused the same way, one error
     // per keystroke. Nothing is sent until the edit is cancelled, which shows
     // the stored card (handleCancelEdit).
-    if (editing && this.conflictedPath === this.selectedContact.path) return;
+    if (editing && this.conflictedPath === path) return;
     this.saving = true;
     try {
       if (payload.categories && typeof payload.categories === 'string') {
@@ -1093,36 +1146,40 @@ export class ContactsPage extends LitElement {
 
       let data;
       if (editing) {
-        // The page's version, not the form's: the form copied the card when
+        // The card's version, not the form's: the form copied the card when
         // editing began, and each save since has moved it on.
         // Clearing one displayed copy must not clear the next hidden copy on
         // every later autosave. Only fields changed since our last successful
         // form save express a new editing gesture.
         const changed_fields = ['organization', 'title', 'note', 'url', 'nickname', 'public_key', 'address']
-          .filter(field => String(payload[field] || '').trim() !== String(this.selectedContact[field] || '').trim());
-        const request = { ...payload, changed_fields, etag: this.selectedContact.etag };
+          .filter(field => String(payload[field] || '').trim() !== String(card[field] || '').trim());
+        const request = { ...payload, changed_fields, etag: card.etag };
         for (const field of ['emails', 'phones']) {
           const props = payload[field];
           if (!Array.isArray(props) || props.some((p: any) => !p.id)) continue;
           const fallback = field === 'emails' ? 'email' : 'phone';
-          const before = (this.selectedContact[field] || (this.selectedContact[fallback] ? [{ value: this.selectedContact[fallback] }] : []))
+          const before = (card[field] || (card[fallback] ? [{ value: card[fallback] }] : []))
             .filter((p: any) => String(p.value || '').trim());
           request[field] = props.map((p: any) => ({
             value: p.value, type: p.type,
             source_index: before.findIndex((old: any, i: number) => (old.id || `${field}:${i}`) === p.id),
           }));
         }
-        data = await contactsService.updateContact(this.selectedContact.path!, request);
+        data = await contactsService.updateContact(path, request);
       } else {
         // The contact the user is typing in, even when another card has
         // its address: answered with that card's path, the editor went on to
         // edit the other card, without its version or fields.
         data = await contactsService.createContact({ ...payload, allow_duplicate: true });
       }
+      // Answered after another account was signed in: not this one's to paint.
+      if (account !== activeUsername()) return;
 
-      const savedContact = { ...payload, path: data.path || (editing ? this.selectedContact.path : ''), etag: data.etag };
+      const savedContact = { ...payload, path: data.path || path || '', etag: data.etag };
+      if (!editing && payload.draftKey && savedContact.path) this.draftPaths.set(payload.draftKey, savedContact.path);
 
-      const contactIndex = this.contacts.findIndex((c: any) => this.selectedContact && (c.path === this.selectedContact.path || (c.isTemporary && this.selectedContact.isTemporary)));
+      // The card's row, and the open card only while it is that card.
+      const contactIndex = this.contacts.findIndex((c: any) => this.isCard(c, key) || (!!path && c.path === path));
       if (contactIndex > -1) {
         this.contacts[contactIndex] = { ...this.contacts[contactIndex], ...savedContact };
         delete this.contacts[contactIndex].isTemporary;
@@ -1131,14 +1188,16 @@ export class ContactsPage extends LitElement {
         this.contacts = [savedContact, ...this.contacts];
       }
 
-      this.selectedContact = { ...this.selectedContact, ...savedContact };
-      delete this.selectedContact.isTemporary;
-      // Written whole from the editor's form, so held whole.
-      this.wholeCardPath = this.selectedContact.path;
+      if (this.isCard(this.selectedContact, key) || (!!path && this.selectedContact?.path === path)) {
+        this.selectedContact = { ...this.selectedContact, ...savedContact };
+        delete this.selectedContact.isTemporary;
+        // Written whole from the editor's form, so held whole.
+        this.wholeCardPath = this.selectedContact.path;
+      }
     } catch (e) {
       console.error('Error saving contact', e);
       if (editing && isVersionConflict(e)) {
-        this.conflictedPath = this.selectedContact.path;
+        this.conflictedPath = path;
         this.reportFailure('contacts.saveConflict');
       } else {
         this.reportFailure('contacts.saveFailed');

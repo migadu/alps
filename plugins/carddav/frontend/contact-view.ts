@@ -345,6 +345,28 @@ export class AlpsContactView extends LitElement {
     }
   `];
 
+  /** Whether two contacts are the same card: by a new contact's draft key,
+   * which its first save keeps, or by path. */
+  private sameCard(a: any, b: any): boolean {
+    if (a?.draftKey || b?.draftKey) return a?.draftKey === b?.draftKey;
+    return a?.path === b?.path;
+  }
+
+  willUpdate(changedProperties: Map<string, any>) {
+    // A form whose autosave is still waiting is saved now, to its own card,
+    // when another card is opened: fired half a second later, it was saved
+    // to whichever card was open by then.
+    if (changedProperties.has('contact') && this.saveTimeout && !this.sameCard(this.editForm, this.contact)) {
+      this.flushSave();
+    }
+  }
+
+  disconnectedCallback() {
+    // And when the editor goes, with the page.
+    this.flushSave();
+    super.disconnectedCallback();
+  }
+
   updated(changedProperties: Map<string, any>) {
     if (changedProperties.has('contact') || changedProperties.has('isEditing')) {
       // From the card each time editing STARTS, as well as on a different card:
@@ -356,11 +378,11 @@ export class AlpsContactView extends LitElement {
       // another one. Filled again from the open contact, which holds the
       // form as that save sent it, the form lost whatever was typed while
       // the save was on its way. So the form only takes the path.
-      const created = !startedEditing && this.isEditing && changedProperties.get('contact')?.isTemporary
-        && this.contact && !this.contact.isTemporary && this.contact.path && this.editForm && !this.editForm.path;
+      const created = !startedEditing && this.isEditing && this.contact?.path && this.editForm?.draftKey
+        && this.sameCard(this.editForm, this.contact) && this.editForm.path !== this.contact.path;
       if (created) {
         this.editForm = { ...this.editForm, path: this.contact.path };
-      } else if (this.contact && this.isEditing && (startedEditing || !this.editForm || this.editForm.path !== this.contact.path)) {
+      } else if (this.contact && this.isEditing && (startedEditing || !this.editForm || !this.sameCard(this.editForm, this.contact))) {
         this.editForm = { ...this.contact };
         this.birthday = birthdayFields(String(this.editForm.birthday || ''));
         this.isDirty = false;
@@ -392,8 +414,17 @@ export class AlpsContactView extends LitElement {
       clearTimeout(this.saveTimeout);
     }
     this.saveTimeout = setTimeout(() => {
+      this.saveTimeout = null;
       this.handleSave();
     }, 500);
+  }
+
+  /** Saves at once a form whose autosave is waiting. */
+  private flushSave() {
+    if (!this.saveTimeout) return;
+    clearTimeout(this.saveTimeout);
+    this.saveTimeout = null;
+    this.handleSave();
   }
 
   private handleInput(field: string, value: string) {
@@ -620,6 +651,7 @@ export class AlpsContactView extends LitElement {
             @click=${() => {
               if (this.isEditing) {
                 if (this.saveTimeout) clearTimeout(this.saveTimeout);
+                this.saveTimeout = null;
                 if (this.contact?.isTemporary && !this.isDirty) {
                   // Do not save, just cancel
                 } else {
