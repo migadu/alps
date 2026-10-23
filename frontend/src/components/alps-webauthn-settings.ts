@@ -92,7 +92,10 @@ export class AlpsWebauthnSettings extends LitElement {
             if (!res.ok) throw new Error('Failed to fetch settings');
             this.data = await res.json();
         } catch (e: any) {
-            this.error = e.message;
+            // Said in the user's language. The error's own words, the
+            // browser's or the line above's, are English, and for the console.
+            console.error('Failed to read the security key settings', e);
+            this.error = this.i18nStore?.t('webauthn.errors.load_failed') ?? 'webauthn.errors.load_failed';
         } finally {
             this.loading = false;
         }

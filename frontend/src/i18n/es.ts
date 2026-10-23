@@ -601,6 +601,7 @@ export const es = {
       no_security_key: 'Añade primero una clave de seguridad.',
       trust_failed: 'No se ha podido cambiar el ajuste. Inténtalo de nuevo.',
       remove_unavailable: 'No se ha podido eliminar la clave de seguridad ahora mismo. Inténtalo de nuevo dentro de un momento.',
+      load_failed: 'No se han podido cargar los ajustes de las claves de seguridad.',
       general: 'Se ha producido un error.',
     },
     settings: {

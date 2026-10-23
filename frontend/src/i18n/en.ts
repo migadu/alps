@@ -166,6 +166,7 @@ export const en = {
       no_security_key: 'Add a security key first.',
       trust_failed: 'The setting could not be changed. Please try again.',
       remove_unavailable: 'The security key could not be removed just now. Please try again in a moment.',
+      load_failed: 'The security key settings could not be loaded.',
       general: 'An error occurred.',
     },
     settings: {

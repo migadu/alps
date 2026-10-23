@@ -22,6 +22,7 @@ export default {
     publicKey: 'Chiave pubblica',
     purgeKeys: 'Elimina coppia di chiavi',
     generateNewKeypair: 'Genera nuova coppia di chiavi',
+    generating: 'Generazione della coppia di chiavi...',
     enableEncryptionDesc: 'Per abilitare la crittografia end-to-end tra i contatti che la supportano, avrai bisogno di una coppia di chiavi GPG.',
     noKeyPresent: 'Nessuna chiave presente',
     passphraseRequiredLabel: 'Passphrase (richiesta)',

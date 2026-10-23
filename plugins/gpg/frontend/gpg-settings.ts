@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit';
+import { keyed } from 'lit/directives/keyed.js';
 import { customElement, state } from 'lit/decorators.js';
 import { fetchWithTimeout } from '../../../frontend/src/utils/fetch-utils';
 import { consume } from '@lit/context';
@@ -30,6 +31,7 @@ export class AlpsGpgSettings extends LitElement {
     @state() private passphrasePromptMode: 'lock' | 'confirm' | 'unlock' = 'lock';
     @state() private showPurgeConfirm = false;
     private resolvePassphrase: ((pass: string | null) => void) | null = null;
+    @state() private passphrasePromptId = 0;
 
     static styles = css`
         :host {
@@ -104,6 +106,10 @@ export class AlpsGpgSettings extends LitElement {
 
     private promptForPassphrase(mode: 'lock' | 'confirm' | 'unlock' = 'lock'): Promise<string | null> {
         this.passphrasePromptMode = mode;
+        // Resolving one step can open the next before Lit renders the hide.
+        // Give each invocation a fresh form, including same-mode retries: a
+        // reused prompt retains both its passphrase and submit latch.
+        this.passphrasePromptId++;
         this.showPassphrasePrompt = true;
         return new Promise((resolve) => {
             this.resolvePassphrase = resolve;
@@ -277,7 +283,7 @@ export class AlpsGpgSettings extends LitElement {
 
     render() {
         if (this.loading || this.generating) {
-            return html`<alps-loader full-height .text=${this.generating ? 'Generating keypair...' : 'Loading...'}></alps-loader>`;
+            return html`<alps-loader full-height .text=${this.i18nStore?.t(this.generating ? 'gpg.generating' : 'settings.loading') ?? ''}></alps-loader>`;
         }
 
         return html`
@@ -318,7 +324,7 @@ export class AlpsGpgSettings extends LitElement {
                 </alps-setting-group>
             `}
 
-            ${this.showPassphrasePrompt ? html`
+            ${this.showPassphrasePrompt ? keyed(this.passphrasePromptId, html`
                 <ui-prompt
                     heading="${this.passphrasePromptMode === 'unlock' ? this.i18nStore?.t('gpg.passphraseRequired') : this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.passphraseConfirmTitle') : this.i18nStore?.t('gpg.passphraseSetTitle')}"
                     confirmText="${this.passphrasePromptMode === 'unlock' ? this.i18nStore?.t('gpg.unlock') : this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.confirm') : this.i18nStore?.t('gpg.lock')}"
@@ -339,7 +345,7 @@ export class AlpsGpgSettings extends LitElement {
                     @submit=${(e: CustomEvent) => this.handlePassphraseSubmit(e.detail.passphrase)}
                     @cancel=${this.handlePassphraseCancel}
                 ></ui-prompt>
-            ` : ''}
+            `) : ''}
             ${this.importError ? html`
                 <ui-modal heading="${this.i18nStore?.t('gpg.importFailedTitle')}" @cancel=${this.clearError}>
                     <div style="padding: 16px; white-space: pre-wrap; font-family: monospace; font-size: 13px;">${this.importError}</div>
