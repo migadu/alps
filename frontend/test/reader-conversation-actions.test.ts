@@ -409,6 +409,80 @@ describe('a card\'s own menu', () => {
         expect(cards(el).map(c => `${c.item.mailbox}/${c.item.message.UID}`)).toEqual(['INBOX/5', 'Sent/7']);
       });
 
+      it('keeps a pending conversation answer when deleting the open card and staying on another', async () => {
+        server.thread = [older(), reply(), newer()];
+        const normal = fetch;
+        let answer!: (value: Response) => void;
+        vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+          String(input).endsWith('/messages/9/thread')
+            ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+        const listed = [{ ...older(), SubMessages: [newer()] }];
+        const el = await mount<El>('alps-message-reader', {
+          settingsStore: settingsStore(), i18nStore, composeStore: new EventTarget(),
+          mailbox: 'INBOX', messages: listed, message: newer(),
+          mailboxes: [{ Name: 'INBOX', Attrs: [] }, { Name: 'Sent', Attrs: ['\\Sent'] }],
+        });
+        await waitFor(() => !!answer, 'the pending conversation request');
+        const detail = await deleteOpenCard(el, { mailbox: 'INBOX', uid: '9' });
+        expect(detail.nextUid).toBe('5');
+        await update(el, { message: listed[0] });
+        answer(json({ Messages: server.thread }));
+        await waitFor(() => cards(el).some(c => c.item.mailbox === 'Sent'), 'the other-folder reply from the pending conversation');
+        expect(cards(el).map(c => `${c.item.mailbox}/${c.item.message.UID}`)).toEqual(['INBOX/5', 'Sent/7']);
+        expect(el._conversation?.key).toBe(messageKey('INBOX', '5'));
+      });
+
+      it('continues opening the conversation when the deleted card was still reading its first body', async () => {
+        server.thread = [older(), reply(), newer()];
+        const normal = fetch;
+        let answer!: (value: Response) => void;
+        vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+          /^\/mailboxes\/INBOX\/messages\/9\?/.test(String(input))
+            ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+        const listed = [{ ...older(), SubMessages: [newer()] }];
+        const el = await mount<El>('alps-message-reader', {
+          settingsStore: settingsStore(), i18nStore, composeStore: new EventTarget(),
+          mailbox: 'INBOX', messages: listed, message: newer(),
+        });
+        await waitFor(() => !!answer, 'the initial body request');
+        await deleteOpenCard(el, { mailbox: 'INBOX', uid: '9' });
+        await update(el, { message: listed[0] });
+        answer(json({ Message: newer(), Body: 'deleted body', Part: { Path: [1], MIMEType: 'text/plain' } }));
+        await waitFor(() => cards(el).some(c => c.item.mailbox === 'Sent'), 'the continued conversation');
+        expect(cards(el).map(c => `${c.item.mailbox}/${c.item.message.UID}`)).toEqual(['INBOX/5', 'Sent/7']);
+        expect(el.content).toBe('the body');
+      });
+
+      for (const departure of ['another conversation', 'another account', 'disconnected'] as const) {
+        it(`does not carry a pending delete-successor answer into ${departure}`, async () => {
+          const members = [older(), reply(), newer()];
+          server.thread = members;
+          const normal = fetch;
+          let answer!: (value: Response) => void;
+          vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+            String(input).endsWith('/messages/9/thread')
+              ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+          const listed = [{ ...older(), SubMessages: [newer()] }];
+          const el = await mount<El>('alps-message-reader', {
+            settingsStore: settingsStore(), i18nStore, composeStore: new EventTarget(),
+            mailbox: 'INBOX', messages: listed, message: newer(),
+          });
+          await waitFor(() => !!answer, 'the pending conversation request');
+          await deleteOpenCard(el, { mailbox: 'INBOX', uid: '9' });
+          await update(el, { message: listed[0] });
+          if (departure === 'another conversation') {
+            const other = { ...newer(), UID: '21' };
+            server.thread = [other];
+            await update(el, { message: other, messages: [other] });
+          } else if (departure === 'another account') MessageCache.clear();
+          else el.remove();
+          answer(json({ Messages: members }));
+          await waitFor(() => el.conversationReads.size === 0, 'all conversation answers settled');
+          expect(el.threadItems.some((item: any) => item.mailbox === 'Sent')).toBe(false);
+          expect(el._conversation?.messages.some((m: any) => m.Mailbox === 'Sent')).not.toBe(true);
+        });
+      }
+
       it('in a search of every folder, stays on the newest other card, in its own folder', async () => {
         // Only the cards in the folder being viewed were candidates, and a
         // search of every folder is no one folder: there were none, and the
@@ -565,6 +639,40 @@ describe('reading a conversation', () => {
 
       expect(card(el, 'Sent', '7').item.message.Flags).toContain(FLAGGED);
     });
+
+    for (const change of ['successful star', 'page add', 'page remove', 'refused star'] as const) {
+      it(`keeps ${change} newer than a pending conversation refresh`, async () => {
+        const initiallyStarred = change === 'page remove';
+        const el = await openConversation({ members: [older(), reply(initiallyStarred ? [SEEN, FLAGGED] : [SEEN]), newer()] });
+        await update(el, { messages: [{ ...older(), SubMessages: [newer()] }] });
+        const stale = server.thread.map(m => ({ ...m, Flags: [...m.Flags] }));
+        const normal = fetch;
+        let answer!: (value: Response) => void;
+        vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+          String(input).endsWith('/messages/9/thread')
+            ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+        el.reloadConversation();
+        await waitFor(() => !!answer, 'the pending conversation refresh');
+        if (change.startsWith('page')) {
+          window.dispatchEvent(new CustomEvent('external-message-flags-changed', {
+            detail: { keys: [messageKey('Sent', '7')], flag: FLAGGED, action: initiallyStarred ? 'remove' : 'add' },
+          }));
+        } else {
+          if (change === 'refused star') server.flagStatus = 500;
+          const sent = card(el, 'Sent', '7');
+          sent.dispatchEvent(new CustomEvent('toggle-star', { detail: { item: sent.item } }));
+          await waitFor(() => server.flagWrites.some(w => w.mailbox === 'Sent'), 'the star write');
+          await settle();
+        }
+        answer(json({ Messages: stale }));
+        await waitFor(() => el.conversationReads.size === 0, 'the refreshed conversation');
+        const starred = change === 'successful star' || change === 'page add';
+        expect(card(el, 'Sent', '7').item.message.Flags.includes(FLAGGED)).toBe(starred);
+        expect(card(el, 'Sent', '7').item.message.Flags).toContain(SEEN);
+        await update(el, { messages: [{ ...older(), SubMessages: [newer()] }] });
+        expect(card(el, 'Sent', '7').item.message.Flags.includes(FLAGGED)).toBe(starred);
+      });
+    }
 
     it('stays when the page changed it', async () => {
       const el = await openConversation();
