@@ -403,9 +403,9 @@ func readQuoted(s string) (value, rest string, ok bool) {
 }
 
 // parseStringList reads the strings on a response line. Its error is a
-// literal that could not be read, which leaves the client out of step with
-// the server: the callers end the exchange on one, rather than read on into
-// the literal as if it were responses.
+// literal, or the rest of the line after one, that could not be read, which
+// leaves the client out of step with the server: the callers end the exchange
+// on one, rather than read on into the literal as if it were responses.
 func (c *MSClient) parseStringList(line string) ([]string, error) {
 	// A very rudimentary parser for "string" "string"
 	var out []string
@@ -435,8 +435,14 @@ func (c *MSClient) parseStringList(line string) ([]string, error) {
 				c.debugWriter.Write([]byte("S: [literal data]\n"))
 			}
 			out = append(out, string(lit))
-			lineStr, _ := c.readLine()
-			line = strings.TrimSpace(lineStr)
+			// The rest of the line comes after the literal. A failed read
+			// here is not the end of the line: what was left of it may still
+			// arrive, and be read as a line of its own.
+			rest, err := c.readLine()
+			if err != nil {
+				return out, err
+			}
+			line = strings.TrimSpace(rest)
 		} else {
 			// Unquoted string? ManageSieve requires capabilities to be strings, but let's be safe
 			idx := strings.Index(line, " ")
