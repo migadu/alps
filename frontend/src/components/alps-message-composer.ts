@@ -834,6 +834,18 @@ export class AlpsMessageComposer extends LitElement {
         if (this.editor && this.editor.getText() !== this.text) {
           this.editor.commands.setContent(contentFromHtml(this.editor.schema, paragraphsOf(this.text), true));
           this.htmlText = serializeEditorHtml(this.editor);
+        } else if (this.editor && !this.htmlText) {
+          // A draft saved as plain text reopens with no HTML part, and the
+          // editor, which read its text when the composer opened, can already
+          // hold it, as it holds a single line. Its content does not change
+          // and it announces nothing, so the HTML part is made and announced
+          // here: the compose window saves and sends what it is told.
+          this.htmlText = serializeEditorHtml(this.editor);
+          this.dispatchEvent(new CustomEvent('text-changed', {
+            detail: { text: this.text, html: this.htmlText },
+            bubbles: true,
+            composed: true
+          }));
         }
       } else if (oldFormat === 'html' && this.format === 'text') {
         if (this.editor) {

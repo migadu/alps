@@ -9,7 +9,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import '../src/components/alps-message-composer';
 import type { AlpsMessageComposer } from '../src/components/alps-message-composer';
-import { cleanup, mount, update } from './helpers/dom';
+import { cleanup, mount, record, update } from './helpers/dom';
 
 const TEXT = 'if a<b and c>d\nAda <ada@example.com> & <b>co</b>';
 
@@ -64,5 +64,30 @@ describe('plain text switched to HTML', () => {
     const composer = await mount<AlpsMessageComposer>('alps-message-composer', { format: 'html', text: MESSAGE, htmlText: '' });
     expect(composer.editor!.getText()).toBe(MESSAGE);
     expect(composer.editor!.getHTML()).toContain('-- <br>');
+  });
+
+  // A draft saved as plain text reopens with no HTML part. One line of it is
+  // already the editor's text, whether the editor read it as text or as
+  // markup, so an HTML part has to be made even though the text matches.
+  it('gives a reopened one-line draft its HTML part', async () => {
+    const composer = await mount<AlpsMessageComposer>('alps-message-composer', { format: 'text', text: 'Hi Ada', htmlText: '' });
+    const sent = record<CustomEvent>(composer, 'text-changed');
+    await update(composer, { format: 'html' });
+
+    expect(composer.messageHtml).toContain('>Hi Ada</p>');
+    // The compose window saves and sends what this event tells it.
+    expect(sent.at(-1)?.detail).toEqual({ text: 'Hi Ada', html: composer.messageHtml });
+
+    await update(composer, { format: 'text' });
+    expect(composer.messageText).toBe('Hi Ada');
+  });
+
+  it('keeps the HTML part a draft reopened as plain text already has', async () => {
+    const html = '<p><strong>Hi</strong> Ada</p>';
+    const composer = await mount<AlpsMessageComposer>('alps-message-composer', { format: 'text', text: 'Hi Ada', htmlText: html });
+    await update(composer, { format: 'html' });
+
+    expect(composer.messageHtml).toBe(html);
+    expect(composer.editor!.getHTML()).toContain('<strong>Hi</strong>');
   });
 });
