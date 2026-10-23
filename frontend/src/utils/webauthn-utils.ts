@@ -70,20 +70,38 @@ export async function registerCredential(credentialCreationOptions: any) {
     };
 }
 
+/**
+ * Options from the server that cannot be handed to the browser: a challenge or
+ * an allowed credential's id that is missing, or not base64url.
+ */
+export class InvalidOptionsError extends Error {
+    constructor() {
+        super('The authentication options cannot be used.');
+        this.name = 'InvalidOptionsError';
+    }
+}
+
 // Authenticate with existing credential (for login)
 export async function authenticateCredential(credentialRequestOptions: any) {
-    // Decode base64url fields
-    credentialRequestOptions.publicKey.challenge = base64urlToBuffer(
-        credentialRequestOptions.publicKey.challenge
-    );
+    // Decode base64url fields. A value that cannot be decoded failed with the
+    // decoder's own English sentence when it was missing, and with atob's
+    // DOMException when it was malformed; both are the same fault in the
+    // options, so both are one error the page can name in the user's language.
+    try {
+        credentialRequestOptions.publicKey.challenge = base64urlToBuffer(
+            credentialRequestOptions.publicKey.challenge
+        );
 
-    // Decode allowCredentials
-    if (credentialRequestOptions.publicKey.allowCredentials) {
-        credentialRequestOptions.publicKey.allowCredentials =
-            credentialRequestOptions.publicKey.allowCredentials.map((cred: any) => ({
-                ...cred,
-                id: base64urlToBuffer(cred.id)
-            }));
+        // Decode allowCredentials
+        if (credentialRequestOptions.publicKey.allowCredentials) {
+            credentialRequestOptions.publicKey.allowCredentials =
+                credentialRequestOptions.publicKey.allowCredentials.map((cred: any) => ({
+                    ...cred,
+                    id: base64urlToBuffer(cred.id)
+                }));
+        }
+    } catch {
+        throw new InvalidOptionsError();
     }
 
     // Call browser WebAuthn API
