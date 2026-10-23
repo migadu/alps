@@ -14,11 +14,12 @@ const maxReferenceRounds = 3
 // FindByReferences implements provider.ReferenceFinder by reading the headers
 // of every message in the mailbox, as listing it does.
 func (p *Provider) FindByReferences(mailbox string, ids []string) ([]provider.Message, error) {
-	dir, err := p.getDir(mailbox)
+	b, err := p.openBox(mailbox)
 	if err != nil {
 		return nil, err
 	}
-	msgs, err := getAllMessages(dir)
+	defer closeRoot(b.root)
+	msgs, err := getAllMessages(b)
 	if err != nil {
 		return nil, err
 	}
