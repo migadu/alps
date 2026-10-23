@@ -396,7 +396,7 @@ type CachedMessages struct {
 }
 
 // mailboxCounts is a folder's message and unseen counts, held by value: the
-// cached status is a pointer that a flag change moves in place.
+// cached status is a pointer, and its counts the provider's.
 //
 // UIDValidity and UIDNext go with them, 0 where the provider has none. A
 // message that arrives as another goes leaves both counts as they were, and
@@ -433,18 +433,19 @@ func countsOf(status *MailboxStatus) mailboxCounts {
 // change they already show.
 func shiftListedUnseen(cache *alps.Cache, mailbox string, step int) {
 	for _, key := range cache.GetKeysWithPrefix("messages:" + mailbox + ":") {
-		cached, ok := cache.Get(key)
-		if !ok {
-			continue
-		}
-		page, ok := cached.(CachedMessages)
-		// Another folder's pages count its own messages, which this change
-		// did not touch.
-		if !ok || page.Mailbox != mailbox || !page.Counts.Known || (step < 0 && page.Counts.Unseen == 0) {
-			continue
-		}
-		page.Counts.Unseen = uint32(int64(page.Counts.Unseen) + int64(step))
-		cache.Set(key, page)
+		// Under the cache's lock, from the page it holds then: one read before
+		// would put back the rows as they were before a change made meanwhile
+		// (applyFlagsToCache).
+		cache.Update(key, func(cached interface{}) interface{} {
+			page, ok := cached.(CachedMessages)
+			// Another folder's pages count its own messages, which this change
+			// did not touch.
+			if !ok || page.Mailbox != mailbox || !page.Counts.Known || (step < 0 && page.Counts.Unseen == 0) {
+				return cached
+			}
+			page.Counts.Unseen = uint32(int64(page.Counts.Unseen) + int64(step))
+			return page
+		})
 	}
 }
 
@@ -543,19 +544,23 @@ func patchCachedConversations(cache *alps.Cache, debugf func(string, ...interfac
 // listedMessage finds the message named uid among a page's rows and, in a
 // threaded page, among the earlier messages of each row's conversation, which
 // the row (the conversation's latest message) carries as SubMessages. It
-// returns the copy in the page, to be changed in place.
-func listedMessage(rows []provider.Message, uid string) *provider.Message {
+// returns a copy of the rows, and the message in it, to be changed there: the
+// rows it was given are the cached page's, which a request may be reading.
+func listedMessage(rows []provider.Message, uid string) ([]provider.Message, *provider.Message) {
 	for i := range rows {
 		if rows[i].ID.String() == uid {
-			return &rows[i]
+			rows = slices.Clone(rows)
+			return rows, &rows[i]
 		}
 		for j := range rows[i].SubMessages {
 			if rows[i].SubMessages[j].ID.String() == uid {
-				return &rows[i].SubMessages[j]
+				rows = slices.Clone(rows)
+				rows[i].SubMessages = slices.Clone(rows[i].SubMessages)
+				return rows, &rows[i].SubMessages[j]
 			}
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // applyFlagsToCache brings the session's cached copies of one message, and
@@ -587,8 +592,14 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 		}
 	}
 
-	// Helper function to update flags
+	// The flags after the change, in a list of their own. The cached copies
+	// are changed by publishing new ones, never in place: a request may be
+	// answering from what it read of them, and a list with room to spare was
+	// written through every slice that shared it. Update publishes each new
+	// copy under the cache's lock, so that changes made side by side are all
+	// kept.
 	updateFlags := func(flags []provider.Flag) []provider.Flag {
+		flags = slices.Clone(flags)
 		// Add new flags
 		for _, flag := range alpsAddFlags {
 			if !slices.Contains(flags, flag) {
@@ -629,21 +640,27 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 
 	messageUpdated := false
 	for _, key := range keys {
-		if cached, ok := cache.Get(key); ok {
-			cachedData := cached.(CachedMessages)
+		updated := false
+		cache.Update(key, func(cached interface{}) interface{} {
+			page, ok := cached.(CachedMessages)
 			// Another folder's page lists its own messages, and the UID names
 			// a different one there.
-			if cachedData.Mailbox != mailbox {
-				continue
+			if !ok || page.Mailbox != mailbox {
+				return cached
 			}
-			// Find and update the message in this page
-			if row := listedMessage(cachedData.Messages, uidStr); row != nil {
-				noteSeen(row.Flags)
-				row.Flags = updateFlags(row.Flags)
-				cache.Set(key, cachedData)
-				messageUpdated = true
-				debugf("Updated flags for message %s in cache key %s", uidStr, key)
+			rows, row := listedMessage(page.Messages, uidStr)
+			if row == nil {
+				return cached
 			}
+			noteSeen(row.Flags)
+			row.Flags = updateFlags(row.Flags)
+			page.Messages = rows
+			updated = true
+			return page
+		})
+		if updated {
+			messageUpdated = true
+			debugf("Updated flags for message %s in cache key %s", uidStr, key)
 		}
 	}
 
@@ -652,48 +669,33 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 	// shows them, so a part that kept its old ones reopened a starred message
 	// unstarred, or a message marked unread as read. They are kept across
 	// writes now, as the body under a UID does not change.
+	//
+	// The parts (handleGetPart) are cached with the message as the read found
+	// it, flags included. A read leaves \Seen as it is, so an unread message is
+	// cached unread, and the reader's own mark-as-read is the change that has
+	// to reach them: without it the message reopened unread. They follow the
+	// change but are not asked what the message was before it, as the
+	// message's own entry was above. That is the listing's to say: a part is
+	// not read again when the listing is, and one cached before another client
+	// changed the message would move the count for a change that changed
+	// nothing.
 	for _, key := range cache.GetKeysWithPrefix(fmt.Sprintf("message:%s:%s:[", mailbox, uidStr)) {
-		cached, ok := cache.Get(key)
-		if !ok {
-			continue
+		updated := false
+		cache.Update(key, func(cached interface{}) interface{} {
+			part, ok := cached.(CachedMessagePart)
+			if !ok || part.Message == nil || part.Mailbox != mailbox {
+				return cached
+			}
+			message := *part.Message
+			message.Flags = updateFlags(message.Flags)
+			part.Message = &message
+			updated = true
+			return part
+		})
+		if updated {
+			messageUpdated = true
+			debugf("Updated flags for message %s in cache key %s", uidStr, key)
 		}
-		cachedPart, ok := cached.(CachedMessagePart)
-		if !ok || cachedPart.Message == nil {
-			continue
-		}
-		cachedPart.Message.Flags = updateFlags(cachedPart.Message.Flags)
-		cache.Set(key, cachedPart)
-		debugf("Updated flags for message %s in cache key %s", uidStr, key)
-		messageUpdated = true
-	}
-
-	// The parts read of the message (handleGetPart) are cached with the
-	// message as the read found it, flags included, and a reopened message is
-	// answered from them. A read leaves \Seen as it is, so an unread message
-	// is cached unread, and the reader's own mark-as-read is the change that
-	// has to reach them: without it the message reopened unread. They follow
-	// the change but are not asked what the message was before it. That is
-	// the listing's to say: a part is not read again when the listing is, and
-	// one cached before another client changed the message would move the
-	// count for a change that changed nothing.
-	partPrefix := fmt.Sprintf("message:%s:%s:", mailbox, uidStr)
-	for _, key := range cache.GetKeysWithPrefix(partPrefix) {
-		// The part path, as in "[2]:limit0". A mailbox whose name goes on
-		// from this one's with a colon has keys under the prefix too.
-		if key == msgKey || !strings.HasPrefix(key[len(partPrefix):], "[") {
-			continue
-		}
-		cached, ok := cache.Get(key)
-		if !ok {
-			continue
-		}
-		part, ok := cached.(CachedMessagePart)
-		if !ok || part.Message == nil || part.Mailbox != mailbox {
-			continue
-		}
-		part.Message.Flags = updateFlags(part.Message.Flags)
-		cache.Set(key, part)
-		debugf("Updated flags for message %s in cached part %s", uidStr, key)
 	}
 
 	patchCachedConversations(cache, debugf, mailbox, uidStr, addFlags, removeFlags)
@@ -708,16 +710,23 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 		return false
 	}
 
+	// The count moves by one where the copies say the message was the other
+	// way before the change, and not at all where they say it was this way.
+	step := 0
+	switch {
+	case cachedSeen == cachedUnseen:
+	case seenAdded && cachedUnseen:
+		step = -1
+	case seenRemoved && cachedSeen:
+		step = 1
+	}
+
 	// The pages move with the server's count, cached status or not. When the
 	// copies cannot say what the message was, they keep the count they were
 	// read at: if the message was unseen, the next count read is not theirs,
 	// and they are read again.
-	switch {
-	case cachedSeen == cachedUnseen:
-	case seenAdded && cachedUnseen:
-		shiftListedUnseen(cache, mailbox, -1)
-	case seenRemoved && cachedSeen:
-		shiftListedUnseen(cache, mailbox, 1)
+	if step != 0 {
+		shiftListedUnseen(cache, mailbox, step)
 	}
 
 	statusKey := "status:" + mailbox
@@ -743,17 +752,26 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 		return true
 	}
 
-	switch {
-	case seenAdded && cachedUnseen && *status.NumUnseen > 0:
-		newCount := *status.NumUnseen - 1
-		status.NumUnseen = &newCount
-		cache.Set(statusKey, status)
-		debugf("Decremented unseen count for %s to %d", mailbox, newCount)
-	case seenRemoved && cachedSeen:
-		newCount := *status.NumUnseen + 1
-		status.NumUnseen = &newCount
-		cache.Set(statusKey, status)
-		debugf("Incremented unseen count for %s to %d", mailbox, newCount)
+	if step == 0 {
+		return false
+	}
+	// A new status, with counts of its own: the cached one is read by every
+	// folder list, and the counts it points to may be the provider's.
+	var unseen uint32
+	moved := false
+	cache.Update(statusKey, func(cached interface{}) interface{} {
+		status, ok := cached.(*MailboxStatus)
+		if !ok || status.StatusData == nil || status.NumUnseen == nil || (step < 0 && *status.NumUnseen == 0) {
+			return cached
+		}
+		data := *status.StatusData
+		unseen = uint32(int64(*status.NumUnseen) + int64(step))
+		data.NumUnseen = &unseen
+		moved = true
+		return &MailboxStatus{StatusData: &data}
+	})
+	if moved {
+		debugf("Moved the unseen count for %s to %d", mailbox, unseen)
 	}
 	return false
 }
