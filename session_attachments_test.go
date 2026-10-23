@@ -2,6 +2,7 @@ package alps
 
 import (
 	"bytes"
+	"errors"
 	"mime/multipart"
 	"os"
 	"strings"
@@ -117,6 +118,83 @@ func TestSession_AnUploadGivenBackAfterTheSessionEndedIsRemoved(t *testing.T) {
 	}
 	if onDisk(path) {
 		t.Error("the upload's file is still on disk")
+	}
+	if got := sm.globalAttachmentSize.Load(); got != 0 {
+		t.Errorf("global budget %d, want 0", got)
+	}
+}
+
+// An upload stored after the session ended is refused and removed. The
+// upload streams to disk before it is stored, outside the session's lock, so
+// a sign-out or an expiry can end the session meanwhile: the upload was kept
+// by a session nobody can use, its file on disk and its size counted against
+// every session's budget, for good.
+func TestSession_AnUploadStoredAfterTheSessionEndedIsRefusedAndRemoved(t *testing.T) {
+	sm, s := attachmentTestSession(t, 128)
+	fh, form, path := uploadForm(t, 64<<10)
+
+	s.teardown()
+	id, err := s.PutAttachment("c1", fh, form)
+
+	if !errors.Is(err, ErrSessionExpired) {
+		t.Errorf("storing an upload in the ended session answered %q, %v", id, err)
+	}
+	if id != "" && s.GetAttachment(id) != nil {
+		t.Error("the ended session holds the upload")
+	}
+	if onDisk(path) {
+		t.Error("the upload's file is still on disk")
+	}
+	if got := sm.globalAttachmentSize.Load(); got != 0 {
+		t.Errorf("global budget %d, want 0", got)
+	}
+}
+
+// The files of one upload request share one file on disk, as Go's ReadForm
+// writes them. It stays while any of them is kept, and goes with the last.
+func TestSession_FilesUploadedTogetherAreRemovedWithTheLast(t *testing.T) {
+	sm, s := attachmentTestSession(t, 128)
+	dir := t.TempDir()
+	t.Setenv("TMPDIR", dir)
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	for _, name := range []string{"notes.txt", "ledger.txt"} {
+		part, err := w.CreateFormFile("attachments", name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		part.Write([]byte(strings.Repeat("x", 64<<10)))
+	}
+	w.Close()
+	form, err := multipart.NewReader(&body, w.Boundary()).ReadForm(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	onDiskNow := func() int {
+		entries, _ := os.ReadDir(dir)
+		return len(entries)
+	}
+	if onDiskNow() != 1 {
+		t.Fatalf("%d files on disk for the request, want the 1 Go writes", onDiskNow())
+	}
+
+	ids, err := s.PutAttachments("c1", form)
+	if err != nil || len(ids) != 2 {
+		t.Fatalf("stored %v, %v", ids, err)
+	}
+	s.PopAttachment(ids[0]).Remove()
+	if onDiskNow() != 1 {
+		t.Fatal("removing the first file removed the bytes the second is kept with")
+	}
+	f, err := s.GetAttachment(ids[1]).File.Open()
+	if err != nil {
+		t.Fatalf("the second file cannot be read: %v", err)
+	}
+	f.Close()
+
+	s.PopAttachment(ids[1]).Remove()
+	if onDiskNow() != 0 {
+		t.Error("the request's file outlived the last of its attachments")
 	}
 	if got := sm.globalAttachmentSize.Load(); got != 0 {
 		t.Errorf("global budget %d, want 0", got)
