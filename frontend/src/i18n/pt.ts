@@ -479,7 +479,8 @@ export const pt = {
     cannotPreview: 'Nenhuma pré-visualização disponível para este tipo de arquivo',
     loadingPreview: 'Carregando pré-visualização...',
     errorLoading: 'Falha ao carregar pré-visualização',
-    close: 'Fechar'
+    close: 'Fechar',
+    uploadProgress: '{percent}% de {size}'
   },
 
   navigation: {

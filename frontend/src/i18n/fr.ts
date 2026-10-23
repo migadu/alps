@@ -433,7 +433,8 @@ export const fr = {
     cannotPreview: 'Aucun aperçu disponible pour ce type de fichier',
     loadingPreview: 'Chargement de l’aperçu...',
     errorLoading: 'Échec du chargement de l’aperçu',
-    close: 'Fermer'
+    close: 'Fermer',
+    uploadProgress: '{percent}\u00a0% de {size}'
   },
 
   navigation: {

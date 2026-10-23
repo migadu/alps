@@ -443,7 +443,8 @@ export const rs = {
     cannotPreview: 'Преглед није доступан за овај тип датотеке',
     loadingPreview: 'Учитавање прегледа...',
     errorLoading: 'Грешка при учитавању прегледа',
-    close: 'Затвори'
+    close: 'Затвори',
+    uploadProgress: '{percent}% од {size}'
   },
 
   navigation: {

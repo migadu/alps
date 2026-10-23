@@ -479,7 +479,8 @@ export const en = {
     cannotPreview: 'No preview available for this file type',
     loadingPreview: 'Loading preview...',
     errorLoading: 'Failed to load preview',
-    close: 'Close'
+    close: 'Close',
+    uploadProgress: '{percent}% of {size}'
   },
 
   navigation: {
