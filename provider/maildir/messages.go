@@ -605,26 +605,40 @@ func (p *Provider) AppendMessage(mailbox string, msg provider.OutgoingMessageWri
 		return nil, nil, 0, fmt.Errorf("failed to initialize maildir %q: %w", mailbox, err)
 	}
 
-	delivery, err := maildir.NewDelivery(string(dir))
+	// Create, unlike a Delivery, says the key it stores the message under,
+	// which is the message's ID: a draft save answers it, and the next save
+	// replaces the draft by it. The message is written in tmp, under a key
+	// no other writer can choose, and moved into cur once it is whole.
+	stored, w, err := dir.Create(nil)
 	if err != nil {
 		return nil, nil, 0, err
 	}
 
-	size, err := msg.WriteTo(delivery)
+	size, err := msg.WriteTo(w)
 	if err != nil {
-		delivery.Abort()
+		abandon(stored, w)
 		return nil, nil, 0, err
 	}
 
-	if err := delivery.Close(); err != nil {
+	if err := w.Close(); err != nil {
 		return nil, nil, 0, err
 	}
 
-	// go-maildir's Delivery does not expose the resulting message key, so we
-	// return an empty MessageID; callers treat the subsequent metadata fetch as
-	// best-effort. Crucially, the mailbox is non-nil (the adapter dereferences
-	// it), which previously panicked.
-	return &provider.Mailbox{Name: mailbox, Delimiter: '.', Subscribed: true}, MaildirMessageID(""), uint32(size), nil
+	// The mailbox is non-nil: the adapter dereferences it, which previously
+	// panicked.
+	return &provider.Mailbox{Name: mailbox, Delimiter: '.', Subscribed: true}, MaildirMessageID(stored.Key()), uint32(size), nil
+}
+
+// abandon drops a message Create was writing, which closing w would move
+// into cur as it is. The file is removed from tmp first, so that the move
+// finds nothing to move; and should it move the file all the same, the file
+// is removed from cur.
+func abandon(stored *maildir.Message, w io.WriteCloser) {
+	if f, ok := w.(interface{ Name() string }); ok {
+		os.Remove(f.Name())
+	}
+	w.Close()
+	os.Remove(stored.Filename())
 }
 
 func (p *Provider) DeleteMessages(mailbox string, ids []provider.MessageID) error {
