@@ -425,9 +425,25 @@ func registerRoutes(p *plugin) {
 	})
 
 	updateContact := func(ctx *alps.Context) error {
-		var req ContactData
+		var req struct {
+			ContactData
+			// Nil retains the whole-form contract for older clients. An empty
+			// list means that none of the displayed single-copy fields changed.
+			ChangedFields []string `json:"changed_fields"`
+		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
+		}
+		changed := func(field string) bool {
+			if req.ChangedFields == nil {
+				return true
+			}
+			for _, name := range req.ChangedFields {
+				if name == field {
+					return true
+				}
+			}
+			return false
 		}
 
 		// The empty case is /contacts/create, where there is no {path} at all and
@@ -618,8 +634,10 @@ func registerRoutes(p *plugin) {
 		// Written back as the page's one line on every save, the city,
 		// region, postal code and country became part of the street, and the
 		// address lost its type and the card its other addresses.
-		if f := card.Preferred(vcard.FieldAddress); f == nil || strings.TrimSpace(addressLine(f)) != strings.TrimSpace(req.Address) {
-			setAddress(card, f, req.Address)
+		if changed("address") {
+			if f := card.Preferred(vcard.FieldAddress); f == nil || strings.TrimSpace(addressLine(f)) != strings.TrimSpace(req.Address) {
+				setAddress(card, f, req.Address)
+			}
 		}
 
 		id := uuid.New()
