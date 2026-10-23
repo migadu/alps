@@ -2,6 +2,7 @@ package managesieve
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -290,5 +291,59 @@ func TestALiteralInAResponseIsChecked(t *testing.T) {
 	}
 	if c.capabilities["IMPLEMENTATION"] != "hello" || c.capabilities["SIEVE"] != "fileinto" {
 		t.Errorf("read %v", c.capabilities)
+	}
+}
+
+// scriptedConn hands out its reads in turn: data, or an error for one read,
+// as a read that timed out returns before the server's late answer arrives.
+// Writes are taken and dropped.
+type scriptedConn struct {
+	net.Conn // nil: only the methods below are called
+	reads    []any
+}
+
+func (s *scriptedConn) Read(p []byte) (int, error) {
+	if len(s.reads) == 0 {
+		return 0, io.EOF
+	}
+	switch r := s.reads[0].(type) {
+	case error:
+		s.reads = s.reads[1:]
+		return 0, r
+	default:
+		data := r.(string)
+		n := copy(p, data)
+		if n == len(data) {
+			s.reads = s.reads[1:]
+		} else {
+			s.reads[0] = data[n:]
+		}
+		return n, nil
+	}
+}
+
+func (s *scriptedConn) Write(p []byte) (int, error)      { return len(p), nil }
+func (s *scriptedConn) SetReadDeadline(time.Time) error  { return nil }
+func (s *scriptedConn) SetWriteDeadline(time.Time) error { return nil }
+
+// After a literal, the rest of its line is read, and a failure there was
+// dropped: the line was taken for an empty one, and the response read on.
+// A read that timed out, after which the server's answer came late, gave a
+// listing or a capability read as complete, out of step with the server.
+func TestAFailedReadAfterALiteralFailsTheResponse(t *testing.T) {
+	timedOut := errors.New("i/o timeout")
+	client := func(reads ...any) *MSClient {
+		conn := &scriptedConn{reads: reads}
+		return &MSClient{conn: conn, r: bufio.NewReader(conn), capabilities: make(map[string]string)}
+	}
+
+	c := client("{5}\r\nhello", timedOut, " ACTIVE\r\nOK\r\n")
+	if scripts, err := c.ListScripts(); !errors.Is(err, timedOut) {
+		t.Errorf("listed %+v, %v; want the failed read's error", scripts, err)
+	}
+
+	c = client("\"IMPLEMENTATION\" {5}\r\nhello", timedOut, "\r\nOK\r\n")
+	if err := c.readResponse(); !errors.Is(err, timedOut) {
+		t.Errorf("read capabilities %v, %v; want the failed read's error", c.capabilities, err)
 	}
 }

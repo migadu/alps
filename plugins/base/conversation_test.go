@@ -3,6 +3,7 @@ package alpsbase
 import (
 	"net/http"
 	"net/url"
+	"slices"
 	"testing"
 	"time"
 
@@ -98,5 +99,54 @@ func TestMergeConversation(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("merged %q, want %q", got, want)
 		}
+	}
+}
+
+// A provider that names no message's folder, as a provider need not.
+type namelessProvider struct {
+	*provider.MockProvider
+	thread, sent []provider.Message
+}
+
+func (p namelessProvider) GetThreadMembers(string, []provider.MessageID) ([]provider.Message, error) {
+	return slices.Clone(p.thread), nil
+}
+
+func (p namelessProvider) FindByReferences(string, []string) ([]provider.Message, error) {
+	return slices.Clone(p.sent), nil
+}
+
+// A conversation holds the messages of two folders, under ids that name a
+// message only within its own, so each is named with the folder it was read
+// from when the provider does not name it. Without one, a member was taken
+// for one of the folder the conversation was opened from, the user's reply
+// from Sent among them: kept under that folder's UID, starred with its
+// message, and left behind when Sent's own changed.
+func TestAConversationNamesEveryMembersFolder(t *testing.T) {
+	msg := func(uid, id string) provider.Message {
+		return provider.Message{ID: testUID(uid), Envelope: &provider.Envelope{MessageID: id}}
+	}
+	p := namelessProvider{
+		MockProvider: &provider.MockProvider{},
+		thread:       []provider.Message{msg("9", "root@x"), msg("7", "answer@x")},
+		sent:         []provider.Message{msg("7", "reply@x")},
+	}
+
+	thread, err := messageThreadWithProvider(p, "Work:Sub", testUID("9"), []provider.MessageID{testUID("9"), testUID("7")})
+	if err != nil || len(thread) != 2 {
+		t.Fatalf("the thread is %+v, %v, want its two messages", thread, err)
+	}
+	for _, m := range thread {
+		if m.Mailbox != "Work:Sub" {
+			t.Errorf("UID %s of the thread names %q, want Work:Sub, where it was read", m.ID, m.Mailbox)
+		}
+	}
+
+	sent, err := sentOfConversation(p, "Work:Sub", thread, "Sent")
+	if err != nil || len(sent) != 1 {
+		t.Fatalf("the replies are %+v, %v, want the one from Sent", sent, err)
+	}
+	if sent[0].Mailbox != "Sent" {
+		t.Errorf("the reply names %q, want Sent, where it was read", sent[0].Mailbox)
 	}
 }
