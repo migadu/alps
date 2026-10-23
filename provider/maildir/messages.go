@@ -708,47 +708,95 @@ func abandon(stored *maildir.Message, w io.WriteCloser) {
 	os.Remove(stored.Filename())
 }
 
+// DeleteMessages removes the messages, and reports each it could not. A
+// message that is already gone counts as deleted: what was asked for is so.
+// The messages are removed one by one, so those before and after one that
+// fails are removed all the same.
 func (p *Provider) DeleteMessages(mailbox string, ids []provider.MessageID) error {
 	dir := p.getDir(mailbox)
+	var errs []error
 	for _, id := range ids {
-		m, err := dir.MessageByKey(id.String())
+		m, err := messageByKey(dir, id.String())
+		if errors.Is(err, provider.ErrMessageNotFound) {
+			continue
+		}
 		if err == nil {
-			m.Remove()
+			err = m.Remove()
+		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("deleting %s: %w", id, err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
+// MoveMessages moves the messages, and answers the new ID of each it moved.
+// One it could not move, a message that is gone among them, is reported, and
+// stays where it was: reported as moved, it would be looked for in a folder
+// that does not have it.
 func (p *Provider) MoveMessages(sourceMailbox, destMailbox string, ids []provider.MessageID) (map[provider.MessageID]provider.MessageID, error) {
 	src := p.getDir(sourceMailbox)
 	dst := p.getDir(destMailbox)
 	res := make(map[provider.MessageID]provider.MessageID)
 
+	var errs []error
 	for _, id := range ids {
-		m, err := src.MessageByKey(id.String())
+		m, err := messageByKey(src, id.String())
 		if err == nil {
 			err = m.MoveTo(dst)
-			if err == nil {
-				res[id] = MaildirMessageID(m.Key())
-			}
 		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("moving %s: %w", id, err))
+			continue
+		}
+		res[id] = MaildirMessageID(m.Key())
 	}
-	return res, nil
+	return res, errors.Join(errs...)
 }
 
+// copyMessageTo publishes a copy only after both reading and writing finish.
+func copyMessageTo(message *maildir.Message, target maildir.Dir) (*maildir.Message, error) {
+	src, err := message.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+	stored, w, err := target.Create(message.Flags())
+	if err != nil {
+		return nil, err
+	}
+	if _, err := io.Copy(w, src); err != nil {
+		abandon(stored, w)
+		return nil, err
+	}
+	if err := w.Close(); err != nil {
+		abandon(stored, w)
+		return nil, err
+	}
+	return stored, nil
+}
+
+// CopyMessages copies the messages, and answers the ID of each copy, as
+// MoveMessages does.
 func (p *Provider) CopyMessages(sourceMailbox, destMailbox string, ids []provider.MessageID) (map[provider.MessageID]provider.MessageID, error) {
 	src := p.getDir(sourceMailbox)
 	dst := p.getDir(destMailbox)
 	res := make(map[provider.MessageID]provider.MessageID)
 
+	var errs []error
 	for _, id := range ids {
-		m, err := src.MessageByKey(id.String())
+		m, err := messageByKey(src, id.String())
+		var copied *maildir.Message
 		if err == nil {
-			newM, err := m.CopyTo(dst)
-			if err == nil {
-				res[id] = MaildirMessageID(newM.Key())
-			}
+			// CopyTo closes its writer even after a read error, publishing
+			// an empty or partial copy. Only a completed copy may reach cur.
+			copied, err = copyMessageTo(m, dst)
 		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("copying %s: %w", id, err))
+			continue
+		}
+		res[id] = MaildirMessageID(copied.Key())
 	}
-	return res, nil
+	return res, errors.Join(errs...)
 }
