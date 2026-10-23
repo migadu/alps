@@ -1406,15 +1406,6 @@ func handleGetMailbox(ctx *alps.Context) error {
 	if mbox == nil {
 		return alps.NewHTTPError(http.StatusNotFound, "Mailbox not found")
 	}
-	title := mbox.Name()
-	if title == "INBOX" {
-		title = "Inbox"
-	} else if title == "*" {
-		title = "Search All Mailboxes"
-	}
-	if mbox.NumUnseen != nil && *mbox.NumUnseen > 0 {
-		title = fmt.Sprintf("(%d) %s", *mbox.NumUnseen, title)
-	}
 
 	page := 0
 	if pageStr := ctx.QueryParam("page"); pageStr != "" {
@@ -1497,6 +1488,21 @@ func handleGetMailbox(ctx *alps.Context) error {
 			if patched, err := reflaggedPage(ctx, msgCacheKey, cachedData, counts); err == nil {
 				cachedData = patched
 			} else {
+				if errors.Is(err, errReflaggedMailboxRenumbered) {
+					// Reload status as well as rows: otherwise the fresh page
+					// would be published under the old mailbox identity.
+					var reloadErr error
+					ibase, reloadErr = getBaseMailboxData(ctx)
+					if reloadErr != nil {
+						return reloadErr
+					}
+					mbox = ibase.Mailbox
+					if mbox == nil {
+						return alps.NewHTTPError(http.StatusNotFound, "Mailbox not found")
+					}
+					counts = countsOf(mbox)
+					ok = false
+				}
 				ctx.Server.Logger().Debugf("The flags changed in %s since page %d was read could not be read, reading the page again: %v", mbox.Name(), page, err)
 			}
 		}
@@ -1579,6 +1585,16 @@ func handleGetMailbox(ctx *alps.Context) error {
 		}
 
 		ctx.Server.Logger().Debugf("Cache MISS for messages in %s page %d (query: %q), fetched and cached %d messages", mbox.Name(), page, query, len(msgs))
+	}
+
+	title := mbox.Name()
+	if title == "INBOX" {
+		title = "Inbox"
+	} else if title == "*" {
+		title = "Search All Mailboxes"
+	}
+	if mbox.NumUnseen != nil && *mbox.NumUnseen > 0 {
+		title = fmt.Sprintf("(%d) %s", *mbox.NumUnseen, title)
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{

@@ -10,6 +10,8 @@ import (
 	"github.com/migadu/alps/provider"
 )
 
+var errReflaggedMailboxRenumbered = errors.New("mailbox UIDVALIDITY changed while reading flags")
+
 // reflaggedPage brings a page the session holds up to date with the flags
 // that changed since it was read, for a folder that holds the messages it
 // held then (reflaggedOnly), and keeps it at counts.
@@ -48,6 +50,12 @@ func reflaggedPage(ctx *alps.Context, key string, page CachedMessages, counts ma
 		}
 		var err error
 		changed, err = tracker.ChangedFlags(page.Mailbox, ids, page.Counts.HighestModSeq)
+		if err == nil && uidMoved(page.Counts.UIDValidity, partUIDValidity(ctx, p, page.Mailbox, page.Counts.UIDValidity)) {
+			// A foreground SELECT can discover a recreation after the
+			// background STATUS. Its same UIDs name different messages.
+			// partUIDValidity has dropped the obsolete UID-keyed caches.
+			return errReflaggedMailboxRenumbered
+		}
 		return err
 	})
 	if err != nil {
