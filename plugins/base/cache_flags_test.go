@@ -3,6 +3,8 @@ package alpsbase
 import (
 	"reflect"
 	"slices"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -332,5 +334,123 @@ func TestAFlagChangeLeavesAFolderNamedLikeAnotherAlone(t *testing.T) {
 				t.Errorf("Work counts %d unread, want 0", got)
 			}
 		})
+	}
+}
+
+// A request answers from what it read of the cache, and a flag change made
+// meanwhile publishes new copies of what it changes. The copies already read
+// stay as they were: changed in place, a page's rows, the earlier messages of
+// a threaded row, the message's own entry and its parts, and the folder's
+// counts moved under a request that was writing them out, a data race with
+// it, and a flag list with room to spare was written in place through every
+// slice that shared it.
+func TestAFlagChangeLeavesWhatWasReadAsItWas(t *testing.T) {
+	starred := func() []provider.Flag {
+		flags := make([]provider.Flag, 1, 4)
+		flags[0] = provider.Flag(imap.FlagFlagged)
+		return flags
+	}
+	latest, earlier := provider.MockMessageID{ID: "7"}, provider.MockMessageID{ID: "5"}
+	rows := []provider.Message{
+		{ID: latest, Flags: starred()},
+		{ID: provider.MockMessageID{ID: "9"}, SubMessages: []provider.Message{{ID: earlier, Flags: starred()}}},
+	}
+	cache := flagCache(t, 3, nil)
+	cache.Set("messages:INBOX:0", CachedMessages{Mailbox: "INBOX", Messages: rows, Total: len(rows)})
+	// As a listing caches its rows: the entry is the page's row in memory.
+	cache.Set("message:INBOX:7:[]", CachedMessagePart{Message: &rows[0], Mailbox: "INBOX"})
+	cache.Set("message:INBOX:7:[1]:limit0", CachedMessagePart{Message: &provider.Message{ID: latest, Flags: starred()}, Mailbox: "INBOX"})
+
+	read := func(key string) interface{} {
+		t.Helper()
+		cached, ok := cache.Get(key)
+		if !ok {
+			t.Fatalf("%s is not held", key)
+		}
+		return cached
+	}
+	page := read("messages:INBOX:0").(CachedMessages)
+	entry := read("message:INBOX:7:[]").(CachedMessagePart)
+	part := read("message:INBOX:7:[1]:limit0").(CachedMessagePart)
+	status := read("status:INBOX").(*MailboxStatus)
+	// Slices of their own over the same flags, as a copy of a row holds.
+	rowFlags, partFlags := page.Messages[0].Flags, part.Message.Flags
+
+	applyFlagsToCache(cache, noDebug, "INBOX", latest, seen, nil)
+	applyFlagsToCache(cache, noDebug, "INBOX", latest, nil, []imap.Flag{imap.FlagFlagged})
+	applyFlagsToCache(cache, noDebug, "INBOX", earlier, seen, nil)
+
+	want := []provider.Flag{provider.Flag(imap.FlagFlagged)}
+	for name, got := range map[string][]provider.Flag{
+		"the page's row":               page.Messages[0].Flags,
+		"the earlier message of a row": page.Messages[1].SubMessages[0].Flags,
+		"the message's own entry":      entry.Message.Flags,
+		"the part":                     part.Message.Flags,
+		"a copy of the page's row":     rowFlags,
+		"a copy of the part":           partFlags,
+	} {
+		if !slices.Equal(got, want) {
+			t.Errorf("%s, as read before the change, carries %v; want %v", name, got, want)
+		}
+	}
+	if *status.NumUnseen != 3 {
+		t.Errorf("the counts read before the change say %d unseen; want 3", *status.NumUnseen)
+	}
+
+	page = read("messages:INBOX:0").(CachedMessages)
+	entry = read("message:INBOX:7:[]").(CachedMessagePart)
+	part = read("message:INBOX:7:[1]:limit0").(CachedMessagePart)
+	seenOnly := []provider.Flag{provider.Flag(imap.FlagSeen)}
+	for name, got := range map[string][]provider.Flag{
+		"the page's row":      page.Messages[0].Flags,
+		"the message's entry": entry.Message.Flags,
+		"the part":            part.Message.Flags,
+		"the earlier message": page.Messages[1].SubMessages[0].Flags,
+	} {
+		wantNow := seenOnly
+		if name == "the earlier message" {
+			wantNow = []provider.Flag{provider.Flag(imap.FlagFlagged), provider.Flag(imap.FlagSeen)}
+		}
+		if !slices.Equal(got, wantNow) {
+			t.Errorf("%s is held with %v; want %v", name, got, wantNow)
+		}
+	}
+	if got, ok := cachedUnseen(t, cache); !ok || got != 1 {
+		t.Errorf("unseen = %d (cached %v), want 1", got, ok)
+	}
+}
+
+// Requests mark messages read side by side, and each change is made to the
+// copies the cache holds when it is made, not to the ones another change read
+// before it: none is lost, and the count falls by one for each.
+func TestFlagChangesSideBySideAreAllKept(t *testing.T) {
+	const n = 40
+	rows := make([]provider.Message, n)
+	for i := range rows {
+		rows[i] = provider.Message{ID: provider.MockMessageID{ID: strconv.Itoa(i + 1)}}
+	}
+	cache := flagCache(t, n, map[string][]provider.Message{"messages:INBOX:0": rows})
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range rows {
+		wg.Add(1)
+		go func(id provider.MessageID) {
+			defer wg.Done()
+			<-start
+			applyFlagsToCache(cache, noDebug, "INBOX", id, seen, nil)
+		}(rows[i].ID)
+	}
+	close(start)
+	wg.Wait()
+
+	cached, _ := cache.Get("messages:INBOX:0")
+	for _, row := range cached.(CachedMessages).Messages {
+		if !slices.Contains(row.Flags, provider.Flag(imap.FlagSeen)) {
+			t.Errorf("message %s lost its change: %v", row.ID, row.Flags)
+		}
+	}
+	if got, ok := cachedUnseen(t, cache); !ok || got != 0 {
+		t.Errorf("unseen = %d (cached %v), want 0", got, ok)
 	}
 }
