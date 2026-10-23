@@ -609,9 +609,24 @@ func (s *Session) doSMTP(f func(*smtp.Client) error) error {
 	}
 	defer c.Close()
 
+	// Auth would read the server's greeting and say EHLO first, and its
+	// error would not tell their failures from a refusal of the
+	// credentials: a busy server's 421, or a connection lost before AUTH,
+	// was taken for a bad password, and not tried again. Hello says EHLO
+	// as the client would, under the name it gives by default.
+	if err := c.Hello("localhost"); err != nil {
+		return err
+	}
+
+	// Only the server's reply to AUTH refuses the credentials. A connection
+	// lost during the exchange is a failed connection like any other.
 	auth := sasl.NewPlainClient("", s.username, s.password)
 	if err := c.Auth(auth); err != nil {
-		return provider.AuthError{Cause: err}
+		var smtpErr *smtp.SMTPError
+		if errors.As(err, &smtpErr) {
+			return provider.AuthError{Cause: err}
+		}
+		return err
 	}
 
 	if err := f(c); err != nil {
