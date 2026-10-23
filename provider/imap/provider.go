@@ -1698,7 +1698,6 @@ func (p *IMAPProvider) GetMessagePartsRaw(mailbox string, id provider.MessageID,
 		bodies[i] = msg.FindBodySection(item.body)
 		if headers[i] == nil || bodies[i] == nil {
 			return nil, nil, fmt.Errorf("server didn't return header and body of part %v", paths[i])
-
 		}
 	}
 	return headers, bodies, nil

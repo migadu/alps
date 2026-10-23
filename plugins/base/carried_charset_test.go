@@ -2,6 +2,7 @@ package alpsbase
 
 import (
 	"bufio"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
@@ -167,5 +168,50 @@ func TestHTTP_ACarriedTextFileInAnUnknownCharsetGoesAsStored(t *testing.T) {
 			t.Errorf("notes.txt went out as %q with the bytes % x, want no charset and the bytes as stored", header.Get("Content-Type"), body)
 		}
 		return
+	}
+}
+
+// A subsequent save reads the replacement draft, whose text file is already
+// UTF-8. It must keep both its label and content through another rewrite.
+func TestHTTP_CarriedCharsetSurvivesSavingTheReplacementAgain(t *testing.T) {
+	for _, backend := range []string{"maildir", "imap"} {
+		t.Run(backend, func(t *testing.T) {
+			var s *testServer
+			if backend == "maildir" {
+				s = newTestServer(t)
+				if _, _, _, err := s.store.AppendMessage("INBOX", rawMessage(latin1Notes), 0); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				s, _ = newRecordedIMAPTestServer(t, latin1Notes)
+			}
+			s.login()
+			s.expect(s.do("POST", "/mailboxes", url.Values{"name": {"Drafts"}}), http.StatusOK)
+			source := s.mailbox("INBOX").Messages[0].UID
+			form := carryNotes("INBOX", source)
+			form.Set("save_as_draft", "1")
+			previous := ""
+			for n := 0; n < 2; n++ {
+				response := s.do("POST", "/messages", form)
+				s.expect(response, http.StatusOK)
+				var answer struct {
+					UID string `json:"draft_uid"`
+				}
+				if err := json.Unmarshal([]byte(response.body), &answer); err != nil {
+					t.Fatal(err)
+				}
+				if answer.UID == "" || answer.UID == previous {
+					t.Fatalf("save %d returned UID %q after %q", n, answer.UID, previous)
+				}
+				drafts := s.mailbox("Drafts")
+				if len(drafts.Messages) != 1 {
+					t.Fatalf("save %d left %d drafts", n, len(drafts.Messages))
+				}
+				carriedNotes(t, s.rawMessage("Drafts", answer.UID))
+				previous = answer.UID
+				form.Set("draft_mailbox", "Drafts")
+				form.Set("draft_uid", answer.UID)
+			}
+		})
 	}
 }

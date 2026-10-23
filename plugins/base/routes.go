@@ -2754,7 +2754,8 @@ func handleComposeNew(ctx *alps.Context) error {
 				// UTF-8 or US-ASCII only. In a charset alps does not know,
 				// the text cannot be converted, and goes as it is stored,
 				// without a charset it could be written under.
-				entity, decodeErr := message.New(header, bytes.NewReader(bodies[i]))
+				// Keep an unknown charset from masking an undecodable transfer encoding.
+				entity, decodeErr := provider.DecodePart(header, bodies[i])
 				if decodeErr != nil && !message.IsUnknownCharset(decodeErr) {
 					return fmt.Errorf("failed to decode attachment %s: %v", pathStr, decodeErr)
 				}
