@@ -140,7 +140,7 @@ func envelopeOf(h mail.Header) *imap.Envelope {
 	}
 }
 
-// Helper to convert maildir.Message to provider.Message
+// Helper to convert a stored message to provider.Message
 func (p *Provider) parseMessage(mailbox string, key string, r io.Reader, mdFlags []maildir.Flag) (*provider.Message, error) {
 	msg, err := message.Read(r)
 	// Metadata and raw downloads do not require decoding the body. The
@@ -214,15 +214,11 @@ func (p *Provider) parseMessage(mailbox string, key string, r io.Reader, mdFlags
 	}, nil
 }
 
-func getAllMessages(dir maildir.Dir) ([]*maildir.Message, error) {
+func getAllMessages(b box) ([]*mailFile, error) {
 	// Move unseen messages from new/ to cur/
-	_, _ = dir.Unseen()
+	_ = b.unseen()
 
-	var msgs []*maildir.Message
-	err := dir.Walk(func(m *maildir.Message) error {
-		msgs = append(msgs, m)
-		return nil
-	})
+	msgs, err := b.messages()
 	// A maildir nothing has been delivered to yet has no cur directory, often no
 	// directory at all, because delivery is what creates them. That is an empty
 	// mailbox, as ListMailboxes already counts it, not a failure to read one.
@@ -237,7 +233,7 @@ func getAllMessages(dir maildir.Dir) ([]*maildir.Message, error) {
 // but getAllMessages empties new/ by moving those files to cur/, so after the
 // first listing UnseenCount would always report 0. IMAP's NumUnseen means "no
 // \Seen flag", so count that directly.
-func countUnseen(msgs []*maildir.Message) int {
+func countUnseen(msgs []*mailFile) int {
 	n := 0
 	for _, m := range msgs {
 		seen := false
@@ -255,11 +251,12 @@ func countUnseen(msgs []*maildir.Message) int {
 }
 
 func (p *Provider) ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
-	dir, err := p.getDir(mailbox)
+	b, err := p.openBox(mailbox)
 	if err != nil {
 		return nil, provider.PageInfo{}, err
 	}
-	msgs, err := getAllMessages(dir)
+	defer closeRoot(b.root)
+	msgs, err := getAllMessages(b)
 	if err != nil {
 		return nil, provider.PageInfo{}, err
 	}
@@ -305,13 +302,13 @@ func (p *Provider) ListMessages(mailbox string, sortOrder string, page, pageSize
 // as a case-insensitive substring of the whole file, headers and body alike.
 // Read in chunks, keeping the tail of each so a match across a chunk boundary
 // is still found, and stopped at the first one.
-func messageContains(m *maildir.Message, query string) bool {
+func messageContains(m *mailFile, query string) bool {
 	wanted := []byte(strings.ToLower(query))
 	if len(wanted) == 0 {
 		return true
 	}
 
-	f, err := os.Open(m.Filename())
+	f, err := m.Open()
 	if err != nil {
 		return false
 	}
@@ -342,11 +339,12 @@ func messageContains(m *maildir.Message, query string) bool {
 // newest first, and nothing about them: what an action on a whole folder is
 // applied to. An empty query is the whole mailbox.
 func (p *Provider) SearchMessageIDs(mailbox, query string) ([]provider.MessageID, error) {
-	dir, err := p.getDir(mailbox)
+	b, err := p.openBox(mailbox)
 	if err != nil {
 		return nil, err
 	}
-	msgs, err := getAllMessages(dir)
+	defer closeRoot(b.root)
+	msgs, err := getAllMessages(b)
 	if err != nil {
 		return nil, err
 	}
@@ -371,16 +369,17 @@ func (p *Provider) SearchMessageIDs(mailbox, query string) ([]provider.MessageID
 }
 
 func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
-	dir, err := p.getDir(mailbox)
+	b, err := p.openBox(mailbox)
 	if err != nil {
 		return nil, provider.PageInfo{}, err
 	}
-	msgs, err := getAllMessages(dir)
+	defer closeRoot(b.root)
+	msgs, err := getAllMessages(b)
 	if err != nil {
 		return nil, provider.PageInfo{}, err
 	}
 
-	var matchedMsgs []*maildir.Message
+	var matchedMsgs []*mailFile
 	for _, m := range msgs {
 		if messageContains(m, query) {
 			matchedMsgs = append(matchedMsgs, m)
@@ -428,13 +427,12 @@ func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page,
 // with provider.ErrMessageNotFound rather than as a disk failure. Only the
 // lookup can say it: a flag change renames the file, so one that vanishes
 // before the open was not necessarily deleted.
-func messageByKey(dir maildir.Dir, key string) (*maildir.Message, error) {
+func messageByKey(b box, key string) (*mailFile, error) {
 	if !messageKey(key) {
 		return nil, refused("not a Maildir message key: %q", key)
 	}
-	m, err := dir.MessageByKey(key)
-	var keyErr *maildir.KeyError
-	if (errors.As(err, &keyErr) && keyErr.N == 0) || errors.Is(err, fs.ErrNotExist) {
+	m, err := b.byKey(key)
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("key %q: %w", key, provider.ErrMessageNotFound)
 	}
 	return m, err
@@ -442,11 +440,12 @@ func messageByKey(dir maildir.Dir, key string) (*maildir.Message, error) {
 
 func (p *Provider) GetMessageMetadata(mailbox string, id provider.MessageID) (*provider.Message, error) {
 	key := id.String()
-	dir, err := p.getDir(mailbox)
+	b, err := p.openBox(mailbox)
 	if err != nil {
 		return nil, err
 	}
-	m, err := messageByKey(dir, key)
+	defer closeRoot(b.root)
+	m, err := messageByKey(b, key)
 	if err != nil {
 		return nil, err
 	}
@@ -543,11 +542,12 @@ func traversePart(part storedPart, partPath []int) (storedPart, error) {
 // header, parsed and in its bytes, and its body, of which at most limit bytes
 // when limit is above 0.
 func (p *Provider) readPart(mailbox string, key string, partPath []int, limit int64) (*provider.Message, textproto.Header, []byte, []byte, error) {
-	dir, err := p.getDir(mailbox)
+	b, err := p.openBox(mailbox)
 	if err != nil {
 		return nil, textproto.Header{}, nil, nil, err
 	}
-	m, err := messageByKey(dir, key)
+	defer closeRoot(b.root)
+	m, err := messageByKey(b, key)
 	if err != nil {
 		return nil, textproto.Header{}, nil, nil, err
 	}
@@ -635,16 +635,24 @@ func (p *Provider) GetMessagePartWithData(mailbox string, id provider.MessageID,
 	return msgMeta, part, header, body, nil
 }
 
+// SetMessagesFlags changes flags and reports each lookup or rename failure.
+// Messages already gone are skipped; all other failures remain visible so
+// the HTTP layer invalidates cached flags instead of reporting a false star.
 func (p *Provider) SetMessagesFlags(mailbox string, ids []provider.MessageID, op provider.FlagOperation) error {
-	dir, err := p.getDir(mailbox)
+	b, err := p.openBox(mailbox)
 	if err != nil {
 		return err
 	}
+	defer closeRoot(b.root)
 
+	var errs []error
 	for _, id := range ids {
 		key := id.String()
-		m, err := dir.MessageByKey(key)
+		m, err := messageByKey(b, key)
 		if err != nil {
+			if !errors.Is(err, provider.ErrMessageNotFound) {
+				errs = append(errs, fmt.Errorf("finding %s for flags: %w", id, err))
+			}
 			continue
 		}
 		currentFlags := m.Flags()
@@ -677,9 +685,11 @@ func (p *Provider) SetMessagesFlags(mailbox string, ids []provider.MessageID, op
 			newFlags = append(newFlags, f)
 		}
 
-		_ = m.SetFlags(newFlags)
+		if err := m.SetFlags(newFlags); err != nil {
+			errs = append(errs, fmt.Errorf("setting flags on %s: %w", id, err))
+		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (p *Provider) MarkAnswered(mailbox string, id provider.MessageID) error {
@@ -720,9 +730,15 @@ func (p *Provider) AppendMessage(mailbox string, msg provider.OutgoingMessageWri
 	if err != nil {
 		return nil, nil, 0, err
 	}
+	root, err := p.makeRoot()
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to initialize maildir %q: %w", mailbox, err)
+	}
+	defer root.Close()
+	b := box{root: root, dir: dir}
 	// Ensure the destination maildir exists (creates tmp/new/cur); a Sent or
 	// Drafts folder may not have been created yet.
-	if err := dir.Init(); err != nil {
+	if err := b.init(); err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to initialize maildir %q: %w", mailbox, err)
 	}
 
@@ -731,7 +747,7 @@ func (p *Provider) AppendMessage(mailbox string, msg provider.OutgoingMessageWri
 	// replaces the draft by it. The message is written in tmp, under a key
 	// no other writer can choose, and moved into cur once it is whole, under
 	// a name that carries its flags: it is never listed without them.
-	stored, w, err := dir.Create(flags)
+	stored, w, err := b.create(flags)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -755,12 +771,12 @@ func (p *Provider) AppendMessage(mailbox string, msg provider.OutgoingMessageWri
 // into cur as it is. The file is removed from tmp first, so that the move
 // finds nothing to move; and should it move the file all the same, the file
 // is removed from cur.
-func abandon(stored *maildir.Message, w io.WriteCloser) {
-	if f, ok := w.(interface{ Name() string }); ok {
-		os.Remove(f.Name())
+func abandon(stored *mailFile, w io.WriteCloser) {
+	if f, ok := w.(*tmpFile); ok {
+		f.root.Remove(f.tmp)
 	}
 	w.Close()
-	os.Remove(stored.Filename())
+	stored.Remove()
 }
 
 // DeleteMessages removes the messages, and reports each it could not. A
@@ -768,13 +784,14 @@ func abandon(stored *maildir.Message, w io.WriteCloser) {
 // The messages are removed one by one, so those before and after one that
 // fails are removed all the same.
 func (p *Provider) DeleteMessages(mailbox string, ids []provider.MessageID) error {
-	dir, err := p.getDir(mailbox)
+	b, err := p.openBox(mailbox)
 	if err != nil {
 		return err
 	}
+	defer closeRoot(b.root)
 	var errs []error
 	for _, id := range ids {
-		m, err := messageByKey(dir, id.String())
+		m, err := messageByKey(b, id.String())
 		if errors.Is(err, provider.ErrMessageNotFound) {
 			continue
 		}
@@ -793,10 +810,11 @@ func (p *Provider) DeleteMessages(mailbox string, ids []provider.MessageID) erro
 // stays where it was: reported as moved, it would be looked for in a folder
 // that does not have it.
 func (p *Provider) MoveMessages(sourceMailbox, destMailbox string, ids []provider.MessageID) (map[provider.MessageID]provider.MessageID, error) {
-	src, dst, err := p.getDirs(sourceMailbox, destMailbox)
+	src, dst, err := p.openBoxes(sourceMailbox, destMailbox)
 	if err != nil {
 		return nil, err
 	}
+	defer closeRoot(src.root)
 	res := make(map[provider.MessageID]provider.MessageID)
 
 	var errs []error
@@ -815,13 +833,13 @@ func (p *Provider) MoveMessages(sourceMailbox, destMailbox string, ids []provide
 }
 
 // copyMessageTo publishes a copy only after both reading and writing finish.
-func copyMessageTo(message *maildir.Message, target maildir.Dir) (*maildir.Message, error) {
+func copyMessageTo(message *mailFile, target box) (*mailFile, error) {
 	src, err := message.Open()
 	if err != nil {
 		return nil, err
 	}
 	defer src.Close()
-	stored, w, err := target.Create(message.Flags())
+	stored, w, err := target.create(message.Flags())
 	if err != nil {
 		return nil, err
 	}
@@ -839,16 +857,17 @@ func copyMessageTo(message *maildir.Message, target maildir.Dir) (*maildir.Messa
 // CopyMessages copies the messages, and answers the ID of each copy, as
 // MoveMessages does.
 func (p *Provider) CopyMessages(sourceMailbox, destMailbox string, ids []provider.MessageID) (map[provider.MessageID]provider.MessageID, error) {
-	src, dst, err := p.getDirs(sourceMailbox, destMailbox)
+	src, dst, err := p.openBoxes(sourceMailbox, destMailbox)
 	if err != nil {
 		return nil, err
 	}
+	defer closeRoot(src.root)
 	res := make(map[provider.MessageID]provider.MessageID)
 
 	var errs []error
 	for _, id := range ids {
 		m, err := messageByKey(src, id.String())
-		var copied *maildir.Message
+		var copied *mailFile
 		if err == nil {
 			// CopyTo closes its writer even after a read error, publishing
 			// an empty or partial copy. Only a completed copy may reach cur.
