@@ -26,6 +26,8 @@ export class AlpsAddressInput extends LitElement {
   @state() private focusedSuggestionIndex = -1;
   private _suggestionTimeout: number | null = null;
   private _suggestionSeq = 0;
+  /** The suggestions' hiding after a blur (see _handleBlur). */
+  private _hideTimeout: number | null = null;
 
   public focus() {
     const input = this.shadowRoot?.querySelector('input');
@@ -46,6 +48,28 @@ export class AlpsAddressInput extends LitElement {
     // suggest to: a lookup still waiting out its pause would ask the plugins
     // all the same.
     this._cancelSuggestions();
+    if (this._hideTimeout !== null) {
+      window.clearTimeout(this._hideTimeout);
+      this._hideTimeout = null;
+    }
+  }
+
+  /**
+   * Whether what is typed is an address, which leaving the field, or
+   * {@link commitPending}, makes a pill. Send can be pressed for it.
+   */
+  get hasPendingAddress(): boolean {
+    const inputVal = this.inputText.trim();
+    return !!inputVal && this._isValidEmail(inputVal);
+  }
+
+  /**
+   * Makes what is typed a pill now, when it is an address. Close and Send call
+   * it before they read the composer, so that an address typed and not yet a
+   * pill is saved and sent with the rest, whatever has the focus.
+   */
+  commitPending() {
+    if (this.hasPendingAddress) this._addAddress(this.inputText.trim(), false);
   }
 
   private _handleI18nChange = () => this.requestUpdate();
@@ -220,12 +244,16 @@ export class AlpsAddressInput extends LitElement {
   }
 
   private _handleBlur() {
-    // Small timeout to allow mousedown to fire on suggestion buttons before we hide them by clearing inputText
-    setTimeout(() => {
-      const inputVal = this.inputText.trim();
-      if (inputVal && this._isValidEmail(inputVal)) {
-        this._addAddress(inputVal, false);
-      }
+    // Taken at once, before whatever took the focus acts on what is here. It
+    // was taken 150ms later, and raced the press that left the field: Close
+    // saved the draft without it, and Send was still disabled. A click on a
+    // suggestion leaves the focus where it is (see its mousedown).
+    this.commitPending();
+    // Only the suggestions wait, so that a click already on its way to one
+    // still lands.
+    if (this._hideTimeout !== null) window.clearTimeout(this._hideTimeout);
+    this._hideTimeout = window.setTimeout(() => {
+      this._hideTimeout = null;
       this.suggestions = [];
       this.focusedSuggestionIndex = -1;
     }, 150);
