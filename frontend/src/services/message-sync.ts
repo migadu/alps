@@ -125,6 +125,10 @@ export class MessageSyncService extends EventTarget {
    * Answers a put-back, for rows the write refused, which then stay.
    */
   rowsTakenOut(keys: string[]): () => void {
+    // A write can still be waiting when the user leaves this folder and
+    // comes back. Do not offer the old rows from memory before afterWrites
+    // runs its final sync; a refused write can be read again from the server.
+    if (keys.length > 0) this.forgetListings();
     const gone = new Set(keys);
     this.noteChange((data) => removeRows(data, gone));
     return () => gone.clear();

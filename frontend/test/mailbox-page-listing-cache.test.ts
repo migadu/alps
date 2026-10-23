@@ -56,6 +56,15 @@ let release: () => void;
  * time, so a write sent meanwhile waits for it.
  */
 let reading: Promise<void> | null;
+/** A write held at the server; subsequent listings wait behind it. */
+let writing: { pause: Promise<void>; release: () => void; refuse: boolean } | null;
+
+function holdWrite(refuse: boolean): () => void {
+  let release!: () => void;
+  const pause = new Promise<void>((resolve) => { release = resolve; });
+  writing = { pause, release, refuse };
+  return release;
+}
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
@@ -65,12 +74,19 @@ beforeEach(() => {
   holdNext = null;
   release = () => {};
   reading = null;
+  writing = null;
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
     const u = new URL(String(url), 'http://alps.test');
     const write = u.pathname.match(/^\/mailboxes\/([^/]+)\/messages\/(flag|move)$/);
     if (write && init.method === 'PUT') {
       if (reading) await reading;
+      if (writing) {
+        const held = writing;
+        await held.pause;
+        if (writing === held) writing = null;
+        if (held.refuse) return new Response(JSON.stringify({ error: 'refused' }), { status: 403 });
+      }
       const mailbox = decodeURIComponent(decodeURIComponent(write[1]));
       const body = JSON.parse(String(init.body));
       const named = (m: any) => body.uids.includes(m.UID);
@@ -86,6 +102,7 @@ beforeEach(() => {
     }
     const match = u.pathname.match(/^\/mailboxes\/([^/]+)$/);
     if (!match) return new Response('{}', { status: 200 });
+    if (writing) await writing.pause;
     const mailbox = decodeURIComponent(decodeURIComponent(match[1]));
     listings.push(mailbox);
     const messages = JSON.parse(JSON.stringify(server[mailbox] ?? []));
@@ -108,6 +125,7 @@ beforeEach(() => {
 afterEach(() => {
   // A listing a failed test left held would hold every listing after it.
   release();
+  writing?.release();
   messageSync.stop();
   cleanup();
   window.dispatchEvent(new CustomEvent('session-cleared'));
@@ -173,6 +191,44 @@ describe('going back to a folder', () => {
  * answer shows the rows as they were before it.
  */
 describe('a change to a view shown from memory, while it is read again', () => {
+  it.each([false, true])('keeps removed rows out of cached views while a write is held, then reads its outcome (refused=%s)', async (refused) => {
+    history.replaceState(null, '', '#/mailbox/INBOX');
+    const el = await mount<El>('mailbox-page', { i18nStore, settingsStore: settingsStore(), composeStore: new EventTarget() });
+    await waitFor(() => subjects(el).length === 2 && !el.isSyncing, 'the Inbox');
+    await open(el, 'Archive');
+    await waitFor(() => subjects(el).join() === 'Archive 3' && !el.isSyncing, 'Archive');
+    await open(el, 'INBOX');
+    await waitFor(() => subjects(el).length === 2 && !el.isSyncing, 'the Inbox read again');
+
+    const finishWrite = holdWrite(refused);
+    el.selectedKeys = new Set([messageKey('INBOX', '9')]);
+    await el.updateComplete;
+    const filing = el._handleReaderAction(new CustomEvent('action', { detail: { action: 'archive' } }));
+    await flush();
+    expect(subjects(el)).toEqual(['INBOX 8']);
+
+    const kept: string[] = [];
+    const note = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail.kept) kept.push(detail.data.ListedMailbox);
+    };
+    messageSync.addEventListener('sync-success', note);
+    onTestFinished(() => messageSync.removeEventListener('sync-success', note));
+    await open(el, 'Archive');
+    await open(el, 'INBOX');
+    // Both server reads wait behind the write. The removed row must not be
+    // published from memory during either navigation.
+    expect(kept).toEqual([]);
+    expect(subjects(el)).toEqual(['INBOX 8']);
+
+    finishWrite();
+    await filing;
+    const expected = refused ? ['INBOX 9', 'INBOX 8'] : ['INBOX 8'];
+    await waitFor(() => !el.isSyncing && subjects(el).join() === expected.join(), 'the final listing, including a refused row');
+    expect(server.INBOX.map((m) => m.Envelope.Subject)).toEqual(expected);
+    expect(listings.filter((mailbox) => mailbox === 'INBOX').length).toBeGreaterThanOrEqual(3);
+  });
+
   async function inboxFromMemory(): Promise<El> {
     history.replaceState(null, '', '#/mailbox/INBOX');
     const el = await mount<El>('mailbox-page', { i18nStore, settingsStore: settingsStore(), composeStore: new EventTarget() });
