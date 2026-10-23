@@ -141,7 +141,9 @@ func envelopeOf(h mail.Header) *imap.Envelope {
 // Helper to convert maildir.Message to provider.Message
 func (p *Provider) parseMessage(mailbox string, key string, r io.Reader, mdFlags []maildir.Flag) (*provider.Message, error) {
 	msg, err := message.Read(r)
-	if err != nil {
+	// Metadata and raw downloads do not require decoding the body. The
+	// library still returns a usable entity for unsupported encodings.
+	if err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
 		return nil, err
 	}
 
