@@ -59,8 +59,6 @@ export class ContactsPage extends LitElement {
   @state() private sidebarWidth = 250;
   @state() private listWidth = 380;
   @state() private sidebarCollapsed = false;
-  /** Mirrors the sidebar's own hover overlay (`peek-change`). */
-  @state() private sidebarPeeking = false;
   @state() private isMobile = window.innerWidth <= 768;
   @state() private mobileSidebarOpen = false;
   @state() private isSidebarDragging = false;
@@ -994,6 +992,9 @@ export class ContactsPage extends LitElement {
   }
 
   private async saveOnce(payload: any) {
+    // Keep the successful form snapshot independent of edits made while the
+    // request is in flight. The queued form is compared to this snapshot next.
+    payload = { ...payload };
     const editing = !!this.selectedContact && !this.selectedContact.isTemporary;
     // After a refusal every autosave would be refused the same way, one error
     // per keystroke. Nothing is sent until the edit is cancelled, which shows
@@ -1011,7 +1012,12 @@ export class ContactsPage extends LitElement {
       if (editing) {
         // The page's version, not the form's: the form copied the card when
         // editing began, and each save since has moved it on.
-        data = await contactsService.updateContact(this.selectedContact.path!, { ...payload, etag: this.selectedContact.etag });
+        // Clearing one displayed copy must not clear the next hidden copy on
+        // every later autosave. Only fields changed since our last successful
+        // form save express a new editing gesture.
+        const changed_fields = ['organization', 'title', 'note', 'url', 'nickname', 'public_key', 'address']
+          .filter(field => String(payload[field] || '').trim() !== String(this.selectedContact[field] || '').trim());
+        data = await contactsService.updateContact(this.selectedContact.path!, { ...payload, changed_fields, etag: this.selectedContact.etag });
       } else {
         data = await contactsService.createContact(payload);
       }
@@ -1353,16 +1359,12 @@ export class ContactsPage extends LitElement {
           @drag-end=${() => this.isSidebarDragging = false}
           @toggle-collapse=${() => this.settingsStore?.updateSettings({ sidebarCollapsed: !this.sidebarCollapsed })}
           @close-sidebar=${() => this.mobileSidebarOpen = false}
-          @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
         >
           <alps-contacts-categories
             .contacts=${this.allContacts}
             .uniqueCategories=${this.uniqueCategories}
             .selectedCategory=${this.selectedCategory}
             .filterQuery=${this.filterQuery}
-            .sidebarCollapsed=${this.sidebarCollapsed}
-            .sidebarPeeking=${this.sidebarPeeking}
-            .isMobile=${this.isMobile}
             @create-contact=${this.handleCreateNew}
             @select-category=${(e: CustomEvent) => {
         this.clearSearch();

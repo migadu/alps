@@ -2,12 +2,14 @@ package alpsbase
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -214,5 +216,89 @@ func TestHTTP_ASendGivenUpOnBeforeItGoesIsNotSent(t *testing.T) {
 	}
 	if n := s.messages("Sent"); n != 0 {
 		t.Errorf("the message the browser gave up on before it went was filed in Sent")
+	}
+}
+
+// A temporary refusal ends the first transaction without sending DATA. If
+// the browser gives up while that refusal is in flight, the retry must not
+// start another transaction: the composer can already be sending again.
+func TestHTTP_ASendGivenUpOnBeforeItsRetryIsNotSent(t *testing.T) {
+	reached, release := make(chan struct{}), make(chan struct{})
+	var released sync.Once
+	defer released.Do(func() { close(release) })
+	var dataCommands atomic.Int32
+	addr, relay := listenScripted(t, func(n int, command string) string {
+		if command == "DATA" {
+			dataCommands.Add(1)
+		}
+		if n == 1 && command == "RCPT" {
+			close(reached)
+			<-release
+			return "451 4.3.0 Try again later"
+		}
+		return ""
+	})
+	s := newSendTestServer(t, addr, &fetchStall{})
+	draft := "From: " + testUser + "\r\nTo: charles@remote.test\r\nSubject: Notes\r\n\r\nSee you.\r\n"
+	if _, err := s.user.Append(context.Background(), "Drafts", strings.NewReader(draft), &imap.AppendOptions{Flags: []imap.Flag{imap.FlagDraft}}); err != nil {
+		t.Fatal(err)
+	}
+	s.login()
+	form := sendForm()
+	form.Set("draft_mailbox", "Drafts")
+	form.Set("draft_uid", "1")
+	ctx, giveUp := context.WithCancel(context.Background())
+	defer giveUp()
+	req, err := http.NewRequestWithContext(ctx, "POST", s.url+"/messages", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", s.url)
+	finished := make(chan error, 1)
+	go func() {
+		res, err := s.client.Do(req)
+		if err == nil {
+			res.Body.Close()
+		}
+		finished <- err
+	}()
+	select {
+	case <-reached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first transaction did not reach RCPT")
+	}
+	send := <-s.sends
+	giveUp()
+	select {
+	case err := <-finished:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("the browser returned %v, want cancellation", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the browser did not give up")
+	}
+	select {
+	case <-send.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the server did not notice that the browser gave up")
+	}
+	released.Do(func() { close(release) })
+	select {
+	case <-s.sent:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the cancelled send was not finished")
+	}
+	if _, mails, complete := relay.counts(); mails != 1 || complete != 0 {
+		t.Errorf("the cancelled send made %d transactions and completed %d messages, want 1 and 0", mails, complete)
+	}
+	if n := dataCommands.Load(); n != 0 {
+		t.Errorf("the cancelled send issued DATA %d times", n)
+	}
+	if n := s.messages("Sent"); n != 0 {
+		t.Errorf("the cancelled send was filed: Sent holds %d messages", n)
+	}
+	if n := s.messages("Drafts"); n != 1 {
+		t.Errorf("the unsent draft was lost: Drafts holds %d messages", n)
 	}
 }

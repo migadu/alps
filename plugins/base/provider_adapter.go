@@ -266,8 +266,9 @@ func markMessageAnsweredWithProvider(p provider.MailProvider, mailbox string, ui
 	return p.MarkAnswered(mailbox, uid)
 }
 
-// appendMessageWithProvider appends a message using the provider
-func appendMessageWithProvider(p provider.MailProvider, msg *OutgoingMessage, mboxType provider.MailboxType) (*MailboxInfo, provider.MessageID, uint32, error) {
+// appendMessageWithProvider appends a message using the provider: a message
+// as sent (an *OutgoingMessage), or as Drafts stores it (see asDraft).
+func appendMessageWithProvider(p provider.MailProvider, msg provider.OutgoingMessageWriter, mboxType provider.MailboxType) (*MailboxInfo, provider.MessageID, uint32, error) {
 	mbox, uid, size, err := p.AppendMessage("", msg, mboxType)
 	if err != nil {
 		return nil, nil, 0, err

@@ -57,9 +57,11 @@ func TestRequireCalendarObjectPath(t *testing.T) {
 
 	for _, in := range []string{
 		"",
-		// The calendar itself: RemoveAll here deletes every event in it.
+		// The calendar itself: a DELETE of it removes every event in it.
 		"/dav/calendars/user/default/",
 		"/dav/calendars/user/default",
+		// Outside every calendar: another collection, a sibling sharing the
+		// prefix string, and a path that climbs out and back.
 		"/dav/addressbooks/user/default/abc.vcf",
 		"/dav/calendars/user/default-backup/event.ics",
 		"/dav/calendars/user/default/../../addressbooks/user/default/abc.vcf",

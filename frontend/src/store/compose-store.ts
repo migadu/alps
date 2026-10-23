@@ -418,8 +418,10 @@ export class ComposeStore extends EventTarget {
   /**
    * Applies `updates` to a composer. A change to what would be saved marks
    * it unsaved, except with `edit: false`, for content the user did not
-   * write: the HTML part a plain-text draft is given as it opens in HTML.
-   * Marked unsaved for that, a draft only opened was stored again.
+   * write: the HTML part a plain-text draft is given as it opens in HTML,
+   * or the paragraph the editor adds after a quote. Marked unsaved for
+   * that, a draft only opened was stored again, and an untouched reply
+   * was filed as a draft.
    */
   updateComposer(id: string, updates: Partial<ComposerInstance>, { edit = true }: { edit?: boolean } = {}) {
     if (updates.to) updates.to = filterAddresses(updates.to);

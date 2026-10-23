@@ -7,6 +7,7 @@ package imip
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -108,28 +109,47 @@ func (cw *countingWriter) Write(p []byte) (int, error) {
 
 // Send submits the message over c. The envelope sender is the account's own
 // address, which the submission server always lets it use; the From header
-// names the organizer or attendee the message speaks for.
+// names the organizer or attendee the message speaks for. A message that
+// cannot be written is not sent, and c is closed.
 func Send(c *smtp.Client, envelopeFrom string, m *Message) error {
 	if len(m.To) == 0 {
 		return nil
 	}
+	// Until the message is written, the server's replies and a failed
+	// connection are wrapped: the session's DoSMTP tries a send again when
+	// one may pass.
 	if err := c.Mail(envelopeFrom, nil); err != nil {
-		return fmt.Errorf("MAIL FROM failed: %v", err)
+		return fmt.Errorf("MAIL FROM failed: %w", err)
 	}
 	for _, to := range m.To {
 		if err := c.Rcpt(to.Address, nil); err != nil {
-			return fmt.Errorf("RCPT TO failed: %v (%s)", err, to.Address)
+			return fmt.Errorf("RCPT TO failed: %w (%s)", err, to.Address)
 		}
 	}
 	w, err := c.Data()
 	if err != nil {
-		return fmt.Errorf("DATA failed: %v", err)
+		return fmt.Errorf("DATA failed: %w", err)
 	}
 	if _, err := m.WriteTo(w); err != nil {
-		w.Close()
+		// Closing w would end DATA, and the server would deliver what has
+		// been written so far as the whole message. Dropping the connection
+		// is the only way to call DATA off. The failure is not wrapped, and
+		// so not tried again.
+		c.Close()
 		return fmt.Errorf("failed to write the message: %v", err)
 	}
-	return w.Close()
+	if err := w.Close(); err != nil {
+		// The server's answer to the message is wrapped: a refusal for now
+		// is tried again. A connection that failed instead may have failed
+		// after the server took the message, and is not, so that the
+		// message is not sent twice.
+		var smtpErr *smtp.SMTPError
+		if errors.As(err, &smtpErr) {
+			return fmt.Errorf("failed to end the message: %w", err)
+		}
+		return fmt.Errorf("failed to end the message: %v", err)
+	}
+	return nil
 }
 
 // ContentType reports whether a MIME type is one an iTIP message travels as:

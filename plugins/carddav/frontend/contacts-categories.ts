@@ -6,6 +6,7 @@ import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
+import '../../../frontend/src/components/alps-sidebar-strip';
 
 @customElement('alps-contacts-categories')
 export class AlpsContactsCategories extends LitElement {
@@ -16,10 +17,6 @@ export class AlpsContactsCategories extends LitElement {
   @property({ type: Array }) uniqueCategories: string[] = [];
   @property({ type: String }) selectedCategory = '';
   @property({ type: String }) filterQuery = '';
-  @property({ type: Boolean }) sidebarCollapsed = false;
-  /** The collapsed sidebar is open as its hover overlay (alps-sidebar's `peeking`). */
-  @property({ type: Boolean }) sidebarPeeking = false;
-  @property({ type: Boolean }) isMobile = false;
 
   @state() private activeKebabMenu: string | null = null;
   @state() private sidebarScrolled = false;
@@ -35,6 +32,10 @@ export class AlpsContactsCategories extends LitElement {
       width: 100%;
       min-height: 0;
       box-sizing: border-box;
+      /* The collapsed strip's slide (sidebarLayoutStyles): a category's icon
+         sits 22px in, after the content's 8px padding, the row's 8px and the
+         icon's own 6px, so it slides 14px to stand 8px inside the strip. */
+      --strip-slide: 14px;
     }
     .sidebar-wrapper {
       background-color: var(--bg-secondary, #f9fafb);
@@ -173,17 +174,18 @@ export class AlpsContactsCategories extends LitElement {
 
   render() {
     return html`
-      <div class="sidebar-wrapper ${this.sidebarCollapsed && !this.isMobile && !this.sidebarPeeking ? 'collapsed' : ''}">
+      <!-- Frame and content follow the strip state alps-sidebar provides:
+           collapsed, they keep every category, dimmed, inert and behind the
+           main view. Create, above, stays live. -->
+      <alps-sidebar-frame class="sidebar-wrapper">
         <alps-toolbar class="sidebar-header" ?scrolled=${this.sidebarScrolled}>
           <alps-create-button 
             icon="userPlus" 
-            ?collapsed=${this.sidebarCollapsed && !this.isMobile && !this.sidebarPeeking}
             @click=${() => this.dispatchEvent(new CustomEvent('create-contact'))}
           >${this.i18nStore?.t('contacts.addContact')}</alps-create-button>
         </alps-toolbar>
         
-        <!-- Inert in the strip, as it is dimmed there. -->
-        <div class="sidebar-content" ?inert=${this.sidebarCollapsed && !this.isMobile && !this.sidebarPeeking} @scroll=${this.handleSidebarScroll}>
+        <alps-sidebar-content class="sidebar-content" @scroll=${this.handleSidebarScroll}>
           <div class="sidebar-scroll-content">
             ${[CATEGORY_ALL_CONTACTS, CATEGORY_FAVORITES, ...this.uniqueCategories.filter(c => c !== CATEGORY_FAVORITES)].map((cat, index) => {
       const count = cat === CATEGORY_ALL_CONTACTS
@@ -260,8 +262,8 @@ export class AlpsContactsCategories extends LitElement {
               `;
     })}
           </div>
-        </div>
-      </div>
+        </alps-sidebar-content>
+      </alps-sidebar-frame>
     `;
   }
 }

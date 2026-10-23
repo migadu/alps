@@ -34,22 +34,25 @@ func (s *Server) dialSMTP(username string) (*smtp.Client, error) {
 		timeout = 30 * time.Second // Default to 30s
 	}
 
+	// A failure to connect is wrapped, so that DoSMTP can tell a connection
+	// that failed, which it tries again, from a refusal or a certificate it
+	// cannot trust, which it does not.
 	var c *smtp.Client
 	var err error
 	if tls {
 		c, err = smtp.DialTLS(host, nil)
 		if err != nil {
-			return nil, fmt.Errorf("failed to connect to SMTPS server: %v", err)
+			return nil, fmt.Errorf("failed to connect to SMTPS server: %w", err)
 		}
 	} else if !insecure {
 		c, err = smtp.DialStartTLS(host, nil)
 		if err != nil {
-			return nil, fmt.Errorf("failed to connect to SMTP server: %v", err)
+			return nil, fmt.Errorf("failed to connect to SMTP server: %w", err)
 		}
 	} else {
 		c, err = smtp.Dial(host)
 		if err != nil {
-			return nil, fmt.Errorf("failed to connect to SMTP server: %v", err)
+			return nil, fmt.Errorf("failed to connect to SMTP server: %w", err)
 		}
 	}
 
