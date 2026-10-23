@@ -270,6 +270,33 @@ describe('login-webauthn-page', () => {
       }
     });
 
+    // The options are decoded on the way to the browser. A challenge or a
+    // credential id that was missing failed with the decoder's own English
+    // sentence, "base64url is null or undefined"; one that was not base64url
+    // failed in atob, and read as a general error.
+    it.each([
+      ['without a challenge', { allowCredentials: [] }],
+      ['with a credential that has no id', { challenge: 'AAAA', allowCredentials: [{ type: 'public-key' }] }],
+      ['with a challenge that is not base64url', { challenge: '!!!' }],
+      ['with only whitespace for a challenge', { challenge: ' \t\n' }],
+      ['with whitespace inside a challenge', { challenge: 'AA AA' }],
+      ['with only whitespace for a credential id', { challenge: 'AAAA', allowCredentials: [{ type: 'public-key', id: ' \t' }] }],
+      ['with a plus sign in a challenge', { challenge: 'AA+_' }],
+      ['with a slash in a credential id', { challenge: 'AAAA', allowCredentials: [{ type: 'public-key', id: '/w' }] }],
+    ])('says the options cannot be used, in the user\'s language, when they come %s', async (_, publicKey) => {
+      const get = vi.fn(async () => null);
+      Object.defineProperty(navigator, 'credentials', { value: { get }, configurable: true });
+      const { el, key } = await verify(() => answer(200, { publicKey }));
+      key.mockRestore();
+      try {
+        await said(el, 'webauthn.errors.invalid_options');
+        expect(get).not.toHaveBeenCalled();
+      } finally {
+        el.remove();
+        delete (navigator as any).credentials;
+      }
+    });
+
     it('goes back to the password, and says why, when the pending sign-in is gone', async () => {
       sessionStorage.setItem('pending_2fa_username', 'ada@example.com');
       const { el } = await verify(options, () => answer(401, { error: 'no pending 2FA session' }));

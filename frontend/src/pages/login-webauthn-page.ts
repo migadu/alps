@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { authenticateCredential, isWebAuthnSupported } from '../utils/webauthn-utils';
+import { authenticateCredential, InvalidOptionsError, isWebAuthnSupported } from '../utils/webauthn-utils';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { setLoginNotice } from '../utils/login-notice';
@@ -261,9 +261,12 @@ export class LoginWebAuthnPage extends LitElement {
       // for a cancelled prompt even link to the WebAuthn specification). A
       // prompt cancelled or timed out is a key that was not used, and Verify
       // asks for it again; any other browser error is told as a general
-      // error, in the user's language.
+      // error, in the user's language. Options that cannot be decoded are
+      // told as options without a publicKey are.
       if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') {
         this.statusMessage = this.i18nStore?.t('webauthn.errors.cancelled');
+      } else if (err instanceof InvalidOptionsError) {
+        this.statusMessage = this.i18nStore?.t('webauthn.errors.invalid_options');
       } else if (err instanceof DOMException) {
         this.statusMessage = this.i18nStore?.t('webauthn.errors.general');
       } else {
