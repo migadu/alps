@@ -1781,6 +1781,10 @@ func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessag
 		flags = append(flags, imap.FlagDraft)
 	}
 	options := imap.AppendOptions{Flags: flags}
+	uidNext, err := p.uidNextWithoutUIDPlus(mbox.Name)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
+	}
 	appendData, err := p.appendTo(mbox.Name, buf.Bytes(), &options)
 	var imapErr *imap.Error
 	if remembered && errors.As(err, &imapErr) && imapErr.Code == imap.ResponseCodeTryCreate {
@@ -1790,6 +1794,10 @@ func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessag
 		if mbox, _, err = p.findMailboxByType(mboxType); err == nil && mbox == nil {
 			err = fmt.Errorf("unable to resolve mailbox")
 		}
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
+		}
+		uidNext, err = p.uidNextWithoutUIDPlus(mbox.Name)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
 		}
@@ -1804,9 +1812,110 @@ func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessag
 	var uid provider.MessageID
 	if appendData != nil && appendData.UID != 0 {
 		uid = IMAPUID(appendData.UID)
+	} else if uidNext != 0 {
+		uid = p.storedUID(mbox.Name, uidNext, buf.Bytes())
 	}
 
 	return mbox, uid, size, nil
+}
+
+// uidNextWithoutUIDPlus reads the UID mailbox gives the next message stored
+// in it, from a server without UIDPLUS, which will not say which UID it gave
+// a message appended to it; 0 from one with UIDPLUS, or when it cannot be
+// read. See storedUID.
+func (p *IMAPProvider) uidNextWithoutUIDPlus(mailbox string) (imap.UID, error) {
+	if p.client.Caps().Has(imap.CapUIDPlus) {
+		return 0, nil
+	}
+	var status *imap.StatusData
+	err := p.answeredWithin("STATUS before APPEND", func() (err error) {
+		status, err = p.client.Status(mailbox, &imap.StatusOptions{UIDNext: true}).Wait()
+		return err
+	})
+	if err != nil {
+		var refused *imap.Error
+		if errors.As(err, &refused) && (refused.Type == imap.StatusResponseTypeNo || refused.Type == imap.StatusResponseTypeBad) {
+			return 0, nil
+		}
+		p.client.Close()
+		return 0, p.lostIf(err)
+	}
+	return status.UIDNext, nil
+}
+
+// storedUID finds the UID of message, which a server without UIDPLUS has
+// just stored in mailbox, by its Message-ID; nil when it cannot be told.
+//
+// Every save of a draft has the draft's Message-ID, and earlier copies of it
+// may be in the mailbox, left by saves that could not name theirs. UIDs only
+// grow, so a copy stored since uidNext was read has uidNext or one above it,
+// and an earlier copy does not. Only when exactly one copy is so is it this
+// message: two would mean another client stored one meanwhile, and either
+// could be this one.
+func (p *IMAPProvider) storedUID(mailbox string, uidNext imap.UID, message []byte) provider.MessageID {
+	h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(message)))
+	if err != nil {
+		return nil
+	}
+	ids := provider.MessageIDs(h.Get("Message-Id"))
+	if len(ids) != 1 {
+		return nil
+	}
+	var stored provider.MessageID
+	err = p.answeredWithin("UID lookup after APPEND", func() error {
+		if err := p.ensureMailboxSelected(mailbox); err != nil {
+			return err
+		}
+		var since imap.UIDSet
+		since.AddRange(uidNext, 0)
+		data, err := p.client.UIDSearch(&imap.SearchCriteria{
+			UID:    []imap.UIDSet{since},
+			Header: []imap.SearchCriteriaHeaderField{{Key: "Message-Id", Value: ids[0]}},
+		}, nil).Wait()
+		if err != nil {
+			return err
+		}
+		// uidNext:* also names the last message if no UID reaches uidNext.
+		var candidates imap.UIDSet
+		for _, uid := range data.AllUIDs() {
+			if uid >= uidNext {
+				candidates.AddNum(uid)
+			}
+		}
+		if len(candidates) == 0 {
+			return nil
+		}
+		messages, err := p.client.Fetch(candidates, &imap.FetchOptions{UID: true, Envelope: true}).Collect()
+		if err != nil {
+			return err
+		}
+		var found []imap.UID
+		for _, message := range messages {
+			if message.Envelope == nil || message.UID < uidNext {
+				continue
+			}
+			// HEADER SEARCH is a substring match: only the complete parsed
+			// Message-ID can distinguish this draft from a similar ID.
+			own := provider.MessageIDs(message.Envelope.MessageID)
+			if len(own) == 1 && own[0] == ids[0] {
+				found = append(found, message.UID)
+			}
+		}
+		if len(found) == 1 {
+			stored = IMAPUID(found[0])
+		}
+		return nil
+	})
+	if err != nil {
+		// APPEND has already succeeded: a failed auxiliary read leaves its
+		// UID unknown and must never authorize repeating the stored write.
+		var refused *imap.Error
+		if !errors.As(err, &refused) || (refused.Type != imap.StatusResponseTypeNo && refused.Type != imap.StatusResponseTypeBad) {
+			p.client.Close()
+		}
+		return nil
+	}
+	return stored
 }
 
 // appendTo stores one message in the named mailbox.
