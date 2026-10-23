@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -116,6 +117,22 @@ type Session struct {
 
 	providerLocker sync.Mutex
 	provider       provider.MailProvider // protected by locker, can be nil
+
+	// The session's second connection, for mail work the user is not waiting
+	// for: see DoBackgroundMail.
+	background backgroundConnection
+
+	// How many connections the session has given up on that are not closed
+	// yet: see giveUpConnection.
+	givenUp atomic.Int32
+
+	// The store entries the session's connection has read or written, as the
+	// JSON the store holds them in, and nil for one it found missing, when the
+	// connection's store keeps such copies itself: see sessionStore. Changed
+	// only with providerLocker held as well, so that they change in the order
+	// the connection read and wrote them.
+	storeEntriesLocker sync.RWMutex
+	storeEntries       map[string]json.RawMessage // protected by storeEntriesLocker
 
 	attachmentsLocker sync.Mutex
 	attachments       map[string]*Attachment // protected by attachmentsLocker
@@ -345,15 +362,65 @@ func (s *Session) DoMail(f func(provider.MailProvider) error) error {
 	return s.DoMailWithContext(context.Background(), f)
 }
 
-// DoMailWithContext executes a mail operation and safely closes the provider
-// if the context is cancelled (e.g. client disconnects).
+// DoMailWithContext executes a mail operation for a request whose context is
+// ctx.
+//
+// A request given up on (the browser timed out, or the page went away) while
+// it waited for the connection, or while the connection was opened for it,
+// does no mail work: no one will read the answer, and the requests queued
+// behind it would wait for it. One given up on while its operation runs lets
+// the operation finish, and the connection stays open: see runMail. Mail work
+// that ends something already done elsewhere, such as filing a message the
+// SMTP server has taken, is not the request's to give up: it runs with
+// FinishMail.
 func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailProvider) error) error {
+	return s.doMail(ctx, f, true)
+}
+
+// FinishMail is DoMailWithContext for mail work that finishes something
+// already done elsewhere, such as filing a message the SMTP server has taken.
+// It runs even when its request was given up on before its turn, and after a
+// network error it is tried again on a new connection as if the request still
+// waited. Once its request is given up on, it holds the connection no longer
+// than any other operation whose request was given up on (see runMail). Run
+// with DoMail, which never gives up, an operation on a connection that no
+// longer answers would hold every request of the session for good, where the
+// browser giving up used to let that connection go.
+func (s *Session) FinishMail(ctx context.Context, f func(provider.MailProvider) error) error {
+	return s.doMail(ctx, f, false)
+}
+
+// doMail runs f on the session's connection for DoMailWithContext, and for
+// FinishMail when mayGiveUp is false.
+func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) error, mayGiveUp bool) error {
 	s.providerLocker.Lock()
 	defer s.providerLocker.Unlock()
 
+	if err := ctx.Err(); err != nil && mayGiveUp {
+		return fmt.Errorf("context cancelled: %w", err)
+	}
+
 	if s.provider == nil {
 		var err error
-		s.provider, err = s.connect()
+		// The session's background connection, when it holds one that is
+		// idle, rather than another: see takeIdleBackground.
+		if s.provider = s.takeIdleBackground(); s.provider == nil {
+			s.provider, err = s.connect()
+		}
+		if err != nil && atConnectionLimit(err) {
+			// At the account's connection limit, the background connection
+			// instead, once the operation running on it has returned: see
+			// reclaimBackground.
+			var waitErr error
+			if s.provider, waitErr = s.reclaimBackground(ctx); waitErr != nil {
+				s.forgetStoreEntries()
+				return fmt.Errorf("context cancelled: %w", waitErr)
+			}
+			if s.provider != nil {
+				err = nil
+			}
+		}
+		s.forgetStoreEntries()
 		if err != nil {
 			s.CloseWithReason("mail-server-unavailable")
 			// Wrap with %w so errors.As can still recover an AuthError (bad
@@ -361,82 +428,116 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 			// out on a dead connection instead of looping on 500s.
 			return fmt.Errorf("failed to connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, err))
 		}
-		type threadCapable interface {
-			HasThreadCapability() bool
-		}
-		if tc, ok := s.provider.(threadCapable); ok {
-			s.SetData("hasThreadCapability", tc.HasThreadCapability())
-		}
+		s.noteThreadCapability(s.provider)
 	}
 
-	done := make(chan error, 1)
-	go func(p provider.MailProvider) {
-		defer func() {
-			if r := recover(); r != nil {
-				done <- fmt.Errorf("panic in IMAP operation: %v", r)
-			}
-		}()
-		done <- f(p)
-	}(s.provider)
-
-	var err error
-	select {
-	case <-ctx.Done():
-		// The operation goroutine may still be using the provider. Detach it and
-		// close only after f() has returned, otherwise we would close the client
-		// out from under an in-flight command (a use-after-close race). done is
-		// buffered, so f's send never blocks even though we have returned.
-		closeProviderAfter(s.provider, done)
-		s.provider = nil
-		return fmt.Errorf("context cancelled: %w", ctx.Err())
-	case err = <-done:
+	// Given up on while the connection was opened for it, a request does no
+	// mail work either. The connection stays open for the next one.
+	if err := ctx.Err(); err != nil && mayGiveUp {
+		return fmt.Errorf("context cancelled: %w", err)
 	}
+
+	err := s.runMail(ctx, f, "IMAP operation")
 
 	// If we get a connection error, try once more with a fresh connection
 	if err != nil && isNetworkError(err) {
 		s.provider.Close()
 		s.provider = nil
+		// No one is waiting for the retry; the next request connects.
+		if ctx.Err() != nil && mayGiveUp {
+			return err
+		}
 
 		var reErr error
 		s.provider, reErr = s.connect()
+		if reErr != nil && atConnectionLimit(reErr) {
+			// A server that will not let the account open another connection
+			// still answers on the background one the session holds, once the
+			// operation running on it has returned. Not a server that refused
+			// the password, nor one that could not be reached: the session
+			// ends then, as it did before it had one.
+			var waitErr error
+			if s.provider, waitErr = s.reclaimBackground(ctx); waitErr != nil {
+				s.forgetStoreEntries()
+				return fmt.Errorf("context cancelled: %w", waitErr)
+			}
+			if s.provider != nil {
+				reErr = nil
+			}
+		}
+		s.forgetStoreEntries()
 		if reErr != nil {
 			s.CloseWithReason("mail-server-unavailable")
 			return fmt.Errorf("failed to re-connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, reErr))
 		}
+		s.noteThreadCapability(s.provider)
 
-		done2 := make(chan error, 1)
-		go func(p provider.MailProvider) {
-			defer func() {
-				if r := recover(); r != nil {
-					done2 <- fmt.Errorf("panic in IMAP operation (retry): %v", r)
-				}
-			}()
-			done2 <- f(p)
-		}(s.provider)
-
-		select {
-		case <-ctx.Done():
-			closeProviderAfter(s.provider, done2)
-			s.provider = nil
-			return fmt.Errorf("context cancelled during retry: %w", ctx.Err())
-		case err = <-done2:
-		}
+		err = s.runMail(ctx, f, "IMAP operation (retry)")
 	}
 
 	return err
 }
 
-// closeProviderAfter closes p once the pending operation (whose result lands on
-// done) has finished, so the provider is never closed while a command is still
-// in flight on it. The goroutine exits as soon as done is signalled.
-func closeProviderAfter(p provider.MailProvider, done <-chan error) {
-	if p == nil {
-		return
+// noteThreadCapability records whether p's server can thread. Without a saved
+// threading preference that decides whether a listing is threaded, and the
+// listing's cached pages are named by it.
+func (s *Session) noteThreadCapability(p provider.MailProvider) {
+	type threadCapable interface {
+		HasThreadCapability() bool
 	}
-	go func() {
-		<-done
-		p.Close()
-	}()
+	if tc, ok := p.(threadCapable); ok {
+		s.SetData("hasThreadCapability", tc.HasThreadCapability())
+	}
+}
+
+// abandonedOperationWait is how long a mail operation whose request was given
+// up on may go on holding the session's connection.
+//
+// A request is given up on when the browser stops waiting for it (after 25
+// seconds), or when the page goes away. Neither says anything about the
+// connection, and closing it cost the next request a new connection and
+// sign-in, and everything the old one had learned: its cache of the store,
+// the verdicts and dates it had read. So the operation is let finish, and the
+// connection kept. But one that does not finish, on a connection that no
+// longer answers, would hold the session's every request; past this wait the
+// connection is let go as it used to be.
+const abandonedOperationWait = 10 * time.Second
+
+// runMail runs f on the session's connection, waits for it and returns what
+// it returned. The caller holds providerLocker.
+//
+// When ctx is done first, it waits on for up to abandonedOperationWait. If f
+// has not returned by then, the connection is let go: it is closed once f
+// returns, never while a command of f's is still in flight on it, and the next
+// request opens another.
+func (s *Session) runMail(ctx context.Context, f func(provider.MailProvider) error, what string) error {
+	// done is buffered, so f's send never blocks once runMail has returned.
+	done := make(chan error, 1)
+	go func(p provider.MailProvider) {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("panic in %s: %v", what, r)
+			}
+		}()
+		done <- f(p)
+	}(s.provider)
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+	}
+
+	wait := time.NewTimer(s.manager.abandonedWait)
+	defer wait.Stop()
+	select {
+	case err := <-done:
+		return err
+	case <-wait.C:
+		s.giveUpConnection(s.provider, done)
+		s.provider = nil
+		return fmt.Errorf("context cancelled: %w", ctx.Err())
+	}
 }
 
 // smtpMaxAttempts is the number of times DoSMTP tries an operation before
@@ -523,6 +624,7 @@ func (s *Session) teardown() {
 			s.provider = nil
 		}
 		s.providerLocker.Unlock()
+		s.letGoOfBackground(true)
 
 		if s.cache != nil {
 			s.cache.Close()
@@ -668,28 +770,73 @@ func (s *Session) PopNotice() string {
 	return n
 }
 
+// sessionStore is the store of the session's account, read and written on the
+// session's connection. When the connection's store keeps a copy of each entry
+// it has read or written, as the IMAP store does, the session keeps the same
+// copy, and Get answers from it without the connection.
+//
+// Every listing and every message opened reads the settings. Each read waited
+// for the connection, behind whatever it was doing, such as building a
+// conversation, searching across folders or saving a draft, and opened a new
+// one if it had been closed, only for the connection to answer from its own
+// copy.
+//
+// What the session keeps changes with the connection's own copy of the entry,
+// and lasts until the session connects again, when the new connection starts
+// without one: GetFresh reads past both, a read that fails leaves neither, and
+// both change with every write the connection makes. An entry found missing is
+// kept as missing for as long, so a read that must see what another session
+// wrote since reads fresh. A store that keeps no copy, such as the maildir
+// store, which reads its file every time, is read on the connection every
+// time, as before.
 type sessionStore struct {
 	session *Session
 }
 
 func (ss *sessionStore) Get(key string, out interface{}) error {
-	return ss.session.DoMailWithContext(context.Background(), func(p provider.MailProvider) error {
-		store, err := p.GetStore()
-		if err != nil {
-			return err
-		}
-		return store.Get(key, out)
-	})
+	if raw, ok := ss.session.storeEntry(key); ok {
+		return decodeStoreEntry(key, raw, out)
+	}
+	return ss.read(key, out, provider.Store.Get)
 }
 
 func (ss *sessionStore) GetFresh(key string, out interface{}) error {
-	return ss.session.DoMailWithContext(context.Background(), func(p provider.MailProvider) error {
+	return ss.read(key, out, provider.GetFresh)
+}
+
+// read reads key from the connection's store with get into out. From a store
+// that keeps copies, the entry is read whole, as the JSON the store holds,
+// whatever part of it out has room for, and kept: the next reader may want
+// another part of it.
+func (ss *sessionStore) read(key string, out interface{}, get func(provider.Store, string, interface{}) error) error {
+	var raw json.RawMessage
+	kept := false
+	err := ss.session.DoMailWithContext(context.Background(), func(p provider.MailProvider) error {
 		store, err := p.GetStore()
 		if err != nil {
 			return err
 		}
-		return provider.GetFresh(store, key, out)
+		if !keepsCopies(store) {
+			return get(store, key, out)
+		}
+		kept = true
+		err = get(store, key, &raw)
+		switch {
+		case err == nil:
+			ss.session.keepStoreEntry(key, raw)
+		case errors.Is(err, provider.ErrNoStoreEntry):
+			ss.session.keepStoreEntry(key, nil)
+		default:
+			// The connection's store may have dropped its own copy, as a fresh
+			// read does before it asks, and will ask again; so does the session.
+			ss.session.forgetStoreEntry(key)
+		}
+		return err
 	})
+	if err != nil || !kept {
+		return err
+	}
+	return decodeStoreEntry(key, raw, out)
 }
 
 func (ss *sessionStore) Put(key string, v interface{}) error {
@@ -698,8 +845,82 @@ func (ss *sessionStore) Put(key string, v interface{}) error {
 		if err != nil {
 			return err
 		}
-		return store.Put(key, v)
+		if err := store.Put(key, v); err != nil {
+			// Whether the server took it is not known; the next read asks.
+			ss.session.forgetStoreEntry(key)
+			return err
+		}
+		if !keepsCopies(store) {
+			return nil
+		}
+		if v == nil {
+			ss.session.keepStoreEntry(key, nil)
+		} else if raw, err := json.Marshal(v); err == nil {
+			ss.session.keepStoreEntry(key, raw)
+		} else {
+			ss.session.forgetStoreEntry(key)
+		}
+		return nil
 	})
+}
+
+// keepsCopies reports whether store keeps a copy of each entry it has read or
+// written, for as long as its connection lasts: a store that can read past its
+// copy has one. Only such a store's entries are kept by the session. Any other
+// is read where the entries are kept, every time, and a copy of what it read
+// would be older than what it reads next.
+func keepsCopies(store provider.Store) bool {
+	_, ok := store.(provider.FreshStore)
+	return ok
+}
+
+// decodeStoreEntry decodes an entry the store holds as raw into out. A nil raw
+// is an entry that is not there.
+func decodeStoreEntry(key string, raw json.RawMessage, out interface{}) error {
+	if raw == nil {
+		return provider.ErrNoStoreEntry
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("failed to decode store entry %q: %w", key, err)
+	}
+	return nil
+}
+
+// storeEntry returns the session's copy of the store entry key, and whether it
+// has one; a nil copy is an entry that is not there.
+func (s *Session) storeEntry(key string) (json.RawMessage, bool) {
+	s.storeEntriesLocker.RLock()
+	defer s.storeEntriesLocker.RUnlock()
+	raw, ok := s.storeEntries[key]
+	return raw, ok
+}
+
+// keepStoreEntry keeps raw as the session's copy of the store entry key, nil
+// for one that is not there. The caller holds providerLocker.
+func (s *Session) keepStoreEntry(key string, raw json.RawMessage) {
+	s.storeEntriesLocker.Lock()
+	defer s.storeEntriesLocker.Unlock()
+	if s.storeEntries == nil {
+		s.storeEntries = make(map[string]json.RawMessage)
+	}
+	s.storeEntries[key] = raw
+}
+
+// forgetStoreEntry drops the session's copy of the store entry key. The
+// caller holds providerLocker.
+func (s *Session) forgetStoreEntry(key string) {
+	s.storeEntriesLocker.Lock()
+	defer s.storeEntriesLocker.Unlock()
+	delete(s.storeEntries, key)
+}
+
+// forgetStoreEntries drops every copy the session keeps, when it connects
+// again: the new connection's store has read nothing yet. The caller holds
+// providerLocker.
+func (s *Session) forgetStoreEntries() {
+	s.storeEntriesLocker.Lock()
+	defer s.storeEntriesLocker.Unlock()
+	s.storeEntries = nil
 }
 
 // Store returns a store suitable for storing persistent user data.
@@ -739,9 +960,19 @@ type SessionManager struct {
 	// it on rather than wait.
 	now func() time.Time
 
+	// abandonedWait is abandonedOperationWait, held here so that a test can
+	// shorten it rather than wait.
+	abandonedWait time.Duration
+
 	// broadcaster reaches the other nodes of a cluster, or is nil when this
 	// node is alone. See RequireSecondFactor.
 	broadcaster ClusterBroadcaster
+
+	// Whether sessions do the mail work the user is not waiting for on a
+	// background connection, and how long one may go unused before it is
+	// closed. See DoBackgroundMail.
+	backgroundConnections bool
+	backgroundIdle        time.Duration
 
 	locker       sync.RWMutex
 	sessions     map[string]*Session // token -> Session, protected by locker
@@ -786,6 +1017,8 @@ func newSessionManager(connectProviderFunc provider.AuthenticatedProviderFactory
 		maxSessionAttachmentSize: int64(maxSessionAttachmentMiB) << 20,
 		maxGlobalAttachmentSize:  int64(maxGlobalAttachmentMiB) << 20,
 		now:                      time.Now,
+		backgroundIdle:           backgroundIdleTimeout,
+		abandonedWait:            abandonedOperationWait,
 	}
 }
 
@@ -1065,6 +1298,11 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 		cache:          cache,
 		duration:       sm.sessionDuration, // updated from user settings below
 	}
+	// Recorded here as well as on a reconnect, since the session keeps the
+	// connection it signed in with. Until it was, a new session without a
+	// saved preference filed its threaded pages as unthreaded, and served one
+	// of them when threading was turned off in another browser.
+	s.noteThreadCapability(p)
 	s.created = time.Now()
 	s.absoluteDeadline = sm.absoluteDeadlineFrom(s.created)
 	s.lastAccess.Store(s.created.UnixNano())
@@ -1280,6 +1518,15 @@ func (sm *SessionManager) SwitchAccount(currentSession *Session, targetUsername 
 
 // UpdatePassword reconnects the session with a new password and updates the session state if successful.
 func (sm *SessionManager) UpdatePassword(s *Session, newPassword string) error {
+	// The background connection is closed first, once the operation running
+	// on it has returned: while the new password is checked the session holds
+	// its own connection and the new one, and no background connection beside
+	// them. The next background operation opens one with the password the
+	// session has then.
+	s.background.jobs.Lock()
+	defer s.background.jobs.Unlock()
+	s.letGoOfBackground(false)
+
 	s.providerLocker.Lock()
 	defer s.providerLocker.Unlock()
 
@@ -1297,6 +1544,7 @@ func (sm *SessionManager) UpdatePassword(s *Session, newPassword string) error {
 	// Update session state
 	s.shareVerdicts(provider)
 	s.provider = provider
+	s.forgetStoreEntries()
 	s.password = newPassword
 
 	return nil

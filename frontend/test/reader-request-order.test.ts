@@ -1,11 +1,14 @@
 /**
  * What the reader asks the server for first, and how much of it at once.
  *
- * The server answers one request per session at a time — it holds a single IMAP
- * connection under a lock — so the reader's order IS the reader's latency. Two
- * things followed from that, and both are pinned here: the opened message's
- * body is asked for before its conversation, and the bodies nobody asked for
- * are read one at a time.
+ * The server answers what the user waits for one request per session at a
+ * time — on the session's own IMAP connection, under a lock — so the reader's
+ * order IS the reader's latency. Two things followed from that, and both are
+ * pinned here: the opened message's body is asked for before its conversation,
+ * and the bodies nobody asked for are read one at a time. Those reads are
+ * marked as background work, which the server does on the session's
+ * background connection; a session without one (turned off, or refused by the
+ * mail server) does them on its own, behind the rest.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/components/message-reader';
@@ -60,6 +63,8 @@ function settingsStore() {
 const i18nStore = Object.assign(new EventTarget(), { t: (key: string) => key });
 
 let asked: string[];
+/** The requests sent as ones nobody waits for, which the server does aside. */
+let background: string[];
 /** Body reads held open, so what the reader does NEXT is visible. */
 let release: Map<string, () => void>;
 
@@ -78,11 +83,13 @@ beforeEach(() => {
   installMatchMedia();
   vi.spyOn(console, 'error').mockImplementation(() => {});
   asked = [];
+  background = [];
   release = new Map();
 
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url);
     asked.push(u);
+    if (new Headers(init?.headers).has('X-Alps-Background')) background.push(u);
     // Per message, not one answer for every ask. A single shared conversation
     // made the reader read THIS conversation's members after a switch to a
     // message outside it — correctly, because the mock had just said they were
@@ -165,6 +172,24 @@ describe('opening a conversation', () => {
     release.get(first)!();
     await waitFor(() => bodyReads().length > 2, 'the next member to be read');
     expect(bodyReads()).toHaveLength(3);
+  });
+
+  it('reads the members nobody asked for in the background, and the opened message not', async () => {
+    await openConversation();
+    await waitFor(() => release.has('10'), 'the opened message to be read');
+    release.get('10')!();
+    await waitFor(() => asked.some(url => url.includes('/messages/10/raw')), 'the opened message\'s text');
+    await waitFor(() => bodyReads().length > 1, 'the first member to be read');
+
+    // The server reads these on the session's second connection, so the
+    // message the user opens next does not wait behind them.
+    const member = /\/messages\/(\d+)\?view=/.exec(bodyReads()[1])![1];
+    release.get(member)!();
+    await waitFor(() => asked.some(url => url.includes(`/messages/${member}/raw`)), 'the member\'s text');
+    const readsOf = (uid: string) => (url: string) =>
+      url.includes(`/messages/${uid}?`) || url.includes(`/messages/${uid}/raw`);
+    expect(background.filter(readsOf(member))).toHaveLength(2);
+    expect(background.filter(readsOf('10'))).toEqual([]);
   });
 
   it('drops what is left to read when another message is opened', async () => {

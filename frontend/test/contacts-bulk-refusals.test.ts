@@ -289,9 +289,13 @@ describe('the bulk outcome', () => {
 
 /**
  * What the refusal toast says. The counts went in as {failed} and {total},
- * and the noun beside them could only be right for one number; the total is
- * now the plural key's {count}. One path passed no numbers at all and showed
- * the placeholders themselves.
+ * and the noun beside them could only be right for one number. Then the total
+ * picked the plural form, but the subject of the sentence is the number that
+ * failed, and the verb agrees with it: one card of five "konnte" not be
+ * deleted in German, where the toast said "konnten". So the failed number is
+ * the plural key's {count}, each language words "of {total}" so that nothing
+ * has to agree with it, and a write aimed at one card says so without "1 of
+ * 1". One path passed no numbers at all and showed the placeholders themselves.
  */
 describe('the refusal toast', () => {
   async function toastFrom(language: string, act: (el: Page) => Promise<void>, contacts = [card('a'), card('b')]) {
@@ -310,15 +314,90 @@ describe('the refusal toast', () => {
     return shown;
   }
 
-  it('counts a partial delete in words that agree with the total', async () => {
+  const five = () => ['a', 'b', 'c', 'd', 'e'].map((path) => card(path, ['Work']));
+
+  it('counts a partial delete', async () => {
     vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 2, done: 1, failed: 1 });
     expect(await toastFrom('en', (el) => el.confirmDelete())).toEqual(['1 of 2 contacts could not be deleted.']);
   });
 
-  it('agrees in Serbian too, where 3 takes another form than 5', async () => {
-    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 3, done: 2, failed: 1 });
-    const three = [card('a'), card('b'), card('c')];
-    expect(await toastFrom('sr', (el) => el.confirmDelete(), three)).toEqual(['1 od 3 kontakta nije moglo biti obrisano.']);
+  it('agrees with the number that failed, not with the total', async () => {
+    const delete1of5 = vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 5, done: 4, failed: 1 });
+    expect(await toastFrom('de', (el) => el.confirmDelete(), five())).toEqual(['1 von 5 Kontakten konnte nicht gelöscht werden.']);
+    expect(await toastFrom('es', (el) => el.confirmDelete(), five())).toEqual(['No se pudo eliminar 1 de 5 contactos.']);
+    delete1of5.mockResolvedValue({ total: 5, done: 3, failed: 2 });
+    expect(await toastFrom('de', (el) => el.confirmDelete(), five())).toEqual(['2 von 5 Kontakten konnten nicht gelöscht werden.']);
+  });
+
+  it('agrees with the number that failed on a category rename, removal or update too', async () => {
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 5, done: 4, failed: 1 });
+    const shown = [
+      ...await toastFrom('de', (el) => {
+        el.categoryToRename = 'Work';
+        return el.handleRenameCategorySubmit(new CustomEvent('x', { detail: { name: 'Office' } }));
+      }, five()),
+      ...await toastFrom('de', (el) => {
+        el.categoryToDelete = 'Work';
+        return el.handleDeleteCategorySubmit();
+      }, five()),
+      ...await toastFrom('de', (el) => el.handleUpdateCategories(new CustomEvent('x', { detail: { category: 'Home' } })), five()),
+    ];
+    expect(shown).toEqual([
+      '1 von 5 Kontakten konnte nicht aktualisiert werden, die Kategorie wurde nur teilweise umbenannt.',
+      '1 von 5 Kontakten konnte nicht aktualisiert werden, die Kategorie wurde nur teilweise entfernt.',
+      '1 von 5 Kontakten konnte nicht aktualisiert werden.',
+    ]);
+  });
+
+  it('agrees in Serbian with each of the three forms of the number that failed', async () => {
+    const outcome = vi.spyOn(contactsService, 'bulkDeleteContacts');
+    const shown: string[] = [];
+    for (const failed of [1, 2, 5]) {
+      outcome.mockResolvedValue({ total: 5, done: 5 - failed, failed });
+      shown.push(...await toastFrom('sr', (el) => el.confirmDelete(), five()));
+    }
+    expect(shown).toEqual([
+      'Nije bilo moguće obrisati 1 kontakt od ukupno 5.',
+      'Nije bilo moguće obrisati 2 kontakta od ukupno 5.',
+      'Nije bilo moguće obrisati 5 kontakata od ukupno 5.',
+    ]);
+  });
+
+  it('says a failure on the one card a write was aimed at without "1 of 1"', async () => {
+    vi.spyOn(contactsService, 'bulkDeleteContacts').mockResolvedValue({ total: 1, done: 0, failed: 1 });
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1 });
+    const one = () => [card('a', ['Work'])];
+    const shown = [
+      ...await toastFrom('en', (el) => el.confirmDelete(), one()),
+      ...await toastFrom('en', (el) => el.handleUpdateCategories(new CustomEvent('x', { detail: { category: 'Home' } })), one()),
+      ...await toastFrom('en', (el) => {
+        el.categoryToRename = 'Work';
+        return el.handleRenameCategorySubmit(new CustomEvent('x', { detail: { name: 'Office' } }));
+      }, one()),
+      ...await toastFrom('en', (el) => {
+        el.categoryToDelete = 'Work';
+        return el.handleDeleteCategorySubmit();
+      }, one()),
+    ];
+    expect(shown).toEqual([
+      'The contact could not be deleted.',
+      'The contact could not be updated.',
+      'A contact could not be updated, so the category was only partly renamed.',
+      'A contact could not be updated, so the category was only partly removed.',
+    ]);
+  });
+
+  it('says a rename that could not read the address book without counting cards', async () => {
+    // During a search the cards carrying the category are read from the
+    // server, and when that read fails there is nothing to count.
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(contactsService, 'fetchContacts').mockRejectedValue(new Error('offline'));
+    const shown = await toastFrom('en', (el) => {
+      el.filterQuery = 'a';
+      el.categoryToRename = 'Work';
+      return el.handleRenameCategorySubmit(new CustomEvent('x', { detail: { name: 'Office' } }));
+    }, [card('a', ['Work'])]);
+    expect(shown).toEqual(['A contact could not be updated, so the category was only partly renamed.']);
   });
 
   it('names the numbers when a category change fails outright', async () => {

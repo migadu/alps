@@ -43,6 +43,8 @@ export default {
         startDate: 'Datum početka',
         endDate: 'Datum završetka',
         time: 'Vreme',
+        startTime: 'Vreme početka',
+        endTime: 'Vreme završetka',
         addLocation: 'Dodaj lokaciju',
         addDescription: 'Dodaj opis',
         description: 'Opis',

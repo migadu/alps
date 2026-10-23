@@ -224,6 +224,9 @@ type CachedMessagePart struct {
 	HeaderData []byte // nil if only envelope/flags are cached
 	BodyData   []byte // nil if only envelope/flags are cached
 	Mailbox    string
+	// ReaderFields says that Message carries the verdict and References the
+	// reader shows, which only a read of the part for the reader fetches.
+	ReaderFields bool
 }
 
 // updateCachedMessageFlags updates flags for specific messages in cached message lists
@@ -299,9 +302,9 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 
 	// What the cached copies said about \Seen BEFORE this change. The unseen
 	// count may only move when the message really goes from unseen to seen or
-	// back: reading a message adds \Seen twice (the body fetch sets it, and
-	// so does the reader's mark-as-read), and a count that dropped on both
-	// fell by two for one message.
+	// back: adding \Seen to a message that already has it changes nothing on
+	// the server, and a count that dropped on every add fell by two for one
+	// message marked read twice.
 	var cachedSeen, cachedUnseen bool
 	noteSeen := func(flags []provider.Flag) {
 		if slices.Contains(flags, provider.Flag(imap.FlagSeen)) {
@@ -356,6 +359,7 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 		if cached, ok := cache.Get(key); ok {
 			cachedData := cached.(CachedMessages)
 			// Find and update the message in this page
+		rows:
 			for i := range cachedData.Messages {
 				if cachedData.Messages[i].ID.String() == uidStr {
 					noteSeen(cachedData.Messages[i].Flags)
@@ -364,6 +368,22 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 					messageUpdated = true
 					debugf("Updated flags for message %s in cache key %s", uidStr, key)
 					break
+				}
+				// A threaded page lists a conversation's other messages under
+				// its row, each drawn with its own flags, and the row is bold
+				// while any of them is unread. They are the page's copies as
+				// much as the rows are: one left as it was kept the page at a
+				// count it no longer showed, and the page was served again.
+				subs := cachedData.Messages[i].SubMessages
+				for j := range subs {
+					if subs[j].ID != nil && subs[j].ID.String() == uidStr {
+						noteSeen(subs[j].Flags)
+						subs[j].Flags = updateFlags(subs[j].Flags)
+						cache.Set(key, cachedData)
+						messageUpdated = true
+						debugf("Updated flags for message %s under %s in cache key %s", uidStr, cachedData.Messages[i].ID, key)
+						break rows
+					}
 				}
 			}
 		}
@@ -378,6 +398,35 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 			debugf("Updated flags for message %s in individual cache", uidStr)
 			messageUpdated = true
 		}
+	}
+
+	// The parts read of the message (handleGetPart) are cached with the
+	// message as the read found it, flags included, and a reopened message is
+	// answered from them. A read leaves \Seen as it is, so an unread message
+	// is cached unread, and the reader's own mark-as-read is the change that
+	// has to reach them: without it the message reopened unread. They follow
+	// the change but are not asked what the message was before it. That is
+	// the listing's to say: a part is not read again when the listing is, and
+	// one cached before another client changed the message would move the
+	// count for a change that changed nothing.
+	partPrefix := fmt.Sprintf("message:%s:%s:", mailbox, uidStr)
+	for _, key := range cache.GetKeysWithPrefix(partPrefix) {
+		// The part path, as in "[2]:limit0". A mailbox whose name goes on
+		// from this one's with a colon has keys under the prefix too.
+		if key == msgKey || !strings.HasPrefix(key[len(partPrefix):], "[") {
+			continue
+		}
+		cached, ok := cache.Get(key)
+		if !ok {
+			continue
+		}
+		part, ok := cached.(CachedMessagePart)
+		if !ok || part.Message == nil || part.Mailbox != mailbox {
+			continue
+		}
+		part.Message.Flags = updateFlags(part.Message.Flags)
+		cache.Set(key, part)
+		debugf("Updated flags for message %s in cached part %s", uidStr, key)
 	}
 
 	patchCachedConversations(cache, debugf, mailbox, uidStr, addFlags, removeFlags)
@@ -447,7 +496,7 @@ func cachedMailboxList(ctx *alps.Context) ([]MailboxInfo, error) {
 	}
 
 	var mailboxes []MailboxInfo
-	err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err := doRequestMail(ctx, func(p provider.MailProvider) error {
 		var err error
 		mailboxes, err = listMailboxesWithProvider(p)
 		if err != nil {
@@ -537,7 +586,7 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 		// Everything is cached, skip provider call entirely
 		err = nil
 	} else {
-		err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		err = doRequestMail(ctx, func(p provider.MailProvider) error {
 			var err error
 			var needsMailboxListFetch = len(mailboxes) == 0
 
@@ -698,8 +747,10 @@ func handleMailboxStatus(ctx *alps.Context) error {
 	// Clear cached status so the provider call goes to IMAP.
 	cache.Delete("status:" + mboxName)
 
+	// On the background connection: the check runs every few minutes, and
+	// what the user opens meanwhile does not wait for it.
 	var status *MailboxStatus
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoBackgroundMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 		s, err := p.GetMailboxStatus(mboxName)
 		if err != nil {
 			return err
@@ -1235,26 +1286,46 @@ func handleGetThread(ctx *alps.Context) error {
 		}
 	}
 
-	var msgs []IMAPMessage
+	var thread []provider.Message
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		uid, parseErr := p.ParseMessageID(uidStr)
 		if parseErr != nil {
 			return parseErr
 		}
-
-		known := conversationHints{
-			memberUIDs:  listedThreadUIDs(p, cache, mboxName, uidStr),
-			sentMailbox: cachedSentMailbox(cache),
-		}
-		threadMsgs, threadErr := getConversationWithProvider(p, mboxName, uid, known, ctx.Server.Logger().Printf)
-		if threadErr != nil {
-			return threadErr
-		}
-		msgs = threadMsgs
-		return nil
+		var threadErr error
+		thread, threadErr = messageThreadWithProvider(p, mboxName, uid, listedThreadUIDs(p, cache, mboxName, uidStr))
+		return threadErr
 	})
 	if err != nil {
 		return err
+	}
+
+	// Threading sees one mailbox at a time, and the replies a user sends are
+	// not in the mailbox of the messages they answer. They are looked for in
+	// Sent on the session's background connection, which selects Sent to
+	// search it: the session's own keeps this mailbox selected, and the next
+	// request for the folder on screen does not select it again. A failed look
+	// is logged, and the thread is answered as it is.
+	var sent []provider.Message
+	var lookErr error
+	err = ctx.Session.DoBackgroundMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+		sent, lookErr = sentOfConversation(p, mboxName, thread, cachedSentMailbox(cache))
+		return lookErr
+	})
+	// Not the look's own failure but the connection's, or a request given up
+	// on, whose look may still be running: answered as any other.
+	if err != nil && (ctx.Request.Context().Err() != nil || lookErr == nil) {
+		return err
+	}
+	conversation := thread
+	if lookErr != nil {
+		ctx.Server.Logger().Printf("looking in Sent for the conversation of %s/%s: %v", mboxName, uidStr, lookErr)
+	} else {
+		conversation = mergeConversation(thread, sent)
+	}
+	msgs := make([]IMAPMessage, len(conversation))
+	for i, m := range conversation {
+		msgs[i] = providerMessageToIMAP(m)
 	}
 
 	// Under the message asked for, and under every member of the conversation
@@ -1356,6 +1427,21 @@ func cachedSentMailbox(cache *alps.Cache) string {
 	return ""
 }
 
+// backgroundRequestHeader marks a request the browser makes on its own, which
+// nobody waits for, such as a body a conversation reads ahead of the user.
+const backgroundRequestHeader = "X-Alps-Background"
+
+// doRequestMail runs f for the request ctx: on the session's background
+// connection when the browser marked the request as one nobody waits for (see
+// backgroundRequestHeader), so that what the user opens meanwhile does not
+// wait behind it, and on the session's own connection otherwise.
+func doRequestMail(ctx *alps.Context, f func(provider.MailProvider) error) error {
+	if ctx.Request.Header.Get(backgroundRequestHeader) != "" {
+		return ctx.Session.DoBackgroundMail(ctx.Request.Context(), f)
+	}
+	return ctx.Session.DoMailWithContext(ctx.Request.Context(), f)
+}
+
 func handleGetPart(ctx *alps.Context, raw bool) error {
 	_, uidStr, err := parseMboxAndUidStr(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
@@ -1381,29 +1467,57 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		return alps.NewHTTPError(http.StatusBadRequest, err)
 	}
 
-	// We need to briefly fetch the message structure to see what parts are available
-	var tempMsg *IMAPMessage
+	// The reader's request names no part: the part to show is chosen here,
+	// and its text goes back with the answer.
+	reading := partPathParam == "" && !raw
+	cache := ctx.Session.Cache()
+
+	// The session's cache names a message by its id as a listing gave it,
+	// which is the id the client sends, so the cache is asked before the id
+	// is parsed. Parsing it waits for the session's IMAP connection, and an
+	// answer the cache holds needs nothing from that connection.
 	var uid provider.MessageID
-
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		var parseErr error
-		uid, parseErr = p.ParseMessageID(uidStr)
-		if parseErr != nil {
-			return parseErr
+	parseUID := func(p provider.MailProvider) error {
+		if uid != nil {
+			return nil
 		}
-
-		// If no part specified and not raw, determine preferred part
-		if partPathParam == "" && !raw {
-			tempMsg, parseErr = getMessageMetadataWithProvider(p, mbox.Name(), uid)
-			return parseErr
-		}
-		return nil
-	})
-	if err != nil {
+		var err error
+		uid, err = p.ParseMessageID(uidStr)
 		return err
 	}
 
-	if partPathParam == "" && !raw {
+	// The message's metadata, when this request had to read it from the
+	// server. It carries the verdict and References that a listing row does
+	// not.
+	var tempMsg *IMAPMessage
+
+	if reading {
+		// The part is chosen from the message's structure, which the session
+		// holds for every message a listing listed and every message opened
+		// before, and which never changes under a UID. It was read from the
+		// server before every open all the same, before the cache was looked
+		// in, even for a message whose body the cache held.
+		structure := cachedMessageRow(cache, mbox.Name(), uidStr)
+		if structure == nil {
+			err = doRequestMail(ctx, func(p provider.MailProvider) error {
+				if err := parseUID(p); err != nil {
+					return err
+				}
+				meta, err := p.GetMessageMetadata(mbox.Name(), uid)
+				if err != nil {
+					return err
+				}
+				cacheMessageRow(cache, mbox.Name(), meta)
+				imapMsg := providerMessageToIMAP(*meta)
+				tempMsg = &imapMsg
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			structure = tempMsg
+		}
+
 		// Determine preference: user setting overrides system default (true for HTML)
 		preferHTML := true
 		if settings.PreferredView != "" {
@@ -1420,14 +1534,14 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		// Select the preferred part
 		var preferredPart *IMAPPartNode
 		if preferHTML {
-			preferredPart = tempMsg.HTMLPart()
+			preferredPart = structure.HTMLPart()
 			if preferredPart == nil {
-				preferredPart = tempMsg.TextPart()
+				preferredPart = structure.TextPart()
 			}
 		} else {
-			preferredPart = tempMsg.TextPart()
+			preferredPart = structure.TextPart()
 			if preferredPart == nil {
-				preferredPart = tempMsg.HTMLPart()
+				preferredPart = structure.HTMLPart()
 			}
 		}
 
@@ -1451,97 +1565,53 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 	// Build cache key for individual message (without allow-remote-resources since it doesn't affect IMAP data)
 	partPathStr := fmt.Sprintf("%v", partPath)
-	msgCacheKey := fmt.Sprintf("message:%s:%s:%s:limit%d", mbox.Name(), uid.String(), partPathStr, limit)
+	msgCacheKey := fmt.Sprintf("message:%s:%s:%s:limit%d", mbox.Name(), uidStr, partPathStr, limit)
 
-	// Try to get message from cache
+	// A part cached with its body is served from the cache. The reader is also
+	// shown the verdict and References, which a part cached by another read of
+	// it (/raw) does not carry, so for the reader such a part is read again
+	// unless this request has just read them.
 	var cachedPart *CachedMessagePart
-	if cached, ok := ctx.Session.Cache().Get(msgCacheKey); ok {
-		if cp, ok := cached.(CachedMessagePart); ok {
+	if cached, ok := cache.Get(msgCacheKey); ok {
+		if cp, ok := cached.(CachedMessagePart); ok && cp.Message != nil && cp.HeaderData != nil && cp.BodyData != nil &&
+			(!reading || cp.ReaderFields || tempMsg != nil) {
 			cachedPart = &cp
 		}
 	}
 	if cachedPart != nil {
-		cachedData := *cachedPart
-
-		// Check if we have the body data
-		if cachedData.HeaderData != nil && cachedData.BodyData != nil {
-			// Full message cached - convert from provider type to IMAP type
-			imapMsg := providerMessageToIMAP(*cachedData.Message)
-			if tempMsg != nil {
-				imapMsg.HasBimiPotential = tempMsg.HasBimiPotential
-				imapMsg.HasBimiFailed = tempMsg.HasBimiFailed
-				if len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
-					imapMsg.References = tempMsg.References
-				}
+		imapMsg := providerMessageToIMAP(*cachedPart.Message)
+		if tempMsg != nil {
+			// Read from the server just now, where the cached part has the
+			// flags of the read that cached it.
+			imapMsg.Flags = tempMsg.Flags
+			imapMsg.HasBimiPotential = tempMsg.HasBimiPotential
+			imapMsg.HasBimiFailed = tempMsg.HasBimiFailed
+			if len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
+				imapMsg.References = tempMsg.References
 			}
-			msg = &imapMsg
-			headerData = cachedData.HeaderData
-			bodyData = cachedData.BodyData
+		}
+		msg = &imapMsg
+		headerData = cachedPart.HeaderData
+		bodyData = cachedPart.BodyData
 
-			ctx.Server.Logger().Debugf("Cache HIT (full) for message %s/%v part %v", mbox.Name(), uid, partPath)
-		} else {
-			// Only metadata cached, need to fetch body
-			var providerMsg *provider.Message
-			err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-				var err error
-				if raw {
-					// For raw mode, don't parse - just get bytes
-					providerMsg, headerData, bodyData, err = p.GetMessagePartRaw(mbox.Name(), uid, partPath, limit)
-				} else {
-					// For normal mode, parse the message
-					providerMsg, _, headerData, bodyData, err = p.GetMessagePartWithData(mbox.Name(), uid, partPath)
-					if err != nil {
-						return err
-					}
-
-				}
-				if err != nil {
-					return err
-				}
-
-				// Update cache with body data using provider type
-				ctx.Session.Cache().Set(msgCacheKey, CachedMessagePart{
-					Message:    providerMsg,
-					HeaderData: headerData,
-					BodyData:   bodyData,
-					Mailbox:    mbox.Name(),
-				})
-				ctx.Server.Logger().Debugf("Cache HIT (metadata only), fetched body for message %s/%s part %v", mbox.Name(), uid.String(), partPath)
-				return nil
-			})
-			if err != nil {
+		ctx.Server.Logger().Debugf("Cache HIT for message %s/%s part %v", mbox.Name(), uidStr, partPath)
+	} else {
+		var providerMsg *provider.Message
+		err = doRequestMail(ctx, func(p provider.MailProvider) error {
+			if err := parseUID(p); err != nil {
 				return err
 			}
-
-			// Convert provider message to IMAP message for display
-			imapMsg := providerMessageToIMAP(*providerMsg)
-			if tempMsg != nil {
-				imapMsg.HasBimiPotential = tempMsg.HasBimiPotential
-				imapMsg.HasBimiFailed = tempMsg.HasBimiFailed
-				if len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
-					imapMsg.References = tempMsg.References
-				}
-			}
-			msg = &imapMsg
-
-			// Fetching body without Peek marks message as \Seen, so update the cached flags
-			updateCachedMessageFlags(ctx, mbox.Name(), uid, []imap.Flag{imap.FlagSeen}, nil)
-		}
-	} else {
-		// Nothing cached, fetch everything
-		var providerMsg *provider.Message
-		err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 			var err error
-			if raw {
+			switch {
+			case raw:
 				// For raw mode, don't parse - just get bytes
 				providerMsg, headerData, bodyData, err = p.GetMessagePartRaw(mbox.Name(), uid, partPath, limit)
-			} else {
-				// For normal mode, parse the message
+			case reading && tempMsg == nil:
+				// The structure came from the cache: the verdict and the
+				// References are read with the part, in the same FETCH.
+				providerMsg, headerData, bodyData, err = readerPartWithProvider(p, mbox.Name(), uid, partPath)
+			default:
 				providerMsg, _, headerData, bodyData, err = p.GetMessagePartWithData(mbox.Name(), uid, partPath)
-				if err != nil {
-					return err
-				}
-
 			}
 			if err != nil {
 				return err
@@ -1556,13 +1626,14 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			}
 
 			// Cache the raw bytes using provider type so we can recreate fresh readers
-			ctx.Session.Cache().Set(msgCacheKey, CachedMessagePart{
-				Message:    providerMsg,
-				HeaderData: headerData,
-				BodyData:   bodyData,
-				Mailbox:    mbox.Name(),
+			cache.Set(msgCacheKey, CachedMessagePart{
+				Message:      providerMsg,
+				HeaderData:   headerData,
+				BodyData:     bodyData,
+				Mailbox:      mbox.Name(),
+				ReaderFields: reading,
 			})
-			ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched and cached", mbox.Name(), uid.String(), partPath)
+			ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched and cached", mbox.Name(), uidStr, partPath)
 			return nil
 		})
 		if err != nil {
@@ -1571,18 +1642,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 		// Convert provider message to IMAP message for display
 		imapMsg := providerMessageToIMAP(*providerMsg)
-		if tempMsg != nil {
-			ctx.Server.Logger().Debugf("BIMI debug routes: tempMsg.HasBimiPotential=%v for UID %v", tempMsg.HasBimiPotential, uid)
-			imapMsg.HasBimiPotential = tempMsg.HasBimiPotential
-			imapMsg.HasBimiFailed = tempMsg.HasBimiFailed
-			if len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
-				imapMsg.References = tempMsg.References
-			}
-		}
 		msg = &imapMsg
-
-		// Fetching body without Peek marks message as \Seen, so update the cached flags
-		updateCachedMessageFlags(ctx, mbox.Name(), uid, []imap.Flag{imap.FlagSeen}, nil)
 	}
 
 	// Note: We no longer need selected mailbox info from IMAP
@@ -1697,18 +1757,77 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		partNode = nil
 	}
 
-	return ctx.JSON(http.StatusOK, map[string]interface{}{
-		"Mailboxes": ibase.Mailboxes,
-		"Mailbox":   ibase.Mailbox,
-		"Inbox":     ibase.Inbox,
-		"Message":   msg,
-		"Part":      partNode,
+	// The folder list is not sent: the listing sends it, and the reader
+	// never read it here.
+	answer := map[string]interface{}{
+		"Message": msg,
+		"Part":    partNode,
 
 		"Flags":       flags,
 		"Attachments": msg.Attachments(),
 		"HasHTML":     msg.HTMLPart() != nil,
 		"HasText":     func() bool { tp := msg.TextPart(); return tp != nil && strings.EqualFold(tp.MIMEType, "text/plain") }(),
-	})
+	}
+	// The part's text, which the reader used to ask for again with /raw: a
+	// second request, and a second wait for the session's IMAP connection,
+	// for bytes this one already holds. A text that cannot be decoded is left
+	// out, and the reader asks /raw for it as before.
+	if partNode != nil {
+		if text, err := partText(headerData, bodyData); err == nil {
+			answer["Body"] = text
+		} else {
+			ctx.Server.Logger().Debugf("Message %s/%s part %v sent without its text: %v", mbox.Name(), uidStr, partPath, err)
+		}
+	}
+	return ctx.JSON(http.StatusOK, answer)
+}
+
+// partText is a part's body as /raw serves it: the transfer encoding undone,
+// and a text in a charset alps knows converted to UTF-8.
+func partText(headerData, bodyData []byte) (string, error) {
+	h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headerData)))
+	if err != nil {
+		return "", fmt.Errorf("failed to read part header: %v", err)
+	}
+	entity, err := message.New(message.Header{Header: h}, bytes.NewReader(bodyData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create message reader: %v", err)
+	}
+	text, err := io.ReadAll(entity.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode message body: %v", err)
+	}
+	return string(text), nil
+}
+
+// cachedMessageRow returns the message's own entry in the session cache,
+// which a listing writes for each row it lists (handleGetMailbox), when it
+// holds the message's structure to choose the part to show from.
+func cachedMessageRow(cache *alps.Cache, mailbox, uid string) *IMAPMessage {
+	cached, ok := cache.Get(fmt.Sprintf("message:%s:%s:[]", mailbox, uid))
+	if !ok {
+		return nil
+	}
+	row, ok := cached.(CachedMessagePart)
+	if !ok || row.Message == nil {
+		return nil
+	}
+	msg := providerMessageToIMAP(*row.Message)
+	if msg.BodyStructure == nil {
+		return nil
+	}
+	return &msg
+}
+
+// cacheMessageRow keeps the metadata of a message opened without a listing
+// in the entry a listing would have written, so that it opens from the cache
+// next time as a listed one does. Flag changes keep that entry current
+// (applyFlagsToCache).
+func cacheMessageRow(cache *alps.Cache, mailbox string, msg *provider.Message) {
+	if msg == nil || msg.ID == nil {
+		return
+	}
+	cache.Set(fmt.Sprintf("message:%s:%s:[]", mailbox, msg.ID.String()), CachedMessagePart{Message: msg, Mailbox: mailbox})
 }
 
 type messagePath struct {
@@ -1730,6 +1849,13 @@ func handleComposeNew(ctx *alps.Context) error {
 	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, maxComposeBodyBytes)
 
 	saveAsDraft := ctx.FormValue("save_as_draft") != ""
+	// A draft is saved as the user types, several megabytes of it with its
+	// attachments, and what they open meanwhile does not wait for it: a save
+	// does its mail work on the session's background connection.
+	doMail := ctx.Session.DoMailWithContext
+	if saveAsDraft {
+		doMail = ctx.Session.DoBackgroundMail
+	}
 
 	fromAddr := ctx.FormValue("from")
 	if fromAddr == "" {
@@ -1766,6 +1892,11 @@ func handleComposeNew(ctx *alps.Context) error {
 		msg.MessageID = "<" + mid + ">"
 	}
 
+	// Where each of msg.Attachments comes from, in the same order: the upload
+	// or the earlier part the composer named it by. A draft save answers with
+	// it, so the composer can tell which stored part each of its entries became.
+	var sources []map[string]string
+
 	uuids := ctx.FormValue("attachment-uuids")
 	for _, uuid := range strings.Split(uuids, ",") {
 		uuid = strings.TrimSpace(uuid)
@@ -1778,6 +1909,7 @@ func handleComposeNew(ctx *alps.Context) error {
 			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "unable to retrieve message attachment " + uuid})
 		}
 		msg.Attachments = append(msg.Attachments, &formAttachment{attachment.File})
+		sources = append(sources, map[string]string{"uuid": uuid})
 		defer attachment.Form.RemoveAll()
 	}
 
@@ -1830,20 +1962,27 @@ func handleComposeNew(ctx *alps.Context) error {
 			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "attachments name a message part, but no message to take it from"})
 		}
 
-		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-			for _, pathStr := range prevAttachments {
-				partPath, err := parsePartPath(pathStr)
-				if err != nil {
+		err := doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+			// Added only after every part is read, so a retry never duplicates them.
+			var parts []Attachment
+			var partSources []map[string]string
+			parsedUid, err := p.ParseMessageID(sourcePath.Uid)
+			if err != nil {
+				return fmt.Errorf("invalid UID: %v", err)
+			}
+			partPaths := make([][]int, len(prevAttachments))
+			for i, pathStr := range prevAttachments {
+				if partPaths[i], err = parsePartPath(pathStr); err != nil {
 					return fmt.Errorf("invalid part path: %v", err)
 				}
-				parsedUid, err := p.ParseMessageID(sourcePath.Uid)
-				if err != nil {
-					return fmt.Errorf("invalid UID: %v", err)
-				}
-				_, entity, _, _, err := p.GetMessagePartWithData(sourcePath.Mailbox, parsedUid, partPath)
-				if err != nil {
-					return fmt.Errorf("failed to fetch attachment %s: %v", pathStr, err)
-				}
+			}
+			// All of them in one read: an autosave carries them every time.
+			entities, err := messagePartsWithProvider(p, sourcePath.Mailbox, parsedUid, partPaths)
+			if err != nil {
+				return fmt.Errorf("failed to fetch attachments %s: %v", strings.Join(prevAttachments, ","), err)
+			}
+			for i, pathStr := range prevAttachments {
+				partPath, entity := partPaths[i], entities[i]
 
 				mimeType, _, _ := entity.Header.ContentType()
 				disposition, dispParams, _ := entity.Header.ContentDisposition()
@@ -1862,7 +2001,7 @@ func handleComposeNew(ctx *alps.Context) error {
 				// We can just read from entity.Body!
 				decodedBody, err := io.ReadAll(entity.Body)
 				if err != nil {
-					return fmt.Errorf("failed to decode attachment body: %v", err)
+					return fmt.Errorf("failed to decode attachment %s: %v", pathStr, err)
 				}
 
 				node := &IMAPPartNode{
@@ -1870,7 +2009,7 @@ func handleComposeNew(ctx *alps.Context) error {
 					MIMEType: mimeType,
 					Filename: filename,
 				}
-				msg.Attachments = append(msg.Attachments, &imapAttachment{
+				parts = append(parts, &imapAttachment{
 					Mailbox: sourcePath.Mailbox,
 					Uid:     sourcePath.Uid,
 					Node:    node,
@@ -1881,7 +2020,10 @@ func handleComposeNew(ctx *alps.Context) error {
 					// gives no disposition at all.
 					Inline: contentID != "" && !strings.EqualFold(disposition, "attachment"),
 				})
+				partSources = append(partSources, map[string]string{"partPath": pathStr})
 			}
+			msg.Attachments = append(msg.Attachments, parts...)
+			sources = append(sources, partSources...)
 			return nil
 		})
 		if err != nil {
@@ -1895,7 +2037,14 @@ func handleComposeNew(ctx *alps.Context) error {
 		var size uint32
 		var respAttachments []map[string]interface{}
 
-		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		// The source of each attachment, by the part path WriteTo gives it
+		// (see partPaths).
+		sourceAt := make(map[string]map[string]string, len(sources))
+		for i, path := range msg.partPaths() {
+			sourceAt[path] = sources[i]
+		}
+
+		err := doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 			var err error
 			drafts, uid, size, err = appendMessageWithProvider(p, msg, provider.MailboxTypeDrafts)
 			if err != nil {
@@ -1910,25 +2059,30 @@ func handleComposeNew(ctx *alps.Context) error {
 				ctx.Server.Logger().Errorf("Failed to fetch new attachments for draft %v: %v", uid, err)
 			} else if newMsg != nil {
 				msgIMAP := providerMessageToIMAP(*newMsg)
-				for _, a := range msgIMAP.Attachments() {
-					respAttachments = append(respAttachments, map[string]interface{}{
+				stored := func(a IMAPPartNode) map[string]interface{} {
+					path := formatPartPath(a.Path)
+					part := map[string]interface{}{
 						"name":     a.Filename,
 						"size":     a.Size,
 						"type":     a.MIMEType,
-						"partPath": formatPartPath(a.Path),
-					})
+						"partPath": path,
+					}
+					if source, ok := sourceAt[path]; ok {
+						part["source"] = source
+					}
+					return part
 				}
-				// The body's images too, marked inline: the composer replaces
-				// what it carries with this list, and left out they were not
-				// carried by the next save or by the send.
+				for _, a := range msgIMAP.Attachments() {
+					respAttachments = append(respAttachments, stored(a))
+				}
+				// The body's images too, marked inline, so that each inline
+				// entry the save carried finds the part it is now stored as.
+				// Left out, such an entry would keep a path the new draft does
+				// not have.
 				for _, a := range msgIMAP.EmbeddedParts() {
-					respAttachments = append(respAttachments, map[string]interface{}{
-						"name":     a.Filename,
-						"size":     a.Size,
-						"type":     a.MIMEType,
-						"partPath": formatPartPath(a.Path),
-						"inline":   true,
-					})
+					part := stored(a)
+					part["inline"] = true
+					respAttachments = append(respAttachments, part)
 				}
 			}
 
@@ -1963,6 +2117,14 @@ func handleComposeNew(ctx *alps.Context) error {
 		})
 	}
 
+	// A send the browser has given up on before the message goes is not
+	// sent. The composer has already said that the send failed, and is open
+	// again for the user to send the message once more: sent now as well, it
+	// would go twice. Nothing has changed yet; the draft is where it was.
+	if err := ctx.Request.Context().Err(); err != nil {
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "message not sent: " + err.Error()})
+	}
+
 	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
 		return sendMessage(c, msg)
 	})
@@ -1974,9 +2136,14 @@ func handleComposeNew(ctx *alps.Context) error {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to send message: " + err.Error()})
 	}
 
+	// The message has gone. What is left of sending it, the mark on the
+	// message it answers, the copy in Sent and the removal of its draft, is
+	// done whether or not the browser still waits for the answer. A request
+	// given up on does no mail work it has not begun (see DoMailWithContext),
+	// but this is the end of work that has: see FinishMail.
 	answered := false
 	if inReplyToPath != nil {
-		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+		err := ctx.Session.FinishMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 			parsedReplyUid, err := p.ParseMessageID(inReplyToPath.Uid)
 			if err != nil {
 				return err
@@ -1991,7 +2158,7 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	var sentName string
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.FinishMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 		sent, _, _, err := appendMessageWithProvider(p, msg, provider.MailboxTypeSent)
 		if err != nil {
 			return err

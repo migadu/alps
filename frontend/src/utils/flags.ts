@@ -108,6 +108,43 @@ export function getTagColor(flag: string): string {
   }
 }
 
+/**
+ * The colour a tag's name is written in on its colour: black or white,
+ * whichever contrasts more, by WCAG relative luminance. White alone was below
+ * the 4.5:1 that the pill's 10px text needs on every predefined colour (2.3:1
+ * on green) and on many custom hues. The better of the two always reaches it:
+ * they contrast equally, at about 4.58:1, with a luminance of 0.179.
+ */
+export function getTagTextColor(color: string): string {
+  const rgb = parseTagColor(color);
+  if (!rgb) return '#fff';
+  const [r, g, b] = rgb.map((c) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  // Black wins when (L + 0.05) / 0.05 exceeds 1.05 / (L + 0.05).
+  return (luminance + 0.05) ** 2 > 0.05 * 1.05 ? '#000' : '#fff';
+}
+
+/** The sRGB channels, 0–255, of a colour getTagColor returns: hex or hsl(). */
+function parseTagColor(color: string): [number, number, number] | null {
+  const hex = /^#([0-9a-f]{6})$/i.exec(color.trim());
+  if (hex) {
+    const n = parseInt(hex[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const hsl = /^hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)$/i.exec(color.trim());
+  if (!hsl) return null;
+  const [h, s, l] = [Number(hsl[1]), Number(hsl[2]) / 100, Number(hsl[3]) / 100];
+  const a = s * Math.min(l, 1 - l);
+  const channel = (n: number) => {
+    const k = (n + h / 30) % 12;
+    return 255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)));
+  };
+  return [channel(0), channel(8), channel(4)];
+}
+
 // Deterministic color generation for custom tags
 function getStringColor(str: string): string {
   let hash = 0;

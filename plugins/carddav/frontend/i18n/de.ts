@@ -1,21 +1,25 @@
 export default {
   contacts: {
     deleteFailed: {
-      one: '{failed} von {count} Kontakt konnte nicht gelöscht werden.',
-      other: '{failed} von {count} Kontakten konnten nicht gelöscht werden.'
+      one: '{count} von {total} Kontakten konnte nicht gelöscht werden.',
+      other: '{count} von {total} Kontakten konnten nicht gelöscht werden.'
     },
     categoryRenameFailed: {
-      one: '{failed} von {count} Kontakt konnte nicht aktualisiert werden, die Kategorie wurde nur teilweise umbenannt.',
-      other: '{failed} von {count} Kontakten konnten nicht aktualisiert werden, die Kategorie wurde nur teilweise umbenannt.'
+      one: '{count} von {total} Kontakten konnte nicht aktualisiert werden, die Kategorie wurde nur teilweise umbenannt.',
+      other: '{count} von {total} Kontakten konnten nicht aktualisiert werden, die Kategorie wurde nur teilweise umbenannt.'
     },
     categoryDeleteFailed: {
-      one: '{failed} von {count} Kontakt konnte nicht aktualisiert werden, die Kategorie wurde nur teilweise entfernt.',
-      other: '{failed} von {count} Kontakten konnten nicht aktualisiert werden, die Kategorie wurde nur teilweise entfernt.'
+      one: '{count} von {total} Kontakten konnte nicht aktualisiert werden, die Kategorie wurde nur teilweise entfernt.',
+      other: '{count} von {total} Kontakten konnten nicht aktualisiert werden, die Kategorie wurde nur teilweise entfernt.'
     },
     categoryUpdateFailed: {
-      one: '{failed} von {count} Kontakt konnte nicht aktualisiert werden.',
-      other: '{failed} von {count} Kontakten konnten nicht aktualisiert werden.'
+      one: '{count} von {total} Kontakten konnte nicht aktualisiert werden.',
+      other: '{count} von {total} Kontakten konnten nicht aktualisiert werden.'
     },
+    deleteOneFailed: 'Der Kontakt konnte nicht gelöscht werden.',
+    categoryRenameOneFailed: 'Ein Kontakt konnte nicht aktualisiert werden, die Kategorie wurde nur teilweise umbenannt.',
+    categoryDeleteOneFailed: 'Ein Kontakt konnte nicht aktualisiert werden, die Kategorie wurde nur teilweise entfernt.',
+    categoryUpdateOneFailed: 'Der Kontakt konnte nicht aktualisiert werden.',
     saveFailed: 'Der Kontakt konnte nicht gespeichert werden.',
     saveConflict: 'Der Kontakt wurde auf einem anderen Gerät geändert, daher wurde Ihre Änderung nicht gespeichert. Brechen Sie die Bearbeitung ab, um die neueste Version zu sehen.',
     starFailed: 'Der Kontakt konnte nicht aktualisiert werden.',
