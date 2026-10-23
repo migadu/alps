@@ -31,7 +31,7 @@ describe('inlinePartsOf', () => {
       ],
     };
     expect(inlinePartsOf(structure, quote)).toEqual([
-      { name: 'chart.png', size: 291, type: 'image/png', partPath: '2', inline: true },
+      { name: 'chart.png', size: 291, type: 'image/png', partPath: '2', inline: true, contentId: 'chart@remote.test' },
     ]);
   });
 
@@ -45,7 +45,7 @@ describe('inlinePartsOf', () => {
     // Outlook and Apple Mail give an inline image an attachment disposition.
     const filed = image({ Params: {}, Extended: { Disposition: { Value: 'attachment', Params: { filename: 'logo.png' } } } });
     expect(inlinePartsOf({ Children: [{ Type: 'text', Subtype: 'html' }, filed] }, quote)).toEqual([
-      { name: 'logo.png', size: 291, type: 'image/png', partPath: '2', inline: true },
+      { name: 'logo.png', size: 291, type: 'image/png', partPath: '2', inline: true, contentId: 'chart@remote.test' },
     ]);
   });
 
@@ -64,7 +64,7 @@ describe('inlinePartsOf', () => {
     // The server lists it as no attachment either: it is the body's.
     const inline = image({ Extended: { Disposition: { Value: 'INLINE' } } });
     expect(inlinePartsOf({ Children: [{ Type: 'text', Subtype: 'html' }, inline] }, '')).toEqual([
-      { name: 'chart.png', size: 291, type: 'image/png', partPath: '2', inline: true },
+      { name: 'chart.png', size: 291, type: 'image/png', partPath: '2', inline: true, contentId: 'chart@remote.test' },
     ]);
   });
 

@@ -2,7 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import {
-  bareAddress, composeContext, draftContentKey, inlinePartPaths, keptAfterSave, postedAttachments, quoteSourceAfterSave,
+  bareAddress, composeContext, discardedInlineAfterSave, draftContentKey, inlinePartPaths, keptAfterSave, postedAttachments, quoteSourceAfterSave,
   recipientField, reconcileSavedAttachments, uploadGone,
 } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
@@ -391,6 +391,7 @@ export class AlpsFloatingComposer extends LitElement {
         // The quote of a draft being edited follows the draft: see quoteSourceAfterSave.
         const quoteSource = quoteSourceAfterSave(currentInstance, result);
         if (quoteSource) updates.quoteSource = quoteSource;
+        Object.assign(updates, discardedInlineAfterSave(latest, currentInstance, result));
         this.composeStore.updateComposer(this.instance.id, updates);
 
         // If the composer became dirty while saving, or new attachments were added, schedule another save
@@ -1769,7 +1770,9 @@ export class AlpsFloatingComposer extends LitElement {
               .text=${this.instance.text || ''}
               .htmlText=${this.instance.html || ''}
               .format=${this.instance.format || 'html'}
+              .initialText=${this.instance.initialText || ''}
               .quoteSource=${this.instance.quoteSource}
+              .discardedInlineIds=${this.instance.discardedInlineIds || []}
               @text-changed=${(e: CustomEvent) => this.composeStore.updateComposer(
                 this.instance.id,
                 { text: e.detail.text, html: e.detail.html },
