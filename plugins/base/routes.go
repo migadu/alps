@@ -1913,19 +1913,23 @@ func handleComposeNew(ctx *alps.Context) error {
 		}
 
 		err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-			for _, pathStr := range prevAttachments {
-				partPath, err := parsePartPath(pathStr)
-				if err != nil {
+			parsedUid, err := p.ParseMessageID(sourcePath.Uid)
+			if err != nil {
+				return fmt.Errorf("invalid UID: %v", err)
+			}
+			partPaths := make([][]int, len(prevAttachments))
+			for i, pathStr := range prevAttachments {
+				if partPaths[i], err = parsePartPath(pathStr); err != nil {
 					return fmt.Errorf("invalid part path: %v", err)
 				}
-				parsedUid, err := p.ParseMessageID(sourcePath.Uid)
-				if err != nil {
-					return fmt.Errorf("invalid UID: %v", err)
-				}
-				_, entity, _, _, err := p.GetMessagePartWithData(sourcePath.Mailbox, parsedUid, partPath)
-				if err != nil {
-					return fmt.Errorf("failed to fetch attachment %s: %v", pathStr, err)
-				}
+			}
+			// All of them in one read: an autosave carries them every time.
+			entities, err := messagePartsWithProvider(p, sourcePath.Mailbox, parsedUid, partPaths)
+			if err != nil {
+				return fmt.Errorf("failed to fetch attachments %s: %v", strings.Join(prevAttachments, ","), err)
+			}
+			for i, pathStr := range prevAttachments {
+				partPath, entity := partPaths[i], entities[i]
 
 				mimeType, _, _ := entity.Header.ContentType()
 				disposition, dispParams, _ := entity.Header.ContentDisposition()
@@ -1944,7 +1948,7 @@ func handleComposeNew(ctx *alps.Context) error {
 				// We can just read from entity.Body!
 				decodedBody, err := io.ReadAll(entity.Body)
 				if err != nil {
-					return fmt.Errorf("failed to decode attachment body: %v", err)
+					return fmt.Errorf("failed to decode attachment %s: %v", pathStr, err)
 				}
 
 				node := &IMAPPartNode{
