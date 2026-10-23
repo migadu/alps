@@ -247,6 +247,21 @@ describe('shared polling counts', () => {
     expect([one.at(-1).announce, two.at(-1).announce].filter(Boolean)).toHaveLength(1);
   });
 
+  it('keeps notifications enabled when acquiring a Web Lock fails', async () => {
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: {
+      request: () => Promise.reject(new DOMException('Denied', 'SecurityError')),
+    } });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const svc = service(); await land(svc);
+    svc.start(1);
+    await vi.advanceTimersByTimeAsync(0);
+    const seen = successes(svc);
+    state.INBOX.total++;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(seen.at(-1).announce).toBe(true);
+    vi.restoreAllMocks();
+  });
+
   it('continues polling without Web Locks', async () => {
     delete (navigator as any).locks;
     const svc = service(); await land(svc);

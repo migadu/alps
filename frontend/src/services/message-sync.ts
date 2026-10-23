@@ -100,6 +100,7 @@ export class MessageSyncService extends EventTarget {
   private leading = false;
   private releaseLead: (() => void) | null = null;
   private leadRequest: AbortController | null = null;
+  private lockFailed = false;
   private pollGeneration = 0;
   private pollBusy = false;
   private channel: BroadcastChannel | null = null;
@@ -314,6 +315,7 @@ export class MessageSyncService extends EventTarget {
   start(minutes: number = 5) {
     this.stop();
     this.pollMinutes = minutes;
+    this.lockFailed = false;
     if (minutes <= 0) return;
     this.watchShown(true);
     try {
@@ -352,6 +354,9 @@ export class MessageSyncService extends EventTarget {
     })).catch((err) => {
       if (controller.signal.aborted || generation !== this.pollGeneration) return;
       Logger.error('Failed to take the poll lock', err);
+      this.lockFailed = true;
+      this.postPoll({ type: 'hello' });
+      this.tellView();
       if (this.pollMinutes > 0 && !this.leading) this.startTimer();
     });
   }
@@ -397,7 +402,7 @@ export class MessageSyncService extends EventTarget {
    */
   private get announces(): boolean {
     if (this.pollMinutes <= 0 || this.leading) return true;
-    if (navigator.locks) return false;
+    if (navigator.locks && !this.lockFailed) return false;
     // Without Web Locks status checks remain per-tab. A channel can still
     // select one announcer; stopped or crashed tabs expire from this set.
     return [...this.peers.values()].every((peer) => peer.username !== this.username
@@ -469,7 +474,7 @@ export class MessageSyncService extends EventTarget {
     if (!message || this.pollMinutes <= 0) return;
     if (message.type === 'leader' || message.type === 'hello') { this.tellView(); return; }
     if (message.type === 'leave') { this.peers.delete(message.peer); return; }
-    if (message.type === 'watch' && (this.leading || !navigator.locks)) {
+    if (message.type === 'watch' && (this.leading || !navigator.locks || this.lockFailed)) {
       if (typeof message.peer !== 'string' || typeof message.epoch !== 'string'
         || typeof message.mailbox !== 'string' || message.username !== this.username) return;
       this.peers.set(message.peer, { ...message, seen: Date.now() });
@@ -489,7 +494,7 @@ export class MessageSyncService extends EventTarget {
     this.pollBusy = true;
     try {
       if (!this.leading || !this.channel || !this.username) {
-        if (!this.leading && navigator.locks && document.hidden) return;
+        if (!this.leading && navigator.locks && !this.lockFailed && document.hidden) return;
         this.tellView();
         await this.backgroundSync({ announce: this.announces, scheduled: true });
         return;
