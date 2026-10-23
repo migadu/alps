@@ -265,10 +265,38 @@ func idStrings(ids []provider.MessageID) []string {
 // The two go together. A cached conversation is named by the same membership
 // the pages carry (see listedThreadUIDs), so a page kept past a change it does
 // not show is one thing, and a conversation kept past it would be that same
-// staleness served to the reader under its own name.
+// staleness served to the reader under its own name. The conversations of
+// other folders that hold the mailbox's messages go with them too
+// (dropConversationsHolding).
 func dropMailboxListings(cache *alps.Cache, mailbox string) {
 	cache.DeletePrefix("messages:" + mailbox + ":")
 	cache.DeletePrefix("thread:" + mailbox + ":")
+	dropConversationsHolding(cache, mailbox)
+}
+
+// dropConversationsHolding drops the conversations the session holds, under
+// any folder's keys, that hold a message of mailbox.
+//
+// A conversation is kept under the folder it was opened from, and one opened
+// from the Inbox holds the user's own replies from Sent. Dropped with Sent's
+// own alone, it went on showing a reply that had been deleted or moved, and
+// one with the flags it had before the whole of Sent was marked read.
+//
+// By the folder each member names, not by the key, which names only the
+// folder the conversation was opened from; and not by a prefix of the folder's
+// name, as a folder whose name goes on from this one's with a colon is
+// another. A conversation that holds none of this mailbox's messages stays.
+func dropConversationsHolding(cache *alps.Cache, mailbox string) {
+	for _, key := range cache.GetKeysWithPrefix("thread:") {
+		cached, ok := cache.Get(key)
+		if !ok {
+			continue
+		}
+		msgs, ok := cached.([]IMAPMessage)
+		if ok && slices.ContainsFunc(msgs, func(m IMAPMessage) bool { return m.Mailbox == mailbox }) {
+			cache.Delete(key)
+		}
+	}
 }
 
 // dropRenumberedMailbox forgets everything this session holds about a
