@@ -300,6 +300,10 @@ export const pt = {
     attachmentsTooLarge: 'Os anexos excedem o tamanho máximo permitido.',
     draftSaveFailedKeepOpen: 'Não foi possível salvar este rascunho — a janela permanece aberta para não perder nada',
     attachmentsWait: 'Por favor, aguarde o envio dos anexos terminar antes de enviar.',
+    attachmentsGone: {
+      one: 'É preciso anexar novamente {count} arquivo: o servidor não tem mais o que foi carregado.',
+      other: 'É preciso anexar novamente {count} arquivos: o servidor não tem mais o que foi carregado.'
+    },
     sending: 'A mensagem está sendo enviada...',
     undo: 'Desfazer',
     sendError: 'Falha ao enviar mensagem: {error}',
@@ -465,6 +469,7 @@ export const pt = {
   },
   attachment: {
     remove: 'Remover',
+    addAgain: 'Anexar novamente',
     preview: 'Pré-visualizar',
     download: 'Baixar',
     zoomIn: 'Aumentar zoom',
