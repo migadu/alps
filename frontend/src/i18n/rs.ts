@@ -2,6 +2,10 @@ export const rs = {
   settings: {
     saveFailed: 'Није могуће сачувати то подешавање; можда неће преживети одјаву',
     title: 'Подешавања',
+    unsavedTitle: 'Одбацити измене?',
+    unsavedMessage: 'Имате несачуване измене. Ако напустите овај одељак, биће одбачене.',
+    discard: 'Одбаци',
+    keepEditing: 'Настави уређивање',
     categories: {
       general: 'Опште',
       identity: 'Идентитет',
@@ -583,7 +587,8 @@ export const rs = {
     expand: "Прошири",
     collapse: "Скупи",
     moreOptions: "Више опција",
-    notFound: "Страница није пронађена"
+    notFound: "Страница није пронађена",
+    close: "Затвори"
   },
   webauthn: {
     title: 'Верификација безбедносног кључа',

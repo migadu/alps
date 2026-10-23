@@ -92,7 +92,7 @@ test("the WebAuthn pane opens as state, not as a form", async ({ page }) => {
   await page.goto("/#/settings/webauthn");
 
   const pane = page.locator("alps-webauthn-settings");
-  await expect(page.locator(".settings-title")).toHaveText("Settings / 2FA / WebAuthn");
+  await expect(page.locator("settings-window .category-title")).toHaveText("2FA / WebAuthn");
 
   // Where the account stands, in words, before it offers anything.
   await expect(pane.getByText("Security Keys", { exact: true })).toBeVisible();

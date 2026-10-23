@@ -2,6 +2,10 @@ export const sr = {
   settings: {
     saveFailed: 'Nije moguće sačuvati to podešavanje; možda neće preživeti odjavu',
     title: 'Podešavanja',
+    unsavedTitle: 'Odbaciti izmene?',
+    unsavedMessage: 'Imate nesačuvane izmene. Ako napustite ovaj odeljak, biće odbačene.',
+    discard: 'Odbaci',
+    keepEditing: 'Nastavi uređivanje',
     categories: {
       general: 'Opšte',
       identity: 'Identitet',
@@ -583,7 +587,8 @@ export const sr = {
     expand: "Proširi",
     collapse: "Skupi",
     moreOptions: "Više opcija",
-    notFound: "Stranica nije pronađena"
+    notFound: "Stranica nije pronađena",
+    close: "Zatvori"
   },
   webauthn: {
     title: 'Verifikacija bezbednosnog ključa',

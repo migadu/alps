@@ -517,7 +517,7 @@ test("a script whose name holds a joined emoji is opened and edited in place", a
 test("the filter controls are labelled in words, not i18n keys", async ({ page }) => {
   await openFilters(page);
 
-  await expect(page.locator("settings-page alps-category-item").filter({ hasText: /^\s*Filters\s*$/ })).toBeVisible();
+  await expect(page.locator("settings-window alps-category-item").filter({ hasText: /^\s*Filters\s*$/ })).toBeVisible();
   const group = settings(page).locator("alps-setting-group");
   await expect(group.locator(".setting-label")).toHaveText("Filters");
   await expect(group.locator(".setting-description")).toHaveText(
