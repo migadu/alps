@@ -21,7 +21,7 @@ func TestProviderMailboxes(t *testing.T) {
 	p := NewProvider(tmpDir, "testuser")
 
 	// Create INBOX manually since maildir package requires an Init for root
-	inboxDir := p.getDir("INBOX")
+	inboxDir := mustDir(t, p, "INBOX")
 	if err := inboxDir.Init(); err != nil {
 		t.Fatalf("failed to init INBOX: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestProviderMessages(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := NewProvider(tmpDir, "testuser")
 
-	inboxDir := p.getDir("INBOX")
+	inboxDir := mustDir(t, p, "INBOX")
 	inboxDir.Init()
 
 	// 1. Test AppendMessage
@@ -187,7 +187,7 @@ func TestProviderMessages(t *testing.T) {
 func TestMaildir_SortOrderAscending(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := NewProvider(tmpDir, "testuser")
-	if err := p.getDir("INBOX").Init(); err != nil {
+	if err := mustDir(t, p, "INBOX").Init(); err != nil {
 		t.Fatalf("init INBOX: %v", err)
 	}
 

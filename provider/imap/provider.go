@@ -1985,6 +1985,13 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 	}
 
 	if p.client.Caps().Has(imap.CapMove) {
+		any, err := p.batchHasMessages(uidSet)
+		if err != nil {
+			return nil, err
+		}
+		if !any {
+			return map[provider.MessageID]provider.MessageID{}, nil
+		}
 		moveCmd := p.client.Move(uidSet, destMailbox)
 		moveData, err := moveCmd.Wait()
 		if err != nil {
@@ -1992,7 +1999,8 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 		}
 
 		uidMapping := make(map[provider.MessageID]provider.MessageID)
-		if moveData != nil && moveData.SourceUIDs != nil && moveData.DestUIDs != nil {
+		sawCopyUID := moveData != nil && moveData.SourceUIDs != nil && moveData.DestUIDs != nil
+		if sawCopyUID {
 			if srcUidSet, ok1 := moveData.SourceUIDs.(imap.UIDSet); ok1 {
 				if dstUidSet, ok2 := moveData.DestUIDs.(imap.UIDSet); ok2 {
 					srcNums, _ := srcUidSet.Nums()
@@ -2024,13 +2032,18 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 			_ = p.DeleteMessages(sourceMailbox, remainingIDs)
 		}
 
-		return uidMapping, nil
+		return nil, nil
 	}
 
 	// Fallback: copy then delete
 	uidMapping, err := p.CopyMessages(sourceMailbox, destMailbox, ids)
 	if err != nil {
 		return nil, err
+	}
+	if uidMapping != nil && len(uidMapping) == 0 {
+		// A known-empty copy must not delete: without UIDPLUS even an
+		// absent UID would expunge unrelated mail already marked Deleted.
+		return uidMapping, nil
 	}
 
 	err = p.DeleteMessages(sourceMailbox, ids)
@@ -2039,6 +2052,9 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 
 // CopyMessages copies messages to another mailbox
 func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []provider.MessageID) (map[provider.MessageID]provider.MessageID, error) {
+	if len(ids) == 0 {
+		return map[provider.MessageID]provider.MessageID{}, nil
+	}
 	if err := p.ensureMailboxSelected(sourceMailbox); err != nil {
 		return nil, err
 	}
@@ -2049,6 +2065,13 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 		uidSet.AddNum(imap.UID(uid))
 	}
 
+	any, err := p.batchHasMessages(uidSet)
+	if err != nil {
+		return nil, err
+	}
+	if !any {
+		return map[provider.MessageID]provider.MessageID{}, nil
+	}
 	copyCmd := p.client.Copy(uidSet, destMailbox)
 	copyData, err := copyCmd.Wait()
 	if err != nil {
@@ -2056,7 +2079,8 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 	}
 
 	uidMapping := make(map[provider.MessageID]provider.MessageID)
-	if copyData != nil && len(copyData.SourceUIDs) > 0 && len(copyData.DestUIDs) > 0 {
+	sawCopyUID := copyData != nil && len(copyData.SourceUIDs) > 0 && len(copyData.DestUIDs) > 0
+	if sawCopyUID {
 		srcNums, _ := copyData.SourceUIDs.Nums()
 		dstNums, _ := copyData.DestUIDs.Nums()
 		if len(srcNums) == len(dstNums) {
@@ -2065,8 +2089,25 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 			}
 		}
 	}
+	if len(uidMapping) == 0 {
+		return nil, nil
+	}
 
 	return uidMapping, nil
+}
+
+// An absent COPYUID is ambiguous even with UIDPLUS: RFC4315 permits its
+// omission for UIDNOTSTICKY and write-only destinations. Establish a wholly
+// stale batch from the selected source before filing it instead. A later
+// successful command without a mapping retains the existing unknown-count
+// behavior; its absent mapping never proves that nothing was copied. A
+// UID-only FETCH also avoids charging the server's SEARCH allowance.
+func (p *IMAPProvider) batchHasMessages(uids imap.UIDSet) (bool, error) {
+	data, err := p.client.Fetch(uids, &imap.FetchOptions{UID: true}).Collect()
+	if err != nil {
+		return false, err
+	}
+	return len(data) > 0, nil
 }
 
 // authResultsSection fetches the Authentication-Results fields.

@@ -268,13 +268,38 @@ func idStrings(ids []provider.MessageID) []string {
 // The two go together. A cached conversation is named by the same membership
 // the pages carry (see listedThreadUIDs), so a page kept past a change it does
 // not show is one thing, and a conversation kept past it would be that same
-// staleness served to the reader under its own name. The conversations of
-// other folders that hold the mailbox's messages go with them too
-// (dropConversationsHolding).
+// staleness served to the reader under its own name. The conversations go by
+// the messages they hold (dropConversationsHolding): those kept under the
+// mailbox's keys, and those of other folders that hold its messages.
 func dropMailboxListings(cache *alps.Cache, mailbox string) {
-	cache.DeletePrefix("messages:" + mailbox + ":")
-	cache.DeletePrefix("thread:" + mailbox + ":")
+	deleteFolderEntries(cache, "messages", mailbox)
 	dropConversationsHolding(cache, mailbox)
+}
+
+// deleteFolderEntries deletes the pages ("messages") or the messages read
+// ("message") the session holds of mailbox. They are kept under keys that
+// begin with kind:<mailbox>:, which also begins the keys of a folder whose
+// name goes on from this one's with a colon, as Work:Sub's goes on from
+// Work's. A page and a message record the folder they were read from, and one
+// of another folder stays: deleted by the prefix, Work:Sub's were read again
+// for every change to Work. An entry that names no folder goes, as it cannot
+// be told apart.
+func deleteFolderEntries(cache *alps.Cache, kind, mailbox string) {
+	for _, key := range cache.GetKeysWithPrefix(kind + ":" + mailbox + ":") {
+		if cached, ok := cache.Get(key); ok {
+			folder := mailbox
+			switch entry := cached.(type) {
+			case CachedMessages:
+				folder = entry.Mailbox
+			case CachedMessagePart:
+				folder = entry.Mailbox
+			}
+			if folder != "" && folder != mailbox {
+				continue
+			}
+		}
+		cache.Delete(key)
+	}
 }
 
 // dropConversationsHolding drops the conversations the session holds, under
@@ -313,7 +338,7 @@ func dropConversationsHolding(cache *alps.Cache, mailbox string) {
 // from the cache.
 func dropRenumberedMailbox(cache *alps.Cache, mailbox string) {
 	dropMailboxListings(cache, mailbox)
-	cache.DeletePrefix("message:" + mailbox + ":")
+	deleteFolderEntries(cache, "message", mailbox)
 	cache.Delete("uidvalidity:" + mailbox)
 }
 
@@ -1006,7 +1031,19 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 						// opened, whether mail reached it since or not. The
 						// INBOX's and the open folder's stay: they are read
 						// from the cache below.
+						//
+						// Its parts' validator goes with them, as nothing
+						// checks it now (heldPartUIDValidity): a part of the
+						// folder made again elsewhere was confirmed to the
+						// browser with a 304, the old one for the new message,
+						// even after a refresh. The next part read asks the
+						// folder's UIDVALIDITY again.
 						ctx.Session.Cache().Delete("status:" + mbox.Name())
+						ctx.Session.Cache().Delete("uidvalidity:" + mbox.Name())
+						// Conversations have no validity of their own. Without
+						// these checks, a later normal open could list a recreated
+						// folder yet answer with its old conversation by UID.
+						dropConversationsHolding(ctx.Session.Cache(), mbox.Name())
 					}
 				}
 
@@ -1253,23 +1290,27 @@ func pagesReadAt(cache *alps.Cache, mailbox string, counts mailboxCounts) (readA
 }
 
 func handleGetMailbox(ctx *alps.Context) error {
-	// A refresh drops the folder's status and pages, which are what a new
-	// UIDVALIDITY is seen against, so the UIDVALIDITY they were read at is
-	// kept, to compare with the status read now.
+	// The UIDVALIDITY values the session holds the folder at, taken before
+	// anything below reads its status again, to compare with the status this
+	// page is read beside. A refresh drops the folder's status and pages,
+	// which are what a new UIDVALIDITY is seen against. And a folder with no
+	// page held, opened when its counts have gone, has its status read for
+	// this page and nothing to compare it with but these: a conversation, or
+	// a message, read from it before it was made again elsewhere went on
+	// answering for the new folder's message under the same UID.
+	cache := ctx.Session.Cache()
 	var heldValidities []uint32
+	mboxName, nameErr := url.PathUnescape(ctx.Param("mbox"))
+	if nameErr == nil {
+		heldValidities = heldUIDValidities(cache, mboxName)
+	}
 	if refresh := ctx.QueryParam("refresh"); refresh == "1" || refresh == "true" {
-		cache := ctx.Session.Cache()
-		mboxName, err := url.PathUnescape(ctx.Param("mbox"))
-		if err == nil {
-			heldValidities = heldUIDValidities(cache, mboxName)
-		}
-
 		cache.Delete("mailboxes")
 		for _, key := range cache.GetKeysWithPrefix("status:") {
 			cache.Delete(key)
 		}
 
-		if err == nil {
+		if nameErr == nil {
 			dropMailboxListings(cache, mboxName)
 		}
 	}
@@ -1352,9 +1393,9 @@ func handleGetMailbox(ctx *alps.Context) error {
 	// read so that a page never claims counts newer than its rows. A cached
 	// page is served only while they are still the ones it was read at.
 	counts := countsOf(mbox)
-	// Opened with a refresh, a folder made again elsewhere has no cached page
-	// left to be turned down below, and its messages read before are dropped
-	// here instead.
+	// A folder made again elsewhere, opened with a refresh or with no page
+	// held, has no cached page to be turned down below, and what was read
+	// from it before is dropped here instead.
 	if renumberedSince(heldValidities, counts.UIDValidity) {
 		dropRenumberedMailbox(ctx.Session.Cache(), mbox.Name())
 	}
@@ -2461,6 +2502,22 @@ func deleteDraft(p provider.MailProvider, draft *messagePath) error {
 	return deleteMessagesWithProvider(p, draft.Mailbox, []provider.MessageID{id})
 }
 
+// A mail callback may outlive its HTTP request. Forget its affected copies
+// when it finishes too, including copies read after the request was canceled.
+// This is cache-only: the callback still owns the mail connection, so it must
+// not call invalidateMailboxCache and try to acquire that connection again.
+func forgetAppendOutcome(cache *alps.Cache, mailbox string, attempted bool, draft *messagePath) {
+	if mailbox != "" {
+		dropMailboxListings(cache, mailbox)
+	} else if attempted {
+		cache.Clear()
+	}
+	if draft != nil {
+		dropMailboxListings(cache, draft.Mailbox)
+		forgetMessages(cache, draft.Mailbox, draft.Uid)
+	}
+}
+
 func handleComposeNew(ctx *alps.Context) error {
 	// Before the first FormValue, which is what triggers parsing.
 	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, maxComposeBodyBytes)
@@ -2749,6 +2806,13 @@ func handleComposeNew(ctx *alps.Context) error {
 		var tried bool
 		var heldIn string // Drafts, when it holds a copy the save could not name
 		err = doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+			defer func() {
+				mailbox := heldIn
+				if drafts != nil {
+					mailbox = drafts.Name()
+				}
+				forgetAppendOutcome(ctx.Session.Cache(), mailbox, tried, draftPath)
+			}()
 			if drafts == nil {
 				held, err := storeOnce(p, &tried, provider.MailboxTypeDrafts, msg.MessageID, draftPath, func() error {
 					var err error
@@ -2823,17 +2887,9 @@ func handleComposeNew(ctx *alps.Context) error {
 			return deleteDraft(p, draftPath)
 		})
 		if err != nil {
-			// A draft stored before the save failed is in Drafts: the folder
-			// is read again for it, as after a save that succeeded.
-			if drafts != nil {
-				invalidateMailboxCache(ctx, drafts.Name())
-			} else if heldIn != "" {
-				invalidateMailboxCache(ctx, heldIn)
-			} else if tried {
-				// Verification failed before the possible copy's destination
-				// could be resolved, so no older listing is safe to retain.
-				ctx.Session.Cache().Clear()
-			}
+			// Cancellation can return before the callback does. Its state is
+			// still worker-owned; the deferred invalidation covers a late write.
+			ctx.Session.Cache().Clear()
 			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 		inMessage = readBack
@@ -2927,6 +2983,9 @@ func handleComposeNew(ctx *alps.Context) error {
 	var sentName string
 	var tried bool
 	err = ctx.Session.FinishMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+		defer func() {
+			forgetAppendOutcome(ctx.Session.Cache(), sentName, tried, draftPath)
+		}()
 		if sentName == "" {
 			held, err := storeOnce(p, &tried, provider.MailboxTypeSent, msg.MessageID, nil, func() error {
 				sent, _, _, err := appendMessageWithProvider(p, msg, provider.MailboxTypeSent)
@@ -2946,12 +3005,8 @@ func handleComposeNew(ctx *alps.Context) error {
 		return deleteDraft(p, draftPath)
 	})
 	if err != nil {
-		// A copy filed before the filing failed is in Sent.
-		if sentName != "" {
-			invalidateMailboxCache(ctx, sentName)
-		} else if tried {
-			ctx.Session.Cache().Clear()
-		}
+		// As above, an abandoned callback can still be finishing its write.
+		ctx.Session.Cache().Clear()
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save message to Sent mailbox: " + err.Error()})
 	}
 
@@ -2969,7 +3024,7 @@ func handleComposeNew(ctx *alps.Context) error {
 		// The answered message's folder keeps its pages, with the mark patched
 		// in above, but not its conversations: each was assembled with the
 		// replies Sent held then, and reopened, it would not show this one.
-		ctx.Session.Cache().DeletePrefix("thread:" + inReplyToPath.Mailbox + ":")
+		dropConversationsHolding(ctx.Session.Cache(), inReplyToPath.Mailbox)
 	}
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{"ok": true})
@@ -3098,7 +3153,7 @@ func (scope messageScope) resolve(p provider.MailProvider, mboxName string) ([]p
 		for i, uidStr := range scope.Uids {
 			uid, err := p.ParseMessageID(uidStr)
 			if err != nil {
-				return nil, err
+				return nil, alps.NewHTTPError(http.StatusBadRequest, err)
 			}
 			ids[i] = uid
 		}
@@ -3139,10 +3194,11 @@ const maxReportedMapping = 1000
 // filedCount is how many messages of batch a move or a copy filed: those the
 // provider names in its answer. A message gone since the page listed it is
 // passed over by an IMAP server without an error, and was counted all the
-// same. A server that names none, as one without UIDPLUS does, has said
-// nothing either way, and the batch counts as asked.
+// same. A nil answer, from a server that does not name its copies, says
+// nothing either way, and the batch counts as asked; an empty one is a batch
+// that had all gone (see provider.MailProvider).
 func filedCount(mapping map[provider.MessageID]provider.MessageID, batch []provider.MessageID) int {
-	if len(mapping) == 0 {
+	if mapping == nil {
 		return len(batch)
 	}
 	return len(mapping)
@@ -3449,7 +3505,7 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 	// listing them.
 	if !errors.Is(err, errEmptyNotAllowed) {
 		invalidateMailboxCache(ctx, mboxName)
-		ctx.Session.Cache().DeletePrefix("message:" + mboxName + ":")
+		deleteFolderEntries(ctx.Session.Cache(), "message", mboxName)
 	}
 	if err != nil {
 		// A refusal is the user asking for something this endpoint does not do,
@@ -3672,7 +3728,7 @@ func handleSetFlags(ctx *alps.Context) error {
 	// here. The messages' cached copies carry their flags, and go with it.
 	if scope.All || op == imap.StoreFlagsSet {
 		invalidateMailboxCache(ctx, mboxName)
-		ctx.Session.Cache().DeletePrefix("message:" + mboxName + ":")
+		deleteFolderEntries(ctx.Session.Cache(), "message", mboxName)
 	} else {
 		// Update cached message flags instead of full invalidation
 		recount := false
