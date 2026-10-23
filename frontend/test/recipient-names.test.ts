@@ -15,6 +15,7 @@ import {
 } from './helpers/dom';
 import { registry } from '../src/plugin-registry';
 import { formatAddrs, generateQuote } from '../src/utils/email-quote';
+import { parseWrittenAddress, writtenAddress } from '../src/utils/address-display';
 import { MessageCache } from '../src/utils/message-cache';
 import '../src/components/alps-address-input';
 import '../src/components/message-reader';
@@ -46,6 +47,14 @@ afterEach(() => {
 });
 
 describe('a recipient written from an envelope', () => {
+  it.each(['=?x?q?a?=', '=?UTF-8?Q?Ada?=', 'Ada =? Test', '=?oops'])(
+    'quotes the literal encoded-word-like name %s without interpreting it', (name) => {
+      const recipient = writtenAddress(name, 'ada@example.test');
+      expect(recipient).toBe(`"${name}" <ada@example.test>`);
+      expect(parseWrittenAddress(recipient)).toEqual({ name, email: 'ada@example.test' });
+    },
+  );
+
   it('quotes a name that holds a comma, a quote, a backslash or another special', () => {
     expect(formatAddrs([
       person('Lovelace, Ada', 'ada'),
@@ -132,6 +141,15 @@ describe('a recipient picked from the suggestions', () => {
   }
 
   const caption = (el: El) => shadow(el, '.pill .pill-addr').textContent?.trim();
+
+  it('quotes an encoded-word-like contact name and shows it literally', async () => {
+    const el = await suggest('=?x?q?a?=');
+    shadow<HTMLButtonElement>(el, '.dropdown-item').click();
+    await el.updateComplete;
+
+    expect(el.addresses).toEqual(['"=?x?q?a?=" <jj@example.test>']);
+    expect(caption(el)).toBe('=?x?q?a?=');
+  });
 
   it('escapes a quote in the name, and the pill shows the name as written', async () => {
     const el = await suggest('Jane "JJ" Doe');

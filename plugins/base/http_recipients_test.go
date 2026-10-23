@@ -25,6 +25,8 @@ func TestHTTP_ARecipientNameWithACommaIsSentAsWritten(t *testing.T) {
 		{"Lovelace, Ada", "ada@remote.test"},
 		{"", "bob@remote.test"},
 		{`Jane "JJ" Doe`, "jj@remote.test"},
+		{`=?x?q?a?=`, "literal@remote.test"},
+		{`=?UTF-8?Q?Ada?=`, "encoded@remote.test"},
 	}
 	cc := []recipient{
 		{"Hopper, Grace (Navy)", "grace@remote.test"},
@@ -54,7 +56,7 @@ func TestHTTP_ARecipientNameWithACommaIsSentAsWritten(t *testing.T) {
 	form := url.Values{
 		// As the composer writes them: a name in quotes when it holds a
 		// comma or a quote, a quote or a backslash in it escaped.
-		"to":      {`"Lovelace, Ada" <ada@remote.test>, bob@remote.test, "Jane \"JJ\" Doe" <jj@remote.test>`},
+		"to":      {`"Lovelace, Ada" <ada@remote.test>, bob@remote.test, "Jane \"JJ\" Doe" <jj@remote.test>, "=?x?q?a?=" <literal@remote.test>, "=?UTF-8?Q?Ada?=" <encoded@remote.test>`},
 		"cc":      {`"Hopper, Grace (Navy)" <grace@remote.test>, "Back\\slash" <slash@remote.test>, "Døe, Jöhn" <john@remote.test>`},
 		"bcc":     {`"Babbage, Charles" <charles@remote.test>, `},
 		"subject": {"Notes"},
@@ -64,7 +66,7 @@ func TestHTTP_ARecipientNameWithACommaIsSentAsWritten(t *testing.T) {
 	rec.mu.Lock()
 	data, rcpt := rec.data, rec.rcpt
 	rec.mu.Unlock()
-	want := "ada@remote.test bob@remote.test jj@remote.test charles@remote.test grace@remote.test slash@remote.test john@remote.test"
+	want := "ada@remote.test bob@remote.test jj@remote.test literal@remote.test encoded@remote.test charles@remote.test grace@remote.test slash@remote.test john@remote.test"
 	if strings.Join(rcpt, " ") != want {
 		t.Errorf("RCPT TO %v, want %s", rcpt, want)
 	}

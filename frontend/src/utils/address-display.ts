@@ -76,8 +76,9 @@ export function parseWrittenAddress(pill: string): { name: string; email: string
   return { name: '', email: trimmed };
 }
 
-/** RFC 5322's specials: a name that holds one is written in quotes. */
-const NAME_SPECIALS = /[()<>[\]:;@\\,."]/;
+/** Quote RFC 5322 specials and literal RFC 2047 prefixes, so a plain-text
+ * contact name cannot be interpreted as an encoded word by the server. */
+const NAME_SPECIALS = /[()<>[\]:;@\\,."]|=\?/;
 
 /**
  * A recipient pill written from a name and an address: `Name <address>`, or
