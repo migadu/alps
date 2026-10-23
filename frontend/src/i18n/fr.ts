@@ -599,6 +599,7 @@ export const fr = {
       no_security_key: "Ajoutez d'abord une clé de sécurité.",
       trust_failed: "Le paramètre n'a pas pu être modifié. Veuillez réessayer.",
       remove_unavailable: "La clé de sécurité n'a pas pu être supprimée pour le moment. Veuillez réessayer dans un instant.",
+      load_failed: "Les paramètres des clés de sécurité n'ont pas pu être chargés.",
       general: 'Une erreur s\'est produite.',
     },
     settings: {

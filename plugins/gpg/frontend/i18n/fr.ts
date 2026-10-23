@@ -22,6 +22,7 @@ export default {
     publicKey: 'Clé publique',
     purgeKeys: 'Purger la paire de clés',
     generateNewKeypair: 'Générer une nouvelle paire de clés',
+    generating: 'Génération de la paire de clés...',
     enableEncryptionDesc: 'Pour activer le chiffrement de bout en bout entre les contacts qui le prennent en charge, vous aurez besoin d\'une paire de clés GPG.',
     noKeyPresent: 'Aucune clé présente',
     passphraseRequiredLabel: 'Mot de passe (requis)',

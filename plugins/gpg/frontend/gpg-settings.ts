@@ -277,7 +277,7 @@ export class AlpsGpgSettings extends LitElement {
 
     render() {
         if (this.loading || this.generating) {
-            return html`<alps-loader full-height .text=${this.generating ? 'Generating keypair...' : 'Loading...'}></alps-loader>`;
+            return html`<alps-loader full-height .text=${this.i18nStore?.t(this.generating ? 'gpg.generating' : 'settings.loading') ?? ''}></alps-loader>`;
         }
 
         return html`

@@ -22,6 +22,7 @@ export default {
     publicKey: 'Clave pública',
     purgeKeys: 'Purgar par de claves',
     generateNewKeypair: 'Generar nuevo par de claves',
+    generating: 'Generando par de claves...',
     enableEncryptionDesc: 'Para habilitar el cifrado de extremo a extremo entre los contactos que lo admiten, necesitarás un par de claves GPG.',
     noKeyPresent: 'No hay ninguna clave presente',
     passphraseRequiredLabel: 'Contraseña (obligatoria)',
