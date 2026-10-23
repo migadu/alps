@@ -12,6 +12,7 @@ import { ComposeStore } from '../src/store/compose-store';
 import { DraftFlushError } from '../src/utils/draft-flush-error';
 import { messageOperations } from '../src/services/message-operations';
 import { generateQuote } from '../src/utils/email-quote';
+import { MessageCache } from '../src/utils/message-cache';
 import '../src/components/alps-floating-composer';
 
 // See floating-composer-send.test.ts: the picker builds its grid on connect.
@@ -110,6 +111,54 @@ describe('files picked together', () => {
     // And only once: the timer the earlier uploads armed finds it stored.
     await vi.advanceTimersByTimeAsync(10_000);
     expect(saveDraft).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a save outlived by its account or window', () => {
+  it.each(['session end', 'account cache reset', 'closed window'])('does not announce the old draft after %s', async transition => {
+    let finish!: (result: any) => void;
+    vi.spyOn(messageOperations, 'saveDraft').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const { store, instance } = composerIn({ draftUid: '7', draftMailbox: 'Drafts', dirty: true });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const news = record<CustomEvent>(window, 'draft-autosaved');
+    const saving = el._saveDraft();
+    await waitFor(() => !!finish, 'the save request');
+    if (transition === 'session end') window.dispatchEvent(new CustomEvent('session-cleared'));
+    else if (transition === 'account cache reset') MessageCache.clear();
+    else el.remove();
+    finish({ uid: '8', mailbox: 'Drafts' });
+    await saving;
+    expect(news).toHaveLength(0);
+  });
+
+  it.each([false, true])('announces a successful same-session save, including a remounted window (%s)', async remount => {
+    let finish!: (result: any) => void;
+    vi.spyOn(messageOperations, 'saveDraft').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const { store, instance, id } = composerIn({ draftUid: '7', draftMailbox: 'Drafts', dirty: true });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const news = record<CustomEvent>(window, 'draft-autosaved');
+    const saving = el._saveDraft();
+    await waitFor(() => !!finish, 'the save request');
+    if (remount) { el.remove(); document.body.append(el); }
+    finish({ uid: '8', mailbox: 'Drafts' });
+    expect(await saving).toBe(true);
+    expect(news).toHaveLength(1);
+    expect(store.getComposer(id)?.draftUid).toBe('8');
+  });
+
+  it('announces Save & close before closing its current window, and announces no refused save', async () => {
+    const save = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ uid: '8', mailbox: 'Drafts' });
+    const { store, instance, id } = composerIn({ draftUid: '7', draftMailbox: 'Drafts', dirty: true });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const news = record<CustomEvent>(window, 'draft-autosaved');
+    await el._handleCloseClick();
+    expect(news).toHaveLength(0);
+    expect(store.getComposer(id)).toBeDefined();
+    await el._handleCloseClick();
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(news).toHaveLength(1);
+    expect(store.getComposer(id)).toBeUndefined();
   });
 });
 

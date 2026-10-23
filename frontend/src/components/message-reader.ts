@@ -3,7 +3,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { live } from 'lit/directives/live.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName, getRemovableTags } from '../utils/flags';
-import { FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
+import { ALL_MAILBOXES, FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
 import { BACKGROUND_REQUEST, fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
 import { activeUsername, ownAddress, settingsContext, SettingsStore } from '../store/settings-store';
@@ -91,8 +91,11 @@ export interface ReaderActionDetail {
   uid?: string;
   mailbox?: string;
   /** For a card's Delete of the OPEN message: a message of the conversation,
-   * in the viewed folder, to stay on once it is gone. */
+   * in the viewed folder (in any, in a search of every folder), to stay on
+   * once it is gone. */
   nextUid?: string;
+  /** The folder `nextUid` is in. */
+  nextMailbox?: string;
   /** Told whether a card's Delete happened, so the card goes only if it did.
    * Called once, and not at all when the user cancels a confirmation. */
   done?: (ok: boolean) => void;
@@ -405,6 +408,15 @@ export class MessageReader extends LitElement {
    * mailbox, and the replies filed in Sent, which the list cannot hold.
    */
   private _conversation: { key: string; messages: any[] } | null = null;
+  private conversationGeneration = 0;
+  /** Saves/deletes received while a conversation answer is on the wire. */
+  private conversationReads = new Set<{
+    key: string;
+    generation: number;
+    moves: Map<string, { uid: string; mailbox: string }>;
+    removed: Set<string>;
+    flags: Map<string, Map<string, 'add' | 'remove'>>;
+  }>();
 
   /** The message the reader has already scrolled to, by key. Not `@state`: it
    * records what the DOM has done, and changing it must not schedule a render. */
@@ -428,6 +440,15 @@ export class MessageReader extends LitElement {
    * when the card is next opened, or by hand from its menu or the toolbar.
    */
   private readRefused = new Set<string>();
+  /**
+   * The messages of this conversation a card's Delete took away, by key. The
+   * list holds them until it is read again, and every list change before
+   * then put their cards back (see resolveThread).
+   */
+  private droppedKeys = new Set<string>();
+  /** The card the page is about to open in place of the open one, which its
+   * Delete took away (see stayOnCard). */
+  private stayingOn: string | null = null;
   /** Refusals and their notice belong to this opening, including its requests. */
   private readGeneration = 0;
   private readRefusalSaid = false;
@@ -474,6 +495,7 @@ export class MessageReader extends LitElement {
     super.connectedCallback();
     window.addEventListener('external-message-flags-changed', this._handleExternalFlagsChanged);
     window.addEventListener('draft-discarded', this._handleDraftDiscarded);
+    window.addEventListener('draft-autosaved', this._handleDraftAutosaved);
     this.updateComplete.then(() => {
       if (!this.isConnected) return;
       this.settingsStore?.addEventListener('change', this._handleSettingsChange);
@@ -481,6 +503,7 @@ export class MessageReader extends LitElement {
   }
 
   disconnectedCallback() {
+    this.conversationGeneration++;
     this.settingsStore?.removeEventListener('change', this._handleSettingsChange);
     window.removeEventListener('external-message-flags-changed', this._handleExternalFlagsChanged);
     // A timer that outlived the element would mark mail read for a reader
@@ -500,6 +523,7 @@ export class MessageReader extends LitElement {
     if (this.scrollTimer) clearTimeout(this.scrollTimer);
     this.scrollTimer = null;
     window.removeEventListener('draft-discarded', this._handleDraftDiscarded);
+    window.removeEventListener('draft-autosaved', this._handleDraftAutosaved);
     super.disconnectedCallback();
   }
 
@@ -516,8 +540,70 @@ export class MessageReader extends LitElement {
     const detail = (e as CustomEvent<{ mailbox?: string; uid?: string }>).detail;
     if (!detail?.mailbox || !detail.uid || !this.message) return;
     const key = messageKey(detail.mailbox, detail.uid);
+    for (const read of this.conversationReads) read.removed.add(key);
     if (this.threadItems.some(item => this.itemKey(item) === key)) this.dropCard(key);
     if (this.keyOf(this.message) === key) this.dispatchEvent(new CustomEvent('close'));
+  };
+
+  /**
+   * A draft on screen here was saved again, which stores it under a new UID
+   * and deletes the old one.
+   *
+   * The page follows the save in its list and in the open message, but the
+   * conversation the server named and the cards drawn from it kept the old
+   * UID. With the draft open, the conversation no longer matched it and
+   * collapsed to the draft alone, the draft's card emptied until it was read
+   * again; with another message open, the old draft came back as a second card
+   * beside the list's new one; and a discard, named by the new UID, left the
+   * card on screen. The draft is renumbered here, before the page's update
+   * arrives, its card keeping what it has loaded.
+   */
+  private _handleDraftAutosaved = (e: Event) => {
+    const detail = (e as CustomEvent<{ oldUid?: string; oldMailbox?: string; newUid?: string | number; mailbox?: string }>).detail;
+    if (!detail?.oldUid || detail.newUid == null || !detail.mailbox) return;
+    const mailbox = detail.mailbox;
+    const uid = String(detail.newUid);
+    const from = messageKey(detail.oldMailbox || mailbox, detail.oldUid);
+    const to = messageKey(mailbox, uid);
+    if (from === to) return;
+    for (const read of this.conversationReads) {
+      read.moves.set(from, { mailbox, uid });
+      if (read.key === from) read.key = to;
+    }
+    const renumbered = (m: any) => ({ ...m, UID: uid, Mailbox: mailbox });
+
+    if (this._conversation && (this._conversation.key === from || this._conversation.messages.some(m => this.keyOf(m) === from))) {
+      this._conversation = {
+        key: this._conversation.key === from ? to : this._conversation.key,
+        messages: this._conversation.messages.map(m => (this.keyOf(m) === from ? renumbered(m) : m)),
+      };
+    }
+    const readAgain: ThreadMessageItem[] = [];
+    this.threadItems = this.threadItems.map(item => {
+      if (this.itemKey(item) !== from) return item;
+      const next = { ...item, mailbox, message: renumbered(item.message) };
+      if (item.loading || this.bodyLoads.has(from)) readAgain.push(next);
+      return next;
+    });
+    if (readAgain.length) {
+      // An old response must not put the deleted UID back, or leave the new
+      // card's loader waiting on a read keyed by a UID it no longer has.
+      this.bodyReads.set(from, (this.bodyReads.get(from) ?? 0) + 1);
+      this.bodyLoads.delete(from);
+      this.prefetchQueue = this.prefetchQueue.filter(item => this.itemKey(item) !== from);
+      const accountGeneration = MessageCache.generation();
+      const openWasReplaced = !!this.message && this.keyOf(this.message) === from;
+      for (const item of readAgain) {
+        void this.fetchItemBody(item, !item.expanded).then(() => {
+          // The first body may have been replaced before it could ask for
+          // the conversation. Continue that opening from the saved draft.
+          if (openWasReplaced && !this._conversation && this.isConnected
+              && accountGeneration === MessageCache.generation()
+              && this.message && this.keyOf(this.message) === to) void this.loadConversation(this.message);
+        });
+      }
+    }
+    if (this.scrolledToKey === from) this.scrolledToKey = to;
   };
 
   private _handleExternalFlagsChanged = (e: Event) => {
@@ -527,6 +613,7 @@ export class MessageReader extends LitElement {
     if (!this.threadItems || this.threadItems.length === 0) return;
 
     const named = new Set<string>(keys);
+    for (const key of named) this.patchConversationFlag(key, flag, action);
     let updated = false;
     for (let i = 0; i < this.threadItems.length; i++) {
       const item = this.threadItems[i];
@@ -1013,6 +1100,7 @@ export class MessageReader extends LitElement {
       const oldMailbox = changedProperties.has('mailbox') ? changedProperties.get('mailbox') : this.mailbox;
 
       if (!this.message) {
+        this.stayingOn = null;
         this.resetReadRefusals();
         this.localPreferredView = null;
         this.content = '';
@@ -1031,7 +1119,13 @@ export class MessageReader extends LitElement {
         // several folders, and moving between two of them kept the first body.
         const isNewMessage = !oldMessage || this.keyOf(oldMessage) !== this.keyOf(this.message) || oldMailbox !== this.mailbox;
 
-        if (isNewMessage) {
+        // Asked about once, by the next message opened.
+        const stayingOn = isNewMessage ? this.stayingOn : null;
+        if (isNewMessage) this.stayingOn = null;
+        if (stayingOn && stayingOn === this.keyOf(this.message) && oldMailbox === this.mailbox &&
+            this.threadItems.some(item => this.itemKey(item) === stayingOn)) {
+          this.stayOnCard(this.message);
+        } else if (isNewMessage) {
           this.resetReadRefusals();
           this.localPreferredView = null;
           this.fetchMessageBody(this.message, this.message._isAutosaveUpdate);
@@ -1153,6 +1247,32 @@ export class MessageReader extends LitElement {
    * flags the next time the list moved — and a card marked read went back to
    * unread, due to be marked read again.
    */
+  /**
+   * Sets or clears a flag on one message of the conversation the server
+   * returned. The cards are rebuilt from it on every list change, and those
+   * the list does not hold (replies from Sent, members on other pages) took
+   * their flags from it: a change made on the card alone went back.
+   */
+  private patchConversationFlag(key: string, flag: string, action: 'add' | 'remove') {
+    // A response already on the wire predates this paint too. Keep changes
+    // only until that read settles, as with saved/deleted message identities.
+    for (const read of this.conversationReads) {
+      const flags = read.flags.get(key) ?? new Map();
+      flags.set(flag, action);
+      read.flags.set(key, flags);
+    }
+    if (!this._conversation) return;
+    this._conversation = {
+      ...this._conversation,
+      messages: this._conversation.messages.map(m => {
+        if (this.keyOf(m) !== key) return m;
+        const flags: string[] = m.Flags || [];
+        if ((action === 'add') === flags.includes(flag)) return m;
+        return { ...m, Flags: action === 'add' ? [...flags, flag] : flags.filter((f: string) => f !== flag) };
+      }),
+    };
+  }
+
   private patchMemberFlag(key: string, flag: string, action: 'add' | 'remove') {
     const apply = (msg: any) => {
       const flags: string[] = msg?.Flags || [];
@@ -1169,12 +1289,7 @@ export class MessageReader extends LitElement {
         this.threadItems = [...this.threadItems];
       }
     }
-    if (this._conversation) {
-      this._conversation = {
-        ...this._conversation,
-        messages: this._conversation.messages.map(m => (this.keyOf(m) === key ? apply(m) : m)),
-      };
-    }
+    this.patchConversationFlag(key, flag, action);
     // In place, as the card's star does: the page owns this object, and a new
     // one assigned here would be the open message changing under it.
     if (this.message && this.keyOf(this.message) === key) {
@@ -1399,6 +1514,12 @@ export class MessageReader extends LitElement {
       }
     }
 
+    // Neither a stale list nor a conversation answer may restore a card
+    // this opening has already deleted.
+    if (this.droppedKeys.size > 0) {
+      threadMessages = threadMessages.filter(m => !this.droppedKeys.has(this.keyOf(m)));
+    }
+
     this._isThread = enableThreading && threadMessages.length > 1;
 
     const sentMailbox = this.getSentMailboxName();
@@ -1445,6 +1566,7 @@ export class MessageReader extends LitElement {
       this.message._isAutosaveUpdate = false;
     }
     if (!silent) {
+      this.conversationGeneration++;
       this.content = '';
       this.mimeType = '';
       this.rawMessageHtml = '';
@@ -1455,8 +1577,10 @@ export class MessageReader extends LitElement {
       this.hasRemoteResources = false;
       this.threadItems = [];
       this._conversation = null;
+      this.droppedKeys.clear();
     }
 
+    const openingGeneration = this.conversationGeneration;
     this.resolveThread(msg);
     // Whatever the previous conversation had left to read is not this one's.
     this.prefetchQueue = [];
@@ -1484,7 +1608,7 @@ export class MessageReader extends LitElement {
       primaryItem.expanded = true;
       this._deferPropertySync = false;
 
-      const read = this.fetchItemBody(primaryItem);
+      const read = this.bodyLoads.get(this.itemKey(primaryItem)) ?? this.fetchItemBody(primaryItem);
       read.then(() => {
         // A reader that has left the page paints nobody. The answer can land
         // after the element is gone — a body still in flight when the user
@@ -1499,7 +1623,10 @@ export class MessageReader extends LitElement {
       });
       // Whether it arrived or failed: a body that never comes must not cost the
       // reader its conversation.
-      if (!silent) read.catch(() => { }).then(() => this.loadConversation(msg));
+      if (!silent) read.catch(() => { }).then(() => {
+        if (this.isConnected && openingGeneration === this.conversationGeneration
+            && this.message && this.keyOf(this.message) === this.keyOf(msg)) void this.loadConversation(msg);
+      });
       return;
     }
 
@@ -1555,29 +1682,54 @@ export class MessageReader extends LitElement {
   private async loadConversation(msg: any, opening = true) {
     const enableThreading = this.settingsStore?.getState()?.enableThreading ?? true;
     if (!enableThreading || !msg?.UID) return;
-    const key = this.keyOf(msg);
+    const generation = ++this.conversationGeneration;
+    const cacheGeneration = MessageCache.generation();
+    const pending = { key: this.keyOf(msg), generation, moves: new Map<string, { uid: string; mailbox: string }>(), removed: new Set<string>(), flags: new Map<string, Map<string, 'add' | 'remove'>>() };
+    this.conversationReads.add(pending);
+    const renumbered = (message: any): any => {
+      const seen = new Set<string>();
+      let next = message;
+      for (;;) {
+        const key = this.keyOf(next);
+        for (const [flag, action] of pending.flags.get(key) ?? []) {
+          const flags: string[] = next.Flags ?? [];
+          next = { ...next, Flags: action === 'add'
+            ? (flags.includes(flag) ? flags : [...flags, flag])
+            : flags.filter(f => f !== flag) };
+        }
+        const moved = pending.moves.get(key);
+        if (!moved || seen.has(key)) return next;
+        seen.add(key);
+        next = { ...next, UID: moved.uid, Mailbox: moved.mailbox };
+      }
+    };
+    const current = () => this.isConnected && generation === this.conversationGeneration
+      && cacheGeneration === MessageCache.generation() && !!this.message
+      && this.keyOf(this.message) === pending.key;
     const mailbox = msg.Mailbox || this.mailbox;
     try {
       const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/thread`);
       if (res.ok) {
         const data = await res.json();
-        const messages = Array.isArray(data?.Messages) ? data.Messages : [];
+        const messages = (Array.isArray(data?.Messages) ? data.Messages : [])
+          .map(renumbered).filter((message: any) => !pending.removed.has(this.keyOf(message)));
         // Same reason as the body above: nothing on a page that has gone needs
         // its conversation resolved, and resolving it repaints.
-        if (!this.isConnected) return;
-        if (!this.message || this.keyOf(this.message) !== key) return;
-        this._conversation = { key, messages };
+        if (!current()) return;
+        this._conversation = { key: pending.key, messages };
         if (messages.length > 1) {
           this.resolveThread(this.message);
           this.requestUpdate();
         }
       }
     } catch (e) {
-      Logger.error('Failed to load the conversation', e);
+      if (current()) Logger.error('Failed to load the conversation', e);
+    } finally {
+      this.conversationReads.delete(pending);
     }
     // With or without the server's answer: the cards the list gave are a
     // conversation too, and their unread should open all the same.
-    if (opening && this.message && this.keyOf(this.message) === key) this.settleOpenedConversation();
+    if (opening && current()) this.settleOpenedConversation();
   }
 
   /**
@@ -1838,20 +1990,7 @@ export class MessageReader extends LitElement {
       // alone: the newer read does both when it lands.
       if (current()) {
         item.loading = false;
-        if (this.isConnected && !this._deferPropertySync && this.isOpenItem(item)) {
-          this.content = item.content;
-          this.mimeType = item.mimeType;
-          this.rawMessageHtml = item.rawMessageHtml;
-          this.attachments = item.attachments;
-          this.hasHtml = item.hasHtml;
-          this.hasText = item.hasText;
-          this.activeBanners = item.activeBanners;
-          this.allowRemoteResources = item.allowRemoteResources;
-          this.hasRemoteResources = item.hasRemoteResources;
-          this.loadFailed = !!item.loadFailed;
-          this.loading = false;
-          this.message = { ...this.message, ...item.message };
-        }
+        if (this.isConnected && !this._deferPropertySync && this.isOpenItem(item)) this.showOpenItem(item);
         this.updateThreadItemReference(item);
       }
     }
@@ -1947,6 +2086,11 @@ export class MessageReader extends LitElement {
       item.message.Flags = [...(item.message.Flags || []), FLAG_FLAGGED];
     }
     this.updateThreadItemReference(item);
+    // Where the cards are rebuilt from as well, or the star went back with
+    // the next list change.
+    const key = this.itemKey(item);
+    this.patchConversationFlag(key, FLAG_FLAGGED, op);
+    const undo = isStarred ? 'add' : 'remove';
 
     // Only a listed message is news to the list: a card from Sent is not one of its rows.
     const listed = this.listedKeys().has(this.itemKey(item));
@@ -1976,9 +2120,10 @@ export class MessageReader extends LitElement {
           item.message.Flags = item.message.Flags.filter((f: string) => f !== FLAG_FLAGGED);
         }
         this.updateThreadItemReference(item);
+        this.patchConversationFlag(key, FLAG_FLAGGED, undo);
 
         // Revert parent view on failure
-        tellList(isStarred ? 'add' : 'remove');
+        tellList(undo);
       } else {
         if (this.isOpenItem(item)) {
           this.message.Flags = item.message.Flags;
@@ -1993,9 +2138,10 @@ export class MessageReader extends LitElement {
         item.message.Flags = item.message.Flags.filter((f: string) => f !== FLAG_FLAGGED);
       }
       this.updateThreadItemReference(item);
+      this.patchConversationFlag(key, FLAG_FLAGGED, undo);
 
       // Revert parent view on failure
-      tellList(isStarred ? 'add' : 'remove');
+      tellList(undo);
     }
   }
 
@@ -2021,9 +2167,13 @@ export class MessageReader extends LitElement {
     const key = this.itemKey(item);
     const isOpen = this.isOpenItem(item);
     // Where to stay if this is the message being read: the newest other message
-    // of the conversation that the page can open, i.e. one in this folder.
+    // of the conversation that the page can open, i.e. one in this folder, or
+    // in any folder for a search of every folder, which is no one folder.
+    const openable = this.mailbox === ALL_MAILBOXES
+      ? this.threadItems.filter(other => other.message)
+      : this.conversationItems;
     const next = isOpen
-      ? [...this.conversationItems].reverse().find(other => this.itemKey(other) !== key)
+      ? [...openable].reverse().find(other => this.itemKey(other) !== key)
       : undefined;
     this.dispatchEvent(new CustomEvent<ReaderActionDetail>('action', {
       detail: {
@@ -2031,13 +2181,82 @@ export class MessageReader extends LitElement {
         uid: String(item.message.UID),
         mailbox: item.mailbox,
         nextUid: next ? String(next.message.UID) : undefined,
-        done: (ok: boolean) => { if (ok) this.dropCard(key); },
+        nextMailbox: next?.mailbox,
+        done: (ok: boolean) => {
+          if (!ok) return;
+          this.dropCard(key);
+          if (next) this.stayingOn = this.itemKey(next);
+        },
       },
     }));
   }
 
+  /**
+   * Opens another card of this conversation in place of the open one, which
+   * that card's Delete took away: the page has opened the message it was told
+   * to stay on. Opened as a new message, the conversation was thrown away and
+   * read again, and the deleted card came back from the list, which holds it
+   * until it is read again. The cards stay as they are, with what they have
+   * read, and the conversation the server returned now answers for this one.
+   */
+  private stayOnCard(msg: any) {
+    const key = this.keyOf(msg);
+    let reading = false;
+    for (const read of this.conversationReads) {
+      if (read.generation !== this.conversationGeneration) continue;
+      read.key = key;
+      reading = true;
+    }
+    if (this._conversation) this._conversation = { ...this._conversation, key };
+    this.resolveThread(msg);
+    const item = this.threadItems.find(i => this.itemKey(i) === key);
+    if (!item) return;
+    item.expanded = true;
+    if (item.loading || this.bodyLoads.has(key)) {
+      // Its read is out, and shows here when it lands.
+      this.loading = true;
+    } else if (item.content) {
+      this.showOpenItem(item);
+    } else {
+      item.loading = true;
+      this.loading = true;
+      void this.fetchItemBody(item);
+    }
+    this.updateThreadItemReference(item);
+    if (!this._conversation && !reading) {
+      // The deleted opening may still be reading its first body, before it
+      // could ask for the conversation. Continue after this card's body,
+      // unless another opening or account has taken over in the meantime.
+      const generation = this.conversationGeneration;
+      const account = MessageCache.generation();
+      void (this.bodyLoads.get(key) ?? Promise.resolve()).then(() => {
+        if (this.isConnected && generation === this.conversationGeneration
+            && account === MessageCache.generation() && this.message
+            && this.keyOf(this.message) === key) void this.loadConversation(this.message, false);
+      });
+    }
+  }
+
+  /** Shows the open card's body as the open message's. */
+  private showOpenItem(item: ThreadMessageItem) {
+    this.content = item.content;
+    this.mimeType = item.mimeType;
+    this.rawMessageHtml = item.rawMessageHtml;
+    this.attachments = item.attachments;
+    this.hasHtml = item.hasHtml;
+    this.hasText = item.hasText;
+    this.activeBanners = item.activeBanners;
+    this.allowRemoteResources = item.allowRemoteResources;
+    this.hasRemoteResources = item.hasRemoteResources;
+    this.loadFailed = !!item.loadFailed;
+    this.loading = false;
+    this.message = { ...this.message, ...item.message };
+  }
+
   /** Takes a deleted message's card off the conversation. */
   private dropCard(key: string) {
+    this.droppedKeys.add(key);
+    for (const read of this.conversationReads) read.removed.add(key);
     this.threadItems = this.threadItems.filter(i => this.itemKey(i) !== key);
     if (this._conversation) {
       this._conversation = {
