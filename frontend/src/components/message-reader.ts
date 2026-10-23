@@ -1761,6 +1761,9 @@ export class MessageReader extends LitElement {
    * not carry, counts where it has landed: on the open message.
    */
   private mayHaveConversation(msg: any): boolean {
+    // A failed read has not established the References a listing omits.
+    // Keep the conversation available even when its opened body is unreadable.
+    if (this.loadFailed) return true;
     const read = this.message && this.keyOf(this.message) === this.keyOf(msg) ? this.message : msg;
     if ((msg.ThreadCount ?? 0) !== 1) return true;
     if ((read.Flags ?? msg.Flags ?? []).includes(FLAG_ANSWERED)) return true;

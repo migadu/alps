@@ -107,3 +107,30 @@ describe("an opened message's conversation", () => {
     expect(await asksForConversation(row({ ThreadCount: undefined }))).toBe(true);
   });
 });
+
+// A failed read has not established that the message has no References.
+// Other readable members must still be found while the opened body fails.
+describe('a singleton whose body could not be read', () => {
+  for (const failure of ['metadata', 'raw body'] as const) {
+    it(`still reads its conversation after a failed ${failure} read`, async () => {
+      const message = row();
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+        const path = String(url);
+        asked.push(path);
+        if (path.includes('/thread')) return new Response(JSON.stringify({ Messages: [message] }), { status: 200 });
+        if (failure === 'raw body' && path.includes('?view=')) {
+          return new Response(JSON.stringify({ Message: message, Part: { Path: [1], MIMEType: 'text/plain' }, HasText: true }), { status: 200 });
+        }
+        return new Response('read failed', { status: 500 });
+      }));
+      const el = await mount<El>('alps-message-reader', {
+        settingsStore: settingsStore(), i18nStore, composeStore: { openComposer: vi.fn() }, mailbox: 'INBOX',
+        mailboxes: [{ Name: 'INBOX', Attrs: [] }], messages: [message], message,
+      });
+      await waitFor(() => !el.loading && el.loadFailed, 'the failed opened-body read');
+      for (let i = 0; i < 5; i++) await flush();
+      expect(el.loadFailed).toBe(true);
+      expect(asked.some(path => path.includes('/messages/7/thread'))).toBe(true);
+    });
+  }
+});
