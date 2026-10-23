@@ -22,7 +22,11 @@ export default {
     categoryUpdateOneFailed: 'Le contact n\'a pas pu être mis à jour.',
     saveFailed: 'Le contact n\'a pas pu être enregistré.',
     saveConflict: 'Le contact a été modifié sur un autre appareil, votre modification n\'a donc pas été enregistrée. Annulez la modification pour voir la dernière version.',
-    starFailed: 'Le contact n\'a pas pu être mis à jour.',
+    starFailed: {
+      one: 'Impossible de mettre à jour {count} contact sur {total}.',
+      other: 'Impossible de mettre à jour {count} contacts sur {total}.'
+    },
+    starOneFailed: 'Le contact n\'a pas pu être mis à jour.',
     unnamedContact: 'Contact sans nom',
     title: 'Contacts',
     allContacts: 'Tous les contacts',
