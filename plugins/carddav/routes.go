@@ -370,13 +370,22 @@ func setCategories(card vcard.Card, categories []string) {
 		}
 	}
 
+	first := fields[0]
 	var rest []string
+	// A name may belong to several stored properties (for example the same
+	// word in two ALTID language variants). Keep it in every property where
+	// it was retained; only genuinely new names go into the preferred one.
+	for _, cat := range listElements(first.Value) {
+		if wanted[cat] {
+			rest = append(rest, cat)
+			held[cat] = true
+		}
+	}
 	for _, cat := range valid {
 		if !held[cat] {
 			rest = append(rest, cat)
 		}
 	}
-	first := fields[0]
 	if len(rest) == 0 {
 		dropped[first] = true
 	} else if !sameSet(listElements(first.Value), rest) {
