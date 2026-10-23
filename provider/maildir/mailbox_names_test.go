@@ -141,5 +141,5 @@ func mustDir(t *testing.T, p *Provider, name string) maildir.Dir {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return dir
+	return maildir.Dir(filepath.Join(p.basePath, dir))
 }

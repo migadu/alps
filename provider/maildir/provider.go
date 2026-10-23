@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/emersion/go-imap/v2"
@@ -29,22 +28,62 @@ func (p *Provider) Close() error {
 	return nil
 }
 
-// getDir is the maildir of the mailbox name: the user's maildir itself for
-// INBOX, and a Maildir++ folder in it for any other, its name after a dot
-// (Archive.2024 is .Archive.2024).
+// getDir is the path of the mailbox name's maildir beneath the user's: "."
+// for INBOX, the maildir itself, and a Maildir++ folder for any other, its
+// name after a dot (Archive.2024 is .Archive.2024).
 //
 // A name that is not a folder's is refused before anything touches the file
 // system. Joined to the maildir as it came, "." named the maildir itself, so
 // deleting it deleted every folder the user had; ".." and a path through it
 // named directories outside, another user's maildir among them.
-func (p *Provider) getDir(name string) (maildir.Dir, error) {
+func (p *Provider) getDir(name string) (string, error) {
 	if name == "INBOX" {
-		return maildir.Dir(p.basePath), nil
+		return ".", nil
 	}
 	if !folderName(name) {
 		return "", refused("not a folder name: %q", name)
 	}
-	return maildir.Dir(filepath.Join(p.basePath, "."+name)), nil
+	return "." + name, nil
+}
+
+// openRoot opens the user's maildir, which every path below it is resolved
+// beneath (see box). One not on disk yet, as for an account nothing has been
+// delivered to, is no root, and no error.
+func (p *Provider) openRoot() (*os.Root, error) {
+	root, err := os.OpenRoot(p.basePath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	return root, err
+}
+
+// makeRoot opens the user's maildir, making its directory first if it is not
+// there, for a write that needs it.
+func (p *Provider) makeRoot() (*os.Root, error) {
+	if err := os.MkdirAll(p.basePath, 0o700); err != nil {
+		return nil, err
+	}
+	return os.OpenRoot(p.basePath)
+}
+
+func closeRoot(root *os.Root) {
+	if root != nil {
+		root.Close()
+	}
+}
+
+// openBox opens the mailbox name, after refusing a name that is not a
+// folder's. The caller closes its root (closeRoot).
+func (p *Provider) openBox(name string) (box, error) {
+	dir, err := p.getDir(name)
+	if err != nil {
+		return box{}, err
+	}
+	root, err := p.openRoot()
+	if err != nil {
+		return box{}, err
+	}
+	return box{root: root, dir: dir}, nil
 }
 
 // folderName reports whether name names a Maildir++ folder: one or more
@@ -71,22 +110,31 @@ func alreadyExists(name string) error {
 	return &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeAlreadyExists, Text: fmt.Sprintf("folder %q exists", name)}
 }
 
-// getDirs is getDir for the two mailboxes of a move or a copy.
-func (p *Provider) getDirs(source, dest string) (maildir.Dir, maildir.Dir, error) {
+// openBoxes is openBox for the two mailboxes of a move or a copy, beneath one
+// root.
+func (p *Provider) openBoxes(source, dest string) (box, box, error) {
 	src, err := p.getDir(source)
 	if err != nil {
-		return "", "", err
+		return box{}, box{}, err
 	}
 	dst, err := p.getDir(dest)
 	if err != nil {
-		return "", "", err
+		return box{}, box{}, err
 	}
-	return src, dst, nil
+	root, err := p.openRoot()
+	if err != nil {
+		return box{}, box{}, err
+	}
+	return box{root: root, dir: src}, box{root: root, dir: dst}, nil
 }
 
-// isFolder reports whether dir is there, as a directory.
-func isFolder(dir maildir.Dir) (bool, error) {
-	info, err := os.Lstat(string(dir))
+// isFolder reports whether the box is there, as a directory: a link, even to
+// one, is not.
+func isFolder(b box) (bool, error) {
+	if b.root == nil {
+		return false, nil
+	}
+	info, err := b.root.Lstat(b.dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
 	}
@@ -99,9 +147,13 @@ func isFolder(dir maildir.Dir) (bool, error) {
 func (p *Provider) ListMailboxes() ([]provider.Mailbox, error) {
 	var mailboxes []provider.Mailbox
 
+	// A maildir that cannot be opened lists as an empty INBOX, as one whose
+	// messages cannot be read does.
+	root, _ := p.openRoot()
+	defer closeRoot(root)
+
 	// Add INBOX
-	inbox, _ := p.getDir("INBOX")
-	inboxMsgs, _ := getAllMessages(inbox)
+	inboxMsgs, _ := getAllMessages(box{root: root, dir: "."})
 	mailboxes = append(mailboxes, provider.Mailbox{
 		Name:       "INBOX",
 		Delimiter:  '.',
@@ -111,7 +163,15 @@ func (p *Provider) ListMailboxes() ([]provider.Mailbox, error) {
 	})
 
 	// Add subfolders
-	entries, err := os.ReadDir(p.basePath)
+	if root == nil {
+		return mailboxes, nil
+	}
+	top, err := root.Open(".")
+	if err != nil {
+		return mailboxes, nil
+	}
+	entries, err := top.ReadDir(-1)
+	top.Close()
 	if err != nil {
 		return mailboxes, nil
 	}
@@ -131,7 +191,7 @@ func (p *Provider) ListMailboxes() ([]provider.Mailbox, error) {
 			// A directory alps could not name, and so could not open.
 			continue
 		}
-		msgs, _ := getAllMessages(dir)
+		msgs, _ := getAllMessages(box{root: root, dir: dir})
 
 		mailboxes = append(mailboxes, provider.Mailbox{
 			Name:       name,
@@ -146,11 +206,12 @@ func (p *Provider) ListMailboxes() ([]provider.Mailbox, error) {
 }
 
 func (p *Provider) GetMailboxStatus(name string) (*provider.MailboxStatus, error) {
-	dir, err := p.getDir(name)
+	b, err := p.openBox(name)
 	if err != nil {
 		return nil, err
 	}
-	msgs, err := getAllMessages(dir)
+	defer closeRoot(b.root)
+	msgs, err := getAllMessages(b)
 	if err != nil {
 		return nil, err
 	}
@@ -218,59 +279,56 @@ func (p *Provider) CreateMailbox(name string) error {
 	if err != nil {
 		return err
 	}
+	// An account may have no physical INBOX before its first delivery. The
+	// configured root must exist before creating its first Maildir++ folder.
+	root, err := p.makeRoot()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	inbox := box{root: root, dir: "."}
 	if name == "INBOX" {
 		// Provider setup may initialize a never-delivered INBOX. Once its
 		// cur directory exists, creating it again is an existing mailbox.
-		if _, err := os.Stat(filepath.Join(p.basePath, "cur")); err == nil {
+		if _, err := root.Lstat("cur"); err == nil {
 			return alreadyExists(name)
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
-		if err := os.MkdirAll(p.basePath, 0o700); err != nil {
-			return err
-		}
-		return dir.Init()
+		return inbox.init()
 	}
-	// An account may have no physical INBOX before its first delivery. The
-	// configured root must exist before creating its first Maildir++ folder.
-	if err := os.MkdirAll(p.basePath, 0o700); err != nil {
-		return err
-	}
-	if err := maildir.Dir(p.basePath).Init(); err != nil {
+	if err := inbox.init(); err != nil {
 		return err
 	}
 	// The folder itself first, alone, so that one that exists is told
 	// from one made now.
-	if err := os.Mkdir(string(dir), 0o700); errors.Is(err, fs.ErrExist) {
+	if err := root.Mkdir(dir, 0o700); errors.Is(err, fs.ErrExist) {
 		return alreadyExists(name)
 	} else if err != nil {
 		return err
 	}
-	return dir.Init()
+	return box{root: root, dir: dir}.init()
 }
 
 // RenameMailbox renames a folder, which must be there, to a name no folder
 // has.
 func (p *Provider) RenameMailbox(oldName, newName string) error {
-	oldDir, err := p.getDir(oldName)
+	oldBox, newBox, err := p.openBoxes(oldName, newName)
 	if err != nil {
 		return err
 	}
-	newDir, err := p.getDir(newName)
-	if err != nil {
-		return err
-	}
-	if ok, err := isFolder(oldDir); err != nil {
+	defer closeRoot(oldBox.root)
+	if ok, err := isFolder(oldBox); err != nil {
 		return err
 	} else if !ok {
 		return nonexistent(oldName)
 	}
-	if _, err := os.Lstat(string(newDir)); err == nil {
+	if _, err := newBox.root.Lstat(newBox.dir); err == nil {
 		return alreadyExists(newName)
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	return os.Rename(string(oldDir), string(newDir))
+	return newBox.root.Rename(oldBox.dir, newBox.dir)
 }
 
 // DeleteMailbox removes a folder and everything in it. A folder that is not
@@ -279,16 +337,17 @@ func (p *Provider) DeleteMailbox(name string) error {
 	if name == "INBOX" {
 		return fmt.Errorf("cannot delete INBOX")
 	}
-	dir, err := p.getDir(name)
+	b, err := p.openBox(name)
 	if err != nil {
 		return err
 	}
-	if ok, err := isFolder(dir); err != nil {
+	defer closeRoot(b.root)
+	if ok, err := isFolder(b); err != nil {
 		return err
 	} else if !ok {
 		return nonexistent(name)
 	}
-	return os.RemoveAll(string(dir))
+	return b.root.RemoveAll(b.dir)
 }
 
 // EmptyMailbox removes every message in a mailbox and returns how many it
@@ -296,11 +355,12 @@ func (p *Provider) DeleteMailbox(name string) error {
 // empty. A removal that fails is not counted and is reported: the folder is
 // then still holding mail the user was told had gone.
 func (p *Provider) EmptyMailbox(name string) (int, error) {
-	dir, err := p.getDir(name)
+	b, err := p.openBox(name)
 	if err != nil {
 		return 0, err
 	}
-	messages, err := getAllMessages(dir)
+	defer closeRoot(b.root)
+	messages, err := getAllMessages(b)
 	if err != nil {
 		return 0, err
 	}
@@ -343,8 +403,13 @@ func (p *Provider) ParseMessageID(id string) (provider.MessageID, error) {
 
 // A key identifies one entry, before the Maildir flag suffix. Refuse path
 // components even when an internal caller constructs an ID directly.
+//
+// A backslash is not refused where it is no path separator: a delivery writes
+// a "/" or ":" in its host's name as \057 or \072, as go-maildir does, and a
+// key with one was listed and could not be opened. ":" is refused as the
+// separator of the key from the flags.
 func messageKey(key string) bool {
-	return key != "" && key != "." && key != ".." && !strings.ContainsAny(key, "/\\:\x00")
+	return key != "" && key != "." && key != ".." && !strings.ContainsAny(key, "/:\x00"+string(os.PathSeparator))
 }
 
 // Map maildir flags to provider flags
