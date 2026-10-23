@@ -237,6 +237,48 @@ describe('the folder it names', () => {
     // The request still names the folder by its path.
     expect(mailboxOperations.emptyMailbox).toHaveBeenCalledWith('INBOX.Bin');
   });
+
+  it('is that name while it empties, once it has, and when it could not', async () => {
+    // These said "mailbox", which to a user is the whole account: a Delete
+    // All in Trash ended on "Mailbox emptied successfully."
+    vi.spyOn(mailboxOperations, 'emptyMailbox')
+      .mockResolvedValueOnce({ ok: true, discarded: 2 })
+      .mockResolvedValueOnce({ ok: false, reason: 'not_discardable' });
+    const el = await prefixedTrash();
+    const toasts = record<CustomEvent>(el, 'toast');
+
+    await emptyTheFolder(el);
+    await emptyTheFolder(el);
+
+    expect(messages(toasts)).toEqual(['Emptying Trash...', 'Trash emptied.', 'Emptying Trash...', 'Failed to empty Trash.']);
+  });
+
+  it('is the name in the language the sidebar speaks', async () => {
+    vi.spyOn(mailboxOperations, 'emptyMailbox')
+      .mockResolvedValueOnce({ ok: true, discarded: 2 })
+      .mockResolvedValueOnce({ ok: false, reason: 'failed' });
+    const i18nStore = new I18nStore();
+    await i18nStore.setLanguage('de');
+    const el = await mount<El>(TAG, {
+      i18nStore,
+      messages: [message('1'), message('2')],
+      currentMailbox: 'INBOX.Bin',
+      currentMailboxRole: 'trash',
+      mailboxes: [
+        { Name: 'INBOX', Attrs: [], Delimiter: '.' },
+        { Name: 'INBOX.Bin', Attrs: ['\\Trash'], Delimiter: '.' },
+      ],
+      totalMessages: 2,
+    });
+    const toasts = record<CustomEvent>(el, 'toast');
+
+    await el.handleEmptyMailbox();
+    await el.handleEmptyMailbox();
+
+    expect(messages(toasts)).toHaveLength(4);
+    expect(messages(toasts).filter(m => !m.includes('Papierkorb'))).toEqual([]);
+    expect(messages(toasts).join(' ')).not.toContain('Postfach');
+  });
 });
 
 describe('while the empty runs', () => {

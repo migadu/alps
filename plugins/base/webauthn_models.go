@@ -60,10 +60,17 @@ func (u *webauthnUser) WebAuthnIcon() string {
 	return ""
 }
 
+// WebAuthnCredentials hands the ceremonies copies of the account's keys,
+// without their clone warning. FinishLogin only ever raises the warning, so a
+// key handed to it marked came back marked whatever its count did at that
+// sign-in, and a count that went back again could not be told from the first.
+// recordKeyUse keeps the stored mark.
 func (u *webauthnUser) WebAuthnCredentials() []webauthn.Credential {
 	var creds []webauthn.Credential
 	for _, c := range u.credentials.Credentials {
-		creds = append(creds, c.Credential)
+		cred := c.Credential
+		cred.Authenticator.CloneWarning = false
+		creds = append(creds, cred)
 	}
 	return creds
 }

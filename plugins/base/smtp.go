@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
+	"strconv"
 	"strings"
 	"time"
 
@@ -88,6 +89,34 @@ type OutgoingMessage struct {
 	Text        string
 	HTML        string
 	Attachments []Attachment
+}
+
+// partPaths is where WriteTo puts each of msg.Attachments, in the same order:
+// the part path IMAP numbers it by in the message written. The body is the
+// first part and the files follow it. With images the body is a
+// multipart/related, the text and the HTML first and the images after them,
+// and without files that is the whole message.
+func (msg *OutgoingMessage) partPaths() []string {
+	paths := make([]string, len(msg.Attachments))
+	var images, files []int
+	for i, att := range msg.Attachments {
+		if msg.HTML != "" && embedded(att) {
+			images = append(images, i)
+		} else {
+			files = append(files, i)
+		}
+	}
+	related := "1."
+	if len(files) == 0 {
+		related = ""
+	}
+	for n, i := range images {
+		paths[i] = related + strconv.Itoa(n+2)
+	}
+	for n, i := range files {
+		paths[i] = strconv.Itoa(n + 2)
+	}
+	return paths
 }
 
 // countingWriter wraps an io.Writer and counts bytes written

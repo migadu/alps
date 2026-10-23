@@ -1,11 +1,13 @@
 package alpsbase
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/emersion/go-message"
 	"github.com/migadu/alps/provider"
 	imapprovider "github.com/migadu/alps/provider/imap"
 )
@@ -29,6 +31,8 @@ func providerMailboxToInfo(mbox provider.Mailbox) MailboxInfo {
 		listData.Status = &imap.StatusData{
 			NumMessages: &numMessages,
 			NumUnseen:   &numUnseen,
+			UIDValidity: mbox.UIDValidity,
+			UIDNext:     imap.UID(mbox.UIDNext),
 		}
 	}
 
@@ -52,6 +56,7 @@ func providerStatusToMailboxStatus(status *provider.MailboxStatus) *MailboxStatu
 			NumMessages: &status.NumMessages,
 			NumUnseen:   &status.NumUnseen,
 			UIDValidity: status.UIDValidity,
+			UIDNext:     imap.UID(status.UIDNext),
 		},
 	}
 }
@@ -183,20 +188,77 @@ func getMailboxStatusWithProvider(p provider.MailProvider, name string) (*Mailbo
 	return providerStatusToMailboxStatus(status), nil
 }
 
-// getMessageMetadataWithProvider gets a message's metadata using the provider
-func getMessageMetadataWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID) (*IMAPMessage, error) {
-	msg, err := p.GetMessageMetadata(mailbox, uid)
-	if err != nil {
-		return nil, err
+// getMailboxStatusesWithProvider gets the status of each of names, in one round
+// trip where the provider can ask for them together. Where errs holds an
+// error, that mailbox's status could not be read.
+func getMailboxStatusesWithProvider(p provider.MailProvider, names []string) ([]*MailboxStatus, []error) {
+	statuses := make([]*MailboxStatus, len(names))
+	errs := make([]error, len(names))
+	if batcher, ok := p.(provider.MailboxStatusBatcher); ok {
+		got, gotErrs := batcher.GetMailboxStatuses(names)
+		for i := range names {
+			if gotErrs[i] != nil {
+				errs[i] = gotErrs[i]
+				continue
+			}
+			statuses[i] = providerStatusToMailboxStatus(got[i])
+		}
+		return statuses, errs
 	}
+	for i, name := range names {
+		statuses[i], errs[i] = getMailboxStatusWithProvider(p, name)
+	}
+	return statuses, errs
+}
 
-	imapMsg := providerMessageToIMAP(*msg)
-	return &imapMsg, nil
+// readerPartWithProvider reads the part of a message the reader shows, with
+// the verdict and References it shows beside it: in one read where the
+// provider can, else as the part and then the message's metadata.
+func readerPartWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, partPath []int) (*provider.Message, []byte, []byte, error) {
+	type readerPartReader interface {
+		GetMessagePartForReader(mailbox string, id provider.MessageID, partPath []int) (*provider.Message, []byte, []byte, error)
+	}
+	if r, ok := p.(readerPartReader); ok {
+		return r.GetMessagePartForReader(mailbox, uid, partPath)
+	}
+	msg, _, headerData, bodyData, err := p.GetMessagePartWithData(mailbox, uid, partPath)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	meta, err := p.GetMessageMetadata(mailbox, uid)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	msg.BimiPotential, msg.BimiFailed = meta.BimiPotential, meta.BimiFailed
+	if len(msg.References) == 0 {
+		msg.References = meta.References
+	}
+	return msg, headerData, bodyData, nil
 }
 
 // deleteMessagesWithProvider deletes multiple messages using the provider
 func deleteMessagesWithProvider(p provider.MailProvider, mailbox string, uids []provider.MessageID) error {
 	return p.DeleteMessages(mailbox, uids)
+}
+
+// messagePartsWithProvider reads the parts of one message at paths, in that
+// order: with one read where the provider can, else one read per part.
+func messagePartsWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, paths [][]int) ([]*message.Entity, error) {
+	type partsReader interface {
+		GetMessageParts(mailbox string, id provider.MessageID, paths [][]int) ([]*message.Entity, error)
+	}
+	if r, ok := p.(partsReader); ok {
+		return r.GetMessageParts(mailbox, uid, paths)
+	}
+	parts := make([]*message.Entity, len(paths))
+	for i, path := range paths {
+		_, entity, _, _, err := p.GetMessagePartWithData(mailbox, uid, path)
+		if err != nil {
+			return nil, fmt.Errorf("part %s: %w", formatPartPath(path), err)
+		}
+		parts[i] = entity
+	}
+	return parts, nil
 }
 
 // markMessageAnsweredWithProvider marks a message as answered using the provider

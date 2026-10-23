@@ -20,6 +20,7 @@ import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxP
 import type { LayoutMode, DensityMode } from '../store/settings-store';
 import '../components/alps-initial-loader';
 import { Logger } from '../utils/logger';
+import { MessageCache } from '../utils/message-cache';
 import { getDestinationLabel, getFlexContainerMinWidth } from '../utils/ui';
 import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/message-key';
 
@@ -340,6 +341,8 @@ export class MailboxPage extends LitElement {
    * came from. '' until anything has been listed.
    */
   @state() private listedMailbox = '';
+  /** The search the rows were read under, trailing `filterQuery` the same way. */
+  private listedQuery = '';
   @state() private totalMessages = 0;
   @state() private messagesPerPage = 50;
   @state() private resizerPositionX = SIDEBAR_WIDTH_DEFAULT + Math.max(MESSAGE_LIST_WIDTH_MIN, (window.innerWidth - SIDEBAR_WIDTH_DEFAULT) * 0.4);
@@ -814,8 +817,11 @@ export class MailboxPage extends LitElement {
       }
     }
 
-    // A save that matched no row is a new row only where drafts are listed.
-    if (!found && this.currentMailbox === mailbox) {
+    // A save that matched no row is a new row only where drafts are listed,
+    // and only over rows that were read: put in where Drafts could not be
+    // read, it took the error's place, and the folder looked as if it held
+    // that one draft.
+    if (!found && this.currentMailbox === mailbox && !(this.listLoadFailed && this.messages.length === 0)) {
       const draftName = this.settingsStore?.getState().name || this.username;
       const draftEmailParts = (this.username || '').split('@');
       const draftMailboxStr = draftEmailParts[0] || '';
@@ -1031,6 +1037,7 @@ export class MailboxPage extends LitElement {
       if (data.Page !== undefined) this.currentPage = data.Page;
       this.listedPage = data.Page !== undefined ? data.Page : this.currentPage;
       this.listedMailbox = data.ListedMailbox || this.currentMailbox;
+      this.listedQuery = this.filterQuery;
       if (data.Total !== undefined) this.totalMessages = data.Total;
       if (data.MessagesPerPage !== undefined) this.messagesPerPage = data.MessagesPerPage;
       if (data.Messages) {
@@ -1094,6 +1101,14 @@ export class MailboxPage extends LitElement {
       // no spinner it painted "No messages", a claim about a folder this client
       // had just failed to read, with nothing offered to try again.
       this.listLoadFailed = true;
+      // The rows still up are another view's when the read was of a folder,
+      // a page or a search they were not read from: left up, dimmed, while it
+      // loaded, and then undimmed, they passed for its contents under its
+      // name, and the list, which says a load failed only when it has no
+      // rows, said nothing. They go, and the list says so and offers a retry.
+      if (this.listedMailbox !== this.currentMailbox || this.listedPage !== this.currentPage || this.listedQuery !== this.filterQuery) {
+        this.messages = [];
+      }
     }
   };
 
@@ -1297,13 +1312,42 @@ export class MailboxPage extends LitElement {
 
     // If the message is not on the current page (e.g. it shifted or we changed pages),
     // fetch its metadata directly from the backend so the reader can still display it.
+    //
+    // Asked for the view the reader shows, and kept where the reader looks
+    // first: the answer carries what the reader's own read of it would have,
+    // the part's text included, so the reader does not read the message
+    // again. Asked without the view and kept nowhere, the reader asked for
+    // the same message again the moment it was given it.
     if (!msg && this.messages.length > 0) {
       try {
-        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${currentTargetUid}`);
+        const view = this.settingsStore?.getState()?.preferredView || 'html';
+        // Taken before asking, as the reader takes it: an answer that lands
+        // after its user signed out is not kept for the next one.
+        const cacheGeneration = MessageCache.generation();
+        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${currentTargetUid}?view=${view}`);
         if (metadataRes.ok) {
           const data = await metadataRes.json();
           if (data.Message) {
             msg = { ...data.Message, Mailbox: data.Message.Mailbox || mailbox };
+            // Kept as the reader keeps its own read, in the entry
+            // fetchItemBody in message-reader.ts writes; a change to the one
+            // belongs in the other. An answer whose part comes without its
+            // text, which the server leaves out when it cannot decode it, is
+            // not kept: the reader reads that message as it reads any other.
+            // A message with no text part has no text to wait for, and is.
+            const part = data.Part;
+            if ((!part || typeof data.Body === 'string') && MessageCache.generation() === cacheGeneration) {
+              const isHtml = !!part && (part.MIMEType || part.MimeType || 'text/plain').toLowerCase() === 'text/html';
+              MessageCache.set(msg.Mailbox, String(msg.UID), view, {
+                Message: data.Message,
+                Part: part,
+                Attachments: data.Attachments,
+                RawHtml: part && isHtml ? data.Body : undefined,
+                RawText: part && !isHtml ? data.Body : undefined,
+                HasHTML: !!data.HasHTML,
+                HasText: !!data.HasText,
+              });
+            }
           }
         }
       } catch (err) {
@@ -2367,7 +2411,6 @@ export class MailboxPage extends LitElement {
             icon="folderPlus"
             title="${this.i18nStore?.t('folderList.createFolder')}"
             @click=${this.openFolderPrompt}
-            style="--btn-padding: 8px; --icon-size: 20px;"
           ></alps-icon-btn>
         </alps-sidebar>
         <div class="main-view">
@@ -2399,6 +2442,15 @@ export class MailboxPage extends LitElement {
               .syncing=${this.isSyncing}
               .loadFailed=${this.listLoadFailed}
               @refresh=${() => {
+        // Try again, over a view that could not be read: that view is read
+        // again, as asked. Turned back to the first page as a check for new
+        // mail is, a retry after a failed page change listed page 0 under the
+        // address of the page that failed, and Next, which asks for that same
+        // address, then changed nothing.
+        if (this.listLoadFailed && this.messages.length === 0) {
+          messageSync.fetch(this.currentMailbox, this.currentPage, this.filterQuery, true);
+          return;
+        }
         this.currentPage = 0;
 
         // A check, not a fetch: over a list that is already current the rows

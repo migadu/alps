@@ -824,11 +824,8 @@ func registerInvitationRoutes(p *plugin) {
 				// an organizer who has just cancelled.
 				header := http.Header{"Schedule-Reply": {"F"}}
 				err := davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), inv.copy.Path), inv.copy.ETag, header)
-				if errors.Is(err, davsave.ErrConflict) {
-					return errChangedElsewhere
-				}
 				if err != nil {
-					return err
+					return deleteFailed("calendar object", err)
 				}
 				saved.Removed = true
 			} else {

@@ -1284,8 +1284,10 @@ export class MessageList extends LitElement {
     this.emptying = true;
     const folder = this.currentMailbox;
     // Named now: the user may be in another folder by the time this answers.
+    // Every report names it, from the first to the last: these said "mailbox",
+    // which to a user is the whole account, not the Trash they just emptied.
     const title = this.folderTitle;
-    this.toast('info', this.i18nStore?.t('messageList.emptyingMailbox') || 'Emptying mailbox...');
+    this.toast('info', this.i18nStore?.t('messageList.emptyingMailbox', { folder: title }) || `Emptying ${title}...`);
 
     try {
       const outcome = await mailboxOperations.emptyMailbox(folder);
@@ -1294,7 +1296,7 @@ export class MessageList extends LitElement {
         this.toast('info', this.i18nStore?.t('messageList.mailboxAlreadyEmpty', { folder: title })
           || `${title} was already empty — nothing was deleted.`);
       } else if (outcome.ok) {
-        this.toast('success', this.i18nStore?.t('messageList.mailboxEmptied') || 'Mailbox emptied successfully.');
+        this.toast('success', this.i18nStore?.t('messageList.mailboxEmptied', { folder: title }) || `${title} emptied.`);
       } else if (outcome.reason === 'timeout') {
         this.toast('error', this.i18nStore?.t('messageList.emptyMailboxSlow', { folder: title })
           || `Still emptying ${title}. The server is working on it — check the folder again in a moment.`);
@@ -1302,7 +1304,7 @@ export class MessageList extends LitElement {
         // `auth` is silent: the session has ended, the shell says so, and a
         // second notice beside it sends the user looking for a fault they
         // do not have.
-        this.toast('error', this.i18nStore?.t('messageList.emptyMailboxFailed') || 'Failed to empty mailbox. Make sure it is Trash or Junk.');
+        this.toast('error', this.i18nStore?.t('messageList.emptyMailboxFailed', { folder: title }) || `Failed to empty ${title}.`);
       }
     } finally {
       this.emptying = false;

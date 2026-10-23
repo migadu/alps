@@ -20,8 +20,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/migadu/alps/provider"
 )
 
 // rewriteInMaildir replaces from with to in the one message of dir that holds
@@ -395,24 +393,16 @@ func TestHTTP_AMessageMarkedReadFromASearchAcrossEveryFolderIsCountedRead(t *tes
 	}
 }
 
-// So is one opened from there, which the server marks read as its body is
-// read. The test store does not, so the message is marked read in it first.
+// Opening a search result peeks at its body, then the reader explicitly
+// marks it read. The sidebar keeps that count through later writes elsewhere.
 func TestHTTP_AMessageOpenedFromASearchAcrossEveryFolderIsCountedRead(t *testing.T) {
 	s := newTestServer(t)
 	filed := foundAcrossEveryFolder(t, s)
 	engines := uidOfSubject(t, s, "Engines")
-
-	stored, _, err := s.store.ListMessages("Archive", "desc", 0, 10)
-	if err != nil || len(stored) != 1 {
-		t.Fatalf("Archive holds %v (%v)", stored, err)
-	}
-	if err := s.store.SetMessagesFlags("Archive", []provider.MessageID{stored[0].ID}, provider.FlagOperation{
-		Op: provider.FlagOpAdd, Flags: []provider.Flag{provider.FlagSeen},
-	}); err != nil {
-		t.Fatal(err)
-	}
 	s.expect(s.do("GET", "/mailboxes/Archive/messages/"+filed, nil), http.StatusOK)
-
+	s.expect(s.do("PUT", "/mailboxes/Archive/messages/flag", map[string]any{
+		"uids": []string{filed}, "flags": []string{`\Seen`}, "action": "add",
+	}), http.StatusOK)
 	for path, unseen := range countedAfterAWriteElsewhere(t, s, engines) {
 		if unseen != 0 {
 			t.Errorf("%s counts %d unread in Archive; want 0, its one message read", path, unseen)

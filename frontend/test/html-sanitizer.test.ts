@@ -9,7 +9,8 @@
  * depends on it, and is then either blocked or sent through the proxy.
  */
 import { describe, expect, it } from 'vitest';
-import { sanitizeMessageHTML, type SanitizeOptions } from '../src/utils/html-sanitizer';
+import { sanitizeMessageHTML, showColorScheme, type SanitizeOptions } from '../src/utils/html-sanitizer';
+import { cssUrls } from '../src/utils/css-syntax';
 
 const BASE: SanitizeOptions = { mailbox: 'INBOX', messageUid: '42', allowRemoteResources: false };
 const blocked = (html: string, extra: Partial<SanitizeOptions> = {}) => sanitizeMessageHTML(html, { ...BASE, ...extra });
@@ -624,6 +625,146 @@ describe('inline images', () => {
     expect(attr(blocked('<img src="cid:missing@sender.test">', { messageStructure: structure }), 'img', 'src')).toBe('cid:missing@sender.test');
     expect(attr(blocked('<img src="cid:missing@sender.test">'), 'img', 'src')).toBe('cid:missing@sender.test');
     expect(countBlocked('<img src="cid:logo@sender.test">')).toBe(0);
+  });
+});
+
+// The frame answers `prefers-color-scheme` from the system, not from the
+// colours it is painted in, so a message styled for both schemes is shown in
+// the scheme of its paint: the light one on the sanitizer's white, the dark
+// one under the reader's dark theme for message content. jsdom evaluates no
+// media query and drops the importance of a `color-scheme`, so what is pinned
+// here is what the frame is handed; the browser suite
+// (e2e/color-scheme.spec.ts) measures what it paints.
+describe('colour schemes', () => {
+  const queries = (css: string | null) => [...(css ?? '').matchAll(/@media\s*([^{]+?)\s*\{/g)].map((m) => m[1]);
+  /** The sender's sheets as the frame gets them: the media queries shown, and those kept for each scheme. */
+  const sheets = (doc: Document) =>
+    [...doc.querySelectorAll('style')].slice(1).map((sheet) => ({
+      media: sheet.getAttribute('media'),
+      shown: queries(sheet.textContent),
+      light: queries(sheet.getAttribute('data-alps-css-light')),
+      dark: queries(sheet.getAttribute('data-alps-css-dark')),
+    }));
+  const BOTH = '<style>@media (prefers-color-scheme: dark) { p { color: #fff !important } }' +
+    '@media (prefers-color-scheme: light) { p { color: #111 } }</style><p>hi</p>';
+  const LIGHT = ['(width < 0)', '(width >= 0)'];
+  const DARK = ['(width >= 0)', '(width < 0)'];
+
+  it('shows a sheet that asks for a scheme in its light version, and keeps its dark one', () => {
+    expect(sheets(parse(blocked(BOTH)))).toEqual([{ media: null, shown: LIGHT, light: LIGHT, dark: DARK }]);
+  });
+
+  it('switches a sheet, and back, to the scheme the frame is painted in', () => {
+    const doc = parse(blocked(BOTH));
+    showColorScheme(doc, 'dark');
+    expect(sheets(doc).map((sheet) => sheet.shown)).toEqual([DARK]);
+    showColorScheme(doc, 'light');
+    expect(sheets(doc).map((sheet) => sheet.shown)).toEqual([LIGHT]);
+  });
+
+  it('keeps the rest of the query, the rules inside, and the sheet\'s own media', () => {
+    const html = '<style media="screen">@media only screen and (prefers-color-scheme: dark) { .text p { color: #FFFFFF !important } }' +
+      '@media not all and (prefers-color-scheme: light) { .panel { background: #262626 } }</style>';
+    const doc = parse(blocked(html));
+    expect(sheets(doc)).toEqual([{
+      media: 'screen',
+      shown: ['only screen and (width < 0)', 'not all and (width >= 0)'],
+      light: ['only screen and (width < 0)', 'not all and (width >= 0)'],
+      dark: ['only screen and (width >= 0)', 'not all and (width < 0)'],
+    }]);
+    expect(blocked(html)).toMatch(/\.text p\s*\{\s*color:\s*#FFFFFF !important;?\s*\}/);
+  });
+
+  it('reads the feature as a browser does: in capitals, with escapes or comments, nested, and never in a string', () => {
+    const html = '<style>@supports (display: grid) { @media ( PREFERS-COLOR-SCHEME:Dark ) { p { color: #fff } } }' +
+      '@media (prefers-color-sch\\65me: d\\61rk) { b { color: #fff } } @media (prefers-color-scheme:/**/dark) { i { color: #fff } }' +
+      'q::after { content: "(prefers-color-scheme: dark)" }</style>';
+    const [sheet] = sheets(parse(blocked(html)));
+    expect(sheet.shown).toEqual(['(width < 0)', '(width < 0)', '(width < 0)']);
+    expect(sheet.dark).toEqual(['(width >= 0)', '(width >= 0)', '(width >= 0)']);
+    expect(blocked(html)).toContain('content: "(prefers-color-scheme: dark)"');
+  });
+
+  it('reads a feature the end of the text closes, as a browser does', () => {
+    const doc = parse(blocked('<picture><source media="(prefers-color-scheme: dark" srcset="cid:white-logo"><img src="cid:dark-logo"></picture>'));
+    expect(doc.querySelector('picture source')?.getAttribute('media')).toBe('(width < 0)');
+    showColorScheme(doc, 'dark');
+    expect(doc.querySelector('picture source')?.getAttribute('media')).toBe('(width >= 0)');
+  });
+
+  it('switches the media attribute of a sheet and of a picture\'s source', () => {
+    const doc = parse(blocked('<style media="screen and (prefers-color-scheme: dark)">p { color: #fff }</style>' +
+      '<picture><source media="(prefers-color-scheme: dark)" srcset="cid:white-logo"><img src="cid:dark-logo"></picture>'));
+    const media = () => [doc.querySelector('style[media]'), doc.querySelector('picture source')].map((el) => el?.getAttribute('media'));
+    expect(media()).toEqual(['screen and (width < 0)', '(width < 0)']);
+    showColorScheme(doc, 'dark');
+    expect(media()).toEqual(['screen and (width >= 0)', '(width >= 0)']);
+  });
+
+  it('leaves every other query alone, and keeps nothing for a switch', () => {
+    const html = '<style>@media (max-width: 600px) { p { font-size: 12px } } @media print { p { color: #000 } }</style>' +
+      '<picture><source media="(min-width: 800px)" srcset="cid:wide"><img src="cid:narrow"></picture>';
+    const doc = parse(blocked(html));
+    expect(sheets(doc)).toEqual([{ media: null, shown: ['(max-width: 600px)', 'print'], light: [], dark: [] }]);
+    showColorScheme(doc, 'dark');
+    expect(doc.querySelector('picture source')?.getAttribute('media')).toBe('(min-width: 800px)');
+  });
+
+  it('ignores the markers a sender writes, so a switch changes only what the sanitizer marked', () => {
+    const doc = parse(blocked('<style data-alps-css-dark="p { color: red }">p { color: blue }</style>' +
+      '<picture><source media="print" data-alps-media-dark="all" srcset="cid:a"><img src="cid:b"></picture>'));
+    showColorScheme(doc, 'dark');
+    expect(doc.querySelectorAll('style')[1].textContent).toMatch(/color:\s*blue/);
+    expect(doc.querySelector('picture source')?.getAttribute('media')).toBe('print');
+  });
+
+  it('adds no element: a sheet among table rows or a wrapper\'s paragraphs leaves their positions as they were', () => {
+    // `tr:nth-child(odd)` stripes and `p + p` spacing count siblings.
+    const sheet = '<style>@media (prefers-color-scheme: dark) { tr, p { color: #fff } }</style>';
+    const doc = parse(blocked(`<table><tbody>${sheet}<tr><td>a</td></tr><tr><td>b</td></tr></tbody></table>` +
+      `<div class="wrap">${sheet}<p>a</p><p>b</p></div>`));
+    expect([doc.querySelector('tbody'), doc.querySelector('.wrap')].map((el) => el?.childElementCount)).toEqual([3, 3]);
+  });
+
+  it('checks the dark version as it checks the light one: a remote url() and a colour scheme in it go', () => {
+    const html = '<style>@media (prefers-color-scheme: dark) { p { background-image: u\\72l(https://tracker.example/d.gif); color-scheme: dark } }</style>';
+    const dark = parse(blocked(html)).querySelectorAll('style')[1].getAttribute('data-alps-css-dark');
+    expect(dark).toMatch(/@media \(width >= 0\)/);
+    expect(cssUrls(dark ?? '').filter((url) => url.includes('tracker.example'))).toEqual([]);
+    expect(dark).not.toMatch(/color-scheme/);
+    expect(countBlocked(html)).toBeGreaterThan(0);
+  });
+
+  it('leaves a query inside a string alone, so the string still ends where it did', () => {
+    // A line break ends a string; a rewrite that took it with the query would
+    // close the string elsewhere, and what it held would be read as CSS.
+    const html = '<style>p { a: "(prefers-color-scheme:\ndark)"; background-image: u\\72l(https://tracker.example/pixel.gif); b: "z"; }' +
+      '@media (prefers-color-scheme: dark) { p { background-image: u\\72l(https://tracker.example/dark.gif) } }</style><p>hi</p>';
+    const doc = parse(blocked(html));
+    const versions = [...doc.querySelectorAll('style')]
+      .flatMap((style) => [style.textContent, style.getAttribute('data-alps-css-light'), style.getAttribute('data-alps-css-dark')]);
+    expect(versions.flatMap((css) => cssUrls(css ?? '')).filter((url) => url.includes('tracker.example'))).toEqual([]);
+    expect(countBlocked(html)).toBeGreaterThan(0);
+  });
+
+  it('removes the sender\'s colour schemes, in sheets and in style attributes', () => {
+    const doc = parse(blocked('<style>:root { color-scheme: light dark !important } .card { colo\\72-scheme: dark; color: red }</style>' +
+      '<div style="color-scheme: light dark; color: blue">hi</div>'));
+    expect(doc.querySelectorAll('style')[1].textContent).not.toMatch(/scheme/);
+    expect(doc.querySelectorAll('style')[1].textContent).toMatch(/color:\s*red/);
+    expect(doc.querySelector('div')?.getAttribute('style')).toBe('color: blue');
+  });
+
+  it('puts the document\'s root in the light scheme, and switches it', () => {
+    // A `light-dark()` colour and the system colours follow the scheme, which
+    // a sender's `color-scheme: light dark` would let a dark system decide.
+    // The sender's declarations are removed (above, and in
+    // html-sanitizer-fallback.test.ts); that the root's is important is a
+    // backstop no test reaches, and jsdom drops it.
+    const doc = parse(blocked('<meta name="color-scheme" content="light dark"><p style="color: light-dark(#111, #fff)">hi</p>'));
+    expect(doc.documentElement.style.getPropertyValue('color-scheme')).toBe('light');
+    showColorScheme(doc, 'dark');
+    expect(doc.documentElement.style.getPropertyValue('color-scheme')).toBe('dark');
   });
 });
 

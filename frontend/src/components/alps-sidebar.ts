@@ -415,7 +415,6 @@ export class AlpsSidebar extends LitElement {
               icon="sidebar"
               title=${this.collapsed ? this.i18nStore?.t('folderList.expandSidebar') : this.i18nStore?.t('folderList.collapseSidebar')}
               @click=${() => this.dispatchEvent(new CustomEvent('toggle-collapse'))}
-              style="--btn-padding: 8px; --icon-size: 20px;"
             ></alps-icon-btn>
           ` : '')}
           ${(!this.hideFooterDivider && (!this.isMobile || this.showMobileBack)) ? html`<div class="footer-divider"></div>` : ''}
