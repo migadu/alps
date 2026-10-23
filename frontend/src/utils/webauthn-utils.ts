@@ -90,7 +90,10 @@ export async function authenticateCredential(credentialRequestOptions: any) {
     const assertion = await navigator.credentials.get(credentialRequestOptions) as PublicKeyCredential;
 
     if (!assertion) {
-        throw new Error('Assertion failed or was cancelled.');
+        // No credential means the key was not used, as when the prompt is
+        // cancelled: the same NotAllowedError, which the page tells in the
+        // user's language.
+        throw new DOMException('No credential was returned.', 'NotAllowedError');
     }
 
     const response = assertion.response as AuthenticatorAssertionResponse;

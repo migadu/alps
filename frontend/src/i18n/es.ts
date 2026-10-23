@@ -570,6 +570,7 @@ export const es = {
       begin_failed: 'Error al iniciar la autenticación.',
       invalid_options: 'Se recibieron opciones de autenticación no válidas.',
       verification_failed: 'Error en la verificación. Por favor, inténtalo de nuevo.',
+      cancelled: 'No se ha usado la clave de seguridad. Haz clic en "Verificar identidad" para volver a intentarlo.',
       unavailable: 'El servidor no ha podido comprobar tu clave de seguridad ahora mismo. Inténtalo de nuevo dentro de un momento.',
       register_failed: 'Hubo un error al registrar su clave de seguridad. Por favor, inténtelo de nuevo.',
       remove_failed: 'Error al eliminar la clave de seguridad.',

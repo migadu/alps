@@ -587,6 +587,7 @@ export const sr = {
       begin_failed: 'Nije uspelo pokretanje autentifikacije.',
       invalid_options: 'Primljene su nevažeće opcije autentifikacije.',
       verification_failed: 'Verifikacija nije uspela. Pokušajte ponovo.',
+      cancelled: 'Bezbednosni ključ nije upotrebljen. Kliknite na "Potvrdi identitet" da biste pokušali ponovo.',
       unavailable: 'Server trenutno nije mogao da proveri vaš bezbednosni ključ. Pokušajte ponovo za trenutak.',
       register_failed: 'Došlo je do greške prilikom registracije bezbednosnog ključa. Pokušajte ponovo.',
       remove_failed: 'Nije uspelo uklanjanje bezbednosnog ključa.',

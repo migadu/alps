@@ -570,6 +570,7 @@ export const it = {
       begin_failed: 'Impossibile avviare l\'autenticazione.',
       invalid_options: 'Opzioni di autenticazione non valide ricevute.',
       verification_failed: 'Verifica non riuscita. Per favore riprova.',
+      cancelled: 'La chiave di sicurezza non è stata usata. Fai clic su "Verifica identità" per riprovare.',
       unavailable: 'Il server non è riuscito a verificare la tua chiave di sicurezza in questo momento. Riprova tra poco.',
       register_failed: 'Si è verificato un errore durante la registrazione della chiave di sicurezza. Riprova.',
       remove_failed: 'Impossibile rimuovere la chiave di sicurezza.',

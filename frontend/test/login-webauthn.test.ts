@@ -226,6 +226,50 @@ describe('login-webauthn-page', () => {
       }
     });
 
+    // Cancelling the browser's prompt, or letting it time out, rejects with a
+    // NotAllowedError whose message is the browser's own, in English whatever
+    // the language here, with a link to the WebAuthn specification.
+    it('says the key was not used, in the user\'s language, when the prompt is cancelled or times out', async () => {
+      for (const name of ['NotAllowedError', 'AbortError']) {
+        const { el, key } = await verify(options);
+        key.mockRejectedValue(new DOMException(
+          'The operation either timed out or was not allowed. See: https://www.w3.org/TR/webauthn-2/#sctn-privacy-considerations-client.',
+          name,
+        ));
+        try {
+          await said(el, 'webauthn.errors.cancelled');
+        } finally {
+          el.remove();
+          vi.restoreAllMocks();
+        }
+      }
+    });
+
+    it('says an error occurred, not the browser\'s words, when the key fails otherwise', async () => {
+      const { el, key } = await verify(options);
+      key.mockRejectedValue(new DOMException('The relying party ID is not a registrable domain suffix of, nor equal to the current domain.', 'SecurityError'));
+      try {
+        await said(el, 'webauthn.errors.general');
+      } finally {
+        el.remove();
+      }
+    });
+
+    it('says the key was not used when the browser hands back no credential', async () => {
+      const get = vi.fn(async () => null);
+      Object.defineProperty(navigator, 'credentials', { value: { get }, configurable: true });
+      // The challenge is decoded on the way to the browser, so it is base64url.
+      const { el, key } = await verify(() => answer(200, { publicKey: { challenge: 'AAAA' } }));
+      key.mockRestore();
+      try {
+        await said(el, 'webauthn.errors.cancelled');
+        expect(get).toHaveBeenCalled();
+      } finally {
+        el.remove();
+        delete (navigator as any).credentials;
+      }
+    });
+
     it('goes back to the password, and says why, when the pending sign-in is gone', async () => {
       sessionStorage.setItem('pending_2fa_username', 'ada@example.com');
       const { el } = await verify(options, () => answer(401, { error: 'no pending 2FA session' }));
