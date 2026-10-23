@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"reflect"
 	"strings"
@@ -25,6 +26,8 @@ type notifyServer struct {
 	noNotify, refuse bool
 	// initial is what NOTIFY SET STATUS answers with before its OK.
 	initial []string
+	// status supplies a fresh UIDNEXT snapshot after selected news.
+	status map[string]string
 
 	mu       sync.Mutex
 	notifies []string // the NOTIFY commands, without their tags
@@ -134,6 +137,11 @@ func (srv *notifyServer) serve(c net.Conn) {
 			srv.send("* OK [UIDVALIDITY " + mbox[1] + "] ok")
 			srv.send("* OK [UIDNEXT " + mbox[2] + "] ok")
 			srv.send(tag + " OK [READ-WRITE] selected")
+		case "STATUS":
+			if status := srv.status[strings.Trim(strings.Fields(rest)[0], `"`)]; status != "" {
+				srv.send(status)
+			}
+			srv.send(tag + " OK status done")
 		case "IDLE":
 			srv.mu.Lock()
 			srv.idleTag = tag
@@ -326,6 +334,7 @@ func TestFolderNews_WhatAFolderFirstSaysIsNoNews(t *testing.T) {
 // have had every page check the Inbox. One after it is news.
 func TestFolderNews_AMailboxLeftIsComparedWithWhatItHeldThen(t *testing.T) {
 	srv := newNotifyServer(t, func(srv *notifyServer) {
+		srv.status = map[string]string{"INBOX": "* STATUS INBOX (UIDNEXT 101)"}
 		srv.initial = []string{
 			"* STATUS INBOX (MESSAGES 3 UIDNEXT 100 UIDVALIDITY 11)",
 			"* STATUS Archive (MESSAGES 4 UIDNEXT 300 UIDVALIDITY 33)",
@@ -339,6 +348,11 @@ func TestFolderNews_AMailboxLeftIsComparedWithWhatItHeldThen(t *testing.T) {
 	}
 	srv.send("* 4 EXISTS")
 	h.awaitNews(t, "INBOX")
+	// As the preceding IDLE ends, its STATUS records the UIDNEXT after
+	// the already-announced arrival. Leaving this valid snapshot is quiet.
+	if err := p.rememberIdled(true); err != nil {
+		t.Fatal(err)
+	}
 
 	// A job's SELECT elsewhere.
 	if err := p.ensureMailboxSelected("Sent"); err != nil {
@@ -422,5 +436,49 @@ func TestWatchFolders_TellsOfMailFiledIntoASubscribedFolder(t *testing.T) {
 	close(stop)
 	if err := <-done; err != nil {
 		t.Fatalf("the IDLE ended with %v", err)
+	}
+}
+
+// A server need not send a fresh STATUS just because a mailbox ceased to
+// be selected. Its first later notification can already describe new mail
+// balanced by an expunge, for which MESSAGES did not change.
+func TestFolderNews_BalancedChangeAfterLeavingSelectedMailbox(t *testing.T) {
+	for _, selectedChanged := range []bool{false, true} {
+		t.Run(fmt.Sprint(selectedChanged), func(t *testing.T) {
+			srv := newNotifyServer(t, func(srv *notifyServer) {
+				srv.initial = []string{
+					"* STATUS Archive (MESSAGES 4 UIDNEXT 300 UIDVALIDITY 33)",
+					"* STATUS Lists (MESSAGES 9 UIDNEXT 90 UIDVALIDITY 44)",
+				}
+			})
+			p := srv.dial(t)
+			h := listen(p)
+			watched(t, p)
+			if err := p.ensureMailboxSelected("Archive"); err != nil {
+				t.Fatal(err)
+			}
+			uidNext := "301"
+			if selectedChanged {
+				// Selected news makes the SELECT's UIDNEXT too old to trust. This
+				// count-balanced change was already heard; no STATUS refreshed it.
+				srv.send("* 5 EXISTS")
+				srv.send("* 1 EXPUNGE")
+				if err := p.client.Noop().Wait(); err != nil {
+					t.Fatal(err)
+				}
+				h.mu.Lock()
+				h.news = nil
+				h.mu.Unlock()
+				uidNext = "302"
+			}
+			if err := p.ensureMailboxSelected("Sent"); err != nil {
+				t.Fatal(err)
+			}
+			srv.send("* STATUS Archive (MESSAGES 4 UIDNEXT " + uidNext + " UIDVALIDITY 33)")
+			srv.send("* STATUS Lists (MESSAGES 10 UIDNEXT 91 UIDVALIDITY 44)")
+			if got, want := h.awaitNews(t, "Lists"), []string{"Archive", "Lists"}; !reflect.DeepEqual(got, want) {
+				t.Fatalf("news %q, want %q: balanced change after SELECT was missed", got, want)
+			}
+		})
 	}
 }

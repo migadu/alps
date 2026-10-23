@@ -79,7 +79,7 @@ func (fw *folderWatch) heardStatus(data *imap.StatusData) bool {
 		return false
 	}
 	return was.hasMessages && now.hasMessages && was.messages != now.messages ||
-		was.uidNext != 0 && now.uidNext != 0 && was.uidNext != now.uidNext ||
+		now.uidNext != 0 && was.uidNext != now.uidNext ||
 		was.uidValidity != 0 && now.uidValidity != 0 && was.uidValidity != now.uidValidity
 }
 
@@ -88,9 +88,12 @@ func (fw *folderWatch) heardStatus(data *imap.StatusData) bool {
 // and once it is no longer, it tells of the mailbox with a STATUS again, as
 // it now is. Compared with what was known before it was selected, the news
 // already told was told again, of the Inbox each time a job selected
-// elsewhere, and every page checked it. Its UIDNEXT is not known: the one it
-// was selected with is behind any arrival told since.
-func (fw *folderWatch) left(mailbox string, count, uidValidity uint32) {
+// elsewhere, and every page checked it. Keep a trustworthy UIDNEXT too:
+// a server need not send an unchanged STATUS on leaving SELECT, and its
+// first later notification may describe an arrival balanced by an expunge.
+// When UIDNEXT is unknown, the next STATUS is conservatively news. That may
+// repeat a refresh for a selected arrival, but cannot lose a real change.
+func (fw *folderWatch) left(mailbox string, count, uidValidity uint32, uidNext imap.UID) {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 	if !fw.on {
@@ -99,7 +102,7 @@ func (fw *folderWatch) left(mailbox string, count, uidValidity uint32) {
 	if fw.known == nil {
 		fw.known = make(map[string]folderCounts)
 	}
-	fw.known[mailbox] = folderCounts{messages: count, hasMessages: true, uidValidity: uidValidity}
+	fw.known[mailbox] = folderCounts{messages: count, hasMessages: true, uidValidity: uidValidity, uidNext: uidNext}
 }
 
 // overflowed says the server has stopped telling of the folders, as it may
