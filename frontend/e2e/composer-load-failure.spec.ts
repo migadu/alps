@@ -104,6 +104,7 @@ for (const width of [1440, 390]) {
     allowConsoleErrors(page, /Failed to save compose drafts to localStorage|QuotaExceededError/);
     await login(page);
     await page.setViewportSize({ width, height: 900 });
+    if (width <= 768) await page.getByRole('button', { name: 'Menu', exact: true }).click();
     await page.locator('alps-folder-list alps-create-button').click();
     const subject = `Draft kept after storage refusal ${width} ${Date.now()}`;
     await composerOf(page).getByPlaceholder('Subject').fill(subject);
