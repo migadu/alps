@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,h as r,m as i,v as a}from"./lit-Br1cDwGJ.js";import{mt as o,ot as s,tt as c}from"./index-BMn78PHV.js";var l=class extends r{constructor(...e){super(...e),this.passwordForm={old:``,new:``,confirm:``},this.isSubmitting=!1}static{this.styles=e`
+import{b as e,c as t,f as n,h as r,m as i,v as a}from"./lit-Br1cDwGJ.js";import{mt as o,ot as s,tt as c}from"./index-BL7kZK3G.js";var l=class extends r{constructor(...e){super(...e),this.passwordForm={old:``,new:``,confirm:``},this.isSubmitting=!1}static{this.styles=e`
 		input[type="password"] {
 			width: 100%;
 			box-sizing: border-box;
