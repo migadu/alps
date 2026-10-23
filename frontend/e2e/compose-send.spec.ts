@@ -524,9 +524,9 @@ test("eight files picked at once all upload, and all eight go out", async ({ pag
   } finally {
     await lift();
   }
-  // A size, not the 128 KB picked: once a draft save has stored them, each
-  // reads the size of its stored part.
-  await expect(composer.locator("alps-attachment-pill .attachment-size")).toHaveText(Array(8).fill(/^\d+ KB$/));
+  // Once a draft save has stored them, each reads the size of its stored
+  // part, which is still the file's: the base64 line breaks are not counted.
+  await expect(composer.locator("alps-attachment-pill .attachment-size")).toHaveText(Array(8).fill("128 KB"));
 
   await sendNow(page, composer);
   const sent = await sentWithSubject(subject);
