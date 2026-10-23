@@ -2521,6 +2521,16 @@ func handleComposeNew(ctx *alps.Context) error {
 		}
 	}
 
+	// The parts among them the body shows, by Content-ID: the composer names
+	// the ones its quote shows, whatever their disposition, as Outlook and
+	// Apple Mail file their inline images as attachments.
+	shownInline := map[string]bool{}
+	for _, p := range strings.Split(ctx.FormValue("inline_attachments"), ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			shownInline[p] = true
+		}
+	}
+
 	if len(prevAttachments) > 0 {
 		// A saved draft holds every part the composer carries, renumbered, so
 		// once there is one the parts are read from it.
@@ -2590,10 +2600,12 @@ func handleComposeNew(ctx *alps.Context) error {
 					Node:    node,
 					Body:    decodedBody,
 					CID:     contentID,
-					// A part with a Content-ID belongs to the body unless it says
-					// it is an attachment; an image in multipart/related often
-					// gives no disposition at all.
-					Inline: contentID != "" && !strings.EqualFold(disposition, "attachment"),
+					// A part with a Content-ID belongs to the body when the
+					// composer says the body shows it, or unless it says it is
+					// an attachment; an image in multipart/related often gives
+					// no disposition at all. Taken by its disposition alone, an
+					// image filed as an attachment went out beside the body.
+					Inline: contentID != "" && (shownInline[pathStr] || !strings.EqualFold(disposition, "attachment")),
 				})
 				partSources = append(partSources, map[string]string{"partPath": pathStr})
 			}

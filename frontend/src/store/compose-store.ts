@@ -126,6 +126,15 @@ export const quoteSourceAfterSave = (
   return { mailbox: stored.mailbox, uid: stored.uid, structure: stored.structure ?? source.structure };
 };
 
+/**
+ * The paths of the parts a save or a send posts as the body's own, its
+ * quote's images, for the server to write into the body: it took a part
+ * filed as an attachment, as Outlook and Apple Mail file their inline images,
+ * for a file by that disposition, and wrote it beside the body.
+ */
+export const inlinePartPaths = (posted: any[]): string =>
+  posted.filter(a => a.inline && a.partPath).map(a => a.partPath).join(',');
+
 const isBlockedAddress = (addr: string): boolean => {
   const lowerEmail = bareAddress(addr);
   return lowerEmail.startsWith('noreply') || 
@@ -754,6 +763,8 @@ export class ComposeStore extends EventTarget {
 
     const prev = attachments.map(a => a.partPath).filter(Boolean).join(',');
     if (prev) formData.append('prev_attachments', prev);
+    const inline = inlinePartPaths(attachments);
+    if (inline) formData.append('inline_attachments', inline);
 
     if (composer.draftMailbox) formData.append('draft_mailbox', composer.draftMailbox);
     if (composer.draftUid) formData.append('draft_uid', composer.draftUid);
