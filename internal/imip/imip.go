@@ -108,7 +108,8 @@ func (cw *countingWriter) Write(p []byte) (int, error) {
 
 // Send submits the message over c. The envelope sender is the account's own
 // address, which the submission server always lets it use; the From header
-// names the organizer or attendee the message speaks for.
+// names the organizer or attendee the message speaks for. A message that
+// cannot be written is not sent, and c is closed.
 func Send(c *smtp.Client, envelopeFrom string, m *Message) error {
 	if len(m.To) == 0 {
 		return nil
@@ -126,7 +127,10 @@ func Send(c *smtp.Client, envelopeFrom string, m *Message) error {
 		return fmt.Errorf("DATA failed: %v", err)
 	}
 	if _, err := m.WriteTo(w); err != nil {
-		w.Close()
+		// Closing w would end DATA, and the server would deliver what has
+		// been written so far as the whole message. Dropping the connection
+		// is the only way to call DATA off.
+		c.Close()
 		return fmt.Errorf("failed to write the message: %v", err)
 	}
 	return w.Close()
