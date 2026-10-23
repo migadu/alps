@@ -194,6 +194,20 @@ max_sessions_per_user = 10
 # holds the session, as every request of the session already must.
 # push_new_mail = false
 
+# Push the subscribed folders too (default: false)
+# With push_new_mail on, a session also asks the mail server, on the same
+# background connection, for the news of the subscribed folders (IMAP NOTIFY,
+# RFC 5465), and pushes it as it pushes the Inbox's: a folder on screen is
+# checked at once, and the sidebar's counts of the others follow. Pushed are
+# messages that arrive in a folder or leave it; flags, the folders not
+# subscribed and searches come with the checks, which run a third as often
+# while the folders are pushed (every 15 minutes at the default 5). Needs a
+# mail server with NOTIFY; without it, or where it is refused, the Inbox alone
+# is pushed. No connection is added, but the mail server does more for each
+# open page: Sora's NOTIFY watch reads the counts of every subscribed folder
+# every 15 seconds (notifyPollInterval in server/imap/notify.go).
+# push_subscribed_folders = false
+
 # Max attachment size per composer in MiB (default: 32)
 # Limits the size of a single email being composed
 # max_attachment_mib = 32
@@ -270,6 +284,13 @@ ttl_minutes = 10
 # Enable caching (default: true)
 # Set to false to disable all caching (not recommended)
 enabled = true
+
+# The largest message part kept in the cache, in KiB (default: 1024)
+# A part above it, a large attachment most often, is read from the mail server
+# again each time it is asked for, rather than held in memory for the life of
+# the cache entry. The browser keeps its own copy, which it revalidates
+# without the part being read again.
+# max_part_kib = 1024
 
 [logging]
 # Log output destination

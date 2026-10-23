@@ -715,7 +715,8 @@ export class MailboxPage extends LitElement {
     messageSync.addEventListener('sync-success', this.handleSyncSuccess);
     messageSync.addEventListener('sync-error', this.handleSyncError);
     messageSync.addEventListener('sync-unchanged', this.handleSyncUnchanged);
-    messageSync.addEventListener('inbox-counts', this.handleInboxCounts);
+    messageSync.addEventListener('inbox-counts', this.handleFolderCounts);
+    messageSync.addEventListener('folder-counts', this.handleFolderCounts);
     messageSync.addEventListener('labels-success', this.handleLabelsSuccess);
     messageSync.addEventListener('mailbox-not-found', this.handleMailboxNotFound as EventListener);
 
@@ -748,7 +749,8 @@ export class MailboxPage extends LitElement {
     messageSync.removeEventListener('sync-success', this.handleSyncSuccess);
     messageSync.removeEventListener('sync-error', this.handleSyncError);
     messageSync.removeEventListener('sync-unchanged', this.handleSyncUnchanged);
-    messageSync.removeEventListener('inbox-counts', this.handleInboxCounts);
+    messageSync.removeEventListener('inbox-counts', this.handleFolderCounts);
+    messageSync.removeEventListener('folder-counts', this.handleFolderCounts);
     messageSync.removeEventListener('labels-success', this.handleLabelsSuccess);
     messageSync.removeEventListener('mailbox-not-found', this.handleMailboxNotFound as EventListener);
     window.removeEventListener('draft-autosaved', this.handleDraftAutosaved as EventListener);
@@ -1096,15 +1098,20 @@ export class MailboxPage extends LitElement {
   }
 
   /**
-   * The Inbox's counts alone, read on news of it pushed while another folder
-   * or a search is on screen (see messageSync.inboxChanged): the sidebar
-   * shows them, and an arrival is announced as a poll's would be.
+   * A folder's counts alone, the Inbox's (`inbox-counts`) or another's
+   * (`folder-counts`), read on news of it pushed while another folder or a
+   * search is on screen (see messageSync.inboxChanged and folderChanged): the
+   * sidebar shows them, and an arrival is announced as a poll's would be.
    */
-  private handleInboxCounts = (e: Event) => {
-    const { counts, announce } = (e as CustomEvent).detail;
-    const isInbox = (mb: any) => String(mb.Name || mb.Mailbox).toUpperCase() === 'INBOX';
-    if (!this.mailboxes.some(isInbox)) return;
-    const mailboxes = this.mailboxes.map((mb: any) => (isInbox(mb) ? { ...mb, Total: counts.total, Unseen: counts.unseen } : mb));
+  private handleFolderCounts = (e: Event) => {
+    const { mailbox = 'INBOX', counts, announce } = (e as CustomEvent).detail;
+    const inbox = String(mailbox).toUpperCase() === 'INBOX';
+    const named = (mb: any) => {
+      const name = String(mb.Name || mb.Mailbox);
+      return inbox ? name.toUpperCase() === 'INBOX' : name === mailbox;
+    };
+    if (!this.mailboxes.some(named)) return;
+    const mailboxes = this.mailboxes.map((mb: any) => (named(mb) ? { ...mb, Total: counts.total, Unseen: counts.unseen } : mb));
     this.takeMailboxes(mailboxes, true, announce !== false);
   };
 

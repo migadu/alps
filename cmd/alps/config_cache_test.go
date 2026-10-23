@@ -40,3 +40,36 @@ func TestConfigCacheIsOnUnlessTurnedOff(t *testing.T) {
 		})
 	}
 }
+
+// The largest part the session cache keeps comes from [cache] max_part_kib,
+// and is 1 MiB without it.
+func TestConfigCacheMaxPart(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		cache string
+		want  int64
+	}{
+		{"no cache section", "", 1 << 20},
+		{"only a TTL", "[cache]\nttl_minutes = 5\n", 1 << 20},
+		{"256 KiB", "[cache]\nmax_part_kib = 256\n", 256 << 10},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "alps.toml")
+			config := "[smtp]\nserver = \"smtps://smtp.example.com:465\"\n[provider.imap]\nserver = \"imaps://imap.example.com:993\"\n" + tc.cache
+			if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			c, err := LoadConfig(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			opts, err := c.ToOptions()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := opts.CacheMaxPartBytes(); got != tc.want {
+				t.Errorf("CacheMaxPartBytes() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}

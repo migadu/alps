@@ -123,6 +123,7 @@ type ServerConfig struct {
 	SMTPTimeoutSec          int             `toml:"smtp_timeout_sec"`           // SMTP operation timeout in seconds (default: 30)
 	BackgroundConnection    *bool           `toml:"background_connection"`      // A second mail connection per session for background work (default: true)
 	PushNewMail             bool            `toml:"push_new_mail"`              // Wait on that connection for news of the Inbox (IMAP IDLE) and push it to the pages (default: false)
+	PushSubscribedFolders   bool            `toml:"push_subscribed_folders"`    // With push_new_mail, news of the subscribed folders too, where the mail server has NOTIFY (default: false)
 }
 
 type RateLimitConfig struct {
@@ -137,6 +138,9 @@ type RateLimitConfig struct {
 
 type CacheConfig struct {
 	TTLMinutes int `toml:"ttl_minutes"`
+	// The largest message part, in KiB, the session cache keeps (default
+	// 1024). See alps.Options.CacheMaxPartBytes.
+	MaxPartKiB int `toml:"max_part_kib"`
 	// A pointer so that leaving it out is not the same as saying false: the
 	// session cache is on unless a config turns it off.
 	Enabled *bool `toml:"enabled"`
@@ -448,6 +452,7 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	if c.Cache.TTLMinutes > 0 {
 		options.CacheTTL = time.Duration(c.Cache.TTLMinutes) * time.Minute
 	}
+	options.CacheMaxPartKiB = c.Cache.MaxPartKiB
 
 	// Set session duration config
 	if c.Server.SessionMinutes > 0 {
@@ -499,6 +504,7 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	// saying false.
 	options.DisableBackgroundConnection = c.Server.BackgroundConnection != nil && !*c.Server.BackgroundConnection
 	options.PushNewMail = c.Server.PushNewMail
+	options.PushSubscribedFolders = c.Server.PushSubscribedFolders
 
 	// Override rate limiting config from config file
 	if c.Server.RateLimit.Enabled != nil && !*c.Server.RateLimit.Enabled {

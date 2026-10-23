@@ -1183,6 +1183,9 @@ type SessionManager struct {
 	// the Inbox while a page watches it, and the pauses of that wait. See
 	// Session.WatchInbox.
 	pushNewMail bool
+	// pushFolders has the wait take in the subscribed folders as well, where
+	// the mail server can tell of them (NOTIFY).
+	pushFolders bool
 	pushRestart time.Duration
 	pushResume  time.Duration
 	pushRetry   time.Duration

@@ -73,6 +73,14 @@ const STALE_ON_SHOW_MS = 60 * 1000;
  * again about this often.
  */
 const RELIST_AFTER_MS = 10 * 60 * 1000;
+/**
+ * How many times longer the poll waits while the server pushes the news of
+ * the subscribed folders as well as the Inbox's (see
+ * {@link MessageSyncService.foldersWatched}): every 15 minutes at the default
+ * 5. What it is left to find is what is not pushed: flags, the folders not
+ * subscribed, searches, and news a tab did not hear.
+ */
+const PUSHED_POLL_SPACING = 3;
 /** How many listings {@link MessageSyncService} keeps; the one read longest ago goes first. */
 const MAX_KEPT_LISTINGS = 30;
 
@@ -126,6 +134,11 @@ export class MessageSyncService extends EventTarget {
 
   /** The minutes between polls, 0 for none. */
   private pollMinutes = 0;
+  /** The folders are pushed, and the rounds of the poll passed over since it last ran (see {@link foldersWatched}). */
+  private foldersPushed = false;
+  private roundsPassed = 0;
+  /** Keep the previous pushed cadence until a successful poll lets followers renew. */
+  private peerPollSpacing = 1;
   /** This tab holds the poll lock; `releaseLead` gives it up. */
   private leading = false;
   private releaseLead: (() => void) | null = null;
@@ -199,6 +212,7 @@ export class MessageSyncService extends EventTarget {
       this.currentLabelsId++;
       this.listed = false;
       this.newsPending = false;
+      this.newsOf.clear();
       this.heard = null;
       this.forgetListings();
       this.latestMailboxes = null;
@@ -212,6 +226,7 @@ export class MessageSyncService extends EventTarget {
       this.currentLabelsId++;
       this.listed = false;
       this.newsPending = false;
+      this.newsOf.clear();
       this.heard = null;
       this.forgetListings();
       this.latestMailboxes = null;
@@ -448,6 +463,7 @@ export class MessageSyncService extends EventTarget {
 
   private startTimer() {
     this.stopTimer();
+    this.roundsPassed = 0;
     this.pollFailures = 0;
     this.scheduleNextPoll();
   }
@@ -462,16 +478,26 @@ export class MessageSyncService extends EventTarget {
     this.interval = setTimeout(async () => {
       if (generation !== this.timerGeneration) return;
       this.scheduleNextPoll();
+      // Keep the base timer while push is up, so a stream ending restores
+      // the normal pace without a long timer left from a pushed round.
+      if (this.foldersPushed && ++this.roundsPassed < PUSHED_POLL_SPACING) return;
+      this.roundsPassed = 0;
       const ok = await this.poll();
       if (generation !== this.timerGeneration || ok === null) return;
       // Its pace again once one gets through: the timer set as it started
       // still waited as long as the failures before it asked.
+      if (ok) this.peerPollSpacing = this.foldersPushed ? PUSHED_POLL_SPACING : 1;
       const failed = this.pollFailures;
       this.pollFailures = ok ? 0 : failed + 1;
       if (ok && failed === 0) return;
       if (this.interval) clearTimeout(this.interval);
       this.scheduleNextPoll();
     }, pollDelay(this.pollMinutes * 60 * 1000, this.pollFailures, Math.random()));
+  }
+
+  /** The minutes between the polls that run while the stream is up. */
+  private get pollEveryMinutes(): number {
+    return this.pollMinutes * (this.foldersPushed ? PUSHED_POLL_SPACING : 1);
   }
 
   private stopTimer() {
@@ -498,7 +524,7 @@ export class MessageSyncService extends EventTarget {
     // Without Web Locks status checks remain per-tab. A channel can still
     // select one announcer; stopped or crashed tabs expire from this set.
     return [...this.peers.values()].every((peer) => peer.username !== this.username
-      || Date.now() - peer.seen > Math.max(this.pollMinutes * 3 * 60_000, 180_000)
+      || Date.now() - peer.seen > Math.max(this.pollEveryMinutes * 3 * 60_000, 180_000)
       || peer.peer > this.peerId);
   }
 
@@ -609,7 +635,7 @@ export class MessageSyncService extends EventTarget {
         ? pollDelay(this.pollMinutes * 60_000, this.pollFailures, 1)
         : this.pollMinutes * 60_000;
       const peers = [...this.peers.values()].filter((peer) => peer.visible && peer.username === username
-        && Date.now() - peer.seen <= Math.max(peerInterval * 3, 180_000));
+        && Date.now() - peer.seen <= Math.max(peerInterval * this.peerPollSpacing * 3, 180_000));
       const mailbox = this.currentMailbox;
       const fetchId = this.currentFetchId;
       // In one request: a request each waited its turn on the connection.
@@ -792,6 +818,8 @@ export class MessageSyncService extends EventTarget {
   private newsAgain = false;
   /** News came that this tab could not check yet: see {@link inboxChanged}. */
   private newsPending = false;
+  /** The folders news came of that no check has taken yet, the Inbox among them. */
+  private newsOf = new Set<string>();
 
   /**
    * The server says a message arrived in the Inbox or went from it, or that
@@ -818,6 +846,46 @@ export class MessageSyncService extends EventTarget {
   inboxChanged() {
     // The views of the Inbox kept in memory are older than the news.
     this.forgetListings((listed) => listed === FOLDER_INBOX || listed === ALL_MAILBOXES);
+    this.newsOf.add(FOLDER_INBOX);
+    this.takeNews();
+  }
+
+  /**
+   * The server says a message arrived in a folder other than the Inbox or
+   * went from it, while it pushes the news of the subscribed folders (see
+   * mail-push.ts), and the tab checks it as it checks the Inbox (see
+   * {@link inboxChanged}): a tab showing the folder's own listing makes the
+   * check a poll makes, and any other asks for the folder's counts alone,
+   * which the sidebar shows (`folder-counts`).
+   */
+  folderChanged(mailbox: string) {
+    if (mailbox.toUpperCase() === FOLDER_INBOX) {
+      this.inboxChanged();
+      return;
+    }
+    this.forgetListings((listed) => listed === mailbox || listed === ALL_MAILBOXES);
+    this.newsOf.add(mailbox);
+    this.takeNews();
+  }
+
+  /**
+   * The event stream says whether the server pushes the news of the
+   * subscribed folders as well as the Inbox's: `true` each time it begins to,
+   * `false` once it no longer does (see mail-push.ts). Meanwhile the poll
+   * runs a third as often (see {@link PUSHED_POLL_SPACING}). As it begins,
+   * the folder on screen is checked, as the Inbox is: what changed in it
+   * before went unheard, and the next poll is further away.
+   */
+  foldersWatched(on: boolean) {
+    this.foldersPushed = on;
+    if (on) this.peerPollSpacing = PUSHED_POLL_SPACING;
+    if (on && this.currentMailbox !== FOLDER_INBOX && this.currentMailbox !== ALL_MAILBOXES) {
+      this.folderChanged(this.currentMailbox);
+    }
+  }
+
+  /** Checks the news held, now or once it can be (see {@link inboxChanged}). */
+  private takeNews() {
     if (!this.listed || (typeof document !== 'undefined' && document.hidden && !this.announces)) {
       this.newsPending = true;
       return;
@@ -827,45 +895,73 @@ export class MessageSyncService extends EventTarget {
       this.newsAgain = true;
       return;
     }
-    this.newsCheck = this.checkNews().finally(() => {
+    const news = this.newsOf;
+    this.newsOf = new Set();
+    this.newsCheck = this.checkNews(news).finally(() => {
       this.newsCheck = null;
       if (this.newsAgain) {
         this.newsAgain = false;
-        this.inboxChanged();
+        this.takeNews();
       }
     });
   }
 
   /** News held for a check that can be made now (see {@link inboxChanged}). */
   private checkPendingNews() {
-    if (this.newsPending) this.inboxChanged();
+    if (this.newsPending) this.takeNews();
   }
 
-  private async checkNews(): Promise<void> {
-    if (this.currentMailbox === FOLDER_INBOX && !this.currentQuery) {
+  private async checkNews(news: Set<string>): Promise<void> {
+    if (news.size === 0) return;
+    const shown = this.currentQuery ? null : this.currentMailbox;
+    if (shown !== null && news.has(shown)) {
       // A check-for-new-mail press this one took the place of waits for an
-      // end, as `check` gives it.
+      // end, as `check` gives it. The Inbox's counts come with it.
       if (!await this.backgroundSync({ announce: this.announces })) {
         this.dispatchEvent(new CustomEvent('sync-error', { detail: { error: null, background: true } }));
       }
-      return;
+      news.delete(shown);
+      news.delete(FOLDER_INBOX);
     }
-    // No ticket: the view's own reads are not taken over. A listing that
-    // lands meanwhile carries counts read after these, and the session may
-    // have changed hands: the answer is let go of then.
+    for (const mailbox of news) await this.checkCounts(mailbox);
+  }
+
+  /**
+   * Asks for a folder's counts alone, for the sidebar, on news of a folder
+   * that is not on screen, and tells the page of those that moved.
+   *
+   * No ticket: the view's own reads are not taken over. A listing that lands
+   * meanwhile carries counts read after these, and the session may have
+   * changed hands: the answer is let go of then.
+   */
+  private async checkCounts(mailbox: string): Promise<void> {
+    const inbox = mailbox === FOLDER_INBOX;
     const heard = this.heard;
-    const counts = await this.askCounts(FOLDER_INBOX).catch(() => null);
+    const counts = await this.askCounts(mailbox).catch(() => null);
     if (!counts || this.heard !== heard) return;
-    if (heard && sameCounts(counts, heard.inbox)) return;
-    if (heard) heard.inbox = counts;
+    const named = (mb: any) => {
+      const name = String(mb?.Name ?? mb?.Mailbox);
+      return inbox ? name.toUpperCase() === FOLDER_INBOX : name === mailbox;
+    };
+    if (inbox) {
+      if (heard && sameCounts(counts, heard.inbox)) return;
+      if (heard) heard.inbox = counts;
+    } else {
+      const shown = this.latestMailboxes?.find(named);
+      if (!shown || (shown.Total === counts.total && shown.Unseen === counts.unseen)) return;
+    }
     // The views shown from memory are shown with the latest folder list.
     if (this.latestMailboxes) {
       this.latestMailboxes = this.latestMailboxes.map((mb: any) =>
-        (String(mb?.Name ?? mb?.Mailbox).toUpperCase() === FOLDER_INBOX ? { ...mb, Total: counts.total, Unseen: counts.unseen } : mb));
+        (named(mb) ? { ...mb, Total: counts.total, Unseen: counts.unseen } : mb));
       // No longer the list the server named: the next listing brings it whole.
       this.latestMailboxesVersion = null;
     }
-    this.dispatchEvent(new CustomEvent('inbox-counts', { detail: { counts, announce: this.announces } }));
+    if (inbox) {
+      this.dispatchEvent(new CustomEvent('inbox-counts', { detail: { counts, announce: this.announces } }));
+    } else {
+      this.dispatchEvent(new CustomEvent('folder-counts', { detail: { mailbox, counts, announce: this.announces } }));
+    }
   }
 
   private currentFetchId: number = 0;

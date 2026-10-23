@@ -45,6 +45,18 @@ describe('alps-attachment-pill', () => {
     expect(shadow(el, '.attachment-icon').className).toContain('type-image');
   });
 
+  it('draws no thumbnail from an image above 1 MiB, which it would load whole', async () => {
+    // A thumbnail is the whole attachment, scaled down in the page: three
+    // 4 MB photos cost 12 MB to show three small squares, and the session
+    // cache keeps nothing above 1 MiB, so each is read from the mail server.
+    const big = await pill({ attachment: stored({ Filename: 'photo.jpg', MIMEType: 'image/jpeg', Size: 4 << 20 }), downloadUrl: URL_2 });
+    expect(shadowAll(big, '.attachment-thumb')).toHaveLength(0);
+    expect(shadow(big, '.attachment-icon').className).toContain('type-image');
+
+    const small = await pill({ attachment: stored({ Filename: 'chart.png', MIMEType: 'image/png', Size: 1 << 20 }), downloadUrl: URL_2 });
+    expect(shadow<HTMLImageElement>(small, '.attachment-thumb img').getAttribute('src')).toBe(URL_2);
+  });
+
   it('tries the thumbnail again for the next image it is given', async () => {
     const el = await pill({ attachment: stored({ Filename: 'a.jpg', MIMEType: 'image/jpeg' }), downloadUrl: URL_2 });
     shadow(el, '.attachment-thumb img').dispatchEvent(new Event('error'));
