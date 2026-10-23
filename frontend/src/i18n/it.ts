@@ -548,7 +548,8 @@ export const it = {
     reload: 'Ricarica'
   },
   general: {
-    pageLoadFailed: "Impossibile caricare questa pagina. Salva e chiudi le finestre di composizione, poi ricarica la pagina.",
+    pageLoadFailed: 'Impossibile caricare questa pagina.',
+    pageLoadFailedHint: 'Controlla la connessione, poi ricarica. I messaggi che stai scrivendo vengono conservati.',
     backToMail: "Torna alla posta",
     error: 'Errore',
     cancel: 'Annulla',

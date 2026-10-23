@@ -595,7 +595,8 @@ export const en = {
     reload: 'Reload'
   },
   general: {
-    pageLoadFailed: "This page could not load. Save and close compose windows, then reload the page.",
+    pageLoadFailed: 'This page could not be loaded.',
+    pageLoadFailedHint: 'Check your connection, then reload. Messages you are writing are kept.',
     backToMail: "Back to Mail",
     error: 'Error',
     cancel: 'Cancel',

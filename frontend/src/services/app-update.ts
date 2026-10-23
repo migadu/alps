@@ -269,6 +269,16 @@ export function applyUpdate(): void {
   reload();
 }
 
+/**
+ * Reload for a page whose module could not be fetched, because the user asked
+ * for it: only a new document imports that module again. Like applyUpdate,
+ * it does not wait for an open composer: the notice that offers it writes
+ * the composers to disk first, and they open again after the reload.
+ */
+export function reloadForMissingPage(): void {
+  reload();
+}
+
 function reload(): void {
   window.location.reload();
 }

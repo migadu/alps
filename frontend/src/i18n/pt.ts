@@ -595,7 +595,8 @@ export const pt = {
     reload: 'Recarregar'
   },
   general: {
-    pageLoadFailed: "Não foi possível carregar esta página. Guarde e feche as janelas de composição e depois recarregue a página.",
+    pageLoadFailed: 'Não foi possível carregar esta página.',
+    pageLoadFailedHint: 'É possível recarregar quando a conexão voltar. As mensagens em escrita são mantidas.',
     backToMail: "Voltar ao correio",
     error: 'Erro',
     cancel: 'Cancelar',
