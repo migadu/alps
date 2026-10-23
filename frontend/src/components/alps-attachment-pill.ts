@@ -40,7 +40,9 @@ export class AttachmentPill extends LitElement {
       max-width: 100%;
       box-sizing: border-box;
       gap: 8px;
-      padding: 6px 10px;
+      /* The type square sits as far from the border as it does from the top. */
+      padding: 4px;
+      padding-inline-end: 8px;
       border: 1px solid var(--border-color);
       border-radius: 6px;
       background: var(--bg-primary);
@@ -85,8 +87,8 @@ export class AttachmentPill extends LitElement {
     }
 
     .icon {
-      width: 18px;
-      height: 18px;
+      width: 16px;
+      height: 16px;
       fill: currentColor;
     }
 
@@ -149,8 +151,8 @@ export class AttachmentPill extends LitElement {
 
     .attachment-thumb {
       flex-shrink: 0;
-      width: 24px;
-      height: 24px;
+      width: 22px;
+      height: 22px;
       border-radius: 4px;
       overflow: hidden;
       display: flex;
@@ -167,8 +169,8 @@ export class AttachmentPill extends LitElement {
       object-fit: cover;
     }
     .attachment-icon.typed {
-      width: 24px;
-      height: 24px;
+      width: 22px;
+      height: 22px;
       border-radius: 4px;
       display: flex;
       align-items: center;
