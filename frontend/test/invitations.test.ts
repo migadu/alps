@@ -110,7 +110,7 @@ describe('the invitation banner', () => {
         const el = await banner();
 
         expect(text(el)).toContain('Compiler review');
-        expect(text(el)).toContain('invitations.organizer: Grace Hopper');
+        expect(text(el)).toContain('invitations.organizerIs {"name":"Grace Hopper"}');
         expect(text(el)).toContain('invitations.noConflicts');
         expect(shadowAll(el, '.sender')).toHaveLength(0);
 
@@ -127,7 +127,7 @@ describe('the invitation banner', () => {
         expect(respond).toHaveBeenCalledWith({ mailbox: 'INBOX', uid: '42', status: 'accepted', calendarPath: '/cal/home/', lang: 'de' });
         expect(text(el, '.notice')).toBe('invitations.sent');
         expect(shadow(el, '.answer-accepted').getAttribute('aria-pressed')).toBe('true');
-        expect(text(el)).toContain('invitations.yourAnswer: invitations.statuses.accepted');
+        expect(text(el)).toContain('invitations.yourAnswerIs {"status":"invitations.statuses.accepted"}');
         // Answered, there is a copy: no picker.
         expect(shadowAll(el, 'alps-select')).toHaveLength(0);
     });
@@ -213,7 +213,7 @@ describe('the invitation banner', () => {
         }));
         const el = await banner();
         expect(text(el, '.state')).toBe('invitations.states.ended');
-        expect(text(el, '.answer')).toBe('invitations.yourAnswer: invitations.statuses.accepted');
+        expect(text(el, '.answer')).toBe('invitations.yourAnswerIs {"status":"invitations.statuses.accepted"}');
         expect(shadowAll(el, 'alps-button')).toHaveLength(0);
         expect(shadowAll(el, '.clashes')).toHaveLength(0);
         expect(shadowAll(el, '.sender')).toHaveLength(0);
