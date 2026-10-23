@@ -5,10 +5,10 @@ import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED, getMessageTags 
 import { messageSync } from '../services/message-sync';
 import { mailboxOperations } from '../services/mailbox-operations';
 import { fetchAuthVerdicts, VERDICT_BATCH, type AuthVerdict } from '../services/auth-verdicts';
-import { foregroundSettled } from '../utils/fetch-utils';
+import { fetchWithTimeout, foregroundSettled } from '../utils/fetch-utils';
 import { mailboxOf, messageKey } from '../utils/message-key';
 import { addressText, addressWarning, displayAddress, mixedScriptStyles } from '../utils/address-display';
-import { ALL_MAILBOXES, specialMailboxName } from '../utils/folders';
+import { ALL_MAILBOXES, encodeMailboxPath, specialMailboxName } from '../utils/folders';
 import { MESSAGE_DRAG_TYPE, type MessageDrag } from '../utils/message-drag';
 import { consume } from '@lit/context';
 import { ownAddress, settingsContext, SettingsStore } from '../store/settings-store';
@@ -72,6 +72,8 @@ export class MessageList extends LitElement {
    * folder it came from. '' is the folder on screen.
    */
   @property({ type: String }) listedMailbox = '';
+  /** The accepted listing's UID epoch: the same UID may name another message after it changes. */
+  @property({ type: Number }) listedUIDValidity = 0;
   /** `listedMailbox`'s role, resolved by the parent as `currentMailboxRole` is. */
   @property({ type: String }) listedMailboxRole = '';
   @property({ type: Boolean }) loading = false;
@@ -126,6 +128,18 @@ export class MessageList extends LitElement {
    */
   @state() private emptying = false;
   @state() private expandedThreads = new Set<string>();
+  /**
+   * What the list shows of an expanded thread's older messages that its page
+   * does not carry, by key. A threaded listing gives them with their flags and
+   * envelope, not their structure, so whether one has attachments is read
+   * from the conversation when the thread is first expanded (see
+   * readMembers).
+   */
+  @state() private memberDetails = new Map<string, { HasAttachments: boolean }>();
+  /** The threads whose conversation has been asked for, by key. */
+  private membersAsked = new Set<string>();
+  private membersSignIn = signIns;
+  private membersNeedRead = false;
   /** The messages a drag out of the list is carrying, by key; their rows are
    * dimmed until it ends. Null when nothing is being dragged. */
   @state() private draggingKeys: string[] | null = null;
@@ -924,8 +938,48 @@ export class MessageList extends LitElement {
       newSet.delete(uid);
     } else {
       newSet.add(uid);
+      this.readMembers(uid);
     }
     this.expandedThreads = newSet;
+  }
+
+  private forgetMembers() {
+    this.memberDetails = new Map();
+    this.membersAsked = new Set();
+    this.membersSignIn = signIns;
+    this.membersNeedRead = true;
+  }
+
+  /**
+   * Asks, once, for the conversation of the thread row uid names, when its
+   * older messages came without their structure, and keeps what each one's row
+   * shows from it. A failed read is asked again the next time the thread opens.
+   */
+  private async readMembers(uid: string) {
+    if (!this.isConnected || !this.rowsAreCurrent || this.loading) return;
+    if (this.membersSignIn !== signIns) this.forgetMembers();
+    const row = this.messages?.find((m: any) => String(m.UID) === uid);
+    if (!row?.SubMessages?.some((sub: any) => !sub.BodyStructure)) return;
+    const key = this.keyOf(row);
+    if (this.membersAsked.has(key)) return;
+    const asked = this.membersAsked;
+    const signIn = signIns;
+    asked.add(key);
+    try {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailboxOf(row))}/messages/${row.UID}/thread`);
+      if (!res.ok) throw new Error(`answered ${res.status}`);
+      const data = await res.json();
+      // The same key can be asked again after a folder visit, sign-in or
+      // UIDVALIDITY change. Only the collection that started this read owns it.
+      if (!this.isConnected || this.membersAsked !== asked || signIns !== signIn) return;
+      const details = new Map(this.memberDetails);
+      for (const m of Array.isArray(data?.Messages) ? data.Messages : []) {
+        details.set(this.keyOf(m), { HasAttachments: !!m.HasAttachments });
+      }
+      this.memberDetails = details;
+    } catch {
+      asked.delete(key);
+    }
   }
 
   /**
@@ -1017,6 +1071,7 @@ export class MessageList extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    if (this.membersNeedRead) this.requestUpdate();
     messageSync.addEventListener('sync-start', this.handleSyncStart);
     messageSync.addEventListener('sync-success', this.handleSyncEnd);
     messageSync.addEventListener('sync-error', this.handleSyncEnd);
@@ -1032,6 +1087,7 @@ export class MessageList extends LitElement {
     // A list that leaves the page mid-drag would keep its window listeners
     // until some later drag ended.
     this.endDrag();
+    this.forgetMembers();
     messageSync.removeEventListener('sync-start', this.handleSyncStart);
     messageSync.removeEventListener('sync-success', this.handleSyncEnd);
     messageSync.removeEventListener('sync-error', this.handleSyncEnd);
@@ -1058,6 +1114,15 @@ export class MessageList extends LitElement {
       this.forgetVerdicts();
     } else if (changedProperties.has('currentMailbox')) {
       this.leaveVerdicts();
+    }
+    if (this.membersSignIn !== signIns || changedProperties.has('currentMailbox') || changedProperties.has('listedUIDValidity')) {
+      this.forgetMembers();
+    }
+    // An expanded row can survive a replacement listing or reconnect. Read its
+    // current members when they arrive, without fetching the dimmed old folder.
+    if (this.isConnected && (this.membersNeedRead || changedProperties.has('messages') || changedProperties.has('loading'))) {
+      this.membersNeedRead = false;
+      for (const uid of this.expandedThreads) this.readMembers(uid);
     }
     if (changedProperties.has('currentMailbox') ||
       changedProperties.has('currentPage') ||
@@ -1116,6 +1181,7 @@ export class MessageList extends LitElement {
               const uid = String(m.UID);
               if (!newSet.has(uid)) {
                 newSet.add(uid);
+                this.readMembers(uid);
                 expandedChanged = true;
               }
             }
@@ -1468,6 +1534,10 @@ export class MessageList extends LitElement {
   }
 
   private renderMessageItem(msg: any, isSubMessage: boolean = false, isFirstSub: boolean = false, isLastSub: boolean = false) {
+    if (isSubMessage) {
+      const details = this.memberDetails.get(this.keyOf(msg));
+      if (details) msg = { ...msg, ...details };
+    }
     // Role only. OR-ing the names in here let a user folder called "Sent" show
     // recipients even where the server's own Sent is "[Gmail]/Sent Mail".
     const rowRole = this.rowRole;
