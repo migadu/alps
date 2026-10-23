@@ -179,6 +179,22 @@ describe('suggestions', () => {
     expect(items(el)).toHaveLength(1);
   });
 
+  it('asks nothing once the field is gone', async () => {
+    // A composer closed within the pause after a keystroke still asked the
+    // plugins about what its field had held: the lookup stayed scheduled. In
+    // this file it was also every earlier test's lookup, landing in a later
+    // test's hook whenever the run was slow enough.
+    vi.useFakeTimers();
+    const lookup = vi.fn(async () => []);
+    registry.registerHook('composer:suggest', lookup);
+    const el = await mount<AddressInput>('alps-address-input');
+
+    await typeText(el, 'alice');
+    el.remove();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
   it('drops an answer that a newer query has superseded', async () => {
     vi.useFakeTimers();
     let releaseSlow!: (v: unknown) => void;
