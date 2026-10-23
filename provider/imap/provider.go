@@ -1847,6 +1847,13 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 	}
 
 	if p.client.Caps().Has(imap.CapMove) {
+		any, err := p.batchHasMessages(uidSet)
+		if err != nil {
+			return nil, err
+		}
+		if !any {
+			return map[provider.MessageID]provider.MessageID{}, nil
+		}
 		moveCmd := p.client.Move(uidSet, destMailbox)
 		moveData, err := moveCmd.Wait()
 		if err != nil {
@@ -1887,7 +1894,7 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 			_ = p.DeleteMessages(sourceMailbox, remainingIDs)
 		}
 
-		return p.unnamedCopies(sawCopyUID), nil
+		return nil, nil
 	}
 
 	// Fallback: copy then delete
@@ -1902,6 +1909,9 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 
 // CopyMessages copies messages to another mailbox
 func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []provider.MessageID) (map[provider.MessageID]provider.MessageID, error) {
+	if len(ids) == 0 {
+		return map[provider.MessageID]provider.MessageID{}, nil
+	}
 	if err := p.ensureMailboxSelected(sourceMailbox); err != nil {
 		return nil, err
 	}
@@ -1912,6 +1922,13 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 		uidSet.AddNum(imap.UID(uid))
 	}
 
+	any, err := p.batchHasMessages(uidSet)
+	if err != nil {
+		return nil, err
+	}
+	if !any {
+		return map[provider.MessageID]provider.MessageID{}, nil
+	}
 	copyCmd := p.client.Copy(uidSet, destMailbox)
 	copyData, err := copyCmd.Wait()
 	if err != nil {
@@ -1930,22 +1947,24 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 		}
 	}
 	if len(uidMapping) == 0 {
-		return p.unnamedCopies(sawCopyUID), nil
+		return nil, nil
 	}
 
 	return uidMapping, nil
 }
 
-// unnamedCopies is the answer of a move or a copy whose answer named no copy.
-// A server with UIDPLUS names every copy it makes (RFC 4315), so one that
-// named none made none: the answer is empty, and a move of messages that had
-// all gone counts nothing. A server without UIDPLUS, or a COPYUID that could
-// not be read, has said nothing either way: the answer is nil.
-func (p *IMAPProvider) unnamedCopies(sawCopyUID bool) map[provider.MessageID]provider.MessageID {
-	if sawCopyUID || !p.client.Caps().Has(imap.CapUIDPlus) {
-		return nil
+// An absent COPYUID is ambiguous even with UIDPLUS: RFC4315 permits its
+// omission for UIDNOTSTICKY and write-only destinations. Establish a wholly
+// stale batch from the selected source before filing it instead. A later
+// successful command without a mapping retains the existing unknown-count
+// behavior; its absent mapping never proves that nothing was copied. A
+// UID-only FETCH also avoids charging the server's SEARCH allowance.
+func (p *IMAPProvider) batchHasMessages(uids imap.UIDSet) (bool, error) {
+	data, err := p.client.Fetch(uids, &imap.FetchOptions{UID: true}).Collect()
+	if err != nil {
+		return false, err
 	}
-	return map[provider.MessageID]provider.MessageID{}
+	return len(data) > 0, nil
 }
 
 // authResultsSection fetches the Authentication-Results fields.

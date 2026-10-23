@@ -53,28 +53,37 @@ func TestHTTP_AMoveCountsWhatMoved(t *testing.T) {
 // long before.
 func TestHTTP_AMoveOfMessagesThatAreGoneCountsNothing(t *testing.T) {
 	for _, verb := range []string{"move", "copy"} {
-		t.Run(verb, func(t *testing.T) {
-			// Without MOVE, so that a move is a copy and a delete: the
-			// in-memory server answers a MOVE of nothing with a COPYUID that
-			// names nothing, which no client can read.
-			caps := imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapUIDPlus: {}}
-			s := newIMAPTestServerWith(t, caps, func(inner imapserver.Session) imapserver.Session {
-				return copyUIDOnlyForCopies{inner}
-			}, plainMessage("Engines"))
-			s.login()
-			s.expect(s.do("POST", "/mailboxes", url.Values{"name": {"Archive"}}), http.StatusOK)
+		for _, nativeMove := range []bool{false, true} {
+			name := verb
+			if nativeMove {
+				name += "_with_MOVE"
+			}
+			t.Run(name, func(t *testing.T) {
+				// Without MOVE, so that a move is a copy and a delete: the
+				// in-memory server answers a MOVE of nothing with a COPYUID that
+				// names nothing, which no client can read.
+				caps := imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapUIDPlus: {}}
+				if nativeMove {
+					caps[imap.CapMove] = struct{}{}
+				}
+				s := newIMAPTestServerWith(t, caps, func(inner imapserver.Session) imapserver.Session {
+					return copyUIDOnlyForCopies{inner}
+				}, plainMessage("Engines"))
+				s.login()
+				s.expect(s.do("POST", "/mailboxes", url.Values{"name": {"Archive"}}), http.StatusOK)
 
-			r := s.do("PUT", "/mailboxes/INBOX/messages/"+verb, map[string]any{"uids": []string{"999"}, "to": "Archive"})
-			s.expect(r, http.StatusOK)
-			var answer struct{ Count int }
-			r.json(t, &answer)
-			if answer.Count != 0 {
-				t.Errorf("the %s answered %s, want a count of 0", verb, r.body)
-			}
-			if got := s.mailbox("Archive").Total; got != 0 {
-				t.Errorf("Archive holds %d messages", got)
-			}
-		})
+				r := s.do("PUT", "/mailboxes/INBOX/messages/"+verb, map[string]any{"uids": []string{"999"}, "to": "Archive"})
+				s.expect(r, http.StatusOK)
+				var answer struct{ Count int }
+				r.json(t, &answer)
+				if answer.Count != 0 {
+					t.Errorf("the %s answered %s, want a count of 0", verb, r.body)
+				}
+				if got := s.mailbox("Archive").Total; got != 0 {
+					t.Errorf("Archive holds %d messages", got)
+				}
+			})
+		}
 	}
 }
 
@@ -88,6 +97,10 @@ func (s copyUIDOnlyForCopies) Copy(ctx context.Context, numSet imap.NumSet, dest
 		return nil, err
 	}
 	return data, err
+}
+
+func (s copyUIDOnlyForCopies) Move(ctx context.Context, w *imapserver.MoveWriter, numSet imap.NumSet, dest string) error {
+	return s.Session.(imapserver.SessionMove).Move(ctx, w, numSet, dest)
 }
 
 // noCopyUID is a mail server without UIDPLUS: it copies, and names none of
@@ -121,5 +134,33 @@ func TestHTTP_AMoveTheServerDoesNotNameIsCountedAsAsked(t *testing.T) {
 	}
 	if got := s.mailbox("Archive").Total; got != 2 {
 		t.Errorf("Archive holds %d messages", got)
+	}
+}
+
+// RFC4315 permits successful UIDPLUS copies to omit COPYUID for a
+// UIDNOTSTICKY destination or one the user can write but cannot SELECT.
+func TestHTTP_UIDPlusCopiesWithoutCopyUIDAreStillCounted(t *testing.T) {
+	for _, verb := range []string{"move", "copy"} {
+		t.Run(verb, func(t *testing.T) {
+			s := newIMAPTestServerWith(t, imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapUIDPlus: {}}, func(inner imapserver.Session) imapserver.Session {
+				return noCopyUID{inner}
+			}, plainMessage("Engines"), plainMessage("Looms"))
+			s.login()
+			s.expect(s.do("POST", "/mailboxes", url.Values{"name": {"Archive"}}), http.StatusOK)
+			var uids []string
+			for _, m := range s.mailbox("INBOX").Messages {
+				uids = append(uids, m.UID)
+			}
+			r := s.do("PUT", "/mailboxes/INBOX/messages/"+verb, map[string]any{"uids": uids, "to": "Archive"})
+			s.expect(r, http.StatusOK)
+			var answer struct{ Count int }
+			r.json(t, &answer)
+			if answer.Count != 2 {
+				t.Errorf("the %s answered %s, want a count of 2", verb, r.body)
+			}
+			if got := s.mailbox("Archive").Total; got != 2 {
+				t.Errorf("Archive holds %d messages", got)
+			}
+		})
 	}
 }
