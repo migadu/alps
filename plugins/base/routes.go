@@ -2502,6 +2502,22 @@ func deleteDraft(p provider.MailProvider, draft *messagePath) error {
 	return deleteMessagesWithProvider(p, draft.Mailbox, []provider.MessageID{id})
 }
 
+// A mail callback may outlive its HTTP request. Forget its affected copies
+// when it finishes too, including copies read after the request was canceled.
+// This is cache-only: the callback still owns the mail connection, so it must
+// not call invalidateMailboxCache and try to acquire that connection again.
+func forgetAppendOutcome(cache *alps.Cache, mailbox string, attempted bool, draft *messagePath) {
+	if mailbox != "" {
+		dropMailboxListings(cache, mailbox)
+	} else if attempted {
+		cache.Clear()
+	}
+	if draft != nil {
+		dropMailboxListings(cache, draft.Mailbox)
+		forgetMessages(cache, draft.Mailbox, draft.Uid)
+	}
+}
+
 func handleComposeNew(ctx *alps.Context) error {
 	// Before the first FormValue, which is what triggers parsing.
 	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, maxComposeBodyBytes)
@@ -2790,6 +2806,13 @@ func handleComposeNew(ctx *alps.Context) error {
 		var tried bool
 		var heldIn string // Drafts, when it holds a copy the save could not name
 		err = doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+			defer func() {
+				mailbox := heldIn
+				if drafts != nil {
+					mailbox = drafts.Name()
+				}
+				forgetAppendOutcome(ctx.Session.Cache(), mailbox, tried, draftPath)
+			}()
 			if drafts == nil {
 				held, err := storeOnce(p, &tried, provider.MailboxTypeDrafts, msg.MessageID, draftPath, func() error {
 					var err error
@@ -2859,22 +2882,9 @@ func handleComposeNew(ctx *alps.Context) error {
 			return deleteDraft(p, draftPath)
 		})
 		if err != nil {
-			// A draft stored before the save failed is in Drafts: the folder
-			// is read again for it, as after a save that succeeded.
-			// Cleanup may also have removed the old draft before failing.
-			if draftPath != nil {
-				invalidateMailboxCache(ctx, draftPath.Mailbox)
-				forgetMessages(ctx.Session.Cache(), draftPath.Mailbox, draftPath.Uid)
-			}
-			if drafts != nil {
-				invalidateMailboxCache(ctx, drafts.Name())
-			} else if heldIn != "" {
-				invalidateMailboxCache(ctx, heldIn)
-			} else if tried {
-				// Verification failed before the possible copy's destination
-				// could be resolved, so no older listing is safe to retain.
-				ctx.Session.Cache().Clear()
-			}
+			// Cancellation can return before the callback does. Its state is
+			// still worker-owned; the deferred invalidation covers a late write.
+			ctx.Session.Cache().Clear()
 			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 		inMessage = readBack
@@ -2968,6 +2978,9 @@ func handleComposeNew(ctx *alps.Context) error {
 	var sentName string
 	var tried bool
 	err = ctx.Session.FinishMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+		defer func() {
+			forgetAppendOutcome(ctx.Session.Cache(), sentName, tried, draftPath)
+		}()
 		if sentName == "" {
 			held, err := storeOnce(p, &tried, provider.MailboxTypeSent, msg.MessageID, nil, func() error {
 				sent, _, _, err := appendMessageWithProvider(p, msg, provider.MailboxTypeSent)
@@ -2987,17 +3000,8 @@ func handleComposeNew(ctx *alps.Context) error {
 		return deleteDraft(p, draftPath)
 	})
 	if err != nil {
-		// A copy filed before the filing failed is in Sent.
-		// Cleanup may have removed its old draft before returning an error.
-		if draftPath != nil {
-			invalidateMailboxCache(ctx, draftPath.Mailbox)
-			forgetMessages(ctx.Session.Cache(), draftPath.Mailbox, draftPath.Uid)
-		}
-		if sentName != "" {
-			invalidateMailboxCache(ctx, sentName)
-		} else if tried {
-			ctx.Session.Cache().Clear()
-		}
+		// As above, an abandoned callback can still be finishing its write.
+		ctx.Session.Cache().Clear()
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save message to Sent mailbox: " + err.Error()})
 	}
 
