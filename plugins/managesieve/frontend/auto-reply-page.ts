@@ -10,6 +10,10 @@ import '../../../frontend/src/components/alps-select';
 import '../../../frontend/src/components/alps-setting-group';
 import { AUTO_REPLY_DAYS, DEFAULT_AUTO_REPLY, type AutoReply } from './auto-reply';
 import { managesieveService, TwoVacationsError } from './managesieve-service';
+import { UnsavedEdit } from './unsaved';
+
+/** The reply as it was left unsaved, for the page's next visit. */
+const unsavedReply = new UnsavedEdit<AutoReply>();
 
 /** Today in the browser's zone, as `YYYY-MM-DD`: the calendar the dates are typed in. */
 function today(): string {
@@ -47,6 +51,9 @@ export class AutoReplyPage extends LitElement {
 	@state() private draft: AutoReply = DEFAULT_AUTO_REPLY;
 	@state() private saving = false;
 	@state() private error = '';
+	private visit = unsavedReply.visit();
+	private retainEdit = true;
+	private loadRequest = 0;
 
 	static styles = css`
 		.loading {
@@ -128,12 +135,37 @@ export class AutoReplyPage extends LitElement {
 
 	connectedCallback() {
 		super.connectedCallback();
+		this.visit = unsavedReply.visit();
+		this.retainEdit = true;
 		this.load();
 	}
 
-	private async load() {
+	disconnectedCallback() {
+		super.disconnectedCallback();
+		// A page still reading leaves what an earlier visit kept as it is.
+		if (!this.retainEdit || this.loading || this.loadFailed) return;
+		if (this.dirty || this.saving) unsavedReply.keep(JSON.stringify(this.stored), this.draft, this.visit);
+		else unsavedReply.forget(this.visit);
+	}
+
+	discardUnsavedChanges() {
+		this.retainEdit = false;
+		unsavedReply.forget(this.visit);
+	}
+
+	private async load(): Promise<void> {
+		const visit = this.visit;
+		const revision = unsavedReply.revision;
+		const request = ++this.loadRequest;
+		const current = () => this.visit === visit && request === this.loadRequest && unsavedReply.current(visit);
+		this.loading = true;
+		this.loadFailed = false;
 		try {
 			const { reply, extensions, ownVacation } = await managesieveService.fetchAutoReply();
+			if (!current()) return;
+			// A save completed after this read began; its older answer cannot
+			// decide whether the retained draft conflicts with the server.
+			if (revision !== unsavedReply.revision) return this.load();
 			this.extensions = extensions;
 			this.ownVacation = ownVacation;
 			this.stored = reply ?? DEFAULT_AUTO_REPLY;
@@ -141,11 +173,16 @@ export class AutoReplyPage extends LitElement {
 			// script requiring the extension would be refused, so the draft goes
 			// without them — and reads as the unsaved change it is.
 			this.draft = this.offersDates ? this.stored : { ...this.stored, start: '', end: '' };
+			// Taken only by a page still on screen: one left before the read
+			// answered would take the edit away with it.
+			const kept = this.isConnected ? unsavedReply.take(JSON.stringify(this.stored), visit) : null;
+			if (kept) this.draft = kept;
 		} catch (e) {
+			if (!current()) return;
 			console.error('Failed to fetch the auto-reply', e);
 			this.loadFailed = true;
 		} finally {
-			this.loading = false;
+			if (current()) this.loading = false;
 		}
 	}
 
@@ -168,7 +205,7 @@ export class AutoReplyPage extends LitElement {
 	 * no edit and a refused save stays unsaved.
 	 */
 	get hasUnsavedChanges(): boolean {
-		return !this.loading && !this.loadFailed && this.dirty;
+		return !this.loading && !this.loadFailed && (this.dirty || this.saving);
 	}
 
 	/**
@@ -200,6 +237,8 @@ export class AutoReplyPage extends LitElement {
 	private async save() {
 		if (this.saving) return;
 		const reply = this.draft;
+		const visit = this.visit;
+		const base = JSON.stringify(this.stored);
 		const problem = this.problem(reply);
 		if (problem) {
 			this.error = this.t(problem);
@@ -211,12 +250,16 @@ export class AutoReplyPage extends LitElement {
 		const turnedOff = this.stored.enabled && !reply.enabled;
 		try {
 			await managesieveService.saveAutoReply(reply, this.address);
+			if (!unsavedReply.current(visit)) return;
+			unsavedReply.savedAs(base, JSON.stringify(reply), visit);
+			if (this.visit !== visit) return;
 			// What was SENT is what is stored now; an edit made while the save was
 			// in flight still reads as unsaved.
 			this.stored = reply;
 			const message = this.t(turnedOff ? 'managesieve.autoReply.turnedOff' : 'managesieve.autoReply.saved');
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, duration: 3000 } }));
 		} catch (e) {
+			if (this.visit !== visit || !unsavedReply.current(visit)) return;
 			if (e instanceof TwoVacationsError) {
 				// The filters gained a vacation of their own since the page
 				// opened. Nothing was written; the page says what it says on
@@ -227,7 +270,7 @@ export class AutoReplyPage extends LitElement {
 			console.error('Failed to save the auto-reply', e);
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.t('managesieve.autoReply.errors.saveError'), duration: 5000, type: 'error' } }));
 		} finally {
-			this.saving = false;
+			if (this.visit === visit) this.saving = false;
 		}
 	}
 
@@ -289,13 +332,16 @@ export class AutoReplyPage extends LitElement {
 				${this.renderState()}
 			`)}
 
+			<!-- Each field named by its label: the setting's is in
+			     alps-setting-group's shadow root, and a date's outside
+			     alps-input's, so neither reaches the control. -->
 			<alps-setting-group label=${this.t('managesieve.autoReply.subject')} description=${this.t('managesieve.autoReply.subjectDesc')}>
-				<alps-input class="subject" .value=${draft.subject} placeholder=${this.t('managesieve.autoReply.subjectPlaceholder')}
+				<alps-input class="subject" label=${this.t('managesieve.autoReply.subject')} .value=${draft.subject} placeholder=${this.t('managesieve.autoReply.subjectPlaceholder')}
 					@input=${(e: Event) => this.edit({ subject: (e.target as HTMLInputElement).value })}></alps-input>
 			</alps-setting-group>
 
 			<alps-setting-group label=${this.t('managesieve.autoReply.message')} description=${this.t('managesieve.autoReply.messageDesc')}>
-				<textarea dir="auto" .value=${draft.message} placeholder=${this.t('managesieve.autoReply.messagePlaceholder')}
+				<textarea dir="auto" aria-label=${this.t('managesieve.autoReply.message')} .value=${draft.message} placeholder=${this.t('managesieve.autoReply.messagePlaceholder')}
 					@input=${(e: Event) => this.edit({ message: (e.target as HTMLTextAreaElement).value })}></textarea>
 			</alps-setting-group>
 
@@ -304,12 +350,12 @@ export class AutoReplyPage extends LitElement {
 					<div class="dates">
 						<label>
 							<span class="field-label">${this.t('managesieve.autoReply.startDate')}</span>
-							<alps-input class="start" type="date" .value=${draft.start}
+							<alps-input class="start" type="date" label=${this.t('managesieve.autoReply.startDate')} .value=${draft.start}
 								@input=${(e: Event) => this.edit({ start: (e.target as HTMLInputElement).value })}></alps-input>
 						</label>
 						<label>
 							<span class="field-label">${this.t('managesieve.autoReply.endDate')}</span>
-							<alps-input class="end" type="date" .value=${draft.end}
+							<alps-input class="end" type="date" label=${this.t('managesieve.autoReply.endDate')} .value=${draft.end}
 								@input=${(e: Event) => this.edit({ end: (e.target as HTMLInputElement).value })}></alps-input>
 						</label>
 					</div>
@@ -317,7 +363,7 @@ export class AutoReplyPage extends LitElement {
 			` : nothing}
 
 			<alps-setting-group label=${this.t('managesieve.autoReply.interval')} description=${this.t('managesieve.autoReply.intervalDesc')}>
-				<alps-select .value=${String(draft.days)}
+				<alps-select label=${this.t('managesieve.autoReply.interval')} .value=${String(draft.days)}
 					.options=${intervals.map(days => ({ value: String(days), label: this.t('managesieve.autoReply.days', { count: days }) }))}
 					@change=${(e: Event) => this.edit({ days: Number((e.target as HTMLSelectElement).value) })}></alps-select>
 			</alps-setting-group>

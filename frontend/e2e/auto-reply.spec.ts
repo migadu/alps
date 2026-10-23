@@ -337,3 +337,23 @@ test("a reply dated to start tomorrow waits, and one dated today answers", async
   // The message that came before the start got none.
   await expectNoReplyTo(early);
 });
+
+// Settings makes the page anew for each visit, so an edit left unsaved went
+// with the page it was typed in: the browser's Back dropped it without a word,
+// and Forward showed the stored reply again. It is kept for the next visit,
+// still to save.
+test("an unsaved reply comes back with Forward after Back, still to save", async ({ page }) => {
+  const marker = uniqueMarker();
+  await openAutoReply(page);
+  await message(page).fill(`Away ${marker}`);
+  await expect(saveBtn(page)).toBeEnabled();
+
+  await page.goBack();
+  await expect(autoReply(page)).toHaveCount(0);
+  await page.goForward();
+
+  await expect(message(page)).toHaveValue(`Away ${marker}`);
+  await expect(saveBtn(page)).toBeEnabled();
+  // Kept, not saved.
+  expect(await storedScripts()).toEqual([]);
+});

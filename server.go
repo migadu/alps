@@ -271,13 +271,14 @@ func (s *Server) loadPlugins() error {
 	if err != nil {
 		return fmt.Errorf("failed to get frontend/dist sub-filesystem: %v", err)
 	}
-	router.Frontend(distFS)
-	router.build = frontendBuild(distFS)
+	site, icons := fs.FS(distFS), []string(nil)
 	if s.Options != nil {
-		if err := router.serveBranding(distFS, s.Options.Branding); err != nil {
+		if site, icons, err = brandedFrontend(distFS, s.Options.Branding); err != nil {
 			return err
 		}
 	}
+	router.Frontend(site, icons...)
+	router.build = frontendBuild(site)
 
 	s.router = router
 	s.plugins = plugins

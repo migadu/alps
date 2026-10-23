@@ -133,8 +133,9 @@ class PluginRegistry {
     hooks: Map<string, { handler: Function; pluginId?: string }[]> = new Map();
     enabledPlugins: Set<string> | null = null;
 
-    setEnabledPlugins(plugins: string[]) {
-        const next = new Set(plugins);
+    /** The plugins /session names as on, or null for "not known yet": all of them. */
+    setEnabledPlugins(plugins: string[] | null) {
+        const next = plugins === null ? null : new Set(plugins);
         // Idempotent, because the callers are not: /session is re-read on every
         // sign-in and reconnect, and each would otherwise announce a change that
         // never happened — costing a full re-render in all three listeners and

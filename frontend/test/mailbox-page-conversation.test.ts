@@ -278,6 +278,17 @@ describe('a card\'s own verbs', () => {
       expect(went).toEqual(['5']);
     });
 
+    it('in a search of every folder, stays on the next card, in its own folder', async () => {
+      // A UID alone names a message only within its folder, and a search of
+      // every folder shows several.
+      const el = await page('*');
+      const urls = vi.spyOn(el, 'updateUrl').mockImplementation(() => {});
+
+      await act(el, { action: 'delete', uid: '9', mailbox: 'INBOX', nextUid: '7', nextMailbox: 'Sent', done: vi.fn() });
+
+      expect(urls.mock.calls.at(-1)).toEqual(['*', 0, '7', undefined, 'Sent']);
+    });
+
     it('goes back to the list when nothing of the conversation is left here', async () => {
       const el = await page();
 
