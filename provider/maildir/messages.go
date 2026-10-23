@@ -380,6 +380,17 @@ func (p *Provider) GetMessageMetadata(mailbox string, id provider.MessageID) (*p
 	return p.parseMessage(mailbox, key, f, m.Flags())
 }
 
+// messagePart finds the part of the message e at partPath, numbered as IMAP
+// numbers a message's parts (RFC 3501, section 6.4.5): a message that is not
+// multipart has one part, its body, which is part 1. The reader asks for it
+// by that number.
+func messagePart(e *message.Entity, partPath []int) (*message.Entity, error) {
+	if len(partPath) == 1 && partPath[0] == 1 && e.MultipartReader() == nil {
+		return e, nil
+	}
+	return traverseEntity(e, partPath)
+}
+
 func traverseEntity(e *message.Entity, partPath []int) (*message.Entity, error) {
 	if len(partPath) == 0 {
 		return e, nil
@@ -464,7 +475,7 @@ func (p *Provider) getMessagePartEntity(mailbox string, key string, partPath []i
 		return nil, nil, nil, err
 	}
 
-	part, err := traverseEntity(e, partPath)
+	part, err := messagePart(e, partPath)
 	if err != nil {
 		f.Close()
 		return nil, nil, nil, err
