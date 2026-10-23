@@ -259,6 +259,7 @@ func (c *MSClient) GetScript(name string) (string, error) {
 				return "", err
 			}
 			if content.Len()+size > maxLiteralBytes {
+				c.conn.Close()
 				return "", fmt.Errorf("script exceeds the %d-byte limit", maxLiteralBytes)
 			}
 			lit := make([]byte, size)
@@ -275,6 +276,10 @@ func (c *MSClient) GetScript(name string) (string, error) {
 			script, _, ok := readQuoted(line)
 			if !ok {
 				return "", fmt.Errorf("GETSCRIPT answered with an unclosed string: %q", line)
+			}
+			if content.Len()+len(script) > maxLiteralBytes {
+				c.conn.Close()
+				return "", fmt.Errorf("script exceeds the %d-byte limit", maxLiteralBytes)
 			}
 			content.WriteString(script)
 			foundScript = true
@@ -352,16 +357,32 @@ func (c *MSClient) sendCommandWithLog(cmd, logCmd string) error {
 	return err
 }
 
+// readLine reads one line of a response, without its line break. A line
+// longer than maxLineBytes is a protocol error, and it closes the connection:
+// the rest of the line is still to come, and nothing read after it would be
+// in step with the server.
 func (c *MSClient) readLine() (string, error) {
 	c.conn.SetReadDeadline(time.Now().Add(15 * time.Second))
-	line, err := c.r.ReadString('\n')
-	if err == nil && c.debugWriter != nil {
-		c.debugWriter.Write([]byte("S: " + line))
+	var line []byte
+	for {
+		chunk, err := c.r.ReadSlice('\n')
+		if len(line)+len(chunk) > maxLineBytes {
+			c.conn.Close()
+			return "", fmt.Errorf("server sent a line longer than %d bytes", maxLineBytes)
+		}
+		line = append(line, chunk...)
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		break
 	}
-	if err != nil {
-		return "", err
+	if c.debugWriter != nil {
+		c.debugWriter.Write([]byte("S: " + string(line)))
 	}
-	return strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r"), nil
+	return strings.TrimSuffix(strings.TrimSuffix(string(line), "\n"), "\r"), nil
 }
 
 // maxLiteralBytes is the largest literal the client reads, and the largest
@@ -370,6 +391,11 @@ func (c *MSClient) readLine() (string, error) {
 // largest script alps takes from the page, as a larger one could not be saved
 // back.
 const maxLiteralBytes = maxScriptBytes
+
+// maxLineBytes includes the worst-case quoted form of a maximum-size
+// script: every byte escaped, plus its quotes and CRLF. GetScript separately
+// bounds decoded content so quoting does not change the script's limit.
+const maxLineBytes = 2*maxLiteralBytes + 4
 
 // parseLiteralSize reads the size from a literal's header, "{size}" or
 // "{size+}", which ends the line. A header that is not one, or a size past
