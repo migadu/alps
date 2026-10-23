@@ -100,6 +100,76 @@ describe('the shell, for a plugin the server has turned off', () => {
 
     expect(registry.enabledPlugins).toBeNull();
   });
+
+  it('ignores a delayed session answer after the session has ended', async () => {
+    // The settings store has its own separately guarded identity read. Keep
+    // this regression on the shell's plugin-list read.
+    vi.spyOn(SettingsStore.prototype as any, 'initializeSession').mockResolvedValue(undefined);
+    let answer!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => String(input) === '/session'
+      ? new Promise<Response>(resolve => { answer = resolve; })
+      : Promise.resolve(new Response('{}', { status: 404 }))));
+    signedIn();
+    await mount<El>('app-root');
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    answer(Response.json({ EnabledPlugins: ['base', 'offplug'] }));
+    await flush();
+    await flush();
+    expect(registry.enabledPlugins).toBeNull();
+  });
+
+  it('keeps the next account answer when an older session answers later', async () => {
+    vi.spyOn(SettingsStore.prototype as any, 'initializeSession').mockResolvedValue(undefined);
+    const answers: ((response: Response) => void)[] = [];
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => String(input) === '/session'
+      ? new Promise<Response>(resolve => { answers.push(resolve); })
+      : Promise.resolve(new Response('{}', { status: 404 }))));
+    signedIn();
+    await mount<El>('app-root');
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    localStorage.setItem('alps_active_user', 'grace@example.com');
+    window.dispatchEvent(new CustomEvent('user-logged-in', { detail: { username: 'grace@example.com' } }));
+    expect(answers).toHaveLength(2);
+    answers[1](Response.json({ EnabledPlugins: ['base'] }));
+    await flush(); await flush();
+    expect([...registry.enabledPlugins!]).toEqual(['base']);
+    answers[0](Response.json({ EnabledPlugins: ['base', 'offplug'] }));
+    await flush(); await flush();
+    expect([...registry.enabledPlugins!]).toEqual(['base']);
+  });
+
+  it('does not let a disconnected shell overwrite the current plugin list', async () => {
+    vi.spyOn(SettingsStore.prototype as any, 'initializeSession').mockResolvedValue(undefined);
+    let answer!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => String(input) === '/session'
+      ? new Promise<Response>(resolve => { answer = resolve; })
+      : Promise.resolve(new Response('{}', { status: 404 }))));
+    signedIn();
+    const root = await mount<El>('app-root');
+    root.remove();
+    registry.setEnabledPlugins(['base']);
+    answer(Response.json({ EnabledPlugins: ['base', 'offplug'] }));
+    await flush(); await flush();
+    expect([...registry.enabledPlugins!]).toEqual(['base']);
+  });
+
+  it('refreshes routes and drops disabled cached pages when reconnected', async () => {
+    registry.registerRoute({ path: '/offplug', component: 'offplug-page', pluginId: 'offplug' });
+    signedIn();
+    window.location.hash = '#/offplug';
+    const root = await mount<El>('app-root');
+    expect(root.shadowRoot!.querySelector('offplug-page')).not.toBeNull();
+
+    root.remove();
+    registry.setEnabledPlugins(['base']);
+    document.body.append(root);
+    await root.updateComplete;
+    await flush();
+
+    expect(root.shadowRoot!.querySelector('offplug-page')).toBeNull();
+    expect(root.pluginPages.has('/offplug')).toBe(false);
+    expect(root.shadowRoot!.textContent).toContain('404');
+  });
 });
 
 describe('the settings page, for a plugin the server has turned off', () => {
@@ -130,5 +200,14 @@ describe('the settings page, for a plugin the server has turned off', () => {
     await el.updateComplete;
 
     expect(tabs(el)).not.toContain('offplug.tab');
+  });
+
+  it('removes the settings pane already shown for a disabled plugin', async () => {
+    registry.registerSettingsTab({ id: 'offplug', pluginId: 'offplug', labelKey: 'offplug.tab', icon: 'tune', component: 'offplug-settings' });
+    const el = await mount<El>('settings-window', { category: 'offplug', i18nStore, settingsStore: settingsStore() });
+    expect(el.shadowRoot!.querySelector('offplug-settings')).not.toBeNull();
+    registry.setEnabledPlugins(['base']);
+    await el.updateComplete;
+    expect(el.shadowRoot!.querySelector('offplug-settings')).toBeNull();
   });
 });
