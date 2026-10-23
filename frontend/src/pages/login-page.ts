@@ -145,9 +145,9 @@ export class LoginPage extends LitElement {
       height: 36px;
       margin-top: 4px;
       gap: 8px;
-      background-color: var(--accent-color, #3b82f6);
-      color: var(--accent-contrast, #ffffff);
-      border: 1px solid transparent;
+      background-color: var(--accent-fill, #3b82f6);
+      color: #ffffff;
+      border: 1px solid var(--accent-fill-border, transparent);
       border-radius: var(--btn-radius, 4px);
       font-family: inherit;
       font-size: var(--btn-font-size, 14px);
@@ -159,7 +159,7 @@ export class LoginPage extends LitElement {
     }
 
     .submit-btn:hover:not(:disabled) {
-      background-color: var(--accent-hover, #2563eb);
+      background-color: var(--accent-fill-hover, #2563eb);
     }
 
     .submit-btn:disabled {

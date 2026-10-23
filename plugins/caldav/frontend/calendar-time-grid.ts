@@ -221,7 +221,7 @@ export class CalendarTimeGrid extends LitElement {
             box-sizing: border-box;
         }
         .time-event:hover {
-            background-color: var(--accent-color, #2563eb);
+            background-color: var(--accent-fill, #2563eb);
         }
         .time-event-title {
             font-weight: 500;

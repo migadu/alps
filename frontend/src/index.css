@@ -26,8 +26,12 @@
   --accent-color: #2563eb;
   --accent-hover: #1d4ed8;
   --accent-light: #dbeafe;
-  /* Text on an accent background, such as a primary button. */
-  --accent-contrast: #ffffff;
+  /* What carries white text in the accent: primary buttons, badges, event
+     chips. It is the accent unless a theme sets it apart, as Migadu does to
+     keep the site's button blue beside its sky-blue links. */
+  --accent-fill: var(--accent-color);
+  --accent-fill-hover: var(--accent-hover);
+  --accent-fill-border: transparent;
 
   --success: #10b981;
   --warning: #f59e0b;

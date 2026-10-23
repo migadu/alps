@@ -102,14 +102,14 @@ export class AlpsButton extends LitElement {
 
     /* Variant: Primary */
     :host([variant="primary"]) button {
-      background-color: var(--accent-color, #3b82f6);
-      color: var(--accent-contrast, #ffffff);
-      border: 1px solid transparent;
+      background-color: var(--accent-fill, #3b82f6);
+      color: #ffffff;
+      border: 1px solid var(--accent-fill-border, transparent);
     }
     
     @media (hover: hover) {
       :host([variant="primary"]) button:hover:not(:disabled) {
-        background-color: var(--accent-hover, #2563eb);
+        background-color: var(--accent-fill-hover, #2563eb);
       }
     }
 

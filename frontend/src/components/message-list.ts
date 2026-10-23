@@ -680,8 +680,8 @@ export class MessageList extends LitElement {
     }
     
     .message-item.unread .thread-count-caret-badge {
-      background: var(--accent-color, #eab308);
-      color: var(--accent-contrast, #fff);
+      background: var(--accent-fill, #eab308);
+      color: #fff;
     }
 
     .caret-col {
@@ -1769,8 +1769,8 @@ export class MessageList extends LitElement {
       whiteSpace: 'nowrap',
       padding: '6px 12px',
       borderRadius: '16px',
-      background: 'var(--accent-color, #005A9E)',
-      color: 'var(--accent-contrast, #fff)',
+      background: 'var(--accent-fill, #005A9E)',
+      color: '#fff',
       font: '500 13px/1.4 var(--font-base, sans-serif)',
       boxShadow: '0 4px 12px rgba(0, 0, 0, 0.18)',
       pointerEvents: 'none',
