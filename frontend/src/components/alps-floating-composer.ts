@@ -2,7 +2,8 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import {
-  bareAddress, composeContext, draftContentKey, keptAfterSave, postedAttachments, recipientField, reconcileSavedAttachments, uploadGone,
+  bareAddress, composeContext, draftContentKey, keptAfterSave, postedAttachments, quoteSourceAfterSave, recipientField,
+  reconcileSavedAttachments, uploadGone,
 } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
@@ -379,6 +380,9 @@ export class AlpsFloatingComposer extends LitElement {
         const listed = updates.attachments ?? latest.attachments;
         const kept = listed && keptAfterSave(listed, currentInstance);
         if (kept !== listed) updates.attachments = kept;
+        // The quote of a draft being edited follows the draft: see quoteSourceAfterSave.
+        const quoteSource = quoteSourceAfterSave(currentInstance, result);
+        if (quoteSource) updates.quoteSource = quoteSource;
         this.composeStore.updateComposer(this.instance.id, updates);
 
         // If the composer became dirty while saving, or new attachments were added, schedule another save
