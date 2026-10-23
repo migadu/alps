@@ -81,6 +81,16 @@ export class InvalidOptionsError extends Error {
     }
 }
 
+// atob accepts whitespace and the standard base64 '+' and '/' alphabet.
+// Authentication options use base64url; accepting those characters could
+// hand an empty or malformed challenge/id to the browser instead.
+function authenticationBytes(value: unknown): ArrayBuffer {
+    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+={0,2}$/.test(value)) {
+        throw new InvalidOptionsError();
+    }
+    return base64urlToBuffer(value);
+}
+
 // Authenticate with existing credential (for login)
 export async function authenticateCredential(credentialRequestOptions: any) {
     // Decode base64url fields. A value that cannot be decoded failed with the
@@ -88,7 +98,7 @@ export async function authenticateCredential(credentialRequestOptions: any) {
     // DOMException when it was malformed; both are the same fault in the
     // options, so both are one error the page can name in the user's language.
     try {
-        credentialRequestOptions.publicKey.challenge = base64urlToBuffer(
+        credentialRequestOptions.publicKey.challenge = authenticationBytes(
             credentialRequestOptions.publicKey.challenge
         );
 
@@ -97,7 +107,7 @@ export async function authenticateCredential(credentialRequestOptions: any) {
             credentialRequestOptions.publicKey.allowCredentials =
                 credentialRequestOptions.publicKey.allowCredentials.map((cred: any) => ({
                     ...cred,
-                    id: base64urlToBuffer(cred.id)
+                    id: authenticationBytes(cred.id)
                 }));
         }
     } catch {

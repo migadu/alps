@@ -278,6 +278,11 @@ describe('login-webauthn-page', () => {
       ['without a challenge', { allowCredentials: [] }],
       ['with a credential that has no id', { challenge: 'AAAA', allowCredentials: [{ type: 'public-key' }] }],
       ['with a challenge that is not base64url', { challenge: '!!!' }],
+      ['with only whitespace for a challenge', { challenge: ' \t\n' }],
+      ['with whitespace inside a challenge', { challenge: 'AA AA' }],
+      ['with only whitespace for a credential id', { challenge: 'AAAA', allowCredentials: [{ type: 'public-key', id: ' \t' }] }],
+      ['with a plus sign in a challenge', { challenge: 'AA+_' }],
+      ['with a slash in a credential id', { challenge: 'AAAA', allowCredentials: [{ type: 'public-key', id: '/w' }] }],
     ])('says the options cannot be used, in the user\'s language, when they come %s', async (_, publicKey) => {
       const get = vi.fn(async () => null);
       Object.defineProperty(navigator, 'credentials', { value: { get }, configurable: true });
