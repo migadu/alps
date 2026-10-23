@@ -141,6 +141,7 @@ export class MessageReader extends LitElement {
     if (action === 'reply' || action === 'replyAll' || action === 'forward') {
       if (!this.message) return;
       this._closePopup();
+      const current = this.bodyActionCurrent();
       const key = this.keyOf(this.message);
       // A body whose read failed is read again first, as Edit Draft reads it:
       // taken as it stood, a reply quoted nothing and a forward went out
@@ -152,6 +153,7 @@ export class MessageReader extends LitElement {
         // Another message was opened while this one's body was coming.
         if (!this.message || this.keyOf(this.message) !== key) return;
       }
+      if (!current()) return;
       if (this.loadFailed) {
         this._sayBodyUnread();
         return;
@@ -1833,17 +1835,18 @@ export class MessageReader extends LitElement {
     const msg = item.message;
     const mailbox = item.mailbox;
     const key = this.itemKey(item);
+    const cacheGeneration = MessageCache.generation();
     const seq = (this.bodyReads.get(key) ?? 0) + 1;
     this.bodyReads.set(key, seq);
-    const current = () => this.bodyReads.get(key) === seq;
+    const current = () => this.bodyReads.get(key) === seq
+      && cacheGeneration === MessageCache.generation();
     let landed!: () => void;
     const inFlight = new Promise<void>(resolve => { landed = resolve; });
     this.bodyLoads.set(key, inFlight);
 
     const preferredView = this.localPreferredView || this.settingsStore?.getState()?.preferredView || 'html';
-    // Taken before asking: a body that answers after its user has signed out
-    // is not written to the cache the next user opens from.
-    const cacheGeneration = MessageCache.generation();
+    // The account captured above guards painting as well as caching: a body
+    // that answers after account teardown belongs to the previous reader.
 
     try {
       const cached = MessageCache.get(mailbox, msg.UID.toString(), preferredView);
@@ -2300,6 +2303,7 @@ export class MessageReader extends LitElement {
 
   private async _handleActionForItem(action: string, item: ThreadMessageItem) {
     if (action === 'reply' || action === 'replyAll' || action === 'forward') {
+      const current = this.bodyActionCurrent();
       const key = this.itemKey(item);
       this.readWaitingCard(key);
       // As from the toolbar: a body whose read failed is read again first.
@@ -2310,6 +2314,7 @@ export class MessageReader extends LitElement {
         if (!loaded) return;
         item = loaded;
       }
+      if (!current()) return;
       if (item.loadFailed) {
         this._sayBodyUnread();
         return;
@@ -2434,6 +2439,14 @@ export class MessageReader extends LitElement {
     this.isScrolled = target.scrollTop > 0;
   };
 
+  /** The intent to answer belongs to this opening, account and live reader. */
+  private bodyActionCurrent(): () => boolean {
+    const opening = this.readGeneration;
+    const account = MessageCache.generation();
+    return () => this.isConnected && opening === this.readGeneration
+      && account === MessageCache.generation();
+  }
+
   /**
    * Says that a body an answer or a draft would be taken from could not be
    * read, as the reader says it over the body; nothing is opened.
@@ -2457,6 +2470,7 @@ export class MessageReader extends LitElement {
     // copy, and Discard could not delete it.
     const mailbox = isItem ? item.mailbox : this.mailboxOfMessage(msg);
     if (!msg) return;
+    const current = this.bodyActionCurrent();
 
     const key = isItem ? this.itemKey(item) : this.keyOf(msg);
     // The draft is opened from its body, which is read first when the card has
@@ -2480,6 +2494,7 @@ export class MessageReader extends LitElement {
     msg = isItem ? item.message : this.message;
     // Still not read: said, as the reader says it over the body, and nothing
     // is opened that could be saved over the draft.
+    if (!current()) return;
     if (isItem ? item.loadFailed : this.loadFailed) {
       this._sayBodyUnread();
       return;

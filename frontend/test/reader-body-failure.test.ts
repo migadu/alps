@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/components/message-reader';
 import {
-  cleanup, click, installMatchMedia, installResizeObserver, installScrollIntoView, mount, record, shadow, shadowAll, text, waitFor,
+  cleanup, click, installMatchMedia, installResizeObserver, installScrollIntoView, mount, record, shadow, shadowAll, text, update, waitFor,
 } from './helpers/dom';
 import { MessageCache } from '../src/utils/message-cache';
 
@@ -284,5 +284,45 @@ describe('an answer to a message whose body failed to load', () => {
       expect(bodyReads).toEqual(['INBOX', 'INBOX']);
       expect(toasts.map(e => e.detail.message)).toEqual(['messageReader.loadError']);
     });
+  }
+});
+
+
+describe('a body action awaiting a retry belongs to its opening and account', () => {
+  const actions = {
+    'toolbar forward': { draft: false, run: (el: El) => el._handleAction('forward') },
+    'card forward': { draft: false, run: (el: El) => el._handleActionForItem('forward', el.threadItems[0]) },
+    'banner Edit Draft': { draft: true, run: (el: El) => el._handleEditDraft() },
+    'card Edit Draft': { draft: true, run: (el: El) => el._handleEditDraft(el.threadItems[0]) },
+  };
+  for (const [name, action] of Object.entries(actions)) {
+    for (const departure of ['disconnected', 'account cleared', 'closed and reopened'] as const) {
+      it(`${name} does not open a composer after ${departure}`, async () => {
+        const source = action.draft ? draft : message;
+        bodyStatus[source.Mailbox] = 500;
+        const composeStore = { openComposer: vi.fn() };
+        const el = await open(source, composeStore);
+        const normal = fetch;
+        let answer!: (value: Response) => void;
+        vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+          String(input).startsWith(`/mailboxes/${source.Mailbox}/messages/${source.UID}/raw`)
+            ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+        const pending = action.run(el);
+        await waitFor(() => !!answer, 'the retried body');
+        if (departure === 'disconnected') el.remove();
+        else if (departure === 'account cleared') MessageCache.clear();
+        else {
+          await update(el, { message: null });
+          await update(el, { message: source });
+        }
+        answer(new Response('old opening body', { status: 200 }));
+        await pending;
+        expect(composeStore.openComposer).not.toHaveBeenCalled();
+        if (departure === 'account cleared') {
+          expect(el.content).not.toContain('old opening body');
+          expect(MessageCache.get(source.Mailbox, source.UID, 'text')).toBeNull();
+        }
+      });
+    }
   }
 });
