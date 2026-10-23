@@ -1162,31 +1162,59 @@ func (p *IMAPProvider) threadedPage(mailbox string, criteria *imap.SearchCriteri
 	}
 	paginatedGroups := groups[from:to]
 
-	var allUIDs []uint32
+	// A row's message is fetched with its structure, which its row and the
+	// reader opened from it use. The other messages of its conversation are
+	// fetched with what the list shows of them, their flags and envelope:
+	// a page of a few long conversations fetched hundreds of structures. The
+	// two FETCHes go out together, and the answers are told apart by UID.
+	var repSet, memberSet imap.UIDSet
 	for _, g := range paginatedGroups {
-		allUIDs = append(allUIDs, g.UIDs...)
+		for _, uid := range g.UIDs {
+			if uid == g.RepUID {
+				repSet.AddNum(imap.UID(uid))
+			} else {
+				memberSet.AddNum(imap.UID(uid))
+			}
+		}
 	}
 
-	var uidSet imap.UIDSet
-	for _, uid := range allUIDs {
-		uidSet.AddNum(imap.UID(uid))
-	}
-
-	fetchOptions := imap.FetchOptions{
+	repCmd := p.client.Fetch(repSet, &imap.FetchOptions{
 		Flags:         true,
 		Envelope:      true,
 		UID:           true,
 		RFC822Size:    true,
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+	})
+	type fetched struct {
+		msgs []*imapclient.FetchMessageBuffer
+		err  error
 	}
-
-	imapMsgs, err := p.client.Fetch(uidSet, &fetchOptions).Collect()
+	members := make(chan fetched, 1)
+	if len(memberSet) > 0 {
+		memberCmd := p.client.Fetch(memberSet, &imap.FetchOptions{
+			Flags:      true,
+			Envelope:   true,
+			UID:        true,
+			RFC822Size: true,
+		})
+		go func() {
+			msgs, err := memberCmd.Collect()
+			members <- fetched{msgs, err}
+		}()
+	} else {
+		members <- fetched{}
+	}
+	imapMsgs, err := repCmd.Collect()
+	memberMsgs := <-members
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch representative messages: %w", err)
 	}
+	if memberMsgs.err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch the conversations' other messages: %w", memberMsgs.err)
+	}
 
 	msgMap := make(map[uint32]*imapclient.FetchMessageBuffer)
-	for _, msg := range imapMsgs {
+	for _, msg := range append(imapMsgs, memberMsgs.msgs...) {
 		msgMap[uint32(msg.UID)] = msg
 	}
 
