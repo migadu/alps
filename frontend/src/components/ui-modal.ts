@@ -1,5 +1,5 @@
-import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { LitElement, html, css, nothing } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
 
 export const modalButtonStyles = css`
   .btn-cancel {
@@ -46,6 +46,12 @@ export class UIModal extends LitElement {
   @property({ type: Boolean }) isDanger: boolean = false;
   @property({ type: Boolean }) dismissible: boolean = false;
   @property({ type: String }) width: string = '400px';
+  /** The body describes the dialog, as a confirmation's message does. Not by
+   * default: an editor's body is a form, and its fields are no description. */
+  @property({ type: Boolean }) bodyDescribes: boolean = false;
+
+  /** A header of the caller's own fills the header slot, in the heading's place. */
+  @state() private ownHeader = false;
 
   static styles = css`
     .modal-dialog {
@@ -143,14 +149,26 @@ export class UIModal extends LitElement {
     }
   }
 
+  private _handleHeaderChange(e: Event) {
+    this.ownHeader = (e.target as HTMLSlotElement).assignedElements().length > 0;
+  }
+
   render() {
+    // Named by its title. The dialog had no name, so a screen reader
+    // announced every confirmation, prompt and editor as a bare "dialog". The
+    // heading names it where it is drawn; where a header of the caller's own
+    // replaces the heading, the title is the dialog's label.
     return html`
-      <dialog class="modal-dialog" @pointerdown=${this._handleOverlayClick} @cancel=${this._handleEscape} @close=${this._handleDialogClose}>
+      <dialog class="modal-dialog"
+        aria-labelledby=${this.title && !this.ownHeader ? 'modal-title' : nothing}
+        aria-label=${this.title && this.ownHeader ? this.title : nothing}
+        aria-describedby=${this.bodyDescribes ? 'modal-body' : nothing}
+        @pointerdown=${this._handleOverlayClick} @cancel=${this._handleEscape} @close=${this._handleDialogClose}>
         <div class="modal-card" style="width: ${this.width};" @pointerdown=${(e: Event) => e.stopPropagation()}>
-          <slot name="header">
-            ${this.title ? html`<h3 class="modal-title ${this.isDanger ? 'danger' : ''}">${this.title}</h3>` : ''}
+          <slot name="header" @slotchange=${this._handleHeaderChange}>
+            ${this.title ? html`<h3 id="modal-title" class="modal-title ${this.isDanger ? 'danger' : ''}">${this.title}</h3>` : ''}
           </slot>
-          <div class="modal-body">
+          <div class="modal-body" id="modal-body">
             <slot></slot>
           </div>
           <div class="modal-actions">
