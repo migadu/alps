@@ -508,6 +508,40 @@ func registerRoutes(p *plugin) {
 			}
 		}
 
+		// setShownField writes the value the page sent for a field it shows
+		// one copy of: the preferred one, as extractContactData gives it.
+		// Sent back as the page was given it, the field is left as stored.
+		// Changed, the new value takes that copy's place and keeps its
+		// parameters; cleared, that copy goes. The other copies stay either
+		// way. Through setSimpleField, a save kept one bare copy of each of
+		// these fields: a second URL or key was dropped, and so were the
+		// types and languages of the rest, whatever had been edited.
+		setShownField := func(field string, val string) {
+			val = strings.TrimSpace(val)
+			f := card.Preferred(field)
+			switch {
+			case f == nil:
+				if val != "" {
+					card.Add(field, &vcard.Field{Value: val})
+				}
+			case strings.TrimSpace(f.Value) == val:
+			case val == "":
+				var kept []*vcard.Field
+				for _, other := range card[field] {
+					if other != f {
+						kept = append(kept, other)
+					}
+				}
+				if len(kept) == 0 {
+					delete(card, field)
+				} else {
+					card[field] = kept
+				}
+			default:
+				f.Value = val
+			}
+		}
+
 		updateMultiField := func(field string, explicitProps []ContactProperty, fallbackVal string) {
 			if explicitProps != nil {
 				var fields []*vcard.Field
@@ -553,25 +587,18 @@ func registerRoutes(p *plugin) {
 
 		updateMultiField(vcard.FieldEmail, req.Emails, req.Email)
 		updateMultiField(vcard.FieldTelephone, req.Phones, req.Phone)
-		setSimpleField(vcard.FieldOrganization, req.Organization)
-		setSimpleField(vcard.FieldTitle, req.Title)
+		setShownField(vcard.FieldOrganization, req.Organization)
+		setShownField(vcard.FieldTitle, req.Title)
 		// A birthday sent back as the page was given it is left as stored, its
 		// parameters with it: written bare, Apple's birthday without a year
 		// became one in 1604, in Apple's own apps too, after any edit here.
 		if f := card.Preferred(vcard.FieldBirthday); f == nil || strings.TrimSpace(birthdayOf(f)) != strings.TrimSpace(req.Birthday) {
 			setSimpleField(vcard.FieldBirthday, req.Birthday)
 		}
-		setSimpleField(vcard.FieldNote, req.Note)
-		setSimpleField(vcard.FieldURL, req.URL)
-		setSimpleField(vcard.FieldNickname, req.Nickname)
-
-		if strings.TrimSpace(req.PublicKey) == "" {
-			delete(card, vcard.FieldKey)
-		} else {
-			// RFC 6350 specifies KEY can be a URI, text, etc. We will prefix with data:application/pgp-keys if not present to ensure compliance, or just store it as text if it's already a full block.
-			val := strings.TrimSpace(req.PublicKey)
-			card[vcard.FieldKey] = []*vcard.Field{{Value: val}}
-		}
+		setShownField(vcard.FieldNote, req.Note)
+		setShownField(vcard.FieldURL, req.URL)
+		setShownField(vcard.FieldNickname, req.Nickname)
+		setShownField(vcard.FieldKey, req.PublicKey)
 
 		setCategories(card, req.Categories)
 
