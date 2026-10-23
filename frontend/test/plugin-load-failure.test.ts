@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadComponent, PLUGIN_LOAD_FAILED_EVENT, registry } from '../src/plugin-registry';
+import { loadComponent, PLUGIN_LOAD_FAILED_EVENT, registry, resetComponentLoadFailures } from '../src/plugin-registry';
 import { Logger } from '../src/utils/logger';
 import '../src/components/app-root';
 import { cleanup, flush, waitFor } from './helpers/dom';
@@ -36,13 +36,31 @@ describe('a plugin module that fails to define its page', () => {
     await waitFor(() => events.length > 0, 'the missing definition notice');
     expect(events.map(event => event.detail)).toEqual([{ component: entry.component }]);
 
-    // A toast re-render and a later revisit do not create a notice loop.
+    // Toast re-renders do not create a notice loop.
     loadComponent(entry);
     await flush();
     loadComponent(entry);
     await flush();
     expect(events).toHaveLength(1);
     expect(Logger.error).toHaveBeenCalledTimes(1);
+
+    // A real navigation rearms guidance for a later visit after dismissal.
+    resetComponentLoadFailures();
+    loadComponent(entry);
+    await waitFor(() => events.length === 2, 'the revisited failure notice');
+    loadComponent(entry);
+    await flush();
+    expect(events).toHaveLength(2);
+  });
+
+  it('preserves the loader method receiver', async () => {
+    const component = 'lazy-method-receiver';
+    const entry = {
+      component,
+      async load() { customElements.define(this.component, class extends HTMLElement {}); },
+    };
+    loadComponent(entry);
+    await waitFor(() => !!customElements.get(component), 'the method-loaded page');
   });
 
   it.each(['throw', 'reject'] as const)('handles a loader that can %s without leaking the failure', async mode => {
@@ -125,6 +143,14 @@ it('shows persistent translated recovery guidance and Back to Mail preserves the
     expect(root.composeStore.getState().activeComposers).toEqual([
       expect.objectContaining({ subject: 'Keep this', text: 'Still writing', dirty: true }),
     ]);
+    const firstNotice = root.toasts[0].id;
+    root._handleDismissToast(firstNotice);
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await flush();
+    window.location.hash = '#/lazy-failed';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await waitFor(() => root.toasts.some((item: any) => item.id !== firstNotice && item.show), 'recovery guidance on a failed revisit');
+    expect(root.composeStore.getState().activeComposers[0].text).toBe('Still writing');
   } finally {
     root.remove();
   }

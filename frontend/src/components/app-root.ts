@@ -3,7 +3,7 @@ import { renderIcon } from '../utils/ui';
 import { customElement, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { Router } from '../router';
-import { loadComponent, PLUGIN_LOAD_FAILED_EVENT, registry } from '../plugin-registry';
+import { loadComponent, PLUGIN_LOAD_FAILED_EVENT, registry, resetComponentLoadFailures } from '../plugin-registry';
 
 // Import pages
 import '../pages/login-page';
@@ -541,10 +541,18 @@ export class AppRoot extends LitElement {
     return baseRoutes;
   }
 
+  private loadFailurePath: string | null = null;
   private router = new Router(
     this.getRoutes(),
     () => html`<div>404 — ${this.i18nStore.t('general.notFound')}</div>`,
-    () => this.requestUpdate()
+    () => {
+      const path = this.router.currentPath;
+      if (path !== this.loadFailurePath) {
+        this.loadFailurePath = path;
+        resetComponentLoadFailures();
+      }
+      this.requestUpdate();
+    }
   );
 
   render() {

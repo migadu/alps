@@ -50,6 +50,11 @@ export const PLUGIN_LOAD_FAILED_EVENT = 'plugin-load-failed';
 const loadingComponents = new Set<string>();
 const announcedFailures = new Set<string>();
 
+/** A navigation can revisit a failed page after its notice was dismissed. */
+export function resetComponentLoadFailures(): void {
+    announcedFailures.clear();
+}
+
 /**
  * Starts the fetch of a route's or settings tab's page module, if its tag is
  * not defined yet.
@@ -73,7 +78,7 @@ export function loadComponent(entry: { component: string; load?: () => Promise<u
     };
     let pending: Promise<unknown>;
     try {
-        pending = load();
+        pending = load.call(entry);
     } catch (error) {
         failed(error);
         loadingComponents.delete(component);
