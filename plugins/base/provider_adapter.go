@@ -210,30 +210,49 @@ func getMailboxStatusesWithProvider(p provider.MailProvider, names []string) ([]
 	return statuses, errs
 }
 
+// readerPartsReader is a provider that reads, with the part the reader shows,
+// other parts of the message in the same read.
+type readerPartsReader interface {
+	GetMessagePartForReaderWithParts(mailbox string, id provider.MessageID, partPath []int, also [][]int) (*provider.Message, []byte, []byte, [][]byte, [][]byte, error)
+}
+
+// readsPartsWith reports whether p reads the parts at also with the part the
+// reader shows.
+func readsPartsWith(p provider.MailProvider, also [][]int) bool {
+	_, ok := p.(readerPartsReader)
+	return ok && len(also) > 0
+}
+
 // readerPartWithProvider reads the part of a message the reader shows, with
 // the verdict and References it shows beside it: in one read where the
-// provider can, else as the part and then the message's metadata.
-func readerPartWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, partPath []int) (*provider.Message, []byte, []byte, error) {
+// provider can, else as the part and then the message's metadata. Where the
+// provider can, the parts at also come in the same read, their headers and
+// bodies in the order of also, nil for one it did not read.
+func readerPartWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, partPath []int, also [][]int) (*provider.Message, []byte, []byte, [][]byte, [][]byte, error) {
+	if r, ok := p.(readerPartsReader); ok {
+		return r.GetMessagePartForReaderWithParts(mailbox, uid, partPath, also)
+	}
 	type readerPartReader interface {
 		GetMessagePartForReader(mailbox string, id provider.MessageID, partPath []int) (*provider.Message, []byte, []byte, error)
 	}
 	if r, ok := p.(readerPartReader); ok {
-		return r.GetMessagePartForReader(mailbox, uid, partPath)
+		msg, headerData, bodyData, err := r.GetMessagePartForReader(mailbox, uid, partPath)
+		return msg, headerData, bodyData, nil, nil, err
 	}
 	// The bytes, not the part decoded: see handleGetPart.
 	msg, headerData, bodyData, err := p.GetMessagePartRaw(mailbox, uid, partPath, 0)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	meta, err := p.GetMessageMetadata(mailbox, uid)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	msg.BimiPotential, msg.BimiFailed = meta.BimiPotential, meta.BimiFailed
 	if len(msg.References) == 0 {
 		msg.References = meta.References
 	}
-	return msg, headerData, bodyData, nil
+	return msg, headerData, bodyData, nil, nil, nil
 }
 
 // deleteMessagesWithProvider deletes multiple messages using the provider

@@ -1519,20 +1519,29 @@ func (p *IMAPProvider) GetMessagePartRaw(mailbox string, id provider.MessageID, 
 // reader read the message twice: its metadata, for those fields and the
 // structure, and then the part.
 func (p *IMAPProvider) GetMessagePartForReader(mailbox string, id provider.MessageID, partPath []int) (*provider.Message, []byte, []byte, error) {
+	msg, headerBuf, bodyBuf, _, _, err := p.GetMessagePartForReaderWithParts(mailbox, id, partPath, nil)
+	return msg, headerBuf, bodyBuf, err
+}
+
+// GetMessagePartForReaderWithParts is GetMessagePartForReader, reading in the
+// same FETCH the parts at also, each with its MIME header: an HTML body's
+// images, which the page asks for as soon as it shows the body. A part the
+// server did not send is nil in the answers, which are in the order of also.
+func (p *IMAPProvider) GetMessagePartForReaderWithParts(mailbox string, id provider.MessageID, partPath []int, also [][]int) (*provider.Message, []byte, []byte, [][]byte, [][]byte, error) {
 	uid := id.(IMAPUID)
 	references := &imap.FetchItemBodySection{
 		Specifier:    imap.PartSpecifierHeader,
 		HeaderFields: []string{"References"},
 		Peek:         true,
 	}
-	msg, headerBuf, bodyBuf, err := p.getMessagePartRaw(mailbox, imap.UID(uid), partPath, 0, authResultsSection(), references)
+	msg, headerBuf, bodyBuf, alsoHeaders, alsoBodies, err := p.getMessagePartRawWith(mailbox, imap.UID(uid), partPath, 0, also, authResultsSection(), references)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	// The verdict and the References are read out of the fields here, as for
 	// any FETCH that carries them.
 	converted := p.convertIMAPMessage(msg, mailbox)
-	return &converted, headerBuf, bodyBuf, nil
+	return &converted, headerBuf, bodyBuf, alsoHeaders, alsoBodies, nil
 }
 
 // GetMessagePartWithData fetches a message part with both entity and raw data
@@ -1549,8 +1558,15 @@ func (p *IMAPProvider) GetMessagePartWithData(mailbox string, id provider.Messag
 // getMessagePartRaw fetches a part and its MIME header, and any extra
 // sections asked for beside them in the same FETCH.
 func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath []int, limit int64, extra ...*imap.FetchItemBodySection) (*imapclient.FetchMessageBuffer, []byte, []byte, error) {
+	msg, headerBuf, bodyBuf, _, _, err := p.getMessagePartRawWith(mailbox, uid, partPath, limit, nil, extra...)
+	return msg, headerBuf, bodyBuf, err
+}
+
+// getMessagePartRawWith is getMessagePartRaw, reading the parts at also
+// beside the part, each with its MIME header, in the same FETCH.
+func (p *IMAPProvider) getMessagePartRawWith(mailbox string, uid imap.UID, partPath []int, limit int64, also [][]int, extra ...*imap.FetchItemBodySection) (*imapclient.FetchMessageBuffer, []byte, []byte, [][]byte, [][]byte, error) {
 	if err := p.ensureMailboxSelected(mailbox); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 
 	// A part, where the server can undo its transfer encoding itself (BINARY,
@@ -1560,19 +1576,20 @@ func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath 
 	// does not know ([UNKNOWN-CTE]); that part is read as stored. The whole
 	// message is always read as stored: it is what a download of it gives.
 	if len(partPath) > 0 && p.client.Caps().Has(imap.CapBinary) {
-		msg, headerBuf, bodyBuf, err := p.fetchPart(uid, partPath, limit, true, extra)
+		msg, headerBuf, bodyBuf, alsoHeaders, alsoBodies, err := p.fetchPart(uid, partPath, limit, true, also, extra)
 		if err == nil || errors.Is(err, provider.ErrMessageNotFound) {
-			return msg, headerBuf, bodyBuf, err
+			return msg, headerBuf, bodyBuf, alsoHeaders, alsoBodies, err
 		}
 	}
-	return p.fetchPart(uid, partPath, limit, false, extra)
+	return p.fetchPart(uid, partPath, limit, false, also, extra)
 }
 
-// fetchPart is one FETCH of a part and its MIME header, with the extra
-// sections asked for beside them; the part as BINARY.PEEK where binary says.
-// A part read as BINARY comes with "Content-Transfer-Encoding: binary" in its
-// header, which is what its bytes now are.
-func (p *IMAPProvider) fetchPart(uid imap.UID, partPath []int, limit int64, binary bool, extra []*imap.FetchItemBodySection) (*imapclient.FetchMessageBuffer, []byte, []byte, error) {
+// fetchPart is one FETCH of a part and its MIME header, and of the parts at
+// also with theirs, with the extra sections asked for beside them; the parts
+// as BINARY.PEEK where binary says. A part read as BINARY comes with
+// "Content-Transfer-Encoding: binary" in its header, which is what its bytes
+// now are.
+func (p *IMAPProvider) fetchPart(uid imap.UID, partPath []int, limit int64, binary bool, also [][]int, extra []*imap.FetchItemBodySection) (*imapclient.FetchMessageBuffer, []byte, []byte, [][]byte, [][]byte, error) {
 	headerItem := &imap.FetchItemBodySection{
 		Peek: true,
 		Part: partPath,
@@ -1616,10 +1633,26 @@ func (p *IMAPProvider) fetchPart(uid imap.UID, partPath []int, limit int64, bina
 		options.BodySection = append([]*imap.FetchItemBodySection{headerItem}, extra...)
 		options.BinarySection = []*imap.FetchItemBinarySection{binaryItem}
 	}
+	type alsoItems struct {
+		header, body *imap.FetchItemBodySection
+		binary       *imap.FetchItemBinarySection
+	}
+	alsoSections := make([]alsoItems, len(also))
+	for i, path := range also {
+		alsoSections[i].header = &imap.FetchItemBodySection{Specifier: imap.PartSpecifierMIME, Part: path, Peek: true}
+		options.BodySection = append(options.BodySection, alsoSections[i].header)
+		if binary {
+			alsoSections[i].binary = &imap.FetchItemBinarySection{Part: path, Peek: true}
+			options.BinarySection = append(options.BinarySection, alsoSections[i].binary)
+		} else {
+			alsoSections[i].body = &imap.FetchItemBodySection{Specifier: imap.PartSpecifierNone, Part: path, Peek: true}
+			options.BodySection = append(options.BodySection, alsoSections[i].body)
+		}
+	}
 
 	msgs, err := p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to fetch message: %v", err)
+		return nil, nil, nil, nil, nil, fmt.Errorf("failed to fetch message: %v", err)
 	} else if len(msgs) == 0 {
 		// Try syncing state with NOOP and fetching again, for a message the
 		// session may not have been told about yet. Any other is gone.
@@ -1627,12 +1660,12 @@ func (p *IMAPProvider) fetchPart(uid imap.UID, partPath []int, limit int64, bina
 			if err := p.client.Noop().Wait(); err == nil {
 				msgs, err = p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
 				if err != nil {
-					return nil, nil, nil, fmt.Errorf("failed to fetch message after NOOP: %v", err)
+					return nil, nil, nil, nil, nil, fmt.Errorf("failed to fetch message after NOOP: %v", err)
 				}
 			}
 		}
 		if len(msgs) == 0 {
-			return nil, nil, nil, fmt.Errorf("UID %d: %w", uid, provider.ErrMessageNotFound)
+			return nil, nil, nil, nil, nil, fmt.Errorf("UID %d: %w", uid, provider.ErrMessageNotFound)
 		}
 	}
 	msg := msgs[0]
@@ -1645,22 +1678,53 @@ func (p *IMAPProvider) fetchPart(uid imap.UID, partPath []int, limit int64, bina
 		bodyBuf = msg.FindBodySection(bodyItem)
 	}
 	if headerBuf == nil || bodyBuf == nil {
-		return nil, nil, nil, fmt.Errorf("server didn't return header and body")
+		return nil, nil, nil, nil, nil, fmt.Errorf("server didn't return header and body")
 	}
 	if binary {
-		h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headerBuf)))
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to read part header: %v", err)
+		if headerBuf, err = binaryHeader(headerBuf); err != nil {
+			return nil, nil, nil, nil, nil, err
 		}
-		h.Set("Content-Transfer-Encoding", "binary")
-		var rewritten bytes.Buffer
-		if err := textproto.WriteHeader(&rewritten, h); err != nil {
-			return nil, nil, nil, err
-		}
-		headerBuf = rewritten.Bytes()
 	}
 
-	return msg, headerBuf, bodyBuf, nil
+	var alsoHeaders, alsoBodies [][]byte
+	if len(also) > 0 {
+		alsoHeaders, alsoBodies = make([][]byte, len(also)), make([][]byte, len(also))
+		for i, items := range alsoSections {
+			header := msg.FindBodySection(items.header)
+			var body []byte
+			if binary {
+				body = msg.FindBinarySection(items.binary)
+			} else {
+				body = msg.FindBodySection(items.body)
+			}
+			if header == nil || body == nil {
+				continue
+			}
+			if binary {
+				if header, err = binaryHeader(header); err != nil {
+					continue
+				}
+			}
+			alsoHeaders[i], alsoBodies[i] = header, body
+		}
+	}
+
+	return msg, headerBuf, bodyBuf, alsoHeaders, alsoBodies, nil
+}
+
+// binaryHeader is a part's MIME header saying
+// "Content-Transfer-Encoding: binary", for the part's bytes read as BINARY.
+func binaryHeader(headerBuf []byte) ([]byte, error) {
+	h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headerBuf)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read part header: %v", err)
+	}
+	h.Set("Content-Transfer-Encoding", "binary")
+	var rewritten bytes.Buffer
+	if err := textproto.WriteHeader(&rewritten, h); err != nil {
+		return nil, err
+	}
+	return rewritten.Bytes(), nil
 }
 
 func (p *IMAPProvider) getMessagePartWithData(mailbox string, uid imap.UID, partPath []int) (*imapclient.FetchMessageBuffer, *message.Entity, []byte, []byte, error) {
