@@ -213,8 +213,8 @@ export class AttachmentPill extends LitElement {
    * template is for a pill mounted without a store.
    */
   private uploadProgress(percent: number, size: number): string {
-    return this.i18nStore?.t('attachment.uploadProgress', { percent, size: formatSize(size) })
-      || `${percent}% of ${formatSize(size)}`;
+    return this.i18nStore?.t('attachment.uploadProgress', { percent, size: formatSize(size, this.i18nStore) })
+      || `${percent}% of ${formatSize(size, this.i18nStore)}`;
   }
 
   /**
@@ -271,7 +271,7 @@ export class AttachmentPill extends LitElement {
       ${this.attachment.missing ? html`
         <span class="attachment-size missing">${this.i18nStore?.t('attachment.addAgain')}</span>
       ` : html`
-        <span class="attachment-size">${uploading ? this.uploadProgress(progress, size) : formatSize(size)}</span>
+        <span class="attachment-size">${uploading ? this.uploadProgress(progress, size) : formatSize(size, this.i18nStore)}</span>
       `}
       ${previewable ? html`
         <button class="preview-btn" @click=${this._handlePreview} title="${this.i18nStore?.t('attachment.preview')}">

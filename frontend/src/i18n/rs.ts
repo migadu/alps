@@ -214,7 +214,7 @@ export const rs = {
     filterUnread: 'Филтрирај по непрочитаним',
     noMessages: 'Нема порука',
     loadError: 'Није могуће учитати ову фасциклу.',
-    loadErrorRetry: 'Покушај поново',
+    loadErrorRetry: 'Покушајте поново',
     loading: 'Учитавање...',
     unknownSender: 'Непознат пошиљалац',
     unknown: 'Непознато',
@@ -416,7 +416,7 @@ export const rs = {
     spf: 'SPF',
     dkim: 'DKIM',
     dmarc: 'DMARC',
-    truncatedInfo: 'Порука је превелика да би се у потпуности приказала. Приказује се првих 64KB. Користите "Преузми оригинал" да бисте видели целу поруку.',
+    truncatedInfo: 'Порука је превелика да би се у потпуности приказала. Приказује се првих 64КБ. Користите "Преузми оригинал" да бисте видели целу поруку.',
     downloadOriginal: 'Преузми оригинал',
     copyClipboard: 'Копирај у меморију',
     copiedTruncated: 'Скраћени садржај је копиран у меморију.',
@@ -451,6 +451,15 @@ export const rs = {
     errorLoading: 'Грешка при учитавању прегледа',
     close: 'Затвори',
     uploadProgress: '{percent}% од {size}'
+  },
+
+  sizeUnits: {
+    bytes: 'Б',
+    kilobytes: 'КБ',
+    megabytes: 'МБ',
+    gigabytes: 'ГБ',
+    terabytes: 'ТБ',
+    petabytes: 'ПБ'
   },
 
   navigation: {

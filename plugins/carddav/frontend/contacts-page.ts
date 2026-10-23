@@ -645,7 +645,7 @@ export class ContactsPage extends LitElement {
       }
     } catch (err) {
       console.error('Failed to toggle star:', err);
-      this.reportFailure('contacts.starFailed');
+      this.reportFailure('contacts.starOneFailed');
       // Revert by putting the card's own categories back into the list. This
       // used to edit `contact`, the object the optimistic update had already
       // replaced in `this.contacts`, so the refused star stayed painted; and for
@@ -1107,11 +1107,13 @@ export class ContactsPage extends LitElement {
           // Some cards took the change, and the snapshot would un-star them.
           this.fetchContacts();
         }
-        this.reportFailure('contacts.starFailed', { failed, total });
+        this.reportRefusals('contacts.starFailed', 'contacts.starOneFailed', { count: failed, total });
       }
     } catch (e) {
       console.error('Error toggling star', e);
-      this.reportFailure('contacts.starFailed');
+      // As for a category update: nothing reported an outcome, so every card
+      // tried counts as failed.
+      this.reportRefusals('contacts.starFailed', 'contacts.starOneFailed', { count: pathsToUpdate.length, total: pathsToUpdate.length });
     } finally {
       this.saving = false;
     }
