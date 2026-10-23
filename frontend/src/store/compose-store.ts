@@ -292,14 +292,16 @@ export class ComposeStore extends EventTarget {
     return [];
   }
 
-  private saveDrafts() {
+  private saveDrafts(): boolean {
     // No identity, no key that could safely be written — so nothing is
     // persisted, rather than persisted where the next user would find it.
-    if (!this.username) return;
+    if (!this.username) return this.state.activeComposers.length === 0;
     try {
       localStorage.setItem(draftsKeyFor(this.username), JSON.stringify(this.state.activeComposers));
+      return true;
     } catch (e) {
       Logger.error('Failed to save compose drafts to localStorage', e);
+      return false;
     }
   }
 
@@ -311,6 +313,21 @@ export class ComposeStore extends EventTarget {
       this.saveDrafts();
       this.saveTimeout = null;
     }, 500);
+  }
+
+  /**
+   * Writes the composers to disk now, not when the debounced write comes
+   * round: before a reload the user asked for, which would otherwise take the
+   * last half second of typing with it. They open again after the reload.
+   */
+  persistNow(): boolean {
+    if (this.saveTimeout !== null) {
+      window.clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    // With no live windows there is nothing a reload can lose. Otherwise the
+    // caller must keep this document open when its recovery copy cannot be written.
+    return this.saveDrafts() || this.state.activeComposers.length === 0;
   }
 
   private notify() {

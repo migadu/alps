@@ -203,23 +203,40 @@ describe('page modules', () => {
     page.remove();
   });
 
-  it('invokes an unresolved loader again on a later render', async () => {
-    const tag = 'lazy-retried-pane';
+  it('says a page whose import failed cannot be shown, and does not import it again', async () => {
+    // The browser keeps a failed import in the document's module map, and
+    // importing the module again rejects at once without a request: trying
+    // again each time the page was shown fetched nothing. The load here
+    // rejects every time, as the browser's does.
+    const tag = 'lazy-failed-pane';
     vi.spyOn(Logger, 'error').mockImplementation(() => {});
-    // A loader may recover. Native imports can cache failures by URL and need
-    // app-update's reload instead; the failure notice explains that safely.
-    const load = vi.fn()
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockImplementationOnce(async () => customElements.define(tag, class extends HTMLElement {}));
+    const load = vi.fn(() => Promise.reject(new TypeError('Failed to fetch dynamically imported module')));
+    const failed = vi.fn();
     const tab = { id: 'lazy', labelKey: 'l', icon: 'key', component: tag, load };
 
-    loadComponent(tab);
-    await vi.waitFor(() => expect(Logger.error).toHaveBeenCalled());
-    loadComponent(tab);
-    await load.mock.results[1].value;
+    expect(loadComponent(tab, failed)).toBe(true);
+    await vi.waitFor(() => expect(failed).toHaveBeenCalledTimes(1));
 
-    expect(load).toHaveBeenCalledTimes(2);
-    expect(customElements.get(tag)).toBeDefined();
+    expect(loadComponent(tab, failed)).toBe(false);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(Logger.error).toHaveBeenCalledTimes(1);
+  });
+
+  it('says a page cannot be shown when its load settles without defining it', async () => {
+    // As in a build: Vite's preload helper resolves the import with nothing
+    // once app-update has handled the error event it raises for it, and the
+    // page's element is never defined.
+    const tag = 'lazy-undefined-page';
+    vi.spyOn(Logger, 'error').mockImplementation(() => {});
+    const load = vi.fn(async () => undefined);
+    const failed = vi.fn();
+    const route = { path: '/undefined', component: tag, load };
+
+    expect(loadComponent(route, failed)).toBe(true);
+    await vi.waitFor(() => expect(failed).toHaveBeenCalledTimes(1));
+
+    expect(loadComponent(route, failed)).toBe(false);
+    expect(load).toHaveBeenCalledTimes(1);
   });
 
   it('leaves a page with nothing to load alone', () => {

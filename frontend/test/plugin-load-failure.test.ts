@@ -96,21 +96,38 @@ describe('a plugin module that fails to define its page', () => {
     page.remove();
   });
 
-  it('can invoke an unresolved loader again and stops once a later load defines the page', async () => {
+  it('does not retry a failed native import, and accepts a later external definition', async () => {
     const events = failures();
     const component = 'lazy-recovered-definition';
-    const load = vi.fn().mockResolvedValueOnce(undefined).mockImplementationOnce(async () => {
-      customElements.define(component, class extends HTMLElement {});
-    });
+    const load = vi.fn().mockResolvedValue(undefined);
     const entry = { component, load };
     loadComponent(entry);
     await waitFor(() => events.length > 0, 'the initial failure');
     await flush();
-    loadComponent(entry);
-    await flush();
-    loadComponent(entry);
-    expect(load).toHaveBeenCalledTimes(2);
+    expect(loadComponent(entry)).toBe(false);
+    expect(loadComponent(entry)).toBe(false);
+    expect(load).toHaveBeenCalledTimes(1);
     expect(events).toHaveLength(1);
+    customElements.define(component, class extends HTMLElement {});
+    expect(loadComponent(entry)).toBe(true);
+  });
+
+  it('notifies every pending caller when their one shared import fails', async () => {
+    const events = failures();
+    let reject!: (error: Error) => void;
+    const entry = { component: 'lazy-shared-failure', load: vi.fn(() => new Promise<void>((_resolve, fail) => { reject = fail; })) };
+    const first = vi.fn();
+    const second = vi.fn();
+    expect(loadComponent(entry, first)).toBe(true);
+    expect(loadComponent(entry, second)).toBe(true);
+    expect(entry.load).toHaveBeenCalledTimes(1);
+    reject(new Error('offline'));
+    await waitFor(() => second.mock.calls.length > 0, 'both callers to draw recovery');
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(events).toHaveLength(1);
+    expect(loadComponent(entry)).toBe(false);
+    expect(entry.load).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -133,7 +150,7 @@ it('shows persistent translated recovery guidance and Back to Mail preserves the
     await waitFor(() => root.shadowRoot?.querySelector('alps-toast')?.hasAttribute('show') === true && root.toasts?.length === 1, 'the visible recovery toast');
     const toast = root.shadowRoot!.querySelector('alps-toast') as El;
     expect(toast.message).toBe(root.i18nStore.t('general.pageLoadFailed'));
-    expect(toast.message).toContain('Save and close');
+    expect(toast.message).toContain('could not be loaded');
     expect(toast.actionLabel).toBe(root.i18nStore.t('general.backToMail'));
     expect(toast.timeout).toBe(0);
     await flush();

@@ -24,9 +24,9 @@ for (const width of [1280, 390]) {
       else await route.continue();
     });
     await page.goto('/#/calendar/month/2026-06');
-    const notice = page.locator('alps-toast[show]').filter({ hasText: 'This page could not load.' });
+    const notice = page.locator('alps-toast[show]').filter({ hasText: 'This page could not be loaded.' });
     await expect(notice).toHaveCount(1);
-    await expect(notice).toContainText('Save and close compose windows');
+    await expect(page.locator('alps-page-load-error')).toContainText('Messages you are writing are kept.');
     const back = notice.getByRole('button', { name: 'Back to Mail', exact: true });
     const bounds = await back.boundingBox();
     expect(bounds).not.toBeNull();

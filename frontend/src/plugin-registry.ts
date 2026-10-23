@@ -47,48 +47,72 @@ export interface Route {
 
 export const PLUGIN_LOAD_FAILED_EVENT = 'plugin-load-failed';
 
-const loadingComponents = new Set<string>();
+/** Failed native imports stay failed until the document is reloaded. */
+const failedComponents = new Map<string, unknown>();
+const loadingComponents = new Map<string, Set<() => void>>();
 const announcedFailures = new Set<string>();
 
-/** A navigation can revisit a failed page after its notice was dismissed. */
+/** A real navigation rearms the shell's safe escape action for a failed page. */
 export function resetComponentLoadFailures(): void {
     announcedFailures.clear();
 }
 
 /**
- * Starts the fetch of a route's or settings tab's page module, if its tag is
- * not defined yet.
+ * Start a page's one shared import and allow its existing element to upgrade.
+ * False means the caller must draw the recovery notice instead. A handled
+ * Vite preload error may fulfill without defining the tag, which also fails.
  *
- * Nothing waits on it: the shell creates the element by tag straight away, and
- * an element created before its definition is upgraded in place when the
- * module calls `customElements.define`. Concurrent renders share a load.
- * Later renders may invoke a failed loader again, but browsers can retain a
- * failed module import until reload. The shell explains that recovery without
- * reloading over an open composer; app-update keeps its existing busy guard.
+ * Every pending caller hears failure, and the shell's event remains deduped
+ * until navigation. Failed native imports cannot be retried in this document;
+ * the notice offers a reload after safely persisting open composition.
  */
-export function loadComponent(entry: { component: string; load?: () => Promise<unknown> }): void {
+export function loadComponent(
+    entry: { component: string; load?: () => Promise<unknown> },
+    onFailure?: () => void,
+): boolean {
     const { component, load } = entry;
-    if (!load || customElements.get(component) || loadingComponents.has(component)) return;
-    loadingComponents.add(component);
-    const failed = (error: unknown) => {
-        if (customElements.get(component) || announcedFailures.has(component)) return;
+    if (!load || customElements.get(component)) {
+        failedComponents.delete(component);
+        announcedFailures.delete(component);
+        return true;
+    }
+    const announce = (error: unknown) => {
+        if (announcedFailures.has(component)) return;
         announcedFailures.add(component);
         Logger.error(`Failed to load <${component}>`, error);
         window.dispatchEvent(new CustomEvent(PLUGIN_LOAD_FAILED_EVENT, { detail: { component } }));
+    };
+    if (failedComponents.has(component)) {
+        announce(failedComponents.get(component));
+        return false;
+    }
+    const existing = loadingComponents.get(component);
+    if (existing) {
+        if (onFailure) existing.add(onFailure);
+        return true;
+    }
+    const callbacks = new Set<() => void>();
+    if (onFailure) callbacks.add(onFailure);
+    loadingComponents.set(component, callbacks);
+    const fail = (error: unknown) => {
+        if (customElements.get(component) || failedComponents.has(component)) return;
+        failedComponents.set(component, error);
+        announce(error);
+        callbacks.forEach(callback => callback());
     };
     let pending: Promise<unknown>;
     try {
         pending = load.call(entry);
     } catch (error) {
-        failed(error);
+        fail(error);
         loadingComponents.delete(component);
-        return;
+        return false;
     }
     void Promise.resolve(pending).then(() => {
-        // Vite resolves after a handled preloadError, even if no module arrived.
         if (!customElements.get(component)) throw new Error(`The module did not define <${component}>`);
         announcedFailures.delete(component);
-    }).catch(failed).finally(() => loadingComponents.delete(component));
+    }).catch(fail).finally(() => loadingComponents.delete(component));
+    return true;
 }
 
 /** Set equality, so a re-read of /session that changed nothing announces
