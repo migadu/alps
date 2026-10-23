@@ -619,6 +619,89 @@ describe('Serbian register and spelling', () => {
   });
 });
 
+/**
+ * Spanish speaks to the user as "tú", as nearly all of alps's Spanish does
+ * ("¿Estás seguro de que quieres…?", "Tu servidor de correo…", "Inténtalo de
+ * nuevo"). Some strings had kept "usted": the sign-in's "verifique sus
+ * credenciales", most of the GPG plugin ("introduzca su contraseña"), and the
+ * filters' "Desactívela en Respuesta automática".
+ *
+ * Each marker reads a string in small letters without accents, so
+ * "Elimínela" and "elimínela" are one form. The commands are the "usted"
+ * forms, which no "tú" form shares ("seleccione", not "selecciona"), and are
+ * read where a sentence or a "Por favor" opens: "Quien escriba varias veces"
+ * is no command.
+ */
+const plainSpanish = (text: string) => text.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+
+const SPANISH_COMMANDS = [
+  'introduzca', 'seleccione', 'escriba', 'pegue', 'deje', 'anada', 'elimine', 'desactive', 'active', 'verifique',
+  'vuelva', 'espere', 'compruebe', 'asegure', 'elija', 'utilice', 'pulse', 'haga', 'intente', 'responda', 'indique', 'revise',
+  'cambie', 'guarde', 'abra', 'acepte', 'confirme', 'ingrese', 'agregue', 'quite', 'actualice', 'recuerde', 'tenga', 'pruebe',
+  'inicie', 'marque', 'copie', 'mueva', 'envie', 'cancele',
+];
+
+const SPANISH_FORMAL: { formal: string; informal: string; marker: RegExp; caught: string[]; spared: string[] }[] = [
+  {
+    formal: 'usted',
+    informal: 'tú',
+    marker: /(?<!\p{L})ustede?s?(?!\p{L})/u,
+    caught: ['¿Desea usted continuar?'],
+    spared: ['¿Quieres continuar?'],
+  },
+  {
+    formal: '¿Está seguro?',
+    informal: '¿Estás seguro?',
+    marker: /¿esta segur[oa]s?(?!\p{L})/u,
+    caught: ['¿Está seguro de que desea eliminar sus claves?'],
+    spared: ['¿Estás seguro de que quieres eliminar esta cuenta vinculada?'],
+  },
+  {
+    formal: 'Seleccione, Inténtelo, Desactívela',
+    informal: 'Selecciona, Inténtalo, Desactívala',
+    marker: new RegExp(`(?<=^|[.!?:;]\\s+|[¿¡]|por favor,?\\s+)(?:${SPANISH_COMMANDS.join('|')})(?:la|lo|las|los|le|les|se)?(?!\\p{L})`, 'u'),
+    caught: [
+      'Seleccione un mensaje para leer', 'Ocurrió un error de red. Por favor, inténtelo de nuevo.', 'Por favor espere',
+      'La respuesta automática está activada. Desactívela en Respuesta automática.', 'Opcional. Deje una fecha vacía.',
+    ],
+    spared: [
+      'Selecciona un mensaje para leer', 'Ocurrió un error de red. Por favor, inténtalo de nuevo.', 'Por favor espera',
+      'La respuesta automática está activada. Desactívala en Respuesta automática.', 'Opcional. Deja una fecha vacía.',
+      'Quien escriba varias veces en ese tiempo recibe una sola respuesta.', 'Cierre de sesión automático', 'Tiene archivos adjuntos',
+    ],
+  },
+];
+
+/** What the markers cannot see: "usted" shown only by a possessive, an object pronoun or a verb that is no command. */
+const SPANISH_INFORMAL_PINS: [file: string, key: string, text: string][] = [
+  ['gpg', 'gpg.yourGpgKey', 'Tu clave GPG'],
+  ['gpg', 'gpg.keyStoredSecurely', 'Tienes un par de claves GPG almacenado de forma segura en el servidor. La clave privada está cifrada con tu contraseña.'],
+  ['gpg', 'gpg.passphraseMissing', 'Se requiere contraseña para cifrar tu nueva clave privada.'],
+  ['gpg', 'gpg.enableEncryptionDesc', 'Para habilitar el cifrado de extremo a extremo entre los contactos que lo admiten, necesitarás un par de claves GPG.'],
+  ['managesieve', 'managesieve.autoReply.messageDesc', 'Lo que recibe cada persona que te escribe.'],
+];
+
+describe('Spanish register', () => {
+  it('has markers that catch the "usted" forms and spare the "tú" ones', () => {
+    for (const { formal, marker, caught, spared } of SPANISH_FORMAL) {
+      for (const text of caught) expect(marker.test(plainSpanish(text)), `${formal} in "${text}"`).toBe(true);
+      for (const text of spared) expect(marker.test(plainSpanish(text)), `${formal} in "${text}"`).toBe(false);
+    }
+  });
+
+  it.each(SPANISH_FORMAL.map((f) => [f.informal, f.formal, f.marker] as const))('es says "%s", not "%s"', (_informal, _formal, marker) => {
+    expect(stringsOf('es').filter(([, text]) => marker.test(plainSpanish(text))).map(([where, text]) => `${where}="${text}"`)).toEqual([]);
+  });
+
+  it('says to the user as "tú" what the markers cannot see', () => {
+    const wrong = SPANISH_INFORMAL_PINS
+      .map(([file, key, text]) => [file, key, text, lookup(byPlugin.get(file)!.get('es'), key)] as const)
+      .filter(([, , text, actual]) => actual !== text)
+      .map(([file, key, , actual]) => `${file}/es:${key}="${actual}"`);
+    expect(wrong).toEqual([]);
+  });
+});
+
 /** A Serbian string in Latin letters, case kept: "ЊИВА" is "NJIVA", "Џеп" is "Džep". */
 function transliterate(text: string): string {
   const letters = [...text];
