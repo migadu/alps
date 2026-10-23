@@ -92,6 +92,12 @@ type partsServer struct {
 // given accounts, each with INBOX, and counts the commands it is sent.
 func newPartsServer(t *testing.T, usernames ...string) *partsServer {
 	t.Helper()
+	return newPartsServerWith(t, imap.CapSet{imap.CapIMAP4rev1: {}}, usernames...)
+}
+
+// newPartsServerWith is newPartsServer on a server that advertises caps.
+func newPartsServerWith(t *testing.T, caps imap.CapSet, usernames ...string) *partsServer {
+	t.Helper()
 	ps := &partsServer{commands: &partIMAPCommands{counts: map[string]int{}}, users: map[string]*imapmemserver.User{}}
 	mem := imapmemserver.New()
 	for _, name := range usernames {
@@ -107,7 +113,7 @@ func newPartsServer(t *testing.T, usernames ...string) *partsServer {
 			return mem.NewSession(), nil, nil
 		},
 		NewDebugConn: func(net.Conn) imapserver.DebugConn { return &commandLines{all: ps.commands} },
-		Caps:         imap.CapSet{imap.CapIMAP4rev1: {}},
+		Caps:         caps,
 		InsecureAuth: true,
 	})
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
