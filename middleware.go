@@ -306,9 +306,20 @@ func (r *Router) StaticFS(prefix string, hfs http.FileSystem) {
 
 // Frontend serves the built frontend in fsys from the root, with the caching
 // headers and compression that StaticFS lacks. Unlike StaticFS, it assumes
-// fsys does not change while the server runs.
-func (r *Router) Frontend(fsys fs.FS) {
-	r.mux.Handle("GET /", newFrontendFiles(fsys))
+// fsys does not change while the server runs. The files named in sandboxed,
+// a deployment's own icons, are served the same way, under a CSP that lets
+// them run nothing.
+func (r *Router) Frontend(fsys fs.FS, sandboxed ...string) {
+	files := newFrontendFiles(fsys)
+	r.mux.Handle("GET /", files)
+	// A deployment's icons: an SVG opened on its own is a document, and it
+	// gets to run nothing.
+	for _, name := range sandboxed {
+		r.mux.HandleFunc("GET /"+name, func(w http.ResponseWriter, req *http.Request) {
+			w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+			files.ServeHTTP(w, req)
+		})
+	}
 }
 
 // wrapHandler converts our HandlerFunc to http.HandlerFunc and applies middleware.
