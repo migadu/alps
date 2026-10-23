@@ -19,16 +19,22 @@ export interface MailboxData {
    */
   ListedMailbox?: string;
   /** The counts the listing was read at, of the mailbox and of the Inbox. */
-  Mailbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number } | null;
-  Inbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number } | null;
+  Mailbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number; HighestModSeq?: number } | null;
+  Inbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number; HighestModSeq?: number } | null;
 }
 
-/** A folder's counts, as a status check answers them. */
+/**
+ * A folder's counts, as a status check answers them. `highestmodseq` is the
+ * number of the latest change to its messages, where the mail server numbers
+ * them (the server's `condstore` option): a flag changed in another client,
+ * which may leave every count as it was, moves it.
+ */
 interface Counts {
   total: number;
   unseen: number;
   uidnext?: number;
   uidvalidity?: number;
+  highestmodseq?: number;
 }
 
 /**
@@ -1115,7 +1121,8 @@ function newPollToken(): string {
 
 function countsOf(status: MailboxData['Mailbox']): Counts | null {
   if (typeof status?.NumMessages !== 'number' || typeof status?.NumUnseen !== 'number') return null;
-  return { total: status.NumMessages, unseen: status.NumUnseen, uidnext: status.UIDNext, uidvalidity: status.UIDValidity };
+  return { total: status.NumMessages, unseen: status.NumUnseen, uidnext: status.UIDNext, uidvalidity: status.UIDValidity,
+    highestmodseq: changeNumber(status.HighestModSeq) };
 }
 
 /** Validate messages from another tab as strictly as HTTP status answers. */
@@ -1123,13 +1130,24 @@ function checkedCounts(body: any): Counts | null {
   if (typeof body?.total !== 'number' || typeof body?.unseen !== 'number') return null;
   return { total: body.total, unseen: body.unseen,
     uidnext: typeof body.uidnext === 'number' ? body.uidnext : undefined,
-    uidvalidity: typeof body.uidvalidity === 'number' ? body.uidvalidity : undefined };
+    uidvalidity: typeof body.uidvalidity === 'number' ? body.uidvalidity : undefined,
+    highestmodseq: changeNumber(body.highestmodseq) };
+}
+
+/**
+ * A change number, or undefined where there is none. A listing says 0 where
+ * the mail server numbers no changes, and the status check leaves it out:
+ * the two are the same answer.
+ */
+function changeNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && value > 0 ? value : undefined;
 }
 
 /** Whether a check's answer is the counts held; neither unknown. */
 function sameCounts(answer: Counts | null, held: Counts | null): boolean {
   return !!answer && !!held && answer.total === held.total && answer.unseen === held.unseen
-    && answer.uidnext === held.uidnext && answer.uidvalidity === held.uidvalidity;
+    && answer.uidnext === held.uidnext && answer.uidvalidity === held.uidvalidity
+    && answer.highestmodseq === held.highestmodseq;
 }
 
 /** Sets or clears a flag on the messages of a listing that `keys` names. */

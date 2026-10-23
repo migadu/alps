@@ -81,6 +81,7 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 	if options.PushNewMail && !s.Sessions.pushNewMail {
 		logger.Printf("push_new_mail needs background_connection, which is off: new mail is not pushed")
 	}
+	s.Sessions.trackChanges = options.CondStore
 
 	// Initialize rate limiter if enabled
 	if options.RateLimitEnabled {
@@ -382,6 +383,11 @@ type Options struct {
 	// event stream open, and tells the page as the news comes: see
 	// Session.WatchInbox. Off when DisableBackgroundConnection is set.
 	PushNewMail bool
+	// If true, each mail connection has the server number the changes to
+	// the mailboxes' messages, where the server can (IMAP CONDSTORE), so that
+	// a listing whose messages are all still there has only its flags read
+	// again: see SessionManager.connectProvider.
+	CondStore bool
 }
 
 type SMTPOptions struct {

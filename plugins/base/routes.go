@@ -111,6 +111,7 @@ func mailboxInfoToStatus(mbox MailboxInfo) *MailboxStatus {
 	if mbox.Status != nil {
 		status.UIDValidity = mbox.Status.UIDValidity
 		status.UIDNext = mbox.Status.UIDNext
+		status.HighestModSeq = mbox.Status.HighestModSeq
 	}
 	return status
 }
@@ -427,12 +428,34 @@ type CachedMessages struct {
 // message that arrives as another goes leaves both counts as they were, and
 // moves UIDNext; a folder deleted and made again elsewhere with as many
 // messages moves UIDValidity.
+//
+// HighestModSeq goes with them where the mail server numbers its changes
+// (provider.ChangeTracker), 0 otherwise. Any change to the folder's messages
+// moves it, a flag set or cleared among them: a star, which leaves the counts
+// as they were, as much as a read.
 type mailboxCounts struct {
-	Known       bool
-	Messages    uint32
-	Unseen      uint32
-	UIDValidity uint32
-	UIDNext     uint32
+	Known         bool
+	Messages      uint32
+	Unseen        uint32
+	UIDValidity   uint32
+	UIDNext       uint32
+	HighestModSeq uint64
+}
+
+// reflaggedOnly reports whether a folder at now holds the messages it held at
+// was, and says which flags changed in between: the same UIDVALIDITY, as many
+// messages and the same UIDNEXT, each known, and the changes numbered at both.
+// No message came, as one would have moved UIDNEXT, and so none went, as that
+// would have lowered the count; what changed is flags alone, and the change
+// numbers say which (see reflaggedPage).
+//
+// It says nothing about whether anything changed: counts equal to each other
+// hold the same messages too.
+func reflaggedOnly(was, now mailboxCounts) bool {
+	return was.Known && now.Known && was.Messages == now.Messages &&
+		was.UIDValidity != 0 && was.UIDValidity == now.UIDValidity &&
+		was.UIDNext != 0 && was.UIDNext == now.UIDNext &&
+		was.HighestModSeq != 0 && now.HighestModSeq != 0
 }
 
 // countsOf reads the counts out of a status. A status without them (the
@@ -443,11 +466,12 @@ func countsOf(status *MailboxStatus) mailboxCounts {
 		return mailboxCounts{}
 	}
 	return mailboxCounts{
-		Known:       true,
-		Messages:    *status.NumMessages,
-		Unseen:      *status.NumUnseen,
-		UIDValidity: status.UIDValidity,
-		UIDNext:     uint32(status.UIDNext),
+		Known:         true,
+		Messages:      *status.NumMessages,
+		Unseen:        *status.NumUnseen,
+		UIDValidity:   status.UIDValidity,
+		UIDNext:       uint32(status.UIDNext),
+		HighestModSeq: status.HighestModSeq,
 	}
 }
 
@@ -1163,6 +1187,11 @@ type MailboxStatusResponse struct {
 	// another went, or a folder made again elsewhere.
 	UIDNext     uint32 `json:"uidnext"`
 	UIDValidity uint32 `json:"uidvalidity"`
+	// HighestModSeq is the change number read with the counts where the mail
+	// server numbers its changes, as the listing's Mailbox and Inbox carry
+	// it, and is left out otherwise. A flag changed in another client, which
+	// may leave every count as it was, moves it.
+	HighestModSeq uint64 `json:"highestmodseq,omitempty"`
 }
 
 // handleMailboxStatus returns a lightweight JSON response with the current
@@ -1222,8 +1251,16 @@ func handleMailboxStatus(ctx *alps.Context) error {
 	}
 
 	renumbered := renumberedSince(heldValidities, counts.UIDValidity)
+	// A message read or marked unread, where the folder holds the messages it
+	// held and the change numbers say which flags changed (reflaggedOnly).
+	// The pages stay, and each has the flags that changed laid over it when
+	// it is next listed (reflaggedPage). The folder list stays as well: no
+	// mail came, here or elsewhere, and it shows this folder's counts from
+	// the status just kept (withHeldCounts).
+	reflagged := prev.Known && prev.Unseen != counts.Unseen && reflaggedOnly(prev, counts) ||
+		!prev.Known && readAt && pagesReadAtOtherUnseen(cache, mboxName, counts)
 	switch {
-	case renumbered || prev.Known && (prev.Messages != counts.Messages || prev.Unseen != counts.Unseen ||
+	case renumbered || prev.Known && (prev.Messages != counts.Messages || prev.Unseen != counts.Unseen && !reflagged ||
 		uidMoved(prev.UIDNext, counts.UIDNext)):
 		if renumbered {
 			dropRenumberedMailbox(cache, mboxName)
@@ -1251,13 +1288,21 @@ func handleMailboxStatus(ctx *alps.Context) error {
 		}
 		ctx.Server.Logger().Debugf("Mailbox %s status read with no earlier counts: its pages are not at %d, %d unseen — its listings dropped",
 			mboxName, counts.Messages, counts.Unseen)
+	case reflagged:
+		// The conversations go, as they went with the pages: a member's
+		// flags are kept with it, and a conversation is not read with a
+		// listing.
+		dropConversationsHolding(cache, mboxName)
+		ctx.Server.Logger().Debugf("Mailbox %s flags changed: unseen %d→%d, change %d→%d — its pages kept, its conversations dropped",
+			mboxName, prev.Unseen, counts.Unseen, prev.HighestModSeq, counts.HighestModSeq)
 	}
 
 	return ctx.JSON(http.StatusOK, MailboxStatusResponse{
-		Total:       int(counts.Messages),
-		Unseen:      int(counts.Unseen),
-		UIDNext:     counts.UIDNext,
-		UIDValidity: counts.UIDValidity,
+		Total:         int(counts.Messages),
+		Unseen:        int(counts.Unseen),
+		UIDNext:       counts.UIDNext,
+		UIDValidity:   counts.UIDValidity,
+		HighestModSeq: counts.HighestModSeq,
 	})
 }
 
@@ -1265,6 +1310,10 @@ func handleMailboxStatus(ctx *alps.Context) error {
 // of them was read at counts. With no page to say so, the folder may have
 // changed under conversations assembled from it. recounted reports whether a
 // page was read at another message count.
+//
+// A page whose folder holds the messages it held and says which flags changed
+// since (reflaggedOnly) is read at counts too, as it is brought up to date
+// when it is next listed (reflaggedPage).
 func pagesReadAt(cache *alps.Cache, mailbox string, counts mailboxCounts) (readAt, recounted bool) {
 	held, agree := false, true
 	for _, key := range cache.GetKeysWithPrefix("messages:" + mailbox + ":") {
@@ -1279,7 +1328,11 @@ func pagesReadAt(cache *alps.Cache, mailbox string, counts mailboxCounts) (readA
 			continue
 		}
 		held = true
-		if !ok || page.Counts != counts {
+		switch {
+		case !ok:
+			agree = false
+		case page.Counts == counts, reflaggedOnly(page.Counts, counts):
+		default:
 			agree = false
 		}
 		if ok && page.Counts.Known && page.Counts.Messages != counts.Messages {
@@ -1287,6 +1340,21 @@ func pagesReadAt(cache *alps.Cache, mailbox string, counts mailboxCounts) (readA
 		}
 	}
 	return held && agree, recounted
+}
+
+// pagesReadAtOtherUnseen reports whether a page the session holds of mailbox
+// was read at another unread count than counts'.
+func pagesReadAtOtherUnseen(cache *alps.Cache, mailbox string, counts mailboxCounts) bool {
+	for _, key := range cache.GetKeysWithPrefix("messages:" + mailbox + ":") {
+		cached, ok := cache.Get(key)
+		if !ok {
+			continue
+		}
+		if page, ok := cached.(CachedMessages); ok && page.Mailbox == mailbox && page.Counts.Unseen != counts.Unseen {
+			return true
+		}
+	}
+	return false
 }
 
 func handleGetMailbox(ctx *alps.Context) error {
@@ -1407,6 +1475,17 @@ func handleGetMailbox(ctx *alps.Context) error {
 	}
 	if hit {
 		cachedData, ok := cached.(CachedMessages)
+		// A page whose folder holds the messages it held, and says which
+		// flags changed since, has those flags read and laid over it rather
+		// than being read again.
+		if ok && cachedData.Counts != counts && cachedData.Counts.HighestModSeq < counts.HighestModSeq &&
+			reflaggedOnly(cachedData.Counts, counts) {
+			if patched, err := reflaggedPage(ctx, msgCacheKey, cachedData, counts); err == nil {
+				cachedData = patched
+			} else {
+				ctx.Server.Logger().Debugf("The flags changed in %s since page %d was read could not be read, reading the page again: %v", mbox.Name(), page, err)
+			}
+		}
 		if ok && cachedData.Counts == counts {
 			total = cachedData.Total
 			threaded = cachedData.Threaded

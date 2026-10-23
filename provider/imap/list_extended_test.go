@@ -12,6 +12,7 @@ package imap
 import (
 	"bufio"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -36,10 +37,18 @@ type scriptedIMAP struct {
 	// Status response text may itself end in a literal-looking "{number}".
 	greetingText, loginText, lsubText string
 
-	mu    sync.Mutex
-	lists []string // the arguments of each LIST, in the order received
-	lsubs []string // and of each LSUB
-	conns int      // the connections it took
+	mu       sync.Mutex
+	lists    []string // the arguments of each LIST, in the order received
+	lsubs    []string // and of each LSUB
+	conns    int      // the connections it took
+	commands []string // the name of every command, in upper case
+}
+
+// received reports whether the server was sent a command named name.
+func (s *scriptedIMAP) received(name string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Contains(s.commands, name)
 }
 
 func (s *scriptedIMAP) listCommands() []string {
@@ -80,6 +89,9 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 		}
 		tag, rest, _ := strings.Cut(strings.TrimRight(line, "\r\n"), " ")
 		name, args, _ := strings.Cut(rest, " ")
+		s.mu.Lock()
+		s.commands = append(s.commands, strings.ToUpper(name))
+		s.mu.Unlock()
 		switch strings.ToUpper(name) {
 		case "CAPABILITY":
 			reply("* CAPABILITY "+s.caps, tag+" OK CAPABILITY completed")

@@ -75,6 +75,9 @@ type IMAPProvider struct {
 	selects uint64
 	// responseTimeout bounds the wait for the server's answer to DONE.
 	responseTimeout time.Duration
+	// condstore says that the server numbers the changes to the mailboxes'
+	// messages for this connection (see TrackChanges).
+	condstore bool
 
 	// lsub signs in again to read the subscriptions a plain LIST does not
 	// say (see markSubscriptions); nil for a provider made without the
@@ -157,12 +160,7 @@ func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
 		if caps.Has(imap.CapListStatus) {
 			// The same items GetMailboxStatus asks for, so that the counts a
 			// listing reads and the ones a check for new mail reads compare.
-			options.ReturnStatus = &imap.StatusOptions{
-				NumMessages: true,
-				UIDValidity: true,
-				UIDNext:     true,
-				NumUnseen:   true,
-			}
+			options.ReturnStatus = p.statusItems()
 		}
 	}
 
@@ -232,6 +230,7 @@ func (p *IMAPProvider) listMailboxes(options *imap.ListOptions) ([]provider.Mail
 			mbox.Total = int(*data.Status.NumMessages)
 			mbox.UIDValidity = data.Status.UIDValidity
 			mbox.UIDNext = uint32(data.Status.UIDNext)
+			mbox.HighestModSeq = data.Status.HighestModSeq
 		}
 		mailboxes = append(mailboxes, mbox)
 	}
@@ -267,7 +266,7 @@ var mailboxStatusItems = &imap.StatusOptions{
 // UIDNEXT costs nothing more in the same STATUS, and it tells a message that
 // arrived as another went from no change at all, which the two counts cannot.
 func (p *IMAPProvider) GetMailboxStatus(name string) (*provider.MailboxStatus, error) {
-	return mailboxStatusOf(p.client.Status(name, mailboxStatusItems))
+	return mailboxStatusOf(p.client.Status(name, p.statusItems()))
 }
 
 // GetMailboxStatuses asks for several mailboxes' status at once. Every STATUS
@@ -277,7 +276,7 @@ func (p *IMAPProvider) GetMailboxStatus(name string) (*provider.MailboxStatus, e
 func (p *IMAPProvider) GetMailboxStatuses(names []string) ([]*provider.MailboxStatus, []error) {
 	cmds := make([]*imapclient.StatusCommand, len(names))
 	for i, name := range names {
-		cmds[i] = p.client.Status(name, mailboxStatusItems)
+		cmds[i] = p.client.Status(name, p.statusItems())
 	}
 	statuses := make([]*provider.MailboxStatus, len(names))
 	errs := make([]error, len(names))
@@ -293,11 +292,12 @@ func mailboxStatusOf(cmd *imapclient.StatusCommand) (*provider.MailboxStatus, er
 		return nil, fmt.Errorf("failed to get mailbox status: %v", err)
 	}
 	return &provider.MailboxStatus{
-		Name:        status.Mailbox,
-		NumMessages: *status.NumMessages,
-		NumUnseen:   *status.NumUnseen,
-		UIDValidity: status.UIDValidity,
-		UIDNext:     uint32(status.UIDNext),
+		Name:          status.Mailbox,
+		NumMessages:   *status.NumMessages,
+		NumUnseen:     *status.NumUnseen,
+		UIDValidity:   status.UIDValidity,
+		UIDNext:       uint32(status.UIDNext),
+		HighestModSeq: status.HighestModSeq,
 	}, nil
 }
 

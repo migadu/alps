@@ -1187,6 +1187,10 @@ type SessionManager struct {
 	pushResume  time.Duration
 	pushRetry   time.Duration
 
+	// Whether each mail connection has the server number its changes. See
+	// connectProvider.
+	trackChanges bool
+
 	locker       sync.RWMutex
 	sessions     map[string]*Session // token -> Session, protected by locker
 	userSessions map[string][]string // username -> []token, protected by locker
@@ -1352,8 +1356,30 @@ func (s *Session) ending() string {
 	return "idle"
 }
 
+// connectProvider signs in to the mail server, on a connection of its own.
+//
+// With trackChanges, the connection then has the server number its changes,
+// where the provider and the server can (provider.ChangeTracker), before
+// anything else is asked of it: IMAP takes ENABLE only before a mailbox is
+// selected. A server that cannot is used as it always was. A connection that
+// fails while asked is closed, and the sign-in fails as for any connection
+// lost.
 func (sm *SessionManager) connectProvider(username, password string) (provider.MailProvider, error) {
-	return sm.connectProviderFunc(username, password)
+	p, err := sm.connectProviderFunc(username, password)
+	if err != nil || !sm.trackChanges {
+		return p, err
+	}
+	if tracker, ok := p.(provider.ChangeTracker); ok {
+		tracked, err := tracker.TrackChanges()
+		if err != nil {
+			p.Close()
+			return nil, fmt.Errorf("asking the mail server to number its changes: %w", err)
+		}
+		if !tracked {
+			sm.logger.Debugf("The mail server of %s does not number its changes (CONDSTORE): listings are read again in full", username)
+		}
+	}
+	return p, nil
 }
 
 // addressOf is the email address of the user who signs in as username: see

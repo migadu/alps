@@ -194,6 +194,24 @@ max_sessions_per_user = 10
 # holds the session, as every request of the session already must.
 # push_new_mail = false
 
+# Have the mail server number its changes (default: false)
+# A page of a folder is kept in the session while the folder's counts stay as
+# they were read. A flag changed in another client that leaves the unread count
+# as it was, a star, is then not listed until the page expires; one that moves
+# it, a message read, has every page of the folder read again in full. With
+# this on, each mail connection asks the server to number the changes to its
+# messages (IMAP CONDSTORE, RFC 7162: ENABLE CONDSTORE straight after sign-in),
+# and the counts carry the number of the latest (HIGHESTMODSEQ, asked with the
+# STATUS and LIST-STATUS ALPS sends anyway). A folder that holds the messages a
+# page was read with then has the flags that changed since read, one FETCH of
+# the page's messages (CHANGEDSINCE), and laid over the page; the pages notice
+# the new number at their next check. A server that does not list CONDSTORE is
+# used as before. QRESYNC is not turned on, even where the server lists it.
+# It costs a round trip as each connection signs in. And a change made in ALPS
+# moves the number too, so the check after it reads the page again: from the
+# session, with that one FETCH.
+# condstore = false
+
 # Max attachment size per composer in MiB (default: 32)
 # Limits the size of a single email being composed
 # max_attachment_mib = 32

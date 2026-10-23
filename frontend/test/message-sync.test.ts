@@ -942,6 +942,48 @@ describe('polling', () => {
     expect(listingsAsked()).toEqual(['/mailboxes/Work?page=0&query=ada']);
   });
 
+  /** A server that numbers its changes: its listing and its check carry the latest one's number. */
+  function numberingServer(counts: { total: number; unseen: number; modseq: number }) {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/status')) {
+        return new Response(JSON.stringify({ total: counts.total, unseen: counts.unseen, highestmodseq: counts.modseq }), { status: 200 });
+      }
+      const status = { NumMessages: counts.total, NumUnseen: counts.unseen, HighestModSeq: counts.modseq };
+      return new Response(JSON.stringify({ Messages: [], Total: counts.total, Mailbox: status, Inbox: status }), { status: 200 });
+    });
+  }
+
+  it('reads the listing again when only the change number moved, as a star in another client moves it', async () => {
+    const counts = { total: 2, unseen: 1, modseq: 7 };
+    numberingServer(counts);
+    const svc = service();
+    await landed(svc, 'Work');
+    fetchMock.mockClear();
+
+    svc.start(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toEqual([]);
+
+    counts.modseq = 8;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toEqual(['/mailboxes/Work?page=0']);
+  });
+
+  it('takes a listing that numbers no change and a check that names none for the same counts', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/status')) return new Response(JSON.stringify({ total: 2, unseen: 1 }), { status: 200 });
+      const status = { NumMessages: 2, NumUnseen: 1, HighestModSeq: 0 };
+      return new Response(JSON.stringify({ Messages: [], Total: 2, Mailbox: status, Inbox: status }), { status: 200 });
+    });
+    const svc = service();
+    await landed(svc, 'Work');
+    fetchMock.mockClear();
+
+    svc.start(1);
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    expect(listingsAsked()).toEqual([]);
+  });
+
   it('polls from the one tab that holds the poll lock, and from the next once that one stops', async () => {
     installLocks();
     server({ total: 2, unseen: 1 });
