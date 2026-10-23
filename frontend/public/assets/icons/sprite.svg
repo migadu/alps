@@ -113,43 +113,7 @@
   <symbol id="faders" viewBox="0 0 256 256">
     <path d="M136,120v96a8,8,0,0,1-16,0V120a8,8,0,0,1,16,0Zm64,72a8,8,0,0,0-8,8v16a8,8,0,0,0,16,0V200A8,8,0,0,0,200,192Zm24-32H208V40a8,8,0,0,0-16,0V160H176a8,8,0,0,0,0,16h48a8,8,0,0,0,0-16ZM56,160a8,8,0,0,0-8,8v48a8,8,0,0,0,16,0V168A8,8,0,0,0,56,160Zm24-32H64V40a8,8,0,0,0-16,0v88H32a8,8,0,0,0,0,16H80a8,8,0,0,0,0-16Zm72-48H136V40a8,8,0,0,0-16,0V80H104a8,8,0,0,0,0,16h48a8,8,0,0,0,0-16Z"/>
   </symbol>
-  <symbol id="edelweiss" viewBox="0 0 100 100">
-    <g fill="#FFFFFF" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M 50 36 Q 60 20 50 4 Q 40 20 50 36" />
-      <line x1="50" y1="36" x2="50" y2="12" />
-      <path d="M 62.1 43 Q 81 43.7 89.8 27 Q 71 26.3 62.1 43" />
-      <line x1="62.1" y1="43" x2="82.9" y2="31" />
-      <path d="M 62.1 57 Q 71 73.7 89.8 73 Q 81 56.3 62.1 57" />
-      <line x1="62.1" y1="57" x2="82.9" y2="69" />
-      <path d="M 50 64 Q 40 80 50 96 Q 60 80 50 64" />
-      <line x1="50" y1="64" x2="50" y2="88" />
-      <path d="M 37.9 57 Q 19 56.3 10.2 73 Q 29 73.7 37.9 57" />
-      <line x1="37.9" y1="57" x2="17.1" y2="69" />
-      <path d="M 37.9 43 Q 29 26.3 10.2 27 Q 19 43.7 37.9 43" />
-      <line x1="37.9" y1="43" x2="17.1" y2="31" />
-      <path d="M 57 37.9 Q 69.4 32.3 69 17.1 Q 55.6 24.3 57 37.9" />
-      <line x1="57" y1="37.9" x2="66" y2="22.3" />
-      <path d="M 64 50 Q 75 58 88 50 Q 75 42 64 50" />
-      <line x1="64" y1="50" x2="82" y2="50" />
-      <path d="M 57 62.1 Q 55.6 75.7 69 82.9 Q 69.4 67.7 57 62.1" />
-      <line x1="57" y1="62.1" x2="66" y2="77.7" />
-      <path d="M 43 62.1 Q 30.6 67.7 31 82.9 Q 44.4 75.7 43 62.1" />
-      <line x1="43" y1="62.1" x2="34" y2="77.7" />
-      <path d="M 36 50 Q 25 42 12 50 Q 25 58 36 50" />
-      <line x1="36" y1="50" x2="18" y2="50" />
-      <path d="M 43 37.9 Q 44.4 24.3 31 17.1 Q 30.6 32.3 43 37.9" />
-      <line x1="43" y1="37.9" x2="34" y2="22.3" />
-    </g>
-    <g fill="#EAB308">
-      <circle cx="50" cy="50" r="3.5"/>
-      <circle cx="50" cy="39" r="3.5"/>
-      <circle cx="59.5" cy="44.5" r="3.5"/>
-      <circle cx="59.5" cy="55.5" r="3.5"/>
-      <circle cx="50" cy="61" r="3.5"/>
-      <circle cx="40.5" cy="55.5" r="3.5"/>
-      <circle cx="40.5" cy="44.5" r="3.5"/>
-    </g>
-  </symbol>
+  <symbol id="edelweiss" viewBox="0 0 24 24"><path d="M10.03 7.41Q9.21 4.24 11.89 2.36Q14.60 4.31 13.82 7.56Q15.49 4.66 18.79 5.24Q19.45 8.48 16.61 10.18Q19.56 9.72 21.08 12.29Q19.25 14.58 16.46 13.67Q18.89 14.96 19.00 17.72Q15.99 18.32 13.72 16.25Q14.07 19.51 10.98 20.61Q8.49 19.29 9.90 16.84Q8.22 19.75 4.92 20.37Q4.81 16.87 7.30 14.40Q3.95 15.38 1.62 12.79Q3.63 9.83 7.18 10.25Q4.44 8.70 5.57 5.76Q8.51 4.65 10.03 7.41Z" style="fill: none; stroke: var(--logo-color, currentColor)" stroke-width="2" stroke-linejoin="round"/><g style="fill: var(--logo-color, currentColor)"><circle cx="12.00" cy="10.70" r="0.8"/><circle cx="13.25" cy="11.65" r="0.75"/><circle cx="12.80" cy="13.15" r="0.8"/><circle cx="11.20" cy="13.10" r="0.75"/><circle cx="10.75" cy="11.60" r="0.8"/></g></symbol>
   <symbol id="layout" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><rect x="32" y="48" width="192" height="160" rx="8" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="32" y1="104" x2="224" y2="104" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="88" y1="104" x2="88" y2="208" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></symbol>
   <symbol id="pen" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><polyline points="160 192 200 152 192 120" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><path d="M92.69,216H48a8,8,0,0,1-8-8V163.31a8,8,0,0,1,2.34-5.65L165.66,34.34a8,8,0,0,1,11.31,0L221.66,79a8,8,0,0,1,0,11.31L98.34,213.66A8,8,0,0,1,92.69,216Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="136" y1="64" x2="192" y2="120" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="40.51" y1="160.51" x2="95.49" y2="215.49" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></symbol>
   <symbol id="sidebar" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><line x1="88" y1="48" x2="88" y2="208" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><rect x="32" y="48" width="192" height="160" rx="8" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="32" y1="80" x2="56" y2="80" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="32" y1="112" x2="56" y2="112" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="32" y1="144" x2="56" y2="144" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></symbol>
@@ -345,5 +309,5 @@
   <symbol id="image" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><rect x="32" y="48" width="192" height="160" rx="8" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><circle cx="84" cy="96" r="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><polyline points="224 160 160 104 96 168 56 136 32 160" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></symbol>
   <symbol id="magnifyingGlassMinus" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><circle cx="116" cy="116" r="84" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="175.4" y1="175.4" x2="224" y2="224" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="88" y1="116" x2="144" y2="116" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></symbol>
   <symbol id="magnifyingGlassPlus" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><circle cx="116" cy="116" r="84" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="175.4" y1="175.4" x2="224" y2="224" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="88" y1="116" x2="144" y2="116" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/><line x1="116" y1="88" x2="116" y2="144" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/></symbol>
-  <symbol id="migadu" viewBox="0 -2.53 24.36 24.36"><path d="M10.8887 14.1311C8.03946 14.1311 5.72144 16.4491 5.72144 19.2984H8.20707C8.20707 17.8199 9.41027 16.6167 10.8887 16.6167C12.3672 16.6167 13.5704 17.8199 13.5704 19.2984H16.0561C16.0561 16.4491 13.738 14.1311 10.8887 14.1311Z" style="fill: var(--accent-color, #1d4ed8)"/><path d="M21.7841 10.1782V7.15063C21.7841 3.20785 18.5762 0 14.6334 0H5.72091V5.51369C5.72091 5.86922 5.74732 6.21865 5.7976 6.56046C2.49934 7.19837 0 10.1071 0 13.5897V19.2994H2.48563V13.5897C2.48563 11.2011 4.28713 9.22639 6.60262 8.94959C7.82004 11.1615 10.1736 12.6638 12.8715 12.6638H19.2979V19.2994H21.7836V12.6638H24.3586V10.1782H21.7836H21.7841ZM19.2984 10.1782H12.8721C10.3001 10.1782 8.20705 8.08566 8.20705 5.51318V2.48563H14.6334C17.2054 2.48563 19.2984 4.57815 19.2984 7.15063V10.1782Z" style="fill: var(--accent-color, #1d4ed8)"/><path d="M16.7021 8.79464C17.3683 8.79464 17.9083 8.25458 17.9083 7.58839C17.9083 6.9222 17.3683 6.38214 16.7021 6.38214C16.0359 6.38214 15.4958 6.9222 15.4958 7.58839C15.4958 8.25458 16.0359 8.79464 16.7021 8.79464Z" style="fill: var(--accent-color, #1d4ed8)"/></symbol>
+  <symbol id="migadu" viewBox="0 -2.53 24.36 24.36"><path d="M10.8887 14.1311C8.03946 14.1311 5.72144 16.4491 5.72144 19.2984H8.20707C8.20707 17.8199 9.41027 16.6167 10.8887 16.6167C12.3672 16.6167 13.5704 17.8199 13.5704 19.2984H16.0561C16.0561 16.4491 13.738 14.1311 10.8887 14.1311Z" style="fill: var(--logo-color, currentColor)"/><path d="M21.7841 10.1782V7.15063C21.7841 3.20785 18.5762 0 14.6334 0H5.72091V5.51369C5.72091 5.86922 5.74732 6.21865 5.7976 6.56046C2.49934 7.19837 0 10.1071 0 13.5897V19.2994H2.48563V13.5897C2.48563 11.2011 4.28713 9.22639 6.60262 8.94959C7.82004 11.1615 10.1736 12.6638 12.8715 12.6638H19.2979V19.2994H21.7836V12.6638H24.3586V10.1782H21.7836H21.7841ZM19.2984 10.1782H12.8721C10.3001 10.1782 8.20705 8.08566 8.20705 5.51318V2.48563H14.6334C17.2054 2.48563 19.2984 4.57815 19.2984 7.15063V10.1782Z" style="fill: var(--logo-color, currentColor)"/><path d="M16.7021 8.79464C17.3683 8.79464 17.9083 8.25458 17.9083 7.58839C17.9083 6.9222 17.3683 6.38214 16.7021 6.38214C16.0359 6.38214 15.4958 6.9222 15.4958 7.58839C15.4958 8.25458 16.0359 8.79464 16.7021 8.79464Z" style="fill: var(--logo-color, currentColor)"/></symbol>
 </svg>
