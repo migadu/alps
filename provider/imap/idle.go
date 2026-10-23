@@ -168,16 +168,18 @@ func (p *IMAPProvider) Idle(mailbox string, stop <-chan struct{}, started func()
 		return err
 	}
 
-	p.rememberIdled(err == nil)
+	if rememberErr := p.rememberIdled(err == nil); err == nil {
+		err = rememberErr
+	}
 	return p.lostIf(err)
 }
 
 // rememberIdled records what the selected mailbox is as an IDLE on it ends
 // (see Idle). With ask, the server may be asked for its UIDNEXT.
-func (p *IMAPProvider) rememberIdled(ask bool) {
+func (p *IMAPProvider) rememberIdled(ask bool) error {
 	mbox := p.client.Mailbox()
 	if mbox == nil {
-		return
+		return nil
 	}
 	uidNext := p.selectedUIDNext
 	if was := p.idled; was.known && was.mailbox == mbox.Name && was.selects == p.selects {
@@ -185,7 +187,21 @@ func (p *IMAPProvider) rememberIdled(ask bool) {
 		uidNext = was.uidNext
 	}
 	if p.news != nil && p.news.heard.Swap(false) && ask {
-		if status, err := p.client.Status(mbox.Name, &imap.StatusOptions{UIDNext: true}).Wait(); err == nil && status.UIDNext != 0 {
+		var status *imap.StatusData
+		err := p.answeredWithin("STATUS", func() (err error) {
+			status, err = p.client.Status(mbox.Name, &imap.StatusOptions{UIDNext: true}).Wait()
+			return err
+		})
+		if err != nil {
+			// A tagged refusal keeps the conservative selected UIDNEXT. A
+			// half-open or lost connection must free the session's background
+			// slot, as an unanswered IDLE or DONE does.
+			select {
+			case <-p.client.Closed():
+				return p.lostIf(err)
+			default:
+			}
+		} else if status.UIDNext != 0 {
 			uidNext = status.UIDNext
 		}
 	}
@@ -197,6 +213,7 @@ func (p *IMAPProvider) rememberIdled(ask bool) {
 		uidNext:     uidNext,
 		selects:     p.selects,
 	}
+	return nil
 }
 
 // errUnanswered marks a command the server left unanswered (see Idle).
