@@ -96,6 +96,12 @@ func controlFor(guard TargetGuard) func(network, address string, c syscall.RawCo
 }
 
 func Connect(host string, tls bool, insecure bool, timeout time.Duration, debug bool, guard TargetGuard) (*imapclient.Client, error) {
+	return connect(host, tls, insecure, timeout, debug, guard, nil)
+}
+
+// connect is Connect, with the handler the client is to give what the server
+// says unasked (see mailboxNews); nil for none.
+func connect(host string, tls bool, insecure bool, timeout time.Duration, debug bool, guard TargetGuard, unilateral *imapclient.UnilateralDataHandler) (*imapclient.Client, error) {
 	var debugWriter io.Writer
 	if debug {
 		// Wrap os.Stderr with sanitizing writer to redact credentials
@@ -117,7 +123,8 @@ func Connect(host string, tls bool, insecure bool, timeout time.Duration, debug 
 		WordDecoder: &mime.WordDecoder{
 			CharsetReader: charset.Reader,
 		},
-		Dialer: dialer,
+		Dialer:                dialer,
+		UnilateralDataHandler: unilateral,
 	}
 
 	var c *imapclient.Client
