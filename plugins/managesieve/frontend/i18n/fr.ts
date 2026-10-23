@@ -1,7 +1,8 @@
 export default {
   "settings": {
     "categories": {
-      "filters": "Filtres"
+      "filters": "Filtres",
+      "autoReply": "Réponse automatique"
     }
   },
   "managesieve": {
@@ -17,7 +18,8 @@ export default {
       "saved": "Règles enregistrées et activées.",
       "deactivated": "Règles désactivées.",
       "valid": "Le script est valide !",
-      "networkError": "Une erreur réseau s'est produite."
+      "networkError": "Une erreur réseau s'est produite.",
+      "autoReplyOn": "La réponse automatique est activée. Désactivez-la dans Réponse automatique avant que les filtres n'envoient la leur."
     },
     "visual": {
       "newRule": "Nouvelle Règle",
@@ -57,6 +59,42 @@ export default {
     "raw": {
       "validate": "Valider",
       "save": "Enregistrer"
+    },
+    "autoReply": {
+      "title": "Réponse automatique",
+      "description": "Répondez automatiquement aux personnes qui vous écrivent pendant votre absence.",
+      "enable": "Envoyer une réponse automatique",
+      "stateActive": "Les expéditeurs reçoivent une réponse en ce moment.",
+      "stateActiveUntil": "Les expéditeurs reçoivent une réponse jusqu'au {date}.",
+      "stateScheduled": "Commence le {date}.",
+      "stateFinished": "La date de fin est passée : plus personne ne reçoit de réponse.",
+      "subject": "Objet",
+      "subjectDesc": "Facultatif. S'il est vide, le serveur de messagerie en choisit un.",
+      "subjectPlaceholder": "Absent du bureau",
+      "message": "Message",
+      "messageDesc": "Ce que reçoit chaque personne qui vous écrit.",
+      "messagePlaceholder": "Je suis absent jusqu'au 15 et répondrai à mon retour.",
+      "dates": "Dates",
+      "datesDesc": "Facultatif. Laissez une date vide pour laisser cette borne ouverte. Un jour va de minuit à minuit dans votre fuseau horaire.",
+      "startDate": "Date de début",
+      "endDate": "Date de fin",
+      "interval": "Répondre à nouveau au même expéditeur après",
+      "intervalDesc": "Une personne qui écrit plusieurs fois pendant cette période reçoit une seule réponse. Les listes de diffusion et les messages automatiques n'en reçoivent jamais.",
+      "days": {
+        "one": "{count} jour",
+        "other": "{count} jours"
+      },
+      "save": "Enregistrer",
+      "saved": "Réponse automatique enregistrée.",
+      "turnedOff": "Réponse automatique désactivée.",
+      "unsupported": "Ce serveur de messagerie ne propose pas de réponses automatiques.",
+      "ownVacation": "Vos filtres envoient déjà leur propre réponse automatique. Supprimez-la dans l'éditeur brut des Filtres pour en configurer une ici.",
+      "errors": {
+        "emptyMessage": "Écrivez le message que recevront les expéditeurs, ou désactivez la réponse automatique.",
+        "invalidWindow": "La date de début ne peut pas être postérieure à la date de fin.",
+        "loadError": "Impossible de charger la réponse automatique.",
+        "saveError": "Impossible d'enregistrer la réponse automatique."
+      }
     }
   }
 };

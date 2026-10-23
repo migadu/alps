@@ -3,7 +3,7 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
-import { managesieveService } from './managesieve-service';
+import { managesieveService, TwoVacationsError } from './managesieve-service';
 import '../../../frontend/src/components/alps-button';
 
 @customElement('alps-raw-editor')
@@ -151,10 +151,10 @@ export class RawEditor extends LitElement {
 		try {
 			await managesieveService.validateScript(sent);
 			if (this.script !== sent) return;
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t('managesieve.toast.valid'), timeout: 3000 } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t('managesieve.toast.valid'), duration: 3000 } }));
 		} catch (e: any) {
 			if (this.script !== sent) return;
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: e.message || this.i18nStore.t('managesieve.toast.networkError'), timeout: 5000, type: 'error' } }));
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: e.message || this.i18nStore.t('managesieve.toast.networkError'), duration: 5000, type: 'error' } }));
 		} finally {
 			this.isValidating = false;
 		}
@@ -167,13 +167,18 @@ export class RawEditor extends LitElement {
 		// went back to disabled, and those characters never reached the server.
 		const sent = this.script;
 		try {
-			await managesieveService.saveScript(sent, 'PUT');
+			const { autoReplyOn } = await managesieveService.saveScript(sent, 'PUT');
 			this.stored = sent;
 			this.dispatchEvent(new CustomEvent('script-saved', { detail: { script: sent } }));
-			const msgKey = sent.trim() === '' ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), timeout: 3000 } }));
+			// As on the visual editor's save: an empty script is switched off,
+			// unless an auto-reply that is on goes on running in it.
+			const msgKey = sent.trim() === '' && !autoReplyOn ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), duration: 3000 } }));
 		} catch (e: any) {
-			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: e.message || this.i18nStore.t('managesieve.toast.networkError'), timeout: 5000, type: 'error' } }));
+			const message = e instanceof TwoVacationsError
+				? this.i18nStore.t('managesieve.toast.autoReplyOn')
+				: e.message || this.i18nStore.t('managesieve.toast.networkError');
+			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, duration: 5000, type: 'error' } }));
 		} finally {
 			this.isSaving = false;
 		}
