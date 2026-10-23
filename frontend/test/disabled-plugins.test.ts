@@ -14,7 +14,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/components/app-root';
-import '../src/pages/settings-page';
+import '../src/components/settings-window';
 import { registry } from '../src/plugin-registry';
 import { SettingsStore } from '../src/store/settings-store';
 import { cleanup, flush, mount, waitFor } from './helpers/dom';
@@ -123,7 +123,7 @@ describe('the settings page, for a plugin the server has turned off', () => {
       icon: 'tune',
       component: 'offplug-settings',
     });
-    const el = await mount<El>('settings-page', { i18nStore, settingsStore: settingsStore() });
+    const el = await mount<El>('settings-window', { i18nStore, settingsStore: settingsStore() });
     expect(tabs(el)).toContain('offplug.tab');
 
     registry.setEnabledPlugins(['base']);

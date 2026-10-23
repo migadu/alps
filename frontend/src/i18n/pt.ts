@@ -2,6 +2,10 @@ export const pt = {
   settings: {
     saveFailed: 'Não foi possível salvar essa configuração — ela pode não sobreviver ao encerramento da sessão',
     title: 'Configurações',
+    unsavedTitle: 'Descartar alterações?',
+    unsavedMessage: 'Você tem alterações não salvas. Se sair desta seção, elas serão descartadas.',
+    discard: 'Descartar',
+    keepEditing: 'Continuar editando',
     categories: {
       general: 'Geral',
       identity: 'Identidade',
@@ -297,6 +301,7 @@ export const pt = {
     emptyMailboxSlow: 'Ainda esvaziando {folder}. O servidor está trabalhando nisso — verifique novamente em instantes.'
   },
   composer: {
+    windowLoadFailed: 'Não foi possível carregar a janela da mensagem.',
     discardFailed: 'Não foi possível excluir o rascunho do servidor e ele ainda está em Rascunhos.',
     attachmentsTooLarge: 'Os anexos excedem o tamanho máximo permitido.',
     draftSaveFailedKeepOpen: 'Não foi possível salvar este rascunho — a janela permanece aberta para não perder nada',
@@ -611,7 +616,8 @@ export const pt = {
     expand: "Expandir",
     collapse: "Recolher",
     moreOptions: "Mais opções",
-    notFound: "Página não encontrada"
+    notFound: "Página não encontrada",
+    close: "Fechar"
   }
 };
 

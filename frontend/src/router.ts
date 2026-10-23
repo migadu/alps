@@ -17,7 +17,7 @@ export class Router implements ReactiveController {
   private routes: Record<string, () => unknown>;
   private fallback: () => unknown;
   /** Kept so that the listener removed is the one that was added. */
-  private readonly onHashChange: () => void;
+  private readonly onHashChange: (event?: HashChangeEvent) => void;
 
   /**
    * The path the browser is on RIGHT NOW.
@@ -37,11 +37,11 @@ export class Router implements ReactiveController {
   constructor(
     routes: Record<string, () => unknown>,
     fallback: () => unknown,
-    onChange: () => void
+    onChange: (event?: HashChangeEvent) => void
   ) {
     this.routes = routes;
     this.fallback = fallback;
-    this.onHashChange = () => onChange();
+    this.onHashChange = (event) => onChange(event);
   }
 
   /**
@@ -74,28 +74,28 @@ export class Router implements ReactiveController {
     window.location.hash = path;
   }
 
-  /**
-   * Replaces the route table. The shell builds it before /session says which
-   * plugins are on, and builds it again when that answer comes: a route left
-   * in the table is a page the address bar still reaches.
-   */
+  /** Rebuilds the table after the session's enabled plugins change. */
   setRoutes(routes: Record<string, () => unknown>) {
     this.routes = routes;
   }
 
-  render() {
-    // Exact match
-    if (this.routes[this.currentPath]) {
-      return this.routes[this.currentPath]();
-    }
-    
-    // Prefix match
-    for (const route in this.routes) {
-      if (route.endsWith('/*') && this.currentPath.startsWith(route.replace('/*', ''))) {
-         return this.routes[route]();
-      }
-    }
+  /**
+   * Renders `path`: the one the browser is on unless told otherwise. The shell
+   * names another while the Settings window is open, to draw the page beneath
+   * it (`app-root`'s `backgroundView`).
+   */
+  render(path: string = this.currentPath) {
+    const key = this.matchKey(path);
+    return key === null ? this.fallback() : this.routes[key]();
+  }
 
-    return this.fallback();
+  /** The table key `path` renders through, or null for the fallback. An exact
+   * route wins over a prefix that also matches. */
+  matchKey(path: string): string | null {
+    if (this.routes[path]) return path;
+    for (const route in this.routes) {
+      if (route.endsWith('/*') && path.startsWith(route.replace('/*', ''))) return route;
+    }
+    return null;
   }
 }

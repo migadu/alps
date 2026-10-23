@@ -384,6 +384,76 @@ describe('the auto-reply page', () => {
 // The app's toasts take how long to stay up from `duration`. These were
 // given a `timeout`, which nothing reads, so each went after the default
 // three seconds: a refusal several lines long among them.
+/**
+ * What the Settings window asks before a Close, an Escape or another section
+ * would unmount either page: an edit not yet saved. Measured as each page's
+ * own Save is, so an edit put back is no edit and a refused save stays unsaved.
+ */
+describe('unsaved changes, as the Settings window asks', () => {
+  it('the auto-reply: none as loaded, one once edited, none once saved or put back', async () => {
+    stored = mergeAutoReply(block(), FILTERS);
+    const el = await openPage();
+    expect(el.hasUnsavedChanges).toBe(false);
+
+    await type(el, textarea(el), 'Back on Monday.');
+    expect(el.hasUnsavedChanges).toBe(true);
+    await type(el, textarea(el), 'Back soon.');
+    expect(el.hasUnsavedChanges).toBe(false);
+
+    await type(el, textarea(el), 'Back on Monday.');
+    await save(el);
+    expect(el.hasUnsavedChanges).toBe(false);
+  });
+
+  it('the auto-reply: still unsaved after a refused save', async () => {
+    stored = mergeAutoReply(block(), FILTERS);
+    const el = await openPage();
+    await type(el, textarea(el), 'Back on Monday.');
+    putStatus = 503;
+    await save(el);
+    expect(el.hasUnsavedChanges).toBe(true);
+  });
+
+  it('the auto-reply: nothing to lose over a script it could not read', async () => {
+    getStatus = 500;
+    const el = await openPage();
+    expect(el.hasUnsavedChanges).toBe(false);
+  });
+
+  it('the filters, in the visual editor: a rule changed and not saved', async () => {
+    stored = RULES;
+    const el = await openFilters();
+    await waitFor(() => !!el.shadowRoot!.querySelector('alps-visual-editor'), 'the rules to load');
+    expect(el.hasUnsavedChanges).toBe(false);
+
+    const editor = shadow<El>(el, 'alps-visual-editor');
+    editor.dispatchEvent(new CustomEvent('state-changed', { detail: { state: { rules: [] } } }));
+    await el.updateComplete;
+    await editor.updateComplete;
+    expect(el.hasUnsavedChanges).toBe(true);
+  });
+
+  it('the filters, in the raw editor: a script typed and not saved', async () => {
+    stored = FILTERS;
+    const el = await openFilters();
+    await waitFor(() => !!el.shadowRoot!.querySelector('alps-raw-editor'), 'the script to load');
+    expect(el.hasUnsavedChanges).toBe(false);
+
+    const editor = shadow<El>(el, 'alps-raw-editor');
+    editor.dispatchEvent(new CustomEvent('script-changed', { detail: { script: FILTERS + '# more\n' } }));
+    expect(el.hasUnsavedChanges).toBe(true);
+    editor.dispatchEvent(new CustomEvent('script-changed', { detail: { script: FILTERS } }));
+    expect(el.hasUnsavedChanges).toBe(false);
+  });
+
+  it('the filters: nothing to lose over a script it could not read', async () => {
+    getStatus = 500;
+    const el = await openFilters();
+    await waitFor(() => !el.shadowRoot!.querySelector('alps-loader'), 'the read to fail');
+    expect(el.hasUnsavedChanges).toBe(false);
+  });
+});
+
 describe('a toast that says a save failed', () => {
   it('stays up for five seconds, on the auto-reply page and in both Filters editors', async () => {
     const toasts = record<CustomEvent>(window, 'show-toast');

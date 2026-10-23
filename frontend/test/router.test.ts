@@ -120,4 +120,20 @@ describe('Router', () => {
     expect(window.location.hash).toBe('#/settings');
     expect(r.render()).toBe('settings');
   });
+
+  it('renders a path it is given instead of the one the browser is on', () => {
+    // The page beneath the Settings window, drawn while the URL is the window's.
+    window.location.hash = '#/settings/reading';
+    const r = router();
+    expect(r.render('/mailbox/Work')).toBe('mailbox');
+    expect(r.render('/nowhere')).toBe('not-found');
+  });
+
+  it('names the table key a path renders through', () => {
+    const r = router();
+    expect(r.matchKey('/settings')).toBe('/settings');
+    expect(r.matchKey('/settings/accounts')).toBe('/settings/*');
+    expect(r.matchKey('/mailbox/INBOX')).toBe('/mailbox/*');
+    expect(r.matchKey('/nowhere')).toBeNull();
+  });
 });
