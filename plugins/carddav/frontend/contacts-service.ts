@@ -28,6 +28,8 @@ export interface ContactPayload {
   etag?: string;
   /** Single-copy fields changed since the last successful form save. */
   changed_fields?: string[];
+  /** What the page held for each of those before the change. */
+  changed_from?: Record<string, string>;
   [key: string]: any;
 }
 

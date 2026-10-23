@@ -8,7 +8,7 @@
 // the server's answers and the read after each agree, or this fails.
 
 import type { Locator, Page } from "@playwright/test";
-import { expect, login, resetDav, test } from "./fixtures";
+import { expect, login, readCalendarObject, resetDav, seedEvent, test } from "./fixtures";
 
 const run = Date.now();
 
@@ -94,4 +94,39 @@ test("a calendar made in the sidebar takes events, and is renamed and deleted", 
   await expect(calendarRow(page, "Calendar")).toBeVisible({ timeout: 15_000 });
   await expect(calendarRow(page, renamed)).toHaveCount(0);
   await expect(chip).toHaveCount(0);
+});
+
+test("an existing event stays in its calendar, and the editor does not offer another", async ({ page }) => {
+  const uid = `e2e-kept-${run}`;
+  const summary = `E2E Kept ${run}`;
+  const other = `E2E Elsewhere ${run}`;
+  await seedEvent({ uid, summary, dtstart: "20260616T090000Z", dtend: "20260616T100000Z" });
+  await login(page);
+  await page.goto("/#/calendar/month/2026-06");
+  await expect(calendarRow(page, "Calendar")).toBeVisible({ timeout: 15_000 });
+
+  // A second calendar, so that the editor shows its calendar picker.
+  await page.locator('calendar-page alps-icon-btn[title="Add Calendar"]').click();
+  const prompt = page.locator("calendar-page ui-prompt");
+  await prompt.locator("input").fill(other);
+  await prompt.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(calendarRow(page, other)).toBeVisible();
+
+  const chip = page.locator("calendar-month-view .event-chip", { hasText: summary });
+  await chip.click();
+  await page.locator("calendar-month-view calendar-event-preview alps-icon-btn.edit-btn").filter({ visible: true }).first().click();
+  const modal = page.locator("calendar-page calendar-event-modal");
+  const picker = modal.getByLabel("Calendar", { exact: true });
+  // The server keeps an event in its calendar when it is saved. The picker
+  // could be changed all the same, and the change was ignored, unannounced.
+  await expect(picker).toBeDisabled();
+  await expect(picker.locator("option:checked")).toHaveText("Calendar");
+
+  await modal.getByLabel("Location", { exact: true }).fill("Room 4");
+  await modal.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(modal.locator("dialog")).toHaveCount(0);
+  // Saved where it was, and shown with the other calendar hidden.
+  expect(await readCalendarObject(uid)).toContain("LOCATION:Room 4");
+  await calendarRow(page, other).getByRole("checkbox").click();
+  await expect(chip).toBeVisible();
 });

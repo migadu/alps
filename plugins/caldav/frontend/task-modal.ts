@@ -305,8 +305,10 @@ export class TaskModal extends LitElement {
                 @cancel=${this.close}
             >
                 <div class="form-group">
-                    <label>${t('tasks.titleField')}</label>
+                    <!-- Each label names its field: a bare one was tied to nothing. -->
+                    <label for="task-title">${t('tasks.titleField')}</label>
                     <alps-input
+                        id="task-title"
                         label=${t('tasks.titleField')}
                         class="title-input"
                         .value=${this.title}
@@ -317,8 +319,9 @@ export class TaskModal extends LitElement {
 
                 ${!task && this.lists.length > 1 ? html`
                     <div class="form-group">
-                        <label>${t('tasks.list')}</label>
+                        <label for="task-list">${t('tasks.list')}</label>
                         <alps-select
+                            id="task-list"
                             class="list-select"
                             label=${t('tasks.list')}
                             .value=${this.calendarPath}
@@ -330,8 +333,9 @@ export class TaskModal extends LitElement {
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>${t('tasks.due')}</label>
+                        <label for="task-due">${t('tasks.due')}</label>
                         <alps-input
+                            id="task-due"
                             label=${t('tasks.due')}
                             class="due-date"
                             type="date"
@@ -341,8 +345,9 @@ export class TaskModal extends LitElement {
                     </div>
                     ${hasDue && !this.allDay ? html`
                         <div class="form-group">
-                            <label>${t('tasks.time')}</label>
+                            <label for="task-time">${t('tasks.time')}</label>
                             <alps-input
+                                id="task-time"
                                 label=${t('tasks.time')}
                                 class="due-time"
                                 type="time"
@@ -370,8 +375,9 @@ export class TaskModal extends LitElement {
                 <div class="form-row">
                     ${task ? html`
                         <div class="form-group">
-                            <label>${t('tasks.status')}</label>
+                            <label for="task-status">${t('tasks.status')}</label>
                             <alps-select
+                                id="task-status"
                                 class="status-select"
                                 label=${t('tasks.status')}
                                 .value=${this.status}
@@ -386,8 +392,9 @@ export class TaskModal extends LitElement {
                         </div>
                     ` : ''}
                     <div class="form-group">
-                        <label>${t('tasks.priority')}</label>
+                        <label for="task-priority">${t('tasks.priority')}</label>
                         <alps-select
+                            id="task-priority"
                             class="priority-select"
                             label=${t('tasks.priority')}
                             .value=${String(this.priority)}
@@ -418,9 +425,10 @@ export class TaskModal extends LitElement {
                         </div>
                     ` : ''}
                     <div class="form-group">
-                        <label>${t('tasks.repeat')}</label>
+                        <label for="task-repeat">${t('tasks.repeat')}</label>
                         ${hasDue ? html`
                             <alps-select
+                                id="task-repeat"
                                 class="repeat-select"
                                 label=${t('tasks.repeat')}
                                 .value=${this.repeat}
@@ -439,8 +447,9 @@ export class TaskModal extends LitElement {
                 </div>
 
                 <div class="form-group">
-                    <label>${t('tasks.notes')}</label>
+                    <label for="task-notes">${t('tasks.notes')}</label>
                     <textarea
+                        id="task-notes"
                         .value=${this.description}
                         placeholder=${t('tasks.addNotes')}
                         @input=${(e: Event) => { this.description = (e.target as HTMLTextAreaElement).value; }}
@@ -453,8 +462,9 @@ export class TaskModal extends LitElement {
                     </div>
                 ` : html`
                     <div class="form-group">
-                        <label>${t('tasks.assignTo')}</label>
+                        <label for="task-assignees">${t('tasks.assignTo')}</label>
                         <alps-address-input
+                            id="task-assignees"
                             class="assignees"
                             label=${t('tasks.assignTo')}
                             .addresses=${this.attendees}
