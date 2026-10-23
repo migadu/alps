@@ -2631,7 +2631,7 @@ func handleComposeNew(ctx *alps.Context) error {
 	defer func() {
 		for _, u := range taken {
 			if inMessage {
-				u.attachment.Form.RemoveAll()
+				u.attachment.Remove()
 			} else {
 				ctx.Session.ReturnAttachment(u.uuid, u.attachment)
 			}
@@ -3074,22 +3074,21 @@ func handleComposeAttachment(ctx *alps.Context) error {
 
 	composerID := ctx.QueryParam("composer_id")
 
-	var uuids []string
-	for _, fh := range form.File["attachments"] {
-		uuid, err := ctx.Session.PutAttachment(composerID, fh, form)
-		if errors.Is(err, alps.ErrAttachmentCacheSize) {
-			form.RemoveAll()
-			return ctx.JSON(http.StatusBadRequest, map[string]string{
-				"error": "Your attachments exceed the maximum file size. Remove some and try again.",
-			})
-		} else if err != nil {
-			form.RemoveAll()
-			ctx.Logger().Printf("PutAttachment: %v\n", err)
-			return ctx.JSON(http.StatusBadRequest, map[string]string{
-				"error": "failed to store attachment",
-			})
-		}
-		uuids = append(uuids, uuid)
+	// One call for the request's files: they share one file on disk, which
+	// the session removes when the last of them goes, and they are stored
+	// whole or not at all. A refused request's files are removed by it.
+	uuids, err := ctx.Session.PutAttachments(composerID, form)
+	if errors.Is(err, alps.ErrAttachmentCacheSize) {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Your attachments exceed the maximum file size. Remove some and try again.",
+		})
+	} else if errors.Is(err, alps.ErrSessionExpired) {
+		return alps.NewHTTPError(http.StatusUnauthorized, "session expired")
+	} else if err != nil {
+		ctx.Logger().Printf("PutAttachments: %v\n", err)
+		return ctx.JSON(http.StatusBadRequest, map[string]string{
+			"error": "failed to store attachment",
+		})
 	}
 
 	return ctx.JSON(http.StatusOK, &uuids)
@@ -3099,7 +3098,7 @@ func handleCancelAttachment(ctx *alps.Context) error {
 	uuid := ctx.Param("uuid")
 	a := ctx.Session.PopAttachment(uuid)
 	if a != nil {
-		a.Form.RemoveAll()
+		a.Remove()
 	}
 	return ctx.JSON(http.StatusOK, nil)
 }
