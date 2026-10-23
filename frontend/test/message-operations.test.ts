@@ -191,6 +191,12 @@ describe('saving and sending', () => {
     expect(await ops.saveDraft(new FormData())).toMatchObject({ bcc: [] });
   });
 
+  it("reads the saved draft's structure back, which a composer shows its quote's images from", async () => {
+    const structure = { Children: [{ Type: 'text', Subtype: 'html' }, { ID: '<chart@remote.test>' }] };
+    fetchMock.mockResolvedValueOnce(json(200, { draft_uid: '7', draft_mailbox: 'Drafts', draft_structure: structure }));
+    expect(await ops.saveDraft(new FormData())).toMatchObject({ uid: '7', structure });
+  });
+
   it('answers null for a draft that was not saved, for whatever reason', async () => {
     fetchMock.mockResolvedValueOnce(json(401)).mockResolvedValueOnce(json(500, {})).mockRejectedValueOnce(new TypeError('offline'));
     expect(await ops.saveDraft(new FormData())).toBeNull();
