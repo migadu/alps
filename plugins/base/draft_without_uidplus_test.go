@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/emersion/go-imap/v2"
@@ -114,5 +116,152 @@ func TestHTTP_ADraftSavedWithoutUIDPlusBesideAnotherIsNotGuessed(t *testing.T) {
 	s.expect(r, http.StatusOK)
 	if saved.UID != "" {
 		t.Errorf("the save named %q, one of two copies stored at once", saved.UID)
+	}
+}
+
+type substringTwin struct {
+	imapserver.Session
+	removeOriginal bool
+}
+
+func (s substringTwin) Append(ctx context.Context, mailbox string, r imap.LiteralReader, options *imap.AppendOptions) (*imap.AppendData, error) {
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	ours := *options
+	ours.Flags = append([]imap.Flag(nil), options.Flags...)
+	if s.removeOriginal {
+		ours.Flags = append(ours.Flags, imap.FlagDeleted)
+	}
+	stored, err := s.Session.Append(ctx, mailbox, literal{bytes.NewReader(b)}, &ours)
+	if err != nil {
+		return nil, err
+	}
+	if s.removeOriginal {
+		if _, err := s.Session.Select(ctx, mailbox, &imap.SelectOptions{}); err != nil {
+			return nil, err
+		}
+		set := imap.UIDSetNum(stored.UID)
+		if err := s.Session.Expunge(ctx, nil, &set); err != nil {
+			return nil, err
+		}
+	}
+	// Another client stores a different message whose Message-ID happens to
+	// contain ours. IMAP HEADER SEARCH matches the substring, not the ID.
+	other := strings.Replace(string(b), "<notes@example.com>", "<xnotes@example.com>", 1)
+	other = strings.Replace(other, "our draft", "another message", 1)
+	_, err = s.Session.Append(ctx, mailbox, literal{bytes.NewReader([]byte(other))}, options)
+	return nil, err
+}
+
+func TestHTTP_ADraftUIDLookupRequiresAnExactMessageID(t *testing.T) {
+	for _, removed := range []bool{false, true} {
+		name := "beside a substring match"
+		if removed {
+			name = "our draft removed before lookup"
+		}
+		t.Run(name, func(t *testing.T) {
+			s := newIMAPTestServerWith(t, imap.CapSet{imap.CapIMAP4rev1: {}}, func(inner imapserver.Session) imapserver.Session {
+				return substringTwin{inner, removed}
+			})
+			s.login()
+			s.expect(s.do("POST", "/mailboxes", url.Values{"name": {"Drafts"}}), http.StatusOK)
+			r, saved := saveDraft(t, s, draftForm("our draft"))
+			s.expect(r, http.StatusOK)
+			if removed {
+				if saved.UID != "" {
+					t.Errorf("the removed draft was assigned unrelated UID%s", saved.UID)
+				}
+				return
+			}
+			if saved.UID == "" {
+				t.Fatal("a substring-only match hid our uniquely identified draft")
+			}
+			r = s.do("GET", "/mailboxes/"+saved.Mailbox+"/messages/"+saved.UID, nil)
+			s.expect(r, http.StatusOK)
+			var opened struct{ Body string }
+			r.json(t, &opened)
+			if opened.Body != "our draft" {
+				t.Errorf("the named draft holds %q", opened.Body)
+			}
+		})
+	}
+}
+
+type refusedDraftLookup struct {
+	imapserver.Session
+	refuse    *atomic.Bool
+	ambiguous bool
+}
+
+func (s refusedDraftLookup) Append(ctx context.Context, mailbox string, r imap.LiteralReader, options *imap.AppendOptions) (*imap.AppendData, error) {
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	count := 1
+	if s.ambiguous && s.refuse.Load() {
+		count = 2
+	}
+	for range count {
+		if _, err := s.Session.Append(ctx, mailbox, literal{bytes.NewReader(b)}, options); err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
+}
+
+func (s refusedDraftLookup) Search(ctx context.Context, kind imapserver.NumKind, criteria *imap.SearchCriteria, options *imap.SearchOptions) (*imap.SearchData, error) {
+	if s.refuse.Load() && !s.ambiguous {
+		return nil, &imap.Error{Type: imap.StatusResponseTypeNo, Text: "lookup unavailable"}
+	}
+	return s.Session.Search(ctx, kind, criteria, options)
+}
+
+func TestHTTP_AnEditedDraftKeepsItsSourceWhenTheNewUIDCannotBeRecovered(t *testing.T) {
+	for _, ambiguous := range []bool{false, true} {
+		name := "refused lookup"
+		if ambiguous {
+			name = "ambiguous exact matches"
+		}
+		t.Run(name, func(t *testing.T) {
+			var refuse atomic.Bool
+			s := newIMAPTestServerWith(t, imap.CapSet{imap.CapIMAP4rev1: {}}, func(inner imapserver.Session) imapserver.Session {
+				return refusedDraftLookup{inner, &refuse, ambiguous}
+			})
+			s.login()
+			s.expect(s.do("POST", "/mailboxes", url.Values{"name": {"Drafts"}}), http.StatusOK)
+			notes := s.upload("notes.txt", "Keep this attachment source.")
+			form := draftWith(notes)
+			form.Set("message_id", "<notes@example.com>")
+			r, first := saveDraft(t, s, form)
+			s.expect(r, http.StatusOK)
+			if first.UID == "" {
+				t.Fatal("the first draft was not named")
+			}
+			refuse.Store(true)
+			form = draftForm("newer text")
+			form.Set("draft_uid", first.UID)
+			form.Set("draft_mailbox", first.Mailbox)
+			form.Set("prev_attachments", "2")
+			r, _ = saveDraft(t, s, form)
+			if r.status == http.StatusOK {
+				t.Error("an unidentifiable replacement draft was reported as complete")
+			}
+			refuse.Store(false)
+			r = s.do("GET", "/mailboxes/"+first.Mailbox+"/messages/"+first.UID+"/raw?part=2", nil)
+			s.expect(r, http.StatusOK)
+			if !strings.Contains(string(r.body), "Keep this attachment source.") {
+				t.Errorf("the old attachment source was lost: %s", r.body)
+			}
+			want := 2
+			if ambiguous {
+				want = 3
+			}
+			if got := s.mailbox(first.Mailbox).Total; got != want {
+				t.Errorf("Drafts holds %d messages, want %d including preserved original", got, want)
+			}
+		})
 	}
 }

@@ -2745,7 +2745,12 @@ func handleComposeNew(ctx *alps.Context) error {
 			// A server without UIDPLUS stores the draft without saying under
 			// which UID: there is nothing to read it back by.
 			if uid == nil {
-				return deleteDraft(p, draftPath)
+				if draftPath != nil {
+					// The composer still refers to the old draft and its parts.
+					// Keep that source until a replacement can be identified.
+					return errors.New("the replacement draft was stored but could not be identified; the previous draft was kept")
+				}
+				return nil
 			}
 
 			// Fetch the new attachments to get updated part paths BEFORE deleting the old draft!
