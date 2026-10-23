@@ -304,6 +304,7 @@ export const en = {
     emptyMailboxSlow: 'Still emptying {folder}. The server is working on it — check the folder again in a moment.'
   },
   composer: {
+    windowLoadFailed: 'The message window could not be loaded.',
     discardFailed: 'The draft could not be deleted from the server and is still in Drafts.',
     attachmentsTooLarge: 'Attachments exceed the maximum allowed size.',
     draftSaveFailedKeepOpen: 'Could not save this draft — the window stays open so nothing is lost',

@@ -297,6 +297,7 @@ export const pt = {
     emptyMailboxSlow: 'Ainda esvaziando {folder}. O servidor está trabalhando nisso — verifique novamente em instantes.'
   },
   composer: {
+    windowLoadFailed: 'Não foi possível carregar a janela da mensagem.',
     discardFailed: 'Não foi possível excluir o rascunho do servidor e ele ainda está em Rascunhos.',
     attachmentsTooLarge: 'Os anexos excedem o tamanho máximo permitido.',
     draftSaveFailedKeepOpen: 'Não foi possível salvar este rascunho — a janela permanece aberta para não perder nada',

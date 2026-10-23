@@ -306,6 +306,7 @@ export const da: TranslationDictionary = {
     emptyMailboxSlow: 'Tømmer stadig {folder}. Serveren arbejder på det – se efter igen om et øjeblik.'
   },
   composer: {
+    windowLoadFailed: 'Beskedvinduet kunne ikke indlæses.',
     discardFailed: 'Kladden kunne ikke slettes fra serveren og ligger stadig i Kladder.',
     attachmentsTooLarge: 'De vedhæftede filer overskrider den maksimalt tilladte størrelse.',
     draftSaveFailedKeepOpen: 'Kladden kunne ikke gemmes — vinduet forbliver åbent, så intet går tabt',

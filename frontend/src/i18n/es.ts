@@ -250,6 +250,7 @@ export const es = {
     emptyMailboxSlow: 'Todavía se está vaciando {folder}. El servidor sigue trabajando: vuelve a comprobarlo en un momento.'
   },
   composer: {
+    windowLoadFailed: 'No se ha podido cargar la ventana del mensaje.',
     discardFailed: 'No se pudo eliminar el borrador del servidor y sigue en Borradores.',
     attachmentsTooLarge: 'Los archivos adjuntos superan el tamaño máximo permitido.',
     draftSaveFailedKeepOpen: 'No se pudo guardar este borrador: la ventana permanece abierta para no perder nada',

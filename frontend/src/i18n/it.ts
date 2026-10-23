@@ -250,6 +250,7 @@ export const it = {
     emptyMailboxSlow: 'Svuotamento di {folder} ancora in corso. Il server ci sta lavorando: ricontrolla tra un momento.'
   },
   composer: {
+    windowLoadFailed: 'Impossibile caricare la finestra del messaggio.',
     discardFailed: 'Non è stato possibile eliminare la bozza dal server ed è ancora nelle bozze.',
     attachmentsTooLarge: 'Gli allegati superano la dimensione massima consentita.',
     draftSaveFailedKeepOpen: 'Impossibile salvare questa bozza — la finestra resta aperta per non perdere nulla',
