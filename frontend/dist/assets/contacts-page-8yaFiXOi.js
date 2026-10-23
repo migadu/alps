@@ -1,4 +1,4 @@
-import{_ as e,d as t,f as n,h as r,m as i,p as a,s as o,y as s}from"./lit-CB2iQgdU.js";import{B as c,I as l,J as u,K as d,Y as f,at as p,c as m,f as h,it as g,l as _,nt as v,o as y,ot as b,rt as x,st as S,t as C,tt as w,u as T,z as E}from"./index-BNabf547.js";var D=`All Contacts`,O=`Favorites`,k=class extends i{constructor(...e){super(...e),this.contacts=[],this.uniqueCategories=[],this.selectedCategory=``,this.filterQuery=``,this.activeKebabMenu=null,this.sidebarScrolled=!1}static{this.styles=[T,_,s`
+import{_ as e,d as t,f as n,h as r,m as i,p as a,s as o,y as s}from"./lit-CB2iQgdU.js";import{B as c,I as l,J as u,K as d,Y as f,at as p,c as m,f as h,it as g,l as _,nt as v,o as y,ot as b,rt as x,st as S,t as C,tt as w,u as T,z as E}from"./index-Bql1o0Vn.js";var D=`All Contacts`,O=`Favorites`,k=class extends i{constructor(...e){super(...e),this.contacts=[],this.uniqueCategories=[],this.selectedCategory=``,this.filterQuery=``,this.activeKebabMenu=null,this.sidebarScrolled=!1}static{this.styles=[T,_,s`
     :host {
       display: flex;
       flex-direction: column;
