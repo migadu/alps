@@ -211,31 +211,26 @@ func rereadMailboxCounts(ctx *alps.Context, names []string) {
 // one, as an APPEND to Sent may) drops the list, which is then read again,
 // with every folder's counts.
 func patchListedCounts(cache *alps.Cache, names []string, statuses []*MailboxStatus) {
-	cached, ok := cache.Get("mailboxes")
-	if !ok {
-		return
-	}
-	mailboxes, ok := cached.([]MailboxInfo)
-	if !ok {
-		cache.Delete("mailboxes")
-		return
-	}
-	// A copy, not the list in place: another request may be reading it.
-	updated := slices.Clone(mailboxes)
-	for i, name := range names {
-		j := slices.IndexFunc(updated, func(mbox MailboxInfo) bool { return mbox.Name() == name })
-		if j < 0 || statuses[i] == nil || statuses[i].NumMessages == nil || statuses[i].NumUnseen == nil {
-			cache.Delete("mailboxes")
-			return
+	// Transform the current live list atomically. Separate Get/Replace calls
+	// let concurrent checks of different folders erase one another's counts.
+	// Update also keeps the original expiry and never recreates a dropped list.
+	cache.Update("mailboxes", func(cached any) any {
+		mailboxes, ok := cached.([]MailboxInfo)
+		if !ok {
+			return nil
 		}
-		updated[j].Total = int(*statuses[i].NumMessages)
-		updated[j].Unseen = int(*statuses[i].NumUnseen)
-	}
-	// With the expiry the list was read with. Set would renew it, and a list
-	// patched on every write would never be read again: the counts of the
-	// folders no write touched, and whose own cached counts have gone, would
-	// be as old as the session.
-	cache.Replace("mailboxes", updated)
+		// A copy, not the list in place: another request may be reading it.
+		updated := slices.Clone(mailboxes)
+		for i, name := range names {
+			j := slices.IndexFunc(updated, func(mbox MailboxInfo) bool { return mbox.Name() == name })
+			if j < 0 || statuses[i] == nil || statuses[i].NumMessages == nil || statuses[i].NumUnseen == nil {
+				return nil
+			}
+			updated[j].Total = int(*statuses[i].NumMessages)
+			updated[j].Unseen = int(*statuses[i].NumUnseen)
+		}
+		return updated
+	})
 }
 
 // forgetMessages drops what the session holds of messages that have left
