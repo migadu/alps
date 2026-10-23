@@ -167,6 +167,24 @@ describe('shared polling counts', () => {
     expect(seen.at(-1).data.Username).toBe('grace@example.com');
   });
 
+  it('forgets a kept folder once a background check confirms it is gone', async () => {
+    const svc = service();
+    await land(svc, 'Work');
+    const normal = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation((url: string) => url.startsWith('/mailboxes/Work?page=')
+      ? Promise.resolve(new Response('{}', { status: 404 })) : normal(url));
+    state.Work.total++;
+    await svc.check('Work', 0);
+    await land(svc, 'INBOX');
+    let release!: (r: Response) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { release = resolve; }));
+    const seen = successes(svc);
+    const revisit = svc.fetch('Work', 0, '', false, true);
+    expect(seen).toEqual([]);
+    release(new Response('{}', { status: 404 }));
+    await revisit;
+  });
+
   it('pauses a hidden follower and checks and subscribes again when shown', async () => {
     const leader = service(), follower = service();
     await land(leader); await land(follower, 'Work');

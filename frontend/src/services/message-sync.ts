@@ -980,6 +980,7 @@ export class MessageSyncService extends EventTarget {
       // renamed or deleted in another tab left this one polling a mailbox that
       // no longer exists, silently, until the user clicked something.
       if (response.status === 404) {
+        this.forgetListings((listed) => listed === mailbox);
         this.dispatchEvent(new CustomEvent('mailbox-not-found'));
         return true;
       }
