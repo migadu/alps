@@ -6,7 +6,6 @@ import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
 import { messageOperations } from '../services/message-operations';
 import { readUserSettings } from '../store/settings-store';
-import { messageSync } from '../services/message-sync';
 import './alps-address-input.js';
 import './alps-message-composer.js';
 import './alps-button.js';
@@ -859,10 +858,11 @@ export class AlpsFloatingComposer extends LitElement {
 
       registry.invokeHook('composer:send', { recipients: allTo });
 
-      if (currentInstance.draftMailbox) {
-        messageSync.fetch(currentInstance.draftMailbox, 0, '', false);
-      }
-
+      // Drafts is not read again for the draft the send deleted: the sync
+      // sendDraft started re-reads the folder on screen, which is Drafts when
+      // Drafts is open. A read of Drafts made here took the listing there, so
+      // Drafts' rows went up under whatever folder was open, and polling read
+      // Drafts after it.
       this.composeStore.closeComposer(id);
     } catch (err: any) {
       Logger.error('Failed to send message:', err);
