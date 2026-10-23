@@ -537,16 +537,24 @@ const SERBIAN_FAMILIAR: { familiar: string; formal: string; marker: RegExp; caug
   {
     familiar: 'Pokušaj ponovo',
     formal: 'Pokušajte ponovo',
-    marker: serbianCommand('pokušaj ponovo'),
-    caught: ['Došlo je do greške na mreži. Pokušaj ponovo.', 'Дошло је до грешке на мрежи. Покушај поново.'],
-    spared: ['Došlo je do greške na mreži. Pokušajte ponovo.', 'Дошло је до грешке на мрежи. Покушајте поново.'],
+    // On its own too. The button under a folder or a filter list that failed
+    // to load asks the user to try again, as the reader's button already did
+    // in the plural; it is not a command the user gives the app.
+    marker: /(?:^|(?<=[.!?:;]\s+))pokušaj ponovo(?!\p{L})/iu,
+    caught: [
+      'Došlo je do greške na mreži. Pokušaj ponovo.', 'Дошло је до грешке на мрежи. Покушај поново.',
+      'Pokušaj ponovo', 'Покушај поново',
+    ],
+    spared: [
+      'Došlo je do greške na mreži. Pokušajte ponovo.', 'Дошло је до грешке на мрежи. Покушајте поново.',
+      'Pokušajte ponovo', 'Покушајте поново',
+    ],
   },
 ];
 
 /** Spelt like a familiar form, but a command the user gives, a noun or a possessive. */
 const SERBIAN_NOT_FAMILIAR = [
   'Sačuvaj i zatvori', 'Сачувај и затвори',
-  'Pokušaj ponovo', 'Покушај поново',
   'Novi pokušaj za {count} sekundi...', 'Нови покушај за {count} секунди...',
   'Vaš odgovor', 'Ваш одговор',
   'Nikada ne označavaj automatski', 'Никада не означавај аутоматски',

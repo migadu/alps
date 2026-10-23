@@ -214,7 +214,7 @@ export const sr = {
     filterUnread: 'Filtriraj po nepročitanim',
     noMessages: 'Nema poruka',
     loadError: 'Nije moguće učitati ovu fasciklu.',
-    loadErrorRetry: 'Pokušaj ponovo',
+    loadErrorRetry: 'Pokušajte ponovo',
     loading: 'Učitavanje...',
     unknownSender: 'Nepoznat pošiljalac',
     unknown: 'Nepoznato',
