@@ -318,26 +318,32 @@ func setCategories(card vcard.Card, categories []string) {
 // box, the first, is not shown.
 var addressShown = []int{2, 1, 3, 4, 5, 6}
 
-// addressComponents is an ADR value's seven components.
+// addressComponents is an ADR value's seven components, as written: an ADR
+// is held with its escapes in place (see structuredProperties).
 func addressComponents(value string) []string {
-	components := strings.Split(value, ";")
+	components := splitAt(value, ';')
 	for len(components) < 7 {
 		components = append(components, "")
 	}
 	return components
 }
 
-// addressLine is an address as the page shows it: its parts on one line.
+// addressLine is an address as the page shows it: its parts on one line,
+// their escapes undone.
 func addressLine(f *vcard.Field) string {
 	components := addressComponents(f.Value)
 	var parts []string
 	for _, i := range addressShown {
 		if components[i] != "" {
-			parts = append(parts, components[i])
+			parts = append(parts, unescapeText(components[i]))
 		}
 	}
 	return strings.Join(parts, ", ")
 }
+
+// componentValue is a component written for text the page sent: one value,
+// a comma in it escaped.
+var componentValue = strings.NewReplacer(`\`, `\\`, "\n", `\n`, ",", `\,`, ";", `\;`).Replace
 
 // addShown adds f to a field the page shows one copy of, as the copy it
 // shows from then on: the page reads the preferred copy, so f goes first and
@@ -376,7 +382,7 @@ func setAddress(card vcard.Card, f *vcard.Field, line string) {
 	line = strings.TrimSpace(strings.ReplaceAll(line, ";", ","))
 	if f == nil {
 		if line != "" {
-			addShown(card, vcard.FieldAddress, &vcard.Field{Value: ";;" + line + ";;;;"})
+			addShown(card, vcard.FieldAddress, &vcard.Field{Value: ";;" + componentValue(line) + ";;;;"})
 		}
 		return
 	}
@@ -404,11 +410,11 @@ func setAddress(card vcard.Card, f *vcard.Field, line string) {
 			splittable = splittable && !strings.Contains(old[i], ",")
 		}
 	}
-	components := []string{"", "", line, "", "", "", ""}
+	components := []string{"", "", componentValue(line), "", "", "", ""}
 	if parts := strings.Split(line, ","); splittable && len(parts) == len(shown) {
 		components = append([]string(nil), old[:7]...)
 		for k, i := range shown {
-			components[i] = strings.TrimSpace(parts[k])
+			components[i] = componentValue(strings.TrimSpace(parts[k]))
 		}
 	}
 	f.Value = strings.Join(components, ";")

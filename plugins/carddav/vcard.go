@@ -74,7 +74,7 @@ func formatLine(key string, f *vcard.Field) string {
 			s += ";" + name + "=" + formatParamValue(v)
 		}
 	}
-	if listProperties[strings.ToUpper(key)] {
+	if heldAsWritten(key) {
 		// Held as written, its escapes in place: escaped again, every
 		// separator became part of one element.
 		return s + ":" + strings.ReplaceAll(f.Value, "\n", `\n`)
