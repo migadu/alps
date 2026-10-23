@@ -5,6 +5,7 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { managesieveService, TwoVacationsError } from './managesieve-service';
 import '../../../frontend/src/components/alps-button';
+import { MessageCache } from '../../../frontend/src/utils/message-cache';
 
 @customElement('alps-raw-editor')
 export class RawEditor extends LitElement {
@@ -22,6 +23,12 @@ export class RawEditor extends LitElement {
 	@property({ type: String }) stored = '';
 	@state() private isValidating = false;
 	@state() private isSaving = false;
+
+	get hasUnsavedChanges(): boolean {
+		// Typing back to the old value while a different value is being saved
+		// still needs retaining: that pending write becomes the new baseline.
+		return this.script !== this.stored || this.isSaving;
+	}
 
 	static styles = css`
 		.editor-container {
@@ -162,12 +169,14 @@ export class RawEditor extends LitElement {
 
 	private async save() {
 		this.isSaving = true;
+		const session = MessageCache.generation();
 		// What was SENT, captured before the round trip. Recording this.script once
 		// the PUT landed marked anything typed while it was in flight as saved: Save
 		// went back to disabled, and those characters never reached the server.
 		const sent = this.script;
 		try {
 			const { autoReplyOn } = await managesieveService.saveScript(sent, 'PUT');
+			if (session !== MessageCache.generation()) return;
 			this.stored = sent;
 			this.dispatchEvent(new CustomEvent('script-saved', { detail: { script: sent } }));
 			// As on the visual editor's save: an empty script is switched off,
@@ -175,6 +184,7 @@ export class RawEditor extends LitElement {
 			const msgKey = sent.trim() === '' && !autoReplyOn ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.i18nStore.t(msgKey), duration: 3000 } }));
 		} catch (e: any) {
+			if (session !== MessageCache.generation()) return;
 			const message = e instanceof TwoVacationsError
 				? this.i18nStore.t('managesieve.toast.autoReplyOn')
 				: e.message || this.i18nStore.t('managesieve.toast.networkError');
