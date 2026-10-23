@@ -1179,8 +1179,8 @@ export class MailboxPage extends LitElement {
           // Same rule for the open message: a fresh copy of it rebuilds the
           // reader's cards and re-runs the list's "another message was opened"
           // path, for flags that are the ones already held.
-          if (updatedMsg && updatedMsg.Flags && !sameFlags(this.selectedMessage.Flags, updatedMsg.Flags)) {
-            this.selectedMessage = { ...this.selectedMessage, Flags: updatedMsg.Flags };
+          if (updatedMsg && updatedMsg.Flags !== undefined && !sameFlags(this.selectedMessage.Flags, updatedMsg.Flags)) {
+            this.selectedMessage = { ...this.selectedMessage, Flags: updatedMsg.Flags ?? [] };
           }
         }
       } else {

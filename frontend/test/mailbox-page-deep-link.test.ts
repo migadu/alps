@@ -230,6 +230,19 @@ describe('a message already open when the list is read again', () => {
     expect(el.selectedMessage?.UID).toBe('42');
   });
 
+  it('stays open when a foreground listing is now empty', async () => {
+    const reader = await openedFromTheLink('text');
+    const el = reader.getRootNode().host as El;
+    const reads = readsOfTheMessage().length;
+    listing = () => [];
+    refuseReads = true;
+    await readTheListAgain(el);
+    expect(el.messages).toEqual([]);
+    expect(el.selectedMessage?.UID).toBe('42');
+    expect(readsOfTheMessage()).toHaveLength(reads);
+    expect(reader.content).toBe('The engine runs.');
+  });
+
   it('stays open when a read of it again would have failed', async () => {
     // And when that read failed, the page took the message for gone, closed
     // the reader and took it out of the address.
@@ -245,7 +258,7 @@ describe('a message already open when the list is read again', () => {
 });
 
 describe('a message the list holds under a thread\'s row', () => {
-  const threaded = (flags: string[]) => [{ ...row(9), SubMessages: [{ ...linked, Flags: flags }] }, row(8)];
+  const threaded = (flags: string[] | null) => [{ ...row(9), SubMessages: [{ ...linked, Flags: flags }] }, row(8)];
 
   it('is opened as the list holds it, and not read again with the list', async () => {
     // Only the rows themselves were looked through, so a message under a
@@ -262,6 +275,29 @@ describe('a message the list holds under a thread\'s row', () => {
 
     expect(readsOfTheMessage()).toHaveLength(reads);
     expect(el.selectedMessage?.UID).toBe('42');
+  });
+
+  for (const cleared of [[], null] as const) {
+    it(`clears the open sub-message flags when the new listing answers ${cleared === null ? 'null' : 'an empty array'}`, async () => {
+      listing = () => threaded(['\\Seen', '\\Flagged']);
+      const reader = await openedFromTheLink('text');
+      const el = reader.getRootNode().host as El;
+      expect(el.selectedMessage.Flags).toContain('\\Flagged');
+      listing = () => threaded(cleared as string[] | null);
+      await readTheListAgain(el);
+      expect(el.selectedMessage.Flags ?? []).toEqual([]);
+      expect(reader.message.Flags ?? []).toEqual([]);
+    });
+  }
+
+  it('keeps known flags when the new listing omits the Flags field', async () => {
+    listing = () => threaded(['\\Seen', '\\Flagged']);
+    const reader = await openedFromTheLink('text');
+    const el = reader.getRootNode().host as El;
+    listing = () => [{ ...row(9), SubMessages: [{ ...linked, Flags: undefined }] }];
+    await readTheListAgain(el);
+    expect(el.selectedMessage.Flags).toEqual(['\\Seen', '\\Flagged']);
+    expect(reader.message.Flags).toEqual(['\\Seen', '\\Flagged']);
   });
 
   it('takes its flags from the list read again', async () => {
