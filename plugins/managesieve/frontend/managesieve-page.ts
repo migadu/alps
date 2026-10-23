@@ -10,6 +10,17 @@ import './raw-editor';
 import './visual-editor';
 import { managesieveService, TwoVacationsError } from './managesieve-service';
 import '../../../frontend/src/components/ui-confirm';
+import { UnsavedEdit } from './unsaved';
+
+/** The filters as they were left unsaved, in the editor they were left in. */
+interface FiltersEdit {
+	mode: 'visual' | 'raw';
+	script: string;
+	visualState: VisualState;
+}
+
+/** The filters left unsaved, for the page's next visit. */
+const unsavedFilters = new UnsavedEdit<FiltersEdit>();
 
 @customElement('alps-managesieve-page')
 export class ManageSievePage extends LitElement {
@@ -61,6 +72,45 @@ export class ManageSievePage extends LitElement {
 		this.fetchFolders();
 	}
 
+	disconnectedCallback() {
+		super.disconnectedCallback();
+		// A page still reading leaves what an earlier visit kept as it is.
+		if (this.isLoading || this.loadFailed) return;
+		if (this.unsaved) {
+			unsavedFilters.keep(this.storedScript, { mode: this.mode, script: this.script, visualState: this.visualState });
+		} else {
+			unsavedFilters.forget();
+		}
+	}
+
+	/** Whether the editor on screen holds what the server does not: Save is offered. */
+	private get unsaved(): boolean {
+		if (this.mode === 'raw') return this.script !== this.storedScript;
+		const editor = this.shadowRoot?.querySelector('alps-visual-editor') as { isDirty?: boolean } | null;
+		return editor?.isDirty === true;
+	}
+
+	/**
+	 * Puts back the filters left unsaved on the last visit, over the script just
+	 * read, if that is the script they were made on. The visual editor takes the
+	 * first rules it is given for the saved ones, so it is told which those are.
+	 */
+	private async restoreUnsaved() {
+		// Taken only by a page still on screen: one left before the read
+		// answered would take the edit away with it.
+		if (this.loadFailed || !this.isConnected) return;
+		const kept = unsavedFilters.take(this.storedScript);
+		if (!kept) return;
+		const saved = JSON.stringify(this.visualState);
+		this.mode = kept.mode;
+		this.script = kept.script;
+		this.visualState = kept.visualState;
+		if (kept.mode !== 'visual') return;
+		await this.updateComplete;
+		const editor = this.shadowRoot?.querySelector('alps-visual-editor') as { markClean?: (snapshot: string) => void } | null;
+		editor?.markClean?.(saved);
+	}
+
 	private async fetchScript() {
 		this.isLoading = true;
 		this.loadFailed = false;
@@ -86,6 +136,7 @@ export class ManageSievePage extends LitElement {
 		} finally {
 			this.isLoading = false;
 		}
+		await this.restoreUnsaved();
 	}
 
 	private async fetchFolders() {

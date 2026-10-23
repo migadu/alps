@@ -10,6 +10,10 @@ import '../../../frontend/src/components/alps-select';
 import '../../../frontend/src/components/alps-setting-group';
 import { AUTO_REPLY_DAYS, DEFAULT_AUTO_REPLY, type AutoReply } from './auto-reply';
 import { managesieveService, TwoVacationsError } from './managesieve-service';
+import { UnsavedEdit } from './unsaved';
+
+/** The reply as it was left unsaved, for the page's next visit. */
+const unsavedReply = new UnsavedEdit<AutoReply>();
 
 /** Today in the browser's zone, as `YYYY-MM-DD`: the calendar the dates are typed in. */
 function today(): string {
@@ -131,6 +135,14 @@ export class AutoReplyPage extends LitElement {
 		this.load();
 	}
 
+	disconnectedCallback() {
+		super.disconnectedCallback();
+		// A page still reading leaves what an earlier visit kept as it is.
+		if (this.loading || this.loadFailed) return;
+		if (this.dirty) unsavedReply.keep(JSON.stringify(this.stored), this.draft);
+		else unsavedReply.forget();
+	}
+
 	private async load() {
 		try {
 			const { reply, extensions, ownVacation } = await managesieveService.fetchAutoReply();
@@ -141,6 +153,10 @@ export class AutoReplyPage extends LitElement {
 			// script requiring the extension would be refused, so the draft goes
 			// without them — and reads as the unsaved change it is.
 			this.draft = this.offersDates ? this.stored : { ...this.stored, start: '', end: '' };
+			// Taken only by a page still on screen: one left before the read
+			// answered would take the edit away with it.
+			const kept = this.isConnected ? unsavedReply.take(JSON.stringify(this.stored)) : null;
+			if (kept) this.draft = kept;
 		} catch (e) {
 			console.error('Failed to fetch the auto-reply', e);
 			this.loadFailed = true;
