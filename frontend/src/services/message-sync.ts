@@ -19,8 +19,8 @@ export interface MailboxData {
    */
   ListedMailbox?: string;
   /** The counts the listing was read at, of the mailbox and of the Inbox. */
-  Mailbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number; HighestModSeq?: number } | null;
-  Inbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number; HighestModSeq?: number } | null;
+  Mailbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number; HighestModSeq?: string | number } | null;
+  Inbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number; HighestModSeq?: string | number } | null;
 }
 
 /**
@@ -34,7 +34,7 @@ interface Counts {
   unseen: number;
   uidnext?: number;
   uidvalidity?: number;
-  highestmodseq?: number;
+  highestmodseq?: string | null;
 }
 
 /**
@@ -1137,15 +1137,24 @@ function checkedCounts(body: any): Counts | null {
 /**
  * A change number, or undefined where there is none. A listing says 0 where
  * the mail server numbers no changes, and the status check leaves it out:
- * the two are the same answer.
+ * the two are the same answer. null means an unusable version, which always
+ * requires a listing read. Decimal strings keep all 63 bits of a MODSEQ.
  */
-function changeNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && value > 0 ? value : undefined;
+function changeNumber(value: unknown): string | null | undefined {
+  if (value === undefined || value === 0 || value === '0') return undefined;
+  // Legacy safe numeric replies still compare with the exact string form.
+  // Unsafe or malformed values remain uncertain: two unknown versions must
+  // never count as equal and suppress a listing read.
+  if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0 ? String(value) : null;
+  if (typeof value === 'string' && /^[1-9]\d{0,18}$/.test(value)
+    && (value.length < 19 || value <= '9223372036854775807')) return value;
+  return null;
 }
 
 /** Whether a check's answer is the counts held; neither unknown. */
 function sameCounts(answer: Counts | null, held: Counts | null): boolean {
-  return !!answer && !!held && answer.total === held.total && answer.unseen === held.unseen
+  return !!answer && !!held && answer.highestmodseq !== null && held.highestmodseq !== null
+    && answer.total === held.total && answer.unseen === held.unseen
     && answer.uidnext === held.uidnext && answer.uidvalidity === held.uidvalidity
     && answer.highestmodseq === held.highestmodseq;
 }

@@ -1198,7 +1198,7 @@ type MailboxStatusResponse struct {
 	// server numbers its changes, as the listing's Mailbox and Inbox carry
 	// it, and is left out otherwise. A flag changed in another client, which
 	// may leave every count as it was, moves it.
-	HighestModSeq uint64 `json:"highestmodseq,omitempty"`
+	HighestModSeq uint64 `json:"highestmodseq,omitempty,string"`
 }
 
 // handleMailboxStatus returns a lightweight JSON response with the current

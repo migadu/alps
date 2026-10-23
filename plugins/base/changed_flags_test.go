@@ -68,7 +68,7 @@ func (s *testServer) changeNumber(mailbox string) uint64 {
 	r := s.do("GET", "/mailboxes/"+mailbox+"/status", nil)
 	s.expect(r, http.StatusOK)
 	var status struct {
-		HighestModSeq uint64 `json:"highestmodseq"`
+		HighestModSeq uint64 `json:"highestmodseq,string"`
 	}
 	if err := json.Unmarshal(r.body, &status); err != nil {
 		s.t.Fatal(err)

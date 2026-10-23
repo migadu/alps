@@ -969,6 +969,59 @@ describe('polling', () => {
     expect(listingsAsked()).toEqual(['/mailboxes/Work?page=0']);
   });
 
+  it('detects adjacent legal MODSEQ values above the JavaScript integer limit', async () => {
+    let modseq = '9007199254740992';
+    fetchMock.mockImplementation(async (url: string) => {
+      const status = { NumMessages: 2, NumUnseen: 1, HighestModSeq: '$MODSEQ' };
+      const body = url.includes('/status')
+        ? { total: 2, unseen: 1, highestmodseq: '$MODSEQ' }
+        : { Messages: [], Total: 2, Mailbox: status, Inbox: status };
+      // The server keeps the opaque63-bit version as decimal text.
+      return new Response(JSON.stringify(body).replaceAll('$MODSEQ', modseq), { status: 200 });
+    });
+    const svc = service();
+    await landed(svc, 'Work');
+    fetchMock.mockClear();
+    svc.start(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toEqual([]);
+    modseq = '9007199254740993';
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toEqual(['/mailboxes/Work?page=0']);
+  });
+
+  for (const value of [9007199254740992, -1, 1.5, null, true, '7x', '01', '', '9223372036854775808']) {
+    it(`re-lists when MODSEQ is unsafe or malformed (${JSON.stringify(value)})`, async () => {
+      fetchMock.mockImplementation(async (url: string) => {
+        const status = { NumMessages: 2, NumUnseen: 1, HighestModSeq: value };
+        return new Response(JSON.stringify(url.includes('/status')
+          ? { total: 2, unseen: 1, highestmodseq: value }
+          : { Messages: [], Total: 2, Mailbox: status, Inbox: status }), { status: 200 });
+      });
+      const svc = service();
+      await landed(svc, 'Work');
+      fetchMock.mockClear();
+      svc.start(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(listingsAsked()).toEqual(['/mailboxes/Work?page=0']);
+    });
+  }
+
+  for (const [listed, checked] of [[7, '7'], ['9223372036854775807', '9223372036854775807'], ['0', undefined]]) {
+    it(`keeps equal exact or legacy-safe MODSEQ values (${listed}/${checked})`, async () => {
+      fetchMock.mockImplementation(async (url: string) => new Response(JSON.stringify(url.includes('/status')
+        ? { total: 2, unseen: 1, highestmodseq: checked }
+        : { Messages: [], Total: 2, Mailbox: { NumMessages: 2, NumUnseen: 1, HighestModSeq: listed },
+          Inbox: { NumMessages: 2, NumUnseen: 1, HighestModSeq: listed } }), { status: 200 }));
+      const svc = service();
+      await landed(svc, 'Work');
+      fetchMock.mockClear();
+      svc.start(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(listingsAsked()).toEqual([]);
+    });
+  }
+
   it('takes a listing that numbers no change and a check that names none for the same counts', async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.includes('/status')) return new Response(JSON.stringify({ total: 2, unseen: 1 }), { status: 200 });
