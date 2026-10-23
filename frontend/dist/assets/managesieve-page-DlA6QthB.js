@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js";import{_t as c,at as l,l as u,vt as d}from"./index-BBqnOQLc.js";import{n as f,o as p,r as m,t as h}from"./unsaved-DwImVQMT.js";var g=class extends r{constructor(...e){super(...e),this.isDirty=!1,this.script=``,this.stored=``,this.isValidating=!1,this.isSaving=!1}get hasUnsavedChanges(){return this.script!==this.stored||this.isSaving}static{this.styles=e`
+import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js";import{_t as c,at as l,l as u,vt as d}from"./index-C1y77yVM.js";import{n as f,o as p,r as m,t as h}from"./unsaved-Ccsn4tid.js";var g=class extends r{constructor(...e){super(...e),this.isDirty=!1,this.script=``,this.stored=``,this.isValidating=!1,this.isSaving=!1}get hasUnsavedChanges(){return this.script!==this.stored||this.isSaving}static{this.styles=e`
 		.editor-container {
 			display: flex;
 			flex-direction: column;
@@ -162,7 +162,10 @@ import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js
 				${this.state.rules.length===0?s`
 					<div class="empty-state">${this.i18nStore.t(`managesieve.visual.noRules`)}</div>
 				`:this.state.rules.map((e,t)=>s`
-					<div class="rule-card">
+					<!-- Each rule a group, and each condition and action one within
+					     it, numbered: the same choices repeat from one to the next,
+					     and a screen reader could not tell which it was in. -->
+					<div class="rule-card" role="group" aria-label=${this.i18nStore.t(`managesieve.visual.ruleNumber`,{number:t+1})}>
 						<div class="rule-header">
 							<alps-icon-btn icon="x" title=${this.i18nStore.t(`managesieve.visual.deleteRule`)} @click=${()=>this.deleteRule(t)}></alps-icon-btn>
 						</div>
@@ -171,6 +174,7 @@ import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js
 							<div class="row-label">${this.i18nStore.t(`managesieve.visual.if`)}</div>
 							<div class="row-content">
 								<alps-select 
+									label=${this.i18nStore.t(`managesieve.visual.matchMode`)}
 									.value=${e.matchType}
 									.options=${[{value:`all`,label:this.i18nStore.t(`managesieve.visual.all`)},{value:`any`,label:this.i18nStore.t(`managesieve.visual.any`)}]}
 									@change=${e=>this.updateRule(t,{matchType:e.target.value})}>
@@ -181,14 +185,16 @@ import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js
 						
 
 						${e.conditions.map((n,r)=>s`
-							<div class="condition-row">
+							<div class="condition-row" role="group" aria-label=${this.i18nStore.t(`managesieve.visual.conditionNumber`,{number:r+1})}>
 								<div class="row-label"></div>
 								<alps-select 
+									label=${this.i18nStore.t(`managesieve.visual.field`)}
 									.value=${n.field}
 									.options=${[{value:`Subject`,label:this.i18nStore.t(`managesieve.visual.fields.subject`)},{value:`From`,label:this.i18nStore.t(`managesieve.visual.fields.from`)},{value:`To`,label:this.i18nStore.t(`managesieve.visual.fields.to`)},{value:`Body`,label:this.i18nStore.t(`managesieve.visual.fields.body`)},{value:`Size`,label:this.i18nStore.t(`managesieve.visual.fields.size`)}]}
 									@change=${e=>this.updateCondition(t,r,{field:e.target.value})}>
 								</alps-select>
 								<alps-select 
+									label=${this.i18nStore.t(`managesieve.visual.operator`)}
 									.value=${n.operator}
 									.options=${n.field===`Size`?[{value:`over`,label:this.i18nStore.t(`managesieve.visual.operators.over`)},{value:`under`,label:this.i18nStore.t(`managesieve.visual.operators.under`)}]:[{value:`contains`,label:this.i18nStore.t(`managesieve.visual.operators.contains`)},{value:`not_contains`,label:this.i18nStore.t(`managesieve.visual.operators.not_contains`)},{value:`is`,label:this.i18nStore.t(`managesieve.visual.operators.is`)},{value:`not_is`,label:this.i18nStore.t(`managesieve.visual.operators.not_is`)}]}
 									@change=${e=>this.updateCondition(t,r,{operator:e.target.value})}>
@@ -206,11 +212,12 @@ import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js
 						</div>
 
 						${e.actions.map((n,r)=>s`
-							<div class="action-row">
+							<div class="action-row" role="group" aria-label=${this.i18nStore.t(`managesieve.visual.actionNumber`,{number:r+1})}>
 								<div class="row-label">
 									${r===0?this.i18nStore.t(`managesieve.visual.then`):``}
 								</div>
 								<alps-select 
+									label=${this.i18nStore.t(`managesieve.visual.action`)}
 									.value=${n.type}
 									.options=${[{value:`fileinto`,label:this.i18nStore.t(`managesieve.visual.actions.fileinto`)},{value:`redirect`,label:this.i18nStore.t(`managesieve.visual.actions.redirect`)},{value:`discard`,label:this.i18nStore.t(`managesieve.visual.actions.discard`)},{value:`stop`,label:this.i18nStore.t(`managesieve.visual.actions.stop`)}]}
 									@change=${e=>this.updateAction(t,r,{type:e.target.value,value:``})}>
@@ -218,12 +225,13 @@ import{b as e,c as t,f as n,h as r,i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js
 								${n.type===`fileinto`?s`
 									<alps-select 
 										class="flex-1" 
+										label=${this.i18nStore.t(`managesieve.visual.folder`)}
 										.value=${n.value||``}
 										.options=${[...this.folders.map(e=>({value:e,label:e}))]}
 										@change=${e=>this.updateAction(t,r,{value:e.target.value})}>
 									</alps-select>
 								`:n.type===`redirect`?s`
-									<alps-input type="email" class="flex-1" placeholder=${this.i18nStore.t(`managesieve.visual.fields.emailAddress`)} .value=${n.value||``} @input=${e=>this.updateAction(t,r,{value:e.target.value})}></alps-input>
+									<alps-input type="email" class="flex-1" label=${this.i18nStore.t(`managesieve.visual.fields.emailAddress`)} placeholder=${this.i18nStore.t(`managesieve.visual.fields.emailAddress`)} .value=${n.value||``} @input=${e=>this.updateAction(t,r,{value:e.target.value})}></alps-input>
 								`:``}
 								${e.actions.length>1?s`<alps-icon-btn icon="minus-square" title=${this.i18nStore.t(`managesieve.visual.remove`)} @click=${()=>this.deleteAction(t,r)}></alps-icon-btn>`:``}
 								${n.type===`stop`?``:s`<alps-icon-btn icon="plus-square" title=${this.i18nStore.t(`managesieve.visual.add`)} @click=${()=>this.addAction(t,r+1)}></alps-icon-btn>`}
