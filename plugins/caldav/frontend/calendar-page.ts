@@ -6,7 +6,7 @@ import { settingsContext, SettingsStore } from '../../../frontend/src/store/sett
 import { calendarService, taskTellsSomeone, tellsSomeone, getCalendarColor, holdsEvents, taskChips, weekStart } from './calendar-service';
 import { tasksService, type TaskData } from './tasks-service';
 import type { CalendarData, EventData } from './calendar-service';
-import { sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
+import { closeSidebarPeek, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-toggle';
 import '../../../frontend/src/components/alps-button';
@@ -763,6 +763,14 @@ export class CalendarPage extends LitElement {
 
     private handleDateSelected(date: Date) {
         this.navigate('day', date);
+        // A day picked here, from the sidebar's mini calendar or the year
+        // view, opens the day view: shut the sidebar's hover overlay, and on a
+        // phone its drawer, as choosing a folder in Mail does, instead of
+        // leaving either over the day view.
+        closeSidebarPeek(this.renderRoot);
+        if (this.isMobile) {
+            this.mobileSidebarOpen = false;
+        }
     }
 
     private handleAddCalendar() {
