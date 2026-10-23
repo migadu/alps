@@ -415,7 +415,13 @@ export class ComposeStore extends EventTarget {
     this.notify();
   }
 
-  updateComposer(id: string, updates: Partial<ComposerInstance>) {
+  /**
+   * Applies `updates` to a composer. A change to what would be saved marks
+   * it unsaved, except with `edit: false`, for content the user did not
+   * write: the HTML part a plain-text draft is given as it opens in HTML.
+   * Marked unsaved for that, a draft only opened was stored again.
+   */
+  updateComposer(id: string, updates: Partial<ComposerInstance>, { edit = true }: { edit?: boolean } = {}) {
     if (updates.to) updates.to = filterAddresses(updates.to);
     if (updates.cc) updates.cc = filterAddresses(updates.cc);
     if (updates.bcc) updates.bcc = filterAddresses(updates.bcc);
@@ -446,7 +452,7 @@ export class ComposeStore extends EventTarget {
       if ((updates.format ?? c.format) === 'html' && 'html' in updates &&
           (updates.html || '') !== (c.html || '')) isDirtyUpdate = true;
 
-      const newDirty = 'dirty' in updates ? updates.dirty : (isDirtyUpdate ? true : c.dirty);
+      const newDirty = 'dirty' in updates ? updates.dirty : (edit && isDirtyUpdate ? true : c.dirty);
       return { ...c, ...updates, dirty: newDirty };
     });
     this.state = { ...this.state, activeComposers: composers };

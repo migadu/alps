@@ -91,3 +91,43 @@ describe('plain text switched to HTML', () => {
     expect(composer.editor!.getHTML()).toContain('<strong>Hi</strong>');
   });
 });
+
+describe('a message opened in HTML', () => {
+  // The composer announces its HTML part while it opens, before mount() hands
+  // it over, so the events are heard where they bubble to.
+  const announced = () => record<CustomEvent>(document, 'text-changed');
+
+  // A draft saved as plain text reopens with no HTML part, and the editor
+  // reads its text without an edit, so nothing made the HTML part until the
+  // user typed: a save or a send before that carried text/plain alone.
+  it('gives a draft with no HTML part its HTML part as it opens', async () => {
+    const sent = announced();
+    const composer = await mount<AlpsMessageComposer>('alps-message-composer', { format: 'html', text: 'Hi Ada', htmlText: '' });
+
+    expect(composer.messageHtml).toContain('>Hi Ada</p>');
+    // The compose window saves and sends what this event tells it, and takes
+    // an `initial` part for no edit of the user's.
+    expect(sent.at(-1)?.detail).toEqual({ text: 'Hi Ada', html: composer.messageHtml, initial: true });
+    expect(composer.messageText).toBe('Hi Ada');
+  });
+
+  // An announcement is an edit to the compose window, which saves an edited
+  // message: a new message would be filed as a draft for being opened.
+  it('announces nothing for a new message with no text', async () => {
+    const sent = announced();
+    const composer = await mount<AlpsMessageComposer>('alps-message-composer', { format: 'html', text: '', htmlText: '' });
+
+    expect(composer.messageHtml).toBe('');
+    expect(sent).toEqual([]);
+  });
+
+  // A reply, a forward or a signature comes with its HTML part already made.
+  it('announces nothing for a message that has its HTML part', async () => {
+    const html = '<p>Hi Ada</p><div class="alps-signature">-- <br>Grace</div>';
+    const sent = announced();
+    const composer = await mount<AlpsMessageComposer>('alps-message-composer', { format: 'html', text: 'Hi Ada\n\n-- \nGrace', htmlText: html });
+
+    expect(composer.messageHtml).toBe(html);
+    expect(sent).toEqual([]);
+  });
+});

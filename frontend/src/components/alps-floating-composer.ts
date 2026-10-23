@@ -1709,7 +1709,13 @@ export class AlpsFloatingComposer extends LitElement {
               .htmlText=${this.instance.html || ''}
               .format=${this.instance.format || 'html'}
               .quoteSource=${this.instance.quoteSource}
-              @text-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { text: e.detail.text, html: e.detail.html })}
+              @text-changed=${(e: CustomEvent) => this.composeStore.updateComposer(
+                this.instance.id,
+                { text: e.detail.text, html: e.detail.html },
+                // An `initial` HTML part is the composer's own, made as a
+                // plain-text draft opens in HTML, and not an edit.
+                { edit: !e.detail.initial },
+              )}
             ></alps-message-composer>
           </div>
 

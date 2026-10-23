@@ -121,19 +121,20 @@ describe('the calendars checked in the sidebar', () => {
     expect(boxes(el)).toEqual({ Work: false });
   });
 
-  it('checks a new calendar only when no calendar was listed before it', async () => {
+  it('checks a calendar that appears only when no calendar was listed before it', async () => {
     const listed: object[] = [work];
     const { el, reads } = await calendarPage(listed);
-    vi.spyOn(calendarService, 'createCalendar').mockImplementation(async (name: string) => {
-      listed.push(name === 'Trips' ? trips : { name, description: '', path: `/cal/${name.toLowerCase()}/` });
-    });
     deletesFrom(listed);
+    const refresh = async () => {
+      const asked = reads();
+      shadow(el, 'alps-icon-btn[icon="arrowsClockwise"]').click();
+      await readAgain(el, reads, asked);
+    };
 
-    // Beside a calendar the user already has, a new one is left unchecked.
-    let asked = reads();
-    el.promptMode = 'add';
-    await el.handlePromptSubmit(new CustomEvent('submit', { detail: { name: 'Trips' } }));
-    await readAgain(el, reads, asked);
+    // Beside a calendar the user already has, one made in another client is
+    // left unchecked.
+    listed.push(trips);
+    await refresh();
     expect(boxes(el)).toEqual({ Work: true, Trips: false });
 
     // With every calendar deleted there is no choice left to keep, and the
@@ -143,10 +144,8 @@ describe('the calendars checked in the sidebar', () => {
       await el._executeDeleteCalendar();
     }
     expect(boxes(el)).toEqual({});
-    asked = reads();
-    el.promptMode = 'add';
-    await el.handlePromptSubmit(new CustomEvent('submit', { detail: { name: 'Home' } }));
-    await readAgain(el, reads, asked);
+    listed.push({ name: 'Home', description: '', path: '/cal/home/' });
+    await refresh();
     expect(boxes(el)).toEqual({ Home: true });
   });
 });

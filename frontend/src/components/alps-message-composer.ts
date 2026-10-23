@@ -926,6 +926,22 @@ export class AlpsMessageComposer extends LitElement {
     // No update event: in plaintext mode one would overwrite the textarea's
     // text with the editor's, as `updated` says of the same call.
     this.editor.setEditable(!this.isSending, false);
+    if (fromText && this.text.trim()) {
+      // A draft saved as plain text opens here with no HTML part, and the
+      // editor that read its text announces nothing until the first edit. So
+      // the HTML part is made and announced now, as `updated` does on the
+      // switch to HTML: the compose window saves and sends what it is told.
+      // Unlike the switch, it is no edit of the user's, and is announced as
+      // `initial` so the window does not count it as one: the draft has not
+      // changed, and saved again for being opened it was stored anew, under
+      // a new UID. A new message, with no text, has nothing to make one of.
+      this.htmlText = serializeEditorHtml(this.editor);
+      this.dispatchEvent(new CustomEvent('text-changed', {
+        detail: { text: this.text, html: this.htmlText, initial: true },
+        bubbles: true,
+        composed: true
+      }));
+    }
     this.requestUpdate();
   }
 

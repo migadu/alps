@@ -945,7 +945,11 @@ export class CalendarPage extends LitElement {
         if (!name) return;
         try {
             if (this.promptMode === 'add') {
-                await calendarService.createCalendar(name);
+                const created = await calendarService.createCalendar(name);
+                // Checked, so that the events the user adds to it show: the read
+                // that follows lists it beside the others and checks nothing
+                // new. A calendar made in another client still comes unchecked.
+                if (created?.path) this.activeCalendars = new Set([...this.activeCalendars, created.path]);
             } else if (this.promptMode === 'rename' && this.promptTarget) {
                 await calendarService.renameCalendar(this.promptTarget.path, name);
             }
