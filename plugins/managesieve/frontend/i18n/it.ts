@@ -11,7 +11,7 @@ export default {
     "loadError": "Impossibile caricare i filtri.",
     "loadErrorRetry": "Riprova",
     "tabs": {
-      "switchToRaw": "Editor Grezzo"
+      "switchToRaw": "Editor grezzo"
     },
     "warningRawSwitchTitle": "Passa alla modalità grezza",
     "warningRawSwitchConfirm": "Passa",
@@ -24,10 +24,10 @@ export default {
       "autoReplyOn": "La risposta automatica è attiva. Disattivala in Risposta automatica prima che i filtri ne inviino una propria."
     },
     "visual": {
-      "newRule": "Nuova Regola",
+      "newRule": "Nuova regola",
       "noRules": "Nessuna regola definita.",
-      "saveFilters": "Salva Regole",
-      "deleteRule": "Elimina Regola",
+      "saveFilters": "Salva regole",
+      "deleteRule": "Elimina regola",
       "remove": "Rimuovi",
       "add": "Aggiungi",
       "if": "SE",
@@ -38,7 +38,7 @@ export default {
       "value": "Valore",
       "actions": {
         "fileinto": "Sposta nella cartella",
-        "discard": "Scarta (Elimina)",
+        "discard": "Scarta (elimina)",
         "redirect": "Reindirizza all'email",
         "stop": "Interrompi la valutazione delle regole"
       },
