@@ -4,6 +4,10 @@ export const de: TranslationDictionary = {
   settings: {
     saveFailed: 'Diese Einstellung konnte nicht gespeichert werden — sie überlebt das Abmelden möglicherweise nicht',
     title: 'Einstellungen',
+    unsavedTitle: 'Änderungen verwerfen?',
+    unsavedMessage: 'Sie haben ungespeicherte Änderungen. Beim Verlassen dieses Bereichs gehen sie verloren.',
+    discard: 'Verwerfen',
+    keepEditing: 'Weiter bearbeiten',
     categories: {
       general: 'Allgemein',
       identity: 'Identität',
@@ -252,6 +256,7 @@ export const de: TranslationDictionary = {
     emptyMailboxSlow: '{folder} wird noch geleert. Der Server arbeitet daran – sehen Sie gleich noch einmal nach.'
   },
   composer: {
+    windowLoadFailed: 'Das Nachrichtenfenster konnte nicht geladen werden.',
     discardFailed: 'Der Entwurf konnte nicht vom Server gelöscht werden und liegt weiterhin in den Entwürfen.',
     attachmentsTooLarge: 'Die Anhänge überschreiten die maximal zulässige Größe.',
     draftSaveFailedKeepOpen: 'Entwurf konnte nicht gespeichert werden — das Fenster bleibt offen, damit nichts verloren geht',
@@ -566,7 +571,8 @@ export const de: TranslationDictionary = {
     expand: "Aufklappen",
     collapse: "Zuklappen",
     moreOptions: "Weitere Optionen",
-    notFound: "Seite nicht gefunden"
+    notFound: "Seite nicht gefunden",
+    close: "Schließen"
   },
   webauthn: {
     title: 'Sicherheitsschlüssel-Überprüfung',

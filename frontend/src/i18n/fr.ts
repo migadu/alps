@@ -2,6 +2,10 @@ export const fr = {
   settings: {
     saveFailed: 'Impossible d’enregistrer ce réglage — il pourrait ne pas survivre à la déconnexion',
     title: 'Paramètres',
+    unsavedTitle: 'Abandonner les modifications ?',
+    unsavedMessage: 'Vous avez des modifications non enregistrées. Quitter cette section les abandonnera.',
+    discard: 'Abandonner',
+    keepEditing: 'Continuer la modification',
     categories: {
       general: 'Général',
       identity: 'Identité',
@@ -250,6 +254,7 @@ export const fr = {
     emptyMailboxSlow: 'Vidage du dossier {folder} toujours en cours. Le serveur y travaille – revenez voir dans un instant.'
   },
   composer: {
+    windowLoadFailed: 'Impossible de charger la fenêtre du message.',
     discardFailed: 'Le brouillon n’a pas pu être supprimé du serveur et se trouve toujours dans les brouillons.',
     attachmentsTooLarge: 'Les pièces jointes dépassent la taille maximale autorisée.',
     draftSaveFailedKeepOpen: 'Impossible d’enregistrer ce brouillon — la fenêtre reste ouverte pour ne rien perdre',
@@ -564,7 +569,8 @@ export const fr = {
     expand: "Développer",
     collapse: "Réduire",
     moreOptions: "Plus d\u2019options",
-    notFound: "Page introuvable"
+    notFound: "Page introuvable",
+    close: "Fermer"
   },
   webauthn: {
     title: 'Vérification de la clé de sécurité',

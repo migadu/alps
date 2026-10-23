@@ -108,6 +108,24 @@ export const keptAfterSave = (attachments: any[], saved: ComposerInstance): any[
   return leftOut.length ? attachments.filter(a => !leftOut.includes(a)) : attachments;
 };
 
+/**
+ * Where the quote's images are shown from once a save of `saved` has stored
+ * a new draft, or undefined where that does not change. A composer editing a
+ * draft shows them from that draft, which the save has replaced: the source
+ * follows to the new draft, with the structure the server read it back with.
+ * Left on the replaced draft, the quote drawn again, as after a reload,
+ * named parts of a draft that is gone. A reply's or a forward's quote is
+ * shown from the message it quotes, and stays.
+ */
+export const quoteSourceAfterSave = (
+  saved: ComposerInstance,
+  stored: { uid: string; mailbox: string; structure?: unknown },
+): QuoteSource | undefined => {
+  const source = saved.quoteSource;
+  if (!source || !saved.draftUid || source.uid !== saved.draftUid || source.mailbox !== saved.draftMailbox) return undefined;
+  return { mailbox: stored.mailbox, uid: stored.uid, structure: stored.structure ?? source.structure };
+};
+
 const isBlockedAddress = (addr: string): boolean => {
   const lowerEmail = bareAddress(addr);
   return lowerEmail.startsWith('noreply') || 
@@ -204,8 +222,28 @@ export class ComposeStore extends EventTarget {
     // nothing else re-ran this until a page reload.
     window.addEventListener('user-logged-in', this.adoptSession);
     window.addEventListener('alps-active-user-changed', this.adoptSession);
+    window.addEventListener('pagehide', this.flushOnPageHide);
     this.adoptSession();
   }
+
+  /**
+   * Writes the change still waiting for the debounced write, as the page
+   * goes: a reload, a closed tab, a link followed. The write comes half a
+   * second after the last change, and leaving within it took that much of
+   * what was typed with it.
+   *
+   * Only a write that is waiting, which is what would have been written had
+   * the page stayed: the login screen clears the windows from memory alone,
+   * and a sign-out cancels the waiting write as it erases the disk copy, so
+   * writing the composers as they are would put an emptied list over the
+   * drafts on disk, or bring an erased one back.
+   */
+  private flushOnPageHide = () => {
+    if (this.saveTimeout === null) return;
+    window.clearTimeout(this.saveTimeout);
+    this.saveTimeout = null;
+    this.saveDrafts();
+  };
 
   /**
    * Loads the signed-in user's drafts, and carries across anything opened
@@ -349,9 +387,10 @@ export class ComposeStore extends EventTarget {
       window.clearTimeout(this.saveTimeout);
       this.saveTimeout = null;
     }
-    // With no live windows there is nothing a reload can lose. Otherwise the
-    // caller must keep this document open when its recovery copy cannot be written.
-    return this.saveDrafts() || this.state.activeComposers.length === 0;
+    // The login screen clears only the live windows. Writing that empty list
+    // would erase its preserved recovery copy during an update-offer reload.
+    if (this.state.activeComposers.length === 0) return true;
+    return this.saveDrafts();
   }
 
   private notify() {
@@ -513,7 +552,7 @@ export class ComposeStore extends EventTarget {
   }
 
   /**
-   * Takes the composer windows off the screen WITHOUT touching what is on disk.
+   * Takes the composer windows off the screen, preserving their disk copy.
    *
    * The only caller is `login-page`'s connectedCallback, which runs every time
    * the login screen mounts — including on an ordinary boot redirect, when
@@ -528,7 +567,8 @@ export class ComposeStore extends EventTarget {
    *
    * Persisting is the sign-out path's job, and it already does it properly —
    * `handleSessionCleared` removes the key outright, after aborting uploads.
-   * Here, memory only.
+   * Here, settle any pending edit before clearing memory, so neither its timer
+   * nor pagehide writes the emptied list over that recovery copy.
    *
    * With nothing open it does nothing, not even announce a change. The login
    * page calls this as it connects, inside the shell's render, and the
@@ -536,6 +576,7 @@ export class ComposeStore extends EventTarget {
    * second time.
    */
   clearAllComposers() {
+    if (this.saveTimeout !== null) this.persistNow();
     if (this.state.activeComposers.length === 0) return;
     this.state = { ...this.state, activeComposers: [] };
     this.notify();
@@ -629,10 +670,12 @@ export class ComposeStore extends EventTarget {
               : current.attachments;
             // Nor the quote's images a plain-text save left out: see keptAfterSave.
             if (attachments) attachments = keptAfterSave(attachments, composer);
+            const quoteSource = quoteSourceAfterSave(composer, saved);
             this.updateComposer(id, {
               draftUid: saved.uid,
               draftMailbox: saved.mailbox,
               ...(attachments !== current.attachments && { attachments }),
+              ...(quoteSource && { quoteSource }),
             });
             failed = true;
             continue;

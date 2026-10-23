@@ -541,6 +541,41 @@ describe('a reply or a forward left untouched', () => {
   });
 });
 
+describe('a draft reopened and saved again', () => {
+  // A composer editing a draft shows the quote's images from that draft, and
+  // each save replaces the draft with a new one. The composer went on naming
+  // the draft it had replaced, which is gone: drawn again, after a reload, its
+  // quote showed none of its images.
+  const before = { Children: [{ Type: 'text', Subtype: 'html' }, { ID: '<chart@remote.test>' }] };
+  const after = { Children: [{ Children: [{ Type: 'text', Subtype: 'html' }, { ID: '<chart@remote.test>' }] }, { Type: 'text' }] };
+  const reopened = (quoteSource: Record<string, unknown>) => composerIn({
+    draftUid: '7', draftMailbox: 'Drafts', dirty: true, format: 'html', html: '<p>See below.</p>', quoteSource,
+    attachments: [{ name: 'chart.png', size: 9, type: 'image/png', partPath: '2', inline: true }],
+  });
+
+  it('shows its quote from the draft that replaced it', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts', structure: after } as any);
+    const { store, instance, id } = reopened({ mailbox: 'Drafts', uid: '7', structure: before });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(sentForm(0).get('prev_attachments')).toBe('2');
+    expect(store.getComposer(id)?.quoteSource).toEqual({ mailbox: 'Drafts', uid: '8', structure: after });
+  });
+
+  it('leaves the quote of a reply with the message it answers', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts', structure: after } as any);
+    const answered = { mailbox: 'INBOX', uid: '5', structure: before };
+    const { store, instance, id } = reopened(answered);
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(store.getComposer(id)?.quoteSource).toEqual(answered);
+  });
+});
+
 describe('an answer in plain text', () => {
   // A reply or a forward carries the quote's images as inline parts, which
   // the composer shows no chip for. Nothing in a text/plain message shows
