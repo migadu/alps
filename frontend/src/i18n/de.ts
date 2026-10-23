@@ -4,6 +4,10 @@ export const de: TranslationDictionary = {
   settings: {
     saveFailed: 'Diese Einstellung konnte nicht gespeichert werden — sie überlebt das Abmelden möglicherweise nicht',
     title: 'Einstellungen',
+    unsavedTitle: 'Änderungen verwerfen?',
+    unsavedMessage: 'Sie haben ungespeicherte Änderungen. Beim Verlassen dieses Bereichs gehen sie verloren.',
+    discard: 'Verwerfen',
+    keepEditing: 'Weiter bearbeiten',
     categories: {
       general: 'Allgemein',
       identity: 'Identität',
@@ -566,7 +570,8 @@ export const de: TranslationDictionary = {
     expand: "Aufklappen",
     collapse: "Zuklappen",
     moreOptions: "Weitere Optionen",
-    notFound: "Seite nicht gefunden"
+    notFound: "Seite nicht gefunden",
+    close: "Schließen"
   },
   webauthn: {
     title: 'Sicherheitsschlüssel-Überprüfung',

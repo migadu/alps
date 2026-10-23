@@ -561,7 +561,7 @@ test.describe("the threading preference", () => {
     await page.goto("/#/settings/reading");
     // Addressed by its label, not by position among the settings checkboxes —
     // this pane grows a new one every few releases.
-    const threading = page.locator("settings-page").getByLabel("Use threading");
+    const threading = page.locator("settings-window").getByLabel("Use threading");
     await expect(threading).toBeChecked();
     // The listing reads the preference from the server, so the save has to have
     // landed before the mailbox is asked for.

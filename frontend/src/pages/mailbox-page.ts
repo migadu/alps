@@ -25,8 +25,14 @@ import { MessageCache } from '../utils/message-cache';
 import { getDestinationLabel, getFlexContainerMinWidth } from '../utils/ui';
 import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/message-key';
 import { canonicalRecipient, parseWrittenAddress } from '../utils/address-display';
+import { isSettingsHash } from '../utils/routes';
+import { pageHash, updateSettingsBackground } from '../utils/settings-history';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
+
+/** The settings a listing is read under: its order, its page size, and
+ * whether it is threaded. */
+const LISTING_SETTINGS = ['sortOrder', 'messageSortCriteria', 'messagesPerPage', 'enableThreading'] as const;
 
 /** Whether a listed message carries a star. */
 const isFlagged = (msg: any): boolean => !!msg?.Flags?.includes(FLAG_FLAGGED);
@@ -659,18 +665,20 @@ export class MailboxPage extends LitElement {
     // The Messages tab sends a return to `#/`, which names the Inbox. Coming
     // back, that means "the mail", not "the Inbox": put the URL back on the
     // folder, page, search and message that were on screen. A link naming a
-    // mailbox of its own is followed as it stands.
-    if (returning && !window.location.hash.startsWith('#/mailbox/')) {
-      window.history.replaceState(null, '', this.hashFor(this.currentMailbox, this.currentPage, this.targetUid, this.filterQuery, this.targetMailbox));
+    // mailbox of its own is followed as it stands. Not under the Settings
+    // window, whose URL this is not: see `updateUrl`.
+    const hash = window.location.hash;
+    if (returning && !hash.startsWith('#/mailbox/') && !isSettingsHash(hash)) {
+      window.history.replaceState(history.state, '', this.hashFor(this.currentMailbox, this.currentPage, this.targetUid, this.filterQuery, this.targetMailbox));
     }
     const heldView = [this.currentMailbox, this.currentPage, this.filterQuery].join('\n');
     if (returning) {
       // The same comparison a hash change makes, against the view still held:
       // another folder or search dims and reads as any switch does, another
       // message opens it, and neither fetches for nothing.
-      this.handleHashChange();
+      this.readMailboxHash(pageHash() ?? '', isSettingsHash(hash));
     } else {
-      this.extractMailboxFromHash();
+      this.extractMailboxFromHash(pageHash() ?? '');
     }
     window.addEventListener('hashchange', this.handleHashChange);
 
@@ -682,6 +690,7 @@ export class MailboxPage extends LitElement {
     this._handleMediaQuery(this._mql);
 
     this.settingsStore.addEventListener('change', this._handleSettingsChange);
+    this.settingsStore.addEventListener('saved', this.handleSettingsSaved);
     this.i18nStore?.addEventListener('change', this._handleI18nChange);
     this._syncSettings();
 
@@ -715,6 +724,7 @@ export class MailboxPage extends LitElement {
     document.removeEventListener('keydown', this.handleStrayArrow);
 
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
+    this.settingsStore.removeEventListener('saved', this.handleSettingsSaved);
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
 
     messageSync.removeEventListener('sync-start', this.handleSyncStart);
@@ -745,8 +755,11 @@ export class MailboxPage extends LitElement {
     this.targetMailbox = mailbox !== this.currentMailbox ? mailbox : null;
 
     // Rewritten without a hashchange, so a reload opens the new draft and
-    // nothing is fetched again now.
-    window.history.replaceState(null, '', this.hashFor(this.currentMailbox, this.currentPage, this.targetUid, this.filterQuery, this.targetMailbox));
+    // nothing is fetched again now. Under Settings only its recorded
+    // background changes; the window keeps its own URL.
+    const hash = this.hashFor(this.currentMailbox, this.currentPage, this.targetUid, this.filterQuery, this.targetMailbox);
+    if (updateSettingsBackground(hash)) return;
+    window.history.replaceState(history.state, '', hash);
   }
 
   private handleDraftAutosaved = (e: CustomEvent) => {
@@ -886,6 +899,22 @@ export class MailboxPage extends LitElement {
     this._syncSettings();
   };
 
+  /**
+   * Settings the server has taken. A listing is threaded, ordered and paged by
+   * the account's record on the server, not by anything the request says, so
+   * the rows on screen were read under the old values until a save of new
+   * ones has landed, and are read again then, quietly.
+   *
+   * The page used to be torn down while Settings was open, and read its view
+   * again on the way back. It now stays beneath the Settings window, and
+   * nothing else would.
+   */
+  private handleSettingsSaved = (e: Event) => {
+    const keys: string[] = (e as CustomEvent).detail?.keys ?? [];
+    if (!keys.some((key) => (LISTING_SETTINGS as readonly string[]).includes(key))) return;
+    messageSync.fetch(this.currentMailbox, this.currentPage, this.filterQuery, true, true);
+  };
+
   private _handleI18nChange = () => {
     this.requestUpdate();
   };
@@ -916,7 +945,7 @@ export class MailboxPage extends LitElement {
 
     // What a listing is read under: the listings kept in memory are dropped
     // when it changes.
-    messageSync.setListingSettings([state.sortOrder, state.messageSortCriteria, state.messagesPerPage, state.enableThreading].join(' '));
+    messageSync.setListingSettings(LISTING_SETTINGS.map((key) => state[key]).join(' '));
 
     // Restart background polling with the configured interval
     if (state.checkMailInterval !== undefined) {
@@ -1104,7 +1133,9 @@ export class MailboxPage extends LitElement {
       const perPage = data.MessagesPerPage || this.messagesPerPage;
       const last = Math.max(0, Math.ceil(data.Total / perPage) - 1);
       this.currentPage = last;
-      window.history.replaceState(null, '', this.hashFor(this.currentMailbox, last, this.targetUid, this.filterQuery, this.targetMailbox));
+      // Keep the window URL, and record the corrected page beneath it.
+      const hash = this.hashFor(this.currentMailbox, last, this.targetUid, this.filterQuery, this.targetMailbox);
+      if (!updateSettingsBackground(hash)) window.history.replaceState(history.state, '', hash);
       messageSync.fetch(this.currentMailbox, last, this.filterQuery, false, true);
       return;
     } else {
@@ -1206,6 +1237,10 @@ export class MailboxPage extends LitElement {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     if (this.showDeleteConfirm) return;
+    // The Settings window is over this page. A click on its dimmed backdrop
+    // leaves focus on the body, and an arrow from there moved the message
+    // list nobody could see.
+    if (isSettingsHash(window.location.hash)) return;
     // The composed path, because the list, the sidebar and every popup are
     // shadow roots that `closest()` cannot see out of.
     const path = e.composedPath().filter((n): n is HTMLElement => n instanceof HTMLElement);
@@ -1226,18 +1261,28 @@ export class MailboxPage extends LitElement {
   };
 
   private handleHashChange = () => {
+    // The Settings window, opened over this page: the URL is the window's, and
+    // this page is still the one beneath it. Read as a URL naming no folder it
+    // was the Inbox, which dropped the open message and the search the window
+    // closes back onto.
+    if (isSettingsHash(window.location.hash)) return;
+    this.readMailboxHash(window.location.hash);
+  };
+
+  /** Initializes a reattached page from the address recorded beneath Settings. */
+  private readMailboxHash(hash: string, restoring = false) {
     const oldMailbox = this.currentMailbox;
     const oldPage = this.currentPage;
     const oldUid = this.targetUid;
     const oldUidMailbox = this.targetMailbox;
     const oldFilter = this.filterQuery;
 
-    this.extractMailboxFromHash();
+    this.extractMailboxFromHash(hash);
 
     if (oldMailbox !== this.currentMailbox || oldPage !== this.currentPage || oldFilter !== this.filterQuery) {
       if (oldMailbox !== this.currentMailbox) {
         this.selectedMessage = null; // Reset selection on mailbox change
-        this.currentPage = 0; // Reset pagination on mailbox change
+        if (!restoring) this.currentPage = 0; // A restored address names its page.
         this.clearSelection(); // Another folder is not what was selected
 
         // Do not clear this.messages to prevent UI flash, let it be replaced when network returns
@@ -1245,7 +1290,7 @@ export class MailboxPage extends LitElement {
       } else if (oldFilter !== this.filterQuery) {
         // Do not clear this.messages
         this.loadingMessages = true;
-        this.currentPage = 0;
+        if (!restoring) this.currentPage = 0;
         // The query is what a whole-folder selection is made of, so another
         // query is another selection.
         this.clearSelection();
@@ -1304,7 +1349,15 @@ export class MailboxPage extends LitElement {
    * and the same UID can be in each of them.
    */
   private updateUrl(mailbox: string, page: number, uid: string | null, filterQuery: string | null = this.filterQuery, uidMailbox: string | null = null) {
-    window.location.hash = this.hashFor(mailbox, page, uid, filterQuery, uidMailbox);
+    // A live update beneath Settings changes its canonical background and
+    // the page's state, while the browser keeps the window's URL. Back/Close
+    // then restores this effective route rather than a deleted folder or UID.
+    const hash = this.hashFor(mailbox, page, uid, filterQuery, uidMailbox);
+    if (updateSettingsBackground(hash)) {
+      this.readMailboxHash(hash, true);
+      return;
+    }
+    window.location.hash = hash;
   }
 
   private hashFor(mailbox: string, page: number, uid: string | null, filterQuery: string | null, uidMailbox: string | null): string {
@@ -1337,8 +1390,7 @@ export class MailboxPage extends LitElement {
     this.updateUrl(view, page, uid, undefined, mailbox);
   }
 
-  private extractMailboxFromHash() {
-    let hash = window.location.hash;
+  private extractMailboxFromHash(hash: string = window.location.hash) {
     if (hash.startsWith('#/mailbox/')) {
       let pathPart = hash.substring(10);
       const qIndex = pathPart.indexOf('?');
