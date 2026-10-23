@@ -134,3 +134,11 @@ export const storeActiveScript = (name: string, content: string) =>
     await session.putScript(name, content);
     await session.command(`SETACTIVE ${quote(name)}`);
   });
+
+/** Stores `content` under `name` and switches every script off, as another
+ * Sieve client does when the filters are paused. */
+export const storeSwitchedOffScript = (name: string, content: string) =>
+  withSieve(async (session) => {
+    await session.putScript(name, content);
+    await session.command('SETACTIVE ""');
+  });
