@@ -111,7 +111,7 @@ func TestHTTP_ADraftKeepsItsBccAndTheMessageSentNamesNone(t *testing.T) {
 
 	form := url.Values{
 		"to":            {"charles@remote.test"},
-		"bcc":           {`"Hopper, Grace" <grace@remote.test>, hidden@remote.test`},
+		"bcc":           {`"Hopper, Grâce" <grace@remote.test>, hidden@remote.test`},
 		"subject":       {"Notes"},
 		"text":          {"See you."},
 		"save_as_draft": {"1"},
@@ -119,9 +119,13 @@ func TestHTTP_ADraftKeepsItsBccAndTheMessageSentNamesNone(t *testing.T) {
 	r := s.do("POST", "/messages", form)
 	s.expect(r, http.StatusOK)
 	var saved struct {
-		Mailbox string `json:"draft_mailbox"`
+		Mailbox string          `json:"draft_mailbox"`
+		Bcc     []*mail.Address `json:"draft_bcc"`
 	}
 	r.json(t, &saved)
+	if len(saved.Bcc) != 2 || saved.Bcc[0].Name != "Hopper, Grâce" || saved.Bcc[0].Address != "grace@remote.test" || saved.Bcc[1].Address != "hidden@remote.test" {
+		t.Fatalf("the save answer names Bcc %+v", saved.Bcc)
+	}
 	drafts := s.mailbox(saved.Mailbox).Messages
 	if len(drafts) != 1 {
 		t.Fatalf("%s holds %d messages", saved.Mailbox, len(drafts))
@@ -130,7 +134,7 @@ func TestHTTP_ADraftKeepsItsBccAndTheMessageSentNamesNone(t *testing.T) {
 
 	stored := raw(saved.Mailbox, uid)
 	bcc, err := stored.AddressList("Bcc")
-	if err != nil || len(bcc) != 2 || bcc[0].Name != "Hopper, Grace" || bcc[0].Address != "grace@remote.test" || bcc[1].Address != "hidden@remote.test" {
+	if err != nil || len(bcc) != 2 || bcc[0].Name != "Hopper, Grâce" || bcc[0].Address != "grace@remote.test" || bcc[1].Address != "hidden@remote.test" {
 		t.Fatalf("the draft is stored with Bcc %v (%v), want Grace and hidden@remote.test", bcc, err)
 	}
 
@@ -145,7 +149,7 @@ func TestHTTP_ADraftKeepsItsBccAndTheMessageSentNamesNone(t *testing.T) {
 		}
 	}
 	r.json(t, &listed)
-	if got := listed.Messages[0].Envelope.Bcc; len(got) != 2 || got[0].Name != "Hopper, Grace" || got[0].Mailbox != "grace" || got[1].Mailbox != "hidden" || got[1].Host != "remote.test" {
+	if got := listed.Messages[0].Envelope.Bcc; len(got) != 2 || got[0].Name != "Hopper, Grâce" || got[0].Mailbox != "grace" || got[1].Mailbox != "hidden" || got[1].Host != "remote.test" {
 		t.Errorf("the draft's envelope names Bcc %+v", got)
 	}
 
@@ -202,5 +206,32 @@ func TestHTTP_AnUnreadableRecipientFieldIsRefused(t *testing.T) {
 		t.Errorf("the refusal says %s", r.body)
 	}
 	form.Set("save_as_draft", "1")
-	s.expect(s.do("POST", "/messages", form), http.StatusOK)
+	r = s.do("POST", "/messages", form)
+	s.expect(r, http.StatusOK)
+	var saved struct {
+		Bcc []*mail.Address `json:"draft_bcc"`
+	}
+	r.json(t, &saved)
+	if saved.Bcc == nil || len(saved.Bcc) != 0 {
+		t.Errorf("the save answer must name an empty stored Bcc, got %+v", saved.Bcc)
+	}
+}
+
+// A normalized save answer keeps local-part quoting for the next draft save.
+func TestHTTP_ADraftAnswerKeepsBccLocalPartQuoting(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
+	r := s.do("POST", "/messages", url.Values{"bcc": {`"a;b"@remote.test`}, "subject": {"Notes"}, "save_as_draft": {"1"}})
+	s.expect(r, http.StatusOK)
+	var saved struct {
+		Bcc []*mail.Address `json:"draft_bcc"`
+	}
+	r.json(t, &saved)
+	if len(saved.Bcc) != 1 || saved.Bcc[0].Name != "" || saved.Bcc[0].Address != `"a;b"@remote.test` {
+		t.Fatalf("the save answer lost Bcc quoting: %+v", saved.Bcc)
+	}
+	again, err := parseAddressList(saved.Bcc[0].Address)
+	if err != nil || len(again) != 1 {
+		t.Fatalf("the next save cannot read the answer: %v %v", again, err)
+	}
 }

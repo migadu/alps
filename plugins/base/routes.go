@@ -2603,6 +2603,19 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	if saveAsDraft {
+		// The Bcc actually written, not the field the browser posted: an
+		// unreadable Bcc is omitted from a draft. Name and Address stay
+		// separate so the browser need not decode MIME display names.
+		storedBcc, err := prepareAddressList(msg.Bcc)
+		if err != nil {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid bcc address: " + err.Error()})
+		}
+		for _, addr := range storedBcc {
+			// Keep quoting required by a local part such as "a;b", while
+			// leaving the display name plain for the browser to format.
+			address := (&mail.Address{Address: addr.Address}).String()
+			addr.Address = strings.TrimSuffix(strings.TrimPrefix(address, "<"), ">")
+		}
 		var drafts *MailboxInfo
 		var uid provider.MessageID
 		var size uint32
@@ -2619,7 +2632,7 @@ func handleComposeNew(ctx *alps.Context) error {
 			sourceAt[path] = sources[i]
 		}
 
-		err := doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+		err = doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 			var err error
 			drafts, uid, size, err = appendMessageWithProvider(p, msg.asDraft(), provider.MailboxTypeDrafts)
 			if err != nil {
@@ -2693,6 +2706,7 @@ func handleComposeNew(ctx *alps.Context) error {
 			"draft_uid":     uid.String(),
 			"draft_mailbox": drafts.Name(),
 			"draft_size":    size,
+			"draft_bcc":     storedBcc,
 			"attachments":   respAttachments,
 		})
 	}

@@ -304,7 +304,8 @@ export class AlpsFloatingComposer extends LitElement {
     this.composeStore.updateComposer(id, { isSaving: true });
     try {
       const sentUuids = (currentInstance.attachments || []).map(a => a.uuid).filter(Boolean);
-      const formData = this._buildFormData(currentInstance);
+      const bcc = this._bccRecipients(currentInstance);
+      const formData = this._buildFormData(currentInstance, bcc);
       formData.append('save_as_draft', '1');
 
       // Not known again until this save is answered: one that fails or times
@@ -331,7 +332,9 @@ export class AlpsFloatingComposer extends LitElement {
             subject: (currentInstance.subject || '').trim(),
             to: currentInstance.to,
             cc: currentInstance.cc,
-            bcc: currentInstance.bcc,
+            // The server confirms what it stored: unreadable Bcc is omitted.
+            // Older servers fall back to the posted snapshot, including self.
+            bcc: result.bcc ?? bcc,
             size: result.size,
             // A file the request carried: an upload still in flight is not in
             // this draft, and the quote's own images are not files.
@@ -385,13 +388,9 @@ export class AlpsFloatingComposer extends LitElement {
     }
   }
 
-  private _buildFormData(currentInstance: ComposerInstance): FormData {
-    const formData = new FormData();
-    const to = currentInstance.to || [];
-    const cc = currentInstance.cc || [];
-    let bcc = [...(currentInstance.bcc || [])];
-    
-    let replyToSetting = '';
+  /** The Bcc the request stores, including the user's own address if enabled. */
+  private _bccRecipients(currentInstance: ComposerInstance): string[] {
+    const bcc = [...(currentInstance.bcc || [])];
     // `readUserSettings`, not a hand-parse of `alps_settings`: that key holds
     // only theme and layout values, so `bccMyself`, `loginUsername` and
     // `replyTo` were all undefined here and both settings were inert.
@@ -405,10 +404,15 @@ export class AlpsFloatingComposer extends LitElement {
       if (parsed.bccMyself && self && !bcc.some(addr => bareAddress(addr) === mine)) {
         bcc.push(self);
       }
-      if (parsed.replyTo) {
-        replyToSetting = parsed.replyTo;
-      }
     }
+    return bcc;
+  }
+
+  private _buildFormData(currentInstance: ComposerInstance, bcc = this._bccRecipients(currentInstance)): FormData {
+    const formData = new FormData();
+    const to = currentInstance.to || [];
+    const cc = currentInstance.cc || [];
+    const replyToSetting = readUserSettings().replyTo;
 
     const text = currentInstance.text || '';
     const subject = (currentInstance.subject || '').trim();

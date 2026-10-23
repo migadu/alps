@@ -126,3 +126,63 @@ test("a draft reopened from Drafts keeps its Bcc, and is sent to them without na
   expect(sent.recipients).toContain(hidden);
   expect(sent.data).not.toContain(hidden);
 });
+
+test("an autosaved draft keeps changed and cleared Bcc when edited again without reloading Drafts", async ({ page }) => {
+  const subject = `Cached draft Bcc ${Date.now()}`;
+  await login(page);
+  await openFolder(page, "Drafts");
+  const marker = `same-document-${Date.now()}`;
+  await page.evaluate(value => { (window as any).reviewDocument = value; }, marker);
+  await saveDraft(page, subject, "first-hidden@remote.test");
+
+  await row(page, subject).click();
+  const reader = page.locator("alps-message-reader");
+  const edit = reader.getByRole("button", { name: "Edit Draft" }).first();
+  await edit.click();
+  let previousUid = "";
+  for (const hidden of ["second-hidden@remote.test", ""]) {
+    const composer = composerOf(page);
+    await expect(bccField(composer).locator(".pill")).toContainText([hidden ? "first-hidden@remote.test" : "second-hidden@remote.test"]);
+    await bccField(composer).locator(".pill .pill-remove").click();
+    if (hidden) {
+      await bccField(composer).locator("input").fill(hidden);
+      await bccField(composer).locator("input").press("Enter");
+    }
+    const saved = draftSaved(page);
+    await composer.locator('alps-icon-btn[title="Save & close"]').click();
+    const response = await saved;
+    const answer = await response.json();
+    expect(answer.draft_uid).toBeTruthy();
+    expect(String(answer.draft_uid)).not.toBe(previousUid);
+    previousUid = String(answer.draft_uid);
+    await expect(composer).toHaveCount(0);
+    await expect(row(page, subject)).toHaveCount(1);
+    await expect(row(page, subject)).not.toContainText("hidden@remote.test");
+    await edit.click();
+    if (hidden) await expect(bccField(composerOf(page)).locator(".pill")).toContainText([hidden]);
+    else await expect(bccField(composerOf(page)).locator(".pill")).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).reviewDocument)).toBe(marker);
+  }
+});
+
+test("an unreadable Bcc stays in the open composer but is not reported as stored in the draft row", async ({ page }) => {
+  const subject = `Unreadable draft Bcc ${Date.now()}`;
+  await login(page);
+  await openFolder(page, "Drafts");
+  await page.locator("alps-folder-list alps-create-button").click();
+  const composer = composerOf(page);
+  await expect(composer.locator(".window-frame")).toBeVisible();
+  await composer.locator(".cc-bcc-toggles span", { hasText: "Bcc" }).click();
+  const input = bccField(composer).locator("input");
+  await input.fill("hidden@remote.test;");
+  await input.press("Enter");
+  const saved = draftSaved(page);
+  await composer.getByPlaceholder("Subject").fill(subject);
+  const answer = await (await saved).json();
+
+  expect(answer.draft_bcc).toEqual([]);
+  await expect(row(page, subject)).toHaveCount(1);
+  expect(await page.locator("mailbox-page").evaluate((el, title) =>
+    (el as any).messages.find((m: any) => m.Envelope.Subject === title).Envelope.Bcc, subject)).toEqual([]);
+  await expect(bccField(composer).locator(".pill")).toContainText(["hidden@remote.test;"]);
+});

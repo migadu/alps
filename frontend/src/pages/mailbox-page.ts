@@ -746,7 +746,7 @@ export class MailboxPage extends LitElement {
   }
 
   private handleDraftAutosaved = (e: CustomEvent) => {
-    const { oldUid, oldMailbox, newUid, mailbox, subject, to, cc, hasAttachments, size } = e.detail;
+    const { oldUid, oldMailbox, newUid, mailbox, subject, to, cc, bcc, hasAttachments, size } = e.detail;
     if (!this.messages) return;
     // A string, as the listing sends every UID. A number here made the reader,
     // which compares UIDs as they are, take the same draft for a different
@@ -769,10 +769,11 @@ export class MailboxPage extends LitElement {
     // The recipients the save stored, which a row in Drafts shows in place of
     // its sender, and Edit Draft opens the composer with. Left out, a row kept
     // the ones it was listed with, and a new one fell back to the sender, the
-    // user's own name. No Bcc: a draft is stored without one, and a listing
-    // names none.
+    // user's own name. A draft keeps Bcc too: its row and selected message
+    // must carry the stored recipients so Edit Draft reopens them unchanged.
     const To = listedAddresses(to);
     const Cc = listedAddresses(cc);
+    const Bcc = listedAddresses(bcc);
     const replaced = (m: any) => ({
       ...m,
       UID: nextUid,
@@ -791,7 +792,8 @@ export class MailboxPage extends LitElement {
         ...m.Envelope,
         Subject: subject,
         To,
-        Cc
+        Cc,
+        Bcc
       }
     });
 
@@ -866,7 +868,8 @@ export class MailboxPage extends LitElement {
           Date: new Date().toISOString(),
           From: [{ Name: draftName, Mailbox: draftMailboxStr, Host: draftHostStr }],
           To,
-          Cc
+          Cc,
+          Bcc
         }
       };
       // Also remove any existing draft with the same oldUid if it exists but wasn't caught
