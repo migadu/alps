@@ -453,6 +453,15 @@ export const sr = {
     uploadProgress: '{percent}% od {size}'
   },
 
+  sizeUnits: {
+    bytes: 'B',
+    kilobytes: 'KB',
+    megabytes: 'MB',
+    gigabytes: 'GB',
+    terabytes: 'TB',
+    petabytes: 'PB'
+  },
+
   navigation: {
     messages: 'Poruke',
     contacts: 'Kontakti',

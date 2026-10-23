@@ -36,6 +36,23 @@ describe('alps-attachment-pill upload progress', () => {
     expect(shadow(el, '.attachment-size').textContent).toBe('29\u00a0% von 768 KB');
   });
 
+  it('writes the size with the unit the composer\'s language uses', async () => {
+    // The words around the size were translated and the unit was not:
+    // French read "29 % de 768 KB", and Cyrillic Serbian a Latin "KB".
+    const i18nStore = new I18nStore();
+    await i18nStore.setLanguage('fr');
+    const el = await mount('alps-attachment-pill', { attachment: uploading(29), removable: true, i18nStore });
+    expect(shadow(el, '.attachment-size').textContent).toBe('29\u00a0% de 768 Ko');
+
+    await update(el, { attachment: { filename: 'report.pdf', size: 768 * 1024, uuid: 'u1' } });
+    expect(text(el, '.attachment-size')).toBe('768 Ko');
+
+    const cyrillic = new I18nStore();
+    await cyrillic.setLanguage('rs');
+    const done = await mount('alps-attachment-pill', { attachment: { filename: 'report.pdf', size: 768 * 1024, uuid: 'u1' }, i18nStore: cyrillic });
+    expect(text(done, '.attachment-size')).toBe('768 КБ');
+  });
+
   /** Each language's percentage: a no-break space before the sign, or none. */
   const PERCENT: Record<string, string> = {
     da: '29\u00a0%', de: '29\u00a0%', es: '29\u00a0%', fr: '29\u00a0%',

@@ -442,6 +442,15 @@ export const it = {
     uploadProgress: '{percent}% di {size}'
   },
 
+  sizeUnits: {
+    bytes: 'B',
+    kilobytes: 'KB',
+    megabytes: 'MB',
+    gigabytes: 'GB',
+    terabytes: 'TB',
+    petabytes: 'PB'
+  },
+
   navigation: {
     messages: 'Messaggi',
     contacts: 'Contatti',

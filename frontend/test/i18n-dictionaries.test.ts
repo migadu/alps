@@ -401,8 +401,9 @@ const LATIN_IN_CYRILLIC = new Set([
   'ID',
   // What the user types or copies: example addresses, a URL, a command.
   'odgovor@primer.example', 'https://example.com', 'gpg --armor --export-secret-keys',
-  // A unit symbol and the 12-hour clock's markers, which the browser prints in Latin too.
-  '64KB', 'AM/PM',
+  // The 12-hour clock's markers, which the browser prints in Latin too. A size's
+  // unit is not one of these: rs writes "КБ", as formatSize prints it.
+  'AM/PM',
   // A product, by its own name.
   'YubiKey',
   // The language picker names each language in its own words.
