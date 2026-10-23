@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/components/message-reader';
 import {
-  cleanup, click, installMatchMedia, installResizeObserver, installScrollIntoView, mount, record, shadow, shadowAll, text, waitFor,
+  cleanup, click, installMatchMedia, installResizeObserver, installScrollIntoView, mount, record, shadow, shadowAll, text, update, waitFor,
 } from './helpers/dom';
 import { MessageCache } from '../src/utils/message-cache';
 
@@ -243,5 +243,86 @@ describe('Edit draft on a draft whose body failed to load', () => {
       await el.updateComplete;
       expect(shadowAll(el, '.reader-load-error')).toHaveLength(1);
     });
+  }
+});
+
+// Reply, Reply All and Forward stay on screen above the load error too, and
+// took the body the reader held, none: a reply quoted nothing, and a forward
+// went out without the original's text.
+describe('an answer to a message whose body failed to load', () => {
+  const answerFrom = {
+    'the toolbar': (el: El, action: string) => el._handleAction(action),
+    'its card': (el: El, action: string) => el._handleActionForItem(action, el.threadItems[0]),
+  };
+
+  for (const [from, answer] of Object.entries(answerFrom)) {
+    for (const action of ['reply', 'replyAll', 'forward']) {
+      it(`${action} from ${from} reads the body again and quotes it`, async () => {
+        const composeStore = { openComposer: vi.fn() };
+        const el = await open(message, composeStore);
+        expect(shadowAll(el, '.reader-load-error')).toHaveLength(1);
+
+        bodyStatus.INBOX = 200;
+        await answer(el, action);
+
+        expect(composeStore.openComposer).toHaveBeenCalledTimes(1);
+        const opened = composeStore.openComposer.mock.calls[0][0];
+        expect(opened.text).toContain('the INBOX body');
+        if (action === 'forward') expect(opened.attachments).toEqual([expect.objectContaining({ name: 'figures.csv', partPath: '2' })]);
+        expect(bodyReads).toEqual(['INBOX', 'INBOX']);
+      });
+    }
+
+    it(`from ${from}, says so and opens no composer when the body still cannot be read`, async () => {
+      const composeStore = { openComposer: vi.fn() };
+      const el = await open(message, composeStore);
+      const toasts = record<CustomEvent>(window, 'show-toast');
+
+      await answer(el, 'reply');
+
+      expect(composeStore.openComposer).not.toHaveBeenCalled();
+      expect(bodyReads).toEqual(['INBOX', 'INBOX']);
+      expect(toasts.map(e => e.detail.message)).toEqual(['messageReader.loadError']);
+    });
+  }
+});
+
+
+describe('a body action awaiting a retry belongs to its opening and account', () => {
+  const actions = {
+    'toolbar forward': { draft: false, run: (el: El) => el._handleAction('forward') },
+    'card forward': { draft: false, run: (el: El) => el._handleActionForItem('forward', el.threadItems[0]) },
+    'banner Edit Draft': { draft: true, run: (el: El) => el._handleEditDraft() },
+    'card Edit Draft': { draft: true, run: (el: El) => el._handleEditDraft(el.threadItems[0]) },
+  };
+  for (const [name, action] of Object.entries(actions)) {
+    for (const departure of ['disconnected', 'account cleared', 'closed and reopened'] as const) {
+      it(`${name} does not open a composer after ${departure}`, async () => {
+        const source = action.draft ? draft : message;
+        bodyStatus[source.Mailbox] = 500;
+        const composeStore = { openComposer: vi.fn() };
+        const el = await open(source, composeStore);
+        const normal = fetch;
+        let answer!: (value: Response) => void;
+        vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+          String(input).startsWith(`/mailboxes/${source.Mailbox}/messages/${source.UID}/raw`)
+            ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+        const pending = action.run(el);
+        await waitFor(() => !!answer, 'the retried body');
+        if (departure === 'disconnected') el.remove();
+        else if (departure === 'account cleared') MessageCache.clear();
+        else {
+          await update(el, { message: null });
+          await update(el, { message: source });
+        }
+        answer(new Response('old opening body', { status: 200 }));
+        await pending;
+        expect(composeStore.openComposer).not.toHaveBeenCalled();
+        if (departure === 'account cleared') {
+          expect(el.content).not.toContain('old opening body');
+          expect(MessageCache.get(source.Mailbox, source.UID, 'text')).toBeNull();
+        }
+      });
+    }
   }
 });

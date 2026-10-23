@@ -123,12 +123,12 @@ beforeEach(() => {
   }));
 });
 
-async function settleReaderReads() {
+async function settleReaderReads(clearAccount = true) {
   // Disconnect before releasing: no more queued members may start. A released
   // metadata response can still decode and ask for /raw; keep this test's fetch
   // stub installed until those reads and their follow-on conversation settle.
   cleanup();
-  MessageCache.clear();
+  if (clearAccount) MessageCache.clear();
   for (const resolve of release.values()) resolve();
   while (pendingReads.size) await Promise.allSettled([...pendingReads]);
 }
@@ -264,7 +264,9 @@ it('waits for released metadata to finish decoding before teardown restores the 
   await waitFor(() => !!finishMetadata, 'the pending metadata decode');
 
   let settled = false;
-  const settling = settleReaderReads().then(() => { settled = true; });
+  // Keep this account current so the released metadata still has a raw
+  // request to finish. Account teardown now correctly cancels that follow-up.
+  const settling = settleReaderReads(false).then(() => { settled = true; });
   try {
     await Promise.resolve();
     expect(settled).toBe(false);
