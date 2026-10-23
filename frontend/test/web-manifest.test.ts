@@ -14,7 +14,7 @@ const title = /<title>([^<]*)<\/title>/.exec(readFileSync(resolve(FRONTEND, 'ind
 describe('the web app manifest', () => {
   it('names the app as the page does', () => {
     expect(manifest.name).toBe(title);
-    expect(manifest.short_name).toBe('Alps');
+    expect(manifest.short_name).toBe('Webmail');
   });
 
   it('offers its icons as they are drawn, not as maskable', () => {

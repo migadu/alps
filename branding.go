@@ -6,45 +6,46 @@ import (
 	"html"
 	"io/fs"
 	"net/http"
+	"time"
 )
 
-// BrandingOptions is what a deployment changes about how alps looks before
-// anyone signs in. The zero value is alps as it ships.
+// BrandingOptions is what a deployment changes about how alps looks. The zero
+// value is alps as it ships.
 type BrandingOptions struct {
 	// DefaultTheme is the colour theme for anyone who has not picked one.
 	// Empty means the Alps theme. A theme picked in Settings stays the user's.
 	DefaultTheme string
-	// LoginLogoBuiltin names a logo alps ships, shown on the sign-in page in
-	// place of the edelweiss. It takes the theme's colours in both modes.
-	LoginLogoBuiltin string
-	// LoginLogo is an image shown there instead, and LoginLogoDark in its
-	// place in the dark modes, for a logo that would not show on a dark
-	// background. Either may be nil; a dark one needs a light one.
-	LoginLogo     *Image
-	LoginLogoDark *Image
+	// A logo is a favicon package: the files in IconFiles. It stands where
+	// the edelweiss is, on the sign-in page and in the header, and its icons
+	// are the tab's and the home screen's. LogoBuiltin names one alps ships,
+	// drawn in the theme's colours; LogoPackage is one read from disk, whose
+	// favicon.svg the page shows. At most one is set.
+	LogoBuiltin string
+	LogoPackage map[string][]byte
 }
 
-// BuiltinLogos are the logos alps ships, by the name login_logo takes: "alps"
-// is the edelweiss the sign-in page shows anyway, the others are symbols in
-// the icon sprite (BUILTIN_LOGOS in frontend/src/utils/branding.ts).
+// BuiltinLogos are the logos alps ships, by the name `logo` takes: "alps" is
+// the edelweiss alps shows anyway. Each other has a symbol in the icon sprite
+// (BUILTIN_LOGOS in frontend/src/utils/branding.ts) and a favicon package in
+// frontend/public/assets/logos/<name>/.
 var BuiltinLogos = []string{"alps", "migadu"}
-
-// Image is a file alps serves as it was configured.
-type Image struct {
-	Data []byte
-	Type string // media type
-}
 
 // Themes lists the colour themes the frontend has (THEME_BUNDLES in
 // frontend/src/store/themes.ts), so that a typo in default_theme stops alps
 // at start-up rather than quietly showing the Alps theme.
 var Themes = []string{"alps", "migadu", "nord", "ocean"}
 
-// Where the sign-in page finds the configured logos.
-const (
-	loginLogoPath     = "/branding/login-logo"
-	loginLogoDarkPath = "/branding/login-logo-dark"
-)
+// IconFiles make a favicon package: the icons browsers, home screens and the
+// web manifest ask for, at the paths index.html and site.webmanifest give
+// them. The names are the ones RealFaviconGenerator writes.
+var IconFiles = []string{
+	"favicon.svg",
+	"favicon-96x96.png",
+	"favicon.ico",
+	"apple-touch-icon.png",
+	"web-app-manifest-192x192.png",
+	"web-app-manifest-512x512.png",
+}
 
 // brandedShell returns index.html with the branding the frontend reads before
 // anyone signs in, as <meta> tags, or nil when there is none to add. In the
@@ -55,14 +56,11 @@ func brandedShell(index []byte, b BrandingOptions) ([]byte, error) {
 	if b.DefaultTheme != "" {
 		fmt.Fprintf(&meta, "\n  <meta name=\"alps-default-theme\" content=\"%s\" />", html.EscapeString(b.DefaultTheme))
 	}
-	if b.LoginLogoBuiltin != "" {
-		fmt.Fprintf(&meta, "\n  <meta name=\"alps-login-logo-builtin\" content=\"%s\" />", html.EscapeString(b.LoginLogoBuiltin))
+	if b.LogoBuiltin != "" {
+		fmt.Fprintf(&meta, "\n  <meta name=\"alps-logo-builtin\" content=\"%s\" />", html.EscapeString(b.LogoBuiltin))
 	}
-	if b.LoginLogo != nil {
-		fmt.Fprintf(&meta, "\n  <meta name=\"alps-login-logo\" content=\"%s\" />", loginLogoPath)
-	}
-	if b.LoginLogoDark != nil {
-		fmt.Fprintf(&meta, "\n  <meta name=\"alps-login-logo-dark\" content=\"%s\" />", loginLogoDarkPath)
+	if b.LogoPackage != nil {
+		meta.WriteString("\n  <meta name=\"alps-logo\" content=\"/favicon.svg\" />")
 	}
 	if meta.Len() == 0 {
 		return nil, nil
@@ -79,9 +77,9 @@ func brandedShell(index []byte, b BrandingOptions) ([]byte, error) {
 	return append(shell, index[i:]...), nil
 }
 
-// serveBranding answers the root with the branded shell and serves the login
-// logos. Without branding it registers nothing, and the shell is the file in
-// dist as before.
+// serveBranding answers the root with the branded shell, and the icon paths
+// with the logo's favicon package. Without branding it registers nothing, and
+// the shell and icons are the files in dist as before.
 func (r *Router) serveBranding(dist fs.FS, b BrandingOptions) error {
 	index, err := fs.ReadFile(dist, "index.html")
 	if err != nil {
@@ -99,20 +97,22 @@ func (r *Router) serveBranding(dist fs.FS, b BrandingOptions) error {
 			w.Write(shell)
 		})
 	}
-	r.serveImage(loginLogoPath, b.LoginLogo)
-	r.serveImage(loginLogoDarkPath, b.LoginLogoDark)
-	return nil
-}
 
-func (r *Router) serveImage(path string, img *Image) {
-	if img == nil {
-		return
+	icons := b.LogoPackage
+	if b.LogoBuiltin != "" {
+		icons = make(map[string][]byte, len(IconFiles))
+		for _, name := range IconFiles {
+			if icons[name], err = fs.ReadFile(dist, "assets/logos/"+b.LogoBuiltin+"/"+name); err != nil {
+				return fmt.Errorf("the %s logo has no %s: %v", b.LogoBuiltin, name, err)
+			}
+		}
 	}
-	r.mux.HandleFunc("GET "+path, func(w http.ResponseWriter, req *http.Request) {
-		w.Header().Set("Content-Type", img.Type)
-		// An SVG opened on its own is a document: it gets to run nothing.
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
-		w.Header().Set("Cache-Control", "public, max-age=3600")
-		w.Write(img.Data)
-	})
+	for name, data := range icons {
+		r.mux.HandleFunc("GET /"+name, func(w http.ResponseWriter, req *http.Request) {
+			// An SVG opened on its own is a document: it gets to run nothing.
+			w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+			http.ServeContent(w, req, name, time.Time{}, bytes.NewReader(data))
+		})
+	}
+	return nil
 }

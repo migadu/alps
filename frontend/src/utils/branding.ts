@@ -1,3 +1,6 @@
+import { css, html, type TemplateResult } from 'lit';
+import { renderIcon } from './ui';
+
 /**
  * What the server's [branding] configuration wrote into the page it served
  * (see branding.go). In the page rather than behind a request, so the sign-in
@@ -11,19 +14,32 @@ function meta(name: string): string | null {
 export const defaultTheme = () => meta('alps-default-theme');
 
 /**
- * The logos alps ships besides the edelweiss, by sprite symbol, with the
- * viewBox that sizes each. They take the theme's colours, so one serves both
- * modes. Go keeps the same names in BuiltinLogos.
+ * The logos alps ships besides the edelweiss, as symbols in the icon sprite,
+ * in the theme's colours. Each has its favicon package in
+ * public/assets/logos/<name>/. Go keeps the same names in BuiltinLogos.
  */
-export const BUILTIN_LOGOS: Record<string, string> = {
-  migadu: '0 0 98 24',
-};
+const BUILTIN_LOGOS = ['migadu'];
 
-/** A built-in logo the sign-in page shows in place of the edelweiss. */
-export const loginLogoBuiltin = () => meta('alps-login-logo-builtin');
+/** The icon in the edelweiss's place: a built-in logo, or the edelweiss. */
+export function logoIcon(): string {
+  const name = meta('alps-logo-builtin');
+  return name && BUILTIN_LOGOS.includes(name) ? name : 'edelweiss';
+}
 
-/** An image the sign-in page shows in place of the edelweiss. */
-export const loginLogo = () => meta('alps-login-logo');
+/** The image of a favicon package the server holds, in the edelweiss's place. */
+export const logoFile = () => meta('alps-logo');
 
-/** The same for the dark modes, when the server has one. */
-export const loginLogoDark = () => meta('alps-login-logo-dark');
+/**
+ * The deployment's logo, where the edelweiss would be and at its size: the
+ * caller sizes `svg` and `img.logo` alike.
+ */
+export function renderLogo(): TemplateResult {
+  const file = logoFile();
+  return file ? html`<img class="logo" src=${file} alt="">` : renderIcon(logoIcon());
+}
+
+export const logoStyles = css`
+  img.logo {
+    object-fit: contain;
+  }
+`;

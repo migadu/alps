@@ -1,12 +1,12 @@
 /**
- * The server's [branding]: a default theme and a sign-in logo, written into
+ * The server's [branding]: a default theme and a logo, written into
  * the page as <meta> tags. Without them alps looks as it ships.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, mount } from './helpers/dom';
 import { themeFamily } from '../src/store/themes';
-import { loginLogo, loginLogoBuiltin, loginLogoDark } from '../src/utils/branding';
 import '../src/components/alps-auth-card';
+import '../src/components/app-header';
 
 function brand(name: string, content: string) {
   const meta = document.createElement('meta');
@@ -43,52 +43,45 @@ describe('the theme shown', () => {
   });
 });
 
+const i18nStore = Object.assign(new EventTarget(), { t: (key: string) => key, getLanguage: () => 'en' });
+
+/** The icon or images where the edelweiss would be, in the sign-in card and the header. */
+async function logos() {
+  const card = await mount('alps-auth-card', { branded: true });
+  const header = await mount('app-header', { i18nStore });
+  return [card.shadowRoot!.querySelector('.logo-container')!, header.shadowRoot!.querySelector('.logo')!];
+}
+
+const iconOf = (place: Element) => place.querySelector('svg use')?.getAttribute('href')?.split('#')[1];
+
+describe('the logo, on the sign-in page and in the header', () => {
+  it('is the edelweiss when the server names none', async () => {
+    for (const place of await logos()) expect(iconOf(place)).toBe('edelweiss');
+  });
+
+  it('is a built-in logo the server names', async () => {
+    brand('alps-logo-builtin', 'migadu');
+    for (const place of await logos()) expect(iconOf(place)).toBe('migadu');
+  });
+
+  it('is the edelweiss for a built-in logo this build does not have', async () => {
+    brand('alps-logo-builtin', 'sepia');
+    for (const place of await logos()) expect(iconOf(place)).toBe('edelweiss');
+  });
+
+  it('is the favicon of the server\'s own package', async () => {
+    brand('alps-logo', '/favicon.svg');
+    for (const place of await logos()) {
+      expect(place.querySelector('svg')).toBeNull();
+      expect(place.querySelector('img.logo')?.getAttribute('src')).toBe('/favicon.svg');
+    }
+  });
+});
+
 describe('the sign-in card', () => {
-  it('shows the server\'s logo in place of the icon', async () => {
-    brand('alps-login-logo', '/branding/login-logo');
-    const card = await mount('alps-auth-card', { icon: 'edelweiss', logo: loginLogo() ?? '' });
-    const img = card.shadowRoot!.querySelector('.logo-container img');
-    expect(img?.getAttribute('src')).toBe('/branding/login-logo');
-    expect(card.shadowRoot!.querySelector('.logo-container svg')).toBeNull();
-  });
-
-  // Which of the two shows is CSS (.theme-dark in index.css), which jsdom does
-  // not apply; the browser tests see it.
-  it('carries a logo for each mode when the server has a dark one', async () => {
-    brand('alps-login-logo', '/branding/login-logo');
-    brand('alps-login-logo-dark', '/branding/login-logo-dark');
-    const card = await mount('alps-auth-card', { logo: loginLogo() ?? '', logoDark: loginLogoDark() ?? '' });
-    expect(card.shadowRoot!.querySelector('img.light-only')?.getAttribute('src')).toBe('/branding/login-logo');
-    expect(card.shadowRoot!.querySelector('img.dark-only')?.getAttribute('src')).toBe('/branding/login-logo-dark');
-  });
-
-  it('carries one logo, for every mode, when the server has no dark one', async () => {
-    brand('alps-login-logo', '/branding/login-logo');
-    const card = await mount('alps-auth-card', { logo: loginLogo() ?? '', logoDark: loginLogoDark() ?? '' });
-    const imgs = card.shadowRoot!.querySelectorAll('.logo-container img');
-    expect(imgs).toHaveLength(1);
-    expect(imgs[0].classList.length).toBe(0);
-  });
-
-  it('draws a built-in logo from the sprite, at its own shape', async () => {
-    brand('alps-login-logo-builtin', 'migadu');
-    const card = await mount('alps-auth-card', { icon: 'edelweiss', builtinLogo: loginLogoBuiltin() ?? '' });
-    const svg = card.shadowRoot!.querySelector('.logo-container svg.builtin-logo');
-    expect(svg?.getAttribute('viewBox')).toBe('0 0 98 24');
-    expect(svg?.querySelector('use')?.getAttribute('href')).toMatch(/sprite\.svg\?v=\d+#migadu$/);
-    expect(card.shadowRoot!.querySelectorAll('.logo-container svg')).toHaveLength(1);
-  });
-
-  it('shows its icon for a built-in logo this build does not have', async () => {
-    brand('alps-login-logo-builtin', 'sepia');
-    const card = await mount('alps-auth-card', { icon: 'edelweiss', builtinLogo: loginLogoBuiltin() ?? '' });
-    expect(card.shadowRoot!.querySelector('svg.builtin-logo')).toBeNull();
-    expect(card.shadowRoot!.querySelector('.logo-container svg use')?.getAttribute('href')).toMatch(/#edelweiss$/);
-  });
-
-  it('shows its icon when the server has no logo', async () => {
-    const card = await mount('alps-auth-card', { icon: 'edelweiss', logo: loginLogo() ?? '' });
-    expect(card.shadowRoot!.querySelector('.logo-container img')).toBeNull();
-    expect(card.shadowRoot!.querySelector('.logo-container svg')).not.toBeNull();
+  it('keeps its own icon where the page is not branded', async () => {
+    brand('alps-logo-builtin', 'migadu');
+    const card = await mount('alps-auth-card', { icon: 'fingerprint' });
+    expect(iconOf(card.shadowRoot!.querySelector('.logo-container')!)).toBe('fingerprint');
   });
 });
