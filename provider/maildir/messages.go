@@ -635,10 +635,14 @@ func (p *Provider) SetMessagesFlags(mailbox string, ids []provider.MessageID, op
 	}
 	defer closeRoot(b.root)
 
+	var errs []error
 	for _, id := range ids {
 		key := id.String()
 		m, err := messageByKey(b, key)
 		if err != nil {
+			if !errors.Is(err, provider.ErrMessageNotFound) {
+				errs = append(errs, fmt.Errorf("finding %s for flags: %w", id, err))
+			}
 			continue
 		}
 		currentFlags := m.Flags()
@@ -671,9 +675,11 @@ func (p *Provider) SetMessagesFlags(mailbox string, ids []provider.MessageID, op
 			newFlags = append(newFlags, f)
 		}
 
-		_ = m.SetFlags(newFlags)
+		if err := m.SetFlags(newFlags); err != nil {
+			errs = append(errs, fmt.Errorf("setting flags on %s: %w", id, err))
+		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (p *Provider) MarkAnswered(mailbox string, id provider.MessageID) error {
