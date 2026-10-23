@@ -153,3 +153,34 @@ describe('an HTML draft read only for Edit Draft', () => {
     expect(toasts).toHaveLength(0);
   });
 });
+
+it.each([200, 404])('ignores an old HTML read after a nonselected draft card was autosaved (HTTP %s)', async status => {
+  const { el, openComposer } = await draftReader({ composeFormat: 'html' }, 'text');
+  const other = { ...draft, UID: '9', Flags: ['\\Seen'], Envelope: { ...draft.Envelope, Subject: 'Other message' } };
+  MessageCache.set('Drafts', '9', 'text', {
+    Message: other, Part: { Path: [1], MIMEType: 'text/plain' }, Attachments: [],
+    RawText: 'Another message', HasHTML: false, HasText: true,
+  });
+  el.messages = [{ ...draft, SubMessages: [other] }];
+  el.message = other;
+  await el.updateComplete;
+  await waitFor(() => !el.loading && el.threadItems.length === 2, 'the draft card beside another open message');
+  let finish!: (response: Response) => void;
+  const original = fetch;
+  vi.stubGlobal('fetch', vi.fn((url: string) => String(url).includes('/messages/7?view=html')
+    ? new Promise<Response>(resolve => { finish = resolve; }) : original(url)));
+  const toasts = record<CustomEvent>(window, 'show-toast');
+  const editing = el._handleEditDraft(el.threadItems.find((item: any) => String(item.message.UID) === '7'));
+  await waitFor(() => !!finish, 'the held HTML read');
+
+  window.dispatchEvent(new CustomEvent('draft-autosaved', {
+    detail: { oldUid: '7', oldMailbox: 'Drafts', newUid: '8', mailbox: 'Drafts' },
+  }));
+  el.messages = [{ ...draft, UID: '8', SubMessages: [other] }];
+  await el.updateComplete;
+  expect(el.threadItems.map((item: any) => String(item.message.UID))).toContain('8');
+  finish(new Response(JSON.stringify({ Part: { Path: [2], MIMEType: 'text/html' }, Body: html }), { status }));
+  await editing;
+  expect(openComposer).not.toHaveBeenCalled();
+  expect(toasts).toHaveLength(0);
+});
