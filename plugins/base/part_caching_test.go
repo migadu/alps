@@ -31,6 +31,21 @@ const partsCacheTTL = time.Hour
 type partIMAPCommands struct {
 	mu     sync.Mutex
 	counts map[string]int
+	lines  []string // every command line, for a test that reads what was asked
+}
+
+// linesSince is the command lines sent after the first n.
+func (c *partIMAPCommands) linesSince(n int) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.lines[n:]...)
+}
+
+// lineCount is how many command lines have been sent.
+func (c *partIMAPCommands) lineCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.lines)
 }
 
 // snapshot is what has been counted so far.
@@ -67,6 +82,7 @@ func (l *commandLines) ClientBytes(p []byte) {
 		if end < 0 {
 			return
 		}
+		l.all.lines = append(l.all.lines, string(l.pending[:end]))
 		fields := strings.Fields(string(l.pending[:end]))
 		l.pending = l.pending[end+2:]
 		if len(fields) < 2 {
@@ -97,6 +113,13 @@ func newPartsServer(t *testing.T, usernames ...string) *partsServer {
 
 // newPartsServerWith is newPartsServer on a server that advertises caps.
 func newPartsServerWith(t *testing.T, caps imap.CapSet, usernames ...string) *partsServer {
+	t.Helper()
+	return newPartsServerWithOptions(t, caps, nil, usernames...)
+}
+
+// newPartsServerWithOptions is newPartsServerWith with alps's options set
+// by adjust, as a test needs them.
+func newPartsServerWithOptions(t *testing.T, caps imap.CapSet, adjust func(*alps.Options), usernames ...string) *partsServer {
 	t.Helper()
 	ps := &partsServer{commands: &partIMAPCommands{counts: map[string]int{}}, users: map[string]*imapmemserver.User{}}
 	mem := imapmemserver.New()
@@ -131,13 +154,17 @@ func newPartsServerWith(t *testing.T, caps imap.CapSet, usernames ...string) *pa
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := alps.New(alps.NewLogger(), &alps.Options{
+	opts := &alps.Options{
 		Provider:     popt,
 		SMTP:         alps.SMTPOptions{Server: "smtp://127.0.0.1:1"},
 		LoginKey:     &key,
 		CacheEnabled: true,
 		CacheTTL:     partsCacheTTL,
-	})
+	}
+	if adjust != nil {
+		adjust(opts)
+	}
+	srv, err := alps.New(alps.NewLogger(), opts)
 	if err != nil {
 		t.Fatal(err)
 	}

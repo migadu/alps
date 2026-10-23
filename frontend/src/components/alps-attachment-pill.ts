@@ -5,6 +5,13 @@ import { getAttachmentTypeInfo, type AttachmentTypeInfo } from '../utils/attachm
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 
+/**
+ * The largest image an attachment pill draws a thumbnail from, 1 MiB: most
+ * screenshots and pictures pasted into a message, few photos from a camera.
+ * What a thumbnail loads is bounded by it, whatever the message carries.
+ */
+const THUMBNAIL_MAX_BYTES = 1 << 20;
+
 @customElement('alps-attachment-pill')
 export class AttachmentPill extends LitElement {
   @consume({ context: i18nContext })
@@ -252,8 +259,12 @@ export class AttachmentPill extends LitElement {
     const progress = this.attachment.progress || 0;
     const info = this.typeInfo();
     const previewable = !this.removable && !!this.downloadUrl && info.isPreviewable;
-    // A thumbnail only for a stored image: a composer entry has no URL to draw from.
-    const thumb = info.isImage && this.downloadUrl && !this.imgError;
+    // A thumbnail only for a stored image: a composer entry has no URL to draw
+    // from. And only for one of at most THUMBNAIL_MAX_BYTES: a thumbnail is
+    // the whole attachment, scaled down in the page, so three 4 MB photos cost
+    // 12 MB to draw three small squares, each read in full from the mail
+    // server. A larger image shows its icon, and the preview shows it whole.
+    const thumb = info.isImage && this.downloadUrl && !this.imgError && size <= THUMBNAIL_MAX_BYTES;
 
     const content = html`
       ${uploading ? html`<div class="progress-bar" style="width: ${progress}%"></div>` : ''}
