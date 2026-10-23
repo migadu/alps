@@ -867,6 +867,44 @@ describe('Serbian capitals', () => {
   });
 });
 
+/**
+ * The words of an Italian string that take a capital in English title case
+ * only. Italian capitalises a title or a button on its first word, as the rest
+ * of alps's Italian does ("Rispondi a tutti", "Crea categoria"), and goes on in
+ * small letters after a colon; an acronym such as GPG keeps its capitals.
+ */
+function italianTitleCased(text: string): string[] {
+  const plain = text.replace(/\{[^}]*\}/g, ' ').replace(/"[^"]*"/g, ' ');
+  return plain.split(/(?<=[.!?…])\s+|\n/).flatMap((sentence) =>
+    [...sentence.matchAll(/\p{L}+/gu)].slice(1).map(([word]) => word)
+      .filter((word) => /^\p{Lu}/u.test(word) && !/\p{Lu}/u.test(word.slice(1))));
+}
+
+describe('Italian capitals', () => {
+  it('has a rule that catches English title case and spares acronyms and new sentences', () => {
+    expect(italianTitleCased('Genera Nuova Coppia di Chiavi')).toEqual(['Nuova', 'Coppia', 'Chiavi']);
+    expect(italianTitleCased('Passphrase (Richiesta)')).toEqual(['Richiesta']);
+    expect(italianTitleCased('Attiva/Disattiva crittografia GPG')).toEqual(['Disattiva']);
+    expect(italianTitleCased('Impossibile crittografare: Chiavi pubbliche mancanti per:\n{keys}')).toEqual(['Chiavi']);
+    for (const text of [
+      'Importa coppia di chiavi GPG esistente', 'Passphrase errata per la chiave privata. Riprova.',
+      'Incolla i blocchi, ad es. da "gpg --armor --export-secret-keys". Se la chiave è protetta, ti verrà chiesta.',
+    ]) {
+      expect(italianTitleCased(text), text).toEqual([]);
+    }
+  });
+
+  it('gpg/it capitalises only a sentence\'s first word', () => {
+    // The GPG plugin's Italian took the English habit of a capital on every
+    // word of a title or a button: "Importa Coppia di Chiavi GPG Esistente".
+    const slips = leaves(byPlugin.get('gpg')!.get('it')!)
+      .map(([key, text]) => [key, text, italianTitleCased(String(text))] as const)
+      .filter(([, , words]) => words.length > 0)
+      .map(([key, text, words]) => `${key}="${text}": ${words.join(' ')}`);
+    expect(slips).toEqual([]);
+  });
+});
+
 describe('terms within one locale', () => {
   it('fr calls calendars "calendrier", the calendar feature\'s own name', () => {
     // French names the feature "Calendrier" on its tab and throughout its
