@@ -80,3 +80,73 @@ func TestThreadedListSortsByDate(t *testing.T) {
 		})
 	}
 }
+
+// Without SORT, alps keeps the date of each conversation it sorted, by UID. A
+// folder deleted and made again, here or in another mail program, numbers its
+// messages from 1 again under a new UIDVALIDITY, and its conversations were
+// put in the order of the old folder's dates.
+func TestAFolderMadeAgainIsSortedByItsOwnDates(t *testing.T) {
+	threads := []imap.ThreadData{{Chain: []uint32{1}}, {Chain: []uint32{2}}, {Chain: []uint32{3}}}
+	caps := imap.CapSet{imap.CapIMAP4rev1: {}, imap.Cap("THREAD=REFERENCES"): {}}
+	for _, where := range []string{"here", "elsewhere"} {
+		t.Run("made again "+where, func(t *testing.T) {
+			s := &memServer{caps: caps, threads: threads}
+			p := memIMAP(t, s)
+			other := elsewhere(t, s)
+			fill := func(messages ...string) {
+				t.Helper()
+				for _, m := range messages {
+					appendTo(t, other, "Work", m)
+				}
+			}
+			list := func() string {
+				t.Helper()
+				rows, _, err := p.ListMessages("Work", "desc", 0, 50)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var subjects []string
+				for _, r := range rows {
+					subjects = append(subjects, r.Envelope.Subject)
+				}
+				// Away from Work, so that it is selected again when listed.
+				if _, _, err := p.ListMessages("INBOX", "desc", 0, 50); err != nil {
+					t.Fatal(err)
+				}
+				return strings.Join(subjects, " ")
+			}
+
+			if err := p.CreateMailbox("Work"); err != nil {
+				t.Fatal(err)
+			}
+			fill(datedMessage("oldest", "Mon, 01 Sep 2026 08:00:00 +0000"),
+				datedMessage("newest", "Fri, 05 Sep 2026 08:00:00 +0000"),
+				datedMessage("middle", "Wed, 03 Sep 2026 08:00:00 +0000"))
+			if got := list(); got != "newest middle oldest" {
+				t.Fatalf("Work is listed %q, want newest first", got)
+			}
+
+			if where == "here" {
+				if err := p.DeleteMailbox("Work"); err != nil {
+					t.Fatal(err)
+				}
+				if err := p.CreateMailbox("Work"); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := other.Delete("Work").Wait(); err != nil {
+					t.Fatal(err)
+				}
+				if err := other.Create("Work", nil).Wait(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			fill(datedMessage("Middle", "Wed, 03 Sep 2026 08:00:00 +0000"),
+				datedMessage("Oldest", "Mon, 01 Sep 2026 08:00:00 +0000"),
+				datedMessage("Newest", "Fri, 05 Sep 2026 08:00:00 +0000"))
+			if got := list(); got != "Newest Middle Oldest" {
+				t.Errorf("Work made again is listed %q, want newest first by its own messages' dates", got)
+			}
+		})
+	}
+}
