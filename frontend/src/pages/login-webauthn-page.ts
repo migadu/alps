@@ -95,11 +95,13 @@ export class LoginWebAuthnPage extends LitElement {
 
   /** The ceremony the page starts by itself, until it runs or is not needed. */
   private _autoVerify: ReturnType<typeof setTimeout> | undefined;
+  private _completeLogin: ReturnType<typeof setTimeout> | undefined;
+  private _verification: AbortController | null = null;
 
   connectedCallback() {
     super.connectedCallback();
     this.updateComplete.then(() => {
-      this.i18nStore?.addEventListener('change', this._handleI18nChange);
+      if (this.isConnected) this.i18nStore?.addEventListener('change', this._handleI18nChange);
     });
     
     if (!isWebAuthnSupported()) {
@@ -115,9 +117,24 @@ export class LoginWebAuthnPage extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    // A page the user has left, back to the password, starts no ceremony.
-    clearTimeout(this._autoVerify);
+    this._cancelVerification();
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
+  }
+
+  /** Leaving cancels the native prompt and makes even an uncancellable old
+   * answer inert. Reconnecting the same page may start a fresh ceremony. */
+  private _cancelVerification() {
+    clearTimeout(this._autoVerify);
+    clearTimeout(this._completeLogin);
+    this._verification?.abort();
+    this._verification = null;
+    this.isLoading = false;
+    this.isSuccess = false;
+  }
+
+  private _backToLogin() {
+    this._cancelVerification();
+    window.location.hash = '#/login';
   }
 
   /**
@@ -131,7 +148,7 @@ export class LoginWebAuthnPage extends LitElement {
       sessionStorage.removeItem('pending_2fa_is_switch');
     } catch {}
     setLoginNotice('secondFactorExpired');
-    window.location.hash = '#/login';
+    this._backToLogin();
   }
 
   /**
@@ -155,14 +172,18 @@ export class LoginWebAuthnPage extends LitElement {
    */
   private async _handleVerify() {
     clearTimeout(this._autoVerify);
-    if (this.isLoading || this.isSuccess) return;
+    if (!this.isConnected || this.isLoading || this.isSuccess) return;
+    const verification = new AbortController();
+    this._verification = verification;
+    const current = () => this.isConnected && this._verification === verification && !verification.signal.aborted;
     this.isLoading = true;
     this.statusMessage = this.i18nStore?.t('webauthn.requesting');
     this.statusType = 'info';
 
     try {
       // 1. Begin authentication
-      const begin = await post('/webauthn/verify/begin');
+      const begin = await post('/webauthn/verify/begin', { signal: verification.signal });
+      if (!current()) return;
       if (begin === null) throw new Error(this.i18nStore?.t('login.networkError'));
       if (begin.status === 401) return this._backToPassword();
       if (isOutage(begin)) throw new Error(this.i18nStore?.t('webauthn.errors.unavailable'));
@@ -178,14 +199,17 @@ export class LoginWebAuthnPage extends LitElement {
 
       // 2. Authenticate via browser
       this.statusMessage = this.i18nStore?.t('webauthn.waiting_for_key');
-      const credential = await authenticateCredential(credentialRequestOptions);
+      const credential = await authenticateCredential({ ...credentialRequestOptions, signal: verification.signal });
+      if (!current()) return;
 
       // 3. Finish authentication
       this.statusMessage = this.i18nStore?.t('webauthn.verifying');
       const finish = await post('/webauthn/verify/finish', {
+        signal: verification.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credential)
       });
+      if (!current()) return;
       if (finish === null) throw new Error(this.i18nStore?.t('login.networkError'));
       if (finish.status === 401) return this._backToPassword();
       if (isOutage(finish)) throw new Error(this.i18nStore?.t('webauthn.errors.unavailable'));
@@ -216,7 +240,8 @@ export class LoginWebAuthnPage extends LitElement {
         }
 
         // Complete the login flow
-        setTimeout(() => {
+        this._completeLogin = setTimeout(() => {
+          if (!current()) return;
           window.dispatchEvent(new CustomEvent('user-logged-in', {
             detail: { username }
           }));
@@ -231,6 +256,7 @@ export class LoginWebAuthnPage extends LitElement {
         throw new Error(this.i18nStore?.t('webauthn.errors.verification_failed'));
       }
     } catch (err: any) {
+      if (!current()) return;
       // The browser's words are English whatever the language here (Chrome's
       // for a cancelled prompt even link to the WebAuthn specification). A
       // prompt cancelled or timed out is a key that was not used, and Verify
@@ -245,7 +271,7 @@ export class LoginWebAuthnPage extends LitElement {
       }
       this.statusType = 'error';
     } finally {
-      this.isLoading = false;
+      if (current()) this.isLoading = false;
     }
   }
 
@@ -278,7 +304,7 @@ export class LoginWebAuthnPage extends LitElement {
           variant="text"
           full-width
           style="height: 36px; margin-top: 8px;"
-          @click=${() => window.location.hash = '#/login'}
+          @click=${this._backToLogin}
         >
           ← ${this.i18nStore?.t('webauthn.back_to_login')}
         </alps-button>
