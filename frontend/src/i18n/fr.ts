@@ -539,6 +539,8 @@ export const fr = {
     reload: 'Recharger'
   },
   general: {
+    pageLoadFailed: "Cette page n’a pas pu être chargée. Enregistrez et fermez les fenêtres de rédaction, puis rechargez la page.",
+    backToMail: "Retour au courrier",
     error: 'Erreur',
     cancel: 'Annuler',
     save: 'Enregistrer',

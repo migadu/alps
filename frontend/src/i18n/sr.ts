@@ -557,6 +557,8 @@ export const sr = {
     reload: 'Osveži'
   },
   general: {
+    pageLoadFailed: "Ova stranica nije mogla da se učita. Sačuvajte i zatvorite prozore za pisanje poruka, pa ponovo učitajte stranicu.",
+    backToMail: "Nazad na poštu",
     error: 'Greška',
     cancel: 'Otkaži',
     save: 'Sačuvaj',

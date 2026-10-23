@@ -203,9 +203,11 @@ describe('page modules', () => {
     page.remove();
   });
 
-  it('tries again the next time the page is shown when the fetch failed', async () => {
+  it('invokes an unresolved loader again on a later render', async () => {
     const tag = 'lazy-retried-pane';
     vi.spyOn(Logger, 'error').mockImplementation(() => {});
+    // A loader may recover. Native imports can cache failures by URL and need
+    // app-update's reload instead; the failure notice explains that safely.
     const load = vi.fn()
       .mockRejectedValueOnce(new Error('offline'))
       .mockImplementationOnce(async () => customElements.define(tag, class extends HTMLElement {}));
