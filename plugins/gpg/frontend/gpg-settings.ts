@@ -278,13 +278,25 @@ export class AlpsGpgSettings extends LitElement {
         }
     }
 
+    /**
+     * Deletes the keypair from the server, and only then from the page. The
+     * page cleared its keys and forgot the unlocked one whatever the server
+     * answered: a refused delete showed no keypair, the keypair came back on
+     * the next visit, and meanwhile this tab could not open encrypted mail.
+     */
     async purgeKeys() {
         this.loading = true;
         this.showPurgeConfirm = false;
-        await fetchWithTimeout('/gpg/keys', { method: 'DELETE' });
-        this.keyring = null;
-        clearCachedPrivateKey();
-        this.loading = false;
+        try {
+            const res = await fetchWithTimeout('/gpg/keys', { method: 'DELETE' });
+            if (!res.ok) throw new Error(`${res.status} ${res.statusText}`.trim());
+            this.keyring = null;
+            clearCachedPrivateKey();
+        } catch (e: any) {
+            alert(this.i18nStore?.t('gpg.purgeFailed', { error: e.message }));
+        } finally {
+            this.loading = false;
+        }
     }
 
     render() {

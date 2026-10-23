@@ -276,3 +276,68 @@ describe('saving a keypair', () => {
     expect([el.pubKeyInput, el.privKeyInput]).toEqual(['public armour', 'private armour']);
   });
 });
+
+/**
+ * Purging the keypair deletes it from the server, and only then from the
+ * page. The page cleared its keys and forgot the unlocked one whatever the
+ * server answered: a refused delete showed no keypair, the keypair came back
+ * on the next visit, and in the meantime this tab could no longer open
+ * encrypted mail.
+ */
+describe('purging the keypair', () => {
+  const encrypted = '-----BEGIN PGP MESSAGE-----\nxyz\n-----END PGP MESSAGE-----';
+  const read = async () => String(await handleReaderContent({ content: encrypted, banners: [], i18nStore: { t: (k: string) => k } }));
+
+  /** How the server answers the delete: 'ok', a refusal, or no answer at all. */
+  let answer: 'ok' | 'refused' | 'offline';
+  let keyring: Record<string, string>;
+  let alerts: string[];
+
+  beforeEach(() => {
+    answer = 'ok';
+    keyring = { public_key: 'public armour', encrypted_private_key: 'OLD-KEY' };
+    alerts = [];
+    vi.stubGlobal('alert', (message: string) => { alerts.push(message); });
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        if (answer === 'offline') throw new TypeError('Failed to fetch');
+        if (answer === 'refused') return new Response('{"error":"An internal error occurred"}', { status: 500, statusText: 'Internal Server Error' });
+        keyring = {};
+        return new Response('{"success":true}');
+      }
+      return new Response(JSON.stringify(keyring));
+    }));
+    pgp.readPrivateKey.mockImplementation(async ({ armoredKey }: { armoredKey: string }) => ({ armoredKey, isDecrypted: () => true }));
+    pgp.readMessage.mockResolvedValue({});
+    pgp.decrypt.mockImplementation(async ({ decryptionKeys }: { decryptionKeys: { armoredKey: string } }) => ({ data: `opened with ${decryptionKeys.armoredKey}` }));
+  });
+
+  afterEach(() => {
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+  });
+
+  it('clears the keypair and the unlocked key once the server has deleted them', async () => {
+    expect(await read()).toContain('opened with OLD-KEY');
+    const el = await pane();
+    expect(el.keyring).not.toBeNull();
+    await el.purgeKeys();
+    expect(el.keyring).toBeNull();
+    expect(alerts).toEqual([]);
+    // The unlocked key is gone with it: the next message reads the keyring
+    // again, and finds none.
+    expect(await read()).not.toContain('opened with OLD-KEY');
+  });
+
+  it.each(['refused', 'offline'] as const)('keeps both, and says so, when the delete is %s', async (how) => {
+    expect(await read()).toContain('opened with OLD-KEY');
+    const el = await pane();
+    answer = how;
+    await el.purgeKeys();
+    await el.updateComplete;
+    expect(el.loading).toBe(false);
+    expect(el.keyring).toEqual(keyring);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatch(/^Failed to purge keys: /);
+    expect(await read()).toContain('opened with OLD-KEY');
+  });
+});
