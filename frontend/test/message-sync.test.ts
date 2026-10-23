@@ -16,7 +16,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 function events(svc: MessageSyncService) {
   const seen: { type: string; detail: any }[] = [];
-  for (const type of ['sync-start', 'sync-success', 'sync-error', 'mailbox-not-found', 'labels-success']) {
+  for (const type of ['sync-start', 'sync-success', 'sync-error', 'sync-unchanged', 'mailbox-not-found', 'labels-success']) {
     svc.addEventListener(type, (e) => seen.push({ type, detail: (e as CustomEvent).detail }));
   }
   return seen;
@@ -847,5 +847,358 @@ describe('listings kept in memory', () => {
       await read;
       expect(seen.filter((e) => e.type === 'sync-success').at(-1)!.detail.data.Messages.map((m: any) => m.UID)).toEqual(['1']);
     });
+  });
+});
+
+/**
+ * Polling: one tab polls, a poll that finds nothing new reads nothing more,
+ * and a tab that comes back into view catches up.
+ *
+ * Every tab polled on its own, all on the session's one connection to the
+ * mail server, and every poll read the listing again, a search included,
+ * whatever the counts it had just asked for said.
+ */
+describe('polling', () => {
+  /** A server whose folders hold `counts`, listed at them. */
+  function server(counts: { total: number; unseen: number }) {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/status')) return new Response(JSON.stringify(counts), { status: 200 });
+      const status = { NumMessages: counts.total, NumUnseen: counts.unseen };
+      return new Response(JSON.stringify({ Messages: [], Total: counts.total, Mailbox: status, Inbox: status }), { status: 200 });
+    });
+  }
+
+  const listingsAsked = () => fetchMock.mock.calls.map((c) => String(c[0])).filter((url) => url.includes('?page='));
+
+  /** navigator.locks, as far as the poll uses it: one holder per name, the rest wait in turn. */
+  function installLocks() {
+    vi.stubGlobal('BroadcastChannel', class {
+      onmessage = null;
+      postMessage() {}
+      close() {}
+    });
+    const held = new Set<string>();
+    const waiting = new Map<string, (() => void)[]>();
+    const locks = {
+      request(name: string, options: any, callback?: () => Promise<void>) {
+        if (!callback) callback = options;
+        return new Promise<void>((resolve, reject) => {
+          const grant = () => {
+            held.add(name);
+            Promise.resolve(callback!()).then(resolve, reject).finally(() => {
+              held.delete(name);
+              waiting.get(name)?.shift()?.();
+            });
+          };
+          if (!held.has(name)) grant();
+          else waiting.set(name, [...(waiting.get(name) ?? []), grant]);
+        });
+      },
+    };
+    Object.defineProperty(navigator, 'locks', { value: locks, configurable: true });
+    return locks;
+  }
+
+  const started: MessageSyncService[] = [];
+  const service = () => {
+    const svc = new MessageSyncService();
+    started.push(svc);
+    return svc;
+  };
+
+  afterEach(() => {
+    started.splice(0).forEach((svc) => svc.stop());
+    delete (navigator as any).locks;
+  });
+
+  async function landed(svc: MessageSyncService, mailbox: string, query = '') {
+    const pending = svc.fetch(mailbox, 0, query);
+    // Past the 200ms a foreground read holds its dim for; not every timer,
+    // which a poll's interval never runs out of.
+    await vi.advanceTimersByTimeAsync(500);
+    await pending;
+  }
+
+  it('does not read the listing, or run a search again, when the counts are the ones it was read at', async () => {
+    server({ total: 2, unseen: 1 });
+    const svc = service();
+    await landed(svc, 'Work', 'ada');
+    fetchMock.mockClear();
+
+    svc.start(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Work/status']);
+
+    server({ total: 3, unseen: 2 });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toEqual(['/mailboxes/Work?page=0&query=ada']);
+  });
+
+  it('polls from the one tab that holds the poll lock, and from the next once that one stops', async () => {
+    installLocks();
+    server({ total: 2, unseen: 1 });
+    const first = service();
+    const second = service();
+    first.start(1);
+    second.start(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toHaveLength(1);
+
+    first.stop();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toHaveLength(2);
+  });
+
+  it('checks a tab come back into view whose mail is over a minute old, and does not chime for it there', async () => {
+    const locks = installLocks();
+    void locks.request('alps-mail-poll', () => new Promise<void>(() => {}));
+    server({ total: 2, unseen: 1 });
+    const svc = service();
+    svc.start(1);
+    await landed(svc, 'INBOX');
+    fetchMock.mockClear();
+    const seen = events(svc);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    window.dispatchEvent(new Event('focus'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    server({ total: 3, unseen: 2 });
+    await vi.advanceTimersByTimeAsync(31_000);
+    // Not polled: another tab holds the poll.
+    expect(fetchMock).not.toHaveBeenCalled();
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status', '/mailboxes/INBOX?page=0']);
+    expect(seen.map((e) => e.type)).toEqual(['sync-success']);
+    expect(seen[0].detail).toMatchObject({ background: true, announce: false });
+  });
+
+  it('ends a check that finds nothing new without reading the listing', async () => {
+    server({ total: 2, unseen: 1 });
+    const svc = service();
+    await landed(svc, 'INBOX');
+    fetchMock.mockClear();
+    const seen = events(svc);
+
+    await svc.check('INBOX', 0);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status']);
+    expect(seen.map((e) => e.type)).toEqual(['sync-start', 'sync-unchanged']);
+  });
+
+  // The check leaves its end to the poll that took its place, and that poll
+  // found nothing new: the chip it started span until the counts next moved.
+  it('ends a check overtaken by a poll that finds nothing new', async () => {
+    server({ total: 2, unseen: 1 });
+    const svc = service();
+    await landed(svc, 'INBOX');
+    svc.start(1);
+    const answer = fetchMock.getMockImplementation()!;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    fetchMock.mockImplementationOnce(async (url: string) => { await held; return answer(url); });
+    const seen = events(svc);
+
+    const checking = svc.check('INBOX', 0);
+    await vi.advanceTimersByTimeAsync(60_000);
+    release();
+    await checking;
+    expect(listingsAsked()).toHaveLength(1);
+    expect(seen.map((e) => e.type)).toEqual(['sync-start', 'sync-unchanged']);
+  });
+
+  // Unchanged counts do not prove an unchanged listing: a star set elsewhere,
+  // or a match the server had not indexed yet when the counts moved. Read
+  // past the server's caches, which kept the page about as long.
+  it('reads the listing again once it is as old as the server keeps it, though the counts match', async () => {
+    server({ total: 2, unseen: 1 });
+    const svc = service();
+    await landed(svc, 'Work', 'ada');
+    fetchMock.mockClear();
+
+    svc.start(5);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(listingsAsked()).toEqual([]);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(listingsAsked()).toEqual(['/mailboxes/Work?page=0&query=ada&refresh=true']);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(listingsAsked()).toHaveLength(1);
+  });
+
+  // A listing lands some way into the poll that asked for it, after the status
+  // checks and its own round trip. Measured from there, the poll ten minutes
+  // on found it a moment short of ten minutes old, and a view was read again
+  // every fifteen minutes.
+  it('reads the listing again every ten minutes at the default interval, though each read takes time', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      const status = { NumMessages: 2, NumUnseen: 1 };
+      if (url.includes('/status')) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return new Response(JSON.stringify({ total: 2, unseen: 1 }), { status: 200 });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return new Response(JSON.stringify({ Messages: [], Mailbox: status, Inbox: status }), { status: 200 });
+    });
+    const svc = service();
+    await landed(svc, 'Work');
+    fetchMock.mockClear();
+
+    svc.start(5);
+    // A second more, for the poll's own requests.
+    await vi.advanceTimersByTimeAsync(10 * 60_000 + 1000);
+    expect(listingsAsked()).toHaveLength(1);
+    // From the poll's own read on, as in a tab left open.
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(listingsAsked()).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(listingsAsked()).toEqual(Array(3).fill('/mailboxes/Work?page=0&refresh=true'));
+  });
+
+  // A timer can fire late, and a view opened between two polls is read off
+  // their beat: the poll nearest ten minutes on reads it again, not the first
+  // one past them.
+  it('reads the listing again at the poll nearest ten minutes after it landed', async () => {
+    server({ total: 2, unseen: 1 });
+    const svc = service();
+    svc.start(5);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await landed(svc, 'Work');
+    fetchMock.mockClear();
+
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
+    expect(listingsAsked()).toEqual([]);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(listingsAsked()).toEqual(['/mailboxes/Work?page=0&refresh=true']);
+  });
+
+  // The slack is for polls on the timer. The button is pressed at any moment,
+  // and with half of a thirty-minute interval it read a listing seconds old
+  // again, past the server's caches, for an answer of "nothing".
+  it('lets the check-for-new-mail button read nothing more over a listing under ten minutes old, whatever the interval', async () => {
+    server({ total: 2, unseen: 1 });
+    const svc = service();
+    svc.start(30);
+    await landed(svc, 'INBOX');
+    await vi.advanceTimersByTimeAsync(5000);
+    fetchMock.mockClear();
+
+    await svc.check('INBOX', 0);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status']);
+  });
+
+  it('lets a tab come back into view read nothing more over a listing under ten minutes old, whatever the interval', async () => {
+    server({ total: 2, unseen: 1 });
+    for (const minutes of [15, 30]) {
+      const svc = service();
+      svc.start(minutes);
+      await landed(svc, 'INBOX');
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
+      fetchMock.mockClear();
+
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(fetchMock.mock.calls.map((c) => c[0]), `polling every ${minutes} minutes`).toEqual(['/mailboxes/INBOX/status']);
+      svc.stop();
+    }
+  });
+
+  it('reads the listing when only the Inbox moved, with another folder on screen', async () => {
+    let inbox = { total: 2, unseen: 1 };
+    const work = { total: 5, unseen: 0 };
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === '/mailboxes/INBOX/status') return new Response(JSON.stringify(inbox), { status: 200 });
+      if (url.includes('/status')) return new Response(JSON.stringify(work), { status: 200 });
+      return new Response(JSON.stringify({
+        Messages: [],
+        Mailbox: { NumMessages: work.total, NumUnseen: work.unseen },
+        Inbox: { NumMessages: inbox.total, NumUnseen: inbox.unseen },
+      }), { status: 200 });
+    });
+    const svc = service();
+    await landed(svc, 'Work');
+    fetchMock.mockClear();
+
+    svc.start(1);
+    inbox = { total: 3, unseen: 2 };
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toEqual(['/mailboxes/Work?page=0']);
+  });
+
+  it('runs a search across every folder again on every poll, as it has no counts to go by', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/status')) return new Response(JSON.stringify({ total: 2, unseen: 1 }), { status: 200 });
+      return new Response(JSON.stringify({
+        Messages: [],
+        Mailbox: { Mailbox: '*' },
+        Inbox: { NumMessages: 2, NumUnseen: 1 },
+      }), { status: 200 });
+    });
+    const svc = service();
+    await landed(svc, '*', 'ada');
+    fetchMock.mockClear();
+
+    svc.start(1);
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    expect(listingsAsked()).toHaveLength(2);
+  });
+
+  it('checks once for a tab come back into view, though it hears both visibilitychange and focus', async () => {
+    const locks = installLocks();
+    void locks.request('alps-mail-poll', () => new Promise<void>(() => {}));
+    server({ total: 2, unseen: 1 });
+    const svc = service();
+    svc.start(1);
+    await landed(svc, 'Work');
+    await vi.advanceTimersByTimeAsync(61_000);
+    fetchMock.mockClear();
+
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Work/status']);
+  });
+
+  it('does not announce what the check-for-new-mail button finds in a tab that does not poll', async () => {
+    const locks = installLocks();
+    void locks.request('alps-mail-poll', () => new Promise<void>(() => {}));
+    server({ total: 2, unseen: 1 });
+    const svc = service();
+    svc.start(1);
+    await landed(svc, 'INBOX');
+    const seen = events(svc);
+
+    server({ total: 3, unseen: 2 });
+    await svc.check('INBOX', 0);
+    expect(seen.map((e) => e.type)).toEqual(['sync-start', 'sync-success']);
+    expect(seen[1].detail).toMatchObject({ background: true, announce: false });
+  });
+
+  it('announces what the check-for-new-mail button finds when no tab polls', async () => {
+    installLocks();
+    server({ total: 2, unseen: 1 });
+    const svc = service();
+    svc.start(0);
+    await landed(svc, 'INBOX');
+    const seen = events(svc);
+
+    server({ total: 3, unseen: 2 });
+    await svc.check('INBOX', 0);
+    expect(seen[1].detail).toMatchObject({ background: true, announce: true });
+  });
+
+  it('polls from this tab when the poll lock cannot be had', async () => {
+    Object.defineProperty(navigator, 'locks', {
+      value: { request: () => Promise.reject(new DOMException('denied', 'SecurityError')) },
+      configurable: true,
+    });
+    server({ total: 2, unseen: 1 });
+    const svc = service();
+    await landed(svc, 'INBOX');
+    fetchMock.mockClear();
+
+    svc.start(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status']);
   });
 });

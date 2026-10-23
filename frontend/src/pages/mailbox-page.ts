@@ -676,6 +676,7 @@ export class MailboxPage extends LitElement {
     messageSync.addEventListener('sync-start', this.handleSyncStart);
     messageSync.addEventListener('sync-success', this.handleSyncSuccess);
     messageSync.addEventListener('sync-error', this.handleSyncError);
+    messageSync.addEventListener('sync-unchanged', this.handleSyncUnchanged);
     messageSync.addEventListener('labels-success', this.handleLabelsSuccess);
     messageSync.addEventListener('mailbox-not-found', this.handleMailboxNotFound as EventListener);
 
@@ -706,6 +707,7 @@ export class MailboxPage extends LitElement {
     messageSync.removeEventListener('sync-start', this.handleSyncStart);
     messageSync.removeEventListener('sync-success', this.handleSyncSuccess);
     messageSync.removeEventListener('sync-error', this.handleSyncError);
+    messageSync.removeEventListener('sync-unchanged', this.handleSyncUnchanged);
     messageSync.removeEventListener('labels-success', this.handleLabelsSuccess);
     messageSync.removeEventListener('mailbox-not-found', this.handleMailboxNotFound as EventListener);
     window.removeEventListener('draft-autosaved', this.handleDraftAutosaved as EventListener);
@@ -920,6 +922,9 @@ export class MailboxPage extends LitElement {
     this.isSyncing = false;
     this.listLoadFailed = false;
     const { data, background } = (e as CustomEvent).detail;
+    // A check made in a tab that does not poll: the tab that polls has chimed,
+    // or will chime, for the same arrival.
+    const announce = (e as CustomEvent).detail.announce !== false;
 
     if (data.Username) {
       this.username = data.Username;
@@ -963,7 +968,7 @@ export class MailboxPage extends LitElement {
       this.mailboxes = data.Mailboxes;
     }
 
-    if (soundTriggered && this.settingsStore.getState().soundNotifications) {
+    if (announce && soundTriggered && this.settingsStore.getState().soundNotifications) {
       const sound = this.chime();
       sound.currentTime = 0;
       sound.play().catch(e => {
@@ -973,7 +978,7 @@ export class MailboxPage extends LitElement {
       });
     }
 
-    if (notificationTriggered && this.settingsStore.getState().desktopNotifications && 'Notification' in window && Notification.permission === 'granted') {
+    if (announce && notificationTriggered && this.settingsStore.getState().desktopNotifications && 'Notification' in window && Notification.permission === 'granted') {
       const title = this.i18nStore?.t('mailboxPage.newMessages');
       let body = totalNewInboxMessages === 1
         ? (this.i18nStore?.t('mailboxPage.newMessagesSingleBody'))
@@ -1098,6 +1103,11 @@ export class MailboxPage extends LitElement {
     if (data.Total === undefined || data.Total <= 0 || perPage <= 0) return false;
     return Math.ceil(data.Total / perPage) - 1 < page;
   }
+
+  /** A check that found the folder as it was listed: nothing to show. */
+  private handleSyncUnchanged = () => {
+    this.isSyncing = false;
+  };
 
   private handleSyncError = (e: Event) => {
     this.isSyncing = false;

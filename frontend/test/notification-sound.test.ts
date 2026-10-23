@@ -79,3 +79,30 @@ describe('the first gesture on the mailbox', () => {
     expect(removed).toHaveBeenCalledWith('keydown', el.unlockAudio);
   });
 });
+
+describe('new mail a check finds', () => {
+  /** A background answer in which the Inbox has one more unread message than the page holds. */
+  function arrive(el: any, announce?: boolean) {
+    el.mailboxes = [{ Name: 'INBOX', Total: 1, Unseen: 0 }];
+    el.handleSyncSuccess(new CustomEvent('sync-success', {
+      detail: {
+        data: { Mailboxes: [{ Name: 'INBOX', Total: 2, Unseen: 1 }], Messages: [] },
+        background: true,
+        ...(announce === undefined ? {} : { announce }),
+      },
+    }));
+  }
+
+  it('chimes in the tab that polls', () => {
+    const el = page({ soundNotifications: true });
+    arrive(el);
+    expect(FakeAudio.made).toHaveLength(1);
+    expect(FakeAudio.made[0].play).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not chime in a tab that does not poll, which the tab that polls has done', () => {
+    const el = page({ soundNotifications: true });
+    arrive(el, false);
+    expect(FakeAudio.made.flatMap((a) => a.play.mock.calls)).toHaveLength(0);
+  });
+});

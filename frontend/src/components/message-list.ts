@@ -1018,6 +1018,7 @@ export class MessageList extends LitElement {
     messageSync.addEventListener('sync-start', this.handleSyncStart);
     messageSync.addEventListener('sync-success', this.handleSyncEnd);
     messageSync.addEventListener('sync-error', this.handleSyncEnd);
+    messageSync.addEventListener('sync-unchanged', this.handleSyncEnd);
     this.updateComplete.then(() => {
       if (!this.isConnected) return;
       this.i18nStore?.addEventListener('change', this._handleStoreChange);
@@ -1032,6 +1033,7 @@ export class MessageList extends LitElement {
     messageSync.removeEventListener('sync-start', this.handleSyncStart);
     messageSync.removeEventListener('sync-success', this.handleSyncEnd);
     messageSync.removeEventListener('sync-error', this.handleSyncEnd);
+    messageSync.removeEventListener('sync-unchanged', this.handleSyncEnd);
     this.i18nStore?.removeEventListener('change', this._handleStoreChange);
   }
 
