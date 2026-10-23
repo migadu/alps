@@ -407,7 +407,9 @@ func shiftListedUnseen(cache *alps.Cache, mailbox string, step int) {
 			continue
 		}
 		page, ok := cached.(CachedMessages)
-		if !ok || !page.Counts.Known || (step < 0 && page.Counts.Unseen == 0) {
+		// Another folder's pages count its own messages, which this change
+		// did not touch.
+		if !ok || page.Mailbox != mailbox || !page.Counts.Known || (step < 0 && page.Counts.Unseen == 0) {
 			continue
 		}
 		page.Counts.Unseen = uint32(int64(page.Counts.Unseen) + int64(step))
@@ -466,8 +468,12 @@ func patchCachedConversations(cache *alps.Cache, debugf func(string, ...interfac
 		}
 		for i := range msgs {
 			// By the id the reader names messages with, which is the provider's
-			// own: a UID under IMAP, a file name under maildir.
-			if msgs[i].AlpsUID != uidStr {
+			// own: a UID under IMAP, a file name under maildir. It names a
+			// message only within its folder, and members of other folders
+			// are found under this prefix too: the conversations of a folder
+			// whose name goes on from this one's with a colon, and the user's
+			// own messages that a conversation holds from Sent.
+			if msgs[i].AlpsUID != uidStr || (msgs[i].Mailbox != "" && msgs[i].Mailbox != mailbox) {
 				continue
 			}
 			flags := msgs[i].Flags
@@ -583,6 +589,11 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 	for _, key := range keys {
 		if cached, ok := cache.Get(key); ok {
 			cachedData := cached.(CachedMessages)
+			// Another folder's page lists its own messages, and the UID names
+			// a different one there.
+			if cachedData.Mailbox != mailbox {
+				continue
+			}
 			// Find and update the message in this page
 			if row := listedMessage(cachedData.Messages, uidStr); row != nil {
 				noteSeen(row.Flags)
@@ -1161,8 +1172,13 @@ func pagesReadAt(cache *alps.Cache, mailbox string, counts mailboxCounts) (readA
 		if !ok {
 			continue
 		}
-		held = true
 		page, ok := cached.(CachedMessages)
+		// Another folder's pages were read at its own counts, and say
+		// nothing of whether this one moved.
+		if ok && page.Mailbox != mailbox {
+			continue
+		}
+		held = true
 		if !ok || page.Counts != counts {
 			agree = false
 		}
@@ -1778,8 +1794,10 @@ func listedThreadUIDs(p provider.MailProvider, cache *alps.Cache, mailbox, uidSt
 		if !ok {
 			continue
 		}
+		// Another folder's rows name its own messages, and their
+		// conversations are its own.
 		listing, ok := cached.(CachedMessages)
-		if !ok {
+		if !ok || listing.Mailbox != mailbox {
 			continue
 		}
 		for _, row := range listing.Messages {

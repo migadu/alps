@@ -503,6 +503,29 @@ func TestHTTP_AFolderNamedLikeAnotherIsNotTakenForIt(t *testing.T) {
 	}
 }
 
+// A check of a folder whose counts the session does not hold asks its pages
+// whether it moved (pagesReadAt). The pages of Work:Sub have keys under Work's
+// prefix too, and they say nothing of Work: taken for Work's, a page of
+// Work:Sub at other counts made an unchanged Work drop its pages and the
+// folder list, and one at Work's counts stood in for a page of Work that did
+// not exist, so the conversations assembled from Work were kept.
+func TestPagesReadAtDoesNotUseColonSibling(t *testing.T) {
+	counts := mailboxCounts{Known: true, Messages: 2, Unseen: 1}
+	cache := alps.NewCache(time.Minute)
+	t.Cleanup(cache.Close)
+
+	cache.Set("messages:Work:Sub:page0", CachedMessages{Mailbox: "Work:Sub", Counts: counts})
+	if readAt, _ := pagesReadAt(cache, "Work", counts); readAt {
+		t.Error("the page of Work:Sub was treated as a page of Work")
+	}
+
+	cache.Set("messages:Work:page0", CachedMessages{Mailbox: "Work", Counts: counts})
+	cache.Set("messages:Work:Sub:page0", CachedMessages{Mailbox: "Work:Sub", Counts: mailboxCounts{Known: true, Messages: 5}})
+	if readAt, recounted := pagesReadAt(cache, "Work", counts); !readAt || recounted {
+		t.Errorf("Work's page is at Work's counts, and pagesReadAt answers %v, recounted %v: the page of Work:Sub was treated as a page of Work", readAt, recounted)
+	}
+}
+
 // statusCheck is what a check for new mail answers about a folder, and the
 // answer as it came. UIDNext and UIDValidity are nil where it has none.
 type statusCheck struct {
