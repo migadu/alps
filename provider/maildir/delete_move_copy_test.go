@@ -47,7 +47,7 @@ func TestDeleteMessagesReportsWhatItCouldNotDelete(t *testing.T) {
 	ids := putMessages(t, p, "Engines", "Looms")
 	// Looms cannot be removed: where its file was is a directory that is not
 	// empty.
-	looms, err := p.getDir("INBOX").MessageByKey(ids[1].String())
+	looms, err := mustDir(t, p, "INBOX").MessageByKey(ids[1].String())
 	if err != nil {
 		t.Fatal(err)
 	}
