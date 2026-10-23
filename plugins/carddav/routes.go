@@ -216,6 +216,28 @@ func parseObjectPath(s string) (string, error) {
 // open here.
 var errChangedElsewhere = alps.NewHTTPError(http.StatusPreconditionFailed, "changed elsewhere since it was opened")
 
+// deleteFailed answers a delete the CardDAV server did not carry out. A card
+// already gone is not one: davsave.Delete takes it as deleted, since that is
+// what was asked for, and a second click or a delete made on another device
+// no longer reads as a failure. A refusal keeps its status, so the browser
+// can tell a read-only address book (403) or a version conflict (409, 412)
+// from an outage; anything else is an internal error.
+func deleteFailed(what string, err error) error {
+	if errors.Is(err, davsave.ErrConflict) {
+		return errChangedElsewhere
+	}
+	var refused *davsave.StatusError
+	if errors.As(err, &refused) {
+		switch refused.Code {
+		case http.StatusForbidden:
+			return alps.NewHTTPError(http.StatusForbidden, "the server does not allow deleting it")
+		case http.StatusConflict:
+			return alps.NewHTTPError(http.StatusConflict, "the server cannot delete it as it is")
+		}
+	}
+	return fmt.Errorf("failed to delete %s: %w", what, err)
+}
+
 // putCard writes card to objectPath, conditional on etag when there is one, and
 // returns the ETag of the version written.
 func (p *plugin) putCard(ctx *alps.Context, c *carddav.Client, objectPath string, card vcard.Card, etag string) (string, error) {
@@ -621,10 +643,10 @@ func registerRoutes(p *plugin) {
 		}
 
 		// clientWithAddressBook rather than client: the guard below needs the
-		// collection this object must live in, and RemoveAll deletes children,
-		// so an unconstrained path turns "delete one contact" into "delete the
-		// address book".
-		c, addressBook, err := p.clientWithAddressBook(ctx.Request.Context(), ctx.Session)
+		// collection this object must live in, and a DELETE takes children
+		// with it, so an unconstrained path turns "delete one contact" into
+		// "delete the address book".
+		_, addressBook, err := p.clientWithAddressBook(ctx.Request.Context(), ctx.Session)
 		if err != nil {
 			return err
 		}
@@ -638,8 +660,12 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		if err := c.RemoveAll(ctx.Request.Context(), path); err != nil {
-			return fmt.Errorf("failed to delete address object: %v", err)
+		// davsave.Delete rather than go-webdav's RemoveAll, whose error keeps
+		// the server's status in a type nothing outside go-webdav can read:
+		// see deleteFailed.
+		err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), path), "", nil)
+		if err != nil {
+			return deleteFailed("address object", err)
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})

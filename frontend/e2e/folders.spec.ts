@@ -144,10 +144,10 @@ test("the sidebar lists every system folder, in role order", async ({ page }) =>
   await expect(folder(page, "Inbox")).toHaveClass(/\bactive\b/);
 });
 
-// Reading a message marks it seen twice over — the body fetch does, and so does
-// the reader — and the count must fall by one, not two. With a single unread
-// message a second decrement would stop at zero and hide; the control message
-// keeps the count above one so it cannot.
+// Reading a message takes the count down by one, however many times it is
+// marked read: a message marked read twice is one message read. With a single
+// unread message a second decrement would stop at zero and hide; the control
+// message keeps the count above one so it cannot.
 test("unread mail is counted on the inbox, and reading it takes the count down", async ({ page }) => {
   const stamp = Date.now();
   const subject = `Folders unread ${stamp}`;

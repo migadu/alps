@@ -30,6 +30,7 @@ import { linkedAccountsContext, linkedAccountsStore } from '../store/linked-acco
 import { autoLogoutService } from '../services/auto-logout';
 import { clearSessionSettings } from '../store/settings-store';
 import { setLoginNotice } from '../utils/login-notice';
+import { signedOutOnPurpose } from '../utils/signed-out';
 import { applyUpdate, registerBusyProbe, UPDATE_AVAILABLE_EVENT } from '../services/app-update';
 import { Logger } from '../utils/logger';
 
@@ -234,6 +235,10 @@ export class AppRoot extends LitElement {
   };
 
   private _handleAuthError = () => {
+    // The echo of a sign-out, not an expiry: the reads still in flight when the
+    // session ends are refused after the sign-out has set its own notice, and
+    // the login page may already have read it (see signed-out.ts).
+    if (signedOutOnPurpose()) return;
     sessionStorage.clear();
     clearSessionSettings();
     // An EXPIRY, not a sign-out, and the two must not be the same event. This

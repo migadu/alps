@@ -1,4 +1,4 @@
-import { html, css, LitElement } from 'lit';
+import { html, css, LitElement, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { CATEGORY_ALL_CONTACTS, CATEGORY_FAVORITES } from './constants';
@@ -118,14 +118,50 @@ export class AlpsContactsCategories extends LitElement {
     .category-actions.popup-open ~ .category-badge {
       display: none;
     }
-    .category-icon {
-      pointer-events: none;
-      margin-right: 8px;
+    /* The menu is shown while the keyboard is in its row, so that Tab
+       reaches it from the category's button: a button inside display: none
+       is no Tab stop, and so it could never take the focus that shows it.
+       Not while a click has put the focus on the button: a click leaves the
+       row as it was. */
+    .category-item:focus-within:not(:has(.category-control:focus:not(:focus-visible))) .category-actions {
+      display: flex;
     }
-    .kebab-btn {
-      --btn-padding: 8px;
+    .category-item.has-actions:focus-within:not(:has(.category-control:focus:not(:focus-visible))) .category-badge {
+      display: none;
+    }
+    /* The part of the row that is its button: the icon and the name. The
+       row's menu and count sit beside it, not in it. */
+    .category-control {
+      display: flex;
+      align-items: center;
+      flex: 1;
+      min-width: 0;
+      border-radius: 4px;
+    }
+    /* Drawn as alps-icon-btn draws its icon, without the button. */
+    .category-icon {
+      display: flex;
+      padding: 6px;
+      margin-right: 8px;
+      color: var(--text-muted);
+    }
+    .category-icon .icon {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
     }
   `];
+
+  private selectCategory(category: string) {
+    this.dispatchEvent(new CustomEvent('select-category', { detail: { category } }));
+  }
+
+  /** The category's button answers Enter and Space, as a <button> does. */
+  private handleControlKeyDown(e: KeyboardEvent, category: string) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    this.selectCategory(category);
+  }
 
   private handleSidebarScroll(e: Event) {
     const target = e.target as HTMLElement;
@@ -149,16 +185,20 @@ export class AlpsContactsCategories extends LitElement {
         <!-- Inert in the strip, as it is dimmed there. -->
         <div class="sidebar-content" ?inert=${this.sidebarCollapsed && !this.isMobile && !this.sidebarPeeking} @scroll=${this.handleSidebarScroll}>
           <div class="sidebar-scroll-content">
-            ${[CATEGORY_ALL_CONTACTS, CATEGORY_FAVORITES, ...this.uniqueCategories.filter(c => c !== CATEGORY_FAVORITES)].map(cat => {
+            ${[CATEGORY_ALL_CONTACTS, CATEGORY_FAVORITES, ...this.uniqueCategories.filter(c => c !== CATEGORY_FAVORITES)].map((cat, index) => {
       const count = cat === CATEGORY_ALL_CONTACTS
         ? this.contacts.length
         : this.contacts.filter(c => c.categories && c.categories.includes(cat)).length;
 
       const isSystem = cat === CATEGORY_ALL_CONTACTS || cat === CATEGORY_FAVORITES;
+      const name = cat === CATEGORY_ALL_CONTACTS ? this.i18nStore?.t('contacts.allContacts') : (cat === CATEGORY_FAVORITES ? this.i18nStore?.t('contacts.favorites') : cat);
+      const isActive = cat === CATEGORY_ALL_CONTACTS ? (!this.selectedCategory && !this.filterQuery) : this.selectedCategory === cat;
+      const hasBadge = count > 0 || cat === CATEGORY_FAVORITES;
+      const badgeId = `category-count-${index}`;
 
       return html`
-                <div class="category-item ${cat === CATEGORY_ALL_CONTACTS ? ((!this.selectedCategory && !this.filterQuery) ? 'active' : '') : (this.selectedCategory === cat ? 'active' : '')} ${!isSystem ? 'has-actions' : ''}"
-                  @click=${() => this.dispatchEvent(new CustomEvent('select-category', { detail: { category: cat } }))}
+                <div class="category-item ${isActive ? 'active' : ''} ${!isSystem ? 'has-actions' : ''}"
+                  @click=${() => this.selectCategory(cat)}
                   draggable=${!isSystem ? 'true' : 'false'}
                   @dragstart=${(e: DragEvent) => {
           if (isSystem) return;
@@ -170,8 +210,23 @@ export class AlpsContactsCategories extends LitElement {
           this.dispatchEvent(new CustomEvent('drag-end'));
         }}
                 >
-                  <alps-icon-btn class="category-icon" icon=${cat === CATEGORY_ALL_CONTACTS ? 'users' : (cat === CATEGORY_FAVORITES ? 'starFourFill' : 'folderUser')}></alps-icon-btn>
-                  <span class="category-name">${cat === CATEGORY_ALL_CONTACTS ? this.i18nStore?.t('contacts.allContacts') : (cat === CATEGORY_FAVORITES ? this.i18nStore?.t('contacts.favorites') : cat)}</span>
+                  <!--
+                    The category's button: one Tab stop, named by the category,
+                    with its count as the description. Not the whole row, which
+                    also holds the category's menu, and a button may not contain
+                    other controls. Its icon is decoration.
+                  -->
+                  <span class="category-control"
+                    role="button"
+                    tabindex="0"
+                    aria-label=${name ?? cat}
+                    aria-current=${isActive ? 'true' : nothing}
+                    aria-describedby=${hasBadge ? badgeId : nothing}
+                    @keydown=${(e: KeyboardEvent) => this.handleControlKeyDown(e, cat)}
+                  >
+                    <span class="category-icon">${renderIcon(cat === CATEGORY_ALL_CONTACTS ? 'users' : (cat === CATEGORY_FAVORITES ? 'starFourFill' : 'folderUser'))}</span>
+                    <span class="category-name">${name}</span>
+                  </span>
                   
                   ${!isSystem ? html`
                     <div class="category-actions ${this.activeKebabMenu === cat ? 'popup-open' : ''}" @click=${(e: Event) => e.stopPropagation()}>
@@ -181,7 +236,7 @@ export class AlpsContactsCategories extends LitElement {
                         @popup-open=${() => { this.activeKebabMenu = cat; }}
                         @popup-close=${() => { if (this.activeKebabMenu === cat) this.activeKebabMenu = null; }}
                       >
-                        <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical"></alps-icon-btn>
+                        <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" title=${this.i18nStore?.t('general.moreOptions')}></alps-icon-btn>
                         <button class="dropdown-item" @click=${(e: Event) => {
             const popup = (e.target as HTMLElement).closest('alps-popup') as any;
             if (popup) popup.close();
@@ -200,7 +255,7 @@ export class AlpsContactsCategories extends LitElement {
                     </div>
                   ` : ''}
 
-                  ${(count > 0 || cat === CATEGORY_FAVORITES) ? html`<div class="category-badge">${count}</div>` : ''}
+                  ${hasBadge ? html`<div class="category-badge" id=${badgeId}>${count}</div>` : ''}
                 </div>
               `;
     })}

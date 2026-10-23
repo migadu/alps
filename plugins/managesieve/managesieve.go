@@ -121,7 +121,10 @@ func (c *MSClient) Authenticate(saslClient sasl.Client) error {
 		}
 
 		parts, err := c.parseStringList(line)
-		if err != nil || len(parts) == 0 {
+		if err != nil {
+			return err
+		}
+		if len(parts) == 0 {
 			continue
 		}
 
@@ -182,7 +185,10 @@ func (c *MSClient) ListScripts() ([]Script, error) {
 		// Each line is a script name (quoted string or literal) optionally
 		// followed by the ACTIVE flag: "catchall" ACTIVE
 		parts, err := c.parseStringList(line)
-		if err != nil || len(parts) == 0 {
+		if err != nil {
+			return nil, err
+		}
+		if len(parts) == 0 {
 			continue
 		}
 		s := Script{Name: parts[0]}
@@ -252,6 +258,9 @@ func (c *MSClient) GetScript(name string) (string, error) {
 			if err != nil {
 				return "", err
 			}
+			if content.Len()+size > maxLiteralBytes {
+				return "", fmt.Errorf("script exceeds the %d-byte limit", maxLiteralBytes)
+			}
 			lit := make([]byte, size)
 			c.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 			if _, err := io.ReadFull(c.r, lit); err != nil {
@@ -291,7 +300,7 @@ func (c *MSClient) readResponse() error {
 		// or "SIEVE" "fileinto reject"
 		parts, err := c.parseStringList(line)
 		if err != nil {
-			continue // skip malformed capabilities
+			return err
 		}
 		if len(parts) >= 1 {
 			key := strings.ToUpper(parts[0])
@@ -335,13 +344,38 @@ func (c *MSClient) readLine() (string, error) {
 	return strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r"), nil
 }
 
-func parseLiteralSize(line string) (int, error) {
-	line = strings.TrimPrefix(line, "{")
-	line = strings.TrimSuffix(line, "+")
-	line = strings.TrimSuffix(line, "}")
-	return strconv.Atoi(line)
+// maxLiteralBytes is the largest literal the client reads, and the largest
+// script GetScript puts together from the literals it is sent. The sizes come
+// from the server and are read into memory whole, so they are bounded: by the
+// largest script alps takes from the page, as a larger one could not be saved
+// back.
+const maxLiteralBytes = maxScriptBytes
+
+// parseLiteralSize reads the size from a literal's header, "{size}" or
+// "{size+}", which ends the line. A header that is not one, or a size past
+// maxLiteralBytes, is an error: without the bounds, a negative size or one
+// past what can be allocated panicked, and any other was allocated whole
+// before a byte of it arrived.
+func parseLiteralSize(header string) (int, error) {
+	digits, ok := strings.CutPrefix(header, "{")
+	if ok {
+		digits, ok = strings.CutSuffix(digits, "}")
+	}
+	digits = strings.TrimSuffix(digits, "+")
+	if !ok || digits == "" || strings.Trim(digits, "0123456789") != "" {
+		return 0, fmt.Errorf("malformed literal header %q", header)
+	}
+	size, err := strconv.Atoi(digits)
+	if err != nil || size > maxLiteralBytes {
+		return 0, fmt.Errorf("literal of %s bytes exceeds the %d-byte limit", digits, maxLiteralBytes)
+	}
+	return size, nil
 }
 
+// parseStringList reads the strings on a response line. Its error is a
+// literal that could not be read, which leaves the client out of step with
+// the server: the callers end the exchange on one, rather than read on into
+// the literal as if it were responses.
 func (c *MSClient) parseStringList(line string) ([]string, error) {
 	// A very rudimentary parser for "string" "string"
 	var out []string
@@ -358,8 +392,10 @@ func (c *MSClient) parseStringList(line string) ([]string, error) {
 		} else if strings.HasPrefix(line, "{") {
 			// Literal in capabilities? Rare but possible.
 			// Format: {size}\r\n
-			sizeStr := line[1:strings.Index(line, "}")]
-			size, _ := strconv.Atoi(sizeStr)
+			size, err := parseLiteralSize(line)
+			if err != nil {
+				return out, err
+			}
 			// we assume the rest of the line was empty, so we read size bytes
 			lit := make([]byte, size)
 			if _, err := io.ReadFull(c.r, lit); err != nil {

@@ -5,6 +5,7 @@ import { composeContext, ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
 import { takeLoginNotice, type LoginNotice } from '../utils/login-notice';
+import { loginLogo, loginLogoBuiltin, loginLogoDark } from '../utils/branding';
 
 import '../components/alps-auth-card';
 import '../components/alps-input';
@@ -145,7 +146,7 @@ export class LoginPage extends LitElement {
       margin-top: 4px;
       gap: 8px;
       background-color: var(--accent-color, #3b82f6);
-      color: #ffffff;
+      color: var(--accent-contrast, #ffffff);
       border: 1px solid transparent;
       border-radius: var(--btn-radius, 4px);
       font-family: inherit;
@@ -345,9 +346,12 @@ export class LoginPage extends LitElement {
 
   render() {
     return html`
-      <alps-auth-card 
-        icon="edelweiss" 
-        title="Alps" 
+      <alps-auth-card
+        icon="edelweiss"
+        .builtinLogo=${loginLogoBuiltin() ?? ''}
+        .logo=${loginLogo() ?? ''}
+        .logoDark=${loginLogoDark() ?? ''}
+        title="Alps"
         subtitle="${this.i18nStore?.t('login.subtitle')}">
 
         ${this.notice && !this.error ? html`

@@ -147,6 +147,26 @@ func (c *Cache) Set(key string, value interface{}) {
 	}
 }
 
+// Replace stores value under key in place of the entry held there, keeping
+// that entry's expiry, and reports whether it did: a key with no live entry
+// is left without one. It is for a value patched from the one the cache held,
+// which is no fresher than what it was read from, and which Set would give a
+// new lifetime.
+func (c *Cache) Replace(key string, value interface{}) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	entry, exists := c.entries[key]
+	if !exists || time.Now().After(entry.Expiration) {
+		return false
+	}
+	c.entries[key] = &CacheEntry{
+		Value:      value,
+		Expiration: entry.Expiration,
+	}
+	return true
+}
+
 // Delete removes a value from the cache.
 func (c *Cache) Delete(key string) {
 	c.mu.Lock()

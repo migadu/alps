@@ -24,6 +24,10 @@ function deepActiveElement(): Element | null {
  * audio and video in players, and a download card for everything else. The
  * arrows step through the message's attachments.
  *
+ * A modal <dialog>, as ui-modal is: the page behind it is inert while it is
+ * up, so Tab cannot walk out of it into the reader and the list, where keys
+ * would then act on what the user cannot see.
+ *
  * Mounted by app-root, which opens it for the `open-attachment-preview` window
  * event an attachment list dispatches.
  */
@@ -60,6 +64,8 @@ export class AttachmentPreview extends LitElement {
   }
 
   firstUpdated(): void {
+    const dialog = this.shadowRoot?.querySelector<HTMLDialogElement>('dialog.backdrop');
+    if (dialog && !dialog.open) dialog.showModal();
     this.shadowRoot?.querySelector<HTMLButtonElement>('.close-btn')?.focus();
   }
 
@@ -249,13 +255,25 @@ export class AttachmentPreview extends LitElement {
       z-index: 30000;
       user-select: none;
     }
+    /* The dialog is the whole window, and paints the overlay itself. */
     .backdrop {
       position: fixed;
       inset: 0;
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+      padding: 0;
+      border: none;
+      color: inherit;
       background: var(--modal-backdrop, rgba(255, 255, 255, 0.85));
       display: flex;
       flex-direction: column;
       overflow: hidden;
+    }
+    .backdrop::backdrop {
+      background: transparent;
     }
     .preview-header {
       display: flex;
@@ -388,7 +406,7 @@ export class AttachmentPreview extends LitElement {
       overflow: auto;
       padding: 16px;
       box-sizing: border-box;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: var(--font-mono);
       font-size: 13px;
       line-height: 1.6;
       color: var(--text-primary);
@@ -503,8 +521,10 @@ export class AttachmentPreview extends LitElement {
     const total = this.attachments.length;
     const closeOnSelf = (e: Event) => { if (e.target === e.currentTarget) this.close(); };
 
+    // Should the browser close the dialog itself, the owner is told, and
+    // unmounts the preview as it does for the close button.
     return html`
-      <div class="backdrop" @click=${closeOnSelf}>
+      <dialog class="backdrop" aria-labelledby="preview-title" @click=${closeOnSelf} @close=${() => this.close()}>
         <div class="preview-header">
           <div class="meta-info">
             <div
@@ -512,7 +532,7 @@ export class AttachmentPreview extends LitElement {
               style="${info.color ? `color: ${info.color}; background: color-mix(in srgb, ${info.color} 12%, transparent)` : ''}"
             >${renderIcon(info.icon)}</div>
             <div class="file-details">
-              <span class="file-title" title="${name}">${name}</span>
+              <span class="file-title" id="preview-title" title="${name}">${name}</span>
               <span class="file-sub">
                 <span>${formatSize(size)}</span>
                 ${total > 1 ? html`<span>•</span><span>${this.activeIndex + 1} / ${total}</span>` : ''}
@@ -549,7 +569,7 @@ export class AttachmentPreview extends LitElement {
           ` : ''}
           ${this.renderContent(info, url, name, size)}
         </div>
-      </div>
+      </dialog>
     `;
   }
 

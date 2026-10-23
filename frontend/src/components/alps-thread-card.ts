@@ -35,6 +35,7 @@ interface ThreadMessageItem {
   isSent: boolean;
   mailbox: string;
   expanded: boolean;
+  loadFailed?: boolean;
 }
 
 @customElement('alps-thread-card')
@@ -274,6 +275,16 @@ export class AlpsThreadCard extends LitElement {
       border-radius: 8px;
     }
 
+    .reader-load-error {
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
     .reader-text-wrapper {
       border: none;
       border-radius: 0;
@@ -390,6 +401,14 @@ export class AlpsThreadCard extends LitElement {
     }));
   }
 
+  private handleRetryBody() {
+    this.dispatchEvent(new CustomEvent('retry-body', {
+      detail: { item: this.item },
+      bubbles: true,
+      composed: true
+    }));
+  }
+
   private handleLoadRemoteResources() {
     this.dispatchEvent(new CustomEvent('load-remote-resources', {
       detail: { item: this.item },
@@ -484,7 +503,14 @@ export class AlpsThreadCard extends LitElement {
         ` : ''}
         
         <div class="reader-content-wrapper">
-          ${this.item.mimeType?.toLowerCase() === 'text/html' ? html`
+          ${this.item.loadFailed ? html`
+            <div class="reader-load-error">
+              <div>${this.i18nStore?.t('messageReader.loadError')}</div>
+              <alps-button variant="normal" @click=${this.handleRetryBody}>
+                ${this.i18nStore?.t('messageReader.loadErrorRetry')}
+              </alps-button>
+            </div>
+          ` : this.item.mimeType?.toLowerCase() === 'text/html' ? html`
             <iframe 
               class="reader-iframe"
               sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
@@ -554,7 +580,6 @@ export class AlpsThreadCard extends LitElement {
             <div class="thread-card-date">${dateStr}</div>
             
             <alps-icon-btn
-              style="--icon-size: 16px; --btn-padding: 4px;"
               title=${this.i18nStore?.t('messageReader.star') || 'Star'}
               ?active=${isStarred}
               @click=${this.handleStarClick}
@@ -563,7 +588,6 @@ export class AlpsThreadCard extends LitElement {
             
             ${this.item.expanded ? html`
               <alps-icon-btn
-                style="--icon-size: 16px; --btn-padding: 4px;"
                 title=${this.i18nStore?.t('messageReader.reply') || 'Reply'}
                 @click=${(e: Event) => { e.stopPropagation(); this.handleActionForItem('reply'); }}
                 icon="arrowBendUpLeft"
@@ -572,7 +596,6 @@ export class AlpsThreadCard extends LitElement {
               <alps-popup align="right" class="card-more-menu" @click=${(e: Event) => e.stopPropagation()}>
                 <alps-icon-btn
                   slot="trigger"
-                  style="--icon-size: 16px; --btn-padding: 4px;"
                   title=${this.i18nStore?.t('messageReader.moreOptions')}
                   icon="dotsThreeVertical"
                 ></alps-icon-btn>
@@ -611,7 +634,6 @@ export class AlpsThreadCard extends LitElement {
             ` : ''}
             
             <alps-icon-btn
-              style="--icon-size: 16px; --btn-padding: 4px;"
               icon=${this.item.expanded ? 'caretUp' : 'caretDown'}
               title=${this.item.expanded ? this.i18nStore?.t('general.collapse') : this.i18nStore?.t('general.expand')}
             ></alps-icon-btn>

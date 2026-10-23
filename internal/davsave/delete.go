@@ -37,13 +37,16 @@ func Delete(ctx context.Context, hc *http.Client, target, etag string, header ht
 	case resp.StatusCode == http.StatusNotFound || resp.StatusCode/100 == 2:
 		return nil
 	}
-	return &StatusError{Method: http.MethodDelete, Status: resp.Status}
+	return &StatusError{Method: http.MethodDelete, Code: resp.StatusCode, Status: resp.Status}
 }
 
 // StatusError is a DAV request the server refused for a reason other than a
 // version conflict.
 type StatusError struct {
 	Method string
+	// Code is the status the server answered with, for a caller that passes
+	// a refusal on as what it is.
+	Code   int
 	Status string
 }
 

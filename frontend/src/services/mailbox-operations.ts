@@ -176,8 +176,9 @@ export class MailboxOperationsService {
         } catch {
           // A 200 with an unreadable body is still an empty that happened.
         }
-        // A full sync too: emptying a folder is the one verb here that changes
-        // what is in one, and every row it held is now gone.
+        // A sync too (not a refresh: the server dropped what the empty
+        // changed). Emptying a folder is the one verb here that changes what is
+        // in one, and every row it held is now gone.
         messageSync.sync();
         return { ok: true, discarded };
       }
@@ -191,8 +192,9 @@ export class MailboxOperationsService {
         // expunge is most likely still running or already done upstream, so
         // whatever the list shows next is nearer the truth than the rows the
         // client gave up holding — and a listing that succeeds also takes back
-        // the offline notice the abort raised.
-        messageSync.sync();
+        // the offline notice the abort raised. In full: the server dropped
+        // nothing for a request it never finished.
+        messageSync.sync({ refresh: true });
         return { ok: false, reason: 'timeout' };
       }
       return { ok: false, reason: 'failed' };

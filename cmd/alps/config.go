@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -45,6 +47,7 @@ type Config struct {
 	provider    *ProviderConfig
 	SMTP        SMTPConfig              `toml:"smtp"`
 	WebAuthn    WebAuthnConfig          `toml:"webauthn"`
+	Branding    BrandingConfig          `toml:"branding"`
 	Cluster     ClusterConfig           `toml:"cluster"`
 	Plugin      map[string]PluginConfig `toml:"plugin"`
 }
@@ -118,6 +121,7 @@ type ServerConfig struct {
 	IdleTimeoutSec          int             `toml:"idle_timeout_sec"`           // HTTP idle timeout in seconds (default: 120)
 	IMAPTimeoutSec          int             `toml:"imap_timeout_sec"`           // IMAP operation timeout in seconds (default: 30)
 	SMTPTimeoutSec          int             `toml:"smtp_timeout_sec"`           // SMTP operation timeout in seconds (default: 30)
+	BackgroundConnection    *bool           `toml:"background_connection"`      // A second mail connection per session for background work (default: true)
 }
 
 type RateLimitConfig struct {
@@ -191,6 +195,92 @@ type WebAuthnConfig struct {
 	RPID          string   `toml:"rpid"`
 	RPDisplayName string   `toml:"display_name"`
 	RPOrigins     []string `toml:"origins"`
+}
+
+// BrandingConfig is what a deployment changes about how alps looks. Left out,
+// alps looks as it ships.
+type BrandingConfig struct {
+	DefaultTheme  string `toml:"default_theme"`   // Colour theme for anyone who has not picked one (default: alps)
+	LoginLogo     string `toml:"login_logo"`      // Built-in logo by name, or an image file, for the sign-in page (default: the default theme's own logo, else the edelweiss)
+	LoginLogoDark string `toml:"login_logo_dark"` // The same for the dark modes, for a logo that would not show on dark
+}
+
+// logoTypes are the images a login logo may be, by file extension.
+var logoTypes = map[string]string{
+	".svg":  "image/svg+xml",
+	".png":  "image/png",
+	".webp": "image/webp",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+}
+
+// maxLogoBytes keeps a wrong path, a photo or a disk image, out of memory.
+const maxLogoBytes = 1 << 20
+
+func (b BrandingConfig) toOptions() (alps.BrandingOptions, error) {
+	var opts alps.BrandingOptions
+	if theme := strings.ToLower(strings.TrimSpace(b.DefaultTheme)); theme != "" {
+		if !slices.Contains(alps.Themes, theme) {
+			return opts, newConfigError("branding.default_theme", "unknown theme %q, expected one of %s",
+				b.DefaultTheme, strings.Join(alps.Themes, ", "))
+		}
+		opts.DefaultTheme = theme
+	}
+	if b.LoginLogoDark != "" && b.LoginLogo == "" {
+		return opts, newConfigError("branding.login_logo_dark", "needs login_logo, the logo for the light modes")
+	}
+	logo := strings.TrimSpace(b.LoginLogo)
+	if logo == "" && slices.Contains(alps.BuiltinLogos, opts.DefaultTheme) {
+		// A deployment in the Migadu theme signs in under the Migadu logo,
+		// unless login_logo names another.
+		logo = opts.DefaultTheme
+	}
+	if name := strings.ToLower(logo); slices.Contains(alps.BuiltinLogos, name) {
+		if b.LoginLogoDark != "" {
+			return opts, newConfigError("branding.login_logo_dark",
+				"is for a logo file; the built-in %q takes the theme's colours in both modes", name)
+		}
+		// The edelweiss is what the sign-in page shows without one.
+		if name != "alps" {
+			opts.LoginLogoBuiltin = name
+		}
+		return opts, nil
+	}
+	if logo != "" && filepath.Ext(logo) == "" {
+		return opts, newConfigError("branding.login_logo", "%q is neither a built-in logo (%s) nor an image file",
+			logo, strings.Join(alps.BuiltinLogos, ", "))
+	}
+	var err error
+	if opts.LoginLogo, err = readLogo("branding.login_logo", logo); err != nil {
+		return opts, err
+	}
+	if opts.LoginLogoDark, err = readLogo("branding.login_logo_dark", b.LoginLogoDark); err != nil {
+		return opts, err
+	}
+	return opts, nil
+}
+
+// readLogo reads the image at path, or returns nil when there is no path.
+func readLogo(key, path string) (*alps.Image, error) {
+	if path == "" {
+		return nil, nil
+	}
+	logoType, ok := logoTypes[strings.ToLower(filepath.Ext(path))]
+	if !ok {
+		return nil, newConfigError(key, "%q is not an SVG, PNG, WebP or JPEG file", path)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, newConfigError(key, "%v", err)
+	}
+	if info.Size() > maxLogoBytes {
+		return nil, newConfigError(key, "%q is %d bytes, more than the %d a logo may be", path, info.Size(), maxLogoBytes)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, newConfigError(key, "%v", err)
+	}
+	return &alps.Image{Data: data, Type: logoType}, nil
 }
 
 type PluginConfig struct {
@@ -308,6 +398,12 @@ func (c *Config) ToOptions() (alps.Options, error) {
 		RPDisplayName: c.WebAuthn.RPDisplayName,
 		RPOrigins:     c.WebAuthn.RPOrigins,
 	}
+
+	branding, err := c.Branding.toOptions()
+	if err != nil {
+		return options, err
+	}
+	options.Branding = branding
 
 	if c.provider == nil {
 		return options, fmt.Errorf("provider configuration is missing")
@@ -428,6 +524,9 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	if c.Server.SMTPTimeoutSec > 0 {
 		options.SMTPTimeout = time.Duration(c.Server.SMTPTimeoutSec) * time.Second
 	}
+	// On unless the config turns it off, so a pointer: leaving it out is not
+	// saying false.
+	options.DisableBackgroundConnection = c.Server.BackgroundConnection != nil && !*c.Server.BackgroundConnection
 
 	// Override rate limiting config from config file
 	if c.Server.RateLimit.Enabled != nil && !*c.Server.RateLimit.Enabled {

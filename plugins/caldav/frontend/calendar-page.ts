@@ -6,7 +6,7 @@ import { settingsContext, SettingsStore } from '../../../frontend/src/store/sett
 import { calendarService, taskTellsSomeone, tellsSomeone, getCalendarColor, holdsEvents, taskChips, weekStart } from './calendar-service';
 import { tasksService, type TaskData } from './tasks-service';
 import type { CalendarData, EventData } from './calendar-service';
-import { sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
+import { closeSidebarPeek, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-toggle';
 import '../../../frontend/src/components/alps-button';
@@ -96,6 +96,12 @@ export class CalendarPage extends LitElement {
     @state() private promptFields: Array<{ id: string; label: string; autofocus?: boolean; value?: string }> = [];
 
     private syncIntervalTimer: ReturnType<typeof setInterval> | null = null;
+    /** Counts the reads fetchData starts. A navigation, the periodic refresh
+     * and a save each start one, and they can overlap: only the latest may
+     * draw its answer, end the loading or say that it failed, so an earlier
+     * view that answers late does not replace the one on screen, and its
+     * failure, which says nothing about that view, is not reported. */
+    private fetchSeq = 0;
     @state() private promptMode: 'add' | 'rename' | null = null;
     @state() private promptTarget: any = null;
     @state() private calendarToDelete: any = null;
@@ -179,6 +185,16 @@ export class CalendarPage extends LitElement {
             background-color: var(--bg-tertiary, #f3f4f6);
         }
 
+        /* The part of the row that is its checkbox: the box and the name. The
+           row's menu sits beside it, not in it. */
+        .calendar-control {
+            display: flex;
+            align-items: center;
+            flex: 1;
+            min-width: 0;
+            border-radius: 4px;
+        }
+
         .calendar-item span {
             font-size: 14px;
             color: var(--text-primary, #111827);
@@ -250,13 +266,17 @@ export class CalendarPage extends LitElement {
                 display: flex;
             }
         }
+        /* Shown while the keyboard is in its row, so that Tab reaches the
+           menu from the calendar's checkbox: a button inside display: none is
+           no Tab stop, and so it could never take the focus that shows it.
+           Not while a click has put the focus on the checkbox: a click leaves
+           the row as it was. */
+        .calendar-item:focus-within:not(:has(.calendar-control:focus:not(:focus-visible))) .calendar-actions {
+            display: flex;
+        }
         .calendar-actions:focus-within,
         .calendar-actions.popup-open {
             display: flex;
-        }
-        
-        .kebab-btn {
-            --btn-padding: 8px;
         }
 
         .main-content {
@@ -554,6 +574,7 @@ export class CalendarPage extends LitElement {
     };
 
     private async fetchData() {
+        const seq = ++this.fetchSeq;
         this.loading = true;
         this.isSpinning = true;
         // Alongside the events, and apart from them: tasks that fail to load
@@ -562,12 +583,13 @@ export class CalendarPage extends LitElement {
         const tasksLoad = this.showTasks && !this.searchQuery
             ? tasksService.fetchTasks('active').catch(err => {
                 console.error('Failed to load tasks for the calendar', err);
-                this.reportFailure('tasks.loadFailed');
+                if (seq === this.fetchSeq) this.reportFailure('tasks.loadFailed');
                 return null;
             })
             : Promise.resolve(null);
         try {
             const calRes = await calendarService.fetchCalendars();
+            if (seq !== this.fetchSeq) return;
             this.scheduling = calRes.scheduling === 'server' ? 'server' : 'email';
             
             let start, end;
@@ -596,6 +618,7 @@ export class CalendarPage extends LitElement {
             }
 
             const evRes = await calendarService.fetchEvents(start, end, this.searchQuery);
+            if (seq !== this.fetchSeq) return;
             const rawEvents = evRes.events || [];
             const expandedEvents: EventData[] = [];
 
@@ -629,6 +652,7 @@ export class CalendarPage extends LitElement {
             }
 
             const tasks = (await tasksLoad)?.tasks ?? [];
+            if (seq !== this.fetchSeq) return;
             this.events = [...expandedEvents, ...taskChips(tasks)].map(ev => ({
                 ...ev,
                 color: ev.color || getCalendarColor(ev.calendarPath || ev.path)
@@ -646,9 +670,9 @@ export class CalendarPage extends LitElement {
             console.error(e);
             // Said, not stored: `error` was written here and rendered nowhere, so a
             // calendar that failed to load simply showed no events.
-            this.reportFailure('calendar.loadFailed');
+            if (seq === this.fetchSeq) this.reportFailure('calendar.loadFailed');
         } finally {
-            this.loading = false;
+            if (seq === this.fetchSeq) this.loading = false;
         }
     }
 
@@ -763,6 +787,14 @@ export class CalendarPage extends LitElement {
 
     private handleDateSelected(date: Date) {
         this.navigate('day', date);
+        // A day picked here, from the sidebar's mini calendar or the year
+        // view, opens the day view: shut the sidebar's hover overlay, and on a
+        // phone its drawer, as choosing a folder in Mail does, instead of
+        // leaving either over the day view.
+        closeSidebarPeek(this.renderRoot);
+        if (this.isMobile) {
+            this.mobileSidebarOpen = false;
+        }
     }
 
     private handleAddCalendar() {
@@ -870,6 +902,16 @@ export class CalendarPage extends LitElement {
     private closeTaskModal() {
         this.taskModalOpen = false;
         this.editingTask = undefined;
+    }
+
+    /** A calendar's checkbox, and the Tasks one, answer Space and Enter,
+     * once per press: a key held down would show and hide the calendar
+     * over and over, and Tasks would fetch the tasks each time. */
+    private handleCheckboxKeyDown(e: KeyboardEvent, toggle: () => void) {
+        if (e.key !== ' ' && e.key !== 'Enter') return;
+        e.preventDefault();
+        if (e.repeat) return;
+        toggle();
     }
 
     private toggleCalendar(path: string) {
@@ -984,10 +1026,20 @@ export class CalendarPage extends LitElement {
                                     <h3>${this.i18nStore?.t('calendar.myCalendars')}</h3>
                                     ${this.calendars.map(c => html`
                                         <div class="calendar-item" @click=${() => this.toggleCalendar(c.path)}>
-                                            <div class="calendar-checkbox ${this.activeCalendars.has(c.path) ? 'checked' : ''}" style="--cal-color: ${c.color}">
-                                                ${this.activeCalendars.has(c.path) ? renderIcon('check') : ''}
+                                            <!-- The calendar's checkbox: one Tab stop, named by
+                                                 the calendar. Not the whole row, which also
+                                                 holds the calendar's menu. -->
+                                            <div class="calendar-control"
+                                                role="checkbox"
+                                                tabindex="0"
+                                                aria-checked=${this.activeCalendars.has(c.path) ? 'true' : 'false'}
+                                                @keydown=${(e: KeyboardEvent) => this.handleCheckboxKeyDown(e, () => this.toggleCalendar(c.path))}
+                                            >
+                                                <div class="calendar-checkbox ${this.activeCalendars.has(c.path) ? 'checked' : ''}" style="--cal-color: ${c.color}">
+                                                    ${this.activeCalendars.has(c.path) ? renderIcon('check') : ''}
+                                                </div>
+                                                <span>${c.name}</span>
                                             </div>
-                                            <span>${c.name}</span>
 
                                             <div class="calendar-actions ${this.activeKebabMenu === c.path ? 'popup-open' : ''}" @click=${(e: Event) => e.stopPropagation()}>
                                                 <alps-popup 
@@ -996,7 +1048,7 @@ export class CalendarPage extends LitElement {
                                                     @popup-open=${() => { this.activeKebabMenu = c.path; }}
                                                     @popup-close=${() => { if (this.activeKebabMenu === c.path) this.activeKebabMenu = null; }}
                                                 >
-                                                    <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical"></alps-icon-btn>
+                                                    <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" title=${this.i18nStore?.t('general.moreOptions')}></alps-icon-btn>
                                                     <button class="dropdown-item" @click=${(e: Event) => {
                                                         const popup = (e.target as HTMLElement).closest('alps-popup') as any;
                                                         if (popup) popup.close();
@@ -1018,10 +1070,17 @@ export class CalendarPage extends LitElement {
                                         </div>
                                     `)}
                                     <div class="calendar-item tasks-toggle" @click=${this.toggleTasks}>
-                                        <div class="calendar-checkbox ${this.showTasks ? 'checked' : ''}" style="--cal-color: var(--text-secondary, #4b5563)">
-                                            ${this.showTasks ? renderIcon('check') : ''}
+                                        <div class="calendar-control"
+                                            role="checkbox"
+                                            tabindex="0"
+                                            aria-checked=${this.showTasks ? 'true' : 'false'}
+                                            @keydown=${(e: KeyboardEvent) => this.handleCheckboxKeyDown(e, () => this.toggleTasks())}
+                                        >
+                                            <div class="calendar-checkbox ${this.showTasks ? 'checked' : ''}" style="--cal-color: var(--text-secondary, #4b5563)">
+                                                ${this.showTasks ? renderIcon('check') : ''}
+                                            </div>
+                                            <span>${this.i18nStore?.t('tasks.title')}</span>
                                         </div>
-                                        <span>${this.i18nStore?.t('tasks.title')}</span>
                                     </div>
                                 </div>
 
@@ -1034,7 +1093,7 @@ export class CalendarPage extends LitElement {
                             </div>
                         </div>
                     </div>
-                    <alps-icon-btn slot="footer-actions" icon="calendarPlus" @click=${this.handleAddCalendar}></alps-icon-btn>
+                    <alps-icon-btn slot="footer-actions" icon="calendarPlus" title=${this.i18nStore?.t('calendar.addCalendar')} @click=${this.handleAddCalendar}></alps-icon-btn>
                 </alps-sidebar>
 
                 <div class="main-content">

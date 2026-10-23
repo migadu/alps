@@ -1,4 +1,4 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { renderIcon } from '../utils/ui';
@@ -15,6 +15,11 @@ export class AlpsAddressInput extends LitElement {
 
   @property({ type: Array }) addresses: string[] = [];
   @property({ type: Boolean }) disabled = false;
+  /**
+   * The field's accessible name, given to its input as its aria-label: a
+   * caption beside this element cannot name the input in this shadow root.
+   */
+  @property({ type: String }) label = '';
   
   @state() private inputText = '';
   @state() private suggestions: { name: string, address: string }[] = [];
@@ -343,6 +348,7 @@ export class AlpsAddressInput extends LitElement {
           <div class="input-wrapper">
             <input
               type="text"
+              aria-label=${this.label || nothing}
               .value=${this.inputText}
               @input=${this._handleInput}
               @keydown=${this._handleKeyDown}
