@@ -1104,9 +1104,13 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 	}
 	statuses["INBOX"] = inbox
 
+	// The answer's own copy of the list, which the session's cache holds,
+	// whether it was found there or read now and put there. Marked in place,
+	// the list carried this request's active folder and counts into the next
+	// answer read from it, and two requests of the session wrote it at once.
+	mailboxes = slices.Clone(mailboxes)
 	for i := range mailboxes {
 		// Populate unseen & active states
-		// Always reset Active first (important when using cached mailboxes)
 		mailboxes[i].Active = false
 		if active != nil && mailboxes[i].Name() == active.Mailbox {
 			mailboxes[i].Active = true
@@ -1562,7 +1566,13 @@ func handleGetMailbox(ctx *alps.Context) error {
 // folderListVersion names a folder list by what it holds, counts and all, so
 // that two answers with the same version carry the same list.
 func folderListVersion(mailboxes []MailboxInfo) string {
-	data, err := json.Marshal(mailboxes)
+	// Active belongs to this request, not the shared folder data. Its
+	// decoration must not change the version across listings and /mailboxes.
+	canonical := slices.Clone(mailboxes)
+	for i := range canonical {
+		canonical[i].Active = false
+	}
+	data, err := json.Marshal(canonical)
 	if err != nil {
 		return ""
 	}
