@@ -2358,6 +2358,72 @@ type messagePath struct {
 // expressed there was not actually enforced anywhere.
 const maxComposeBodyBytes = 32 << 20
 
+// errDraftMaybeStored answers a draft save whose draft may be in Drafts
+// already: see storeOnce.
+var errDraftMaybeStored = errors.New("the draft was stored, but the connection failed before the mail server said so: save it again")
+
+// storeOnce runs store, the APPEND of the message whose Message-ID is
+// messageID into the mailbox of type t, unless one has gone out before, as
+// *tried says, on a connection that then failed. The server may have stored
+// the message before the connection failed, and its answer was lost: stored
+// again, the mailbox would hold it twice. So the mailbox is looked in first, by the
+// Message-ID. A copy there, other than except, is the one the lost answer was
+// for, and held is the mailbox's name. The message is stored again only when
+// there is none: its connection failed before the server had it, as one the
+// server has dropped does.
+func storeOnce(p provider.MailProvider, tried *bool, t provider.MailboxType, messageID string, except *messagePath, store func() error) (held string, err error) {
+	if *tried {
+		held, err := heldByMessageID(p, t, messageID, except)
+		if err != nil || held != "" {
+			return held, err
+		}
+	}
+	*tried = true
+	return "", store()
+}
+
+// heldByMessageID answers the name of the mailbox of type t when it holds a
+// message whose Message-ID is id, other than except, and "" when it does not.
+// A mailbox that cannot be found holds nothing.
+func heldByMessageID(p provider.MailProvider, t provider.MailboxType, id string, except *messagePath) (string, error) {
+	want := provider.MessageIDs(id)
+	finder, ok := p.(provider.ReferenceFinder)
+	if !ok || len(want) == 0 {
+		// Nothing to look by: the copy may be there.
+		return "", fmt.Errorf("the message may have been stored before the connection failed, and is not stored again")
+	}
+	mbox, err := p.FindMailboxByType(t)
+	if err != nil || mbox == nil {
+		return "", nil
+	}
+	found, err := finder.FindByReferences(mbox.Name, want)
+	if err != nil {
+		return "", err
+	}
+	for _, m := range found {
+		if except != nil && except.Mailbox == mbox.Name && m.ID != nil && m.ID.String() == except.Uid {
+			continue
+		}
+		if own := ownMessageIDs(m); len(own) > 0 && own[0] == want[0] {
+			return mbox.Name, nil
+		}
+	}
+	return "", nil
+}
+
+// deleteDraft removes the draft a save or a send replaces, when there is one.
+// One already gone counts as removed.
+func deleteDraft(p provider.MailProvider, draft *messagePath) error {
+	if draft == nil {
+		return nil
+	}
+	id, err := p.ParseMessageID(draft.Uid)
+	if err != nil {
+		return err
+	}
+	return deleteMessagesWithProvider(p, draft.Mailbox, []provider.MessageID{id})
+}
+
 func handleComposeNew(ctx *alps.Context) error {
 	// Before the first FormValue, which is what triggers parsing.
 	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, maxComposeBodyBytes)
@@ -2640,11 +2706,39 @@ func handleComposeNew(ctx *alps.Context) error {
 			sourceAt[path] = sources[i]
 		}
 
+		// After a network error the save is run again, on another connection
+		// (see DoBackgroundMail): from where it was, without storing the
+		// draft again once it is stored (see storeOnce).
+		var tried bool
+		var heldIn string // Drafts, when it holds a copy the save could not name
 		err = doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
-			var err error
-			drafts, uid, size, err = appendMessageWithProvider(p, msg.asDraft(), provider.MailboxTypeDrafts)
-			if err != nil {
-				return err
+			if drafts == nil {
+				held, err := storeOnce(p, &tried, provider.MailboxTypeDrafts, msg.MessageID, draftPath, func() error {
+					var err error
+					drafts, uid, size, err = appendMessageWithProvider(p, msg.asDraft(), provider.MailboxTypeDrafts)
+					return err
+				})
+				if err != nil {
+					return err
+				}
+				if held != "" {
+					// Stored, but the save cannot tell that copy from another
+					// of the same draft, and so has no UID to answer.
+					heldIn = held
+					return errDraftMaybeStored
+				}
+			}
+
+			// What a save run again reads back replaces what the one before
+			// it read: added to it, the answer named every part twice.
+			readBack = false
+			respAttachments = nil
+			storedStructure = nil
+
+			// A server without UIDPLUS stores the draft without saying under
+			// which UID: there is nothing to read it back by.
+			if uid == nil {
+				return deleteDraft(p, draftPath)
 			}
 
 			// Fetch the new attachments to get updated part paths BEFORE deleting the old draft!
@@ -2684,19 +2778,16 @@ func handleComposeNew(ctx *alps.Context) error {
 				}
 			}
 
-			if draftPath != nil {
-				parsedDraftUid, err := p.ParseMessageID(draftPath.Uid)
-				if err != nil {
-					return err
-				}
-				if err := deleteMessagesWithProvider(p, draftPath.Mailbox, []provider.MessageID{parsedDraftUid}); err != nil {
-					return err
-				}
-			}
-
-			return nil
+			return deleteDraft(p, draftPath)
 		})
 		if err != nil {
+			// A draft stored before the save failed is in Drafts: the folder
+			// is read again for it, as after a save that succeeded.
+			if drafts != nil {
+				invalidateMailboxCache(ctx, drafts.Name())
+			} else if heldIn != "" {
+				invalidateMailboxCache(ctx, heldIn)
+			}
 			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 		inMessage = readBack
@@ -2710,9 +2801,13 @@ func handleComposeNew(ctx *alps.Context) error {
 			forgetMessages(ctx.Session.Cache(), draftPath.Mailbox, draftPath.Uid)
 		}
 
+		draftUID := ""
+		if uid != nil {
+			draftUID = uid.String()
+		}
 		answer := map[string]interface{}{
 			"ok":            true,
-			"draft_uid":     uid.String(),
+			"draft_uid":     draftUID,
 			"draft_mailbox": drafts.Name(),
 			"draft_size":    size,
 			"draft_bcc":     storedBcc,
@@ -2780,25 +2875,35 @@ func handleComposeNew(ctx *alps.Context) error {
 		}
 	}
 
+	// FinishMail runs the filing again after a network error, on another
+	// connection: from where it was, without filing the copy again once it
+	// is in Sent (see storeOnce).
 	var sentName string
+	var tried bool
 	err = ctx.Session.FinishMail(ctx.Request.Context(), func(p provider.MailProvider) error {
-		sent, _, _, err := appendMessageWithProvider(p, msg, provider.MailboxTypeSent)
-		if err != nil {
-			return err
-		}
-		sentName = sent.Name()
-		if draftPath != nil {
-			parsedDraftUid, err := p.ParseMessageID(draftPath.Uid)
+		if sentName == "" {
+			held, err := storeOnce(p, &tried, provider.MailboxTypeSent, msg.MessageID, nil, func() error {
+				sent, _, _, err := appendMessageWithProvider(p, msg, provider.MailboxTypeSent)
+				if err == nil {
+					sentName = sent.Name()
+				}
+				return err
+			})
 			if err != nil {
 				return err
 			}
-			if err := deleteMessagesWithProvider(p, draftPath.Mailbox, []provider.MessageID{parsedDraftUid}); err != nil {
-				return err
+			if held != "" {
+				// The copy the lost answer was for.
+				sentName = held
 			}
 		}
-		return nil
+		return deleteDraft(p, draftPath)
 	})
 	if err != nil {
+		// A copy filed before the filing failed is in Sent.
+		if sentName != "" {
+			invalidateMailboxCache(ctx, sentName)
+		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save message to Sent mailbox: " + err.Error()})
 	}
 
