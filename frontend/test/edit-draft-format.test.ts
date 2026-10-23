@@ -62,7 +62,7 @@ afterEach(() => {
 });
 
 /** The composer Edit Draft opens, with the settings and the read the reader has. */
-async function editDraft(settings: Record<string, unknown>, read: 'html' | 'text' | 'plain draft') {
+async function draftReader(settings: Record<string, unknown>, read: 'html' | 'text' | 'plain draft') {
   const view = read === 'html' ? 'html' : 'text';
   MessageCache.set('Drafts', '7', view, read === 'html'
     ? { Message: draft, Part: { Path: [2], MIMEType: 'text/html' }, Attachments: [], RawHtml: html, HasHTML: true, HasText: true }
@@ -79,6 +79,11 @@ async function editDraft(settings: Record<string, unknown>, read: 'html' | 'text
     message: draft,
   });
   await waitFor(() => !el.loading && el.threadItems.length > 0, 'the draft');
+  return { el, openComposer };
+}
+
+async function editDraft(settings: Record<string, unknown>, read: 'html' | 'text' | 'plain draft') {
+  const { el, openComposer } = await draftReader(settings, read);
   await el._handleEditDraft();
   return openComposer;
 }
@@ -106,5 +111,45 @@ describe('Edit Draft', () => {
     const openComposer = await editDraft({ composeFormat: 'html' }, 'text');
     expect(openComposer).not.toHaveBeenCalled();
     expect(toasts.map(e => e.detail.message)).toEqual(['messageReader.loadError']);
+  });
+});
+
+
+describe('an HTML draft read only for Edit Draft', () => {
+  it.each(['disconnect', 'account change', 'another message', 'deleted card'])('does not reopen a draft after %s', async (departure) => {
+    const { el, openComposer } = await draftReader({ composeFormat: 'html' }, 'text');
+    let finish!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { finish = resolve; })));
+    const editing = el._handleEditDraft();
+    await waitFor(() => !!finish, 'the pending HTML read');
+
+    if (departure === 'disconnect') el.remove();
+    if (departure === 'account change') MessageCache.clear();
+    if (departure === 'another message') {
+      const next = { ...draft, UID: '8' };
+      MessageCache.set('Drafts', '8', 'text', { Message: next, Part: { Path: [1], MIMEType: 'text/plain' }, Attachments: [], RawText: 'another draft', HasHTML: false, HasText: true });
+      el.message = next;
+      await el.updateComplete;
+    }
+    if (departure === 'deleted card') el.dropCard(el.itemKey(el.threadItems[0]));
+    finish(new Response(JSON.stringify({ Part: { Path: [2], MIMEType: 'text/html' }, Body: html }), { status: 200 }));
+    await editing;
+
+    expect(openComposer).not.toHaveBeenCalled();
+  });
+
+  it('does not announce a stale HTML failure after leaving the reader', async () => {
+    const { el, openComposer } = await draftReader({ composeFormat: 'html' }, 'text');
+    let finish!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { finish = resolve; })));
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const editing = el._handleEditDraft();
+    await waitFor(() => !!finish, 'the pending HTML read');
+    el.remove();
+    finish(new Response('{}', { status: 404 }));
+    await editing;
+
+    expect(openComposer).not.toHaveBeenCalled();
+    expect(toasts).toHaveLength(0);
   });
 });

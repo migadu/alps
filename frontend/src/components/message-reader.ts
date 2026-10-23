@@ -2513,6 +2513,9 @@ export class MessageReader extends LitElement {
     const savedAsHtml = !!(isItem && item ? item.hasHtml : this.hasHtml);
     if (savedAsHtml && !rawMessageHtml) {
       const read = await this.readDraftHtml(mailbox, String(msg.UID));
+      // This extra read belongs to the same opening and account as the
+      // initial body; a card deleted while it waits must not reopen either.
+      if (!current() || this.droppedKeys.has(key)) return;
       if (read === null) {
         window.dispatchEvent(new CustomEvent('show-toast', {
           detail: { message: this.i18nStore?.t('messageReader.loadError') },
