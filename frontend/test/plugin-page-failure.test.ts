@@ -109,4 +109,34 @@ describe('a plugin page whose module could not be fetched', () => {
       expect.objectContaining({ subject: 'Engines', text: 'Dear Ada' }),
     ]);
   });
+
+  it('keeps the only live edit when recovery storage fails, and reloads after storage recovers', async () => {
+    const reload = vi.spyOn(appUpdate, 'reloadForMissingPage').mockImplementation(() => {});
+    const page = brokenPage();
+    window.location.hash = page.hash;
+    const root = await mount<El>('app-root');
+    const store = root.composeStore;
+    store.openComposer({ subject: 'Engines', text: 'Stored earlier' });
+    store.persistNow();
+    await waitFor(() => !!notice(root), 'the failed-page notice');
+    await notice(root)!.updateComplete;
+    const writes = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage is full', 'QuotaExceededError');
+    });
+    const id = store.getState().activeComposers[0].id;
+    store.updateComposer(id, { text: 'Only live edit', dirty: true });
+
+    (notice(root)!.shadowRoot!.querySelector('alps-button') as HTMLElement).click();
+    await notice(root)!.updateComplete;
+
+    expect(reload).not.toHaveBeenCalled();
+    expect(store.getComposer(id)).toMatchObject({ text: 'Only live edit', dirty: true });
+    expect(JSON.parse(localStorage.getItem(`alps_compose_drafts_${USER}`)!)[0].text).toBe('Stored earlier');
+    expect(notice(root)!.shadowRoot!.querySelector('.persist-error')?.textContent).toBe(root.i18nStore.t('composer.draftSaveFailedKeepOpen'));
+
+    writes.mockRestore();
+    (notice(root)!.shadowRoot!.querySelector('alps-button') as HTMLElement).click();
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem(`alps_compose_drafts_${USER}`)!)[0].text).toBe('Only live edit');
+  });
 });

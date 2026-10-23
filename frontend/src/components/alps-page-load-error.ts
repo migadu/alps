@@ -1,5 +1,5 @@
 import { LitElement, html, css } from 'lit';
-import { customElement } from 'lit/decorators.js';
+import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { composeContext, ComposeStore } from '../store/compose-store';
@@ -52,6 +52,11 @@ export class AlpsPageLoadError extends LitElement {
       gap: 16px;
     }
 
+    .persist-error {
+      margin: 0;
+      color: var(--error, #ef4444);
+    }
+
     a {
       color: var(--accent-color);
       font-size: 14px;
@@ -63,6 +68,8 @@ export class AlpsPageLoadError extends LitElement {
 
   @consume({ context: composeContext })
   private composeStore?: ComposeStore;
+
+  @state() private persistFailed = false;
 
   private _handleI18nChange = () => this.requestUpdate();
 
@@ -77,7 +84,8 @@ export class AlpsPageLoadError extends LitElement {
   }
 
   private _reload() {
-    this.composeStore?.persistNow();
+    this.persistFailed = this.composeStore?.persistNow() === false;
+    if (this.persistFailed) return;
     reloadForMissingPage();
   }
 
@@ -87,6 +95,7 @@ export class AlpsPageLoadError extends LitElement {
         <h2 class="title">${this.i18nStore?.t('general.pageLoadFailed')}</h2>
         <p class="hint">${this.i18nStore?.t('general.pageLoadFailedHint')}</p>
       </div>
+      ${this.persistFailed ? html`<p class="persist-error" role="alert">${this.i18nStore?.t('composer.draftSaveFailedKeepOpen')}</p>` : ''}
       <div class="actions">
         <alps-button variant="primary" @click=${this._reload}>${this.i18nStore?.t('update.reload')}</alps-button>
         <a href="#/mailbox/INBOX">${this.i18nStore?.t('navigation.messages')}</a>
