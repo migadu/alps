@@ -3,7 +3,7 @@ import type { PropertyValues } from 'lit';
 import { live } from 'lit/directives/live.js';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { encodeMailboxPath } from '../utils/folders';
-import { MessageCache } from '../utils/message-cache';
+import { MessageCache, type CachedMessage } from '../utils/message-cache';
 import { customElement, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
@@ -156,8 +156,14 @@ export class PrintPage extends LitElement {
     try {
       this.loading = true;
 
-      const cached = MessageCache.get(this.mailbox, this.uid);
-      if (cached && cached.Part) {
+      // The reader caches the view it showed, so a message read in plain
+      // text has a text entry and no HTML one. An entry counts only if it
+      // holds a body: the reader caches a read whose body request failed as
+      // well, and that one, taken as a hit, printed the header over nothing.
+      const holdsBody = (entry: CachedMessage | null) =>
+        !!entry && !!entry.Part && (entry.RawHtml !== undefined || entry.RawText !== undefined);
+      const cached = [MessageCache.get(this.mailbox, this.uid, 'html'), MessageCache.get(this.mailbox, this.uid, 'text')].find(holdsBody);
+      if (cached) {
         this.message = cached.Message;
         this.mimeType = cached.Part.MIMEType || cached.Part.MimeType || 'text/plain';
         if (cached.RawHtml !== undefined) {
@@ -178,7 +184,11 @@ export class PrintPage extends LitElement {
         return;
       }
 
-      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailbox)}/messages/${this.uid}`);
+      // The answer wraps the message, and names in `Part` the part the server
+      // picked to show, the HTML one first as asked. Read as the message
+      // itself, it left the page without an envelope or a structure, and it
+      // printed "(No Subject)", "Unknown Sender" and no body.
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailbox)}/messages/${this.uid}?view=html`);
       if (!res.ok) {
         if (res.status === 401) {
           window.location.hash = '#/login';
@@ -186,9 +196,10 @@ export class PrintPage extends LitElement {
         }
         throw new Error('Failed to fetch message metadata');
       }
-      this.message = await res.json();
+      const data = await res.json();
+      this.message = data.Message;
 
-      await this.fetchMessageBody();
+      await this.fetchMessageBody(data.Part);
     } catch (e: any) {
       this.error = e.message;
     } finally {
@@ -196,75 +207,23 @@ export class PrintPage extends LitElement {
     }
   }
 
-  private findDisplayPart(structure: any, preferredView: 'html' | 'text'): any {
-    if (!structure) return null;
-
-    if (structure.MIMEType && structure.MIMEType.toLowerCase().startsWith('multipart/')) {
-      if (structure.MIMEType.toLowerCase() === 'multipart/alternative') {
-        let textPart = null;
-        let htmlPart = null;
-
-        for (const child of (structure.Children || [])) {
-          if (child.MIMEType?.toLowerCase() === 'text/plain') textPart = child;
-          if (child.MIMEType?.toLowerCase() === 'text/html') htmlPart = child;
-        }
-
-        if (preferredView === 'html') {
-          return htmlPart || textPart || structure.Children[0];
-        } else {
-          return textPart || htmlPart || structure.Children[0];
-        }
-      }
-
-      for (const child of (structure.Children || [])) {
-        const found = this.findDisplayPart(child, preferredView);
-        if (found) return found;
-      }
-    }
-
-    if (structure.MIMEType?.toLowerCase() === 'text/html' || structure.MIMEType?.toLowerCase() === 'text/plain') {
-      return structure;
-    }
-
-    return null;
-  }
-
-  private findPartPath(structure: any, targetPart: any, currentPath: string = ''): string | null {
-    if (!structure) return null;
-    if (structure === targetPart) return currentPath || '1';
-
-    if (structure.Children && Array.isArray(structure.Children)) {
-      for (let i = 0; i < structure.Children.length; i++) {
-        const nextPath = currentPath ? `${currentPath}.${i + 1}` : `${i + 1}`;
-        const found = this.findPartPath(structure.Children[i], targetPart, nextPath);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-
-  private async fetchMessageBody() {
-    if (!this.message || !this.message.BodyStructure) return;
-
-    let partPath = '1';
-    let targetPart = this.findDisplayPart(this.message.BodyStructure, 'html');
-
-    if (targetPart) {
-      partPath = this.findPartPath(this.message.BodyStructure, targetPart) || '1';
-      this.mimeType = targetPart.MIMEType || 'text/plain';
-    } else {
-      this.mimeType = this.message.BodyStructure.MIMEType || 'text/plain';
-      if (this.mimeType.toLowerCase() === 'text/plain' || this.mimeType.toLowerCase() === 'text/html') {
-        partPath = '1';
-      } else {
-        this.mimeType = 'multipart/mixed';
-      }
-    }
-
-    if (this.mimeType.toLowerCase().startsWith('multipart/')) {
+  // The part comes from the server rather than from a walk of the structure
+  // here: the structure is go-imap's, with a Type and a Subtype and no
+  // MIMEType, so a walk looking for MIMEType found no part in any message.
+  private async fetchMessageBody(part: any) {
+    if (!part) {
+      // No part of the message is text the page can print.
+      this.mimeType = 'multipart/mixed';
       this.content = '';
       return;
     }
+    this.mimeType = part.MIMEType || part.MimeType || 'text/plain';
+    // A single-part message whose one part is text the server does not take
+    // for the plain or HTML body (a bare calendar invitation, or text sent as
+    // an attachment) comes back as the whole message, with no path. Its body
+    // is part 1, which is what the page asked for before; the path written
+    // out as "null" is refused.
+    const partPath = Array.isArray(part.Path) && part.Path.length ? part.Path.join('.') : '1';
 
     const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailbox)}/messages/${this.uid}/raw?part=${partPath}`);
     if (!rawRes.ok) throw new Error('Failed to fetch message body');

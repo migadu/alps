@@ -148,6 +148,7 @@ export const pt = {
       begin_failed: 'Falha ao iniciar autenticação.',
       invalid_options: 'Opções de autenticação inválidas recebidas.',
       verification_failed: 'Falha na verificação. Por favor, tente novamente.',
+      cancelled: 'A chave de segurança não foi usada. É possível tentar novamente com "Verificar Identidade".',
       unavailable: 'O servidor não conseguiu verificar a chave de segurança neste momento. Tente novamente daqui a pouco.',
       register_failed: 'Ocorreu um erro ao registar a sua chave de segurança. Por favor, tente novamente.',
       remove_failed: 'Falha ao remover a chave de segurança.',
@@ -420,7 +421,9 @@ export const pt = {
     verifiedSender: 'Remetente Verificado',
     unverifiedSender: 'Remetente Não Verificado',
     senderUnverifiedWarning: 'O seu servidor de correio não conseguiu verificar este remetente. A mensagem pode não ser de quem diz ser, por isso tenha cuidado com os links e os anexos.',
-    clickToExpand: 'Clique para expandir o conteúdo da mensagem'
+    clickToExpand: 'Clique para expandir o conteúdo da mensagem',
+    loadError: 'Não foi possível carregar esta mensagem.',
+    loadErrorRetry: 'Tentar novamente'
   },
   address: {
     directionalControl: 'marcas de direção ocultas',
