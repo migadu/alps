@@ -539,7 +539,10 @@ export class ComposeStore extends EventTarget {
         const hasRecipient = (composer.to?.length || 0) > 0 || (composer.cc?.length || 0) > 0 || (composer.bcc?.length || 0) > 0;
         const textIsJustInitial = composer.text?.trim() === composer.initialText?.trim();
         const hasContent = !textIsJustInitial || (composer.subject?.trim().length || 0) > 0;
-        if (!hasRecipient && !hasContent && !(composer.attachments && composer.attachments.length > 0)) {
+        // Nothing to save only in a message never stored: a stored draft
+        // emptied to blank is saved, as its window saves it, or Drafts keeps
+        // what the user took out.
+        if (!composer.draftUid && !hasRecipient && !hasContent && !(composer.attachments && composer.attachments.length > 0)) {
           this.closeComposer(id);
           continue;
         }
