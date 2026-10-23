@@ -269,6 +269,7 @@ export const en = {
     noMessages: 'No messages',
     loadError: 'Could not load this folder.',
     loadErrorRetry: 'Try again',
+    searchLimited: 'The mail server is limiting searches right now. Try again in a moment.',
     loading: 'Loading...',
     unknownSender: 'Unknown Sender',
     unknown: 'Unknown',

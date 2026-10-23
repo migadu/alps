@@ -215,6 +215,7 @@ export const fr = {
     noMessages: 'Aucun message',
     loadError: 'Impossible de charger ce dossier.',
     loadErrorRetry: 'Réessayer',
+    searchLimited: 'Le serveur de messagerie limite les recherches pour le moment. Réessayez dans un instant.',
     loading: 'Chargement...',
     unknownSender: 'Expéditeur inconnu',
     unknown: 'Inconnu',

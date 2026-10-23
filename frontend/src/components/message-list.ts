@@ -110,6 +110,8 @@ export class MessageList extends LitElement {
   @property({ type: Boolean }) syncing = false;
   /** The last listing failed: say so, rather than claim the folder is empty. */
   @property({ type: Boolean }) loadFailed = false;
+  /** It failed because the mail server is limiting searches, which is said instead. */
+  @property({ type: Boolean }) loadLimited = false;
   @state() private isSpinning = false;
   @state() private isScrolled = false;
   @state() private isAtBottom = false;
@@ -1982,7 +1984,7 @@ export class MessageList extends LitElement {
           <alps-loader full-height .text=${this.i18nStore?.t('messageList.loading') || 'Loading...'}></alps-loader>
         ` :
         this.messages.length === 0 && this.loadFailed ? html`<div class="empty-state load-error">
-          <div>${this.i18nStore?.t('messageList.loadError')}</div>
+          <div>${this.i18nStore?.t(this.loadLimited ? 'messageList.searchLimited' : 'messageList.loadError')}</div>
           <alps-button variant="normal" @click=${() => this.checkForNew()}>
             ${this.i18nStore?.t('messageList.loadErrorRetry')}
           </alps-button>

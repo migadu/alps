@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -1096,6 +1097,40 @@ func (p *IMAPProvider) sortedMailboxThreads(mailbox, sortOrder string, fresh boo
 // socket, a malformed response — will fail the next command on this connection
 // too, and the caller is better served by the original error than by a second
 // one from a fallback that never had a chance.
+// searchFailed is the error of a search the server refused. A refusal for one
+// of its limits (RFC 5530 [LIMIT]) is a provider.LimitError, with the wait
+// the server named when it named one: Sora refuses every search, SORT and
+// THREAD with NO [LIMIT] once the account's search budget is used up, and
+// says "please wait 42s". The page can then say the server asked to slow
+// down, rather than that the folder could not be read. A listing without a
+// query is not refused this way: it lists by number instead (see
+// SearchMessages).
+func searchFailed(command string, err error) error {
+	var imapErr *imap.Error
+	if errors.As(err, &imapErr) && imapErr.Code == imap.ResponseCodeLimit {
+		return &provider.LimitError{RetryAfter: waitNamedIn(imapErr.Text), Cause: fmt.Errorf("%s refused: %w", command, err)}
+	}
+	return fmt.Errorf("%s failed: %v", command, err)
+}
+
+// waitAsked is "wait", then a duration as Go writes one ("42s", "1m5s"): how
+// Sora's refusal says how long to wait. RFC 5530 gives [LIMIT] no time of its
+// own, so a refusal that says none, or says it otherwise, names none.
+var waitAsked = regexp.MustCompile(`(?i)\bwait ((?:\d+(?:\.\d+)?(?:ns|us|µs|ms|s|m|h))+)\b`)
+
+// waitNamedIn is the wait text names, or 0 for none.
+func waitNamedIn(text string) time.Duration {
+	m := waitAsked.FindStringSubmatch(text)
+	if m == nil {
+		return 0
+	}
+	wait, err := time.ParseDuration(m[1])
+	if err != nil || wait < 0 {
+		return 0
+	}
+	return wait
+}
+
 func refusedByServer(err error) bool {
 	var imapErr *imap.Error
 	if !errors.As(err, &imapErr) {
@@ -1488,7 +1523,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 			if query == "" && refusedByServer(err) {
 				return byNumber("SEARCH", err)
 			}
-			return nil, provider.PageInfo{}, fmt.Errorf("SEARCH failed: %v", err)
+			return nil, provider.PageInfo{}, searchFailed("SEARCH", err)
 		}
 		if data != nil {
 			uids = data.AllUIDs()
@@ -1504,7 +1539,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 			if refusedByServer(err) {
 				return byNumber("SORT", err)
 			}
-			return nil, provider.PageInfo{}, fmt.Errorf("SORT failed: %v", err)
+			return nil, provider.PageInfo{}, searchFailed("SORT", err)
 		}
 	} else {
 		sortOptions := &imapclient.SortOptions{
@@ -1515,7 +1550,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		}
 		sortData, err := p.client.UIDSort(sortOptions).Wait()
 		if err != nil {
-			return nil, provider.PageInfo{}, fmt.Errorf("SORT failed: %v", err)
+			return nil, provider.PageInfo{}, searchFailed("SORT", err)
 		}
 		uids = sortData.UIDs
 	}
@@ -2792,7 +2827,7 @@ func (p *IMAPProvider) searchESearchMessages(query string, sortOrder string, pag
 	// 2. Perform ESEARCH
 	results, err := p.client.MultiSearch(source, searchCriteria, nil).Wait()
 	if err != nil {
-		return nil, provider.PageInfo{}, fmt.Errorf("ESEARCH failed: %v", err)
+		return nil, provider.PageInfo{}, searchFailed("ESEARCH", err)
 	}
 
 	var candidates []searchCandidate

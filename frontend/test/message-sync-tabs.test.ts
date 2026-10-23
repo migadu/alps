@@ -45,7 +45,7 @@ const successes = (svc: MessageSyncService) => {
   return seen;
 };
 const service = () => { const svc = new MessageSyncService(); started.push(svc); return svc; };
-const statusRequests = () => fetchMock.mock.calls.map((call) => call[0]).filter((url) => url.endsWith('/status'));
+const statusRequests = () => fetchMock.mock.calls.map((call) => call[0]).filter((url) => url.includes('/status'));
 async function land(svc: MessageSyncService, mailbox = 'INBOX') {
   await svc.fetch(mailbox, 0, '', false, true);
   await vi.advanceTimersByTimeAsync(0);
@@ -53,6 +53,8 @@ async function land(svc: MessageSyncService, mailbox = 'INBOX') {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // The poll's jitter at its middle, which is none.
+  vi.spyOn(Math, 'random').mockReturnValue(0.5);
   vi.stubGlobal('BroadcastChannel', Channel);
   locks();
   username = 'ada@example.com';
@@ -60,7 +62,10 @@ beforeEach(() => {
   fetchMock = vi.fn(async (url: string) => {
     const name = decodeURIComponent(url.split('/')[2].split(/[?\/]/)[0]);
     const counts = state[name];
-    if (url.endsWith('/status')) return new Response(JSON.stringify(counts));
+    if (url.includes('/status')) {
+      const others = new URL(url, 'http://alps.test').searchParams.getAll('with');
+      return new Response(JSON.stringify(others.length ? { ...counts, with: Object.fromEntries(others.map((other) => [other, state[other]])) } : counts));
+    }
     const listed = (c: typeof counts) => ({ NumMessages: c.total, NumUnseen: c.unseen, UIDNext: c.uidnext, UIDValidity: c.uidvalidity });
     return new Response(JSON.stringify({ Username: username, Total: counts.total,
       Messages: [{ UID: String(counts.uidnext - 1), Envelope: { Subject: username } }],
@@ -78,6 +83,51 @@ afterEach(async () => {
 });
 
 describe('shared polling counts', () => {
+  it('keeps a continuously visible follower subscribed across a failed-poll backoff', async () => {
+    const leader = service(), follower = service();
+    await land(leader); await land(follower, 'Work');
+    const second = successes(follower);
+    leader.start(1); follower.start(1);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const normal = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async () => new Response('{}', { status: 500 }));
+    // Failed polls at one and three minutes. The next one waits four:
+    // longer than the old three-interval peer lease.
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    fetchMock.mockImplementation(normal);
+    state.Work = { ...state.Work, total: 3, unseen: 1, uidnext: 4 };
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
+
+    expect(second.at(-1)?.data.Total).toBe(3);
+    for (const total of [4, 5]) {
+      state.Work = { ...state.Work, total, uidnext: total + 1 };
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(second.at(-1)?.data.Total).toBe(total);
+    }
+  });
+
+  it.each(['stopped', 'crashed'])('expires a %s follower after backoff recovery', async (gone) => {
+    const leader = service(), follower = service();
+    await land(leader); await land(follower, 'Work');
+    leader.start(1); follower.start(1);
+    await vi.advanceTimersByTimeAsync(0);
+    const normal = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async () => new Response('{}', { status: 500 }));
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+
+    if (gone === 'stopped') follower.stop();
+    else (follower as any).channel.close(); // No leave/renewal from a crashed tab.
+    await vi.advanceTimersByTimeAsync(0);
+    fetchMock.mockImplementation(normal);
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
+    if (gone === 'stopped') expect(statusRequests().at(-1)).toBe('/mailboxes/INBOX/status');
+    // Once healthy, the ordinary lease applies again to a tab that cannot
+    // renew it. Extending the outage lease never keeps dead peers for good.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(statusRequests().at(-1)).toBe('/mailboxes/INBOX/status');
+  });
+
   it('updates a continuously visible follower across many ticks with one status probe per mailbox and one announcer', async () => {
     const leader = service(), follower = service();
     await land(leader); await land(follower);
@@ -105,7 +155,7 @@ describe('shared polling counts', () => {
     state.Work.uidnext++;
     await vi.advanceTimersByTimeAsync(60_000);
     expect(second.at(-1).data.Messages[0].UID).toBe('3');
-    expect(statusRequests()).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Work/status']);
+    expect(statusRequests()).toEqual(['/mailboxes/INBOX/status?with=Work']);
     state.Work.uidvalidity++;
     await vi.advanceTimersByTimeAsync(60_000);
     expect(second).toHaveLength(2);
