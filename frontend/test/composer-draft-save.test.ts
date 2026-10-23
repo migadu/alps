@@ -1041,3 +1041,107 @@ describe('an upload the server no longer holds', () => {
     expect(store.getComposer(id)?.attachments).toMatchObject([{ filename: 'big.bin', size, uploading: true }]);
   });
 });
+
+
+describe('a rich quote after a committed plain-text save', () => {
+  const original = { Envelope: { Subject: 'Chart', Date: '2026-09-01T10:00:00Z', From: [{ Mailbox: 'ada', Host: 'remote.test' }] } };
+  const quote = generateQuote('reply', original, 'Chart follows.', '<table><tr><td>Figures</td></tr></table><img src="cid:chart@remote.test">', true);
+  async function open() {
+    const { store, instance, id } = composerIn({
+      text: quote.quotedText, html: quote.quotedHtml, format: 'text',
+      attachments: [{ name: 'chart.png', type: 'image/png', partPath: '2', inline: true }],
+      quoteSource: { mailbox: 'INBOX', uid: '5', structure: { Children: [{ Type: 'text', Subtype: 'html' }, { ID: '<chart@remote.test>' }] } },
+    });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const body = el.shadowRoot!.querySelector('alps-message-composer') as El;
+    await body.updateComplete;
+    const sync = async () => {
+      el.instance = store.getComposer(id);
+      await el.updateComplete;
+      await body.updateComplete;
+    };
+    store.updateComposer(id, { text: 'Agreed.' + quote.quotedText });
+    await sync();
+    return { store, el, body, id, sync };
+  }
+
+  it('does not restore discarded CID references when switched after the save', async () => {
+    const save = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    const { store, el, body, id, sync } = await open();
+    expect(await el._saveDraft()).toBe(true);
+    expect(store.getComposer(id)!.attachments).toEqual([]);
+    await sync();
+    store.updateComposer(id, { format: 'html' });
+    await sync();
+    expect(body.messageHtml).toContain('<td>Figures</td>');
+    expect(body.messageHtml).not.toContain('cid:chart@remote.test');
+    expect(body.editor.getText()).toContain('Agreed.');
+    expect(await el._saveDraft()).toBe(true);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(sentForm(1).get('html')).not.toContain('cid:chart@remote.test');
+  });
+
+  it('keeps HTML typed and its selection when a pending text save discards the quote image', async () => {
+    const finish = heldSave();
+    const { store, el, body, id, sync } = await open();
+    const saving = el._saveDraft();
+    store.updateComposer(id, { format: 'html' });
+    await sync();
+    body.editor.chain().insertContentAt(1, '<strong>New rich words.</strong>').setTextSelection(5).run();
+    const selection = body.editor.state.selection.toJSON();
+    finish({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    expect(await saving).toBe(true);
+    await sync();
+
+    expect(store.getComposer(id)).toMatchObject({ dirty: true, draftUid: '8', attachments: [] });
+    expect(body.messageHtml).toContain('<strong>New rich words.</strong>');
+    expect(body.messageHtml).toContain('<td>Figures</td>');
+    expect(body.messageHtml).not.toContain('cid:chart@remote.test');
+    expect(body.editor.state.selection.toJSON()).toEqual(selection);
+    expect(store.getComposer(id)!.html).not.toContain('cid:chart@remote.test');
+    // Undo belongs to the user's typing, never to the save reconciliation.
+    body.editor.commands.undo();
+    expect(body.messageHtml).not.toContain('New rich words.');
+    expect(body.messageHtml).not.toContain('cid:chart@remote.test');
+  });
+
+  it('keeps newer HTML when a sign-out text flush is canceled by that edit', async () => {
+    const finish = heldSave();
+    const { store, body, id, sync } = await open();
+    const flushing = store.saveAllDirtyDrafts();
+    const refused = expect(flushing).rejects.toBeInstanceOf(DraftFlushError);
+    store.updateComposer(id, { format: 'html' });
+    await sync();
+    body.editor.chain().insertContentAt(1, '<strong>Keep editing.</strong>').run();
+    finish({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    await refused;
+    await sync();
+
+    expect(store.getComposer(id)).toMatchObject({ dirty: true, draftUid: '8', attachments: [] });
+    expect(body.messageHtml).toContain('<strong>Keep editing.</strong>');
+    expect(body.messageHtml).not.toContain('cid:chart@remote.test');
+  });
+
+  it('retains every inline part and reference until a text save succeeds', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue(null);
+    const { store, el, body, id, sync } = await open();
+    expect(await el._saveDraft()).toBe(false);
+    store.updateComposer(id, { format: 'html' });
+    await sync();
+    expect(store.getComposer(id)!.attachments).toHaveLength(1);
+    expect(body.messageHtml).toContain('cid:chart@remote.test');
+    expect(body.messageHtml).toContain('<td>Figures</td>');
+  });
+
+  it.each(['disconnect', 'account reset'])('does not prune a composer after %s while its save waits', async departure => {
+    const finish = heldSave();
+    const { store, el, id } = await open();
+    const saving = el._saveDraft();
+    if (departure === 'disconnect') el.remove();
+    else MessageCache.clear();
+    finish({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    await saving;
+    expect(store.getComposer(id)!.html).toContain('cid:chart@remote.test');
+    expect(store.getComposer(id)!.discardedInlineIds).toBeUndefined();
+  });
+});

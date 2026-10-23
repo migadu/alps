@@ -27,7 +27,7 @@ import { readUserSettings, settingsContext } from '../store/settings-store';
 import type { SettingsStore } from '../store/settings-store';
 import type { QuoteSource } from '../store/compose-store';
 import { QUOTE_ATTRIBUTE } from '../utils/email-quote';
-import { escapeHtml, sanitizeMessageHTML, sanitizeQuotedHTML, stripCssUrls } from '../utils/html-sanitizer';
+import { escapeHtml, sanitizeMessageHTML, sanitizeQuotedHTML, stripCssUrls, withoutCidReferences } from '../utils/html-sanitizer';
 import type { SanitizeOptions } from '../utils/html-sanitizer';
 import { applyThemeToIframe, htmlToPlainText, setupIframeSizing } from '../utils/reader-utils';
 import {
@@ -658,6 +658,9 @@ export class AlpsMessageComposer extends LitElement {
    */
   private syncedText: string | null = null;
 
+  /** Sources omitted by a completed text save, also removed from the live quote. */
+  @property({ attribute: false }) discardedInlineIds: string[] = [];
+
   @state() private attachments: Attachment[] = [];
 
   @state() private bubbleMenuState: 'view' | 'edit' = 'view';
@@ -833,6 +836,21 @@ export class AlpsMessageComposer extends LitElement {
   };
 
   updated(changedProperties: PropertyValues) {
+    if (changedProperties.has('discardedInlineIds') && this.editor && this.discardedInlineIds.length) {
+      const lost = new Set(this.discardedInlineIds);
+      const transaction = this.editor.state.tr;
+      this.editor.state.doc.descendants((node, position) => {
+        if (node.type.name !== QuotedMessage.name) return;
+        const html = withoutCidReferences(node.attrs.html, lost);
+        if (html !== node.attrs.html) transaction.setNodeMarkup(position, undefined, { ...node.attrs, html });
+      });
+      if (transaction.docChanged) {
+        // Same-size atom nodes preserve the selection and authored content.
+        // The store already reconciled this HTML as part of the save result.
+        this.editor.view.dispatch(transaction.setMeta('preventUpdate', true).setMeta('addToHistory', false));
+        this.htmlText = serializeEditorHtml(this.editor);
+      }
+    }
     if (changedProperties.has('isSending') && this.editor) {
       // Pass emitUpdate=false: TipTap v3's setEditable emits an "update" event by
       // default, which fires onUpdate. In plaintext mode that would overwrite the

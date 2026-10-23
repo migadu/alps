@@ -4,7 +4,7 @@ import { activeUsername, ownAddress, readUserSettings } from './settings-store';
 import { abortUploads } from '../utils/attachment-utils';
 import { Logger } from '../utils/logger';
 import { appendReplyFields } from '../utils/reply-context';
-import { escapeHtml } from '../utils/html-sanitizer';
+import { cidReferencesOf, escapeHtml, withoutCidReferences } from '../utils/html-sanitizer';
 import { DraftFlushError } from '../utils/draft-flush-error';
 import { canonicalRecipient } from '../utils/address-display';
 
@@ -109,6 +109,21 @@ export const keptAfterSave = (attachments: any[], saved: ComposerInstance): any[
 };
 
 /**
+ * A successful text save discarded its inline parts. The retained rich quote
+ * must stop naming them too, including while the user has switched back and
+ * typed in HTML during the save. Keep those edits and every other resource.
+ */
+export const discardedInlineAfterSave = (latest: ComposerInstance, saved: ComposerInstance): Partial<ComposerInstance> => {
+  if (saved.format !== 'text' || !saved.attachments?.some(a => a.inline)) return {};
+  const lost = cidReferencesOf(saved.html || '');
+  if (!lost.size) return {};
+  return {
+    html: withoutCidReferences(latest.html || '', lost),
+    discardedInlineIds: [...new Set([...(latest.discardedInlineIds || []), ...lost])],
+  };
+};
+
+/**
  * Where the quote's images are shown from once a save of `saved` has stored
  * a new draft, or undefined where that does not change. A composer editing a
  * draft shows them from that draft, which the save has replaced: the source
@@ -174,6 +189,8 @@ export interface ComposerInstance {
   zIndex?: number;
   attachments?: any[];
   quoteSource?: QuoteSource;
+  /** Inline resources a committed text save deliberately left out. */
+  discardedInlineIds?: string[];
   dirty?: boolean;
   draftUid?: string;
   draftMailbox?: string;
@@ -694,6 +711,7 @@ export class ComposeStore extends EventTarget {
               draftMailbox: saved.mailbox,
               ...(attachments !== current.attachments && { attachments }),
               ...(quoteSource && { quoteSource }),
+              ...discardedInlineAfterSave(current, composer),
             });
             failed = true;
             continue;
