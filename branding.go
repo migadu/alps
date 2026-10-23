@@ -132,10 +132,42 @@ type overlayFS struct {
 
 func (o overlayFS) Open(name string) (fs.File, error) {
 	data, ok := o.files[name]
-	if !ok {
-		return o.FS.Open(name)
+	if ok {
+		return &overlayFile{Reader: bytes.NewReader(data), info: overlayInfo{name: path.Base(name), size: int64(len(data))}}, nil
 	}
-	return &overlayFile{Reader: bytes.NewReader(data), info: overlayInfo{name: path.Base(name), size: int64(len(data))}}, nil
+	f, err := o.FS.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	if dir, ok := f.(fs.ReadDirFile); ok {
+		info, err := f.Stat()
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+		if info.IsDir() {
+			return &overlayDir{ReadDirFile: dir, name: name, files: o.files}, nil
+		}
+	}
+	return f, nil
+}
+
+// overlayDir keeps the underlying directory's order and read position, but
+// reports the same metadata for replaced files as opening those files does.
+type overlayDir struct {
+	fs.ReadDirFile
+	name  string
+	files map[string][]byte
+}
+
+func (d *overlayDir) ReadDir(n int) ([]fs.DirEntry, error) {
+	entries, err := d.ReadDirFile.ReadDir(n)
+	for i, entry := range entries {
+		if data, ok := d.files[path.Join(d.name, entry.Name())]; ok {
+			entries[i] = fs.FileInfoToDirEntry(overlayInfo{name: entry.Name(), size: int64(len(data))})
+		}
+	}
+	return entries, err
 }
 
 // overlayFile is a replaced file, open. It seeks, as http.ServeContent needs.
