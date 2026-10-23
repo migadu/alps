@@ -1,7 +1,9 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
-import { bareAddress, composeContext, draftContentKey, recipientField, reconcileSavedAttachments, uploadGone } from '../store/compose-store';
+import {
+  bareAddress, composeContext, draftContentKey, keptAfterSave, postedAttachments, recipientField, reconcileSavedAttachments, uploadGone,
+} from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
 import { messageOperations, MissingUploadsError } from '../services/message-operations';
@@ -369,6 +371,10 @@ export class AlpsFloatingComposer extends LitElement {
           // had it back, and the next save and the send carried it again.
           updates.attachments = reconcileSavedAttachments(latest.attachments || [], currentInstance.attachments || [], result.attachments);
         }
+        // Nor the quote's images a plain-text save left out: see keptAfterSave.
+        const listed = updates.attachments ?? latest.attachments;
+        const kept = listed && keptAfterSave(listed, currentInstance);
+        if (kept !== listed) updates.attachments = kept;
         this.composeStore.updateComposer(this.instance.id, updates);
 
         // If the composer became dirty while saving, or new attachments were added, schedule another save
@@ -430,7 +436,7 @@ export class AlpsFloatingComposer extends LitElement {
       formData.append('html', currentInstance.html);
     }
 
-    const attachments = currentInstance.attachments || [];
+    const attachments = postedAttachments(currentInstance);
     const uuids = attachments.map(a => a.uuid).filter(Boolean).join(',');
     if (uuids) {
       formData.append('attachment-uuids', uuids);

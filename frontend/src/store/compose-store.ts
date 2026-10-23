@@ -84,6 +84,30 @@ export const reconcileSavedAttachments = (latest: any[], sent: any[], stored: an
   });
 };
 
+/**
+ * The attachments a save or a send of the composer posts. In plain text not
+ * the inline parts, the quote's images: nothing in a text/plain message shows
+ * them, and the server, with no HTML to embed them in, wrote them as files,
+ * which the recipients got and the user never saw, and which a saved draft
+ * held as attachments. The composer keeps them for a switch back to HTML,
+ * until a save without them has landed (see keptAfterSave).
+ */
+export const postedAttachments = (c: ComposerInstance): any[] =>
+  (c.attachments || []).filter(a => !a.inline || c.format === 'html');
+
+/**
+ * The attachments left in a composer once a save of `saved` has landed:
+ * without the inline parts that save left out. Their paths name parts of the
+ * quoted message, and from the first stored draft on, the server reads the
+ * composer's parts from that draft, which holds none of them: carried by a
+ * later save in HTML, each named a part the draft does not have, or another.
+ */
+export const keptAfterSave = (attachments: any[], saved: ComposerInstance): any[] => {
+  const posted = postedAttachments(saved);
+  const leftOut = (saved.attachments || []).filter(a => !posted.includes(a));
+  return leftOut.length ? attachments.filter(a => !leftOut.includes(a)) : attachments;
+};
+
 const isBlockedAddress = (addr: string): boolean => {
   const lowerEmail = bareAddress(addr);
   return lowerEmail.startsWith('noreply') || 
@@ -583,12 +607,15 @@ export class ComposeStore extends EventTarget {
           if (current && draftContentKey(current) !== contentKey) {
             // Stored, but not as it is now: record the stored draft, so the
             // next save replaces it, without marking the newer edit clean.
+            let attachments = saved.attachments
+              ? reconcileSavedAttachments(current.attachments || [], composer.attachments || [], saved.attachments)
+              : current.attachments;
+            // Nor the quote's images a plain-text save left out: see keptAfterSave.
+            if (attachments) attachments = keptAfterSave(attachments, composer);
             this.updateComposer(id, {
               draftUid: saved.uid,
               draftMailbox: saved.mailbox,
-              ...(saved.attachments && {
-                attachments: reconcileSavedAttachments(current.attachments || [], composer.attachments || [], saved.attachments),
-              }),
+              ...(attachments !== current.attachments && { attachments }),
             });
             failed = true;
             continue;
@@ -661,7 +688,7 @@ export class ComposeStore extends EventTarget {
     }
     formData.append('save_as_draft', '1');
 
-    const attachments = composer.attachments || [];
+    const attachments = postedAttachments(composer);
     const uuids = attachments.map(a => a.uuid).filter(Boolean).join(',');
     if (uuids) formData.append('attachment-uuids', uuids);
 
