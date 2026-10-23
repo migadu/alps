@@ -431,6 +431,7 @@ describe('the reader', () => {
   it('reopens a draft with the Bcc its envelope names', async () => {
     // A draft is stored with its Bcc, and listed and read with it in its
     // envelope. Reopened without it, it was sent without those recipients.
+    answerBodies();
     const stored: any = draft('7');
     stored.Envelope = {
       ...stored.Envelope,
@@ -710,6 +711,7 @@ describe('the mail page, when a draft is saved', () => {
     expect(el.selectedMessage).toMatchObject({ UID: '8', Envelope: listedRecipients });
   });
   it.each(['row', 'conversation', 'off-page'])('clears the previous Bcc from the selected %s when the save has none', async (view) => {
+    answerBodies();
     const row = toBob();
     row.Envelope.Bcc = [{ Name: 'Old hidden', Mailbox: 'old', Host: 'example.com' }];
     const selected = view === 'conversation' ? { ...row, Mailbox: 'Drafts' } : row;
