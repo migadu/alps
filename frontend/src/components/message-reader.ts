@@ -24,7 +24,7 @@ import './alps-tag';
 import './alps-banner';
 import { MessageCache, type CachedMessage } from '../utils/message-cache';
 import { sanitizeMessageHTML } from '../utils/html-sanitizer';
-import { generateQuote } from '../utils/email-quote';
+import { formatAddrs, generateQuote } from '../utils/email-quote';
 import { replyContext } from '../utils/reply-context';
 import { inlinePartsOf } from '../utils/attachment-utils';
 import { composeContext, ComposeStore } from '../store/compose-store';
@@ -2192,8 +2192,6 @@ export class MessageReader extends LitElement {
       type: a.MIMEType || 'application/octet-stream',
       partPath: a.Path ? a.Path.join('.') : undefined
     }));
-
-    const formatAddrs = (addrs: any[]) => addrs ? addrs.map(a => a.Name ? `${a.Name} <${a.Mailbox}@${a.Host}>` : `${a.Mailbox}@${a.Host}`) : [];
 
     this.composeStore.openComposer({
       draftUid: msg.UID.toString(),
