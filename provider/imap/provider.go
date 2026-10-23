@@ -471,6 +471,15 @@ func (p *IMAPProvider) ensureMailboxSelected(mboxName string) error {
 	return nil
 }
 
+// SelectedUIDValidity is the UIDVALIDITY under which the last part was read.
+// Another selected mailbox, or an unknown UIDVALIDITY, is reported as zero.
+func (p *IMAPProvider) SelectedUIDValidity(mailbox string) uint32 {
+	if mbox := p.client.Mailbox(); mbox == nil || mbox.Name != mailbox {
+		return 0
+	}
+	return p.selectedUIDValidity
+}
+
 // arrivedSinceSelect reports whether uid may name a message that came into
 // the selected mailbox after it was selected. Such a message may not be
 // announced to this session yet, and a UID FETCH that misses it is worth

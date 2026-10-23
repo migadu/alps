@@ -283,6 +283,7 @@ func dropMailboxListings(cache *alps.Cache, mailbox string) {
 func dropRenumberedMailbox(cache *alps.Cache, mailbox string) {
 	dropMailboxListings(cache, mailbox)
 	cache.DeletePrefix("message:" + mailbox + ":")
+	cache.Delete("uidvalidity:" + mailbox)
 }
 
 // uidMoved reports whether a UIDVALIDITY or UIDNEXT moved from prev to now.
@@ -291,16 +292,19 @@ func uidMoved(prev, now uint32) bool {
 	return prev != 0 && now != 0 && prev != now
 }
 
-// heldUIDValidities answers the UIDVALIDITY values the session's status and
-// pages of a mailbox were read at, where they are known.
+// heldUIDValidities answers the UIDVALIDITY values the session's status,
+// pages and raw-part validator were read at, where they are known.
 //
-// Both, because either may be all that is left from before the folder was
+// Any can be all that is left from before the folder was
 // made again elsewhere. The folder list reads every folder's status again
 // without looking at its pages, a check of another folder that finds a change
 // drops every status and keeps the pages, and a folder only searched has a
-// status and no page.
+// status and no page. A raw part can outlive both its status and its pages.
 func heldUIDValidities(cache *alps.Cache, mailbox string) []uint32 {
 	var held []uint32
+	if cached, ok := cache.Get("uidvalidity:" + mailbox); ok && cached.(uint32) != 0 {
+		held = append(held, cached.(uint32))
+	}
 	if cached, ok := cache.Get("status:" + mailbox); ok {
 		if status := cached.(*MailboxStatus); status.StatusData != nil && status.UIDValidity != 0 {
 			held = append(held, status.UIDValidity)
@@ -1108,8 +1112,8 @@ func handleMailboxStatus(ctx *alps.Context) error {
 
 	renumbered := renumberedSince(heldValidities, counts.UIDValidity)
 	switch {
-	case prev.Known && (prev.Messages != counts.Messages || prev.Unseen != counts.Unseen ||
-		renumbered || uidMoved(prev.UIDNext, counts.UIDNext)):
+	case renumbered || prev.Known && (prev.Messages != counts.Messages || prev.Unseen != counts.Unseen ||
+		uidMoved(prev.UIDNext, counts.UIDNext)):
 		if renumbered {
 			dropRenumberedMailbox(cache, mboxName)
 		} else {
@@ -1853,9 +1857,21 @@ func doRequestMail(ctx *alps.Context, f func(provider.MailProvider) error) error
 }
 
 func handleGetPart(ctx *alps.Context, raw bool) error {
-	_, uidStr, err := parseMboxAndUidStr(ctx.Param("mbox"), ctx.Param("uid"))
+	mboxName, uidStr, err := parseMboxAndUidStr(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
 		return err
+	}
+	// Confirm a browser-held part before reading the page, settings or body.
+	var validity uint32
+	if raw {
+		validity, err = mailboxUIDValidity(ctx, mboxName)
+		if err != nil {
+			return err
+		}
+		if etag := rawPartETag(ctx, validity); etag != "" && etagListed(ctx.Request.Header.Get("If-None-Match"), etag) {
+			setRawPartCaching(ctx.Response.Header(), etag)
+			return ctx.NoContent(http.StatusNotModified)
+		}
 	}
 	ibase, err := getBaseMailboxData(ctx)
 	if err != nil {
@@ -1963,6 +1979,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 	var msg *IMAPMessage
 	var headerData, bodyData []byte
+	var partValidity uint32
 
 	limitStr := ctx.QueryParam("limit")
 	var limit int64
@@ -1984,7 +2001,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	var cachedPart *CachedMessagePart
 	if cached, ok := cache.Get(msgCacheKey); ok {
 		if cp, ok := cached.(CachedMessagePart); ok && cp.Message != nil && cp.HeaderData != nil && cp.BodyData != nil &&
-			(!reading || cp.ReaderFields || tempMsg != nil) {
+			(!reading || cp.ReaderFields || tempMsg != nil) && (!raw || cp.UIDValidity == validity) {
 			cachedPart = &cp
 		}
 	}
@@ -2019,6 +2036,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		msg = &imapMsg
 		headerData = cachedPart.HeaderData
 		bodyData = cachedPart.BodyData
+		partValidity = cachedPart.UIDValidity
 
 		ctx.Server.Logger().Debugf("Cache HIT for message %s/%s part %v", mbox.Name(), uidStr, partPath)
 	} else {
@@ -2043,6 +2061,8 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 				return err
 			}
 
+			partValidity = partUIDValidity(ctx, p, mbox.Name(), mbox.UIDValidity)
+
 			if tempMsg != nil {
 				providerMsg.BimiPotential = tempMsg.HasBimiPotential
 				providerMsg.BimiFailed = tempMsg.HasBimiFailed
@@ -2058,7 +2078,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 				BodyData:     bodyData,
 				Mailbox:      mbox.Name(),
 				ReaderFields: reading,
-				UIDValidity:  mbox.UIDValidity,
+				UIDValidity:  partValidity,
 			})
 			ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched and cached", mbox.Name(), uidStr, partPath)
 			return nil
@@ -2076,6 +2096,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	// The provider abstraction doesn't expose this, and we use standard flags below
 
 	if raw {
+		etag := rawPartETag(ctx, partValidity)
 		// For raw mode, work directly with headerData and bodyData bytes
 		// Parse the MIME header
 		h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headerData)))
@@ -2113,6 +2134,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 			ctx.Response.Header().Set("Content-Type", mimeType)
 			ctx.Response.Header().Set("Content-Length", fmt.Sprintf("%d", len(headerData)+len(bodyData)))
+			setRawPartCaching(ctx.Response.Header(), etag)
 
 			dispParams := map[string]string{"filename": filename}
 			ctx.Response.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", dispParams))
@@ -2144,6 +2166,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		}
 		ctx.Response.Header().Set("Content-Type", mimeType)
 		ctx.Response.Header().Set("Content-Length", fmt.Sprintf("%d", len(decodedBody)))
+		setRawPartCaching(ctx.Response.Header(), etag)
 
 		// Get filename from Content-Disposition or Content-Type params
 		disp, dispParams, _ := msgHeader.ContentDisposition()
