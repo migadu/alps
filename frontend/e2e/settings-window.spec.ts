@@ -288,3 +288,39 @@ test("an unsaved auto-reply is asked about before the window closes", async ({ p
     await resetSieve();
   }
 });
+
+for (const width of [1440, 390]) {
+  test(`opening Settings from the account menu returns focus to its button at ${width}px`, async ({ page }) => {
+    await login(page);
+    await page.setViewportSize({ width, height: 900 });
+    const menu = page.locator('user-profile-menu');
+    const opener = menu.getByRole('button', { name: 'Profile options', exact: true });
+    for (const action of ['Escape', 'Close']) {
+      await opener.focus();
+      await opener.press('Enter');
+      const settings = menu.getByRole('button', { name: 'Settings', exact: true });
+      await settings.focus();
+      await settings.press('Enter');
+      await expect(win(page)).toBeVisible();
+      if (action === 'Escape') await page.keyboard.press('Escape');
+      else await closeButton(page).click();
+      await expect(win(page)).toHaveCount(0);
+      await expect(opener).toBeFocused();
+    }
+  });
+}
+
+test('phone keyboard navigation moves focus between the section list and its back button', async ({ page }) => {
+  await login(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openSettings(page, '#/settings');
+  const appearance = section(page, 'Appearance');
+  await appearance.focus();
+  await appearance.press('Enter');
+  await expect(sectionTitle(page)).toHaveText('Appearance');
+  const back = page.locator('settings-window .back-to-sections');
+  await expect(back).toBeFocused();
+  await back.press('Enter');
+  await expect(sections(page)).toBeVisible();
+  await expect(section(page, 'General')).toBeFocused();
+});

@@ -316,6 +316,35 @@ describe('on a phone', () => {
     expect(asked.map((e) => e.detail.category)).toEqual(['']);
   });
 
+  it('keeps keyboard focus in the phone view when a section replaces the list, and back', async () => {
+    setWidth(400);
+    const el = await page({ category: '' });
+    row(el, 'palette').focus();
+    el.category = 'appearance';
+    await el.updateComplete;
+    const back = shadow<HTMLButtonElement>(el, '.back-to-sections');
+    expect(deepActiveElement()).toBe(back);
+
+    back.focus();
+    el.category = '';
+    await el.updateComplete;
+    expect(deepActiveElement()).toBe(row(el, 'gear'));
+  });
+
+  it('does not take focus from a composer when the phone view changes', async () => {
+    setWidth(400);
+    const el = await page({ category: '' });
+    const composer = document.createElement('alps-floating-composer');
+    const field = document.createElement('input');
+    composer.appendChild(field);
+    document.body.appendChild(composer);
+    field.focus();
+    el.category = 'appearance';
+    await el.updateComplete;
+    expect(deepActiveElement()).toBe(field);
+    composer.remove();
+  });
+
   it('follows the viewport across the breakpoint, and stops when it is gone', async () => {
     const el = await page({ category: '' });
     setWidth(500);

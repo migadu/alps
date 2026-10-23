@@ -5,7 +5,7 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { settingsContext, SettingsStore, clearSessionSettings } from '../store/settings-store';
 import { linkedAccountsContext, LinkedAccountsStore } from '../store/linked-accounts-store';
 import './alps-avatar';
-import { popupStyles } from './alps-popup';
+import { popupStyles, type AlpsPopup } from './alps-popup';
 import './alps-popup';
 import './alps-icon-btn';
 import { renderIcon } from '../utils/ui';
@@ -128,8 +128,17 @@ export class UserProfileMenu extends LitElement {
     if (popup) popup.close();
   }
 
-  private _handleSettings() {
+  private async _handleSettings() {
+    const popup = this.shadowRoot?.querySelector<AlpsPopup>('alps-popup');
     this._closePopup();
+    // Settings records where to return focus. The popup closes on its next
+    // update and blurs the trigger then; wait for that before giving the
+    // window the persistent profile button as its return target, rather than
+    // the now-hidden Settings menu item (or the body).
+    await popup?.updateComplete;
+    if (!this.isConnected) return;
+    this.shadowRoot?.querySelector('alps-icon-btn[slot="trigger"]')
+      ?.shadowRoot?.querySelector<HTMLButtonElement>('button')?.focus();
     this.dispatchEvent(new CustomEvent('open-settings', { bubbles: true, composed: true }));
   }
 

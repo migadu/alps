@@ -1,4 +1,4 @@
-import { html, css, LitElement } from 'lit';
+import { html, css, LitElement, type PropertyValues } from 'lit';
 import { customElement, state, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
@@ -252,6 +252,7 @@ export class SettingsWindow extends LitElement {
 
   /** Where focus was when the window opened, to give back when it closes. */
   private previouslyFocused: Element | null = null;
+  private hadSectionFocus = false;
 
   private _handleResize = () => {
     this.isMobile = window.innerWidth <= MOBILE_MAX_WIDTH;
@@ -320,6 +321,23 @@ export class SettingsWindow extends LitElement {
    * does. Unless it is already inside: a click that landed first wins.
    */
   protected firstUpdated() {
+    this.focusSection();
+  }
+
+  protected willUpdate(changed: PropertyValues) {
+    // On a phone the list and section replace one another. Remember whether
+    // the update will remove a focused child, before the old column leaves;
+    // focus in a composer above this window belongs to that composer.
+    this.hadSectionFocus = this.hasUpdated
+      && (changed.has('category') || changed.has('isMobile'))
+      && !!this.shadowRoot?.activeElement;
+  }
+
+  protected updated() {
+    if (this.hadSectionFocus && !this.shadowRoot?.activeElement) this.focusSection();
+  }
+
+  private focusSection() {
     const root = this.shadowRoot!;
     if (root.activeElement) return;
     const target = root.querySelector('alps-category-item[active]')

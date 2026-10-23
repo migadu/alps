@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import '../src/components/user-profile-menu';
 import { registry } from '../src/plugin-registry';
 import { cleanup, mount, record } from './helpers/dom';
+import { deepActiveElement } from '../src/utils/active-element';
 
 type El = HTMLElement & Record<string, any>;
 
@@ -56,6 +57,41 @@ describe('the account menu', () => {
       .find((b) => b.textContent?.includes('userMenu.settings'))!;
     expect(settings.classList.contains('active')).toBe(false);
     settings.click();
+    await (el.shadowRoot!.querySelector('alps-popup') as El).updateComplete;
     expect(opened).toHaveLength(1);
+  });
+
+  it('opens Settings with the persistent profile button focused, after the menu has closed', async () => {
+    const el = await mount<El>('user-profile-menu', { ...stores(), username: 'ada@example.com' });
+    const popup = el.shadowRoot!.querySelector('alps-popup') as El;
+    popup.open();
+    await popup.updateComplete;
+    const settings = [...el.shadowRoot!.querySelectorAll<HTMLButtonElement>('button.dropdown-item')]
+      .find((b) => b.textContent?.includes('userMenu.settings'))!;
+    const trigger = el.shadowRoot!.querySelector('alps-icon-btn[slot="trigger"]')!.shadowRoot!.querySelector('button')!;
+    let focusedWhenOpened: Element | null = null;
+    let menuOpenWhenOpened = true;
+    el.addEventListener('open-settings', () => {
+      focusedWhenOpened = deepActiveElement();
+      menuOpenWhenOpened = popup.openState;
+    });
+    settings.focus();
+    settings.click();
+    await popup.updateComplete;
+
+    expect(menuOpenWhenOpened).toBe(false);
+    expect(focusedWhenOpened).toBe(trigger);
+  });
+
+  it('does not open Settings if the menu is removed while its popup closes', async () => {
+    const el = await mount<El>('user-profile-menu', { ...stores(), username: 'ada@example.com' });
+    const popup = el.shadowRoot!.querySelector('alps-popup') as El;
+    const opened = record(el, 'open-settings');
+    const settings = [...el.shadowRoot!.querySelectorAll<HTMLButtonElement>('button.dropdown-item')]
+      .find((b) => b.textContent?.includes('userMenu.settings'))!;
+    settings.click();
+    el.remove();
+    await popup.updateComplete;
+    expect(opened).toHaveLength(0);
   });
 });
