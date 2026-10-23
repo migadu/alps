@@ -365,7 +365,6 @@ func TestSession_UpdateDurationZeroDoesNotTerminateSession(t *testing.T) {
 	assert.NotNil(t, retrieved)
 }
 
-
 // CheckPassword takes the session's own password and nothing else: not a
 // prefix, not an extension, and not an empty guess at a session that somehow
 // has none.
