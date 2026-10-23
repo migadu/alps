@@ -117,3 +117,60 @@ describe('the parts an answer carries', () => {
     ]);
   });
 });
+
+// A draft's own images are its embedded parts, which the server's attachment
+// list leaves out by design. Edit Draft gave the composer that list alone:
+// the composer held no image while its HTML still named one by Content-ID,
+// and as the server builds a saved draft's parts from the draft it replaces,
+// the next save stored the draft without its images, and a send delivered it
+// with broken ones.
+describe('the parts an edited draft carries', () => {
+  const draft = { ...message, UID: '7', Mailbox: 'Drafts', Flags: ['\\Seen', '\\Draft'] };
+
+  async function editDraft(from: 'the toolbar' | 'its card', msg: any = draft, body: { RawHtml?: string; RawText?: string } = { RawHtml: html }) {
+    installResizeObserver();
+    installScrollIntoView();
+    installMatchMedia();
+    MessageCache.set('Drafts', msg.UID, 'html', {
+      Message: msg, Part: { Path: [1, 1], MIMEType: body.RawHtml ? 'text/html' : 'text/plain' }, Attachments: listed,
+      ...body, HasHTML: !!body.RawHtml, HasText: !body.RawHtml,
+    });
+    const openComposer = vi.fn();
+    const el = await mount<El>('alps-message-reader', {
+      settingsStore: settingsStore(),
+      i18nStore,
+      composeStore: { openComposer },
+      mailbox: 'Drafts',
+      mailboxes: [{ Name: 'Drafts', Attrs: ['\\Drafts'] }],
+      messages: [msg],
+      message: msg,
+    });
+    await waitFor(() => !el.loading && el.threadItems.length > 0, 'the draft');
+    void el._handleEditDraft(from === 'its card' ? el.threadItems[0] : undefined);
+    await waitFor(() => openComposer.mock.calls.length > 0, 'the composer to open');
+    return openComposer.mock.calls[0][0].attachments.map((a: any) => ({
+      name: a.name, partPath: a.partPath, ...(a.inline && { inline: true }),
+    }));
+  }
+
+  for (const from of ['the toolbar', 'its card'] as const) {
+    it(`from ${from}, carries its files as files and the images it shows, by the draft's part paths`, async () => {
+      expect(await editDraft(from)).toEqual([
+        { name: 'logo.png', partPath: '2' },
+        { name: 'report.pdf', partPath: '3' },
+        { name: 'chart.png', partPath: '1.2', inline: true },
+      ]);
+    });
+  }
+
+  it('in plain text, carries its files and no image', async () => {
+    // A text/plain draft shows no image: its files are all it carries.
+    const plain = { ...draft, UID: '8', BodyStructure: { Type: 'multipart', Subtype: 'mixed', Children: [
+      { Type: 'text', Subtype: 'plain' }, part('logo.png', 'image/png', 'attachment'), part('report.pdf', 'application/pdf', 'attachment'),
+    ] } };
+    expect(await editDraft('the toolbar', plain, { RawText: 'Figures below.' })).toEqual([
+      { name: 'logo.png', partPath: '2' },
+      { name: 'report.pdf', partPath: '3' },
+    ]);
+  });
+});

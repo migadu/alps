@@ -32,7 +32,7 @@ import { autoLogoutService } from '../services/auto-logout';
 import { clearSessionSettings } from '../store/settings-store';
 import { setLoginNotice } from '../utils/login-notice';
 import { signedOutOnPurpose } from '../utils/signed-out';
-import { applyUpdate, registerBusyProbe, reloadMissingPageWhenIdle, UPDATE_AVAILABLE_EVENT } from '../services/app-update';
+import { applyUpdate, registerBusyProbe, reloadForMissingPage, reloadMissingPageWhenIdle, UPDATE_AVAILABLE_EVENT } from '../services/app-update';
 import { Logger } from '../utils/logger';
 import { isSettingsHash, settingsCategoryOf, settingsHash } from '../utils/routes';
 import { BACKGROUND_CHANGED_EVENT, ensurePageEntry, nextSettingsEntry, pageEntryId, settingsEntry, stampSettingsEntry, type SettingsEntry } from '../utils/settings-history';
@@ -188,6 +188,7 @@ export class AppRoot extends LitElement {
 
     window.addEventListener('auth-error', this._handleAuthError);
     window.addEventListener('session-cleared', this._handleSessionCleared);
+    window.addEventListener('user-logged-in', this._handleUserLoggedIn);
     window.addEventListener(BACKGROUND_CHANGED_EVENT, this._handleBackgroundChanged);
     window.addEventListener('show-toast', this._handleShowToast as EventListener);
     window.addEventListener('beforeunload', this._handleBeforeUnload);
@@ -197,6 +198,9 @@ export class AppRoot extends LitElement {
     window.addEventListener('dragover', this._handleGlobalDragOver);
     window.addEventListener('drop', this._handleGlobalDrop);
     window.addEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
+    // Reconnection may have missed a registry update while the shell's
+    // listeners were detached. Apply the current list before showing pages.
+    this._handlePluginsUpdated();
     window.addEventListener(PLUGIN_LOAD_FAILED_EVENT, this._handlePluginLoadFailed);
     window.addEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
     window.addEventListener(UPDATE_AVAILABLE_EVENT, this._handleUpdateAvailable);
@@ -221,29 +225,48 @@ export class AppRoot extends LitElement {
   };
 
   private _handlePluginsUpdated = () => {
+    const routes = this.getRoutes();
+    for (const path of [...this.pluginPages.keys()]) {
+      if (!(path in routes)) this.pluginPages.delete(path);
+    }
+    this.router.setRoutes(routes);
     this.requestUpdate();
   };
 
+  private _handleUserLoggedIn = () => {
+    this._fetchSessionData();
+  };
+
+  private sessionDataGeneration = 0;
+
   private async _fetchSessionData() {
+    const generation = ++this.sessionDataGeneration;
     try {
       const response = await fetch('/session');
       if (response.ok) {
         const data = await response.json();
+        // A sign-out, a newer sign-in or a disconnected shell invalidates
+        // this account's answer, even if its request finishes afterwards.
+        if (!this.isConnected || generation !== this.sessionDataGeneration) return;
         if (data.EnabledPlugins) {
           registry.setEnabledPlugins(data.EnabledPlugins);
         }
       }
     } catch (e) {
-      console.error('Failed to fetch session data', e);
+      if (this.isConnected && generation === this.sessionDataGeneration) {
+        console.error('Failed to fetch session data', e);
+      }
     }
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.sessionDataGeneration++;
     this.composeStore.removeEventListener('change', this._handleComposeChange);
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     window.removeEventListener('auth-error', this._handleAuthError);
     window.removeEventListener('session-cleared', this._handleSessionCleared);
+    window.removeEventListener('user-logged-in', this._handleUserLoggedIn);
     window.removeEventListener(BACKGROUND_CHANGED_EVENT, this._handleBackgroundChanged);
     window.removeEventListener('show-toast', this._handleShowToast as EventListener);
     window.removeEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
@@ -410,13 +433,27 @@ export class AppRoot extends LitElement {
     }
   };
 
-  /** A newer build is served: offered through the same toast as everything else. */
+  /**
+   * A newer build is served: offered through the same toast as everything
+   * else. Its Reload writes the composers to disk first, so that what was
+   * typed in the half second before it opens again with them; when they
+   * cannot be written, the page stays, and says so, as the missing-page
+   * notice does.
+   */
   private _handleUpdateAvailable = () => {
     this._handleShowToast(new CustomEvent('show-toast', {
       detail: {
         i18nKey: 'update.available',
         actionLabel: this.i18nStore?.t('update.reload'),
-        actionFn: applyUpdate,
+        actionFn: () => {
+          if (!this.composeStore.persistNow()) {
+            this._handleShowToast(new CustomEvent('show-toast', {
+              detail: { i18nKey: 'composer.draftSaveFailedKeepOpen', duration: 6000 },
+            }));
+            return false;
+          }
+          applyUpdate();
+        },
         duration: UPDATE_TOAST_MS,
       },
     }));
@@ -462,23 +499,78 @@ export class AppRoot extends LitElement {
    */
   private composerModule: Promise<unknown> | null = null;
 
+  /** The composer window's module failed to load in this document. */
+  private composerFailed = false;
+
+  /** The notice that the window could not be loaded, while it is up. */
+  private composerFailureToast: number | null = null;
+
+  /**
+   * Loads the composer window's module, and rejects when it cannot be had.
+   *
+   * It cannot when the import rejects, and when it settles without defining
+   * the window: in a build, Vite's preload helper answers a failed import with
+   * nothing once app-update has handled its error event. That answer was taken
+   * for the module, and kept, so the window was never drawn and nothing said
+   * so. A module that failed is not imported again: the browser keeps a failed
+   * import in the document's module map, and only a reload fetches it anew
+   * (see _composerUnavailable).
+   */
   private ensureComposerLoaded(): Promise<unknown> {
+    if (this.composerFailed) return Promise.reject(new Error('The composer could not be loaded'));
     if (!this.composerModule) {
-      this.composerModule = import('./alps-floating-composer')
-        .then((mod) => {
-          this.composerReady = true;
-          return mod;
-        })
-        .catch((err) => {
-          // A failed fetch must not poison the cache: leaving the rejected
-          // promise in place would make every later compose fail too, with no
-          // way back but a reload.
-          this.composerModule = null;
-          Logger.error('Failed to load the composer', err);
-          throw err;
-        });
+      this.composerModule = (async () => {
+        await import('./alps-floating-composer');
+        if (!customElements.get('alps-floating-composer')) {
+          throw new Error('The composer module did not define its window');
+        }
+        this.composerReady = true;
+      })().catch((err) => {
+        this.composerModule = null;
+        this.composerFailed = true;
+        Logger.error('Failed to load the composer', err);
+        throw err;
+      });
     }
     return this.composerModule;
+  }
+
+  /**
+   * Composers are waiting for a window that cannot be loaded.
+   *
+   * One opened with nothing in it yet, never edited and never stored, is
+   * closed: drawn nowhere, it was kept all the same, a new one for each press
+   * of Compose, and as open composers they held app-update's own reload back.
+   * One that holds the user's writing, a draft restored as the app started,
+   * stays, on screen nowhere but on disk, and opens again after a reload. The
+   * notice says what happened, once while it is up, and its Reload writes the
+   * composers to disk first. With none left, app-update's own reload for the
+   * missing chunk goes ahead, as it does when the last composer closes.
+   */
+  private _composerUnavailable() {
+    for (const composer of this.composeStore.getState().activeComposers) {
+      if (!composer.dirty && !composer.draftUid) this.composeStore.closeComposer(composer.id);
+    }
+    if (this.toasts.some(t => t.id === this.composerFailureToast)) return;
+    this._handleShowToast(new CustomEvent('show-toast', {
+      detail: {
+        message: `${this.i18nStore.t('composer.windowLoadFailed')} ${this.i18nStore.t('general.pageLoadFailedHint')}`,
+        actionLabel: this.i18nStore.t('update.reload'),
+        actionFn: () => {
+          // Kept open rather than reloaded over composers it could not write.
+          if (!this.composeStore.persistNow()) {
+            this._handleShowToast(new CustomEvent('show-toast', {
+              detail: { i18nKey: 'composer.draftSaveFailedKeepOpen', duration: 6000 },
+            }));
+            return false;
+          }
+          reloadForMissingPage();
+        },
+        // Until dismissed: without the window there is nothing else to say so.
+        duration: 0,
+      },
+    }));
+    this.composerFailureToast = this.toastIdCounter;
   }
 
   /**
@@ -505,7 +597,7 @@ export class AppRoot extends LitElement {
   private _handleComposeChange = () => {
     const composers = this.composeStore.getState().activeComposers;
     if (composers.length > 0) {
-      void this.ensureComposerLoaded();
+      this.ensureComposerLoaded().catch(() => this._composerUnavailable());
     } else {
       reloadMissingPageWhenIdle();
     }
@@ -540,8 +632,10 @@ export class AppRoot extends LitElement {
   }
 
   private _handleSessionCleared = () => {
+    this.sessionDataGeneration++;
     this.mailboxPage = null;
     this.pluginPages.clear();
+    registry.setEnabledPlugins(null);
   };
 
   private getRoutes() {

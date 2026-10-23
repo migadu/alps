@@ -12,6 +12,7 @@ import { ComposeStore } from '../src/store/compose-store';
 import { DraftFlushError } from '../src/utils/draft-flush-error';
 import { messageOperations } from '../src/services/message-operations';
 import { generateQuote } from '../src/utils/email-quote';
+import { MessageCache } from '../src/utils/message-cache';
 import '../src/components/alps-floating-composer';
 
 // See floating-composer-send.test.ts: the picker builds its grid on connect.
@@ -110,6 +111,54 @@ describe('files picked together', () => {
     // And only once: the timer the earlier uploads armed finds it stored.
     await vi.advanceTimersByTimeAsync(10_000);
     expect(saveDraft).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a save outlived by its account or window', () => {
+  it.each(['session end', 'account cache reset', 'closed window'])('does not announce the old draft after %s', async transition => {
+    let finish!: (result: any) => void;
+    vi.spyOn(messageOperations, 'saveDraft').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const { store, instance } = composerIn({ draftUid: '7', draftMailbox: 'Drafts', dirty: true });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const news = record<CustomEvent>(window, 'draft-autosaved');
+    const saving = el._saveDraft();
+    await waitFor(() => !!finish, 'the save request');
+    if (transition === 'session end') window.dispatchEvent(new CustomEvent('session-cleared'));
+    else if (transition === 'account cache reset') MessageCache.clear();
+    else el.remove();
+    finish({ uid: '8', mailbox: 'Drafts' });
+    await saving;
+    expect(news).toHaveLength(0);
+  });
+
+  it.each([false, true])('announces a successful same-session save, including a remounted window (%s)', async remount => {
+    let finish!: (result: any) => void;
+    vi.spyOn(messageOperations, 'saveDraft').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const { store, instance, id } = composerIn({ draftUid: '7', draftMailbox: 'Drafts', dirty: true });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const news = record<CustomEvent>(window, 'draft-autosaved');
+    const saving = el._saveDraft();
+    await waitFor(() => !!finish, 'the save request');
+    if (remount) { el.remove(); document.body.append(el); }
+    finish({ uid: '8', mailbox: 'Drafts' });
+    expect(await saving).toBe(true);
+    expect(news).toHaveLength(1);
+    expect(store.getComposer(id)?.draftUid).toBe('8');
+  });
+
+  it('announces Save & close before closing its current window, and announces no refused save', async () => {
+    const save = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ uid: '8', mailbox: 'Drafts' });
+    const { store, instance, id } = composerIn({ draftUid: '7', draftMailbox: 'Drafts', dirty: true });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const news = record<CustomEvent>(window, 'draft-autosaved');
+    await el._handleCloseClick();
+    expect(news).toHaveLength(0);
+    expect(store.getComposer(id)).toBeDefined();
+    await el._handleCloseClick();
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(news).toHaveLength(1);
+    expect(store.getComposer(id)).toBeUndefined();
   });
 });
 
@@ -538,6 +587,41 @@ describe('a reply or a forward left untouched', () => {
     expect(store.getComposer(id)?.dirty).toBe(false);
     await vi.advanceTimersByTimeAsync(10_000);
     expect(saveDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe('a draft reopened and saved again', () => {
+  // A composer editing a draft shows the quote's images from that draft, and
+  // each save replaces the draft with a new one. The composer went on naming
+  // the draft it had replaced, which is gone: drawn again, after a reload, its
+  // quote showed none of its images.
+  const before = { Children: [{ Type: 'text', Subtype: 'html' }, { ID: '<chart@remote.test>' }] };
+  const after = { Children: [{ Children: [{ Type: 'text', Subtype: 'html' }, { ID: '<chart@remote.test>' }] }, { Type: 'text' }] };
+  const reopened = (quoteSource: Record<string, unknown>) => composerIn({
+    draftUid: '7', draftMailbox: 'Drafts', dirty: true, format: 'html', html: '<p>See below.</p>', quoteSource,
+    attachments: [{ name: 'chart.png', size: 9, type: 'image/png', partPath: '2', inline: true }],
+  });
+
+  it('shows its quote from the draft that replaced it', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts', structure: after } as any);
+    const { store, instance, id } = reopened({ mailbox: 'Drafts', uid: '7', structure: before });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(sentForm(0).get('prev_attachments')).toBe('2');
+    expect(store.getComposer(id)?.quoteSource).toEqual({ mailbox: 'Drafts', uid: '8', structure: after });
+  });
+
+  it('leaves the quote of a reply with the message it answers', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts', structure: after } as any);
+    const answered = { mailbox: 'INBOX', uid: '5', structure: before };
+    const { store, instance, id } = reopened(answered);
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(store.getComposer(id)?.quoteSource).toEqual(answered);
   });
 });
 
