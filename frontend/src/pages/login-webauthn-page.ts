@@ -93,6 +93,9 @@ export class LoginWebAuthnPage extends LitElement {
     this.requestUpdate();
   };
 
+  /** The ceremony the page starts by itself, until it runs or is not needed. */
+  private _autoVerify: ReturnType<typeof setTimeout> | undefined;
+
   connectedCallback() {
     super.connectedCallback();
     this.updateComplete.then(() => {
@@ -104,7 +107,7 @@ export class LoginWebAuthnPage extends LitElement {
       this.statusType = 'error';
     } else {
       // Auto-trigger the WebAuthn prompt shortly after DOM mounts
-      setTimeout(() => {
+      this._autoVerify = setTimeout(() => {
         this._handleVerify();
       }, 300);
     }
@@ -112,6 +115,8 @@ export class LoginWebAuthnPage extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    // A page the user has left, back to the password, starts no ceremony.
+    clearTimeout(this._autoVerify);
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
   }
 
@@ -140,8 +145,17 @@ export class LoginWebAuthnPage extends LitElement {
    * dropped connection showed the browser's "Failed to fetch". An outage now
    * says so and stays here, where Verify runs the ceremony again without the
    * password being asked for twice.
+   *
+   * One ceremony at a time. Each `begin` replaces the challenge the server
+   * keeps for the session, so a second ceremony made the first one's
+   * assertion fail against the wrong challenge, and the browser showed only
+   * one of the two prompts. A click on Verify within the 300 ms before the
+   * automatic start did exactly that, since the button is disabled only
+   * while a ceremony runs. Whichever starts first, the other does nothing.
    */
   private async _handleVerify() {
+    clearTimeout(this._autoVerify);
+    if (this.isLoading || this.isSuccess) return;
     this.isLoading = true;
     this.statusMessage = this.i18nStore?.t('webauthn.requesting');
     this.statusType = 'info';

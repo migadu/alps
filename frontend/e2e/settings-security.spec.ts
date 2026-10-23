@@ -297,4 +297,36 @@ test.describe("with a security key", () => {
     // never seen the account signs in with the password alone.
     expect(await signInStatus(browser, address, PASSWORD)).toBe(200);
   });
+
+  test("a click on Verify as the key page appears signs in with one ceremony", async ({ page }) => {
+    const address = await freshAccount(page, "verify");
+    await withAuthenticator(page);
+    await page.goto("/#/settings/webauthn");
+    await addKey(page, "Laptop");
+
+    // Signed out, with a key: the password leads to the key page, which
+    // starts the ceremony by itself 300 ms after it appears. The reload asks
+    // for a session that is gone, a 401 the page handles.
+    await page.context().clearCookies();
+    allowConsoleErrors(page, /status of 401/);
+    const begins: string[] = [];
+    page.on("request", (r) => {
+      if (new URL(r.url()).pathname === "/webauthn/verify/begin") begins.push(r.url());
+    });
+    // Reloaded in the same tab, which keeps the authenticator and its key.
+    await page.goto("/#/login");
+    await page.reload();
+    await page.locator("login-page #username").fill(address);
+    await page.locator("login-page #password").fill(PASSWORD);
+    await page.locator("login-page button[type=submit]").click();
+
+    // Clicked the moment it is there, without waiting for it to be enabled:
+    // a ceremony already running has disabled it, and the click is then lost
+    // as a user's would be.
+    const verify = action(page.locator("login-webauthn-page"), "Verify Identity");
+    await verify.evaluate((button: HTMLButtonElement) => button.click());
+
+    await page.waitForURL(/#\/mailbox/, { timeout: 15_000 });
+    expect(begins, "the sign-in ran more than one ceremony").toHaveLength(1);
+  });
 });
