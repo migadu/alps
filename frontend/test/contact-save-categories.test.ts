@@ -124,3 +124,25 @@ it('says what each changed field held before, an emptied one too', async () => {
   expect(edit.mock.calls[0][1]).toMatchObject({ changed_fields: ['url'], changed_from: { url: 'https://work.example' } });
   expect(edit.mock.calls[1][1]).toMatchObject({ changed_fields: ['url'], changed_from: { url: '' }, etag: 'v2' });
 });
+
+it('keeps a toolbar star and its newer version when an earlier edit response arrives late', async () => {
+  let finish!: (answer: any) => void;
+  const edit = vi.spyOn(contactsService, 'updateContact')
+    .mockReturnValueOnce(new Promise(resolve => { finish = resolve; }))
+    .mockResolvedValue({ ok: 'true', path: card.path, etag: 'v4' });
+  vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 1, failed: 0, uncertain: 0, etags: { [card.path]: 'v3' } } as any);
+  const el = await contactsPage();
+  await el.selectContact(el.contacts[0], false); await settle(el);
+  const saving = el.handleSave({ ...el.selectedContact, nickname: 'Amazing Grace' });
+  await el.handleToggleStarEvent(); await settle(el);
+  expect(el.selectedContact.categories).toEqual(['Navy', 'Favorites']);
+  // The edit committed v2, the subsequent star committed v3, then the held
+  // response for the earlier edit arrives at the page.
+  finish({ ok: 'true', path: card.path, etag: 'v2' });
+  await saving; await settle(el);
+  expect(el.selectedContact.categories).toEqual(['Navy', 'Favorites']);
+  expect(el.selectedContact.etag).toBe('v3');
+  await el.handleSave({ ...el.selectedContact, note: 'Next edit' });
+  expect(edit.mock.calls[1][1]).toMatchObject({ etag: 'v3', note: 'Next edit' });
+  expect(edit.mock.calls[1][1]).not.toHaveProperty('categories');
+});
