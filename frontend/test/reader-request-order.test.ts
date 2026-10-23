@@ -243,7 +243,7 @@ describe('opening a conversation', () => {
   });
 });
 
-it('waits for released metadata to finish decoding before teardown restores the fetch stub', async () => {
+it.each([false, true])('waits for released metadata before teardown restores fetch (clear account: %s)', async (clearAccount) => {
   const fetch = vi.mocked(globalThis.fetch).getMockImplementation()!;
   let finishMetadata!: () => void;
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
@@ -264,9 +264,9 @@ it('waits for released metadata to finish decoding before teardown restores the 
   await waitFor(() => !!finishMetadata, 'the pending metadata decode');
 
   let settled = false;
-  // Keep this account current so the released metadata still has a raw
-  // request to finish. Account teardown now correctly cancels that follow-up.
-  const settling = settleReaderReads(false).then(() => { settled = true; });
+  // A live account finishes its raw request under this stub; a cleared
+  // account cancels that follow-up. Both must finish before restoring fetch.
+  const settling = settleReaderReads(clearAccount).then(() => { settled = true; });
   try {
     await Promise.resolve();
     expect(settled).toBe(false);
@@ -278,10 +278,9 @@ it('waits for released metadata to finish decoding before teardown restores the 
     while (pendingReads.size) await Promise.allSettled([...pendingReads]);
   }
 
-  // The read finished under this test's stub: it cannot enter the next
-  // test's recorder and turn that test's metadata/raw pair into three reads.
-  // Nor, its account gone with the cache, does it ask for the body itself.
-  expect(asked.filter(url => url.includes('/messages/1/raw'))).toHaveLength(0);
+  // The live account uses this stub; the cleared account makes no raw read.
+  // Neither may enter the next test’s recorder.
+  expect(asked.filter(url => url.includes('/messages/1/raw'))).toHaveLength(clearAccount ? 0 : 1);
   expect(pendingReads.size).toBe(0);
 });
 
