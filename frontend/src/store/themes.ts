@@ -1,3 +1,15 @@
+import { defaultTheme } from '../utils/branding';
+
+/**
+ * The theme family a colorFamily setting shows. 'default' is no choice made,
+ * which takes the server's default theme, and Alps when it names none or one
+ * this build does not have.
+ */
+export function themeFamily(colorFamily: string): string {
+  const family = colorFamily === 'default' ? defaultTheme() ?? 'alps' : colorFamily;
+  return THEME_BUNDLES[`${family}-light`] ? family : 'alps';
+}
+
 export interface ThemeBundle {
   id: string;
   name: string;
@@ -40,9 +52,9 @@ const MIGADU_TOKENS = {
 };
 
 export const THEME_BUNDLES: Record<string, ThemeBundle> = {
-  'default-light': {
-    id: 'default-light',
-    name: 'Default Light',
+  'alps-light': {
+    id: 'alps-light',
+    name: 'Alps Light',
     isDark: false,
     colors: {
       'bg-primary': '#ffffff',
@@ -64,9 +76,9 @@ export const THEME_BUNDLES: Record<string, ThemeBundle> = {
       'hover-color': '#f3f4f6',
     }
   },
-  'default-dark': {
-    id: 'default-dark',
-    name: 'Default Dark',
+  'alps-dark': {
+    id: 'alps-dark',
+    name: 'Alps Dark',
     isDark: true,
     colors: {
       'bg-primary': '#1f2937',

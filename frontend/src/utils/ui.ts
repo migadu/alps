@@ -2,10 +2,13 @@ import { html, type TemplateResult } from 'lit';
 import type { I18nStore } from '../store/i18n-store';
 import { ALL_MAILBOXES, FOLDER_SPAM, mailboxDelimiter, mailboxRoleByName, type MailboxRole } from './folders';
 
+/** A symbol in the icon sprite. The version moves when the sprite gains one. */
+export const iconHref = (name: string) => `/assets/icons/sprite.svg?v=13#${name}`;
+
 export function renderIcon(name: string): TemplateResult {
   return html`
     <svg class="icon">
-      <use href="/assets/icons/sprite.svg?v=12#${name}"></use>
+      <use href=${iconHref(name)}></use>
     </svg>
   `;
 }

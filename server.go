@@ -255,6 +255,11 @@ func (s *Server) loadPlugins() error {
 	}
 	router.StaticFS("", http.FS(distFS))
 	router.build = frontendBuild(distFS)
+	if s.Options != nil {
+		if err := router.serveBranding(distFS, s.Options.Branding); err != nil {
+			return err
+		}
+	}
 
 	s.router = router
 	s.plugins = plugins
@@ -345,6 +350,7 @@ type Options struct {
 	ProviderTimeout         time.Duration           // Provider connect timeout, 0 means use default (30 seconds)
 	SMTPTimeout             time.Duration           // SMTP operation timeout, 0 means use default (30 seconds)
 	WebAuthn                WebAuthnOptions         // WebAuthn configuration
+	Branding                BrandingOptions         // Default theme and login logo; the zero value is alps as it ships
 	Plugins                 map[string]PluginConfig // Generic plugin configuration
 	Provider                provider.Options        // Mail provider configuration
 	ClusterBroadcaster      ClusterBroadcaster      // Optional interface for cluster message broadcasting

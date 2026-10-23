@@ -157,6 +157,9 @@ h6 {
 
 .theme-dark {
   --modal-backdrop: rgba(0, 0, 0, 0.5);
+  /* For things drawn once per mode, such as a light and a dark logo. */
+  --light-only-display: none;
+  --dark-only-display: block;
   --toast-bg: var(--bg-tertiary, #374151);
   --toast-border: var(--border-color, #4b5563);
 }

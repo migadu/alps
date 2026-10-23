@@ -1,5 +1,5 @@
 import { createContext } from '@lit/context';
-import { THEME_BUNDLES } from './themes';
+import { THEME_BUNDLES, themeFamily } from './themes';
 import { Logger } from '../utils/logger';
 
 /**
@@ -961,9 +961,8 @@ export class SettingsStore extends EventTarget {
     }
 
     // Apply color family theme variables
-    const themeKey = `${this.state.colorFamily}-${isDark ? 'dark' : 'light'}`;
-    const theme = THEME_BUNDLES[themeKey] || THEME_BUNDLES[`default-${isDark ? 'dark' : 'light'}`];
-    
+    const theme = THEME_BUNDLES[`${themeFamily(this.state.colorFamily)}-${isDark ? 'dark' : 'light'}`];
+
     if (theme) {
       // Clear what the last theme set first: a token one theme sets and the
       // next leaves out would otherwise stay, a Migadu font in Nord.
