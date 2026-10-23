@@ -27,8 +27,9 @@ func testDist() fstest.MapFS {
 func brandedRouter(t *testing.T, dist fstest.MapFS, b BrandingOptions) *Router {
 	t.Helper()
 	router := NewRouter(&Server{logger: &NilLogger{}})
-	router.StaticFS("", http.FS(dist))
-	require.NoError(t, router.serveBranding(dist, b))
+	site, icons, err := brandedFrontend(dist, b)
+	require.NoError(t, err)
+	router.Frontend(site, icons...)
 	return router
 }
 
@@ -70,7 +71,8 @@ func TestBuiltinLogoIcons(t *testing.T) {
 	// A built-in logo missing one of them stops alps at start-up.
 	dist := testDist()
 	delete(dist, "assets/logos/migadu/favicon.ico")
-	assert.Error(t, NewRouter(&Server{logger: &NilLogger{}}).serveBranding(dist, BrandingOptions{LogoBuiltin: "migadu"}))
+	_, _, err := brandedFrontend(dist, BrandingOptions{LogoBuiltin: "migadu"})
+	assert.Error(t, err)
 }
 
 // TestLogoPackageServed: a deployment's own favicon package answers every

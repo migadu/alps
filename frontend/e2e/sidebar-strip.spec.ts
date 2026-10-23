@@ -6,8 +6,9 @@
 // each row's icon. One slide for every sidebar did not do that, because the
 // icon does not sit at the same place in every row: mail's rows lead with the
 // expander column for nested folders, the others start with the icon. The
-// slide that put mail's icons in the strip pushed Contacts', Calendar's,
-// Tasks' and Settings' icons under the main view.
+// slide that put mail's icons in the strip pushed Contacts', Calendar's and
+// Tasks' icons under the main view. (Settings had one too; it is a window now,
+// with a fixed section list.)
 //
 // Geometry needs a real browser (jsdom has no layout), so this lives here: the
 // first row's icon on every page sits wholly inside the strip, at the same x.
@@ -20,7 +21,6 @@ const PAGES: { name: string; route: string; icon: string }[] = [
   { name: "Contacts", route: "/#/contacts", icon: "alps-contacts-categories .category-item .category-icon svg" },
   { name: "Calendar", route: "/#/calendar", icon: "calendar-page .calendar-item .calendar-checkbox" },
   { name: "Tasks", route: "/#/tasks", icon: "tasks-page .smart-list svg" },
-  { name: "Settings", route: "/#/settings/general", icon: "settings-page alps-category-item .category-icon" },
 ];
 
 /** Docks or collapses the desktop sidebar with its footer button, and waits
@@ -56,7 +56,7 @@ async function iconInStrip(page: Page, entry: (typeof PAGES)[number]) {
 }
 
 test("the collapsed strip shows every page's icons, in the same place", async ({ page }) => {
-  // Moving between five pages in a few seconds aborts the previous page's fetches.
+  // Moving between four pages in a few seconds aborts the previous page's fetches.
   allowConsoleErrors(page, /Failed to fetch|aborted/i);
   await login(page);
   await setDocked(page, false);

@@ -108,6 +108,24 @@ export const keptAfterSave = (attachments: any[], saved: ComposerInstance): any[
   return leftOut.length ? attachments.filter(a => !leftOut.includes(a)) : attachments;
 };
 
+/**
+ * Where the quote's images are shown from once a save of `saved` has stored
+ * a new draft, or undefined where that does not change. A composer editing a
+ * draft shows them from that draft, which the save has replaced: the source
+ * follows to the new draft, with the structure the server read it back with.
+ * Left on the replaced draft, the quote drawn again, as after a reload,
+ * named parts of a draft that is gone. A reply's or a forward's quote is
+ * shown from the message it quotes, and stays.
+ */
+export const quoteSourceAfterSave = (
+  saved: ComposerInstance,
+  stored: { uid: string; mailbox: string; structure?: unknown },
+): QuoteSource | undefined => {
+  const source = saved.quoteSource;
+  if (!source || !saved.draftUid || source.uid !== saved.draftUid || source.mailbox !== saved.draftMailbox) return undefined;
+  return { mailbox: stored.mailbox, uid: stored.uid, structure: stored.structure ?? source.structure };
+};
+
 const isBlockedAddress = (addr: string): boolean => {
   const lowerEmail = bareAddress(addr);
   return lowerEmail.startsWith('noreply') || 
@@ -363,20 +381,15 @@ export class ComposeStore extends EventTarget {
    * Writes the composers to disk now, not when the debounced write comes
    * round: before a reload the user asked for, which would otherwise take the
    * last half second of typing with it. They open again after the reload.
-   *
-   * With no window open there is nothing to write, and nothing a reload can
-   * lose, so the disk is left as it is. The login screen clears the windows
-   * from memory and keeps their copy there for the next sign-in, and the
-   * update offer's Reload, pressed there, wrote the empty list over it.
    */
   persistNow(): boolean {
     if (this.saveTimeout !== null) {
       window.clearTimeout(this.saveTimeout);
       this.saveTimeout = null;
     }
+    // The login screen clears only the live windows. Writing that empty list
+    // would erase its preserved recovery copy during an update-offer reload.
     if (this.state.activeComposers.length === 0) return true;
-    // Otherwise the caller must keep this document open when its recovery
-    // copy cannot be written.
     return this.saveDrafts();
   }
 
@@ -539,7 +552,7 @@ export class ComposeStore extends EventTarget {
   }
 
   /**
-   * Takes the composer windows off the screen WITHOUT touching what is on disk.
+   * Takes the composer windows off the screen, preserving their disk copy.
    *
    * The only caller is `login-page`'s connectedCallback, which runs every time
    * the login screen mounts — including on an ordinary boot redirect, when
@@ -554,25 +567,17 @@ export class ComposeStore extends EventTarget {
    *
    * Persisting is the sign-out path's job, and it already does it properly —
    * `handleSessionCleared` removes the key outright, after aborting uploads.
-   * Here, memory only.
+   * Here, settle any pending edit before clearing memory, so neither its timer
+   * nor pagehide writes the emptied list over that recovery copy.
    *
    * With nothing open it does nothing, not even announce a change. The login
    * page calls this as it connects, inside the shell's render, and the
    * change it announced regardless had the shell render the login screen a
    * second time.
-   *
-   * A write still waiting for the debounce is made first, from the windows it
-   * was armed for. Left armed, it wrote the emptied list half a second later,
-   * and so did the write as the page went (flushOnPageHide), over the drafts
-   * this keeps.
    */
   clearAllComposers() {
+    if (this.saveTimeout !== null) this.persistNow();
     if (this.state.activeComposers.length === 0) return;
-    if (this.saveTimeout !== null) {
-      window.clearTimeout(this.saveTimeout);
-      this.saveTimeout = null;
-      this.saveDrafts();
-    }
     this.state = { ...this.state, activeComposers: [] };
     this.notify();
   }
@@ -665,10 +670,12 @@ export class ComposeStore extends EventTarget {
               : current.attachments;
             // Nor the quote's images a plain-text save left out: see keptAfterSave.
             if (attachments) attachments = keptAfterSave(attachments, composer);
+            const quoteSource = quoteSourceAfterSave(composer, saved);
             this.updateComposer(id, {
               draftUid: saved.uid,
               draftMailbox: saved.mailbox,
               ...(attachments !== current.attachments && { attachments }),
+              ...(quoteSource && { quoteSource }),
             });
             failed = true;
             continue;

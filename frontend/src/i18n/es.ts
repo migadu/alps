@@ -2,6 +2,10 @@ export const es = {
   settings: {
     saveFailed: 'No se pudo guardar ese ajuste: puede que no se conserve al cerrar sesión',
     title: 'Configuración',
+    unsavedTitle: '¿Descartar los cambios?',
+    unsavedMessage: 'Tienes cambios sin guardar. Si sales de esta sección, se perderán.',
+    discard: 'Descartar',
+    keepEditing: 'Seguir editando',
     categories: {
       general: 'General',
       identity: 'Identidad',
@@ -250,6 +254,7 @@ export const es = {
     emptyMailboxSlow: 'Todavía se está vaciando {folder}. El servidor sigue trabajando: vuelve a comprobarlo en un momento.'
   },
   composer: {
+    windowLoadFailed: 'No se ha podido cargar la ventana del mensaje.',
     discardFailed: 'No se pudo eliminar el borrador del servidor y sigue en Borradores.',
     attachmentsTooLarge: 'Los archivos adjuntos superan el tamaño máximo permitido.',
     draftSaveFailedKeepOpen: 'No se pudo guardar este borrador: la ventana permanece abierta para no perder nada',
@@ -564,7 +569,8 @@ export const es = {
     expand: "Expandir",
     collapse: "Contraer",
     moreOptions: "Más opciones",
-    notFound: "Página no encontrada"
+    notFound: "Página no encontrada",
+    close: "Cerrar"
   },
   webauthn: {
     title: 'Verificación de clave de seguridad',
