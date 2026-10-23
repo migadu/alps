@@ -42,8 +42,11 @@ async function deliverText(opts: {
   return messageId;
 }
 
-/** A message with one real, non-inline attachment — the kind a forward must carry. */
-function mailWithAttachment(opts: { subject: string; body: string; filename: string; contents: string }): string {
+/**
+ * A message with one real, non-inline attachment — the kind a forward must
+ * carry. `contentId` gives the file a Content-ID, as Exchange gives its files.
+ */
+function mailWithAttachment(opts: { subject: string; body: string; filename: string; contents: string; contentId?: string }): string {
   const boundary = "alps-e2e-mixed-boundary";
   return [
     `From: ${SENDER}`,
@@ -62,6 +65,7 @@ function mailWithAttachment(opts: { subject: string; body: string; filename: str
     `--${boundary}`,
     `Content-Type: text/plain; charset=utf-8; name="${opts.filename}"`,
     `Content-Disposition: attachment; filename="${opts.filename}"`,
+    ...(opts.contentId ? [`Content-ID: <${opts.contentId}>`] : []),
     "Content-Transfer-Encoding: base64",
     "",
     Buffer.from(opts.contents, "utf8").toString("base64"),
@@ -484,6 +488,76 @@ test("replying leaves the original's attachment behind", async ({ page }) => {
   const sent = await sentWithSubject(`Re: ${subject}`);
   expect(sent.data).toContain(body);
   expect(sent.data).not.toContain(filename);
+});
+
+// Exchange gives ordinary attachments a Content-ID too. A reply carried every
+// part with one, as the quote's images, out of sight: the composer showed no
+// attachment, and the recipients got the file again.
+test("replying leaves behind an attachment that has a Content-ID", async ({ page }) => {
+  const subject = `Report attached ${Date.now()}`;
+  const body = "The report is attached.";
+  const filename = "report.txt";
+  await deliver({ subject, raw: mailWithAttachment({ subject, body, filename, contents: "figures\n", contentId: `${unique()}@exchange.test` }) });
+
+  await login(page);
+  await openMessage(page, subject, body);
+  await expect(page.locator("alps-message-reader alps-attachment-list.desktop-attachments")).toContainText(filename);
+
+  await replyButton(page).click();
+  await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
+  await expect(composerAttachments(page)).toHaveCount(0);
+
+  await sendNow(page);
+  const sent = await sentWithSubject(`Re: ${subject}`);
+  expect(sent.data).toContain(body);
+  expect(sent.data).not.toContain(filename);
+});
+
+for (const attribute of ['data-note', 'src']) {
+  test(`replying leaves behind a file named only by a paragraph's ${attribute}`, async ({ page }) => {
+    const subject = `Report metadata ${attribute} ${Date.now()}`;
+    const body = 'Please review the notes.';
+    const contentId = `${unique()}@exchange.test`;
+    const filename = 'private-report.txt';
+    const raw = mailWithAttachment({ subject, body: `<p ${attribute}="cid:${contentId}">${body}</p>`, filename, contents: 'Private figures\n', contentId })
+      .replace('Content-Type: text/plain; charset=utf-8', 'Content-Type: text/html; charset=utf-8');
+    await deliver({ subject, raw });
+    await login(page);
+    await page.locator('alps-message-list .message-subject', { hasText: subject }).first().click();
+    await expect.poll(async () => (await frameLayout(readerFrame(page))).text).toContain(body);
+    await expect(page.locator('alps-message-reader alps-attachment-list.desktop-attachments')).toContainText(filename);
+    await replyButton(page).click();
+    await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
+    await expect(composerAttachments(page)).toHaveCount(0);
+    await sendNow(page);
+    const sent = await sentWithSubject(`Re: ${subject}`);
+    expect(sent.data).toContain(body);
+    expect(sent.data).not.toContain(filename);
+    expect(sent.data).not.toContain(Buffer.from('Private figures\n').toString('base64'));
+  });
+}
+
+test("forwarding carries an attachment that has a Content-ID once, as a file", async ({ page }) => {
+  const subject = `Report to pass on ${Date.now()}`;
+  const body = "The report is attached.";
+  const filename = "report.txt";
+  const contents = `figures\n${unique()}\n`;
+  await deliver({ subject, raw: mailWithAttachment({ subject, body, filename, contents, contentId: `${unique()}@exchange.test` }) });
+
+  await login(page);
+  await openMessage(page, subject, body);
+  await expect(page.locator("alps-message-reader alps-attachment-list.desktop-attachments")).toContainText(filename);
+
+  await chooseFromMoreMenu(page, "Forward");
+  await expect(composerSubject(page)).toHaveValue(`Fwd: ${subject}`);
+  await expect(composerAttachments(page)).toHaveCount(1);
+  await expect(composerAttachments(page)).toContainText(filename);
+
+  await addTo(page, USER.address);
+  await sendNow(page);
+  const sent = await sentWithSubject(`Fwd: ${subject}`);
+  const encoded = Buffer.from(contents, "utf8").toString("base64");
+  expect(sent.data.split(encoded)).toHaveLength(2);
 });
 
 /** A 1×1 PNG, carried as the HTML message's inline image. */
