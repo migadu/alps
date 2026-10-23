@@ -84,7 +84,8 @@ export class ContactsPage extends LitElement {
    */
   private wholeCardPath: string | null = null;
   /** The read of the open card on its way, which Edit waits for. */
-  private cardRead: { path: string; done: Promise<boolean> } | null = null;
+  private cardRead: { path: string; generation: number; done: Promise<boolean> } | null = null;
+  private cardGeneration = 0;
   private mergedBook: { contacts: any[]; wholeBook: any[]; open: any; merged: any[] } | null = null;
 
   static styles = [
@@ -575,6 +576,7 @@ export class ContactsPage extends LitElement {
     if (this.selectedContact?.path === contact.path) return;
 
     // Set immediately for instant UI feedback (prevents flashing)
+    this.cardGeneration++;
     this.selectedContact = { ...contact };
     this.wholeCardPath = null;
     this.isEditing = false;
@@ -587,12 +589,14 @@ export class ContactsPage extends LitElement {
    * is held. A read already on its way is waited for rather than repeated.
    */
   private readOpenCard(path: string): Promise<boolean> {
-    if (this.cardRead?.path === path) return this.cardRead.done;
+    const generation = this.cardGeneration;
+    if (this.cardRead?.path === path && this.cardRead.generation === generation) return this.cardRead.done;
     const done = (async () => {
       try {
         const data = await contactsService.fetchContact(path);
-        // Only update if the user hasn't selected another contact in the meantime
-        if (this.selectedContact?.path === data.path) {
+        // A reopened path is a new selection: an older read must not replace
+        // its current card or enable editing with an obsolete snapshot.
+        if (this.cardGeneration === generation && this.selectedContact?.path === data.path) {
           this.selectedContact = data;
           this.wholeCardPath = data.path;
           return true;
@@ -602,7 +606,7 @@ export class ContactsPage extends LitElement {
       }
       return false;
     })();
-    const read = { path, done };
+    const read = { path, generation, done };
     this.cardRead = read;
     void done.finally(() => {
       if (this.cardRead === read) this.cardRead = null;
@@ -950,9 +954,10 @@ export class ContactsPage extends LitElement {
    */
   private async handleEdit() {
     const open = this.selectedContact;
+    const generation = this.cardGeneration;
     if (open && !open.isTemporary && this.wholeCardPath !== open.path) {
       const held = await this.readOpenCard(open.path);
-      if (this.selectedContact?.path !== open.path) return;
+      if (this.cardGeneration !== generation || this.selectedContact?.path !== open.path) return;
       if (!held) {
         this.reportFailure('contacts.loadFailed');
         return;
