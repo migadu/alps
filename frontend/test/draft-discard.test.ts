@@ -12,11 +12,13 @@
  * A UID means something only in its mailbox, so every match here is on both.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ContextProvider } from '@lit/context';
 import {
   cleanup, flush, installMatchMedia, installResizeObserver, installScrollIntoView, mount, record, shadowAll, update, waitFor,
 } from './helpers/dom';
 import { ComposeStore } from '../src/store/compose-store';
 import type { ComposerInstance } from '../src/store/compose-store';
+import { i18nContext } from '../src/store/i18n-store';
 import { messageOperations } from '../src/services/message-operations';
 import { MessageCache } from '../src/utils/message-cache';
 import '../src/components/message-reader';
@@ -475,5 +477,81 @@ describe('the mail page, when a draft is saved', () => {
     expect(el.selectedMessage).toMatchObject({ UID: '8' });
     expect(el.messages.map((m: any) => String(m.UID))).toEqual(['8']);
     expect(window.location.hash).toBe('#/mailbox/Drafts?uid=8');
+  });
+
+  /**
+   * The page inside the i18n context, as the app provides it: the list takes
+   * its words from the context, and without one its placeholder for a
+   * message without a subject is empty.
+   */
+  async function translatedPage(currentMailbox: string, messages: any[], selectedMessage: any): Promise<El> {
+    const host = document.createElement('div');
+    new ContextProvider(host, { context: i18nContext, initialValue: i18nStore as any });
+    document.body.appendChild(host);
+    const el = document.createElement('mailbox-page') as El;
+    Object.assign(el, { i18nStore, settingsStore: settingsStore(), composeStore: new EventTarget() });
+    host.appendChild(el);
+    await el.updateComplete;
+    await flush();
+    await update(el, { currentMailbox, messages, selectedMessage });
+    return el;
+  }
+
+  /** The subjects the list shows, as the user reads them. */
+  async function listed(el: El): Promise<(string | undefined)[]> {
+    await el.updateComplete;
+    const list = el.shadowRoot!.querySelector<El>('alps-message-list')!;
+    await list.updateComplete;
+    return shadowAll(list, '.message-item .message-subject').map(node => node.textContent?.trim());
+  }
+
+  it('gives the row the subject the draft now has, and none once it is cleared', async () => {
+    // An empty subject fell back to the row's own, so a draft whose subject
+    // was cleared went on showing it, in the list and in the reader, until
+    // the list was read again.
+    const row = { ...draft('7'), Mailbox: undefined };
+    const el = await translatedPage('Drafts', [row], row);
+
+    saved({ oldUid: '7', oldMailbox: 'Drafts', newUid: '8', subject: 'Plans' });
+    expect(await listed(el)).toEqual(['Plans']);
+
+    saved({ oldUid: '8', oldMailbox: 'Drafts', newUid: '9', subject: '' });
+    expect(el.messages[0].Envelope.Subject).toBe('');
+    expect(el.selectedMessage.Envelope.Subject).toBe('');
+    expect(await listed(el)).toEqual(['messageList.noSubject']);
+  });
+
+  it('puts in a new draft without a subject with none, so the list shows its own placeholder', async () => {
+    // It was given the English "(No subject)" as its subject, which the list
+    // then showed in every language.
+    const el = await translatedPage('Drafts', [], null);
+
+    saved({ oldUid: null, oldMailbox: null, newUid: '31', subject: '' });
+
+    expect(el.messages.map((m: any) => [String(m.UID), m.Envelope.Subject])).toEqual([['31', '']]);
+    expect(await listed(el)).toEqual(['messageList.noSubject']);
+  });
+
+  it('leaves a cleared subject cleared when the draft is edited again from the reader', async () => {
+    // The reader edits the draft as the row has it, so Edit Draft brought the
+    // cleared subject back into the composer, and its next save stored it
+    // again.
+    const row = { ...draft('7'), Mailbox: undefined };
+    const el = await page('Drafts', [row], row);
+    saved({ oldUid: '7', oldMailbox: 'Drafts', newUid: '8', subject: '' });
+
+    const composeStore = { openComposer: vi.fn() };
+    const reader = await mount<El>('alps-message-reader', {
+      settingsStore: settingsStore(),
+      i18nStore,
+      composeStore,
+      mailbox: 'Drafts',
+      mailboxes: [{ Name: 'Drafts', Attrs: ['\\Drafts'] }],
+      messages: el.messages,
+      message: el.selectedMessage,
+    });
+    await reader._handleEditDraft();
+
+    expect(composeStore.openComposer).toHaveBeenCalledWith(expect.objectContaining({ draftUid: '8', subject: '' }));
   });
 });
