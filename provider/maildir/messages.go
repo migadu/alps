@@ -628,6 +628,9 @@ func (p *Provider) GetMessagePartWithData(mailbox string, id provider.MessageID,
 	return msgMeta, part, header, body, nil
 }
 
+// SetMessagesFlags changes flags and reports each lookup or rename failure.
+// Messages already gone are skipped; all other failures remain visible so
+// the HTTP layer invalidates cached flags instead of reporting a false star.
 func (p *Provider) SetMessagesFlags(mailbox string, ids []provider.MessageID, op provider.FlagOperation) error {
 	b, err := p.openBox(mailbox)
 	if err != nil {
