@@ -48,6 +48,7 @@ import '../../plugins/caldav/frontend/task-modal';
 import '../../plugins/carddav/frontend/contact-view';
 import '../../plugins/managesieve/frontend/visual-editor';
 import '../../plugins/managesieve/frontend/raw-editor';
+import '../../plugins/managesieve/frontend/auto-reply-page';
 import '../../plugins/gpg/frontend/gpg-settings';
 import '../../plugins/caldav/frontend/calendar-invitation-banner';
 import { invitationService, type InvitationView } from '../../plugins/caldav/frontend/invitation-service';
@@ -404,6 +405,41 @@ describe('the GPG key import', () => {
       expect(boxes.map(b => [b.closest('alps-setting-group')!.getAttribute('label'), accessibleName(b)])).toEqual([
         ['gpg.publicKeyBlock', 'gpg.publicKeyBlock'],
         ['gpg.privateKeyBlock', 'gpg.privateKeyBlock'],
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('the auto-reply page', () => {
+  it('names every field by its label', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ content: '', extensions: ['vacation', 'date', 'relational'] }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )));
+    try {
+      const el = await mount<El>('alps-auto-reply-page', {
+        i18nStore: { ...i18nStore, getIntlLanguage: () => 'en' },
+        settingsStore: { getState: () => ({ loginUsername: 'ada@example.com' }) },
+      });
+      await waitFor(() => !el.shadowRoot!.querySelector('alps-loader'), 'the script to load');
+      await el.updateComplete;
+      const fields = shadowAll<El>(el, FIELDS.join(', '));
+      await Promise.all(fields.map(f => f.updateComplete));
+
+      // The subject had only its placeholder for a name; the message, the
+      // dates and the interval had none. Their labels are in
+      // alps-setting-group's shadow root, or outside alps-input's.
+      expect([
+        ...fields.map(f => accessibleName(inner(f))),
+        accessibleName(shadow<HTMLTextAreaElement>(el, 'textarea')),
+      ]).toEqual([
+        'managesieve.autoReply.subject',
+        'managesieve.autoReply.startDate',
+        'managesieve.autoReply.endDate',
+        'managesieve.autoReply.interval',
+        'managesieve.autoReply.message',
       ]);
     } finally {
       vi.unstubAllGlobals();
