@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/emersion/go-message/mail"
 )
 
 func parseMboxAndUidStr(mboxString, uidString string) (string, string, error) {
@@ -47,20 +49,31 @@ func formatPartPath(path []int) string {
 	return strings.Join(parts, ".")
 }
 
-func parseAddressList(s string) []string {
-	l := strings.Split(s, ",")
-	ret := make([]string, 0, len(l))
-	for _, addr := range l {
-		// Trimmed BEFORE the empty check: "a@example.com, " splits into a
-		// second entry of one space, which used to be kept as an empty
-		// recipient.
-		addr = strings.TrimSpace(addr)
-		if addr == "" {
-			continue
-		}
-
-		ret = append(ret, addr)
+// parseAddressList reads a recipient field, its addresses separated by
+// commas, into one string per address. The field is parsed as an address
+// list, not split at every comma: a comma in a quoted display name
+// ("Lovelace, Ada" <ada@example.com>) belongs to the name, and split there,
+// neither half was an address and the message could be neither sent nor
+// saved. Each address is formatted again, as From is, so a name, or a local
+// part like "a;b", stays quoted where it needs to be; one without a name is
+// written without the angle brackets.
+func parseAddressList(s string) ([]string, error) {
+	ret := []string{}
+	// Separators and spaces alone name nobody, as an empty field does, but
+	// the list parser refuses them.
+	if strings.Trim(s, ", \t\r\n") == "" {
+		return ret, nil
 	}
-
-	return ret
+	list, err := mail.ParseAddressList(s)
+	if err != nil {
+		return nil, err
+	}
+	for _, addr := range list {
+		formatted := addr.String()
+		if addr.Name == "" {
+			formatted = strings.TrimSuffix(strings.TrimPrefix(formatted, "<"), ">")
+		}
+		ret = append(ret, formatted)
+	}
+	return ret, nil
 }
