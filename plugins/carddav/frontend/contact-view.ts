@@ -358,9 +358,16 @@ export class AlpsContactView extends LitElement {
       // the save was on its way. So the form only takes the path.
       const created = !startedEditing && this.isEditing && changedProperties.get('contact')?.isTemporary
         && this.contact && !this.contact.isTemporary && this.contact.path && this.editForm && !this.editForm.path;
+      if (!created && ((changedProperties.has('isEditing') && !this.isEditing)
+        || (changedProperties.has('contact') && changedProperties.get('contact')?.path !== this.contact?.path)
+        || (changedProperties.get('contact')?.isTemporary && this.contact?.isTemporary && changedProperties.get('contact') !== this.contact))) {
+        this.flushPendingSave();
+      }
       if (created) {
         this.editForm = { ...this.editForm, path: this.contact.path };
       } else if (this.contact && this.isEditing && (startedEditing || !this.editForm || this.editForm.path !== this.contact.path)) {
+        this.editContact = this.contact;
+        this.editUsername = this.settingsStore?.getState().loginUsername || '';
         this.editForm = { ...this.contact };
         this.birthday = birthdayFields(String(this.editForm.birthday || ''));
         this.isDirty = false;
@@ -386,14 +393,34 @@ export class AlpsContactView extends LitElement {
   }
 
   private saveTimeout: any = null;
+  private pendingSave: (() => void) | null = null;
+  /** The card the form was opened on, retained across its first create. */
+  private editContact: any;
+  private editUsername = '';
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    clearTimeout(this.saveTimeout);
+    this.pendingSave = null;
+  }
+
+  private flushPendingSave() {
+    const save = this.pendingSave;
+    this.pendingSave = null;
+    clearTimeout(this.saveTimeout);
+    this.saveTimeout = null;
+    save?.();
+  }
 
   private debouncedSave() {
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
     }
-    this.saveTimeout = setTimeout(() => {
-      this.handleSave();
-    }, 500);
+    const form = this.editForm;
+    const contact = this.editContact;
+    const username = this.editUsername;
+    this.pendingSave = () => this.handleSave(form, contact, username);
+    this.saveTimeout = setTimeout(() => this.flushPendingSave(), 500);
   }
 
   private handleInput(field: string, value: string) {
@@ -459,12 +486,15 @@ export class AlpsContactView extends LitElement {
     return `${prefix} ${defaultLabel}`;
   }
 
-  private handleSave() {
-    this.dispatchEvent(new CustomEvent('save', {
-      detail: this.editForm,
+  private handleSave(form = this.editForm, contact = this.editContact, username = this.editUsername) {
+    clearTimeout(this.saveTimeout);
+    this.saveTimeout = null;
+    this.pendingSave = null;
+    this.dispatchEvent(Object.assign(new CustomEvent('save', {
+      detail: form,
       bubbles: true,
       composed: true
-    }));
+    }), { sourceContact: contact, sourceUsername: username }));
   }
 
   private renderDetailRow(label: string, value: string, isEmail = false, isPhone = false) {
