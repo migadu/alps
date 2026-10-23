@@ -939,7 +939,11 @@ export class MessageSyncService extends EventTarget {
         inbox = await this.askCounts(FOLDER_INBOX).catch(() => null);
       }
       if (superseded()) return true;
-      const counts = shared ? shared.mailbox : await this.askCounts(mailbox);
+      // A search of all mailboxes is of no one mailbox: the server has no
+      // counts of `*`, and answered the question with a 500. Without counts
+      // the listing below is read, as it always was.
+      const counts = shared ? shared.mailbox
+        : mailbox === ALL_MAILBOXES ? null : await this.askCounts(mailbox);
       if (superseded()) return true;
 
       // The listing is read again only when the counts moved since it was

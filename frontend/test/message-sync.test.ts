@@ -423,6 +423,14 @@ describe('the check-for-new-mail button', () => {
     expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Work/status', '/mailboxes/Work?page=0']);
   });
 
+  it('asks no counts of a search of all mailboxes, of which the server has none', async () => {
+    const svc = new MessageSyncService();
+    await landed(svc, '*', 0, 'looms');
+    quiet();
+    await svc.check('*', 0, 'looms');
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status', '/mailboxes/*?page=0&query=looms']);
+  });
+
   it('announces itself in the background, so the rows do not dim', async () => {
     const svc = new MessageSyncService();
     await landed(svc, 'Work');
