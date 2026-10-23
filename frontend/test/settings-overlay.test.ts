@@ -142,7 +142,7 @@ describe('closing Settings', () => {
     expect(window.location.hash).toBe('#/settings/localization');
     expect(history.length).toBe(entries);
     expect(windowOf(el)?.category).toBe('localization');
-    expect(settingsEntry()).toEqual({ depth: 1, background: '#/notes/all' });
+    expect(settingsEntry()).toEqual(expect.objectContaining({ depth: 1, background: '#/notes/all' }));
 
     await close(el);
     expect(window.location.hash).toBe('#/notes/all');
@@ -152,7 +152,7 @@ describe('closing Settings', () => {
     const el = await shell('#/notes/all');
     await go(el, '#/settings/appearance');
     await go(el, '#/settings/localization');
-    expect(settingsEntry()).toEqual({ depth: 2, background: '#/notes/all' });
+    expect(settingsEntry()).toEqual(expect.objectContaining({ depth: 2, background: '#/notes/all' }));
 
     await close(el);
     expect(window.location.hash).toBe('#/notes/all');

@@ -36,10 +36,10 @@ afterEach(() => {
   history.replaceState(null, '', '#/');
 });
 
-/** The window's URL and its history entry, both untouched. */
-function expectUntouched(): void {
+/** The window keeps its URL and records the effective background route. */
+function expectWindow(background = ENTRY.background): void {
   expect(window.location.hash).toBe(OPEN);
-  expect(settingsEntry()).toEqual(ENTRY);
+  expect(settingsEntry()).toEqual({ ...ENTRY, background });
 }
 
 /** A page's private members, used as the page itself would. */
@@ -47,16 +47,16 @@ type Bag = Record<string, any>;
 const page = (tag: string) => document.createElement(tag) as unknown as Bag;
 
 describe('the mailbox', () => {
-  it('does not navigate to a folder', () => {
+  it('records a missing folder fallback without navigating away from Settings', () => {
     // A folder deleted on another device sends the page to the Inbox.
     page('mailbox-page').updateUrl('INBOX', 0, null, '');
-    expectUntouched();
+    expectWindow('#/mailbox/INBOX');
   });
 
   it("does not move the URL onto a draft's new UID", () => {
     // A composer above the window autosaves the draft the reader has open.
     page('mailbox-page').followAutosavedSelection({ UID: '42', Mailbox: 'Drafts' });
-    expectUntouched();
+    expectWindow('#/mailbox/INBOX?uid=42&in=Drafts');
   });
 
   it('keeps its folder, its message and its search when the URL becomes the window\'s', () => {
@@ -83,10 +83,11 @@ describe('the mailbox', () => {
 
 describe('the contacts page', () => {
   it('does not rewrite or push its URL', () => {
+    stampSettingsEntry({ ...ENTRY, background: '#/contacts/Family' });
     const contacts = page('contacts-page');
     contacts.writeHash('#/contacts/all', 'replace');
     contacts.writeHash('#/contacts/all', 'push');
-    expectUntouched();
+    expectWindow('#/contacts/all');
   });
 
   it('keeps the card it has open, and the edit with it', () => {
@@ -101,15 +102,17 @@ describe('the contacts page', () => {
 });
 
 describe('the tasks page', () => {
-  it('does not go to another list', () => {
+  it('records another list without navigating away from Settings', () => {
+    stampSettingsEntry({ ...ENTRY, background: '#/tasks/all' });
     page('tasks-page').navigate('today');
-    expectUntouched();
+    expectWindow('#/tasks/today');
   });
 });
 
 describe('the calendar', () => {
-  it('does not go to another view', () => {
+  it('records another view without navigating away from Settings', () => {
+    stampSettingsEntry({ ...ENTRY, background: '#/calendar/month/2026-09' });
     page('calendar-page').navigate('month', new Date(2026, 9, 21));
-    expectUntouched();
+    expectWindow('#/calendar/month/2026-10');
   });
 });

@@ -15,7 +15,7 @@ import '../../../frontend/src/components/ui-confirm';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { isSessionExpiry } from '../../../frontend/src/utils/fetch-utils';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
-import { pageHash } from '../../../frontend/src/utils/settings-history';
+import { pageHash, updateSettingsBackground } from '../../../frontend/src/utils/settings-history';
 import { taskTellsSomeone, calendarService, getCalendarColor } from './calendar-service';
 import { formatDue, inSmartList, intlLocale, isClosed, scopeOf, tasksService } from './tasks-service';
 import type { SmartList, TaskData, TaskList, TaskScope } from './tasks-service';
@@ -278,7 +278,7 @@ export class TasksPage extends LitElement {
             // and the caller fetches on the answer as the event would have.
             list = 'all';
             if (!isSettingsHash(window.location.hash)) {
-                history.replaceState(null, '', this.hashFor(list, calendar, search));
+                history.replaceState(history.state, '', this.hashFor(list, calendar, search));
             }
         }
         if (list !== this.selectedList || calendar !== this.selectedCalendar || search !== this.searchQuery) {
@@ -304,8 +304,11 @@ export class TasksPage extends LitElement {
      * open over the page: the URL is the window's, and assigning it would
      * close the window. */
     navigate(list: SmartList, calendar = this.selectedCalendar, query = this.searchQuery) {
-        if (isSettingsHash(window.location.hash)) return;
         const hash = this.hashFor(list, calendar, query);
+        if (updateSettingsBackground(hash)) {
+            if (this.parseHash(hash)) void this.fetchTasks();
+            return;
+        }
         if (window.location.hash !== hash) window.location.hash = hash;
     }
 

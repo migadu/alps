@@ -26,7 +26,7 @@ import { getDestinationLabel, getFlexContainerMinWidth } from '../utils/ui';
 import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/message-key';
 import { canonicalRecipient, parseWrittenAddress } from '../utils/address-display';
 import { isSettingsHash } from '../utils/routes';
-import { pageHash } from '../utils/settings-history';
+import { pageHash, updateSettingsBackground } from '../utils/settings-history';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
@@ -669,7 +669,7 @@ export class MailboxPage extends LitElement {
     // window, whose URL this is not: see `updateUrl`.
     const hash = window.location.hash;
     if (returning && !hash.startsWith('#/mailbox/') && !isSettingsHash(hash)) {
-      window.history.replaceState(null, '', this.hashFor(this.currentMailbox, this.currentPage, this.targetUid, this.filterQuery, this.targetMailbox));
+      window.history.replaceState(history.state, '', this.hashFor(this.currentMailbox, this.currentPage, this.targetUid, this.filterQuery, this.targetMailbox));
     }
     const heldView = [this.currentMailbox, this.currentPage, this.filterQuery].join('\n');
     if (returning) {
@@ -755,10 +755,11 @@ export class MailboxPage extends LitElement {
     this.targetMailbox = mailbox !== this.currentMailbox ? mailbox : null;
 
     // Rewritten without a hashchange, so a reload opens the new draft and
-    // nothing is fetched again now. Not under the Settings window: see
-    // `updateUrl`.
-    if (isSettingsHash(window.location.hash)) return;
-    window.history.replaceState(null, '', this.hashFor(this.currentMailbox, this.currentPage, this.targetUid, this.filterQuery, this.targetMailbox));
+    // nothing is fetched again now. Under Settings only its recorded
+    // background changes; the window keeps its own URL.
+    const hash = this.hashFor(this.currentMailbox, this.currentPage, this.targetUid, this.filterQuery, this.targetMailbox);
+    if (updateSettingsBackground(hash)) return;
+    window.history.replaceState(history.state, '', hash);
   }
 
   private handleDraftAutosaved = (e: CustomEvent) => {
@@ -1132,10 +1133,9 @@ export class MailboxPage extends LitElement {
       const perPage = data.MessagesPerPage || this.messagesPerPage;
       const last = Math.max(0, Math.ceil(data.Total / perPage) - 1);
       this.currentPage = last;
-      // Not under the Settings window: see `updateUrl`.
-      if (!isSettingsHash(window.location.hash)) {
-        window.history.replaceState(null, '', this.hashFor(this.currentMailbox, last, this.targetUid, this.filterQuery, this.targetMailbox));
-      }
+      // Keep the window URL, and record the corrected page beneath it.
+      const hash = this.hashFor(this.currentMailbox, last, this.targetUid, this.filterQuery, this.targetMailbox);
+      if (!updateSettingsBackground(hash)) window.history.replaceState(history.state, '', hash);
       messageSync.fetch(this.currentMailbox, last, this.filterQuery, false, true);
       return;
     } else {
@@ -1349,14 +1349,15 @@ export class MailboxPage extends LitElement {
    * and the same UID can be in each of them.
    */
   private updateUrl(mailbox: string, page: number, uid: string | null, filterQuery: string | null = this.filterQuery, uidMailbox: string | null = null) {
-    // Nothing while the Settings window is open over the page: the URL is the
-    // window's, and assigning it would close the window. A sync still lands
-    // beneath it (a folder deleted elsewhere, a message gone), and the same
-    // holds for the silent rewrites (`followAutosavedSelection`, a page past
-    // the last), which would also drop the history entry's record of where
-    // the window closes to.
-    if (isSettingsHash(window.location.hash)) return;
-    window.location.hash = this.hashFor(mailbox, page, uid, filterQuery, uidMailbox);
+    // A live update beneath Settings changes its canonical background and
+    // the page's state, while the browser keeps the window's URL. Back/Close
+    // then restores this effective route rather than a deleted folder or UID.
+    const hash = this.hashFor(mailbox, page, uid, filterQuery, uidMailbox);
+    if (updateSettingsBackground(hash)) {
+      this.readMailboxHash(hash, true);
+      return;
+    }
+    window.location.hash = hash;
   }
 
   private hashFor(mailbox: string, page: number, uid: string | null, filterQuery: string | null, uidMailbox: string | null): string {

@@ -17,7 +17,7 @@ export class Router implements ReactiveController {
   private routes: Record<string, () => unknown>;
   private fallback: () => unknown;
   /** Kept so that the listener removed is the one that was added. */
-  private readonly onHashChange: () => void;
+  private readonly onHashChange: (event?: HashChangeEvent) => void;
 
   /**
    * The path the browser is on RIGHT NOW.
@@ -37,11 +37,11 @@ export class Router implements ReactiveController {
   constructor(
     routes: Record<string, () => unknown>,
     fallback: () => unknown,
-    onChange: () => void
+    onChange: (event?: HashChangeEvent) => void
   ) {
     this.routes = routes;
     this.fallback = fallback;
-    this.onHashChange = () => onChange();
+    this.onHashChange = (event) => onChange(event);
   }
 
   /**

@@ -31,17 +31,42 @@ export interface SettingsEntry {
   depth: number;
   /** That page's hash, or null when nothing is behind (a direct load). */
   background: string | null;
+  /** The actual history entry beneath this window. Null for a direct load;
+   * omitted only by older entries. Its identity distinguishes Back from an
+   * unrelated navigation to the same URL. */
+  origin?: string | null;
 }
 
 /** The key in `history.state`. Namespaced: the rest of the state is not ours. */
 const STATE_KEY = 'alpsSettings';
+const PAGE_KEY = 'alpsPageEntry';
+export const BACKGROUND_CHANGED_EVENT = 'settings-background-changed';
+
+/** Identity of a non-Settings history entry, retained by silent rewrites. */
+export function pageEntryId(state: unknown = history.state): string | null {
+  const id = (state as Record<string, unknown> | null)?.[PAGE_KEY];
+  return typeof id === 'string' ? id : null;
+}
+
+/** Mark the page before Settings can be opened over it. A hash navigation
+ * creates another entry; a silent replace keeps this one's identity. */
+export function ensurePageEntry(): string {
+  const state = history.state && typeof history.state === 'object' ? { ...history.state } : {};
+  const id = pageEntryId(state) ?? (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
+  if (state[PAGE_KEY] !== id || STATE_KEY in state) {
+    delete state[STATE_KEY];
+    history.replaceState({ ...state, [PAGE_KEY]: id }, '', window.location.href);
+  }
+  return id;
+}
 
 /** The Settings entry the browser is on, or null when nobody stamped one. */
 export function settingsEntry(state: unknown = history.state): SettingsEntry | null {
   const entry = (state as Record<string, unknown> | null)?.[STATE_KEY] as Partial<SettingsEntry> | undefined;
   if (!entry || typeof entry.depth !== 'number') return null;
   const background = typeof entry.background === 'string' ? entry.background : null;
-  return { depth: entry.depth, background };
+  const origin = entry.origin;
+  return { depth: entry.depth, background, ...(origin === null || typeof origin === 'string' ? { origin } : {}) };
 }
 
 /**
@@ -50,13 +75,13 @@ export function settingsEntry(state: unknown = history.state): SettingsEntry | n
  * section: one step deeper over the same page, or over nothing after a direct
  * load.
  */
-export function nextSettingsEntry(previousHash: string, previous: SettingsEntry | null): SettingsEntry {
+export function nextSettingsEntry(previousHash: string, previous: SettingsEntry | null, origin?: string | null): SettingsEntry {
   if (isSettingsHash(previousHash)) {
     return previous
-      ? { depth: previous.depth + 1, background: previous.background }
-      : { depth: 1, background: null };
+      ? { ...previous, depth: previous.depth + 1 }
+      : { depth: 1, background: null, ...(origin === undefined ? {} : { origin: null }) };
   }
-  return { depth: 1, background: previousHash && previousHash !== '#' ? previousHash : '#/' };
+  return { depth: 1, background: previousHash && previousHash !== '#' ? previousHash : '#/', ...(origin === undefined ? {} : { origin }) };
 }
 
 /** Writes `entry` onto the current history entry, keeping its URL and the rest
@@ -75,4 +100,22 @@ export function pageHash(): string | null {
   const hash = window.location.hash;
   if (!isSettingsHash(hash)) return hash;
   return settingsEntry()?.background ?? null;
+}
+
+/** A live page can change beneath Settings: a draft gets another UID, a
+ * folder disappears, or a pending search completes. Keep its canonical route
+ * without replacing the window's URL. The shell reconciles the actual old
+ * history entry when Back reaches it, identified by origin rather than URL. */
+export function updateSettingsBackground(hash: string): boolean {
+  if (!isSettingsHash(window.location.hash)) return false;
+  const entry = settingsEntry() ?? { depth: 0, background: null, origin: null };
+  // A write begun on a page already left must not replace another page now
+  // beneath Settings. Every supported writer stays within its own route.
+  const family = (route: string) => route.replace(/^#\/?/, '').split(/[/?]/)[0] || 'mailbox';
+  if (family(entry.background ?? '#/') !== family(hash)) return true;
+  if (entry.background !== hash) {
+    stampSettingsEntry({ ...entry, background: hash });
+    window.dispatchEvent(new CustomEvent(BACKGROUND_CHANGED_EVENT));
+  }
+  return true;
 }

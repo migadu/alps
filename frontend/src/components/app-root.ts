@@ -35,7 +35,7 @@ import { signedOutOnPurpose } from '../utils/signed-out';
 import { applyUpdate, registerBusyProbe, reloadMissingPageWhenIdle, UPDATE_AVAILABLE_EVENT } from '../services/app-update';
 import { Logger } from '../utils/logger';
 import { isSettingsHash, settingsCategoryOf, settingsHash } from '../utils/routes';
-import { nextSettingsEntry, settingsEntry, stampSettingsEntry, type SettingsEntry } from '../utils/settings-history';
+import { BACKGROUND_CHANGED_EVENT, ensurePageEntry, nextSettingsEntry, pageEntryId, settingsEntry, stampSettingsEntry, type SettingsEntry } from '../utils/settings-history';
 
 const DEFAULT_TOAST_TIMEOUT_MS = 3000;
 /** Long enough to be read and acted on; the automatic paths catch a missed one. */
@@ -188,6 +188,7 @@ export class AppRoot extends LitElement {
 
     window.addEventListener('auth-error', this._handleAuthError);
     window.addEventListener('session-cleared', this._handleSessionCleared);
+    window.addEventListener(BACKGROUND_CHANGED_EVENT, this._handleBackgroundChanged);
     window.addEventListener('show-toast', this._handleShowToast as EventListener);
     window.addEventListener('beforeunload', this._handleBeforeUnload);
     window.addEventListener('online', this._handleOnlineEvent);
@@ -243,6 +244,7 @@ export class AppRoot extends LitElement {
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     window.removeEventListener('auth-error', this._handleAuthError);
     window.removeEventListener('session-cleared', this._handleSessionCleared);
+    window.removeEventListener(BACKGROUND_CHANGED_EVENT, this._handleBackgroundChanged);
     window.removeEventListener('show-toast', this._handleShowToast as EventListener);
     window.removeEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
     window.removeEventListener('beforeunload', this._handleBeforeUnload);
@@ -579,13 +581,13 @@ export class AppRoot extends LitElement {
   private router = new Router(
     this.getRoutes(),
     () => html`<div>404 — ${this.i18nStore.t('general.notFound')}</div>`,
-    () => {
+    (event) => {
       const path = this.router.currentPath;
       if (path !== this.loadFailurePath) {
         this.loadFailurePath = path;
         resetComponentLoadFailures();
       }
-      this.trackSettingsEntry();
+      this.trackSettingsEntry(event);
       this.requestUpdate();
     }
   );
@@ -610,6 +612,7 @@ export class AppRoot extends LitElement {
   /** The hash the shell last routed, for `trackSettingsEntry`; null until the
    * first route. */
   private lastHash: string | null = null;
+  private lastPageEntryId: string | null = null;
   /** The stamp of the Settings entry last routed, or null if it was a page. */
   private lastSettingsEntry: SettingsEntry | null = null;
 
@@ -623,21 +626,51 @@ export class AppRoot extends LitElement {
    * The first route only notes where the shell starts: a Settings URL loaded
    * directly has no page behind it, and a reloaded entry keeps its stamp.
    */
-  private trackSettingsEntry() {
-    const hash = window.location.hash;
-    const previous = this.lastHash;
-    this.lastHash = hash;
+  private trackSettingsEntry(event?: HashChangeEvent) {
+    let hash = window.location.hash;
+    // oldURL is the actual address left, including a silent autosave or page
+    // normalization since the last hashchange. lastHash alone can be stale.
+    const previous = event?.oldURL ? new URL(event.oldURL).hash : this.lastHash;
+    const departing = this.lastSettingsEntry;
     if (!isSettingsHash(hash)) {
+      // Only reconcile the actual underlying entry. A login, a link to a
+      // different page, or even a new entry with the old URL is its own move.
+      if (isSettingsHash(previous ?? '') && departing?.origin
+          && pageEntryId() === departing.origin && departing.background
+          && hash !== departing.background) {
+        history.replaceState(history.state, '', departing.background);
+        hash = window.location.hash;
+      }
+      this.lastHash = hash;
       this.lastSettingsEntry = null;
+      this.lastPageEntryId = ensurePageEntry();
       return;
     }
     let entry = settingsEntry();
     if (!entry && previous !== null) {
-      entry = nextSettingsEntry(previous, this.lastSettingsEntry);
+      entry = nextSettingsEntry(previous, departing, this.lastPageEntryId);
+      stampSettingsEntry(entry);
+    } else if (entry?.origin && entry.origin === departing?.origin
+        && isSettingsHash(previous ?? '') && entry.background !== departing.background) {
+      // Back/Forward between URL-chosen sections keeps their own depth, but
+      // not an obsolete background route from before a draft replacement.
+      entry = { ...entry, background: departing.background };
+      stampSettingsEntry(entry);
+    } else if (entry?.origin && entry.origin === this.lastPageEntryId
+        && previous !== null && !isSettingsHash(previous) && entry.background !== previous) {
+      // Forward can first reach an older Settings section skipped by Close's
+      // go(-depth). Its underlying entry now carries the canonical new URL.
+      entry = { ...entry, background: previous };
       stampSettingsEntry(entry);
     }
+    this.lastHash = hash;
     this.lastSettingsEntry = entry;
   }
+
+  private _handleBackgroundChanged = () => {
+    this.lastSettingsEntry = settingsEntry();
+    this.requestUpdate();
+  };
 
   /**
    * A section chosen in the Settings window: the entry is REPLACED, stamp and
@@ -659,11 +692,11 @@ export class AppRoot extends LitElement {
    */
   private _closeSettings = () => {
     const entry = settingsEntry();
-    if (entry?.background && entry.depth > 0) {
+    if (entry?.background && entry.depth > 0 && entry.origin !== null) {
       history.go(-entry.depth);
       return;
     }
-    window.location.replace('#/');
+    window.location.replace(entry?.background ?? '#/');
   };
 
   /** The Settings window, while the URL names it. */

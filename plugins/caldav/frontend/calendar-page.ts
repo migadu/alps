@@ -33,7 +33,7 @@ import { isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
 import '../../../frontend/src/components/alps-popup';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
-import { pageHash } from '../../../frontend/src/utils/settings-history';
+import { pageHash, updateSettingsBackground } from '../../../frontend/src/utils/settings-history';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
 
 type ViewMode = 'day' | 'week' | 'month' | 'year';
@@ -524,7 +524,7 @@ export class CalendarPage extends LitElement {
         // leave the calendar. `replaceState` fires no `hashchange`, so the
         // caller fetches on `changed` as the event would have.
         if (!isSettingsHash(window.location.hash) && (pathStr === '/calendar' || pathStr === '/calendar/')) {
-            history.replaceState(null, '', this.hashFor(this.viewMode, this.currentDate, this.searchQuery));
+            history.replaceState(history.state, '', this.hashFor(this.viewMode, this.currentDate, this.searchQuery));
         }
 
         return changed;
@@ -565,8 +565,11 @@ export class CalendarPage extends LitElement {
      * Not while the Settings window is open over the page: the URL is the
      * window's, and assigning it would close the window. */
     private navigate(mode: ViewMode, date: Date, query: string = '') {
-        if (isSettingsHash(window.location.hash)) return;
         const hash = this.hashFor(mode, date, query);
+        if (updateSettingsBackground(hash)) {
+            if (this.parseHash(hash)) this.fetchData();
+            return;
+        }
         if (window.location.hash !== hash) {
             window.location.hash = hash;
         } else {
