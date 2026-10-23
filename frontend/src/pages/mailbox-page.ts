@@ -364,9 +364,6 @@ export class MailboxPage extends LitElement {
   @state() private isSidebarDragging = false;
   @state() private isPaneDragging = false;
   @state() private sidebarWidth = SIDEBAR_WIDTH_DEFAULT;
-  /** The collapsed sidebar is open as its hover overlay. The sidebar decides;
-   * this mirrors it so the folder list renders expanded meanwhile. */
-  @state() private sidebarPeeking = false;
   @state() private densityMode: DensityMode = 'compact';
   @state() private showSenderAvatars = true;
   @state() private isSyncing = false;
@@ -2412,7 +2409,6 @@ export class MailboxPage extends LitElement {
           @drag-end=${() => this.isSidebarDragging = false}
           @toggle-collapse=${() => this.settingsStore.updateSettings({ sidebarCollapsed: !this.sidebarCollapsed })}
           @close-sidebar=${() => this.mobileSidebarOpen = false}
-          @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
         >
           <alps-folder-list
             .mailboxes=${this.mailboxes}
@@ -2420,7 +2416,6 @@ export class MailboxPage extends LitElement {
             .expandedFolders=${this.expandedFolders}
             .layoutMode=${effectiveLayoutMode}
             .syncing=${this.isSyncing}
-            ?collapsed=${this.sidebarCollapsed && !this.isMobile && !this.sidebarPeeking}
             @select-mailbox=${(e: CustomEvent) => {
         if (this.currentMailbox === e.detail.name) {
           this.currentPage = 0;

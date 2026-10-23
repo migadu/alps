@@ -12,9 +12,15 @@
  * work there, so it must stay outside the inert subtree; the footer's expand
  * button is in the sidebar's own shadow root, outside it by construction. A
  * mobile drawer is never the strip, so it is never inert.
+ *
+ * Every content is an `<alps-sidebar-content>`, which sets `inert` from the
+ * strip state alps-sidebar provides (alps-sidebar-strip.ts), so each is
+ * mounted here under a real sidebar.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, mount, shadow, update, waitFor } from './helpers/dom';
+import { cleanup, mount, shadow, waitFor } from './helpers/dom';
+import { inSidebar, setSidebar, settleSidebar } from './helpers/sidebar';
+import type { AlpsSidebar } from '../src/components/alps-sidebar';
 import { readSources } from './helpers/sources';
 import { SettingsStore } from '../src/store/settings-store';
 import '../src/components/folder-list';
@@ -57,7 +63,11 @@ const createIsLive = (el: El) => shadow(el, 'alps-create-button').closest('[iner
 async function set(el: El, patch: Record<string, unknown>) {
   Object.assign(el, patch);
   await el.updateComplete;
+  await settleSidebar(bar(el));
 }
+
+/** The page's own sidebar. */
+const bar = (el: El) => shadow<AlpsSidebar>(el, 'alps-sidebar');
 
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -71,13 +81,13 @@ afterEach(() => {
   window.location.hash = '';
 });
 
-describe('every dimmed sidebar content is inert in the strip (source pin)', () => {
+describe('every dimmed sidebar content is an <alps-sidebar-content> (source pin)', () => {
   // A sidebar added later inherits the dimming from sidebarLayoutStyles by
-  // using this class; it must not forget the half the keyboard needs.
+  // using this class; as a plain element it would be dimmed but not inert.
   const tags = Object.entries(readSources())
-    .filter(([path]) => !path.endsWith('/components/alps-sidebar.ts'))
+    .filter(([path]) => !path.endsWith('/components/alps-sidebar.ts') && !path.endsWith('/components/alps-sidebar-strip.ts'))
     .flatMap(([path, source]) =>
-      [...source.matchAll(/<[a-z-]+\s+class="sidebar-content"[^>]*>/g)].map((m) => [path, m[0]] as const),
+      [...source.matchAll(/<([a-z-]+)\s+class="sidebar-content"[^>]*>/g)].map((m) => [path, m[1]] as const),
     );
 
   it('finds the five containers', () => {
@@ -91,37 +101,40 @@ describe('every dimmed sidebar content is inert in the strip (source pin)', () =
   });
 
   it.each(tags)('%s', (_path, tag) => {
-    expect(tag).toMatch(/\?inert=\$\{/);
+    expect(tag).toBe('alps-sidebar-content');
   });
 });
 
 describe('mail (alps-folder-list)', () => {
-  const list = (collapsed: boolean) => mount<El>('alps-folder-list', { i18nStore, mailboxes: [], collapsed });
+  const list = (collapsed: boolean) => inSidebar<El>('alps-folder-list', { i18nStore, mailboxes: [] }, { collapsed });
 
   it('is inert in the strip, with Compose still live', async () => {
-    const el = await list(true);
+    const { el } = await list(true);
     expect(inert(el)).toBe(true);
     expect(createIsLive(el)).toBe(true);
   });
 
-  it('is live when expanded or peeking (the page passes collapsed=false then)', async () => {
-    const el = await list(false);
+  it('is live when expanded or peeking', async () => {
+    const { el, sidebar } = await list(false);
+    expect(inert(el)).toBe(false);
+
+    await setSidebar(sidebar, { collapsed: true, peeking: true });
     expect(inert(el)).toBe(false);
   });
 });
 
 describe('contacts (alps-contacts-categories)', () => {
   it('is inert in the strip and live when it peeks, with Create still live', async () => {
-    const el = await mount<El>('alps-contacts-categories', { i18nStore, sidebarCollapsed: true, isMobile: false, sidebarPeeking: false });
+    const { el, sidebar } = await inSidebar<El>('alps-contacts-categories', { i18nStore }, { collapsed: true });
     expect(inert(el)).toBe(true);
     expect(createIsLive(el)).toBe(true);
 
-    await update(el, { sidebarPeeking: true });
+    await setSidebar(sidebar, { peeking: true });
     expect(inert(el)).toBe(false);
   });
 
   it('is live on mobile, whatever the saved setting says', async () => {
-    const el = await mount<El>('alps-contacts-categories', { i18nStore, sidebarCollapsed: true, isMobile: true });
+    const { el } = await inSidebar<El>('alps-contacts-categories', { i18nStore }, { collapsed: true, isMobile: true });
     expect(inert(el)).toBe(false);
   });
 });
@@ -131,14 +144,16 @@ describe('tasks (tasks-page)', () => {
     window.location.hash = '#/tasks';
     vi.spyOn(tasksService, 'fetchTasks').mockResolvedValue({ tasks: [], calendars: [], failedCalendars: 0 });
     const el = await mount<El>('tasks-page', { i18nStore, settingsStore: settingsStore() });
+    await settleSidebar(bar(el));
     expect(inert(el)).toBe(true);
     expect(content(el).querySelector('.smart-list')).not.toBeNull();
     expect(createIsLive(el)).toBe(true);
 
-    await set(el, { sidebarPeeking: true });
+    await setSidebar(bar(el), { peeking: true });
     expect(inert(el)).toBe(false);
 
-    await set(el, { sidebarPeeking: false, isMobile: true });
+    await setSidebar(bar(el), { peeking: false });
+    await set(el, { isMobile: true });
     expect(inert(el)).toBe(false);
   });
 });
@@ -151,6 +166,7 @@ describe('calendar (calendar-page)', () => {
     window.location.hash = '#/calendar/month/2026-08';
     const el = await mount<El>('calendar-page', { i18nStore });
     await waitFor(() => !el.loading, 'the first read');
+    await settleSidebar(bar(el));
     expect(inert(el)).toBe(false);
 
     await set(el, { sidebarCollapsed: true });
@@ -158,10 +174,11 @@ describe('calendar (calendar-page)', () => {
     expect(content(el).querySelector('alps-sidebar-calendar')).not.toBeNull();
     expect(createIsLive(el)).toBe(true);
 
-    await set(el, { sidebarPeeking: true });
+    await setSidebar(bar(el), { peeking: true });
     expect(inert(el)).toBe(false);
 
-    await set(el, { sidebarPeeking: false, isMobile: true });
+    await setSidebar(bar(el), { peeking: false });
+    await set(el, { isMobile: true });
     expect(inert(el)).toBe(false);
   });
 });
@@ -169,12 +186,14 @@ describe('calendar (calendar-page)', () => {
 describe('settings (settings-page)', () => {
   it('is inert in the strip and live when it peeks or on mobile', async () => {
     const el = await mount<El>('settings-page', { i18nStore, settingsStore: settingsStore() });
+    await settleSidebar(bar(el));
     expect(inert(el)).toBe(true);
 
-    await set(el, { sidebarPeeking: true });
+    await setSidebar(bar(el), { peeking: true });
     expect(inert(el)).toBe(false);
 
-    await set(el, { sidebarPeeking: false, isMobile: true });
+    await setSidebar(bar(el), { peeking: false });
+    await set(el, { isMobile: true });
     expect(inert(el)).toBe(false);
   });
 });

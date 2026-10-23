@@ -15,6 +15,7 @@ import { MESSAGE_DRAG_TYPE, readMessageDrag } from '../src/utils/message-drag';
 import { messageSync } from '../src/services/message-sync';
 import { messageKey } from '../src/utils/message-key';
 import { cleanup, flush, mount, record, shadowAll, update, waitFor } from './helpers/dom';
+import { inSidebar } from './helpers/sidebar';
 
 type El = HTMLElement & Record<string, any>;
 
@@ -236,11 +237,12 @@ describe('a folder row under a drag', () => {
   const settingsStore = Object.assign(new EventTarget(), { getState: () => ({}), updateSettings: async () => {} });
   const composeStore = Object.assign(new EventTarget(), { getState: () => ({}) });
 
+  const FOLDER_LIST = {
+    i18nStore, settingsStore, composeStore, mailboxes: FOLDERS, currentMailbox: 'INBOX',
+    expandedFolders: new Set(['Old']),
+  };
   async function sidebar(props: Record<string, unknown> = {}): Promise<El> {
-    return mount<El>('alps-folder-list', {
-      i18nStore, settingsStore, composeStore, mailboxes: FOLDERS, currentMailbox: 'INBOX',
-      expandedFolders: new Set(['Old']), ...props,
-    });
+    return mount<El>('alps-folder-list', { ...FOLDER_LIST, ...props });
   }
   /** A row by the caption it is drawn with (special folders by their slot). */
   const rowFor = (el: El, title: string) =>
@@ -293,7 +295,8 @@ describe('a folder row under a drag', () => {
   });
 
   it('takes nothing while collapsed to the strip', async () => {
-    const el = await sidebar({ collapsed: true });
+    // Told by the sidebar it sits in, as on the page.
+    const { el } = await inSidebar<El>('alps-folder-list', FOLDER_LIST, { collapsed: true });
     const e = await over(el, 'Work');
     expect(e.defaultPrevented).toBe(false);
   });
