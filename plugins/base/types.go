@@ -344,7 +344,7 @@ func newIMAPPartNode(msg *IMAPMessage, path []int, part imap.BodyStructure) *IMA
 		node.Params = singlePart.Params
 		node.Size = singlePart.Size
 		if strings.EqualFold(singlePart.Encoding, "base64") {
-			node.Size = (node.Size * 3) / 4
+			node.Size = base64DecodedSize(node.Size)
 		}
 		disp := singlePart.Disposition()
 		if disp != nil && strings.EqualFold(disp.Value, "inline") {
@@ -352,6 +352,26 @@ func newIMAPPartNode(msg *IMAPMessage, path []int, part imap.BodyStructure) *IMA
 		}
 	}
 	return node
+}
+
+// base64DecodedSize estimates the size of the data in a base64 body of
+// encoded octets. BODYSTRUCTURE gives the body's size as stored, with the CRLF
+// that ends each line of 76 characters (RFC 2045 §6.8): counted as data, the
+// line breaks read a file 2.6% larger than it is, so they are taken out before
+// every four characters become three bytes. Each full line of 78 octets holds
+// one. The last line may end in one or not: alps writes none, as the CRLF
+// before the next boundary belongs to the boundary (RFC 2046 §5.1.1). Base64
+// comes in groups of four characters, so the count that leaves a multiple of
+// four is the one that fits. For 76-character lines the result is the file's
+// size, or up to two bytes more for padding, which the size alone does not
+// tell. It is worked out in 64 bits: Size*3 overflowed above about 1.4 GB.
+func base64DecodedSize(encoded uint32) uint32 {
+	n := uint64(encoded)
+	chars := n - 2*(n/78)
+	if withLast := 2 * ((n + 77) / 78); chars%4 != 0 && withLast <= n {
+		chars = n - withLast
+	}
+	return uint32(chars * 3 / 4)
 }
 
 func (node IMAPPartNode) PathString() string {
