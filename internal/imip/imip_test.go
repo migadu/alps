@@ -3,6 +3,7 @@ package imip
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"strings"
@@ -152,6 +153,81 @@ func TestSendDeliversNothingItCouldNotWrite(t *testing.T) {
 	defer d.mu.Unlock()
 	if d.n != 0 {
 		t.Errorf("the server accepted %d messages", d.n)
+	}
+}
+
+// answering takes a message whole, and then answers it as the test chooses:
+// with reply, or, when reply is nil, by dropping the connection.
+type answering struct {
+	deliveries
+	reply error
+}
+
+func (a *answering) NewSession(c *smtp.Conn) (smtp.Session, error) {
+	return &answeringSession{a, c}, nil
+}
+
+type answeringSession struct {
+	*answering
+	conn *smtp.Conn
+}
+
+func (s *answeringSession) Data(ctx context.Context, r io.Reader) error {
+	if err := s.deliveries.Data(ctx, r); err != nil {
+		return err
+	}
+	if s.reply == nil {
+		s.conn.Conn().Close()
+	}
+	return s.reply
+}
+
+// The session's DoSMTP sends again what fails on a temporary refusal or a
+// failed connection. A refusal of the message is one; a connection that
+// fails once the message is in is not, as the server may have taken it, and
+// the guests would have it twice.
+func TestSendOffersForAnotherTryOnlyWhatTheServerRefused(t *testing.T) {
+	for name, tc := range map[string]struct {
+		reply      error
+		mayBeTried bool
+	}{
+		"refused for now":          {&smtp.SMTPError{Code: 451, EnhancedCode: smtp.EnhancedCode{4, 3, 0}, Message: "try again"}, true},
+		"refused for good":         {&smtp.SMTPError{Code: 554, EnhancedCode: smtp.EnhancedCode{5, 6, 0}, Message: "no"}, false},
+		"no answer to the message": {nil, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := &answering{reply: tc.reply}
+			srv := smtp.NewServer(a)
+			srv.Domain = "localhost"
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			go srv.Serve(ln)
+			t.Cleanup(func() { srv.Close() })
+			c, err := smtp.Dial(ln.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { c.Close() })
+
+			m := &Message{
+				From:     &mail.Address{Address: "ada@example.com"},
+				To:       []*mail.Address{{Address: "grace@example.org"}},
+				Calendar: calendar("REQUEST"),
+			}
+			err = Send(c, "ada@example.com", m)
+			if err == nil {
+				t.Fatal("Send reported the message as taken")
+			}
+			var smtpErr *smtp.SMTPError
+			var netErr net.Error
+			tried := errors.As(err, &smtpErr) && smtpErr.Temporary() ||
+				errors.As(err, &netErr) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
+			if tried != tc.mayBeTried {
+				t.Errorf("%v: offered for another try %v, want %v", err, tried, tc.mayBeTried)
+			}
+		})
 	}
 }
 
