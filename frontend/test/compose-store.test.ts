@@ -510,6 +510,19 @@ describe('saving everything at sign-out', () => {
     expect(composers(store)).toEqual([]);
   });
 
+  it('moves the opening text with content the composer made itself, and only while it is the opening text', async () => {
+    const store = makeStore();
+    store.openComposer({ subject: 'Re: Engines', to: ['ada@example.com'], text: '> the figures', html: '<p>quote</p>', format: 'html' });
+    const id = composers(store)[0].id;
+
+    store.updateComposer(id, { text: 'the figures', html: '<p>quote</p><p></p>' }, { edit: false });
+    expect(composers(store)[0]).toMatchObject({ initialText: 'the figures', initialHtml: '<p>quote</p><p></p>', dirty: false });
+
+    store.updateComposer(id, { text: 'Agreed. the figures', html: '<p>Agreed.</p><p>quote</p><p></p>' });
+    store.updateComposer(id, { text: 'Agreed. the figures', html: '<p>Agreed.</p><p>quote</p>' }, { edit: false });
+    expect(composers(store)[0]).toMatchObject({ initialText: 'the figures', initialHtml: '<p>quote</p><p></p>', dirty: true });
+  });
+
   it('keeps open a composer edited while its save was out, knowing the draft it stored', async () => {
     signIn('ada@example.com');
     const store = makeStore();

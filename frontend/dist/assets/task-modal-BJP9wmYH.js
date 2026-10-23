@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,h as r,m as i,p as a,v as o}from"./lit-Br1cDwGJ.js";import{H as s,Q as c,at as l,ct as u,et as d,it as f,mt as p,nt as m,ot as h,rt as g,tt as _}from"./index-CJnmDPiH.js";import"./alps-address-input-sjiAnNtv.js";function v(e){return e.status===`completed`||e.status===`cancelled`}function y(e){if(!e.due)return null;let t=new Date(e.due);return Number.isNaN(t.getTime())?null:e.allDay?new Date(t.getUTCFullYear(),t.getUTCMonth(),t.getUTCDate()):t}var b=[`overdue`,`today`,`week`,`undated`,`later`,`completed`];function x(e,t=new Date){if(v(e))return`completed`;let n=y(e);if(!n)return`undated`;let r=new Date(t.getFullYear(),t.getMonth(),t.getDate()),i=new Date(t.getFullYear(),t.getMonth(),t.getDate()+1),a=new Date(t.getFullYear(),t.getMonth(),t.getDate()+7);return n<r?`overdue`:n<i?`today`:n<a?`week`:`later`}function S(e){return e.priority&&e.priority>0?e.priority:10}function C(e,t){let n=y(e)?.getTime()??1/0,r=y(t)?.getTime()??1/0;if(n!==r)return n-r;let i=S(e)-S(t);return i===0?e.title.localeCompare(t.title):i}function w(e,t){let n=y(e)?.getTime(),r=y(t)?.getTime();return n===r?e.title.localeCompare(t.title):n===void 0?1:r===void 0?-1:r-n}function T(e){return!e||e<1?null:e<=4?`high`:e===5?`medium`:`low`}function E(e){if(e)return e===`rs`?`sr-Cyrl`:e===`sr`?`sr-Latn`:e}function D(e,t,n,r){let i=y(e);if(!i)return``;let a=i.getFullYear()===t.getFullYear()&&i.getMonth()===t.getMonth()&&i.getDate()===t.getDate(),o={hour:`2-digit`,minute:`2-digit`},s={month:`short`,day:`numeric`,...i.getFullYear()===t.getFullYear()?{}:{year:`numeric`}};return a?e.allDay?n:i.toLocaleTimeString(r,o):e.allDay?i.toLocaleDateString(r,s):i.toLocaleString(r,{...s,...o})}function O(e){return e===`completed`?`closed`:`active`}function k(e,t,n=new Date){let r=x(e,n);switch(t){case`today`:return r===`overdue`||r===`today`;case`upcoming`:return r===`week`||r===`later`;case`undated`:return r===`undated`;case`completed`:return r===`completed`;default:return r!==`completed`}}var A=new class{async fetchTasks(e){let t=await h(e?`/calendar/tasks?scope=${e}`:`/calendar/tasks`);if(!t.ok)throw new f(t.status,`Failed to fetch tasks`);let n=await t.json();return{tasks:n.tasks??[],calendars:n.calendars??[],failedCalendars:n.failedCalendars??0,scheduling:n.scheduling}}createTask(e){return this.send(`/calendar/tasks`,e,`Failed to create task`)}updateTask(e,t){return this.send(`/calendar/tasks/${l(e)}/edit`,t,`Failed to update task`)}completeTask(e,t,n){return this.send(`/calendar/tasks/${l(e)}/complete`,{done:t,lang:n},`Failed to update task`)}async deleteTask(e,t={}){let n=new URLSearchParams;t.notify===!1&&n.set(`notify`,`0`),t.lang&&n.set(`lang`,t.lang);let r=n.toString()?`?${n.toString()}`:``,i=await h(`/calendar/tasks/${l(e)}${r}`,{method:`DELETE`});if(!i.ok)throw new f(i.status,`Failed to delete task`);return i.json().catch(()=>({}))}async send(e,t,n){let r=await h(e,{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify(t)});if(!r.ok)throw new f(r.status,n);return r.json()}};function j(e){return!e.components?.length||e.components.some(e=>e.toUpperCase()===`VEVENT`)}function M(e){let t=e.trim(),n=/^(.*)<([^<>\s]+@[^<>\s]+)>$/.exec(t);if(n){let{name:e}=c(t);return e?{email:n[2],name:e}:{email:n[2]}}return/^[^\s@<>]+@[^\s@<>]+$/.test(t)?{email:t}:null}function N(e){let t=e.name?.replace(/"/g,``).trim();return t?`"${t.replace(/\\/g,`\\\\`)}" <${e.email}>`:e.email}function P(e,t){return!!e&&F({role:e.role,attendees:e.attendees,status:e.answer},t)}function F(e,t){return!e||t===`server`||e.ended?!1:e.role===`organizer`?(e.attendees?.length??0)>0:e.role===`attendee`&&e.status!==`declined`}var I=[`#2563eb`,`#16a34a`,`#d97706`,`#dc2626`,`#9333ea`,`#0891b2`,`#db2777`,`#ea580c`];function L(e){let t=0;for(let n=0;n<e.length;n++)t=e.charCodeAt(n)+((t<<5)-t);return I[Math.abs(t)%I.length]}function R(e){return e.allDay===!0}var z=class{async fetchCalendars(){let e=await h(`/calendar/calendars`);if(!e.ok)throw Error(`Failed to fetch calendars`);return e.json()}async fetchEvents(e,t,n){let r=new URLSearchParams;r.append(`start`,e.toISOString()),r.append(`end`,t.toISOString()),n&&r.append(`query`,n);let i=await h(`/calendar/events?${r.toString()}`);if(!i.ok)throw Error(`Failed to fetch events`);return i.json()}async createCalendar(e,t){let n=await h(`/calendar/calendars`,{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify(t?{name:e,components:t}:{name:e})});if(!n.ok)throw new f(n.status,`Failed to create calendar`);return n.json()}async renameCalendar(e,t){let n=await h(`/calendar/calendars/${l(e)}`,{method:`PATCH`,headers:{"Content-Type":`application/json`},body:JSON.stringify({name:t})});if(!n.ok)throw Error(`Failed to rename calendar`);return n.json()}async deleteCalendar(e){let t=await h(`/calendar/calendars/${l(e)}`,{method:`DELETE`});if(!t.ok)throw Error(`Failed to delete calendar`);return t.json()}async createEvent(e){let t=await h(`/calendar/events`,{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify(e)});if(!t.ok)throw new f(t.status,`Failed to create event`);return t.json()}async updateEvent(e,t){let n=await h(`/calendar/events/${l(e)}/edit`,{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify(t)});if(!n.ok)throw new f(n.status,`Failed to update event`);return n.json()}async respondToEvent(e,t,n){let r=await h(`/calendar/${e.task?`tasks`:`events`}/${l(e.path)}/respond`,{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify({status:t,etag:e.etag,lang:n})});if(!r.ok)throw new f(r.status,`Failed to answer the invitation`);return r.json()}async deleteEvent(e,t={}){let n=l(e),r=new URLSearchParams;t.notify===!1&&r.set(`notify`,`0`),t.lang&&r.set(`lang`,t.lang);let i=await h(`/calendar/events/${n}${r.toString()?`?${r.toString()}`:``}`,{method:`DELETE`});if(!i.ok)throw Error(`Failed to delete event`);return i.json()}},B=e=>`${e.getFullYear()}-${String(e.getMonth()+1).padStart(2,`0`)}-${String(e.getDate()).padStart(2,`0`)}`;function V(e){let t=[];for(let n of e){let e=y(n);if(!e||v(n))continue;let r=new Date(e.getFullYear(),e.getMonth(),e.getDate()+1);t.push({uid:n.uid,summary:n.title,start:`${B(e)}T00:00:00Z`,end:`${B(r)}T00:00:00Z`,allDay:!0,path:n.path,calendarPath:n.calendarPath,task:n})}return t}function H(e,t=1){let n=new Date(e),r=(n.getDay()-t+7)%7;return n.setDate(n.getDate()-r),n.setHours(0,0,0,0),n}var U=new z,W=[`DAILY`,`WEEKLY`,`MONTHLY`,`YEARLY`];function G(e){return e?W.find(t=>e===`FREQ=${t}`)??`CUSTOM`:``}var K=e=>String(e).padStart(2,`0`),q=class extends r{constructor(...e){super(...e),this.open=!1,this.lists=[],this.defaultList=``,this.scheduling=`email`,this.title=``,this.description=``,this.dueDate=``,this.dueTime=``,this.allDay=!0,this.status=`needs-action`,this.priority=0,this.percent=0,this.repeat=``,this.calendarPath=``,this.saving=!1,this.attendees=[],this.askNotify=!1,this.originalRRule=``,this.openedDue={date:``,time:``,allDay:!0}}static{this.styles=[s,e`
+import{b as e,c as t,f as n,h as r,m as i,p as a,v as o}from"./lit-Br1cDwGJ.js";import{G as s,at as c,ct as l,ft as u,lt as d,ot as f,rt as p,st as m,tt as h,ut as g,vt as _}from"./index-BBqnOQLc.js";import"./alps-address-input-B7GhSO0k.js";function v(e){return e.status===`completed`||e.status===`cancelled`}function y(e){if(!e.due)return null;let t=new Date(e.due);return Number.isNaN(t.getTime())?null:e.allDay?new Date(t.getUTCFullYear(),t.getUTCMonth(),t.getUTCDate()):t}var b=[`overdue`,`today`,`week`,`undated`,`later`,`completed`];function x(e,t=new Date){if(v(e))return`completed`;let n=y(e);if(!n)return`undated`;let r=new Date(t.getFullYear(),t.getMonth(),t.getDate()),i=new Date(t.getFullYear(),t.getMonth(),t.getDate()+1),a=new Date(t.getFullYear(),t.getMonth(),t.getDate()+7);return n<r?`overdue`:n<i?`today`:n<a?`week`:`later`}function S(e){return e.priority&&e.priority>0?e.priority:10}function C(e,t){let n=y(e)?.getTime()??1/0,r=y(t)?.getTime()??1/0;if(n!==r)return n-r;let i=S(e)-S(t);return i===0?e.title.localeCompare(t.title):i}function w(e,t){let n=y(e)?.getTime(),r=y(t)?.getTime();return n===r?e.title.localeCompare(t.title):n===void 0?1:r===void 0?-1:r-n}function T(e){return!e||e<1?null:e<=4?`high`:e===5?`medium`:`low`}function E(e){if(e)return e===`rs`?`sr-Cyrl`:e===`sr`?`sr-Latn`:e}function D(e,t,n,r){let i=y(e);if(!i)return``;let a=i.getFullYear()===t.getFullYear()&&i.getMonth()===t.getMonth()&&i.getDate()===t.getDate(),o={hour:`2-digit`,minute:`2-digit`},s={month:`short`,day:`numeric`,...i.getFullYear()===t.getFullYear()?{}:{year:`numeric`}};return a?e.allDay?n:i.toLocaleTimeString(r,o):e.allDay?i.toLocaleDateString(r,s):i.toLocaleString(r,{...s,...o})}function O(e){return e===`completed`?`closed`:`active`}function k(e,t,n=new Date){let r=x(e,n);switch(t){case`today`:return r===`overdue`||r===`today`;case`upcoming`:return r===`week`||r===`later`;case`undated`:return r===`undated`;case`completed`:return r===`completed`;default:return r!==`completed`}}var A=new class{async fetchTasks(e){let t=await g(e?`/calendar/tasks?scope=${e}`:`/calendar/tasks`);if(!t.ok)throw new l(t.status,`Failed to fetch tasks`);let n=await t.json();return{tasks:n.tasks??[],calendars:n.calendars??[],failedCalendars:n.failedCalendars??0,scheduling:n.scheduling}}createTask(e){return this.send(`/calendar/tasks`,e,`Failed to create task`)}updateTask(e,t){return this.send(`/calendar/tasks/${d(e)}/edit`,t,`Failed to update task`)}completeTask(e,t,n){return this.send(`/calendar/tasks/${d(e)}/complete`,{done:t,lang:n},`Failed to update task`)}async deleteTask(e,t={}){let n=new URLSearchParams;t.notify===!1&&n.set(`notify`,`0`),t.lang&&n.set(`lang`,t.lang);let r=n.toString()?`?${n.toString()}`:``,i=await g(`/calendar/tasks/${d(e)}${r}`,{method:`DELETE`});if(!i.ok)throw new l(i.status,`Failed to delete task`);return i.json().catch(()=>({}))}async send(e,t,n){let r=await g(e,{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify(t)});if(!r.ok)throw new l(r.status,n);return r.json()}};function j(e){return!e.components?.length||e.components.some(e=>e.toUpperCase()===`VEVENT`)}function M(e){let t=e.trim(),n=/^(.*)<([^<>\s]+@[^<>\s]+)>$/.exec(t);if(n){let{name:e}=h(t);return e?{email:n[2],name:e}:{email:n[2]}}return/^[^\s@<>]+@[^\s@<>]+$/.test(t)?{email:t}:null}function N(e){let t=e.name?.replace(/"/g,``).trim();return t?`"${t.replace(/\\/g,`\\\\`)}" <${e.email}>`:e.email}function P(e,t){return!!e&&F({role:e.role,attendees:e.attendees,status:e.answer},t)}function F(e,t){return!e||t===`server`||e.ended?!1:e.role===`organizer`?(e.attendees?.length??0)>0:e.role===`attendee`&&e.status!==`declined`}var I=[`#2563eb`,`#16a34a`,`#d97706`,`#dc2626`,`#9333ea`,`#0891b2`,`#db2777`,`#ea580c`];function L(e){let t=0;for(let n=0;n<e.length;n++)t=e.charCodeAt(n)+((t<<5)-t);return I[Math.abs(t)%I.length]}function R(e){return e.allDay===!0}var z=class{async fetchCalendars(){let e=await g(`/calendar/calendars`);if(!e.ok)throw Error(`Failed to fetch calendars`);return e.json()}async fetchEvents(e,t,n){let r=new URLSearchParams;r.append(`start`,e.toISOString()),r.append(`end`,t.toISOString()),n&&r.append(`query`,n);let i=await g(`/calendar/events?${r.toString()}`);if(!i.ok)throw Error(`Failed to fetch events`);return i.json()}async createCalendar(e,t){let n=await g(`/calendar/calendars`,{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify(t?{name:e,components:t}:{name:e})});if(!n.ok)throw new l(n.status,`Failed to create calendar`);return n.json()}async renameCalendar(e,t){let n=await g(`/calendar/calendars/${d(e)}`,{method:`PATCH`,headers:{"Content-Type":`application/json`},body:JSON.stringify({name:t})});if(!n.ok)throw Error(`Failed to rename calendar`);return n.json()}async deleteCalendar(e){let t=await g(`/calendar/calendars/${d(e)}`,{method:`DELETE`});if(!t.ok)throw Error(`Failed to delete calendar`);return t.json()}async createEvent(e){let t=await g(`/calendar/events`,{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify(e)});if(!t.ok)throw new l(t.status,`Failed to create event`);return t.json()}async updateEvent(e,t){let n=await g(`/calendar/events/${d(e)}/edit`,{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify(t)});if(!n.ok)throw new l(n.status,`Failed to update event`);return n.json()}async respondToEvent(e,t,n){let r=await g(`/calendar/${e.task?`tasks`:`events`}/${d(e.path)}/respond`,{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify({status:t,etag:e.etag,lang:n})});if(!r.ok)throw new l(r.status,`Failed to answer the invitation`);return r.json()}async deleteEvent(e,t={}){let n=d(e),r=new URLSearchParams;t.notify===!1&&r.set(`notify`,`0`),t.lang&&r.set(`lang`,t.lang);let i=await g(`/calendar/events/${n}${r.toString()?`?${r.toString()}`:``}`,{method:`DELETE`});if(!i.ok)throw Error(`Failed to delete event`);return i.json()}},B=e=>`${e.getFullYear()}-${String(e.getMonth()+1).padStart(2,`0`)}-${String(e.getDate()).padStart(2,`0`)}`;function V(e){let t=[];for(let n of e){let e=y(n);if(!e||v(n))continue;let r=new Date(e.getFullYear(),e.getMonth(),e.getDate()+1);t.push({uid:n.uid,summary:n.title,start:`${B(e)}T00:00:00Z`,end:`${B(r)}T00:00:00Z`,allDay:!0,path:n.path,calendarPath:n.calendarPath,task:n})}return t}function H(e,t=1){let n=new Date(e),r=(n.getDay()-t+7)%7;return n.setDate(n.getDate()-r),n.setHours(0,0,0,0),n}var U=new z,W=[`DAILY`,`WEEKLY`,`MONTHLY`,`YEARLY`];function G(e){return e?W.find(t=>e===`FREQ=${t}`)??`CUSTOM`:``}var K=e=>String(e).padStart(2,`0`),q=class extends r{constructor(...e){super(...e),this.open=!1,this.lists=[],this.defaultList=``,this.scheduling=`email`,this.title=``,this.description=``,this.dueDate=``,this.dueTime=``,this.allDay=!0,this.status=`needs-action`,this.priority=0,this.percent=0,this.repeat=``,this.calendarPath=``,this.saving=!1,this.attendees=[],this.askNotify=!1,this.originalRRule=``,this.openedDue={date:``,time:``,allDay:!0}}static{this.styles=[s,e`
             .form-group {
                 margin-bottom: 16px;
                 flex: 1;
@@ -77,8 +77,10 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,v as o}from"./lit-Br1cDwGJ.js";
                 @cancel=${this.close}
             >
                 <div class="form-group">
-                    <label>${e(`tasks.titleField`)}</label>
+                    <!-- Each label names its field: a bare one was tied to nothing. -->
+                    <label for="task-title">${e(`tasks.titleField`)}</label>
                     <alps-input
+                        id="task-title"
                         label=${e(`tasks.titleField`)}
                         class="title-input"
                         .value=${this.title}
@@ -89,8 +91,9 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,v as o}from"./lit-Br1cDwGJ.js";
 
                 ${!n&&this.lists.length>1?o`
                     <div class="form-group">
-                        <label>${e(`tasks.list`)}</label>
+                        <label for="task-list">${e(`tasks.list`)}</label>
                         <alps-select
+                            id="task-list"
                             class="list-select"
                             label=${e(`tasks.list`)}
                             .value=${this.calendarPath}
@@ -102,8 +105,9 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,v as o}from"./lit-Br1cDwGJ.js";
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>${e(`tasks.due`)}</label>
+                        <label for="task-due">${e(`tasks.due`)}</label>
                         <alps-input
+                            id="task-due"
                             label=${e(`tasks.due`)}
                             class="due-date"
                             type="date"
@@ -113,8 +117,9 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,v as o}from"./lit-Br1cDwGJ.js";
                     </div>
                     ${t&&!this.allDay?o`
                         <div class="form-group">
-                            <label>${e(`tasks.time`)}</label>
+                            <label for="task-time">${e(`tasks.time`)}</label>
                             <alps-input
+                                id="task-time"
                                 label=${e(`tasks.time`)}
                                 class="due-time"
                                 type="time"
@@ -139,8 +144,9 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,v as o}from"./lit-Br1cDwGJ.js";
                 <div class="form-row">
                     ${n?o`
                         <div class="form-group">
-                            <label>${e(`tasks.status`)}</label>
+                            <label for="task-status">${e(`tasks.status`)}</label>
                             <alps-select
+                                id="task-status"
                                 class="status-select"
                                 label=${e(`tasks.status`)}
                                 .value=${this.status}
@@ -150,8 +156,9 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,v as o}from"./lit-Br1cDwGJ.js";
                         </div>
                     `:``}
                     <div class="form-group">
-                        <label>${e(`tasks.priority`)}</label>
+                        <label for="task-priority">${e(`tasks.priority`)}</label>
                         <alps-select
+                            id="task-priority"
                             class="priority-select"
                             label=${e(`tasks.priority`)}
                             .value=${String(this.priority)}
@@ -179,9 +186,10 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,v as o}from"./lit-Br1cDwGJ.js";
                         </div>
                     `:``}
                     <div class="form-group">
-                        <label>${e(`tasks.repeat`)}</label>
+                        <label for="task-repeat">${e(`tasks.repeat`)}</label>
                         ${t?o`
                             <alps-select
+                                id="task-repeat"
                                 class="repeat-select"
                                 label=${e(`tasks.repeat`)}
                                 .value=${this.repeat}
@@ -193,8 +201,9 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,v as o}from"./lit-Br1cDwGJ.js";
                 </div>
 
                 <div class="form-group">
-                    <label>${e(`tasks.notes`)}</label>
+                    <label for="task-notes">${e(`tasks.notes`)}</label>
                     <textarea
+                        id="task-notes"
                         .value=${this.description}
                         placeholder=${e(`tasks.addNotes`)}
                         @input=${e=>{this.description=e.target.value}}
@@ -203,12 +212,13 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,v as o}from"./lit-Br1cDwGJ.js";
 
                 ${this.assignedToUser?o`
                     <div class="assigned">
-                        <div><span class="label">${e(`tasks.assignedBy`)}</span> ${n?.organizer?m(n.organizer.name,n.organizer.email):``}</div>
+                        <div><span class="label">${e(`tasks.assignedBy`)}</span> ${n?.organizer?f(n.organizer.name,n.organizer.email):``}</div>
                     </div>
                 `:o`
                     <div class="form-group">
-                        <label>${e(`tasks.assignTo`)}</label>
+                        <label for="task-assignees">${e(`tasks.assignTo`)}</label>
                         <alps-address-input
+                            id="task-assignees"
                             class="assignees"
                             label=${e(`tasks.assignTo`)}
                             .addresses=${this.attendees}
@@ -217,7 +227,7 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,v as o}from"./lit-Br1cDwGJ.js";
                     </div>
                     ${n?.role===`organizer`&&n.attendees?.length?o`
                         <div class="assigned answers">
-                            ${n.attendees.map(t=>o`<div>${g(this.i18nStore,`tasks.assigneeAnswer`,{name:m(t.name,t.email),status:e(`invitations.statuses.${d(t.status)}`)})}</div>`)}
+                            ${n.attendees.map(t=>o`<div>${m(this.i18nStore,`tasks.assigneeAnswer`,{name:f(t.name,t.email),status:e(`invitations.statuses.${p(t.status)}`)})}</div>`)}
                         </div>
                     `:``}
                 `}
@@ -250,4 +260,4 @@ import{b as e,c as t,f as n,h as r,m as i,p as a,v as o}from"./lit-Br1cDwGJ.js";
                     @cancel=${()=>{this.askNotify=!1}}
                 ></ui-confirm>
             `:``}
-        `}};_([t({context:p})],q.prototype,`i18nStore`,void 0),_([a({type:Boolean})],q.prototype,`open`,void 0),_([a({attribute:!1})],q.prototype,`task`,void 0),_([a({type:Array})],q.prototype,`lists`,void 0),_([a({type:String})],q.prototype,`defaultList`,void 0),_([a({type:String})],q.prototype,`scheduling`,void 0),_([n()],q.prototype,`title`,void 0),_([n()],q.prototype,`description`,void 0),_([n()],q.prototype,`dueDate`,void 0),_([n()],q.prototype,`dueTime`,void 0),_([n()],q.prototype,`allDay`,void 0),_([n()],q.prototype,`status`,void 0),_([n()],q.prototype,`priority`,void 0),_([n()],q.prototype,`percent`,void 0),_([n()],q.prototype,`repeat`,void 0),_([n()],q.prototype,`calendarPath`,void 0),_([n()],q.prototype,`saving`,void 0),_([n()],q.prototype,`attendees`,void 0),_([n()],q.prototype,`askNotify`,void 0),q=_([i(`task-modal`)],q);export{A as S,k as _,R as a,T as b,P as c,b as d,w as f,x as g,D as h,j as i,F as l,y as m,U as n,M as o,C as p,L as r,V as s,N as t,H as u,E as v,O as x,v as y};
+        `}};c([t({context:_})],q.prototype,`i18nStore`,void 0),c([a({type:Boolean})],q.prototype,`open`,void 0),c([a({attribute:!1})],q.prototype,`task`,void 0),c([a({type:Array})],q.prototype,`lists`,void 0),c([a({type:String})],q.prototype,`defaultList`,void 0),c([a({type:String})],q.prototype,`scheduling`,void 0),c([n()],q.prototype,`title`,void 0),c([n()],q.prototype,`description`,void 0),c([n()],q.prototype,`dueDate`,void 0),c([n()],q.prototype,`dueTime`,void 0),c([n()],q.prototype,`allDay`,void 0),c([n()],q.prototype,`status`,void 0),c([n()],q.prototype,`priority`,void 0),c([n()],q.prototype,`percent`,void 0),c([n()],q.prototype,`repeat`,void 0),c([n()],q.prototype,`calendarPath`,void 0),c([n()],q.prototype,`saving`,void 0),c([n()],q.prototype,`attendees`,void 0),c([n()],q.prototype,`askNotify`,void 0),q=c([i(`task-modal`)],q);export{A as S,k as _,R as a,T as b,P as c,b as d,w as f,x as g,D as h,j as i,F as l,y as m,U as n,M as o,C as p,L as r,V as s,N as t,H as u,E as v,O as x,v as y};

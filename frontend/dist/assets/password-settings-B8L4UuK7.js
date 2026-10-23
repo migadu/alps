@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,h as r,m as i,v as a}from"./lit-Br1cDwGJ.js";import{mt as o,ot as s,tt as c}from"./index-CJnmDPiH.js";var l=class extends r{constructor(...e){super(...e),this.passwordForm={old:``,new:``,confirm:``},this.isSubmitting=!1}static{this.styles=e`
+import{b as e,c as t,f as n,h as r,m as i,v as a}from"./lit-Br1cDwGJ.js";import{at as o,ut as s,vt as c}from"./index-BBqnOQLc.js";var l=class extends r{constructor(...e){super(...e),this.passwordForm={old:``,new:``,confirm:``},this.isSubmitting=!1}static{this.styles=e`
 		input[type="password"] {
 			width: 100%;
 			box-sizing: border-box;
@@ -43,4 +43,4 @@ import{b as e,c as t,f as n,h as r,m as i,v as a}from"./lit-Br1cDwGJ.js";import{
 						${this.i18nStore?.t(`settings.password.updatePassword`)}
 					</alps-button>
 			</alps-setting-group>			
-	`}};c([t({context:o})],l.prototype,`i18nStore`,void 0),c([n()],l.prototype,`passwordForm`,void 0),c([n()],l.prototype,`isSubmitting`,void 0),l=c([i(`alps-password-settings`)],l);export{l as PasswordSettings};
+	`}};o([t({context:c})],l.prototype,`i18nStore`,void 0),o([n()],l.prototype,`passwordForm`,void 0),o([n()],l.prototype,`isSubmitting`,void 0),l=o([i(`alps-password-settings`)],l);export{l as PasswordSettings};

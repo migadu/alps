@@ -205,6 +205,10 @@ func TestNoSymlinkIsFollowedOutOfTheMaildir(t *testing.T) {
 				if op.name == "status" && err == nil && c.mailbox != "INBOX" && got != "0 messages" {
 					t.Errorf("status counted the messages outside the maildir: %s", got)
 				}
+				// The refusal is reported, not taken for a message that is gone.
+				if op.name == "flag" && err == nil && c.mailbox != "INBOX" {
+					t.Error("the flag change through the link answered success")
+				}
 				if now := snapshot(t, outside); now != before {
 					t.Errorf("%s changed what is outside the maildir:\n%s\nwas:\n%s", op.name, now, before)
 					before = now

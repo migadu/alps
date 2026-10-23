@@ -2,8 +2,8 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import {
-  bareAddress, composeContext, draftContentKey, keptAfterSave, postedAttachments, quoteSourceAfterSave, recipientField,
-  reconcileSavedAttachments, uploadGone,
+  bareAddress, composeContext, discardedInlineAfterSave, draftContentKey, inlinePartPaths, keptAfterSave, postedAttachments, quoteSourceAfterSave,
+  recipientField, reconcileSavedAttachments, uploadGone,
 } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
@@ -391,6 +391,7 @@ export class AlpsFloatingComposer extends LitElement {
         // The quote of a draft being edited follows the draft: see quoteSourceAfterSave.
         const quoteSource = quoteSourceAfterSave(currentInstance, result);
         if (quoteSource) updates.quoteSource = quoteSource;
+        Object.assign(updates, discardedInlineAfterSave(latest, currentInstance, result));
         this.composeStore.updateComposer(this.instance.id, updates);
 
         // If the composer became dirty while saving, or new attachments were added, schedule another save
@@ -460,6 +461,10 @@ export class AlpsFloatingComposer extends LitElement {
     const prev = attachments.map(a => a.partPath).filter(Boolean).join(',');
     if (prev) {
       formData.append('prev_attachments', prev);
+    }
+    const inline = inlinePartPaths(attachments);
+    if (inline) {
+      formData.append('inline_attachments', inline);
     }
 
     if (currentInstance.draftMailbox) {
@@ -1765,7 +1770,9 @@ export class AlpsFloatingComposer extends LitElement {
               .text=${this.instance.text || ''}
               .htmlText=${this.instance.html || ''}
               .format=${this.instance.format || 'html'}
+              .initialText=${this.instance.initialText || ''}
               .quoteSource=${this.instance.quoteSource}
+              .discardedInlineIds=${this.instance.discardedInlineIds || []}
               @text-changed=${(e: CustomEvent) => this.composeStore.updateComposer(
                 this.instance.id,
                 { text: e.detail.text, html: e.detail.html },
