@@ -3050,7 +3050,10 @@ func handleMove(ctx *alps.Context) error {
 				for id := range mapping {
 					movedIDs = append(movedIDs, id)
 				}
-				return fmt.Errorf("failed to move messages: %v", err)
+				// Wrapped, here as for a copy and a delete, so that the kind
+				// of failure the provider names is answered as such: a
+				// message that is gone is a 404, as when it is read.
+				return fmt.Errorf("failed to move messages: %w", err)
 			}
 			moved += len(batch)
 			movedIDs = append(movedIDs, batch...)
@@ -3129,7 +3132,7 @@ func handleCopy(ctx *alps.Context) error {
 		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
 			mapping, err := copyMessagesWithProvider(p, mboxName, to, batch)
 			if err != nil {
-				return fmt.Errorf("failed to copy messages: %v", err)
+				return fmt.Errorf("failed to copy messages: %w", err)
 			}
 			copied += len(batch)
 			if !withMapping {
@@ -3195,7 +3198,7 @@ func handleDelete(ctx *alps.Context) error {
 			// what the session holds of any of them is forgotten.
 			deletedIDs = append(deletedIDs, batch...)
 			if err != nil {
-				return fmt.Errorf("failed to delete messages: %v", err)
+				return fmt.Errorf("failed to delete messages: %w", err)
 			}
 			deleted += len(batch)
 			return nil
