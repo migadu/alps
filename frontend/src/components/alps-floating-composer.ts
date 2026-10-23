@@ -1322,7 +1322,9 @@ export class AlpsFloatingComposer extends LitElement {
     .drag-overlay {
       position: absolute;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(255, 255, 255, 0.85);
+      /* A scrim over the composer's own surface, so it must follow it: a
+         literal white flashed bright over a dark composer in every dark theme. */
+      background: color-mix(in srgb, var(--bg-primary, #ffffff) 85%, transparent);
       z-index: 60;
       display: flex;
       padding: 16px;
@@ -1362,7 +1364,9 @@ export class AlpsFloatingComposer extends LitElement {
     .sending-overlay {
       position: absolute;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(255, 255, 255, 0.8);
+      /* Sending minimizes the composer, so in a dark theme this was a white
+         bar at the foot of the screen for as long as the send took. */
+      background: color-mix(in srgb, var(--bg-primary, #ffffff) 80%, transparent);
       display: flex;
       align-items: center;
       justify-content: center;
