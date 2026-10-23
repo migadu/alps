@@ -183,6 +183,37 @@ describe('going back to a folder', () => {
     release();
     await waitFor(() => subjects(el).length === 2, 'the Inbox read again');
   });
+
+  it('reads the view on screen again, quietly, once a listing setting is saved', async () => {
+    // Settings is a window over this page: the page is no longer torn down
+    // and read again on the way back from it, so a change to threading or the
+    // page size has to re-read the rows the page is showing. Not on the
+    // change itself: the server lists by the account's record, which has the
+    // new value only once the save has landed.
+    history.replaceState(null, '', '#/mailbox/INBOX');
+    const settings = settingsStore();
+    const el = await mount<El>('mailbox-page', { i18nStore, settingsStore: settings, composeStore: new EventTarget() });
+    await waitFor(() => subjects(el).length === 2 && !el.isSyncing, 'the Inbox');
+    const before = listings.length;
+
+    await settings.updateSettings({ enableThreading: false });
+    settings.dispatchEvent(new Event('change'));
+    await flush();
+    await flush();
+    expect(listings.slice(before)).toEqual([]);
+
+    let dimmed = false;
+    settings.dispatchEvent(new CustomEvent('saved', { detail: { keys: ['enableThreading'] } }));
+    await waitFor(() => { dimmed ||= el.loadingMessages; return listings.length > before && !el.isSyncing; }, 'the Inbox read again');
+    expect(listings.slice(before)).toEqual(['INBOX']);
+    expect(dimmed).toBe(false);
+
+    // A saved setting no listing is read under reads nothing.
+    settings.dispatchEvent(new CustomEvent('saved', { detail: { keys: ['densityMode'] } }));
+    await flush();
+    await flush();
+    expect(listings.slice(before)).toEqual(['INBOX']);
+  });
 });
 
 /**

@@ -854,6 +854,12 @@ export class SettingsStore extends EventTarget {
       }
       for (const key of settled) this.unsaved.delete(key);
       this.storeUnsaved(settled);
+      // Said once the server has the values, for what reads them there rather
+      // than here: a mail listing is threaded and paged by the account's
+      // record (mailbox-page).
+      if (outcome === 'saved') {
+        this.dispatchEvent(new CustomEvent('saved', { detail: { keys } }));
+      }
     } finally {
       this.saveInFlight = false;
       if (this.savePending) {

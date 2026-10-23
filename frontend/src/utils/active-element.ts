@@ -28,3 +28,10 @@ export function isMultilineTextEntry(el: Element | null): boolean {
   if (!el) return false;
   return el.tagName === 'TEXTAREA' || (el as HTMLElement).isContentEditable;
 }
+
+/** The focused element, looking inside shadow roots. */
+export function deepActiveElement(): Element | null {
+  let el: Element | null = document.activeElement;
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+  return el;
+}
