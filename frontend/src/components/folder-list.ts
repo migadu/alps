@@ -408,15 +408,6 @@ export class FolderList extends LitElement {
       align-items: center;
     }
 
-    /* Standard icon colors */
-    .icon-inbox { color: var(--icon-inbox, #3b82f6); }
-    .icon-sent { color: var(--icon-sent, #10b981); }
-    .icon-drafts { color: var(--icon-drafts, #f59e0b); }
-    .icon-spam { color: var(--icon-spam, #ef4444); }
-    .icon-trash { color: var(--icon-trash, #6b7280); }
-    .icon-archive { color: var(--icon-archive, #8b5cf6); }
-    .icon-default { color: var(--icon-default, #9ca3af); }
-
     /* Submenu trigger styling inside popup trigger slot */
     .dropdown-item.submenu-trigger {
       display: flex;
@@ -808,26 +799,26 @@ export class FolderList extends LitElement {
     // (authoritative) or, as a fallback, by a well-known name. Several names map
     // to the same slot (Archive/Archives, Spam/Junk); each slot is collapsed to a
     // single primary entry below so the same special mailbox is never shown twice.
-    const specialSlots: { role: MailboxRole; names: string[]; display: { icon: string; colorClass: string; label: string } }[] = [
-      { role: 'inbox', names: [FOLDER_INBOX], display: { icon: 'tray', colorClass: 'icon-inbox', label: this.i18nStore?.t('folderList.inbox') } },
-      { role: 'drafts', names: [FOLDER_DRAFTS], display: { icon: 'fileText', colorClass: 'icon-drafts', label: this.i18nStore?.t('folderList.drafts') } },
-      { role: 'sent', names: [FOLDER_SENT], display: { icon: 'paperPlaneTilt', colorClass: 'icon-sent', label: this.i18nStore?.t('folderList.sent') } },
-      { role: 'archive', names: [FOLDER_ARCHIVE, FOLDER_ARCHIVES], display: { icon: 'archiveBox', colorClass: 'icon-archive', label: this.i18nStore?.t('folderList.archive') } },
-      { role: 'junk', names: [FOLDER_JUNK, FOLDER_SPAM], display: { icon: 'warningDiamond', colorClass: 'icon-spam', label: this.i18nStore?.t('folderList.junk') } },
-      { role: 'trash', names: [FOLDER_TRASH], display: { icon: 'trash', colorClass: 'icon-trash', label: this.i18nStore?.t('folderList.trash') } },
+    const specialSlots: { role: MailboxRole; names: string[]; display: { icon: string; label: string } }[] = [
+      { role: 'inbox', names: [FOLDER_INBOX], display: { icon: 'tray', label: this.i18nStore?.t('folderList.inbox') } },
+      { role: 'drafts', names: [FOLDER_DRAFTS], display: { icon: 'fileText', label: this.i18nStore?.t('folderList.drafts') } },
+      { role: 'sent', names: [FOLDER_SENT], display: { icon: 'paperPlaneTilt', label: this.i18nStore?.t('folderList.sent') } },
+      { role: 'archive', names: [FOLDER_ARCHIVE, FOLDER_ARCHIVES], display: { icon: 'archiveBox', label: this.i18nStore?.t('folderList.archive') } },
+      { role: 'junk', names: [FOLDER_JUNK, FOLDER_SPAM], display: { icon: 'warningDiamond', label: this.i18nStore?.t('folderList.junk') } },
+      { role: 'trash', names: [FOLDER_TRASH], display: { icon: 'trash', label: this.i18nStore?.t('folderList.trash') } },
     ];
-    const stdMap: Record<string, { icon: string, colorClass: string, label: string }> = {
-      [FOLDER_INBOX]: { icon: 'tray', colorClass: 'icon-inbox', label: this.i18nStore?.t('folderList.inbox') },
-      [FOLDER_DRAFTS]: { icon: 'fileText', colorClass: 'icon-drafts', label: this.i18nStore?.t('folderList.drafts') },
-      [FOLDER_SENT]: { icon: 'paperPlaneTilt', colorClass: 'icon-sent', label: this.i18nStore?.t('folderList.sent') },
-      [FOLDER_ARCHIVE]: { icon: 'archiveBox', colorClass: 'icon-archive', label: this.i18nStore?.t('folderList.archive') },
-      [FOLDER_ARCHIVES]: { icon: 'archiveBox', colorClass: 'icon-archive', label: this.i18nStore?.t('folderList.archive') },
-      [FOLDER_SPAM]: { icon: 'warningDiamond', colorClass: 'icon-spam', label: this.i18nStore?.t('folderList.spam') },
-      [FOLDER_JUNK]: { icon: 'warningDiamond', colorClass: 'icon-spam', label: this.i18nStore?.t('folderList.junk') },
-      [FOLDER_TRASH]: { icon: 'trash', colorClass: 'icon-trash', label: this.i18nStore?.t('folderList.trash') }
+    const stdMap: Record<string, { icon: string, label: string }> = {
+      [FOLDER_INBOX]: { icon: 'tray', label: this.i18nStore?.t('folderList.inbox') },
+      [FOLDER_DRAFTS]: { icon: 'fileText', label: this.i18nStore?.t('folderList.drafts') },
+      [FOLDER_SENT]: { icon: 'paperPlaneTilt', label: this.i18nStore?.t('folderList.sent') },
+      [FOLDER_ARCHIVE]: { icon: 'archiveBox', label: this.i18nStore?.t('folderList.archive') },
+      [FOLDER_ARCHIVES]: { icon: 'archiveBox', label: this.i18nStore?.t('folderList.archive') },
+      [FOLDER_SPAM]: { icon: 'warningDiamond', label: this.i18nStore?.t('folderList.spam') },
+      [FOLDER_JUNK]: { icon: 'warningDiamond', label: this.i18nStore?.t('folderList.junk') },
+      [FOLDER_TRASH]: { icon: 'trash', label: this.i18nStore?.t('folderList.trash') }
     };
 
-    type TreeNode = { name: string; fullName: string; mb?: any; children: Record<string, TreeNode>; primary?: { icon: string; colorClass: string; label: string } };
+    type TreeNode = { name: string; fullName: string; mb?: any; children: Record<string, TreeNode>; primary?: { icon: string; label: string } };
     // Keyed by name, so without a prototype. On a plain object a folder called
     // "constructor" or "toString" found an inherited function where its node
     // should be and was never drawn, and one called "__proto__" was written onto
@@ -1052,12 +1043,10 @@ export class FolderList extends LitElement {
         const display = node.primary ?? (slot !== undefined ? slotDisplay(node, slot) : undefined);
 
         let icon = renderIcon('folder');
-        let colorClass = 'icon-default';
         let label = node.name;
 
         if (display) {
           icon = renderIcon(display.icon);
-          colorClass = display.colorClass;
           label = display.label;
         }
 
@@ -1090,14 +1079,14 @@ export class FolderList extends LitElement {
             <alps-icon-btn 
               class="folder-toggle-btn" 
               icon=${isExpanded ? 'caretDown' : 'caretRight'}
-              style="visibility: ${hasChildren ? 'visible' : 'hidden'}; --btn-padding: 2px;" 
+              style="visibility: ${hasChildren ? 'visible' : 'hidden'};" 
               @click=${(e: Event) => {
             e.stopPropagation();
             if (hasChildren) this.toggleFolder(e, node.fullName);
           }}
             ></alps-icon-btn>
             
-            <div class="folder-icon ${colorClass}">${icon}</div>
+            <div class="folder-icon">${icon}</div>
             <div class="folder-name">${label}</div>
             
             ${hasActions ? html`
@@ -1108,7 +1097,7 @@ export class FolderList extends LitElement {
                   @popup-open=${() => { this.activeKebabMenu = node.fullName; }}
                   @popup-close=${() => { if (this.activeKebabMenu === node.fullName) this.activeKebabMenu = null; }}
                 >
-                  <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" style="--btn-padding: 8px;"></alps-icon-btn>
+                  <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical"></alps-icon-btn>
                   <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
@@ -1291,7 +1280,7 @@ export class FolderList extends LitElement {
                 @click=${() => { this.showUnsubscribed = !unsubscribedOpen; }}
               >
                 <div class="more-caret">${renderIcon(unsubscribedOpen ? 'caretDown' : 'caretRight')}</div>
-                <div class="folder-icon icon-default">${renderIcon('eyeSlash')}</div>
+                <div class="folder-icon">${renderIcon('eyeSlash')}</div>
                 <div class="folder-name">${unsubscribedOpen ? this.i18nStore?.t('folderList.less') : this.i18nStore?.t('folderList.more')}</div>
               </button>
               ${unsubscribedOpen ? renderTree(unsubscribedNodes) : ''}

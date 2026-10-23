@@ -192,7 +192,6 @@ export class AlpsHeader extends LitElement {
               title=${this.i18nStore?.t('messageList.menu')} 
               @click=${() => this.dispatchEvent(new CustomEvent('toggle-sidebar'))}
               icon="sidebar"
-              style="--icon-size: 20px;"
             ></alps-icon-btn>
           ` : ''}
           <slot name="left"></slot>

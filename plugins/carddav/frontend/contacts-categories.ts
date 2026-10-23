@@ -122,9 +122,6 @@ export class AlpsContactsCategories extends LitElement {
       pointer-events: none;
       margin-right: 8px;
     }
-    .kebab-btn {
-      --btn-padding: 8px;
-    }
   `];
 
   private handleSidebarScroll(e: Event) {

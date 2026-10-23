@@ -260,10 +260,6 @@ export class CalendarPage extends LitElement {
         .calendar-actions.popup-open {
             display: flex;
         }
-        
-        .kebab-btn {
-            --btn-padding: 8px;
-        }
 
         .main-content {
             flex: 1;

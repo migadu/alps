@@ -554,7 +554,6 @@ export class AlpsThreadCard extends LitElement {
             <div class="thread-card-date">${dateStr}</div>
             
             <alps-icon-btn
-              style="--icon-size: 16px; --btn-padding: 4px;"
               title=${this.i18nStore?.t('messageReader.star') || 'Star'}
               ?active=${isStarred}
               @click=${this.handleStarClick}
@@ -563,7 +562,6 @@ export class AlpsThreadCard extends LitElement {
             
             ${this.item.expanded ? html`
               <alps-icon-btn
-                style="--icon-size: 16px; --btn-padding: 4px;"
                 title=${this.i18nStore?.t('messageReader.reply') || 'Reply'}
                 @click=${(e: Event) => { e.stopPropagation(); this.handleActionForItem('reply'); }}
                 icon="arrowBendUpLeft"
@@ -572,7 +570,6 @@ export class AlpsThreadCard extends LitElement {
               <alps-popup align="right" class="card-more-menu" @click=${(e: Event) => e.stopPropagation()}>
                 <alps-icon-btn
                   slot="trigger"
-                  style="--icon-size: 16px; --btn-padding: 4px;"
                   title=${this.i18nStore?.t('messageReader.moreOptions')}
                   icon="dotsThreeVertical"
                 ></alps-icon-btn>
@@ -611,7 +608,6 @@ export class AlpsThreadCard extends LitElement {
             ` : ''}
             
             <alps-icon-btn
-              style="--icon-size: 16px; --btn-padding: 4px;"
               icon=${this.item.expanded ? 'caretUp' : 'caretDown'}
               title=${this.item.expanded ? this.i18nStore?.t('general.collapse') : this.i18nStore?.t('general.expand')}
             ></alps-icon-btn>
