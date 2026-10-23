@@ -127,7 +127,7 @@ func newReaderIMAPTestServer(t *testing.T, messages ...string) (*testServer, *re
 		srv.Close()
 	})
 	jar, _ := cookiejar.New(nil)
-	return &testServer{t: t, url: ts.URL, client: &http.Client{Jar: jar}}, wire
+	return &testServer{t: t, url: ts.URL, client: &http.Client{Jar: jar}, server: srv}, wire
 }
 
 // gearsMessage has a text and an HTML alternative, the HTML one encoded, and
@@ -251,4 +251,48 @@ func TestHTTP_APartReadElsewhereStillOpensWithTheVerdict(t *testing.T) {
 
 	s.expect(s.do("GET", "/mailboxes/INBOX/messages/"+uid+"/raw?part=2", nil), http.StatusOK)
 	openAsReader(t, s, uid)
+}
+
+// The counts of a folder go from the session long before its messages do: a
+// check that finds new mail drops them, and so does a write. Opening a
+// message the session held then cost a STATUS, read only for the
+// UIDVALIDITY the session's cache is asked under, which the session still
+// held from reading the message.
+func TestHTTP_ReopeningAMessageAfterItsFolderCountsWentAsksTheServerNothing(t *testing.T) {
+	s, wire := newReaderIMAPTestServer(t, gearsMessage)
+	s.login()
+	uid := s.mailbox("INBOX").Messages[0].UID
+	openAsReader(t, s, uid)
+	s.expect(s.do("GET", "/mailboxes/INBOX/messages/"+uid+"/raw?part=2", nil), http.StatusOK)
+	s.forgetStatus("INBOX")
+
+	mark := wire.mark()
+	openAsReader(t, s, uid)
+	s.expect(s.do("GET", "/mailboxes/INBOX/messages/"+uid+"/raw?part=2", nil), http.StatusOK)
+	if sent := wire.commandsSince(mark); len(sent) != 0 {
+		t.Errorf("reopening the message sent %v, want nothing", sent)
+	}
+}
+
+// What the session holds of a folder no longer agreeing, as when a read of it
+// finds it made again elsewhere, the folder is asked, as before.
+func TestHTTP_AFolderTheSessionHoldsConflictingValuesOfIsAsked(t *testing.T) {
+	s, wire := newReaderIMAPTestServer(t, gearsMessage)
+	s.login()
+	uid := s.mailbox("INBOX").Messages[0].UID
+	openAsReader(t, s, uid)
+	s.forgetStatus("INBOX")
+	session := s.signedInSession()
+	held, ok := session.Cache().Get("uidvalidity:INBOX")
+	if !ok {
+		t.Fatal("the session holds no UIDVALIDITY for INBOX")
+	}
+	// As a read of a part from a folder made again elsewhere records it.
+	session.Cache().Set("uidvalidity:INBOX", held.(uint32)+1)
+
+	mark := wire.mark()
+	s.expect(s.do("GET", "/mailboxes/INBOX/messages/"+uid+"?view=html", nil), http.StatusOK)
+	if sent := wire.commandsSince(mark); len(sent) == 0 {
+		t.Error("a folder whose UIDVALIDITY the session holds two values of was not asked")
+	}
 }
