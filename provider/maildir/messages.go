@@ -653,7 +653,18 @@ func (p *Provider) AppendMessage(mailbox string, msg provider.OutgoingMessageWri
 	// The adapter passes an empty mailbox and selects the destination by type
 	// (Sent/Drafts/...), matching the IMAP backend. Resolve it here — the old
 	// code ignored mboxType entirely and delivered everything to INBOX.
+	//
+	// What is filed by type is the user's own: a message sent, or a draft. It
+	// is stored seen, and a draft as a draft, as the IMAP provider appends it;
+	// stored unread, every one was counted as new mail in its folder. A
+	// message stored into a folder the caller names is stored as it is, as a
+	// delivery would be.
+	var flags []maildir.Flag
 	if mailbox == "" {
+		flags = []maildir.Flag{maildir.FlagSeen}
+		if mboxType == provider.MailboxTypeDrafts {
+			flags = append(flags, maildir.FlagDraft)
+		}
 		if mbox, err := p.FindMailboxByType(mboxType); err == nil && mbox != nil {
 			mailbox = mbox.Name
 		} else {
@@ -675,8 +686,9 @@ func (p *Provider) AppendMessage(mailbox string, msg provider.OutgoingMessageWri
 	// Create, unlike a Delivery, says the key it stores the message under,
 	// which is the message's ID: a draft save answers it, and the next save
 	// replaces the draft by it. The message is written in tmp, under a key
-	// no other writer can choose, and moved into cur once it is whole.
-	stored, w, err := dir.Create(nil)
+	// no other writer can choose, and moved into cur once it is whole, under
+	// a name that carries its flags: it is never listed without them.
+	stored, w, err := dir.Create(flags)
 	if err != nil {
 		return nil, nil, 0, err
 	}
