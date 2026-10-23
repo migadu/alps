@@ -546,6 +546,8 @@ func writeBinaryPart(parent *message.Writer, att Attachment, disposition string)
 	return nil
 }
 
+// sendMessage submits msg over c. A message that cannot be written is not
+// sent, and c is closed.
 func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
 	addr, err := mail.ParseAddress(msg.From)
 	if err != nil {
@@ -571,9 +573,13 @@ func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
 	if err != nil {
 		return fmt.Errorf("DATA failed: %v", err)
 	}
-	defer w.Close()
 
 	if _, err := msg.WriteTo(w); err != nil {
+		// Closing w would end DATA with its final ".", and the server would
+		// deliver what has been written so far as the whole message. SMTP
+		// can only call DATA off by dropping the connection, which leaves
+		// the server nothing to deliver.
+		c.Close()
 		return fmt.Errorf("failed to write outgoing message: %v", err)
 	}
 
