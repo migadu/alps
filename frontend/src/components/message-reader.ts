@@ -1714,7 +1714,10 @@ export class MessageReader extends LitElement {
           if ((part.MIMEType || part.MimeType || 'text/plain').toLowerCase() === 'text/html') rawHtml = data.Body;
           else rawText = data.Body;
         } else if (part) {
-          const partPathStr = Array.isArray(part.Path) ? part.Path.join('.') : part.Path;
+          // A message that is not multipart is named with no path when its
+          // one part is not the text the server looks for first. Its body is
+          // part 1, as the print page asks for it: "part=null" is refused.
+          const partPathStr = Array.isArray(part.Path) && part.Path.length ? part.Path.join('.') : '1';
           const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`, request)
             .catch((e: unknown) => { Logger.error('Failed to fetch message body:', e); return null; });
           if (!current()) return;
