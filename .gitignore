@@ -2,3 +2,14 @@ config.toml
 tmp/*
 vendor/
 build/
+
+# A bare `go build ./cmd/alps` writes the binary here; `make build` puts it in build/
+/alps
+
+# `make test-coverage`
+coverage.out
+
+# Running vitest from the repository root caches its results here
+node_modules/
+
+.DS_Store
