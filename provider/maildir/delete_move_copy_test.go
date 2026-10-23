@@ -137,3 +137,33 @@ func TestCopyMessagesReportsWhatItCouldNotCopy(t *testing.T) {
 		t.Errorf("a copy to a folder that does not exist answered %v, %v", mapping, err)
 	}
 }
+
+// A flag change that cannot rename the message's file is reported, and the
+// file keeps its name, as a delete or a move that fails is. Discarded, the
+// failure was answered as success, and the page showed the message starred
+// while its file said otherwise. A message that is gone is still no failure.
+func TestAFlagChangeThatCannotBeWrittenIsReported(t *testing.T) {
+	base := t.TempDir()
+	p := NewProvider(base, "ada@example.com")
+	ids := putMessages(t, p, "Engines")
+	stored := filepath.Join(base, "cur", ids[0].String()+":2,")
+	if _, err := os.Stat(stored); err != nil {
+		t.Fatal(err)
+	}
+	// Where the starred file would go, something else is.
+	if err := os.MkdirAll(filepath.Join(base, "cur", ids[0].String()+":2,F", "held"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	star := provider.FlagOperation{Op: provider.FlagOpAdd, Flags: []provider.Flag{provider.FlagFlagged}}
+	if err := p.SetMessagesFlags("INBOX", ids, star); err == nil {
+		t.Error("the flag change that could not be written answered success")
+	}
+	if _, err := os.Stat(stored); err != nil {
+		t.Errorf("the message's file changed: %v", err)
+	}
+
+	if err := p.SetMessagesFlags("INBOX", []provider.MessageID{MaildirMessageID("1700000000.gone")}, star); err != nil {
+		t.Errorf("starring a message that is gone answered %v, want it passed over", err)
+	}
+}
