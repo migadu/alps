@@ -567,6 +567,20 @@ export class AlpsFloatingComposer extends LitElement {
       }
     }
     if (this._keepOpenForMissingUploads(false)) return;
+    // The window stays on screen while Close saves it, and what was typed
+    // meanwhile is not in that save. Closing once the save landed took the
+    // newer text from the screen and from localStorage, and the server never
+    // had it. So the window stays open with it, as for a user who changed
+    // their mind: the autosave the save armed stores it, and Close again
+    // saves it and closes. Saving it here instead would take the window away
+    // mid-sentence, after as many saves as the typing took.
+    //
+    // A save that was sent leaves the composer dirty only for what changed
+    // while it was out. A composer with nothing in it to save is not sent,
+    // and stays the object it was, still marked edited: the store replaces a
+    // composer on each update. That one closes.
+    const latest = this.composeStore.getComposer(this.instance.id);
+    if (latest !== current && latest?.dirty) return;
     this.composeStore.closeComposer(this.instance.id);
   }
 

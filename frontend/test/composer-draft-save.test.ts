@@ -270,6 +270,74 @@ describe('the answer to a save', () => {
   });
 });
 
+describe('a close', () => {
+  it('keeps the window open with what was typed while its save was out, and the autosave stores it', async () => {
+    // The window stays on screen while Close saves it. Close then took it
+    // away once that save landed, with what was typed meanwhile: gone from
+    // the screen and from localStorage, and never stored on the server.
+    localStorage.setItem('alps_active_user', 'ada@example.com');
+    const land = heldSave();
+    const { store, instance, id } = composerIn({ text: 'Before Close', dirty: true });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    vi.useFakeTimers();
+
+    const closing = el._handleCloseClick();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sentForm(0).get('text')).toBe('Before Close');
+    store.updateComposer(id, { text: 'Written after Close' });
+    land({ uid: '8', mailbox: 'Drafts' });
+    await closing;
+
+    expect(store.getComposer(id)).toMatchObject({ text: 'Written after Close', draftUid: '8', dirty: true });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(JSON.parse(localStorage.getItem('alps_compose_drafts_ada@example.com')!)).toEqual([
+      expect.objectContaining({ id, text: 'Written after Close' }),
+    ]);
+
+    const saveDraft = vi.mocked(messageOperations.saveDraft).mockResolvedValue({ uid: '9', mailbox: 'Drafts' });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(saveDraft).toHaveBeenCalledTimes(2);
+    expect(sentForm(1).get('text')).toBe('Written after Close');
+    expect(sentForm(1).get('draft_uid')).toBe('8');
+    expect(store.getComposer(id)).toMatchObject({ draftUid: '9', dirty: false });
+  });
+
+  it('pressed again while its save is out, closes once what was typed meanwhile is stored', async () => {
+    const land = heldSave();
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const { store, instance, id } = composerIn({ text: 'Before Close', dirty: true });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    const first = el._handleCloseClick();
+    await waitFor(() => vi.mocked(messageOperations.saveDraft).mock.calls.length === 1, 'the close to save');
+    store.updateComposer(id, { text: 'Written after Close' });
+    const saveDraft = vi.mocked(messageOperations.saveDraft).mockResolvedValue({ uid: '9', mailbox: 'Drafts' });
+    const second = el._handleCloseClick();
+    land({ uid: '8', mailbox: 'Drafts' });
+    await Promise.all([first, second]);
+
+    expect(saveDraft).toHaveBeenCalledTimes(2);
+    expect(sentForm(1).get('text')).toBe('Written after Close');
+    expect(sentForm(1).get('draft_uid')).toBe('8');
+    expect(store.getComposer(id)).toBeUndefined();
+    expect(toasts).toEqual([]);
+  });
+
+  it('still closes a window emptied again, which has nothing to save and stays marked edited', async () => {
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft');
+    const { store, instance, id } = composerIn({ to: [], subject: '', text: '' });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    store.updateComposer(id, { text: 'Dear' });
+    store.updateComposer(id, { text: '' });
+    expect(store.getComposer(id)?.dirty).toBe(true);
+
+    await el._handleCloseClick();
+
+    expect(saveDraft).not.toHaveBeenCalled();
+    expect(store.getComposer(id)).toBeUndefined();
+  });
+});
+
 describe('an upload the server no longer holds', () => {
   const answer = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });

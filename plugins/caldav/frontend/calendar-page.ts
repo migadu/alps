@@ -100,7 +100,8 @@ export class CalendarPage extends LitElement {
      * and a save each start one, and they can overlap: only the latest may
      * draw its answer, end the loading or say that it failed, so an earlier
      * view that answers late does not replace the one on screen, and its
-     * failure, which says nothing about that view, is not reported. */
+     * failure, which says nothing about that view, is not reported. Leaving
+     * the page counts too (disconnectedCallback). */
     private fetchSeq = 0;
     @state() private promptMode: 'add' | 'rename' | null = null;
     @state() private promptTarget: any = null;
@@ -441,6 +442,12 @@ export class CalendarPage extends LitElement {
             clearInterval(this.syncIntervalTimer);
             this.syncIntervalTimer = null;
         }
+        // Leaving ends the page's reads. One still in flight stayed the latest,
+        // so it wrote its answer into a page no longer on screen and, when it
+        // failed, put its toast over Mail or Settings. The page is kept, and
+        // coming back starts a read of its own (connectedCallback), which ends
+        // the loading this one leaves set.
+        this.fetchSeq++;
     }
 
     /** Says a write failed. Deleting a calendar, deleting an event and saving a
@@ -574,6 +581,11 @@ export class CalendarPage extends LitElement {
     };
 
     private async fetchData() {
+        // A page not on screen reads nothing. A save or delete that finishes
+        // after the user has left still asks for a read, and that read's
+        // failure was put over Mail or Settings. Coming back reads afresh
+        // (connectedCallback).
+        if (!this.isConnected) return;
         const seq = ++this.fetchSeq;
         this.loading = true;
         this.isSpinning = true;
@@ -828,8 +840,13 @@ export class CalendarPage extends LitElement {
                 const next = new Set(this.activeCalendars);
                 next.delete(calendar.path);
                 this.activeCalendars = next;
-                await this.fetchData();
             }
+            // Read again whether or not its box was checked. A read already in
+            // flight, a periodic refresh say, can still list the calendar, and
+            // as the latest read it put an unchecked calendar back in the
+            // sidebar after its delete. The new read makes that one stale and
+            // ends the loading it leaves set.
+            await this.fetchData();
         } catch (err) {
             console.error('Failed to delete calendar', err);
             this.reportFailure('calendar.deleteCalendarFailed');
