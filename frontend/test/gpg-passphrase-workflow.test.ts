@@ -351,6 +351,33 @@ describe('purging the keypair', () => {
     window.dispatchEvent(new CustomEvent('session-cleared'));
   });
 
+  it.each(['ok', 'refused', 'offline'] as const)('a pending old key read respects a purge answered %s', async (how) => {
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const parsing = new Promise<void>(resolve => { entered = resolve; });
+    pgp.readPrivateKey.mockImplementationOnce(async ({ armoredKey }: { armoredKey: string }) => {
+      entered();
+      await gate;
+      return { armoredKey, isDecrypted: () => true };
+    });
+    const earlier = read();
+    await parsing;
+    const el = await pane();
+    answer = how;
+    try { await el.purgeKeys(); } finally { release(); }
+    expect(await earlier).toContain('opened with OLD-KEY');
+    if (how === 'ok') {
+      expect(el.keyring).toBeNull();
+      expect(await read()).not.toContain('opened with OLD-KEY');
+    } else {
+      expect(el.keyring).toEqual(keyring);
+      const parses = pgp.readPrivateKey.mock.calls.length;
+      expect(await read()).toContain('opened with OLD-KEY');
+      expect(pgp.readPrivateKey).toHaveBeenCalledTimes(parses);
+    }
+  });
+
   it('clears the keypair and the unlocked key once the server has deleted them', async () => {
     expect(await read()).toContain('opened with OLD-KEY');
     const el = await pane();
