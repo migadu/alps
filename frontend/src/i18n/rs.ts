@@ -214,7 +214,7 @@ export const rs = {
     filterUnread: 'Филтрирај по непрочитаним',
     noMessages: 'Нема порука',
     loadError: 'Није могуће учитати ову фасциклу.',
-    loadErrorRetry: 'Покушај поново',
+    loadErrorRetry: 'Покушајте поново',
     loading: 'Учитавање...',
     unknownSender: 'Непознат пошиљалац',
     unknown: 'Непознато',
