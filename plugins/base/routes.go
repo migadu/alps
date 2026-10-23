@@ -3,6 +3,8 @@ package alpsbase
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1488,11 +1490,10 @@ func handleGetMailbox(ctx *alps.Context) error {
 		ctx.Server.Logger().Debugf("Cache MISS for messages in %s page %d (query: %q), fetched and cached %d messages", mbox.Name(), page, query, len(msgs))
 	}
 
-	return ctx.JSON(http.StatusOK, map[string]interface{}{
+	answer := map[string]interface{}{
 		"Title":           title,
 		"Username":        ctx.Session.Username(),
 		"Address":         ctx.Session.Address(),
-		"Mailboxes":       ibase.Mailboxes,
 		"Mailbox":         ibase.Mailbox,
 		"Inbox":           ibase.Inbox,
 		"Messages":        msgs,
@@ -1500,7 +1501,27 @@ func handleGetMailbox(ctx *alps.Context) error {
 		"Threaded":        threaded,
 		"Page":            page,
 		"MessagesPerPage": messagesPerPage,
-	})
+	}
+	// The folder list, unless it is the one the browser says it holds: every
+	// listing carried it, a poll's and a page turn's alike, and nearly always
+	// it was the list the browser had.
+	version := folderListVersion(ibase.Mailboxes)
+	answer["MailboxesVersion"] = version
+	if ctx.QueryParam("mailboxes") != version {
+		answer["Mailboxes"] = ibase.Mailboxes
+	}
+	return ctx.JSON(http.StatusOK, answer)
+}
+
+// folderListVersion names a folder list by what it holds, counts and all, so
+// that two answers with the same version carry the same list.
+func folderListVersion(mailboxes []MailboxInfo) string {
+	data, err := json.Marshal(mailboxes)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:8])
 }
 
 // handleListMailboxes answers with the folder list and nothing else.
@@ -1518,7 +1539,7 @@ func handleListMailboxes(ctx *alps.Context) error {
 
 	// Keyed as `GET /mailboxes/{mbox}` keys it, so the one consumer on the
 	// frontend reads either answer the same way.
-	return ctx.JSON(http.StatusOK, map[string]interface{}{"Mailboxes": mailboxes})
+	return ctx.JSON(http.StatusOK, map[string]interface{}{"Mailboxes": mailboxes, "MailboxesVersion": folderListVersion(mailboxes)})
 }
 
 func handleNewMailbox(ctx *alps.Context) error {

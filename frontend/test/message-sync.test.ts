@@ -866,6 +866,77 @@ describe('listings kept in memory', () => {
  * mail server, and every poll read the listing again, a search included,
  * whatever the counts it had just asked for said.
  */
+describe('the folder list', () => {
+  // Every listing carried the whole folder list, nearly always the one held.
+  // The server names its list by a version now, and leaves it out when the
+  // version sent back is the list's.
+  const answer = (body: Record<string, unknown>) =>
+    new Response(JSON.stringify({ Messages: [], Total: 0, ...body }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  const held = [{ Name: 'INBOX', Total: 2, Unseen: 1 }, { Name: 'Archive', Total: 5, Unseen: 0 }];
+  const asked = () => fetchMock.mock.calls.map((c) => String(c[0]));
+
+  async function read(svc: MessageSyncService, mailbox: string, body: Record<string, unknown>, refresh = false) {
+    fetchMock.mockResolvedValueOnce(answer(body));
+    const pending = svc.fetch(mailbox, 0, '', refresh);
+    await vi.runAllTimersAsync();
+    await pending;
+  }
+
+  it('is asked for by the version held, and handed out as held when the answer leaves it out', async () => {
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    await read(svc, 'INBOX', { Mailboxes: held, MailboxesVersion: 'v1' });
+    await read(svc, 'Archive', { MailboxesVersion: 'v1' });
+
+    expect(asked()).toEqual(['/mailboxes/INBOX?page=0', '/mailboxes/Archive?page=0&mailboxes=v1']);
+    const shown = seen.filter((e) => e.type === 'sync-success').map((e) => e.detail.data.Mailboxes);
+    expect(shown).toEqual([held, held]);
+  });
+
+  it('is asked for by the version held in the poll\'s listing too', async () => {
+    const svc = new MessageSyncService();
+    await read(svc, 'INBOX', { Mailboxes: held, MailboxesVersion: 'v1' });
+    fetchMock.mockImplementation(async (url: string) => (url.includes('/status')
+      ? new Response(JSON.stringify({ total: 3, unseen: 2 }), { status: 200 })
+      : answer({ MailboxesVersion: 'v1' })));
+
+    svc.start(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    svc.stop();
+
+    expect(asked().filter((url) => url.includes('?page='))).toEqual(['/mailboxes/INBOX?page=0', '/mailboxes/INBOX?page=0&mailboxes=v1']);
+  });
+
+  it('is asked for by the version the folder list alone came with', async () => {
+    const svc = new MessageSyncService();
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ Mailboxes: held, MailboxesVersion: 'v2' }), { status: 200 }));
+    await svc.syncLabels();
+    await read(svc, 'Archive', { MailboxesVersion: 'v2' });
+
+    expect(asked()).toEqual(['/mailboxes', '/mailboxes/Archive?page=0&mailboxes=v2']);
+  });
+
+  it('is asked for whole on a refresh, after a sign-out, and once its counts were changed here', async () => {
+    const svc = new MessageSyncService();
+    await read(svc, 'INBOX', { Mailboxes: held, MailboxesVersion: 'v1' });
+    await read(svc, 'Archive', { Mailboxes: held, MailboxesVersion: 'v1' }, true);
+    expect(asked().at(-1)).toBe('/mailboxes/Archive?page=0&refresh=true');
+
+    // News of the Inbox, with Archive on screen: its counts in the list held
+    // are changed here, so the list held is no longer the version's.
+    await read(svc, 'Archive', { Mailboxes: held, MailboxesVersion: 'v1', Inbox: { NumMessages: 2, NumUnseen: 1 } });
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ total: 3, unseen: 2 }), { status: 200 }));
+    svc.inboxChanged();
+    await vi.runAllTimersAsync();
+    await read(svc, 'Trash', { Mailboxes: held, MailboxesVersion: 'v3' });
+    expect(asked().at(-1)).toBe('/mailboxes/Trash?page=0');
+
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    await read(svc, 'INBOX', { Mailboxes: held, MailboxesVersion: 'v3' });
+    expect(asked().at(-1)).toBe('/mailboxes/INBOX?page=0');
+  });
+});
+
 describe('polling', () => {
   /** A server whose folders hold `counts`, listed at them. */
   function server(counts: { total: number; unseen: number }) {
@@ -1109,6 +1180,96 @@ describe('polling', () => {
       expect(fetchMock.mock.calls.map((c) => c[0]), `polling every ${minutes} minutes`).toEqual(['/mailboxes/INBOX/status']);
       svc.stop();
     }
+  });
+
+  describe('the one listing out at a time', () => {
+    // The poll's listing, and the check-for-new-mail button's, were sent
+    // whatever else was out, and a foreground listing asked for while theirs
+    // was out was sent beside it: the server reads a session's listings one
+    // after another, so it only waited there, and one asked for after it was
+    // sent too, where the newest would have done.
+    const held = () => {
+      let answer!: () => void;
+      const waiting = new Promise<void>((resolve) => { answer = resolve; });
+      return { waiting, answer };
+    };
+    /** Counts that move on every check, so every poll reads the listing; and a listing that can be held. */
+    function movingServer(hold: { listing?: Promise<void> } = {}) {
+      let total = 1;
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes('/status')) return new Response(JSON.stringify({ total: ++total, unseen: 1 }), { status: 200 });
+        if (hold.listing) {
+          const wait = hold.listing;
+          hold.listing = undefined;
+          await wait;
+        }
+        const status = { NumMessages: total, NumUnseen: 1 };
+        return new Response(JSON.stringify({ Messages: [], Total: total, Mailbox: status, Inbox: status }), { status: 200 });
+      });
+    }
+
+    it('keeps a listing asked for while the poll\'s is out waiting, and only the newest is sent', async () => {
+      const hold: { listing?: Promise<void> } = {};
+      movingServer(hold);
+      const svc = service();
+      await landed(svc, 'INBOX');
+      const poll = held();
+      hold.listing = poll.waiting;
+      svc.start(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(listingsAsked()).toEqual(['/mailboxes/INBOX?page=0', '/mailboxes/INBOX?page=0']);
+
+      const reads = [svc.fetch('Archive', 0), svc.fetch('Trash', 0)];
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listingsAsked()).toHaveLength(2);
+
+      poll.answer();
+      await vi.advanceTimersByTimeAsync(500);
+      await Promise.all(reads);
+      expect(listingsAsked()).toEqual(['/mailboxes/INBOX?page=0', '/mailboxes/INBOX?page=0', '/mailboxes/Trash?page=0']);
+    });
+
+    it('keeps a listing asked for while the check-for-new-mail button\'s is out waiting', async () => {
+      const hold: { listing?: Promise<void> } = {};
+      movingServer(hold);
+      const svc = service();
+      await landed(svc, 'INBOX');
+      const check = held();
+      hold.listing = check.waiting;
+      const checking = svc.check('INBOX', 0);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listingsAsked()).toHaveLength(2);
+
+      const read = svc.fetch('Archive', 0);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listingsAsked()).toHaveLength(2);
+
+      check.answer();
+      await vi.advanceTimersByTimeAsync(500);
+      await Promise.all([checking, read]);
+      expect(listingsAsked()).toEqual(['/mailboxes/INBOX?page=0', '/mailboxes/INBOX?page=0', '/mailboxes/Archive?page=0']);
+    });
+
+    it('sends the poll\'s listing only once the listing out has come back', async () => {
+      const hold: { listing?: Promise<void> } = {};
+      movingServer(hold);
+      const svc = service();
+      await landed(svc, 'INBOX');
+      const foreground = held();
+      hold.listing = foreground.waiting;
+      const read = svc.fetch('INBOX', 0);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listingsAsked()).toHaveLength(2);
+
+      svc.start(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(listingsAsked()).toHaveLength(2);
+
+      foreground.answer();
+      await vi.advanceTimersByTimeAsync(500);
+      await read;
+      expect(listingsAsked()).toHaveLength(3);
+    });
   });
 
   it('reads the listing when only the Inbox moved, with another folder on screen', async () => {
