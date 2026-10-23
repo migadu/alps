@@ -12,7 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/components/message-reader';
 import {
-  cleanup, installMatchMedia, installResizeObserver, installScrollIntoView, mount, shadowAll, update, waitFor,
+  cleanup, flush, installMatchMedia, installResizeObserver, installScrollIntoView, mount, shadowAll, update, waitFor,
 } from './helpers/dom';
 import { MessageCache } from '../src/utils/message-cache';
 
@@ -102,6 +102,117 @@ afterEach(() => {
 });
 
 describe('a draft in the conversation on screen, saved again', () => {
+  it('does not restore a replaced UID from a conversation response that was already in flight', async () => {
+    const listed = (d: any) => ({ ...inboxMessage, SubMessages: [d] });
+    serve({ 'INBOX/7': [inboxMessage, draft('9')] });
+    const normal = fetch;
+    let answer!: (value: Response) => void;
+    vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+      String(input).startsWith('/mailboxes/INBOX/messages/7/thread')
+        ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+    const el = await reader({ mailbox: 'INBOX', messages: [listed(draft('9'))], message: inboxMessage }, 2);
+    await waitFor(() => !!answer, 'the conversation request');
+
+    saved('9', '10');
+    await update(el, { messages: [listed(draft('10'))] });
+    answer(json({ Messages: [inboxMessage, draft('9')] }));
+    await flush(); await flush(); await el.updateComplete;
+
+    expect(shown(el)).toEqual(['INBOX/7', 'Drafts/10']);
+  });
+
+  it('finishes reading an expanded draft card saved while its previous body was still in flight', async () => {
+    serve({ 'INBOX/7': [inboxMessage, draft('9')] });
+    const normal = fetch;
+    let answer!: (value: Response) => void;
+    vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+      /^\/mailboxes\/Drafts\/messages\/9\?/.test(String(input))
+        ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+    const openComposer = vi.fn();
+    const el = await reader({ mailbox: 'INBOX', messages: [inboxMessage], message: inboxMessage,
+      composeStore: Object.assign(new EventTarget(), { openComposer }) }, 2);
+    const pending = el.threadItems.find((i: any) => i.mailbox === 'Drafts');
+    void el.toggleItemExpansion(pending);
+    await waitFor(() => !!answer, 'the draft body request');
+
+    saved('9', '10');
+    answer(json({ Message: draft('9'), Part: { Path: [1], MIMEType: 'text/plain' }, HasText: true,
+      Body: 'old draft body', Attachments: [] }));
+    await waitFor(() => !el.bodyLoads.has('Drafts\0' + '9'), 'the old read to finish');
+    await flush(); await flush(); await el.updateComplete;
+
+    const current = el.threadItems.find((i: any) => i.mailbox === 'Drafts');
+    await el._handleEditDraft(current);
+    expect(openComposer).toHaveBeenCalled();
+    expect(openComposer.mock.calls[0][0].text).toContain('the body of Drafts/10');
+    expect(el.threadItems.find((i: any) => i.mailbox === 'Drafts').loading).toBe(false);
+  });
+
+  it('does not restore a discarded draft from a response that predates two saves', async () => {
+    const listed = (d?: any) => ({ ...inboxMessage, SubMessages: d ? [d] : [] });
+    serve({});
+    const normal = fetch;
+    let answer!: (value: Response) => void;
+    vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+      String(input).startsWith('/mailboxes/INBOX/messages/7/thread')
+        ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+    const el = await reader({ mailbox: 'INBOX', messages: [listed(draft('9'))], message: inboxMessage }, 2);
+    await waitFor(() => !!answer, 'the conversation request');
+    saved('9', '10');
+    await update(el, { messages: [listed(draft('10'))] });
+    saved('10', '11');
+    await update(el, { messages: [listed(draft('11'))] });
+    window.dispatchEvent(new CustomEvent('draft-discarded', { detail: { mailbox: 'Drafts', uid: '11' } }));
+    await update(el, { messages: [listed()] });
+    answer(json({ Messages: [inboxMessage, draft('9')] }));
+    await flush(); await flush(); await el.updateComplete;
+    expect(el.threadItems.map((i: any) => `${i.mailbox}/${i.message.UID}`)).toEqual(['INBOX/7']);
+    expect(el.conversationReads.size).toBe(0);
+  });
+
+  it('still reads the open draft conversation when autosave replaces its first body request', async () => {
+    serve({ 'Drafts/9': [inboxMessage, sentReply, draft('9')], 'Drafts/10': [inboxMessage, sentReply, draft('10')] });
+    const normal = fetch;
+    let answer!: (value: Response) => void;
+    vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+      /^\/mailboxes\/Drafts\/messages\/9\?/.test(String(input))
+        ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+    const el = await reader({ mailbox: 'Drafts', messages: [draft('9')], message: draft('9') }, 0);
+    await waitFor(() => !!answer, 'the open draft body request');
+    saved('9', '10');
+    await update(el, { messages: [draft('10')], message: { ...draft('10'), _isAutosaveUpdate: true } });
+    answer(json({ Message: draft('9'), Part: { Path: [1], MIMEType: 'text/plain' }, HasText: true, Body: 'old body' }));
+    await waitFor(() => shown(el).length === 3, 'the replacement draft conversation');
+    expect(shown(el)).toEqual(['INBOX/7', 'Sent/3', 'Drafts/10']);
+  });
+
+  it('matches the old mailbox as well as UID, and ignores a no-op save', async () => {
+    serve({ 'INBOX/7': [inboxMessage, draft('9')] });
+    const el = await reader({ mailbox: 'INBOX', messages: [inboxMessage], message: inboxMessage }, 2);
+    window.dispatchEvent(new CustomEvent('draft-autosaved', { detail: {
+      oldMailbox: 'Sent', oldUid: '9', newUid: '10', mailbox: 'Drafts',
+    } }));
+    saved('9', '9');
+    await el.updateComplete;
+    expect(shown(el)).toEqual(['INBOX/7', 'Drafts/9']);
+  });
+
+  it('rejects a conversation body from the previous account, even when the message key is unchanged', async () => {
+    serve({});
+    const normal = fetch;
+    let answer!: (value: Response) => void;
+    vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+      String(input).startsWith('/mailboxes/INBOX/messages/7/thread')
+        ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+    const el = await reader({ mailbox: 'INBOX', messages: [inboxMessage], message: inboxMessage }, 0);
+    await waitFor(() => !!answer, 'the conversation request');
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    answer(json({ Messages: [inboxMessage, draft('9')] }));
+    await flush(); await flush(); await el.updateComplete;
+    expect(el._conversation).toBeNull();
+    expect(el.threadItems.map((i: any) => `${i.mailbox}/${i.message.UID}`)).toEqual(['INBOX/7']);
+  });
+
   it('keeps the conversation when the draft is the open message, and its card its text', async () => {
     serve({ 'Drafts/7': [inboxMessage, sentReply, draft('7')] });
     const el = await reader({ mailbox: 'Drafts', messages: [draft('7')], message: draft('7') }, 3);
