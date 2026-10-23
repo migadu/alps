@@ -19,6 +19,8 @@ import type { Locator, Page } from "@playwright/test";
 import { deliver, expect, login, resetSettings, test, USER } from "./fixtures";
 
 type Scheme = "light" | "dark";
+/** alps's theme: a scheme of its own, or Auto, which follows the system's. */
+type Theme = Scheme | "auto";
 
 /** An image of one colour, as a logo is drawn in one. */
 const logo = (hex: string) =>
@@ -73,14 +75,18 @@ const LIGHT_ONLY = `<!doctype html>
   <div style="background-color: #EEEEEE;"><p>Next meeting: Thursday.</p></div>
 </body></html>`;
 
-async function deliverHtml(subject: string, html: string): Promise<void> {
+/** The Message-ID {@link deliverHtml} gives the message with this subject. */
+const messageId = (subject: string) => `<${subject.replace(/\W/g, "")}@remote.test>`;
+
+async function deliverHtml(subject: string, html: string, inReplyTo?: string): Promise<void> {
   await deliver({
     subject,
     raw: [
       "From: Ada Lovelace <ada@remote.test>",
       `To: ${USER.address}`,
       `Subject: ${subject}`,
-      `Message-ID: <${subject.replace(/\W/g, "")}@remote.test>`,
+      `Message-ID: ${messageId(subject)}`,
+      ...(inReplyTo ? [`In-Reply-To: ${messageId(inReplyTo)}`, `References: ${messageId(inReplyTo)}`] : []),
       `Date: ${new Date().toUTCString()}`,
       "MIME-Version: 1.0",
       'Content-Type: text/html; charset="utf-8"',
@@ -99,7 +105,7 @@ const readerFrame = (page: Page) => page.locator("alps-message-reader > .reader-
  * The system's colour scheme, and alps's theme as the user would leave it in
  * this browser.
  */
-async function setUp(page: Page, system: Scheme, theme: Scheme): Promise<void> {
+async function setUp(page: Page, system: Scheme, theme: Theme): Promise<void> {
   await page.emulateMedia({ colorScheme: system });
   await page.addInitScript((theme) => {
     // Only alps's own page: not the message frame, nor the blank page a test
@@ -111,7 +117,7 @@ async function setUp(page: Page, system: Scheme, theme: Scheme): Promise<void> {
   const read = page.waitForResponse((r) => new URL(r.url()).pathname === "/settings" && r.request().method() === "GET");
   await login(page);
   await read;
-  if (theme === "dark") await expect(page.locator("body")).toHaveClass(/theme-dark/);
+  if (theme === "dark" || (theme === "auto" && system === "dark")) await expect(page.locator("body")).toHaveClass(/theme-dark/);
   else await expect(page.locator("body")).not.toHaveClass(/theme-dark/);
 }
 
@@ -141,6 +147,10 @@ async function open(page: Page, subject: string): Promise<Locator> {
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   return frame;
 }
+
+/** Whether the frame is painted in alps's dark theme for message content. */
+const paintedDark = (frame: Locator) =>
+  frame.evaluate((el) => !!(el as HTMLIFrameElement).contentDocument?.getElementById("dark-mode-override"));
 
 type Reading = { what: string; color: string; background: string; contrast: number };
 
@@ -278,12 +288,53 @@ test.describe("with message content themed", () => {
 
       const frame = await open(page, subject);
       // The theme is laid over the frame once it has loaded.
-      await expect
-        .poll(() => frame.evaluate((el) => !!(el as HTMLIFrameElement).contentDocument?.getElementById("dark-mode-override")))
-        .toBe(true);
+      await expect.poll(() => paintedDark(frame)).toBe(true);
       await expectReadable(frame, BOTH_SCHEMES_PARTS);
     });
   }
+
+  // In Auto, alps follows the system between light and dark while a message
+  // is open. The switch was applied to the app and announced to nothing, so a
+  // frame painted for the light theme stayed light on the dark app.
+  test("a message's frame follows a switch of the system to dark, in alps's Auto theme", async ({ page }) => {
+    const subject = `Auto themed ${Date.now()}`;
+    await deliverHtml(subject, LIGHT_ONLY);
+    await setUp(page, "light", "auto");
+    await themeMessageContent(page);
+    const frame = await open(page, subject);
+    expect(await paintedDark(frame)).toBe(false);
+
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(page.locator("body")).toHaveClass(/theme-dark/);
+    await expect.poll(() => paintedDark(frame)).toBe(true);
+    await expectReadable(frame, 2);
+  });
+
+  // A conversation's messages are drawn by its cards, each in its own shadow
+  // root, which the reader's repaint did not reach.
+  test("a conversation's frames follow a switch of the system to dark, in alps's Auto theme", async ({ page }) => {
+    const subject = `Auto conversation ${Date.now()}`;
+    await deliverHtml(subject, LIGHT_ONLY);
+    await deliverHtml(`Re: ${subject}`, LIGHT_ONLY, subject);
+    await setUp(page, "light", "auto");
+    await themeMessageContent(page);
+    await row(page, subject).first().locator(".message-subject").click();
+    const frames = page.locator("alps-message-reader alps-thread-card iframe.reader-iframe");
+    await expect(frames).toHaveCount(2, { timeout: 15_000 });
+    for (const frame of await frames.all()) {
+      await expect
+        .poll(() => frame.evaluate((el) => (el as HTMLIFrameElement).contentDocument?.readyState))
+        .toBe("complete");
+      expect(await paintedDark(frame)).toBe(false);
+    }
+
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(page.locator("body")).toHaveClass(/theme-dark/);
+    for (const frame of await frames.all()) {
+      await expect.poll(() => paintedDark(frame)).toBe(true);
+      await expectReadable(frame, 2);
+    }
+  });
 });
 
 test("a message styled for both schemes prints readably on a dark system", async ({ page }) => {
