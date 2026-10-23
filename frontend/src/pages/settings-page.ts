@@ -3,6 +3,7 @@ import { customElement, state, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import type { SettingsState } from '../store/settings-store';
+import { themeFamily } from '../store/themes';
 import { i18nContext, I18nStore, intlTag } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
 import { closeSidebarPeek, sidebarLayoutStyles } from '../components/alps-sidebar';
@@ -53,6 +54,7 @@ export class SettingsPage extends LitElement {
     }
 
     .settings-title {
+      font-family: var(--font-heading);
       font-weight: 500;
       font-size: 16px;
       color: var(--text-primary);
@@ -559,9 +561,10 @@ export class SettingsPage extends LitElement {
     return html`
         
         <alps-setting-group label="${this.i18nStore?.t('settings.appearance.colorTheme')}" description="${this.i18nStore?.t('settings.appearance.colorThemeDesc')}">
-          <alps-select label="${this.i18nStore?.t('settings.appearance.colorTheme')}" @change=${(e: Event) => this.handleUpdate(e, 'colorFamily')} .value=${this.settingsState.colorFamily}
+          <alps-select label="${this.i18nStore?.t('settings.appearance.colorTheme')}" @change=${(e: Event) => this.handleUpdate(e, 'colorFamily')} .value=${themeFamily(this.settingsState.colorFamily)}
             .options=${[
-            {value: "default", label: "Alps"},
+            {value: "alps", label: "Alps"},
+            {value: "migadu", label: "Migadu"},
             {value: "nord", label: "Nord"},
             {value: "ocean", label: "Ocean"}
           ]}>

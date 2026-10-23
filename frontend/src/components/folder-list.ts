@@ -382,6 +382,7 @@ export class FolderList extends LitElement {
       align-items: center;
       justify-content: space-between;
       padding: 12px 14px 4px 14px;
+      font-family: var(--font-label);
       font-size: 12px;
       text-transform: uppercase;
       font-weight: 600;

@@ -336,6 +336,7 @@ export class MessageList extends LitElement {
     }
 
     .message-date {
+      font-family: var(--font-label);
       font-size: 12px;
       color: var(--text-muted);
       white-space: nowrap;
@@ -345,6 +346,7 @@ export class MessageList extends LitElement {
     }
 
     .message-size {
+      font-family: var(--font-label);
       font-size: 11px;
       color: var(--text-muted);
       white-space: nowrap;
@@ -646,7 +648,7 @@ export class MessageList extends LitElement {
     
     .message-item.unread .thread-count-caret-badge {
       background: var(--accent-color, #eab308);
-      color: #fff;
+      color: var(--accent-contrast, #fff);
     }
 
     .caret-col {
@@ -1689,7 +1691,7 @@ export class MessageList extends LitElement {
       padding: '6px 12px',
       borderRadius: '16px',
       background: 'var(--accent-color, #005A9E)',
-      color: '#fff',
+      color: 'var(--accent-contrast, #fff)',
       font: '500 13px/1.4 var(--font-base, sans-serif)',
       boxShadow: '0 4px 12px rgba(0, 0, 0, 0.18)',
       pointerEvents: 'none',

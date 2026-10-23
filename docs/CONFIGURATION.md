@@ -254,3 +254,16 @@ Enables external HTTP API calls for user password changes.
 
 #### `[plugin.password.options.payload_mapping]`
 Maps internal variables (`username`, `local`, `domain`, `old_password`, `new_password`) to the expected JSON or Form fields in the HTTP request payload.
+
+---
+
+## 10. Branding (`[branding]`)
+What a deployment changes about how ALPS looks. Without this section ALPS looks as it ships: the Alps theme and the edelweiss on the sign-in page. These settings reach the browser inside the page itself, so the sign-in page is drawn branded from its first paint.
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `default_theme` | String | `"alps"` | Colour theme for anyone who has not picked one: `"alps"`, `"migadu"`, `"nord"` or `"ocean"`. A theme picked in Settings stays that user's. Light or dark still follows each user's Theme Mode. |
+| `login_logo` | String | The default theme's own logo, else the edelweiss | A logo ALPS ships, by name: `"migadu"`, or `"alps"` for the edelweiss. These take the theme's colours, so one serves light and dark. Or a path to an SVG, PNG, WebP or JPEG file (at most 1 MiB), shown at most 56 pixels high, read at start-up and served by ALPS itself at `/branding/login-logo`. With `default_theme = "migadu"` the Migadu logo is shown unless this names another. |
+| `login_logo_dark` | String | None | For a `login_logo` file: the image for the dark modes, for a logo that would not show on a dark background. Served at `/branding/login-logo-dark`. |
+
+ALPS refuses to start with a theme or built-in logo it does not know, or a logo file it cannot read.

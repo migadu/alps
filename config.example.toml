@@ -291,6 +291,25 @@ level = "info"
 # Must include the exact scheme (https://) and no trailing slash
 # origins = ["https://webmail.example.com"]
 
+[branding]
+# What a deployment changes about how the webmail looks. Left out, it looks
+# as it ships.
+
+# Colour theme for anyone who has not picked one: "alps" (default), "migadu",
+# "nord" or "ocean". A theme picked in Settings stays that user's.
+# default_theme = "alps"
+
+# The logo on the sign-in page, in place of the edelweiss. A logo alps ships,
+# by name: "migadu", or "alps" for the edelweiss; these take the theme's
+# colours in light and dark. Or an SVG, PNG, WebP or JPEG file (at most
+# 1 MiB), read at start-up. Defaults to the default theme's own logo, so
+# default_theme = "migadu" brings the Migadu logo.
+# login_logo = "migadu"
+
+# For a login_logo file that would not show on a dark background: the image
+# for the dark modes.
+# login_logo_dark = "/etc/alps/logo-dark.svg"
+
 
 [tls]
 # Enable TLS termination (default: false)
