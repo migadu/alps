@@ -3045,7 +3045,7 @@ func handleMove(ctx *alps.Context) error {
 	moved := 0
 	var movedIDs []provider.MessageID
 	uidMapping := make(map[string]string)
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
 			return err
@@ -3058,7 +3058,10 @@ func handleMove(ctx *alps.Context) error {
 				for id := range mapping {
 					movedIDs = append(movedIDs, id)
 				}
-				return fmt.Errorf("failed to move messages: %v", err)
+				// Wrapped, here as for a copy and a delete, so that the kind
+				// of failure the provider names is answered as such: a
+				// message that is gone is a 404, as when it is read.
+				return fmt.Errorf("failed to move messages: %w", err)
 			}
 			moved += filedCount(mapping, batch)
 			movedIDs = append(movedIDs, batch...)
@@ -3128,7 +3131,7 @@ func handleCopy(ctx *alps.Context) error {
 
 	copied := 0
 	uidMapping := make(map[string]string)
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
 			return err
@@ -3137,7 +3140,7 @@ func handleCopy(ctx *alps.Context) error {
 		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
 			mapping, err := copyMessagesWithProvider(p, mboxName, to, batch)
 			if err != nil {
-				return fmt.Errorf("failed to copy messages: %v", err)
+				return fmt.Errorf("failed to copy messages: %w", err)
 			}
 			copied += filedCount(mapping, batch)
 			if !withMapping {
@@ -3192,7 +3195,7 @@ func handleDelete(ctx *alps.Context) error {
 
 	deleted := 0
 	var deletedIDs []provider.MessageID
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
 			return err
@@ -3203,7 +3206,7 @@ func handleDelete(ctx *alps.Context) error {
 			// what the session holds of any of them is forgotten.
 			deletedIDs = append(deletedIDs, batch...)
 			if err != nil {
-				return fmt.Errorf("failed to delete messages: %v", err)
+				return fmt.Errorf("failed to delete messages: %w", err)
 			}
 			deleted += len(batch)
 			return nil
