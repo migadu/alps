@@ -23,7 +23,7 @@ func TestHTTP_OneStatusRequestReadsSeveralFolders(t *testing.T) {
 	s.deliver("INBOX", "Arrival")
 	s.deliver("Trash", "Elsewhere")
 
-	r := s.do("GET", "/mailboxes/Archive/status?with=INBOX", nil)
+	r := s.do("GET", "/mailboxes/Archive/status?with=INBOX&with=Trash", nil)
 	s.expect(r, http.StatusOK)
 	var status struct {
 		MailboxStatusResponse

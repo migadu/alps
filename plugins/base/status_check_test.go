@@ -115,9 +115,8 @@ func (s *testServer) statusPage(path string) statusPage {
 // INBOX finds it, and the check of Archive that follows finds Archive as it
 // was, so Archive's page is still the one the session holds.
 //
-// The folder list is read again after the arrival, as it was: mail that
-// reaches the INBOX may have been filed into other folders as well, and their
-// counts in the sidebar are read with the list.
+// The INBOX's new counts are laid over the folder list the session holds, and
+// the sidebar shows them.
 func TestHTTP_NewMailInTheInboxLeavesTheOtherFolderAlone(t *testing.T) {
 	s := newTestServer(t)
 	s.deliver("Archive", "Filed")
@@ -130,7 +129,6 @@ func TestHTTP_NewMailInTheInboxLeavesTheOtherFolderAlone(t *testing.T) {
 
 	s.rewriteSubject(filepath.Join(s.dir, ".Archive"), "Filed", "Rewritten")
 	s.deliver("INBOX", "Arrival")
-	s.deliver("Trash", "Elsewhere")
 
 	// The poll, as the list makes it with Archive on screen.
 	s.expect(s.do("GET", "/mailboxes/INBOX/status", nil), http.StatusOK)
@@ -143,8 +141,8 @@ func TestHTTP_NewMailInTheInboxLeavesTheOtherFolderAlone(t *testing.T) {
 	if after.Inbox.NumMessages != 3 || after.Inbox.NumUnseen != 3 {
 		t.Errorf("the INBOX is answered at %d messages, %d unseen; want the 3 and 3 the check read", after.Inbox.NumMessages, after.Inbox.NumUnseen)
 	}
-	if total, unseen := after.counts("Trash"); total != 1 || unseen != 1 {
-		t.Errorf("the sidebar counts Trash at %d, %d unseen, after new mail; want the 1 and 1 it holds", total, unseen)
+	if total, unseen := after.counts("INBOX"); total != 3 || unseen != 3 {
+		t.Errorf("the sidebar counts the INBOX at %d, %d unseen, after new mail; want the 3 and 3 the check read", total, unseen)
 	}
 }
 
@@ -223,7 +221,8 @@ func TestHTTP_AMissingCountIsReadForItsFolderAlone(t *testing.T) {
 
 // A check that finds no earlier counts, and a page read at another message
 // count, has seen mail come or go as surely as one with earlier counts to
-// compare with: the folder list is read again, as for any real change.
+// compare with: the new counts go into the folder list, as for any real
+// change.
 func TestHTTP_ACheckWithNoEarlierCountsSeesNewMailByThePages(t *testing.T) {
 	s := newTestServer(t)
 	s.login()
@@ -244,9 +243,13 @@ func TestHTTP_ACheckWithNoEarlierCountsSeesNewMailByThePages(t *testing.T) {
 	}
 
 	s.expect(s.do("GET", "/mailboxes/INBOX/status", nil), http.StatusOK)
+	s.forgetStatus("INBOX")
 	after := s.statusPage("/mailboxes/INBOX?page=0")
-	if !after.lists("Lists") {
-		t.Error("the folder list was not read again after a check that found new mail")
+	if after.lists("Lists") {
+		t.Error("the whole folder list was read again after a check that found new mail")
+	}
+	if total, unseen := after.counts("INBOX"); total != 3 || unseen != 2 {
+		t.Errorf("the folder list counts the INBOX at %d, %d unseen; want 3 and 2", total, unseen)
 	}
 	if after.Inbox.NumMessages != 3 || after.Inbox.NumUnseen != 2 {
 		t.Errorf("the INBOX is answered at %d messages, %d unseen; want 3 and 2", after.Inbox.NumMessages, after.Inbox.NumUnseen)
@@ -338,13 +341,39 @@ func TestHTTP_AFolderTheListDoesNotCountIsReadAgain(t *testing.T) {
 	deliver("INBOX", "Arrival")
 	deliver("Hidden", "Filed")
 
-	// The poll with the INBOX on screen finds the arrival, and the listing
-	// after it reads the folder list again.
-	s.expect(s.do("GET", "/mailboxes/INBOX/status", nil), http.StatusOK)
+	// The folder list expires, and the listing after it reads the list again.
+	s.signedInSession().Cache().Delete("mailboxes")
 	s.statusPage("/mailboxes/INBOX?page=0")
 
 	if page := s.statusPage("/mailboxes/Hidden?page=0"); len(page.Messages) != 2 {
 		t.Errorf("Hidden lists %d messages after mail reached it; want 2: %+v", len(page.Messages), page.Messages)
+	}
+}
+
+// A check that finds new mail patches the folder's new counts into the folder
+// list the session holds, and keeps the list. It was dropped instead, and the
+// listing after every arrival read every folder's counts again, over
+// LIST-STATUS or with a STATUS per subscribed folder, for the change of one.
+func TestHTTP_NewMailIsCountedInTheFolderListItKeeps(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
+	s.statusPage("/mailboxes/INBOX?page=0")
+	if err := s.store.CreateMailbox("Lists"); err != nil {
+		t.Fatal(err)
+	}
+	s.deliver("INBOX", "Arrival")
+
+	s.expect(s.do("GET", "/mailboxes/INBOX/status", nil), http.StatusOK)
+	// The INBOX's own counts gone, as they go on their own: the folder list
+	// then answers for them.
+	s.forgetStatus("INBOX")
+
+	list := s.statusPage("/mailboxes")
+	if list.lists("Lists") {
+		t.Error("the folder list was read again for new mail in the INBOX")
+	}
+	if total, unseen := list.counts("INBOX"); total != 3 || unseen != 3 {
+		t.Errorf("the folder list counts the INBOX at %d, %d unseen; want the 3 and 3 the check read", total, unseen)
 	}
 }
 
