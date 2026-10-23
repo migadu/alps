@@ -1,4 +1,4 @@
-import{_ as e,d as t,f as n,h as r,m as i,p as a,s as o,y as s}from"./lit-CB2iQgdU.js";import{t as c}from"./vendor-Bey7gDeL.js";import{F as l,J as u,X as d,Y as f,c as p,l as m,ot as h,q as g,s as _,st as v,tt as y,u as b,z as x}from"./index-Bql1o0Vn.js";import"./alps-address-input-BMmn33xW.js";import{S,a as C,c as w,i as T,l as E,m as D,n as O,o as k,r as A,s as j,t as M,u as N}from"./task-modal-B5zTfqbS.js";var P=class extends i{constructor(...e){super(...e),this.options=[],this.value=``}static{this.styles=s`
+import{_ as e,d as t,f as n,h as r,m as i,p as a,s as o,y as s}from"./lit-CB2iQgdU.js";import{t as c}from"./vendor-Bey7gDeL.js";import{F as l,J as u,X as d,Y as f,c as p,l as m,ot as h,q as g,s as _,st as v,tt as y,u as b,z as x}from"./index-CQUPTHty.js";import"./alps-address-input-CCotTEJR.js";import{S,a as C,c as w,i as T,l as E,m as D,n as O,o as k,r as A,s as j,t as M,u as N}from"./task-modal-CtpIIuxy.js";var P=class extends i{constructor(...e){super(...e),this.options=[],this.value=``}static{this.styles=s`
     :host {
       display: inline-flex;
       background-color: var(--bg-secondary, #f3f4f6);
@@ -82,7 +82,7 @@ import{_ as e,d as t,f as n,h as r,m as i,p as a,s as o,y as s}from"./lit-CB2iQg
             }
         `]}updated(e){if(e.has(`open`)&&this.open){let e=e=>e.toString().padStart(2,`0`);if(this.askNotify=!1,this.attendees=(this.event?.attendees??[]).map(M),this.event){this.summary=this.event.summary||``,this.location=this.event.location||``,this.description=this.event.description||``,this.calendarPath=this.event.calendarPath||(this.calendars.length>0?this.calendars[0].path:``);let t=C(this.event);if(this.isAllDay=t,this.event.rrule?(this.originalRRule=this.event.rrule,this.event.rrule===`FREQ=DAILY`?this.rruleFreq=`DAILY`:this.event.rrule===`FREQ=WEEKLY`?this.rruleFreq=`WEEKLY`:this.event.rrule===`FREQ=MONTHLY`?this.rruleFreq=`MONTHLY`:this.event.rrule===`FREQ=YEARLY`?this.rruleFreq=`YEARLY`:this.rruleFreq=`CUSTOM`):(this.originalRRule=``,this.rruleFreq=``),t){let t=new Date(this.event.start);this.startDate=`${t.getUTCFullYear()}-${e(t.getUTCMonth()+1)}-${e(t.getUTCDate())}`,this.startTime=`00:00`;let n=new Date(this.event.end);n.setUTCDate(n.getUTCDate()-1),this.endDate=`${n.getUTCFullYear()}-${e(n.getUTCMonth()+1)}-${e(n.getUTCDate())}`,this.endDate<this.startDate&&(this.endDate=this.startDate),this.endTime=`00:00`}else{let t=new Date(this.event.start);this.startDate=`${t.getFullYear()}-${e(t.getMonth()+1)}-${e(t.getDate())}`,this.startTime=`${e(t.getHours())}:${e(t.getMinutes())}`;let n=new Date(this.event.end);this.endDate=`${n.getFullYear()}-${e(n.getMonth()+1)}-${e(n.getDate())}`,this.endTime=`${e(n.getHours())}:${e(n.getMinutes())}`}}else{this.summary=``,this.location=``,this.description=``,this.originalRRule=``,this.rruleFreq=``,this.calendarPath=this.calendars.length>0?this.calendars[0].path:``;let t=this.initialDate?new Date(this.initialDate):new Date;if(this.initialAllDay===void 0?this.initialDate&&t.getHours()===0&&t.getMinutes()===0:this.initialAllDay)this.isAllDay=!0,this.startDate=`${t.getFullYear()}-${e(t.getMonth()+1)}-${e(t.getDate())}`,this.startTime=`00:00`,this.endDate=this.startDate,this.endTime=`00:00`;else{this.isAllDay=!1,this.initialDate||(t.setMinutes(0,0,0),t.setHours(t.getHours()+1)),this.startDate=`${t.getFullYear()}-${e(t.getMonth()+1)}-${e(t.getDate())}`,this.startTime=`${e(t.getHours())}:${e(t.getMinutes())}`;let n=new Date(t.getTime()+3600*1e3);this.endDate=`${n.getFullYear()}-${e(n.getMonth()+1)}-${e(n.getDate())}`,this.endTime=`${e(n.getHours())}:${e(n.getMinutes())}`}}}}handleCancel(){this.open=!1,this.dispatchEvent(new CustomEvent(`close`))}formTimes(){if(this.isAllDay){let e=new Date(`${this.endDate}T00:00:00.000Z`);return e.setUTCDate(e.getUTCDate()+1),{startISO:`${this.startDate}T00:00:00.000Z`,endISO:e.toISOString()}}return{startISO:new Date(`${this.startDate}T${this.startTime||`00:00`}`).toISOString(),endISO:new Date(`${this.endDate}T${this.endTime||`00:00`}`).toISOString()}}setStart(e){Object.assign(this,e),this.startDate&&this.endDate<this.startDate&&(this.endDate=this.startDate),!this.isAllDay&&this.startDate&&this.endDate===this.startDate&&this.startTime&&this.endTime&&this.endTime<this.startTime&&(this.endTime=this.startTime)}endsBeforeStart(){if(this.isAllDay)return this.endDate<this.startDate;let{startISO:e,endISO:t}=this.formTimes();return new Date(t).getTime()<new Date(e).getTime()}get othersMeeting(){let e=this.event;return e?.role===`attendee`||!!e?.organizer&&e.role!==`organizer`}async handleSave(){if(!this.summary.trim()||!this.startDate||!this.endDate)return;if(this.endsBeforeStart()){window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore?.t(`calendar.endBeforeStart`),duration:8e3}}));return}let e=!!this.event?.ended&&new Date(this.formTimes().endISO)<=new Date;if(this.event?.path&&!this.othersMeeting&&E({...this.event,ended:e},this.scheduling)){this.askNotify=!0;return}await this.save()}async save(e){this.askNotify=!1,this.isSaving=!0;try{let{startISO:t,endISO:n}=this.formTimes(),r;this.rruleFreq===`CUSTOM`?r=this.originalRRule:this.rruleFreq&&(r=`FREQ=${this.rruleFreq}`);let i={summary:this.summary,location:this.location,description:this.description,start:t,end:n,allDay:this.isAllDay,calendarPath:this.calendarPath,rrule:r,etag:this.event?.etag,attendees:this.othersMeeting?void 0:this.attendees.map(k).filter(e=>e!==null),notify:e,lang:this.i18nStore?.getLanguage?.()};(this.event&&this.event.path?await O.updateEvent(this.event.path,i):await O.createEvent(i))?.sendFailed&&window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore?.t(`invitations.notTold`),duration:8e3}})),this.open=!1,this.dispatchEvent(new CustomEvent(`saved`))}catch(e){console.error(`Failed to save event`,e);let t=y(e);t&&this.dispatchEvent(new CustomEvent(`conflict`)),window.dispatchEvent(new CustomEvent(`show-toast`,{detail:{message:this.i18nStore?.t(t?`calendar.saveConflict`:`calendar.saveEventFailed`),duration:8e3}}))}finally{this.isSaving=!1}}render(){return this.open?e`
             <ui-modal 
-                title="${this.event?this.i18nStore?.t(`calendar.editEvent`):this.i18nStore?.t(`calendar.newEvent`)}" 
+                heading="${this.event?this.i18nStore?.t(`calendar.editEvent`):this.i18nStore?.t(`calendar.newEvent`)}" 
                 width="450px"
                 ?dismissible=${!this.isSaving}
                 @cancel=${this.handleCancel}
@@ -219,7 +219,7 @@ import{_ as e,d as t,f as n,h as r,m as i,p as a,s as o,y as s}from"./lit-CB2iQg
 
             ${this.askNotify?e`
                 <ui-confirm
-                    title=${this.i18nStore?.t(`invitations.notifyTitle`)}
+                    heading=${this.i18nStore?.t(`invitations.notifyTitle`)}
                     message=${this.i18nStore?.t(`invitations.notifyChanges`)}
                     confirmText=${this.i18nStore?.t(`invitations.send`)}
                     secondaryText=${this.i18nStore?.t(`invitations.dontSend`)}
@@ -1809,7 +1809,7 @@ import{_ as e,d as t,f as n,h as r,m as i,p as a,s as o,y as s}from"./lit-CB2iQg
 
             ${this.promptOpen?e`
                 <ui-prompt 
-                    title="${this.promptMode===`add`?this.i18nStore?.t(`calendar.addCalendar`):this.i18nStore?.t(`calendar.renameCalendar`)}" 
+                    heading="${this.promptMode===`add`?this.i18nStore?.t(`calendar.addCalendar`):this.i18nStore?.t(`calendar.renameCalendar`)}" 
                     .fields=${this.promptFields}
                     @submit=${this.handlePromptSubmit} 
                     @cancel=${this.handlePromptCancel}
@@ -1818,7 +1818,7 @@ import{_ as e,d as t,f as n,h as r,m as i,p as a,s as o,y as s}from"./lit-CB2iQg
 
             ${this.calendarToDelete?e`
                 <ui-confirm
-                    title="${this.i18nStore?.t(`calendar.deleteCalendar`)}"
+                    heading="${this.i18nStore?.t(`calendar.deleteCalendar`)}"
                     .message=${this.i18nStore?.t(`calendar.deleteCalendarConfirm`,{name:this.calendarToDelete.name})??``}
                     confirmText="${this.i18nStore?.t(`calendar.delete`)}"
                     isDanger
@@ -1830,7 +1830,7 @@ import{_ as e,d as t,f as n,h as r,m as i,p as a,s as o,y as s}from"./lit-CB2iQg
             ${this.eventToDelete&&(this.eventToDelete.task?w(this.eventToDelete.task,this.scheduling):E(this.eventToDelete,this.scheduling))?e`
                 <ui-confirm
                     class="delete-meeting"
-                    title="${this.i18nStore?.t(this.eventToDelete.task?`tasks.deleteTask`:`calendar.deleteEvent`)}"
+                    heading="${this.i18nStore?.t(this.eventToDelete.task?`tasks.deleteTask`:`calendar.deleteEvent`)}"
                     message="${this.i18nStore?.t(this.eventToDelete.task?this.eventToDelete.task.role===`organizer`?`tasks.deleteTellAssignees`:`tasks.deleteTellAssigner`:this.eventToDelete.role===`organizer`?`invitations.deleteTellGuests`:`invitations.deleteTellOrganizer`)}"
                     confirmText="${this.i18nStore?.t(`invitations.deleteAndTell`)}"
                     secondaryText="${this.i18nStore?.t(`invitations.deleteOnly`)}"
@@ -1841,7 +1841,7 @@ import{_ as e,d as t,f as n,h as r,m as i,p as a,s as o,y as s}from"./lit-CB2iQg
                 ></ui-confirm>
             `:this.eventToDelete?e`
                 <ui-confirm
-                    title="${this.i18nStore?.t(this.eventToDelete.task?`tasks.deleteTask`:`calendar.deleteEvent`)}"
+                    heading="${this.i18nStore?.t(this.eventToDelete.task?`tasks.deleteTask`:`calendar.deleteEvent`)}"
                     .message=${this.i18nStore?.t(this.eventToDelete.task?`tasks.deleteTaskConfirm`:`calendar.deleteEventConfirm`)??``}
                     confirmText="${this.i18nStore?.t(`calendar.delete`)}"
                     isDanger

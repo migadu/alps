@@ -1,4 +1,4 @@
-import{_ as e,d as t,f as n,m as r,p as i,r as a,s as o,y as s}from"./lit-CB2iQgdU.js";import{J as c,st as l}from"./index-Bql1o0Vn.js";import{a as u,n as d,t as f}from"./managesieve-service-Dfbypbr_.js";var p=class extends r{constructor(...e){super(...e),this.isDirty=!1,this.script=``,this.stored=``,this.isValidating=!1,this.isSaving=!1}static{this.styles=s`
+import{_ as e,d as t,f as n,m as r,p as i,r as a,s as o,y as s}from"./lit-CB2iQgdU.js";import{J as c,st as l}from"./index-CQUPTHty.js";import{a as u,n as d,t as f}from"./managesieve-service-DLK5WrFh.js";var p=class extends r{constructor(...e){super(...e),this.isDirty=!1,this.script=``,this.stored=``,this.isValidating=!1,this.isSaving=!1}static{this.styles=s`
 		.editor-container {
 			display: flex;
 			flex-direction: column;
@@ -71,7 +71,8 @@ import{_ as e,d as t,f as n,m as r,p as i,r as a,s as o,y as s}from"./lit-CB2iQg
 			<div class="editor-container">
 				<div class="code-area">
 					<div class="highlight-layer">${this.highlight(this.script)}</div>
-					<textarea .value=${this.script} @input=${this.handleInput} @scroll=${this.handleScroll} spellcheck="false"></textarea>
+					<!-- Named by what it holds: nothing else on the page labels it. -->
+					<textarea aria-label=${this.i18nStore?.t(`managesieve.raw.script`)??``} .value=${this.script} @input=${this.handleInput} @scroll=${this.handleScroll} spellcheck="false"></textarea>
 				</div>
 				<div class="actions">
 					<alps-button variant="text" ?spinning=${this.isValidating} ?disabled=${this.isSaving} @click=${this.validate}>
@@ -291,7 +292,7 @@ import{_ as e,d as t,f as n,m as r,p as i,r as a,s as o,y as s}from"./lit-CB2iQg
 
 			${this.showSwitchRawConfirm?e`
 				<ui-confirm
-					title=${this.i18nStore.t(`managesieve.warningRawSwitchTitle`)}
+					heading=${this.i18nStore.t(`managesieve.warningRawSwitchTitle`)}
 					message="${this.i18nStore.t(`managesieve.warningRawSwitch`)}"
 					confirmText=${this.i18nStore.t(`managesieve.warningRawSwitchConfirm`)}
 					isDanger=${!0}

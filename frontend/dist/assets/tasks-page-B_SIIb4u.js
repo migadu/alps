@@ -1,4 +1,4 @@
-import{_ as e,d as t,f as n,m as r,o as i,p as a,s as o,y as s}from"./lit-CB2iQgdU.js";import{J as c,Y as l,c as u,et as d,l as f,ot as p,s as m,st as h,z as g}from"./index-Bql1o0Vn.js";import{S as _,_ as v,b as y,c as b,d as x,f as S,g as C,h as w,n as T,p as E,r as D,v as O,x as k,y as A}from"./task-modal-B5zTfqbS.js";var j={overdue:`tasks.groups.overdue`,today:`tasks.groups.today`,week:`tasks.groups.week`,undated:`tasks.groups.undated`,later:`tasks.groups.later`,completed:`tasks.groups.completed`},M={high:`tasks.priorities.high`,medium:`tasks.priorities.medium`,low:`tasks.priorities.low`},N={high:`!!!`,medium:`!!`,low:`!`},P=class extends r{constructor(...e){super(...e),this.tasks=[],this.pendingPaths=new Set,this.settling=new Set,this.searching=!1,this.loading=!1,this.focusedIndex=-1}static{this.styles=s`
+import{_ as e,d as t,f as n,m as r,o as i,p as a,s as o,y as s}from"./lit-CB2iQgdU.js";import{J as c,Y as l,c as u,et as d,l as f,ot as p,s as m,st as h,z as g}from"./index-CQUPTHty.js";import{S as _,_ as v,b as y,c as b,d as x,f as S,g as C,h as w,n as T,p as E,r as D,v as O,x as k,y as A}from"./task-modal-CtpIIuxy.js";var j={overdue:`tasks.groups.overdue`,today:`tasks.groups.today`,week:`tasks.groups.week`,undated:`tasks.groups.undated`,later:`tasks.groups.later`,completed:`tasks.groups.completed`},M={high:`tasks.priorities.high`,medium:`tasks.priorities.medium`,low:`tasks.priorities.low`},N={high:`!!!`,medium:`!!`,low:`!`},P=class extends r{constructor(...e){super(...e),this.tasks=[],this.pendingPaths=new Set,this.settling=new Set,this.searching=!1,this.loading=!1,this.focusedIndex=-1}static{this.styles=s`
         :host {
             display: flex;
             flex-direction: column;
@@ -414,7 +414,7 @@ import{_ as e,d as t,f as n,m as r,o as i,p as a,s as o,y as s}from"./lit-CB2iQg
 
             ${this.listPromptOpen?e`
                 <ui-prompt
-                    title=${t(`tasks.newList`)}
+                    heading=${t(`tasks.newList`)}
                     .fields=${[{id:`name`,label:t(`tasks.listName`),autofocus:!0}]}
                     @submit=${this.handleListPromptSubmit}
                     @cancel=${()=>{this.listPromptOpen=!1}}
@@ -424,7 +424,7 @@ import{_ as e,d as t,f as n,m as r,o as i,p as a,s as o,y as s}from"./lit-CB2iQg
             ${this.taskToDelete&&b(this.taskToDelete,this.scheduling)?e`
                 <ui-confirm
                     class="delete-assigned"
-                    title=${t(`tasks.deleteTask`)}
+                    heading=${t(`tasks.deleteTask`)}
                     message=${t(this.taskToDelete.role===`organizer`?`tasks.deleteTellAssignees`:`tasks.deleteTellAssigner`)}
                     confirmText=${t(`invitations.deleteAndTell`)}
                     secondaryText=${t(`invitations.deleteOnly`)}
@@ -435,7 +435,7 @@ import{_ as e,d as t,f as n,m as r,o as i,p as a,s as o,y as s}from"./lit-CB2iQg
                 ></ui-confirm>
             `:this.taskToDelete?e`
                 <ui-confirm
-                    title=${t(`tasks.deleteTask`)}
+                    heading=${t(`tasks.deleteTask`)}
                     message=${t(`tasks.deleteTaskConfirm`)}
                     confirmText=${t(`tasks.delete`)}
                     isDanger

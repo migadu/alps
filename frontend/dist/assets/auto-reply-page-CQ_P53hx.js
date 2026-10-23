@@ -1,4 +1,4 @@
-import{_ as e,d as t,h as n,m as r,p as i,s as a,y as o}from"./lit-CB2iQgdU.js";import{J as s,st as c,z as l}from"./index-Bql1o0Vn.js";import{i as u,n as d,r as f,t as p}from"./managesieve-service-Dfbypbr_.js";function m(){let e=new Date,t=e=>String(e).padStart(2,`0`);return`${e.getFullYear()}-${t(e.getMonth()+1)}-${t(e.getDate())}`}var h=class extends r{constructor(...e){super(...e),this.loading=!0,this.loadFailed=!1,this.extensions=[],this.ownVacation=!1,this.stored=u,this.draft=u,this.saving=!1,this.error=``}static{this.styles=o`
+import{_ as e,d as t,h as n,m as r,p as i,s as a,y as o}from"./lit-CB2iQgdU.js";import{J as s,st as c,z as l}from"./index-CQUPTHty.js";import{i as u,n as d,r as f,t as p}from"./managesieve-service-DLK5WrFh.js";function m(){let e=new Date,t=e=>String(e).padStart(2,`0`);return`${e.getFullYear()}-${t(e.getMonth()+1)}-${t(e.getDate())}`}var h=class extends r{constructor(...e){super(...e),this.loading=!0,this.loadFailed=!1,this.extensions=[],this.ownVacation=!1,this.stored=u,this.draft=u,this.saving=!1,this.error=``}static{this.styles=o`
 		.loading {
 			display: flex;
 			justify-content: center;

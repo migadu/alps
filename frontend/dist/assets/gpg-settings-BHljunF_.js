@@ -1,5 +1,5 @@
 const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/openpgp-CVa1OxL9.js","assets/rolldown-runtime-S-ySWqyJ.js"])))=>i.map(i=>d[i]);
-import{_ as e,d as t,m as n,p as r,s as i,y as a}from"./lit-CB2iQgdU.js";import{$ as o,J as s,P as c,ct as l,st as u}from"./index-Bql1o0Vn.js";var d=class extends n{constructor(...e){super(...e),this.loading=!0,this.generating=!1,this.importing=!1,this.importError=``,this.keyring=null,this.pubKeyInput=``,this.privKeyInput=``,this.viewState=`default`,this.showPassphrasePrompt=!1,this.passphrasePromptMode=`lock`,this.showPurgeConfirm=!1,this.resolvePassphrase=null,this.resolveError=null}static{this.styles=a`
+import{_ as e,d as t,m as n,p as r,s as i,y as a}from"./lit-CB2iQgdU.js";import{$ as o,J as s,P as c,ct as l,st as u}from"./index-CQUPTHty.js";var d=class extends n{constructor(...e){super(...e),this.loading=!0,this.generating=!1,this.importing=!1,this.importError=``,this.keyring=null,this.pubKeyInput=``,this.privKeyInput=``,this.viewState=`default`,this.showPassphrasePrompt=!1,this.passphrasePromptMode=`lock`,this.showPurgeConfirm=!1,this.resolvePassphrase=null,this.resolveError=null}static{this.styles=a`
         :host {
             display: block;
         }
@@ -58,11 +58,13 @@ import{_ as e,d as t,m as n,p as r,s as i,y as a}from"./lit-CB2iQgdU.js";import{
                     <alps-setting-group description="${this.i18nStore?.t(`gpg.importUnencryptedDesc`)}" style="margin-bottom: 24px;"></alps-setting-group>
                     
                     <alps-setting-group label="${this.i18nStore?.t(`gpg.publicKeyBlock`)}" style="margin-bottom: 24px;">
-                        <textarea .value=${this.pubKeyInput} @input=${e=>this.pubKeyInput=e.target.value}></textarea>
+                        <!-- Each box named by the label above it, which is in
+                             alps-setting-group's shadow root and cannot reach it. -->
+                        <textarea aria-label=${this.i18nStore?.t(`gpg.publicKeyBlock`)??``} .value=${this.pubKeyInput} @input=${e=>this.pubKeyInput=e.target.value}></textarea>
                     </alps-setting-group>
 
                     <alps-setting-group label="${this.i18nStore?.t(`gpg.privateKeyBlock`)}" style="margin-bottom: 24px;">
-                        <textarea .value=${this.privKeyInput} @input=${e=>this.privKeyInput=e.target.value}></textarea>
+                        <textarea aria-label=${this.i18nStore?.t(`gpg.privateKeyBlock`)??``} .value=${this.privKeyInput} @input=${e=>this.privKeyInput=e.target.value}></textarea>
                     </alps-setting-group>
 
                     <div class="actions">
@@ -82,7 +84,7 @@ import{_ as e,d as t,m as n,p as r,s as i,y as a}from"./lit-CB2iQgdU.js";import{
 
             ${this.showPassphrasePrompt?e`
                 <ui-prompt
-                    title="${this.passphrasePromptMode===`unlock`?this.i18nStore?.t(`gpg.passphraseRequired`):this.passphrasePromptMode===`confirm`?this.i18nStore?.t(`gpg.passphraseConfirmTitle`):this.i18nStore?.t(`gpg.passphraseSetTitle`)}"
+                    heading="${this.passphrasePromptMode===`unlock`?this.i18nStore?.t(`gpg.passphraseRequired`):this.passphrasePromptMode===`confirm`?this.i18nStore?.t(`gpg.passphraseConfirmTitle`):this.i18nStore?.t(`gpg.passphraseSetTitle`)}"
                     confirmText="${this.passphrasePromptMode===`unlock`?this.i18nStore?.t(`gpg.unlock`):this.passphrasePromptMode===`confirm`?this.i18nStore?.t(`gpg.confirm`):this.i18nStore?.t(`gpg.lock`)}"
                     cancelText="${this.i18nStore?.t(`general.cancel`)}"
                     .fields=${[{id:`passphrase`,label:this.passphrasePromptMode===`unlock`?this.i18nStore?.t(`gpg.passphrasePrompt`):this.passphrasePromptMode===`confirm`?this.i18nStore?.t(`gpg.passphraseConfirmPrompt`):this.i18nStore?.t(`gpg.passphraseLockPrompt`),type:`password`,placeholder:this.i18nStore?.t(`gpg.passphrase`),autofocus:!0}]}
@@ -91,15 +93,15 @@ import{_ as e,d as t,m as n,p as r,s as i,y as a}from"./lit-CB2iQgdU.js";import{
                 ></ui-prompt>
             `:``}
             ${this.importError?e`
-                <ui-modal title="${this.i18nStore?.t(`gpg.importFailedTitle`)}" @cancel=${this.clearError}>
+                <ui-modal heading="${this.i18nStore?.t(`gpg.importFailedTitle`)}" @cancel=${this.clearError}>
                     <div style="padding: 16px; white-space: pre-wrap; font-family: monospace; font-size: 13px;">${this.importError}</div>
-                    <alps-button slot="actions" @click=${this.clearError}>OK</alps-button>
+                    <alps-button slot="actions" @click=${this.clearError}>${this.i18nStore?.t(`attachment.close`)}</alps-button>
                 </ui-modal>
             `:``}
 
             ${this.showPurgeConfirm?e`
                 <ui-confirm
-                    title="${this.i18nStore?.t(`gpg.purgeKeys`)}"
+                    heading="${this.i18nStore?.t(`gpg.purgeKeys`)}"
                     message="${this.i18nStore?.t(`gpg.purgeConfirm`)}"
                     confirmText="${this.i18nStore?.t(`gpg.purgeKeys`)}"
                     cancelText="${this.i18nStore?.t(`general.cancel`)}"
