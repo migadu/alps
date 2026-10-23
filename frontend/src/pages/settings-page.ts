@@ -9,6 +9,7 @@ import { renderIcon } from '../utils/ui';
 import { closeSidebarPeek, sidebarLayoutStyles } from '../components/alps-sidebar';
 import '../components/alps-header';
 import '../components/alps-sidebar';
+import '../components/alps-sidebar-strip';
 import '../components/alps-category-item';
 import '../components/settings-accounts';
 import '../components/alps-webauthn-settings';
@@ -34,13 +35,15 @@ export class SettingsPage extends LitElement {
   @state() private sidebarWidth = 250;
   @state() private sidebarCollapsed = false;
   @state() private isSidebarDragging = false;
-  /** Mirrors the sidebar's own hover overlay (`peek-change`). */
-  @state() private sidebarPeeking = false;
 
   static styles = [
     sidebarLayoutStyles,
     css`
     :host {
+      /* The collapsed strip's slide (sidebarLayoutStyles): a section's icon
+         sits 28px in (alps-category-item's 12px margin and 16px padding, with
+         no content padding), so 20px brings it 8px inside the strip. */
+      --strip-slide: 20px;
       display: flex;
       flex-direction: column;
       height: 100vh;
@@ -322,12 +325,13 @@ export class SettingsPage extends LitElement {
           @drag-start=${() => this.isSidebarDragging = true}
           @drag-end=${() => this.isSidebarDragging = false}
           @toggle-collapse=${() => this.settingsStore.updateSettings({ sidebarCollapsed: !this.sidebarCollapsed })}
-          @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
           @close-sidebar=${() => this.mobileSidebarOpen = false}
         >
-          <div class="sidebar-wrapper ${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile ? 'collapsed' : ''}">
-            <!-- Inert in the strip, as it is dimmed there. -->
-            <div class="sidebar-content" ?inert=${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile}>
+          <!-- Frame and content follow the strip state alps-sidebar
+               provides: collapsed, they keep everything, dimmed, inert and
+               behind the main view. -->
+          <alps-sidebar-frame class="sidebar-wrapper">
+            <alps-sidebar-content class="sidebar-content">
               <div class="sidebar-scroll-content">
                 <alps-category-item 
             ?active=${this.category === 'general'}
@@ -389,8 +393,8 @@ export class SettingsPage extends LitElement {
             </alps-category-item>
           `)}
               </div>
-            </div>
-          </div>
+            </alps-sidebar-content>
+          </alps-sidebar-frame>
         </alps-sidebar>
         
         <div class="main-view" @scroll=${this._handleScroll}>

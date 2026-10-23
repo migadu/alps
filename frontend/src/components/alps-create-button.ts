@@ -1,10 +1,16 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { consume } from '@lit/context';
+import { sidebarStripContext } from './alps-sidebar-strip';
 import './alps-button';
 
 @customElement('alps-create-button')
 export class AlpsCreateButton extends LitElement {
-  @property({ type: Boolean }) collapsed = false;
+  /** Its small form, in the collapsed strip: read from the sidebar above it
+   *  rather than passed in by each page. Reflected, because the small form is
+   *  styled off the attribute. */
+  @consume({ context: sidebarStripContext, subscribe: true })
+  @property({ type: Boolean, reflect: true }) collapsed = false;
   @property({ type: String }) icon = 'plus';
   @property({ type: String }) text = '';
   @property({ type: Boolean }) disabled = false;
