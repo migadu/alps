@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"reflect"
 	"runtime"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -33,6 +35,10 @@ type idlingServer struct {
 	hang chan struct{}
 	// attempts are when each IDLE was asked for, refused or not.
 	attempts []time.Time
+	// notify has the server watch the subscribed folders when asked
+	// (NOTIFY); notifyRefusal is what it answers instead, while set.
+	notify        bool
+	notifyRefusal error
 }
 
 func (srv *idlingServer) dial(username, password string) (provider.MailProvider, error) {
@@ -98,6 +104,50 @@ type idlingConnection struct {
 	worked bool // other work ran on it while it was in IDLE
 	closed bool
 	drop   chan struct{} // closed to drop the connection under an IDLE
+	// notifies counts the watches of the folders begun on it; lost is
+	// closed when the server stops watching them (see overflow).
+	notifies int
+	watching bool
+	lost     chan struct{}
+}
+
+func (c *idlingConnection) WatchFolders() (bool, bool, error) {
+	srv := c.server
+	srv.mu.Lock()
+	can, refusal := srv.notify, srv.notifyRefusal
+	srv.mu.Unlock()
+	if !can {
+		return false, false, nil
+	}
+	if refusal != nil {
+		return false, false, refusal
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.watching {
+		return true, false, nil
+	}
+	c.watching = true
+	c.notifies++
+	c.lost = make(chan struct{})
+	return true, true, nil
+}
+
+// overflow has the server stop watching the folders, as it does when there
+// is more to tell than it will (NOTIFICATIONOVERFLOW): the IDLE ends.
+func (c *idlingConnection) overflow() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.watching {
+		c.watching = false
+		close(c.lost)
+	}
+}
+
+func (c *idlingConnection) watches() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.notifies
 }
 
 func (c *idlingConnection) Close() error {
@@ -140,10 +190,12 @@ func (c *idlingConnection) Idle(mailbox string, stop <-chan struct{}, started fu
 	c.mu.Lock()
 	c.idles++
 	c.inIdle = true
+	lost := c.lost
 	c.mu.Unlock()
 	started()
 	var err error
 	select {
+	case <-lost:
 	case <-stop:
 		if hang != nil {
 			select {
@@ -1116,5 +1168,175 @@ func TestWatchInbox_InitialAnnouncementRequiresTheSameBackgroundConnection(t *te
 				t.Error("the stale IDLE announcement was kept")
 			}
 		})
+	}
+}
+
+// newFolderPushSession is a newPushSession that waits for the news of the
+// subscribed folders as well, where srv can tell of them.
+func newFolderPushSession(t *testing.T, srv *idlingServer) *Session {
+	t.Helper()
+	s := newPushSession(t, srv)
+	s.manager.pushFolders = true
+	return s
+}
+
+// takeFolders waits for news of the folders other than the Inbox, and
+// answers those the watch was told of, in order of name.
+func takeFolders(t *testing.T, w *InboxWatch) []string {
+	t.Helper()
+	if ev := next(t, w); ev != FolderChanged {
+		t.Fatalf("got %v, want FolderChanged", ev)
+	}
+	folders := w.Folders()
+	sort.Strings(folders)
+	return folders
+}
+
+// Where the mail server can tell of the subscribed folders (NOTIFY), the
+// session waits for their news too, on the IDLE's connection, and the watch
+// is told so. News of a folder names it; news of the Inbox is as before.
+func TestWatchInbox_WatchesTheSubscribedFoldersWhereTheServerCan(t *testing.T) {
+	srv := idlingServer{notify: true}
+	s := newFolderPushSession(t, &srv)
+
+	w := s.WatchInbox()
+	if ev := next(t, w); ev != FoldersWatched {
+		t.Fatalf("the first event is %v, want FoldersWatched", ev)
+	}
+	idling := srv.idling()
+	if idling == nil || idling.watches() != 1 {
+		t.Fatal("the folders are not watched on the IDLE's connection")
+	}
+
+	idling.say("Archive")
+	if got := takeFolders(t, w); !reflect.DeepEqual(got, []string{"Archive"}) {
+		t.Fatalf("the news names %q, want Archive", got)
+	}
+	if got := w.Folders(); len(got) > 0 {
+		t.Errorf("taken again, the news names %q", got)
+	}
+	idling.say("INBOX")
+	if ev := next(t, w); ev != InboxChanged {
+		t.Fatalf("news of the Inbox came as %v, want InboxChanged", ev)
+	}
+}
+
+// News of the folders that comes faster than the watch reads it is kept, all
+// of it, once for each folder, and does not crowd out news of the Inbox.
+func TestWatchInbox_NewsOfTheFoldersIsKeptUntilItIsTaken(t *testing.T) {
+	srv := idlingServer{notify: true}
+	s := newFolderPushSession(t, &srv)
+	w := s.WatchInbox()
+	if ev := next(t, w); ev != FoldersWatched {
+		t.Fatalf("the first event is %v, want FoldersWatched", ev)
+	}
+	idling := srv.idling()
+
+	for _, name := range []string{"Archive", "Sent", "Archive", "Lists", "Sent"} {
+		idling.say(name)
+	}
+	idling.say("INBOX")
+	if got, want := takeFolders(t, w), []string{"Archive", "Lists", "Sent"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("the news names %q, want %q", got, want)
+	}
+	if ev := next(t, w); ev != InboxChanged {
+		t.Fatalf("got %v, want InboxChanged", ev)
+	}
+	quiet(t, w, "news taken")
+}
+
+// With the folders left out ([server] push_subscribed_folders off), or a
+// mail server that cannot tell of them, the session waits for the news of
+// the Inbox alone, as before: the watch is told so, and news of another
+// folder is no news.
+func TestWatchInbox_TheInboxAloneWhenTheFoldersAreOffOrCannotBeWatched(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		folders, notify bool
+	}{
+		{"folders off", false, true},
+		{"no NOTIFY", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := idlingServer{notify: tc.notify}
+			s := newPushSession(t, &srv)
+			s.manager.pushFolders = tc.folders
+
+			w := s.WatchInbox()
+			if ev := next(t, w); ev != InboxWatched {
+				t.Fatalf("the first event is %v, want InboxWatched", ev)
+			}
+			idling := srv.idling()
+			if idling.watches() != 0 {
+				t.Error("the folders were watched")
+			}
+			idling.say("Archive")
+			quiet(t, w, "news of Archive")
+			idling.say("INBOX")
+			if ev := next(t, w); ev != InboxChanged {
+				t.Fatalf("news of the Inbox came as %v, want InboxChanged", ev)
+			}
+		})
+	}
+}
+
+// A mail server that refuses to watch the folders still has the Inbox
+// waited on: the connection is kept, and nobody is signed out.
+func TestWatchInbox_ARefusedWatchOfTheFoldersLeavesTheInbox(t *testing.T) {
+	srv := idlingServer{notify: true, notifyRefusal: &imap.Error{Type: imap.StatusResponseTypeNo, Text: "not now"}}
+	s := newFolderPushSession(t, &srv)
+	w := s.WatchInbox()
+	if ev := next(t, w); ev != InboxWatched {
+		t.Fatalf("the first event is %v, want InboxWatched", ev)
+	}
+	idling := srv.idling()
+	if idling == nil || idling.isClosed() {
+		t.Fatal("the IDLE does not run on the connection kept")
+	}
+	idling.say("INBOX")
+	if ev := next(t, w); ev != InboxChanged {
+		t.Fatalf("news of the Inbox came as %v, want InboxChanged", ev)
+	}
+	if srv.dialled() != 2 {
+		t.Errorf("%d connections opened, want the session's own and the background one", srv.dialled())
+	}
+}
+
+// A watch begun while the folders are watched is told so at once.
+func TestWatchInbox_AWatchBegunLaterIsToldTheFoldersAreWatched(t *testing.T) {
+	srv := idlingServer{notify: true}
+	s := newFolderPushSession(t, &srv)
+	first := s.WatchInbox()
+	if ev := next(t, first); ev != FoldersWatched {
+		t.Fatalf("the first event is %v, want FoldersWatched", ev)
+	}
+	second := s.WatchInbox()
+	if ev := next(t, second); ev != FoldersWatched {
+		t.Fatalf("the later watch was first told %v, want FoldersWatched", ev)
+	}
+}
+
+// A mail server that stops watching the folders (NOTIFICATIONOVERFLOW) is
+// asked again on the same connection, and the watches are told the folders
+// are watched again: what changed meanwhile went unheard, and pages check.
+func TestWatchInbox_TheFoldersAreWatchedAgainAfterTheServerStopped(t *testing.T) {
+	srv := idlingServer{notify: true}
+	s := newFolderPushSession(t, &srv)
+	w := s.WatchInbox()
+	if ev := next(t, w); ev != FoldersWatched {
+		t.Fatalf("the first event is %v, want FoldersWatched", ev)
+	}
+	idling := srv.idling()
+
+	idling.overflow()
+	if ev := next(t, w); ev != FoldersWatched {
+		t.Fatalf("after the server stopped, got %v, want FoldersWatched", ev)
+	}
+	if idling.watches() != 2 || srv.dialled() != 2 {
+		t.Errorf("%d watches on %d connections, want the folders watched again on the same one", idling.watches(), srv.dialled())
+	}
+	idling.say("Archive")
+	if got := takeFolders(t, w); !reflect.DeepEqual(got, []string{"Archive"}) {
+		t.Fatalf("the news names %q, want Archive", got)
 	}
 }

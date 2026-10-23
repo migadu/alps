@@ -2289,6 +2289,8 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	// server. It carries the verdict and References that a listing row does
 	// not.
 	var tempMsg *IMAPMessage
+	// The images an HTML body shows, read with it: see bodyImagesToRead.
+	var bodyImages [][]int
 
 	if reading {
 		// The part is chosen from the message's structure, which the session
@@ -2347,6 +2349,13 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		// Use the preferred part path
 		if preferredPart != nil {
 			partPath = preferredPart.Path
+			if strings.EqualFold(preferredPart.MIMEType, "text/html") {
+				held := func(path []int) bool {
+					_, ok := cache.Get(rawPartCacheKey(mbox.Name(), uidStr, path))
+					return ok
+				}
+				bodyImages = bodyImagesToRead(structure, held, ctx.Server.Options.CacheMaxPartBytes())
+			}
 		}
 	}
 
@@ -2364,8 +2373,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	}
 
 	// Build cache key for individual message (without allow-remote-resources since it doesn't affect IMAP data)
-	partPathStr := fmt.Sprintf("%v", partPath)
-	msgCacheKey := fmt.Sprintf("message:%s:%s:%s:limit%d", mbox.Name(), uidStr, partPathStr, limit)
+	msgCacheKey := partCacheKey(mbox.Name(), uidStr, partPath, limit)
 
 	// A part cached with its body is served from the cache. The reader is also
 	// shown the verdict and References, which a part cached by another read of
@@ -2414,6 +2422,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		ctx.Server.Logger().Debugf("Cache HIT for message %s/%s part %v", mbox.Name(), uidStr, partPath)
 	} else {
 		var providerMsg *provider.Message
+		var imageHeaders, imageBodies [][]byte
 		err = doRequestMail(ctx, func(p provider.MailProvider) error {
 			if err := parseUID(p); err != nil {
 				return err
@@ -2423,10 +2432,11 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			case raw:
 				// For raw mode, don't parse - just get bytes
 				providerMsg, headerData, bodyData, err = p.GetMessagePartRaw(mbox.Name(), uid, partPath, limit)
-			case reading && tempMsg == nil:
+			case reading && (tempMsg == nil || readsPartsWith(p, bodyImages)):
 				// The structure came from the cache: the verdict and the
-				// References are read with the part, in the same FETCH.
-				providerMsg, headerData, bodyData, err = readerPartWithProvider(p, mbox.Name(), uid, partPath)
+				// References are read with the part, in the same FETCH. So
+				// are the images an HTML body shows, where the provider can.
+				providerMsg, headerData, bodyData, imageHeaders, imageBodies, err = readerPartWithProvider(p, mbox.Name(), uid, partPath, bodyImages)
 			default:
 				// The bytes, as for /raw: the answer is built from them, and
 				// reading the part decoded failed on a charset or a transfer
@@ -2449,16 +2459,36 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 				}
 			}
 
-			// Cache the raw bytes using provider type so we can recreate fresh readers
-			cache.Set(msgCacheKey, CachedMessagePart{
-				Message:      providerMsg,
-				HeaderData:   headerData,
-				BodyData:     bodyData,
-				Mailbox:      mbox.Name(),
-				ReaderFields: reading,
-				UIDValidity:  partValidity,
-			})
-			ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched and cached", mbox.Name(), uidStr, partPath)
+			// Cache the raw bytes using provider type so we can recreate fresh
+			// readers, unless the part is above the session cache's limit.
+			if int64(len(headerData)+len(bodyData)) <= ctx.Server.Options.CacheMaxPartBytes() {
+				cache.Set(msgCacheKey, CachedMessagePart{
+					Message:      providerMsg,
+					HeaderData:   headerData,
+					BodyData:     bodyData,
+					Mailbox:      mbox.Name(),
+					ReaderFields: reading,
+					UIDValidity:  partValidity,
+				})
+				ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched and cached", mbox.Name(), uidStr, partPath)
+			} else {
+				ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched, %d bytes, too large to cache", mbox.Name(), uidStr, partPath, len(headerData)+len(bodyData))
+			}
+			// The body's images, kept where /raw looks for them: the page
+			// asks for each as soon as it shows the body.
+			for i, path := range bodyImages {
+				if i >= len(imageHeaders) || imageHeaders[i] == nil || imageBodies[i] == nil ||
+					int64(len(imageHeaders[i])+len(imageBodies[i])) > ctx.Server.Options.CacheMaxPartBytes() {
+					continue
+				}
+				cache.Set(rawPartCacheKey(mbox.Name(), uidStr, path), CachedMessagePart{
+					Message:     providerMsg,
+					HeaderData:  imageHeaders[i],
+					BodyData:    imageBodies[i],
+					Mailbox:     mbox.Name(),
+					UIDValidity: partValidity,
+				})
+			}
 			return nil
 		})
 		if err != nil {
@@ -2612,6 +2642,49 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		}
 	}
 	return ctx.JSON(http.StatusOK, answer)
+}
+
+// partCacheKey is where the session cache keeps a part of a message as a
+// request reads it: the reader's request for a body part and /raw's for the
+// same part share one entry.
+func partCacheKey(mailbox, uid string, partPath []int, limit int64) string {
+	return fmt.Sprintf("message:%s:%s:%v:limit%d", mailbox, uid, partPath, limit)
+}
+
+// rawPartCacheKey is where /raw finds a part read whole.
+func rawPartCacheKey(mailbox, uid string, partPath []int) string {
+	return partCacheKey(mailbox, uid, partPath, 0)
+}
+
+// bodyImagesToRead are the images an HTML body may show by Content-ID, to
+// read in the FETCH that reads the body. The page asks /raw for each as soon
+// as it shows the body, and each was a request and a FETCH of its own, one
+// after another on the session's connection, each asking again for the
+// message's envelope and structure.
+//
+// What the body then waits for is bounded by limit, the part cache's: an
+// image is read with it only while it, and those before it all told, come
+// within the limit, which would not keep a larger one anyway. An image the
+// cache already holds (held) is not read again; one left out is read when
+// the page asks for it, as before.
+func bodyImagesToRead(msg *IMAPMessage, held func(path []int) bool, limit int64) [][]int {
+	if msg == nil || msg.BodyStructure == nil {
+		return nil
+	}
+	var paths [][]int
+	var total int64
+	msg.BodyStructure.Walk(func(path []int, part imap.BodyStructure) bool {
+		single, ok := part.(*imap.BodyStructureSinglePart)
+		if !ok || single.ID == "" || !strings.EqualFold(single.Type, "image") {
+			return true
+		}
+		if size := int64(single.Size); total+size <= limit && !held(path) {
+			total += size
+			paths = append(paths, append([]int(nil), path...))
+		}
+		return true
+	})
+	return paths
 }
 
 // partText is a part's body as /raw serves it: the transfer encoding undone,

@@ -281,6 +281,8 @@ condstore = true
 # On, unlike a deployment's default, so that every spec runs with the pages'
 # event stream open and the IDLE behind it; e2e/push.spec.ts is about them.
 push_new_mail = true
+# And with the news of the subscribed folders, which sora tells of (NOTIFY).
+push_subscribed_folders = true
 
 # Off: every sign-in comes from one address, and the suite signs in more
 # often than the production limits allow. The limiter has its own unit tests.

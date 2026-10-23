@@ -21,9 +21,10 @@ const defaultResponseTimeout = 30 * time.Second
 
 // mailboxNews passes on what the mail server says unasked about the mailbox
 // selected on a connection, of messages that arrived or went: EXISTS and
-// EXPUNGE, which IDLE is for (see IMAPProvider.OnMailboxNews). The client
-// takes its handlers when it is made, so this is made before the connection
-// and told of it once it is.
+// EXPUNGE, which IDLE is for (see IMAPProvider.OnMailboxNews). Where the
+// folders are watched too, it passes on the news of the others, which comes
+// as STATUS (see folderWatch). The client takes its handlers when it is
+// made, so this is made before the connection and told of it once it is.
 //
 // A FETCH the server sends unasked says that flags changed. It is no news
 // here, and the client discards it, as it did before: the poll keeps flags
@@ -38,6 +39,9 @@ type mailboxNews struct {
 	// told counts the messages the server has told of, unasked, as arriving
 	// or going (see selectedStatus).
 	told atomic.Uint64
+	// folders is what is known of the folders the server tells of, once
+	// they are watched (see IMAPProvider.WatchFolders).
+	folders folderWatch
 }
 
 func (n *mailboxNews) handler() *imapclient.UnilateralDataHandler {
@@ -56,6 +60,12 @@ func (n *mailboxNews) handler() *imapclient.UnilateralDataHandler {
 			n.heard.Store(true)
 			n.tell()
 		},
+		Status: func(data *imap.StatusData) {
+			if n.folders.heardStatus(data) {
+				n.tellOf(data.Mailbox)
+			}
+		},
+		NotificationOverflow: n.folders.overflowed,
 	}
 }
 
@@ -140,6 +150,9 @@ func (p *IMAPProvider) OnMailboxNews(news func(mailbox string)) {
 // dropped what it held of the Inbox for nothing. So an IDLE that ends after
 // news asks the server for the mailbox's UIDNEXT (STATUS).
 //
+// Where the folders are watched (see WatchFolders) and the server stops
+// telling of them, the wait ends too, for the session to ask again.
+//
 // Neither the server's continuation to IDLE nor its answer to DONE is waited
 // for longer than the connection's response timeout. The client waits for
 // either under its read deadline for IDLE, half an hour, and whoever waits
@@ -168,9 +181,14 @@ func (p *IMAPProvider) Idle(mailbox string, stop <-chan struct{}, started func()
 	if started != nil {
 		started()
 	}
+	var unwatched <-chan struct{}
+	if p.news != nil {
+		unwatched = p.news.folders.stopped()
+	}
 	select {
 	case <-stop:
 	case <-p.client.Closed():
+	case <-unwatched:
 	}
 	if err = p.answeredWithin("DONE", func() error {
 		closeErr := cmd.Close()
