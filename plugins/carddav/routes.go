@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -133,7 +134,7 @@ func extractContactData(card vcard.Card, path string) ContactData {
 	}
 	birthday := ""
 	if f := card.Preferred(vcard.FieldBirthday); f != nil {
-		birthday = f.Value
+		birthday = birthdayOf(f)
 	}
 
 	addrStr := ""
@@ -200,6 +201,24 @@ func extractContactData(card vcard.Card, path string) ContactData {
 		PublicKey:    publicKey,
 		Path:         path,
 	}
+}
+
+// appleDate is a date in the form Apple's apps write a birthday in, extended
+// or basic, with whatever follows the day left out.
+var appleDate = regexp.MustCompile(`^(\d{4})-?(\d{2})-?(\d{2})`)
+
+// birthdayOf is a BDAY field's value as the page is given it. Apple's apps
+// write a birthday without a year as one in 1604 and name that year in a
+// parameter, `BDAY;X-APPLE-OMIT-YEAR=1604:1604-10-31`. Such a birthday is
+// given in the vCard form of a date without a year, `--1031`, which the page
+// shows as a day and a month; passed on as it was, it read as a date in 1604.
+func birthdayOf(f *vcard.Field) string {
+	if omitted := f.Params.Get("X-APPLE-OMIT-YEAR"); omitted != "" {
+		if m := appleDate.FindStringSubmatch(strings.TrimSpace(f.Value)); m != nil && m[1] == omitted {
+			return "--" + m[2] + m[3]
+		}
+	}
+	return f.Value
 }
 
 func parseObjectPath(s string) (string, error) {
@@ -536,7 +555,12 @@ func registerRoutes(p *plugin) {
 		updateMultiField(vcard.FieldTelephone, req.Phones, req.Phone)
 		setSimpleField(vcard.FieldOrganization, req.Organization)
 		setSimpleField(vcard.FieldTitle, req.Title)
-		setSimpleField(vcard.FieldBirthday, req.Birthday)
+		// A birthday sent back as the page was given it is left as stored, its
+		// parameters with it: written bare, Apple's birthday without a year
+		// became one in 1604, in Apple's own apps too, after any edit here.
+		if f := card.Preferred(vcard.FieldBirthday); f == nil || strings.TrimSpace(birthdayOf(f)) != strings.TrimSpace(req.Birthday) {
+			setSimpleField(vcard.FieldBirthday, req.Birthday)
+		}
 		setSimpleField(vcard.FieldNote, req.Note)
 		setSimpleField(vcard.FieldURL, req.URL)
 		setSimpleField(vcard.FieldNickname, req.Nickname)
