@@ -35,6 +35,10 @@ export class AlpsContactsCategories extends LitElement {
       width: 100%;
       min-height: 0;
       box-sizing: border-box;
+      /* The collapsed strip's slide (sidebarLayoutStyles): a category's icon
+         sits 22px in, after the content's 8px padding, the row's 8px and the
+         icon's own 6px, so it slides 14px to stand 8px inside the strip. */
+      --strip-slide: 14px;
     }
     .sidebar-wrapper {
       background-color: var(--bg-secondary, #f9fafb);

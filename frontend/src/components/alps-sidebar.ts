@@ -52,9 +52,25 @@ export const sidebarLayoutStyles = css`
     padding: 0 14px !important;
     justify-content: flex-start;
   }
+  /* The content keeps at least 215px of width, so a narrow sidebar clips it
+     rather than reflowing it. Collapsed into the strip, it also slides behind
+     the main view, and what the 64px strip should then show is each row's
+     ICON: every sidebar sets --strip-slide, how far its content moves to
+     bring its icons 8px inside the strip, the same place on every page. The
+     default suits rows padded 8px inside 16px of content padding (Calendar,
+     Tasks). Mail's rows lead with the expander column and slide 38px,
+     Contacts' 14px, Settings' 20px. One slide for all of them put mail's
+     icons half out of the strip and everyone else's under the main view.
+
+     The slide starts only below 120px of content, narrower than any docked
+     sidebar's (a drag below 120px snaps to the strip, and the narrowest
+     docked sidebar, 150px, keeps 133px inside its border and padding), so a
+     sidebar dragged narrow keeps every column in view, the expander carets
+     included. On the way into the strip the content moves with the edge
+     until it has slid --strip-slide. */
   .sidebar-scroll-content {
     width: calc(max(100%, 215px));
-    margin-left: calc(min(0px, (100% - 215px) * 50 / 167));
+    margin-left: max(0px - var(--strip-slide, 16px), min(0px, 100% - 120px));
   }
 `;
 

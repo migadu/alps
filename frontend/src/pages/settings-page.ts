@@ -41,6 +41,10 @@ export class SettingsPage extends LitElement {
     sidebarLayoutStyles,
     css`
     :host {
+      /* The collapsed strip's slide (sidebarLayoutStyles): a section's icon
+         sits 28px in (alps-category-item's 12px margin and 16px padding, with
+         no content padding), so 20px brings it 8px inside the strip. */
+      --strip-slide: 20px;
       display: flex;
       flex-direction: column;
       height: 100vh;

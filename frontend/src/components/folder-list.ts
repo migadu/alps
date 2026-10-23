@@ -183,8 +183,13 @@ export class FolderList extends LitElement {
       width: 100%;
       min-height: 0;
       box-sizing: border-box;
+      /* The collapsed strip's slide (sidebarLayoutStyles): a folder's icon
+         sits 46px in, after the content's 8px padding, the row's 4px, the
+         30px expander and the 4px gap, so it slides 38px to stand 8px inside
+         the strip. */
+      --strip-slide: 38px;
     }
-    
+
     .sidebar-wrapper {
       background-color: var(--bg-secondary);
     }
