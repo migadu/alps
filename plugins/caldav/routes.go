@@ -355,7 +355,8 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		var calDatas []CalendarData
+		// An empty home is listed as [], not null, which the page cannot filter.
+		calDatas := []CalendarData{}
 		for _, calendar := range calendars {
 			calDatas = append(calDatas, CalendarData{
 				Name:        calendar.Name,
