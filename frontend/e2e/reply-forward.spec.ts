@@ -513,6 +513,29 @@ test("replying leaves behind an attachment that has a Content-ID", async ({ page
   expect(sent.data).not.toContain(filename);
 });
 
+for (const attribute of ['data-note', 'src']) {
+  test(`replying leaves behind a file named only by a paragraph's ${attribute}`, async ({ page }) => {
+    const subject = `Report metadata ${attribute} ${Date.now()}`;
+    const body = 'Please review the notes.';
+    const contentId = `${unique()}@exchange.test`;
+    const filename = 'private-report.txt';
+    const raw = mailWithAttachment({ subject, body: `<p ${attribute}="cid:${contentId}">${body}</p>`, filename, contents: 'Private figures\n', contentId })
+      .replace('Content-Type: text/plain; charset=utf-8', 'Content-Type: text/html; charset=utf-8');
+    await deliver({ subject, raw });
+    await login(page);
+    await openMessage(page, subject, body);
+    await expect(page.locator('alps-message-reader alps-attachment-list.desktop-attachments')).toContainText(filename);
+    await replyButton(page).click();
+    await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
+    await expect(composerAttachments(page)).toHaveCount(0);
+    await sendNow(page);
+    const sent = await sentWithSubject(`Re: ${subject}`);
+    expect(sent.data).toContain(body);
+    expect(sent.data).not.toContain(filename);
+    expect(sent.data).not.toContain(Buffer.from('Private figures\n').toString('base64'));
+  });
+}
+
 test("forwarding carries an attachment that has a Content-ID once, as a file", async ({ page }) => {
   const subject = `Report to pass on ${Date.now()}`;
   const body = "The report is attached.";

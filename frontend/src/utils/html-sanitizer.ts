@@ -72,16 +72,35 @@ function cidOf(value: string): string {
 
 /**
  * The Content-IDs markup names in its `cid:` URLs, without angle brackets:
- * the parts of the message it came in that it shows. Read from every
- * attribute, a srcset candidate by candidate, as the display resolves them.
+ * the parts of the message it came in that it shows or links to. Only an
+ * attribute the element uses as a URL counts: a data attribute, a title or
+ * an invalid src on a paragraph cannot make a reply carry an unseen file.
+ * Read srcset candidate by candidate, as the display reads it.
  */
 export function cidReferencesOf(html: string): Set<string> {
   const ids = new Set<string>();
   if (!html) return ids;
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  const urlAttributes: Record<string, string[]> = {
+    img: ['src', 'srcset'], source: ['src', 'srcset'],
+    audio: ['src'], video: ['src', 'poster'], track: ['src'],
+    a: ['href'], area: ['href'],
+    body: ['background'], table: ['background'], thead: ['background'],
+    tbody: ['background'], tfoot: ['background'], tr: ['background'],
+    td: ['background'], th: ['background'],
+  };
   for (const el of Array.from(doc.querySelectorAll('*'))) {
-    for (const attr of Array.from(el.attributes)) {
-      const urls = attr.name.toLowerCase() === 'srcset' ? parseSrcset(attr.value).map((c) => c.url) : [attr.value];
+    const tag = el.localName.toLowerCase();
+    const attributes = new Set(urlAttributes[tag] ?? []);
+    if (el.namespaceURI === 'http://www.w3.org/2000/svg' && ['a', 'image', 'use', 'feimage'].includes(tag)) {
+      attributes.add('href');
+      attributes.add('xlink:href');
+    }
+    if (tag === 'input' && el.getAttribute('type')?.toLowerCase() === 'image') attributes.add('src');
+    for (const name of attributes) {
+      const value = el.getAttribute(name);
+      if (value === null) continue;
+      const urls = name === 'srcset' ? parseSrcset(value).map((c) => c.url) : [value];
       for (const url of urls) {
         if (isCidUrl(url)) ids.add(cidOf(url).replace(/^<|>$/g, ''));
       }

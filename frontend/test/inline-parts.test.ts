@@ -10,6 +10,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { inlinePartsOf } from '../src/utils/attachment-utils';
+import { cidReferencesOf, sanitizeQuotedHTML } from '../src/utils/html-sanitizer';
 
 /** A quote that shows the chart. */
 const quote = '<p>chart below</p><img src="cid:chart@remote.test">';
@@ -73,6 +74,31 @@ describe('inlinePartsOf', () => {
     const parts = (ids: string[]) => ({ Children: [{ Type: 'text', Subtype: 'html' }, ...ids.map((id) => image({ ID: `<${id}>` }))] });
     const html = '<img src=" CID:a@x"><img srcset="https://cdn.test/b.png 1x, cid:b@x 2x"><table><tr><td background="cid:c@x">c</td></tr></table>';
     expect(inlinePartsOf(parts(['a@x', 'b@x', 'c@x', 'd@x']), html).map((part) => part.partPath)).toEqual(['2', '3', '4']);
+  });
+
+  it.each([
+    '<p data-note="cid:report@x">Text</p>',
+    '<p title="cid:report@x">Text</p>',
+    '<img alt="cid:report@x">',
+    '<p src="cid:report@x">Text</p>',
+    '<p srcset="cid:report@x 1x" poster="cid:report@x">Text</p>',
+  ])('does not carry a file named only by a non-resource quote attribute: %s', html => {
+    const report = { Type: 'application', Subtype: 'pdf', ID: '<report@x>', Extended: { Disposition: { Value: 'attachment', Params: { filename: 'report.pdf' } } } };
+    const quote = sanitizeQuotedHTML(html);
+    expect(quote).toContain('cid:report@x');
+    expect(inlinePartsOf({ Children: [{ Type: 'text', Subtype: 'html' }, report] }, quote)).toEqual([]);
+  });
+
+  it.each([
+    '<img src=" CID:chart@x">',
+    '<picture><source srcset="cid:chart@x 1x, https://remote.test/a.png 2x"></picture>',
+    '<video poster="cid:chart@x"></video>',
+    '<audio src="cid:chart@x"></audio>',
+    '<table><tr><td background="cid:chart@x">Text</td></tr></table>',
+    '<a href="cid:chart@x">Open the chart</a>',
+    '<svg><image href="cid:chart@x"></image><use xlink:href="cid:chart@x"></use><filter><feImage href="cid:chart@x"></feImage></filter></svg>',
+  ])('keeps actual resource and link references in retained quote markup: %s', html => {
+    expect([...cidReferencesOf(sanitizeQuotedHTML(html))]).toEqual(['chart@x']);
   });
 
   it("reads a base64 part's size without its line breaks", () => {
