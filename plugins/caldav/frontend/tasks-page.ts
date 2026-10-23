@@ -15,6 +15,7 @@ import '../../../frontend/src/components/ui-confirm';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { isSessionExpiry } from '../../../frontend/src/utils/fetch-utils';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
+import { pageHash } from '../../../frontend/src/utils/settings-history';
 import { taskTellsSomeone, calendarService, getCalendarColor } from './calendar-service';
 import { formatDue, inSmartList, intlLocale, isClosed, scopeOf, tasksService } from './tasks-service';
 import type { SmartList, TaskData, TaskList, TaskScope } from './tasks-service';
@@ -238,7 +239,7 @@ export class TasksPage extends LitElement {
             this.settingsStore.addEventListener('change', this.handleSettingsChange);
             this.handleSettingsChange();
         }
-        this.parseHash();
+        this.parseHash(pageHash() ?? '');
         void this.fetchTasks();
     }
 
@@ -260,8 +261,7 @@ export class TasksPage extends LitElement {
     }
 
     /** Reads the view from the address, and reports whether it needs tasks not yet loaded. */
-    parseHash(): boolean {
-        const hash = window.location.hash;
+    parseHash(hash: string = window.location.hash): boolean {
         if (!hash.startsWith('#/tasks')) return false;
         const [path, query = ''] = hash.slice(1).split('?');
         const segment = path.split('/')[2] ?? '';
@@ -277,7 +277,9 @@ export class TasksPage extends LitElement {
             // `replaceState` fires no `hashchange`, so the view is read here,
             // and the caller fetches on the answer as the event would have.
             list = 'all';
-            history.replaceState(null, '', this.hashFor(list, calendar, search));
+            if (!isSettingsHash(window.location.hash)) {
+                history.replaceState(null, '', this.hashFor(list, calendar, search));
+            }
         }
         if (list !== this.selectedList || calendar !== this.selectedCalendar || search !== this.searchQuery) {
             this.settling = new Set();

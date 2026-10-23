@@ -23,6 +23,7 @@ import { MessageList } from '../../../frontend/src/components/message-list';
 import { contactsService } from './contacts-service';
 import { isVersionConflict, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
+import { pageHash } from '../../../frontend/src/utils/settings-history';
 
 /** Where the categories this user created, with no one filed into them yet, are kept. */
 const categoriesKeyFor = (username: string) => `alps_contacts_categories_${username}`;
@@ -293,8 +294,12 @@ export class ContactsPage extends LitElement {
     this.isMobile = window.innerWidth <= 768;
   };
 
+  /** The first book read restores the page's address even beneath Settings. */
+  private restoringHash = true;
+
   connectedCallback() {
     super.connectedCallback();
+    this.restoringHash = true;
     this.showInitialLoader = !(window as any).alpsAppLoaded;
     this.classList.add('density-compact');
     this.loadAddedCategories();
@@ -308,7 +313,9 @@ export class ContactsPage extends LitElement {
     }
 
     // Initial hash check
-    setTimeout(() => this._handleHashChange(), 0);
+    setTimeout(() => {
+      if (this.restoringHash) this.readHash(pageHash() ?? '');
+    }, 0);
   }
 
   disconnectedCallback() {
@@ -363,10 +370,13 @@ export class ContactsPage extends LitElement {
     // Read as an address naming no card, it closed the card being read, and
     // an edit with it.
     if (isSettingsHash(window.location.hash)) return;
+    this.readHash(window.location.hash);
+  };
+
+  private readHash(hash: string) {
     // Remove any existing temporary contacts
     this.contacts = this.contacts.filter((c: any) => !c.isTemporary);
 
-    const hash = window.location.hash;
     const match = hash.match(CONTACTS_ROUTE);
     if (match) {
       const catParam = match[1] ? decodeURIComponent(match[1]) : '';
@@ -530,7 +540,12 @@ export class ContactsPage extends LitElement {
       this.loadedQuery = query;
       if (!query) this.wholeBook = this.contacts;
       else if (whole) this.wholeBook = whole.contacts || [];
-      this._handleHashChange(); // Trigger selection if a deep link was used
+      if (this.restoringHash) {
+        this.restoringHash = false;
+        this.readHash(pageHash() ?? '');
+      } else {
+        this._handleHashChange(); // Keep live Settings edits untouched.
+      }
     } catch (e) {
       if (epoch !== this.readEpoch) return;
       console.error('Failed to fetch contacts', e);

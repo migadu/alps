@@ -26,6 +26,7 @@ import { getDestinationLabel, getFlexContainerMinWidth } from '../utils/ui';
 import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/message-key';
 import { canonicalRecipient, parseWrittenAddress } from '../utils/address-display';
 import { isSettingsHash } from '../utils/routes';
+import { pageHash } from '../utils/settings-history';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
@@ -675,9 +676,9 @@ export class MailboxPage extends LitElement {
       // The same comparison a hash change makes, against the view still held:
       // another folder or search dims and reads as any switch does, another
       // message opens it, and neither fetches for nothing.
-      this.handleHashChange();
+      this.readMailboxHash(pageHash() ?? '', isSettingsHash(hash));
     } else {
-      this.extractMailboxFromHash();
+      this.extractMailboxFromHash(pageHash() ?? '');
     }
     window.addEventListener('hashchange', this.handleHashChange);
 
@@ -1265,18 +1266,23 @@ export class MailboxPage extends LitElement {
     // was the Inbox, which dropped the open message and the search the window
     // closes back onto.
     if (isSettingsHash(window.location.hash)) return;
+    this.readMailboxHash(window.location.hash);
+  };
+
+  /** Initializes a reattached page from the address recorded beneath Settings. */
+  private readMailboxHash(hash: string, restoring = false) {
     const oldMailbox = this.currentMailbox;
     const oldPage = this.currentPage;
     const oldUid = this.targetUid;
     const oldUidMailbox = this.targetMailbox;
     const oldFilter = this.filterQuery;
 
-    this.extractMailboxFromHash();
+    this.extractMailboxFromHash(hash);
 
     if (oldMailbox !== this.currentMailbox || oldPage !== this.currentPage || oldFilter !== this.filterQuery) {
       if (oldMailbox !== this.currentMailbox) {
         this.selectedMessage = null; // Reset selection on mailbox change
-        this.currentPage = 0; // Reset pagination on mailbox change
+        if (!restoring) this.currentPage = 0; // A restored address names its page.
         this.clearSelection(); // Another folder is not what was selected
 
         // Do not clear this.messages to prevent UI flash, let it be replaced when network returns
@@ -1284,7 +1290,7 @@ export class MailboxPage extends LitElement {
       } else if (oldFilter !== this.filterQuery) {
         // Do not clear this.messages
         this.loadingMessages = true;
-        this.currentPage = 0;
+        if (!restoring) this.currentPage = 0;
         // The query is what a whole-folder selection is made of, so another
         // query is another selection.
         this.clearSelection();
@@ -1383,8 +1389,7 @@ export class MailboxPage extends LitElement {
     this.updateUrl(view, page, uid, undefined, mailbox);
   }
 
-  private extractMailboxFromHash() {
-    let hash = window.location.hash;
+  private extractMailboxFromHash(hash: string = window.location.hash) {
     if (hash.startsWith('#/mailbox/')) {
       let pathPart = hash.substring(10);
       const qIndex = pathPart.indexOf('?');

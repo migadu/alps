@@ -33,6 +33,7 @@ import { isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
 import '../../../frontend/src/components/alps-popup';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { isSettingsHash } from '../../../frontend/src/utils/routes';
+import { pageHash } from '../../../frontend/src/utils/settings-history';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
 
 type ViewMode = 'day' | 'week' | 'month' | 'year';
@@ -421,7 +422,7 @@ export class CalendarPage extends LitElement {
             this.settingsStore.addEventListener('change', this._handleSettingsChange);
             this._handleSettingsChange();
         }
-        this.parseHash();
+        this.parseHash(pageHash() ?? '');
         await this.fetchData();
     }
 
@@ -453,8 +454,7 @@ export class CalendarPage extends LitElement {
         }));
     }
 
-    private parseHash() {
-        const hash = window.location.hash;
+    private parseHash(hash: string = window.location.hash) {
         if (!hash.startsWith('#/calendar')) return false;
 
         const path = hash.substring(1);
@@ -523,7 +523,7 @@ export class CalendarPage extends LitElement {
         // ran this again and pushed the view forward, and Back could never
         // leave the calendar. `replaceState` fires no `hashchange`, so the
         // caller fetches on `changed` as the event would have.
-        if (pathStr === '/calendar' || pathStr === '/calendar/') {
+        if (!isSettingsHash(window.location.hash) && (pathStr === '/calendar' || pathStr === '/calendar/')) {
             history.replaceState(null, '', this.hashFor(this.viewMode, this.currentDate, this.searchQuery));
         }
 
