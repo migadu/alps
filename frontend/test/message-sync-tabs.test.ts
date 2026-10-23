@@ -45,7 +45,7 @@ const successes = (svc: MessageSyncService) => {
   return seen;
 };
 const service = () => { const svc = new MessageSyncService(); started.push(svc); return svc; };
-const statusRequests = () => fetchMock.mock.calls.map((call) => call[0]).filter((url) => url.endsWith('/status'));
+const statusRequests = () => fetchMock.mock.calls.map((call) => call[0]).filter((url) => url.includes('/status'));
 async function land(svc: MessageSyncService, mailbox = 'INBOX') {
   await svc.fetch(mailbox, 0, '', false, true);
   await vi.advanceTimersByTimeAsync(0);
@@ -53,6 +53,8 @@ async function land(svc: MessageSyncService, mailbox = 'INBOX') {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // The poll's jitter at its middle, which is none.
+  vi.spyOn(Math, 'random').mockReturnValue(0.5);
   vi.stubGlobal('BroadcastChannel', Channel);
   locks();
   username = 'ada@example.com';
@@ -60,7 +62,10 @@ beforeEach(() => {
   fetchMock = vi.fn(async (url: string) => {
     const name = decodeURIComponent(url.split('/')[2].split(/[?\/]/)[0]);
     const counts = state[name];
-    if (url.endsWith('/status')) return new Response(JSON.stringify(counts));
+    if (url.includes('/status')) {
+      const others = new URL(url, 'http://alps.test').searchParams.getAll('with');
+      return new Response(JSON.stringify(others.length ? { ...counts, with: Object.fromEntries(others.map((other) => [other, state[other]])) } : counts));
+    }
     const listed = (c: typeof counts) => ({ NumMessages: c.total, NumUnseen: c.unseen, UIDNext: c.uidnext, UIDValidity: c.uidvalidity });
     return new Response(JSON.stringify({ Username: username, Total: counts.total,
       Messages: [{ UID: String(counts.uidnext - 1), Envelope: { Subject: username } }],
@@ -105,7 +110,7 @@ describe('shared polling counts', () => {
     state.Work.uidnext++;
     await vi.advanceTimersByTimeAsync(60_000);
     expect(second.at(-1).data.Messages[0].UID).toBe('3');
-    expect(statusRequests()).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Work/status']);
+    expect(statusRequests()).toEqual(['/mailboxes/INBOX/status?with=Work']);
     state.Work.uidvalidity++;
     await vi.advanceTimersByTimeAsync(60_000);
     expect(second).toHaveLength(2);

@@ -21,8 +21,8 @@ export interface MailboxData {
    */
   ListedMailbox?: string;
   /** The counts the listing was read at, of the mailbox and of the Inbox. */
-  Mailbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number } | null;
-  Inbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number } | null;
+  Mailbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number; HighestModSeq?: number } | null;
+  Inbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number; HighestModSeq?: number } | null;
 }
 
 /** A folder's counts, as a status check answers them. */
@@ -31,6 +31,12 @@ interface Counts {
   unseen: number;
   uidnext?: number;
   uidvalidity?: number;
+  /**
+   * The folder's HIGHESTMODSEQ, where the server says it (#124): it moves
+   * when a flag changes in another client, which the counts and UIDNEXT do
+   * not show. Compared only where both answers carry it.
+   */
+  highestmodseq?: number;
 }
 
 /**
@@ -70,8 +76,30 @@ const RELIST_AFTER_MS = 10 * 60 * 1000;
 /** How many listings {@link MessageSyncService} keeps; the one read longest ago goes first. */
 const MAX_KEPT_LISTINGS = 30;
 
+/** How far either way a poll's wait is spread, as a share of the interval. */
+const POLL_JITTER = 0.1;
+/** The longest wait after polls that failed, whatever the interval. */
+const MAX_POLL_BACKOFF_MS = 30 * 60 * 1000;
+
+/**
+ * How long the poll waits: the interval, doubled after each poll in a row that
+ * failed up to {@link MAX_POLL_BACKOFF_MS} (or the interval, when that is
+ * longer), and spread by up to {@link POLL_JITTER} of it either way, `random`
+ * being where in that spread. Tabs and clients started together polled in
+ * step for as long as they stayed open, and a server that failed was asked
+ * again at the same pace.
+ */
+export function pollDelay(intervalMs: number, failures: number, random: number): number {
+  const wait = Math.min(intervalMs * 2 ** failures, Math.max(intervalMs, MAX_POLL_BACKOFF_MS));
+  return Math.round(wait * (1 + POLL_JITTER * (2 * random - 1)));
+}
+
 export class MessageSyncService extends EventTarget {
-  private interval: ReturnType<typeof setInterval> | null = null;
+  private interval: ReturnType<typeof setTimeout> | null = null;
+  /** Polls in a row that failed, which the next one waits longer for (see pollDelay). */
+  private pollFailures = 0;
+  /** Taken by every start and stop of the timer, so that a poll still out schedules nothing after either. */
+  private timerGeneration = 0;
   private currentMailbox: string = FOLDER_INBOX;
   private currentPage: number = 0;
   private currentQuery: string = '';
@@ -420,12 +448,36 @@ export class MessageSyncService extends EventTarget {
 
   private startTimer() {
     this.stopTimer();
-    this.interval = setInterval(() => void this.poll(), this.pollMinutes * 60 * 1000);
+    this.pollFailures = 0;
+    this.scheduleNextPoll();
+  }
+
+  /**
+   * Sets the timer for the next poll. It is set as the poll starts, so the
+   * polls keep their pace as a fixed interval did, however long each takes;
+   * a poll that failed sets it again, further off (see pollDelay).
+   */
+  private scheduleNextPoll() {
+    const generation = this.timerGeneration;
+    this.interval = setTimeout(async () => {
+      if (generation !== this.timerGeneration) return;
+      this.scheduleNextPoll();
+      const ok = await this.poll();
+      if (generation !== this.timerGeneration || ok === null) return;
+      // Its pace again once one gets through: the timer set as it started
+      // still waited as long as the failures before it asked.
+      const failed = this.pollFailures;
+      this.pollFailures = ok ? 0 : failed + 1;
+      if (ok && failed === 0) return;
+      if (this.interval) clearTimeout(this.interval);
+      this.scheduleNextPoll();
+    }, pollDelay(this.pollMinutes * 60 * 1000, this.pollFailures, Math.random()));
   }
 
   private stopTimer() {
+    this.timerGeneration++;
     if (this.interval) {
-      clearInterval(this.interval);
+      clearTimeout(this.interval);
       this.interval = null;
     }
   }
@@ -534,16 +586,19 @@ export class MessageSyncService extends EventTarget {
       shared: { mailbox: checkedCounts(message.counts), inbox: checkedCounts(message.inbox) } });
   };
 
-  /** One leader probes each watched folder once, then each view uses those counts. */
-  private async poll() {
-    if (this.pollBusy || this.pollMinutes <= 0) return;
+  /**
+   * One leader probes each watched folder once, then each view uses those
+   * counts. Answers whether the poll got through, or null when it asked
+   * nothing (see scheduleNextPoll).
+   */
+  private async poll(): Promise<boolean | null> {
+    if (this.pollBusy || this.pollMinutes <= 0) return null;
     this.pollBusy = true;
     try {
       if (!this.leading || !this.channel || !this.username) {
-        if (!this.leading && navigator.locks && !this.lockFailed && document.hidden) return;
+        if (!this.leading && navigator.locks && !this.lockFailed && document.hidden) return null;
         this.tellView();
-        await this.backgroundSync({ announce: this.announces, scheduled: true });
-        return;
+        return await this.backgroundSync({ announce: this.announces, scheduled: true });
       }
       const generation = this.pollGeneration;
       const username = this.username;
@@ -551,18 +606,17 @@ export class MessageSyncService extends EventTarget {
         && Date.now() - peer.seen <= Math.max(this.pollMinutes * 3 * 60_000, 180_000));
       const mailbox = this.currentMailbox;
       const fetchId = this.currentFetchId;
-      const mailboxes = new Set([FOLDER_INBOX, mailbox, ...peers.map((peer) => peer.mailbox)]);
-      const counts = new Map<string, Counts | null>();
-      for (const name of mailboxes) {
-        counts.set(name, name === ALL_MAILBOXES ? null : await this.askCounts(name).catch(() => null));
-        if (!this.leading || generation !== this.pollGeneration) return;
-      }
+      // In one request: a request each waited its turn on the connection.
+      const mailboxes = [...new Set([mailbox, FOLDER_INBOX, ...peers.map((peer) => peer.mailbox)])]
+        .filter((name) => name !== ALL_MAILBOXES);
+      const counts = await this.askStatuses(mailboxes).catch(() => new Map<string, Counts | null>());
+      if (!this.leading || generation !== this.pollGeneration) return null;
       for (const peer of peers) this.postPoll({ type: 'counts', peer: peer.peer, epoch: peer.epoch,
         username, mailbox: peer.mailbox, counts: counts.get(peer.mailbox), inbox: counts.get(FOLDER_INBOX) });
       // A foreground navigation made while the probes were out owns its own
       // listing; do not supersede it using the previous view's counts.
-      if (mailbox !== this.currentMailbox || fetchId !== this.currentFetchId) return;
-      await this.backgroundSync({ announce: true, scheduled: true,
+      if (mailbox !== this.currentMailbox || fetchId !== this.currentFetchId) return null;
+      return await this.backgroundSync({ announce: true, scheduled: true,
         shared: { mailbox: counts.get(mailbox) ?? null, inbox: counts.get(FOLDER_INBOX) ?? null } });
     } finally {
       this.pollBusy = false;
@@ -872,12 +926,11 @@ export class MessageSyncService extends EventTarget {
       }
 
       if (probe) {
-        // A probe that fails says nothing the listing will not say itself.
-        const ask = (name: string) => fetchWithTimeout(`/mailboxes/${encodeMailboxPath(name)}/status`).catch(() => {});
-        if (mailbox !== FOLDER_INBOX) await ask(FOLDER_INBOX);
-        if (this.currentFetchId !== fetchId) return;
-        if (mailbox !== ALL_MAILBOXES) await ask(mailbox);
-
+        // A probe that fails says nothing the listing will not say itself,
+        // and one that answers is not read: the listing carries the counts.
+        // The Inbox and the mailbox in one request, as the poll asks them.
+        const url = statusURL([mailbox, FOLDER_INBOX].filter((name) => name !== ALL_MAILBOXES));
+        if (url) await fetchWithTimeout(url).catch(() => {});
         if (this.currentFetchId !== fetchId) return;
       }
 
@@ -981,6 +1034,25 @@ export class MessageSyncService extends EventTarget {
     return started - read >= RELIST_AFTER_MS - slack;
   }
 
+  /**
+   * Folders' counts as the server reads them now, in one request: the first
+   * folder's are the answer, and the others' come under `with`. Null for a
+   * folder it does not say.
+   */
+  private async askStatuses(names: string[]): Promise<Map<string, Counts | null>> {
+    const unique = [...new Set(names)];
+    const counts = new Map<string, Counts | null>(unique.map((name) => [name, null]));
+    const url = statusURL(unique);
+    if (!url) return counts;
+    const [first, ...others] = unique;
+    const response = await fetchWithTimeout(url);
+    if (!response.ok) return counts;
+    const body = await response.json().catch(() => null);
+    counts.set(first, checkedCounts(body));
+    for (const name of others) counts.set(name, checkedCounts(body?.with?.[name]));
+    return counts;
+  }
+
   /** A folder's counts as the server reads them now; null when it does not say. */
   private async askCounts(mailbox: string): Promise<Counts | null> {
     const response = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/status`);
@@ -1058,15 +1130,18 @@ export class MessageSyncService extends EventTarget {
 
     try {
       let inbox: Counts | null = shared?.inbox ?? null;
-      if (!shared && mailbox !== FOLDER_INBOX) {
-        inbox = await this.askCounts(FOLDER_INBOX).catch(() => null);
+      let counts: Counts | null = shared?.mailbox ?? null;
+      if (!shared) {
+        // The Inbox's counts and the mailbox's in one request: a request
+        // each waited its turn on the connection. A search of all mailboxes
+        // is of no one mailbox: the server has no counts of `*`, and
+        // answered the question with a 500. Without counts the listing
+        // below is read, as it always was.
+        const asked = await this.askStatuses([mailbox, FOLDER_INBOX].filter((name) => name !== ALL_MAILBOXES))
+          .catch(() => new Map<string, Counts | null>());
+        if (mailbox !== FOLDER_INBOX) inbox = asked.get(FOLDER_INBOX) ?? null;
+        counts = mailbox === ALL_MAILBOXES ? null : asked.get(mailbox) ?? null;
       }
-      if (superseded()) return true;
-      // A search of all mailboxes is of no one mailbox: the server has no
-      // counts of `*`, and answered the question with a 500. Without counts
-      // the listing below is read, as it always was.
-      const counts = shared ? shared.mailbox
-        : mailbox === ALL_MAILBOXES ? null : await this.askCounts(mailbox);
       if (superseded()) return true;
 
       // The listing is read again only when the counts moved since it was
@@ -1166,7 +1241,21 @@ function newPollToken(): string {
 
 function countsOf(status: MailboxData['Mailbox']): Counts | null {
   if (typeof status?.NumMessages !== 'number' || typeof status?.NumUnseen !== 'number') return null;
-  return { total: status.NumMessages, unseen: status.NumUnseen, uidnext: status.UIDNext, uidvalidity: status.UIDValidity };
+  return { total: status.NumMessages, unseen: status.NumUnseen, uidnext: status.UIDNext, uidvalidity: status.UIDValidity,
+    highestmodseq: knownModSeq(status.HighestModSeq) };
+}
+
+/** The one request for several folders' counts: the first's, and the others' under `with`. */
+function statusURL(names: string[]): string | null {
+  const [first, ...others] = [...new Set(names)];
+  if (first === undefined) return null;
+  const url = `/mailboxes/${encodeMailboxPath(first)}/status`;
+  return others.length > 0 ? url + '?' + others.map((name) => `with=${encodeURIComponent(name)}`).join('&') : url;
+}
+
+/** A HIGHESTMODSEQ, or undefined for none: 0 is a server that keeps none. */
+function knownModSeq(value: unknown): number | undefined {
+  return typeof value === 'number' && value > 0 ? value : undefined;
 }
 
 /** Validate messages from another tab as strictly as HTTP status answers. */
@@ -1174,13 +1263,17 @@ function checkedCounts(body: any): Counts | null {
   if (typeof body?.total !== 'number' || typeof body?.unseen !== 'number') return null;
   return { total: body.total, unseen: body.unseen,
     uidnext: typeof body.uidnext === 'number' ? body.uidnext : undefined,
-    uidvalidity: typeof body.uidvalidity === 'number' ? body.uidvalidity : undefined };
+    uidvalidity: typeof body.uidvalidity === 'number' ? body.uidvalidity : undefined,
+    highestmodseq: knownModSeq(body.highestmodseq) };
 }
 
 /** Whether a check's answer is the counts held; neither unknown. */
 function sameCounts(answer: Counts | null, held: Counts | null): boolean {
   return !!answer && !!held && answer.total === held.total && answer.unseen === held.unseen
-    && answer.uidnext === held.uidnext && answer.uidvalidity === held.uidvalidity;
+    && answer.uidnext === held.uidnext && answer.uidvalidity === held.uidvalidity
+    // Where both say it: the server says it once #124 has it ask.
+    && (answer.highestmodseq === undefined || held.highestmodseq === undefined
+      || answer.highestmodseq === held.highestmodseq);
 }
 
 /** Sets or clears a flag on the messages of a listing that `keys` names. */
