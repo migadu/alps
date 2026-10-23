@@ -10,7 +10,9 @@ package alpsbase
 import (
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -341,5 +343,110 @@ func TestPatchCachedConversationsReachesEveryFoldersConversations(t *testing.T) 
 	held, _ := cache.Get(threadCacheKey("INBOX", "9"))
 	if flags := held.([]IMAPMessage)[0].Flags; len(flags) != 0 {
 		t.Errorf("UID 7 of the Inbox, named by no folder, carries %v, want it left as it was", flags)
+	}
+}
+
+// A response can retain a conversation while later flag writes publish its
+// replacement. None of the retained slice, embedded buffer or flag backing
+// storage may change, even when an add fits in the old slice's capacity.
+func TestPatchCachedConversationsLeavesRetainedSnapshotsUnchanged(t *testing.T) {
+	cache := alps.NewCache(time.Minute)
+	defer cache.Close()
+	flags := make([]imap.Flag, 2, 4)
+	flags[0], flags[1] = imap.FlagSeen, imap.FlagFlagged
+	original := []IMAPMessage{{FetchMessageBuffer: &imapclient.FetchMessageBuffer{Flags: flags}, AlpsUID: "7", Mailbox: "Sent"}}
+	key := threadCacheKey("INBOX", "5")
+	cache.Set(key, original)
+	patchCachedConversations(cache, noDebug, "Sent", "7", []imap.Flag{imap.FlagAnswered}, []imap.Flag{imap.FlagSeen})
+	held, _ := cache.Get(key)
+	first := held.([]IMAPMessage)
+	if !slices.Equal(original[0].Flags, []imap.Flag{imap.FlagSeen, imap.FlagFlagged}) {
+		t.Errorf("retained original changed: %v", original[0].Flags)
+	}
+	if !slices.Equal(first[0].Flags, []imap.Flag{imap.FlagFlagged, imap.FlagAnswered}) {
+		t.Fatalf("first published flags: %v", first[0].Flags)
+	}
+	patchCachedConversations(cache, noDebug, "Sent", "7", []imap.Flag{imap.FlagSeen}, []imap.Flag{imap.FlagFlagged})
+	if !slices.Equal(first[0].Flags, []imap.Flag{imap.FlagFlagged, imap.FlagAnswered}) {
+		t.Errorf("retained first replacement changed: %v", first[0].Flags)
+	}
+	held, _ = cache.Get(key)
+	if got := held.([]IMAPMessage)[0].Flags; !slices.Equal(got, []imap.Flag{imap.FlagAnswered, imap.FlagSeen}) {
+		t.Errorf("latest flags: %v", got)
+	}
+}
+
+// Multiple requests can patch distinct members of the same cached answer.
+// Each replacement must include the other requests' changes as well.
+func TestPatchCachedConversationsKeepsConcurrentMembersChanges(t *testing.T) {
+	cache := alps.NewCache(time.Minute)
+	defer cache.Close()
+	const members = 40
+	conversation := make([]IMAPMessage, members)
+	for i := range conversation {
+		conversation[i] = IMAPMessage{FetchMessageBuffer: &imapclient.FetchMessageBuffer{}, Mailbox: "Sent", AlpsUID: strconv.Itoa(i + 1)}
+	}
+	key := threadCacheKey("INBOX", "100")
+	cache.Set(key, conversation)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range members {
+		wg.Add(1)
+		go func(uid string) {
+			defer wg.Done()
+			<-start
+			patchCachedConversations(cache, noDebug, "Sent", uid, []imap.Flag{imap.FlagFlagged}, nil)
+		}(strconv.Itoa(i + 1))
+	}
+	close(start)
+	wg.Wait()
+	held, _ := cache.Get(key)
+	for _, member := range held.([]IMAPMessage) {
+		if !slices.Contains(member.Flags, imap.FlagFlagged) {
+			t.Errorf("concurrent patch lost member %s's star", member.AlpsUID)
+		}
+	}
+	for _, member := range conversation {
+		if len(member.Flags) != 0 {
+			t.Errorf("original member %s changed in place: %v", member.AlpsUID, member.Flags)
+		}
+	}
+}
+
+// A cached Inbox answer may be encoded while another tab marks its Sent reply.
+func TestHTTP_AFlagInSentCanOverlapAnInboxConversationRead(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
+	uid := uidOfSubject(t, s, "Engines")
+	fileSentReply(t, s, "engines@remote.test")
+	page := threadOf(t, s, "INBOX", uid)
+	if len(page.Messages) != 2 || page.Messages[1].Mailbox != "Sent" {
+		t.Fatalf("want an incoming message and Sent reply: %+v", page.Messages)
+	}
+	reply := page.Messages[1].UID
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			threadOf(t, s, "INBOX", uid)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			action := "add"
+			if i%2 == 1 {
+				action = "remove"
+			}
+			s.expect(s.do("PUT", "/mailboxes/Sent/messages/flag", map[string]any{
+				"uids": []string{reply}, "flags": []string{`\Seen`, `\Flagged`}, "action": action,
+			}), http.StatusOK)
+		}
+	}()
+	wg.Wait()
+	page = threadOf(t, s, "INBOX", uid)
+	if flags := page.Messages[1].Flags; contains(flags, string(imap.FlagSeen)) || contains(flags, string(imap.FlagFlagged)) {
+		t.Errorf("the reply kept flags after the final remove: %v", flags)
 	}
 }

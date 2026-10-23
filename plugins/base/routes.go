@@ -460,47 +460,55 @@ func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.Me
 func patchCachedConversations(cache *alps.Cache, debugf func(string, ...interface{}), mailbox, uidStr string, addFlags, removeFlags []imap.Flag) {
 	ownPrefix := threadCacheKey(mailbox, "")
 	for _, key := range cache.GetKeysWithPrefix("thread:") {
-		cached, ok := cache.Get(key)
-		if !ok {
-			continue
-		}
-		msgs, ok := cached.([]IMAPMessage)
-		if !ok {
-			cache.Delete(key)
-			continue
-		}
-		for i := range msgs {
-			// By the id the reader names messages with, which is the provider's
-			// own: a UID under IMAP, a file name under maildir. It names a
-			// message only within its folder, and the conversations walked are
-			// every folder's, each holding that folder's messages and the
-			// user's own from Sent. A member that names no folder is taken, as
-			// handleGetThread takes it, for one of the folder its conversation
-			// is kept under.
-			if msgs[i].AlpsUID != uidStr {
-				continue
+		patched := false
+		cache.Update(key, func(cached interface{}) interface{} {
+			msgs, ok := cached.([]IMAPMessage)
+			if !ok {
+				return nil
 			}
-			if msgs[i].Mailbox != mailbox && (msgs[i].Mailbox != "" || !strings.HasPrefix(key, ownPrefix)) {
-				continue
-			}
-			flags := msgs[i].Flags
-			for _, flag := range addFlags {
-				if !slices.Contains(flags, flag) {
-					flags = append(flags, flag)
+			for i := range msgs {
+				// By the id the reader names messages with, which is the provider's
+				// own: a UID under IMAP, a file name under maildir. It names a
+				// message only within its folder, and the conversations walked are
+				// every folder's, each holding that folder's messages and the
+				// user's own from Sent. A member that names no folder is taken, as
+				// handleGetThread takes it, for one of the folder its conversation
+				// is kept under.
+				if msgs[i].AlpsUID != uidStr {
+					continue
 				}
-			}
-			for _, flag := range removeFlags {
-				for j := len(flags) - 1; j >= 0; j-- {
-					if flags[j] == flag {
-						flags = append(flags[:j], flags[j+1:]...)
-						break
+				if msgs[i].Mailbox != mailbox && (msgs[i].Mailbox != "" || !strings.HasPrefix(key, ownPrefix)) {
+					continue
+				}
+				// A reader may be encoding the old conversation now. Its slice,
+				// message buffer and flag storage must all stay unchanged. Update
+				// publishes the new snapshot atomically, so another flag change
+				// cannot overwrite it and an invalidation cannot be undone.
+				updated := slices.Clone(msgs)
+				message := *msgs[i].FetchMessageBuffer
+				flags := slices.Clone(message.Flags)
+				for _, flag := range addFlags {
+					if !slices.Contains(flags, flag) {
+						flags = append(flags, flag)
 					}
 				}
+				for _, flag := range removeFlags {
+					for j := len(flags) - 1; j >= 0; j-- {
+						if flags[j] == flag {
+							flags = append(flags[:j], flags[j+1:]...)
+							break
+						}
+					}
+				}
+				message.Flags = flags
+				updated[i].FetchMessageBuffer = &message
+				patched = true
+				return updated
 			}
-			msgs[i].Flags = flags
-			cache.Set(key, msgs)
+			return msgs
+		})
+		if patched {
 			debugf("Updated flags for message %s in conversation %s", uidStr, key)
-			break
 		}
 	}
 }
