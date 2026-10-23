@@ -202,10 +202,10 @@ export class AlpsFloatingComposer extends LitElement {
   /**
    * Saves the draft.
    *
-   * Returns whether the message is SAFE — either stored on the server, or so
-   * empty there is nothing to store. `false` means a save was attempted and did
-   * not land, which is the one case where closing the window would destroy what
-   * the user wrote. See `_handleCloseClick`.
+   * Returns whether the message is SAFE — either stored on the server, or never
+   * stored and so empty there is nothing to store. `false` means a save was
+   * attempted and did not land, which is the one case where closing the window
+   * would destroy what the user wrote. See `_handleCloseClick`.
    */
   private _saveDraft(): Promise<boolean> {
     // A save is already in flight; a second one now would race it.
@@ -279,7 +279,12 @@ export class AlpsFloatingComposer extends LitElement {
     const hasAttachments = (currentInstance.attachments && currentInstance.attachments.length > 0);
     const textIsJustInitial = currentInstance.text?.trim() === currentInstance.initialText?.trim();
     const hasContent = !textIsJustInitial || (currentInstance.subject?.trim().length || 0) > 0 || hasAttachments;
-    if (!hasRecipient && !hasContent) {
+    // Only for a message never stored. A stored draft emptied to blank is
+    // saved as it is: taken for nothing to lose, it stayed in Drafts with the
+    // recipients, subject and text the user had removed, and Close took the
+    // window away without a save. Saved, not deleted, so emptying the text
+    // before writing it again loses nothing.
+    if (!hasRecipient && !hasContent && !currentInstance.draftUid) {
       return true; // nothing to lose
     }
 
@@ -576,9 +581,9 @@ export class AlpsFloatingComposer extends LitElement {
     // mid-sentence, after as many saves as the typing took.
     //
     // A save that was sent leaves the composer dirty only for what changed
-    // while it was out. A composer with nothing in it to save is not sent,
-    // and stays the object it was, still marked edited: the store replaces a
-    // composer on each update. That one closes.
+    // while it was out. A composer with nothing in it to save, blank and
+    // never stored, is not sent, and stays the object it was, still marked
+    // edited: the store replaces a composer on each update. That one closes.
     const latest = this.composeStore.getComposer(this.instance.id);
     if (latest !== current && latest?.dirty) return;
     this.composeStore.closeComposer(this.instance.id);

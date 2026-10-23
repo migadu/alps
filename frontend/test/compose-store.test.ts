@@ -316,6 +316,25 @@ describe('saving everything at sign-out', () => {
     expect(composers(store)).toEqual([]);
   });
 
+  it('saves a stored draft emptied to blank, rather than closing it with Drafts holding what was taken out', async () => {
+    // A reopened draft with its recipients and subject removed, its text as
+    // it opened, reads as blank. Taken for nothing to save, it was closed,
+    // and Drafts kept the recipients and the subject.
+    signIn('ada@example.com');
+    const store = makeStore();
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    store.openComposer({ draftUid: '7', draftMailbox: 'Drafts', subject: 'Engines', to: ['charles@example.com'], text: 'Notes' });
+    store.updateComposer(composers(store)[0].id, { to: [], subject: '' });
+
+    await store.saveAllDirtyDrafts();
+
+    expect(saveDraft).toHaveBeenCalledTimes(1);
+    const form = saveDraft.mock.calls[0][0] as FormData;
+    expect(form.get('draft_uid')).toBe('7');
+    expect(['to', 'subject', 'text'].map(field => form.get(field))).toEqual(['', '', 'Notes']);
+    expect(composers(store)).toEqual([]);
+  });
+
   it('keeps open a composer refused over an upload the server no longer holds, with that file to add again', async () => {
     signIn('ada@example.com');
     const store = makeStore();
