@@ -33,6 +33,9 @@ describe('composer windows', () => {
     const root = await mount<El>('app-root');
     const store = root.composeStore;
     for (const subject of ['X', 'A', 'C']) store.openComposer({ subject });
+    // Element identity is independent of how long the first lazy import
+    // takes on a cold transform cache.
+    await root.ensureComposerLoaded();
     await waitFor(() => windows(root).length === 3, 'three windows');
     const [, a, c] = windows(root);
 
