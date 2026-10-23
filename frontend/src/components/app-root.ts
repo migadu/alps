@@ -3,7 +3,7 @@ import { renderIcon } from '../utils/ui';
 import { customElement, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { Router } from '../router';
-import { registry } from '../plugin-registry';
+import { loadComponent, registry } from '../plugin-registry';
 
 // Import pages
 import '../pages/login-page';
@@ -514,6 +514,7 @@ export class AppRoot extends LitElement {
 
     registry.getRoutes().forEach(route => {
       baseRoutes[route.path] = () => {
+        loadComponent(route);
         let cachedEl = this.pluginPages.get(route.path);
         if (!cachedEl) {
           cachedEl = document.createElement(route.component);

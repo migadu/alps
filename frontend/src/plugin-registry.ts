@@ -1,3 +1,5 @@
+import { Logger } from './utils/logger';
+
 export interface NavTab {
     id: string;
     pluginId?: string;
@@ -12,6 +14,8 @@ export interface SettingsTab {
     labelKey: string; // The i18n translation key for the tab label
     icon: string;     // The icon name for the sidebar
     component: string; // The HTML custom element tag name, e.g. 'alps-password-settings'
+    /** Fetches the module that defines `component`; see {@link Route.load}. */
+    load?: () => Promise<unknown>;
 }
 
 export interface Route {
@@ -27,6 +31,33 @@ export interface Route {
      * `#/calendar` typed into the address bar reaches it without one.
      */
     pluginId?: string;
+    /**
+     * Fetches the module that defines `component`, the first time the page is
+     * shown.
+     *
+     * Every plugin's `index.ts` is imported eagerly, so a page it imports
+     * statically ships in the first download: Calendar, Tasks, Contacts and the
+     * plugins' settings panes were a third of it, for a user who opened the
+     * inbox. A plugin passes `() => import('./its-page')` here instead, and
+     * keeps static only what the mail view itself shows (a reader banner, a
+     * hook's service).
+     */
+    load?: () => Promise<unknown>;
+}
+
+/**
+ * Starts the fetch of a route's or settings tab's page module, if its tag is
+ * not defined yet.
+ *
+ * Nothing waits on it: the shell creates the element by tag straight away, and
+ * an element created before its definition is upgraded in place when the
+ * module calls `customElements.define`. Called on every render, so a fetch
+ * that failed is tried again the next time the page is shown. A chunk that is
+ * gone because the server was upgraded is app-update's to handle.
+ */
+export function loadComponent(entry: { component: string; load?: () => Promise<unknown> }): void {
+    if (!entry.load || customElements.get(entry.component)) return;
+    entry.load().catch(err => Logger.error(`Failed to load <${entry.component}>`, err));
 }
 
 /** Set equality, so a re-read of /session that changed nothing announces

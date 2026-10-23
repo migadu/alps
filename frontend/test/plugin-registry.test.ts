@@ -8,8 +8,9 @@
  * have to be filtered as well as the nav, or a disabled plugin keeps running.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { registry } from '../src/plugin-registry';
+import { loadComponent, registry } from '../src/plugin-registry';
 import { Router } from '../src/router';
+import { Logger } from '../src/utils/logger';
 
 beforeEach(() => {
   registry.navTabs = [];
@@ -181,5 +182,45 @@ describe('hooks', () => {
     registry.setEnabledPlugins([]);
     await registry.invokeHookAsync('composer:send', {});
     expect(seen).toEqual(['app']);
+  });
+});
+
+describe('page modules', () => {
+  it('fetches a page when it is first shown, not when it is registered, and once', async () => {
+    const tag = 'lazy-shown-page';
+    const load = vi.fn(async () => customElements.define(tag, class extends HTMLElement {}));
+    registry.registerRoute({ path: '/lazy', component: tag, load });
+    expect(load).not.toHaveBeenCalled();
+
+    // Shown before its module has arrived, as the shell shows it.
+    const page = document.body.appendChild(document.createElement(tag));
+    loadComponent(registry.getRoutes()[0]);
+    await load.mock.results[0].value;
+    loadComponent(registry.getRoutes()[0]);
+
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(page).toBeInstanceOf(customElements.get(tag)!);
+    page.remove();
+  });
+
+  it('tries again the next time the page is shown when the fetch failed', async () => {
+    const tag = 'lazy-retried-pane';
+    vi.spyOn(Logger, 'error').mockImplementation(() => {});
+    const load = vi.fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockImplementationOnce(async () => customElements.define(tag, class extends HTMLElement {}));
+    const tab = { id: 'lazy', labelKey: 'l', icon: 'key', component: tag, load };
+
+    loadComponent(tab);
+    await vi.waitFor(() => expect(Logger.error).toHaveBeenCalled());
+    loadComponent(tab);
+    await load.mock.results[1].value;
+
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(customElements.get(tag)).toBeDefined();
+  });
+
+  it('leaves a page with nothing to load alone', () => {
+    expect(() => loadComponent({ component: 'div' })).not.toThrow();
   });
 });

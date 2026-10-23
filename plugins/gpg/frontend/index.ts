@@ -1,6 +1,5 @@
 import { html } from 'lit';
 import { registry } from '../../../frontend/src/plugin-registry';
-import './gpg-settings.ts';
 import { handlePresend, handleReaderContent } from './gpg-crypto.ts';
 
 // Register Settings Tab
@@ -8,7 +7,8 @@ registry.registerSettingsTab({
     id: 'gpg',
     labelKey: 'settings.gpg',
     icon: 'key',
-    component: 'alps-gpg-settings'
+    component: 'alps-gpg-settings',
+    load: () => import('./gpg-settings.ts'),
 });
 
 // Register Composer Toggle Button
