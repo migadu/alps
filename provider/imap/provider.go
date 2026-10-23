@@ -1747,6 +1747,7 @@ func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessag
 		flags = append(flags, imap.FlagDraft)
 	}
 	options := imap.AppendOptions{Flags: flags}
+	uidNext := p.uidNextWithoutUIDPlus(mbox.Name)
 	appendData, err := p.appendTo(mbox.Name, buf.Bytes(), &options)
 	var imapErr *imap.Error
 	if remembered && errors.As(err, &imapErr) && imapErr.Code == imap.ResponseCodeTryCreate {
@@ -1759,6 +1760,7 @@ func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessag
 		if err != nil {
 			return nil, nil, 0, err
 		}
+		uidNext = p.uidNextWithoutUIDPlus(mbox.Name)
 		appendData, err = p.appendTo(mbox.Name, buf.Bytes(), &options)
 	}
 	if err != nil {
@@ -1770,9 +1772,70 @@ func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessag
 	var uid provider.MessageID
 	if appendData != nil && appendData.UID != 0 {
 		uid = IMAPUID(appendData.UID)
+	} else if uidNext != 0 {
+		uid = p.storedUID(mbox.Name, uidNext, buf.Bytes())
 	}
 
 	return mbox, uid, size, nil
+}
+
+// uidNextWithoutUIDPlus reads the UID mailbox gives the next message stored
+// in it, from a server without UIDPLUS, which will not say which UID it gave
+// a message appended to it; 0 from one with UIDPLUS, or when it cannot be
+// read. See storedUID.
+func (p *IMAPProvider) uidNextWithoutUIDPlus(mailbox string) imap.UID {
+	if p.client.Caps().Has(imap.CapUIDPlus) {
+		return 0
+	}
+	status, err := p.client.Status(mailbox, &imap.StatusOptions{UIDNext: true}).Wait()
+	if err != nil {
+		return 0
+	}
+	return status.UIDNext
+}
+
+// storedUID finds the UID of message, which a server without UIDPLUS has
+// just stored in mailbox, by its Message-ID; nil when it cannot be told.
+//
+// Every save of a draft has the draft's Message-ID, and earlier copies of it
+// may be in the mailbox, left by saves that could not name theirs. UIDs only
+// grow, so a copy stored since uidNext was read has uidNext or one above it,
+// and an earlier copy does not. Only when exactly one copy is so is it this
+// message: two would mean another client stored one meanwhile, and either
+// could be this one.
+func (p *IMAPProvider) storedUID(mailbox string, uidNext imap.UID, message []byte) provider.MessageID {
+	h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(message)))
+	if err != nil {
+		return nil
+	}
+	ids := provider.MessageIDs(h.Get("Message-Id"))
+	if len(ids) != 1 {
+		return nil
+	}
+	if err := p.ensureMailboxSelected(mailbox); err != nil {
+		return nil
+	}
+	var since imap.UIDSet
+	since.AddRange(uidNext, 0)
+	data, err := p.client.UIDSearch(&imap.SearchCriteria{
+		UID:    []imap.UIDSet{since},
+		Header: []imap.SearchCriteriaHeaderField{{Key: "Message-Id", Value: ids[0]}},
+	}, nil).Wait()
+	if err != nil {
+		return nil
+	}
+	// uidNext:* names the mailbox's last message too when no UID reaches
+	// uidNext (RFC 3501, 6.4.8), so the UIDs are checked against it.
+	var found []imap.UID
+	for _, uid := range data.AllUIDs() {
+		if uid >= uidNext {
+			found = append(found, uid)
+		}
+	}
+	if len(found) != 1 {
+		return nil
+	}
+	return IMAPUID(found[0])
 }
 
 // appendTo stores one message in the named mailbox.
