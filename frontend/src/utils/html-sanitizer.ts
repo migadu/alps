@@ -71,6 +71,26 @@ function cidOf(value: string): string {
 }
 
 /**
+ * The Content-IDs markup names in its `cid:` URLs, without angle brackets:
+ * the parts of the message it came in that it shows. Read from every
+ * attribute, a srcset candidate by candidate, as the display resolves them.
+ */
+export function cidReferencesOf(html: string): Set<string> {
+  const ids = new Set<string>();
+  if (!html) return ids;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  for (const el of Array.from(doc.querySelectorAll('*'))) {
+    for (const attr of Array.from(el.attributes)) {
+      const urls = attr.name.toLowerCase() === 'srcset' ? parseSrcset(attr.value).map((c) => c.url) : [attr.value];
+      for (const url of urls) {
+        if (isCidUrl(url)) ids.add(cidOf(url).replace(/^<|>$/g, ''));
+      }
+    }
+  }
+  return ids;
+}
+
+/**
  * The same question in the CSS grammar: a `url()` whose target is remote.
  *
  * ONE definition, because there were four — this pattern was written out three
