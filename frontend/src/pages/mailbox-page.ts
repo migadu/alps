@@ -638,6 +638,20 @@ export class MailboxPage extends LitElement {
     return !!this.selectedMessage && !!msg && this.keyOf(this.selectedMessage) === this.keyOf(msg);
   }
 
+  /**
+   * The message the list holds under this key: a row, or a message under a
+   * thread's row, where an expanded thread lists its older messages and
+   * where the open message often is.
+   */
+  private listedByKey(key: string): any | undefined {
+    for (const msg of this.messages) {
+      if (this.keyOf(msg) === key) return msg;
+      const sub = msg.SubMessages?.find((m: any) => this.keyOf(m) === key);
+      if (sub) return sub;
+    }
+    return undefined;
+  }
+
   private _handleMediaQuery = (e: MediaQueryListEvent | MediaQueryList) => {
     this.isMobile = e.matches;
     if (!this.isMobile) {
@@ -1161,7 +1175,7 @@ export class MailboxPage extends LitElement {
           }
         }
         if (this.selectedMessage) {
-          const updatedMsg = this.messages.find((m: any) => this.isOpen(m));
+          const updatedMsg = this.listedByKey(this.keyOf(this.selectedMessage));
           // Same rule for the open message: a fresh copy of it rebuilds the
           // reader's cards and re-runs the list's "another message was opened"
           // path, for flags that are the ones already held.
@@ -1442,7 +1456,12 @@ export class MailboxPage extends LitElement {
     const currentTargetMailbox = this.targetMailbox;
     const mailbox = currentTargetMailbox || this.currentMailbox;
     const targetKey = messageKey(mailbox, currentTargetUid);
-    let msg = this.messages.find(m => this.keyOf(m) === targetKey);
+    // The open message, when it is the one named and the list does not hold
+    // it: every read of the list in the foreground comes here, and asked the
+    // server for it again, to drop the answer, or, when that read failed, to
+    // close the reader.
+    let msg = this.listedByKey(targetKey)
+      ?? (this.selectedMessage && this.keyOf(this.selectedMessage) === targetKey ? this.selectedMessage : undefined);
 
     // If the message is not on the current page (e.g. it shifted or we changed pages),
     // fetch its metadata directly from the backend so the reader can still display it.
