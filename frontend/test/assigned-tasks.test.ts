@@ -64,7 +64,7 @@ describe('the task editor\'s assignees', () => {
         const update = vi.spyOn(tasksService, 'updateTask').mockResolvedValue(mine);
         const el = await editor({ task: mine, scheduling: 'email' });
         expect(shadow<El>(el, 'alps-address-input.assignees').addresses).toEqual(['"Grace Hopper" <grace@example.org>']);
-        expect(text(el, '.answers')).toBe('Grace Hopper: invitations.statuses.completed');
+        expect(text(el, '.answers')).toBe('tasks.assigneeAnswer {"name":"Grace Hopper","status":"invitations.statuses.completed"}');
 
         await el.handleSave();
         await el.updateComplete;
@@ -88,7 +88,7 @@ describe('the task editor\'s assignees', () => {
         const update = vi.spyOn(tasksService, 'updateTask').mockResolvedValue(theirs);
         const el = await editor({ task: theirs, scheduling: 'email' });
         expect(shadowAll(el, 'alps-address-input')).toHaveLength(0);
-        expect(text(el, '.assigned')).toBe('tasks.assignedBy: Grace Hopper');
+        expect(text(el, '.assigned')).toBe('tasks.assignedBy Grace Hopper');
         await el.handleSave();
         expect(shadowAll(el, 'ui-confirm')).toHaveLength(0);
         expect(update.mock.calls[0][1].attendees).toBeUndefined();
@@ -107,7 +107,7 @@ describe('the task editor\'s assignees', () => {
 describe('the task list', () => {
     it('says who assigned a task, and to whom', async () => {
         const el = await mount<El>('tasks-list', { i18nStore, tasks: [mine, { ...theirs, uid: 'b', path: '/cal/work/b.ics' }], now: new Date(2026, 8, 14) });
-        expect(shadowAll(el, '.assigned').map(e => e.textContent?.trim())).toEqual(['tasks.assignedTo: Grace Hopper', 'tasks.assignedBy: Grace Hopper']);
+        expect(shadowAll(el, '.assigned').map(e => e.textContent?.trim())).toEqual(['tasks.assignedTo Grace Hopper', 'tasks.assignedBy Grace Hopper']);
     });
 });
 
