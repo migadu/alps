@@ -619,6 +619,89 @@ describe('Serbian register and spelling', () => {
   });
 });
 
+/**
+ * Spanish speaks to the user as "tú", as nearly all of alps's Spanish does
+ * ("¿Estás seguro de que quieres…?", "Tu servidor de correo…", "Inténtalo de
+ * nuevo"). Some strings had kept "usted": the sign-in's "verifique sus
+ * credenciales", most of the GPG plugin ("introduzca su contraseña"), and the
+ * filters' "Desactívela en Respuesta automática".
+ *
+ * Each marker reads a string in small letters without accents, so
+ * "Elimínela" and "elimínela" are one form. The commands are the "usted"
+ * forms, which no "tú" form shares ("seleccione", not "selecciona"), and are
+ * read where a sentence or a "Por favor" opens: "Quien escriba varias veces"
+ * is no command.
+ */
+const plainSpanish = (text: string) => text.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+
+const SPANISH_COMMANDS = [
+  'introduzca', 'seleccione', 'escriba', 'pegue', 'deje', 'anada', 'elimine', 'desactive', 'active', 'verifique',
+  'vuelva', 'espere', 'compruebe', 'asegure', 'elija', 'utilice', 'pulse', 'haga', 'intente', 'responda', 'indique', 'revise',
+  'cambie', 'guarde', 'abra', 'acepte', 'confirme', 'ingrese', 'agregue', 'quite', 'actualice', 'recuerde', 'tenga', 'pruebe',
+  'inicie', 'marque', 'copie', 'mueva', 'envie', 'cancele',
+];
+
+const SPANISH_FORMAL: { formal: string; informal: string; marker: RegExp; caught: string[]; spared: string[] }[] = [
+  {
+    formal: 'usted',
+    informal: 'tú',
+    marker: /(?<!\p{L})ustede?s?(?!\p{L})/u,
+    caught: ['¿Desea usted continuar?'],
+    spared: ['¿Quieres continuar?'],
+  },
+  {
+    formal: '¿Está seguro?',
+    informal: '¿Estás seguro?',
+    marker: /¿esta segur[oa]s?(?!\p{L})/u,
+    caught: ['¿Está seguro de que desea eliminar sus claves?'],
+    spared: ['¿Estás seguro de que quieres eliminar esta cuenta vinculada?'],
+  },
+  {
+    formal: 'Seleccione, Inténtelo, Desactívela',
+    informal: 'Selecciona, Inténtalo, Desactívala',
+    marker: new RegExp(`(?<=^|[.!?:;]\\s+|[¿¡]|por favor,?\\s+)(?:${SPANISH_COMMANDS.join('|')})(?:la|lo|las|los|le|les|se)?(?!\\p{L})`, 'u'),
+    caught: [
+      'Seleccione un mensaje para leer', 'Ocurrió un error de red. Por favor, inténtelo de nuevo.', 'Por favor espere',
+      'La respuesta automática está activada. Desactívela en Respuesta automática.', 'Opcional. Deje una fecha vacía.',
+    ],
+    spared: [
+      'Selecciona un mensaje para leer', 'Ocurrió un error de red. Por favor, inténtalo de nuevo.', 'Por favor espera',
+      'La respuesta automática está activada. Desactívala en Respuesta automática.', 'Opcional. Deja una fecha vacía.',
+      'Quien escriba varias veces en ese tiempo recibe una sola respuesta.', 'Cierre de sesión automático', 'Tiene archivos adjuntos',
+    ],
+  },
+];
+
+/** What the markers cannot see: "usted" shown only by a possessive, an object pronoun or a verb that is no command. */
+const SPANISH_INFORMAL_PINS: [file: string, key: string, text: string][] = [
+  ['gpg', 'gpg.yourGpgKey', 'Tu clave GPG'],
+  ['gpg', 'gpg.keyStoredSecurely', 'Tienes un par de claves GPG almacenado de forma segura en el servidor. La clave privada está cifrada con tu contraseña.'],
+  ['gpg', 'gpg.passphraseMissing', 'Se requiere contraseña para cifrar tu nueva clave privada.'],
+  ['gpg', 'gpg.enableEncryptionDesc', 'Para habilitar el cifrado de extremo a extremo entre los contactos que lo admiten, necesitarás un par de claves GPG.'],
+  ['managesieve', 'managesieve.autoReply.messageDesc', 'Lo que recibe cada persona que te escribe.'],
+];
+
+describe('Spanish register', () => {
+  it('has markers that catch the "usted" forms and spare the "tú" ones', () => {
+    for (const { formal, marker, caught, spared } of SPANISH_FORMAL) {
+      for (const text of caught) expect(marker.test(plainSpanish(text)), `${formal} in "${text}"`).toBe(true);
+      for (const text of spared) expect(marker.test(plainSpanish(text)), `${formal} in "${text}"`).toBe(false);
+    }
+  });
+
+  it.each(SPANISH_FORMAL.map((f) => [f.informal, f.formal, f.marker] as const))('es says "%s", not "%s"', (_informal, _formal, marker) => {
+    expect(stringsOf('es').filter(([, text]) => marker.test(plainSpanish(text))).map(([where, text]) => `${where}="${text}"`)).toEqual([]);
+  });
+
+  it('says to the user as "tú" what the markers cannot see', () => {
+    const wrong = SPANISH_INFORMAL_PINS
+      .map(([file, key, text]) => [file, key, text, lookup(byPlugin.get(file)!.get('es'), key)] as const)
+      .filter(([, , text, actual]) => actual !== text)
+      .map(([file, key, , actual]) => `${file}/es:${key}="${actual}"`);
+    expect(wrong).toEqual([]);
+  });
+});
+
 /** A Serbian string in Latin letters, case kept: "ЊИВА" is "NJIVA", "Џеп" is "Džep". */
 function transliterate(text: string): string {
   const letters = [...text];
@@ -877,63 +960,120 @@ describe('Serbian capitals', () => {
 });
 
 /**
- * Names that keep their capital inside an Italian sentence: the folders and
- * pages alps calls by name ("nel Cestino", "Disattivala in Risposta
+ * Names that keep their capital inside a sentence, by language: the folders
+ * and pages alps calls by name ("nel Cestino", "Disattivala in Risposta
  * automatica", "dei Filtri"), the Reply-To header and the Bcc field by their
- * labels, a proper noun, and the ends of the alphabet.
+ * labels, a proper noun, a unit symbol, and the ends of the alphabet.
  */
-const ITALIAN_NAMES = ['Posta in arrivo', 'Cestino', 'Risposta automatica', 'Filtri', 'Rispondi a', 'Ccn', 'Internet', 'A-Z', 'Z-A'];
+const NAMES_IN_SENTENCES: Record<string, string[]> = {
+  it: ['Posta in arrivo', 'Cestino', 'Risposta automatica', 'Filtri', 'Rispondi a', 'Ccn', 'Internet', 'A-Z', 'Z-A'],
+  fr: ['Réponse automatique', 'Filtres', 'Reply-To', 'Cci', 'Internet', 'Ko', 'A-Z', 'Z-A'],
+  es: ['Bandeja de entrada', 'Borradores', 'Papelera', 'Respuesta automática', 'Filtros', 'Reply-To', 'Internet', 'A-Z', 'Z-A'],
+};
 
 const nameIn = (name: string) => new RegExp(`(?<![\\p{L}-])${name}(?![\\p{L}-])`, 'gu');
 
 /**
- * The words of an Italian string that take a capital in English title case
- * only. Italian capitalises a title or a button on its first word, as the rest
- * of alps's Italian does ("Rispondi a tutti", "Crea categoria"), and goes on in
- * small letters after a colon; an acronym such as GPG keeps its capitals, and
- * so does a name. A name stands in as a word of small letters, so the word
- * after it is still read as the sentence's second.
+ * The words of a string that take a capital in English title case only.
+ * Italian, French and Spanish capitalise a title or a button on its first
+ * word, as the rest of alps's Italian, French and Spanish do ("Rispondi a
+ * tutti", "Répondre à tous", "Responder a todos"), and go on in small letters
+ * after a colon; an acronym such as GPG keeps its capitals, and so does a
+ * name. A name stands in as a word of small letters, so the word after it is
+ * still read as the sentence's second.
  */
-function italianTitleCased(text: string): string[] {
+function titleCaseSlips(text: string, names: string[]): string[] {
   let plain = text.replace(/\{[^}]*\}/g, ' ').replace(/"[^"]*"/g, ' ');
-  for (const name of ITALIAN_NAMES) plain = plain.replace(nameIn(name), 'nome');
+  for (const name of names) plain = plain.replace(nameIn(name), 'name');
   return plain.split(/(?<=[.!?…])\s+|\n/).flatMap((sentence) =>
     [...sentence.matchAll(/\p{L}+/gu)].slice(1).map(([word]) => word)
       .filter((word) => /^\p{Lu}/u.test(word) && !/\p{Lu}/u.test(word.slice(1))));
 }
 
-describe('Italian capitals', () => {
+describe('capitals in Italian, French and Spanish', () => {
   it('has a rule that catches English title case and spares acronyms, names and new sentences', () => {
-    expect(italianTitleCased('Genera Nuova Coppia di Chiavi')).toEqual(['Nuova', 'Coppia', 'Chiavi']);
-    expect(italianTitleCased('Passphrase (Richiesta)')).toEqual(['Richiesta']);
-    expect(italianTitleCased('Attiva/Disattiva crittografia GPG')).toEqual(['Disattiva']);
-    expect(italianTitleCased('Impossibile crittografare: Chiavi pubbliche mancanti per:\n{keys}')).toEqual(['Chiavi']);
-    expect(italianTitleCased('Cestino Svuotato')).toEqual(['Svuotato']);
+    const italian = (text: string) => titleCaseSlips(text, NAMES_IN_SENTENCES.it);
+    expect(italian('Genera Nuova Coppia di Chiavi')).toEqual(['Nuova', 'Coppia', 'Chiavi']);
+    expect(italian('Passphrase (Richiesta)')).toEqual(['Richiesta']);
+    expect(italian('Attiva/Disattiva crittografia GPG')).toEqual(['Disattiva']);
+    expect(italian('Impossibile crittografare: Chiavi pubbliche mancanti per:\n{keys}')).toEqual(['Chiavi']);
+    expect(italian('Cestino Svuotato')).toEqual(['Svuotato']);
     // A name inside a longer word is not the name.
-    expect(italianTitleCased('Svuota il Cestinone')).toEqual(['Cestinone']);
+    expect(italian('Svuota il Cestinone')).toEqual(['Cestinone']);
     for (const text of [
       'Importa coppia di chiavi GPG esistente', 'Passphrase errata per la chiave privata. Riprova.',
       'Incolla i blocchi, ad es. da "gpg --armor --export-secret-keys". Se la chiave è protetta, ti verrà chiesta.',
       'Cartella spostata nel Cestino', 'Nuovi messaggi nella Posta in arrivo', 'Ordina A-Z',
     ]) {
-      expect(italianTitleCased(text), text).toEqual([]);
+      expect(italian(text), text).toEqual([]);
+    }
+
+    const french = (text: string) => titleCaseSlips(text, NAMES_IN_SENTENCES.fr);
+    expect(french('Enregistrer les Règles')).toEqual(['Règles']);
+    expect(french('Mot de passe (Requis)')).toEqual(['Requis']);
+    expect(french('Impossible de chiffrer : Clés publiques manquantes pour :\n{keys}')).toEqual(['Clés']);
+    for (const text of [
+      'Adresse de réponse (Reply-To)', 'Le script est valide ! Les règles sont enregistrées.',
+      'Désactivez-la dans Réponse automatique avant que les filtres n\'envoient la leur.', 'Trier A-Z',
+    ]) {
+      expect(french(text), text).toEqual([]);
+    }
+
+    const spanish = (text: string) => titleCaseSlips(text, NAMES_IN_SENTENCES.es);
+    expect(spanish('Nuevo Mensaje')).toEqual(['Mensaje']);
+    expect(spanish('Contraseña (Obligatorio)')).toEqual(['Obligatorio']);
+    expect(spanish('No se puede cifrar: Faltan claves públicas para:\n{keys}')).toEqual(['Faltan']);
+    for (const text of [
+      '¿Estás seguro de que quieres mover "{folder}" a la Papelera?', 'Nuevos mensajes en la Bandeja de entrada',
+      'Dirección de respuesta (Reply-To)', '¡Hecho! Las reglas se han guardado.', 'Ordenar A-Z',
+    ]) {
+      expect(spanish(text), text).toEqual([]);
     }
   });
 
-  it('capitalises only a sentence\'s first word and names, in every Italian dictionary', () => {
-    // The Italian took the English habit of a capital on every word of a
-    // title or a button: "Importa Coppia di Chiavi GPG Esistente" in the GPG
-    // plugin, "Nuova Regola" in the filters, "Indirizzo Email" at sign-in.
-    const slips = stringsOf('it')
-      .map(([where, text]) => [where, text, italianTitleCased(text)] as const)
+  it.each(Object.keys(NAMES_IN_SENTENCES))('%s capitalises only a sentence\'s first word and names, in every dictionary', (code) => {
+    // Each took the English habit of a capital on every word of a title or a
+    // button: "Importa Coppia di Chiavi GPG Esistente" in the GPG plugin,
+    // "Nouvelle Règle" in the filters, "Nuevo Mensaje" in the composer.
+    const slips = stringsOf(code)
+      .map(([where, text]) => [where, text, titleCaseSlips(text, NAMES_IN_SENTENCES[code])] as const)
       .filter(([, , words]) => words.length > 0)
       .map(([where, text, words]) => `${where}="${text}": ${words.join(' ')}`);
     expect(slips).toEqual([]);
   });
 
-  it('allows only names an Italian string still uses, so the list cannot go stale', () => {
-    const texts = stringsOf('it').map(([, text]) => text);
-    expect(ITALIAN_NAMES.filter((name) => !texts.some((text) => nameIn(name).test(text)))).toEqual([]);
+  it.each(Object.keys(NAMES_IN_SENTENCES))('%s allows only names its strings still use, so the list cannot go stale', (code) => {
+    const texts = stringsOf(code).map(([, text]) => text);
+    expect(NAMES_IN_SENTENCES[code].filter((name) => !texts.some((text) => nameIn(name).test(text)))).toEqual([]);
+  });
+});
+
+/**
+ * The French marks that take a space before them, written outside a URL
+ * ("https://") and a clock time ("10:30"). The dictionaries write a plain
+ * space, as in "À :", "Date :" and "Copié !"; a few strings had none, as in
+ * "Échec de l'importation: {error}".
+ */
+function unspacedFrenchMarks(text: string): string[] {
+  const plain = text.replace(/\b[a-z]+:\/\/\S*/g, ' ').replace(/\d:\d/g, ' ');
+  return [...plain.matchAll(/\S[:;?!]/gu)].map(([mark]) => mark);
+}
+
+describe('French punctuation', () => {
+  it('has a rule that catches a mark with no space before it, outside a URL and a time', () => {
+    expect(unspacedFrenchMarks('Impossible de chiffrer: clés manquantes pour:\n{keys}')).toEqual(['r:', 'r:']);
+    expect(unspacedFrenchMarks('Copié! Vraiment?')).toEqual(['é!', 't?']);
+    for (const text of ['À :', 'Copié !', 'Voulez-vous vraiment supprimer cette tâche ?', 'https://example.com', 'À 10:30']) {
+      expect(unspacedFrenchMarks(text), text).toEqual([]);
+    }
+  });
+
+  it('fr puts a space before : ; ? and !, in every dictionary', () => {
+    const unspaced = stringsOf('fr')
+      .map(([where, text]) => [where, text, unspacedFrenchMarks(text)] as const)
+      .filter(([, , marks]) => marks.length > 0)
+      .map(([where, text]) => `${where}="${text}"`);
+    expect(unspaced).toEqual([]);
   });
 });
 

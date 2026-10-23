@@ -71,10 +71,9 @@ func TestHTTP_AFailedSaveOrSendKeepsItsUploads(t *testing.T) {
 	refused.Set("prev_attachments", "2") // a part, with no message to take it from
 	s.expect(s.do("POST", "/messages", refused), http.StatusBadRequest)
 	s.expect(s.do("POST", "/messages", draftWith(notes)), http.StatusOK)
-	// Stored, but the maildir provider cannot read the draft back, so the
-	// answer names no parts and the composer still has only the id: the
-	// upload is kept for its next save.
-	s.expect(s.do("POST", "/messages", draftWith(notes)), http.StatusOK)
+	// Stored, and read back: the answer names the part the upload became,
+	// and the draft holds it now, so the session lets it go.
+	s.expect(s.do("POST", "/messages", draftWith(notes)), http.StatusConflict)
 
 	// The test server's SMTP relay is not listening.
 	ledger := s.upload("ledger.txt", "one two three")

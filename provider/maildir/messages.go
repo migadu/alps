@@ -66,7 +66,7 @@ func buildBodyStructure(e *message.Entity) imap.BodyStructure {
 		subtype = parts[1]
 	}
 
-	return &imap.BodyStructureSinglePart{
+	single := &imap.BodyStructureSinglePart{
 		Type:        typ,
 		Subtype:     subtype,
 		Params:      params,
@@ -76,6 +76,63 @@ func buildBodyStructure(e *message.Entity) imap.BodyStructure {
 		Extended: &imap.BodyStructureSinglePartExt{
 			Disposition: disposition,
 		},
+	}
+	if isAttachedMessage(e) {
+		single.MessageRFC822 = attachedMessage(e)
+	}
+	return single
+}
+
+// isAttachedMessage reports whether e holds a message of its own, as a
+// forward as attachment does.
+func isAttachedMessage(e *message.Entity) bool {
+	mediaType, _, _ := e.Header.ContentType()
+	return mediaType == "message/rfc822"
+}
+
+// attachedMessage describes the message a message/rfc822 part holds as IMAP's
+// BODYSTRUCTURE does (RFC 3501, section 7.4.2): by its envelope, which names
+// it, and its own parts.
+func attachedMessage(e *message.Entity) *imap.BodyStructureMessageRFC822 {
+	inner, err := message.Read(e.Body)
+	if err != nil {
+		return nil
+	}
+	return &imap.BodyStructureMessageRFC822{
+		Envelope:      envelopeOf(mail.Header{Header: inner.Header}),
+		BodyStructure: buildBodyStructure(inner),
+	}
+}
+
+// envelopeOf is an attached message's header as IMAP's ENVELOPE gives it.
+func envelopeOf(h mail.Header) *imap.Envelope {
+	addresses := func(key string) []imap.Address {
+		list, _ := h.AddressList(key)
+		var out []imap.Address
+		for _, a := range list {
+			mailbox, host := a.Address, ""
+			if i := strings.LastIndex(a.Address, "@"); i >= 0 {
+				mailbox, host = a.Address[:i], a.Address[i+1:]
+			}
+			out = append(out, imap.Address{Name: a.Name, Mailbox: mailbox, Host: host})
+		}
+		return out
+	}
+	date, _ := h.Date()
+	subject, _ := h.Subject()
+	inReplyTo, _ := h.MsgIDList("In-Reply-To")
+	messageID, _ := h.MessageID()
+	return &imap.Envelope{
+		Date:      date,
+		Subject:   subject,
+		From:      addresses("From"),
+		Sender:    addresses("Sender"),
+		ReplyTo:   addresses("Reply-To"),
+		To:        addresses("To"),
+		Cc:        addresses("Cc"),
+		Bcc:       addresses("Bcc"),
+		InReplyTo: inReplyTo,
+		MessageID: messageID,
 	}
 }
 
@@ -383,10 +440,10 @@ func (p *Provider) GetMessageMetadata(mailbox string, id provider.MessageID) (*p
 // messagePart finds the part of the message e at partPath, numbered as IMAP
 // numbers a message's parts (RFC 3501, section 6.4.5): a message that is not
 // multipart has one part, its body, which is part 1. The reader asks for it
-// by that number.
+// by that number. Below it are the parts of the message the body may hold.
 func messagePart(e *message.Entity, partPath []int) (*message.Entity, error) {
-	if len(partPath) == 1 && partPath[0] == 1 && e.MultipartReader() == nil {
-		return e, nil
+	if len(partPath) > 0 && partPath[0] == 1 && e.MultipartReader() == nil {
+		return traverseEntity(e, partPath[1:])
 	}
 	return traverseEntity(e, partPath)
 }
@@ -394,6 +451,16 @@ func messagePart(e *message.Entity, partPath []int) (*message.Entity, error) {
 func traverseEntity(e *message.Entity, partPath []int) (*message.Entity, error) {
 	if len(partPath) == 0 {
 		return e, nil
+	}
+
+	// The parts of an attached message are numbered within it, as a
+	// message's own are: 2.1 is the first part of the message at 2.
+	if isAttachedMessage(e) {
+		inner, err := message.Read(e.Body)
+		if err != nil {
+			return nil, err
+		}
+		return messagePart(inner, partPath)
 	}
 
 	idx := partPath[0]
@@ -586,7 +653,18 @@ func (p *Provider) AppendMessage(mailbox string, msg provider.OutgoingMessageWri
 	// The adapter passes an empty mailbox and selects the destination by type
 	// (Sent/Drafts/...), matching the IMAP backend. Resolve it here — the old
 	// code ignored mboxType entirely and delivered everything to INBOX.
+	//
+	// What is filed by type is the user's own: a message sent, or a draft. It
+	// is stored seen, and a draft as a draft, as the IMAP provider appends it;
+	// stored unread, every one was counted as new mail in its folder. A
+	// message stored into a folder the caller names is stored as it is, as a
+	// delivery would be.
+	var flags []maildir.Flag
 	if mailbox == "" {
+		flags = []maildir.Flag{maildir.FlagSeen}
+		if mboxType == provider.MailboxTypeDrafts {
+			flags = append(flags, maildir.FlagDraft)
+		}
 		if mbox, err := p.FindMailboxByType(mboxType); err == nil && mbox != nil {
 			mailbox = mbox.Name
 		} else {
@@ -605,69 +683,132 @@ func (p *Provider) AppendMessage(mailbox string, msg provider.OutgoingMessageWri
 		return nil, nil, 0, fmt.Errorf("failed to initialize maildir %q: %w", mailbox, err)
 	}
 
-	delivery, err := maildir.NewDelivery(string(dir))
+	// Create, unlike a Delivery, says the key it stores the message under,
+	// which is the message's ID: a draft save answers it, and the next save
+	// replaces the draft by it. The message is written in tmp, under a key
+	// no other writer can choose, and moved into cur once it is whole, under
+	// a name that carries its flags: it is never listed without them.
+	stored, w, err := dir.Create(flags)
 	if err != nil {
 		return nil, nil, 0, err
 	}
 
-	size, err := msg.WriteTo(delivery)
+	size, err := msg.WriteTo(w)
 	if err != nil {
-		delivery.Abort()
+		abandon(stored, w)
 		return nil, nil, 0, err
 	}
 
-	if err := delivery.Close(); err != nil {
+	if err := w.Close(); err != nil {
 		return nil, nil, 0, err
 	}
 
-	// go-maildir's Delivery does not expose the resulting message key, so we
-	// return an empty MessageID; callers treat the subsequent metadata fetch as
-	// best-effort. Crucially, the mailbox is non-nil (the adapter dereferences
-	// it), which previously panicked.
-	return &provider.Mailbox{Name: mailbox, Delimiter: '.', Subscribed: true}, MaildirMessageID(""), uint32(size), nil
+	// The mailbox is non-nil: the adapter dereferences it, which previously
+	// panicked.
+	return &provider.Mailbox{Name: mailbox, Delimiter: '.', Subscribed: true}, MaildirMessageID(stored.Key()), uint32(size), nil
 }
 
+// abandon drops a message Create was writing, which closing w would move
+// into cur as it is. The file is removed from tmp first, so that the move
+// finds nothing to move; and should it move the file all the same, the file
+// is removed from cur.
+func abandon(stored *maildir.Message, w io.WriteCloser) {
+	if f, ok := w.(interface{ Name() string }); ok {
+		os.Remove(f.Name())
+	}
+	w.Close()
+	os.Remove(stored.Filename())
+}
+
+// DeleteMessages removes the messages, and reports each it could not. A
+// message that is already gone counts as deleted: what was asked for is so.
+// The messages are removed one by one, so those before and after one that
+// fails are removed all the same.
 func (p *Provider) DeleteMessages(mailbox string, ids []provider.MessageID) error {
 	dir := p.getDir(mailbox)
+	var errs []error
 	for _, id := range ids {
-		m, err := dir.MessageByKey(id.String())
+		m, err := messageByKey(dir, id.String())
+		if errors.Is(err, provider.ErrMessageNotFound) {
+			continue
+		}
 		if err == nil {
-			m.Remove()
+			err = m.Remove()
+		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("deleting %s: %w", id, err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
+// MoveMessages moves the messages, and answers the new ID of each it moved.
+// One it could not move, a message that is gone among them, is reported, and
+// stays where it was: reported as moved, it would be looked for in a folder
+// that does not have it.
 func (p *Provider) MoveMessages(sourceMailbox, destMailbox string, ids []provider.MessageID) (map[provider.MessageID]provider.MessageID, error) {
 	src := p.getDir(sourceMailbox)
 	dst := p.getDir(destMailbox)
 	res := make(map[provider.MessageID]provider.MessageID)
 
+	var errs []error
 	for _, id := range ids {
-		m, err := src.MessageByKey(id.String())
+		m, err := messageByKey(src, id.String())
 		if err == nil {
 			err = m.MoveTo(dst)
-			if err == nil {
-				res[id] = MaildirMessageID(m.Key())
-			}
 		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("moving %s: %w", id, err))
+			continue
+		}
+		res[id] = MaildirMessageID(m.Key())
 	}
-	return res, nil
+	return res, errors.Join(errs...)
 }
 
+// copyMessageTo publishes a copy only after both reading and writing finish.
+func copyMessageTo(message *maildir.Message, target maildir.Dir) (*maildir.Message, error) {
+	src, err := message.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+	stored, w, err := target.Create(message.Flags())
+	if err != nil {
+		return nil, err
+	}
+	if _, err := io.Copy(w, src); err != nil {
+		abandon(stored, w)
+		return nil, err
+	}
+	if err := w.Close(); err != nil {
+		abandon(stored, w)
+		return nil, err
+	}
+	return stored, nil
+}
+
+// CopyMessages copies the messages, and answers the ID of each copy, as
+// MoveMessages does.
 func (p *Provider) CopyMessages(sourceMailbox, destMailbox string, ids []provider.MessageID) (map[provider.MessageID]provider.MessageID, error) {
 	src := p.getDir(sourceMailbox)
 	dst := p.getDir(destMailbox)
 	res := make(map[provider.MessageID]provider.MessageID)
 
+	var errs []error
 	for _, id := range ids {
-		m, err := src.MessageByKey(id.String())
+		m, err := messageByKey(src, id.String())
+		var copied *maildir.Message
 		if err == nil {
-			newM, err := m.CopyTo(dst)
-			if err == nil {
-				res[id] = MaildirMessageID(newM.Key())
-			}
+			// CopyTo closes its writer even after a read error, publishing
+			// an empty or partial copy. Only a completed copy may reach cur.
+			copied, err = copyMessageTo(m, dst)
 		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("copying %s: %w", id, err))
+			continue
+		}
+		res[id] = MaildirMessageID(copied.Key())
 	}
-	return res, nil
+	return res, errors.Join(errs...)
 }

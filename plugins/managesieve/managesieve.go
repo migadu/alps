@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/emersion/go-sasl"
 )
@@ -96,10 +97,10 @@ func (c *MSClient) Authenticate(saslClient sasl.Client) error {
 		return err
 	}
 
-	cmd := fmt.Sprintf("AUTHENTICATE %q", mech)
+	cmd := "AUTHENTICATE " + sieveString(mech)
 	logCmd := cmd
 	if len(ir) > 0 {
-		cmd += fmt.Sprintf(" %q", base64.StdEncoding.EncodeToString(ir))
+		cmd += " " + sieveString(base64.StdEncoding.EncodeToString(ir))
 		logCmd += " [REDACTED]"
 	}
 
@@ -149,7 +150,7 @@ func (c *MSClient) Authenticate(saslClient sasl.Client) error {
 			return err
 		}
 
-		if err := c.sendCommandWithLog(fmt.Sprintf("%q", base64.StdEncoding.EncodeToString(resp)), `"[REDACTED]"`); err != nil {
+		if err := c.sendCommandWithLog(sieveString(base64.StdEncoding.EncodeToString(resp)), `"[REDACTED]"`); err != nil {
 			return err
 		}
 	}
@@ -201,12 +202,10 @@ func (c *MSClient) ListScripts() ([]Script, error) {
 	}
 }
 
-// PutScript stores a script under name (RFC 5804 PUTSCRIPT). The line break
-// after the literal is written here, always: sendCommand adds one only to a
-// command that does not end in one already, and a script that ends in a line
-// break, or an empty one, left the command unended.
+// PutScript stores a script under name (RFC 5804 PUTSCRIPT), sent as a
+// literal.
 func (c *MSClient) PutScript(name, content string) error {
-	cmd := fmt.Sprintf("PUTSCRIPT %q {%d+}\r\n%s\r\n", name, len(content), content)
+	cmd := fmt.Sprintf("PUTSCRIPT %s {%d+}\r\n%s", sieveString(name), len(content), content)
 	if err := c.sendCommand(cmd); err != nil {
 		return err
 	}
@@ -214,11 +213,8 @@ func (c *MSClient) PutScript(name, content string) error {
 }
 
 func (c *MSClient) SetActive(name string) error {
-	cmd := fmt.Sprintf("SETACTIVE %q", name)
-	if name == "" {
-		cmd = "SETACTIVE \"\""
-	}
-	if err := c.sendCommand(cmd); err != nil {
+	// An empty name switches every script off.
+	if err := c.sendCommand("SETACTIVE " + sieveString(name)); err != nil {
 		return err
 	}
 	return c.readResponse()
@@ -227,14 +223,14 @@ func (c *MSClient) SetActive(name string) error {
 // DeleteScript removes a script (RFC 5804 DELETESCRIPT). The server refuses to
 // delete the active script, so deactivate it with SetActive("") first.
 func (c *MSClient) DeleteScript(name string) error {
-	if err := c.sendCommand(fmt.Sprintf("DELETESCRIPT %q", name)); err != nil {
+	if err := c.sendCommand("DELETESCRIPT " + sieveString(name)); err != nil {
 		return err
 	}
 	return c.readResponse()
 }
 
 func (c *MSClient) GetScript(name string) (string, error) {
-	if err := c.sendCommand(fmt.Sprintf("GETSCRIPT %q", name)); err != nil {
+	if err := c.sendCommand("GETSCRIPT " + sieveString(name)); err != nil {
 		return "", err
 	}
 
@@ -326,17 +322,33 @@ func (c *MSClient) readResponse() error {
 	}
 }
 
+// sieveString writes s as a string in a command (RFC 5804 §4). A quoted
+// string escapes a quote and a backslash with a backslash, and nothing else:
+// every other character goes as it is. Go's %q, used before, escapes far more
+// (a tab as \t, a rune it does not count as printable as \u..., a byte that
+// is not UTF-8 as \x..), and a server reads the character after a backslash
+// as it is, so such a name named another script. A string that a quoted one
+// cannot hold, one with a NUL, a CR or an LF in it or that is not UTF-8, goes
+// as a literal, as any string in a command may: RFC 5804 allows no such
+// script name, but one a server lists is named back to it as it was listed.
+func sieveString(s string) string {
+	if !utf8.ValidString(s) || strings.ContainsAny(s, "\x00\r\n") {
+		return fmt.Sprintf("{%d+}\r\n%s", len(s), s)
+	}
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
+}
+
 func (c *MSClient) sendCommand(cmd string) error {
 	return c.sendCommandWithLog(cmd, cmd)
 }
 
+// sendCommandWithLog writes cmd and the line break that ends it, logging
+// logCmd in its place. The line break is written always, even after one the
+// command already ends in: that one belongs to a literal, a script or a name
+// that ends in a line break, and a command ended by it alone was left unended.
 func (c *MSClient) sendCommandWithLog(cmd, logCmd string) error {
-	if !strings.HasSuffix(cmd, "\r\n") {
-		cmd += "\r\n"
-	}
-	if !strings.HasSuffix(logCmd, "\r\n") {
-		logCmd += "\r\n"
-	}
+	cmd += "\r\n"
+	logCmd += "\r\n"
 	if c.debugWriter != nil {
 		c.debugWriter.Write([]byte("C: " + logCmd))
 	}

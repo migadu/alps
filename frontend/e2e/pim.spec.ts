@@ -98,6 +98,33 @@ test("a seeded contact is listed", async ({ page }) => {
   await expect(page.locator("alps-contacts-list .contact-item", { hasText: name })).toBeVisible({ timeout: 15_000 });
 });
 
+test("a card's categories and star show in the sidebar and the list", async ({ page }) => {
+  // The listing asked the CardDAV server for four properties only, and a
+  // server that answers with just those, as this one does, gave every card
+  // without its categories: the sidebar listed none, and Favorites counted 0.
+  const name = `Hopper E2E ${run}`;
+  const category = `Navy E2E ${run}`;
+  await seedContact({
+    uid: `e2e-hopper-${run}`,
+    name,
+    email: `hopper.${run}@example.test`,
+    lines: [`CATEGORIES:${category},Favorites`],
+  });
+  await login(page);
+  await page.goto("/#/contacts");
+
+  const sidebar = page.locator("alps-contacts-categories");
+  const navy = sidebar.locator(".category-item", { hasText: category });
+  await expect(navy).toBeVisible({ timeout: 15_000 });
+  await expect(navy.locator(".category-badge")).toHaveText("1");
+  await expect(sidebar.locator(".category-item", { hasText: "Favorites" }).locator(".category-badge")).toHaveText("1");
+
+  await navy.getByRole("button", { name: category, exact: true }).click();
+  const row = page.locator("alps-contacts-list .contact-item", { hasText: name });
+  await expect(row).toBeVisible();
+  await expect(row.locator(".star-btn")).toHaveClass(/\bstarred\b/);
+});
+
 test("deleting a contact already deleted elsewhere succeeds", async ({ page }) => {
   // Deleted on another device, or in another tab, while this page still
   // lists it. The CardDAV server answers 404, which alps passed on as 500:
