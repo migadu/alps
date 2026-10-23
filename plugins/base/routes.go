@@ -1040,6 +1040,10 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 						// folder's UIDVALIDITY again.
 						ctx.Session.Cache().Delete("status:" + mbox.Name())
 						ctx.Session.Cache().Delete("uidvalidity:" + mbox.Name())
+						// Conversations have no validity of their own. Without
+						// these checks, a later normal open could list a recreated
+						// folder yet answer with its old conversation by UID.
+						dropConversationsHolding(ctx.Session.Cache(), mbox.Name())
 					}
 				}
 
