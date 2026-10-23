@@ -531,6 +531,88 @@ describe('reading a conversation', () => {
       expect(said(toasts)).toEqual(['toast.flagChangeFailed']);
     });
 
+    it('says a fresh refusal after another message was opened in between', async () => {
+      server.flagStatus = 500;
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await settle(20);
+      expect(said(toasts)).toEqual(['toast.flagChangeFailed']);
+
+      const other = { ...newer(), UID: '19' };
+      server.thread = [other];
+      await update(el, { messages: [other], message: other });
+      await settle(20);
+      expect(readWrites()).toHaveLength(1);
+
+      const members = [older([]), reply(), newer()];
+      server.thread = members;
+      await update(el, { messages: [{ ...members[0], SubMessages: [members[2]] }], message: members[2] });
+      await settle(20);
+
+      expect(readWrites()).toHaveLength(2);
+      expect(said(toasts)).toEqual(['toast.flagChangeFailed', 'toast.flagChangeFailed']);
+    });
+
+    it("does not say a departed conversation's late refusal for the current message", async () => {
+      let release!: (response: Response) => void;
+      const fetchNormally = fetch;
+      vi.stubGlobal('fetch', vi.fn((url: string, init: RequestInit = {}) => {
+        if (String(url) === '/mailboxes/INBOX/messages/flag') {
+          const body = JSON.parse(String(init.body));
+          if (body.uids.includes('5')) {
+            server.flagWrites.push({ mailbox: 'INBOX', ...body });
+            return new Promise<Response>(resolve => { release = resolve; });
+          }
+        }
+        return fetchNormally(url, init);
+      }));
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await waitFor(() => !!release, "the first conversation's held flag write");
+
+      // Open a different conversation while that write is out. Its automatic
+      // read waits until after the older failure, so both refusals are observed.
+      el.settingsStore.getState().markReadTimeout = -1;
+      const members = [{ ...older([]), UID: '15' }, { ...newer(), UID: '19' }];
+      server.thread = members;
+      await update(el, { messages: [{ ...members[0], SubMessages: [members[1]] }], message: members[1] });
+      await settle(20);
+      release(new Response('{}', { status: 500 }));
+      await settle(20);
+      expect.soft(said(toasts)).toEqual([]);
+      const beforeCurrentRefusal = toasts.length;
+
+      server.flagStatus = 500;
+      el.settingsStore.getState().markReadTimeout = 0;
+      el.requestUpdate();
+      await settle(20);
+      expect(readWrites().map(write => write.uids)).toEqual([['5'], ['15']]);
+      expect(said(toasts).slice(beforeCurrentRefusal)).toEqual(['toast.flagChangeFailed']);
+    });
+
+    it('does not announce a held refusal after the reader has left the page', async () => {
+      let release!: (response: Response) => void;
+      const fetchNormally = fetch;
+      vi.stubGlobal('fetch', vi.fn((url: string, init: RequestInit = {}) => {
+        if (String(url) === '/mailboxes/INBOX/messages/flag') {
+          const body = JSON.parse(String(init.body));
+          server.flagWrites.push({ mailbox: 'INBOX', ...body });
+          return new Promise<Response>(resolve => { release = resolve; });
+        }
+        return fetchNormally(url, init);
+      }));
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await waitFor(() => !!release, 'the held flag write');
+      el.remove();
+
+      release(new Response('{}', { status: 500 }));
+      await settle(20);
+
+      expect(readWrites()).toHaveLength(1);
+      expect(said(toasts)).toEqual([]);
+    });
+
     it('waits the set delay once, and does not try again after it', async () => {
       server.flagStatus = 500;
       const el = await openConversation({ members: [older([]), reply(), newer()], settings: { markReadTimeout: 1 } });

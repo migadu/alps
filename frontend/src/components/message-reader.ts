@@ -428,8 +428,15 @@ export class MessageReader extends LitElement {
    * when the card is next opened, or by hand from its menu or the toolbar.
    */
   private readRefused = new Set<string>();
-  /** The open message a refused mark-read of the reader's own was said for. */
-  private readRefusalSaidFor: string | null = null;
+  /** Refusals and their notice belong to this opening, including its requests. */
+  private readGeneration = 0;
+  private readRefusalSaid = false;
+
+  private resetReadRefusals() {
+    this.readGeneration++;
+    this.readRefused.clear();
+    this.readRefusalSaid = false;
+  }
 
   private keyOf(msg: any): string {
     return messageKey(this.mailboxOfMessage(msg), msg?.UID);
@@ -479,6 +486,7 @@ export class MessageReader extends LitElement {
     // A timer that outlived the element would mark mail read for a reader
     // nobody is looking at.
     this.readDueAt.clear();
+    this.resetReadRefusals();
     // Nor does a reader that has left the page go on reading bodies nobody
     // asked for. The queue is drained one at a time (see queueItemBody), so
     // what is left of it would keep a connection to the mail server busy for a
@@ -1005,6 +1013,7 @@ export class MessageReader extends LitElement {
       const oldMailbox = changedProperties.has('mailbox') ? changedProperties.get('mailbox') : this.mailbox;
 
       if (!this.message) {
+        this.resetReadRefusals();
         this.localPreferredView = null;
         this.content = '';
         this.mimeType = '';
@@ -1023,6 +1032,7 @@ export class MessageReader extends LitElement {
         const isNewMessage = !oldMessage || this.keyOf(oldMessage) !== this.keyOf(this.message) || oldMailbox !== this.mailbox;
 
         if (isNewMessage) {
+          this.resetReadRefusals();
           this.localPreferredView = null;
           this.fetchMessageBody(this.message, this.message._isAutosaveUpdate);
         } else {
@@ -1073,6 +1083,8 @@ export class MessageReader extends LitElement {
    * message would be two writes and two owners.
    */
   private syncReadTimers() {
+    // A late flag rollback can still request a render after disconnection.
+    if (!this.isConnected) return;
     const delaySec = this.settingsStore?.getState()?.markReadTimeout ?? 0;
     const isBulk = this.selectedCount > 0;
     // A refused card closed, or gone with another message opened, is asked
@@ -1181,6 +1193,7 @@ export class MessageReader extends LitElement {
    * asked for by hand, once per open message for the reader's own.
    */
   private async markMembersRead(keys: string[], byHand = true) {
+    const generation = this.readGeneration;
     const named = new Set(keys);
     const byMailbox = new Map<string, string[]>();
     for (const item of this.threadItems) {
@@ -1222,24 +1235,28 @@ export class MessageReader extends LitElement {
       } catch (err) {
         Logger.error('Failed to mark conversation messages read', err);
       }
-      for (const uid of uids) {
-        const key = messageKey(mailbox, uid);
-        if (result.ok) this.readRefused.delete(key);
-        else this.readRefused.add(key);
+      // A response from a previous opening still rolls its own flags back,
+      // but must not suppress this opening's attempts or failure notice.
+      if (generation === this.readGeneration) {
+        for (const uid of uids) {
+          const key = messageKey(mailbox, uid);
+          if (result.ok) this.readRefused.delete(key);
+          else this.readRefused.add(key);
+        }
       }
       if (result.ok) return;
       paint(mailbox, uids, 'remove');
       // A session that ended is said by the sign-in screen it goes to.
       if (result.reason !== 'auth') refused = true;
     }));
-    if (refused) this.sayReadRefused(byHand);
+    if (refused) this.sayReadRefused(byHand, generation);
   }
 
-  private sayReadRefused(byHand: boolean) {
+  private sayReadRefused(byHand: boolean, generation: number) {
+    if (!this.isConnected || generation !== this.readGeneration) return;
     if (!byHand) {
-      const open = this.message ? this.keyOf(this.message) : null;
-      if (this.readRefusalSaidFor === open) return;
-      this.readRefusalSaidFor = open;
+      if (this.readRefusalSaid) return;
+      this.readRefusalSaid = true;
     }
     window.dispatchEvent(new CustomEvent('show-toast', {
       detail: { message: this.i18nStore?.t('toast.flagChangeFailed') || 'Could not update the messages', duration: 4000 },
