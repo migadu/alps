@@ -165,6 +165,26 @@ export class AlpsGpgSettings extends LitElement {
         this.showPassphrasePrompt = false;
     }
 
+    /**
+     * Stores a new keypair in place of the server's, and forgets the key the
+     * page holds unlocked. Neither save looked at the answer, so a refused
+     * import cleared the pasted keys without a word and a refused generation
+     * went back to the pane as though it had worked; and the old key, still
+     * unlocked, went on reading and signing in place of the new one.
+     */
+    private async saveKeyring(publicKey: string, encryptedPrivateKey: string) {
+        const res = await fetchWithTimeout('/gpg/keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                public_key: publicKey,
+                encrypted_private_key: encryptedPrivateKey
+            })
+        });
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`.trim());
+        clearCachedPrivateKey();
+    }
+
     async generateKeys() {
         const pass = await this.getConfirmedPassphrase();
         if (!pass) return;
@@ -180,14 +200,7 @@ export class AlpsGpgSettings extends LitElement {
                 passphrase: pass
             });
 
-            await fetchWithTimeout('/gpg/keys', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    public_key: publicKey,
-                    encrypted_private_key: privateKey
-                })
-            });
+            await this.saveKeyring(publicKey, privateKey);
             await this.fetchKeys();
         } catch (e: any) {
             alert(this.i18nStore?.t('gpg.generateFailed', { error: e.message }));
@@ -253,14 +266,7 @@ export class AlpsGpgSettings extends LitElement {
                 passphrase: pass
             });
 
-            await fetchWithTimeout('/gpg/keys', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    public_key: this.pubKeyInput,
-                    encrypted_private_key: encryptedPrivateKey
-                })
-            });
+            await this.saveKeyring(this.pubKeyInput, encryptedPrivateKey);
             this.pubKeyInput = '';
             this.privKeyInput = '';
             this.viewState = 'default';
