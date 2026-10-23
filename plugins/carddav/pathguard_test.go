@@ -21,7 +21,7 @@ func TestRequireObjectPath(t *testing.T) {
 
 	bad := []string{
 		"",
-		// The collection itself: RemoveAll on this deletes every contact in it.
+		// The collection itself: a DELETE of it removes every contact in it.
 		"/dav/addressbooks/user/default/",
 		"/dav/addressbooks/user/default",
 		// Dot segments that climb out, including ones that come back to a

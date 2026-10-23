@@ -132,6 +132,20 @@ describe('quoting into the composer', () => {
     expect(changes).toEqual([]);
   });
 
+  it('reports the paragraph it adds after the quote as its own, not as an edit', async () => {
+    // The compose window focuses the editor as it opens, and on that first
+    // transaction the editor adds an empty paragraph after a quote that ends
+    // the message. Reported as an edit, it had every untouched reply saved.
+    const composer = await openComposer(reply());
+    const changes = record<CustomEvent>(composer, 'text-changed');
+    composer.focusEditor();
+
+    expect(changes.map((e) => e.detail.initial)).toEqual([true]);
+    expect(changes[0].detail.html).toMatch(/<p dir="auto"><\/p>$/);
+    // What the user types is an edit.
+    expect(typeLine(composer, 'Sounds good.')).not.toHaveProperty('initial');
+  });
+
   it('keeps the quote whole when a saved draft is reopened', async () => {
     const saved = typeLine(await openComposer(forward()), 'Sounds good.').html;
     cleanup();

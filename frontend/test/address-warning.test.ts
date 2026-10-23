@@ -19,7 +19,7 @@ import { backgroundOf, backgroundsOf, ruleMatches, rulesOf } from './helpers/sty
 import { readSources } from './helpers/sources';
 import { canonicalAddress, canonicalDomain, domainPresentation, isHighlyRestrictive, toUnicodeLabel } from '../src/utils/idn';
 import {
-  addressText, addressWarning, addressWarnings, canonicalRecipient, displayAddress, mixedScriptStyles,
+  addressText, addressWarning, addressWarnings, canonicalRecipient, displayAddress, mixedScriptStyles, parseWrittenAddress, writtenAddress,
 } from '../src/utils/address-display';
 import { recipientField, type ComposerInstance } from '../src/store/compose-store';
 import { I18nStore } from '../src/store/i18n-store';
@@ -589,5 +589,15 @@ describe('the domain as read', () => {
       text: `mail.${LOOKALIKE_ASCII}`, ascii: `mail.${LOOKALIKE_ASCII}`, warning: 'mixed-script-domain',
     });
     expect(domainPresentation('mail.xn--bcher-kva.example').text).toBe('mail.bücher.example');
+  });
+});
+
+// Apostrophes are RFC display-name characters; only double quotes delimit a
+// quoted name. The same helper also reconstructs autosaved recipient rows.
+describe('recipient names with literal apostrophes', () => {
+  it.each(["'t Hooft", "Miles'", "'Ada'"])('round-trips %s without removing its apostrophes', name => {
+    const email = 'recipient@example.com';
+    expect(parseWrittenAddress(writtenAddress(name, email))).toEqual({ name, email });
+    expect(parseWrittenAddress(`"${name}" <${email}>`)).toEqual({ name, email });
   });
 });
