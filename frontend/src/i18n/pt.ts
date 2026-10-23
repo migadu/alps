@@ -262,6 +262,7 @@ export const pt = {
     noMessages: 'Nenhuma mensagem',
     loadError: 'Não foi possível carregar esta pasta.',
     loadErrorRetry: 'Tentar novamente',
+    searchLimited: 'O servidor de e-mail está limitando as pesquisas neste momento. A pesquisa pode ser repetida em instantes.',
     loading: 'Carregando...',
     unknownSender: 'Remetente desconhecido',
     unknown: 'Desconhecido',
