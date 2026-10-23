@@ -35,6 +35,9 @@ type mailboxNews struct {
 	// heard says that the server has told of a message that arrived or went
 	// since the last IDLE ended (see Idle).
 	heard atomic.Bool
+	// told counts the messages the server has told of, unasked, as arriving
+	// or going (see selectedStatus).
+	told atomic.Uint64
 }
 
 func (n *mailboxNews) handler() *imapclient.UnilateralDataHandler {
@@ -43,11 +46,13 @@ func (n *mailboxNews) handler() *imapclient.UnilateralDataHandler {
 			// EXISTS. A changed list of flags the mailbox knows is no news of
 			// its messages.
 			if data.NumMessages != nil {
+				n.told.Add(1)
 				n.heard.Store(true)
 				n.tell()
 			}
 		},
 		Expunge: func(uint32) {
+			n.told.Add(1)
 			n.heard.Store(true)
 			n.tell()
 		},

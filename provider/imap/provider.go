@@ -76,8 +76,11 @@ type IMAPProvider struct {
 	// responseTimeout bounds the wait for the server's answer to DONE.
 	responseTimeout time.Duration
 	// condstore says that the server numbers the changes to the mailboxes'
-	// messages for this connection (see TrackChanges).
+	// messages for this connection (see TrackChanges). kept is the status
+	// of the mailbox selected, as the last STATUS of it answered (see
+	// selectedStatus).
 	condstore bool
+	kept      *keptStatus
 
 	// lsub signs in again to read the subscriptions a plain LIST does not
 	// say (see markSubscriptions); nil for a provider made without the
@@ -265,8 +268,14 @@ var mailboxStatusItems = &imap.StatusOptions{
 //
 // UIDNEXT costs nothing more in the same STATUS, and it tells a message that
 // arrived as another went from no change at all, which the two counts cannot.
+//
+// Where changes are numbered, the mailbox selected on the connection is asked
+// with a NOOP instead, while nothing changed in it (see selectedStatus).
 func (p *IMAPProvider) GetMailboxStatus(name string) (*provider.MailboxStatus, error) {
-	return mailboxStatusOf(p.client.Status(name, p.statusItems()))
+	if status, ok := p.selectedStatus(name); ok {
+		return status, nil
+	}
+	return p.statusOf(name)
 }
 
 // GetMailboxStatuses asks for several mailboxes' status at once. Every STATUS
