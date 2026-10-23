@@ -686,6 +686,49 @@ test("replying to an HTML message keeps its layout and its images in the quote",
   await expect.poll(async () => (await frameLayout(quoteFrame(page))).cells).toEqual(["cell A", "cell B"]);
 });
 
+// A reply carries the quote's images as inline parts, which the composer
+// shows no chip for. In plain text nothing shows them, and the server, with no
+// HTML to embed them in, wrote them as files: the recipients got a chart.png
+// nobody attached, and the saved draft held it as an attachment, which the
+// reader then listed and Edit draft brought back as a chip.
+test("a reply in plain text carries none of the quote's images, saved or sent", async ({ page }) => {
+  const subject = `Figures in plain text ${Date.now()}`;
+  await deliver({ subject, raw: htmlMail(subject) });
+  await login(page);
+  await openHtmlMessage(page, subject);
+  await replyButton(page).click();
+  await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
+
+  // Switched to plain text, as a composer opens with the compose format set
+  // to it: the same composer either way.
+  await composer(page).getByRole("button", { name: "Toggle Formatting Options", exact: true }).click();
+  const textarea = composer(page).locator("alps-message-composer textarea");
+  await expect(textarea).toBeVisible();
+  await textarea.press("Home");
+  await textarea.pressSequentially("Looks right to me. ");
+  await expect(composer(page).locator(".saving-indicator")).toHaveText("Autosaved", { timeout: 10_000 });
+  await expect(composerAttachments(page)).toHaveCount(0);
+  await composer(page).locator('alps-icon-btn[title="Save & close"]').click();
+  await expect(composer(page)).toHaveCount(0);
+
+  // The draft, as Drafts holds it.
+  await page.locator('alps-folder-list .folder-item[title="Drafts"]').click();
+  await page.locator("alps-message-list .message-item").filter({ hasText: `Re: ${subject}` }).first().click();
+  const reader = page.locator("alps-message-reader");
+  await expect(reader.locator("pre.reader-preformatted")).toContainText("Looks right to me.");
+  // No attachment at all: the list is drawn only for one.
+  await expect(reader.locator("alps-attachment-list.desktop-attachments")).toHaveCount(0);
+
+  await reader.getByRole("button", { name: "Edit Draft" }).first().click();
+  await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
+  await expect(composerAttachments(page)).toHaveCount(0);
+  await sendNow(page);
+
+  const sent = await sentWithSubject(`Re: ${subject}`);
+  expect(sent.data).toContain("Looks right to me.");
+  expect(sent.data).not.toMatch(/chart\.png|chart@remote\.test/);
+});
+
 /** The text/html part of a submission, its quoted-printable undone. */
 function htmlPart(message: SentMessage): string {
   const start = message.data.search(/Content-Type:\s*text\/html/i);

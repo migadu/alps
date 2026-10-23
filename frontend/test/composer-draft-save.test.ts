@@ -541,6 +541,77 @@ describe('a reply or a forward left untouched', () => {
   });
 });
 
+describe('an answer in plain text', () => {
+  // A reply or a forward carries the quote's images as inline parts, which
+  // the composer shows no chip for. Nothing in a text/plain message shows
+  // them, and the server, with no HTML to embed them in, wrote them as files:
+  // the recipients got an attachment nobody attached, and a saved draft
+  // stored one. A forward's own files are chips, and go.
+  const file = { name: 'ledger.txt', size: 16, type: 'text/plain', partPath: '3' };
+  const image = { name: 'chart.png', size: 9, type: 'image/png', partPath: '2', inline: true };
+  const answer = (extra: Record<string, unknown> = {}) =>
+    composerIn({ subject: 'Fwd: Engines', text: 'See below.', format: 'text', dirty: true, attachments: [file, image], ...extra });
+
+  it('is saved without the quote\'s images, and the composer lets go of them', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({
+      uid: '8', mailbox: 'Drafts', attachments: [storedPart('ledger.txt', '2', { partPath: '3' })],
+    });
+    const { store, instance, id } = answer();
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(sentForm(0).get('prev_attachments')).toBe('3');
+    // From the stored draft on, the server reads the composer's parts from
+    // it, and it holds no image: the path the composer had names a part of
+    // the quoted message, which a later save would read from the draft.
+    expect(store.getComposer(id)?.attachments).toEqual([
+      { name: 'ledger.txt', size: 16, type: 'application/octet-stream', partPath: '2' },
+    ]);
+  });
+
+  it('is sent without them', async () => {
+    const sendDraft = vi.spyOn(messageOperations, 'sendDraft').mockResolvedValue(true);
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const { store, instance } = answer();
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    const sending = el._handleSend();
+    await waitFor(() => toasts.length > 0, 'the undo toast');
+    toasts[0].detail.dismissFn();
+    await sending;
+
+    const form = sendDraft.mock.calls[0][0] as FormData;
+    expect(form.get('prev_attachments')).toBe('3');
+    expect(form.has('html')).toBe(false);
+  });
+
+  it('is not saved with them by the sign-out flush', async () => {
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const { store } = answer();
+
+    await store.saveAllDirtyDrafts();
+
+    expect(saveDraft).toHaveBeenCalledTimes(1);
+    expect(sentForm(0).get('prev_attachments')).toBe('3');
+  });
+
+  it('switched back to HTML before it is saved, carries them again', async () => {
+    const sendDraft = vi.spyOn(messageOperations, 'sendDraft').mockResolvedValue(true);
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const { store, instance, id } = answer();
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    store.updateComposer(id, { format: 'html', html: '<p>See below.</p><img src="cid:chart@remote.test">' });
+
+    const sending = el._handleSend();
+    await waitFor(() => toasts.length > 0, 'the undo toast');
+    toasts[0].detail.dismissFn();
+    await sending;
+
+    expect((sendDraft.mock.calls[0][0] as FormData).get('prev_attachments')).toBe('3,2');
+  });
+});
+
 describe('an upload the server no longer holds', () => {
   const answer = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
