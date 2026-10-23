@@ -959,3 +959,17 @@ func TestWatchInbox_NewsDuringBackgroundWorkIsPassedOn(t *testing.T) {
 		t.Errorf("news after background work came as %v, want InboxChanged", ev)
 	}
 }
+
+func TestUpdatePasswordContext_AlreadyCancelledDoesNotChangeTheSession(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		server := &idlingServer{}
+		session := newPushSession(t, server)
+		before := server.dialled()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		err := session.manager.UpdatePasswordContext(ctx, session, "new-password")
+		if !errors.Is(err, context.Canceled) || server.dialled() != before || session.password != "p" {
+			t.Fatalf("cancelled update iter%d: err=%v dials=%d->%d password=%q", i, err, before, server.dialled(), session.password)
+		}
+	}
+}

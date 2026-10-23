@@ -1638,6 +1638,9 @@ func (sm *SessionManager) UpdatePasswordContext(ctx context.Context, s *Session,
 		return fmt.Errorf("context cancelled: %w", err)
 	}
 	defer s.background.jobs.Unlock()
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("context cancelled: %w", err)
+	}
 	s.letGoOfBackground(false)
 
 	s.providerLocker.Lock()
