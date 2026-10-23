@@ -2186,7 +2186,12 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 				// References are read with the part, in the same FETCH.
 				providerMsg, headerData, bodyData, err = readerPartWithProvider(p, mbox.Name(), uid, partPath)
 			default:
-				providerMsg, _, headerData, bodyData, err = p.GetMessagePartWithData(mbox.Name(), uid, partPath)
+				// The bytes, as for /raw: the answer is built from them, and
+				// reading the part decoded failed on a charset or a transfer
+				// encoding alps does not know, for a decoding nothing here
+				// used. The text is decoded below, where one that cannot be
+				// is left out of the answer.
+				providerMsg, headerData, bodyData, err = p.GetMessagePartRaw(mbox.Name(), uid, partPath, 0)
 			}
 			if err != nil {
 				return err
@@ -2282,7 +2287,11 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		// serve only the decoded body (not the MIME headers).
 		msgHeader := message.Header{Header: h}
 		entity, err := message.New(msgHeader, bytes.NewReader(bodyData))
-		if err != nil {
+		// A charset or a transfer encoding alps does not know leaves the
+		// body as far as it could be decoded, and the reader asks here for
+		// a text the message's answer could not carry: it gets those bytes,
+		// not an error.
+		if err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
 			return fmt.Errorf("failed to create message reader: %v", err)
 		}
 
@@ -2712,43 +2721,67 @@ func handleComposeNew(ctx *alps.Context) error {
 				}
 			}
 			// All of them in one read: an autosave carries them every time.
-			entities, err := messagePartsWithProvider(p, sourcePath.Mailbox, parsedUid, partPaths)
+			headers, bodies, err := messagePartsWithProvider(p, sourcePath.Mailbox, parsedUid, partPaths)
 			if err != nil {
 				return fmt.Errorf("failed to fetch attachments %s: %v", strings.Join(prevAttachments, ","), err)
 			}
 			for i, pathStr := range prevAttachments {
-				partPath, entity := partPaths[i], entities[i]
+				partPath := partPaths[i]
+				h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headers[i])))
+				if err != nil {
+					return fmt.Errorf("failed to read the header of attachment %s: %v", pathStr, err)
+				}
+				header := message.Header{Header: h}
 
-				mimeType, _, _ := entity.Header.ContentType()
-				disposition, dispParams, _ := entity.Header.ContentDisposition()
+				mimeType, params, _ := header.ContentType()
+				disposition, dispParams, _ := header.ContentDisposition()
 				filename := dispParams["filename"]
 				if filename == "" {
-					_, ctParams, _ := entity.Header.ContentType()
-					filename = ctParams["name"]
+					filename = params["name"]
 				}
 				if mimeType == "" {
 					mimeType = "application/octet-stream"
 				}
-				contentID := strings.Trim(strings.TrimSpace(entity.Header.Get("Content-Id")), "<>")
+				contentID := strings.Trim(strings.TrimSpace(header.Get("Content-Id")), "<>")
 
-				// We have to decode Content-Transfer-Encoding for the bodyData.
-				// wait, entity.Body is an io.Reader that is ALREADY decoded!
-				// We can just read from entity.Body!
-				decodedBody, err := io.ReadAll(entity.Body)
+				// The part keeps its Content-Type parameters, and a text
+				// says the charset its bytes are now in. A text is read
+				// converted to UTF-8, and the part was written with no
+				// parameters at all, so a Latin-1 file went out as UTF-8
+				// bytes labelled plain text with no charset, which a
+				// recipient reads as US-ASCII. It cannot keep the charset it
+				// was stored in, as the message writer writes a text in
+				// UTF-8 or US-ASCII only. In a charset alps does not know,
+				// the text cannot be converted, and goes as it is stored,
+				// without a charset it could be written under.
+				// Keep an unknown charset from masking an undecodable transfer encoding.
+				entity, decodeErr := provider.DecodePart(header, bodies[i])
+				if decodeErr != nil && !message.IsUnknownCharset(decodeErr) {
+					return fmt.Errorf("failed to decode attachment %s: %v", pathStr, decodeErr)
+				}
+				body, err := io.ReadAll(entity.Body)
 				if err != nil {
 					return fmt.Errorf("failed to decode attachment %s: %v", pathStr, err)
+				}
+				if strings.HasPrefix(mimeType, "text/") && params["charset"] != "" {
+					if decodeErr == nil {
+						params["charset"] = "utf-8"
+					} else {
+						delete(params, "charset")
+					}
 				}
 
 				node := &IMAPPartNode{
 					Path:     partPath,
 					MIMEType: mimeType,
+					Params:   params,
 					Filename: filename,
 				}
 				parts = append(parts, &imapAttachment{
 					Mailbox: sourcePath.Mailbox,
 					Uid:     sourcePath.Uid,
 					Node:    node,
-					Body:    decodedBody,
+					Body:    body,
 					CID:     contentID,
 					// A part with a Content-ID belongs to the body unless it says
 					// it is an attachment; an image in multipart/related often
