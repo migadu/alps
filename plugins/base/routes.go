@@ -2367,24 +2367,28 @@ var errDraftMaybeStored = errors.New("the draft was stored, but the connection f
 // *tried says, on a connection that then failed. The server may have stored
 // the message before the connection failed, and its answer was lost: stored
 // again, the mailbox would hold it twice. So the mailbox is looked in first, by the
-// Message-ID. A copy there, other than except, is the one the lost answer was
-// for, and held is the mailbox's name. The message is stored again only when
-// there is none: its connection failed before the server had it, as one the
-// server has dropped does.
+// Message-ID. A copy there, other than except, names its mailbox in held.
+// An empty search cannot rule out the old APPEND still committing on another
+// connection. Only a failure marked ErrAppendNotStarted permits another try.
 func storeOnce(p provider.MailProvider, tried *bool, t provider.MailboxType, messageID string, except *messagePath, store func() error) (held string, err error) {
 	if *tried {
 		held, err := heldByMessageID(p, t, messageID, except)
 		if err != nil || held != "" {
 			return held, err
 		}
+		return "", fmt.Errorf("the previous APPEND may still complete: it is not stored again")
 	}
 	*tried = true
-	return "", store()
+	err = store()
+	if errors.Is(err, provider.ErrAppendNotStarted) {
+		*tried = false
+	}
+	return "", err
 }
 
 // heldByMessageID answers the name of the mailbox of type t when it holds a
 // message whose Message-ID is id, other than except, and "" when it does not.
-// A mailbox that cannot be found holds nothing.
+// An absent mailbox holds nothing. A failed lookup cannot establish that.
 func heldByMessageID(p provider.MailProvider, t provider.MailboxType, id string, except *messagePath) (string, error) {
 	want := provider.MessageIDs(id)
 	finder, ok := p.(provider.ReferenceFinder)
@@ -2393,7 +2397,10 @@ func heldByMessageID(p provider.MailProvider, t provider.MailboxType, id string,
 		return "", fmt.Errorf("the message may have been stored before the connection failed, and is not stored again")
 	}
 	mbox, err := p.FindMailboxByType(t)
-	if err != nil || mbox == nil {
+	if err != nil {
+		return "", fmt.Errorf("unable to verify the previous APPEND: %w", err)
+	}
+	if mbox == nil {
 		return "", nil
 	}
 	found, err := finder.FindByReferences(mbox.Name, want)
@@ -2787,6 +2794,10 @@ func handleComposeNew(ctx *alps.Context) error {
 				invalidateMailboxCache(ctx, drafts.Name())
 			} else if heldIn != "" {
 				invalidateMailboxCache(ctx, heldIn)
+			} else if tried {
+				// Verification failed before the possible copy's destination
+				// could be resolved, so no older listing is safe to retain.
+				ctx.Session.Cache().Clear()
 			}
 			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
@@ -2903,6 +2914,8 @@ func handleComposeNew(ctx *alps.Context) error {
 		// A copy filed before the filing failed is in Sent.
 		if sentName != "" {
 			invalidateMailboxCache(ctx, sentName)
+		} else if tried {
+			ctx.Session.Cache().Clear()
 		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save message to Sent mailbox: " + err.Error()})
 	}

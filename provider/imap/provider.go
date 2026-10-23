@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -1734,18 +1735,23 @@ func (p *IMAPProvider) MarkAnswered(mailbox string, id provider.MessageID) error
 func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessageWriter, mboxType provider.MailboxType) (*provider.Mailbox, provider.MessageID, uint32, error) {
 	mbox, remembered, err := p.findMailboxByType(mboxType)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
 	}
 	if mbox == nil {
-		return nil, nil, 0, fmt.Errorf("unable to resolve mailbox")
+		return nil, nil, 0, fmt.Errorf("%w: unable to resolve mailbox", provider.ErrAppendNotStarted)
 	}
 
 	// IMAP needs to know in advance the final size of the message
 	var buf bytes.Buffer
 	if _, err := msg.WriteTo(&buf); err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
 	}
 	size := uint32(buf.Len())
+	select {
+	case <-p.client.Closed():
+		return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, net.ErrClosed)
+	default:
+	}
 
 	flags := []imap.Flag{imap.FlagSeen}
 	if mboxType == provider.MailboxTypeDrafts {
@@ -1762,7 +1768,7 @@ func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessag
 			err = fmt.Errorf("unable to resolve mailbox")
 		}
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
 		}
 		appendData, err = p.appendTo(mbox.Name, buf.Bytes(), &options)
 	}

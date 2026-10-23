@@ -28,6 +28,7 @@ type faults struct {
 	// deleteLost and deleteRefused fail a delete, deleting nothing: with a
 	// dropped connection, and with the server's refusal.
 	deleteLost, deleteRefused int
+	lookupRefused, lookupLost int
 }
 
 func (f *faults) take(counts map[provider.MailboxType]int, t provider.MailboxType) bool {
@@ -58,7 +59,7 @@ type lossy struct {
 
 func (l lossy) AppendMessage(mailbox string, msg provider.OutgoingMessageWriter, t provider.MailboxType) (*provider.Mailbox, provider.MessageID, uint32, error) {
 	if l.f.take(l.f.appendBefore, t) {
-		return nil, nil, 0, io.ErrUnexpectedEOF
+		return nil, nil, 0, errors.Join(provider.ErrAppendNotStarted, io.ErrUnexpectedEOF)
 	}
 	mbox, id, size, err := l.MailProvider.AppendMessage(mailbox, msg, t)
 	if err == nil && l.f.take(l.f.appendLost, t) {
@@ -79,6 +80,16 @@ func (l lossy) DeleteMessages(mailbox string, ids []provider.MessageID) error {
 
 func (l lossy) FindByReferences(mailbox string, ids []string) ([]provider.Message, error) {
 	return l.MailProvider.(provider.ReferenceFinder).FindByReferences(mailbox, ids)
+}
+
+func (l lossy) FindMailboxByType(t provider.MailboxType) (*provider.Mailbox, error) {
+	if l.f.takeOne(&l.f.lookupLost) {
+		return nil, io.ErrUnexpectedEOF
+	}
+	if l.f.takeOne(&l.f.lookupRefused) {
+		return nil, &imap.Error{Type: imap.StatusResponseTypeNo, Text: "LIST temporarily refused"}
+	}
+	return l.MailProvider.FindMailboxByType(t)
 }
 
 func newLossyTestServer(t *testing.T, smtpServer string) (*testServer, *faults) {
@@ -231,6 +242,61 @@ func TestHTTP_TheSentCopyIsFiledOnce(t *testing.T) {
 			s.expect(s.do("POST", "/messages", url.Values{"to": {"charles@remote.test"}, "subject": {"Notes"}, "text": {"See you."}}), http.StatusOK)
 			if got := s.mailbox("Sent").Total; got != 1 {
 				t.Errorf("Sent holds %d copies, want 1", got)
+			}
+		})
+	}
+}
+
+func TestHTTP_AnUnknownAppendIsNotRepeatedAfterAMailboxLookupFailure(t *testing.T) {
+	for folder, kind := range map[string]provider.MailboxType{"Drafts": provider.MailboxTypeDrafts, "Sent": provider.MailboxTypeSent} {
+		t.Run(folder, func(t *testing.T) {
+			smtpServer, _ := listenRecorder(t)
+			s, f := newLossyTestServer(t, smtpServer)
+			s.login()
+			if err := s.store.CreateMailbox(folder); err != nil {
+				t.Fatal(err)
+			}
+			if got := s.mailbox(folder).Total; got != 0 {
+				t.Fatalf("the initial cached listing has %d messages", got)
+			}
+			f.appendLost[kind] = 1
+			f.lookupRefused = 1
+			form := url.Values{"to": {"charles@remote.test"}, "subject": {"Notes"}, "text": {"first"}}
+			if kind == provider.MailboxTypeDrafts {
+				form.Set("save_as_draft", "1")
+			}
+			r := s.do("POST", "/messages", form)
+			if r.status == http.StatusOK {
+				t.Errorf("an unverified APPEND answered success: %s", r.body)
+			}
+			if got := s.mailbox(folder).Total; got != 1 {
+				t.Errorf("%s holds %d copies after a failed verification lookup, want 1", folder, got)
+			}
+		})
+	}
+}
+
+func TestHTTP_AnUnknownAppendIsNotRepeatedAfterAMailboxLookupLosesItsConnection(t *testing.T) {
+	for folder, kind := range map[string]provider.MailboxType{"Drafts": provider.MailboxTypeDrafts, "Sent": provider.MailboxTypeSent} {
+		t.Run(folder, func(t *testing.T) {
+			smtpServer, _ := listenRecorder(t)
+			s, f := newLossyTestServer(t, smtpServer)
+			s.login()
+			if err := s.store.CreateMailbox(folder); err != nil {
+				t.Fatal(err)
+			}
+			if got := s.mailbox(folder).Total; got != 0 {
+				t.Fatal("the target was not empty")
+			}
+			f.appendLost[kind] = 1
+			f.lookupLost = 1
+			form := url.Values{"to": {"charles@remote.test"}, "subject": {"Notes"}, "text": {"first"}}
+			if kind == provider.MailboxTypeDrafts {
+				form.Set("save_as_draft", "1")
+			}
+			s.do("POST", "/messages", form)
+			if got := s.mailbox(folder).Total; got != 1 {
+				t.Errorf("%s holds %d copies after verification lost its connection, want 1", folder, got)
 			}
 		})
 	}
