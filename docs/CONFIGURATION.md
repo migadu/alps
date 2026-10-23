@@ -36,6 +36,7 @@ Controls the maximum concurrent sessions to prevent memory exhaustion and abuse.
 | :--- | :--- | :--- | :--- |
 | `max_sessions` | Integer | `10000` | Global max concurrent sessions across all users. `0` means unlimited. |
 | `max_sessions_per_user` | Integer | `10` | Max concurrent sessions allowed per user. `0` means unlimited. |
+| `background_connection` | Boolean | `true` | Each session opens a second mail connection, when first needed, for work the user is not waiting for (checks for new mail, sender verdicts, the search of Sent for a conversation's replies, draft saves, messages a conversation reads ahead), and closes it after a minute unused; the next such work opens it again and waits for its sign-in. A session opens no more than this one beside its own. A connection it gave up on mid-command (the browser went away) stays open until that command returns, as before; meanwhile the session opens no background connection, but its own work does not wait for a busy one and opens its own connection beside it. If the mail server refuses the second one, for instance at its per-user connection limit, the work runs on the session's own connection and the session goes on. `false` keeps one connection per session. |
 
 ### 1.3 Attachment Limits
 | Option | Type | Default | Description |
@@ -230,7 +231,7 @@ Common properties:
 | `base` | Core email functionality. | `enabled=true` |
 | `caldav` | Calendar support. | `upstream`, `default_view` |
 | `carddav` | Contacts support. | `upstream`, `default_view` |
-| `managesieve` | Email filtering support. | `upstream` |
+| `managesieve` | Email filters and the auto-reply (Sieve `vacation`). | `upstream` |
 | `gpg` | End-to-End Encryption. | `enabled=true` |
 
 ### Password Plugin (`[plugin.password]`)
@@ -253,3 +254,16 @@ Enables external HTTP API calls for user password changes.
 
 #### `[plugin.password.options.payload_mapping]`
 Maps internal variables (`username`, `local`, `domain`, `old_password`, `new_password`) to the expected JSON or Form fields in the HTTP request payload.
+
+---
+
+## 10. Branding (`[branding]`)
+What a deployment changes about how ALPS looks. Without this section ALPS looks as it ships: the Alps theme and the edelweiss on the sign-in page. These settings reach the browser inside the page itself, so the sign-in page is drawn branded from its first paint.
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `default_theme` | String | `"alps"` | Colour theme for anyone who has not picked one: `"alps"`, `"migadu"`, `"nord"` or `"ocean"`. A theme picked in Settings stays that user's. Light or dark still follows each user's Theme Mode. |
+| `login_logo` | String | The default theme's own logo, else the edelweiss | A logo ALPS ships, by name: `"migadu"`, or `"alps"` for the edelweiss. These take the theme's colours, so one serves light and dark. Or a path to an SVG, PNG, WebP or JPEG file (at most 1 MiB), shown at most 56 pixels high, read at start-up and served by ALPS itself at `/branding/login-logo`. With `default_theme = "migadu"` the Migadu logo is shown unless this names another. |
+| `login_logo_dark` | String | None | For a `login_logo` file: the image for the dark modes, for a logo that would not show on a dark background. Served at `/branding/login-logo-dark`. |
+
+ALPS refuses to start with a theme or built-in logo it does not know, or a logo file it cannot read.

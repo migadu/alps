@@ -40,7 +40,7 @@ export interface VisualState {
  * escapes, never as literal bytes, because a raw NUL in a character class is
  * invisible in a diff.
  */
-function sieveString(value: string): string {
+export function sieveString(value: string): string {
 	return '"' + String(value ?? '')
 		.replace(/[\u0000-\u001f\u007f]/g, '')
 		.replace(/\\/g, '\\\\')

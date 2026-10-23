@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, mount, shadow, shadowAll, text, update } from './helpers/dom';
 import { AttachmentPill } from '../src/components/alps-attachment-pill';
 import { THEME_BUNDLES } from '../src/store/themes';
+import { I18nStore } from '../src/store/i18n-store';
 
 afterEach(cleanup);
 
@@ -23,6 +24,33 @@ describe('alps-attachment-pill upload progress', () => {
 
     await update(el, { attachment: uploading(85) });
     expect(shadow(el, '.progress-bar').style.width).toBe('85%');
+  });
+
+  it('says how far in the language the composer speaks', async () => {
+    // The "of" was English in every language, and German spaces the percent
+    // sign off its number, with a space that does not break.
+    const i18nStore = new I18nStore();
+    await i18nStore.setLanguage('de');
+    const el = await mount('alps-attachment-pill', { attachment: uploading(29), removable: true, i18nStore });
+    // Read raw: text() collapses the no-break space into a plain one.
+    expect(shadow(el, '.attachment-size').textContent).toBe('29\u00a0% von 768 KB');
+  });
+
+  /** Each language's percentage: a no-break space before the sign, or none. */
+  const PERCENT: Record<string, string> = {
+    da: '29\u00a0%', de: '29\u00a0%', es: '29\u00a0%', fr: '29\u00a0%',
+    en: '29%', it: '29%', pt: '29%', rs: '29%', sr: '29%',
+  };
+
+  it.each(Object.keys(PERCENT))('writes the percentage as %s writes one', async (code) => {
+    const i18nStore = new I18nStore();
+    await i18nStore.setLanguage(code);
+    expect(i18nStore.t('attachment.uploadProgress', { percent: 29, size: '768 KB' })).toContain(PERCENT[code]);
+    // The same as Intl formats one for the locale. Some ICU versions print
+    // French's space as the narrow one; either keeps the number and its sign
+    // on one line.
+    const intl = new Intl.NumberFormat(i18nStore.getIntlLanguage(), { style: 'percent' }).format(0.29);
+    expect(intl.replace(/\u202f/g, '\u00a0')).toBe(PERCENT[code]);
   });
 
   it('drops the fill once the upload is done', async () => {

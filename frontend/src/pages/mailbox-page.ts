@@ -20,6 +20,7 @@ import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxP
 import type { LayoutMode, DensityMode } from '../store/settings-store';
 import '../components/alps-initial-loader';
 import { Logger } from '../utils/logger';
+import { MessageCache } from '../utils/message-cache';
 import { getDestinationLabel, getFlexContainerMinWidth } from '../utils/ui';
 import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/message-key';
 
@@ -340,6 +341,8 @@ export class MailboxPage extends LitElement {
    * came from. '' until anything has been listed.
    */
   @state() private listedMailbox = '';
+  /** The search the rows were read under, trailing `filterQuery` the same way. */
+  private listedQuery = '';
   @state() private totalMessages = 0;
   @state() private messagesPerPage = 50;
   @state() private resizerPositionX = SIDEBAR_WIDTH_DEFAULT + Math.max(MESSAGE_LIST_WIDTH_MIN, (window.innerWidth - SIDEBAR_WIDTH_DEFAULT) * 0.4);
@@ -814,8 +817,11 @@ export class MailboxPage extends LitElement {
       }
     }
 
-    // A save that matched no row is a new row only where drafts are listed.
-    if (!found && this.currentMailbox === mailbox) {
+    // A save that matched no row is a new row only where drafts are listed,
+    // and only over rows that were read: put in where Drafts could not be
+    // read, it took the error's place, and the folder looked as if it held
+    // that one draft.
+    if (!found && this.currentMailbox === mailbox && !(this.listLoadFailed && this.messages.length === 0)) {
       const draftName = this.settingsStore?.getState().name || this.username;
       const draftEmailParts = (this.username || '').split('@');
       const draftMailboxStr = draftEmailParts[0] || '';
@@ -1022,19 +1028,20 @@ export class MailboxPage extends LitElement {
       // A later page that has emptied, which the server answers as asked: no
       // rows. Moving or deleting every row on the last page re-read that page,
       // and the list said "No messages" with only Previous offered while the
-      // folder still held mail. The last page that exists is read instead, in
-      // full and quietly as the re-read was, and the address says so without
-      // adding a step to go back to.
+      // folder still held mail. The last page that exists is read instead,
+      // quietly and without a refresh as the re-read was, and the address says
+      // so without adding a step to go back to.
       const perPage = data.MessagesPerPage || this.messagesPerPage;
       const last = Math.max(0, Math.ceil(data.Total / perPage) - 1);
       this.currentPage = last;
       window.history.replaceState(null, '', this.hashFor(this.currentMailbox, last, this.targetUid, this.filterQuery, this.targetMailbox));
-      messageSync.fetch(this.currentMailbox, last, this.filterQuery, true, true);
+      messageSync.fetch(this.currentMailbox, last, this.filterQuery, false, true);
       return;
     } else {
       if (data.Page !== undefined) this.currentPage = data.Page;
       this.listedPage = data.Page !== undefined ? data.Page : this.currentPage;
       this.listedMailbox = data.ListedMailbox || this.currentMailbox;
+      this.listedQuery = this.filterQuery;
       if (data.Total !== undefined) this.totalMessages = data.Total;
       if (data.MessagesPerPage !== undefined) this.messagesPerPage = data.MessagesPerPage;
       if (data.Messages) {
@@ -1098,6 +1105,14 @@ export class MailboxPage extends LitElement {
       // no spinner it painted "No messages", a claim about a folder this client
       // had just failed to read, with nothing offered to try again.
       this.listLoadFailed = true;
+      // The rows still up are another view's when the read was of a folder,
+      // a page or a search they were not read from: left up, dimmed, while it
+      // loaded, and then undimmed, they passed for its contents under its
+      // name, and the list, which says a load failed only when it has no
+      // rows, said nothing. They go, and the list says so and offers a retry.
+      if (this.listedMailbox !== this.currentMailbox || this.listedPage !== this.currentPage || this.listedQuery !== this.filterQuery) {
+        this.messages = [];
+      }
     }
   };
 
@@ -1105,9 +1120,11 @@ export class MailboxPage extends LitElement {
    * ArrowDown or ArrowUp pressed where nothing else takes it: the list's.
    *
    * The list moves its cursor only on keys pressed inside it, and opening a
-   * folder from the sidebar leaves focus on the page itself, so the arrows
-   * did nothing until the list had been clicked. Only a key from the page
-   * body or a link is passed on; a field, a button, a menu or a dialog keeps
+   * folder from the sidebar leaves the focus on the page or on the folder's
+   * name, neither of which the list hears, so the arrows did nothing until
+   * the list had been clicked. Only a key from the page body, a link or a
+   * folder's name in the sidebar is passed on: a folder's name is a button
+   * that takes no arrows. A field, another button, a menu or a dialog keeps
    * its own arrows, and so does the list.
    */
   private handleStrayArrow = (e: KeyboardEvent) => {
@@ -1118,7 +1135,8 @@ export class MailboxPage extends LitElement {
     // shadow roots that `closest()` cannot see out of.
     const path = e.composedPath().filter((n): n is HTMLElement => n instanceof HTMLElement);
     const origin = path[0];
-    if (!origin || (origin !== document.body && origin.tagName !== 'A')) return;
+    const folderName = origin?.classList.contains('folder-name') && path.some(n => n.tagName === 'ALPS-FOLDER-LIST');
+    if (!origin || (origin !== document.body && origin.tagName !== 'A' && !folderName)) return;
     if (path.some(n => n.tagName === 'ALPS-MESSAGE-LIST' || n.tagName === 'DIALOG'
       || ['dialog', 'menu', 'listbox'].includes(n.getAttribute('role') ?? ''))) return;
     const list = this.renderRoot.querySelector('alps-message-list') as MessageList | null;
@@ -1301,13 +1319,42 @@ export class MailboxPage extends LitElement {
 
     // If the message is not on the current page (e.g. it shifted or we changed pages),
     // fetch its metadata directly from the backend so the reader can still display it.
+    //
+    // Asked for the view the reader shows, and kept where the reader looks
+    // first: the answer carries what the reader's own read of it would have,
+    // the part's text included, so the reader does not read the message
+    // again. Asked without the view and kept nowhere, the reader asked for
+    // the same message again the moment it was given it.
     if (!msg && this.messages.length > 0) {
       try {
-        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${currentTargetUid}`);
+        const view = this.settingsStore?.getState()?.preferredView || 'html';
+        // Taken before asking, as the reader takes it: an answer that lands
+        // after its user signed out is not kept for the next one.
+        const cacheGeneration = MessageCache.generation();
+        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${currentTargetUid}?view=${view}`);
         if (metadataRes.ok) {
           const data = await metadataRes.json();
           if (data.Message) {
             msg = { ...data.Message, Mailbox: data.Message.Mailbox || mailbox };
+            // Kept as the reader keeps its own read, in the entry
+            // fetchItemBody in message-reader.ts writes; a change to the one
+            // belongs in the other. An answer whose part comes without its
+            // text, which the server leaves out when it cannot decode it, is
+            // not kept: the reader reads that message as it reads any other.
+            // A message with no text part has no text to wait for, and is.
+            const part = data.Part;
+            if ((!part || typeof data.Body === 'string') && MessageCache.generation() === cacheGeneration) {
+              const isHtml = !!part && (part.MIMEType || part.MimeType || 'text/plain').toLowerCase() === 'text/html';
+              MessageCache.set(msg.Mailbox, String(msg.UID), view, {
+                Message: data.Message,
+                Part: part,
+                Attachments: data.Attachments,
+                RawHtml: part && isHtml ? data.Body : undefined,
+                RawText: part && !isHtml ? data.Body : undefined,
+                HasHTML: !!data.HasHTML,
+                HasText: !!data.HasText,
+              });
+            }
           }
         }
       } catch (err) {
@@ -1618,15 +1665,18 @@ export class MailboxPage extends LitElement {
   ): Promise<{ done: { mailbox: string; uids: string[]; result: R }[]; refused?: R }> {
     const done: { mailbox: string; uids: string[]; result: R }[] = [];
     let refused: R | undefined;
-    for (const [mailbox, uids] of uidsByMailbox(keys)) {
-      const result = await write(mailbox, uids);
-      if (result.ok) {
-        done.push({ mailbox, uids, result });
-        continue;
+    // One re-read of the list for the whole gesture, not one per folder.
+    await messageSync.afterWrites(async () => {
+      for (const [mailbox, uids] of uidsByMailbox(keys)) {
+        const result = await write(mailbox, uids);
+        if (result.ok) {
+          done.push({ mailbox, uids, result });
+          continue;
+        }
+        refused ??= result;
+        if (result.reason === 'auth') break;
       }
-      refused ??= result;
-      if (result.reason === 'auth') break;
-    }
+    });
     return { done, refused };
   }
 
@@ -1795,35 +1845,40 @@ export class MailboxPage extends LitElement {
     // paths say so their own way, by closing the reader on the message.
     const leaving = isBulk ? keys.filter(key => parseMessageKey(key).mailbox !== to) : [];
     const putBack = isBulk ? this.takeRowsOut(leaving) : undefined;
-    const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
-      if (from === to) return { ok: true, uidMapping: {} };
-      const result = await messageOperations.moveMessages(from, uids, to);
-      return { ok: result.success, reason: result.reason, uidMapping: result.uidMapping ?? {} };
-    });
+    // One re-read for the gesture, the one rows that could not be put back
+    // ask for included (see messageSync.afterWrites).
+    await messageSync.afterWrites(async () => {
+      const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
+        if (from === to) return { ok: true, uidMapping: {} };
+        const result = await messageOperations.moveMessages(from, uids, to);
+        return { ok: result.success, reason: result.reason, uidMapping: result.uidMapping ?? {} };
+      });
 
-    const filed = this.writtenKeys(done);
-    if (filed.length > 0) {
-      if (isBulk) this.selectedKeys = new Set([...this.selectedKeys].filter(key => !filed.includes(key)));
-      this.selectedMessage = null;
-      this.updateUrl(this.currentMailbox, this.currentPage, null);
+      const filed = this.writtenKeys(done);
+      if (filed.length > 0) {
+        if (isBulk) this.selectedKeys = new Set([...this.selectedKeys].filter(key => !filed.includes(key)));
+        this.selectedMessage = null;
+        this.updateUrl(this.currentMailbox, this.currentPage, null);
 
-      const moved = done
-        .filter(({ mailbox }) => mailbox !== to)
-        .map(({ mailbox, result }) => ({ from: mailbox, mapping: result.uidMapping }));
-      const undoFn = this.undoMoves(moved, to, view, isBulk ? undefined : open);
-      this.showGlobalToast(say(filed.length), undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
-    }
-    if (refused && refused.reason !== 'auth') {
-      this.reportActionFailed('toast.moveFailed', 'Could not move that');
-      if (putBack) {
-        // What the refusing folder held is still in it: its rows come back, and
-        // come back CHECKED, which is the state the user needs to try again.
-        const went = new Set(filed);
-        const stayed = keys.filter(key => !went.has(key));
-        if (putBack(leaving.filter(key => went.has(key)))) this.selectedKeys = new Set(stayed);
-        else messageSync.sync();
+        const moved = done
+          .filter(({ mailbox }) => mailbox !== to)
+          .map(({ mailbox, result }) => ({ from: mailbox, mapping: result.uidMapping }));
+        const undoFn = this.undoMoves(moved, to, view, isBulk ? undefined : open);
+        this.showGlobalToast(say(filed.length), undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
       }
-    }
+      if (refused && refused.reason !== 'auth') {
+        this.reportActionFailed('toast.moveFailed', 'Could not move that');
+        if (putBack) {
+          // What the refusing folder held is still in it: its rows come back,
+          // and come back CHECKED, which is the state the user needs to try
+          // again.
+          const went = new Set(filed);
+          const stayed = keys.filter(key => !went.has(key));
+          if (putBack(leaving.filter(key => went.has(key)))) this.selectedKeys = new Set(stayed);
+          else messageSync.sync();
+        }
+      }
+    });
   }
 
   /**
@@ -1848,20 +1903,24 @@ export class MailboxPage extends LitElement {
         const restored: string[] = [];
         let reopened: string | null = null;
         let refused: MoveResult | undefined;
-        for (const { from, mapping } of back) {
-          const result = await messageOperations.moveMessages(to, Object.values(mapping), from);
-          if (!result.success) {
-            refused ??= result;
-            if (result.reason === 'auth') break;
-            continue;
+        // One re-read for the undo, however many folders it puts messages
+        // back into.
+        await messageSync.afterWrites(async () => {
+          for (const { from, mapping } of back) {
+            const result = await messageOperations.moveMessages(to, Object.values(mapping), from);
+            if (!result.success) {
+              refused ??= result;
+              if (result.reason === 'auth') break;
+              continue;
+            }
+            for (const [was, now] of Object.entries(mapping)) {
+              const again = result.uidMapping?.[now];
+              if (!again) continue;
+              restored.push(messageKey(from, again));
+              if (reopen === messageKey(from, was)) reopened = messageKey(from, again);
+            }
           }
-          for (const [was, now] of Object.entries(mapping)) {
-            const again = result.uidMapping?.[now];
-            if (!again) continue;
-            restored.push(messageKey(from, again));
-            if (reopen === messageKey(from, was)) reopened = messageKey(from, again);
-          }
-        }
+        });
         if (refused && refused.reason !== 'auth') this.reportActionFailed('toast.undoFailed', 'Could not undo that');
         if (restored.length === 0) return;
         if (reopen !== undefined) {
@@ -1934,28 +1993,31 @@ export class MailboxPage extends LitElement {
     const open = this.selectedMessage ? this.keyOf(this.selectedMessage) : undefined;
     // The rows leave with the gesture, as checked ones do: see takeRowsOut.
     const putBack = this.takeRowsOut(keys);
-    const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
-      const result = await messageOperations.moveMessages(from, uids, to);
-      return { ok: result.success, reason: result.reason, uidMapping: result.uidMapping ?? {} };
-    });
+    // One re-read for the gesture, as in fileAway.
+    await messageSync.afterWrites(async () => {
+      const { done, refused } = await this.eachFolder(keys, async (from, uids): Promise<MoveOutcome> => {
+        const result = await messageOperations.moveMessages(from, uids, to);
+        return { ok: result.success, reason: result.reason, uidMapping: result.uidMapping ?? {} };
+      });
 
-    const filed = this.writtenKeys(done);
-    if (filed.length > 0) {
-      const wasOpen = open !== undefined && filed.includes(open);
-      if (wasOpen) {
-        this.selectedMessage = null;
-        this.updateUrl(this.currentMailbox, this.currentPage, null);
+      const filed = this.writtenKeys(done);
+      if (filed.length > 0) {
+        const wasOpen = open !== undefined && filed.includes(open);
+        if (wasOpen) {
+          this.selectedMessage = null;
+          this.updateUrl(this.currentMailbox, this.currentPage, null);
+        }
+        const moved = done.map(({ mailbox, result }) => ({ from: mailbox, mapping: result.uidMapping }));
+        const undoFn = this.undoMoves(moved, to, view, wasOpen ? open : undefined, false);
+        this.showGlobalToast(this.movedMessage(filed.length > 1, filed.length, to), undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
       }
-      const moved = done.map(({ mailbox, result }) => ({ from: mailbox, mapping: result.uidMapping }));
-      const undoFn = this.undoMoves(moved, to, view, wasOpen ? open : undefined, false);
-      this.showGlobalToast(this.movedMessage(filed.length > 1, filed.length, to), undoFn ? this.i18nStore?.t('mailboxPage.undo') : '', undoFn, UNDO_TOAST_TIMEOUT_MS);
-    }
-    if (refused && refused.reason !== 'auth') {
-      this.reportActionFailed('toast.moveFailed', 'Could not move that');
-      // What the refusing folder held is still in it, and its rows come back.
-      const went = new Set(filed);
-      if (!putBack(keys.filter(key => went.has(key)))) messageSync.sync();
-    }
+      if (refused && refused.reason !== 'auth') {
+        this.reportActionFailed('toast.moveFailed', 'Could not move that');
+        // What the refusing folder held is still in it, and its rows come back.
+        const went = new Set(filed);
+        if (!putBack(keys.filter(key => went.has(key)))) messageSync.sync();
+      }
+    });
   }
 
   /**
@@ -2170,48 +2232,52 @@ export class MailboxPage extends LitElement {
         return;
       }
 
-      // Checked rows leave with the gesture. Not a card's Delete, which is
-      // about one message inside a conversation the reader is showing and has
-      // its own way of leaving it (`leaveDeletedMessage`).
-      const putBack = isBulk && !named ? this.takeRowsOut(doomed) : undefined;
-      const { done, refused } = await this.eachFolder(doomed, (mailbox, uids) =>
-        messageOperations.deleteMessagesResult(mailbox, uids));
-      named?.done?.(!refused);
+      // One re-read for the whole Delete: the folders where it is for good, and
+      // those where it is a move to Trash (see messageSync.afterWrites).
+      await messageSync.afterWrites(async () => {
+        // Checked rows leave with the gesture. Not a card's Delete, which is
+        // about one message inside a conversation the reader is showing and has
+        // its own way of leaving it (`leaveDeletedMessage`).
+        const putBack = isBulk && !named ? this.takeRowsOut(doomed) : undefined;
+        const { done, refused } = await this.eachFolder(doomed, (mailbox, uids) =>
+          messageOperations.deleteMessagesResult(mailbox, uids));
+        named?.done?.(!refused);
 
-      const deleted = this.writtenKeys(done);
-      if (deleted.length > 0) {
-        if (named) {
-          // A card's Delete: the rest of the conversation stays on screen.
-          if (named.isOpen) this.leaveDeletedMessage(named.nextUid);
-        } else {
-          if (isBulk) this.selectedKeys = new Set([...this.selectedKeys].filter(key => !deleted.includes(key)));
-          this.selectedMessage = null;
-          this.updateUrl(this.currentMailbox, this.currentPage, null);
+        const deleted = this.writtenKeys(done);
+        if (deleted.length > 0) {
+          if (named) {
+            // A card's Delete: the rest of the conversation stays on screen.
+            if (named.isOpen) this.leaveDeletedMessage(named.nextUid);
+          } else {
+            if (isBulk) this.selectedKeys = new Set([...this.selectedKeys].filter(key => !deleted.includes(key)));
+            this.selectedMessage = null;
+            this.updateUrl(this.currentMailbox, this.currentPage, null);
+          }
+
+          let toastMessage = '';
+          if (isDrafts) {
+            toastMessage = many ? this.i18nStore?.t('toast.draftsDiscarded', { count: deleted.length }) : (this.i18nStore?.t('toast.draftDiscarded'));
+          } else {
+            toastMessage = many ? this.i18nStore?.t('toast.messagesPermanentlyDeleted', { count: deleted.length }) : (this.i18nStore?.t('toast.messagePermanentlyDeleted'));
+          }
+          this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
+        }
+        if (refused && refused.reason !== 'auth') {
+          this.reportActionFailed('toast.messageDeleteFailed', 'The message could not be deleted');
+          if (putBack) {
+            // As in fileAway: back where they were, and checked.
+            const went = new Set(deleted);
+            if (putBack(deleted)) this.selectedKeys = new Set(doomed.filter(key => !went.has(key)));
+            else messageSync.sync();
+          }
         }
 
-        let toastMessage = '';
-        if (isDrafts) {
-          toastMessage = many ? this.i18nStore?.t('toast.draftsDiscarded', { count: deleted.length }) : (this.i18nStore?.t('toast.draftDiscarded'));
-        } else {
-          toastMessage = many ? this.i18nStore?.t('toast.messagesPermanentlyDeleted', { count: deleted.length }) : (this.i18nStore?.t('toast.messagePermanentlyDeleted'));
+        // The rest of the same Delete, in folders where it is a move to Trash.
+        if (toTrash.length > 0) {
+          const trash = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
+          await this.fileAway(toTrash, trash, isBulk, count => this.movedMessage(isBulk || toTrash.length > 1, count, trash));
         }
-        this.showGlobalToast(toastMessage, '', undefined, UNDO_TOAST_TIMEOUT_MS);
-      }
-      if (refused && refused.reason !== 'auth') {
-        this.reportActionFailed('toast.messageDeleteFailed', 'The message could not be deleted');
-        if (putBack) {
-          // As in fileAway: back where they were, and checked.
-          const went = new Set(deleted);
-          if (putBack(deleted)) this.selectedKeys = new Set(doomed.filter(key => !went.has(key)));
-          else messageSync.sync();
-        }
-      }
-
-      // The rest of the same Delete, in folders where it is a move to Trash.
-      if (toTrash.length > 0) {
-        const trash = findMailboxNameByRole('trash', this.mailboxes, FOLDER_TRASH);
-        await this.fileAway(toTrash, trash, isBulk, count => this.movedMessage(isBulk || toTrash.length > 1, count, trash));
-      }
+      });
     } finally {
       if (isBulk) this.bulkProcessing = false;
     }
@@ -2355,7 +2421,6 @@ export class MailboxPage extends LitElement {
             icon="folderPlus"
             title="${this.i18nStore?.t('folderList.createFolder')}"
             @click=${this.openFolderPrompt}
-            style="--btn-padding: 8px; --icon-size: 20px;"
           ></alps-icon-btn>
         </alps-sidebar>
         <div class="main-view">
@@ -2387,6 +2452,15 @@ export class MailboxPage extends LitElement {
               .syncing=${this.isSyncing}
               .loadFailed=${this.listLoadFailed}
               @refresh=${() => {
+        // Try again, over a view that could not be read: that view is read
+        // again, as asked. Turned back to the first page as a check for new
+        // mail is, a retry after a failed page change listed page 0 under the
+        // address of the page that failed, and Next, which asks for that same
+        // address, then changed nothing.
+        if (this.listLoadFailed && this.messages.length === 0) {
+          messageSync.fetch(this.currentMailbox, this.currentPage, this.filterQuery, true);
+          return;
+        }
         this.currentPage = 0;
 
         // A check, not a fetch: over a list that is already current the rows

@@ -202,6 +202,17 @@ export class AttachmentPill extends LitElement {
   }
 
   /**
+   * How far an upload has got, as "29% of 768 KB". The words and their
+   * spacing come from the dictionary, since each language orders and spaces
+   * the parts its own way (German writes "29 % von 768 KB"). The English
+   * template is for a pill mounted without a store.
+   */
+  private uploadProgress(percent: number, size: number): string {
+    return this.i18nStore?.t('attachment.uploadProgress', { percent, size: formatSize(size) })
+      || `${percent}% of ${formatSize(size)}`;
+  }
+
+  /**
    * Opens the preview instead of downloading, for a stored attachment the
    * preview can show. A composer entry has no stored bytes to show, and a
    * type the preview cannot draw keeps the download the link already is.
@@ -252,7 +263,7 @@ export class AttachmentPill extends LitElement {
         >${renderIcon(info.icon)}</div>
       `}
       <span class="attachment-name">${name}</span>
-      <span class="attachment-size">${uploading ? `${progress}% of ${formatSize(size)}` : formatSize(size)}</span>
+      <span class="attachment-size">${uploading ? this.uploadProgress(progress, size) : formatSize(size)}</span>
       ${previewable ? html`
         <button class="preview-btn" @click=${this._handlePreview} title="${this.i18nStore?.t('attachment.preview')}">
           ${renderIcon('eye')}

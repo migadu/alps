@@ -121,6 +121,8 @@ describe('deleting', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'DELETE' });
     expect(sync).toHaveBeenCalledTimes(1);
+    // Not a refresh: the server dropped what the delete changed.
+    expect(sync).toHaveBeenCalledWith();
   });
 
   it('re-reads after a refusal only if an earlier chunk had committed', async () => {
@@ -131,6 +133,9 @@ describe('deleting', () => {
     fetchMock.mockResolvedValueOnce(json(200, {})).mockResolvedValueOnce(json(500, {}));
     await ops.deleteMessagesResult('Trash', uids(BATCH_MAX_UIDS + 1));
     expect(sync).toHaveBeenCalledTimes(1);
+    // A refresh: what the refused chunk did is unknown, and the server
+    // dropped nothing for it.
+    expect(sync).toHaveBeenCalledWith({ refresh: true });
   });
 
   it('keeps the boolean form a boolean, so a failure can never read as truthy', async () => {

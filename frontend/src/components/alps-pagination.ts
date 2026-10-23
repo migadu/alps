@@ -158,14 +158,12 @@ export class AlpsPagination extends LitElement {
             ?disabled=${!this.hasPrev} 
             @click=${() => this.changePage(-1)}
             icon="caretLeft"
-            style="--icon-size: 16px;"
           ></alps-icon-btn>
           <alps-icon-btn 
             title=${this.i18nStore?.t('pagination.nextPage')} 
             ?disabled=${!this.hasNext} 
             @click=${() => this.changePage(1)}
             icon="caretRight"
-            style="--icon-size: 16px;"
           ></alps-icon-btn>
         </div>
       </div>

@@ -39,7 +39,7 @@ describe('the raw Sieve editor', () => {
   });
 
   it('takes what it saved as stored, and says so', async () => {
-    vi.spyOn(managesieveService, 'saveScript').mockResolvedValue(undefined as never);
+    vi.spyOn(managesieveService, 'saveScript').mockResolvedValue({ autoReplyOn: false });
     const el = await mount<El>('alps-raw-editor', { i18nStore, stored: '', script: 'discard;\n' });
     const saved = record<CustomEvent>(el, 'script-saved');
 
