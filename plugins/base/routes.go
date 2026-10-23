@@ -1103,9 +1103,13 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 	}
 	statuses["INBOX"] = inbox
 
+	// The answer's own copy of the list, which the session's cache holds,
+	// whether it was found there or read now and put there. Marked in place,
+	// the list carried this request's active folder and counts into the next
+	// answer read from it, and two requests of the session wrote it at once.
+	mailboxes = slices.Clone(mailboxes)
 	for i := range mailboxes {
 		// Populate unseen & active states
-		// Always reset Active first (important when using cached mailboxes)
 		mailboxes[i].Active = false
 		if active != nil && mailboxes[i].Name() == active.Mailbox {
 			mailboxes[i].Active = true
