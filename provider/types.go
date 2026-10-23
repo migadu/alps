@@ -105,15 +105,23 @@ type Mailbox struct {
 	Attributes []string
 	Total      int
 	Unseen     int
-	Subscribed bool
+	// UIDValidity and UIDNext come with Total and Unseen where the listing
+	// carries each folder's status (see MailboxStatus), and are 0 otherwise.
+	UIDValidity uint32
+	UIDNext     uint32
+	Subscribed  bool
 }
 
 // MailboxStatus contains mailbox metadata
 type MailboxStatus struct {
-	Name           string
-	NumMessages    uint32
-	NumUnseen      uint32
-	UIDValidity    uint32
+	Name        string
+	NumMessages uint32
+	NumUnseen   uint32
+	UIDValidity uint32
+	// UIDNext is the UID the next message stored in the mailbox will get, or
+	// 0 where the provider has no UIDs. A message that arrives moves it even
+	// when another goes at the same time and leaves both counts as they were.
+	UIDNext        uint32
 	PermanentFlags []Flag
 }
 

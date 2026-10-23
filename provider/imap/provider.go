@@ -109,9 +109,12 @@ func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
 	if (caps.Has(imap.CapListExtended) || caps.Has(imap.CapListStatus)) && !p.refusedListReturn() {
 		options = &imap.ListOptions{ReturnSubscribed: true}
 		if caps.Has(imap.CapListStatus) {
+			// The same items GetMailboxStatus asks for, so that the counts a
+			// listing reads and the ones a check for new mail reads compare.
 			options.ReturnStatus = &imap.StatusOptions{
 				NumMessages: true,
 				UIDValidity: true,
+				UIDNext:     true,
 				NumUnseen:   true,
 			}
 		}
@@ -185,6 +188,8 @@ func (p *IMAPProvider) listMailboxes(options *imap.ListOptions) ([]provider.Mail
 		if data.Status != nil {
 			mbox.Unseen = int(*data.Status.NumUnseen)
 			mbox.Total = int(*data.Status.NumMessages)
+			mbox.UIDValidity = data.Status.UIDValidity
+			mbox.UIDNext = uint32(data.Status.UIDNext)
 		}
 		mailboxes = append(mailboxes, mbox)
 	}
@@ -205,10 +210,14 @@ func (p *IMAPProvider) listMailboxes(options *imap.ListOptions) ([]provider.Mail
 }
 
 // GetMailboxStatus returns status for a specific mailbox
+//
+// UIDNEXT costs nothing more in the same STATUS, and it tells a message that
+// arrived as another went from no change at all, which the two counts cannot.
 func (p *IMAPProvider) GetMailboxStatus(name string) (*provider.MailboxStatus, error) {
 	status, err := p.client.Status(name, &imap.StatusOptions{
 		NumMessages: true,
 		UIDValidity: true,
+		UIDNext:     true,
 		NumUnseen:   true,
 	}).Wait()
 	if err != nil {
@@ -219,6 +228,7 @@ func (p *IMAPProvider) GetMailboxStatus(name string) (*provider.MailboxStatus, e
 		NumMessages: *status.NumMessages,
 		NumUnseen:   *status.NumUnseen,
 		UIDValidity: status.UIDValidity,
+		UIDNext:     uint32(status.UIDNext),
 	}, nil
 }
 

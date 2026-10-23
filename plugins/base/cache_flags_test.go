@@ -205,7 +205,7 @@ func TestMarkingAThreadedMessageMovesThePagesCopyOfIt(t *testing.T) {
 			cache.Set("message:INBOX:8:[]", CachedMessagePart{Message: &conversation, Mailbox: "INBOX"})
 			if withRow {
 				opened := member
-				cacheMessageRow(cache, "INBOX", &opened)
+				cacheMessageRow(cache, "INBOX", &opened, 0)
 			}
 
 			check := func(write string, wantSeen bool, wantUnseen uint32) {
