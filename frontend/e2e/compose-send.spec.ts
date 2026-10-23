@@ -248,6 +248,40 @@ test("a message sent to your own address comes back to the inbox", async ({ page
   await expect(page.locator("alps-message-list").getByText(subject).first()).toBeVisible({ timeout: 20_000 });
 });
 
+test("a message the autosave had stored is sent without moving the list to Drafts", async ({ page }) => {
+  const subject = `Compose autosaved ${Date.now()}`;
+  await login(page);
+  const composer = await openComposer(page);
+  await addRecipient(composer, USER.address);
+
+  // The first autosave is what tells the composer where its draft lives.
+  // Until a send, every POST of a message is a draft save.
+  const saved = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname === "/messages" && response.ok(),
+  );
+  await fillMessage(composer, subject, "Stored as a draft before it went.");
+  await saved;
+
+  // Every folder a listing is asked for from here on, by name.
+  const listed: string[] = [];
+  page.on("request", (request) => {
+    const match = /^\/mailboxes\/([^/]+)$/.exec(new URL(request.url()).pathname);
+    if (request.method() === "GET" && match) listed.push(decodeURIComponent(decodeURIComponent(match[1])));
+  });
+
+  await sendNow(page, composer);
+  await expect(composer).toHaveCount(0, { timeout: 20_000 });
+
+  // The list is still the inbox's, and the message comes back to it, as it
+  // does when no draft was stored.
+  await expect(page.locator("alps-message-list").getByText(subject).first()).toBeVisible({ timeout: 20_000 });
+  expect(page.url()).toContain("INBOX");
+  // Nothing was pointed at Drafts, so the next poll and the next refresh
+  // read the inbox too.
+  expect(listed).not.toContain("Drafts");
+});
+
 test("Undo cancels the send and gives the composer back intact", async ({ page }) => {
   const subject = `Compose undo ${Date.now()}`;
   const body = "This one should never leave.";

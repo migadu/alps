@@ -43,6 +43,8 @@ export default {
         startDate: 'Data de início',
         endDate: 'Data de término',
         time: 'Hora',
+        startTime: 'Hora de início',
+        endTime: 'Hora de término',
         addLocation: 'Adicionar local',
         addDescription: 'Adicionar descrição',
         description: 'Descrição',

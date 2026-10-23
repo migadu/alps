@@ -92,6 +92,7 @@ test("the settings page opens on General and lists every category", async ({ pag
     "Linked Accounts",
     "2FA / WebAuthn",
     "Filters",
+    "Auto-reply",
     "GPG Keys",
     "Password",
   ]) {

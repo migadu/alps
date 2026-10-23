@@ -4,9 +4,10 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
+import { isolatedCaption, isolatedEmail, isolatedSentence } from '../../../frontend/src/utils/bidi';
 import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-select';
-import { invitationService, type InvitationPerson, type InvitationView } from './invitation-service';
+import { invitationService, type InvitationView } from './invitation-service';
 
 type Answer = 'accepted' | 'tentative' | 'declined';
 
@@ -40,8 +41,6 @@ const STATE_KEYS: Record<string, string> = {
     'added': 'added',
     'unsupported': 'unsupported',
 };
-
-const personName = (person: InvitationPerson) => person.name || person.email;
 
 /**
  * The invitation a message carries, above the message: what it is, when, who
@@ -308,7 +307,9 @@ export class CalendarInvitationBanner extends LitElement {
     private renderSender(v: InvitationView) {
         if (v.ended || v.senderVerified || !v.sender || !['answer', 'update', 'cancel', 'reply'].includes(v.state)) return nothing;
         const key = v.method === 'reply' ? 'invitations.unverifiedReply' : 'invitations.unverified';
-        return html`<div class="warning sender">${this.t(key, { sender: v.sender })}</div>`;
+        // Isolated, so that an override in the address cannot scramble the
+        // warning about it.
+        return html`<div class="warning sender">${isolatedSentence(this.i18nStore, key, { sender: isolatedEmail(v.sender) })}</div>`;
     }
 
     private renderPicker(v: InvitationView) {
@@ -374,8 +375,8 @@ export class CalendarInvitationBanner extends LitElement {
                     ${when ? html`<div class="when">${when}${v.rrule ? html`, ${this.t('invitations.repeats')}` : nothing}</div>` : nothing}
                     ${v.location ? html`<div class="muted where">${v.location}</div>` : nothing}
                     ${v.method === 'reply' && v.replier
-                        ? html`<div class="replier">${this.t(`invitations.answered.${statusKey(v.replier.status)}`, { name: personName(v.replier) })}</div>`
-                        : v.organizer ? html`<div class="muted organizer">${this.t('invitations.organizer')}: ${personName(v.organizer)}</div>` : nothing}
+                        ? html`<div class="replier">${isolatedSentence(this.i18nStore, `invitations.answered.${statusKey(v.replier.status)}`, { name: isolatedCaption(v.replier.name, v.replier.email) })}</div>`
+                        : v.organizer ? html`<div class="muted organizer">${this.t('invitations.organizer')}: ${isolatedCaption(v.organizer.name, v.organizer.email)}</div>` : nothing}
                     ${this.renderClashes(v)}
                     ${this.renderStateLine(v)}
                     ${this.renderSender(v)}

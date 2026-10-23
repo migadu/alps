@@ -1,7 +1,12 @@
 package alpsbase
 
 import (
+	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -176,6 +181,179 @@ func TestHTTP_ARefusedSecurityKeyIsNotAnOutage(t *testing.T) {
 
 	s.expect(s.do("GET", "/mailboxes/INBOX", nil), http.StatusUnauthorized)
 	s.expect(s.do("POST", "/webauthn/verify/begin", nil), http.StatusOK)
+}
+
+// signInWithKey signs in from a new browser and answers the second factor
+// with k, as a key that has signed counter times would.
+func (s *testServer) signInWithKey(k *softKey, counter uint32) (*testServer, response) {
+	s.t.Helper()
+	b := s.anotherBrowser()
+	r := b.signIn()
+	b.expect(r, http.StatusOK)
+	var signedIn map[string]any
+	r.json(s.t, &signedIn)
+	if signedIn["requires_2fa"] != true {
+		s.t.Fatalf("signing in answered %v, want requires_2fa", signedIn)
+	}
+	r = b.do("POST", "/webauthn/verify/begin", nil)
+	b.expect(r, http.StatusOK)
+	var options struct {
+		PublicKey struct {
+			Challenge string `json:"challenge"`
+		} `json:"publicKey"`
+	}
+	r.json(s.t, &options)
+
+	clientData, err := json.Marshal(map[string]any{"type": "webauthn.get", "challenge": options.PublicKey.Challenge, "origin": s.url})
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	rpIDHash := sha256.Sum256([]byte(testRPID))
+	authData := append([]byte{}, rpIDHash[:]...)
+	authData = append(authData, 0x05) // user present, user verified
+	authData = binary.BigEndian.AppendUint32(authData, counter)
+	clientDataHash := sha256.Sum256(clientData)
+	digest := sha256.Sum256(append(append([]byte{}, authData...), clientDataHash[:]...))
+	signature, err := ecdsa.SignASN1(rand.Reader, k.key, digest[:])
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	b64 := base64.RawURLEncoding.EncodeToString
+	return b, b.do("POST", "/webauthn/verify/finish", map[string]any{
+		"id":    b64(k.id),
+		"rawId": b64(k.id),
+		"type":  "public-key",
+		"response": map[string]string{
+			"authenticatorData": b64(authData),
+			"clientDataJSON":    b64(clientData),
+			"signature":         b64(signature),
+		},
+	})
+}
+
+// storedAuthenticator is what the account's record keeps about its one key.
+func (s *testServer) storedAuthenticator() webauthn.Authenticator {
+	s.t.Helper()
+	store, err := s.store.GetStore()
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	var creds UserCredentials
+	if err := store.Get("webauthn", &creds); err != nil {
+		s.t.Fatal(err)
+	}
+	if len(creds.Credentials) != 1 {
+		s.t.Fatalf("the account has %d keys, want one", len(creds.Credentials))
+	}
+	return creds.Credentials[0].Credential.Authenticator
+}
+
+// Signing in with a key records how many times it has signed, which is what
+// tells a copy of the key from the key itself. The count stayed at what the
+// key said when it was enrolled, so a copy could never be told apart.
+func TestHTTP_SigningInWithAKeyRecordsItsSignatureCount(t *testing.T) {
+	s := newTestServer(t)
+	s.withWebAuthn()
+	s.login()
+	key := newSoftKey(t)
+	s.enrolKey(key, "laptop")
+
+	b, r := s.signInWithKey(key, 7)
+	s.expect(r, http.StatusOK)
+	b.mailbox("INBOX")
+	if got := s.storedAuthenticator(); got.SignCount != 7 || got.CloneWarning {
+		t.Fatalf("after signing in: count %d, clone warning %v; want 7 and none", got.SignCount, got.CloneWarning)
+	}
+
+	_, r = s.signInWithKey(key, 8)
+	s.expect(r, http.StatusOK)
+	if got := s.storedAuthenticator(); got.SignCount != 8 || got.CloneWarning {
+		t.Fatalf("after signing in again: count %d, clone warning %v; want 8 and none", got.SignCount, got.CloneWarning)
+	}
+}
+
+// newTestServerWithLog is newTestServer with what it logs going to a file,
+// and a func that reads that file.
+func newTestServerWithLog(t *testing.T) (*testServer, func() string) {
+	t.Helper()
+	logPath := filepath.Join(t.TempDir(), "alps.log")
+	s := newTestServerWithLogger(t, "smtp://127.0.0.1:1", alps.NewLoggerWithOptions(alps.LoggerOptions{Output: logPath, Format: "console", Level: "info"}))
+	return s, func() string {
+		t.Helper()
+		logged, err := os.ReadFile(logPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(logged)
+	}
+}
+
+// A key whose count does not go up may be a copy of the one enrolled. The
+// record keeps that it was seen, and the log says so at each sign-in that
+// shows it; the sign-in itself goes ahead, since a key's own counter can be
+// at fault. Once the record was marked, no later count that went back was
+// logged, so a copy that turned up after a faulty count went unseen.
+func TestHTTP_AKeyWhoseCountGoesBackIsMarkedAsPossiblyCopied(t *testing.T) {
+	s, logged := newTestServerWithLog(t)
+	s.withWebAuthn()
+	s.login()
+	key := newSoftKey(t)
+	s.enrolKey(key, "laptop")
+	_, r := s.signInWithKey(key, 7)
+	s.expect(r, http.StatusOK)
+
+	b, r := s.signInWithKey(key, 3)
+	s.expect(r, http.StatusOK)
+	b.mailbox("INBOX")
+	if got := s.storedAuthenticator(); got.SignCount != 7 || !got.CloneWarning {
+		t.Fatalf("after a count that went back: count %d, clone warning %v; want 7 and a warning", got.SignCount, got.CloneWarning)
+	}
+	if n := strings.Count(logged(), "security key may have been copied"); n != 1 {
+		t.Errorf("%d log lines say the key may have been copied, want 1:\n%s", n, logged())
+	}
+
+	// The count goes up again, and then back once more.
+	_, r = s.signInWithKey(key, 8)
+	s.expect(r, http.StatusOK)
+	_, r = s.signInWithKey(key, 5)
+	s.expect(r, http.StatusOK)
+	if got := s.storedAuthenticator(); got.SignCount != 8 || !got.CloneWarning {
+		t.Fatalf("after the count went up and back again: count %d, clone warning %v; want 8 and a warning", got.SignCount, got.CloneWarning)
+	}
+	if n := strings.Count(logged(), "security key may have been copied"); n != 2 {
+		t.Errorf("%d log lines say the key may have been copied, want 2:\n%s", n, logged())
+	}
+}
+
+// A record that cannot be saved does not refuse a key that verified: the
+// sign-in goes ahead, and the failure is logged. A sign-in that changes
+// nothing in the record, as with a key that always reports a count of 0,
+// does not write it at all.
+func TestHTTP_AKeyThatVerifiedSignsInWhenItsRecordCannotBeSaved(t *testing.T) {
+	s, logged := newTestServerWithLog(t)
+	s.withWebAuthn()
+	s.login()
+	key := newSoftKey(t)
+	s.enrolKey(key, "laptop")
+	// The store can still be read, but not written: a write goes through a
+	// temporary file, and a directory is in its place.
+	if err := os.Mkdir(filepath.Join(s.dir, "alps_store.json.tmp"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	b, r := s.signInWithKey(key, 0)
+	s.expect(r, http.StatusOK)
+	b.mailbox("INBOX")
+	if strings.Contains(logged(), "failed to save") {
+		t.Errorf("a sign-in that changed nothing wrote the record:\n%s", logged())
+	}
+
+	b, r = s.signInWithKey(key, 7)
+	s.expect(r, http.StatusOK)
+	b.mailbox("INBOX")
+	if !strings.Contains(logged(), "failed to save the key's signature count") {
+		t.Errorf("the failed save is not logged:\n%s", logged())
+	}
 }
 
 // When the account's keys cannot be read, the second factor answers 503,
