@@ -223,7 +223,18 @@ func (s *Session) WatchInbox() *InboxWatch {
 		}
 		w.watchers[ch] = struct{}{}
 		if w.watching != nil {
-			ch <- InboxWatched
+			// A background transition removes its connection before taking
+			// w.mu to clear watching. Check ownership while announcing it,
+			// including that gap. The lock order is w.mu then bg.mu;
+			// background transitions release bg.mu before connectionGone.
+			bg := &s.background
+			bg.mu.Lock()
+			if bg.p == w.watching {
+				ch <- InboxWatched
+			} else {
+				w.watching = nil
+			}
+			bg.mu.Unlock()
 		}
 		if !w.running {
 			if w.kick == nil {

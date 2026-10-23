@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1032,6 +1033,88 @@ func TestWatchInbox_NotToldOfAnIdleWhoseConnectionIsGone(t *testing.T) {
 			later := s.WatchInbox()
 			defer later.Stop()
 			quiet(t, later, "a watch begun while the IDLE's connection is gone")
+		})
+	}
+}
+
+// Removing a connection and clearing its last IDLE announcement use separate
+// locks. A new watch can get the watch lock between those two steps.
+func TestWatchInbox_ConnectionDroppedWhileANewWatchBegins(t *testing.T) {
+	previous := runtime.GOMAXPROCS(1)
+	defer runtime.GOMAXPROCS(previous)
+	p := new(provider.MockProvider)
+	s := &Session{manager: &SessionManager{pushNewMail: true}}
+	s.background.p = p
+	s.push.running = true // This test controls the transition without an IDLE worker.
+	s.push.watching = p
+
+	s.push.mu.Lock()
+	dropped := make(chan struct{})
+	go func() {
+		s.background.jobs.Lock()
+		defer s.background.jobs.Unlock()
+		s.dropBackground()
+		close(dropped)
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		s.background.mu.Lock()
+		gone := s.background.p == nil
+		s.background.mu.Unlock()
+		if gone {
+			break
+		}
+		if time.Now().After(deadline) {
+			s.push.mu.Unlock()
+			<-dropped
+			t.Fatal("the background connection was not dropped")
+		}
+		runtime.Gosched()
+	}
+	// With one runnable thread, this watch can take the mutex before the
+	// dropper wakes to clear watching. Ownership must be checked as well.
+	s.push.mu.Unlock()
+	watch := s.WatchInbox()
+	defer watch.Stop()
+	select {
+	case ev := <-watch.C:
+		t.Errorf("a watch begun after the connection was dropped heard %v", ev)
+	default:
+	}
+	<-dropped
+}
+
+func TestWatchInbox_InitialAnnouncementRequiresTheSameBackgroundConnection(t *testing.T) {
+	p, replacement := new(provider.MockProvider), new(provider.MockProvider)
+	for _, tc := range []struct {
+		name        string
+		background  provider.MailProvider
+		wantWatched bool
+	}{
+		{"still owned", p, true},
+		{"already dropped", nil, false},
+		{"already replaced", replacement, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &Session{manager: &SessionManager{pushNewMail: true}}
+			s.background.p = tc.background
+			s.push.running = true
+			s.push.watching = p
+			watch := s.WatchInbox()
+			defer watch.Stop()
+			select {
+			case ev := <-watch.C:
+				if !tc.wantWatched || ev != InboxWatched {
+					t.Errorf("the watch heard %v, want watched=%v", ev, tc.wantWatched)
+				}
+			default:
+				if tc.wantWatched {
+					t.Error("the watch was not told of the owned connection's IDLE")
+				}
+			}
+			if !tc.wantWatched && s.push.watching != nil {
+				t.Error("the stale IDLE announcement was kept")
+			}
 		})
 	}
 }
