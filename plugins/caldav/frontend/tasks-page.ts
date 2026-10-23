@@ -116,12 +116,6 @@ export class TasksPage extends LitElement {
                 box-sizing: border-box;
                 overflow-y: auto;
             }
-            .sidebar-wrapper.collapsed .label,
-            .sidebar-wrapper.collapsed .count,
-            .sidebar-wrapper.collapsed h3,
-            .sidebar-wrapper.collapsed .calendar-lists {
-                display: none;
-            }
             h3 {
                 margin: 0 0 12px 0;
                 font-size: 12px;
