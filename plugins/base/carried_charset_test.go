@@ -169,3 +169,30 @@ func TestHTTP_ACarriedTextFileInAnUnknownCharsetGoesAsStored(t *testing.T) {
 		return
 	}
 }
+
+// A text file in an unknown charset under an unknown transfer encoding as
+// well is not carried: its transfer encoding cannot be undone, so there is no
+// content to carry. go-message reports only the charset of the two, and the
+// file went out as its still-encoded bytes.
+func TestHTTP_ACarriedTextFileItCannotTransferDecodeIsRefused(t *testing.T) {
+	addr, rec := listenRecorder(t)
+	s := newTestServerWithSMTP(t, addr)
+	if err := s.store.CreateMailbox("Drafts"); err != nil {
+		t.Fatal(err)
+	}
+	both := strings.Replace(latin1Notes, "charset=iso-8859-1", "charset=x-unknown-charset", 1)
+	both = strings.Replace(both, "Content-Transfer-Encoding: quoted-printable", "Content-Transfer-Encoding: x-unknown", 1)
+	if _, _, _, err := s.store.AppendMessage("Drafts", rawMessage(both), 0); err != nil {
+		t.Fatal(err)
+	}
+	s.login()
+	r := s.do("POST", "/messages", carryNotes("Drafts", s.mailbox("Drafts").Messages[0].UID))
+	if r.status == http.StatusOK {
+		t.Errorf("the message was sent with a file whose transfer encoding was never undone: %s", r.body)
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if rec.data != "" {
+		t.Errorf("a message was delivered:\n%s", rec.data)
+	}
+}
