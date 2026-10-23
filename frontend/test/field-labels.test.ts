@@ -391,6 +391,68 @@ describe('the filter editor', () => {
 
     expect(accessibleName(inner(value[0]))).toBe('managesieve.visual.value');
   });
+
+  it('names every choice in a rule, and tells each rule, condition and action apart', async () => {
+    // The number a group is named with, as the dictionaries put it in.
+    const numbering = { ...i18nStore, t: (key: string, params?: Record<string, unknown>) => (params?.number ? `${key} ${params.number}` : key) };
+    const el = await mount<El>('alps-visual-editor', {
+      i18nStore: numbering,
+      folders: ['INBOX', 'Invoices'],
+      state: {
+        rules: [{
+          id: 'r1',
+          matchType: 'all',
+          conditions: [
+            { field: 'Subject', operator: 'contains', value: 'invoice' },
+            { field: 'From', operator: 'is', value: 'billing@example.com' },
+          ],
+          actions: [{ type: 'fileinto', value: 'Invoices' }, { type: 'redirect', value: 'ada@example.com' }],
+        }, {
+          id: 'r2',
+          matchType: 'any',
+          conditions: [{ field: 'Size', operator: 'over', value: '10M' }],
+          actions: [{ type: 'discard' }],
+        }],
+      },
+    });
+    const fields = shadowAll<El>(el, FIELDS.join(', '));
+    await Promise.all(fields.map(f => f.updateComplete));
+
+    // Each rule a group of its own, and each condition and action a group
+    // numbered within it: the same choices repeat from one to the next.
+    const groups = shadowAll<HTMLElement>(el, '[role="group"]');
+    const nameOf = (node: Element) => node.closest('[role="group"]')?.getAttribute('aria-label');
+    expect(groups.map(g => g.getAttribute('aria-label'))).toEqual([
+      'managesieve.visual.ruleNumber 1',
+      'managesieve.visual.conditionNumber 1',
+      'managesieve.visual.conditionNumber 2',
+      'managesieve.visual.actionNumber 1',
+      'managesieve.visual.actionNumber 2',
+      'managesieve.visual.ruleNumber 2',
+      'managesieve.visual.conditionNumber 1',
+      'managesieve.visual.actionNumber 1',
+    ]);
+
+    // Every field named, inside the group it belongs to.
+    expect(fields.map(f => [nameOf(f), accessibleName(inner(f))])).toEqual([
+      ['managesieve.visual.ruleNumber 1', 'managesieve.visual.matchMode'],
+      ['managesieve.visual.conditionNumber 1', 'managesieve.visual.field'],
+      ['managesieve.visual.conditionNumber 1', 'managesieve.visual.operator'],
+      ['managesieve.visual.conditionNumber 1', 'managesieve.visual.value'],
+      ['managesieve.visual.conditionNumber 2', 'managesieve.visual.field'],
+      ['managesieve.visual.conditionNumber 2', 'managesieve.visual.operator'],
+      ['managesieve.visual.conditionNumber 2', 'managesieve.visual.value'],
+      ['managesieve.visual.actionNumber 1', 'managesieve.visual.action'],
+      ['managesieve.visual.actionNumber 1', 'managesieve.visual.folder'],
+      ['managesieve.visual.actionNumber 2', 'managesieve.visual.action'],
+      ['managesieve.visual.actionNumber 2', 'managesieve.visual.fields.emailAddress'],
+      ['managesieve.visual.ruleNumber 2', 'managesieve.visual.matchMode'],
+      ['managesieve.visual.conditionNumber 1', 'managesieve.visual.field'],
+      ['managesieve.visual.conditionNumber 1', 'managesieve.visual.operator'],
+      ['managesieve.visual.conditionNumber 1', 'managesieve.visual.value'],
+      ['managesieve.visual.actionNumber 1', 'managesieve.visual.action'],
+    ]);
+  });
 });
 
 describe('the GPG key import', () => {
