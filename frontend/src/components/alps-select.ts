@@ -1,6 +1,7 @@
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
+import { focusOnLabelClick } from '../utils/label-focus';
 
 @customElement('alps-select')
 export class AlpsSelect extends LitElement {
@@ -16,6 +17,11 @@ export class AlpsSelect extends LitElement {
 	 * this shadow root. So a form passes the text of its label here as well.
 	 */
 	@property({ type: String }) label = '';
+	/**
+	 * Passed on to the select, which is in this shadow root: set on this
+	 * element alone, `disabled` left the select as usable as ever.
+	 */
+	@property({ type: Boolean }) disabled = false;
 
 	static styles = css`
 		:host {
@@ -78,6 +84,24 @@ export class AlpsSelect extends LitElement {
 		}
 	`;
 
+	public focus() {
+		this.shadowRoot?.querySelector('select')?.focus();
+	}
+
+	/** Stops the watch for a click on this field's label (see focusOnLabelClick). */
+	private stopLabelWatch: (() => void) | null = null;
+
+	connectedCallback() {
+		super.connectedCallback();
+		this.stopLabelWatch = focusOnLabelClick(this);
+	}
+
+	disconnectedCallback() {
+		super.disconnectedCallback();
+		this.stopLabelWatch?.();
+		this.stopLabelWatch = null;
+	}
+
 	private handleChange(e: Event) {
 		const target = e.target as HTMLSelectElement;
 		this.value = target.value;
@@ -87,7 +111,7 @@ export class AlpsSelect extends LitElement {
 	render() {
 		return html`
 			<div class="select-wrapper">
-				<select .value=${this.value} aria-label=${this.label || nothing} @change=${this.handleChange}>
+				<select .value=${this.value} aria-label=${this.label || nothing} ?disabled=${this.disabled} @change=${this.handleChange}>
 					${this.options.map(opt => html`<option value=${opt.value} lang=${opt.lang ?? nothing} ?selected=${opt.value === this.value} ?disabled=${opt.disabled}>${opt.label}</option>`)}
 				</select>
 				<span class="caret">
