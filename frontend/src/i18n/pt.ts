@@ -2,6 +2,10 @@ export const pt = {
   settings: {
     saveFailed: 'Não foi possível salvar essa configuração — ela pode não sobreviver ao encerramento da sessão',
     title: 'Configurações',
+    unsavedTitle: 'Descartar alterações?',
+    unsavedMessage: 'Você tem alterações não salvas. Se sair desta seção, elas serão descartadas.',
+    discard: 'Descartar',
+    keepEditing: 'Continuar editando',
     categories: {
       general: 'Geral',
       identity: 'Identidade',

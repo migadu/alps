@@ -9,6 +9,10 @@ export const en = {
   settings: {
     saveFailed: 'Could not save that setting — it may not survive signing out',
     title: 'Settings',
+    unsavedTitle: 'Discard changes?',
+    unsavedMessage: 'You have unsaved changes. Leaving this section will discard them.',
+    discard: 'Discard',
+    keepEditing: 'Keep editing',
     categories: {
       general: 'General',
       identity: 'Identity',

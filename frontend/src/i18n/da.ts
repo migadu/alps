@@ -11,6 +11,10 @@ export const da: TranslationDictionary = {
   settings: {
     saveFailed: 'Indstillingen kunne ikke gemmes — den bevares muligvis ikke, når du logger ud',
     title: 'Indstillinger',
+    unsavedTitle: 'Kassér ændringer?',
+    unsavedMessage: 'Du har ændringer, der ikke er gemt. De kasseres, hvis du forlader dette afsnit.',
+    discard: 'Kassér',
+    keepEditing: 'Fortsæt redigering',
     categories: {
       general: 'Generelt',
       identity: 'Identitet',

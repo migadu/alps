@@ -2,6 +2,10 @@ export const fr = {
   settings: {
     saveFailed: 'Impossible d’enregistrer ce réglage — il pourrait ne pas survivre à la déconnexion',
     title: 'Paramètres',
+    unsavedTitle: 'Abandonner les modifications ?',
+    unsavedMessage: 'Vous avez des modifications non enregistrées. Quitter cette section les abandonnera.',
+    discard: 'Abandonner',
+    keepEditing: 'Continuer la modification',
     categories: {
       general: 'Général',
       identity: 'Identité',

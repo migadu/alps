@@ -13,11 +13,12 @@
 //  - Escape and the browser's Back closing onto the message, and a section
 //    chosen inside adding no history entry for Back to walk through;
 //  - Escape keeping what was being typed: a field that saves as it loses
-//    focus is committed before the window closes;
+//    focus is committed before the window closes, and an unsaved auto-reply
+//    is asked about first;
 //  - on a phone, the whole screen, one column at a time.
 
 import type { Locator, Page } from "@playwright/test";
-import { deliver, expect, login, resetSettings, test } from "./fixtures";
+import { deliver, expect, login, resetSettings, resetSieve, test } from "./fixtures";
 
 const win = (page: Page) => page.locator("settings-window .window-frame");
 const sections = (page: Page) => page.locator("settings-window nav.sections");
@@ -239,5 +240,36 @@ test("Escape keeps the signature being typed", async ({ page }) => {
     // record is put back.
     await page.goto("about:blank");
     await resetSettings();
+  }
+});
+
+test("an unsaved auto-reply is asked about before the window closes", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page);
+  try {
+    await openSettings(page, "#/settings/autoreply");
+    const body = page.locator("alps-auto-reply-page textarea");
+    await body.click();
+    await page.keyboard.type("Away until Monday.");
+
+    await page.keyboard.press("Escape");
+    const confirm = page.locator("settings-window ui-confirm");
+    await expect(confirm.getByRole("button", { name: "Keep editing" })).toBeVisible();
+    await confirm.getByRole("button", { name: "Keep editing" }).click();
+    await expect(confirm).toHaveCount(0);
+    await expect(win(page)).toBeVisible();
+    await expect(body).toHaveValue("Away until Monday.");
+
+    // Another section asks the same.
+    await section(page, "General").click();
+    await expect(confirm.getByRole("button", { name: "Keep editing" })).toBeVisible();
+    await confirm.getByRole("button", { name: "Keep editing" }).click();
+    await expect(page).toHaveURL(/#\/settings\/autoreply$/);
+
+    await closeButton(page).click();
+    await confirm.getByRole("button", { name: "Discard", exact: true }).click();
+    await expect(win(page)).toHaveCount(0);
+  } finally {
+    await resetSieve();
   }
 });

@@ -14,6 +14,7 @@ import './alps-select';
 import './alps-setting-group';
 import './settings-accounts';
 import './alps-webauthn-settings';
+import './ui-confirm';
 
 import { loadComponent, registry } from '../plugin-registry';
 import './alps-page-load-error';
@@ -30,6 +31,16 @@ export const SETTINGS_WINDOW_Z = 900;
 
 /** The phone layout's width, the one the rest of the app switches at. */
 const MOBILE_MAX_WIDTH = 768;
+
+/**
+ * What a section edited in place, with a Save of its own, declares: the
+ * window asks it before a Close, an Escape or another section would unmount
+ * its draft (`SettingsWindow.leave`). Sections that apply as they change have
+ * nothing to declare.
+ */
+export interface UnsavedChanges {
+  readonly hasUnsavedChanges: boolean;
+}
 
 /**
  * Settings: a window over the page it was opened from.
@@ -362,19 +373,44 @@ export class SettingsWindow extends LitElement {
     this.leave(() => this.dispatchEvent(new CustomEvent('settings-close', { bubbles: true, composed: true })));
   }
 
+  /** A move away from the open section, held while the user is asked whether
+   * to drop its unsaved changes; see `leave`. */
+  @state() private pendingLeave: (() => void) | null = null;
+
   /**
-   * Leaves the open section, by `action`, committing the field being typed in
-   * first. The signature, the display name and the reply-to save on `change`,
-   * which a field fires as it loses focus; Escape would otherwise remove it
-   * while it still had focus, and the last thing typed into it would be gone.
+   * Leaves the open section, by `action`: at once, or once the user agrees to
+   * drop what it has not saved.
+   *
+   * Every setting applies as it changes, except where a section has a form
+   * with its own Save (the filters, the auto-reply). Such a section says so
+   * with `hasUnsavedChanges` (see `UnsavedChanges`), and a Close, an Escape or
+   * another section asks first. The browser's Back cannot be asked: it has
+   * already gone when anything hears it.
+   *
+   * The field being typed in is committed first. The signature, the display
+   * name and the reply-to save on `change`, which a field fires as it loses
+   * focus; Escape would otherwise remove it while it still had focus, and the
+   * last thing typed into it would be gone.
    */
   private leave(action: () => void) {
     const active = deepActiveElement();
     if (active instanceof HTMLElement && (active.localName === 'input' || active.localName === 'textarea' || active.isContentEditable)) {
       active.blur();
     }
+    const wrapper = this.shadowRoot?.querySelector('.settings-content-wrapper');
+    const unsaved = [...(wrapper?.children ?? [])].some((section) => (section as Partial<UnsavedChanges>).hasUnsavedChanges === true);
+    if (unsaved) {
+      this.pendingLeave = action;
+      return;
+    }
     action();
   }
+
+  private confirmLeave = () => {
+    const action = this.pendingLeave;
+    this.pendingLeave = null;
+    action?.();
+  };
 
   private async handleUpdate(e: Event, key: keyof SettingsState) {
     const target = e.target as HTMLInputElement | HTMLSelectElement;
@@ -457,6 +493,17 @@ export class SettingsWindow extends LitElement {
     const t = (key: string) => this.i18nStore?.t(key) ?? '';
     const title = t('settings.title');
     return html`
+      ${this.pendingLeave ? html`
+        <ui-confirm
+          heading=${t('settings.unsavedTitle')}
+          message=${t('settings.unsavedMessage')}
+          confirmText=${t('settings.discard')}
+          cancelText=${t('settings.keepEditing')}
+          .isDanger=${true}
+          @confirm=${this.confirmLeave}
+          @cancel=${() => { this.pendingLeave = null; }}
+        ></ui-confirm>
+      ` : ''}
       <div class="backdrop"></div>
       <div class="window-frame" role="dialog" aria-label=${title}>
         <div class="header">

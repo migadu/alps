@@ -2,6 +2,10 @@ export const sr = {
   settings: {
     saveFailed: 'Nije moguće sačuvati to podešavanje; možda neće preživeti odjavu',
     title: 'Podešavanja',
+    unsavedTitle: 'Odbaciti izmene?',
+    unsavedMessage: 'Imate nesačuvane izmene. Ako napustite ovaj odeljak, biće odbačene.',
+    discard: 'Odbaci',
+    keepEditing: 'Nastavi uređivanje',
     categories: {
       general: 'Opšte',
       identity: 'Identitet',

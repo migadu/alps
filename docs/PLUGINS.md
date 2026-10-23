@@ -117,6 +117,18 @@ registry.registerSettingsTab({
 
 A settings tab is a section of the Settings window, at `#/settings/<id>`. The window opens over the page the user was on, which stays mounted beneath it, and Close, Escape and the browser's Back all return to that page as it was.
 
+Settings apply as they change. A tab that edits a form in place and has a Save of its own (the filters, the auto-reply) should say when it holds an edit not yet saved, so the window asks before a Close, an Escape or another section discards it:
+
+```typescript
+@customElement('alps-myplugin-settings')
+export class MyPluginSettings extends LitElement {
+    /** Read by the Settings window before it leaves this section. */
+    get hasUnsavedChanges(): boolean {
+        return this.draft !== this.saved;
+    }
+}
+```
+
 ### Adding Navigation Tabs & Routes
 
 If your plugin provides a full-page view (like CalDAV or CardDAV), you must register both a Route and a NavTab:

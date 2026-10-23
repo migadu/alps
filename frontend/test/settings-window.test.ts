@@ -9,6 +9,8 @@
  *  - Escape closes it, unless a dialog on the key's path or a composer above
  *    it takes the key;
  *  - focus moves onto the current section, and goes back when it closes;
+ *  - a section with its own Save (the filters, the auto-reply) is asked about
+ *    before a Close, an Escape or another section drops what it holds;
  *  - on a phone, one column at a time.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -218,6 +220,80 @@ describe('the section list', () => {
   it('names the open section above it', async () => {
     const el = await page({ category: 'localization' });
     expect(shadow(el, '.category-title').textContent?.trim()).toBe('settings.categories.localization');
+  });
+});
+
+describe('a section with unsaved changes', () => {
+  /** A stand-in for the auto-reply: a section that reports a draft. */
+  async function withDraft(category = 'general') {
+    const el = await page({ category });
+    const section = document.createElement('div') as HTMLDivElement & { hasUnsavedChanges: boolean };
+    section.hasUnsavedChanges = true;
+    shadow(el, '.settings-content-wrapper').appendChild(section);
+    return { el, section };
+  }
+  const confirmOf = (el: El) => el.shadowRoot!.querySelector('ui-confirm') as El | null;
+
+  it('asks before Close would drop it, and closes only when told to', async () => {
+    const { el } = await withDraft();
+    const closes = record(el, 'settings-close');
+    shadow(el, '.close-btn').click();
+    await el.updateComplete;
+
+    const confirm = confirmOf(el);
+    expect(confirm, 'the discard confirm').not.toBeNull();
+    expect(confirm!.heading).toBe('settings.unsavedTitle');
+    expect(confirm!.confirmText).toBe('settings.discard');
+    expect(confirm!.cancelText).toBe('settings.keepEditing');
+    expect(closes).toHaveLength(0);
+
+    confirm!.dispatchEvent(new CustomEvent('confirm'));
+    await el.updateComplete;
+    expect(closes).toHaveLength(1);
+    expect(confirmOf(el)).toBeNull();
+  });
+
+  it('keeps the window, and the draft, when the user keeps editing', async () => {
+    const { el, section } = await withDraft();
+    const closes = record(el, 'settings-close');
+    document.body.dispatchEvent(escape());
+    await el.updateComplete;
+    confirmOf(el)!.dispatchEvent(new CustomEvent('cancel'));
+    await el.updateComplete;
+
+    expect(closes).toHaveLength(0);
+    expect(confirmOf(el)).toBeNull();
+    expect(section.isConnected).toBe(true);
+  });
+
+  it('asks before another section would drop it, and goes there once told to', async () => {
+    const { el } = await withDraft();
+    const asked = record<CustomEvent>(el, 'settings-category');
+    row(el, 'palette').click();
+    await el.updateComplete;
+    expect(asked).toHaveLength(0);
+
+    confirmOf(el)!.dispatchEvent(new CustomEvent('confirm'));
+    await el.updateComplete;
+    expect(asked.map((e) => e.detail.category)).toEqual(['appearance']);
+  });
+
+  it('does not ask about the section already open', async () => {
+    const { el } = await withDraft();
+    const asked = record<CustomEvent>(el, 'settings-category');
+    row(el, 'gear').click();
+    await el.updateComplete;
+    expect(confirmOf(el)).toBeNull();
+    expect(asked).toHaveLength(0);
+  });
+
+  it('closes at once once the draft is saved', async () => {
+    const { el, section } = await withDraft();
+    section.hasUnsavedChanges = false;
+    const closes = record(el, 'settings-close');
+    shadow(el, '.close-btn').click();
+    expect(closes).toHaveLength(1);
+    expect(confirmOf(el)).toBeNull();
   });
 });
 

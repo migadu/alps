@@ -2,6 +2,10 @@ export const es = {
   settings: {
     saveFailed: 'No se pudo guardar ese ajuste: puede que no se conserve al cerrar sesión',
     title: 'Configuración',
+    unsavedTitle: '¿Descartar los cambios?',
+    unsavedMessage: 'Tienes cambios sin guardar. Si sales de esta sección, se perderán.',
+    discard: 'Descartar',
+    keepEditing: 'Seguir editando',
     categories: {
       general: 'General',
       identity: 'Identidad',

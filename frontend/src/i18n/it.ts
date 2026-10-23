@@ -2,6 +2,10 @@ export const it = {
   settings: {
     saveFailed: 'Impossibile salvare questa impostazione — potrebbe non sopravvivere alla disconnessione',
     title: 'Impostazioni',
+    unsavedTitle: 'Annullare le modifiche?',
+    unsavedMessage: 'Ci sono modifiche non salvate. Uscendo da questa sezione andranno perse.',
+    discard: 'Scarta',
+    keepEditing: 'Continua a modificare',
     categories: {
       general: 'Generale',
       identity: 'Identità',
