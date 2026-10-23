@@ -1,6 +1,7 @@
 package alpsbase
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,22 @@ import (
 	"github.com/migadu/alps"
 	"github.com/migadu/alps/provider"
 )
+
+func TestHTTP_EmptyingTrashKeepsColonSiblingParts(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
+	cache := s.signedInSession().Cache()
+	for _, folder := range []string{"Trash", "Trash:Sub"} {
+		cache.Set("message:"+folder+":7:[1]:raw", CachedMessagePart{Message: &provider.Message{}, Mailbox: folder})
+	}
+	s.expect(s.do("POST", "/mailboxes/Trash/empty", nil), http.StatusOK)
+	if _, ok := cache.Get("message:Trash:Sub:7:[1]:raw"); !ok {
+		t.Error("emptying Trash dropped a different folder's cached part")
+	}
+	if _, ok := cache.Get("message:Trash:7:[1]:raw"); ok {
+		t.Error("emptying Trash kept its own cached part")
+	}
+}
 
 // The keys of Work:Sub begin with Work's prefix: its pages are under
 // messages:Work:, its conversations under thread:Work: and the messages read
