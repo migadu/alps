@@ -12,11 +12,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testShell = "<!DOCTYPE html>\n<html>\n<head>\n  <title>Alps Webmail</title>\n</head>\n<body></body>\n</html>\n"
+const testShell = "<!DOCTYPE html>\n<html>\n<head>\n  <title>Webmail</title>\n</head>\n<body></body>\n</html>\n"
 
-func brandedRouter(t *testing.T, b BrandingOptions) *Router {
-	t.Helper()
+// testDist is a frontend build with alps's own icons and the Migadu logo's.
+func testDist() fstest.MapFS {
 	dist := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte(testShell)}}
+	for _, name := range IconFiles {
+		dist[name] = &fstest.MapFile{Data: []byte("edelweiss " + name)}
+		dist["assets/logos/migadu/"+name] = &fstest.MapFile{Data: []byte("migadu " + name)}
+	}
+	return dist
+}
+
+func brandedRouter(t *testing.T, dist fstest.MapFS, b BrandingOptions) *Router {
+	t.Helper()
 	router := NewRouter(&Server{logger: &NilLogger{}})
 	router.StaticFS("", http.FS(dist))
 	require.NoError(t, router.serveBranding(dist, b))
@@ -33,18 +42,14 @@ func get(router *Router, path string) *httptest.ResponseRecorder {
 // logo from the page it is served in, so it is drawn branded from its first
 // paint, and the shell keeps the CSP every other answer has.
 func TestBrandingInTheShell(t *testing.T) {
-	router := brandedRouter(t, BrandingOptions{
-		DefaultTheme:  "migadu",
-		LoginLogo:     &Image{Data: []byte("<svg/>"), Type: "image/svg+xml"},
-		LoginLogoDark: &Image{Data: []byte("<svg id=dark/>"), Type: "image/svg+xml"},
-	})
+	router := brandedRouter(t, testDist(), BrandingOptions{DefaultTheme: "migadu", LogoBuiltin: "migadu"})
 
 	w := get(router, "/")
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "text/html; charset=utf-8", w.Header().Get("Content-Type"))
 	assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
 	assert.Contains(t, w.Header().Get("Content-Security-Policy"), "default-src 'self'")
-	assert.Contains(t, w.Body.String(), "<head>\n  <meta name=\"alps-default-theme\" content=\"migadu\" />\n  <meta name=\"alps-login-logo\" content=\"/branding/login-logo\" />\n  <meta name=\"alps-login-logo-dark\" content=\"/branding/login-logo-dark\" />\n  <title>")
+	assert.Contains(t, w.Body.String(), "<head>\n  <meta name=\"alps-default-theme\" content=\"migadu\" />\n  <meta name=\"alps-logo-builtin\" content=\"migadu\" />\n  <title>")
 
 	// The file server's own path to the shell ends up at the branded one.
 	w = get(router, "/index.html")
@@ -52,72 +57,61 @@ func TestBrandingInTheShell(t *testing.T) {
 	assert.Equal(t, "./", w.Header().Get("Location"))
 }
 
-// TestLoginLogoServed: the logo comes from alps itself, as the CSP allows no
-// image from elsewhere, and an SVG opened on its own runs nothing.
-func TestLoginLogoServed(t *testing.T) {
-	router := brandedRouter(t, BrandingOptions{LoginLogo: &Image{Data: []byte("<svg/>"), Type: "image/svg+xml"}})
+// TestBuiltinLogoIcons: a built-in logo is the tab's icon too, at every path
+// a browser, a home screen or the manifest asks for.
+func TestBuiltinLogoIcons(t *testing.T) {
+	router := brandedRouter(t, testDist(), BrandingOptions{LogoBuiltin: "migadu"})
+	for _, name := range IconFiles {
+		w := get(router, "/"+name)
+		require.Equal(t, http.StatusOK, w.Code, name)
+		assert.Equal(t, "migadu "+name, w.Body.String())
+	}
 
-	w := get(router, "/branding/login-logo")
-	require.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "image/svg+xml", w.Header().Get("Content-Type"))
-	assert.Equal(t, "<svg/>", w.Body.String())
-	assert.Contains(t, w.Header().Get("Content-Security-Policy"), "sandbox")
+	// A built-in logo missing one of them stops alps at start-up.
+	dist := testDist()
+	delete(dist, "assets/logos/migadu/favicon.ico")
+	assert.Error(t, NewRouter(&Server{logger: &NilLogger{}}).serveBranding(dist, BrandingOptions{LogoBuiltin: "migadu"}))
+}
 
-	// A logo alone still marks the shell, and names no theme and no dark logo.
+// TestLogoPackageServed: a deployment's own favicon package answers every
+// icon path, and the page shows its favicon.svg. The icons come from alps
+// itself, as the CSP takes no image from elsewhere, and an SVG opened on its
+// own runs nothing.
+func TestLogoPackageServed(t *testing.T) {
+	pkg := map[string][]byte{}
+	for _, name := range IconFiles {
+		pkg[name] = []byte("own " + name)
+	}
+	router := brandedRouter(t, testDist(), BrandingOptions{LogoPackage: pkg})
+
+	for _, name := range IconFiles {
+		w := get(router, "/"+name)
+		require.Equal(t, http.StatusOK, w.Code, name)
+		assert.Equal(t, "own "+name, w.Body.String())
+		assert.Contains(t, w.Header().Get("Content-Security-Policy"), "sandbox")
+	}
+	assert.Equal(t, "image/svg+xml", get(router, "/favicon.svg").Header().Get("Content-Type"))
+
 	body := get(router, "/").Body.String()
-	assert.Contains(t, body, `name="alps-login-logo"`)
+	assert.Contains(t, body, `<meta name="alps-logo" content="/favicon.svg" />`)
+	assert.NotContains(t, body, `name="alps-logo-builtin"`)
 	assert.NotContains(t, body, `name="alps-default-theme"`)
-	assert.NotContains(t, body, `name="alps-login-logo-dark"`)
-	assert.Equal(t, http.StatusNotFound, get(router, "/branding/login-logo-dark").Code)
-}
-
-func TestDarkLoginLogoServed(t *testing.T) {
-	router := brandedRouter(t, BrandingOptions{
-		LoginLogo:     &Image{Data: []byte("light"), Type: "image/png"},
-		LoginLogoDark: &Image{Data: []byte("dark"), Type: "image/webp"},
-	})
-	w := get(router, "/branding/login-logo-dark")
-	require.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "image/webp", w.Header().Get("Content-Type"))
-	assert.Equal(t, "dark", w.Body.String())
-	assert.Equal(t, "light", get(router, "/branding/login-logo").Body.String())
-}
-
-// TestBuiltinLogoInTheShell: a logo alps ships needs no route, only its name.
-func TestBuiltinLogoInTheShell(t *testing.T) {
-	router := brandedRouter(t, BrandingOptions{DefaultTheme: "migadu", LoginLogoBuiltin: "migadu"})
-	body := get(router, "/").Body.String()
-	assert.Contains(t, body, `<meta name="alps-login-logo-builtin" content="migadu" />`)
-	assert.NotContains(t, body, `name="alps-login-logo"`)
-	assert.Equal(t, http.StatusNotFound, get(router, "/branding/login-logo").Code)
-}
-
-// TestBuiltinLogosMatchTheFrontend: every logo login_logo may name, besides
-// the edelweiss, is one the frontend can draw.
-func TestBuiltinLogosMatchTheFrontend(t *testing.T) {
-	branding, err := os.ReadFile("frontend/src/utils/branding.ts")
-	require.NoError(t, err)
-	sprite, err := os.ReadFile("frontend/public/assets/icons/sprite.svg")
-	require.NoError(t, err)
-	var named []string
-	for _, m := range regexp.MustCompile(`(?m)^  ([a-z]+): '0 0 [0-9 ]+',$`).FindAllStringSubmatch(string(branding), -1) {
-		named = append(named, m[1])
-	}
-	assert.ElementsMatch(t, BuiltinLogos, append([]string{"alps"}, named...))
-	for _, name := range named {
-		assert.Contains(t, string(sprite), `<symbol id="`+name+`" `, "the sprite draws %q", name)
-	}
 }
 
 // TestNoBrandingServesTheShellAsBuilt: without branding nothing is added, and
-// there is no logo to fetch.
+// the icons are alps's own.
 func TestNoBrandingServesTheShellAsBuilt(t *testing.T) {
-	router := brandedRouter(t, BrandingOptions{})
+	router := brandedRouter(t, testDist(), BrandingOptions{})
 
 	w := get(router, "/")
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, testShell, w.Body.String())
-	assert.Equal(t, http.StatusNotFound, get(router, "/branding/login-logo").Code)
+	assert.Equal(t, "edelweiss favicon.ico", get(router, "/favicon.ico").Body.String())
+}
+
+func TestBrandedShellNeedsAHead(t *testing.T) {
+	_, err := brandedShell([]byte("<html><body></body></html>"), BrandingOptions{DefaultTheme: "migadu"})
+	assert.Error(t, err)
 }
 
 // TestThemesMatchTheFrontend: default_theme is checked against Themes, so a
@@ -133,7 +127,24 @@ func TestThemesMatchTheFrontend(t *testing.T) {
 	assert.ElementsMatch(t, Themes, bundles)
 }
 
-func TestBrandedShellNeedsAHead(t *testing.T) {
-	_, err := brandedShell([]byte("<html><body></body></html>"), BrandingOptions{DefaultTheme: "migadu"})
-	assert.Error(t, err)
+// TestBuiltinLogosMatchTheFrontend: every logo `logo` may name, besides the
+// edelweiss, is one the frontend can draw and has a full favicon package.
+func TestBuiltinLogosMatchTheFrontend(t *testing.T) {
+	branding, err := os.ReadFile("frontend/src/utils/branding.ts")
+	require.NoError(t, err)
+	sprite, err := os.ReadFile("frontend/public/assets/icons/sprite.svg")
+	require.NoError(t, err)
+	var named []string
+	list := regexp.MustCompile(`const BUILTIN_LOGOS = \[([^\]]*)\]`).FindSubmatch(branding)
+	require.NotNil(t, list, "BUILTIN_LOGOS in branding.ts")
+	for _, m := range regexp.MustCompile(`'([a-z]+)'`).FindAllSubmatch(list[1], -1) {
+		named = append(named, string(m[1]))
+	}
+	assert.ElementsMatch(t, BuiltinLogos, append([]string{"alps"}, named...))
+	for _, name := range named {
+		assert.Contains(t, string(sprite), `<symbol id="`+name+`" `, "the sprite draws %q", name)
+		for _, icon := range IconFiles {
+			assert.FileExists(t, "frontend/public/assets/logos/"+name+"/"+icon)
+		}
+	}
 }

@@ -200,22 +200,12 @@ type WebAuthnConfig struct {
 // BrandingConfig is what a deployment changes about how alps looks. Left out,
 // alps looks as it ships.
 type BrandingConfig struct {
-	DefaultTheme  string `toml:"default_theme"`   // Colour theme for anyone who has not picked one (default: alps)
-	LoginLogo     string `toml:"login_logo"`      // Built-in logo by name, or an image file, for the sign-in page (default: the default theme's own logo, else the edelweiss)
-	LoginLogoDark string `toml:"login_logo_dark"` // The same for the dark modes, for a logo that would not show on dark
+	DefaultTheme string `toml:"default_theme"` // Colour theme for anyone who has not picked one (default: alps)
+	Logo         string `toml:"logo"`          // A built-in logo by name, or a folder holding a favicon package (default: the default theme's own logo, else the edelweiss)
 }
 
-// logoTypes are the images a login logo may be, by file extension.
-var logoTypes = map[string]string{
-	".svg":  "image/svg+xml",
-	".png":  "image/png",
-	".webp": "image/webp",
-	".jpg":  "image/jpeg",
-	".jpeg": "image/jpeg",
-}
-
-// maxLogoBytes keeps a wrong path, a photo or a disk image, out of memory.
-const maxLogoBytes = 1 << 20
+// maxIconBytes keeps a wrong folder, of photos or disk images, out of memory.
+const maxIconBytes = 1 << 20
 
 func (b BrandingConfig) toOptions() (alps.BrandingOptions, error) {
 	var opts alps.BrandingOptions
@@ -226,61 +216,41 @@ func (b BrandingConfig) toOptions() (alps.BrandingOptions, error) {
 		}
 		opts.DefaultTheme = theme
 	}
-	if b.LoginLogoDark != "" && b.LoginLogo == "" {
-		return opts, newConfigError("branding.login_logo_dark", "needs login_logo, the logo for the light modes")
-	}
-	logo := strings.TrimSpace(b.LoginLogo)
+	logo := strings.TrimSpace(b.Logo)
 	if logo == "" && slices.Contains(alps.BuiltinLogos, opts.DefaultTheme) {
 		// A deployment in the Migadu theme signs in under the Migadu logo,
-		// unless login_logo names another.
+		// unless logo names another.
 		logo = opts.DefaultTheme
 	}
 	if name := strings.ToLower(logo); slices.Contains(alps.BuiltinLogos, name) {
-		if b.LoginLogoDark != "" {
-			return opts, newConfigError("branding.login_logo_dark",
-				"is for a logo file; the built-in %q takes the theme's colours in both modes", name)
-		}
-		// The edelweiss is what the sign-in page shows without one.
+		// The edelweiss is what alps shows without one.
 		if name != "alps" {
-			opts.LoginLogoBuiltin = name
+			opts.LogoBuiltin = name
 		}
 		return opts, nil
 	}
-	if logo != "" && filepath.Ext(logo) == "" {
-		return opts, newConfigError("branding.login_logo", "%q is neither a built-in logo (%s) nor an image file",
+	if logo == "" {
+		return opts, nil
+	}
+	if info, err := os.Stat(logo); err != nil || !info.IsDir() {
+		return opts, newConfigError("branding.logo", "%q is neither a built-in logo (%s) nor a folder holding a favicon package",
 			logo, strings.Join(alps.BuiltinLogos, ", "))
 	}
-	var err error
-	if opts.LoginLogo, err = readLogo("branding.login_logo", logo); err != nil {
-		return opts, err
-	}
-	if opts.LoginLogoDark, err = readLogo("branding.login_logo_dark", b.LoginLogoDark); err != nil {
-		return opts, err
+	opts.LogoPackage = make(map[string][]byte, len(alps.IconFiles))
+	for _, name := range alps.IconFiles {
+		path := filepath.Join(logo, name)
+		info, err := os.Stat(path)
+		if err != nil {
+			return opts, newConfigError("branding.logo", "the favicon package has no %s: %v", name, err)
+		}
+		if info.Size() > maxIconBytes {
+			return opts, newConfigError("branding.logo", "%q is %d bytes, more than the %d an icon may be", path, info.Size(), maxIconBytes)
+		}
+		if opts.LogoPackage[name], err = os.ReadFile(path); err != nil {
+			return opts, newConfigError("branding.logo", "%v", err)
+		}
 	}
 	return opts, nil
-}
-
-// readLogo reads the image at path, or returns nil when there is no path.
-func readLogo(key, path string) (*alps.Image, error) {
-	if path == "" {
-		return nil, nil
-	}
-	logoType, ok := logoTypes[strings.ToLower(filepath.Ext(path))]
-	if !ok {
-		return nil, newConfigError(key, "%q is not an SVG, PNG, WebP or JPEG file", path)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, newConfigError(key, "%v", err)
-	}
-	if info.Size() > maxLogoBytes {
-		return nil, newConfigError(key, "%q is %d bytes, more than the %d a logo may be", path, info.Size(), maxLogoBytes)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, newConfigError(key, "%v", err)
-	}
-	return &alps.Image{Data: data, Type: logoType}, nil
 }
 
 type PluginConfig struct {

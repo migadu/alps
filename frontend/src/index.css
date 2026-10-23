@@ -26,8 +26,14 @@
   --accent-color: #2563eb;
   --accent-hover: #1d4ed8;
   --accent-light: #dbeafe;
-  /* Text on an accent background, such as a primary button. */
-  --accent-contrast: #ffffff;
+  /* What carries white text in the accent: primary buttons, badges, event
+     chips. It is the accent unless a theme sets it apart, as Migadu does to
+     keep the site's button blue beside its sky-blue links. */
+  --accent-fill: var(--accent-color);
+  --accent-fill-hover: var(--accent-hover);
+  --accent-fill-border: transparent;
+  /* The colour the logo marks draw in, as the logo and as the spinner. */
+  --logo-color: var(--accent-color);
 
   --success: #10b981;
   --warning: #f59e0b;
@@ -148,9 +154,6 @@ h6 {
 
 .theme-dark {
   --modal-backdrop: rgba(0, 0, 0, 0.5);
-  /* For things drawn once per mode, such as a light and a dark logo. */
-  --light-only-display: none;
-  --dark-only-display: block;
   --toast-bg: var(--bg-tertiary, #374151);
   --toast-border: var(--border-color, #4b5563);
 }

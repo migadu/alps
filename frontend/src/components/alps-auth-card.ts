@@ -1,11 +1,11 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import { iconHref, renderIcon } from '../utils/ui';
-import { BUILTIN_LOGOS } from '../utils/branding';
+import { renderIcon } from '../utils/ui';
+import { logoStyles, renderLogo } from '../utils/branding';
 
 @customElement('alps-auth-card')
 export class AlpsAuthCard extends LitElement {
-  static styles = css`
+  static styles = [logoStyles, css`
     :host {
       display: flex;
       justify-content: center;
@@ -35,32 +35,11 @@ export class AlpsAuthCard extends LitElement {
       margin-bottom: 12px;
     }
 
-    .logo-container svg {
+    .logo-container svg,
+    .logo-container img.logo {
       width: var(--auth-card-icon-size, 40px);
       height: var(--auth-card-icon-size, 40px);
       fill: var(--auth-card-icon-color, currentColor);
-    }
-
-    /* A deployment's own logo: any shape, kept within the card. With one for
-       each mode, the page's mode picks it: index.css sets the two displays. */
-    .logo-container img {
-      display: block;
-      max-width: 100%;
-      max-height: 56px;
-    }
-
-    .logo-container img.light-only {
-      display: var(--light-only-display, block);
-    }
-
-    .logo-container img.dark-only {
-      display: var(--dark-only-display, none);
-    }
-
-    /* A logo alps ships: as wide as its viewBox makes it at this height. */
-    .logo-container svg.builtin-logo {
-      width: auto;
-      height: 32px;
     }
 
     h1 {
@@ -91,36 +70,20 @@ export class AlpsAuthCard extends LitElement {
         box-shadow: none;
       }
     }
-  `;
+  `];
 
   @property({ type: String }) icon = '';
-  /** An image shown in place of the icon. Unlabelled: the title names the page. */
-  @property({ type: String }) logo = '';
-  /** The logo's stand-in in the dark modes, if it has one. */
-  @property({ type: String }) logoDark = '';
-  /** A logo alps ships (BUILTIN_LOGOS), shown in place of the icon. */
-  @property({ type: String }) builtinLogo = '';
+  /** Shows the deployment's logo in place of the icon. */
+  @property({ type: Boolean }) branded = false;
   @property({ type: String }) title = '';
   @property({ type: String }) subtitle = '';
 
   render() {
-    const builtinViewBox = BUILTIN_LOGOS[this.builtinLogo];
     return html`
       <div class="card">
-        ${this.logo ? html`
+        ${this.branded || this.icon ? html`
           <div class="logo-container">
-            <img class=${this.logoDark ? 'light-only' : ''} src=${this.logo} alt="">
-            ${this.logoDark ? html`<img class="dark-only" src=${this.logoDark} alt="">` : ''}
-          </div>
-        ` : builtinViewBox ? html`
-          <div class="logo-container">
-            <svg class="builtin-logo" viewBox=${builtinViewBox} aria-hidden="true">
-              <use href=${iconHref(this.builtinLogo)}></use>
-            </svg>
-          </div>
-        ` : this.icon ? html`
-          <div class="logo-container">
-            ${renderIcon(this.icon)}
+            ${this.branded ? renderLogo() : renderIcon(this.icon)}
           </div>
         ` : ''}
         ${this.title ? html`<h1>${this.title}</h1>` : ''}

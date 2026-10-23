@@ -3,8 +3,9 @@ import { customElement, property } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { registry } from '../plugin-registry';
-import { renderIcon, getMailboxLabel } from '../utils/ui';
+import { getMailboxLabel } from '../utils/ui';
 import { matchesTabRoute } from '../utils/routes';
+import { logoStyles, renderLogo } from '../utils/branding';
 import './alps-header';
 import './alps-input';
 import './alps-icon-btn';
@@ -62,7 +63,7 @@ export class AppHeader extends LitElement {
     }
   };
 
-  static styles = css`
+  static styles = [logoStyles, css`
     :host {
       display: block;
       width: 100%;
@@ -75,7 +76,8 @@ export class AppHeader extends LitElement {
       width: 36px;
     }
 
-    .logo svg {
+    .logo svg,
+    .logo img.logo {
       width: 28px;
       height: 28px;
     }
@@ -119,7 +121,7 @@ export class AppHeader extends LitElement {
       flex: 1;
       --alps-input-bg: var(--bg-secondary, #f9fafb);
     }
-  `;
+  `];
   private handleTabClick(tab: string) {
     // A plugin tab clicked on its own page goes nowhere. Its bare `#/<tab>` is
     // the page the user is already on under another spelling: setting it was
@@ -149,8 +151,8 @@ export class AppHeader extends LitElement {
       >
         <div slot="left" class="header-left-slot">
           ${!this.isMobile ? html`
-            <div class="logo" title="Alps">
-              ${renderIcon('edelweiss')}
+            <div class="logo">
+              ${renderLogo()}
             </div>
             <div class="nav-tabs">
               <div 
