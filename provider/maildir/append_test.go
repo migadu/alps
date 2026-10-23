@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 
@@ -96,5 +97,44 @@ func TestAppendMessageStoresNothingItCouldNotWrite(t *testing.T) {
 		if err != nil || len(entries) != 0 {
 			t.Errorf("%s holds %d files (%v)", sub, len(entries), err)
 		}
+	}
+}
+
+// A message alps files as its own, a message the user sent or a draft, is
+// stored seen, and a draft as a draft, as the IMAP provider appends them. They
+// were stored with no flags: every sent message and every draft was unread,
+// and counted in their folder's unread count.
+func TestAppendMessageStoresItsOwnMessagesSeen(t *testing.T) {
+	for mboxType, want := range map[provider.MailboxType][]provider.Flag{
+		provider.MailboxTypeSent:   {provider.FlagSeen},
+		provider.MailboxTypeDrafts: {provider.FlagDraft, provider.FlagSeen},
+	} {
+		p := NewProvider(t.TempDir(), "ada@example.com")
+		content := []byte("From: ada@example.com\r\nSubject: Notes\r\n\r\nremember the milk\r\n")
+		mbox, id, _, err := p.AppendMessage("", &mockMessage{content: content}, mboxType)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored, err := p.GetMessageMetadata(mbox.Name, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(stored.Flags, want) {
+			t.Errorf("%s: stored with %v, want %v", mbox.Name, stored.Flags, want)
+		}
+		if status, err := p.GetMailboxStatus(mbox.Name); err != nil || status.NumUnseen != 0 {
+			t.Errorf("%s: %+v unread (%v), want none", mbox.Name, status, err)
+		}
+	}
+}
+
+// A message stored into a folder the caller names is stored as it is, as a
+// delivery is: unread.
+func TestAppendMessageToANamedFolderStoresItUnread(t *testing.T) {
+	p := NewProvider(t.TempDir(), "ada@example.com")
+	id := appendOne(t, p, "From: charles@remote.test\r\nSubject: Engines\r\n\r\nbody\r\n")
+	stored, err := p.GetMessageMetadata("INBOX", id)
+	if err != nil || len(stored.Flags) != 0 {
+		t.Errorf("stored with %v (%v), want no flags", stored.Flags, err)
 	}
 }

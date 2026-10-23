@@ -3046,6 +3046,10 @@ func handleMove(ctx *alps.Context) error {
 		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
 			mapping, err := moveMessagesWithProvider(p, mboxName, to, batch)
 			if err != nil {
+				// What did move is forgotten below all the same.
+				for id := range mapping {
+					movedIDs = append(movedIDs, id)
+				}
 				return fmt.Errorf("failed to move messages: %v", err)
 			}
 			moved += len(batch)
@@ -3059,13 +3063,14 @@ func handleMove(ctx *alps.Context) error {
 			return nil
 		})
 	})
+	// The folders are read again after a move that failed too: it may have
+	// moved some of the messages first, in an earlier batch, or one by one as
+	// the maildir provider moves them. They went on listing what had left.
+	invalidateMailboxCache(ctx, mboxName, to)
+	forgetMessages(ctx.Session.Cache(), mboxName, idStrings(movedIDs)...)
 	if err != nil {
 		return err
 	}
-
-	// Invalidate cache for affected mailboxes
-	invalidateMailboxCache(ctx, mboxName, to)
-	forgetMessages(ctx.Session.Cache(), mboxName, idStrings(movedIDs)...)
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"ok":         true,
@@ -3136,12 +3141,12 @@ func handleCopy(ctx *alps.Context) error {
 			return nil
 		})
 	})
+	// The destination is read again after a copy that failed too: it may hold
+	// some of the copies (see handleMove).
+	invalidateMailboxCache(ctx, to)
 	if err != nil {
 		return err
 	}
-
-	// Invalidate cache for affected mailboxes
-	invalidateMailboxCache(ctx, to)
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"ok":         true,
@@ -3185,21 +3190,25 @@ func handleDelete(ctx *alps.Context) error {
 			return err
 		}
 		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
-			if err := deleteMessagesWithProvider(p, mboxName, batch); err != nil {
+			err := deleteMessagesWithProvider(p, mboxName, batch)
+			// A batch that failed may have deleted some of its messages:
+			// what the session holds of any of them is forgotten.
+			deletedIDs = append(deletedIDs, batch...)
+			if err != nil {
 				return fmt.Errorf("failed to delete messages: %v", err)
 			}
 			deleted += len(batch)
-			deletedIDs = append(deletedIDs, batch...)
 			return nil
 		})
 	})
+
+	// The folder is read again after a delete that failed too (see
+	// handleMove).
+	invalidateMailboxCache(ctx, mboxName)
+	forgetMessages(ctx.Session.Cache(), mboxName, idStrings(deletedIDs)...)
 	if err != nil {
 		return err
 	}
-
-	// Invalidate cache for the mailbox
-	invalidateMailboxCache(ctx, mboxName)
-	forgetMessages(ctx.Session.Cache(), mboxName, idStrings(deletedIDs)...)
 
 	return ctx.JSON(http.StatusOK, map[string]any{"ok": "true", "count": deleted})
 }
