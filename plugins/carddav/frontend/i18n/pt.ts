@@ -21,6 +21,7 @@ export default {
     categoryDeleteOneFailed: 'Não foi possível atualizar um contacto, a categoria foi removida apenas parcialmente.',
     categoryUpdateOneFailed: 'Não foi possível atualizar o contacto.',
     saveFailed: 'Não foi possível guardar o contacto.',
+    loadFailed: 'Não foi possível carregar o contacto, pelo que ainda não pode ser editado.',
     saveConflict: 'O contacto foi alterado noutro dispositivo, por isso a sua alteração não foi guardada. Cancele a edição para ver a versão mais recente.',
     starFailed: {
       one: 'Não foi possível atualizar {count} de {total} contactos.',

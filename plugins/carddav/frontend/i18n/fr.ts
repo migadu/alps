@@ -21,6 +21,7 @@ export default {
     categoryDeleteOneFailed: 'Un contact n\'a pas pu être mis à jour, la catégorie n\'a été supprimée que partiellement.',
     categoryUpdateOneFailed: 'Le contact n\'a pas pu être mis à jour.',
     saveFailed: 'Le contact n\'a pas pu être enregistré.',
+    loadFailed: 'Le contact n\'a pas pu être chargé, il ne peut donc pas encore être modifié.',
     saveConflict: 'Le contact a été modifié sur un autre appareil, votre modification n\'a donc pas été enregistrée. Annulez la modification pour voir la dernière version.',
     starFailed: {
       one: 'Impossible de mettre à jour {count} contact sur {total}.',
