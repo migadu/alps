@@ -271,6 +271,7 @@ export const da: TranslationDictionary = {
     noMessages: 'Ingen beskeder',
     loadError: 'Mappen kunne ikke indlæses.',
     loadErrorRetry: 'Prøv igen',
+    searchLimited: 'Mailserveren begrænser søgninger lige nu. Prøv igen om et øjeblik.',
     loading: 'Indlæser...',
     unknownSender: 'Ukendt afsender',
     unknown: 'Ukendt',

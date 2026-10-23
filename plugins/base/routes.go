@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime"
 	"net/http"
 	"net/url"
@@ -1491,6 +1492,10 @@ func handleGetMailbox(ctx *alps.Context) error {
 			}
 			return nil
 		})
+		var limited *provider.LimitError
+		if errors.As(err, &limited) {
+			return searchRateLimited(ctx, limited)
+		}
 		if err != nil {
 			return err
 		}
@@ -1542,6 +1547,23 @@ func folderListVersion(mailboxes []MailboxInfo) string {
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:8])
+}
+
+// searchRateLimited answers a search the mail server refused for its rate
+// limit (RFC 5530 [LIMIT]): 429, with the wait the server named as
+// Retry-After when it named one, so that the page says the server asked to
+// slow down instead of that the folder could not be loaded. It was a 500.
+// Only a search with a query gets here: a listing without one is listed by
+// number instead when the server refuses its SORT or SEARCH.
+func searchRateLimited(ctx *alps.Context, limited *provider.LimitError) error {
+	ctx.Server.Logger().Printf("Search refused for the mail server's rate limit: %v", limited)
+	body := map[string]interface{}{"error": "search_rate_limited"}
+	if limited.RetryAfter > 0 {
+		seconds := int(math.Ceil(limited.RetryAfter.Seconds()))
+		ctx.Response.Header().Set("Retry-After", strconv.Itoa(seconds))
+		body["retry_after"] = seconds
+	}
+	return ctx.JSON(http.StatusTooManyRequests, body)
 }
 
 // handleListMailboxes answers with the folder list and nothing else.

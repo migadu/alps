@@ -1,4 +1,4 @@
-import { fetchWithTimeout } from '../utils/fetch-utils';
+import { fetchWithTimeout, HttpStatusError } from '../utils/fetch-utils';
 import { ALL_MAILBOXES, FOLDER_INBOX, encodeMailboxPath, isDescendantMailbox } from '../utils/folders';
 import { Logger } from '../utils/logger';
 import { mailboxOf, messageKey } from '../utils/message-key';
@@ -908,8 +908,10 @@ export class MessageSyncService extends EventTarget {
 
       // Any other refusal is a failure. The server's errors are JSON too, and
       // announced as data an `{"error": …}` answer had no Messages: the page
-      // took it for an empty folder and cleared the rows on screen.
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      // took it for an empty folder and cleared the rows on screen. Its status
+      // goes with it: a 429 is a search the mail server refused for its rate
+      // limit, which the page says as that.
+      if (!response.ok) throw new HttpStatusError(response.status, `HTTP ${response.status}`);
 
       const data: MailboxData = await response.json();
       if (this.currentFetchId !== fetchId) return; // Re-check after json parsing
