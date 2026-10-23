@@ -81,3 +81,33 @@ func TestSaveWritesTheBirthdayItChanged(t *testing.T) {
 		t.Fatalf("stored birthday %+v, want none", f)
 	}
 }
+
+// The editor writes a birthday without a year as `--1031`. vCard 3.0 has no
+// such form, so a 3.0 card gets the one Apple's apps write, which reads back
+// as the same day and month; a 4.0 card gets `--1031` as it is.
+func TestBirthdayWithoutAYearIsWrittenInTheCardsVersion(t *testing.T) {
+	for version, want := range map[string]*vcard.Field{
+		"3.0": {Value: "1604-11-05", Params: appleNoYear},
+		"4.0": {Value: "--1105"},
+	} {
+		t.Run(version, func(t *testing.T) {
+			h := newHarness(t)
+			objectPath := testBook + "grace.vcf"
+			card := withBirthday("1985-10-31", nil)
+			card.SetValue(vcard.FieldVersion, version)
+			h.dav.save(objectPath, card)
+
+			contact := h.opened(objectPath)
+			contact.Birthday = "--1105"
+			h.expect(h.do("POST", "/contacts/"+pathParam(objectPath)+"/edit", contact), http.StatusOK)
+
+			f := h.dav.get(t, objectPath).Card.Preferred(vcard.FieldBirthday)
+			if f == nil || f.Value != want.Value || f.Params.Get("X-APPLE-OMIT-YEAR") != want.Params.Get("X-APPLE-OMIT-YEAR") {
+				t.Fatalf("stored birthday %+v, want %+v", f, want)
+			}
+			if got := h.opened(objectPath).Birthday; got != "--1105" {
+				t.Fatalf("birthday read back as %q, want --1105", got)
+			}
+		})
+	}
+}

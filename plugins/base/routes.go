@@ -2391,11 +2391,16 @@ func handleComposeNew(ctx *alps.Context) error {
 	// A field that does not read as addresses is refused here, for what it
 	// is, rather than as a failure to send or to store the draft. A Bcc that
 	// does not read so is refused only when the message is sent: a draft is
-	// still saved, as it always was, and stored without it.
+	// still saved, with each Bcc entry that does read. Saved without the
+	// field, it lost every Bcc recipient over one that did not, the ones
+	// written correctly too.
 	recipients := map[string][]string{}
 	for _, field := range []string{"to", "cc", "bcc"} {
 		list, err := parseAddressList(ctx.FormValue(field))
-		if err != nil && !(saveAsDraft && field == "bcc") {
+		if err != nil && saveAsDraft && field == "bcc" {
+			list, err = readableAddresses(ctx.FormValue(field)), nil
+		}
+		if err != nil {
 			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid %s address: %v", field, err)})
 		}
 		recipients[field] = list
@@ -2603,9 +2608,9 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	if saveAsDraft {
-		// The Bcc actually written, not the field the browser posted: an
-		// unreadable Bcc is omitted from a draft. Name and Address stay
-		// separate so the browser need not decode MIME display names.
+		// The Bcc actually written, not the field the browser posted: a Bcc
+		// entry that does not read is omitted from a draft. Name and Address
+		// stay separate so the browser need not decode MIME display names.
 		storedBcc, err := prepareAddressList(msg.Bcc)
 		if err != nil {
 			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid bcc address: " + err.Error()})

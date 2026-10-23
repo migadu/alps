@@ -189,6 +189,10 @@ func extractContactData(card vcard.Card, path string) ContactData {
 // or basic, with whatever follows the day left out.
 var appleDate = regexp.MustCompile(`^(\d{4})-?(\d{2})-?(\d{2})`)
 
+// yearlessDate is a date without a year as the page writes it, `--1031`
+// (RFC 6350), or `--10-31`.
+var yearlessDate = regexp.MustCompile(`^--(\d{2})-?(\d{2})$`)
+
 // birthdayOf is a BDAY field's value as the page is given it. Apple's apps
 // write a birthday without a year as one in 1604 and name that year in a
 // parameter, `BDAY;X-APPLE-OMIT-YEAR=1604:1604-10-31`. Such a birthday is
@@ -399,15 +403,15 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
+		// The whole card, which an empty address-data request asks for. The
+		// listing is read for more than its rows' names and addresses: the
+		// sidebar's categories and Favorites, the rows' photos, nicknames,
+		// organisations and dates, and the key the composer encrypts to. It
+		// asked for FN, EMAIL, TEL and UID only, and a server that answers
+		// with just the properties asked for (RFC 6352, 10.4), as go-webdav's
+		// does, gave every card without the rest.
 		query := carddav.AddressBookQuery{
-			DataRequest: carddav.AddressDataRequest{
-				Props: []string{
-					vcard.FieldFormattedName,
-					vcard.FieldEmail,
-					vcard.FieldTelephone,
-					vcard.FieldUID,
-				},
-			},
+			DataRequest: carddav.AddressDataRequest{},
 			PropFilters: []carddav.PropFilter{{
 				Name: vcard.FieldFormattedName,
 			}},
@@ -708,7 +712,17 @@ func registerRoutes(p *plugin) {
 		// parameters with it: written bare, Apple's birthday without a year
 		// became one in 1604, in Apple's own apps too, after any edit here.
 		if f := card.Preferred(vcard.FieldBirthday); f == nil || strings.TrimSpace(birthdayOf(f)) != strings.TrimSpace(req.Birthday) {
-			setSimpleField(vcard.FieldBirthday, req.Birthday)
+			// vCard 3.0 has no form for a date without a year (RFC 2426 takes
+			// a complete date), so one goes into a 3.0 card as Apple's apps
+			// write it, which birthdayOf reads back as a day and a month.
+			if m := yearlessDate.FindStringSubmatch(strings.TrimSpace(req.Birthday)); m != nil && card.Value(vcard.FieldVersion) == "3.0" {
+				card[vcard.FieldBirthday] = []*vcard.Field{{
+					Value:  "1604-" + m[1] + "-" + m[2],
+					Params: vcard.Params{"X-APPLE-OMIT-YEAR": []string{"1604"}},
+				}}
+			} else {
+				setSimpleField(vcard.FieldBirthday, req.Birthday)
+			}
 		}
 		setShownField(vcard.FieldNote, "note", req.Note)
 		setShownField(vcard.FieldURL, "url", req.URL)

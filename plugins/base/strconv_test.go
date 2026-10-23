@@ -80,3 +80,26 @@ func TestParseAddressList(t *testing.T) {
 		}
 	}
 }
+
+// A draft keeps the Bcc entries that read as addresses when one does not.
+// Split at every comma, a quoted name or a quoted local part that holds one
+// would be two entries, neither an address.
+func TestReadableAddresses(t *testing.T) {
+	cases := map[string][]string{
+		`"Hopper, Grace" <grace@example.com>, eve@, hidden@example.com`: {`"Hopper, Grace" <grace@example.com>`, "hidden@example.com"},
+		`"a,b"@example.com, <c@example.com>; , d@example.com`:           {`"a,b"@example.com`, "d@example.com"},
+		`"Jane \"J,J\" Doe" <jj@example.com>, nobody`:                   {`"Jane \"J,J\" Doe" <jj@example.com>`},
+		`hidden@example.com;`: {},
+		"":                    {},
+	}
+	for in, want := range cases {
+		if got := readableAddresses(in); !reflect.DeepEqual(got, want) {
+			t.Errorf("readableAddresses(%q) = %q, want %q", in, got, want)
+		}
+	}
+	split := splitAddressList(`"Lovelace, Ada" <ada@x.test>, (Babbage, Charles) c@x.test, <d,e@x.test>, f@x.test`)
+	want := []string{`"Lovelace, Ada" <ada@x.test>`, ` (Babbage, Charles) c@x.test`, ` <d,e@x.test>`, ` f@x.test`}
+	if !reflect.DeepEqual(split, want) {
+		t.Errorf("splitAddressList = %q, want %q", split, want)
+	}
+}
