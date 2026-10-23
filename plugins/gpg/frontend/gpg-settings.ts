@@ -341,7 +341,7 @@ export class AlpsGpgSettings extends LitElement {
             ${this.importError ? html`
                 <ui-modal title="${this.i18nStore?.t('gpg.importFailedTitle')}" @cancel=${this.clearError}>
                     <div style="padding: 16px; white-space: pre-wrap; font-family: monospace; font-size: 13px;">${this.importError}</div>
-                    <alps-button slot="actions" @click=${this.clearError}>OK</alps-button>
+                    <alps-button slot="actions" @click=${this.clearError}>${this.i18nStore?.t('attachment.close')}</alps-button>
                 </ui-modal>
             ` : ''}
 
