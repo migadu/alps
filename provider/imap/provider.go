@@ -1902,6 +1902,11 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 	if err != nil {
 		return nil, err
 	}
+	if uidMapping != nil && len(uidMapping) == 0 {
+		// A known-empty copy must not delete: without UIDPLUS even an
+		// absent UID would expunge unrelated mail already marked Deleted.
+		return uidMapping, nil
+	}
 
 	err = p.DeleteMessages(sourceMailbox, ids)
 	return uidMapping, err
