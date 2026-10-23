@@ -56,7 +56,8 @@ func (n *mailboxNews) handler() *imapclient.UnilateralDataHandler {
 
 // tell passes the news on, naming the mailbox selected now. The handlers run
 // on the connection's reader, and the client has recorded the change before
-// it calls one.
+// it calls one, and any SELECT answered before it (see selectMailbox): the
+// client's own record is the one to go by here.
 func (n *mailboxNews) tell() {
 	c, news := n.client.Load(), n.news.Load()
 	if c == nil || news == nil {
@@ -64,6 +65,15 @@ func (n *mailboxNews) tell() {
 	}
 	if mbox := c.Mailbox(); mbox != nil {
 		(*news)(mbox.Name)
+	}
+}
+
+// tellOf passes on news of mailbox, for a caller other than the connection's
+// reader: the client's record of the mailbox selected may lag behind a
+// SELECT just answered there, or name none (see selectMailbox).
+func (n *mailboxNews) tellOf(mailbox string) {
+	if news := n.news.Load(); news != nil {
+		(*news)(mailbox)
 	}
 }
 
@@ -177,7 +187,7 @@ func (p *IMAPProvider) Idle(mailbox string, stop <-chan struct{}, started func()
 // rememberIdled records what the selected mailbox is as an IDLE on it ends
 // (see Idle). With ask, the server may be asked for its UIDNEXT.
 func (p *IMAPProvider) rememberIdled(ask bool) error {
-	mbox := p.client.Mailbox()
+	mbox := p.selectedMailbox()
 	if mbox == nil {
 		return nil
 	}
@@ -210,7 +220,7 @@ func (p *IMAPProvider) rememberIdled(ask bool) error {
 	// STATUS can receive another EXISTS or EXPUNGE before its answer. The
 	// handler already told of it; record that newer count with the UIDNEXT
 	// learnt above rather than announcing the same change after a reselect.
-	mbox = p.client.Mailbox()
+	mbox = p.selectedMailbox()
 	if mbox == nil {
 		return nil
 	}
@@ -271,11 +281,11 @@ func (p *IMAPProvider) lostIf(err error) error {
 // between what it holds now, as selected, and what it was as the last IDLE
 // on it ended. See Idle.
 func (p *IMAPProvider) tellWhatChangedMeanwhile(mailbox string) {
-	was, now := p.idled, p.client.Mailbox()
+	was, now := p.idled, p.selectedMailbox()
 	if p.news == nil || now == nil || !was.known || was.mailbox != mailbox || was.selects == p.selects {
 		return
 	}
 	if now.NumMessages != was.count || p.selectedUIDValidity != was.uidValidity || p.selectedUIDNext != was.uidNext {
-		p.news.tell()
+		p.news.tellOf(mailbox)
 	}
 }
