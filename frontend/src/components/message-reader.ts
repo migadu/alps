@@ -139,10 +139,19 @@ export class MessageReader extends LitElement {
       if (!this.message) return;
       this._closePopup();
       const key = this.keyOf(this.message);
+      // A body whose read failed is read again first, as Edit Draft reads it:
+      // taken as it stood, a reply quoted nothing and a forward went out
+      // without the original's text.
+      const card = this.threadItems.find(i => this.itemKey(i) === key);
+      if (card && !card.loading && card.loadFailed) void this.retryItemBody(card);
       if (this.bodyLoads.has(key)) {
         await this.loadedItem(key);
         // Another message was opened while this one's body was coming.
         if (!this.message || this.keyOf(this.message) !== key) return;
+      }
+      if (this.loadFailed) {
+        this._sayBodyUnread();
+        return;
       }
 
       // From the body on screen. An HTML message used to be asked for again in
@@ -2071,11 +2080,17 @@ export class MessageReader extends LitElement {
     if (action === 'reply' || action === 'replyAll' || action === 'forward') {
       const key = this.itemKey(item);
       this.readWaitingCard(key);
+      // As from the toolbar: a body whose read failed is read again first.
+      if (!item.loading && item.loadFailed) void this.retryItemBody(item);
       if (this.bodyLoads.has(key)) {
         const loaded = await this.loadedItem(key);
         // The card has left the conversation while its body was coming.
         if (!loaded) return;
         item = loaded;
+      }
+      if (item.loadFailed) {
+        this._sayBodyUnread();
+        return;
       }
       // From the card's body, as the toolbar's reply is (see _handleAction).
       let textBody = '';
@@ -2198,6 +2213,16 @@ export class MessageReader extends LitElement {
   };
 
   /**
+   * Says that a body an answer or a draft would be taken from could not be
+   * read, as the reader says it over the body; nothing is opened.
+   */
+  private _sayBodyUnread() {
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: { message: this.i18nStore?.t('messageReader.loadError') },
+    }));
+  }
+
+  /**
    * Prepares the current message to be edited as a draft.
    * Gathers the draft's content, recipients, and attachments, then opens the composer pre-filled with this data.
    */
@@ -2234,9 +2259,7 @@ export class MessageReader extends LitElement {
     // Still not read: said, as the reader says it over the body, and nothing
     // is opened that could be saved over the draft.
     if (isItem ? item.loadFailed : this.loadFailed) {
-      window.dispatchEvent(new CustomEvent('show-toast', {
-        detail: { message: this.i18nStore?.t('messageReader.loadError') },
-      }));
+      this._sayBodyUnread();
       return;
     }
 

@@ -214,6 +214,10 @@ describe('Reply All', () => {
       Flags: ['\\Seen'],
       Envelope: { Subject: 'Engines', Date: '2026-09-01T10:00:00Z', From: [person('grace', 'Grace')], To: [person('ada', 'Ada'), person('bob')], Cc: [] },
     };
+    // A body to answer: one that cannot be read is answered with nothing.
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => (/\/messages\/7\?view=/.test(String(url))
+      ? new Response(JSON.stringify({ Part: { Path: [1], MIMEType: 'text/plain' }, Body: 'Notes', HasText: true }), { status: 200 })
+      : new Response('{}', { status: 404 }))));
     const composeStore = { openComposer: vi.fn() };
     const el = await mount<El>('alps-message-reader', {
       settingsStore: settingsStore({ enableThreading: true, preferredView: 'text', showRemoteContent: 'never', loginUsername: LOGIN, loginAddress: ADDRESS }),

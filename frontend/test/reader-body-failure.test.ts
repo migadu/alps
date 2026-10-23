@@ -245,3 +245,44 @@ describe('Edit draft on a draft whose body failed to load', () => {
     });
   }
 });
+
+// Reply, Reply All and Forward stay on screen above the load error too, and
+// took the body the reader held, none: a reply quoted nothing, and a forward
+// went out without the original's text.
+describe('an answer to a message whose body failed to load', () => {
+  const answerFrom = {
+    'the toolbar': (el: El, action: string) => el._handleAction(action),
+    'its card': (el: El, action: string) => el._handleActionForItem(action, el.threadItems[0]),
+  };
+
+  for (const [from, answer] of Object.entries(answerFrom)) {
+    for (const action of ['reply', 'replyAll', 'forward']) {
+      it(`${action} from ${from} reads the body again and quotes it`, async () => {
+        const composeStore = { openComposer: vi.fn() };
+        const el = await open(message, composeStore);
+        expect(shadowAll(el, '.reader-load-error')).toHaveLength(1);
+
+        bodyStatus.INBOX = 200;
+        await answer(el, action);
+
+        expect(composeStore.openComposer).toHaveBeenCalledTimes(1);
+        const opened = composeStore.openComposer.mock.calls[0][0];
+        expect(opened.text).toContain('the INBOX body');
+        if (action === 'forward') expect(opened.attachments).toEqual([expect.objectContaining({ name: 'figures.csv', partPath: '2' })]);
+        expect(bodyReads).toEqual(['INBOX', 'INBOX']);
+      });
+    }
+
+    it(`from ${from}, says so and opens no composer when the body still cannot be read`, async () => {
+      const composeStore = { openComposer: vi.fn() };
+      const el = await open(message, composeStore);
+      const toasts = record<CustomEvent>(window, 'show-toast');
+
+      await answer(el, 'reply');
+
+      expect(composeStore.openComposer).not.toHaveBeenCalled();
+      expect(bodyReads).toEqual(['INBOX', 'INBOX']);
+      expect(toasts.map(e => e.detail.message)).toEqual(['messageReader.loadError']);
+    });
+  }
+});
