@@ -336,7 +336,10 @@ func registerRoutes(p *plugin) {
 
 		if !ok || homeSet == "" {
 			if len(calendars) > 0 {
-				homeSet = path.Dir(calendars[0].Path)
+				// The collection that holds the first calendar. A collection's
+				// path ends in a slash, and path.Dir of that is the calendar
+				// itself, which put the new calendar inside it.
+				homeSet = path.Dir(strings.TrimSuffix(calendars[0].Path, "/"))
 			} else {
 				return fmt.Errorf("failed to determine calendar home set")
 			}
