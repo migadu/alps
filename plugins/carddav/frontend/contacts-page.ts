@@ -76,6 +76,15 @@ export class ContactsPage extends LitElement {
   private loadedQuery = '';
   /** The whole book as last read, beside a search or without one; see allContacts. */
   private wholeBook: any[] = [];
+  /**
+   * The open card's path once the whole card is held: read, or just written
+   * from the editor. Until then the page shows the list's copy, which holds
+   * only what the listing returned; see handleEdit.
+   */
+  private wholeCardPath: string | null = null;
+  /** The read of the open card on its way, which Edit waits for. */
+  private cardRead: { path: string; generation: number; done: Promise<boolean> } | null = null;
+  private cardGeneration = 0;
   private mergedBook: { contacts: any[]; wholeBook: any[]; open: any; merged: any[] } | null = null;
 
   static styles = [
@@ -566,18 +575,42 @@ export class ContactsPage extends LitElement {
     if (this.selectedContact?.path === contact.path) return;
 
     // Set immediately for instant UI feedback (prevents flashing)
+    this.cardGeneration++;
     this.selectedContact = { ...contact };
+    this.wholeCardPath = null;
     this.isEditing = false;
     this.conflictedPath = null;
-    try {
-      const data = await contactsService.fetchContact(contact.path!);
-      // Only update if the user hasn't selected another contact in the meantime
-      if (this.selectedContact?.path === data.path) {
-        this.selectedContact = data;
+    await this.readOpenCard(contact.path!);
+  }
+
+  /**
+   * Reads the whole of the open card, at `path`, and shows it; true once it
+   * is held. A read already on its way is waited for rather than repeated.
+   */
+  private readOpenCard(path: string): Promise<boolean> {
+    const generation = this.cardGeneration;
+    if (this.cardRead?.path === path && this.cardRead.generation === generation) return this.cardRead.done;
+    const done = (async () => {
+      try {
+        const data = await contactsService.fetchContact(path);
+        // A reopened path is a new selection: an older read must not replace
+        // its current card or enable editing with an obsolete snapshot.
+        if (this.cardGeneration === generation && this.selectedContact?.path === data.path) {
+          this.selectedContact = data;
+          this.wholeCardPath = data.path;
+          return true;
+        }
+      } catch (e) {
+        console.error('Failed to fetch contact details', e);
       }
-    } catch (e) {
-      console.error('Failed to fetch contact details', e);
-    }
+      return false;
+    })();
+    const read = { path, generation, done };
+    this.cardRead = read;
+    void done.finally(() => {
+      if (this.cardRead === read) this.cardRead = null;
+    });
+    return done;
   }
 
   /**
@@ -908,7 +941,27 @@ export class ContactsPage extends LitElement {
     }
   }
 
-  private handleEdit() {
+  /**
+   * Starts editing the open card, once the whole of it is held.
+   *
+   * The list's copy, shown while the card is read, holds only what the
+   * listing returned, and a server may answer that with just the properties
+   * asked for. Edit pressed before the read answered filled the form from
+   * that copy, and the first save wrote the card back without its note,
+   * address, birthday or URL. So editing waits for the read, or reads the
+   * card again when its read failed, and does not start without it.
+   */
+  private async handleEdit() {
+    const open = this.selectedContact;
+    const generation = this.cardGeneration;
+    if (open && !open.isTemporary && this.wholeCardPath !== open.path) {
+      const held = await this.readOpenCard(open.path);
+      if (this.cardGeneration !== generation || this.selectedContact?.path !== open.path) return;
+      if (!held) {
+        this.reportFailure('contacts.loadFailed');
+        return;
+      }
+    }
     this.isEditing = true;
   }
 
@@ -1050,6 +1103,8 @@ export class ContactsPage extends LitElement {
 
       this.selectedContact = { ...this.selectedContact, ...savedContact };
       delete this.selectedContact.isTemporary;
+      // Written whole from the editor's form, so held whole.
+      this.wholeCardPath = this.selectedContact.path;
     } catch (e) {
       console.error('Error saving contact', e);
       if (editing && isVersionConflict(e)) {
