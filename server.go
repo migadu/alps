@@ -70,6 +70,7 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 		s.Sessions.absoluteSessionDuration = options.AbsoluteSessionDuration
 	}
 	s.Sessions.broadcaster = options.ClusterBroadcaster
+	s.Sessions.backgroundConnections = !options.DisableBackgroundConnection
 
 	// Initialize rate limiter if enabled
 	if options.RateLimitEnabled {
@@ -255,6 +256,11 @@ func (s *Server) loadPlugins() error {
 	}
 	router.Frontend(distFS)
 	router.build = frontendBuild(distFS)
+	if s.Options != nil {
+		if err := router.serveBranding(distFS, s.Options.Branding); err != nil {
+			return err
+		}
+	}
 
 	s.router = router
 	s.plugins = plugins
@@ -345,9 +351,14 @@ type Options struct {
 	ProviderTimeout         time.Duration           // Provider connect timeout, 0 means use default (30 seconds)
 	SMTPTimeout             time.Duration           // SMTP operation timeout, 0 means use default (30 seconds)
 	WebAuthn                WebAuthnOptions         // WebAuthn configuration
+	Branding                BrandingOptions         // Default theme and login logo; the zero value is alps as it ships
 	Plugins                 map[string]PluginConfig // Generic plugin configuration
 	Provider                provider.Options        // Mail provider configuration
 	ClusterBroadcaster      ClusterBroadcaster      // Optional interface for cluster message broadcasting
+	// If true, each session does all its mail work on one connection. By
+	// default a session opens a second one, when it is first needed, for the
+	// work the user is not waiting for: see Session.DoBackgroundMail.
+	DisableBackgroundConnection bool
 }
 
 type SMTPOptions struct {

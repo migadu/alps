@@ -8,6 +8,8 @@ export default {
   "managesieve": {
     "title": "Filters",
     "description": "Add custom rules on how messages are processed and filed.",
+    "loadError": "Could not load the filters.",
+    "loadErrorRetry": "Try again",
     "tabs": {
       "switchToRaw": "Raw Editor"
     },
@@ -33,6 +35,7 @@ export default {
       "any": "ANY",
       "ofTheFollowing": "of the following conditions match",
       "then": "THEN",
+      "value": "Value",
       "actions": {
         "fileinto": "Move to folder",
         "discard": "Discard (Delete)",

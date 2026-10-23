@@ -151,9 +151,9 @@ func TestHTTP_NewMailInTheInboxLeavesTheOtherFolderAlone(t *testing.T) {
 // A check that finds no earlier counts for the folder has nothing to compare
 // with, so it learns the counts and drops nothing else.
 //
-// Here the counts are missing because a message no page holds was marked
-// read, as the earlier messages of a conversation are when it is opened: what
-// it was before is unknown, so the unread count is dropped (applyFlagsToCache).
+// A message no page holds is marked read, then its refreshed status expires.
+// The page still carries its earlier unread count, so this checks the path
+// with a cold status and an existing page without re-reading the folder list.
 func TestHTTP_ACheckWithNoEarlierCountsKeepsTheFolderList(t *testing.T) {
 	s := newTestServer(t)
 	s.login()

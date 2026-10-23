@@ -246,7 +246,7 @@ export const fr = {
     emptyingMailbox: 'Vidage du dossier {folder}...',
     mailboxEmptied: 'Dossier {folder} vidé.',
     emptyMailboxFailed: 'Échec du vidage du dossier {folder}.',
-    mailboxAlreadyEmpty: '{folder} était déjà vide – rien n\'a été supprimé.',
+    mailboxAlreadyEmpty: 'Le dossier {folder} était déjà vide – rien n\'a été supprimé.',
     emptyMailboxSlow: 'Vidage du dossier {folder} toujours en cours. Le serveur y travaille – revenez voir dans un instant.'
   },
   composer: {
@@ -546,6 +546,7 @@ export const fr = {
     next: "Suivant",
     expand: "Développer",
     collapse: "Réduire",
+    moreOptions: "Plus d\u2019options",
     notFound: "Page introuvable"
   },
   webauthn: {

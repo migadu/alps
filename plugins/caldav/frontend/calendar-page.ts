@@ -185,6 +185,16 @@ export class CalendarPage extends LitElement {
             background-color: var(--bg-tertiary, #f3f4f6);
         }
 
+        /* The part of the row that is its checkbox: the box and the name. The
+           row's menu sits beside it, not in it. */
+        .calendar-control {
+            display: flex;
+            align-items: center;
+            flex: 1;
+            min-width: 0;
+            border-radius: 4px;
+        }
+
         .calendar-item span {
             font-size: 14px;
             color: var(--text-primary, #111827);
@@ -255,6 +265,14 @@ export class CalendarPage extends LitElement {
             .calendar-item:hover .calendar-actions {
                 display: flex;
             }
+        }
+        /* Shown while the keyboard is in its row, so that Tab reaches the
+           menu from the calendar's checkbox: a button inside display: none is
+           no Tab stop, and so it could never take the focus that shows it.
+           Not while a click has put the focus on the checkbox: a click leaves
+           the row as it was. */
+        .calendar-item:focus-within:not(:has(.calendar-control:focus:not(:focus-visible))) .calendar-actions {
+            display: flex;
         }
         .calendar-actions:focus-within,
         .calendar-actions.popup-open {
@@ -886,6 +904,16 @@ export class CalendarPage extends LitElement {
         this.editingTask = undefined;
     }
 
+    /** A calendar's checkbox, and the Tasks one, answer Space and Enter,
+     * once per press: a key held down would show and hide the calendar
+     * over and over, and Tasks would fetch the tasks each time. */
+    private handleCheckboxKeyDown(e: KeyboardEvent, toggle: () => void) {
+        if (e.key !== ' ' && e.key !== 'Enter') return;
+        e.preventDefault();
+        if (e.repeat) return;
+        toggle();
+    }
+
     private toggleCalendar(path: string) {
         const newSet = new Set(this.activeCalendars);
         if (newSet.has(path)) {
@@ -998,10 +1026,20 @@ export class CalendarPage extends LitElement {
                                     <h3>${this.i18nStore?.t('calendar.myCalendars')}</h3>
                                     ${this.calendars.map(c => html`
                                         <div class="calendar-item" @click=${() => this.toggleCalendar(c.path)}>
-                                            <div class="calendar-checkbox ${this.activeCalendars.has(c.path) ? 'checked' : ''}" style="--cal-color: ${c.color}">
-                                                ${this.activeCalendars.has(c.path) ? renderIcon('check') : ''}
+                                            <!-- The calendar's checkbox: one Tab stop, named by
+                                                 the calendar. Not the whole row, which also
+                                                 holds the calendar's menu. -->
+                                            <div class="calendar-control"
+                                                role="checkbox"
+                                                tabindex="0"
+                                                aria-checked=${this.activeCalendars.has(c.path) ? 'true' : 'false'}
+                                                @keydown=${(e: KeyboardEvent) => this.handleCheckboxKeyDown(e, () => this.toggleCalendar(c.path))}
+                                            >
+                                                <div class="calendar-checkbox ${this.activeCalendars.has(c.path) ? 'checked' : ''}" style="--cal-color: ${c.color}">
+                                                    ${this.activeCalendars.has(c.path) ? renderIcon('check') : ''}
+                                                </div>
+                                                <span>${c.name}</span>
                                             </div>
-                                            <span>${c.name}</span>
 
                                             <div class="calendar-actions ${this.activeKebabMenu === c.path ? 'popup-open' : ''}" @click=${(e: Event) => e.stopPropagation()}>
                                                 <alps-popup 
@@ -1010,7 +1048,7 @@ export class CalendarPage extends LitElement {
                                                     @popup-open=${() => { this.activeKebabMenu = c.path; }}
                                                     @popup-close=${() => { if (this.activeKebabMenu === c.path) this.activeKebabMenu = null; }}
                                                 >
-                                                    <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical"></alps-icon-btn>
+                                                    <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" title=${this.i18nStore?.t('general.moreOptions')}></alps-icon-btn>
                                                     <button class="dropdown-item" @click=${(e: Event) => {
                                                         const popup = (e.target as HTMLElement).closest('alps-popup') as any;
                                                         if (popup) popup.close();
@@ -1032,10 +1070,17 @@ export class CalendarPage extends LitElement {
                                         </div>
                                     `)}
                                     <div class="calendar-item tasks-toggle" @click=${this.toggleTasks}>
-                                        <div class="calendar-checkbox ${this.showTasks ? 'checked' : ''}" style="--cal-color: var(--text-secondary, #4b5563)">
-                                            ${this.showTasks ? renderIcon('check') : ''}
+                                        <div class="calendar-control"
+                                            role="checkbox"
+                                            tabindex="0"
+                                            aria-checked=${this.showTasks ? 'true' : 'false'}
+                                            @keydown=${(e: KeyboardEvent) => this.handleCheckboxKeyDown(e, () => this.toggleTasks())}
+                                        >
+                                            <div class="calendar-checkbox ${this.showTasks ? 'checked' : ''}" style="--cal-color: var(--text-secondary, #4b5563)">
+                                                ${this.showTasks ? renderIcon('check') : ''}
+                                            </div>
+                                            <span>${this.i18nStore?.t('tasks.title')}</span>
                                         </div>
-                                        <span>${this.i18nStore?.t('tasks.title')}</span>
                                     </div>
                                 </div>
 
@@ -1048,7 +1093,7 @@ export class CalendarPage extends LitElement {
                             </div>
                         </div>
                     </div>
-                    <alps-icon-btn slot="footer-actions" icon="calendarPlus" @click=${this.handleAddCalendar}></alps-icon-btn>
+                    <alps-icon-btn slot="footer-actions" icon="calendarPlus" title=${this.i18nStore?.t('calendar.addCalendar')} @click=${this.handleAddCalendar}></alps-icon-btn>
                 </alps-sidebar>
 
                 <div class="main-content">

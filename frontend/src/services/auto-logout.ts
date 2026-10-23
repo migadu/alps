@@ -2,6 +2,7 @@ import { MessageCache } from '../utils/message-cache';
 import { Logger } from '../utils/logger';
 import { clearSessionSettings } from '../store/settings-store';
 import { setLoginNotice } from '../utils/login-notice';
+import { noteSignOut } from '../utils/signed-out';
 import { DraftFlushError } from '../utils/draft-flush-error';
 
 const LAST_ACTIVITY_KEY = 'alps_last_active';
@@ -270,6 +271,9 @@ class AutoLogoutService {
       // not have is kept on this device, and the user, who was not there, is
       // told where it is.
       setLoginNotice(draftsKept ? 'inactivitySignedOutDraftsKept' : 'inactivitySignedOut');
+      // Ahead of the request too, which has the reads still in flight refused:
+      // those refusals are not an expiry (see signed-out.ts).
+      noteSignOut();
 
       // The network call is the only step here that can fail, and its failure
       // must not carry away the local ones. One 500, or a tab that is offline

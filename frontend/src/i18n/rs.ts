@@ -255,7 +255,7 @@ export const rs = {
     emptyingMailbox: 'Пражњење фасцикле {folder}...',
     mailboxEmptied: 'Фасцикла {folder} је испражњена.',
     emptyMailboxFailed: 'Није могуће испразнити фасциклу {folder}.',
-    mailboxAlreadyEmpty: '{folder} је већ био празан, па ништа није обрисано.',
+    mailboxAlreadyEmpty: 'Фасцикла {folder} је већ била празна, па ништа није обрисано.',
     emptyMailboxSlow: 'Пражњење фасцикле {folder} је још у току. Сервер и даље ради; проверите поново за тренутак.'
   },
   composer: {
@@ -563,6 +563,7 @@ export const rs = {
     next: "Напред",
     expand: "Прошири",
     collapse: "Скупи",
+    moreOptions: "Више опција",
     notFound: "Страница није пронађена"
   },
   webauthn: {

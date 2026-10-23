@@ -748,10 +748,47 @@ export class ContactsPage extends LitElement {
    * search `this.contacts` holds only the results, so renaming or deleting a
    * category from a search rewrote those cards and left every other card on the
    * old name, with both names then listed in the sidebar.
+   *
+   * A new card not yet saved is in `this.contacts` too, filed under the open
+   * category, but it is in no book and has nothing to write. Now that the
+   * page waits for the writes, it must not count as carrying the category:
+   * counted, it would be the one card to write, the service would write
+   * nothing, and with New contact open a rename or removal of a category no
+   * saved card carries would stop there with nothing said.
    */
   private async cardsCarrying(category: string): Promise<any[]> {
     const cards = this.filterQuery ? ((await contactsService.fetchContacts()).contacts || []) : this.contacts;
-    return cards.filter((c: any) => c.categories?.includes(category));
+    return cards.filter((c: any) => c.path && c.categories?.includes(category));
+  }
+
+  /**
+   * The address of `category`'s list (All Contacts for none), with the card
+   * the address names now still open in it. For the rewrite after a rename or
+   * removal of the open category, which waits for the cards to be written:
+   * the user may have opened a card meanwhile, or begun editing one, and a
+   * rewrite to the bare list would close it and throw the edit away.
+   */
+  private categoryHash(category: string): string {
+    const card = window.location.hash.match(CONTACTS_ROUTE)?.[2];
+    return `#/contacts/${encodeURIComponent(category || 'all')}${card ? `/${card}` : ''}`;
+  }
+
+  /**
+   * The open card with the categories a rename or removal wrote for it, once
+   * the write took (its new version is in `etags`).
+   *
+   * The card is shown as the page read it when it was opened, and applyETags
+   * moves only its version. Now that the card stays open through a rename or
+   * removal of its category, it would go on showing the old name, and Edit
+   * would save that name back onto the card, with no refusal, since the page
+   * holds the version the write left. A card open under All Contacts was
+   * left on the old name this way already.
+   */
+  private showWrittenCategories(written: any[], etags?: Record<string, string>) {
+    const open = this.selectedContact?.path;
+    if (!open || !etags?.[open]) return;
+    const card = written.find((c: any) => c.path === open);
+    if (card) this.selectedContact = { ...this.selectedContact, categories: card.categories };
   }
 
   private async handleRenameCategorySubmit(e: CustomEvent) {
@@ -764,18 +801,11 @@ export class ContactsPage extends LitElement {
     const oldName = this.categoryToRename;
     this.categoryToRename = null;
 
-    if (this.addedCategories.includes(oldName)) {
-      this.addedCategories = this.addedCategories.map(c => c === oldName ? newName : c);
-      this.saveAddedCategories();
-    }
-
-    if (this.selectedCategory === oldName) {
-      this.selectedCategory = newName;
-      // In place: the old name is a category that no longer exists, and Back
-      // onto it showed an empty list the sidebar did not have.
-      this.writeHash(`#/contacts/${encodeURIComponent(newName)}`, 'replace');
-    }
-
+    // The page takes the new name only once a card carries it, or when no
+    // card has to. Taken before the cards were read and written, a rename
+    // whose read of the book failed, or that every card refused, left the
+    // address, the open category and the stored list on a name no card had,
+    // over an empty list.
     let contactsToUpdate: any[];
     try {
       contactsToUpdate = await this.cardsCarrying(oldName);
@@ -792,19 +822,35 @@ export class ContactsPage extends LitElement {
           const categories = contact.categories.map((c: string) => c === oldName ? newName : c);
           return { ...contact, categories };
         });
-        const { total, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+        const { total, done, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
+        this.showWrittenCategories(contactsToModify, etags);
         this.fetchContacts();
         if (failed > 0) this.reportRefusals('contacts.categoryRenameFailed', 'contacts.categoryRenameOneFailed', { count: failed, total });
+        if (done === 0) return;
       } catch (e) {
         console.error('Error renaming category', e);
         this.fetchContacts();
         // Thrown before any outcome came back, so none of the cards counts as done.
         const tried = contactsToUpdate.length;
         this.reportRefusals('contacts.categoryRenameFailed', 'contacts.categoryRenameOneFailed', { count: tried, total: tried });
+        return;
       } finally {
         this.saving = false;
       }
+    }
+
+    if (this.addedCategories.includes(oldName)) {
+      this.addedCategories = this.addedCategories.map(c => c === oldName ? newName : c);
+      this.saveAddedCategories();
+    }
+
+    // Read after the writes: the user may have opened another category since.
+    if (this.selectedCategory === oldName) {
+      this.selectedCategory = newName;
+      // In place: the old name is a category that no longer exists, and Back
+      // onto it showed an empty list the sidebar did not have.
+      this.writeHash(this.categoryHash(newName), 'replace');
     }
   }
 
@@ -813,17 +859,10 @@ export class ContactsPage extends LitElement {
     const oldName = this.categoryToDelete;
     this.categoryToDelete = null;
 
-    if (this.addedCategories.includes(oldName)) {
-      this.addedCategories = this.addedCategories.filter(c => c !== oldName);
-      this.saveAddedCategories();
-    }
-
-    if (this.selectedCategory === oldName) {
-      this.selectedCategory = '';
-      // In place, as for a rename: the category is gone.
-      this.writeHash('#/contacts/all', 'replace');
-    }
-
+    // As for a rename, the category leaves the page only once a card has let
+    // go of it, or when no card has to. Taken before, a removal that failed
+    // went to All Contacts, and dropped the category from the stored list,
+    // while every card still carried it.
     let contactsToUpdate: any[];
     try {
       contactsToUpdate = await this.cardsCarrying(oldName);
@@ -840,19 +879,34 @@ export class ContactsPage extends LitElement {
           const categories = contact.categories.filter((c: string) => c !== oldName);
           return { ...contact, categories };
         });
-        const { total, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
+        const { total, done, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
+        this.showWrittenCategories(contactsToModify, etags);
         this.fetchContacts();
         if (failed > 0) this.reportRefusals('contacts.categoryDeleteFailed', 'contacts.categoryDeleteOneFailed', { count: failed, total });
+        if (done === 0) return;
       } catch (e) {
         console.error('Error deleting category', e);
         this.fetchContacts();
         // Thrown before any outcome came back, so none of the cards counts as done.
         const tried = contactsToUpdate.length;
         this.reportRefusals('contacts.categoryDeleteFailed', 'contacts.categoryDeleteOneFailed', { count: tried, total: tried });
+        return;
       } finally {
         this.saving = false;
       }
+    }
+
+    if (this.addedCategories.includes(oldName)) {
+      this.addedCategories = this.addedCategories.filter(c => c !== oldName);
+      this.saveAddedCategories();
+    }
+
+    // Read after the writes, as for a rename.
+    if (this.selectedCategory === oldName) {
+      this.selectedCategory = '';
+      // In place, as for a rename: the category is gone.
+      this.writeHash(this.categoryHash(''), 'replace');
     }
   }
 

@@ -6,6 +6,7 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { clearSessionSettings } from '../store/settings-store';
 import { setLoginNotice } from '../utils/login-notice';
+import { noteSignOut } from '../utils/signed-out';
 import { DraftFlushError } from '../utils/draft-flush-error';
 import './user-profile-menu';
 import './alps-icon-btn';
@@ -155,8 +156,11 @@ export class AlpsHeader extends LitElement {
     //
     // The notice goes ahead of the request: the login page is mounted by the
     // redirect below and reads its notice exactly once, so a notice set after
-    // a slow DELETE loses the race.
+    // a slow DELETE loses the race. So does the note that the session ends on
+    // purpose: the request has the reads still in flight refused, and none of
+    // those refusals is to be taken for an expiry (see signed-out.ts).
     setLoginNotice(notice);
+    noteSignOut();
 
     try {
       await fetch('/session', { method: 'DELETE' });

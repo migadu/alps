@@ -292,7 +292,7 @@ export const pt = {
     emptyingMailbox: 'Esvaziando {folder}...',
     mailboxEmptied: 'Esvaziamento de {folder} concluído.',
     emptyMailboxFailed: 'Falha ao esvaziar {folder}.',
-    mailboxAlreadyEmpty: '{folder} já estava vazia — nada foi excluído.',
+    mailboxAlreadyEmpty: 'A pasta {folder} já estava vazia — nada foi excluído.',
     emptyMailboxSlow: 'Ainda esvaziando {folder}. O servidor está trabalhando nisso — verifique novamente em instantes.'
   },
   composer: {
@@ -401,7 +401,7 @@ export const pt = {
     noReadableText: 'Esta mensagem não contém texto legível, apenas anexos.',
     attachments: 'Anexos',
     downloadAllAttachments: 'Baixar todos os anexos',
-    unknownAttachment: 'Anexo Desconhecido',
+    unknownAttachment: 'Anexo desconhecido',
     archive: 'Arquivar',
     reportSpam: 'Denunciar Spam',
     notSpam: 'Não é Spam',
@@ -592,6 +592,7 @@ export const pt = {
     next: "Próximo",
     expand: "Expandir",
     collapse: "Recolher",
+    moreOptions: "Mais opções",
     notFound: "Página não encontrada"
   }
 };
