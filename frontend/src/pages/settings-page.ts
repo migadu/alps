@@ -413,7 +413,7 @@ export class SettingsPage extends LitElement {
   renderGeneral() {
     return html`
         <alps-setting-group label="${this.i18nStore?.t('settings.general.checkMailInterval')}" description="${this.i18nStore?.t('settings.general.checkMailIntervalDesc')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'checkMailInterval')} .value=${this.settingsState.checkMailInterval.toString()}
+          <alps-select label="${this.i18nStore?.t('settings.general.checkMailInterval')}" @change=${(e: Event) => this.handleUpdate(e, 'checkMailInterval')} .value=${this.settingsState.checkMailInterval.toString()}
             .options=${[
             {value: "1", label: this.i18nStore?.t('settings.general.everyMinute') || "1"},
             {value: "5", label: this.i18nStore?.t('settings.general.every5Minutes') || "5"},
@@ -423,7 +423,7 @@ export class SettingsPage extends LitElement {
           </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.general.autoLogout')}" description="${this.i18nStore?.t('settings.general.autoLogoutDesc')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'autoLogout')} .value=${this.settingsState.autoLogout.toString()}
+          <alps-select label="${this.i18nStore?.t('settings.general.autoLogout')}" @change=${(e: Event) => this.handleUpdate(e, 'autoLogout')} .value=${this.settingsState.autoLogout.toString()}
             .options=${[
             {value: "0", label: this.i18nStore?.t('settings.general.never') || "0"},
             {value: "15", label: this.i18nStore?.t('settings.general.minutes15') || "15"},
@@ -456,13 +456,13 @@ export class SettingsPage extends LitElement {
   renderIdentity() {
     return html`
         <alps-setting-group label="${this.i18nStore?.t('settings.identity.displayName')}" description="${this.i18nStore?.t('settings.identity.displayNameDesc')}">
-          <alps-input type="text" icon="user" .value=${this.settingsState.name || ''} @change=${(e: Event) => this.handleUpdate(e, 'name')} placeholder="${this.i18nStore?.t('settings.placeholderName')}"></alps-input>
+          <alps-input label="${this.i18nStore?.t('settings.identity.displayName')}" type="text" icon="user" .value=${this.settingsState.name || ''} @change=${(e: Event) => this.handleUpdate(e, 'name')} placeholder="${this.i18nStore?.t('settings.placeholderName')}"></alps-input>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.identity.signature')}" description="${this.i18nStore?.t('settings.identity.signatureDesc')}">
           <textarea @change=${(e: Event) => this.handleUpdate(e, 'signature')} .value=${this.settingsState.signature || ''}></textarea>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.identity.replyTo')}" description="${this.i18nStore?.t('settings.identity.replyToDesc')}">
-          <alps-input type="email" .value=${this.settingsState.replyTo || ''} @change=${(e: Event) => this.handleUpdate(e, 'replyTo')} placeholder="${this.i18nStore?.t('settings.placeholderReplyTo')}"></alps-input>
+          <alps-input label="${this.i18nStore?.t('settings.identity.replyTo')}" type="email" .value=${this.settingsState.replyTo || ''} @change=${(e: Event) => this.handleUpdate(e, 'replyTo')} placeholder="${this.i18nStore?.t('settings.placeholderReplyTo')}"></alps-input>
         </alps-setting-group>
         <alps-setting-group>
           <label class="checkbox-label">
@@ -478,7 +478,7 @@ export class SettingsPage extends LitElement {
   renderReading() {
     return html`
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.messagesPerPage')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'messagesPerPage')} .value=${this.settingsState.messagesPerPage.toString()}
+          <alps-select label="${this.i18nStore?.t('settings.reading.messagesPerPage')}" @change=${(e: Event) => this.handleUpdate(e, 'messagesPerPage')} .value=${this.settingsState.messagesPerPage.toString()}
             .options=${[
             {value: "25", label: "25"},
             {value: "50", label: "50"},
@@ -501,7 +501,7 @@ export class SettingsPage extends LitElement {
           </label>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.preferredView')}" description="${this.i18nStore?.t('settings.reading.preferredViewDesc')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'preferredView')} .value=${this.settingsState.preferredView}
+          <alps-select label="${this.i18nStore?.t('settings.reading.preferredView')}" @change=${(e: Event) => this.handleUpdate(e, 'preferredView')} .value=${this.settingsState.preferredView}
             .options=${[
             {value: "html", label: this.i18nStore?.t('settings.reading.html') || "html"},
             {value: "text", label: this.i18nStore?.t('settings.reading.plainText') || "text"}
@@ -517,7 +517,7 @@ export class SettingsPage extends LitElement {
           </label>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.showRemoteContent')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'showRemoteContent')} .value=${this.settingsState.showRemoteContent}
+          <alps-select label="${this.i18nStore?.t('settings.reading.showRemoteContent')}" @change=${(e: Event) => this.handleUpdate(e, 'showRemoteContent')} .value=${this.settingsState.showRemoteContent}
             .options=${[
             {value: "ask", label: this.i18nStore?.t('settings.reading.alwaysAsk') || "ask"},
             {value: "always", label: this.i18nStore?.t('settings.reading.alwaysLoad') || "always"}
@@ -525,7 +525,7 @@ export class SettingsPage extends LitElement {
           </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.markReadTimeout')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'markReadTimeout')} .value=${this.settingsState.markReadTimeout.toString()}
+          <alps-select label="${this.i18nStore?.t('settings.reading.markReadTimeout')}" @change=${(e: Event) => this.handleUpdate(e, 'markReadTimeout')} .value=${this.settingsState.markReadTimeout.toString()}
             .options=${[
             {value: "0", label: this.i18nStore?.t('settings.reading.markReadImmediately') || "0"},
             {value: "1", label: this.i18nStore?.t('settings.reading.markRead1s') || "1"},
@@ -537,7 +537,7 @@ export class SettingsPage extends LitElement {
           </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.composeFormat')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'composeFormat')} .value=${this.settingsState.composeFormat}
+          <alps-select label="${this.i18nStore?.t('settings.reading.composeFormat')}" @change=${(e: Event) => this.handleUpdate(e, 'composeFormat')} .value=${this.settingsState.composeFormat}
             .options=${[
             {value: "html", label: this.i18nStore?.t('settings.reading.richText') || "html"},
             {value: "text", label: this.i18nStore?.t('settings.reading.plainText') || "text"}
@@ -545,7 +545,7 @@ export class SettingsPage extends LitElement {
           </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.reading.messageSortCriteria')}" description="${this.i18nStore?.t('settings.reading.messageSortCriteriaDesc')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'messageSortCriteria')} .value=${this.settingsState.messageSortCriteria}
+          <alps-select label="${this.i18nStore?.t('settings.reading.messageSortCriteria')}" @change=${(e: Event) => this.handleUpdate(e, 'messageSortCriteria')} .value=${this.settingsState.messageSortCriteria}
             .options=${[
             {value: "date", label: this.i18nStore?.t('settings.reading.sortDate') || "date"},
             {value: "uid", label: this.i18nStore?.t('settings.reading.sortUid') || "uid"}
@@ -559,7 +559,7 @@ export class SettingsPage extends LitElement {
     return html`
         
         <alps-setting-group label="${this.i18nStore?.t('settings.appearance.colorTheme')}" description="${this.i18nStore?.t('settings.appearance.colorThemeDesc')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'colorFamily')} .value=${this.settingsState.colorFamily}
+          <alps-select label="${this.i18nStore?.t('settings.appearance.colorTheme')}" @change=${(e: Event) => this.handleUpdate(e, 'colorFamily')} .value=${this.settingsState.colorFamily}
             .options=${[
             {value: "default", label: "Alps"},
             {value: "nord", label: "Nord"},
@@ -569,7 +569,7 @@ export class SettingsPage extends LitElement {
         </alps-setting-group>
 
         <alps-setting-group label="${this.i18nStore?.t('settings.appearance.themeMode')}" description="${this.i18nStore?.t('settings.appearance.themeModeDesc')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'themeMode')} .value=${this.settingsState.themeMode}
+          <alps-select label="${this.i18nStore?.t('settings.appearance.themeMode')}" @change=${(e: Event) => this.handleUpdate(e, 'themeMode')} .value=${this.settingsState.themeMode}
             .options=${[
             {value: "light", label: this.i18nStore?.t('settings.appearance.light') || "light"},
             {value: "dark", label: this.i18nStore?.t('settings.appearance.dark') || "dark"},
@@ -579,7 +579,7 @@ export class SettingsPage extends LitElement {
         </alps-setting-group>
 
         <alps-setting-group label="${this.i18nStore?.t('settings.appearance.layoutMode')}" description="${this.i18nStore?.t('settings.appearance.layoutModeDesc')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'layoutMode')} .value=${this.settingsState.layoutMode}
+          <alps-select label="${this.i18nStore?.t('settings.appearance.layoutMode')}" @change=${(e: Event) => this.handleUpdate(e, 'layoutMode')} .value=${this.settingsState.layoutMode}
             .options=${[
             {value: "vertical", label: this.i18nStore?.t('settings.appearance.vertical') || "vertical"},
             {value: "horizontal", label: this.i18nStore?.t('settings.appearance.horizontal') || "horizontal"},
@@ -589,7 +589,7 @@ export class SettingsPage extends LitElement {
         </alps-setting-group>
 
         <alps-setting-group label="${this.i18nStore?.t('settings.appearance.listDensity')}" description="${this.i18nStore?.t('settings.appearance.listDensityDesc')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'densityMode')} .value=${this.settingsState.densityMode}
+          <alps-select label="${this.i18nStore?.t('settings.appearance.listDensity')}" @change=${(e: Event) => this.handleUpdate(e, 'densityMode')} .value=${this.settingsState.densityMode}
             .options=${[
             {value: "loose", label: this.i18nStore?.t('settings.appearance.loose') || "loose"},
             {value: "normal", label: this.i18nStore?.t('settings.appearance.normal') || "normal"},
@@ -616,7 +616,7 @@ export class SettingsPage extends LitElement {
           <!-- Each language is named in its own words and marked with its own
                language, so a screen reader reads "Deutsch" in German rather
                than in the language of the page around it. -->
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'language')} .value=${this.settingsState.language}
+          <alps-select label="${this.i18nStore?.t('settings.localization.language')}" @change=${(e: Event) => this.handleUpdate(e, 'language')} .value=${this.settingsState.language}
             .options=${[
             {value: "en", lang: intlTag("en"), label: this.i18nStore?.t('settings.localization.english') || "en"},
             {value: "de", lang: intlTag("de"), label: this.i18nStore?.t('settings.localization.german') || "de"},
@@ -631,7 +631,7 @@ export class SettingsPage extends LitElement {
           </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.localization.timeFormat')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'hourFormat')} .value=${this.settingsState.hourFormat}
+          <alps-select label="${this.i18nStore?.t('settings.localization.timeFormat')}" @change=${(e: Event) => this.handleUpdate(e, 'hourFormat')} .value=${this.settingsState.hourFormat}
             .options=${[
             {value: "12", label: this.i18nStore?.t('settings.localization.format12h') || "12"},
             {value: "24", label: this.i18nStore?.t('settings.localization.format24h') || "24"}
@@ -639,7 +639,7 @@ export class SettingsPage extends LitElement {
           </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.localization.dateFormat')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'dateFormat')} .value=${this.settingsState.dateFormat}
+          <alps-select label="${this.i18nStore?.t('settings.localization.dateFormat')}" @change=${(e: Event) => this.handleUpdate(e, 'dateFormat')} .value=${this.settingsState.dateFormat}
             .options=${[
             {value: "YYYY-MM-DD", label: "YYYY-MM-DD"},
             {value: "MM/DD/YYYY", label: "MM/DD/YYYY"},
@@ -648,7 +648,7 @@ export class SettingsPage extends LitElement {
           </alps-select>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.localization.weekStart')}">
-          <alps-select @change=${(e: Event) => this.handleUpdate(e, 'weekStart')} .value=${String(this.settingsState.weekStart ?? 1)}
+          <alps-select label="${this.i18nStore?.t('settings.localization.weekStart')}" @change=${(e: Event) => this.handleUpdate(e, 'weekStart')} .value=${String(this.settingsState.weekStart ?? 1)}
             .options=${[
             {value: "1", label: this.i18nStore?.t('settings.localization.monday') || "Monday"},
             {value: "0", label: this.i18nStore?.t('settings.localization.sunday') || "Sunday"}

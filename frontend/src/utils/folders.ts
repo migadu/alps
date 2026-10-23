@@ -142,6 +142,44 @@ export function findMailboxNameByRole(role: MailboxRole, mailboxes: any[], fallb
 }
 
 /**
+ * The folder that is shown as `role`'s special folder, or null when no folder
+ * has the role: the one the sidebar draws with the role's icon and caption,
+ * and the page names by its role.
+ *
+ * Two folders can have one role. Dovecot's stock configuration marks both
+ * INBOX.Sent and INBOX.Sent Messages \Sent, and on a server without special-use
+ * attributes "Deleted Items" and "Trash" are both Trash by name. Only one of
+ * them is shown as the special folder; drawn alike, the two could not be told
+ * apart. Every other folder of the role is an ordinary folder under its own
+ * name. That one is the first top-level folder of the role the server lists,
+ * which keeps the role's place at the top of the sidebar, or, without one, the
+ * first of the role anywhere: the folder the actions file into
+ * (findMailboxNameByRole).
+ */
+export function specialMailboxName(role: MailboxRole, mailboxes: any[] = []): string | null {
+  const advertised = advertisedRoles(mailboxes);
+  const nameOf = (mb: any): string => mb.Name || mb.Mailbox || '';
+  const holders = (mailboxes || []).filter(mb => mailboxRole(mb, advertised) === role);
+  // The sidebar splits a name without a delimiter at dots.
+  const topLevel = holders.find(mb => mailboxLevels(nameOf(mb), delimiterOf(mb, '.')).length === 1);
+  const special = topLevel ?? holders[0];
+  return special ? nameOf(special) : null;
+}
+
+/**
+ * The role of the folder called `name` when it is shown as that role's folder
+ * (specialMailboxName), and null for any other, a second folder of a role
+ * among them. Until the list has loaded, a well-known name stands for its
+ * role, as in mailboxRoleByName.
+ */
+export function specialMailboxRole(name: string, mailboxes: any[] = []): MailboxRole | null {
+  const role = mailboxRoleByName(name, mailboxes);
+  if (!role) return null;
+  const special = specialMailboxName(role, mailboxes);
+  return special === null || special === name ? role : null;
+}
+
+/**
  * The roles this server assigns itself, by special-use attribute (RFC 6154).
  *
  * Per ROLE, not per server: a server that advertises \Sent and \Trash but no

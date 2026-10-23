@@ -7,7 +7,7 @@ import { mailboxOperations } from '../services/mailbox-operations';
 import { fetchAuthVerdicts, VERDICT_BATCH, type AuthVerdict } from '../services/auth-verdicts';
 import { mailboxOf, messageKey } from '../utils/message-key';
 import { addressText, addressWarning, displayAddress, mixedScriptStyles } from '../utils/address-display';
-import { ALL_MAILBOXES } from '../utils/folders';
+import { ALL_MAILBOXES, specialMailboxName } from '../utils/folders';
 import { MESSAGE_DRAG_TYPE, type MessageDrag } from '../utils/message-drag';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
@@ -1340,9 +1340,19 @@ export class MessageList extends LitElement {
    * attributes, and that fallback lives in one place — `mailboxRoleByName`, which
    * only guesses a role by name when the server has not assigned it. A second
    * name test here would re-open the override it now prevents.
+   *
+   * Only the Trash or the Junk the sidebar draws as one, though. Of two folders
+   * with the role (an Exchange "Deleted Items" and a "Trash" on a server
+   * without special-use attributes, two folders marked \Junk), the other is
+   * drawn as an ordinary folder under its own name, and it offered to delete
+   * everything in it for good all the same. Its role is still handed down as
+   * it is: a second \Sent folder holds sent mail, and its rows name the
+   * recipients.
    */
   private get isDiscardableFolder(): boolean {
-    return this.currentMailboxRole === 'trash' || this.currentMailboxRole === 'junk';
+    const role = this.currentMailboxRole;
+    if (role !== 'trash' && role !== 'junk') return false;
+    return (specialMailboxName(role, this.mailboxes) ?? this.currentMailbox) === this.currentMailbox;
   }
 
   /**

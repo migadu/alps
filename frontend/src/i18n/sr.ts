@@ -255,7 +255,7 @@ export const sr = {
     emptyingMailbox: 'Pražnjenje fascikle {folder}...',
     mailboxEmptied: 'Fascikla {folder} je ispražnjena.',
     emptyMailboxFailed: 'Nije moguće isprazniti fasciklu {folder}.',
-    mailboxAlreadyEmpty: '{folder} je već bio prazan, pa ništa nije obrisano.',
+    mailboxAlreadyEmpty: 'Fascikla {folder} je već bila prazna, pa ništa nije obrisano.',
     emptyMailboxSlow: 'Pražnjenje fascikle {folder} je još u toku. Server i dalje radi; proverite ponovo za trenutak.'
   },
   composer: {
@@ -563,6 +563,7 @@ export const sr = {
     next: "Napred",
     expand: "Proširi",
     collapse: "Skupi",
+    moreOptions: "Više opcija",
     notFound: "Stranica nije pronađena"
   },
   webauthn: {
