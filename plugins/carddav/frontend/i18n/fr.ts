@@ -1,21 +1,25 @@
 export default {
   contacts: {
     deleteFailed: {
-      one: 'Impossible de supprimer {failed} contact sur {count}.',
-      other: 'Impossible de supprimer {failed} des {count} contacts.'
+      one: 'Impossible de supprimer {count} contact sur {total}.',
+      other: 'Impossible de supprimer {count} contacts sur {total}.'
     },
     categoryRenameFailed: {
-      one: 'Impossible de mettre à jour {failed} contact sur {count}, la catégorie n\'a été renommée que partiellement.',
-      other: 'Impossible de mettre à jour {failed} des {count} contacts, la catégorie n\'a été renommée que partiellement.'
+      one: 'Impossible de mettre à jour {count} contact sur {total}, la catégorie n\'a été renommée que partiellement.',
+      other: 'Impossible de mettre à jour {count} contacts sur {total}, la catégorie n\'a été renommée que partiellement.'
     },
     categoryDeleteFailed: {
-      one: 'Impossible de mettre à jour {failed} contact sur {count}, la catégorie n\'a été supprimée que partiellement.',
-      other: 'Impossible de mettre à jour {failed} des {count} contacts, la catégorie n\'a été supprimée que partiellement.'
+      one: 'Impossible de mettre à jour {count} contact sur {total}, la catégorie n\'a été supprimée que partiellement.',
+      other: 'Impossible de mettre à jour {count} contacts sur {total}, la catégorie n\'a été supprimée que partiellement.'
     },
     categoryUpdateFailed: {
-      one: 'Impossible de mettre à jour {failed} contact sur {count}.',
-      other: 'Impossible de mettre à jour {failed} des {count} contacts.'
+      one: 'Impossible de mettre à jour {count} contact sur {total}.',
+      other: 'Impossible de mettre à jour {count} contacts sur {total}.'
     },
+    deleteOneFailed: 'Le contact n\'a pas pu être supprimé.',
+    categoryRenameOneFailed: 'Un contact n\'a pas pu être mis à jour, la catégorie n\'a été renommée que partiellement.',
+    categoryDeleteOneFailed: 'Un contact n\'a pas pu être mis à jour, la catégorie n\'a été supprimée que partiellement.',
+    categoryUpdateOneFailed: 'Le contact n\'a pas pu être mis à jour.',
     saveFailed: 'Le contact n\'a pas pu être enregistré.',
     saveConflict: 'Le contact a été modifié sur un autre appareil, votre modification n\'a donc pas été enregistrée. Annulez la modification pour voir la dernière version.',
     starFailed: 'Le contact n\'a pas pu être mis à jour.',

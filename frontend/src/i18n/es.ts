@@ -243,9 +243,9 @@ export const es = {
       one: 'Esto incluye el mensaje que has seleccionado.',
       other: 'Esto incluye los {count} mensajes que has seleccionado.'
     },
-    emptyingMailbox: 'Vaciando buzón...',
-    mailboxEmptied: 'Buzón vaciado correctamente.',
-    emptyMailboxFailed: 'No se pudo vaciar el buzón. Asegúrate de que sea Papelera o Correo no deseado.',
+    emptyingMailbox: 'Vaciando {folder}...',
+    mailboxEmptied: 'Se ha vaciado {folder}.',
+    emptyMailboxFailed: 'No se pudo vaciar {folder}.',
     mailboxAlreadyEmpty: '{folder} ya estaba vacía: no se eliminó nada.',
     emptyMailboxSlow: 'Todavía se está vaciando {folder}. El servidor sigue trabajando: vuelve a comprobarlo en un momento.'
   },
@@ -433,7 +433,8 @@ export const es = {
     cannotPreview: 'No hay vista previa disponible para este tipo de archivo',
     loadingPreview: 'Cargando vista previa...',
     errorLoading: 'Error al cargar la vista previa',
-    close: 'Cerrar'
+    close: 'Cerrar',
+    uploadProgress: '{percent}\u00a0% de {size}'
   },
 
   navigation: {

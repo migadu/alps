@@ -14,7 +14,7 @@
 // arriving in the inbox.
 
 import type { Locator, Page } from "@playwright/test";
-import { expect, login, resetDav, test, toast, USER, waitForSent, type SentMessage } from "./fixtures";
+import { expect, login, resetDav, resetSettings, test, toast, USER, waitForSent, type SentMessage } from "./fixtures";
 
 /** The floating composer window. These tests keep at most one open. */
 const composerOf = (page: Page) => page.locator("alps-floating-composer");
@@ -357,6 +357,58 @@ test("a link inserted from the toolbar is sent as a link", async ({ page }) => {
   await sendNow(page, composer);
   const sent = await sentWithSubject(subject);
   expect(sent.data).toMatch(/<p[^>]*>See <a [^>]*href="https:\/\/plans\.example\/friday"[^>]*>the plan<\/a><\/p>/);
+});
+
+/**
+ * A text part of a submission, its quoted-printable undone and its line ends
+ * LF. It ends at the next boundary, and a line of the part's own can start
+ * with dashes too: the signature separator does.
+ */
+function textPart(message: SentMessage, subtype: "plain" | "html"): string {
+  const boundaries = [...message.data.matchAll(/boundary="?([^";\r\n]+)"?/gi)].map((m) => m[1]);
+  const from = message.data.slice(message.data.search(new RegExp(`Content-Type:\\s*text/${subtype}`, "i")));
+  const body = from.slice(from.search(/\r?\n\r?\n/)).replace(/^\r?\n\r?\n/, "");
+  const end = Math.min(...boundaries.map((b) => body.indexOf(`--${b}`)).filter((i) => i >= 0));
+  const decoded = body
+    .slice(0, end)
+    .replace(/\r?\n$/, "")
+    .replace(/=\r?\n/g, "")
+    .replace(/=([0-9A-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+  return Buffer.from(decoded, "latin1").toString("utf8").replace(/\r\n/g, "\n");
+}
+
+test("a plain-text message switched to HTML keeps its signature separator and its lines", async ({ page }) => {
+  // The separator is dash, dash, space (RFC 3676 §4.3): a recipient's client
+  // finds the signature by it, and drops what follows from a reply's quote.
+  await login(page);
+  const origin = { Origin: new URL(page.url()).origin, "Content-Type": "application/json" };
+  await page.request.put("/settings", { headers: origin, data: { signature: "Grace\nAnalytical Engines", compose_format: "text" } });
+  try {
+    // A composer takes its format and signature from the settings as read: one
+    // opened before the read has answered is an HTML composer with none.
+    const read = page.waitForResponse((r) => new URL(r.url()).pathname === "/settings" && r.request().method() === "GET");
+    await page.reload();
+    expect((await read).ok(), "the account's settings could not be read").toBe(true);
+    const composer = await openComposer(page);
+    const subject = `Plain to HTML ${Date.now()}`;
+    await addRecipient(composer, USER.address);
+    await composer.getByPlaceholder("Subject").fill(subject);
+    const textarea = composer.locator("alps-message-composer textarea");
+    await expect(textarea).toHaveValue("\n\n-- \nGrace\nAnalytical Engines\n");
+    await textarea.fill(`Hi Ada,\nthe figures are in.${await textarea.inputValue()}`);
+
+    await composer.getByRole("button", { name: "Toggle Formatting Options", exact: true }).click();
+    await expect(composer.locator(".ProseMirror")).toContainText("Analytical Engines");
+
+    await sendNow(page, composer);
+    const sent = await sentWithSubject(subject);
+    // As written: no blank line between lines that had none, and the space
+    // after the dashes kept.
+    expect(textPart(sent, "plain")).toBe("Hi Ada,\nthe figures are in.\n\n-- \nGrace\nAnalytical Engines\n");
+    expect(textPart(sent, "html")).toContain("-- <br>Grace<br>Analytical Engines");
+  } finally {
+    await resetSettings();
+  }
 });
 
 /**

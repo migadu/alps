@@ -80,10 +80,10 @@ export const rs = {
       listDensityDesc: 'Прилагодите размак и густину листе порука.',
       light: 'Светла',
       dark: 'Тамна',
-      systemAuto: 'Аутоматски (Систем)',
+      systemAuto: 'Аутоматски (систем)',
       vertical: 'Вертикално (3 окна)',
-      horizontal: 'Хоризонтално (Горе/Доле)',
-      fullScreen: 'Преко целог екрана (Сакриј листу при читању)',
+      horizontal: 'Хоризонтално (горе/доле)',
+      fullScreen: 'Преко целог екрана (сакриј листу при читању)',
       loose: 'Широко',
       normal: 'Нормално',
       compact: 'Компактно',
@@ -252,9 +252,9 @@ export const rs = {
       few: 'Укључене су и {count} поруке које сте означили.',
       other: 'Укључено је и {count} порука које сте означили.'
     },
-    emptyingMailbox: 'Пражњење сандучета...',
-    mailboxEmptied: 'Сандуче је успешно испражњено.',
-    emptyMailboxFailed: 'Није могуће испразнити сандуче. Проверите да ли је Отпад или Непожељно.',
+    emptyingMailbox: 'Пражњење фасцикле {folder}...',
+    mailboxEmptied: 'Фасцикла {folder} је испражњена.',
+    emptyMailboxFailed: 'Није могуће испразнити фасциклу {folder}.',
     mailboxAlreadyEmpty: '{folder} је већ био празан, па ништа није обрисано.',
     emptyMailboxSlow: 'Пражњење фасцикле {folder} је још у току. Сервер и даље ради; проверите поново за тренутак.'
   },
@@ -376,7 +376,7 @@ export const rs = {
     markUnread: 'Означи као непрочитано',
     markRead: 'Означи као прочитано',
     star: 'Означи звездицом',
-    moveTo: 'Копирај/Премести у...',
+    moveTo: 'Копирај/премести у...',
     print: 'Штампај',
     showPlaintext: 'Прикажи обичан текст',
     showHtml: 'Прикажи HTML',
@@ -443,7 +443,8 @@ export const rs = {
     cannotPreview: 'Преглед није доступан за овај тип датотеке',
     loadingPreview: 'Учитавање прегледа...',
     errorLoading: 'Грешка при учитавању прегледа',
-    close: 'Затвори'
+    close: 'Затвори',
+    uploadProgress: '{percent}% од {size}'
   },
 
   navigation: {
