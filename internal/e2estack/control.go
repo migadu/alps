@@ -22,7 +22,7 @@ import (
 //	DELETE /outbox
 //	POST   /reset/settings   {"username","password"}  drop alps's IMAP METADATA
 //	POST   /reset/sieve      {"username","password"}  deactivate and delete every script
-//	POST   /reset/dav        {"username"}             empty the calendar and address book
+//	POST   /reset/dav        {"username"}             drop the calendars made, empty the rest and the address book
 //	POST   /mailbox/create       {"username","password","mailbox"}  CREATE, and nothing else
 //	POST   /mailbox/subscribe    {"username","password","mailbox"}
 //	POST   /mailbox/unsubscribe  {"username","password","mailbox"}

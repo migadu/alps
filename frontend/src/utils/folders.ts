@@ -42,8 +42,11 @@ export function encodeMailboxPath(name: string): string {
 export type MailboxRole = 'inbox' | 'drafts' | 'sent' | 'archive' | 'junk' | 'trash' | 'all';
 
 // IMAP special-use attribute -> role. Attribute values are matched
-// case-insensitively and tolerate both single- ("\Sent") and double-escaped
-// ("\\Sent") forms, since different layers of the stack escape them differently.
+// case-insensitively, in the one form they arrive in: one backslash and the
+// name, \Sent. The keys below spell that backslash '\\' as TypeScript escapes
+// it, and the folder list's JSON does the same ("\\Sent"); neither is a second
+// backslash. The server cannot send one: in IMAP an attribute is a backslash
+// followed by an atom, and an atom cannot hold a backslash (RFC 3501 §9).
 const ATTR_TO_ROLE: Record<string, MailboxRole> = {
   '\\inbox': 'inbox',
   '\\drafts': 'drafts',
