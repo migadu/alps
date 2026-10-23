@@ -277,12 +277,14 @@ func (s *Session) doneWithBackground() {
 		// The session's own connection from now on.
 		bg.p = nil
 		bg.mu.Unlock()
+		s.push.connectionGone(p)
 		return
 	}
 	if bg.ended || bg.retire || s.givenUp.Load() > 0 {
 		bg.answerClaim(nil)
 		bg.p, bg.retire = nil, false
 		bg.mu.Unlock()
+		s.push.connectionGone(p)
 		p.Close()
 		return
 	}
@@ -299,6 +301,7 @@ func (s *Session) doneWithBackground() {
 		}
 		bg.p, bg.idle = nil, nil
 		bg.mu.Unlock()
+		s.push.connectionGone(p)
 		s.manager.logger.Debugf("Background connection: closing the one of %s, unused for %v", s.username, s.manager.backgroundIdle)
 		p.Close()
 	})
@@ -312,9 +315,11 @@ func (s *Session) doneWithBackground() {
 func (s *Session) dropBackground() {
 	bg := &s.background
 	bg.mu.Lock()
-	defer bg.mu.Unlock()
 	bg.answerClaim(nil)
+	p := bg.p
 	bg.p, bg.busy, bg.retire = nil, false, false
+	bg.mu.Unlock()
+	s.push.connectionGone(p)
 }
 
 // takeIdleBackground hands the session's background connection over to the
@@ -325,13 +330,15 @@ func (s *Session) dropBackground() {
 func (s *Session) takeIdleBackground() provider.MailProvider {
 	bg := &s.background
 	bg.mu.Lock()
-	defer bg.mu.Unlock()
 	if bg.p == nil || bg.busy {
+		bg.mu.Unlock()
 		return nil
 	}
 	bg.stopIdle()
 	p := bg.p
 	bg.p = nil
+	bg.mu.Unlock()
+	s.push.connectionGone(p)
 	return ownUse(p)
 }
 
@@ -372,6 +379,7 @@ func (s *Session) reclaimBackground(ctx context.Context) (provider.MailProvider,
 		p := bg.p
 		bg.p = nil
 		bg.mu.Unlock()
+		s.push.connectionGone(p)
 		return ownUse(p), nil
 	}
 	claim := make(chan provider.MailProvider, 1)
@@ -431,6 +439,7 @@ func (s *Session) letGoOfBackground(end bool) {
 	}
 	bg.mu.Unlock()
 	if p != nil {
+		s.push.connectionGone(p)
 		p.Close()
 	}
 }
