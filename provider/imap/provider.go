@@ -881,9 +881,10 @@ type threadCache struct {
 const maxThreadCaches = 8
 
 // currentShape asks the server what the selected mailbox holds now. A NOOP
-// brings the message count up to date, and once it has finished, a FETCH of
-// the last message by its number reads that message's UID. UIDVALIDITY is the
-// one the mailbox was selected with.
+// brings the message count up to date, unless fresh says one has just been
+// answered for it, and once it has finished, a FETCH of the last message by
+// its number reads that message's UID. UIDVALIDITY is the one the mailbox was
+// selected with.
 //
 // The two are not sent together, though that would save a round trip. A
 // FETCH by number takes the first FETCH response for that number as its
@@ -893,9 +894,11 @@ const maxThreadCaches = 8
 // taken for the answer: the folder looks unchanged. RFC 9051 §5.5 asks a
 // client to wait for a command such as NOOP to finish before it sends one
 // that names messages by number, for this reason.
-func (p *IMAPProvider) currentShape() (mailboxShape, error) {
-	if err := p.client.Noop().Wait(); err != nil {
-		return mailboxShape{}, err
+func (p *IMAPProvider) currentShape(fresh bool) (mailboxShape, error) {
+	if !fresh {
+		if err := p.client.Noop().Wait(); err != nil {
+			return mailboxShape{}, err
+		}
 	}
 	mbox := p.selectedMailbox()
 	if mbox == nil {
@@ -933,9 +936,9 @@ func (p *IMAPProvider) currentShape() (mailboxShape, error) {
 //
 // The cache entry is returned with the groups, for the order kept with them,
 // or nil when the mailbox's shape could not be told and nothing was kept. The
-// groups are shared: callers must not change them.
-func (p *IMAPProvider) mailboxThreads(mailbox string) (*threadCache, []ThreadGroup, error) {
-	shape, shapeErr := p.currentShape()
+// groups are shared: callers must not change them. fresh is currentShape's.
+func (p *IMAPProvider) mailboxThreads(mailbox string, fresh bool) (*threadCache, []ThreadGroup, error) {
+	shape, shapeErr := p.currentShape(fresh)
 	if shapeErr == nil {
 		p.cacheLock.Lock()
 		entry := p.threads[mailbox]
@@ -988,8 +991,8 @@ func sortOrderKey(sortCriteria, sortOrder string) string {
 // order a page shows them, sorting them only when they are not sorted that way
 // already. With the date order a server with SORT is asked to sort them, which
 // is another command over the mailbox.
-func (p *IMAPProvider) sortedMailboxThreads(mailbox, sortOrder string) ([]ThreadGroup, error) {
-	entry, groups, err := p.mailboxThreads(mailbox)
+func (p *IMAPProvider) sortedMailboxThreads(mailbox, sortOrder string, fresh bool) ([]ThreadGroup, error) {
+	entry, groups, err := p.mailboxThreads(mailbox, fresh)
 	if err != nil {
 		return nil, err
 	}
@@ -1052,16 +1055,17 @@ func (p *IMAPProvider) noteThreadFallback(mailbox string) bool {
 // into conversations, order the groups, then fetch and convert just the page's
 // messages. ListMessages and SearchMessages share it — they differ only in the
 // criteria they thread over. whole says the criteria pick out every message,
-// and then the conversations are kept for the next page (see mailboxThreads).
+// and then the conversations are kept for the next page (see mailboxThreads);
+// fresh says a NOOP has just been answered for the mailbox (see currentShape).
 //
 // Its error is RECOVERABLE by design. Nothing here touches session state, so a
 // caller that gets one can simply carry on down its own unthreaded path, which
 // is what both of them do.
-func (p *IMAPProvider) threadedPage(mailbox string, criteria *imap.SearchCriteria, whole bool, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
+func (p *IMAPProvider) threadedPage(mailbox string, criteria *imap.SearchCriteria, whole, fresh bool, sortOrder string, page, pageSize int) ([]provider.Message, int, error) {
 	var groups []ThreadGroup
 	var err error
 	if whole {
-		groups, err = p.sortedMailboxThreads(mailbox, sortOrder)
+		groups, err = p.sortedMailboxThreads(mailbox, sortOrder, fresh)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -1184,7 +1188,8 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 	}
 
 	if enableThreading && p.HasThreadCapability() {
-		msgs, total, err := p.threadedPage(mailbox, &imap.SearchCriteria{}, true, sortOrder, page, pageSize)
+		// The NOOP above has brought the mailbox's count up to date.
+		msgs, total, err := p.threadedPage(mailbox, &imap.SearchCriteria{}, true, true, sortOrder, page, pageSize)
 		if err == nil {
 			return msgs, provider.PageInfo{Total: total, Threaded: true}, nil
 		}
@@ -1332,7 +1337,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 	}
 
 	if enableThreading && p.HasThreadCapability() {
-		msgs, total, err := p.threadedPage(mailbox, searchCriteria, query == "", sortOrder, page, pageSize)
+		msgs, total, err := p.threadedPage(mailbox, searchCriteria, query == "", false, sortOrder, page, pageSize)
 		if err == nil {
 			return msgs, provider.PageInfo{Total: total, Threaded: true}, nil
 		}
@@ -2512,7 +2517,7 @@ func (p *IMAPProvider) GetMessageThread(mailbox string, targetUID provider.Messa
 	if threading {
 		// The conversations a listing threaded, while the mailbox still holds
 		// the same messages.
-		_, groups, err := p.mailboxThreads(mailbox)
+		_, groups, err := p.mailboxThreads(mailbox, false)
 		if err == nil {
 			targetUIDNum, parseErr := strconv.ParseUint(targetUID.String(), 10, 32)
 			if parseErr == nil {
