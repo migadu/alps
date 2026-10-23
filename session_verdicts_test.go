@@ -116,6 +116,17 @@ func serveVerdictMail(t *testing.T, traffic *verdictTraffic) *droppingListener {
 // every verdict again, from each stored message, while the user waited behind
 // it.
 func TestSessionVerdictsOutliveTheConnection(t *testing.T) {
+	testSessionVerdictsAcrossConnections(t, false)
+}
+
+// A verdict the reader learned on the foreground connection also answers a
+// verdict batch on the background connection without another header fetch.
+func TestSessionVerdictsAreSharedWithTheBackgroundConnection(t *testing.T) {
+	testSessionVerdictsAcrossConnections(t, true)
+}
+
+func testSessionVerdictsAcrossConnections(t *testing.T, background bool) {
+	t.Helper()
 	traffic := &verdictTraffic{}
 	ln := serveVerdictMail(t, traffic)
 	connect := func(username, password string) (provider.MailProvider, error) {
@@ -150,18 +161,26 @@ func TestSessionVerdictsOutliveTheConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The mail server drops the connection, and the next request, the
-	// folder's listing, is answered on another.
-	ln.drop(0)
-	if err := s.DoMail(func(p provider.MailProvider) error {
-		_, _, err := p.ListMessages("INBOX", "", 0, 50)
-		return err
-	}); err != nil {
-		t.Fatal(err)
+	doMail := s.DoMail
+	if background {
+		sm.backgroundConnections = true
+		doMail = func(f func(provider.MailProvider) error) error {
+			return s.DoBackgroundMail(context.Background(), f)
+		}
+	} else {
+		// The mail server drops the connection, and the next request, the
+		// folder's listing, is answered on another.
+		ln.drop(0)
+		if err := s.DoMail(func(p provider.MailProvider) error {
+			_, _, err := p.ListMessages("INBOX", "", 0, 50)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	before := len(traffic.String())
 	var got map[string]provider.AuthVerdict
-	if err := s.DoMail(func(p provider.MailProvider) error {
+	if err := doMail(func(p provider.MailProvider) error {
 		var err error
 		got, _, err = p.(provider.AuthVerdictProvider).AuthVerdicts("INBOX", ids)
 		return err
@@ -169,7 +188,7 @@ func TestSessionVerdictsOutliveTheConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n := ln.accepted(); n != 2 {
-		t.Fatalf("%d connections to the mail server; want the session's second, after the first was dropped", n)
+		t.Fatalf("%d connections to the mail server; want two for a reconnect or a background connection", n)
 	}
 	want := map[string]provider.AuthVerdict{"1": {BimiPotential: true}, "2": {BimiFailed: true}}
 	if !reflect.DeepEqual(got, want) {

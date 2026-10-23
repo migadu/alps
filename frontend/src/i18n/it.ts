@@ -246,7 +246,7 @@ export const it = {
     emptyingMailbox: 'Svuotamento di {folder}...',
     mailboxEmptied: 'Svuotamento di {folder} completato.',
     emptyMailboxFailed: 'Impossibile svuotare {folder}.',
-    mailboxAlreadyEmpty: '{folder} era già vuota: non è stato eliminato nulla.',
+    mailboxAlreadyEmpty: 'La cartella {folder} era già vuota: non è stato eliminato nulla.',
     emptyMailboxSlow: 'Svuotamento di {folder} ancora in corso. Il server ci sta lavorando: ricontrolla tra un momento.'
   },
   composer: {
@@ -546,6 +546,7 @@ export const it = {
     next: "Successivo",
     expand: "Espandi",
     collapse: "Comprimi",
+    moreOptions: "Altre opzioni",
     notFound: "Pagina non trovata"
   },
   webauthn: {

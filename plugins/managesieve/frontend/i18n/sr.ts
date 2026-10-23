@@ -8,6 +8,8 @@ export default {
   "managesieve": {
     "title": "Filteri",
     "description": "Dodajte prilagođena pravila o tome kako se poruke obrađuju i odlažu.",
+    "loadError": "Filteri nisu mogli da se učitaju.",
+    "loadErrorRetry": "Pokušaj ponovo",
     "tabs": {
       "switchToRaw": "Sirov uređivač"
     },
@@ -33,6 +35,7 @@ export default {
       "any": "BILO KOJI",
       "ofTheFollowing": "od sledećih uslova podudaraju",
       "then": "ONDA",
+      "value": "Vrednost",
       "actions": {
         "fileinto": "Premesti u fasciklu",
         "discard": "Odbaci (obriši)",

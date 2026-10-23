@@ -601,7 +601,8 @@ export class AlpsContactView extends LitElement {
 
             <alps-input placeholder="${this.i18nStore?.t('contacts.address')}" .value=${this.editForm.address || ''} @input=${(e: any) => this.handleInput('address', e.target.value)}></alps-input>
             <alps-input placeholder="${this.i18nStore?.t('contacts.url')}" type="url" .value=${this.editForm.url || ''} @input=${(e: any) => this.handleInput('url', e.target.value)}></alps-input>
-            <alps-input placeholder="${this.i18nStore?.t('contacts.birthday')}" type="date" .value=${this.editForm.birthday || ''} @input=${(e: any) => this.handleInput('birthday', e.target.value)}></alps-input>
+            <!-- A date input shows no placeholder, so the birthday field's name is its label. -->
+            <alps-input placeholder="${this.i18nStore?.t('contacts.birthday')}" label="${this.i18nStore?.t('contacts.birthday')}" type="date" .value=${this.editForm.birthday || ''} @input=${(e: any) => this.handleInput('birthday', e.target.value)}></alps-input>
             <textarea class="edit-textarea" placeholder="${this.i18nStore?.t('contacts.notes')}" .value=${this.editForm.note || ''} @input=${(e: any) => this.handleInput('note', e.target.value)}></textarea>
             <textarea class="edit-textarea" placeholder="${this.i18nStore?.t('contacts.publicKey') || 'GPG Public Key Block'}" .value=${this.editForm.public_key || ''} @input=${(e: any) => this.handleInput('public_key', e.target.value)} style="font-family: monospace; white-space: pre;"></textarea>
           </div>

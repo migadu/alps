@@ -1,4 +1,4 @@
-import { LitElement, html, css, type TemplateResult } from 'lit';
+import { LitElement, html, css, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { renderIcon } from '../utils/ui';
@@ -6,7 +6,7 @@ import { composeContext } from '../store/compose-store';
 import type { ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { mailboxOperations } from '../services/mailbox-operations';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels, acceptsDroppedMessages, advertisedRoles, mailboxRole, reportsSubscriptions, type MailboxRole } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels, acceptsDroppedMessages, advertisedRoles, mailboxRole, reportsSubscriptions, specialMailboxName, type MailboxRole } from '../utils/folders';
 import { carriesMessages, dropCopies, readMessageDrag } from '../utils/message-drag';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { confirmUnsubscribed, forgetUnsubscribedTree, renameUnsubscribedTree, settleUnsubscribedFolders, withUnsubscribedFolder, withoutUnsubscribedFolder } from '../utils/unsubscribed-folders';
@@ -346,6 +346,22 @@ export class FolderList extends LitElement {
 
     .folder-actions:focus-within ~ .folder-badge,
     .folder-actions.popup-open ~ .folder-badge {
+      display: none;
+    }
+
+    /* The menu is shown while the keyboard is in its row, so that Tab
+       reaches it from the folder's name: a button inside display: none is no
+       Tab stop, and so it could never take the focus that shows it. Not
+       while a click has put the focus on the name, or on the expander, whose
+       button a click focuses too: a click leaves the row as it was. Keyed on
+       :focus-within, which holds while the focus moves from the name to the
+       menu; keyed on the name's :focus-visible alone, the menu was hidden
+       again before Tab reached it. */
+    .folder-item:focus-within:not(:has(.folder-name:focus:not(:focus-visible), .folder-toggle-btn:focus)) .folder-actions {
+      display: flex;
+    }
+
+    .folder-item.has-actions:focus-within:not(:has(.folder-name:focus:not(:focus-visible), .folder-toggle-btn:focus)) .folder-badge {
       display: none;
     }
 
@@ -852,56 +868,34 @@ export class FolderList extends LitElement {
       }
     });
 
-    const normalizedAttrs = (node: TreeNode): string[] =>
-      (node.mb?.Attrs || []).map((a: any) => (typeof a === 'string' ? a.toLowerCase() : ''));
-    const hasSlotAttr = (node: TreeNode, attr: string): boolean => normalizedAttrs(node).includes(attr);
     // The roles the server assigns itself: a name stands only for a role no
     // folder carries.
     const advertised = advertisedRoles(this.mailboxes);
-    // The role the actions act on. This matched names itself, exactly and case
-    // included, and knew no Exchange "Deleted Items", so Delete filed mail into
-    // a folder called "trash" that the sidebar listed as an ordinary folder,
-    // under its raw name. mailboxRole gives no role to a synthetic parent (e.g.
-    // "Archives" when only "Archives/2025" exists) or a \Noselect placeholder,
-    // which must not masquerade as a primary special mailbox; a \All folder
-    // has a role but no slot.
-    const slotIndexForNode = (node: TreeNode): number => {
-      const role = mailboxRole(node.mb, advertised);
-      return specialSlots.findIndex(s => s.role === role);
-    };
+    // Each role's special folder, the one the header and the toasts name by
+    // the role too: specialMailboxName. Two can claim a role, and the other is
+    // a regular folder, drawn under its own name rather than duplicating the
+    // first. Beside a "Deleted Items" listed first, a folder called "Trash" is
+    // not the Trash Delete uses, and is not drawn as it. The role is the one
+    // the actions act on (mailboxRole): this matched names itself, exactly and
+    // case included, and knew no Exchange "Deleted Items", so Delete filed
+    // mail into a folder called "trash" that the sidebar listed as an ordinary
+    // folder, under its raw name. A synthetic parent (e.g. "Archives" when only
+    // "Archives/2025" exists) or a \Noselect placeholder has no role and must
+    // not masquerade as a primary special mailbox; a \All folder has a role
+    // but no slot.
+    const specialSlotOf = new Map<string, number>();
+    specialSlots.forEach((slot, i) => {
+      const name = specialMailboxName(slot.role, this.mailboxes);
+      if (name !== null) specialSlotOf.set(name, i);
+    });
 
     const standardBySlot = new Map<number, TreeNode>();
     const customNodes: TreeNode[] = [];
 
     Object.values(root).forEach(node => {
-      const idx = slotIndexForNode(node);
-      if (idx < 0) {
-        customNodes.push(node);
-        return;
-      }
-      const existing = standardBySlot.get(idx);
-      if (!existing) {
-        standardBySlot.set(idx, node);
-        return;
-      }
-      // Two mailboxes claim the same slot: keep the one carrying the real
-      // special-use attribute, else the one the actions file into, which is
-      // the first of them the server lists. Beside a "Deleted Items" listed
-      // first, a folder called "Trash" is not the Trash Delete uses, and is
-      // not drawn as it. The loser is demoted to a regular folder rather than
-      // duplicating the primary.
-      const slotDef = specialSlots[idx];
-      const nodeAttr = hasSlotAttr(node, '\\' + slotDef.role);
-      const existingAttr = hasSlotAttr(existing, '\\' + slotDef.role);
-      const nodeWins =
-        (nodeAttr && !existingAttr) ||
-        (nodeAttr === existingAttr && node.fullName === findMailboxNameByRole(slotDef.role, this.mailboxes, ''));
-      if (nodeWins) {
-        standardBySlot.set(idx, node);
-        customNodes.push(existing);
-      } else {
-        customNodes.push(node);
-      }
+      const idx = node.mb ? specialSlotOf.get(node.fullName) : undefined;
+      if (idx === undefined) customNodes.push(node);
+      else standardBySlot.set(idx, node);
     });
 
     // How a folder in slot `i` is drawn: the name's own entry only when the
@@ -927,12 +921,7 @@ export class FolderList extends LitElement {
     // though the actions file into only one. Every other folder of the role
     // keeps its own name. Only nested folders are found here: a role a
     // top-level folder has is a slot held above.
-    const nestedSlots = new Map<string, number>();
-    specialSlots.forEach((slot, i) => {
-      if (standardBySlot.has(i)) return;
-      const name = findMailboxNameByRole(slot.role, this.mailboxes, '');
-      if (name) nestedSlots.set(name, i);
-    });
+    const nestedSlots = new Map([...specialSlotOf].filter(([, i]) => !standardBySlot.has(i)));
 
     const customOrder = this.settingsStore?.getState()?.customMailboxOrder || [];
 
@@ -1064,6 +1053,19 @@ export class FolderList extends LitElement {
             this.selectMailbox(node.fullName);
           }
         };
+        // The folder's name is its button, answering Enter and Space as a
+        // <button> does, and Space once while it is held. Not the whole row,
+        // which also holds the expander and the folder's menu: a button may
+        // not contain other controls. A placeholder with nothing below it does
+        // nothing, and is no button; one with folders below it says whether
+        // they are shown.
+        const isControl = !isNoSelect || hasChildren;
+        const handleKeyDown = (e: KeyboardEvent) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          if (e.key === ' ' && e.repeat) return;
+          handleClick(e);
+        };
 
 
         return html`
@@ -1078,8 +1080,9 @@ export class FolderList extends LitElement {
           >
             <alps-icon-btn 
               class="folder-toggle-btn" 
+              title=${this.i18nStore?.t(isExpanded ? 'general.collapse' : 'general.expand')}
               icon=${isExpanded ? 'caretDown' : 'caretRight'}
-              style="visibility: ${hasChildren ? 'visible' : 'hidden'};" 
+              style="visibility: ${hasChildren ? 'visible' : 'hidden'};"
               @click=${(e: Event) => {
             e.stopPropagation();
             if (hasChildren) this.toggleFolder(e, node.fullName);
@@ -1087,7 +1090,13 @@ export class FolderList extends LitElement {
             ></alps-icon-btn>
             
             <div class="folder-icon">${icon}</div>
-            <div class="folder-name">${label}</div>
+            <div class="folder-name"
+              role=${isControl ? 'button' : nothing}
+              tabindex=${isControl ? '0' : nothing}
+              aria-current=${isActive ? 'true' : nothing}
+              aria-expanded=${isNoSelect && hasChildren ? String(isExpanded) : nothing}
+              @keydown=${isControl ? handleKeyDown : nothing}
+            >${label}</div>
             
             ${hasActions ? html`
               <div class="folder-actions ${this.activeKebabMenu === node.fullName ? 'popup-open' : ''}" @click=${(e: Event) => e.stopPropagation()}>
@@ -1097,7 +1106,7 @@ export class FolderList extends LitElement {
                   @popup-open=${() => { this.activeKebabMenu = node.fullName; }}
                   @popup-close=${() => { if (this.activeKebabMenu === node.fullName) this.activeKebabMenu = null; }}
                 >
-                  <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical"></alps-icon-btn>
+                  <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" title=${this.i18nStore?.t('general.moreOptions')}></alps-icon-btn>
                   <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
