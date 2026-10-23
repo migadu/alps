@@ -2613,8 +2613,7 @@ func handleComposeNew(ctx *alps.Context) error {
 		for _, addr := range storedBcc {
 			// Keep quoting required by a local part such as "a;b", while
 			// leaving the display name plain for the browser to format.
-			address := (&mail.Address{Address: addr.Address}).String()
-			addr.Address = strings.TrimSuffix(strings.TrimPrefix(address, "<"), ">")
+			addr.Address = mailboxAddress(addr)
 		}
 		var drafts *MailboxInfo
 		var uid provider.MessageID
