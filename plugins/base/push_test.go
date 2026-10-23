@@ -54,6 +54,20 @@ func (s *idleMailSession) Idle(ctx context.Context, w *imapserver.UpdateWriter, 
 	return s.Session.Idle(ctx, w, stop)
 }
 
+// notifyingMailSession is an idleMailSession of a server that can watch
+// mailboxes (NOTIFY): the in-memory session's watch, passed through.
+type notifyingMailSession struct {
+	*idleMailSession
+}
+
+func (s notifyingMailSession) SetNotify(ctx context.Context, options *imap.NotifyOptions, w *imapserver.UpdateWriter) error {
+	return s.Session.(imapserver.SessionNotify).SetNotify(ctx, options, w)
+}
+
+func (s notifyingMailSession) NotifyPoll(ctx context.Context, w *imapserver.UpdateWriter, stop <-chan struct{}) error {
+	return s.Session.(imapserver.SessionNotify).NotifyPoll(ctx, w, stop)
+}
+
 func (s *idleMailSession) Status(ctx context.Context, mailbox string, options *imap.StatusOptions) (*imap.StatusData, error) {
 	s.server.mu.Lock()
 	s.server.status[s.conn]++
@@ -113,8 +127,14 @@ func (m *idleMailServer) markRead(t *testing.T) {
 // not through any of alps's connections.
 func (m *idleMailServer) deliver(t *testing.T, subject string) {
 	t.Helper()
+	m.file(t, "INBOX", subject)
+}
+
+// file files a message into mailbox, as another program would.
+func (m *idleMailServer) file(t *testing.T, mailbox, subject string) {
+	t.Helper()
 	msg := "From: Ada <ada@remote.test>\r\nSubject: " + subject + "\r\n\r\nnew\r\n"
-	if _, err := m.user.Append(context.Background(), "INBOX", strings.NewReader(msg), &imap.AppendOptions{}); err != nil {
+	if _, err := m.user.Append(context.Background(), mailbox, strings.NewReader(msg), &imap.AppendOptions{}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -122,6 +142,9 @@ func (m *idleMailServer) deliver(t *testing.T, subject string) {
 type pushOptions struct {
 	push   bool // [server] push_new_mail
 	noIdle bool // the mail server does not advertise IDLE
+	// folders is [server] push_subscribed_folders; notify has the mail
+	// server advertise NOTIFY, and hold a subscribed Archive.
+	folders, notify bool
 	// configure sets up the HTTP server before it starts.
 	configure func(*http.Server)
 }
@@ -141,6 +164,14 @@ func newPushTestServer(t *testing.T, opts pushOptions) (*testServer, *idleMailSe
 			t.Fatal(err)
 		}
 	}
+	if opts.notify {
+		if err := user.Create(ctx, "Archive", nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := user.Subscribe(ctx, "Archive"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	m := &idleMailServer{user: user, idles: map[int]int{}, inIdle: map[int]bool{}, status: map[int]int{}}
 	mem := imapmemserver.New()
 	mem.AddUser(user)
@@ -148,13 +179,20 @@ func newPushTestServer(t *testing.T, opts pushOptions) (*testServer, *idleMailSe
 	if !opts.noIdle {
 		caps[imap.CapIdle] = struct{}{}
 	}
+	if opts.notify {
+		caps[imap.CapNotify] = struct{}{}
+	}
 	imapSrv := imapserver.New(&imapserver.Options{
 		NewSession: func(c *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
 			m.mu.Lock()
 			m.conns++
 			conn := m.conns
 			m.mu.Unlock()
-			return &idleMailSession{Session: mem.NewSession(), server: m, conn: conn}, nil, nil
+			session := &idleMailSession{Session: mem.NewSession(), server: m, conn: conn}
+			if opts.notify {
+				return notifyingMailSession{session}, nil, nil
+			}
+			return session, nil, nil
 		},
 		Caps:         caps,
 		InsecureAuth: true,
@@ -181,6 +219,8 @@ func newPushTestServer(t *testing.T, opts pushOptions) (*testServer, *idleMailSe
 		CacheEnabled: true,
 		CacheTTL:     time.Minute,
 		PushNewMail:  opts.push,
+		// Folders as well, where the mail server can tell of them.
+		PushSubscribedFolders: opts.folders,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -526,5 +566,68 @@ func TestHTTP_AFlagChangedElsewhereIsNoNews(t *testing.T) {
 	}
 	if len(cache.GetKeysWithPrefix("messages:INBOX:")) == 0 {
 		t.Error("a flag changed elsewhere dropped the Inbox's pages")
+	}
+}
+
+// With the folders pushed too ([server] push_subscribed_folders) and a mail
+// server that can tell of them (NOTIFY), the stream says so as it comes up,
+// and mail filed into a subscribed folder reaches it, naming the folder. The
+// session no longer answers from the pages it held of the folder; it keeps
+// the counts, for the check the page makes next, as for the Inbox.
+func TestHTTP_MailFiledIntoASubscribedFolderReachesTheEventStream(t *testing.T) {
+	s, m := newPushTestServer(t, pushOptions{push: true, folders: true, notify: true})
+	s.mailbox("Archive")
+	cache := s.signedInSession().Cache()
+	if len(cache.GetKeysWithPrefix("messages:Archive:")) == 0 {
+		t.Fatal("the listing left nothing of Archive in the cache")
+	}
+
+	events := s.openStream()
+	if ev := awaitEvent(t, events, "watching"); ev.data != "SUBSCRIBED" {
+		t.Fatalf("the stream came up watching %q, want SUBSCRIBED", ev.data)
+	}
+	m.file(t, "Archive", "Babbage")
+	if ev := awaitEvent(t, events, "folder"); ev.data != "Archive" {
+		t.Errorf("the news names %q, want Archive", ev.data)
+	}
+	if keys := cache.GetKeysWithPrefix("messages:Archive:"); len(keys) > 0 {
+		t.Errorf("Archive's pages from before the news are still held: %v", keys)
+	}
+	// The check the page makes on the news: the counts, then the listing.
+	r := s.do("GET", "/mailboxes/Archive/status", nil)
+	s.expect(r, http.StatusOK)
+	var counts MailboxStatusResponse
+	r.json(t, &counts)
+	if counts.Total != 1 {
+		t.Errorf("the check counts %d messages in Archive, want the new one", counts.Total)
+	}
+	if page := s.mailbox("Archive"); len(page.Messages) != 1 {
+		t.Errorf("Archive lists %d messages after the check, want the new one", len(page.Messages))
+	}
+
+	m.deliver(t, "Lovelace")
+	if ev := awaitEvent(t, events, "inbox"); ev.data != "INBOX" {
+		t.Errorf("news of the Inbox names %q", ev.data)
+	}
+}
+
+// With the folders left out, or a mail server without NOTIFY, the stream
+// says that the Inbox alone is watched, as before.
+func TestHTTP_TheStreamWatchesTheInboxAloneOtherwise(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		folders, notify bool
+	}{
+		{"folders off", false, true},
+		{"no NOTIFY", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := newPushTestServer(t, pushOptions{push: true, folders: tc.folders, notify: tc.notify})
+			s.mailbox("INBOX")
+			events := s.openStream()
+			if ev := awaitEvent(t, events, "watching"); ev.data != "INBOX" {
+				t.Errorf("the stream came up watching %q, want INBOX", ev.data)
+			}
+		})
 	}
 }
