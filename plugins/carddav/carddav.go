@@ -1,12 +1,16 @@
 package alpscarddav
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"mime"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/emersion/go-webdav/carddav"
 	"github.com/migadu/alps"
@@ -39,7 +43,31 @@ func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 		os.Stdout.Write([]byte("\n"))
 	}
 
+	if err == nil {
+		if err := keepListEscapesIn(resp); err != nil {
+			return nil, err
+		}
+	}
 	return resp, err
+}
+
+// keepListEscapesIn passes a response that may hold vCards, a card or a
+// multistatus, through keepListEscapes before go-webdav's client decodes it.
+func keepListEscapesIn(resp *http.Response) error {
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if !strings.Contains(mediaType, "vcard") && !strings.Contains(mediaType, "xml") {
+		return nil
+	}
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	body = keepListEscapes(body)
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	resp.ContentLength = int64(len(body))
+	resp.Header.Del("Content-Length")
+	return nil
 }
 
 func newClient(u *url.URL, session *alps.Session, debug bool) (*carddav.Client, error) {

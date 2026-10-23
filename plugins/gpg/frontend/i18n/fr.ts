@@ -38,6 +38,7 @@ export default {
     importMissing: 'Les blocs public et privé sont requis pour l\'importation.',
     generateFailed: 'Échec de la génération des clés : {error}',
     importFailed: 'Échec de l\'importation : {error}',
+    purgeFailed: 'Échec de la suppression des clés : {error}',
     importFailedTitle: 'Échec de l\'importation',
     passphraseMismatch: 'Les mots de passe ne correspondent pas. Veuillez réessayer.',
     missingPublicKeys: 'Impossible de chiffrer : clés publiques manquantes pour :\n{keys}',
