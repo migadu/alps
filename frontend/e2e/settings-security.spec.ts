@@ -375,4 +375,54 @@ test.describe("with a security key", () => {
     await page.waitForURL(/#\/mailbox/, { timeout: 15_000 });
     expect(finishes).toHaveLength(1);
   });
+
+  test("Back to login before the key page has its options asks for no key, and the next sign-in still works", async ({ page }) => {
+    const address = await freshAccount(page, "back");
+    await withAuthenticator(page);
+    await page.goto("/#/settings/webauthn");
+    await addKey(page, "Laptop");
+
+    await page.context().clearCookies();
+    allowConsoleErrors(page, /status of 401/);
+    // The key page's first request for options is held until the user has
+    // gone back. Answered then, it used to open the key prompt over the login
+    // form, and the always-present key below signed the account in.
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let held = true;
+    await page.route("**/webauthn/verify/begin", async (route) => {
+      if (!held) return route.continue();
+      await released;
+      // Called off by the page meanwhile, the request has nothing to continue.
+      await route.continue().catch(() => {});
+    });
+    const finishes: string[] = [];
+    page.on("request", (r) => {
+      if (new URL(r.url()).pathname === "/webauthn/verify/finish") finishes.push(r.url());
+    });
+    await page.goto("/#/login");
+    await page.reload();
+    const signIn = async () => {
+      await page.locator("login-page #username").fill(address);
+      await page.locator("login-page #password").fill(PASSWORD);
+      await page.locator("login-page button[type=submit]").click();
+    };
+    const asked = page.waitForRequest((r) => new URL(r.url()).pathname === "/webauthn/verify/begin");
+    await signIn();
+    await asked;
+
+    await page.locator("login-webauthn-page").getByRole("button", { name: /Back to Login/ }).click();
+    await expect(page.locator("login-page #password")).toBeVisible();
+    release();
+    // Nothing to wait for but time: what is being shown is that nothing comes.
+    await page.waitForTimeout(2_000);
+    expect(finishes, "a key was sent from the page the user had left").toEqual([]);
+    expect(page.url()).toContain("#/login");
+
+    // Signed in again, the key page starts a ceremony of its own, and it works.
+    held = false;
+    await signIn();
+    await page.waitForURL(/#\/mailbox/, { timeout: 15_000 });
+    expect(finishes).toHaveLength(1);
+  });
 });
