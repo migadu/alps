@@ -1085,10 +1085,17 @@ export class ContactsPage extends LitElement {
     if (editing && this.conflictedPath === this.selectedContact.path) return;
     this.saving = true;
     try {
-      if (payload.categories && typeof payload.categories === 'string') {
-        payload.categories = payload.categories.split(',').map((c: string) => c.trim()).filter((c: string) => c);
+      // The editor has no field for the categories: the toolbar's star and
+      // category picker write them on their own, through updateCategories.
+      // Sent from the form's copy, taken when editing began and joined into
+      // one string, an edit put back what a star made while editing had
+      // changed, and split a category whose name held a comma in two. So an
+      // edit leaves them out, and the open card keeps its own; a new
+      // contact is created in the category it was opened in.
+      if (editing) {
+        delete payload.categories;
       } else {
-        payload.categories = [];
+        payload.categories = Array.isArray(payload.categories) ? payload.categories : [];
       }
 
       let data;
@@ -1100,7 +1107,11 @@ export class ContactsPage extends LitElement {
         // form save express a new editing gesture.
         const changed_fields = ['organization', 'title', 'note', 'url', 'nickname', 'public_key', 'address']
           .filter(field => String(payload[field] || '').trim() !== String(this.selectedContact[field] || '').trim());
-        const request = { ...payload, changed_fields, etag: this.selectedContact.etag };
+        // And what the page held for each: after a clear, the server's next
+        // copy is one the page never showed, and a value typed into the
+        // emptied field is added beside it rather than put in its place.
+        const changed_from = Object.fromEntries(changed_fields.map(field => [field, String(this.selectedContact[field] || '')]));
+        const request = { ...payload, changed_fields, changed_from, etag: this.selectedContact.etag };
         for (const field of ['emails', 'phones']) {
           const props = payload[field];
           if (!Array.isArray(props) || props.some((p: any) => !p.id)) continue;
