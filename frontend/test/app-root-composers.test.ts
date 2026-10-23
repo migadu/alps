@@ -33,6 +33,9 @@ describe('composer windows', () => {
     const root = await mount<El>('app-root');
     const store = root.composeStore;
     for (const subject of ['X', 'A', 'C']) store.openComposer({ subject });
+    // Element identity is independent of how long the first lazy import
+    // takes on a cold transform cache.
+    await root.ensureComposerLoaded();
     await waitFor(() => windows(root).length === 3, 'three windows');
     const [, a, c] = windows(root);
 
@@ -197,5 +200,28 @@ describe('the update offer', () => {
     (offer.shadowRoot!.querySelector('alps-button') as HTMLElement).click();
     expect(reload).toHaveBeenCalledTimes(1);
     expect(JSON.parse(localStorage.getItem('alps_compose_drafts_ada@example.com')!).map((c: any) => c.subject)).toEqual(['Engines and looms']);
+  });
+
+  it('keeps the drafts the login screen preserved when its Reload is pressed there', async () => {
+    // Signed out by an expired cookie: the login screen clears the windows from
+    // memory and leaves their copy on disk for the next sign-in. The Reload
+    // wrote the empty list over it.
+    localStorage.setItem('alps_active_user', 'ada@example.com');
+    localStorage.setItem('alps_compose_drafts_ada@example.com', JSON.stringify([
+      { id: 'c1', subject: 'Engines', text: 'Notes', to: [], cc: [], bcc: [], attachments: [], dirty: true },
+    ]));
+    const reload = vi.spyOn(appUpdate, 'applyUpdate').mockImplementation(() => {});
+    const root = await mount<El>('app-root');
+    await waitFor(() => !!root.shadowRoot!.querySelector('login-page'), 'the login screen');
+    await waitFor(() => root.composeStore.getState().activeComposers.length === 0, 'the windows cleared');
+
+    window.dispatchEvent(new CustomEvent(appUpdate.UPDATE_AVAILABLE_EVENT));
+    await waitFor(() => !!root.shadowRoot!.querySelector('alps-toast'), 'the offer');
+    const offer = root.shadowRoot!.querySelector('alps-toast') as El;
+    await offer.updateComplete;
+    (offer.shadowRoot!.querySelector('alps-button') as HTMLElement).click();
+
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem('alps_compose_drafts_ada@example.com')!).map((c: any) => c.subject)).toEqual(['Engines']);
   });
 });

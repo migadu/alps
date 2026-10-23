@@ -97,10 +97,19 @@ func lineStart(body []byte, i int) int {
 // a line of any other property.
 func listValueStart(body []byte, i int) int {
 	j := i
-	for j < len(body) && (isNameByte(body[j]) || body[j] == '.') {
+	var property strings.Builder
+	for j < len(body) {
+		if n := foldedBreak(body, j); n > 0 {
+			j += n
+			continue
+		}
+		if !isNameByte(body[j]) && body[j] != '.' {
+			break
+		}
+		property.WriteByte(body[j])
 		j++
 	}
-	name := string(body[i:j])
+	name := property.String()
 	if dot := strings.LastIndexByte(name, '.'); dot >= 0 {
 		name = name[dot+1:]
 	}
@@ -109,6 +118,10 @@ func listValueStart(body []byte, i int) int {
 	}
 	quoted := false
 	for ; j < len(body); j++ {
+		if n := foldedBreak(body, j); n > 0 {
+			j += n - 1
+			continue
+		}
 		switch {
 		case body[j] == '\\' && quoted:
 			// A quote escaped in a quoted value, as encodeCard writes it.
@@ -122,6 +135,27 @@ func listValueStart(body []byte, i int) int {
 		}
 	}
 	return -1
+}
+
+// foldedBreak is the physical line break and one whitespace byte removed
+// when unfolding a vCard line, including XML's carriage-return spelling.
+// Keep offsets in the original response so only the value is rewritten.
+func foldedBreak(body []byte, i int) int {
+	j := i
+	for _, cr := range []string{"\r", "&#13;", "&#xD;", "&#xd;"} {
+		if bytes.HasPrefix(body[j:], []byte(cr)) {
+			j += len(cr)
+			break
+		}
+	}
+	if j >= len(body) {
+		return 0
+	}
+	n := lineBreak(body, j)
+	if n > 0 && j+n < len(body) && (body[j+n] == ' ' || body[j+n] == '\t') {
+		return j + n + 1 - i
+	}
+	return 0
 }
 
 func isNameByte(b byte) bool {

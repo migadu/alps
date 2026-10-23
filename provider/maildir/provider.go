@@ -138,7 +138,11 @@ func (p *Provider) FindMailboxByType(mboxType provider.MailboxType) (*provider.M
 		}
 	}
 
-	return nil, fmt.Errorf("mailbox not found")
+	// No such folder is answered as none, not as a failure, as the IMAP
+	// provider answers it. A conversation read in an account without Sent has
+	// no replies to look for there, and was taken for one whose look in Sent
+	// had failed.
+	return nil, nil
 }
 
 func (p *Provider) CreateMailbox(name string) error {

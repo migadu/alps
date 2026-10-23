@@ -188,6 +188,7 @@ export class AppRoot extends LitElement {
 
     window.addEventListener('auth-error', this._handleAuthError);
     window.addEventListener('session-cleared', this._handleSessionCleared);
+    window.addEventListener('user-logged-in', this._handleUserLoggedIn);
     window.addEventListener(BACKGROUND_CHANGED_EVENT, this._handleBackgroundChanged);
     window.addEventListener('show-toast', this._handleShowToast as EventListener);
     window.addEventListener('beforeunload', this._handleBeforeUnload);
@@ -197,6 +198,9 @@ export class AppRoot extends LitElement {
     window.addEventListener('dragover', this._handleGlobalDragOver);
     window.addEventListener('drop', this._handleGlobalDrop);
     window.addEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
+    // Reconnection may have missed a registry update while the shell's
+    // listeners were detached. Apply the current list before showing pages.
+    this._handlePluginsUpdated();
     window.addEventListener(PLUGIN_LOAD_FAILED_EVENT, this._handlePluginLoadFailed);
     window.addEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
     window.addEventListener(UPDATE_AVAILABLE_EVENT, this._handleUpdateAvailable);
@@ -221,29 +225,48 @@ export class AppRoot extends LitElement {
   };
 
   private _handlePluginsUpdated = () => {
+    const routes = this.getRoutes();
+    for (const path of [...this.pluginPages.keys()]) {
+      if (!(path in routes)) this.pluginPages.delete(path);
+    }
+    this.router.setRoutes(routes);
     this.requestUpdate();
   };
 
+  private _handleUserLoggedIn = () => {
+    this._fetchSessionData();
+  };
+
+  private sessionDataGeneration = 0;
+
   private async _fetchSessionData() {
+    const generation = ++this.sessionDataGeneration;
     try {
       const response = await fetch('/session');
       if (response.ok) {
         const data = await response.json();
+        // A sign-out, a newer sign-in or a disconnected shell invalidates
+        // this account's answer, even if its request finishes afterwards.
+        if (!this.isConnected || generation !== this.sessionDataGeneration) return;
         if (data.EnabledPlugins) {
           registry.setEnabledPlugins(data.EnabledPlugins);
         }
       }
     } catch (e) {
-      console.error('Failed to fetch session data', e);
+      if (this.isConnected && generation === this.sessionDataGeneration) {
+        console.error('Failed to fetch session data', e);
+      }
     }
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.sessionDataGeneration++;
     this.composeStore.removeEventListener('change', this._handleComposeChange);
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     window.removeEventListener('auth-error', this._handleAuthError);
     window.removeEventListener('session-cleared', this._handleSessionCleared);
+    window.removeEventListener('user-logged-in', this._handleUserLoggedIn);
     window.removeEventListener(BACKGROUND_CHANGED_EVENT, this._handleBackgroundChanged);
     window.removeEventListener('show-toast', this._handleShowToast as EventListener);
     window.removeEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
@@ -609,8 +632,10 @@ export class AppRoot extends LitElement {
   }
 
   private _handleSessionCleared = () => {
+    this.sessionDataGeneration++;
     this.mailboxPage = null;
     this.pluginPages.clear();
+    registry.setEnabledPlugins(null);
   };
 
   private getRoutes() {
