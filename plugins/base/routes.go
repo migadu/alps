@@ -283,6 +283,7 @@ func dropMailboxListings(cache *alps.Cache, mailbox string) {
 func dropRenumberedMailbox(cache *alps.Cache, mailbox string) {
 	dropMailboxListings(cache, mailbox)
 	cache.DeletePrefix("message:" + mailbox + ":")
+	cache.Delete("uidvalidity:" + mailbox)
 }
 
 // uidMoved reports whether a UIDVALIDITY or UIDNEXT moved from prev to now.
@@ -291,16 +292,19 @@ func uidMoved(prev, now uint32) bool {
 	return prev != 0 && now != 0 && prev != now
 }
 
-// heldUIDValidities answers the UIDVALIDITY values the session's status and
-// pages of a mailbox were read at, where they are known.
+// heldUIDValidities answers the UIDVALIDITY values the session's status,
+// pages and raw-part validator were read at, where they are known.
 //
-// Both, because either may be all that is left from before the folder was
+// Any can be all that is left from before the folder was
 // made again elsewhere. The folder list reads every folder's status again
 // without looking at its pages, a check of another folder that finds a change
 // drops every status and keeps the pages, and a folder only searched has a
-// status and no page.
+// status and no page. A raw part can outlive both its status and its pages.
 func heldUIDValidities(cache *alps.Cache, mailbox string) []uint32 {
 	var held []uint32
+	if cached, ok := cache.Get("uidvalidity:" + mailbox); ok && cached.(uint32) != 0 {
+		held = append(held, cached.(uint32))
+	}
 	if cached, ok := cache.Get("status:" + mailbox); ok {
 		if status := cached.(*MailboxStatus); status.StatusData != nil && status.UIDValidity != 0 {
 			held = append(held, status.UIDValidity)
@@ -1108,8 +1112,8 @@ func handleMailboxStatus(ctx *alps.Context) error {
 
 	renumbered := renumberedSince(heldValidities, counts.UIDValidity)
 	switch {
-	case prev.Known && (prev.Messages != counts.Messages || prev.Unseen != counts.Unseen ||
-		renumbered || uidMoved(prev.UIDNext, counts.UIDNext)):
+	case renumbered || prev.Known && (prev.Messages != counts.Messages || prev.Unseen != counts.Unseen ||
+		uidMoved(prev.UIDNext, counts.UIDNext)):
 		if renumbered {
 			dropRenumberedMailbox(cache, mboxName)
 		} else {

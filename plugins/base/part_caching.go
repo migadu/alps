@@ -46,17 +46,16 @@ func mailboxUIDValidity(ctx *alps.Context, mailbox string) (uint32, error) {
 	if mailbox == allMailboxes {
 		return 0, nil
 	}
-	key := "uidvalidity:" + mailbox
-	if cached, ok := ctx.Session.Cache().Get(key); ok {
-		return cached.(uint32), nil
+	if validity, ok := heldPartUIDValidity(ctx.Session.Cache(), mailbox); ok {
+		return validity, nil
 	}
 	var validity uint32
 	err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		// Asked again with the connection held: the inline images of a
 		// message are asked for at once, and the request that held it
 		// before this one may have just read it.
-		if cached, ok := ctx.Session.Cache().Get(key); ok {
-			validity = cached.(uint32)
+		if held, ok := heldPartUIDValidity(ctx.Session.Cache(), mailbox); ok {
+			validity = held
 			return nil
 		}
 		status, err := p.GetMailboxStatus(mailbox)
@@ -66,9 +65,10 @@ func mailboxUIDValidity(ctx *alps.Context, mailbox string) (uint32, error) {
 		validity = status.UIDValidity
 		// Dropped with the rest of the cache when a mailbox is made, deleted
 		// or renamed here. A mailbox made again by another client is noticed
-		// once this expires, or once a part is read from it again (see
+		// once this expires, a status/listing observes the change, or a part
+		// is read from it again (see
 		// partUIDValidity).
-		ctx.Session.Cache().Set(key, validity)
+		rememberPartUIDValidity(ctx.Session.Cache(), mailbox, validity)
 		return nil
 	})
 	if err != nil {
@@ -79,6 +79,36 @@ func mailboxUIDValidity(ctx *alps.Context, mailbox string) (uint32, error) {
 		return 0, nil
 	}
 	return validity, nil
+}
+
+// heldPartUIDValidity permits a cheap revalidation only while no other read
+// has reported a different UIDVALIDITY. Folder lists can update statuses
+// without a status probe or a page of this mailbox ever being opened.
+func heldPartUIDValidity(cache *alps.Cache, mailbox string) (uint32, bool) {
+	cached, ok := cache.Get("uidvalidity:" + mailbox)
+	if !ok {
+		return 0, false
+	}
+	validity := cached.(uint32)
+	if cached, ok := cache.Get("status:" + mailbox); ok {
+		if status := cached.(*MailboxStatus); status.StatusData != nil && uidMoved(validity, status.UIDValidity) {
+			return 0, false
+		}
+	}
+	return validity, true
+}
+
+// A STATUS or a selected-mailbox read is authoritative for this connection.
+// Forget old bodies and counts before remembering the validator. In
+// particular an old cached status must not undo the validity of a part just
+// read from a recreated mailbox on the next browser revalidation.
+func rememberPartUIDValidity(cache *alps.Cache, mailbox string, validity uint32) {
+	if renumberedSince(heldUIDValidities(cache, mailbox), validity) {
+		dropRenumberedMailbox(cache, mailbox)
+		cache.Delete("status:" + mailbox)
+		cache.Delete("mailboxes")
+	}
+	cache.Set("uidvalidity:"+mailbox, validity)
 }
 
 // partUIDValidity is the UIDVALIDITY a part p has just read from mailbox was
@@ -98,7 +128,7 @@ func partUIDValidity(ctx *alps.Context, p provider.MailProvider, mailbox string,
 	if validity == 0 {
 		return looked
 	}
-	ctx.Session.Cache().Set("uidvalidity:"+mailbox, validity)
+	rememberPartUIDValidity(ctx.Session.Cache(), mailbox, validity)
 	return validity
 }
 
