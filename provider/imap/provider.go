@@ -1041,7 +1041,15 @@ func (p *IMAPProvider) ListMessages(mailbox string, sortOrder string, page, page
 		}
 	}
 
-	mbox = p.client.Mailbox()
+	return p.listByNumber(mailbox, sortOrder, page, pageSize)
+}
+
+// listByNumber lists a page of the selected mailbox by message number, the
+// order mail arrived in, newest first unless sortOrder is "asc". It searches
+// for nothing, so a server that refuses searches still answers it. Each row is
+// a thread of its own, so the reader opened from it does not thread either.
+func (p *IMAPProvider) listByNumber(mailbox string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
+	mbox := p.client.Mailbox()
 	total := int(mbox.NumMessages)
 
 	var from, to int
@@ -1187,10 +1195,34 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		}
 	}
 
+	// Without a query the listing is the whole folder, and message numbers
+	// list all of it, in the order mail arrived. When the server refuses the
+	// SORT or SEARCH asked for below, the folder is listed by number instead.
+	// A server that rations searches refuses them once it has refused THREAD:
+	// Sora charges THREAD, SORT and SEARCH to one budget per account. That
+	// costs at most the date order, not the folder. A search with a query has
+	// no such answer, since only the server knows what matches, and fails as
+	// before.
+	byNumber := func(command string, refusal error) ([]provider.Message, provider.PageInfo, error) {
+		if p.debug {
+			fmt.Printf("flat list: %s refused, listing by number instead: %v\n", command, refusal)
+		}
+		// The NOOP ListMessages starts with, for mail that arrived since the
+		// mailbox was selected: the page is cut from the message count, and a
+		// refused command need not have brought news of it.
+		if err := p.client.Noop().Wait(); err != nil {
+			return nil, provider.PageInfo{}, err
+		}
+		return p.listByNumber(mailbox, sortOrder, page, pageSize)
+	}
+
 	var nums []uint32
 	if !p.client.Caps().Has(imap.CapSort) {
 		data, err := p.client.Search(searchCriteria, nil).Wait()
 		if err != nil {
+			if query == "" && refusedByServer(err) {
+				return byNumber("SEARCH", err)
+			}
 			return nil, provider.PageInfo{}, fmt.Errorf("SEARCH failed: %v", err)
 		}
 		if data != nil {
@@ -1212,6 +1244,9 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		var err error
 		sortData, err := p.client.Sort(sortOptions).Wait()
 		if err != nil {
+			if query == "" && refusedByServer(err) {
+				return byNumber("SORT", err)
+			}
 			return nil, provider.PageInfo{}, fmt.Errorf("SORT failed: %v", err)
 		}
 		nums = sortData.SeqNums

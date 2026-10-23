@@ -24,6 +24,10 @@ type memServer struct {
 	// threadErr, when set, is what THREAD is REFUSED with instead — a server
 	// that advertises the extension and still says no to one command.
 	threadErr error
+	// sortErr and searchErr, when set, are what SORT and SEARCH are refused
+	// with, as a server that rate-limits searching refuses them.
+	sortErr   error
+	searchErr error
 	// refuseSubscribe makes SUBSCRIBE answer NO, as a server that keeps no
 	// subscriptions of its own may.
 	refuseSubscribe bool
@@ -56,6 +60,8 @@ type threadedSession struct {
 	imapserver.Session
 	threads         []imap.ThreadData
 	threadErr       error
+	sortErr         error
+	searchErr       error
 	refuseSubscribe bool
 }
 
@@ -74,9 +80,20 @@ func (s *threadedSession) Thread(ctx context.Context, numKind imapserver.NumKind
 	return s.threads, nil
 }
 
+// Search passes SEARCH through, or refuses it when the test says so.
+func (s *threadedSession) Search(ctx context.Context, kind imapserver.NumKind, criteria *imap.SearchCriteria, options *imap.SearchOptions) (*imap.SearchData, error) {
+	if s.searchErr != nil {
+		return nil, s.searchErr
+	}
+	return s.Session.Search(ctx, kind, criteria, options)
+}
+
 // Sort passes SORT through to the in-memory server's session, which embedding
-// the Session interface alone would hide.
+// the Session interface alone would hide, or refuses it when the test says so.
 func (s *threadedSession) Sort(ctx context.Context, kind imapserver.NumKind, sortCriteria []imap.SortCriterion, charset string, searchCriteria *imap.SearchCriteria, options *imap.SortOptions) (*imap.SortData, error) {
+	if s.sortErr != nil {
+		return nil, s.sortErr
+	}
 	sorter, ok := s.Session.(interface {
 		Sort(context.Context, imapserver.NumKind, []imap.SortCriterion, string, *imap.SearchCriteria, *imap.SortOptions) (*imap.SortData, error)
 	})
@@ -118,7 +135,7 @@ func memIMAP(t *testing.T, s *memServer, messages ...string) *IMAPProvider {
 	}
 	srv := imapserver.New(&imapserver.Options{
 		NewSession: func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
-			return &threadedSession{Session: mem.NewSession(), threads: s.threads, threadErr: s.threadErr, refuseSubscribe: s.refuseSubscribe}, nil, nil
+			return &threadedSession{Session: mem.NewSession(), threads: s.threads, threadErr: s.threadErr, sortErr: s.sortErr, searchErr: s.searchErr, refuseSubscribe: s.refuseSubscribe}, nil, nil
 		},
 		Caps:         caps,
 		InsecureAuth: true,
