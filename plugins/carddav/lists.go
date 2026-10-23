@@ -20,10 +20,25 @@ import (
 // them.
 var listProperties = map[string]bool{vcard.FieldCategories: true, vcard.FieldNickname: true}
 
-// keepListEscapes doubles every backslash in the value of a list property in
-// body, a vCard or a multistatus whose address data holds vCards, so that
-// go-vcard's decoder, which unescapes every value, leaves the value as it
-// was written: `\\,` reads back as `\,`. Nothing else in body changes.
+// structuredProperties are the properties alps writes whose components, split
+// by semicolons, may each hold a list (RFC 6350, 5, 6.2.2 and 6.3.1): N and
+// ADR. Escaped, the commas between a street's two lines, or between two
+// middle names, made one value of them for every other client. They are held
+// as written too. ORG is not among them: its components are texts, and a
+// comma in one is part of it.
+var structuredProperties = map[string]bool{vcard.FieldName: true, vcard.FieldAddress: true}
+
+// heldAsWritten reports whether alps holds a property's value as it was
+// written, its escapes in place: a list property's, or a structured one's.
+func heldAsWritten(name string) bool {
+	name = strings.ToUpper(name)
+	return listProperties[name] || structuredProperties[name]
+}
+
+// keepListEscapes doubles every backslash in the value of a property held as
+// written in body, a vCard or a multistatus whose address data holds vCards,
+// so that go-vcard's decoder, which unescapes every value, leaves the value
+// as it was written: `\\,` reads back as `\,`. Nothing else in body changes.
 func keepListEscapes(body []byte) []byte {
 	var out []byte
 	start := 0
@@ -33,7 +48,7 @@ func keepListEscapes(body []byte) []byte {
 			i++
 			continue
 		}
-		// i is the first byte of a line. Is it a list property's?
+		// i is the first byte of a line. Is it a property held as written?
 		valueAt := listValueStart(body, n)
 		if valueAt < 0 {
 			i = n
@@ -77,9 +92,9 @@ func lineStart(body []byte, i int) int {
 	return i + n
 }
 
-// listValueStart is where the value begins of a list property whose line
-// starts at body[i], after its group, name and parameters; -1 for a line of
-// any other property.
+// listValueStart is where the value begins of a property held as written
+// whose line starts at body[i], after its group, name and parameters; -1 for
+// a line of any other property.
 func listValueStart(body []byte, i int) int {
 	j := i
 	var property strings.Builder
@@ -98,7 +113,7 @@ func listValueStart(body []byte, i int) int {
 	if dot := strings.LastIndexByte(name, '.'); dot >= 0 {
 		name = name[dot+1:]
 	}
-	if j >= len(body) || !listProperties[strings.ToUpper(name)] || (body[j] != ':' && body[j] != ';') {
+	if j >= len(body) || !heldAsWritten(name) || (body[j] != ':' && body[j] != ';') {
 		return -1
 	}
 	quoted := false
@@ -214,13 +229,18 @@ func writtenListValue(text string) string {
 
 // splitUnescaped splits a list value at its plain commas.
 func splitUnescaped(raw string) []string {
+	return splitAt(raw, ',')
+}
+
+// splitAt splits a value as written at each sep that is not escaped.
+func splitAt(raw string, sep byte) []string {
 	var parts []string
 	start := 0
 	for i := 0; i < len(raw); i++ {
 		switch raw[i] {
 		case '\\':
 			i++
-		case ',':
+		case sep:
 			parts = append(parts, raw[start:i])
 			start = i + 1
 		}
