@@ -51,14 +51,19 @@ const message = (uid: number) => ({
   Envelope: { From: [{ Name: 'Ada', Mailbox: 'ada', Host: 'example.test' }], To: [], Cc: [], Subject: `message ${uid}`, Date: '2026-09-01T10:00:00Z' },
 });
 
+/** Every listing the page asked for, in order. */
+let listings: string[] = [];
+
 /**
  * The Inbox's first page answers; any other listing fails. The failure is an
  * answer that is not the JSON it claims, which fails once and at once:
  * `fetchWithTimeout` replays a dropped connection for over a second.
  */
 function onlyTheInboxAnswers() {
+  listings = [];
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (url.includes('/status') || url.includes('/verdicts')) return new Response('{}', { status: 200 });
+    if (url.startsWith('/mailboxes/')) listings.push(url);
     if (url.startsWith('/mailboxes/INBOX?page=0') && !url.includes('query=')) {
       return new Response(JSON.stringify({
         Username: 'ada@example.com',
@@ -90,10 +95,19 @@ async function shownInbox(): Promise<El> {
   return el;
 }
 
-/** Goes to `hash` and waits for its read to fail. */
+/**
+ * Goes to `hash` and waits for its read to fail.
+ *
+ * Waited for by what lasts: the request, as the stub saw it, and then the
+ * failure. Not the dim between them, which the page holds for 200ms only when
+ * the read is quicker than that. A read that took longer, on a loaded
+ * machine, raised and lowered it between two checks, and a wait for it never
+ * ended.
+ */
 async function failedSwitch(el: El, hash: string) {
+  const asked = listings.length;
   location.hash = hash;
-  await waitFor(() => el.loadingMessages, 'the read to start');
+  await waitFor(() => listings.length > asked, 'the read to be sent');
   await waitFor(() => !el.loadingMessages && el.listLoadFailed, 'the read to fail');
   await el.updateComplete;
   const list = shadow<El>(el, 'alps-message-list');
