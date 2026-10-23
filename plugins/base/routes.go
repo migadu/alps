@@ -2004,13 +2004,9 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			return ctx.NoContent(http.StatusNotModified)
 		}
 	}
-	ibase, err := getBaseMailboxData(ctx)
+	mbox, err := partMailbox(ctx, mboxName)
 	if err != nil {
 		return err
-	}
-	mbox := ibase.Mailbox
-	if mbox == nil {
-		return alps.NewHTTPError(http.StatusNotFound, "Mailbox not found")
 	}
 
 	settings, err := readSettings(ctx)
@@ -2411,6 +2407,46 @@ func cachedMessageRow(cache *alps.Cache, mailbox, uid string, validity uint32) *
 		return nil
 	}
 	return &msg
+}
+
+// partMailbox is the mailbox a part is read from, for its name and the
+// UIDVALIDITY the session's cache is asked under. Every record the session
+// holds of it agreeing (its counts, its pages, the validator a read of a part
+// left), the UIDVALIDITY is taken from them. It was asked of the server
+// first, with the folder list, which cost a STATUS before a body the session
+// held could be served once the counts had gone, as a check that finds new
+// mail or a write drops them; and the counts were all it was read for. A
+// mailbox the session holds nothing of, or two values of, is read as before.
+func partMailbox(ctx *alps.Context, name string) (*MailboxStatus, error) {
+	if name != allMailboxes {
+		if validity := agreedUIDValidity(ctx.Session.Cache(), name); validity != 0 {
+			return &MailboxStatus{StatusData: &imap.StatusData{Mailbox: name, UIDValidity: validity}}, nil
+		}
+	}
+	ibase, err := getBaseMailboxData(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if ibase.Mailbox == nil {
+		return nil, alps.NewHTTPError(http.StatusNotFound, "Mailbox not found")
+	}
+	return ibase.Mailbox, nil
+}
+
+// agreedUIDValidity is the UIDVALIDITY every record the session holds of a
+// mailbox agrees on (see heldUIDValidities), or 0 when it holds none or they
+// disagree.
+func agreedUIDValidity(cache *alps.Cache, mailbox string) uint32 {
+	held := heldUIDValidities(cache, mailbox)
+	if len(held) == 0 {
+		return 0
+	}
+	for _, validity := range held[1:] {
+		if validity != held[0] {
+			return 0
+		}
+	}
+	return held[0]
 }
 
 // cacheMessageRow keeps the metadata of a message opened without a listing
