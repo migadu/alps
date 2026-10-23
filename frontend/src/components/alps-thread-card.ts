@@ -7,7 +7,7 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT } from '../utils/flags';
 import { renderIcon, formatFullDate, bimiAvatarUrlFor } from '../utils/ui';
-import { extractSnippet, setupIframeSizing } from '../utils/reader-utils';
+import { applyThemeToIframe, extractSnippet, setupIframeSizing } from '../utils/reader-utils';
 import { addressText, addressWarning, mixedScriptStyles } from '../utils/address-display';
 
 import './alps-recipient-pill';
@@ -353,11 +353,37 @@ export class AlpsThreadCard extends LitElement {
     }
   `];
 
+  connectedCallback() {
+    super.connectedCallback();
+    this.updateComplete.then(() => {
+      if (!this.isConnected) return;
+      this.settingsStore?.addEventListener('change', this._handleSettingsChange);
+    });
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.settingsStore?.removeEventListener('change', this._handleSettingsChange);
+  }
+
   private onIframeLoad(e: Event) {
     const iframe = e.target as HTMLIFrameElement;
     const themeIframeContent = this.settingsStore?.getState()?.themeIframeContent ?? false;
     setupIframeSizing(iframe, themeIframeContent);
   }
+
+  /**
+   * Paints the card's frame again in the theme, as the reader does its own.
+   * The frame is painted as it loads, and a conversation stays on screen
+   * across a change of theme; the reader's own repaint finds only the frames
+   * in its shadow root, not those in the cards'.
+   */
+  private _handleSettingsChange = () => {
+    const themeIframeContent = this.settingsStore?.getState()?.themeIframeContent ?? false;
+    this.shadowRoot?.querySelectorAll<HTMLIFrameElement>('iframe.reader-iframe').forEach((frame) => {
+      applyThemeToIframe(frame, themeIframeContent);
+    });
+  };
 
   private handleCardHeaderClick() {
     this.dispatchEvent(new CustomEvent('toggle-expansion', {
