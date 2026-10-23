@@ -356,11 +356,18 @@ export async function readCalendarObject(uid: string, account = USER): Promise<s
   return (await checked(response, "read calendar object")).text();
 }
 
-/** Files a contact into the account's address book, as raw vCard. */
-export async function seedContact(opts: { uid: string; name: string; email: string }): Promise<void> {
-  const body = ["BEGIN:VCARD", "VERSION:3.0", `UID:${opts.uid}`, `FN:${opts.name}`, `EMAIL:${opts.email}`, "END:VCARD", ""].join(
-    "\r\n",
-  );
+/** Files a contact into the account's address book, as raw vCard; `lines` are further properties, as written. */
+export async function seedContact(opts: { uid: string; name: string; email: string; lines?: string[] }): Promise<void> {
+  const body = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `UID:${opts.uid}`,
+    `FN:${opts.name}`,
+    `EMAIL:${opts.email}`,
+    ...(opts.lines ?? []),
+    "END:VCARD",
+    "",
+  ].join("\r\n");
   await checked(
     await fetch(`${DAV_URL}/carddav/${USER.address}/contacts/default/${opts.uid}.vcf`, {
       method: "PUT",

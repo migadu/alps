@@ -292,15 +292,15 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
+		// The whole card, which an empty address-data request asks for. The
+		// listing is read for more than its rows' names and addresses: the
+		// sidebar's categories and Favorites, the rows' photos, nicknames,
+		// organisations and dates, and the key the composer encrypts to. It
+		// asked for FN, EMAIL, TEL and UID only, and a server that answers
+		// with just the properties asked for (RFC 6352, 10.4), as go-webdav's
+		// does, gave every card without the rest.
 		query := carddav.AddressBookQuery{
-			DataRequest: carddav.AddressDataRequest{
-				Props: []string{
-					vcard.FieldFormattedName,
-					vcard.FieldEmail,
-					vcard.FieldTelephone,
-					vcard.FieldUID,
-				},
-			},
+			DataRequest: carddav.AddressDataRequest{},
 			PropFilters: []carddav.PropFilter{{
 				Name: vcard.FieldFormattedName,
 			}},
