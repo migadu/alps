@@ -107,6 +107,16 @@ func (cw *countingWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
+// mailboxAddress is a parsed mailbox as an SMTP addr-spec. Address holds
+// the unquoted local part; spaces and specials need their quoting restored.
+func mailboxAddress(addr *mail.Address) string {
+	if addr.Address == "" {
+		return ""
+	}
+	formatted := (&mail.Address{Address: addr.Address}).String()
+	return strings.TrimSuffix(strings.TrimPrefix(formatted, "<"), ">")
+}
+
 // Send submits the message over c. The envelope sender is the account's own
 // address, which the submission server always lets it use; the From header
 // names the organizer or attendee the message speaks for. A message that
@@ -118,11 +128,18 @@ func Send(c *smtp.Client, envelopeFrom string, m *Message) error {
 	// Until the message is written, the server's replies and a failed
 	// connection are wrapped: the session's DoSMTP tries a send again when
 	// one may pass.
-	if err := c.Mail(envelopeFrom, nil); err != nil {
+	// The account address may already be an addr-spec, or the unquoted
+	// Address from one parsed earlier. Keep an existing quoted form before
+	// restoring the envelope quoting.
+	sender := &mail.Address{Address: envelopeFrom}
+	if parsed, err := mail.ParseAddress(envelopeFrom); err == nil {
+		sender = parsed
+	}
+	if err := c.Mail(mailboxAddress(sender), nil); err != nil {
 		return fmt.Errorf("MAIL FROM failed: %w", err)
 	}
 	for _, to := range m.To {
-		if err := c.Rcpt(to.Address, nil); err != nil {
+		if err := c.Rcpt(mailboxAddress(to), nil); err != nil {
 			return fmt.Errorf("RCPT TO failed: %w (%s)", err, to.Address)
 		}
 	}

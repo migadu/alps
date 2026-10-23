@@ -88,6 +88,18 @@ func TestHTTP_ARecipientNameWithACommaIsSentAsWritten(t *testing.T) {
 	check("draft", string(r.body))
 }
 
+// storedHeader is the header of a message as the mailbox holds it.
+func (s *testServer) storedHeader(mailbox, uid string) mail.Header {
+	s.t.Helper()
+	r := s.do("GET", "/mailboxes/"+url.PathEscape(url.PathEscape(mailbox))+"/messages/"+uid+"/raw", nil)
+	s.expect(r, http.StatusOK)
+	m, err := mail.CreateReader(strings.NewReader(string(r.body)))
+	if err != nil {
+		s.t.Fatalf("%s/%s: %v", mailbox, uid, err)
+	}
+	return m.Header
+}
+
 // A draft keeps its Bcc. It was stored with From, To and Cc only, so a draft
 // reopened from Drafts, on another device or after a reload, had none, and
 // was sent without the Bcc recipients the user had added. The message sent
@@ -97,17 +109,6 @@ func TestHTTP_ADraftKeepsItsBccAndTheMessageSentNamesNone(t *testing.T) {
 	smtpServer, rec := listenRecorder(t)
 	s := newTestServerWithSMTP(t, smtpServer)
 	s.login()
-
-	raw := func(mailbox, uid string) mail.Header {
-		t.Helper()
-		r := s.do("GET", "/mailboxes/"+url.PathEscape(url.PathEscape(mailbox))+"/messages/"+uid+"/raw", nil)
-		s.expect(r, http.StatusOK)
-		m, err := mail.CreateReader(strings.NewReader(string(r.body)))
-		if err != nil {
-			t.Fatalf("%s/%s: %v", mailbox, uid, err)
-		}
-		return m.Header
-	}
 
 	form := url.Values{
 		"to":            {"charles@remote.test"},
@@ -132,7 +133,7 @@ func TestHTTP_ADraftKeepsItsBccAndTheMessageSentNamesNone(t *testing.T) {
 	}
 	uid := drafts[0].UID
 
-	stored := raw(saved.Mailbox, uid)
+	stored := s.storedHeader(saved.Mailbox, uid)
 	bcc, err := stored.AddressList("Bcc")
 	if err != nil || len(bcc) != 2 || bcc[0].Name != "Hopper, Grâce" || bcc[0].Address != "grace@remote.test" || bcc[1].Address != "hidden@remote.test" {
 		t.Fatalf("the draft is stored with Bcc %v (%v), want Grace and hidden@remote.test", bcc, err)
@@ -171,9 +172,59 @@ func TestHTTP_ADraftKeepsItsBccAndTheMessageSentNamesNone(t *testing.T) {
 	if len(sent) != 1 {
 		t.Fatalf("Sent holds %d messages", len(sent))
 	}
-	if h := raw("Sent", sent[0].UID); h.Get("Bcc") != "" {
+	if h := s.storedHeader("Sent", sent[0].UID); h.Get("Bcc") != "" {
 		t.Errorf("the copy in Sent names Bcc %q", h.Get("Bcc"))
 	}
+}
+
+// One Bcc entry that does not read as an address does not cost the draft the
+// others. The whole field was dropped, and now that a draft keeps its Bcc,
+// every Bcc recipient the user had written correctly went with it. The
+// message is still refused when it is sent, for the entry that does not read.
+func TestHTTP_ADraftKeepsTheBccEntriesThatRead(t *testing.T) {
+	smtpServer, rec := listenRecorder(t)
+	s := newTestServerWithSMTP(t, smtpServer)
+	s.login()
+
+	form := url.Values{
+		"to":            {"charles@remote.test"},
+		"bcc":           {`"Hopper, Grace" <grace@remote.test>, eve@, hidden@remote.test`},
+		"subject":       {"Notes"},
+		"text":          {"See you."},
+		"save_as_draft": {"1"},
+	}
+	r := s.do("POST", "/messages", form)
+	s.expect(r, http.StatusOK)
+	var saved struct {
+		Mailbox string          `json:"draft_mailbox"`
+		Bcc     []*mail.Address `json:"draft_bcc"`
+	}
+	r.json(t, &saved)
+	drafts := s.mailbox(saved.Mailbox).Messages
+	if len(drafts) != 1 {
+		t.Fatalf("%s holds %d messages", saved.Mailbox, len(drafts))
+	}
+	stored := s.storedHeader(saved.Mailbox, drafts[0].UID)
+	bcc, err := stored.AddressList("Bcc")
+	if err != nil || len(bcc) != 2 || bcc[0].Name != "Hopper, Grace" || bcc[0].Address != "grace@remote.test" || bcc[1].Address != "hidden@remote.test" {
+		t.Errorf("the draft is stored with Bcc %v (%v), want Grace and hidden@remote.test", bcc, err)
+	}
+	// And the save answers with what it stored, which the Drafts row takes.
+	if len(saved.Bcc) != 2 || saved.Bcc[0].Address != "grace@remote.test" || saved.Bcc[1].Address != "hidden@remote.test" {
+		t.Errorf("the save answer names Bcc %+v", saved.Bcc)
+	}
+
+	form.Del("save_as_draft")
+	r = s.do("POST", "/messages", form)
+	s.expect(r, http.StatusBadRequest)
+	if !strings.Contains(string(r.body), "invalid bcc address") {
+		t.Errorf("the refusal says %s", r.body)
+	}
+	rec.mu.Lock()
+	if rec.data != "" || len(rec.rcpt) != 0 {
+		t.Errorf("sent anyway: RCPT TO %v", rec.rcpt)
+	}
+	rec.mu.Unlock()
 }
 
 // A field that does not read as addresses is refused for what it is, before
