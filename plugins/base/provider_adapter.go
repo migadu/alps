@@ -221,7 +221,8 @@ func readerPartWithProvider(p provider.MailProvider, mailbox string, uid provide
 	if r, ok := p.(readerPartReader); ok {
 		return r.GetMessagePartForReader(mailbox, uid, partPath)
 	}
-	msg, _, headerData, bodyData, err := p.GetMessagePartWithData(mailbox, uid, partPath)
+	// The bytes, not the part decoded: see handleGetPart.
+	msg, headerData, bodyData, err := p.GetMessagePartRaw(mailbox, uid, partPath, 0)
 	if err != nil {
 		return nil, nil, nil, err
 	}

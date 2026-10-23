@@ -2186,7 +2186,12 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 				// References are read with the part, in the same FETCH.
 				providerMsg, headerData, bodyData, err = readerPartWithProvider(p, mbox.Name(), uid, partPath)
 			default:
-				providerMsg, _, headerData, bodyData, err = p.GetMessagePartWithData(mbox.Name(), uid, partPath)
+				// The bytes, as for /raw: the answer is built from them, and
+				// reading the part decoded failed on a charset or a transfer
+				// encoding alps does not know, for a decoding nothing here
+				// used. The text is decoded below, where one that cannot be
+				// is left out of the answer.
+				providerMsg, headerData, bodyData, err = p.GetMessagePartRaw(mbox.Name(), uid, partPath, 0)
 			}
 			if err != nil {
 				return err
@@ -2282,7 +2287,11 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		// serve only the decoded body (not the MIME headers).
 		msgHeader := message.Header{Header: h}
 		entity, err := message.New(msgHeader, bytes.NewReader(bodyData))
-		if err != nil {
+		// A charset or a transfer encoding alps does not know leaves the
+		// body as far as it could be decoded, and the reader asks here for
+		// a text the message's answer could not carry: it gets those bytes,
+		// not an error.
+		if err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
 			return fmt.Errorf("failed to create message reader: %v", err)
 		}
 
