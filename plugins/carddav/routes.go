@@ -138,27 +138,8 @@ func extractContactData(card vcard.Card, path string) ContactData {
 	}
 
 	addrStr := ""
-	if addr := card.Address(); addr != nil {
-		var parts []string
-		if addr.StreetAddress != "" {
-			parts = append(parts, addr.StreetAddress)
-		}
-		if addr.ExtendedAddress != "" {
-			parts = append(parts, addr.ExtendedAddress)
-		}
-		if addr.Locality != "" {
-			parts = append(parts, addr.Locality)
-		}
-		if addr.Region != "" {
-			parts = append(parts, addr.Region)
-		}
-		if addr.PostalCode != "" {
-			parts = append(parts, addr.PostalCode)
-		}
-		if addr.Country != "" {
-			parts = append(parts, addr.Country)
-		}
-		addrStr = strings.Join(parts, ", ")
+	if f := card.Preferred(vcard.FieldAddress); f != nil {
+		addrStr = addressLine(f)
 	}
 
 	var categories []string
@@ -302,6 +283,88 @@ func setCategories(card vcard.Card, categories []string) {
 	card[vcard.FieldCategories] = []*vcard.Field{{Value: strings.Join(valid, ",")}}
 }
 
+// addressShown is the order the page shows an address's parts in, as
+// indexes into an ADR value's seven: the street, the extended address, the
+// locality, the region, the postal code and the country. The post office
+// box, the first, is not shown.
+var addressShown = []int{2, 1, 3, 4, 5, 6}
+
+// addressComponents is an ADR value's seven components.
+func addressComponents(value string) []string {
+	components := strings.Split(value, ";")
+	for len(components) < 7 {
+		components = append(components, "")
+	}
+	return components
+}
+
+// addressLine is an address as the page shows it: its parts on one line.
+func addressLine(f *vcard.Field) string {
+	components := addressComponents(f.Value)
+	var parts []string
+	for _, i := range addressShown {
+		if components[i] != "" {
+			parts = append(parts, components[i])
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// setAddress writes the line the page sent in place of the address it
+// showed, f, or as the card's address when it had none; an empty line
+// removes f. The card's other addresses stay.
+//
+// The line is split back into the parts it was made of while it still has
+// one part per part of f and none of those parts holds a comma, which the
+// line's own commas could not be told from: an edit of the city is an edit
+// of the city. A line of another shape cannot be split reliably, so it is
+// the street, as the page gives no other way to say which part is which.
+// The address keeps its parameters, its type among them, but for a label
+// and a position, which describe the address it was.
+func setAddress(card vcard.Card, f *vcard.Field, line string) {
+	line = strings.TrimSpace(strings.ReplaceAll(line, ";", ","))
+	if f == nil {
+		if line != "" {
+			card.Add(vcard.FieldAddress, &vcard.Field{Value: ";;" + line + ";;;;"})
+		}
+		return
+	}
+	if line == "" {
+		var kept []*vcard.Field
+		for _, other := range card[vcard.FieldAddress] {
+			if other != f {
+				kept = append(kept, other)
+			}
+		}
+		if len(kept) == 0 {
+			delete(card, vcard.FieldAddress)
+		} else {
+			card[vcard.FieldAddress] = kept
+		}
+		return
+	}
+
+	old := addressComponents(f.Value)
+	var shown []int
+	splittable := true
+	for _, i := range addressShown {
+		if old[i] != "" {
+			shown = append(shown, i)
+			splittable = splittable && !strings.Contains(old[i], ",")
+		}
+	}
+	components := []string{"", "", line, "", "", "", ""}
+	if parts := strings.Split(line, ","); splittable && len(parts) == len(shown) {
+		components = append([]string(nil), old[:7]...)
+		for k, i := range shown {
+			components[i] = strings.TrimSpace(parts[k])
+		}
+	}
+	f.Value = strings.Join(components, ";")
+	delete(f.Params, "LABEL")
+	delete(f.Params, "GEO")
+}
+
 func touchRevision(card vcard.Card) {
 	card[vcard.FieldRevision] = []*vcard.Field{{Value: time.Now().UTC().Format("20060102T150405Z")}}
 }
@@ -385,9 +448,25 @@ func registerRoutes(p *plugin) {
 	})
 
 	updateContact := func(ctx *alps.Context) error {
-		var req ContactData
+		var req struct {
+			ContactData
+			// Nil retains the whole-form contract for older clients. An empty
+			// list means that none of the displayed single-copy fields changed.
+			ChangedFields []string `json:"changed_fields"`
+		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
+		}
+		changed := func(field string) bool {
+			if req.ChangedFields == nil {
+				return true
+			}
+			for _, name := range req.ChangedFields {
+				if name == field {
+					return true
+				}
+			}
+			return false
 		}
 
 		// The empty case is /contacts/create, where there is no {path} at all and
@@ -589,11 +668,14 @@ func registerRoutes(p *plugin) {
 
 		setCategories(card, req.Categories)
 
-		if strings.TrimSpace(req.Address) == "" {
-			delete(card, vcard.FieldAddress)
-		} else {
-			safeAddr := strings.ReplaceAll(req.Address, ";", ",")
-			card[vcard.FieldAddress] = []*vcard.Field{{Value: ";;" + safeAddr + ";;;;"}}
+		// An address sent back as the page was given it is left as stored.
+		// Written back as the page's one line on every save, the city,
+		// region, postal code and country became part of the street, and the
+		// address lost its type and the card its other addresses.
+		if changed("address") {
+			if f := card.Preferred(vcard.FieldAddress); f == nil || strings.TrimSpace(addressLine(f)) != strings.TrimSpace(req.Address) {
+				setAddress(card, f, req.Address)
+			}
 		}
 
 		id := uuid.New()
