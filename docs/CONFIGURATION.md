@@ -191,7 +191,7 @@ Routes incoming user logins across multiple email backends. Domain resolution pr
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `default_domain` | String | None | Fallback domain assumed if a user logs in with a username lacking `@domain`. |
+| `default_domain` | String | None | Fallback domain assumed if a user logs in with a username lacking `@domain`. The user still signs in with the bare username, but `username@default_domain` is the user's address: messages are sent from it and meetings are organized from it. |
 | `template` | String | None | Server URL pattern containing `%d` (domain), `%u` (local part), or `%n` (full username). Both domain and local part are strictly validated to prevent injection and SSRF. |
 | `template_domains` | Array of Strings | `[]` | Domain allowlist for template routing. Required when `template` is set: the template builds a server address out of the login, so an unlisted domain never matches and routing falls through to the next rule. |
 | `autodiscover` | Boolean | `false` | Automatically look up RFC 6186 DNS SRV records for IMAP servers. |
@@ -201,6 +201,8 @@ Routes incoming user logins across multiple email backends. Domain resolution pr
 | `password` | Table | None | A sub-table of a backend (`[provider.multi.routes.password]`), replacing `[plugin.password.options]` for logins that land there. Replaced whole, not merged: separate backends mean separate admin APIs and credentials. |
 | `routes` | Array of Tables | None | Grouped routes specifying `domains` list and provider configuration. |
 | `default` | Table | None | Fallback provider configuration table when no domain match occurs. |
+
+A single IMAP server whose users sign in with bare usernames can be set up this way too, with only `default_domain` and a `[provider.multi.default]` naming the server, so that users send from an address rather than from their username. With the other providers a bare username stays the From address. The calendar then organizes from the first address the CalDAV server lists for the user (`calendar-user-address-set`), when it lists one.
 
 Every backend a login touches follows the domain that chose its mail store, so a user does not read from one host and then send, sync contacts or calendars, edit filters or change a password somewhere unrelated. A backend that names no endpoint for a service defers to that service's global setting rather than borrowing one from an unrelated backend; domains reached by `template` or `autodiscover` have no entry of their own and fall to `default`, then to the global setting. When per-domain endpoints are configured in `multi`, service plugins (`carddav`, `caldav`, `managesieve`) initialize automatically even if their global `server` option is omitted, with unrouted logins treating unnamed services as disabled.
 

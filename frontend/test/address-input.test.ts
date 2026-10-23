@@ -213,7 +213,7 @@ describe('suggestions', () => {
     await press(el, 'ArrowDown');
     expect(items(el)[0].classList.contains('active')).toBe(true);
     await press(el, 'Enter');
-    expect(el.addresses).toEqual(['"Alice" <alice@example.com>']);
+    expect(el.addresses).toEqual(['Alice <alice@example.com>']);
     expect(items(el)).toHaveLength(0);
 
     await typeText(el, 'al');
@@ -222,7 +222,7 @@ describe('suggestions', () => {
     await press(el, 'ArrowDown');
     await press(el, 'ArrowDown');
     await press(el, 'Enter');
-    expect(el.addresses).toEqual(['"Alice" <alice@example.com>', 'alan@example.com']);
+    expect(el.addresses).toEqual(['Alice <alice@example.com>', 'alan@example.com']);
   });
 
   it('closes the list on Escape and keeps the text', async () => {

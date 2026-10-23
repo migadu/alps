@@ -53,7 +53,7 @@ func (s *mailSession) AuthMechanisms() []string { return []string{sasl.Plain} }
 
 func (s *mailSession) Auth(string) (sasl.Server, error) {
 	return sasl.NewPlainServer(func(_, username, password string) error {
-		if username != testUser || password != testPassword {
+		if (username != testUser && username != bareLogin) || password != testPassword {
 			return errors.New("invalid credentials")
 		}
 		return nil

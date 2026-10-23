@@ -111,6 +111,11 @@ export class AttachmentPill extends LitElement {
       font-size: 11px;
     }
 
+    /* A file whose upload the server no longer holds: it has to be added again. */
+    .attachment-size.missing {
+      color: var(--error, #ef4444);
+    }
+
     .remove-btn {
       background: none;
       border: none;
@@ -263,7 +268,11 @@ export class AttachmentPill extends LitElement {
         >${renderIcon(info.icon)}</div>
       `}
       <span class="attachment-name">${name}</span>
-      <span class="attachment-size">${uploading ? this.uploadProgress(progress, size) : formatSize(size)}</span>
+      ${this.attachment.missing ? html`
+        <span class="attachment-size missing">${this.i18nStore?.t('attachment.addAgain')}</span>
+      ` : html`
+        <span class="attachment-size">${uploading ? this.uploadProgress(progress, size) : formatSize(size)}</span>
+      `}
       ${previewable ? html`
         <button class="preview-btn" @click=${this._handlePreview} title="${this.i18nStore?.t('attachment.preview')}">
           ${renderIcon('eye')}

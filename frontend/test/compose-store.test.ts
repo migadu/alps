@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ComposeStore, bareAddress } from '../src/store/compose-store';
-import { messageOperations } from '../src/services/message-operations';
+import { messageOperations, MissingUploadsError } from '../src/services/message-operations';
 import { DraftFlushError } from '../src/utils/draft-flush-error';
 
 const stores: ComposeStore[] = [];
@@ -54,7 +54,28 @@ describe('whose drafts', () => {
       { id: 'c1', subject: 'Hi', isSending: true, minimized: true, attachments: [{ uuid: 'u1' }, { uuid: 'u2', uploading: true }, { name: 'no id' }] },
     ]));
     const [draft] = composers(makeStore());
-    expect(draft).toMatchObject({ subject: 'Hi', isSending: false, minimized: false, attachments: [{ uuid: 'u1' }] });
+    expect(draft).toMatchObject({ subject: 'Hi', isSending: false, minimized: false, attachments: [{ missing: true }] });
+  });
+
+  it('lists a file uploaded but not yet saved as one to add again', () => {
+    // Its upload was kept by the session it was uploaded in, and this may be
+    // another, after the session expired. Restored with its id, every save
+    // and the send were refused over it. One being added again when the tab
+    // went away is still to add again.
+    signIn('ada');
+    localStorage.setItem('alps_compose_drafts_ada', JSON.stringify([
+      { id: 'c1', subject: 'Hi', attachments: [
+        { filename: 'notes.txt', size: 16, uuid: 'u1' },
+        { filename: 'old.txt', size: 3, missing: true },
+        { _tempId: 't1', filename: 'big.bin', size: 9, uploading: true, _replaces: { filename: 'big.bin', size: 9, missing: true } },
+      ] },
+    ]));
+    const [draft] = composers(makeStore());
+    expect(draft.attachments).toEqual([
+      { filename: 'notes.txt', size: 16, missing: true },
+      { filename: 'old.txt', size: 3, missing: true },
+      { filename: 'big.bin', size: 9, missing: true },
+    ]);
   });
 
   it('restores the attachments a saved draft already holds', () => {
@@ -295,6 +316,20 @@ describe('saving everything at sign-out', () => {
     expect(composers(store)).toEqual([]);
   });
 
+  it('keeps open a composer refused over an upload the server no longer holds, with that file to add again', async () => {
+    signIn('ada@example.com');
+    const store = makeStore();
+    vi.spyOn(messageOperations, 'saveDraft').mockRejectedValue(new MissingUploadsError(['u1']));
+    store.openComposer({ subject: 'Notes', to: ['charles@example.com'], attachments: [{ filename: 'notes.txt', size: 16, uuid: 'u1' }] });
+    store.updateComposer(composers(store)[0].id, { dirty: true });
+
+    await expect(store.saveAllDirtyDrafts()).rejects.toBeInstanceOf(DraftFlushError);
+
+    expect(composers(store)).toHaveLength(1);
+    expect(composers(store)[0]).toMatchObject({ isSaving: false, attachments: [{ filename: 'notes.txt', size: 16, missing: true }] });
+    expect(composers(store)[0].attachments![0].uuid).toBeUndefined();
+  });
+
   it('leaves a send in its undo window, and an upload, to the user rather than storing them', async () => {
     signIn('ada@example.com');
     const store = makeStore();
@@ -309,6 +344,62 @@ describe('saving everything at sign-out', () => {
 
     expect(saveDraft).not.toHaveBeenCalled();
     expect(composers(store).map(c => c.subject)).toEqual(['sending', 'uploading']);
+  });
+
+  it.each([false, true])('retains a missing-file reminder through sign-out recovery with dirty=%s', async (dirty) => {
+    signIn('ada@example.com');
+    const store = makeStore();
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    store.openComposer({ draftUid: '7', subject: 'Notes', dirty, attachments: [{ filename: 'notes.txt', size: 16, missing: true }] });
+
+    const failure = await store.saveAllDirtyDrafts().catch((e: DraftFlushError) => e);
+
+    expect(failure).toBeInstanceOf(DraftFlushError);
+    expect(saveDraft).not.toHaveBeenCalled();
+    expect(composers(store)).toHaveLength(1);
+    (failure as DraftFlushError).keepRecoveryCopy();
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    expect(composers(store)).toEqual([]);
+    announceUser();
+    expect(composers(store)[0]).toMatchObject({ dirty, attachments: [{ filename: 'notes.txt', size: 16, missing: true }] });
+  });
+
+  it('uses saved attachment sources after a concurrent edit cancels sign-out, preserving later additions and removals', async () => {
+    signIn('ada@example.com');
+    const store = makeStore();
+    store.openComposer({ draftUid: '7', draftMailbox: 'Drafts', subject: 'Notes', dirty: true, attachments: [
+      { filename: 'notes.txt', size: 16, uuid: 'u1' },
+      { name: 'ledger.txt', size: 16, partPath: '2' },
+      { filename: 'removed.txt', size: 16, uuid: 'u2' },
+    ] });
+    const id = composers(store)[0].id;
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockImplementationOnce(async () => {
+      store.updateComposer(id, { text: 'More notes', attachments: [
+        ...store.getComposer(id)!.attachments!.slice(0, 2),
+        { filename: 'added.txt', size: 16, uuid: 'u3' },
+      ] });
+      return { uid: '8', mailbox: 'Drafts', attachments: [
+        { name: 'notes.txt', size: 16, partPath: '2', source: { uuid: 'u1' } },
+        { name: 'ledger.txt', size: 16, partPath: '3', source: { partPath: '2' } },
+        { name: 'removed.txt', size: 16, partPath: '4', source: { uuid: 'u2' } },
+      ] };
+    });
+
+    await expect(store.saveAllDirtyDrafts()).rejects.toBeInstanceOf(DraftFlushError);
+    expect(store.getComposer(id)).toMatchObject({ draftUid: '8', dirty: true, text: 'More notes', attachments: [
+      { name: 'notes.txt', partPath: '2' },
+      { name: 'ledger.txt', partPath: '3' },
+      { filename: 'added.txt', uuid: 'u3' },
+    ] });
+    expect(store.getComposer(id)?.attachments?.map(a => a.uuid)).toEqual([undefined, undefined, 'u3']);
+
+    saveDraft.mockResolvedValueOnce({ uid: '9', mailbox: 'Drafts' });
+    await store.saveAllDirtyDrafts();
+    const form = saveDraft.mock.calls[1][0] as FormData;
+    expect(form.get('draft_uid')).toBe('8');
+    expect(form.get('prev_attachments')).toBe('2,3');
+    expect(form.get('attachment-uuids')).toBe('u3');
+    expect(composers(store)).toEqual([]);
   });
 
   it('keeps open a composer edited while its save was out, knowing the draft it stored', async () => {

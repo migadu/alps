@@ -2,7 +2,7 @@ import { formatFullDate } from './ui';
 import { escapeHtml, sanitizeQuotedHTML } from './html-sanitizer';
 import { createDOMDirectionResolver } from './content-direction';
 import { stripBidiControls } from './bidi';
-import { displayAddress } from './address-display';
+import { displayAddress, writtenAddress } from './address-display';
 
 /**
  * Marks the element that holds a quoted original. The composer keeps what is
@@ -10,9 +10,10 @@ import { displayAddress } from './address-display';
  */
 export const QUOTE_ATTRIBUTE = 'data-alps-quote';
 
+/** An envelope's addresses as recipient pills, each name quoted where it needs to be. */
 export function formatAddrs(addrs: any[]): string[] {
   if (!addrs) return [];
-  return addrs.map(a => a.Name ? `${a.Name} <${a.Mailbox}@${a.Host}>` : `${a.Mailbox}@${a.Host}`);
+  return addrs.map(a => writtenAddress(a.Name, `${a.Mailbox}@${a.Host}`));
 }
 
 /** An envelope address as `mailbox@host`, lower-cased, for comparing. */

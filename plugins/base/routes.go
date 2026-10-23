@@ -283,6 +283,7 @@ func dropMailboxListings(cache *alps.Cache, mailbox string) {
 func dropRenumberedMailbox(cache *alps.Cache, mailbox string) {
 	dropMailboxListings(cache, mailbox)
 	cache.DeletePrefix("message:" + mailbox + ":")
+	cache.Delete("uidvalidity:" + mailbox)
 }
 
 // uidMoved reports whether a UIDVALIDITY or UIDNEXT moved from prev to now.
@@ -291,16 +292,19 @@ func uidMoved(prev, now uint32) bool {
 	return prev != 0 && now != 0 && prev != now
 }
 
-// heldUIDValidities answers the UIDVALIDITY values the session's status and
-// pages of a mailbox were read at, where they are known.
+// heldUIDValidities answers the UIDVALIDITY values the session's status,
+// pages and raw-part validator were read at, where they are known.
 //
-// Both, because either may be all that is left from before the folder was
+// Any can be all that is left from before the folder was
 // made again elsewhere. The folder list reads every folder's status again
 // without looking at its pages, a check of another folder that finds a change
 // drops every status and keeps the pages, and a folder only searched has a
-// status and no page.
+// status and no page. A raw part can outlive both its status and its pages.
 func heldUIDValidities(cache *alps.Cache, mailbox string) []uint32 {
 	var held []uint32
+	if cached, ok := cache.Get("uidvalidity:" + mailbox); ok && cached.(uint32) != 0 {
+		held = append(held, cached.(uint32))
+	}
 	if cached, ok := cache.Get("status:" + mailbox); ok {
 		if status := cached.(*MailboxStatus); status.StatusData != nil && status.UIDValidity != 0 {
 			held = append(held, status.UIDValidity)
@@ -1108,8 +1112,8 @@ func handleMailboxStatus(ctx *alps.Context) error {
 
 	renumbered := renumberedSince(heldValidities, counts.UIDValidity)
 	switch {
-	case prev.Known && (prev.Messages != counts.Messages || prev.Unseen != counts.Unseen ||
-		renumbered || uidMoved(prev.UIDNext, counts.UIDNext)):
+	case renumbered || prev.Known && (prev.Messages != counts.Messages || prev.Unseen != counts.Unseen ||
+		uidMoved(prev.UIDNext, counts.UIDNext)):
 		if renumbered {
 			dropRenumberedMailbox(cache, mboxName)
 		} else {
@@ -1367,6 +1371,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Title":           title,
 		"Username":        ctx.Session.Username(),
+		"Address":         ctx.Session.Address(),
 		"Mailboxes":       ibase.Mailboxes,
 		"Mailbox":         ibase.Mailbox,
 		"Inbox":           ibase.Inbox,
@@ -1852,9 +1857,21 @@ func doRequestMail(ctx *alps.Context, f func(provider.MailProvider) error) error
 }
 
 func handleGetPart(ctx *alps.Context, raw bool) error {
-	_, uidStr, err := parseMboxAndUidStr(ctx.Param("mbox"), ctx.Param("uid"))
+	mboxName, uidStr, err := parseMboxAndUidStr(ctx.Param("mbox"), ctx.Param("uid"))
 	if err != nil {
 		return err
+	}
+	// Confirm a browser-held part before reading the page, settings or body.
+	var validity uint32
+	if raw {
+		validity, err = mailboxUIDValidity(ctx, mboxName)
+		if err != nil {
+			return err
+		}
+		if etag := rawPartETag(ctx, validity); etag != "" && etagListed(ctx.Request.Header.Get("If-None-Match"), etag) {
+			setRawPartCaching(ctx.Response.Header(), etag)
+			return ctx.NoContent(http.StatusNotModified)
+		}
 	}
 	ibase, err := getBaseMailboxData(ctx)
 	if err != nil {
@@ -1962,6 +1979,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 	var msg *IMAPMessage
 	var headerData, bodyData []byte
+	var partValidity uint32
 
 	limitStr := ctx.QueryParam("limit")
 	var limit int64
@@ -1983,7 +2001,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	var cachedPart *CachedMessagePart
 	if cached, ok := cache.Get(msgCacheKey); ok {
 		if cp, ok := cached.(CachedMessagePart); ok && cp.Message != nil && cp.HeaderData != nil && cp.BodyData != nil &&
-			(!reading || cp.ReaderFields || tempMsg != nil) {
+			(!reading || cp.ReaderFields || tempMsg != nil) && (!raw || cp.UIDValidity == validity) {
 			cachedPart = &cp
 		}
 	}
@@ -2018,6 +2036,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		msg = &imapMsg
 		headerData = cachedPart.HeaderData
 		bodyData = cachedPart.BodyData
+		partValidity = cachedPart.UIDValidity
 
 		ctx.Server.Logger().Debugf("Cache HIT for message %s/%s part %v", mbox.Name(), uidStr, partPath)
 	} else {
@@ -2042,6 +2061,8 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 				return err
 			}
 
+			partValidity = partUIDValidity(ctx, p, mbox.Name(), mbox.UIDValidity)
+
 			if tempMsg != nil {
 				providerMsg.BimiPotential = tempMsg.HasBimiPotential
 				providerMsg.BimiFailed = tempMsg.HasBimiFailed
@@ -2057,7 +2078,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 				BodyData:     bodyData,
 				Mailbox:      mbox.Name(),
 				ReaderFields: reading,
-				UIDValidity:  mbox.UIDValidity,
+				UIDValidity:  partValidity,
 			})
 			ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched and cached", mbox.Name(), uidStr, partPath)
 			return nil
@@ -2075,6 +2096,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 	// The provider abstraction doesn't expose this, and we use standard flags below
 
 	if raw {
+		etag := rawPartETag(ctx, partValidity)
 		// For raw mode, work directly with headerData and bodyData bytes
 		// Parse the MIME header
 		h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headerData)))
@@ -2112,6 +2134,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 
 			ctx.Response.Header().Set("Content-Type", mimeType)
 			ctx.Response.Header().Set("Content-Length", fmt.Sprintf("%d", len(headerData)+len(bodyData)))
+			setRawPartCaching(ctx.Response.Header(), etag)
 
 			dispParams := map[string]string{"filename": filename}
 			ctx.Response.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", dispParams))
@@ -2143,6 +2166,7 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		}
 		ctx.Response.Header().Set("Content-Type", mimeType)
 		ctx.Response.Header().Set("Content-Length", fmt.Sprintf("%d", len(decodedBody)))
+		setRawPartCaching(ctx.Response.Header(), etag)
 
 		// Get filename from Content-Disposition or Content-Type params
 		disp, dispParams, _ := msgHeader.ContentDisposition()
@@ -2289,23 +2313,37 @@ func handleComposeNew(ctx *alps.Context) error {
 
 	fromAddr := ctx.FormValue("from")
 	if fromAddr == "" {
-		fromAddr = ctx.Session.Username()
+		// The user's address, not the login: a login can be a bare user
+		// name, which is no address to send from (see Session.Address).
+		fromAddr = ctx.Session.Address()
 		if settings, err := readSettings(ctx); err == nil {
 			// The display name is free text, so it is formatted as an address
 			// rather than pasted in front of one. Written bare, a comma in it
 			// ("Doe, Jane") read as two addresses, the first with none, and
 			// every send and draft save failed; quotes in it were lost.
 			if name := strings.TrimSpace(settings.From); name != "" {
-				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Username()}).String()
+				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Address()}).String()
 			}
 		}
 	}
 
+	// A field that does not read as addresses is refused here, for what it
+	// is, rather than as a failure to send or to store the draft. A draft
+	// does not carry Bcc, so Bcc does not stop one being saved.
+	recipients := map[string][]string{}
+	for _, field := range []string{"to", "cc", "bcc"} {
+		list, err := parseAddressList(ctx.FormValue(field))
+		if err != nil && !(saveAsDraft && field == "bcc") {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid %s address: %v", field, err)})
+		}
+		recipients[field] = list
+	}
+
 	msg := &OutgoingMessage{
 		From:       fromAddr,
-		To:         parseAddressList(ctx.FormValue("to")),
-		Cc:         parseAddressList(ctx.FormValue("cc")),
-		Bcc:        parseAddressList(ctx.FormValue("bcc")),
+		To:         recipients["to"],
+		Cc:         recipients["cc"],
+		Bcc:        recipients["bcc"],
 		Subject:    ctx.FormValue("subject"),
 		Text:       ctx.FormValue("text"),
 		HTML:       ctx.FormValue("html"),
@@ -2327,20 +2365,61 @@ func handleComposeNew(ctx *alps.Context) error {
 	// it, so the composer can tell which stored part each of its entries became.
 	var sources []map[string]string
 
-	uuids := ctx.FormValue("attachment-uuids")
-	for _, uuid := range strings.Split(uuids, ",") {
+	// Every id the session does not hold (it ended, or the attachment budget
+	// let the upload go) is refused before anything is taken, all of them
+	// named, so the composer can ask for those files again and save the rest.
+	var ids, missing []string
+	for _, uuid := range strings.Split(ctx.FormValue("attachment-uuids"), ",") {
 		uuid = strings.TrimSpace(uuid)
 		if uuid == "" {
 			continue
 		}
+		if ctx.Session.GetAttachment(uuid) == nil {
+			missing = append(missing, uuid)
+			continue
+		}
+		ids = append(ids, uuid)
+	}
+	refuseMissing := func(missing []string) error {
+		return ctx.JSON(http.StatusConflict, map[string]interface{}{
+			"error":               "unable to retrieve message attachment " + strings.Join(missing, ", "),
+			"missing_attachments": missing,
+		})
+	}
+	if len(missing) > 0 {
+		return refuseMissing(missing)
+	}
 
+	// Then the uploads are the request's: taken out of the session, so that
+	// nothing else removes their files while the message is written (the
+	// user's Remove, the session's end, room made for another upload). Once
+	// the message holds them they are removed; otherwise they are given back,
+	// for the next try. They used to be removed when the request ended,
+	// whether the message was stored or not.
+	type takenUpload struct {
+		uuid       string
+		attachment *alps.Attachment
+	}
+	var taken []takenUpload
+	inMessage := false
+	defer func() {
+		for _, u := range taken {
+			if inMessage {
+				u.attachment.Form.RemoveAll()
+			} else {
+				ctx.Session.ReturnAttachment(u.uuid, u.attachment)
+			}
+		}
+	}()
+	for _, uuid := range ids {
 		attachment := ctx.Session.PopAttachment(uuid)
 		if attachment == nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "unable to retrieve message attachment " + uuid})
+			// Removed since the pass above.
+			return refuseMissing([]string{uuid})
 		}
+		taken = append(taken, takenUpload{uuid, attachment})
 		msg.Attachments = append(msg.Attachments, &formAttachment{attachment.File})
 		sources = append(sources, map[string]string{"uuid": uuid})
-		defer attachment.Form.RemoveAll()
 	}
 
 	var draftPath *messagePath
@@ -2466,6 +2545,10 @@ func handleComposeNew(ctx *alps.Context) error {
 		var uid provider.MessageID
 		var size uint32
 		var respAttachments []map[string]interface{}
+		// Whether the answer can say which stored part each upload became.
+		// Without it the composer still names them by id, so they are kept for
+		// its next save.
+		readBack := false
 
 		// The source of each attachment, by the part path WriteTo gives it
 		// (see partPaths).
@@ -2488,6 +2571,7 @@ func handleComposeNew(ctx *alps.Context) error {
 			if err != nil {
 				ctx.Server.Logger().Errorf("Failed to fetch new attachments for draft %v: %v", uid, err)
 			} else if newMsg != nil {
+				readBack = true
 				msgIMAP := providerMessageToIMAP(*newMsg)
 				stored := func(a IMAPPartNode) map[string]interface{} {
 					path := formatPartPath(a.Path)
@@ -2531,6 +2615,7 @@ func handleComposeNew(ctx *alps.Context) error {
 		if err != nil {
 			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
+		inMessage = readBack
 
 		mailboxesToInvalidate := []string{drafts.Name()}
 		if draftPath != nil && draftPath.Mailbox != drafts.Name() {
@@ -2568,6 +2653,9 @@ func handleComposeNew(ctx *alps.Context) error {
 		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to send message: " + err.Error()})
 	}
+	// Sent. The copy in Sent below still reads them, and they are removed
+	// when the request ends, whether that copy is written or not.
+	inMessage = true
 
 	// The message has gone. What is left of sending it, the mark on the
 	// message it answers, the copy in Sent and the removal of its draft, is
@@ -3123,6 +3211,7 @@ func handleGetSession(ctx *alps.Context) error {
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Username":              ctx.Session.Username(),
+		"Address":               ctx.Session.Address(),
 		"PasswordChangeEnabled": passwordChangeEnabled,
 		"EnabledPlugins":        enabledPlugins,
 		"MaxAttachmentMiB":      maxAttachmentMiB,
