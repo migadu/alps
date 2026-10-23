@@ -5,6 +5,7 @@ import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-input';
 import '../../../frontend/src/components/alps-select';
 import '../../../frontend/src/components/alps-icon-btn';
+import { renderIcon } from '../../../frontend/src/utils/ui';
 
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
@@ -95,7 +96,9 @@ export class VisualEditor extends LitElement {
 			padding: 8px 0;
 			margin-left: 40px;
 		}
-		.connector-icon {
+		.connector-icon svg {
+			width: 24px;
+			height: 24px;
 			fill: none;
 			color: currentColor;
 		}
@@ -275,7 +278,9 @@ export class VisualEditor extends LitElement {
 						`)}
 
 						<div class="connector">
-							<svg width="24" height="24" class="connector-icon"><use href="/assets/icons/sprite.svg?v=10#arrow-fat-lines-down"></use></svg>
+							<!-- From the sprite as every icon is: an address of its own named
+							     an older version, which a browser may hold in its cache. -->
+							<span class="connector-icon">${renderIcon('arrow-fat-lines-down')}</span>
 						</div>
 
 						${rule.actions.map((act, aIdx) => html`

@@ -79,7 +79,7 @@ interface PendingDelete {
   toTrash: string[];
   isDrafts: boolean;
   /** A card's own Delete, of the message it names. */
-  named?: { isOpen: boolean; nextUid?: string; done?: (ok: boolean) => void };
+  named?: { isOpen: boolean; nextUid?: string; nextMailbox?: string; done?: (ok: boolean) => void };
   /** The whole folder, asked for by the list's banner: `doomed` cannot name it. */
   matching?: { count: number };
 }
@@ -1738,7 +1738,7 @@ export class MailboxPage extends LitElement {
         doomed: [key],
         toTrash: [],
         isDrafts: mailboxRoleByName(mailbox, this.mailboxes) === 'drafts',
-        named: { isOpen, nextUid: detail.nextUid, done: detail.done },
+        named: { isOpen, nextUid: detail.nextUid, nextMailbox: detail.nextMailbox, done: detail.done },
       };
       this.showDeleteConfirm = true;
       return;
@@ -1753,7 +1753,7 @@ export class MailboxPage extends LitElement {
       return;
     }
     detail.done?.(true);
-    if (isOpen) this.leaveDeletedMessage(detail.nextUid);
+    if (isOpen) this.leaveDeletedMessage(detail.nextUid, detail.nextMailbox);
 
     const inTrash = moved.uidMapping?.[uid];
     const undoFn = inTrash ? async () => {
@@ -1787,10 +1787,11 @@ export class MailboxPage extends LitElement {
   }
 
   /** The open message is gone and its conversation is not: stay on what is
-   * left of it, or go back to the list when nothing is. */
-  private leaveDeletedMessage(nextUid: string | undefined) {
+   * left of it, or go back to the list when nothing is. In its own folder,
+   * which a search of every folder has to say. */
+  private leaveDeletedMessage(nextUid: string | undefined, nextMailbox?: string) {
     if (nextUid) {
-      this.updateUrl(this.currentMailbox, this.currentPage, nextUid);
+      this.updateUrl(this.currentMailbox, this.currentPage, nextUid, undefined, nextMailbox ?? null);
       return;
     }
     this.selectedMessage = null;
@@ -2393,7 +2394,7 @@ export class MailboxPage extends LitElement {
         if (deleted.length > 0) {
           if (named) {
             // A card's Delete: the rest of the conversation stays on screen.
-            if (named.isOpen) this.leaveDeletedMessage(named.nextUid);
+            if (named.isOpen) this.leaveDeletedMessage(named.nextUid, named.nextMailbox);
           } else {
             if (isBulk) this.selectedKeys = new Set([...this.selectedKeys].filter(key => !deleted.includes(key)));
             this.selectedMessage = null;
