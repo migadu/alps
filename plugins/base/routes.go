@@ -2186,7 +2186,12 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 				// References are read with the part, in the same FETCH.
 				providerMsg, headerData, bodyData, err = readerPartWithProvider(p, mbox.Name(), uid, partPath)
 			default:
-				providerMsg, _, headerData, bodyData, err = p.GetMessagePartWithData(mbox.Name(), uid, partPath)
+				// The bytes, as for /raw: the answer is built from them, and
+				// reading the part decoded failed on a charset or a transfer
+				// encoding alps does not know, for a decoding nothing here
+				// used. The text is decoded below, where one that cannot be
+				// is left out of the answer.
+				providerMsg, headerData, bodyData, err = p.GetMessagePartRaw(mbox.Name(), uid, partPath, 0)
 			}
 			if err != nil {
 				return err
@@ -2282,7 +2287,11 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 		// serve only the decoded body (not the MIME headers).
 		msgHeader := message.Header{Header: h}
 		entity, err := message.New(msgHeader, bytes.NewReader(bodyData))
-		if err != nil {
+		// A charset or a transfer encoding alps does not know leaves the
+		// body as far as it could be decoded, and the reader asks here for
+		// a text the message's answer could not carry: it gets those bytes,
+		// not an error.
+		if err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
 			return fmt.Errorf("failed to create message reader: %v", err)
 		}
 
@@ -2429,6 +2438,95 @@ type messagePath struct {
 // expressed there was not actually enforced anywhere.
 const maxComposeBodyBytes = 32 << 20
 
+// errDraftMaybeStored answers a draft save whose draft may be in Drafts
+// already: see storeOnce.
+var errDraftMaybeStored = errors.New("the draft was stored, but the connection failed before the mail server said so: save it again")
+
+// storeOnce runs store, the APPEND of the message whose Message-ID is
+// messageID into the mailbox of type t, unless one has gone out before, as
+// *tried says, on a connection that then failed. The server may have stored
+// the message before the connection failed, and its answer was lost: stored
+// again, the mailbox would hold it twice. So the mailbox is looked in first, by the
+// Message-ID. A copy there, other than except, names its mailbox in held.
+// An empty search cannot rule out the old APPEND still committing on another
+// connection. Only a failure marked ErrAppendNotStarted permits another try.
+func storeOnce(p provider.MailProvider, tried *bool, t provider.MailboxType, messageID string, except *messagePath, store func() error) (held string, err error) {
+	if *tried {
+		held, err := heldByMessageID(p, t, messageID, except)
+		if err != nil || held != "" {
+			return held, err
+		}
+		return "", fmt.Errorf("the previous APPEND may still complete: it is not stored again")
+	}
+	*tried = true
+	err = store()
+	if errors.Is(err, provider.ErrAppendNotStarted) {
+		*tried = false
+	}
+	return "", err
+}
+
+// heldByMessageID answers the name of the mailbox of type t when it holds a
+// message whose Message-ID is id, other than except, and "" when it does not.
+// An absent mailbox holds nothing. A failed lookup cannot establish that.
+func heldByMessageID(p provider.MailProvider, t provider.MailboxType, id string, except *messagePath) (string, error) {
+	want := provider.MessageIDs(id)
+	finder, ok := p.(provider.ReferenceFinder)
+	if !ok || len(want) == 0 {
+		// Nothing to look by: the copy may be there.
+		return "", fmt.Errorf("the message may have been stored before the connection failed, and is not stored again")
+	}
+	mbox, err := p.FindMailboxByType(t)
+	if err != nil {
+		return "", fmt.Errorf("unable to verify the previous APPEND: %w", err)
+	}
+	if mbox == nil {
+		return "", nil
+	}
+	found, err := finder.FindByReferences(mbox.Name, want)
+	if err != nil {
+		return "", err
+	}
+	for _, m := range found {
+		if except != nil && except.Mailbox == mbox.Name && m.ID != nil && m.ID.String() == except.Uid {
+			continue
+		}
+		if own := ownMessageIDs(m); len(own) > 0 && own[0] == want[0] {
+			return mbox.Name, nil
+		}
+	}
+	return "", nil
+}
+
+// deleteDraft removes the draft a save or a send replaces, when there is one.
+// One already gone counts as removed.
+func deleteDraft(p provider.MailProvider, draft *messagePath) error {
+	if draft == nil {
+		return nil
+	}
+	id, err := p.ParseMessageID(draft.Uid)
+	if err != nil {
+		return err
+	}
+	return deleteMessagesWithProvider(p, draft.Mailbox, []provider.MessageID{id})
+}
+
+// A mail callback may outlive its HTTP request. Forget its affected copies
+// when it finishes too, including copies read after the request was canceled.
+// This is cache-only: the callback still owns the mail connection, so it must
+// not call invalidateMailboxCache and try to acquire that connection again.
+func forgetAppendOutcome(cache *alps.Cache, mailbox string, attempted bool, draft *messagePath) {
+	if mailbox != "" {
+		dropMailboxListings(cache, mailbox)
+	} else if attempted {
+		cache.Clear()
+	}
+	if draft != nil {
+		dropMailboxListings(cache, draft.Mailbox)
+		forgetMessages(cache, draft.Mailbox, draft.Uid)
+	}
+}
+
 func handleComposeNew(ctx *alps.Context) error {
 	// Before the first FormValue, which is what triggers parsing.
 	ctx.Request.Body = http.MaxBytesReader(ctx.Response, ctx.Request.Body, maxComposeBodyBytes)
@@ -2542,7 +2640,7 @@ func handleComposeNew(ctx *alps.Context) error {
 	defer func() {
 		for _, u := range taken {
 			if inMessage {
-				u.attachment.Form.RemoveAll()
+				u.attachment.Remove()
 			} else {
 				ctx.Session.ReturnAttachment(u.uuid, u.attachment)
 			}
@@ -2623,43 +2721,67 @@ func handleComposeNew(ctx *alps.Context) error {
 				}
 			}
 			// All of them in one read: an autosave carries them every time.
-			entities, err := messagePartsWithProvider(p, sourcePath.Mailbox, parsedUid, partPaths)
+			headers, bodies, err := messagePartsWithProvider(p, sourcePath.Mailbox, parsedUid, partPaths)
 			if err != nil {
 				return fmt.Errorf("failed to fetch attachments %s: %v", strings.Join(prevAttachments, ","), err)
 			}
 			for i, pathStr := range prevAttachments {
-				partPath, entity := partPaths[i], entities[i]
+				partPath := partPaths[i]
+				h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headers[i])))
+				if err != nil {
+					return fmt.Errorf("failed to read the header of attachment %s: %v", pathStr, err)
+				}
+				header := message.Header{Header: h}
 
-				mimeType, _, _ := entity.Header.ContentType()
-				disposition, dispParams, _ := entity.Header.ContentDisposition()
+				mimeType, params, _ := header.ContentType()
+				disposition, dispParams, _ := header.ContentDisposition()
 				filename := dispParams["filename"]
 				if filename == "" {
-					_, ctParams, _ := entity.Header.ContentType()
-					filename = ctParams["name"]
+					filename = params["name"]
 				}
 				if mimeType == "" {
 					mimeType = "application/octet-stream"
 				}
-				contentID := strings.Trim(strings.TrimSpace(entity.Header.Get("Content-Id")), "<>")
+				contentID := strings.Trim(strings.TrimSpace(header.Get("Content-Id")), "<>")
 
-				// We have to decode Content-Transfer-Encoding for the bodyData.
-				// wait, entity.Body is an io.Reader that is ALREADY decoded!
-				// We can just read from entity.Body!
-				decodedBody, err := io.ReadAll(entity.Body)
+				// The part keeps its Content-Type parameters, and a text
+				// says the charset its bytes are now in. A text is read
+				// converted to UTF-8, and the part was written with no
+				// parameters at all, so a Latin-1 file went out as UTF-8
+				// bytes labelled plain text with no charset, which a
+				// recipient reads as US-ASCII. It cannot keep the charset it
+				// was stored in, as the message writer writes a text in
+				// UTF-8 or US-ASCII only. In a charset alps does not know,
+				// the text cannot be converted, and goes as it is stored,
+				// without a charset it could be written under.
+				// Keep an unknown charset from masking an undecodable transfer encoding.
+				entity, decodeErr := provider.DecodePart(header, bodies[i])
+				if decodeErr != nil && !message.IsUnknownCharset(decodeErr) {
+					return fmt.Errorf("failed to decode attachment %s: %v", pathStr, decodeErr)
+				}
+				body, err := io.ReadAll(entity.Body)
 				if err != nil {
 					return fmt.Errorf("failed to decode attachment %s: %v", pathStr, err)
+				}
+				if strings.HasPrefix(mimeType, "text/") && params["charset"] != "" {
+					if decodeErr == nil {
+						params["charset"] = "utf-8"
+					} else {
+						delete(params, "charset")
+					}
 				}
 
 				node := &IMAPPartNode{
 					Path:     partPath,
 					MIMEType: mimeType,
+					Params:   params,
 					Filename: filename,
 				}
 				parts = append(parts, &imapAttachment{
 					Mailbox: sourcePath.Mailbox,
 					Uid:     sourcePath.Uid,
 					Node:    node,
-					Body:    decodedBody,
+					Body:    body,
 					CID:     contentID,
 					// A part with a Content-ID belongs to the body unless it says
 					// it is an attachment; an image in multipart/related often
@@ -2711,11 +2833,51 @@ func handleComposeNew(ctx *alps.Context) error {
 			sourceAt[path] = sources[i]
 		}
 
+		// After a network error the save is run again, on another connection
+		// (see DoBackgroundMail): from where it was, without storing the
+		// draft again once it is stored (see storeOnce).
+		var tried bool
+		var heldIn string // Drafts, when it holds a copy the save could not name
 		err = doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
-			var err error
-			drafts, uid, size, err = appendMessageWithProvider(p, msg.asDraft(), provider.MailboxTypeDrafts)
-			if err != nil {
-				return err
+			defer func() {
+				mailbox := heldIn
+				if drafts != nil {
+					mailbox = drafts.Name()
+				}
+				forgetAppendOutcome(ctx.Session.Cache(), mailbox, tried, draftPath)
+			}()
+			if drafts == nil {
+				held, err := storeOnce(p, &tried, provider.MailboxTypeDrafts, msg.MessageID, draftPath, func() error {
+					var err error
+					drafts, uid, size, err = appendMessageWithProvider(p, msg.asDraft(), provider.MailboxTypeDrafts)
+					return err
+				})
+				if err != nil {
+					return err
+				}
+				if held != "" {
+					// Stored, but the save cannot tell that copy from another
+					// of the same draft, and so has no UID to answer.
+					heldIn = held
+					return errDraftMaybeStored
+				}
+			}
+
+			// What a save run again reads back replaces what the one before
+			// it read: added to it, the answer named every part twice.
+			readBack = false
+			respAttachments = nil
+			storedStructure = nil
+
+			// A server without UIDPLUS stores the draft without saying under
+			// which UID: there is nothing to read it back by.
+			if uid == nil {
+				if draftPath != nil {
+					// The composer still refers to the old draft and its parts.
+					// Keep that source until a replacement can be identified.
+					return errors.New("the replacement draft was stored but could not be identified; the previous draft was kept")
+				}
+				return nil
 			}
 
 			// Fetch the new attachments to get updated part paths BEFORE deleting the old draft!
@@ -2755,19 +2917,12 @@ func handleComposeNew(ctx *alps.Context) error {
 				}
 			}
 
-			if draftPath != nil {
-				parsedDraftUid, err := p.ParseMessageID(draftPath.Uid)
-				if err != nil {
-					return err
-				}
-				if err := deleteMessagesWithProvider(p, draftPath.Mailbox, []provider.MessageID{parsedDraftUid}); err != nil {
-					return err
-				}
-			}
-
-			return nil
+			return deleteDraft(p, draftPath)
 		})
 		if err != nil {
+			// Cancellation can return before the callback does. Its state is
+			// still worker-owned; the deferred invalidation covers a late write.
+			ctx.Session.Cache().Clear()
 			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 		inMessage = readBack
@@ -2781,9 +2936,13 @@ func handleComposeNew(ctx *alps.Context) error {
 			forgetMessages(ctx.Session.Cache(), draftPath.Mailbox, draftPath.Uid)
 		}
 
+		draftUID := ""
+		if uid != nil {
+			draftUID = uid.String()
+		}
 		answer := map[string]interface{}{
 			"ok":            true,
-			"draft_uid":     uid.String(),
+			"draft_uid":     draftUID,
 			"draft_mailbox": drafts.Name(),
 			"draft_size":    size,
 			"draft_bcc":     storedBcc,
@@ -2851,25 +3010,36 @@ func handleComposeNew(ctx *alps.Context) error {
 		}
 	}
 
+	// FinishMail runs the filing again after a network error, on another
+	// connection: from where it was, without filing the copy again once it
+	// is in Sent (see storeOnce).
 	var sentName string
+	var tried bool
 	err = ctx.Session.FinishMail(ctx.Request.Context(), func(p provider.MailProvider) error {
-		sent, _, _, err := appendMessageWithProvider(p, msg, provider.MailboxTypeSent)
-		if err != nil {
-			return err
-		}
-		sentName = sent.Name()
-		if draftPath != nil {
-			parsedDraftUid, err := p.ParseMessageID(draftPath.Uid)
+		defer func() {
+			forgetAppendOutcome(ctx.Session.Cache(), sentName, tried, draftPath)
+		}()
+		if sentName == "" {
+			held, err := storeOnce(p, &tried, provider.MailboxTypeSent, msg.MessageID, nil, func() error {
+				sent, _, _, err := appendMessageWithProvider(p, msg, provider.MailboxTypeSent)
+				if err == nil {
+					sentName = sent.Name()
+				}
+				return err
+			})
 			if err != nil {
 				return err
 			}
-			if err := deleteMessagesWithProvider(p, draftPath.Mailbox, []provider.MessageID{parsedDraftUid}); err != nil {
-				return err
+			if held != "" {
+				// The copy the lost answer was for.
+				sentName = held
 			}
 		}
-		return nil
+		return deleteDraft(p, draftPath)
 	})
 	if err != nil {
+		// As above, an abandoned callback can still be finishing its write.
+		ctx.Session.Cache().Clear()
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save message to Sent mailbox: " + err.Error()})
 	}
 
@@ -2937,22 +3107,21 @@ func handleComposeAttachment(ctx *alps.Context) error {
 
 	composerID := ctx.QueryParam("composer_id")
 
-	var uuids []string
-	for _, fh := range form.File["attachments"] {
-		uuid, err := ctx.Session.PutAttachment(composerID, fh, form)
-		if errors.Is(err, alps.ErrAttachmentCacheSize) {
-			form.RemoveAll()
-			return ctx.JSON(http.StatusBadRequest, map[string]string{
-				"error": "Your attachments exceed the maximum file size. Remove some and try again.",
-			})
-		} else if err != nil {
-			form.RemoveAll()
-			ctx.Logger().Printf("PutAttachment: %v\n", err)
-			return ctx.JSON(http.StatusBadRequest, map[string]string{
-				"error": "failed to store attachment",
-			})
-		}
-		uuids = append(uuids, uuid)
+	// One call for the request's files: they share one file on disk, which
+	// the session removes when the last of them goes, and they are stored
+	// whole or not at all. A refused request's files are removed by it.
+	uuids, err := ctx.Session.PutAttachments(composerID, form)
+	if errors.Is(err, alps.ErrAttachmentCacheSize) {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Your attachments exceed the maximum file size. Remove some and try again.",
+		})
+	} else if errors.Is(err, alps.ErrSessionExpired) {
+		return alps.NewHTTPError(http.StatusUnauthorized, "session expired")
+	} else if err != nil {
+		ctx.Logger().Printf("PutAttachments: %v\n", err)
+		return ctx.JSON(http.StatusBadRequest, map[string]string{
+			"error": "failed to store attachment",
+		})
 	}
 
 	return ctx.JSON(http.StatusOK, &uuids)
@@ -2962,7 +3131,7 @@ func handleCancelAttachment(ctx *alps.Context) error {
 	uuid := ctx.Param("uuid")
 	a := ctx.Session.PopAttachment(uuid)
 	if a != nil {
-		a.Form.RemoveAll()
+		a.Remove()
 	}
 	return ctx.JSON(http.StatusOK, nil)
 }
@@ -3057,10 +3226,11 @@ const maxReportedMapping = 1000
 // filedCount is how many messages of batch a move or a copy filed: those the
 // provider names in its answer. A message gone since the page listed it is
 // passed over by an IMAP server without an error, and was counted all the
-// same. A server that names none, as one without UIDPLUS does, has said
-// nothing either way, and the batch counts as asked.
+// same. A nil answer, from a server that does not name its copies, says
+// nothing either way, and the batch counts as asked; an empty one is a batch
+// that had all gone (see provider.MailProvider).
 func filedCount(mapping map[provider.MessageID]provider.MessageID, batch []provider.MessageID) int {
-	if len(mapping) == 0 {
+	if mapping == nil {
 		return len(batch)
 	}
 	return len(mapping)
