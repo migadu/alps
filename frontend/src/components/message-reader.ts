@@ -2242,8 +2242,25 @@ export class MessageReader extends LitElement {
 
     const content = isItem && item ? item.content : this.content;
     const mimeType = isItem && item ? item.mimeType : this.mimeType;
-    const rawMessageHtml = isItem && item ? item.rawMessageHtml : this.rawMessageHtml;
+    let rawMessageHtml = isItem && item ? item.rawMessageHtml : this.rawMessageHtml;
     const itemAttachments = isItem && item ? item.attachments : this.attachments;
+    // The draft opens in the format it was saved in, not the compose format:
+    // an HTML draft opened in plain text, and a plain-text one was given an
+    // HTML part it never had. An HTML draft the reader shows as text, as
+    // "Prefer plain text" reads mail, has its HTML part read for the
+    // composer, which saved it without its formatting; if that cannot be
+    // read, nothing is opened that could be saved over the draft.
+    const savedAsHtml = !!(isItem && item ? item.hasHtml : this.hasHtml);
+    if (savedAsHtml && !rawMessageHtml) {
+      const read = await this.readDraftHtml(mailbox, String(msg.UID));
+      if (read === null) {
+        window.dispatchEvent(new CustomEvent('show-toast', {
+          detail: { message: this.i18nStore?.t('messageReader.loadError') },
+        }));
+        return;
+      }
+      rawMessageHtml = read;
+    }
 
     // From the draft on screen, as a reply is (see _handleAction).
     let textBody = '';
@@ -2278,7 +2295,7 @@ export class MessageReader extends LitElement {
       bcc: formatAddrs(msg.Envelope?.Bcc),
       text: textBody,
       html: rawMessageHtml,
-      format: this.settingsStore?.getState()?.composeFormat || 'html',
+      format: savedAsHtml ? 'html' : 'text',
       attachments: attachments,
       // A forward's inline images are the draft's own parts now.
       quoteSource: { mailbox, uid: msg.UID.toString(), structure: msg.BodyStructure },
@@ -2286,6 +2303,28 @@ export class MessageReader extends LitElement {
       inReplyTo: msg.Envelope?.InReplyTo || undefined,
       references: Array.isArray(msg.References) && msg.References.length ? msg.References : undefined
     });
+  }
+
+  /**
+   * A draft's HTML part, read for Edit Draft when the reader holds only its
+   * text view, or null when it cannot be read.
+   */
+  private async readDraftHtml(mailbox: string, uid: string): Promise<string | null> {
+    const cached = MessageCache.get(mailbox, uid, 'html');
+    if (cached?.RawHtml !== undefined) return cached.RawHtml;
+    try {
+      const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${uid}?view=html`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const part = data.Part;
+      if (!part || (part.MIMEType || part.MimeType || '').toLowerCase() !== 'text/html') return null;
+      if (typeof data.Body === 'string') return data.Body;
+      const raw = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${uid}/raw?part=${Array.isArray(part.Path) ? part.Path.join('.') : part.Path}`);
+      return raw.ok ? await raw.text() : null;
+    } catch (e) {
+      Logger.error('Failed to read the draft\'s HTML:', e);
+      return null;
+    }
   }
 
   /** Whether senders get a picture here. Their verification is drawn either way. */
