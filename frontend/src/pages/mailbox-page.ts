@@ -12,6 +12,7 @@ import { closeSidebarPeek } from '../components/alps-sidebar';
 import { consume } from '@lit/context';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { messageSync, type MailboxData } from '../services/message-sync';
+import { mailPush } from '../services/mail-push';
 import { messageOperations, type FlagResult, type MatchingScope, type MoveResult } from '../services/message-operations';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -688,6 +689,7 @@ export class MailboxPage extends LitElement {
     messageSync.addEventListener('sync-success', this.handleSyncSuccess);
     messageSync.addEventListener('sync-error', this.handleSyncError);
     messageSync.addEventListener('sync-unchanged', this.handleSyncUnchanged);
+    messageSync.addEventListener('inbox-counts', this.handleInboxCounts);
     messageSync.addEventListener('labels-success', this.handleLabelsSuccess);
     messageSync.addEventListener('mailbox-not-found', this.handleMailboxNotFound as EventListener);
 
@@ -719,10 +721,12 @@ export class MailboxPage extends LitElement {
     messageSync.removeEventListener('sync-success', this.handleSyncSuccess);
     messageSync.removeEventListener('sync-error', this.handleSyncError);
     messageSync.removeEventListener('sync-unchanged', this.handleSyncUnchanged);
+    messageSync.removeEventListener('inbox-counts', this.handleInboxCounts);
     messageSync.removeEventListener('labels-success', this.handleLabelsSuccess);
     messageSync.removeEventListener('mailbox-not-found', this.handleMailboxNotFound as EventListener);
     window.removeEventListener('draft-autosaved', this.handleDraftAutosaved as EventListener);
     messageSync.stop();
+    mailPush.stop();
   }
 
   protected updated(changedProperties: Map<string | number | symbol, unknown>): void {
@@ -918,6 +922,13 @@ export class MailboxPage extends LitElement {
     if (state.checkMailInterval !== undefined) {
       messageSync.start(state.checkMailInterval);
     }
+    // And listen for the news the server pushes, when it does: the poll
+    // goes on beside it.
+    if (state.pushNewMail) {
+      mailPush.start();
+    } else {
+      mailPush.stop();
+    }
   }
 
   /**
@@ -947,31 +958,19 @@ export class MailboxPage extends LitElement {
     }
   };
 
-  private handleSyncSuccess = (e: Event) => {
-    this.isSyncing = false;
-    this.listLoadFailed = false;
-    const { data, background } = (e as CustomEvent).detail;
-    // A check made in a tab that does not poll: the tab that polls has chimed,
-    // or will chime, for the same arrival.
-    const announce = (e as CustomEvent).detail.announce !== false;
-
-    if (data.Username) {
-      this.username = data.Username;
-      const state = this.settingsStore.getState();
-      // The address too: a bare login is not the address it stands for.
-      const address = data.Address || undefined;
-      if (state.loginUsername !== data.Username || state.loginAddress !== address) {
-        this.settingsStore.updateSettings({ loginUsername: data.Username, loginAddress: address });
-      }
-    }
-
+  /**
+   * The folder list an answer carries, with the counts it brings, and an
+   * arrival in them announced: the chime, the notification, and the toast
+   * that offers the Inbox from elsewhere.
+   */
+  private takeMailboxes(mailboxes: any[] | undefined, background: boolean, announce: boolean) {
     let isInitialLoad = this.mailboxes.length === 0;
     let soundTriggered = false;
     let notificationTriggered = false;
     let totalNewInboxMessages = 0;
 
-    if (data.Mailboxes) {
-      for (const mb of data.Mailboxes) {
+    if (mailboxes) {
+      for (const mb of mailboxes) {
         const mbName = mb.Name || mb.Mailbox;
         const oldMb = this.mailboxes.find((m: any) => (m.Name || m.Mailbox) === mbName);
         // New mail is BOTH counts rising: the total and the unseen. Either alone is a
@@ -994,7 +993,7 @@ export class MailboxPage extends LitElement {
           }
         }
       }
-      this.mailboxes = data.Mailboxes;
+      this.mailboxes = mailboxes;
     }
 
     if (announce && soundTriggered && this.settingsStore.getState().soundNotifications) {
@@ -1048,6 +1047,40 @@ export class MailboxPage extends LitElement {
         5000
       );
     }
+  }
+
+  /**
+   * The Inbox's counts alone, read on news of it pushed while another folder
+   * or a search is on screen (see messageSync.inboxChanged): the sidebar
+   * shows them, and an arrival is announced as a poll's would be.
+   */
+  private handleInboxCounts = (e: Event) => {
+    const { counts, announce } = (e as CustomEvent).detail;
+    const isInbox = (mb: any) => String(mb.Name || mb.Mailbox).toUpperCase() === 'INBOX';
+    if (!this.mailboxes.some(isInbox)) return;
+    const mailboxes = this.mailboxes.map((mb: any) => (isInbox(mb) ? { ...mb, Total: counts.total, Unseen: counts.unseen } : mb));
+    this.takeMailboxes(mailboxes, true, announce !== false);
+  };
+
+  private handleSyncSuccess = (e: Event) => {
+    this.isSyncing = false;
+    this.listLoadFailed = false;
+    const { data, background } = (e as CustomEvent).detail;
+    // A check made in a tab that does not poll: the tab that polls has chimed,
+    // or will chime, for the same arrival.
+    const announce = (e as CustomEvent).detail.announce !== false;
+
+    if (data.Username) {
+      this.username = data.Username;
+      const state = this.settingsStore.getState();
+      // The address too: a bare login is not the address it stands for.
+      const address = data.Address || undefined;
+      if (state.loginUsername !== data.Username || state.loginAddress !== address) {
+        this.settingsStore.updateSettings({ loginUsername: data.Username, loginAddress: address });
+      }
+    }
+
+    this.takeMailboxes(data.Mailboxes, background, announce);
 
     if (background && this.currentPage > 0) {
       if (data.Total !== undefined && data.Total !== this.totalMessages) {
