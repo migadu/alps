@@ -391,6 +391,31 @@ test("deleting a folder inside the Trash deletes it for good", async ({ page }) 
   expect(names).not.toContain(`Trash/${name}`);
 });
 
+test("the folder dialogs are named by their titles, and a confirmation by its question too", async ({ page }) => {
+  const name = `${PREFIX}named-${Date.now()}`;
+  await login(page);
+  await expect(folder(page, "Trash")).toBeVisible();
+
+  // Found by role and name, as a screen reader announces them: each was an
+  // unnamed dialog. What is in them is reached through the component that
+  // draws them: a search inside the <dialog> does not see the content slotted
+  // into it.
+  await page.locator('mailbox-page alps-icon-btn[title="Create Folder"]').click();
+  await expect(page.getByRole("dialog", { name: "Create Folder" })).toBeVisible();
+  const prompt = page.locator("alps-folder-list ui-prompt");
+  await prompt.locator("input").fill(name);
+  litter.add(name);
+  await prompt.getByRole("button", { name: "Create Folder", exact: true }).click();
+  await expect(folder(page, name)).toBeVisible();
+
+  const item = await openFolderMenu(page, name);
+  await menuItem(item, "Delete").click();
+  const dialog = page.getByRole("dialog", { name: "Move to Trash" });
+  await expect(dialog).toHaveAccessibleDescription(`Are you sure you want to move "${name}" to the Trash?`);
+  await page.locator("alps-folder-list ui-confirm").getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
 /** The server's word on whether a folder is subscribed, as the listing reports it. */
 async function subscribed(page: Page, name: string): Promise<boolean | null> {
   const response = await page.request.get("/mailboxes");

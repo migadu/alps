@@ -260,7 +260,7 @@ export class CalendarInvitationBanner extends LitElement {
         if (v.kind === 'task' && !v.start) {
             if (!v.end) return '';
             const due = v.allDay ? day.format(dateOnly(v.end)) : new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(v.end));
-            return `${this.t('tasks.due')}: ${due}`;
+            return this.t('invitations.dueOn', { date: due });
         }
         if (!v.start) return '';
         if (v.allDay) {
@@ -277,16 +277,23 @@ export class CalendarInvitationBanner extends LitElement {
         return end > start && range ? range.call(format, start, end) : format.format(start);
     }
 
+    /** "Your answer: Accepted", with the colon as its language writes it:
+     * French puts a space before one, and a colon written in the code had
+     * none. */
+    private answerLine(status: string) {
+        return this.t('invitations.yourAnswerIs', { status: this.t(`invitations.statuses.${statusKey(status)}`) });
+    }
+
     private renderStateLine(v: InvitationView) {
         if (v.ended) {
             return html`
                 <div class="muted state ended">${this.t('invitations.states.ended')}</div>
-                ${v.status && v.status !== 'needs-action' ? html`<div class="muted answer">${this.t('invitations.yourAnswer')}: ${this.t(`invitations.statuses.${statusKey(v.status)}`)}</div>` : nothing}
+                ${v.status && v.status !== 'needs-action' ? html`<div class="muted answer">${this.answerLine(v.status)}</div>` : nothing}
             `;
         }
         if (v.state === 'answer') {
             if (!v.status || v.status === 'needs-action') return nothing;
-            return html`<div class="muted answer">${this.t('invitations.yourAnswer')}: ${this.t(`invitations.statuses.${statusKey(v.status)}`)}</div>`;
+            return html`<div class="muted answer">${this.answerLine(v.status)}</div>`;
         }
         const key = STATE_KEYS[v.state];
         return key ? html`<div class="muted state">${this.t(`invitations.states.${key}`)}</div>` : nothing;
@@ -381,7 +388,7 @@ export class CalendarInvitationBanner extends LitElement {
                     ${v.location ? html`<div class="muted where">${v.location}</div>` : nothing}
                     ${v.method === 'reply' && v.replier
                         ? html`<div class="replier">${isolatedSentence(this.i18nStore, `invitations.answered.${statusKey(v.replier.status)}`, { name: isolatedCaption(v.replier.name, v.replier.email) })}</div>`
-                        : v.organizer ? html`<div class="muted organizer">${this.t('invitations.organizer')}: ${isolatedCaption(v.organizer.name, v.organizer.email)}</div>` : nothing}
+                        : v.organizer ? html`<div class="muted organizer">${isolatedSentence(this.i18nStore, 'invitations.organizerIs', { name: isolatedCaption(v.organizer.name, v.organizer.email) })}</div>` : nothing}
                     ${this.renderClashes(v)}
                     ${this.renderStateLine(v)}
                     ${this.renderSender(v)}

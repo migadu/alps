@@ -480,6 +480,33 @@ test("saving a script that does not compile is refused and leaves the stored one
   expect(active.content).toBe(stored);
 });
 
+// A script's name goes to the server as a quoted string, and in one only a
+// quote and a backslash are escaped. Written with Go's escapes, the joiner
+// inside an emoji family went as "\u200d", which the server reads as "u200d":
+// the script could not be read by its name, and the page offered no editor.
+test("a script whose name holds a joined emoji is opened and edited in place", async ({ page }) => {
+  const marker = uniqueMarker();
+  const name = "Family \u{1F468}\u200D\u{1F469}\u200D\u{1F467}";
+  const written = [
+    'require ["fileinto"];',
+    `if address :is "from" "${marker}@remote.test" {`,
+    '\tfileinto "Junk";',
+    "}",
+    "",
+  ].join("\n");
+  await storeActiveScript(name, written);
+
+  await openFilters(page);
+  await expect(script(page)).toHaveValue(written);
+
+  const edited = written.replace('fileinto "Junk"', `fileinto "${FOLDER}"`);
+  await script(page).fill(edited);
+  const response = await clickAndAwaitSave(page, saveScriptBtn(page));
+  expect(response.status()).toBe(200);
+
+  expect(await storedScripts()).toEqual([{ name, active: true, content: edited }]);
+});
+
 // --- Words -----------------------------------------------------------------
 
 // Button labels are checked as ACCESSIBLE NAMES: the role locators resolve to
