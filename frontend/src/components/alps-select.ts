@@ -1,6 +1,7 @@
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
+import { focusOnLabelClick } from '../utils/label-focus';
 
 @customElement('alps-select')
 export class AlpsSelect extends LitElement {
@@ -77,6 +78,24 @@ export class AlpsSelect extends LitElement {
 			height: 100%;
 		}
 	`;
+
+	public focus() {
+		this.shadowRoot?.querySelector('select')?.focus();
+	}
+
+	/** Stops the watch for a click on this field's label (see focusOnLabelClick). */
+	private stopLabelWatch: (() => void) | null = null;
+
+	connectedCallback() {
+		super.connectedCallback();
+		this.stopLabelWatch = focusOnLabelClick(this);
+	}
+
+	disconnectedCallback() {
+		super.disconnectedCallback();
+		this.stopLabelWatch?.();
+		this.stopLabelWatch = null;
+	}
 
 	private handleChange(e: Event) {
 		const target = e.target as HTMLSelectElement;

@@ -326,8 +326,10 @@ export class CalendarEventModal extends LitElement {
                 @cancel=${this.handleCancel}
             >
                 <div class="form-group">
-                    <label>${this.i18nStore?.t('calendar.summary')}</label>
+                    <!-- Each label names its field: a bare one was tied to nothing. -->
+                    <label for="event-summary">${this.i18nStore?.t('calendar.summary')}</label>
                     <alps-input 
+                        id="event-summary"
                         label=${this.i18nStore?.t('calendar.summary')}
                         .value=${this.summary} 
                         @input=${(e: any) => this.summary = e.target.value}
@@ -337,8 +339,9 @@ export class CalendarEventModal extends LitElement {
 
                 ${this.calendars.length > 1 ? html`
                     <div class="form-group">
-                        <label>${this.i18nStore?.t('calendar.calendar')}</label>
+                        <label for="event-calendar">${this.i18nStore?.t('calendar.calendar')}</label>
                         <alps-select
+                            id="event-calendar"
                             label=${this.i18nStore?.t('calendar.calendar')}
                             .value=${this.calendarPath}
                             .options=${this.calendars.map(c => ({ value: c.path, label: c.name }))}
@@ -356,8 +359,9 @@ export class CalendarEventModal extends LitElement {
                     </div>
                 ` : html`
                     <div class="form-group">
-                        <label>${this.i18nStore?.t('invitations.guests')}</label>
+                        <label for="event-guests">${this.i18nStore?.t('invitations.guests')}</label>
                         <alps-address-input
+                            id="event-guests"
                             class="guests"
                             label=${this.i18nStore?.t('invitations.guests')}
                             .addresses=${this.attendees}
@@ -368,8 +372,9 @@ export class CalendarEventModal extends LitElement {
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>${this.i18nStore?.t('calendar.startDate')}</label>
+                        <label for="event-start-date">${this.i18nStore?.t('calendar.startDate')}</label>
                         <alps-input 
+                            id="event-start-date"
                             label=${this.i18nStore?.t('calendar.startDate')}
                             type="date"
                             .value=${this.startDate} 
@@ -378,9 +383,10 @@ export class CalendarEventModal extends LitElement {
                     </div>
                     ${!this.isAllDay ? html`
                     <div class="form-group">
-                        <label>${this.i18nStore?.t('calendar.time')}</label>
+                        <label for="event-start-time">${this.i18nStore?.t('calendar.time')}</label>
                         <!-- Named "Start time", though its label reads "Time": so is the end's. -->
                         <alps-input 
+                            id="event-start-time"
                             label=${this.i18nStore?.t('calendar.startTime')}
                             type="time"
                             .value=${this.startTime} 
@@ -392,8 +398,9 @@ export class CalendarEventModal extends LitElement {
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>${this.i18nStore?.t('calendar.endDate')}</label>
+                        <label for="event-end-date">${this.i18nStore?.t('calendar.endDate')}</label>
                         <alps-input 
+                            id="event-end-date"
                             label=${this.i18nStore?.t('calendar.endDate')}
                             type="date"
                             .value=${this.endDate} 
@@ -402,8 +409,9 @@ export class CalendarEventModal extends LitElement {
                     </div>
                     ${!this.isAllDay ? html`
                     <div class="form-group">
-                        <label>${this.i18nStore?.t('calendar.time')}</label>
+                        <label for="event-end-time">${this.i18nStore?.t('calendar.time')}</label>
                         <alps-input 
+                            id="event-end-time"
                             label=${this.i18nStore?.t('calendar.endTime')}
                             type="time"
                             .value=${this.endTime} 
@@ -419,8 +427,9 @@ export class CalendarEventModal extends LitElement {
                 </div>
 
                 <div class="form-group">
-                    <label>${this.i18nStore?.t('calendar.repeat')}</label>
+                    <label for="event-repeat">${this.i18nStore?.t('calendar.repeat')}</label>
                     <alps-select
+                        id="event-repeat"
                         label=${this.i18nStore?.t('calendar.repeat')}
                         .value=${this.rruleFreq}
                         .options=${[
@@ -436,8 +445,9 @@ export class CalendarEventModal extends LitElement {
                 </div>
 
                 <div class="form-group">
-                    <label>${this.i18nStore?.t('calendar.location')}</label>
+                    <label for="event-location">${this.i18nStore?.t('calendar.location')}</label>
                     <alps-input 
+                        id="event-location"
                         label=${this.i18nStore?.t('calendar.location')}
                         .value=${this.location} 
                         @input=${(e: any) => this.location = e.target.value}
@@ -446,8 +456,9 @@ export class CalendarEventModal extends LitElement {
                 </div>
 
                 <div class="form-group">
-                    <label>${this.i18nStore?.t('calendar.description')}</label>
+                    <label for="event-description">${this.i18nStore?.t('calendar.description')}</label>
                     <textarea 
+                        id="event-description"
                         .value=${this.description} 
                         @input=${(e: any) => this.description = e.target.value}
                         placeholder=${this.i18nStore?.t('calendar.addDescription')}
