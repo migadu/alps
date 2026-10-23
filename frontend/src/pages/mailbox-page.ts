@@ -28,6 +28,10 @@ import { canonicalRecipient, parseWrittenAddress } from '../utils/address-displa
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
+/** The settings a listing is read under: its order, its page size, and
+ * whether it is threaded. */
+const LISTING_SETTINGS = ['sortOrder', 'messageSortCriteria', 'messagesPerPage', 'enableThreading'] as const;
+
 /** Whether a listed message carries a star. */
 const isFlagged = (msg: any): boolean => !!msg?.Flags?.includes(FLAG_FLAGGED);
 
@@ -682,6 +686,7 @@ export class MailboxPage extends LitElement {
     this._handleMediaQuery(this._mql);
 
     this.settingsStore.addEventListener('change', this._handleSettingsChange);
+    this.settingsStore.addEventListener('saved', this.handleSettingsSaved);
     this.i18nStore?.addEventListener('change', this._handleI18nChange);
     this._syncSettings();
 
@@ -715,6 +720,7 @@ export class MailboxPage extends LitElement {
     document.removeEventListener('keydown', this.handleStrayArrow);
 
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
+    this.settingsStore.removeEventListener('saved', this.handleSettingsSaved);
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
 
     messageSync.removeEventListener('sync-start', this.handleSyncStart);
@@ -886,6 +892,22 @@ export class MailboxPage extends LitElement {
     this._syncSettings();
   };
 
+  /**
+   * Settings the server has taken. A listing is threaded, ordered and paged by
+   * the account's record on the server, not by anything the request says, so
+   * the rows on screen were read under the old values until a save of new
+   * ones has landed, and are read again then, quietly.
+   *
+   * The page used to be torn down while Settings was open, and read its view
+   * again on the way back. It now stays beneath the Settings window, and
+   * nothing else would.
+   */
+  private handleSettingsSaved = (e: Event) => {
+    const keys: string[] = (e as CustomEvent).detail?.keys ?? [];
+    if (!keys.some((key) => (LISTING_SETTINGS as readonly string[]).includes(key))) return;
+    messageSync.fetch(this.currentMailbox, this.currentPage, this.filterQuery, true, true);
+  };
+
   private _handleI18nChange = () => {
     this.requestUpdate();
   };
@@ -916,7 +938,7 @@ export class MailboxPage extends LitElement {
 
     // What a listing is read under: the listings kept in memory are dropped
     // when it changes.
-    messageSync.setListingSettings([state.sortOrder, state.messageSortCriteria, state.messagesPerPage, state.enableThreading].join(' '));
+    messageSync.setListingSettings(LISTING_SETTINGS.map((key) => state[key]).join(' '));
 
     // Restart background polling with the configured interval
     if (state.checkMailInterval !== undefined) {
