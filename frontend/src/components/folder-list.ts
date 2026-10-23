@@ -6,7 +6,7 @@ import { composeContext } from '../store/compose-store';
 import type { ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { mailboxOperations } from '../services/mailbox-operations';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels, acceptsDroppedMessages, advertisedRoles, mailboxRole, reportsSubscriptions, type MailboxRole } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels, acceptsDroppedMessages, advertisedRoles, mailboxRole, reportsSubscriptions, specialMailboxName, type MailboxRole } from '../utils/folders';
 import { carriesMessages, dropCopies, readMessageDrag } from '../utils/message-drag';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { confirmUnsubscribed, forgetUnsubscribedTree, renameUnsubscribedTree, settleUnsubscribedFolders, withUnsubscribedFolder, withoutUnsubscribedFolder } from '../utils/unsubscribed-folders';
@@ -852,56 +852,34 @@ export class FolderList extends LitElement {
       }
     });
 
-    const normalizedAttrs = (node: TreeNode): string[] =>
-      (node.mb?.Attrs || []).map((a: any) => (typeof a === 'string' ? a.toLowerCase() : ''));
-    const hasSlotAttr = (node: TreeNode, attr: string): boolean => normalizedAttrs(node).includes(attr);
     // The roles the server assigns itself: a name stands only for a role no
     // folder carries.
     const advertised = advertisedRoles(this.mailboxes);
-    // The role the actions act on. This matched names itself, exactly and case
-    // included, and knew no Exchange "Deleted Items", so Delete filed mail into
-    // a folder called "trash" that the sidebar listed as an ordinary folder,
-    // under its raw name. mailboxRole gives no role to a synthetic parent (e.g.
-    // "Archives" when only "Archives/2025" exists) or a \Noselect placeholder,
-    // which must not masquerade as a primary special mailbox; a \All folder
-    // has a role but no slot.
-    const slotIndexForNode = (node: TreeNode): number => {
-      const role = mailboxRole(node.mb, advertised);
-      return specialSlots.findIndex(s => s.role === role);
-    };
+    // Each role's special folder, the one the header and the toasts name by
+    // the role too: specialMailboxName. Two can claim a role, and the other is
+    // a regular folder, drawn under its own name rather than duplicating the
+    // first. Beside a "Deleted Items" listed first, a folder called "Trash" is
+    // not the Trash Delete uses, and is not drawn as it. The role is the one
+    // the actions act on (mailboxRole): this matched names itself, exactly and
+    // case included, and knew no Exchange "Deleted Items", so Delete filed
+    // mail into a folder called "trash" that the sidebar listed as an ordinary
+    // folder, under its raw name. A synthetic parent (e.g. "Archives" when only
+    // "Archives/2025" exists) or a \Noselect placeholder has no role and must
+    // not masquerade as a primary special mailbox; a \All folder has a role
+    // but no slot.
+    const specialSlotOf = new Map<string, number>();
+    specialSlots.forEach((slot, i) => {
+      const name = specialMailboxName(slot.role, this.mailboxes);
+      if (name !== null) specialSlotOf.set(name, i);
+    });
 
     const standardBySlot = new Map<number, TreeNode>();
     const customNodes: TreeNode[] = [];
 
     Object.values(root).forEach(node => {
-      const idx = slotIndexForNode(node);
-      if (idx < 0) {
-        customNodes.push(node);
-        return;
-      }
-      const existing = standardBySlot.get(idx);
-      if (!existing) {
-        standardBySlot.set(idx, node);
-        return;
-      }
-      // Two mailboxes claim the same slot: keep the one carrying the real
-      // special-use attribute, else the one the actions file into, which is
-      // the first of them the server lists. Beside a "Deleted Items" listed
-      // first, a folder called "Trash" is not the Trash Delete uses, and is
-      // not drawn as it. The loser is demoted to a regular folder rather than
-      // duplicating the primary.
-      const slotDef = specialSlots[idx];
-      const nodeAttr = hasSlotAttr(node, '\\' + slotDef.role);
-      const existingAttr = hasSlotAttr(existing, '\\' + slotDef.role);
-      const nodeWins =
-        (nodeAttr && !existingAttr) ||
-        (nodeAttr === existingAttr && node.fullName === findMailboxNameByRole(slotDef.role, this.mailboxes, ''));
-      if (nodeWins) {
-        standardBySlot.set(idx, node);
-        customNodes.push(existing);
-      } else {
-        customNodes.push(node);
-      }
+      const idx = node.mb ? specialSlotOf.get(node.fullName) : undefined;
+      if (idx === undefined) customNodes.push(node);
+      else standardBySlot.set(idx, node);
     });
 
     // How a folder in slot `i` is drawn: the name's own entry only when the
@@ -927,12 +905,7 @@ export class FolderList extends LitElement {
     // though the actions file into only one. Every other folder of the role
     // keeps its own name. Only nested folders are found here: a role a
     // top-level folder has is a slot held above.
-    const nestedSlots = new Map<string, number>();
-    specialSlots.forEach((slot, i) => {
-      if (standardBySlot.has(i)) return;
-      const name = findMailboxNameByRole(slot.role, this.mailboxes, '');
-      if (name) nestedSlots.set(name, i);
-    });
+    const nestedSlots = new Map([...specialSlotOf].filter(([, i]) => !standardBySlot.has(i)));
 
     const customOrder = this.settingsStore?.getState()?.customMailboxOrder || [];
 
