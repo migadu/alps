@@ -256,6 +256,34 @@ describe('saving a keypair', () => {
     expect(await read()).toContain('opened with new encrypted armour');
   });
 
+  it.each([['generate', false], ['import', false], ['generate', true], ['import', true]] as const)('pending key read after %s, refused=%s, keeps the accepted key', async (method, refused) => {
+    let release!: () => void;
+    let entered!: () => void;
+    const pendingKey = new Promise<void>(resolve => { release = resolve; });
+    const parsing = new Promise<void>(resolve => { entered = resolve; });
+    pgp.readPrivateKey.mockImplementationOnce(async ({ armoredKey }: { armoredKey: string }) => {
+      entered();
+      await pendingKey;
+      return { armoredKey, isDecrypted: () => true };
+    });
+    const earlier = read();
+    await parsing;
+    try {
+      refuse = refused;
+      if (method === 'generate') await generate(await pane());
+      else await importPasted(await pane());
+    } finally {
+      release();
+    }
+    // The read already underway may use its old key, but must not restore it
+    // as the key future reads/signatures use after the replacement succeeded.
+    expect(await earlier).toContain('opened with OLD-KEY');
+    const expected = refused ? 'OLD-KEY' : method === 'generate' ? 'encrypted armour' : 'new encrypted armour';
+    const parses = pgp.readPrivateKey.mock.calls.length;
+    expect(await read()).toContain(`opened with ${expected}`);
+    expect(pgp.readPrivateKey).toHaveBeenCalledTimes(parses + (refused ? 0 : 1));
+  });
+
   it('says so when the server refuses a generated keypair, and keeps the key it has', async () => {
     expect(await read()).toContain('opened with OLD-KEY');
     refuse = true;
