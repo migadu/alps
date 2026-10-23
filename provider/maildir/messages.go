@@ -628,6 +628,12 @@ func (p *Provider) GetMessagePartWithData(mailbox string, id provider.MessageID,
 	return msgMeta, part, header, body, nil
 }
 
+// SetMessagesFlags changes the messages' flags, and reports each it could
+// not change, as DeleteMessages does. A message that is gone is passed over:
+// there is nothing to change. Every other failure was passed over too, a file
+// that could not be renamed and a folder alps refuses to follow out of the
+// maildir among them, and the change was answered as made: the page then
+// showed the message starred, or read, while its file said otherwise.
 func (p *Provider) SetMessagesFlags(mailbox string, ids []provider.MessageID, op provider.FlagOperation) error {
 	b, err := p.openBox(mailbox)
 	if err != nil {
@@ -635,10 +641,15 @@ func (p *Provider) SetMessagesFlags(mailbox string, ids []provider.MessageID, op
 	}
 	defer closeRoot(b.root)
 
+	var errs []error
 	for _, id := range ids {
 		key := id.String()
 		m, err := messageByKey(b, key)
+		if errors.Is(err, provider.ErrMessageNotFound) {
+			continue
+		}
 		if err != nil {
+			errs = append(errs, fmt.Errorf("flagging %s: %w", id, err))
 			continue
 		}
 		currentFlags := m.Flags()
@@ -671,9 +682,11 @@ func (p *Provider) SetMessagesFlags(mailbox string, ids []provider.MessageID, op
 			newFlags = append(newFlags, f)
 		}
 
-		_ = m.SetFlags(newFlags)
+		if err := m.SetFlags(newFlags); err != nil {
+			errs = append(errs, fmt.Errorf("flagging %s: %w", id, err))
+		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (p *Provider) MarkAnswered(mailbox string, id provider.MessageID) error {
