@@ -61,7 +61,8 @@ export default {
     },
     "raw": {
       "validate": "Validér",
-      "save": "Gem"
+      "save": "Gem",
+      "script": "Filterscript"
     },
     "autoReply": {
       "title": "Autosvar",

@@ -61,7 +61,8 @@ export default {
     },
     "raw": {
       "validate": "Validate",
-      "save": "Save"
+      "save": "Save",
+      "script": "Filter script"
     },
     "autoReply": {
       "title": "Auto-reply",

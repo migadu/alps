@@ -24,6 +24,12 @@
  * placeholders), a contact's birthday (a date input shows no placeholder), a
  * filter condition's value. The toast's dismiss button put its name on the
  * host as aria-label, which alps-icon-btn does not pass on; its title is.
+ *
+ * A <textarea> placed in an alps-setting-group is not reached by the group's
+ * label either, which is in the group's shadow root: the signature and the
+ * GPG key boxes had no name, and nor had the raw filter editor's box, which
+ * has no label at all. Each takes the label shown above it, and the raw
+ * editor's box the name of what it holds.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, type TemplateResult } from 'lit';
@@ -41,6 +47,8 @@ import '../../plugins/caldav/frontend/calendar-event-modal';
 import '../../plugins/caldav/frontend/task-modal';
 import '../../plugins/carddav/frontend/contact-view';
 import '../../plugins/managesieve/frontend/visual-editor';
+import '../../plugins/managesieve/frontend/raw-editor';
+import '../../plugins/gpg/frontend/gpg-settings';
 import '../../plugins/caldav/frontend/calendar-invitation-banner';
 import { invitationService, type InvitationView } from '../../plugins/caldav/frontend/invitation-service';
 
@@ -55,7 +63,7 @@ const i18nStore = {
   removeEventListener: () => {},
 };
 
-type Control = HTMLInputElement | HTMLSelectElement;
+type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
 /** The fields that draw their control inside their own shadow root. */
 const FIELDS = ['alps-input', 'alps-select', 'alps-address-input'];
@@ -318,7 +326,12 @@ describe('the settings', () => {
     render(sections.map(section => section.call(page)), host);
     const fields = Array.from(host.querySelectorAll<El>(FIELDS.join(', ')));
     await Promise.all(fields.map(f => f.updateComplete));
-    return fields.map(f => [f.closest('alps-setting-group')!.getAttribute('label')!, accessibleName(inner(f))]);
+    // A <textarea> is the page's own, with no shadow root of its own around it.
+    const boxes = Array.from(host.querySelectorAll('textarea'));
+    return [
+      ...fields.map(f => [f.closest('alps-setting-group')!.getAttribute('label')!, accessibleName(inner(f))] as [string, string]),
+      ...boxes.map(b => [b.closest('alps-setting-group')!.getAttribute('label')!, accessibleName(b)] as [string, string]),
+    ];
   }
 
   it('name every field by its setting', async () => {
@@ -328,6 +341,9 @@ describe('the settings', () => {
     expect(fields.length).toBeGreaterThan(15);
     expect(fields.map(([label]) => label)).toEqual(expect.arrayContaining([
       'settings.identity.displayName', 'settings.identity.replyTo', 'settings.localization.language',
+      // The signature's box, which had no name at all: its setting's label is
+      // in alps-setting-group's shadow root, out of the box's reach.
+      'settings.identity.signature',
     ]));
     for (const [label, name] of fields) expect(name, label).toBe(label);
   });
@@ -373,6 +389,32 @@ describe('the filter editor', () => {
     await value[0].updateComplete;
 
     expect(accessibleName(inner(value[0]))).toBe('managesieve.visual.value');
+  });
+});
+
+describe('the GPG key import', () => {
+  it('names the public and the private key box by the label above each', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    try {
+      const el = await mount<El>('alps-gpg-settings', { i18nStore });
+      await waitFor(() => !el.loading, 'the keys to be read');
+      el.viewState = 'import';
+      await el.updateComplete;
+      const boxes = shadowAll<HTMLTextAreaElement>(el, 'textarea');
+      expect(boxes.map(b => [b.closest('alps-setting-group')!.getAttribute('label'), accessibleName(b)])).toEqual([
+        ['gpg.publicKeyBlock', 'gpg.publicKeyBlock'],
+        ['gpg.privateKeyBlock', 'gpg.privateKeyBlock'],
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('the raw filter editor', () => {
+  it('names its box by what it holds', async () => {
+    const el = await mount<El>('alps-raw-editor', { i18nStore, script: 'keep;', stored: 'keep;' });
+    expect(accessibleName(shadow<HTMLTextAreaElement>(el, 'textarea'))).toBe('managesieve.raw.script');
   });
 });
 

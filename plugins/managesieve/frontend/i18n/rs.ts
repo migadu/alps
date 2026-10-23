@@ -61,7 +61,8 @@ export default {
     },
     "raw": {
       "validate": "Валидирај",
-      "save": "Сачувај"
+      "save": "Сачувај",
+      "script": "Скрипта филтера"
     },
     "autoReply": {
       "title": "Аутоматски одговор",
