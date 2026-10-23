@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,7 +48,7 @@ type IMAPProvider struct {
 	selectedUIDValidity uint32
 	selectedUIDNext     imap.UID
 	verdicts            *provider.VerdictCache // the session's, once it is shared: see ShareVerdicts
-	dateCache           map[string]map[uint32]time.Time
+	dateCache           map[string]*mailboxDates
 	threads             map[string]*threadCache
 	// threadUses counts uses of the kept conversations, to tell which were
 	// used least recently. It is guarded by cacheLock.
@@ -83,8 +84,29 @@ func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
 		store:     store,
 		debug:     debug,
 		verdicts:  &provider.VerdictCache{},
-		dateCache: make(map[string]map[uint32]time.Time),
+		dateCache: make(map[string]*mailboxDates),
 	}
+}
+
+// mailboxDates are the dates sortGroups sorted a mailbox's conversations by,
+// by UID, with the UIDVALIDITY the UIDs were read under. A mailbox deleted and
+// made again, here or in another program, numbers its messages from 1 again
+// under a new UIDVALIDITY, and taken by UID alone, the old messages' dates
+// ordered the new ones.
+type mailboxDates struct {
+	uidValidity uint32
+	dates       map[uint32]time.Time
+}
+
+// forgetMailbox drops what this connection keeps of a mailbox it deleted or
+// renamed away: the dates its conversations were sorted by, and the
+// conversations. Neither would be taken for a new mailbox's, whose UIDVALIDITY
+// is another, but they would be kept for nothing.
+func (p *IMAPProvider) forgetMailbox(name string) {
+	p.cacheLock.Lock()
+	defer p.cacheLock.Unlock()
+	delete(p.dateCache, name)
+	delete(p.threads, name)
 }
 
 // GetStore returns the per-user store for this provider
@@ -405,6 +427,7 @@ func (p *IMAPProvider) CreateMailbox(name string) error {
 // DeleteMailbox deletes a mailbox
 func (p *IMAPProvider) DeleteMailbox(name string) error {
 	defer p.forgetSpecialMailboxes()
+	defer p.forgetMailbox(name)
 	cmd := p.client.Delete(name)
 	return cmd.Wait()
 }
@@ -454,6 +477,7 @@ func (p *IMAPProvider) EmptyMailbox(name string) (int, error) {
 // RenameMailbox renames a mailbox
 func (p *IMAPProvider) RenameMailbox(oldName, newName string) error {
 	defer p.forgetSpecialMailboxes()
+	defer p.forgetMailbox(oldName)
 	cmd := p.client.Rename(oldName, newName, nil)
 	return cmd.Wait()
 }
@@ -566,16 +590,16 @@ func (p *IMAPProvider) sortGroups(mailbox string, groups []ThreadGroup, sortOrde
 		// 3. Initialize cache
 		p.cacheLock.Lock()
 		if p.dateCache == nil {
-			p.dateCache = make(map[string]map[uint32]time.Time)
+			p.dateCache = make(map[string]*mailboxDates)
 		}
-		mboxCache := p.dateCache[mailbox]
-		if mboxCache == nil {
-			mboxCache = make(map[uint32]time.Time)
-			p.dateCache[mailbox] = mboxCache
-		} else if len(mboxCache) > 10000 {
-			mboxCache = make(map[uint32]time.Time)
-			p.dateCache[mailbox] = mboxCache
+		// The mailbox is the selected one, and its UIDs are read under the
+		// UIDVALIDITY it was selected with.
+		kept := p.dateCache[mailbox]
+		if kept == nil || kept.uidValidity != p.selectedUIDValidity || len(kept.dates) > 10000 {
+			kept = &mailboxDates{uidValidity: p.selectedUIDValidity, dates: make(map[uint32]time.Time)}
+			p.dateCache[mailbox] = kept
 		}
+		mboxCache := kept.dates
 		p.cacheLock.Unlock()
 
 		// 4. Batch-fetch only for uncached UIDs in the window
@@ -1734,18 +1758,23 @@ func (p *IMAPProvider) MarkAnswered(mailbox string, id provider.MessageID) error
 func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessageWriter, mboxType provider.MailboxType) (*provider.Mailbox, provider.MessageID, uint32, error) {
 	mbox, remembered, err := p.findMailboxByType(mboxType)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
 	}
 	if mbox == nil {
-		return nil, nil, 0, fmt.Errorf("unable to resolve mailbox")
+		return nil, nil, 0, fmt.Errorf("%w: unable to resolve mailbox", provider.ErrAppendNotStarted)
 	}
 
 	// IMAP needs to know in advance the final size of the message
 	var buf bytes.Buffer
 	if _, err := msg.WriteTo(&buf); err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
 	}
 	size := uint32(buf.Len())
+	select {
+	case <-p.client.Closed():
+		return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, net.ErrClosed)
+	default:
+	}
 
 	flags := []imap.Flag{imap.FlagSeen}
 	if mboxType == provider.MailboxTypeDrafts {
@@ -1762,7 +1791,7 @@ func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessag
 			err = fmt.Errorf("unable to resolve mailbox")
 		}
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
 		}
 		appendData, err = p.appendTo(mbox.Name, buf.Bytes(), &options)
 	}

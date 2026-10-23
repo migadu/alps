@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"html"
 	"io/fs"
-	"net/http"
+	"path"
 	"time"
 )
 
@@ -77,25 +77,30 @@ func brandedShell(index []byte, b BrandingOptions) ([]byte, error) {
 	return append(shell, index[i:]...), nil
 }
 
-// serveBranding answers the root with the branded shell, and the icon paths
-// with the logo's favicon package. Without branding it registers nothing, and
-// the shell and icons are the files in dist as before.
-func (r *Router) serveBranding(dist fs.FS, b BrandingOptions) error {
+// brandedFrontend is the frontend as this deployment serves it: dist, with
+// the branded shell in place of index.html and the logo's favicon package in
+// place of alps's icons, and the names of the icons it replaced. Without
+// branding it is dist as built, and replaces nothing.
+//
+// The branded files are served by the frontend's own file server, as every
+// other file of it is: with Cache-Control, an ETag a reload revalidates with,
+// gzip, and the build named by the page actually served. They had handlers of
+// their own, which sent the page with no ETag and uncompressed, so every load
+// downloaded it whole, and the icons with no Cache-Control and no ETag; and
+// the build was named by the unbranded page, so a change of branding asked
+// nobody to reload.
+func brandedFrontend(dist fs.FS, b BrandingOptions) (fs.FS, []string, error) {
 	index, err := fs.ReadFile(dist, "index.html")
 	if err != nil {
-		return fmt.Errorf("failed to read index.html: %v", err)
+		return nil, nil, fmt.Errorf("failed to read index.html: %v", err)
 	}
 	shell, err := brandedShell(index, b)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
+	files := map[string][]byte{}
 	if shell != nil {
-		// The root only; the file server sends /index.html here as well.
-		r.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, req *http.Request) {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Header().Set("Cache-Control", "no-cache")
-			w.Write(shell)
-		})
+		files["index.html"] = shell
 	}
 
 	icons := b.LogoPackage
@@ -103,16 +108,85 @@ func (r *Router) serveBranding(dist fs.FS, b BrandingOptions) error {
 		icons = make(map[string][]byte, len(IconFiles))
 		for _, name := range IconFiles {
 			if icons[name], err = fs.ReadFile(dist, "assets/logos/"+b.LogoBuiltin+"/"+name); err != nil {
-				return fmt.Errorf("the %s logo has no %s: %v", b.LogoBuiltin, name, err)
+				return nil, nil, fmt.Errorf("the %s logo has no %s: %v", b.LogoBuiltin, name, err)
 			}
 		}
 	}
+	var replaced []string
 	for name, data := range icons {
-		r.mux.HandleFunc("GET /"+name, func(w http.ResponseWriter, req *http.Request) {
-			// An SVG opened on its own is a document: it gets to run nothing.
-			w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
-			http.ServeContent(w, req, name, time.Time{}, bytes.NewReader(data))
-		})
+		files[name] = data
+		replaced = append(replaced, name)
 	}
-	return nil
+	if len(files) == 0 {
+		return dist, nil, nil
+	}
+	return overlayFS{FS: dist, files: files}, replaced, nil
 }
+
+// overlayFS is an fs.FS with some of its files' content replaced. It lists
+// what the FS under it lists, so a replaced file must be one that FS has.
+type overlayFS struct {
+	fs.FS
+	files map[string][]byte
+}
+
+func (o overlayFS) Open(name string) (fs.File, error) {
+	data, ok := o.files[name]
+	if ok {
+		return &overlayFile{Reader: bytes.NewReader(data), info: overlayInfo{name: path.Base(name), size: int64(len(data))}}, nil
+	}
+	f, err := o.FS.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	if dir, ok := f.(fs.ReadDirFile); ok {
+		info, err := f.Stat()
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+		if info.IsDir() {
+			return &overlayDir{ReadDirFile: dir, name: name, files: o.files}, nil
+		}
+	}
+	return f, nil
+}
+
+// overlayDir keeps the underlying directory's order and read position, but
+// reports the same metadata for replaced files as opening those files does.
+type overlayDir struct {
+	fs.ReadDirFile
+	name  string
+	files map[string][]byte
+}
+
+func (d *overlayDir) ReadDir(n int) ([]fs.DirEntry, error) {
+	entries, err := d.ReadDirFile.ReadDir(n)
+	for i, entry := range entries {
+		if data, ok := d.files[path.Join(d.name, entry.Name())]; ok {
+			entries[i] = fs.FileInfoToDirEntry(overlayInfo{name: entry.Name(), size: int64(len(data))})
+		}
+	}
+	return entries, err
+}
+
+// overlayFile is a replaced file, open. It seeks, as http.ServeContent needs.
+type overlayFile struct {
+	*bytes.Reader
+	info overlayInfo
+}
+
+func (f *overlayFile) Stat() (fs.FileInfo, error) { return f.info, nil }
+func (f *overlayFile) Close() error               { return nil }
+
+type overlayInfo struct {
+	name string
+	size int64
+}
+
+func (i overlayInfo) Name() string       { return i.name }
+func (i overlayInfo) Size() int64        { return i.size }
+func (i overlayInfo) Mode() fs.FileMode  { return 0o444 }
+func (i overlayInfo) ModTime() time.Time { return time.Time{} }
+func (i overlayInfo) IsDir() bool        { return false }
+func (i overlayInfo) Sys() any           { return nil }
