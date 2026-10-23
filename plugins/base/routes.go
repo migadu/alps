@@ -3037,7 +3037,7 @@ func handleMove(ctx *alps.Context) error {
 	moved := 0
 	var movedIDs []provider.MessageID
 	uidMapping := make(map[string]string)
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
 			return err
@@ -3123,7 +3123,7 @@ func handleCopy(ctx *alps.Context) error {
 
 	copied := 0
 	uidMapping := make(map[string]string)
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
 			return err
@@ -3187,7 +3187,7 @@ func handleDelete(ctx *alps.Context) error {
 
 	deleted := 0
 	var deletedIDs []provider.MessageID
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
 			return err
