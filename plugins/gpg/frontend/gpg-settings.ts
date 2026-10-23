@@ -266,7 +266,9 @@ export class AlpsGpgSettings extends LitElement {
                 passphrase: pass
             });
 
-            await this.saveKeyring(this.pubKeyInput, encryptedPrivateKey);
+            // encryptKey returns a PrivateKey object; the keyring stores
+            // armored text, not its circular in-memory object graph.
+            await this.saveKeyring(this.pubKeyInput, encryptedPrivateKey.armor());
             this.pubKeyInput = '';
             this.privKeyInput = '';
             this.viewState = 'default';

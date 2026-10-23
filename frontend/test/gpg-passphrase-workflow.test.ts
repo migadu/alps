@@ -25,7 +25,8 @@ beforeEach(() => {
   pgp.readKey.mockResolvedValue({});
   pgp.readPrivateKey.mockResolvedValue({ isDecrypted: () => false });
   pgp.decryptKey.mockRejectedValueOnce(new Error('wrong passphrase')).mockResolvedValue({ isDecrypted: () => true });
-  pgp.encryptKey.mockResolvedValue('new encrypted armour');
+  // OpenPGP.encryptKey returns a PrivateKey object; the transport needs its armor.
+  pgp.encryptKey.mockResolvedValue({ armor: () => 'new encrypted armour' });
   vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
     if (init?.method === 'POST') saves.push(String(init.body));
     return new Response('{}');
@@ -254,6 +255,12 @@ describe('saving a keypair', () => {
     await importPasted(await pane());
     expect(stored).toBe('new encrypted armour');
     expect(await read()).toContain('opened with new encrypted armour');
+  });
+
+  it('saves an imported encrypted PrivateKey as armored text', async () => {
+    await importPasted(await pane());
+    expect(saves).toHaveLength(1);
+    expect(JSON.parse(saves[0]).encrypted_private_key).toBe('new encrypted armour');
   });
 
   it.each([['generate', false], ['import', false], ['generate', true], ['import', true]] as const)('pending key read after %s, refused=%s, keeps the accepted key', async (method, refused) => {
