@@ -265,7 +265,7 @@ func deleteFailed(what string, err error) error {
 // returns the ETag of the version written.
 func (p *plugin) putCard(ctx *alps.Context, c *carddav.Client, objectPath string, card vcard.Card, etag string) (string, error) {
 	var buf bytes.Buffer
-	if err := vcard.NewEncoder(&buf).Encode(card); err != nil {
+	if err := encodeCard(&buf, card); err != nil {
 		return "", fmt.Errorf("failed to encode address object: %v", err)
 	}
 	newETag, err := davsave.Put(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), objectPath), vcard.MIMEType, buf.Bytes(), etag)
