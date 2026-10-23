@@ -66,7 +66,7 @@ func buildBodyStructure(e *message.Entity) imap.BodyStructure {
 		subtype = parts[1]
 	}
 
-	return &imap.BodyStructureSinglePart{
+	single := &imap.BodyStructureSinglePart{
 		Type:        typ,
 		Subtype:     subtype,
 		Params:      params,
@@ -76,6 +76,63 @@ func buildBodyStructure(e *message.Entity) imap.BodyStructure {
 		Extended: &imap.BodyStructureSinglePartExt{
 			Disposition: disposition,
 		},
+	}
+	if isAttachedMessage(e) {
+		single.MessageRFC822 = attachedMessage(e)
+	}
+	return single
+}
+
+// isAttachedMessage reports whether e holds a message of its own, as a
+// forward as attachment does.
+func isAttachedMessage(e *message.Entity) bool {
+	mediaType, _, _ := e.Header.ContentType()
+	return mediaType == "message/rfc822"
+}
+
+// attachedMessage describes the message a message/rfc822 part holds as IMAP's
+// BODYSTRUCTURE does (RFC 3501, section 7.4.2): by its envelope, which names
+// it, and its own parts.
+func attachedMessage(e *message.Entity) *imap.BodyStructureMessageRFC822 {
+	inner, err := message.Read(e.Body)
+	if err != nil {
+		return nil
+	}
+	return &imap.BodyStructureMessageRFC822{
+		Envelope:      envelopeOf(mail.Header{Header: inner.Header}),
+		BodyStructure: buildBodyStructure(inner),
+	}
+}
+
+// envelopeOf is an attached message's header as IMAP's ENVELOPE gives it.
+func envelopeOf(h mail.Header) *imap.Envelope {
+	addresses := func(key string) []imap.Address {
+		list, _ := h.AddressList(key)
+		var out []imap.Address
+		for _, a := range list {
+			mailbox, host := a.Address, ""
+			if i := strings.LastIndex(a.Address, "@"); i >= 0 {
+				mailbox, host = a.Address[:i], a.Address[i+1:]
+			}
+			out = append(out, imap.Address{Name: a.Name, Mailbox: mailbox, Host: host})
+		}
+		return out
+	}
+	date, _ := h.Date()
+	subject, _ := h.Subject()
+	inReplyTo, _ := h.MsgIDList("In-Reply-To")
+	messageID, _ := h.MessageID()
+	return &imap.Envelope{
+		Date:      date,
+		Subject:   subject,
+		From:      addresses("From"),
+		Sender:    addresses("Sender"),
+		ReplyTo:   addresses("Reply-To"),
+		To:        addresses("To"),
+		Cc:        addresses("Cc"),
+		Bcc:       addresses("Bcc"),
+		InReplyTo: inReplyTo,
+		MessageID: messageID,
 	}
 }
 
@@ -383,10 +440,10 @@ func (p *Provider) GetMessageMetadata(mailbox string, id provider.MessageID) (*p
 // messagePart finds the part of the message e at partPath, numbered as IMAP
 // numbers a message's parts (RFC 3501, section 6.4.5): a message that is not
 // multipart has one part, its body, which is part 1. The reader asks for it
-// by that number.
+// by that number. Below it are the parts of the message the body may hold.
 func messagePart(e *message.Entity, partPath []int) (*message.Entity, error) {
-	if len(partPath) == 1 && partPath[0] == 1 && e.MultipartReader() == nil {
-		return e, nil
+	if len(partPath) > 0 && partPath[0] == 1 && e.MultipartReader() == nil {
+		return traverseEntity(e, partPath[1:])
 	}
 	return traverseEntity(e, partPath)
 }
@@ -394,6 +451,16 @@ func messagePart(e *message.Entity, partPath []int) (*message.Entity, error) {
 func traverseEntity(e *message.Entity, partPath []int) (*message.Entity, error) {
 	if len(partPath) == 0 {
 		return e, nil
+	}
+
+	// The parts of an attached message are numbered within it, as a
+	// message's own are: 2.1 is the first part of the message at 2.
+	if isAttachedMessage(e) {
+		inner, err := message.Read(e.Body)
+		if err != nil {
+			return nil, err
+		}
+		return messagePart(inner, partPath)
 	}
 
 	idx := partPath[0]
