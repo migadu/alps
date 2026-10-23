@@ -196,14 +196,23 @@ func (p *IMAPProvider) rememberIdled(ask bool) error {
 			// A tagged refusal keeps the conservative selected UIDNEXT. A
 			// half-open or lost connection must free the session's background
 			// slot, as an unanswered IDLE or DONE does.
-			select {
-			case <-p.client.Closed():
+			var refused *imap.Error
+			if !errors.As(err, &refused) || (refused.Type != imap.StatusResponseTypeNo && refused.Type != imap.StatusResponseTypeBad) {
+				// A failed command can be released before the reader closes
+				// its Closed channel. Finish closing before classifying it.
+				p.client.Close()
 				return p.lostIf(err)
-			default:
 			}
 		} else if status.UIDNext != 0 {
 			uidNext = status.UIDNext
 		}
+	}
+	// STATUS can receive another EXISTS or EXPUNGE before its answer. The
+	// handler already told of it; record that newer count with the UIDNEXT
+	// learnt above rather than announcing the same change after a reselect.
+	mbox = p.client.Mailbox()
+	if mbox == nil {
+		return nil
 	}
 	p.idled = idledMailbox{
 		known:       true,
