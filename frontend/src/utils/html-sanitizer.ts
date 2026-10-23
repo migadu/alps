@@ -70,6 +70,26 @@ function cidOf(value: string): string {
   return value.replace(/[^\x21-\x7e]/g, '').substring(4);
 }
 
+/** The URL attributes supported by a resource or link element. */
+function resourceAttributes(el: Element): Set<string> {
+  const urlAttributes: Record<string, string[]> = {
+    img: ['src', 'srcset'], source: ['src', 'srcset'],
+    audio: ['src'], video: ['src', 'poster'], track: ['src'],
+    a: ['href'], area: ['href'],
+    body: ['background'], table: ['background'], thead: ['background'],
+    tbody: ['background'], tfoot: ['background'], tr: ['background'],
+    td: ['background'], th: ['background'],
+  };
+  const tag = el.localName.toLowerCase();
+  const attributes = new Set(urlAttributes[tag] ?? []);
+  if (el.namespaceURI === 'http://www.w3.org/2000/svg' && ['a', 'image', 'use', 'feimage'].includes(tag)) {
+    attributes.add('href');
+    attributes.add('xlink:href');
+  }
+  if (tag === 'input' && el.getAttribute('type')?.toLowerCase() === 'image') attributes.add('src');
+  return attributes;
+}
+
 /**
  * The Content-IDs markup names in its `cid:` URLs, without angle brackets:
  * the parts of the message it came in that it shows or links to. Only an
@@ -81,22 +101,8 @@ export function cidReferencesOf(html: string): Set<string> {
   const ids = new Set<string>();
   if (!html) return ids;
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  const urlAttributes: Record<string, string[]> = {
-    img: ['src', 'srcset'], source: ['src', 'srcset'],
-    audio: ['src'], video: ['src', 'poster'], track: ['src'],
-    a: ['href'], area: ['href'],
-    body: ['background'], table: ['background'], thead: ['background'],
-    tbody: ['background'], tfoot: ['background'], tr: ['background'],
-    td: ['background'], th: ['background'],
-  };
   for (const el of Array.from(doc.querySelectorAll('*'))) {
-    const tag = el.localName.toLowerCase();
-    const attributes = new Set(urlAttributes[tag] ?? []);
-    if (el.namespaceURI === 'http://www.w3.org/2000/svg' && ['a', 'image', 'use', 'feimage'].includes(tag)) {
-      attributes.add('href');
-      attributes.add('xlink:href');
-    }
-    if (tag === 'input' && el.getAttribute('type')?.toLowerCase() === 'image') attributes.add('src');
+    const attributes = resourceAttributes(el);
     for (const name of attributes) {
       const value = el.getAttribute(name);
       if (value === null) continue;
@@ -107,6 +113,35 @@ export function cidReferencesOf(html: string): Set<string> {
     }
   }
   return ids;
+}
+
+/**
+ * Retained HTML without references to inline parts a committed plain-text
+ * save left out. Other resources and the quote's markup stay as they were.
+ */
+export function withoutCidReferences(html: string, discarded: ReadonlySet<string>): string {
+  if (!html || !discarded.size) return html;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const gone = (url: string) => isCidUrl(url) && discarded.has(cidOf(url).replace(/^<|>$/g, ''));
+  let changed = false;
+  for (const el of Array.from(doc.querySelectorAll('*'))) {
+    for (const name of resourceAttributes(el)) {
+      const value = el.getAttribute(name);
+      if (value === null) continue;
+      if (name === 'srcset') {
+        const candidates = parseSrcset(value);
+        const kept = candidates.filter(c => !gone(c.url));
+        if (kept.length === candidates.length) continue;
+        if (kept.length) el.setAttribute(name, kept.map(c => `${c.url}${c.descriptor}`).join(', '));
+        else el.removeAttribute(name);
+      } else {
+        if (!gone(value)) continue;
+        el.removeAttribute(name);
+      }
+      changed = true;
+    }
+  }
+  return changed ? doc.body.innerHTML : html;
 }
 
 /**

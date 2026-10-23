@@ -29,12 +29,37 @@ describe('the event editor', () => {
         await picker.updateComplete;
         const select = picker.shadowRoot!.querySelector('select')!;
 
+        expect(select.disabled).toBe(false);
         select.value = '/cal/home/';
         select.dispatchEvent(new Event('change', { bubbles: true }));
         el.summary = 'Dentist';
         await el.handleSave();
 
         expect(create).toHaveBeenCalledWith(expect.objectContaining({ summary: 'Dentist', calendarPath: '/cal/home/' }));
+    });
+
+    it('shows an existing event\'s calendar, and does not offer another', async () => {
+        // The server keeps an event in its calendar when it is updated. The
+        // picker could be changed all the same, and the save then ignored
+        // the calendar picked and said nothing.
+        const el = await mount<El>('calendar-event-modal', {
+            i18nStore: { t: (key: string) => key },
+            calendars: [
+                { name: 'Work', description: '', path: '/cal/work/' },
+                { name: 'Home', description: '', path: '/cal/home/' },
+            ],
+            event: {
+                uid: 'review', summary: 'Review', start: '2026-09-16T08:00:00Z', end: '2026-09-16T09:00:00Z',
+                path: '/cal/home/review.ics', calendarPath: '/cal/home/', etag: 'v1',
+            },
+            open: true,
+        });
+        const picker = shadow<El>(el, 'alps-select');
+        await picker.updateComplete;
+        const select = picker.shadowRoot!.querySelector('select')!;
+
+        expect(select.value).toBe('/cal/home/');
+        expect(select.disabled).toBe(true);
     });
 
     /** Types into one of the form's date or time fields, as the user does. */

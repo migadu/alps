@@ -3,6 +3,7 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { consume } from '@lit/context';
 import { customElement, property, state } from 'lit/decorators.js';
 import { renderIcon } from '../utils/ui';
+import { focusOnLabelClick } from '../utils/label-focus';
 
 @customElement('alps-input')
 export class AlpsInput extends LitElement {
@@ -172,14 +173,20 @@ export class AlpsInput extends LitElement {
     if (input) input.focus();
   }
 
+  /** Stops the watch for a click on this field's label (see focusOnLabelClick). */
+  private stopLabelWatch: (() => void) | null = null;
+
   connectedCallback() {
     super.connectedCallback();
     this.i18nStore?.addEventListener('change', this._handleI18nChange);
+    this.stopLabelWatch = focusOnLabelClick(this);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
+    this.stopLabelWatch?.();
+    this.stopLabelWatch = null;
   }
 
   render() {

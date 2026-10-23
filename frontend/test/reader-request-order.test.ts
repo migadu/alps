@@ -123,12 +123,12 @@ beforeEach(() => {
   }));
 });
 
-async function settleReaderReads() {
+async function settleReaderReads(clearAccount = true) {
   // Disconnect before releasing: no more queued members may start. A released
   // metadata response can still decode and ask for /raw; keep this test's fetch
   // stub installed until those reads and their follow-on conversation settle.
   cleanup();
-  MessageCache.clear();
+  if (clearAccount) MessageCache.clear();
   for (const resolve of release.values()) resolve();
   while (pendingReads.size) await Promise.allSettled([...pendingReads]);
 }
@@ -243,7 +243,7 @@ describe('opening a conversation', () => {
   });
 });
 
-it('waits for released metadata to finish decoding before teardown restores the fetch stub', async () => {
+it.each([false, true])('waits for released metadata before teardown restores fetch (clear account: %s)', async (clearAccount) => {
   const fetch = vi.mocked(globalThis.fetch).getMockImplementation()!;
   let finishMetadata!: () => void;
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
@@ -264,7 +264,9 @@ it('waits for released metadata to finish decoding before teardown restores the 
   await waitFor(() => !!finishMetadata, 'the pending metadata decode');
 
   let settled = false;
-  const settling = settleReaderReads().then(() => { settled = true; });
+  // A live account finishes its raw request under this stub; a cleared
+  // account cancels that follow-up. Both must finish before restoring fetch.
+  const settling = settleReaderReads(clearAccount).then(() => { settled = true; });
   try {
     await Promise.resolve();
     expect(settled).toBe(false);
@@ -276,10 +278,71 @@ it('waits for released metadata to finish decoding before teardown restores the 
     while (pendingReads.size) await Promise.allSettled([...pendingReads]);
   }
 
-  // The old stub served the final raw request. It cannot enter the next
-  // test's recorder and turn that test's metadata/raw pair into three reads.
-  expect(asked.filter(url => url.includes('/messages/1/raw'))).toHaveLength(1);
+  // The live account uses this stub; the cleared account makes no raw read.
+  // Neither may enter the next test’s recorder.
+  expect(asked.filter(url => url.includes('/messages/1/raw'))).toHaveLength(clearAccount ? 0 : 1);
   expect(pendingReads.size).toBe(0);
+});
+
+/**
+ * The teardown above, pinned from outside: the test before calls
+ * settleReaderReads() itself, so it would still pass if afterEach stopped
+ * calling it.
+ *
+ * The first test leaves a member's metadata decoding past its own end, with
+ * nothing of its own to wait for it; the second then waits out whatever the
+ * first left running, and finds that none of it asked this test's stub for
+ * anything. Without afterEach's settleReaderReads() the decode finishes in the
+ * second test, and its /raw read (with the members queued after it) lands in
+ * that test's recorder, which is how #377 counted three background reads of a
+ * member instead of two.
+ *
+ * The two run in order, as a file's tests do: the second, run alone (with -t),
+ * finds nothing left and passes either way.
+ */
+describe('a read still running when its test ends', () => {
+  /** The reads the first test left running, kept for the second to wait out. */
+  let leftRunning: Set<Promise<unknown>> | null = null;
+
+  it('leaves a member decoding past the end of its test', async () => {
+    const fetch = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    let decoding = false;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const response = await fetch(url, init);
+      if (String(url).includes('/messages/1?view=')) {
+        const parse = response.json.bind(response);
+        // Decoded a moment after this test has returned: past its end, and
+        // before any slow machine would have reached the next test's checks.
+        response.json = () => {
+          decoding = true;
+          return new Promise((resolve, reject) => setTimeout(() => { void parse().then(resolve, reject); }, 20));
+        };
+      }
+      return response;
+    }));
+    await openConversation();
+    await waitFor(() => release.has('10'), 'the open message');
+    release.get('10')!();
+    await waitFor(() => release.has('1'), 'the first member');
+    release.get('1')!();
+    await waitFor(() => decoding, 'the member to be decoding');
+
+    leftRunning = pendingReads;
+    expect(leftRunning.size).toBeGreaterThan(0);
+  });
+
+  it("lets nothing it left running reach the next test's stub", async () => {
+    // Waited out as they stand. Not until the set is empty: a read finishing
+    // now takes itself out of THIS test's set, not the first one's.
+    if (leftRunning) await Promise.allSettled([...leftRunning]);
+    await flush();
+
+    // Account-generation guards may cancel follow-on fetches even when
+    // teardown forgot to wait. The first test's own tracked reads must also
+    // have finished before beforeEach replaced the fixture's pending set.
+    expect(leftRunning?.size ?? 0).toBe(0);
+    expect(asked).toEqual([]);
+  });
 });
 
 describe('an answer that lands after the reader has gone', () => {
