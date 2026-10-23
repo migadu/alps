@@ -16,6 +16,11 @@ export class AlpsSelect extends LitElement {
 	 * this shadow root. So a form passes the text of its label here as well.
 	 */
 	@property({ type: String }) label = '';
+	/**
+	 * Passed on to the select, which is in this shadow root: set on this
+	 * element alone, `disabled` left the select as usable as ever.
+	 */
+	@property({ type: Boolean }) disabled = false;
 
 	static styles = css`
 		:host {
@@ -87,7 +92,7 @@ export class AlpsSelect extends LitElement {
 	render() {
 		return html`
 			<div class="select-wrapper">
-				<select .value=${this.value} aria-label=${this.label || nothing} @change=${this.handleChange}>
+				<select .value=${this.value} aria-label=${this.label || nothing} ?disabled=${this.disabled} @change=${this.handleChange}>
 					${this.options.map(opt => html`<option value=${opt.value} lang=${opt.lang ?? nothing} ?selected=${opt.value === this.value} ?disabled=${opt.disabled}>${opt.label}</option>`)}
 				</select>
 				<span class="caret">
