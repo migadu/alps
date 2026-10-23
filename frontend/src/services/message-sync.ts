@@ -9,6 +9,8 @@ export interface MailboxData {
   Total?: number;
   MessagesPerPage?: number;
   Mailboxes?: any[];
+  /** What the server names the folder list by: sent back, it leaves out a list that is still that one. */
+  MailboxesVersion?: string;
   Messages?: any[];
   /**
    * The mailbox `Messages` were read from, stamped here from the read's own
@@ -120,13 +122,19 @@ export class MessageSyncService extends EventTarget {
    */
   private listings = new Map<string, MailboxData>();
   private latestMailboxes: any[] | null = null;
+  /**
+   * The version the server named `latestMailboxes` by, sent back with each
+   * listing so that it leaves out a folder list that is still that one; null
+   * when the list held is not exactly what the server sent.
+   */
+  private latestMailboxesVersion: string | null = null;
   private listingSettingsKey = '';
 
   /**
-   * The foreground listing request out at the server, if any: one asked for
+   * The listing request out at the server, if any, the poll's and the
+   * check-for-new-mail button's as well as a foreground one: one asked for
    * meanwhile waits for it, and a newer one takes the place of one waiting
-   * (see {@link fetch}). The poll's listing and the check-for-new-mail
-   * button's do not wait for it yet.
+   * (see {@link fetch} and {@link backgroundSync}).
    */
   private listingOut: Promise<void> | null = null;
 
@@ -166,6 +174,7 @@ export class MessageSyncService extends EventTarget {
       this.heard = null;
       this.forgetListings();
       this.latestMailboxes = null;
+      this.latestMailboxesVersion = null;
     });
     // A sign-in that does not follow a sign-out on this page, as a switch to
     // a linked account is, starts with nothing of the account before it.
@@ -178,6 +187,7 @@ export class MessageSyncService extends EventTarget {
       this.heard = null;
       this.forgetListings();
       this.latestMailboxes = null;
+      this.latestMailboxesVersion = null;
     });
 
     // A message read, starred or marked unread on screen is so in every view
@@ -274,7 +284,7 @@ export class MessageSyncService extends EventTarget {
   }
 
   private keepListing(mailbox: string, page: number, query: string, data: MailboxData) {
-    if (data.Mailboxes) this.latestMailboxes = data.Mailboxes;
+    if (data.Mailboxes) this.holdMailboxes(data);
     const kept: MailboxData = JSON.parse(JSON.stringify(data));
     delete kept.Mailboxes;
     const key = this.listingKey(mailbox, page, query);
@@ -282,6 +292,30 @@ export class MessageSyncService extends EventTarget {
     this.listings.set(key, kept);
     while (this.listings.size > MAX_KEPT_LISTINGS) {
       this.listings.delete(this.listings.keys().next().value!);
+    }
+  }
+
+  /** Holds an answer's folder list as the latest, by the version it came with. */
+  private holdMailboxes(data: MailboxData) {
+    this.latestMailboxes = data.Mailboxes ?? null;
+    this.latestMailboxesVersion = data.MailboxesVersion ?? null;
+  }
+
+  /** A listing's URL, asking the server to leave out the folder list held when it is still that one. */
+  private listingURL(mailbox: string, page: number, query: string, refresh: boolean): string {
+    let url = `/mailboxes/${encodeMailboxPath(mailbox)}?page=${page}`;
+    if (query) url += `&query=${encodeURIComponent(query)}`;
+    if (refresh) url += `&refresh=true`;
+    // Not for a refresh, which is asked for when what is held may be wrong.
+    else if (this.latestMailboxesVersion) url += `&mailboxes=${encodeURIComponent(this.latestMailboxesVersion)}`;
+    return url;
+  }
+
+  /** An answer that left the folder list out, as unchanged, is handed out with the one held. */
+  private fillMailboxes(data: MailboxData) {
+    if (!data.Mailboxes && this.latestMailboxes && data.MailboxesVersion
+        && data.MailboxesVersion === this.latestMailboxesVersion) {
+      data.Mailboxes = this.latestMailboxes;
     }
   }
 
@@ -686,7 +720,7 @@ export class MessageSyncService extends EventTarget {
       if (this.currentLabelsId !== labelsId) return;
       if (!data.Mailboxes) return;
 
-      this.latestMailboxes = data.Mailboxes;
+      this.holdMailboxes(data);
       this.dispatchEvent(new CustomEvent('labels-success', { detail: { mailboxes: data.Mailboxes } }));
     } catch (err) {
       Logger.error('Failed to refresh folder list', err);
@@ -768,6 +802,8 @@ export class MessageSyncService extends EventTarget {
     if (this.latestMailboxes) {
       this.latestMailboxes = this.latestMailboxes.map((mb: any) =>
         (String(mb?.Name ?? mb?.Mailbox).toUpperCase() === FOLDER_INBOX ? { ...mb, Total: counts.total, Unseen: counts.unseen } : mb));
+      // No longer the list the server named: the next listing brings it whole.
+      this.latestMailboxesVersion = null;
     }
     this.dispatchEvent(new CustomEvent('inbox-counts', { detail: { counts, announce: this.announces } }));
   }
@@ -845,9 +881,7 @@ export class MessageSyncService extends EventTarget {
         if (this.currentFetchId !== fetchId) return;
       }
 
-      let url = `/mailboxes/${encodeMailboxPath(mailbox)}?page=${page}`;
-      if (query) url += `&query=${encodeURIComponent(query)}`;
-      if (checkStatus) url += `&refresh=true`;
+      const url = this.listingURL(mailbox, page, query, checkStatus);
 
       const request = fetchWithTimeout(url);
       const out = request.then(() => {}, () => {});
@@ -881,6 +915,7 @@ export class MessageSyncService extends EventTarget {
 
       const data: MailboxData = await response.json();
       if (this.currentFetchId !== fetchId) return; // Re-check after json parsing
+      this.fillMailboxes(data);
 
       await settle();
       if (this.currentFetchId !== fetchId) return; // Re-check after artificial delay
@@ -1056,16 +1091,31 @@ export class MessageSyncService extends EventTarget {
         return true;
       }
 
-      let url = `/mailboxes/${encodeMailboxPath(mailbox)}?page=${page}`;
-      if (query) url += `&query=${encodeURIComponent(query)}`;
       // Read again for its age alone, and past the server's caches. They
       // kept the page when this view was last read, and live about as long
       // as RELIST_AFTER_MS: often they would still answer with that page,
       // and what changed since would wait for the next round.
-      if (unchanged) url += '&refresh=true';
+      const url = this.listingURL(mailbox, page, query, unchanged);
 
+      // Behind the listing out, as a foreground one waits (see fetch), and
+      // out in its place: a navigation meanwhile waits for this one in turn,
+      // and the newest of those is the one sent. The server reads a session's
+      // listings one after another, so a listing sent beside another only
+      // waited there.
+      while (this.listingOut) {
+        await this.listingOut;
+        if (superseded()) return true;
+      }
       sentAt = this.listingSent();
-      const response = await fetchWithTimeout(url);
+      const request = fetchWithTimeout(url);
+      const out = request.then(() => {}, () => {});
+      this.listingOut = out;
+      let response: Response;
+      try {
+        response = await request;
+      } finally {
+        if (this.listingOut === out) this.listingOut = null;
+      }
       if (superseded()) return true;
 
       if (response.status === 401) {
@@ -1089,6 +1139,7 @@ export class MessageSyncService extends EventTarget {
 
       const data: MailboxData = await response.json();
       if (superseded()) return true;
+      this.fillMailboxes(data);
       // The view is listed now, whatever became of the read before: after a
       // failed one, the rows a poll brings back are this view's.
       this.listed = true;

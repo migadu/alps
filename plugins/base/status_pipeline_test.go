@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -183,7 +184,7 @@ func newIMAPUserTestServer(t *testing.T, user *imapmemserver.User, watch *status
 		srv.Close()
 	})
 	jar, _ := cookiejar.New(nil)
-	return &testServer{t: t, url: ts.URL, client: &http.Client{Jar: jar}}
+	return &testServer{t: t, url: ts.URL, client: &http.Client{Jar: jar}, server: srv}
 }
 
 // A server without LIST-STATUS is asked each folder's counts with a STATUS of
@@ -202,5 +203,35 @@ func TestHTTP_FolderCountsAreAskedTogether(t *testing.T) {
 	}
 	if got := watch.mostAtOnce(); got != len(folders) {
 		t.Errorf("at most %d STATUS commands were out at once; want all %d sent before the first answer", got, len(folders))
+	}
+}
+
+// A write reads again the counts of the folders it changed, a move those of
+// both, and on a server without LIST-STATUS they are asked together, as a
+// listing asks for its folders'. They were asked one after another.
+func TestHTTP_TheCountsAWriteChangedAreAskedTogether(t *testing.T) {
+	ctx := context.Background()
+	user := imapmemserver.NewUser(testUser, testPassword)
+	for _, name := range []string{"INBOX", "Archive"} {
+		if err := user.Create(ctx, name, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := user.Subscribe(ctx, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	msg := "From: Charles <charles@remote.test>\r\nTo: " + testUser + "\r\nSubject: Engines\r\n\r\nHello.\r\n"
+	if _, err := user.Append(ctx, "INBOX", strings.NewReader(msg), &imap.AppendOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	var watch statusWatch
+	s := newIMAPUserTestServer(t, user, &watch)
+	s.login()
+	s.statusPage("/mailboxes/INBOX?page=0")
+
+	watch.reset()
+	s.expect(s.do("PUT", "/mailboxes/INBOX/messages/move", map[string]any{"uids": []string{"1"}, "to": "Archive"}), http.StatusOK)
+	if got := watch.mostAtOnce(); got != 2 {
+		t.Errorf("at most %d STATUS commands were out at once after the move; want both sent before the first answer", got)
 	}
 }
