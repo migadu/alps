@@ -2970,6 +2970,18 @@ const maxScopeBatch = 500
 // undo is worth, and the client says so instead.
 const maxReportedMapping = 1000
 
+// filedCount is how many messages of batch a move or a copy filed: those the
+// provider names in its answer. A message gone since the page listed it is
+// passed over by an IMAP server without an error, and was counted all the
+// same. A server that names none, as one without UIDPLUS does, has said
+// nothing either way, and the batch counts as asked.
+func filedCount(mapping map[provider.MessageID]provider.MessageID, batch []provider.MessageID) int {
+	if len(mapping) == 0 {
+		return len(batch)
+	}
+	return len(mapping)
+}
+
 // inBatches runs fn over the ids, at most maxScopeBatch at a time.
 func inBatches(ids []provider.MessageID, fn func([]provider.MessageID) error) error {
 	for start := 0; start < len(ids); start += maxScopeBatch {
@@ -3048,7 +3060,7 @@ func handleMove(ctx *alps.Context) error {
 				}
 				return fmt.Errorf("failed to move messages: %v", err)
 			}
-			moved += len(batch)
+			moved += filedCount(mapping, batch)
 			movedIDs = append(movedIDs, batch...)
 			if !withMapping {
 				return nil
@@ -3127,7 +3139,7 @@ func handleCopy(ctx *alps.Context) error {
 			if err != nil {
 				return fmt.Errorf("failed to copy messages: %v", err)
 			}
-			copied += len(batch)
+			copied += filedCount(mapping, batch)
 			if !withMapping {
 				return nil
 			}
