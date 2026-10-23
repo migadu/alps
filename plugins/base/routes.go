@@ -625,20 +625,36 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 	// Convert UID to MessageID for comparison
 	uidStr := uid.String()
 
-	// The message's own entry is asked before any page is touched. A listing
-	// caches each row twice, in the page and as the message on its own, and
-	// the two are one message in memory (handleGetMailbox): updating the page
-	// first made the entry report the change as the state before it. The
-	// copies then disagreed, and reading a listed message dropped the count
-	// instead of lowering it.
-	msgKey := fmt.Sprintf("message:%s:%s:[]", mailbox, uidStr)
-	if cached, ok := cache.Get(msgKey); ok {
-		if cachedPart, ok := cached.(CachedMessagePart); ok && cachedPart.Message != nil {
-			noteSeen(cachedPart.Message.Flags)
+	patchPart := func(key string, prior bool) bool {
+		updated := false
+		cache.Update(key, func(cached interface{}) interface{} {
+			part, ok := cached.(CachedMessagePart)
+			if !ok || part.Message == nil || (part.Mailbox != mailbox && !(prior && part.Mailbox == "")) {
+				return cached
+			}
+			if prior {
+				// The exact metadata key also identifies an older entry that
+				// names no folder; other parts still require explicit provenance.
+				noteSeen(part.Message.Flags)
+			}
+			message := *part.Message
+			message.Flags = updateFlags(message.Flags)
+			part.Message = &message
+			updated = true
+			return part
+		})
+		if updated {
+			debugf("Updated flags for message %s in cache key %s", uidStr, key)
 		}
+		return updated
 	}
 
-	messageUpdated := false
+	// Ask and patch the message's own entry atomically, before touching pages.
+	// Concurrent idempotent marks must not both count its old state. A listing
+	// originally shares the row with this entry, so each patch publishes its
+	// own copy and the untouched page still says what it said before.
+	msgKey := fmt.Sprintf("message:%s:%s:[]", mailbox, uidStr)
+	messageUpdated := patchPart(msgKey, true)
 	for _, key := range keys {
 		updated := false
 		cache.Update(key, func(cached interface{}) interface{} {
@@ -680,21 +696,8 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 	// changed the message would move the count for a change that changed
 	// nothing.
 	for _, key := range cache.GetKeysWithPrefix(fmt.Sprintf("message:%s:%s:[", mailbox, uidStr)) {
-		updated := false
-		cache.Update(key, func(cached interface{}) interface{} {
-			part, ok := cached.(CachedMessagePart)
-			if !ok || part.Message == nil || part.Mailbox != mailbox {
-				return cached
-			}
-			message := *part.Message
-			message.Flags = updateFlags(message.Flags)
-			part.Message = &message
-			updated = true
-			return part
-		})
-		if updated {
+		if key != msgKey && patchPart(key, false) {
 			messageUpdated = true
-			debugf("Updated flags for message %s in cache key %s", uidStr, key)
 		}
 	}
 
