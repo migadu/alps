@@ -54,6 +54,17 @@ func TestHTTP_ChangeNumbersAreExactDecimalStrings(t *testing.T) {
 			var status map[string]json.RawMessage
 			r.json(t, &status)
 			check(status["highestmodseq"])
+			r = s.do("GET", "/mailboxes/INBOX/status?with=Trash", nil)
+			s.expect(r, http.StatusOK)
+			var batch struct {
+				Highest json.RawMessage `json:"highestmodseq"`
+				With    map[string]struct {
+					Highest json.RawMessage `json:"highestmodseq"`
+				} `json:"with"`
+			}
+			r.json(t, &batch)
+			check(batch.Highest)
+			check(batch.With["Trash"].Highest)
 			r = s.do("GET", "/mailboxes/INBOX?page=0", nil)
 			s.expect(r, http.StatusOK)
 			var page struct {
