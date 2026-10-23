@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js";import{$ as c,G as l,V as u,W as d,Z as f,ct as p,d as m,dt as h,et as g,f as _,ft as v,h as y,i as b,l as x,lt as S,n as C,ot as w,p as T,r as E,st as D,t as O,ut as k}from"./index-B2VHUdAX.js";var A=`All Contacts`,j=`Favorites`,M=class extends i{constructor(...e){super(...e),this.contacts=[],this.uniqueCategories=[],this.selectedCategory=``,this.filterQuery=``,this.activeKebabMenu=null,this.sidebarScrolled=!1}static{this.styles=[T,_,e`
+import{b as e,c as t,f as n,g as r,h as i,m as a,p as o,v as s}from"./lit-Br1cDwGJ.js";import{$ as c,G as l,V as u,W as d,Z as f,ct as p,d as m,dt as h,et as g,f as _,ft as v,h as y,i as b,l as x,lt as S,n as C,ot as w,p as T,r as E,st as D,t as O,ut as k}from"./index-BnU_MaQv.js";var A=`All Contacts`,j=`Favorites`,M=class extends i{constructor(...e){super(...e),this.contacts=[],this.uniqueCategories=[],this.selectedCategory=``,this.filterQuery=``,this.activeKebabMenu=null,this.sidebarScrolled=!1}static{this.styles=[T,_,e`
     :host {
       display: flex;
       flex-direction: column;
