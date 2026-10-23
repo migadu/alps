@@ -176,3 +176,55 @@ func TestHTTP_ADraftCarriesAFileInAnUnknownCharset(t *testing.T) {
 		savesDraftCarrying(t, s, s.mailbox("INBOX").Messages[0].UID)
 	})
 }
+
+// A file in an unknown charset under an unknown transfer encoding as well is
+// not carried: its transfer encoding cannot be undone, so there is no content
+// to carry. go-message reports only the charset of the two, and the draft
+// took the file's still-encoded bytes as its content, over maildir and IMAP.
+const unknownBothFileMessage = "From: Charles <charles@remote.test>\r\nTo: " + testUser + "\r\nSubject: Ledger\r\n" +
+	"Date: Mon, 02 Jan 2006 15:04:05 +0000\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=outer\r\n\r\n" +
+	"--outer\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nThe ledger.\r\n" +
+	"--outer\r\nContent-Type: text/plain; charset=x-unknown-charset\r\nContent-Transfer-Encoding: x-unknown\r\n" +
+	"Content-Disposition: attachment; filename=ledger.txt\r\n\r\none two three\r\n--outer--\r\n"
+
+func refusesToCarry(t *testing.T, s *testServer, uid string) {
+	t.Helper()
+	s.expect(s.do("POST", "/mailboxes", url.Values{"name": {"Drafts"}}), http.StatusOK)
+	r := s.do("POST", "/messages", url.Values{
+		"to":               {"mary@remote.test"},
+		"subject":          {"Fwd: Ledger"},
+		"text":             {"See the ledger."},
+		"prev_attachments": {"2"},
+		"source_mailbox":   {"INBOX"},
+		"source_uid":       {uid},
+		"save_as_draft":    {"1"},
+	})
+	if r.status == http.StatusOK {
+		t.Errorf("the draft was saved with a file whose transfer encoding was never undone: %s", r.body)
+	}
+	if n := len(s.mailbox("Drafts").Messages); n != 0 {
+		t.Errorf("Drafts holds %d messages, want none", n)
+	}
+}
+
+func TestHTTP_ADraftDoesNotCarryAFileItCannotTransferDecode(t *testing.T) {
+	t.Run("maildir", func(t *testing.T) {
+		s := newTestServer(t)
+		if _, _, _, err := s.store.AppendMessage("INBOX", rawMessage(unknownBothFileMessage), 0); err != nil {
+			t.Fatal(err)
+		}
+		s.login()
+		var uid string
+		for _, m := range s.mailbox("INBOX").Messages {
+			if m.Envelope.Subject == "Ledger" {
+				uid = m.UID
+			}
+		}
+		refusesToCarry(t, s, uid)
+	})
+	t.Run("imap", func(t *testing.T) {
+		s, _ := newRecordedIMAPTestServer(t, unknownBothFileMessage)
+		s.login()
+		refusesToCarry(t, s, s.mailbox("INBOX").Messages[0].UID)
+	})
+}
