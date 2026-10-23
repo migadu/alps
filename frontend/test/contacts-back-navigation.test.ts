@@ -301,7 +301,8 @@ describe('a rename or removal of the open category, once its cards are written',
           return { total: cards.length, done: cards.length, failed: 0, uncertain: 0, etags: { [ADA.path]: '"2"' } };
         });
         const update = vi.spyOn(contactsService, 'updateContact').mockImplementation(async (_path: string, payload: any) => {
-          adaCategories = payload.categories;
+          // An edit that says nothing of the categories leaves the card's.
+          if (payload.categories !== undefined) adaCategories = payload.categories;
           return { path: ADA.path, etag: '"3"' };
         });
         const written = after ? [after] : [];
@@ -317,8 +318,10 @@ describe('a rename or removal of the open category, once its cards are written',
         await send(page, 'alps-contact-view', 'save', { ...view.editForm, name: 'Ada King' });
 
         expect(update).toHaveBeenCalledTimes(1);
-        expect(update.mock.calls[0][1]).toMatchObject({ name: 'Ada King', categories: written, etag: '"2"' });
+        expect(update.mock.calls[0][1]).toMatchObject({ name: 'Ada King', etag: '"2"' });
+        expect(update.mock.calls[0][1]).not.toHaveProperty('categories');
         expect(adaCategories, 'the card on the server').toEqual(written);
+        expect(page.selectedContact.categories).toEqual(written);
       });
     }
   }

@@ -43,6 +43,7 @@ type ContactSaveTarget = {
   lifetime: number;
   username: string;
   conflicted: boolean;
+  toolbarVersion?: { etag: string };
 };
 
 @customElement('contacts-page')
@@ -338,6 +339,7 @@ export class ContactsPage extends LitElement {
     this.saveLifetime++;
     this.queuedSaves = [];
     this.saveTargets = new WeakMap();
+    this.toolbarVersions.clear();
     if (this.settingsStore) {
       this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     }
@@ -1050,8 +1052,11 @@ export class ContactsPage extends LitElement {
    * a contact, then edit it, and the edit would report a change made "on
    * another device".
    */
+  private toolbarVersions = new Map<string, { etag: string }>();
+
   private applyETags(etags?: Record<string, string>) {
     if (!etags || Object.keys(etags).length === 0) return;
+    for (const [path, etag] of Object.entries(etags)) this.toolbarVersions.set(path, { etag });
     this.contacts = this.contacts.map((c: any) => etags[c.path] ? { ...c, etag: etags[c.path] } : c);
     const open = this.selectedContact?.path;
     if (open && etags[open]) {
@@ -1068,6 +1073,7 @@ export class ContactsPage extends LitElement {
     this.saveLifetime++;
     this.queuedSaves = [];
     this.saveTargets = new WeakMap();
+    this.toolbarVersions.clear();
     this.loadAddedCategories();
   };
 
@@ -1101,10 +1107,14 @@ export class ContactsPage extends LitElement {
         contact: { ...(showing ? this.selectedContact : source) }, original: source,
         generation: showing ? this.cardGeneration : -1, lifetime: this.saveLifetime,
         username: activeUsername() ?? this.username, conflicted: false,
+        toolbarVersion: this.toolbarVersions.get(source.path),
       };
       this.saveTargets.set(source, target);
     }
-    if (!this.saveRunning && this.showingSave(target)) target.contact = { ...this.selectedContact };
+    if (!this.saveRunning && this.showingSave(target)) {
+      target.contact = { ...this.selectedContact };
+      target.toolbarVersion = this.toolbarVersions.get(target.contact.path);
+    }
     // Capture the form when it was submitted, including when it has to wait.
     payload = { ...payload };
     for (const field of ['emails', 'phones']) {
@@ -1126,7 +1136,15 @@ export class ContactsPage extends LitElement {
   }
 
   private async saveOnce(payload: any, target: ContactSaveTarget) {
+    // Another card can hold the queue while this card's toolbar completes a
+    // write. Advance to that acknowledged version before sending its form.
+    const latest = this.toolbarVersions.get(target.contact.path);
+    if (latest && latest !== target.toolbarVersion) {
+      target.contact = { ...target.contact, etag: latest.etag };
+      target.toolbarVersion = latest;
+    }
     const before = target.contact;
+    const toolbarVersion = target.toolbarVersion;
     const editing = !before.isTemporary;
     // After a refusal every autosave would be refused the same way, one error
     // per keystroke. Nothing is sent until the edit is cancelled, which shows
@@ -1134,10 +1152,17 @@ export class ContactsPage extends LitElement {
     if (target.conflicted || (editing && this.conflictedPath === before.path)) return;
     if (this.showingSave(target)) this.saving = true;
     try {
-      if (payload.categories && typeof payload.categories === 'string') {
-        payload.categories = payload.categories.split(',').map((c: string) => c.trim()).filter((c: string) => c);
+      // The editor has no field for the categories: the toolbar's star and
+      // category picker write them on their own, through updateCategories.
+      // Sent from the form's copy, taken when editing began and joined into
+      // one string, an edit put back what a star made while editing had
+      // changed, and split a category whose name held a comma in two. So an
+      // edit leaves them out, and the open card keeps its own; a new
+      // contact is created in the category it was opened in.
+      if (editing) {
+        delete payload.categories;
       } else {
-        payload.categories = [];
+        payload.categories = Array.isArray(payload.categories) ? payload.categories : [];
       }
 
       let data;
@@ -1149,7 +1174,11 @@ export class ContactsPage extends LitElement {
         // form save express a new editing gesture.
         const changed_fields = ['organization', 'title', 'note', 'url', 'nickname', 'public_key', 'address']
           .filter(field => String(payload[field] || '').trim() !== String(before[field] || '').trim());
-        const request = { ...payload, changed_fields, etag: before.etag };
+        // And what the page held for each: after a clear, the server's next
+        // copy is one the page never showed, and a value typed into the
+        // emptied field is added beside it rather than put in its place.
+        const changed_from = Object.fromEntries(changed_fields.map(field => [field, String(before[field] || '')]));
+        const request = { ...payload, changed_fields, changed_from, etag: before.etag };
         for (const field of ['emails', 'phones']) {
           const props = payload[field];
           if (!Array.isArray(props) || props.some((p: any) => !p.id)) continue;
@@ -1171,10 +1200,20 @@ export class ContactsPage extends LitElement {
 
       const savedContact = { ...before, ...payload, path: data.path || (editing ? before.path : ''), etag: data.etag };
       delete savedContact.isTemporary;
+      if (editing) {
+        // The form says nothing about toolbar categories. A toolbar write
+        // acknowledged while this response waited is newer than this edit:
+        // both succeeded with If-Match, so the edit committed first.
+        const current = this.findContact(before.path);
+        savedContact.categories = current?.categories ?? before.categories;
+        const written = this.toolbarVersions.get(before.path);
+        if (written && written !== toolbarVersion) savedContact.etag = written.etag;
+      }
       // Advance only this card's successful snapshot. A queued form uses its
       // new ETag and property positions even when another card is open now.
       const showing = this.showingSave(target);
       target.contact = savedContact;
+      target.toolbarVersion = this.toolbarVersions.get(savedContact.path);
       if (!this.ownsSave(target)) return;
       const contactIndex = this.contacts.findIndex((c: any) => editing ? c.path === before.path : c === target.original);
       if (contactIndex > -1) {

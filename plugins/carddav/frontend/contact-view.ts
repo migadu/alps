@@ -371,9 +371,6 @@ export class AlpsContactView extends LitElement {
         this.editForm = { ...this.contact };
         this.birthday = birthdayFields(String(this.editForm.birthday || ''));
         this.isDirty = false;
-        if (Array.isArray(this.editForm.categories)) {
-          this.editForm.categories = this.editForm.categories.join(', ');
-        }
         if (Array.isArray(this.editForm.emails) && this.editForm.emails.length > 0) {
           this.editForm.emails = this.editForm.emails.map((e: any, i: number) => ({ ...e, id: e.id || `emails:${i}` }));
         } else if (this.editForm.email) {
