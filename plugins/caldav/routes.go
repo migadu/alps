@@ -233,6 +233,29 @@ func setEventTimes(event *ical.Event, start, end time.Time, allDay bool) {
 // was open here.
 var errChangedElsewhere = alps.NewHTTPError(http.StatusPreconditionFailed, "changed elsewhere since it was opened")
 
+// deleteFailed answers a delete the CalDAV server did not carry out. An event
+// or a task already gone is not one: davsave.Delete takes it as deleted, since
+// that is what was asked for, and a second click or a delete made on another
+// device no longer reads as a failure. (A calendar gone from the user's list
+// is refused before that, by requireCalendarPath.) A refusal keeps its status,
+// so the browser can tell a read-only calendar (403) or a version conflict
+// (409, 412) from an outage; anything else is an internal error.
+func deleteFailed(what string, err error) error {
+	if errors.Is(err, davsave.ErrConflict) {
+		return errChangedElsewhere
+	}
+	var refused *davsave.StatusError
+	if errors.As(err, &refused) {
+		switch refused.Code {
+		case http.StatusForbidden:
+			return alps.NewHTTPError(http.StatusForbidden, "the server does not allow deleting it")
+		case http.StatusConflict:
+			return alps.NewHTTPError(http.StatusConflict, "the server cannot delete it as it is")
+		}
+	}
+	return fmt.Errorf("failed to delete %s: %w", what, err)
+}
+
 // putCalendar writes cal to objectPath, conditional on etag when there is one,
 // and returns the ETag of the version written.
 func (p *plugin) putCalendar(ctx *alps.Context, c *caldav.Client, objectPath string, cal *ical.Calendar, etag string) (string, error) {
@@ -457,12 +480,12 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		c, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		_, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
 		if err != nil {
 			return err
 		}
 
-		// Must BE one of the user's calendars. RemoveAll takes children with it,
+		// Must BE one of the user's calendars. A DELETE takes children with it,
 		// so an unconstrained path here deletes whatever collection it names.
 		calPath, err = requireCalendarPath(calPath, calendars)
 		if err != nil {
@@ -473,8 +496,12 @@ func registerRoutes(p *plugin) {
 			return alps.NewHTTPError(http.StatusBadRequest, "Cannot delete the default calendar")
 		}
 
-		if err := c.RemoveAll(ctx.Request.Context(), calPath); err != nil {
-			return fmt.Errorf("failed to delete calendar: %v", err)
+		// davsave.Delete rather than go-webdav's RemoveAll, whose error keeps
+		// the server's status in a type nothing outside go-webdav can read:
+		// see deleteFailed.
+		err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), calPath), "", nil)
+		if err != nil {
+			return deleteFailed("calendar", err)
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})
@@ -752,8 +779,8 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		// Must be INSIDE one of them: this route deletes an event, and RemoveAll
-		// would just as happily delete the calendar holding it.
+		// Must be INSIDE one of them: this route deletes an event, and a
+		// DELETE would just as happily delete the calendar holding it.
 		path, err = requireCalendarObjectPath(path, calendars)
 		if err != nil {
 			return err
@@ -769,13 +796,10 @@ func registerRoutes(p *plugin) {
 			letters, from, header = departure(acct, co.Data, ctx.QueryParam("notify") != "0", time.Now())
 		}
 
-		if header != nil {
-			err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), path), "", header)
-		} else {
-			err = c.RemoveAll(ctx.Request.Context(), path)
-		}
+		// header is nil unless the delete needs scheduling headers.
+		err = davsave.Delete(ctx.Request.Context(), p.httpClient(ctx.Session), davsave.URL(p.urlFor(ctx.Session.Username()), path), "", header)
 		if err != nil {
-			return fmt.Errorf("failed to delete calendar object: %v", err)
+			return deleteFailed("calendar object", err)
 		}
 
 		saved := eventSaved{OK: "true"}
