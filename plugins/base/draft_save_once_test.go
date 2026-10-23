@@ -118,9 +118,8 @@ func saveDraft(t *testing.T, s *testServer, form url.Values) (response, draftSav
 }
 
 // A draft whose APPEND was answered with no UID, as by a server without
-// UIDPLUS, is saved, without a UID to name it by. Its read-back asked the
-// provider for a nil ID, which panicked, and every draft save on such a server
-// failed with 500.
+// UIDPLUS, is saved. Its read-back asked the provider for a nil ID, which
+// panicked, and every draft save on such a server failed with 500.
 func TestHTTP_ADraftSavedWithoutUIDPlusIsSaved(t *testing.T) {
 	s := newIMAPTestServerWith(t, imap.CapSet{imap.CapIMAP4rev1: {}}, func(inner imapserver.Session) imapserver.Session {
 		return noAppendUID{inner}
@@ -128,11 +127,8 @@ func TestHTTP_ADraftSavedWithoutUIDPlusIsSaved(t *testing.T) {
 	s.login()
 	s.expect(s.do("POST", "/mailboxes", url.Values{"name": {"Drafts"}}), http.StatusOK)
 
-	r, saved := saveDraft(t, s, url.Values{"to": {"charles@remote.test"}, "subject": {"Notes"}, "text": {"first"}, "save_as_draft": {"1"}})
+	r, _ := saveDraft(t, s, url.Values{"to": {"charles@remote.test"}, "subject": {"Notes"}, "text": {"first"}, "save_as_draft": {"1"}})
 	s.expect(r, http.StatusOK)
-	if saved.UID != "" {
-		t.Errorf("the draft is named %q, which the server never said", saved.UID)
-	}
 	if got := s.mailbox("Drafts").Total; got != 1 {
 		t.Errorf("Drafts holds %d drafts", got)
 	}

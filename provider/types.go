@@ -80,6 +80,9 @@ type MailProvider interface {
 	MarkAnswered(mailbox string, id MessageID) error
 	AppendMessage(mailbox string, msg OutgoingMessageWriter, mboxType MailboxType) (*Mailbox, MessageID, uint32, error)
 	DeleteMessages(mailbox string, ids []MessageID) error
+	// MoveMessages and CopyMessages answer the new ID of each message they
+	// moved or copied. A nil answer says nothing of which did, as from a mail
+	// server that does not name its copies; an empty one, that none did.
 	MoveMessages(sourceMailbox, destMailbox string, ids []MessageID) (map[MessageID]MessageID, error)
 	CopyMessages(sourceMailbox, destMailbox string, ids []MessageID) (map[MessageID]MessageID, error)
 }
