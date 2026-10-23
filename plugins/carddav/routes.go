@@ -59,23 +59,53 @@ func extractTypedProperties(fields []*vcard.Field) []ContactProperty {
 		if val == "" {
 			continue
 		}
-		propType := ""
-		if f.Params != nil {
-			for _, t := range f.Params.Types() {
-				t = strings.TrimSpace(t)
-				if strings.EqualFold(t, "pref") || t == "" {
-					continue
-				}
-				propType = strings.ToLower(t)
-				break
-			}
-		}
 		props = append(props, ContactProperty{
 			Value: val,
-			Type:  propType,
+			Type:  shownType(f),
 		})
 	}
 	return props
+}
+
+// shownType is the one type the page shows for an address or a number: the
+// first that is not "pref", in lower case.
+func shownType(f *vcard.Field) string {
+	for _, t := range f.Params.Types() {
+		t = strings.TrimSpace(t)
+		if strings.EqualFold(t, "pref") || t == "" {
+			continue
+		}
+		return strings.ToLower(t)
+	}
+	return ""
+}
+
+// setShownType gives f the type the page sent for it, when that is not the
+// one it showed. The page shows one type, so a new one replaces them all,
+// but for "pref", which says which address is preferred rather than what
+// kind it is. The field's other parameters stay.
+func setShownType(f *vcard.Field, t string) {
+	t = strings.ToLower(strings.TrimSpace(t))
+	if t == shownType(f) {
+		return
+	}
+	var types []string
+	for _, old := range f.Params[vcard.ParamType] {
+		if strings.EqualFold(strings.TrimSpace(old), "pref") {
+			types = append(types, old)
+		}
+	}
+	if t != "" {
+		types = append(types, strings.ToUpper(t))
+	}
+	if len(types) == 0 {
+		delete(f.Params, vcard.ParamType)
+		return
+	}
+	if f.Params == nil {
+		f.Params = vcard.Params{}
+	}
+	f.Params[vcard.ParamType] = types
 }
 
 func extractContactData(card vcard.Card, path string) ContactData {
@@ -544,16 +574,53 @@ func registerRoutes(p *plugin) {
 
 		updateMultiField := func(field string, explicitProps []ContactProperty, fallbackVal string) {
 			if explicitProps != nil {
-				var fields []*vcard.Field
+				// The page lists every copy with a value, in the card's order,
+				// and sends the list back. Rebuilt from the list's values and
+				// one type each, a save dropped a second type, a preference and
+				// an Apple group (and left the group's label behind), whatever
+				// had been edited. An entry sent back as it was given is now
+				// that copy, as stored. An edited entry takes the place of the
+				// first copy no entry is left for, in order, keeping its group
+				// and parameters: the page saves each edit as it is made, so
+				// that is the copy it was. A copy with no entry was removed.
+				var given []*vcard.Field
+				for _, f := range card[field] {
+					if strings.TrimSpace(f.Value) != "" {
+						given = append(given, f)
+					}
+				}
+				var props []ContactProperty
 				for _, p := range explicitProps {
-					val := strings.TrimSpace(p.Value)
-					if val == "" {
-						continue
+					if strings.TrimSpace(p.Value) != "" {
+						props = append(props, p)
 					}
-					f := &vcard.Field{Value: val}
-					if p.Type != "" {
-						f.Params = vcard.Params{"TYPE": []string{strings.ToUpper(strings.TrimSpace(p.Type))}}
+				}
+				used := make(map[*vcard.Field]bool)
+				copies := make([]*vcard.Field, len(props))
+				for i, p := range props {
+					for _, f := range given {
+						if !used[f] && strings.TrimSpace(f.Value) == strings.TrimSpace(p.Value) {
+							copies[i], used[f] = f, true
+							break
+						}
 					}
+				}
+				var fields []*vcard.Field
+				next := 0
+				for i, p := range props {
+					f := copies[i]
+					if f == nil {
+						for next < len(given) && used[given[next]] {
+							next++
+						}
+						if next < len(given) {
+							f, used[given[next]] = given[next], true
+							f.Value = strings.TrimSpace(p.Value)
+						} else {
+							f = &vcard.Field{Value: strings.TrimSpace(p.Value)}
+						}
+					}
+					setShownType(f, p.Type)
 					fields = append(fields, f)
 				}
 				if len(fields) > 0 {
@@ -575,10 +642,10 @@ func registerRoutes(p *plugin) {
 						}
 					}
 					if !found {
-						setSimpleField(field, fallbackVal)
+						setShownField(field, fallbackVal)
 					}
 				} else {
-					setSimpleField(field, fallbackVal)
+					setShownField(field, fallbackVal)
 				}
 			} else {
 				setSimpleField(field, fallbackVal)
