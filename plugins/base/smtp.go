@@ -2,6 +2,7 @@ package alpsbase
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -554,8 +555,10 @@ func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
 		return fmt.Errorf("parsing 'From' address failed: %v", err)
 	}
 
+	// Until the message is written, the server's replies and a failed
+	// connection are wrapped: DoSMTP tries a send again when one may pass.
 	if err := c.Mail(addr.Address, nil); err != nil {
-		return fmt.Errorf("MAIL FROM failed: %v", err)
+		return fmt.Errorf("MAIL FROM failed: %w", err)
 	}
 
 	for _, to := range append(msg.To, append(msg.Bcc, msg.Cc...)...) {
@@ -565,25 +568,34 @@ func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
 		}
 
 		if err := c.Rcpt(addr.Address, nil); err != nil {
-			return fmt.Errorf("RCPT TO failed: %v (%s)", err, addr.Address)
+			return fmt.Errorf("RCPT TO failed: %w (%s)", err, addr.Address)
 		}
 	}
 
 	w, err := c.Data()
 	if err != nil {
-		return fmt.Errorf("DATA failed: %v", err)
+		return fmt.Errorf("DATA failed: %w", err)
 	}
 
 	if _, err := msg.WriteTo(w); err != nil {
 		// Closing w would end DATA with its final ".", and the server would
 		// deliver what has been written so far as the whole message. SMTP
 		// can only call DATA off by dropping the connection, which leaves
-		// the server nothing to deliver.
+		// the server nothing to deliver. The failure is not wrapped, and so
+		// not tried again.
 		c.Close()
 		return fmt.Errorf("failed to write outgoing message: %v", err)
 	}
 
 	if err := w.Close(); err != nil {
+		// The server's answer to the message is wrapped: a refusal for now
+		// is tried again. A connection that failed instead may have failed
+		// after the server took the message, and is not, so that the
+		// message is not sent twice.
+		var smtpErr *smtp.SMTPError
+		if errors.As(err, &smtpErr) {
+			return fmt.Errorf("failed to close SMTP data writer: %w", err)
+		}
 		return fmt.Errorf("failed to close SMTP data writer: %v", err)
 	}
 
