@@ -98,3 +98,40 @@ test("a draft restored as the app starts is kept, and opens after Reload", async
   await page.waitForLoadState("load");
   await expect(composerOf(page).getByPlaceholder("Subject")).toHaveValue(subject, { timeout: 15_000 });
 });
+
+for (const width of [1440, 390]) {
+  test(`a storage refusal keeps the composer recovery action usable at ${width}px`, async ({ page }) => {
+    allowConsoleErrors(page, /Failed to save compose drafts to localStorage|QuotaExceededError/);
+    await login(page);
+    await page.setViewportSize({ width, height: 900 });
+    await page.locator('alps-folder-list alps-create-button').click();
+    const subject = `Draft kept after storage refusal ${width} ${Date.now()}`;
+    await composerOf(page).getByPlaceholder('Subject').fill(subject);
+    await expect.poll(async () => (await held(page)).onDisk).toEqual([subject]);
+    const chunk = await refuseTheChunk(page);
+    await page.reload();
+    const notice = toast(page, NOTICE);
+    await expect(notice).toBeVisible();
+    await page.evaluate(() => {
+      const setItem = Storage.prototype.setItem;
+      (window as any).restoreRecoveryStorage = () => { Storage.prototype.setItem = setItem; };
+      (window as any).recoveryDocument = 'unchanged';
+      Storage.prototype.setItem = function(key, value) {
+        if (key.startsWith('alps_compose_drafts_')) throw new DOMException('Quota is full', 'QuotaExceededError');
+        setItem.call(this, key, value);
+      };
+    });
+
+    await notice.getByRole('button', { name: 'Reload', exact: true }).click();
+    await expect(toast(page, 'Could not save this draft')).toBeVisible();
+    expect(await page.evaluate(() => (window as any).recoveryDocument)).toBe('unchanged');
+    expect(await held(page)).toEqual({ inStore: [subject], onDisk: [subject] });
+    await expect(notice).toHaveAttribute('show', '');
+
+    await page.evaluate(() => (window as any).restoreRecoveryStorage());
+    await chunk.restore();
+    await notice.getByRole('button', { name: 'Reload', exact: true }).click();
+    await expect(composerOf(page).getByPlaceholder('Subject')).toHaveValue(subject, { timeout: 15_000 });
+    expect(await page.evaluate(() => (window as any).recoveryDocument)).toBeUndefined();
+  });
+}

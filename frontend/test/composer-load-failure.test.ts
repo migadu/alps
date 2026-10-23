@@ -73,6 +73,16 @@ describe('when the message window cannot be loaded', () => {
     expect(onDisk().map((c: any) => c.subject)).toEqual(['Engines']);
   });
 
+  it('also keeps an unchanged stored draft when the window cannot be loaded', async () => {
+    localStorage.setItem(DRAFTS, JSON.stringify([
+      { id: 'saved', draftUid: '7', subject: 'Stored engines', text: 'Notes', attachments: [], dirty: false },
+    ]));
+    const root = await mount<El>('app-root');
+    await waitFor(() => notices(root).length === 1, 'the notice');
+    expect(composers(root).map((c: any) => c.draftUid)).toEqual(['7']);
+    expect(onDisk().map((c: any) => c.draftUid)).toEqual(['7']);
+  });
+
   it('reloads from the notice, writing the composers to disk first', async () => {
     localStorage.setItem(DRAFTS, JSON.stringify([
       { id: 'c1', subject: 'Engines', text: 'Notes', to: [], cc: [], bcc: [], attachments: [], dirty: true },
@@ -109,5 +119,37 @@ describe('when the message window cannot be loaded', () => {
     expect(reload).not.toHaveBeenCalled();
     await waitFor(() => (Array.from(root.shadowRoot!.querySelectorAll('alps-toast')) as El[])
       .some(t => t.message === 'Could not save this draft — the window stays open so nothing is lost'), 'the word that it stays');
+  });
+
+  it('keeps the actual Reload button usable after storage refuses, then writes before a successful retry', async () => {
+    // A real click also reaches the mailbox's audio-unlock listener; jsdom
+    // cannot play media, so keep that unrelated browser facility quiet.
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+    localStorage.setItem(DRAFTS, JSON.stringify([
+      { id: 'c1', subject: 'Engines', text: 'Notes', attachments: [], dirty: true },
+    ]));
+    const reload = vi.spyOn(appUpdate, 'reloadForMissingPage').mockImplementation(() => {});
+    const root = await mount<El>('app-root');
+    await waitFor(() => notices(root).some(t => t.show), 'the visible recovery notice');
+    root.composeStore.updateComposer('c1', { subject: 'Latest engines' });
+    const storage = vi.spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => { throw new DOMException('Quota exceeded', 'QuotaExceededError'); });
+    const notice = notices(root)[0];
+    const button = notice.shadowRoot!.querySelector('alps-button')!.shadowRoot!.querySelector('button')!;
+
+    button.click();
+    await root.updateComplete;
+    await notice.updateComplete;
+    expect(reload).not.toHaveBeenCalled();
+    expect(notice.show).toBe(true);
+    expect(composers(root)[0].subject).toBe('Latest engines');
+    expect(onDisk()[0].subject).toBe('Engines');
+
+    storage.mockRestore();
+    button.click();
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(onDisk()[0].subject).toBe('Latest engines');
+    expect(notice.show).toBe(false);
   });
 });
