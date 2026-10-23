@@ -1,6 +1,7 @@
 package alpsbase
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -180,5 +181,53 @@ func TestAnUnknownPreviousStateLeavesThePagesAtTheirCount(t *testing.T) {
 	cached, _ := cache.Get("messages:INBOX:page0")
 	if got := cached.(CachedMessages).Counts; got != at {
 		t.Errorf("the page was read at %+v, want %+v", got, at)
+	}
+}
+
+// A threaded page lists a conversation's other messages under its row, and
+// the row is drawn bold while any of them is unread. Marking one of them read
+// moves the page's count, so the page's copy of it has to move too: left
+// unread, the page matched the server's next count and was served again, with
+// the conversation bold. Opening the message from its card writes a row of its
+// own, which is the state the count goes by.
+func TestMarkingAThreadedMessageMovesThePagesCopyOfIt(t *testing.T) {
+	for _, withRow := range []bool{false, true} {
+		name := "listed under its conversation"
+		if withRow {
+			name += ", and opened"
+		}
+		t.Run(name, func(t *testing.T) {
+			member := provider.Message{ID: provider.MockMessageID{ID: "7"}}
+			conversation := provider.Message{ID: provider.MockMessageID{ID: "8"}, SubMessages: []provider.Message{member}}
+			at := mailboxCounts{Known: true, Messages: 2, Unseen: 2}
+			cache := flagCache(t, 2, nil)
+			cache.Set("messages:INBOX:page0", CachedMessages{Messages: []provider.Message{conversation}, Counts: at})
+			cache.Set("message:INBOX:8:[]", CachedMessagePart{Message: &conversation, Mailbox: "INBOX"})
+			if withRow {
+				opened := member
+				cacheMessageRow(cache, "INBOX", &opened)
+			}
+
+			check := func(write string, wantSeen bool, wantUnseen uint32) {
+				t.Helper()
+				cached, _ := cache.Get("messages:INBOX:page0")
+				page := cached.(CachedMessages)
+				copySeen := slices.Contains(page.Messages[0].SubMessages[0].Flags, provider.Flag(imap.FlagSeen))
+				if copySeen != wantSeen {
+					t.Errorf("%s, the page's copy of the message has flags %v", write, page.Messages[0].SubMessages[0].Flags)
+				}
+				if page.Counts.Unseen != wantUnseen {
+					t.Errorf("%s, the page was read at %d unseen, want %d", write, page.Counts.Unseen, wantUnseen)
+				}
+				if unseen, ok := cachedUnseen(t, cache); ok && unseen != page.Counts.Unseen {
+					t.Errorf("%s, the folder counts %d unseen and the page %d", write, unseen, page.Counts.Unseen)
+				}
+			}
+
+			applyFlagsToCache(cache, noDebug, "INBOX", member.ID, seen, nil)
+			check("marked read", true, 1)
+			applyFlagsToCache(cache, noDebug, "INBOX", member.ID, nil, seen)
+			check("marked unread", false, 2)
+		})
 	}
 }

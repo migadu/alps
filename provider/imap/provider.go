@@ -1077,6 +1077,31 @@ func (p *IMAPProvider) GetMessagePartRaw(mailbox string, id provider.MessageID, 
 	return &converted, headerBuf, bodyBuf, nil
 }
 
+// GetMessagePartForReader reads a part of a message with what the reader
+// shows beside it, in one FETCH: the envelope, flags and structure, the
+// part's MIME header, and the Authentication-Results and References fields.
+//
+// A listing row has the structure to choose the part from, but not the two
+// fields, so a listed message opens with this one read. Without it the
+// reader read the message twice: its metadata, for those fields and the
+// structure, and then the part.
+func (p *IMAPProvider) GetMessagePartForReader(mailbox string, id provider.MessageID, partPath []int) (*provider.Message, []byte, []byte, error) {
+	uid := id.(IMAPUID)
+	references := &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"References"},
+		Peek:         true,
+	}
+	msg, headerBuf, bodyBuf, err := p.getMessagePartRaw(mailbox, imap.UID(uid), partPath, 0, authResultsSection(), references)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	// The verdict and the References are read out of the fields here, as for
+	// any FETCH that carries them.
+	converted := p.convertIMAPMessage(msg, mailbox)
+	return &converted, headerBuf, bodyBuf, nil
+}
+
 // GetMessagePartWithData fetches a message part with both entity and raw data
 func (p *IMAPProvider) GetMessagePartWithData(mailbox string, id provider.MessageID, partPath []int) (*provider.Message, *message.Entity, []byte, []byte, error) {
 	uid := id.(IMAPUID)
@@ -1088,7 +1113,9 @@ func (p *IMAPProvider) GetMessagePartWithData(mailbox string, id provider.Messag
 	return &converted, part, headerBuf, bodyBuf, nil
 }
 
-func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath []int, limit int64) (*imapclient.FetchMessageBuffer, []byte, []byte, error) {
+// getMessagePartRaw fetches a part and its MIME header, and any extra
+// sections asked for beside them in the same FETCH.
+func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath []int, limit int64, extra ...*imap.FetchItemBodySection) (*imapclient.FetchMessageBuffer, []byte, []byte, error) {
 	if err := p.ensureMailboxSelected(mailbox); err != nil {
 		return nil, nil, nil, err
 	}
@@ -1128,7 +1155,7 @@ func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath 
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
 		Flags:         true,
 		RFC822Size:    true,
-		BodySection:   []*imap.FetchItemBodySection{headerItem, bodyItem},
+		BodySection:   append([]*imap.FetchItemBodySection{headerItem, bodyItem}, extra...),
 	}
 
 	msgs, err := p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()

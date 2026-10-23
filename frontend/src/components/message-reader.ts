@@ -1606,7 +1606,14 @@ export class MessageReader extends LitElement {
         let rawHtml: string | undefined;
         let rawText: string | undefined;
         const part = data.Part;
-        if (part) {
+        // The answer carries the part's text. It was asked for again with
+        // /raw, and the server answers a session's requests one at a time,
+        // so the body waited for a second turn behind whatever else was
+        // queued. /raw is still asked when the server could not decode it.
+        if (part && typeof data.Body === 'string') {
+          if ((part.MIMEType || part.MimeType || 'text/plain').toLowerCase() === 'text/html') rawHtml = data.Body;
+          else rawText = data.Body;
+        } else if (part) {
           const partPathStr = Array.isArray(part.Path) ? part.Path.join('.') : part.Path;
           const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`)
             .catch((e: unknown) => { Logger.error('Failed to fetch message body:', e); return null; });

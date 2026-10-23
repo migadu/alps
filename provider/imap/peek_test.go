@@ -40,6 +40,12 @@ func TestReadingAMessageLeavesItUnread(t *testing.T) {
 			msg, _, _, err := p.GetMessagePartRaw("INBOX", uid, []int{1}, 3)
 			return msg, err
 		}},
+		// The reader opening a listed message: the part, with the two header
+		// fields it shows beside it, in the one FETCH.
+		{"for reader", func(p *IMAPProvider, uid IMAPUID) (*provider.Message, error) {
+			msg, _, _, err := p.GetMessagePartForReader("INBOX", uid, []int{1})
+			return msg, err
+		}},
 		// The whole message, as a download or a printout reads it.
 		{"whole message", func(p *IMAPProvider, uid IMAPUID) (*provider.Message, error) {
 			msg, _, _, err := p.GetMessagePartRaw("INBOX", uid, nil, 0)
