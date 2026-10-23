@@ -427,6 +427,9 @@ func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page,
 // lookup can say it: a flag change renames the file, so one that vanishes
 // before the open was not necessarily deleted.
 func messageByKey(dir maildir.Dir, key string) (*maildir.Message, error) {
+	if !messageKey(key) {
+		return nil, refused("not a Maildir message key: %q", key)
+	}
 	m, err := dir.MessageByKey(key)
 	var keyErr *maildir.KeyError
 	if (errors.As(err, &keyErr) && keyErr.N == 0) || errors.Is(err, fs.ErrNotExist) {

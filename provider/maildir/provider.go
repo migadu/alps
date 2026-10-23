@@ -214,14 +214,33 @@ func (p *Provider) CreateMailbox(name string) error {
 	if err != nil {
 		return err
 	}
-	if name != "INBOX" {
-		// The folder itself first, alone, so that one that exists is told
-		// from one made now.
-		if err := os.Mkdir(string(dir), 0o700); errors.Is(err, fs.ErrExist) {
+	if name == "INBOX" {
+		// Provider setup may initialize a never-delivered INBOX. Once its
+		// cur directory exists, creating it again is an existing mailbox.
+		if _, err := os.Stat(filepath.Join(p.basePath, "cur")); err == nil {
 			return alreadyExists(name)
-		} else if err != nil {
+		} else if !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
+		if err := os.MkdirAll(p.basePath, 0o700); err != nil {
+			return err
+		}
+		return dir.Init()
+	}
+	// An account may have no physical INBOX before its first delivery. The
+	// configured root must exist before creating its first Maildir++ folder.
+	if err := os.MkdirAll(p.basePath, 0o700); err != nil {
+		return err
+	}
+	if err := maildir.Dir(p.basePath).Init(); err != nil {
+		return err
+	}
+	// The folder itself first, alone, so that one that exists is told
+	// from one made now.
+	if err := os.Mkdir(string(dir), 0o700); errors.Is(err, fs.ErrExist) {
+		return alreadyExists(name)
+	} else if err != nil {
+		return err
 	}
 	return dir.Init()
 }
@@ -312,10 +331,16 @@ func (id MaildirMessageID) Provider() string {
 }
 
 func (p *Provider) ParseMessageID(id string) (provider.MessageID, error) {
-	if id == "" {
-		return nil, fmt.Errorf("invalid Maildir message ID: empty string")
+	if !messageKey(id) {
+		return nil, refused("not a Maildir message key: %q", id)
 	}
 	return MaildirMessageID(id), nil
+}
+
+// A key identifies one entry, before the Maildir flag suffix. Refuse path
+// components even when an internal caller constructs an ID directly.
+func messageKey(key string) bool {
+	return key != "" && key != "." && key != ".." && !strings.ContainsAny(key, "/\\:\x00")
 }
 
 // Map maildir flags to provider flags
