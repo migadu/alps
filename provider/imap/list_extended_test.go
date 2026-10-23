@@ -15,28 +15,49 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	"github.com/emersion/go-imap/v2/imapclient"
+	"time"
 )
 
-// scriptedIMAP is an IMAP server that knows CAPABILITY, LOGIN, LIST and
-// LOGOUT, and answers BAD to a LIST with more than its two arguments, as some
-// IMAP4rev1 servers do.
+// scriptedIMAP is an IMAP server that knows CAPABILITY, LOGIN, LIST, LSUB,
+// SUBSCRIBE, UNSUBSCRIBE and LOGOUT, and answers BAD to a LIST with more than
+// its two arguments, as some IMAP4rev1 servers do.
 type scriptedIMAP struct {
 	caps string // the capabilities it advertises, e.g. "IMAP4rev1"
 	// takesReturn makes it answer the RETURN form instead, as a server with
 	// LIST-EXTENDED does: INBOX subscribed, Work not, and each folder's
 	// STATUS when that is asked for.
 	takesReturn bool
+	// list is its answer to a plain LIST, line by line; INBOX and Work when
+	// nil. lsub is its answer to LSUB; INBOX alone when nil. A line may carry
+	// a literal: "{4}\r\nWork".
+	list, lsub []string
+	// refuseLsub answers LSUB with NO, and hangLsub never answers it.
+	refuseLsub, hangLsub bool
+	// Status response text may itself end in a literal-looking "{number}".
+	greetingText, loginText, lsubText string
 
 	mu    sync.Mutex
 	lists []string // the arguments of each LIST, in the order received
+	lsubs []string // and of each LSUB
+	conns int      // the connections it took
 }
 
 func (s *scriptedIMAP) listCommands() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]string(nil), s.lists...)
+}
+
+func (s *scriptedIMAP) lsubCommands() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.lsubs...)
+}
+
+func (s *scriptedIMAP) connections() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.conns
 }
 
 func (s *scriptedIMAP) serve(conn net.Conn) {
@@ -47,7 +68,11 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 			conn.Write([]byte(l + "\r\n"))
 		}
 	}
-	reply("* OK [CAPABILITY " + s.caps + "] scripted server ready")
+	greetingText := s.greetingText
+	if greetingText == "" {
+		greetingText = "scripted server ready"
+	}
+	reply("* OK [CAPABILITY " + s.caps + "] " + greetingText)
 	for {
 		line, err := r.ReadString('\n')
 		if err != nil {
@@ -59,7 +84,11 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 		case "CAPABILITY":
 			reply("* CAPABILITY "+s.caps, tag+" OK CAPABILITY completed")
 		case "LOGIN":
-			reply(tag + " OK [CAPABILITY " + s.caps + "] LOGIN completed")
+			text := s.loginText
+			if text == "" {
+				text = "LOGIN completed"
+			}
+			reply(tag + " OK [CAPABILITY " + s.caps + "] " + text)
 		case "LIST":
 			s.mu.Lock()
 			s.lists = append(s.lists, args)
@@ -80,9 +109,36 @@ func (s *scriptedIMAP) serve(conn net.Conn) {
 				reply(tag + " BAD Command Argument Error")
 				continue
 			}
-			reply(`* LIST (\HasNoChildren) "/" INBOX`,
-				`* LIST (\HasNoChildren) "/" Work`,
-				tag+" OK LIST completed")
+			lines := s.list
+			if lines == nil {
+				lines = []string{`* LIST (\HasNoChildren) "/" INBOX`, `* LIST (\HasNoChildren) "/" Work`}
+			}
+			reply(append(lines, tag+" OK LIST completed")...)
+		case "LSUB":
+			s.mu.Lock()
+			s.lsubs = append(s.lsubs, args)
+			s.mu.Unlock()
+			switch {
+			case s.hangLsub:
+				// Says nothing until the client gives up and hangs up.
+				r.ReadString('\n')
+				return
+			case s.refuseLsub:
+				reply(tag + " NO LSUB is not offered here")
+				continue
+			}
+			lines := s.lsub
+			if lines == nil {
+				// RFC 3501 §6.3.9: the subscribed folders, INBOX alone.
+				lines = []string{`* LSUB () "/" INBOX`}
+			}
+			text := s.lsubText
+			if text == "" {
+				text = "LSUB completed"
+			}
+			reply(append(lines, tag+" OK "+text)...)
+		case "SUBSCRIBE", "UNSUBSCRIBE":
+			reply(tag + " OK " + name + " completed")
 		case "LOGOUT":
 			reply("* BYE logging out", tag+" OK LOGOUT completed")
 			return
@@ -132,9 +188,17 @@ func countArgs(args string) int {
 	return n
 }
 
-// scriptedProvider starts the scripted server and returns a provider logged
-// in to it.
+// scriptedProvider starts the scripted server and returns a provider signed
+// in to it, as a session's is.
 func scriptedProvider(t *testing.T, srv *scriptedIMAP) *IMAPProvider {
+	t.Helper()
+	p, _ := scriptedProviderAt(t, srv, 2*time.Second)
+	return p
+}
+
+// scriptedProviderAt is scriptedProvider with the provider's timeout, and
+// the listener, for a test that stops it taking connections.
+func scriptedProviderAt(t *testing.T, srv *scriptedIMAP, timeout time.Duration) (*IMAPProvider, net.Listener) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -147,26 +211,42 @@ func scriptedProvider(t *testing.T, srv *scriptedIMAP) *IMAPProvider {
 			if err != nil {
 				return
 			}
+			srv.mu.Lock()
+			srv.conns++
+			srv.mu.Unlock()
 			go srv.serve(conn)
 		}
 	}()
+	return signedIn(t, ln.Addr().String(), timeout), ln
+}
 
-	client, err := imapclient.DialInsecure(ln.Addr().String(), nil)
+// signedIn returns a provider signed in to the server at addr as ada, made
+// the way a session's is.
+func signedIn(t *testing.T, addr string, timeout time.Duration) *IMAPProvider {
+	t.Helper()
+	return signedInWith(t, addr, timeout, "pass")
+}
+
+func signedInWith(t *testing.T, addr string, timeout time.Duration, password string) *IMAPProvider {
+	t.Helper()
+	opts, err := (&Config{Server: "imap+insecure://" + addr}).ToOptions()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { client.Close() })
-	if err := client.Login("ada", "pass").Wait(); err != nil {
+	mp, err := opts.CreateFactory(timeout, false)("ada", password)
+	if err != nil {
 		t.Fatal(err)
 	}
-	return NewIMAPProvider(client, false)
+	p := mp.(*IMAPProvider)
+	t.Cleanup(func() { p.Close() })
+	return p
 }
 
 // A server that offers neither LIST-EXTENDED, LIST-STATUS nor IMAP4rev2 is
-// asked a plain LIST. It has no way to report subscriptions in that listing,
-// and the client library has no LSUB to ask separately, so every folder counts
-// as subscribed: the server then reads each one's unread count for the
-// sidebar, and a rename carries its subscription over to the new name.
+// asked a plain LIST, which says nothing about subscriptions. They are read
+// with LSUB (RFC 3501 §6.3.9), and only the folders it lists count as
+// subscribed. Every folder counted as subscribed before: one unsubscribed came
+// back subscribed with the next listing.
 func TestListMailboxesWithoutListExtendedSendsAPlainList(t *testing.T) {
 	srv := &scriptedIMAP{caps: "IMAP4rev1"}
 	p := scriptedProvider(t, srv)
@@ -178,15 +258,21 @@ func TestListMailboxesWithoutListExtendedSendsAPlainList(t *testing.T) {
 	if got := srv.listCommands(); len(got) != 1 || got[0] != `"" "*"` {
 		t.Errorf(`LIST commands sent: %q, want one plain LIST "" "*"`, got)
 	}
+	if got := srv.lsubCommands(); len(got) != 1 || got[0] != `"" "*"` {
+		t.Errorf(`LSUB commands sent: %q, want one LSUB "" "*"`, got)
+	}
 	var names []string
 	for _, mb := range mailboxes {
 		names = append(names, mb.Name)
-		if !mb.Subscribed {
-			t.Errorf("%s is reported unsubscribed, though the server was never asked", mb.Name)
-		}
 	}
 	if strings.Join(names, ",") != "INBOX,Work" {
-		t.Errorf("listed %v, want INBOX and Work", names)
+		t.Fatalf("listed %v, want INBOX and Work", names)
+	}
+	if !mailboxes[0].Subscribed {
+		t.Error("INBOX is reported unsubscribed, though LSUB listed it")
+	}
+	if mailboxes[1].Subscribed {
+		t.Error("Work is reported subscribed, though LSUB did not list it")
 	}
 }
 
