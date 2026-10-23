@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/components/message-reader';
 import {
-  cleanup, click, installMatchMedia, installResizeObserver, installScrollIntoView, mount, shadow, shadowAll, text, waitFor,
+  cleanup, click, installMatchMedia, installResizeObserver, installScrollIntoView, mount, record, shadow, shadowAll, text, waitFor,
 } from './helpers/dom';
 import { MessageCache } from '../src/utils/message-cache';
 
@@ -42,6 +42,14 @@ const reply = {
   Mailbox: 'Sent',
   Flags: ['\\Seen'],
   Envelope: { ...envelope('Re: Engines', '2026-09-02T10:00:00Z', 'ada'), MessageID: 'reply@example.com', InReplyTo: 'engines@example.com' },
+};
+
+// A draft, saved with its text and a file.
+const draft = {
+  UID: '5',
+  Mailbox: 'Drafts',
+  Flags: ['\\Seen', '\\Draft'],
+  Envelope: { ...envelope('Figures', '2026-09-03T10:00:00Z', 'ada'), To: [{ Name: '', Mailbox: 'charles', Host: 'example.com' }] },
 };
 
 function settingsStore() {
@@ -84,7 +92,7 @@ beforeEach(() => {
     }
     const metadata = /^\/mailboxes\/(\w+)\/messages\/(\d+)\?/.exec(u);
     if (metadata) {
-      const msg = metadata[1] === 'Sent' ? reply : message;
+      const msg = { Sent: reply, Drafts: draft }[metadata[1]] ?? message;
       return json({ Message: msg, Part: textPart ? { Path: [1], MIMEType: 'text/plain' } : null, HasText: textPart, Attachments: attachments });
     }
     return new Response('{}', { status: 404 });
@@ -98,15 +106,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function open(): Promise<El> {
+async function open(msg = message, composeStore: unknown = new EventTarget()): Promise<El> {
   const el = await mount<El>('alps-message-reader', {
     settingsStore: settingsStore(),
     i18nStore,
-    composeStore: new EventTarget(),
-    mailbox: 'INBOX',
-    mailboxes: [{ Name: 'INBOX', Attrs: [] }, { Name: 'Sent', Attrs: ['\\Sent'] }],
-    messages: [message],
-    message,
+    composeStore,
+    mailbox: msg.Mailbox,
+    mailboxes: [{ Name: 'INBOX', Attrs: [] }, { Name: 'Sent', Attrs: ['\\Sent'] }, { Name: 'Drafts', Attrs: ['\\Drafts'] }],
+    messages: [msg],
+    message: msg,
   });
   // Set as the read starts, which the first render does.
   await waitFor(() => !el.loading, 'the read');
@@ -192,4 +200,48 @@ describe('a message with no text part', () => {
     expect(MessageCache.get('INBOX', '7', 'text')).not.toBeNull();
     expect(shadowAll(el, '.reader-load-error')).toHaveLength(0);
   });
+});
+
+// The draft banner's Edit draft, and the toolbar's, stay above the load
+// error. Edit draft opened the composer with the body the reader held, none,
+// under the stored draft's UID, and the composer's first save replaced the
+// draft, its text and its file, with what had been typed since.
+describe('Edit draft on a draft whose body failed to load', () => {
+  const editDraftFrom = {
+    'the banner': (el: El) => el._handleEditDraft(),
+    'its card': (el: El) => el._handleEditDraft(el.threadItems[0]),
+  };
+
+  for (const [from, editDraft] of Object.entries(editDraftFrom)) {
+    it(`from ${from}, reads the body again and opens the draft as it is stored`, async () => {
+      bodyStatus.Drafts = 500;
+      const composeStore = { openComposer: vi.fn() };
+      const el = await open(draft, composeStore);
+      expect(shadowAll(el, '.reader-load-error')).toHaveLength(1);
+
+      bodyStatus.Drafts = 200;
+      await editDraft(el);
+
+      expect(composeStore.openComposer).toHaveBeenCalledTimes(1);
+      expect(composeStore.openComposer.mock.calls[0][0]).toMatchObject({
+        draftUid: '5', text: 'the Drafts body', attachments: [expect.objectContaining({ name: 'figures.csv', partPath: '2' })],
+      });
+      expect(bodyReads).toEqual(['Drafts', 'Drafts']);
+    });
+
+    it(`from ${from}, says so and opens no composer when the body still cannot be read`, async () => {
+      bodyStatus.Drafts = 500;
+      const composeStore = { openComposer: vi.fn() };
+      const el = await open(draft, composeStore);
+      const toasts = record<CustomEvent>(window, 'show-toast');
+
+      await editDraft(el);
+
+      expect(composeStore.openComposer).not.toHaveBeenCalled();
+      expect(bodyReads).toEqual(['Drafts', 'Drafts']);
+      expect(toasts.map(e => e.detail.message)).toEqual(['messageReader.loadError']);
+      await el.updateComplete;
+      expect(shadowAll(el, '.reader-load-error')).toHaveLength(1);
+    });
+  }
 });

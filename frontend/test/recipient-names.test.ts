@@ -26,6 +26,16 @@ type El = HTMLElement & Record<string, any>;
 
 const i18nStore = Object.assign(new EventTarget(), { t: (key: string) => key });
 
+/**
+ * Answers the reader's read of a message with a text body. Edit draft opens
+ * a draft only from its body, and refuses one it could not read.
+ */
+function answerBodies() {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => (/\/messages\/\d+\?view=/.test(String(url))
+    ? new Response(JSON.stringify({ Part: { Path: [1], MIMEType: 'text/plain' }, Body: 'Notes', HasText: true }), { status: 200 })
+    : new Response('{}', { status: 404 }))));
+}
+
 const person = (Name: string, Mailbox: string) => ({ Name, Mailbox, Host: 'example.test' });
 
 beforeEach(() => {
@@ -104,6 +114,7 @@ describe('a recipient written from an envelope', () => {
       },
     };
     const state = { enableThreading: true, preferredView: 'text', showRemoteContent: 'never', showSenderAvatars: true };
+    answerBodies();
     const composeStore = { openComposer: vi.fn() };
     const el = await mount<El>('alps-message-reader', {
       settingsStore: Object.assign(new EventTarget(), { getState: () => state }),

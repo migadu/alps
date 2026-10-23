@@ -59,6 +59,16 @@ const inboxNamesake = (uid: string) => ({
   Envelope: envelope('Engines', '2026-09-01T10:00:00Z'),
 });
 
+/**
+ * Answers the reader's read of a message with a text body. Edit draft opens
+ * a draft only from its body, and refuses one it could not read.
+ */
+function answerBodies() {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => (/\/messages\/\d+\?view=/.test(String(url))
+    ? new Response(JSON.stringify({ Part: { Path: [1], MIMEType: 'text/plain' }, Body: 'Notes', HasText: true }), { status: 200 })
+    : new Response('{}', { status: 404 }))));
+}
+
 const discarded = (mailbox: string, uid: string) =>
   window.dispatchEvent(new CustomEvent('draft-discarded', { detail: { mailbox, uid } }));
 
@@ -383,6 +393,7 @@ describe('the reader', () => {
   it('edits a draft found by a search of all mailboxes in its own mailbox', async () => {
     // `*` is the view, not a mailbox: saving over it, or discarding from it,
     // asked the server to delete from a mailbox that does not exist.
+    answerBodies();
     const composeStore = { openComposer: vi.fn() };
     const el = await mount<El>('alps-message-reader', {
       settingsStore: settingsStore(),
@@ -540,6 +551,7 @@ describe('the mail page, when a draft is saved', () => {
     const el = await page('Drafts', [row], row);
     saved({ oldUid: '7', oldMailbox: 'Drafts', newUid: '8', subject: '' });
 
+    answerBodies();
     const composeStore = { openComposer: vi.fn() };
     const reader = await mount<El>('alps-message-reader', {
       settingsStore: settingsStore(),
@@ -616,6 +628,7 @@ describe('the mail page, when a draft is saved', () => {
     const el = await page('Drafts', [row], row);
     saved({ oldUid: '7', oldMailbox: 'Drafts', newUid: '8', ...recipients });
 
+    answerBodies();
     const composeStore = { openComposer: vi.fn() };
     const reader = await mount<El>('alps-message-reader', {
       settingsStore: settingsStore(),
@@ -662,6 +675,7 @@ describe('the mail page, when a draft is saved', () => {
       Cc: [{ Name: "Miles'", Mailbox: 'miles', Host: 'example.com' }],
     });
     expect(await addressees(el)).toEqual(["'t Hooft, Miles'"]);
+    answerBodies();
     const composeStore = { openComposer: vi.fn() };
     const reader = await mount<El>('alps-message-reader', {
       settingsStore: settingsStore(), i18nStore, composeStore,
