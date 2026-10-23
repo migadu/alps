@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -71,5 +72,37 @@ func TestHTTP_ListingLeavesOutTheFolderListTheBrowserHolds(t *testing.T) {
 	other, _ := get("/mailboxes/INBOX?page=0&mailboxes=no-such-version")
 	if len(other.Mailboxes) == 0 {
 		t.Error("a listing left out the folder list for a version it does not know")
+	}
+}
+
+// The active marker belongs to the request, not to the held folder data.
+// Going to another folder must reuse the same unchanged folder list.
+func TestHTTP_FolderListVersionIgnoresTheFolderBeingOpened(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
+	get := func(path string) map[string]json.RawMessage {
+		t.Helper()
+		r := s.do("GET", path, nil)
+		s.expect(r, http.StatusOK)
+		var fields map[string]json.RawMessage
+		r.json(t, &fields)
+		return fields
+	}
+	first := get("/mailboxes/INBOX?page=0")
+	var version string
+	if err := json.Unmarshal(first["MailboxesVersion"], &version); err != nil || version == "" {
+		t.Fatalf("initial folder version: %q (%v)", version, err)
+	}
+	for _, path := range []string{"/mailboxes", "/mailboxes/Archive?page=0&mailboxes=" + url.QueryEscape(version)} {
+		fields := get(path)
+		var got string
+		if err := json.Unmarshal(fields["MailboxesVersion"], &got); err != nil || got != version {
+			t.Errorf("%s version %q (%v), want unchanged %q", path, got, err, version)
+		}
+		if strings.Contains(path, "Archive") {
+			if _, sent := fields["Mailboxes"]; sent {
+				t.Error("navigation resent an unchanged folder list")
+			}
+		}
 	}
 }
