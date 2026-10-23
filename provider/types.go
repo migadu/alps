@@ -46,6 +46,8 @@ type MailProvider interface {
 	// Mailbox operations
 	ListMailboxes() ([]Mailbox, error)
 	GetMailboxStatus(name string) (*MailboxStatus, error)
+	// FindMailboxByType returns nil, nil when no mailbox has that type. An
+	// error means the lookup failed, so absence cannot be inferred from it.
 	FindMailboxByType(mboxType MailboxType) (*Mailbox, error)
 	CreateMailbox(name string) error
 	RenameMailbox(oldName, newName string) error
@@ -243,6 +245,11 @@ var ErrNoStoreEntry = fmt.Errorf("provider: no such entry in store")
 // hold the requested message: it was deleted or moved since it was listed, or
 // never existed. It is not a failure of the backend.
 var ErrMessageNotFound = fmt.Errorf("provider: no such message")
+
+// ErrAppendNotStarted marks an AppendMessage failure known to have happened
+// before APPEND was issued. Only this outcome permits retrying an append;
+// an unmarked connection error may have lost the reply to a committed write.
+var ErrAppendNotStarted = fmt.Errorf("provider: APPEND was not started")
 
 // Store allows storing per-user persistent data.
 type Store interface {
