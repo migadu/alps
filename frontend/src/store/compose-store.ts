@@ -535,7 +535,16 @@ export class ComposeStore extends EventTarget {
           (updates.html || '') !== (c.html || '')) isDirtyUpdate = true;
 
       const newDirty = 'dirty' in updates ? updates.dirty : (edit && isDirtyUpdate ? true : c.dirty);
-      return { ...c, ...updates, dirty: newDirty };
+      // Content the composer made itself is the message as it opened, while
+      // the text is still the opening text: the opening text moves with it.
+      // An answer opens with its text as the quote's `> ` lines, which the
+      // editor's own text, taken as no edit, does not have; left behind,
+      // every later test of a message still as it opened found it changed.
+      const opening = !edit && (c.text || '') === (c.initialText || '') ? {
+        ...('text' in updates && { initialText: updates.text }),
+        ...('html' in updates && { initialHtml: updates.html }),
+      } : {};
+      return { ...c, ...updates, ...opening, dirty: newDirty };
     });
     this.state = { ...this.state, activeComposers: composers };
     this.debouncedSaveDrafts();

@@ -514,6 +514,20 @@ describe('a reply or a forward left untouched', () => {
     expect(store.getComposer(id)).toBeUndefined();
   });
 
+  it.each(untouched)('%s keeps, as its opening text, the text its editor holds', async (_, make) => {
+    // The window opens an answer with its text as the quote's `> ` lines,
+    // and the editor's own text has none. Taken from the editor as no edit,
+    // the text no longer matched the opening text, and every test of an
+    // answer still as it opened, whitespace typed and taken away included,
+    // found it changed.
+    vi.useFakeTimers();
+    const { store, id } = await open(make());
+
+    const composer = store.getComposer(id)!;
+    expect(composer.initialText).toBe(composer.text);
+    expect(composer.initialHtml).toBe(composer.html);
+  });
+
   it('is saved once something is typed', async () => {
     const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
     vi.useFakeTimers();
