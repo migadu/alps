@@ -1,3 +1,4 @@
+import { cidReferencesOf } from './html-sanitizer';
 import { Logger } from './logger';
 
 /** The English fallback for the over-budget refusal, used when a caller has no
@@ -207,16 +208,25 @@ function base64DecodedSize(encoded: number): number {
  * The quote keeps the original's `cid:` images, as every mail client's does,
  * and a `cid:` names a part of the message it came in: without the part, the
  * recipient gets a broken image. The message's attachment rows leave these
- * parts out, as parts of the body, so they are read off its structure: every
- * part with a Content-ID, whatever its disposition, numbered as the server
- * numbers parts. They are carried as inline, so they are the body's images
- * and not chips the user never attached.
+ * parts out, as parts of the body, so they are read off its structure,
+ * numbered as the server numbers parts. They are carried as inline, so they
+ * are the body's images and not chips the user never attached.
+ *
+ * A part with a Content-ID is one of them when `quote`, the quoted HTML,
+ * shows it by that Content-ID, whatever its disposition (Outlook and Apple
+ * Mail file their inline images as attachments), or when it is filed inline,
+ * as the server takes it for the body's. Every part with a Content-ID used to
+ * be taken, and Exchange gives an ordinary file one too: the server lists such
+ * a file as an attachment, and a reply carried it unseen, to the recipients
+ * again.
  */
-export function inlinePartsOf(structure: any): CarriedPart[] {
+export function inlinePartsOf(structure: any, quote: string): CarriedPart[] {
+  const shown = cidReferencesOf(quote);
   const parts: CarriedPart[] = [];
   const walk = (node: any, path: string) => {
     if (!node) return;
-    if (node.ID) {
+    const filedInline = String(node.Extended?.Disposition?.Value ?? '').toLowerCase() === 'inline';
+    if (node.ID && (filedInline || shown.has(String(node.ID).replace(/^<|>$/g, '')))) {
       const encoded = Number(node.Size) || 0;
       parts.push({
         name: node.Extended?.Disposition?.Params?.filename || node.Params?.name || 'image',

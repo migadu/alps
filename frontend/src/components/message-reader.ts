@@ -170,7 +170,7 @@ export class MessageReader extends LitElement {
       );
 
       // A forward carries the original's attachments; a reply does not. Both
-      // carry its inline parts, which the quote's images name: see inlinePartsOf.
+      // carry the inline parts the quote shows: see inlinePartsOf.
       const forwarded = action === 'forward' ? this.attachments.map(a => ({
         name: a.Filename || 'attachment',
         size: a.Size || 0,
@@ -179,7 +179,7 @@ export class MessageReader extends LitElement {
       })) : [];
       const attachments = [
         ...forwarded,
-        ...inlinePartsOf(this.message.BodyStructure).filter(part => !forwarded.some(a => a.partPath === part.partPath)),
+        ...inlinePartsOf(this.message.BodyStructure, quotedHtml).filter(part => !forwarded.some(a => a.partPath === part.partPath)),
       ];
 
       const reply = action === 'reply' || action === 'replyAll' ? replyContext(this.message, this.message.Mailbox || this.mailbox) : {};
@@ -2043,7 +2043,7 @@ export class MessageReader extends LitElement {
       );
 
       // A forward carries the original's attachments; a reply does not. Both
-      // carry its inline parts, which the quote's images name: see inlinePartsOf.
+      // carry the inline parts the quote shows: see inlinePartsOf.
       const forwarded = action === 'forward' ? item.attachments.map(a => ({
         name: a.Filename || 'attachment',
         size: a.Size || 0,
@@ -2052,7 +2052,7 @@ export class MessageReader extends LitElement {
       })) : [];
       const attachments = [
         ...forwarded,
-        ...inlinePartsOf(item.message.BodyStructure).filter(part => !forwarded.some(a => a.partPath === part.partPath)),
+        ...inlinePartsOf(item.message.BodyStructure, quotedHtml).filter(part => !forwarded.some(a => a.partPath === part.partPath)),
       ];
 
       const reply = action === 'reply' || action === 'replyAll' ? replyContext(item.message, item.mailbox) : {};
