@@ -26,24 +26,20 @@
   --accent-color: #2563eb;
   --accent-hover: #1d4ed8;
   --accent-light: #dbeafe;
+  /* Text on an accent background, such as a primary button. */
+  --accent-contrast: #ffffff;
 
   --success: #10b981;
   --warning: #f59e0b;
   --error: #ef4444;
 
-  /* Mailbox Icon Colors */
-  --icon-inbox: #3b82f6;
-  --icon-sent: #10b981;
-  --icon-drafts: #f59e0b;
-  --icon-spam: #ef4444;
-  --icon-trash: #6b7280;
-  --icon-archive: #8b5cf6;
-  --icon-default: #9ca3af;
-
   /* Typography */
   --font-base: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-heading: 'Inter', sans-serif;
   /* Professional UI often sticks to a single clean font */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* Small labels and figures: section names, dates, sizes. */
+  --font-label: var(--font-base);
 
   /* Forms */
   --input-padding: 8px 12px;
@@ -131,25 +127,30 @@ h6 {
   background: transparent;
 }
 
+/* A theme may set --scrollbar-thumb(-hover); the fallbacks are the grays the
+   other themes have always had. */
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: var(--scrollbar-thumb, #d1d5db);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--scrollbar-thumb-hover, #9ca3af);
 }
 
 .theme-dark ::-webkit-scrollbar-thumb {
-  background: #4b5563;
+  background: var(--scrollbar-thumb, #4b5563);
 }
 
 .theme-dark ::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
+  background: var(--scrollbar-thumb-hover, #6b7280);
 }
 
 .theme-dark {
   --modal-backdrop: rgba(0, 0, 0, 0.5);
+  /* For things drawn once per mode, such as a light and a dark logo. */
+  --light-only-display: none;
+  --dark-only-display: block;
   --toast-bg: var(--bg-tertiary, #374151);
   --toast-border: var(--border-color, #4b5563);
 }

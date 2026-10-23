@@ -3,6 +3,7 @@ import { renderIcon } from '../../../frontend/src/utils/ui';
 import { contactsService } from '../../carddav/frontend/contacts-service';
 import { fetchWithTimeout } from '../../../frontend/src/utils/fetch-utils';
 import { readUserSettings } from '../../../frontend/src/store/settings-store';
+import { parseWrittenAddress } from '../../../frontend/src/utils/address-display';
 import '../../../frontend/src/components/ui-prompt';
 
 function promptForPassphrase(errorMsg?: string, i18nStore?: any): Promise<string | null> {
@@ -172,8 +173,11 @@ export async function handlePresend(payload: any) {
         if (ownSettings.loginUsername) userEmails.push(ownSettings.loginUsername);
 
         for (const email of recipients) {
-            // Very simple extraction if email is like "Name <email@host.com>"
-            const cleanEmail = email.includes('<') ? email.split('<')[1].split('>')[0].trim() : email.trim();
+            // The address of a pill like `Name <email@host.com>` is in its LAST
+            // pair of angle brackets: a quoted name may hold brackets of its
+            // own, and `"Ada <Countess>" <ada@example.com>` was looked up as
+            // "Countess", which has no key, so the send was refused.
+            const cleanEmail = parseWrittenAddress(email).email || email.trim();
             
             if (userEmails.includes(cleanEmail)) {
                 // We encrypt to ourselves anyway below, so we can skip CardDAV lookup

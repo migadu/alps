@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { encodePathParam, fetchWithTimeout } from '../src/utils/fetch-utils';
+import { encodePathParam, fetchWithTimeout, foregroundSettled } from '../src/utils/fetch-utils';
 import { encodeMailboxPath } from '../src/utils/folders';
 
 describe('encodePathParam', () => {
@@ -166,5 +166,28 @@ describe('fetchWithTimeout', () => {
     expect(signal!.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     expect(signal!.aborted).toBe(true);
+  });
+
+  it('says when no request somebody waits on is open, whatever is open in the background', async () => {
+    let answerForeground!: () => void;
+    fetchMock.mockImplementation((url: string) => url === '/open'
+      ? new Promise<Response>((r) => (answerForeground = () => r(answer(200))))
+      : new Promise<Response>(() => {}));
+    void fetchWithTimeout('/verdicts', {}, 60_000, { background: true });
+    let settled = false;
+    await foregroundSettled().then(() => (settled = true));
+    expect(settled).toBe(true);
+
+    const opening = fetchWithTimeout('/open', {}, 60_000);
+    settled = false;
+    const waiting = foregroundSettled().then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(10);
+    expect(settled).toBe(false);
+
+    answerForeground();
+    await opening;
+    await vi.advanceTimersByTimeAsync(0);
+    await waiting;
+    expect(settled).toBe(true);
   });
 });

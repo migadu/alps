@@ -111,6 +111,48 @@ async function deliverGuarded(subject: string): Promise<void> {
 }
 
 /**
+ * A message with a body the reader shows and one image attachment, dot.png.
+ * An image, because the preview only opens for an attachment it can show.
+ */
+async function deliverWithImage(subject: string): Promise<void> {
+  const boundary = "alps-shortcut-boundary";
+  // A 1x1 PNG.
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const raw = [
+    "From: Ada Lovelace <ada@remote.test>",
+    `To: ${USER.address}`,
+    `Subject: ${subject}`,
+    `Message-ID: <${unique()}@remote.test>`,
+    `Date: ${new Date().toUTCString()}`,
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=utf-8",
+    "",
+    "Guard body.",
+    "",
+    `--${boundary}`,
+    'Content-Type: image/png; name="dot.png"',
+    "Content-Transfer-Encoding: base64",
+    'Content-Disposition: attachment; filename="dot.png"',
+    "",
+    png,
+    "",
+    `--${boundary}--`,
+    "",
+  ].join("\r\n");
+  await deliver({ subject, raw });
+}
+
+/** The reader's button that opens the attachment preview. */
+function previewButton(page: Page): Locator {
+  return page
+    .locator("alps-message-reader alps-attachment-list.desktop-attachments")
+    .getByRole("button", { name: "Preview", exact: true });
+}
+
+/**
  * A message ahead of the one under test, so the list always has a row for
  * ArrowDown to move to — even on a fresh account where these are the only
  * messages.
@@ -273,51 +315,21 @@ test("a dialog above the mailbox owns the keyboard", async ({ page }) => {
 /**
  * The same shape for the attachment preview.
  *
- * It is not a `ui-modal`: it paints its own full-window overlay and listens
- * for its keys on the window, in the capture phase, so that the arrows it uses
+ * It is not a `ui-modal` but a modal dialog of its own, and it listens for
+ * its keys on the window, in the capture phase, so that the arrows it uses
  * never reach the list underneath. That listener is also the risk — one that
  * outlived the preview would swallow Escape for the whole app.
  */
 test("the attachment preview owns the keyboard while it is up", async ({ page }) => {
   const subject = `Shortcuts preview ${unique()}`;
-  const boundary = "alps-shortcut-boundary";
-  // A 1x1 PNG: the preview only opens for an attachment it can show.
-  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-  const raw = [
-    "From: Ada Lovelace <ada@remote.test>",
-    `To: ${USER.address}`,
-    `Subject: ${subject}`,
-    `Message-ID: <${unique()}@remote.test>`,
-    `Date: ${new Date().toUTCString()}`,
-    "MIME-Version: 1.0",
-    `Content-Type: multipart/mixed; boundary="${boundary}"`,
-    "",
-    `--${boundary}`,
-    "Content-Type: text/plain; charset=utf-8",
-    "",
-    "Guard body.",
-    "",
-    `--${boundary}`,
-    'Content-Type: image/png; name="dot.png"',
-    "Content-Transfer-Encoding: base64",
-    'Content-Disposition: attachment; filename="dot.png"',
-    "",
-    png,
-    "",
-    `--${boundary}--`,
-    "",
-  ].join("\r\n");
   await deliverNeighbour();
-  await deliver({ subject, raw });
+  await deliverWithImage(subject);
   await login(page);
 
   const row = listRow(page, subject);
   const openedAt = await openFromList(page, row, "Guard body.");
 
-  await page
-    .locator("alps-message-reader alps-attachment-list.desktop-attachments")
-    .getByRole("button", { name: "Preview", exact: true })
-    .click();
+  await previewButton(page).click();
   const preview = page.locator("alps-attachment-preview");
   await expect(preview).toHaveCount(1);
   await expect(preview.locator(".file-title")).toHaveText("dot.png");
@@ -344,6 +356,65 @@ test("the attachment preview owns the keyboard while it is up", async ({ page })
   await expect(entry, "the preview never gave Escape back").toBeHidden();
 
   await expectListAnswersKeys(page, row, "the preview never gave the keyboard back");
+});
+
+/**
+ * Where focus is: "preview", "page" for the page itself (the body, where a
+ * browser leaves focus at either end of the Tab order), or else the element
+ * that has it, as `tag.class.class`.
+ */
+function focusWhere(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    let el = document.activeElement;
+    if (!el || el === document.body) return "page";
+    for (;;) {
+      if (el.localName === "alps-attachment-preview") return "preview";
+      const inner: Element | null | undefined = el.shadowRoot?.activeElement;
+      if (!inner) break;
+      el = inner;
+    }
+    return [el.tagName.toLowerCase(), ...Array.from(el.classList)].join(".");
+  });
+}
+
+/**
+ * The preview is modal for Tab as well. It covered the page without being a
+ * dialog, so Tab and Shift+Tab walked out of it into the reader and the list
+ * behind it, where the keys then acted on what the user could not see.
+ */
+test("the attachment preview keeps keyboard focus inside it", async ({ page }) => {
+  const subject = `Shortcuts preview focus ${unique()}`;
+  await deliverNeighbour();
+  await deliverWithImage(subject);
+  await login(page);
+
+  const row = listRow(page, subject);
+  const openedAt = await openFromList(page, row, "Guard body.");
+
+  await previewButton(page).click();
+  const preview = page.locator("alps-attachment-preview");
+  await expect(preview.locator(".file-title")).toHaveText("dot.png");
+
+  // Further than the preview has controls, both ways round.
+  for (const key of ["Shift+Tab", "Tab"]) {
+    const seen = new Set<string>();
+    for (let press = 1; press <= 10; press++) {
+      await page.keyboard.press(key);
+      const where = await focusWhere(page);
+      expect(["preview", "page"], `${key} pressed ${press} times reached the page behind`).toContain(where);
+      seen.add(where);
+    }
+    expect(seen.has("preview"), `${key} never moved focus among the preview's controls`).toBe(true);
+  }
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowUp");
+  // A modal dialog to assistive technology too, named by the file.
+  await expect(page.getByRole("dialog", { name: "dot.png" })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(preview).toHaveCount(0);
+  await expect.poll(() => deepFocus(page), "focus did not go back to where it was").toBe("button.preview-btn");
+  await expectMailboxUntouched(page, row, openedAt, "Guard body.");
 });
 
 /**

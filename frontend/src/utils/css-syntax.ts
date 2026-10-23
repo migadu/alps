@@ -46,7 +46,7 @@ const isNonPrintable = (c: string) => {
 const decoded = (c: string) => (c === '\0' ? '�' : c);
 
 /** Names compare ASCII case-insensitively, and no other way. */
-const asciiLower = (name: string) => name.replace(/[A-Z]/g, (c) => c.toLowerCase());
+export const asciiLower = (name: string) => name.replace(/[A-Z]/g, (c) => c.toLowerCase());
 
 /** A function name without its vendor prefix: `-webkit-image-set` is `image-set`. */
 const unprefixed = (name: string) => asciiLower(name).replace(/^-[a-z]+-(?=.)/, '');

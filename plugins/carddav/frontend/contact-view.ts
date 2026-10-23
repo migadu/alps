@@ -5,7 +5,7 @@ import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { composeContext, ComposeStore } from '../../../frontend/src/store/compose-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
-import { formatFullDate, renderIcon } from '../../../frontend/src/utils/ui';
+import { formatDayMonth, formatFullDate, renderIcon } from '../../../frontend/src/utils/ui';
 import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-icon-btn';
 import '../../../frontend/src/components/alps-input';
@@ -100,6 +100,19 @@ export class AlpsContactView extends LitElement {
       justify-content: center;
       height: 100%;
       color: var(--text-muted, #9ca3af);
+    }
+
+    /* Decoration, drawn as alps-icon-btn draws its icon, without the button. */
+    .selection-icon {
+      display: flex;
+      padding: 6px;
+      margin-right: 8px;
+    }
+
+    .selection-icon .icon {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
     }
 
     .contact-detail-header {
@@ -385,15 +398,35 @@ export class AlpsContactView extends LitElement {
 
   private get formattedBirthday() {
     if (!this.contact?.birthday) return '';
-    // A date with no time, `1990-05-15` or the vCard basic `19900515`, is that
-    // day where the reader is. `new Date` reads the dashed form as UTC
-    // midnight, which west of UTC is the evening before, so the birthday
-    // showed a day early; and it cannot read the basic form at all.
+    // The vCard forms are read here, and no text is parsed by `new Date`,
+    // which makes up what a form leaves out: Chromium reads `--10-31` as 31
+    // October 2001, `--1031` as 1 January 1031 and `1985` as 1 January 1985.
+    // What is not read here, a year alone or a text value, is shown as written.
     const raw = String(this.contact.birthday);
-    const day = /^(\d{4})-?(\d{2})-?(\d{2})$/.exec(raw);
-    const d = day ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])) : new Date(raw);
-    if (isNaN(d.getTime())) return this.contact.birthday; // fallback if invalid like --10-31
     const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
+    // A date with its fields in range, the year set as written: `new Date`
+    // with a year below 100 takes it for 19xx.
+    const dateOf = (year: number, month: number, day: number) => {
+      const d = new Date(2000, 0, 1);
+      d.setFullYear(year, month - 1, day);
+      return d.getMonth() === month - 1 && d.getDate() === day ? d : null;
+    };
+    // A birthday with no year, `--1031` (RFC 6350) or `--10-31`, is a day and
+    // a month; so is the year 0000 some address books put in its place. 2000
+    // is a leap year, so it lets 29 February through.
+    const yearless = /^(?:--|0000-?)(\d{2})-?(\d{2})(?:T.*)?$/.exec(raw);
+    if (yearless) {
+      const [month, day] = [Number(yearless[1]), Number(yearless[2])];
+      return dateOf(2000, month, day) ? formatDayMonth(month, day, dateFormat) : raw;
+    }
+    // A date, `1990-05-15` or the basic `19900515`, is that day where the
+    // reader is: read as UTC midnight, which west of UTC is the evening
+    // before, the birthday showed a day early. A date-time is the date it
+    // names, its time set aside: a birthday is a day, not a moment to move
+    // into the reader's zone.
+    const full = /^(\d{4})-?(\d{2})-?(\d{2})(?:T.*)?$/.exec(raw);
+    const d = full && dateOf(Number(full[1]), Number(full[2]), Number(full[3]));
+    if (!d) return raw;
     return formatFullDate(d, dateFormat, '24').split(' ')[0];
   }
 
@@ -501,7 +534,7 @@ export class AlpsContactView extends LitElement {
       }}>
         ${this.selectedCount > 0 ? html`
           <div class="empty-state" style="flex-direction: column; gap: 16px;">
-            <alps-icon-btn icon="users" style="pointer-events: none; margin-right: 8px;"></alps-icon-btn>
+            <div class="selection-icon">${renderIcon('users')}</div>
             <span>${this.i18nStore?.t('contacts.selectedContacts', { count: this.selectedCount })}</span>
           </div>
         ` : html`
@@ -568,7 +601,8 @@ export class AlpsContactView extends LitElement {
 
             <alps-input placeholder="${this.i18nStore?.t('contacts.address')}" .value=${this.editForm.address || ''} @input=${(e: any) => this.handleInput('address', e.target.value)}></alps-input>
             <alps-input placeholder="${this.i18nStore?.t('contacts.url')}" type="url" .value=${this.editForm.url || ''} @input=${(e: any) => this.handleInput('url', e.target.value)}></alps-input>
-            <alps-input placeholder="${this.i18nStore?.t('contacts.birthday')}" type="date" .value=${this.editForm.birthday || ''} @input=${(e: any) => this.handleInput('birthday', e.target.value)}></alps-input>
+            <!-- A date input shows no placeholder, so the birthday field's name is its label. -->
+            <alps-input placeholder="${this.i18nStore?.t('contacts.birthday')}" label="${this.i18nStore?.t('contacts.birthday')}" type="date" .value=${this.editForm.birthday || ''} @input=${(e: any) => this.handleInput('birthday', e.target.value)}></alps-input>
             <textarea class="edit-textarea" placeholder="${this.i18nStore?.t('contacts.notes')}" .value=${this.editForm.note || ''} @input=${(e: any) => this.handleInput('note', e.target.value)}></textarea>
             <textarea class="edit-textarea" placeholder="${this.i18nStore?.t('contacts.publicKey') || 'GPG Public Key Block'}" .value=${this.editForm.public_key || ''} @input=${(e: any) => this.handleInput('public_key', e.target.value)} style="font-family: monospace; white-space: pre;"></textarea>
           </div>

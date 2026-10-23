@@ -12,6 +12,7 @@ import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-address-input';
 import '../../../frontend/src/components/ui-confirm';
 import { modalButtonStyles } from '../../../frontend/src/components/ui-modal';
+import { isolatedCaption, isolatedSentence } from '../../../frontend/src/utils/bidi';
 
 @customElement('calendar-event-modal')
 export class CalendarEventModal extends LitElement {
@@ -323,6 +324,7 @@ export class CalendarEventModal extends LitElement {
                 <div class="form-group">
                     <label>${this.i18nStore?.t('calendar.summary')}</label>
                     <alps-input 
+                        label=${this.i18nStore?.t('calendar.summary')}
                         .value=${this.summary} 
                         @input=${(e: any) => this.summary = e.target.value}
                         placeholder=${this.i18nStore?.t('calendar.eventTitle')}
@@ -333,6 +335,7 @@ export class CalendarEventModal extends LitElement {
                     <div class="form-group">
                         <label>${this.i18nStore?.t('calendar.calendar')}</label>
                         <alps-select
+                            label=${this.i18nStore?.t('calendar.calendar')}
                             .value=${this.calendarPath}
                             .options=${this.calendars.map(c => ({ value: c.path, label: c.name }))}
                             @change=${(e: Event) => { this.calendarPath = (e.target as HTMLSelectElement).value; }}
@@ -343,13 +346,16 @@ export class CalendarEventModal extends LitElement {
 
                 ${this.othersMeeting ? html`
                     <div class="form-group organized-by">
-                        ${this.i18nStore?.t('invitations.organizedBy', { name: this.event?.organizer?.name || this.event?.organizer?.email || '' })}
+                        ${isolatedSentence(this.i18nStore, 'invitations.organizedBy', {
+                            name: this.event?.organizer ? isolatedCaption(this.event.organizer.name, this.event.organizer.email) : '',
+                        })}
                     </div>
                 ` : html`
                     <div class="form-group">
                         <label>${this.i18nStore?.t('invitations.guests')}</label>
                         <alps-address-input
                             class="guests"
+                            label=${this.i18nStore?.t('invitations.guests')}
                             .addresses=${this.attendees}
                             @addresses-changed=${(e: CustomEvent) => { this.attendees = e.detail.addresses; }}
                         ></alps-address-input>
@@ -360,6 +366,7 @@ export class CalendarEventModal extends LitElement {
                     <div class="form-group">
                         <label>${this.i18nStore?.t('calendar.startDate')}</label>
                         <alps-input 
+                            label=${this.i18nStore?.t('calendar.startDate')}
                             type="date"
                             .value=${this.startDate} 
                             @input=${(e: any) => this.setStart({ startDate: e.target.value })}
@@ -368,7 +375,9 @@ export class CalendarEventModal extends LitElement {
                     ${!this.isAllDay ? html`
                     <div class="form-group">
                         <label>${this.i18nStore?.t('calendar.time')}</label>
+                        <!-- Named "Start time", though its label reads "Time": so is the end's. -->
                         <alps-input 
+                            label=${this.i18nStore?.t('calendar.startTime')}
                             type="time"
                             .value=${this.startTime} 
                             @input=${(e: any) => this.setStart({ startTime: e.target.value })}
@@ -381,6 +390,7 @@ export class CalendarEventModal extends LitElement {
                     <div class="form-group">
                         <label>${this.i18nStore?.t('calendar.endDate')}</label>
                         <alps-input 
+                            label=${this.i18nStore?.t('calendar.endDate')}
                             type="date"
                             .value=${this.endDate} 
                             @input=${(e: any) => this.endDate = e.target.value}
@@ -390,6 +400,7 @@ export class CalendarEventModal extends LitElement {
                     <div class="form-group">
                         <label>${this.i18nStore?.t('calendar.time')}</label>
                         <alps-input 
+                            label=${this.i18nStore?.t('calendar.endTime')}
                             type="time"
                             .value=${this.endTime} 
                             @input=${(e: any) => this.endTime = e.target.value}
@@ -406,6 +417,7 @@ export class CalendarEventModal extends LitElement {
                 <div class="form-group">
                     <label>${this.i18nStore?.t('calendar.repeat')}</label>
                     <alps-select
+                        label=${this.i18nStore?.t('calendar.repeat')}
                         .value=${this.rruleFreq}
                         .options=${[
                             { value: '', label: this.i18nStore?.t('calendar.repeatNone') },
@@ -422,6 +434,7 @@ export class CalendarEventModal extends LitElement {
                 <div class="form-group">
                     <label>${this.i18nStore?.t('calendar.location')}</label>
                     <alps-input 
+                        label=${this.i18nStore?.t('calendar.location')}
                         .value=${this.location} 
                         @input=${(e: any) => this.location = e.target.value}
                         placeholder=${this.i18nStore?.t('calendar.addLocation')}

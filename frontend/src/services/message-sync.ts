@@ -1,5 +1,5 @@
 import { fetchWithTimeout } from '../utils/fetch-utils';
-import { FOLDER_INBOX, encodeMailboxPath, isDescendantMailbox } from '../utils/folders';
+import { ALL_MAILBOXES, FOLDER_INBOX, encodeMailboxPath, isDescendantMailbox } from '../utils/folders';
 import { Logger } from '../utils/logger';
 
 export interface MailboxData {
@@ -120,15 +120,60 @@ export class MessageSyncService extends EventTarget {
    * delete, a send — anything that changed the folder rather than asked about
    * it.
    *
-   * Read in full, because it is not a question: the counts on every folder move
-   * when a message is filed into one of them, and a status probe covers only
-   * the Inbox and the folder on screen. Announced QUIETLY, though. The rows are
+   * Not a refresh. The server has already dropped what the write changed, and
+   * read again the counts of the folders it filed messages into or took them
+   * from; a refresh dropped its folder list and every folder's counts on top,
+   * and read them all again. The refresh did catch mail that arrived meanwhile
+   * (a message sent to oneself, say), so the counts of the Inbox and of the
+   * folder on screen are asked first, as the poll asks them, and the server
+   * reads again a folder whose counts moved. Announced QUIETLY. The rows are
    * about to change because of something the user just did, and the dim that
    * announced them was the same half-second flash a folder switch makes, over
    * rows they were reading.
+   *
+   * `refresh` is for a write that failed or was given up on part of the way:
+   * what it did is then unknown, and the server has dropped nothing for it.
+   *
+   * Inside {@link afterWrites}, it is made once, when the writes are done.
    */
-  sync() {
-    this.fetch(this.currentMailbox, this.currentPage, this.currentQuery, true, true);
+  sync({ refresh = false }: { refresh?: boolean } = {}) {
+    if (this.writing > 0) {
+      this.syncAsked = true;
+      this.refreshAsked ||= refresh;
+      return;
+    }
+    this.fetch(this.currentMailbox, this.currentPage, this.currentQuery, refresh, true, { probe: !refresh });
+  }
+
+  /** How many {@link afterWrites} are under way, and whether a write in one of
+   * them asked for the re-read, and for a refresh. */
+  private writing = 0;
+  private syncAsked = false;
+  private refreshAsked = false;
+
+  /**
+   * Runs the writes of one gesture, and makes the re-read they ask for once,
+   * when they are done, whether they succeeded or not.
+   *
+   * A gesture on messages in several folders (a search across all of them)
+   * writes to each folder in turn, and each write asked for its own re-read:
+   * one listing per folder, sent while the next write waited behind it on the
+   * session's one connection, and, for a search, one search of every folder
+   * each time.
+   */
+  async afterWrites<T>(writes: () => Promise<T>): Promise<T> {
+    this.writing++;
+    try {
+      return await writes();
+    } finally {
+      this.writing--;
+      if (this.writing === 0 && this.syncAsked) {
+        const refresh = this.refreshAsked;
+        this.syncAsked = false;
+        this.refreshAsked = false;
+        this.sync({ refresh });
+      }
+    }
   }
 
   /**
@@ -195,8 +240,18 @@ export class MessageSyncService extends EventTarget {
    * `quiet` keeps the answer in the foreground — it lands on whatever page is
    * being viewed, and it is not new mail — while asking the page not to dim the
    * rows for it. The floor below goes with the dim, so a quiet read skips it too.
+   *
+   * `probe` asks for the counts of the Inbox and of the mailbox first (see
+   * {@link sync}).
    */
-  async fetch(mailbox: string, page: number, query: string = '', checkStatus: boolean = false, quiet: boolean = false) {
+  async fetch(
+    mailbox: string,
+    page: number,
+    query: string = '',
+    checkStatus: boolean = false,
+    quiet: boolean = false,
+    { probe = false }: { probe?: boolean } = {},
+  ) {
     this.setContext(mailbox, page, query);
     this.listed = false;
     const fetchId = ++this.currentFetchId;
@@ -214,6 +269,15 @@ export class MessageSyncService extends EventTarget {
     };
 
     try {
+      if (probe) {
+        // A probe that fails says nothing the listing will not say itself.
+        const ask = (name: string) => fetchWithTimeout(`/mailboxes/${encodeMailboxPath(name)}/status`).catch(() => {});
+        if (mailbox !== FOLDER_INBOX) await ask(FOLDER_INBOX);
+        if (this.currentFetchId !== fetchId) return;
+        if (mailbox !== ALL_MAILBOXES) await ask(mailbox);
+        if (this.currentFetchId !== fetchId) return;
+      }
+
       let url = `/mailboxes/${encodeMailboxPath(mailbox)}?page=${page}`;
       if (query) url += `&query=${encodeURIComponent(query)}`;
       if (checkStatus) url += `&refresh=true`;
@@ -230,6 +294,11 @@ export class MessageSyncService extends EventTarget {
         this.dispatchEvent(new CustomEvent('mailbox-not-found'));
         return;
       }
+
+      // Any other refusal is a failure. The server's errors are JSON too, and
+      // announced as data an `{"error": …}` answer had no Messages: the page
+      // took it for an empty folder and cleared the rows on screen.
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const data: MailboxData = await response.json();
       if (this.currentFetchId !== fetchId) return; // Re-check after json parsing
@@ -331,6 +400,10 @@ export class MessageSyncService extends EventTarget {
         this.dispatchEvent(new CustomEvent('mailbox-not-found'));
         return true;
       }
+
+      // As in the foreground: an error answer is not a listing. Taken for one,
+      // a single failed poll emptied the folder on screen until the next.
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const data: MailboxData = await response.json();
       if (this.currentFetchId !== fetchId) return true;

@@ -1,5 +1,5 @@
 import { createContext } from '@lit/context';
-import { THEME_BUNDLES } from './themes';
+import { THEME_BUNDLES, themeFamily } from './themes';
 import { Logger } from '../utils/logger';
 
 /**
@@ -968,15 +968,22 @@ export class SettingsStore extends EventTarget {
     }
 
     // Apply color family theme variables
-    const themeKey = `${this.state.colorFamily}-${isDark ? 'dark' : 'light'}`;
-    const theme = THEME_BUNDLES[themeKey] || THEME_BUNDLES[`default-${isDark ? 'dark' : 'light'}`];
-    
+    const theme = THEME_BUNDLES[`${themeFamily(this.state.colorFamily)}-${isDark ? 'dark' : 'light'}`];
+
     if (theme) {
-      for (const [key, value] of Object.entries(theme.colors)) {
-        document.documentElement.style.setProperty(`--${key}`, value);
+      // Clear what the last theme set first: a token one theme sets and the
+      // next leaves out would otherwise stay, a Migadu font in Nord.
+      const root = document.documentElement.style;
+      for (const name of this.themeProperties) root.removeProperty(name);
+      const values = { ...theme.colors, ...theme.tokens };
+      this.themeProperties = Object.keys(values).map(key => `--${key}`);
+      for (const [key, value] of Object.entries(values)) {
+        root.setProperty(`--${key}`, value);
       }
     }
   }
+
+  private themeProperties: string[] = [];
 }
 
 export const settingsContext = createContext<SettingsStore>('settings-store');

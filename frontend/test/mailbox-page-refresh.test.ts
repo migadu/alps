@@ -206,7 +206,7 @@ describe('the listing already on screen', () => {
 });
 
 describe('the re-read after a move or a delete', () => {
-  it('reads the folder in full, and does not dim the rows for it', async () => {
+  it('reads the folder without a refresh, and does not dim the rows for it', async () => {
     const el = await shownInbox();
 
     messageSync.sync();
@@ -216,9 +216,11 @@ describe('the re-read after a move or a delete', () => {
     let dimmed = false;
     await waitFor(() => { dimmed ||= el.loadingMessages; return !el.isSyncing; }, 'the sync to end');
     expect(dimmed).toBe(false);
-    // In full: a write elsewhere moves counts on folders the probe never asks
-    // about, and they are drawn from this answer's mailbox list.
-    expect(listingReads()).toEqual(['/mailboxes/INBOX?page=0&refresh=true']);
+    // Not a refresh. A write elsewhere moves counts on folders the probe never
+    // asks about, and they are drawn from this answer's mailbox list, but the
+    // server has read them again for the write already. The folder's own
+    // counts are asked first, for mail that arrived meanwhile.
+    expect(listingReads()).toEqual(['/mailboxes/INBOX/status', '/mailboxes/INBOX?page=0']);
   });
 
   it('lands on the page being viewed, not only on the first', async () => {
@@ -270,7 +272,7 @@ describe('a later page that has emptied', () => {
     messageSync.sync();
     await waitFor(() => el.messages.length === 1 && !el.isSyncing, 'the last page');
 
-    expect(listingReads()).toEqual(['/mailboxes/INBOX?page=2&refresh=true', '/mailboxes/INBOX?page=1&refresh=true']);
+    expect(listingReads()).toEqual(['/mailboxes/INBOX/status', '/mailboxes/INBOX?page=2', '/mailboxes/INBOX?page=1']);
     expect(el.currentPage).toBe(1);
     expect(el.messages.map((m: any) => m.UID)).toEqual(['10']);
     expect(location.hash).toBe('#/mailbox/INBOX?p=1');
@@ -283,7 +285,7 @@ describe('a later page that has emptied', () => {
     quietMailbox([]);
     messageSync.sync();
     await waitFor(() => !el.isSyncing, 'the sync to end');
-    expect(listingReads()).toEqual(['/mailboxes/INBOX?page=0&refresh=true']);
+    expect(listingReads()).toEqual(['/mailboxes/INBOX/status', '/mailboxes/INBOX?page=0']);
     expect(el.messages).toEqual([]);
   });
 });

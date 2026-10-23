@@ -5,6 +5,7 @@ import '@fontsource/inter/latin-500.css';
 import '@fontsource/inter/latin-600.css';
 import '@fontsource/outfit/latin-500.css';
 import '@fontsource/outfit/latin-700.css';
+import './fonts/fonts.css';
 import './index.css';
 // Automatically discover and load all plugin frontend components
 const plugins = import.meta.glob('../../plugins/*/frontend/index.ts', { eager: true });

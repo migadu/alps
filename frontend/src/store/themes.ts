@@ -1,3 +1,15 @@
+import { defaultTheme } from '../utils/branding';
+
+/**
+ * The theme family a colorFamily setting shows. 'default' is no choice made,
+ * which takes the server's default theme, and Alps when it names none or one
+ * this build does not have.
+ */
+export function themeFamily(colorFamily: string): string {
+  const family = colorFamily === 'default' ? defaultTheme() ?? 'alps' : colorFamily;
+  return THEME_BUNDLES[`${family}-light`] ? family : 'alps';
+}
+
 export interface ThemeBundle {
   id: string;
   name: string;
@@ -21,12 +33,28 @@ export interface ThemeBundle {
     'error': string;
     'hover-color': string;
   };
+  /* Custom properties beyond the colours: fonts, radii, the unread wash. A
+     theme sets only those it changes; the rest keep their index.css values. */
+  tokens?: Record<string, string>;
 }
 
+/* Migadu: the type and shapes of migadu.com, shared by both modes. */
+const MIGADU_TOKENS = {
+  'font-base': '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  'font-heading': '"Source Serif 4", "Iowan Old Style", "Palatino Linotype", Georgia, serif',
+  'font-mono': '"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace',
+  'font-label': 'var(--font-mono)',
+  'radius-sm': '2px',
+  'radius-md': '3px',
+  'radius-lg': '4px',
+  'input-radius': '3px',
+  'btn-radius': '3px',
+};
+
 export const THEME_BUNDLES: Record<string, ThemeBundle> = {
-  'default-light': {
-    id: 'default-light',
-    name: 'Default Light',
+  'alps-light': {
+    id: 'alps-light',
+    name: 'Alps Light',
     isDark: false,
     colors: {
       'bg-primary': '#ffffff',
@@ -48,9 +76,9 @@ export const THEME_BUNDLES: Record<string, ThemeBundle> = {
       'hover-color': '#f3f4f6',
     }
   },
-  'default-dark': {
-    id: 'default-dark',
-    name: 'Default Dark',
+  'alps-dark': {
+    id: 'alps-dark',
+    name: 'Alps Dark',
     isDark: true,
     colors: {
       'bg-primary': '#1f2937',
@@ -166,6 +194,88 @@ export const THEME_BUNDLES: Record<string, ThemeBundle> = {
       'warning': '#f59e0b',
       'error': '#ef4444',
       'hover-color': 'rgba(255, 255, 255, 0.1)',
+    }
+  },
+  // migadu.com's ice-blue drafting sheet. The status colours are a shade
+  // darker than the site's so they keep 4.5:1 on a selected row.
+  'migadu-light': {
+    id: 'migadu-light',
+    name: 'Migadu Light',
+    isDark: false,
+    colors: {
+      'bg-primary': '#f5f9ff',
+      'bg-secondary': '#eaf1fb',
+      'bg-tertiary': '#dce8f8',
+      'bg-selected': '#d7e4fb',
+      'bg-starred': '#1d4ed80d',
+      'text-primary': '#0b1938',
+      'text-sender-read': '#1c2f57',
+      'text-secondary': '#284173',
+      'text-muted': '#4a6595',
+      'border-color': '#c5d8f2',
+      'accent-color': '#1d4ed8',
+      'accent-hover': '#1e40af',
+      'accent-light': '#dbe6fd',
+      'success': '#0a6e41',
+      'warning': '#8c5200',
+      'error': '#b82d15',
+      'hover-color': 'rgba(34, 85, 221, 0.06)',
+    },
+    tokens: {
+      ...MIGADU_TOKENS,
+      'accent-contrast': '#ffffff',
+      'bg-unread': '#1d4ed80b',
+      'bg-unread-hover': '#1d4ed814',
+      'scrollbar-thumb': '#b9ceec',
+      'scrollbar-thumb-hover': '#8fb0de',
+      'icon-inbox': '#1d4ed8',
+      'icon-sent': '#0a6e41',
+      'icon-drafts': '#8c5200',
+      'icon-spam': '#b82d15',
+      'icon-trash': '#4a6595',
+      'icon-archive': '#284173',
+      'icon-default': '#4a6595',
+    }
+  },
+  // migadu.com's deep indigo blueprint. The accent is the site's sky blue, too
+  // light for white text, so a primary button carries indigo text instead.
+  'migadu-dark': {
+    id: 'migadu-dark',
+    name: 'Migadu Dark',
+    isDark: true,
+    colors: {
+      'bg-primary': '#0c1a3b',
+      'bg-secondary': '#08122b',
+      'bg-tertiary': '#172e63',
+      'bg-selected': '#163469',
+      'bg-starred': '#38bdf812',
+      'text-primary': '#f4f8ff',
+      'text-sender-read': '#d6e2f8',
+      'text-secondary': '#bfd3f5',
+      'text-muted': '#88a8e0',
+      'border-color': '#254380',
+      'accent-color': '#38bdf8',
+      'accent-hover': '#7dd3fc',
+      'accent-light': '#123a66',
+      'success': '#34d399',
+      'warning': '#fbbf24',
+      'error': '#ff7a59',
+      'hover-color': 'rgba(96, 165, 250, 0.08)',
+    },
+    tokens: {
+      ...MIGADU_TOKENS,
+      'accent-contrast': '#08122b',
+      'bg-unread': '#38bdf80d',
+      'bg-unread-hover': '#38bdf817',
+      'scrollbar-thumb': '#254380',
+      'scrollbar-thumb-hover': '#4d7ad1',
+      'icon-inbox': '#38bdf8',
+      'icon-sent': '#34d399',
+      'icon-drafts': '#fbbf24',
+      'icon-spam': '#ff7a59',
+      'icon-trash': '#88a8e0',
+      'icon-archive': '#bfd3f5',
+      'icon-default': '#88a8e0',
     }
   }
 };

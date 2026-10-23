@@ -1,25 +1,29 @@
 export default {
   contacts: {
     deleteFailed: {
-      one: '{failed} od {count} kontakta nije moglo biti obrisano.',
-      few: '{failed} od {count} kontakta nije moglo biti obrisano.',
-      other: '{failed} od {count} kontakata nije moglo biti obrisano.'
+      one: 'Nije bilo moguće obrisati {count} kontakt od ukupno {total}.',
+      few: 'Nije bilo moguće obrisati {count} kontakta od ukupno {total}.',
+      other: 'Nije bilo moguće obrisati {count} kontakata od ukupno {total}.'
     },
     categoryRenameFailed: {
-      one: '{failed} od {count} kontakta nije moglo biti ažurirano, kategorija je samo delimično preimenovana.',
-      few: '{failed} od {count} kontakta nije moglo biti ažurirano, kategorija je samo delimično preimenovana.',
-      other: '{failed} od {count} kontakata nije moglo biti ažurirano, kategorija je samo delimično preimenovana.'
+      one: 'Nije bilo moguće ažurirati {count} kontakt od ukupno {total}, pa je kategorija samo delimično preimenovana.',
+      few: 'Nije bilo moguće ažurirati {count} kontakta od ukupno {total}, pa je kategorija samo delimično preimenovana.',
+      other: 'Nije bilo moguće ažurirati {count} kontakata od ukupno {total}, pa je kategorija samo delimično preimenovana.'
     },
     categoryDeleteFailed: {
-      one: '{failed} od {count} kontakta nije moglo biti ažurirano, kategorija je samo delimično uklonjena.',
-      few: '{failed} od {count} kontakta nije moglo biti ažurirano, kategorija je samo delimično uklonjena.',
-      other: '{failed} od {count} kontakata nije moglo biti ažurirano, kategorija je samo delimično uklonjena.'
+      one: 'Nije bilo moguće ažurirati {count} kontakt od ukupno {total}, pa je kategorija samo delimično uklonjena.',
+      few: 'Nije bilo moguće ažurirati {count} kontakta od ukupno {total}, pa je kategorija samo delimično uklonjena.',
+      other: 'Nije bilo moguće ažurirati {count} kontakata od ukupno {total}, pa je kategorija samo delimično uklonjena.'
     },
     categoryUpdateFailed: {
-      one: '{failed} od {count} kontakta nije moglo biti ažurirano.',
-      few: '{failed} od {count} kontakta nije moglo biti ažurirano.',
-      other: '{failed} od {count} kontakata nije moglo biti ažurirano.'
+      one: 'Nije bilo moguće ažurirati {count} kontakt od ukupno {total}.',
+      few: 'Nije bilo moguće ažurirati {count} kontakta od ukupno {total}.',
+      other: 'Nije bilo moguće ažurirati {count} kontakata od ukupno {total}.'
     },
+    deleteOneFailed: 'Kontakt nije mogao biti obrisan.',
+    categoryRenameOneFailed: 'Jedan kontakt nije mogao biti ažuriran, pa je kategorija samo delimično preimenovana.',
+    categoryDeleteOneFailed: 'Jedan kontakt nije mogao biti ažuriran, pa je kategorija samo delimično uklonjena.',
+    categoryUpdateOneFailed: 'Kontakt nije mogao biti ažuriran.',
     saveFailed: 'Kontakt nije mogao biti sačuvan.',
     saveConflict: 'Kontakt je izmenjen na drugom uređaju, pa vaša izmena nije sačuvana. Otkažite izmenu da biste videli najnoviju verziju.',
     starFailed: 'Kontakt nije mogao biti ažuriran.',

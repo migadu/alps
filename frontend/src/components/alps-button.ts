@@ -103,7 +103,7 @@ export class AlpsButton extends LitElement {
     /* Variant: Primary */
     :host([variant="primary"]) button {
       background-color: var(--accent-color, #3b82f6);
-      color: #ffffff;
+      color: var(--accent-contrast, #ffffff);
       border: 1px solid transparent;
     }
     

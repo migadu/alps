@@ -97,12 +97,24 @@ func (p *plugin) connectClient(ctx *alps.Context) (*MSClient, error) {
 	return c, nil
 }
 
+// sieveExtensions is the server's SIEVE capability as a list: the extensions a
+// script may require. The page reads it to offer only what the server runs —
+// an auto-reply needs "vacation", and its dates "date" and "relational" — and
+// it is never nil, so a server that advertises nothing answers [] and not null.
+func sieveExtensions(c *MSClient) []string {
+	return append([]string{}, strings.Fields(c.capabilities["SIEVE"])...)
+}
+
 func (p *plugin) handleGetScript(ctx *alps.Context) error {
 	c, err := p.connectClient(ctx)
 	if err != nil {
 		return sieveError(ctx, "connect to the sieve server", err)
 	}
 	defer c.Close()
+
+	// Taken before the first command: every response read through
+	// readResponse starts the capability map afresh.
+	extensions := sieveExtensions(c)
 
 	scripts, err := c.ListScripts()
 	if err != nil {
@@ -114,18 +126,18 @@ func (p *plugin) handleGetScript(ctx *alps.Context) error {
 	// showing "No rules defined". If nothing is active there's nothing to show.
 	name := activeScript(scripts)
 	if name == "" {
-		return ctx.JSON(http.StatusOK, map[string]string{"content": ""})
+		return ctx.JSON(http.StatusOK, map[string]any{"content": "", "extensions": extensions})
 	}
 
 	content, err := c.GetScript(name)
 	if err != nil {
 		if strings.Contains(err.Error(), "script not found") {
-			return ctx.JSON(http.StatusOK, map[string]string{"content": ""})
+			return ctx.JSON(http.StatusOK, map[string]any{"content": "", "extensions": extensions})
 		}
 		return sieveError(ctx, "get script", err)
 	}
 
-	return ctx.JSON(http.StatusOK, map[string]string{"content": content})
+	return ctx.JSON(http.StatusOK, map[string]any{"content": content, "extensions": extensions})
 }
 
 // The largest Sieve script this endpoint will read. Real filter sets are a few

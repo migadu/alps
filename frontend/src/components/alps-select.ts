@@ -9,6 +9,13 @@ export class AlpsSelect extends LitElement {
 	 * language picker's names are, so a screen reader reads it in that language
 	 * rather than the page's. Omitted, the option inherits the page's. */
 	@property({ type: Array }) options: Array<{label: string, value: string, disabled?: boolean, lang?: string}> = [];
+	/**
+	 * The select's accessible name, given to it as its aria-label.
+	 *
+	 * A `<label>` beside this element cannot name the select: the select is in
+	 * this shadow root. So a form passes the text of its label here as well.
+	 */
+	@property({ type: String }) label = '';
 
 	static styles = css`
 		:host {
@@ -80,7 +87,7 @@ export class AlpsSelect extends LitElement {
 	render() {
 		return html`
 			<div class="select-wrapper">
-				<select .value=${this.value} @change=${this.handleChange}>
+				<select .value=${this.value} aria-label=${this.label || nothing} @change=${this.handleChange}>
 					${this.options.map(opt => html`<option value=${opt.value} lang=${opt.lang ?? nothing} ?selected=${opt.value === this.value} ?disabled=${opt.disabled}>${opt.label}</option>`)}
 				</select>
 				<span class="caret">

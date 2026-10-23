@@ -194,3 +194,185 @@ describe('the sidebar during a search', () => {
     expect(await sidebar(page)).toEqual(['contacts.allContacts 3', 'contacts.favorites 0', 'Home 1', 'Work 2']);
   });
 });
+
+describe('a category renamed or removed during a search', () => {
+  // During a search the cards carrying the category are read from the whole
+  // book before any is written. The page moved first: a rename put the address
+  // and the open category on the new name, a removal went to All Contacts, and
+  // either rewrote the user's own list of categories in storage. When that
+  // read failed, the write threw, or every card refused the change, no card
+  // had changed. After a rename the page sat on a name no card carried, over
+  // an empty list; after a removal every card still carried a category the
+  // stored list had dropped.
+  const USER = 'ann@example.test';
+  const KEY = `alps_contacts_categories_${USER}`;
+  const ownCategories = () => JSON.parse(localStorage.getItem(KEY) || '[]');
+
+  /** What the toasts said: with this dictionary, their keys. */
+  let toasts: string[] = [];
+  const onToast = (e: Event) => toasts.push((e as CustomEvent).detail.message);
+
+  /** `category` open, kept in the user's own list too, and searched for "ann". */
+  async function searchedForAnnIn(category: string): Promise<Page> {
+    localStorage.setItem('alps_active_user', USER);
+    localStorage.setItem(KEY, JSON.stringify([category]));
+    history.replaceState(null, '', `#/contacts/${category}`);
+    const page = await mount<Page>('contacts-page', { i18nStore });
+    await settle(page);
+    await send(page, 'app-header', 'search-submit', { value: 'ann' });
+    expect(page.filterQuery).toBe('ann');
+    expect(page.selectedCategory).toBe(category);
+    listings = [];
+    return page;
+  }
+
+  /** Work open, carried by Ann and Bob, and searched for "ann". */
+  async function workSearchedForAnn(): Promise<Page> {
+    const page = await searchedForAnnIn('Work');
+    expect(shown(page), 'the search narrowed the list').toEqual([ANN.path]);
+    return page;
+  }
+
+  async function rename(page: Page, category = 'Work'): Promise<void> {
+    await send(page, 'alps-contacts-categories', 'rename-category', { category });
+    await send(page, 'ui-prompt', 'submit', { name: 'Clients' });
+  }
+
+  async function remove(page: Page, category = 'Work'): Promise<void> {
+    await send(page, 'alps-contacts-categories', 'delete-category', { category });
+    await send(page, 'ui-confirm', 'confirm');
+  }
+
+  /** Nothing on the page has moved off `category`. */
+  function stillOn(page: Page, category = 'Work') {
+    expect(window.location.hash).toBe(`#/contacts/${category}`);
+    expect(page.selectedCategory).toBe(category);
+    expect(page.addedCategories).toEqual([category]);
+    expect(ownCategories()).toEqual([category]);
+  }
+
+  const refuseEvery = () => vi.spyOn(contactsService, 'bulkUpdateCategories')
+    .mockImplementation(async (cards: any[]) => ({ total: cards.length, done: 0, failed: cards.length, uncertain: 0, etags: {} }));
+
+  const takeOne = () => vi.spyOn(contactsService, 'bulkUpdateCategories')
+    .mockImplementation(async (cards: any[]) => ({ total: cards.length, done: 1, failed: cards.length - 1, uncertain: 0, etags: {} }));
+
+  beforeEach(() => {
+    toasts = [];
+    window.addEventListener('show-toast', onToast);
+  });
+
+  afterEach(() => {
+    window.removeEventListener('show-toast', onToast);
+    localStorage.removeItem('alps_active_user');
+    localStorage.removeItem(KEY);
+  });
+
+  for (const [gesture, act, oneFailed, failed] of [
+    ['a rename', rename, 'contacts.categoryRenameOneFailed', 'contacts.categoryRenameFailed'],
+    ['a removal', remove, 'contacts.categoryDeleteOneFailed', 'contacts.categoryDeleteFailed'],
+  ] as const) {
+    it(`${gesture} that could not read the book leaves the category where it was`, async () => {
+      const page = await workSearchedForAnn();
+      const write = vi.spyOn(contactsService, 'bulkUpdateCategories');
+      bookFails = true;
+
+      await act(page);
+
+      expect(write).not.toHaveBeenCalled();
+      stillOn(page);
+      expect(listings, 'the whole book was asked for').toContain('');
+      expect(toasts).toEqual([oneFailed]);
+    });
+
+    it(`${gesture} that every card refused leaves the category where it was`, async () => {
+      const page = await workSearchedForAnn();
+      const write = refuseEvery();
+
+      await act(page);
+
+      expect(write).toHaveBeenCalledTimes(1);
+      stillOn(page);
+      expect(toasts).toEqual([failed]);
+    });
+
+    it(`${gesture} whose write threw leaves the category where it was`, async () => {
+      const page = await workSearchedForAnn();
+      const write = vi.spyOn(contactsService, 'bulkUpdateCategories').mockRejectedValue(new Error('offline'));
+
+      await act(page);
+
+      expect(write).toHaveBeenCalledTimes(1);
+      stillOn(page);
+      expect(toasts).toEqual([failed]);
+    });
+
+    it(`${gesture} of a category kept only on this page stays put when the book could not be read`, async () => {
+      // No card may carry it, and only the book can say so.
+      const page = await searchedForAnnIn('Later');
+      bookFails = true;
+
+      await act(page, 'Later');
+
+      stillOn(page, 'Later');
+      expect(listings, 'the whole book was asked for').toContain('');
+      expect(toasts).toEqual([oneFailed]);
+    });
+  }
+
+  it('a rename moves the page to the new name once a card carries it, though another refused', async () => {
+    const page = await workSearchedForAnn();
+    takeOne();
+
+    await rename(page);
+
+    expect(window.location.hash).toBe('#/contacts/Clients');
+    expect(page.selectedCategory).toBe('Clients');
+    expect(ownCategories()).toEqual(['Clients']);
+    // One of the two cards refused.
+    expect(toasts).toEqual(['contacts.categoryRenameFailed']);
+  });
+
+  it('a removal goes to All Contacts once a card has let go of it, though another refused', async () => {
+    const page = await workSearchedForAnn();
+    takeOne();
+
+    await remove(page);
+
+    expect(window.location.hash).toBe('#/contacts/all');
+    expect(page.selectedCategory).toBe('');
+    expect(page.addedCategories).toEqual([]);
+    expect(ownCategories()).toEqual([]);
+    expect(toasts).toEqual(['contacts.categoryDeleteFailed']);
+  });
+
+  it('a category kept only on this page is renamed once the book shows no card carries it', async () => {
+    const page = await searchedForAnnIn('Later');
+    const write = vi.spyOn(contactsService, 'bulkUpdateCategories');
+
+    await rename(page, 'Later');
+
+    expect(listings, 'the whole book was asked for').toContain('');
+    expect(write).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe('#/contacts/Clients');
+    expect(page.selectedCategory).toBe('Clients');
+    expect(page.addedCategories).toEqual(['Clients']);
+    expect(ownCategories()).toEqual(['Clients']);
+    expect(toasts).toEqual([]);
+  });
+
+  it('a category kept only on this page is removed once the book shows no card carries it', async () => {
+    const page = await searchedForAnnIn('Later');
+    const write = vi.spyOn(contactsService, 'bulkUpdateCategories');
+
+    await remove(page, 'Later');
+
+    expect(listings, 'the whole book was asked for').toContain('');
+    expect(write).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe('#/contacts/all');
+    expect(page.selectedCategory).toBe('');
+    expect(page.addedCategories).toEqual([]);
+    expect(ownCategories()).toEqual([]);
+    expect(toasts).toEqual([]);
+  });
+});

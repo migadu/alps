@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   cleanup, flush, installMatchMedia, installResizeObserver, installScrollIntoView, mount, record, shadowAll, update, waitFor,
 } from './helpers/dom';
+import { ComposeStore } from '../src/store/compose-store';
 import type { ComposerInstance } from '../src/store/compose-store';
 import { messageOperations } from '../src/services/message-operations';
 import { MessageCache } from '../src/utils/message-cache';
@@ -59,6 +60,18 @@ const inboxNamesake = (uid: string) => ({
 const discarded = (mailbox: string, uid: string) =>
   window.dispatchEvent(new CustomEvent('draft-discarded', { detail: { mailbox, uid } }));
 
+/**
+ * The real store, for a test about what changes while a save is out: it
+ * replaces a composer on each update, where a stub that edits it in place
+ * makes the save's snapshot and the window the same object.
+ */
+const stores: ComposeStore[] = [];
+function realStore(): ComposeStore {
+  const store = new ComposeStore();
+  stores.push(store);
+  return store;
+}
+
 beforeEach(() => {
   installResizeObserver();
   installScrollIntoView();
@@ -69,6 +82,13 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  for (const store of stores.splice(0)) {
+    const s = store as any;
+    window.removeEventListener('session-cleared', s.handleSessionCleared);
+    window.removeEventListener('user-logged-in', s.adoptSession);
+    window.removeEventListener('alps-active-user-changed', s.adoptSession);
+    if (s.saveTimeout !== null) window.clearTimeout(s.saveTimeout);
+  }
   MessageCache.clear();
   localStorage.clear();
   vi.unstubAllGlobals();
@@ -150,6 +170,65 @@ describe('the composer', () => {
     await el._saveDraft();
 
     expect(seen[0].detail).toMatchObject({ oldUid: '7', oldMailbox: 'Drafts', newUid: '8', mailbox: 'Drafts' });
+  });
+
+  it('describes the draft the save stored, not the window as it is when the save lands', async () => {
+    // The Drafts row is drawn from the event. Taken from the window after the
+    // save, it showed a subject typed, or an attachment picked, while the
+    // save was out, which the stored draft did not have, until a later save
+    // or a reload. The recipients come from the same snapshot.
+    const land = heldSave();
+    const seen = record<CustomEvent>(window, 'draft-autosaved');
+    const composeStore = realStore();
+    composeStore.openComposer({
+      to: ['ada@example.com'], subject: 'Engines', text: 'Notes', format: 'text', draftUid: '7', draftMailbox: 'Drafts',
+    });
+    const [instance] = composeStore.getState().activeComposers;
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore, i18nStore });
+
+    const saving = el._saveDraft();
+    composeStore.updateComposer(instance.id, {
+      subject: 'Looms',
+      to: ['ada@example.com', 'mary@example.com'],
+      cc: ['charles@example.com'],
+      bcc: ['babbage@example.com'],
+      attachments: [{ _tempId: 't1', filename: 'ledger.txt', size: 12, uploading: true, progress: 0 }],
+    });
+    land({ uid: '8', mailbox: 'Drafts' });
+    await saving;
+
+    expect(seen[0].detail).toMatchObject({
+      newUid: '8', subject: 'Engines', to: ['ada@example.com'], cc: [], bcc: [], hasAttachments: false,
+    });
+    // What changed meanwhile is still to be saved, and that save brings the
+    // row up to date.
+    expect(composeStore.getComposer(instance.id)).toMatchObject({ draftUid: '8', dirty: true });
+  });
+
+  it('marks the row as having attachments only for a file the save carried', async () => {
+    // An upload still in flight is not posted, and the quote's own images
+    // are not files, so the stored draft has neither as an attachment.
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const seen = record<CustomEvent>(window, 'draft-autosaved');
+    const composeStore = realStore();
+    composeStore.openComposer({
+      to: ['ada@example.com'], subject: ' Engines ', text: 'Notes', format: 'html', draftUid: '7', draftMailbox: 'Drafts',
+      attachments: [
+        { _tempId: 't1', filename: 'ledger.txt', size: 12, uploading: true, progress: 40 },
+        { name: 'chart.png', size: 9, type: 'image/png', partPath: '1.2', inline: true },
+      ],
+    });
+    const [instance] = composeStore.getState().activeComposers;
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore, i18nStore });
+
+    await el._saveDraft();
+    // The subject as it was posted, trimmed.
+    expect(seen[0].detail).toMatchObject({ subject: 'Engines', hasAttachments: false });
+
+    const [, chart] = composeStore.getComposer(instance.id)!.attachments!;
+    composeStore.updateComposer(instance.id, { attachments: [{ filename: 'ledger.txt', size: 12, uuid: 'u1' }, chart] });
+    await el._saveDraft();
+    expect(seen[1].detail).toMatchObject({ hasAttachments: true });
   });
 
   /** A store that keeps what it is told, as the real one does. */
