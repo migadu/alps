@@ -23,6 +23,17 @@ import (
 // in-memory IMAP account holding messages in INBOX.
 func newIMAPTestServer(t *testing.T, messages ...string) *testServer {
 	t.Helper()
+	return newIMAPTestServerWith(t, imap.CapSet{imap.CapIMAP4rev1: {}}, nil, messages...)
+}
+
+// newIMAPTestServerWith is newIMAPTestServer for an IMAP server that
+// advertises caps, and whose sessions are passed through wrap unless it is nil.
+// A wrapper that embeds imapserver.Session offers only that interface's
+// methods and its own: the session's optional interfaces (METADATA, MOVE,
+// NAMESPACE and the like) are hidden unless the wrapper passes them on, so caps
+// should not advertise an extension the wrapper does not implement.
+func newIMAPTestServerWith(t *testing.T, caps imap.CapSet, wrap func(imapserver.Session) imapserver.Session, messages ...string) *testServer {
+	t.Helper()
 	ctx := context.Background()
 	user := imapmemserver.NewUser(testUser, testPassword)
 	if err := user.Create(ctx, "INBOX", nil); err != nil {
@@ -37,9 +48,12 @@ func newIMAPTestServer(t *testing.T, messages ...string) *testServer {
 	mem.AddUser(user)
 	imapSrv := imapserver.New(&imapserver.Options{
 		NewSession: func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+			if wrap != nil {
+				return wrap(mem.NewSession()), nil, nil
+			}
 			return mem.NewSession(), nil, nil
 		},
-		Caps:         imap.CapSet{imap.CapIMAP4rev1: {}},
+		Caps:         caps,
 		InsecureAuth: true,
 	})
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

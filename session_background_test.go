@@ -65,6 +65,8 @@ func (c *mailConnections) counts() (dials, opened, open, mostOpen int) {
 func newBackgroundSession(t *testing.T, c *mailConnections) *Session {
 	t.Helper()
 	sm := newSessionManager(c.dial, nil, &NilLogger{}, 0, false, nil, 30*time.Minute, time.Hour, 0, 0, 0, 0, 0)
+	// Exercise the path after the foreground grace interval has elapsed.
+	sm.abandonedWait = time.Millisecond
 	sm.backgroundConnections = true
 	s := &Session{manager: sm, closed: make(chan struct{}), username: "u", password: "p"}
 	if err := s.DoMail(func(provider.MailProvider) error { return nil }); err != nil {

@@ -157,6 +157,7 @@ export const da: TranslationDictionary = {
       begin_failed: 'Kunne ikke starte godkendelse.',
       invalid_options: 'Ugyldige godkendelsesindstillinger modtaget.',
       verification_failed: 'Bekræftelse mislykkedes. Prøv igen.',
+      cancelled: 'Sikkerhedsnøglen blev ikke brugt. Klik på "Bekræft identitet" for at prøve igen.',
       unavailable: 'Serveren kunne ikke kontrollere din sikkerhedsnøgle lige nu. Prøv igen om et øjeblik.',
       register_failed: 'Der opstod en fejl under registrering af din sikkerhedsnøgle. Prøv igen.',
       remove_failed: 'Kunne ikke fjerne sikkerhedsnøglen.',
@@ -422,7 +423,9 @@ export const da: TranslationDictionary = {
     verifiedSender: 'Bekræftet afsender',
     unverifiedSender: 'Ubekræftet afsender',
     senderUnverifiedWarning: 'Din mailserver kunne ikke bekræfte afsenderen. Beskeden er muligvis ikke fra den, den udgiver sig for at være, så vær forsigtig med links og vedhæftede filer.',
-    clickToExpand: 'Klik for at udvide beskedindholdet'
+    clickToExpand: 'Klik for at udvide beskedindholdet',
+    loadError: 'Beskeden kunne ikke indlæses.',
+    loadErrorRetry: 'Prøv igen'
   },
   address: {
     directionalControl: 'skjulte retningstegn',

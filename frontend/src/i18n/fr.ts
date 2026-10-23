@@ -375,7 +375,9 @@ export const fr = {
     verifiedSender: 'Expéditeur vérifié',
     unverifiedSender: 'Expéditeur non vérifié',
     senderUnverifiedWarning: 'Votre serveur de messagerie n\'a pas pu vérifier cet expéditeur. Le message ne vient peut-être pas de qui il prétend être, soyez donc prudent avec ses liens et ses pièces jointes.',
-    clickToExpand: 'Cliquer pour développer le contenu du message'
+    clickToExpand: 'Cliquer pour développer le contenu du message',
+    loadError: 'Impossible de charger ce message.',
+    loadErrorRetry: 'Réessayer'
   },
   address: {
     directionalControl: 'marques de direction invisibles',
@@ -570,6 +572,7 @@ export const fr = {
       begin_failed: 'Échec de l\'initiation de l\'authentification.',
       invalid_options: 'Options d\'authentification invalides reçues.',
       verification_failed: 'La vérification a échoué. Veuillez réessayer.',
+      cancelled: 'La clé de sécurité n\'a pas été utilisée. Cliquez sur "Vérifier l\'identité" pour réessayer.',
       unavailable: "Le serveur n'a pas pu vérifier votre clé de sécurité pour le moment. Veuillez réessayer dans un instant.",
       register_failed: 'Une erreur s\'est produite lors de l\'enregistrement de votre clé de sécurité. Veuillez réessayer.',
       remove_failed: 'Échec de la suppression de la clé de sécurité.',

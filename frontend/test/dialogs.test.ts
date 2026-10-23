@@ -133,7 +133,10 @@ describe('ui-prompt', () => {
 
   it('renders a labelled input per field, seeded from its value', async () => {
     const el = await mount('ui-prompt', { fields: [...folderField(), { id: 'parent', label: 'Parent' }] });
-    expect(shadowAll(el, 'label').map((l) => [l.getAttribute('for'), l.textContent])).toEqual([['name', 'Folder name'], ['parent', 'Parent']]);
+    // Each field carries its label as its name too: the label's `for` could
+    // not reach the input inside alps-input (field-labels.test.ts).
+    expect(shadowAll(el, 'label').map((l) => l.textContent)).toEqual(['Folder name', 'Parent']);
+    expect(shadowAll<HTMLElement & { label: string }>(el, 'alps-input').map((f) => f.label)).toEqual(['Folder name', 'Parent']);
     expect(inputOf(el, 'name').value).toBe('Work');
     expect(inputOf(el, 'parent').value).toBe('');
   });

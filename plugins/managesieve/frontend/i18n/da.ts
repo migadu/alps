@@ -1,7 +1,8 @@
 export default {
   "settings": {
     "categories": {
-      "filters": "Filtre"
+      "filters": "Filtre",
+      "autoReply": "Autosvar"
     }
   },
   "managesieve": {
@@ -17,7 +18,8 @@ export default {
       "saved": "Regler gemt og aktiveret.",
       "deactivated": "Regler deaktiveret.",
       "valid": "Scriptet er gyldigt!",
-      "networkError": "Der opstod en netværksfejl."
+      "networkError": "Der opstod en netværksfejl.",
+      "autoReplyOn": "Autosvaret er slået til. Slå det fra under Autosvar, før filtrene sender deres eget."
     },
     "visual": {
       "newRule": "Ny regel",
@@ -57,6 +59,42 @@ export default {
     "raw": {
       "validate": "Validér",
       "save": "Gem"
+    },
+    "autoReply": {
+      "title": "Autosvar",
+      "description": "Svar automatisk dem, der skriver til dig, mens du er væk.",
+      "enable": "Send autosvar",
+      "stateActive": "Afsendere får et svar nu.",
+      "stateActiveUntil": "Afsendere får et svar indtil {date}.",
+      "stateScheduled": "Starter den {date}.",
+      "stateFinished": "Slutdatoen er passeret, så ingen får svar.",
+      "subject": "Emne",
+      "subjectDesc": "Valgfrit. Er det tomt, vælger mailserveren et.",
+      "subjectPlaceholder": "Ikke på kontoret",
+      "message": "Besked",
+      "messageDesc": "Det, som alle, der skriver til dig, modtager.",
+      "messagePlaceholder": "Jeg er væk indtil den 15. og svarer, når jeg er tilbage.",
+      "dates": "Datoer",
+      "datesDesc": "Valgfrit. Lad en dato stå tom for at lade den ende være åben. En dag går fra midnat til midnat i din tidszone.",
+      "startDate": "Startdato",
+      "endDate": "Slutdato",
+      "interval": "Svar samme afsender igen efter",
+      "intervalDesc": "Den, der skriver flere gange i det tidsrum, får ét svar. Mailinglister og automatiske beskeder får aldrig et.",
+      "days": {
+        "one": "{count} dag",
+        "other": "{count} dage"
+      },
+      "save": "Gem",
+      "saved": "Autosvar gemt.",
+      "turnedOff": "Autosvar slået fra.",
+      "unsupported": "Denne mailserver tilbyder ikke automatiske svar.",
+      "ownVacation": "Dine filtre sender allerede deres eget automatiske svar. Fjern det i den rå editor under Filtre for at oprette et her.",
+      "errors": {
+        "emptyMessage": "Skriv den besked, afsendere modtager, eller slå autosvaret fra.",
+        "invalidWindow": "Startdatoen kan ikke ligge efter slutdatoen.",
+        "loadError": "Autosvaret kunne ikke indlæses.",
+        "saveError": "Autosvaret kunne ikke gemmes."
+      }
     }
   }
 };
