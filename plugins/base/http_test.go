@@ -78,12 +78,22 @@ func newTestServerWithSMTP(t *testing.T, smtpServer string) *testServer {
 // the server logs.
 func newTestServerWithLogger(t *testing.T, smtpServer string, logger alps.Logger) *testServer {
 	t.Helper()
-	return newTestServerWrapping(t, smtpServer, logger, nil)
+	return newTestServerWithOptionsWrapping(t, smtpServer, logger, nil, nil)
 }
 
-// newTestServerWrapping is newTestServerWithLogger whose every connection to
-// the maildir is passed through wrap, unless it is nil.
+// newTestServerWithOptions adjusts server options, including attachment budgets.
+func newTestServerWithOptions(t *testing.T, smtpServer string, logger alps.Logger, adjust func(*alps.Options)) *testServer {
+	t.Helper()
+	return newTestServerWithOptionsWrapping(t, smtpServer, logger, adjust, nil)
+}
+
+// newTestServerWrapping wraps each connection to the maildir provider.
 func newTestServerWrapping(t *testing.T, smtpServer string, logger alps.Logger, wrap func(provider.MailProvider) provider.MailProvider) *testServer {
+	t.Helper()
+	return newTestServerWithOptionsWrapping(t, smtpServer, logger, nil, wrap)
+}
+
+func newTestServerWithOptionsWrapping(t *testing.T, smtpServer string, logger alps.Logger, adjust func(*alps.Options), wrap func(provider.MailProvider) provider.MailProvider) *testServer {
 	t.Helper()
 	base := t.TempDir()
 	passwd := filepath.Join(base, "passwd")
@@ -125,6 +135,9 @@ func newTestServerWrapping(t *testing.T, smtpServer string, logger alps.Logger, 
 		SMTP:         alps.SMTPOptions{Server: smtpServer},
 		LoginKey:     &key,
 		CacheEnabled: true,
+	}
+	if adjust != nil {
+		adjust(opts)
 	}
 
 	srv, err := alps.New(logger, opts)
