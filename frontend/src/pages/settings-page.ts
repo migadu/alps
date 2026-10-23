@@ -199,6 +199,9 @@ export class SettingsPage extends LitElement {
     this.settingsStore.addEventListener('change', this._handleSettingsChange);
     this.i18nStore?.addEventListener('change', this._handleI18nChange);
     window.addEventListener('resize', this._handleResize);
+    // The sidebar names each plugin's settings tab, and the page is often
+    // drawn before /session says which plugins are on.
+    window.addEventListener('plugins-updated', this._handlePluginsUpdated);
     this._syncState();
 
     try {
@@ -217,7 +220,12 @@ export class SettingsPage extends LitElement {
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
     window.removeEventListener('resize', this._handleResize);
+    window.removeEventListener('plugins-updated', this._handlePluginsUpdated);
   }
+
+  private _handlePluginsUpdated = () => {
+    this.requestUpdate();
+  };
 
   private _handleSettingsChange = () => {
     this._syncState();

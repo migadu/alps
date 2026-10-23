@@ -74,6 +74,15 @@ export class Router implements ReactiveController {
     window.location.hash = path;
   }
 
+  /**
+   * Replaces the route table. The shell builds it before /session says which
+   * plugins are on, and builds it again when that answer comes: a route left
+   * in the table is a page the address bar still reaches.
+   */
+  setRoutes(routes: Record<string, () => unknown>) {
+    this.routes = routes;
+  }
+
   render() {
     // Exact match
     if (this.routes[this.currentPath]) {

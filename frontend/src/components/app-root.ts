@@ -158,6 +158,7 @@ export class AppRoot extends LitElement {
 
     window.addEventListener('auth-error', this._handleAuthError);
     window.addEventListener('session-cleared', this._handleSessionCleared);
+    window.addEventListener('user-logged-in', this._handleUserLoggedIn);
     window.addEventListener('show-toast', this._handleShowToast as EventListener);
     window.addEventListener('beforeunload', this._handleBeforeUnload);
     window.addEventListener('online', this._handleOnlineEvent);
@@ -189,8 +190,29 @@ export class AppRoot extends LitElement {
     this.attachmentPreview = { attachments, mailbox, messageUid, index: index ?? 0 };
   };
 
+  /**
+   * The route table is built again, without the routes of a plugin the server
+   * has turned off, and the page made for such a route is dropped. The router
+   * was built before /session answered, with every plugin's routes in it, and
+   * kept them: `#/calendar` typed into the address bar mounted the calendar of
+   * an account that has none.
+   */
   private _handlePluginsUpdated = () => {
+    const routes = this.getRoutes();
+    for (const path of [...this.pluginPages.keys()]) {
+      if (!(path in routes)) this.pluginPages.delete(path);
+    }
+    this.router.setRoutes(routes);
     this.requestUpdate();
+  };
+
+  /**
+   * A sign-in on the login page does not reload the page, so the plugins the
+   * server has on for this account are asked for then, as on a load that is
+   * already signed in.
+   */
+  private _handleUserLoggedIn = () => {
+    this._fetchSessionData();
   };
 
   private async _fetchSessionData() {
@@ -213,6 +235,7 @@ export class AppRoot extends LitElement {
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     window.removeEventListener('auth-error', this._handleAuthError);
     window.removeEventListener('session-cleared', this._handleSessionCleared);
+    window.removeEventListener('user-logged-in', this._handleUserLoggedIn);
     window.removeEventListener('show-toast', this._handleShowToast as EventListener);
     window.removeEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
     window.removeEventListener('beforeunload', this._handleBeforeUnload);
@@ -510,6 +533,9 @@ export class AppRoot extends LitElement {
   private _handleSessionCleared = () => {
     this.mailboxPage = null;
     this.pluginPages.clear();
+    // The next account to sign in may have other plugins on; until its own
+    // /session answers, every plugin counts as on, as on a fresh load.
+    registry.setEnabledPlugins(null);
   };
 
   private getRoutes() {
