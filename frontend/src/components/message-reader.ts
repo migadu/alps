@@ -752,6 +752,12 @@ export class MessageReader extends LitElement {
       color: var(--text-muted);
     }
 
+    /* Decoration, drawn as alps-icon-btn draws its icon, without the button. */
+    .selection-icon {
+      display: flex;
+      padding: 6px;
+    }
+
     .bulk-spinner-container {
       height: 32px;
       display: flex;
@@ -2406,7 +2412,7 @@ export class MessageReader extends LitElement {
                 <alps-loader></alps-loader>
               </div>
             ` : html`
-              <alps-icon-btn icon="envelopeSimple" style="pointer-events: none;"></alps-icon-btn>
+              <div class="selection-icon">${renderIcon('envelopeSimple')}</div>
             `}
             <!-- One sentence with the number inside it. The number followed by
                  a bare "messages selected" read "1 messages selected", and a
