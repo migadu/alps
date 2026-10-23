@@ -284,6 +284,67 @@ it.each([false, true])('waits for released metadata before teardown restores fet
   expect(pendingReads.size).toBe(0);
 });
 
+/**
+ * The teardown above, pinned from outside: the test before calls
+ * settleReaderReads() itself, so it would still pass if afterEach stopped
+ * calling it.
+ *
+ * The first test leaves a member's metadata decoding past its own end, with
+ * nothing of its own to wait for it; the second then waits out whatever the
+ * first left running, and finds that none of it asked this test's stub for
+ * anything. Without afterEach's settleReaderReads() the decode finishes in the
+ * second test, and its /raw read (with the members queued after it) lands in
+ * that test's recorder, which is how #377 counted three background reads of a
+ * member instead of two.
+ *
+ * The two run in order, as a file's tests do: the second, run alone (with -t),
+ * finds nothing left and passes either way.
+ */
+describe('a read still running when its test ends', () => {
+  /** The reads the first test left running, kept for the second to wait out. */
+  let leftRunning: Set<Promise<unknown>> | null = null;
+
+  it('leaves a member decoding past the end of its test', async () => {
+    const fetch = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    let decoding = false;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const response = await fetch(url, init);
+      if (String(url).includes('/messages/1?view=')) {
+        const parse = response.json.bind(response);
+        // Decoded a moment after this test has returned: past its end, and
+        // before any slow machine would have reached the next test's checks.
+        response.json = () => {
+          decoding = true;
+          return new Promise((resolve, reject) => setTimeout(() => { void parse().then(resolve, reject); }, 20));
+        };
+      }
+      return response;
+    }));
+    await openConversation();
+    await waitFor(() => release.has('10'), 'the open message');
+    release.get('10')!();
+    await waitFor(() => release.has('1'), 'the first member');
+    release.get('1')!();
+    await waitFor(() => decoding, 'the member to be decoding');
+
+    leftRunning = pendingReads;
+    expect(leftRunning.size).toBeGreaterThan(0);
+  });
+
+  it("lets nothing it left running reach the next test's stub", async () => {
+    // Waited out as they stand. Not until the set is empty: a read finishing
+    // now takes itself out of THIS test's set, not the first one's.
+    if (leftRunning) await Promise.allSettled([...leftRunning]);
+    await flush();
+
+    // Account-generation guards may cancel follow-on fetches even when
+    // teardown forgot to wait. The first test's own tracked reads must also
+    // have finished before beforeEach replaced the fixture's pending set.
+    expect(leftRunning?.size ?? 0).toBe(0);
+    expect(asked).toEqual([]);
+  });
+});
+
 describe('an answer that lands after the reader has gone', () => {
   /**
    * The reads here are held open and released at teardown, which is what a
