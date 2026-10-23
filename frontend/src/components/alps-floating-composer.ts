@@ -1757,6 +1757,7 @@ export class AlpsFloatingComposer extends LitElement {
               .text=${this.instance.text || ''}
               .htmlText=${this.instance.html || ''}
               .format=${this.instance.format || 'html'}
+              .initialText=${this.instance.initialText || ''}
               .quoteSource=${this.instance.quoteSource}
               @text-changed=${(e: CustomEvent) => this.composeStore.updateComposer(
                 this.instance.id,

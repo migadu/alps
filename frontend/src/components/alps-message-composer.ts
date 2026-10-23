@@ -645,6 +645,18 @@ export class AlpsMessageComposer extends LitElement {
   @property({ type: String }) text = '';
   @property({ type: String }) htmlText = '';
   @property({ type: String }) format: 'html' | 'text' = 'text';
+  /** The text the message opened with, as the compose window keeps it. */
+  @property({ attribute: false }) initialText = '';
+
+  /**
+   * The plain text the editor's content stands for, while the textarea holds
+   * the message: what it held when the textarea took over, and so what the
+   * switch back to HTML compares the textarea with. A reply's text and its
+   * editor never read alike, its quote `> ` lines in one and a block in the
+   * other, so the editor's own text could not tell whether anything had been
+   * typed. Null when that is not known.
+   */
+  private syncedText: string | null = null;
 
   @state() private attachments: Attachment[] = [];
 
@@ -831,7 +843,12 @@ export class AlpsMessageComposer extends LitElement {
     if (changedProperties.has('format')) {
       const oldFormat = changedProperties.get('format');
       if (oldFormat === 'text' && this.format === 'html') {
-        if (this.editor && this.editor.getText() !== this.text) {
+        const synced = this.syncedText;
+        this.syncedText = null;
+        const untouched = synced !== null && this.text === synced;
+        if (this.editor && !untouched && this._rewriteAboveQuote(synced)) {
+          // Rewritten above the quote, which stays one block: see _rewriteAboveQuote.
+        } else if (this.editor && !untouched && this.editor.getText() !== this.text) {
           this.editor.commands.setContent(contentFromHtml(this.editor.schema, paragraphsOf(this.text), true));
           this.htmlText = serializeEditorHtml(this.editor);
         } else if (this.editor && !this.htmlText) {
@@ -850,9 +867,52 @@ export class AlpsMessageComposer extends LitElement {
       } else if (oldFormat === 'html' && this.format === 'text') {
         if (this.editor) {
           this.text = this.editor.getText();
+          this.syncedText = this.text;
+          // Announced, as the switch the other way is: the window saves and
+          // sends the text it last heard, which was the opening text of a
+          // reply, its quote in `> ` lines, until the user typed.
+          this.dispatchEvent(new CustomEvent('text-changed', {
+            detail: { text: this.text, html: this.htmlText },
+            bubbles: true,
+            composed: true
+          }));
         }
       }
     }
+  }
+
+  /**
+   * Makes HTML of the text above a quote the editor holds as one block, and
+   * keeps the block, when the text from the quote's first line on is still
+   * the text the editor stood for: what was typed in plain text, a reply
+   * written above its quote, goes in as the text has it, and the quote, with
+   * its tables, fonts and images, is not made into `> ` paragraphs. False,
+   * changing nothing, when the editor holds no such block or its text was
+   * changed.
+   */
+  private _rewriteAboveQuote(synced: string | null): boolean {
+    const editor = this.editor;
+    if (!editor || !synced) return false;
+    let at = -1;
+    let quote: ProseMirrorNode | null = null;
+    editor.state.doc.forEach((node, offset) => {
+      if (!quote && node.type.name === QuotedMessage.name) {
+        quote = node;
+        at = offset;
+      }
+    });
+    if (!quote) return false;
+    const header = htmlToPlainText((quote as ProseMirrorNode).attrs.html).split('\n').map(line => line.trim()).find(Boolean);
+    const from = header ? synced.indexOf(header) : -1;
+    if (from < 0) return false;
+    const quoted = synced.slice(from);
+    if (!this.text.endsWith(quoted)) return false;
+    const above = this.text.slice(0, this.text.length - quoted.length);
+    editor.chain()
+      .deleteRange({ from: 0, to: at })
+      .insertContentAt(0, contentFromHtml(editor.schema, paragraphsOf(above), true).content ?? [])
+      .run();
+    return true;
   }
 
   private initEditor() {
@@ -889,8 +949,11 @@ export class AlpsMessageComposer extends LitElement {
           },
         }),
     ];
-    const fromText = !this.htmlText && this.format === 'html';
-    const initial = this.htmlText || (fromText ? paragraphsOf(this.text) : this.text);
+    // With no HTML part the editor is made of the text, in either format. In
+    // plain text it was made of the text read as markup, and the switch to
+    // HTML showed that: `a<b` gone, `<b>` turned bold.
+    const fromText = !this.htmlText;
+    const initial = this.htmlText || paragraphsOf(this.text);
     this.editor = new Editor({
       element: this.editorContainerRef.value,
       extensions,
@@ -936,7 +999,12 @@ export class AlpsMessageComposer extends LitElement {
     // No update event: in plaintext mode one would overwrite the textarea's
     // text with the editor's, as `updated` says of the same call.
     this.editor.setEditable(!this.isSending, false);
-    if (fromText && this.text.trim()) {
+    // In plain text the textarea holds the message, and the editor stands for
+    // its opening text: the text as it opened, or the text the editor was
+    // made of. A message restored with text typed in an earlier session, its
+    // HTML older than that, is neither, and is not known.
+    if (this.format !== 'html' && (fromText || this.text === this.initialText)) this.syncedText = this.text;
+    if (fromText && this.format === 'html' && this.text.trim()) {
       // A draft saved as plain text opens here with no HTML part, and the
       // editor that read its text announces nothing until the first edit. So
       // the HTML part is made and announced now, as `updated` does on the
