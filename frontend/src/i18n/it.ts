@@ -215,6 +215,7 @@ export const it = {
     noMessages: 'Nessun messaggio',
     loadError: 'Impossibile caricare questa cartella.',
     loadErrorRetry: 'Riprova',
+    searchLimited: 'Il server di posta sta limitando le ricerche in questo momento. Riprova tra un momento.',
     loading: 'Caricamento...',
     unknownSender: 'Mittente sconosciuto',
     unknown: 'Sconosciuto',

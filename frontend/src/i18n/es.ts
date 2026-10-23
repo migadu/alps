@@ -215,6 +215,7 @@ export const es = {
     noMessages: 'No hay mensajes',
     loadError: 'No se pudo cargar esta carpeta.',
     loadErrorRetry: 'Reintentar',
+    searchLimited: 'El servidor de correo está limitando las búsquedas en este momento. Vuelve a intentarlo en un momento.',
     loading: 'Cargando...',
     unknownSender: 'Remitente desconocido',
     unknown: 'Desconocido',

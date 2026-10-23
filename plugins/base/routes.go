@@ -3,10 +3,13 @@ package alpsbase
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime"
 	"net/http"
 	"net/url"
@@ -162,11 +165,10 @@ func invalidateMailboxCache(ctx *alps.Context, mailboxNames ...string) {
 }
 
 // rereadMailboxCounts reads the counts of mailboxes a write changed, with a
-// STATUS each, and puts them where the next listing reads them: the cached
-// counts, and the folder list. A folder the cached list does not hold (a
-// write can create one, as an APPEND to Sent may) drops the list, and so does
-// a STATUS that fails, as every write's did before: the list is then read
-// again, with every folder's counts.
+// STATUS each, sent together, and puts them where the next listing reads
+// them: the cached counts, and the folder list (patchListedCounts). A STATUS
+// that fails drops the list, as every write's did before: the list is then
+// read again, with every folder's counts.
 func rereadMailboxCounts(ctx *alps.Context, names []string) {
 	cache := ctx.Session.Cache()
 	dropAll := func() {
@@ -182,15 +184,17 @@ func rereadMailboxCounts(ctx *alps.Context, names []string) {
 		dropAll()
 		return
 	}
-	statuses := make([]*MailboxStatus, len(names))
+	var statuses []*MailboxStatus
 	err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
-		for i, name := range names {
-			status, err := getMailboxStatusWithProvider(p, name)
+		// Sent together, so that the write waits for one round trip rather
+		// than one per folder, as a listing's are (getBaseMailboxData).
+		got, errs := getMailboxStatusesWithProvider(p, names)
+		for _, err := range errs {
 			if err != nil {
 				return err
 			}
-			statuses[i] = status
 		}
+		statuses = got
 		return nil
 	})
 	if err != nil {
@@ -202,32 +206,34 @@ func rereadMailboxCounts(ctx *alps.Context, names []string) {
 	for i, name := range names {
 		cache.Set("status:"+name, statuses[i])
 	}
+	patchListedCounts(cache, names, statuses)
+}
 
-	cached, ok := cache.Get("mailboxes")
-	if !ok {
-		return
-	}
-	mailboxes, ok := cached.([]MailboxInfo)
-	if !ok {
-		cache.Delete("mailboxes")
-		return
-	}
-	// A copy, not the list in place: another request may be reading it.
-	updated := slices.Clone(mailboxes)
-	for i, name := range names {
-		j := slices.IndexFunc(updated, func(mbox MailboxInfo) bool { return mbox.Name() == name })
-		if j < 0 {
-			cache.Delete("mailboxes")
-			return
+// patchListedCounts lays the counts read of the named folders over the folder
+// list the session holds. A folder the list does not hold (a write can create
+// one, as an APPEND to Sent may) drops the list, which is then read again,
+// with every folder's counts.
+func patchListedCounts(cache *alps.Cache, names []string, statuses []*MailboxStatus) {
+	// Transform the current live list atomically. Separate Get/Replace calls
+	// let concurrent checks of different folders erase one another's counts.
+	// Update also keeps the original expiry and never recreates a dropped list.
+	cache.Update("mailboxes", func(cached any) any {
+		mailboxes, ok := cached.([]MailboxInfo)
+		if !ok {
+			return nil
 		}
-		updated[j].Total = int(*statuses[i].NumMessages)
-		updated[j].Unseen = int(*statuses[i].NumUnseen)
-	}
-	// With the expiry the list was read with. Set would renew it, and a list
-	// patched on every write would never be read again: the counts of the
-	// folders no write touched, and whose own cached counts have gone, would
-	// be as old as the session.
-	cache.Replace("mailboxes", updated)
+		// A copy, not the list in place: another request may be reading it.
+		updated := slices.Clone(mailboxes)
+		for i, name := range names {
+			j := slices.IndexFunc(updated, func(mbox MailboxInfo) bool { return mbox.Name() == name })
+			if j < 0 || statuses[i] == nil || statuses[i].NumMessages == nil || statuses[i].NumUnseen == nil {
+				return nil
+			}
+			updated[j].Total = int(*statuses[i].NumMessages)
+			updated[j].Unseen = int(*statuses[i].NumUnseen)
+		}
+		return updated
+	})
 }
 
 // forgetMessages drops what the session holds of messages that have left
@@ -1101,9 +1107,13 @@ func getBaseMailboxData(ctx *alps.Context) (*BaseMailboxData, error) {
 	}
 	statuses["INBOX"] = inbox
 
+	// The answer's own copy of the list, which the session's cache holds,
+	// whether it was found there or read now and put there. Marked in place,
+	// the list carried this request's active folder and counts into the next
+	// answer read from it, and two requests of the session wrote it at once.
+	mailboxes = slices.Clone(mailboxes)
 	for i := range mailboxes {
 		// Populate unseen & active states
-		// Always reset Active first (important when using cached mailboxes)
 		mailboxes[i].Active = false
 		if active != nil && mailboxes[i].Name() == active.Mailbox {
 			mailboxes[i].Active = true
@@ -1170,12 +1180,18 @@ type MailboxStatusResponse struct {
 // up changes with a NOOP, rather than the status cache, and records the answer
 // in the cache. When the counts differ from the ones the session held, it
 // also drops the folder's cached pages and conversations, so the next full
-// page fetch returns up-to-date data, and the folder list, so that the
-// listing after it reads the sidebar's counts again: mail that arrives here
-// may have been filed into folders no check looks at.
+// page fetch returns up-to-date data, and lays the new counts over the folder
+// list (patchListedCounts).
 //
-// The other folders' counts are kept, where that listing does not read them
-// again (see getBaseMailboxData). Dropped with the list, as they were, each
+// The list was dropped instead, so that the listing after it read every
+// folder's counts again: mail that arrives here may have been filed into
+// folders no check looks at. That cost a LIST-STATUS, or a STATUS per
+// subscribed folder, for every arrival. A list patched keeps the expiry it was
+// read with, so those folders' counts are read again within one cache
+// lifetime of the last read all the same, which is as soon as a poll that
+// sees no change reads the listing again past the cache.
+//
+// The other folders' counts are kept too. Dropped, as they were once, each
 // other folder's next check found no earlier counts to compare with, and read
 // as a change.
 func handleMailboxStatus(ctx *alps.Context) error {
@@ -1183,35 +1199,84 @@ func handleMailboxStatus(ctx *alps.Context) error {
 	if err != nil {
 		return alps.NewHTTPError(http.StatusBadRequest, err)
 	}
+	// The folders `with` names are read in the same request, the poll's Inbox
+	// beside the folder on screen, and the folders other tabs show: a request
+	// each waited its turn on the connection, one after another.
+	names := []string{mboxName}
+	for _, name := range ctx.Request.URL.Query()["with"] {
+		if name != "" && !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
 
 	cache := ctx.Session.Cache()
-	statusKey := "status:" + mboxName
-
-	var prev, counts mailboxCounts
-	var heldValidities []uint32
+	prev := make([]mailboxCounts, len(names))
+	held := make([][]uint32, len(names))
+	var statuses []*MailboxStatus
+	var errs []error
 	err = ctx.Session.DoBackgroundMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 		// The counts held before are read under the lock, beside the STATUS:
 		// a listing that ran while this request waited for it may have read
 		// newer ones. They stay in the cache until the answer replaces them,
 		// so that a listing meanwhile does not find them missing and read
 		// every folder's counts again.
-		if cached, ok := cache.Get(statusKey); ok {
-			prev = countsOf(cached.(*MailboxStatus))
+		for i, name := range names {
+			if cached, ok := cache.Get("status:" + name); ok {
+				prev[i] = countsOf(cached.(*MailboxStatus))
+			}
+			held[i] = heldUIDValidities(cache, name)
 		}
-		heldValidities = heldUIDValidities(cache, mboxName)
-		s, err := p.GetMailboxStatus(mboxName)
-		if err != nil {
-			return err
+		statuses, errs = getMailboxStatusesWithProvider(p, names)
+		if errs[0] != nil {
+			return errs[0]
 		}
-		status := providerStatusToMailboxStatus(s)
-		counts = countsOf(status)
-		cache.Set(statusKey, status)
+		for i, name := range names {
+			if errs[i] == nil {
+				cache.Set("status:"+name, statuses[i])
+			}
+		}
 		return nil
 	})
 	if err != nil {
 		return err
 	}
 
+	answer := func(counts mailboxCounts) MailboxStatusResponse {
+		return MailboxStatusResponse{
+			Total:       int(counts.Messages),
+			Unseen:      int(counts.Unseen),
+			UIDNext:     counts.UIDNext,
+			UIDValidity: counts.UIDValidity,
+		}
+	}
+	counts := countsOf(statuses[0])
+	noteMailboxStatus(ctx, mboxName, prev[0], statuses[0], held[0])
+	if len(names) == 1 {
+		return ctx.JSON(http.StatusOK, answer(counts))
+	}
+	// A folder `with` names that could not be read, one deleted say, is left
+	// out, and the asker reads it as a check that said nothing.
+	with := make(map[string]MailboxStatusResponse, len(names)-1)
+	for i, name := range names[1:] {
+		if errs[i+1] != nil {
+			continue
+		}
+		c := countsOf(statuses[i+1])
+		noteMailboxStatus(ctx, name, prev[i+1], statuses[i+1], held[i+1])
+		with[name] = answer(c)
+	}
+	return ctx.JSON(http.StatusOK, struct {
+		MailboxStatusResponse
+		With map[string]MailboxStatusResponse `json:"with"`
+	}{answer(counts), with})
+}
+
+// noteMailboxStatus drops what a folder's new counts say is out of date: its
+// pages, and with them the folder list, when the folder changed since the
+// counts held before, prev, or since its pages were read.
+func noteMailboxStatus(ctx *alps.Context, mboxName string, prev mailboxCounts, read *MailboxStatus, heldValidities []uint32) {
+	cache := ctx.Session.Cache()
+	counts := countsOf(read)
 	// No earlier counts is not zero earlier counts: taken as zero, every first
 	// check of a folder read as a change. Without them, the folder's cached
 	// pages say whether it moved since they were read, as each holds the
@@ -1230,35 +1295,28 @@ func handleMailboxStatus(ctx *alps.Context) error {
 		} else {
 			dropMailboxListings(cache, mboxName)
 		}
-		cache.Delete("mailboxes")
+		patchListedCounts(cache, []string{mboxName}, []*MailboxStatus{read})
 		ctx.Server.Logger().Debugf("Mailbox %s status changed: total %d→%d, unseen %d→%d — caches invalidated",
 			mboxName, prev.Messages, counts.Messages, prev.Unseen, counts.Unseen)
 	case !readAt:
 		// Pages that disagree, or none at all, mean the folder's listings
 		// are dropped, all of them. A page read at another message count
 		// says that mail came or went, as a change seen against earlier
-		// counts does, so the folder list goes too. One that differs only
-		// in its unread count says no more than that a message was read or
-		// marked unread, which may have been the session's own doing, and
-		// nothing about the other folders, so the list stays.
+		// counts does, and the new counts go into the folder list as they
+		// do for one. One that differs only in its unread count says no
+		// more than that a message was read or marked unread, which may
+		// have been the session's own doing, and the list is left as it is.
 		if renumbered {
 			dropRenumberedMailbox(cache, mboxName)
 		} else {
 			dropMailboxListings(cache, mboxName)
 		}
 		if recounted || renumbered {
-			cache.Delete("mailboxes")
+			patchListedCounts(cache, []string{mboxName}, []*MailboxStatus{read})
 		}
 		ctx.Server.Logger().Debugf("Mailbox %s status read with no earlier counts: its pages are not at %d, %d unseen — its listings dropped",
 			mboxName, counts.Messages, counts.Unseen)
 	}
-
-	return ctx.JSON(http.StatusOK, MailboxStatusResponse{
-		Total:       int(counts.Messages),
-		Unseen:      int(counts.Unseen),
-		UIDNext:     counts.UIDNext,
-		UIDValidity: counts.UIDValidity,
-	})
 }
 
 // pagesReadAt reports whether the session holds pages of mailbox and every one
@@ -1475,6 +1533,10 @@ func handleGetMailbox(ctx *alps.Context) error {
 			}
 			return nil
 		})
+		var limited *provider.LimitError
+		if errors.As(err, &limited) {
+			return searchRateLimited(ctx, limited)
+		}
 		if err != nil {
 			return err
 		}
@@ -1488,11 +1550,10 @@ func handleGetMailbox(ctx *alps.Context) error {
 		ctx.Server.Logger().Debugf("Cache MISS for messages in %s page %d (query: %q), fetched and cached %d messages", mbox.Name(), page, query, len(msgs))
 	}
 
-	return ctx.JSON(http.StatusOK, map[string]interface{}{
+	answer := map[string]interface{}{
 		"Title":           title,
 		"Username":        ctx.Session.Username(),
 		"Address":         ctx.Session.Address(),
-		"Mailboxes":       ibase.Mailboxes,
 		"Mailbox":         ibase.Mailbox,
 		"Inbox":           ibase.Inbox,
 		"Messages":        msgs,
@@ -1500,7 +1561,50 @@ func handleGetMailbox(ctx *alps.Context) error {
 		"Threaded":        threaded,
 		"Page":            page,
 		"MessagesPerPage": messagesPerPage,
-	})
+	}
+	// The folder list, unless it is the one the browser says it holds: every
+	// listing carried it, a poll's and a page turn's alike, and nearly always
+	// it was the list the browser had.
+	version := folderListVersion(ibase.Mailboxes)
+	answer["MailboxesVersion"] = version
+	if ctx.QueryParam("mailboxes") != version {
+		answer["Mailboxes"] = ibase.Mailboxes
+	}
+	return ctx.JSON(http.StatusOK, answer)
+}
+
+// folderListVersion names a folder list by what it holds, counts and all, so
+// that two answers with the same version carry the same list.
+func folderListVersion(mailboxes []MailboxInfo) string {
+	// Active belongs to this request, not the shared folder data. Its
+	// decoration must not change the version across listings and /mailboxes.
+	canonical := slices.Clone(mailboxes)
+	for i := range canonical {
+		canonical[i].Active = false
+	}
+	data, err := json.Marshal(canonical)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:8])
+}
+
+// searchRateLimited answers a search the mail server refused for its rate
+// limit (RFC 5530 [LIMIT]): 429, with the wait the server named as
+// Retry-After when it named one, so that the page says the server asked to
+// slow down instead of that the folder could not be loaded. It was a 500.
+// Only a search with a query gets here: a listing without one is listed by
+// number instead when the server refuses its SORT or SEARCH.
+func searchRateLimited(ctx *alps.Context, limited *provider.LimitError) error {
+	ctx.Server.Logger().Printf("Search refused for the mail server's rate limit: %v", limited)
+	body := map[string]interface{}{"error": "search_rate_limited"}
+	if limited.RetryAfter > 0 {
+		seconds := int(math.Ceil(limited.RetryAfter.Seconds()))
+		ctx.Response.Header().Set("Retry-After", strconv.Itoa(seconds))
+		body["retry_after"] = seconds
+	}
+	return ctx.JSON(http.StatusTooManyRequests, body)
 }
 
 // handleListMailboxes answers with the folder list and nothing else.
@@ -1518,7 +1622,7 @@ func handleListMailboxes(ctx *alps.Context) error {
 
 	// Keyed as `GET /mailboxes/{mbox}` keys it, so the one consumer on the
 	// frontend reads either answer the same way.
-	return ctx.JSON(http.StatusOK, map[string]interface{}{"Mailboxes": mailboxes})
+	return ctx.JSON(http.StatusOK, map[string]interface{}{"Mailboxes": mailboxes, "MailboxesVersion": folderListVersion(mailboxes)})
 }
 
 func handleNewMailbox(ctx *alps.Context) error {
@@ -2004,13 +2108,9 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			return ctx.NoContent(http.StatusNotModified)
 		}
 	}
-	ibase, err := getBaseMailboxData(ctx)
+	mbox, err := partMailbox(ctx, mboxName)
 	if err != nil {
 		return err
-	}
-	mbox := ibase.Mailbox
-	if mbox == nil {
-		return alps.NewHTTPError(http.StatusNotFound, "Mailbox not found")
 	}
 
 	settings, err := readSettings(ctx)
@@ -2484,6 +2584,46 @@ func cachedMessageRow(cache *alps.Cache, mailbox, uid string, validity uint32) *
 		return nil
 	}
 	return &msg
+}
+
+// partMailbox is the mailbox a part is read from, for its name and the
+// UIDVALIDITY the session's cache is asked under. Every record the session
+// holds of it agreeing (its counts, its pages, the validator a read of a part
+// left), the UIDVALIDITY is taken from them. It was asked of the server
+// first, with the folder list, which cost a STATUS before a body the session
+// held could be served once the counts had gone, as a check that finds new
+// mail or a write drops them; and the counts were all it was read for. A
+// mailbox the session holds nothing of, or two values of, is read as before.
+func partMailbox(ctx *alps.Context, name string) (*MailboxStatus, error) {
+	if name != allMailboxes {
+		if validity := agreedUIDValidity(ctx.Session.Cache(), name); validity != 0 {
+			return &MailboxStatus{StatusData: &imap.StatusData{Mailbox: name, UIDValidity: validity}}, nil
+		}
+	}
+	ibase, err := getBaseMailboxData(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if ibase.Mailbox == nil {
+		return nil, alps.NewHTTPError(http.StatusNotFound, "Mailbox not found")
+	}
+	return ibase.Mailbox, nil
+}
+
+// agreedUIDValidity is the UIDVALIDITY every record the session holds of a
+// mailbox agrees on (see heldUIDValidities), or 0 when it holds none or they
+// disagree.
+func agreedUIDValidity(cache *alps.Cache, mailbox string) uint32 {
+	held := heldUIDValidities(cache, mailbox)
+	if len(held) == 0 {
+		return 0
+	}
+	for _, validity := range held[1:] {
+		if validity != held[0] {
+			return 0
+		}
+	}
+	return held[0]
 }
 
 // cacheMessageRow keeps the metadata of a message opened without a listing

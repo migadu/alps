@@ -181,8 +181,9 @@ func expungeElsewhere(t *testing.T, c *imapclient.Client, mailbox string, uid im
 var folderListReads = regexp.MustCompile(`(?m)^[^*\s]\S* LIST `)
 
 // One message in, another out: the counts stand, and UIDNEXT moves. The check
-// treats that as it treats counts that moved: the folder list is read again
-// too, for mail that may have been filed into folders no check looks at.
+// treats that as it treats counts that moved: the folder's pages are dropped,
+// and its counts are laid over the folder list the session holds, which is not
+// read again for them (see handleMailboxStatus).
 func TestHTTP_AMessageThatArrivesAsAnotherGoesIsListed(t *testing.T) {
 	for _, server := range countingServers {
 		t.Run(server.name, func(t *testing.T) {
@@ -200,8 +201,8 @@ func TestHTTP_AMessageThatArrivesAsAnotherGoesIsListed(t *testing.T) {
 			if got := subjectsOf(s.checkForNewMail("INBOX")); got != "Arrival, Looms" {
 				t.Errorf("after a message arrived and another went, the list shows %q, want Arrival, Looms", got)
 			}
-			if !folderListReads.MatchString(wire.String()[before:]) {
-				t.Error("after a message arrived and another went, the check did not read the folder list again")
+			if folderListReads.MatchString(wire.String()[before:]) {
+				t.Error("after a message arrived and another went, the whole folder list was read again")
 			}
 		})
 	}
