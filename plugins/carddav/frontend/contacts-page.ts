@@ -1114,7 +1114,10 @@ export class ContactsPage extends LitElement {
         }
         data = await contactsService.updateContact(this.selectedContact.path!, request);
       } else {
-        data = await contactsService.createContact(payload);
+        // The contact the user is typing in, even when another card has
+        // its address: answered with that card's path, the editor went on to
+        // edit the other card, without its version or fields.
+        data = await contactsService.createContact({ ...payload, allow_duplicate: true });
       }
 
       const savedContact = { ...payload, path: data.path || (editing ? this.selectedContact.path : ''), etag: data.etag };

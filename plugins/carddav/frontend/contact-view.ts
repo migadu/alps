@@ -352,7 +352,15 @@ export class AlpsContactView extends LitElement {
       // save and a cancel the form came back holding the refused values rather
       // than the version just read.
       const startedEditing = changedProperties.has('isEditing') && this.isEditing;
-      if (this.contact && this.isEditing && (startedEditing || !this.editForm || this.editForm.path !== this.contact.path)) {
+      // A new contact's first save gives it its path: the same card, not
+      // another one. Filled again from the open contact, which holds the
+      // form as that save sent it, the form lost whatever was typed while
+      // the save was on its way. So the form only takes the path.
+      const created = !startedEditing && this.isEditing && changedProperties.get('contact')?.isTemporary
+        && this.contact && !this.contact.isTemporary && this.contact.path && this.editForm && !this.editForm.path;
+      if (created) {
+        this.editForm = { ...this.editForm, path: this.contact.path };
+      } else if (this.contact && this.isEditing && (startedEditing || !this.editForm || this.editForm.path !== this.contact.path)) {
         this.editForm = { ...this.contact };
         this.birthday = birthdayFields(String(this.editForm.birthday || ''));
         this.isDirty = false;
