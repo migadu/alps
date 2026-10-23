@@ -1284,7 +1284,18 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		mailbox = "INBOX"
 	}
 
+	// A NOOP, as ListMessages sends, for mail that arrived since the mailbox
+	// was selected. A check for new mail reads the counts on the session's
+	// other connection, and this one is told of the arrival only by a command
+	// that lets the server say so. Without it, the listing that followed the
+	// check went without the new mail, unless something else had been asked
+	// on this connection first, as the folder list was when every change
+	// dropped it.
+	noop := p.client.Noop()
 	if err := p.ensureMailboxSelected(mailbox); err != nil {
+		return nil, provider.PageInfo{}, err
+	}
+	if err := noop.Wait(); err != nil {
 		return nil, provider.PageInfo{}, err
 	}
 
