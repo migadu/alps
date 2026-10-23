@@ -437,6 +437,27 @@ describe('saving everything at sign-out', () => {
     expect(composers(store)[0]).toMatchObject({ text: 'first draft, and more', dirty: true, draftUid: '8', draftMailbox: 'Drafts' });
   });
 
+  it('keeps open a reopened draft edited while its save was out, its quote shown from the draft it stored', async () => {
+    // Its quote's images are read from the draft, which the save replaced.
+    signIn('ada@example.com');
+    const store = makeStore();
+    const structure = { Children: [{ Type: 'text', Subtype: 'html' }, { ID: '<chart@remote.test>' }] };
+    store.openComposer({
+      subject: 'Engines', to: ['charles@example.com'], text: 'first', draftUid: '7', draftMailbox: 'Drafts',
+      quoteSource: { mailbox: 'Drafts', uid: '7', structure: {} },
+    });
+    const id = composers(store)[0].id;
+    store.updateComposer(id, { text: 'first draft' });
+    vi.spyOn(messageOperations, 'saveDraft').mockImplementationOnce(async () => {
+      store.updateComposer(id, { text: 'first draft, and more' });
+      return { uid: '8', mailbox: 'Drafts', structure } as any;
+    });
+
+    await expect(store.saveAllDirtyDrafts()).rejects.toBeInstanceOf(DraftFlushError);
+
+    expect(composers(store)[0]).toMatchObject({ draftUid: '8', quoteSource: { mailbox: 'Drafts', uid: '8', structure } });
+  });
+
   it('keeps the unsaved drafts on disk through a sign-out it was told to keep them for', async () => {
     signIn('ada@example.com');
     const store = makeStore();

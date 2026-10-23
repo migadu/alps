@@ -108,6 +108,24 @@ export const keptAfterSave = (attachments: any[], saved: ComposerInstance): any[
   return leftOut.length ? attachments.filter(a => !leftOut.includes(a)) : attachments;
 };
 
+/**
+ * Where the quote's images are shown from once a save of `saved` has stored
+ * a new draft, or undefined where that does not change. A composer editing a
+ * draft shows them from that draft, which the save has replaced: the source
+ * follows to the new draft, with the structure the server read it back with.
+ * Left on the replaced draft, the quote drawn again, as after a reload,
+ * named parts of a draft that is gone. A reply's or a forward's quote is
+ * shown from the message it quotes, and stays.
+ */
+export const quoteSourceAfterSave = (
+  saved: ComposerInstance,
+  stored: { uid: string; mailbox: string; structure?: unknown },
+): QuoteSource | undefined => {
+  const source = saved.quoteSource;
+  if (!source || !saved.draftUid || source.uid !== saved.draftUid || source.mailbox !== saved.draftMailbox) return undefined;
+  return { mailbox: stored.mailbox, uid: stored.uid, structure: stored.structure ?? source.structure };
+};
+
 const isBlockedAddress = (addr: string): boolean => {
   const lowerEmail = bareAddress(addr);
   return lowerEmail.startsWith('noreply') || 
@@ -629,10 +647,12 @@ export class ComposeStore extends EventTarget {
               : current.attachments;
             // Nor the quote's images a plain-text save left out: see keptAfterSave.
             if (attachments) attachments = keptAfterSave(attachments, composer);
+            const quoteSource = quoteSourceAfterSave(composer, saved);
             this.updateComposer(id, {
               draftUid: saved.uid,
               draftMailbox: saved.mailbox,
               ...(attachments !== current.attachments && { attachments }),
+              ...(quoteSource && { quoteSource }),
             });
             failed = true;
             continue;

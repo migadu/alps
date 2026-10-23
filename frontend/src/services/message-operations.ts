@@ -383,7 +383,7 @@ export class MessageOperationsService {
    * {@link MissingUploadsError} for one refused over uploads the server no
    * longer holds, which the caller can save again without them.
    */
-  async saveDraft(formData: FormData): Promise<{ uid: string; mailbox: string; size?: number; attachments?: any[]; bcc?: string[] } | null> {
+  async saveDraft(formData: FormData): Promise<{ uid: string; mailbox: string; size?: number; attachments?: any[]; bcc?: string[]; structure?: unknown } | null> {
     try {
       const res = await fetchWithTimeout('/messages', {
         method: 'POST',
@@ -397,6 +397,9 @@ export class MessageOperationsService {
         const data = await res.json();
         return {
           uid: data.draft_uid, mailbox: data.draft_mailbox, size: data.draft_size, attachments: data.attachments,
+          // The stored draft's structure, which a composer editing the draft
+          // shows its quote's images from. Absent on older servers.
+          ...(data.draft_structure ? { structure: data.draft_structure } : {}),
           // Absent on older servers. An explicit empty list means Bcc was
           // empty or unreadable and was stored without recipients.
           ...(Array.isArray(data.draft_bcc) ? {
