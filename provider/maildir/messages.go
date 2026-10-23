@@ -584,7 +584,7 @@ func (p *Provider) GetMessagePart(mailbox string, id provider.MessageID, partPat
 	}
 	// In a charset alps does not know, the text is left as it is stored, as
 	// a draft that carries the part forward must keep it.
-	part, err := message.New(message.Header{Header: h}, bytes.NewReader(body))
+	part, err := provider.NewPartEntity(message.Header{Header: h}, bytes.NewReader(body))
 	if err != nil && !message.IsUnknownCharset(err) {
 		return nil, nil, err
 	}
@@ -609,7 +609,7 @@ func (p *Provider) GetMessagePartWithData(mailbox string, id provider.MessageID,
 		return nil, nil, nil, nil, err
 	}
 	// As GetMessagePart, for a charset alps does not know.
-	part, err := message.New(message.Header{Header: h}, bytes.NewReader(body))
+	part, err := provider.NewPartEntity(message.Header{Header: h}, bytes.NewReader(body))
 	if err != nil && !message.IsUnknownCharset(err) {
 		return nil, nil, nil, nil, err
 	}
