@@ -61,7 +61,8 @@ export default {
     },
     "raw": {
       "validate": "Validar",
-      "save": "Guardar"
+      "save": "Guardar",
+      "script": "Script de los filtros"
     },
     "autoReply": {
       "title": "Respuesta automática",

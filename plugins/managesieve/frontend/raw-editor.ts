@@ -189,7 +189,8 @@ export class RawEditor extends LitElement {
 			<div class="editor-container">
 				<div class="code-area">
 					<div class="highlight-layer">${this.highlight(this.script)}</div>
-					<textarea .value=${this.script} @input=${this.handleInput} @scroll=${this.handleScroll} spellcheck="false"></textarea>
+					<!-- Named by what it holds: nothing else on the page labels it. -->
+					<textarea aria-label=${this.i18nStore?.t('managesieve.raw.script') ?? ''} .value=${this.script} @input=${this.handleInput} @scroll=${this.handleScroll} spellcheck="false"></textarea>
 				</div>
 				<div class="actions">
 					<alps-button variant="text" ?spinning=${this.isValidating} ?disabled=${this.isSaving} @click=${this.validate}>

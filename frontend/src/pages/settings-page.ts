@@ -465,7 +465,9 @@ export class SettingsPage extends LitElement {
           <alps-input label="${this.i18nStore?.t('settings.identity.displayName')}" type="text" icon="user" .value=${this.settingsState.name || ''} @change=${(e: Event) => this.handleUpdate(e, 'name')} placeholder="${this.i18nStore?.t('settings.placeholderName')}"></alps-input>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.identity.signature')}" description="${this.i18nStore?.t('settings.identity.signatureDesc')}">
-          <textarea @change=${(e: Event) => this.handleUpdate(e, 'signature')} .value=${this.settingsState.signature || ''}></textarea>
+          <!-- Named by its setting: the label above is in alps-setting-group's
+               shadow root, which no label can reach out of. -->
+          <textarea aria-label=${this.i18nStore?.t('settings.identity.signature') ?? ''} @change=${(e: Event) => this.handleUpdate(e, 'signature')} .value=${this.settingsState.signature || ''}></textarea>
         </alps-setting-group>
         <alps-setting-group label="${this.i18nStore?.t('settings.identity.replyTo')}" description="${this.i18nStore?.t('settings.identity.replyToDesc')}">
           <alps-input label="${this.i18nStore?.t('settings.identity.replyTo')}" type="email" .value=${this.settingsState.replyTo || ''} @change=${(e: Event) => this.handleUpdate(e, 'replyTo')} placeholder="${this.i18nStore?.t('settings.placeholderReplyTo')}"></alps-input>
