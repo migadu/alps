@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, click, mount, shadow, shadowAll, update, waitFor } from './helpers/dom';
 import { VERDICT_BATCH, type AuthVerdict } from '../src/services/auth-verdicts';
 import { encodeMailboxPath } from '../src/utils/folders';
+import { fetchWithTimeout } from '../src/utils/fetch-utils';
 import '../src/components/message-list';
 
 const TAG = 'alps-message-list';
@@ -228,5 +229,139 @@ describe('verdicts after the list', () => {
     await update(el, { messages: rows(1) });
     await waitFor(() => logos(el) === 1, 'the answer after the reload');
     expect(server.asked).toEqual([['1']]);
+  });
+});
+
+describe('verdicts across folder switches', () => {
+  const inFolder = (mailbox: string, uids: number[]) => uids.map((uid) => ({ ...row(uid), Mailbox: mailbox }));
+  const settle = () => new Promise((r) => setTimeout(r, 20));
+
+  it("draws a folder's verdicts again on the way back after one request, not one per batch", async () => {
+    const server = verdictServer();
+    const inbox = inFolder('INBOX', [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    const el = await mount(TAG, { messages: inbox, currentMailbox: 'INBOX', totalMessages: 9 });
+    await waitFor(() => server.asked.flat().length === 9 && logos(el) === 5, "INBOX's answers", 1000);
+
+    await update(el, { currentMailbox: 'Archive', messages: inFolder('Archive', [20, 21]) });
+    await waitFor(() => server.mailboxes.includes(encodeMailboxPath('Archive')) && logos(el) === 1, "Archive's answers", 1000);
+    const before = server.asked.length;
+
+    await update(el, { currentMailbox: 'INBOX', messages: inbox });
+    await waitFor(() => logos(el) === 5, "INBOX's logos again", 1000);
+    await settle();
+    expect(server.asked.length - before).toBe(1);
+    expect(server.mailboxes.at(-1)).toBe(encodeMailboxPath('INBOX'));
+  });
+
+  it("asks a folder about every row again when its UIDs name other messages since, and draws none of the old answers", async () => {
+    let scope = 'A';
+    let release: () => void = () => {};
+    let holding = false;
+    const server = verdictServer(
+      () => (scope === 'A' ? pass : fail),
+      () => scope,
+      () => (holding ? new Promise<void>((r) => (release = r)) : Promise.resolve()),
+    );
+    const inbox = inFolder('INBOX', [1, 2]);
+    const el = await mount(TAG, { messages: inbox, currentMailbox: 'INBOX', totalMessages: 2 });
+    await waitFor(() => logos(el) === 2, "scope A's answers", 1000);
+    await update(el, { currentMailbox: 'Archive', messages: inFolder('Archive', [20]) });
+    await waitFor(() => server.asked.length === 2 && logos(el) === 1, "Archive's answer", 1000);
+
+    scope = 'B';
+    holding = true;
+    await update(el, { currentMailbox: 'INBOX', messages: inbox });
+    await waitFor(() => server.asked.length === 3, 'the request on the way back', 1000);
+    expect(logos(el)).toBe(0);
+
+    holding = false;
+    release();
+    await waitFor(() => server.asked.flat().length === 5, 'every row asked again', 1000);
+    await settle();
+    expect(logos(el)).toBe(0);
+    expect(new Set(server.asked.slice(2).flat())).toEqual(new Set(['1', '2']));
+  });
+});
+
+describe('verdicts and the requests a user waits for', () => {
+  it('asks for no more while a request the user is waiting for is open', async () => {
+    const asked: string[][] = [];
+    let openMessage!: () => void;
+    let verdictsHeld!: () => void;
+    let firstBatch = true;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const u = new URL(String(url), 'http://alps.test');
+      if (u.pathname.endsWith('/verdicts')) {
+        const uids = u.searchParams.get('uids')!.split(',');
+        asked.push(uids);
+        if (firstBatch) {
+          firstBatch = false;
+          await new Promise<void>((r) => (verdictsHeld = r));
+        }
+        const Verdicts = Object.fromEntries(uids.map((uid) => [uid, pass]));
+        return new Response(JSON.stringify({ Verdicts, Scope: '1' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.pathname.includes('/messages/')) await new Promise<void>((r) => (openMessage = r));
+      return new Response('{}', { status: 200 });
+    }));
+    const n = 2 * VERDICT_BATCH;
+    const el = await mount(TAG, { messages: rows(n), currentMailbox: 'INBOX', totalMessages: n });
+    await waitFor(() => asked.length === 1, 'the first batch asked', 1000);
+
+    // The reader opens a message while the first batch is answered.
+    const opening = fetchWithTimeout('/mailboxes/INBOX/messages/1?part=1');
+    verdictsHeld();
+    await waitFor(() => logos(el) >= VERDICT_BATCH, "the first batch's answers", 1000);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(asked).toHaveLength(1);
+
+    openMessage();
+    await opening;
+    await waitFor(() => asked.length === 2 && logos(el) === n, 'the rest once the message has opened', 1000);
+  });
+});
+
+describe('verdicts and another sign-in', () => {
+  // The mail page is kept while a sign-in page shows: a switch to a linked
+  // account that asks for its second factor leaves it, and "Back to Login"
+  // leads to a sign-in as anyone. The keys name a mailbox and a UID and no
+  // account, and INBOX and UID 1 are in every account.
+  const signIn = async (el: HTMLElement, event: string) => {
+    el.remove();
+    window.dispatchEvent(new CustomEvent(event, { detail: { username: 'carol@example.test' } }));
+    document.body.appendChild(el);
+  };
+
+  it.each(['session-cleared', 'user-logged-in'])("draws none of the previous account's answers after %s, and asks again", async (event) => {
+    let account = 'ada';
+    const server = verdictServer(() => (account === 'ada' ? pass : fail));
+    const el = await mount(TAG, { messages: rows(2), currentMailbox: 'INBOX', totalMessages: 2 });
+    await waitFor(() => logos(el) === 2, "ada's answers", 1000);
+
+    await signIn(el, event);
+    account = 'carol';
+    await update(el, { messages: rows(2) });
+    expect(logos(el)).toBe(0);
+    await waitFor(() => server.asked.flat().length === 4, "carol's rows asked about", 1000);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(logos(el)).toBe(0);
+  });
+
+  it("does not take the previous account's answers for a folder it had left", async () => {
+    let account = 'ada';
+    const server = verdictServer(() => (account === 'ada' ? pass : fail));
+    const inbox = rows(2).map((m) => ({ ...m, Mailbox: 'INBOX' }));
+    const el = await mount(TAG, { messages: inbox, currentMailbox: 'INBOX', totalMessages: 2 });
+    await waitFor(() => logos(el) === 2, "ada's INBOX answers", 1000);
+    await update(el, { currentMailbox: 'Archive', messages: [{ ...row(20), Mailbox: 'Archive' }] });
+    await waitFor(() => server.asked.length === 2 && logos(el) === 1, "ada's Archive answer", 1000);
+
+    await signIn(el, 'user-logged-in');
+    account = 'carol';
+    await update(el, { currentMailbox: 'INBOX', messages: rows(2).map((m) => ({ ...m, Mailbox: 'INBOX' })) });
+    await waitFor(() => server.asked.length === 3, "carol's INBOX asked about", 1000);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(logos(el)).toBe(0);
+    expect(new Set(server.asked.slice(2).flat())).toEqual(new Set(['1', '2']));
   });
 });

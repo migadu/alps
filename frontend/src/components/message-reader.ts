@@ -1524,24 +1524,19 @@ export class MessageReader extends LitElement {
   }
 
   /**
-   * The message as a body read describes it, read or unread as its card is
-   * when the read lands.
+   * The flags a card holds now. A flag change replaces the card in the card
+   * list rather than editing it, so a read that started before the change
+   * still holds the card as it was: the one in the card list is looked up by
+   * key.
    *
-   * Reading a body leaves \Seen alone on the server, so the answer has the
-   * read state from before the page's own mark-as-read. That write can land
-   * while the read is out, and a read is cached for half an hour and served
-   * to every reopen: taken from the answer, a message just marked read showed
-   * unread, and the toolbar offered "Mark as read". A flag change replaces the
-   * card in the list rather than editing it, so a read that started before it
-   * still holds the card as it was: the one in the list is looked up by key.
+   * Null is an answer, not a gap: the server sends a message with no flags as
+   * `Flags: null`, and read as unknown it let the read's own, older flags back
+   * in. Undefined only when the card carries no flags at all.
    */
-  private withCardSeen(key: string, item: ThreadMessageItem, message: any) {
-    const card = (this.threadItems.find(i => this.itemKey(i) === key) ?? item).message;
-    if (!card) return message;
-    const seen = !!card.Flags?.includes(FLAG_SEEN);
-    if (!!message?.Flags?.includes(FLAG_SEEN) === seen) return message;
-    const others = (message.Flags || []).filter((f: string) => f !== FLAG_SEEN);
-    return { ...message, Flags: seen ? [...others, FLAG_SEEN] : others };
+  private liveFlags(key: string, item: ThreadMessageItem): string[] | undefined {
+    const live = this.threadItems.find(i => this.itemKey(i) === key) ?? item;
+    if (!live.message || !('Flags' in live.message)) return undefined;
+    return live.message.Flags ?? [];
   }
 
   private updateThreadItemReference(item: ThreadMessageItem) {
@@ -1755,7 +1750,14 @@ export class MessageReader extends LitElement {
       item.attachments = read.Attachments || [];
       item.hasHtml = hasHtml;
       item.hasText = hasText;
-      item.message = this.withCardSeen(key, item, message);
+      // Everything the read says about the message except its flags. Those are
+      // what the server had when it answered, and a cached read is up to half an
+      // hour old; the flags the card holds now are kept current by the message
+      // list and by every flag change since, including one made while this read
+      // was out. Reading a body leaves \Seen alone on the server, so its
+      // flags can also predate the page's own mark-as-read. The read's flags
+      // count only for a card that carries none.
+      item.message = { ...message, Flags: this.liveFlags(key, item) ?? message.Flags };
       item.mimeType = mimeType;
       item.content = content;
       item.rawMessageHtml = rawMessageHtml;

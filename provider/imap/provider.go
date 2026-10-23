@@ -46,8 +46,7 @@ type IMAPProvider struct {
 	// (see arrivedSinceSelect).
 	selectedUIDValidity uint32
 	selectedUIDNext     imap.UID
-	verdictLock         sync.Mutex
-	verdicts            map[string]*mailboxVerdicts
+	verdicts            *provider.VerdictCache // the session's, once it is shared: see ShareVerdicts
 	dateCache           map[string]map[uint32]time.Time
 	threads             map[string]*threadCache
 	// threadUses counts uses of the kept conversations, to tell which were
@@ -72,6 +71,7 @@ func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
 		client:    client,
 		store:     store,
 		debug:     debug,
+		verdicts:  &provider.VerdictCache{},
 		dateCache: make(map[string]map[uint32]time.Time),
 	}
 }
@@ -1918,17 +1918,6 @@ func authResultsSection() *imap.FetchItemBodySection {
 	}
 }
 
-// mailboxVerdicts caches one mailbox's verdicts for the session. A message's
-// headers never change under one UIDVALIDITY, so an entry holds until the
-// mailbox's UIDVALIDITY does.
-type mailboxVerdicts struct {
-	uidValidity uint32
-	byUID       map[imap.UID]provider.AuthVerdict
-}
-
-// maxCachedVerdicts bounds one mailbox's cache; past it the cache starts over.
-const maxCachedVerdicts = 10000
-
 // AuthVerdicts returns the verdicts of the messages among ids in mailbox:
 // from the session cache where it has them, and from one fetch of the rest's
 // Authentication-Results fields. A server usually reads a header field from
@@ -1944,15 +1933,6 @@ func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (m
 	}
 	scope := strconv.FormatUint(uint64(p.selectedUIDValidity), 10)
 
-	p.verdictLock.Lock()
-	if p.verdicts == nil {
-		p.verdicts = make(map[string]*mailboxVerdicts)
-	}
-	cache := p.verdicts[mailbox]
-	if cache == nil || cache.uidValidity != p.selectedUIDValidity || len(cache.byUID) > maxCachedVerdicts {
-		cache = &mailboxVerdicts{uidValidity: p.selectedUIDValidity, byUID: make(map[imap.UID]provider.AuthVerdict)}
-		p.verdicts[mailbox] = cache
-	}
 	verdicts := make(map[string]provider.AuthVerdict, len(ids))
 	var missing imap.UIDSet
 	for _, id := range ids {
@@ -1960,13 +1940,12 @@ func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (m
 		if !ok {
 			continue
 		}
-		if v, ok := cache.byUID[imap.UID(uid)]; ok {
+		if v, ok := p.verdicts.Get(mailbox, scope, uid.String()); ok {
 			verdicts[uid.String()] = v
 		} else {
 			missing.AddNum(imap.UID(uid))
 		}
 	}
-	p.verdictLock.Unlock()
 	if len(missing) == 0 {
 		return verdicts, scope, nil
 	}
@@ -1978,17 +1957,37 @@ func (p *IMAPProvider) AuthVerdicts(mailbox string, ids []provider.MessageID) (m
 	if err != nil {
 		return verdicts, scope, err
 	}
-	p.verdictLock.Lock()
-	defer p.verdictLock.Unlock()
 	for _, f := range fetched {
 		var v provider.AuthVerdict
 		if b := f.FindBodySection(authResultsSection()); b != nil {
 			v.BimiPotential, v.BimiFailed = authVerdict(b, p.authservIDs)
 		}
-		cache.byUID[f.UID] = v
-		verdicts[IMAPUID(f.UID).String()] = v
+		id := IMAPUID(f.UID).String()
+		p.verdicts.Put(mailbox, scope, id, v)
+		verdicts[id] = v
 	}
 	return verdicts, scope, nil
+}
+
+// ShareVerdicts has the provider keep the verdicts it reads in c, the
+// session's cache, rather than in one of its own: see provider.VerdictCache.
+func (p *IMAPProvider) ShareVerdicts(c *provider.VerdictCache) {
+	p.verdicts = c
+}
+
+// rememberVerdict records the verdict of a message whose
+// Authentication-Results another fetch read (a message opened, the members of
+// a conversation, a page of a search across every mailbox), so that the
+// list's request for it is answered without reading them again. Only while
+// mailbox is the one selected: the UIDVALIDITY known is that mailbox's.
+func (p *IMAPProvider) rememberVerdict(mailbox string, uid imap.UID, v provider.AuthVerdict) {
+	if uid == 0 || p.client == nil {
+		return
+	}
+	if selected := p.client.Mailbox(); selected == nil || selected.Name != mailbox {
+		return
+	}
+	p.verdicts.Put(mailbox, strconv.FormatUint(uint64(p.selectedUIDValidity), 10), IMAPUID(uid).String(), v)
 }
 
 // WithAuthservIDs sets the authserv-ids of the receiving mail servers whose
@@ -2124,6 +2123,10 @@ func (p *IMAPProvider) convertIMAPMessage(msg *imapclient.FetchMessageBuffer, ma
 			fmt.Printf("BIMI debug: Auth-Results for %d: %q\n", msg.UID, string(b))
 		}
 		converted.BimiPotential, converted.BimiFailed = authVerdict(b, p.authservIDs)
+		p.rememberVerdict(mailbox, msg.UID, provider.AuthVerdict{
+			BimiPotential: converted.BimiPotential,
+			BimiFailed:    converted.BimiFailed,
+		})
 	}
 
 	refSection := &imap.FetchItemBodySection{

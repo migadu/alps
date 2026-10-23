@@ -140,6 +140,10 @@ type Session struct {
 	// Cache for mail data (mailbox lists, statuses, etc.)
 	cache *Cache
 
+	// The authentication verdicts read on any of the session's connections:
+	// see shareVerdicts.
+	verdicts provider.VerdictCache
+
 	memoryDataLock sync.RWMutex
 	memoryData     map[string]interface{}
 
@@ -330,6 +334,28 @@ func (s *Session) recheckSecondFactor() {
 	}
 }
 
+// connect opens a connection to the mail server for the session, which keeps
+// its verdicts in the session's cache: see shareVerdicts.
+func (s *Session) connect() (provider.MailProvider, error) {
+	p, err := s.manager.connectProvider(s.username, s.password)
+	if err == nil {
+		s.shareVerdicts(p)
+	}
+	return p, err
+}
+
+// shareVerdicts has p, a connection the session has just opened, keep the
+// verdicts it reads in the session's cache. They were each connection's own,
+// and a session does not keep one connection for good: it opens another when
+// the mail server drops it, and when it gives up on one a request left busy.
+// Each new one read every verdict again, from each stored message, while the
+// user's requests waited behind it.
+func (s *Session) shareVerdicts(p provider.MailProvider) {
+	if vs, ok := p.(provider.VerdictSharer); ok {
+		vs.ShareVerdicts(&s.verdicts)
+	}
+}
+
 // DoMail executes a mail operation using the provider. The provider can only
 // be used from inside f.
 func (s *Session) DoMail(f func(provider.MailProvider) error) error {
@@ -379,7 +405,7 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 		// The session's background connection, when it holds one that is
 		// idle, rather than another: see takeIdleBackground.
 		if s.provider = s.takeIdleBackground(); s.provider == nil {
-			s.provider, err = s.manager.connectProvider(s.username, s.password)
+			s.provider, err = s.connect()
 		}
 		if err != nil && atConnectionLimit(err) {
 			// At the account's connection limit, the background connection
@@ -423,7 +449,7 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 		}
 
 		var reErr error
-		s.provider, reErr = s.manager.connectProvider(s.username, s.password)
+		s.provider, reErr = s.connect()
 		if reErr != nil && atConnectionLimit(reErr) {
 			// A server that will not let the account open another connection
 			// still answers on the background one the session holds, once the
@@ -1280,6 +1306,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 	s.created = time.Now()
 	s.absoluteDeadline = sm.absoluteDeadlineFrom(s.created)
 	s.lastAccess.Store(s.created.UnixNano())
+	s.shareVerdicts(p)
 
 	// Read the user's settings (auto-logout duration, 2FA) BEFORE taking the
 	// manager lock: these go through the session's provider as IMAP round trips,
@@ -1515,6 +1542,7 @@ func (sm *SessionManager) UpdatePassword(s *Session, newPassword string) error {
 	}
 
 	// Update session state
+	s.shareVerdicts(provider)
 	s.provider = provider
 	s.forgetStoreEntries()
 	s.password = newPassword

@@ -95,3 +95,33 @@ func TestAuthVerdictsStartOverWhenUIDValidityChanges(t *testing.T) {
 		t.Fatalf("UID 1 of the recreated mailbox answered %+v, the verdict of the deleted mailbox's UID 1", got["1"])
 	}
 }
+
+// A message opened in the reader is fetched with its Authentication-Results,
+// and so are the members of a conversation. The verdict read there answers the
+// list's request for it: reading the field again cost the server a read of
+// the stored message, while the list's request held the connection.
+func TestAuthVerdictsKeepWhatOtherFetchesRead(t *testing.T) {
+	s := &memServer{}
+	p := memIMAP(t, s,
+		brandMessage("passed", passedResults),
+		brandMessage("forged", forgedResults),
+	)
+	for _, uid := range []IMAPUID{1, 2} {
+		if _, err := p.GetMessageMetadata("INBOX", uid); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	before := len(s.traffic.String())
+	got, _, err := p.AuthVerdicts("INBOX", []provider.MessageID{IMAPUID(1), IMAPUID(2)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]provider.AuthVerdict{"1": {BimiPotential: true}, "2": {BimiFailed: true}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("verdicts %+v, want %+v", got, want)
+	}
+	if reads := len(headerReads.FindAllString(s.traffic.String()[before:], -1)); reads != 0 {
+		t.Fatalf("%d Authentication-Results reads for messages the reader had read; want none", reads)
+	}
+}
