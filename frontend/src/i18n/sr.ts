@@ -263,6 +263,7 @@ export const sr = {
     emptyMailboxSlow: 'Pražnjenje fascikle {folder} je još u toku. Server i dalje radi; proverite ponovo za trenutak.'
   },
   composer: {
+    windowLoadFailed: 'Prozor za poruku nije mogao da se učita.',
     discardFailed: 'Nacrt nije bilo moguće obrisati sa servera i još uvek je u Nacrtima.',
     attachmentsTooLarge: 'Prilozi prelaze maksimalnu dozvoljenu veličinu.',
     draftSaveFailedKeepOpen: 'Nije moguće sačuvati ovaj nacrt, pa prozor ostaje otvoren da se ništa ne izgubi',

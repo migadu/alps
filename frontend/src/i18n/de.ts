@@ -256,6 +256,7 @@ export const de: TranslationDictionary = {
     emptyMailboxSlow: '{folder} wird noch geleert. Der Server arbeitet daran – sehen Sie gleich noch einmal nach.'
   },
   composer: {
+    windowLoadFailed: 'Das Nachrichtenfenster konnte nicht geladen werden.',
     discardFailed: 'Der Entwurf konnte nicht vom Server gelöscht werden und liegt weiterhin in den Entwürfen.',
     attachmentsTooLarge: 'Die Anhänge überschreiten die maximal zulässige Größe.',
     draftSaveFailedKeepOpen: 'Entwurf konnte nicht gespeichert werden — das Fenster bleibt offen, damit nichts verloren geht',

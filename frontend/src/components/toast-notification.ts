@@ -12,7 +12,9 @@ export class AlpsToast extends LitElement {
   @property({ type: Boolean, reflect: true }) show = false;
   @property({ type: String }) message = '';
   @property({ type: String }) actionLabel = '';
-  @property({ type: Object }) onAction?: () => void;
+  // A synchronous false keeps an action that could not complete available
+  // for retry. Other results, including promises, keep the usual dismissal.
+  @property({ type: Object }) onAction?: () => void | boolean | Promise<unknown>;
   // Invoked when the toast is genuinely dismissed (X button or auto-timeout),
   // as opposed to the undo action. Lets the opener proceed immediately instead
   // of waiting out the remaining timeout.
@@ -51,7 +53,7 @@ export class AlpsToast extends LitElement {
 
   private handleAction() {
     if (this.onAction) {
-      this.onAction();
+      if (this.onAction() === false) return;
     } else {
       this.dispatchEvent(new CustomEvent('action'));
     }
