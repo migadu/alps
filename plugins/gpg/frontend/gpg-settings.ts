@@ -165,6 +165,26 @@ export class AlpsGpgSettings extends LitElement {
         this.showPassphrasePrompt = false;
     }
 
+    /**
+     * Stores a new keypair in place of the server's, and forgets the key the
+     * page holds unlocked. Neither save looked at the answer, so a refused
+     * import cleared the pasted keys without a word and a refused generation
+     * went back to the pane as though it had worked; and the old key, still
+     * unlocked, went on reading and signing in place of the new one.
+     */
+    private async saveKeyring(publicKey: string, encryptedPrivateKey: string) {
+        const res = await fetchWithTimeout('/gpg/keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                public_key: publicKey,
+                encrypted_private_key: encryptedPrivateKey
+            })
+        });
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`.trim());
+        clearCachedPrivateKey();
+    }
+
     async generateKeys() {
         const pass = await this.getConfirmedPassphrase();
         if (!pass) return;
@@ -180,14 +200,7 @@ export class AlpsGpgSettings extends LitElement {
                 passphrase: pass
             });
 
-            await fetchWithTimeout('/gpg/keys', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    public_key: publicKey,
-                    encrypted_private_key: privateKey
-                })
-            });
+            await this.saveKeyring(publicKey, privateKey);
             await this.fetchKeys();
         } catch (e: any) {
             alert(this.i18nStore?.t('gpg.generateFailed', { error: e.message }));
@@ -253,14 +266,9 @@ export class AlpsGpgSettings extends LitElement {
                 passphrase: pass
             });
 
-            await fetchWithTimeout('/gpg/keys', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    public_key: this.pubKeyInput,
-                    encrypted_private_key: encryptedPrivateKey
-                })
-            });
+            // encryptKey returns a PrivateKey object; the keyring stores
+            // armored text, not its circular in-memory object graph.
+            await this.saveKeyring(this.pubKeyInput, encryptedPrivateKey.armor());
             this.pubKeyInput = '';
             this.privKeyInput = '';
             this.viewState = 'default';
@@ -272,13 +280,25 @@ export class AlpsGpgSettings extends LitElement {
         }
     }
 
+    /**
+     * Deletes the keypair from the server, and only then from the page. The
+     * page cleared its keys and forgot the unlocked one whatever the server
+     * answered: a refused delete showed no keypair, the keypair came back on
+     * the next visit, and meanwhile this tab could not open encrypted mail.
+     */
     async purgeKeys() {
         this.loading = true;
         this.showPurgeConfirm = false;
-        await fetchWithTimeout('/gpg/keys', { method: 'DELETE' });
-        this.keyring = null;
-        clearCachedPrivateKey();
-        this.loading = false;
+        try {
+            const res = await fetchWithTimeout('/gpg/keys', { method: 'DELETE' });
+            if (!res.ok) throw new Error(`${res.status} ${res.statusText}`.trim());
+            this.keyring = null;
+            clearCachedPrivateKey();
+        } catch (e: any) {
+            alert(this.i18nStore?.t('gpg.purgeFailed', { error: e.message }));
+        } finally {
+            this.loading = false;
+        }
     }
 
     render() {

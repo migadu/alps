@@ -7,7 +7,6 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
-	"github.com/emersion/go-message"
 	"github.com/migadu/alps/provider"
 	imapprovider "github.com/migadu/alps/provider/imap"
 )
@@ -221,7 +220,8 @@ func readerPartWithProvider(p provider.MailProvider, mailbox string, uid provide
 	if r, ok := p.(readerPartReader); ok {
 		return r.GetMessagePartForReader(mailbox, uid, partPath)
 	}
-	msg, _, headerData, bodyData, err := p.GetMessagePartWithData(mailbox, uid, partPath)
+	// The bytes, not the part decoded: see handleGetPart.
+	msg, headerData, bodyData, err := p.GetMessagePartRaw(mailbox, uid, partPath, 0)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -242,23 +242,25 @@ func deleteMessagesWithProvider(p provider.MailProvider, mailbox string, uids []
 }
 
 // messagePartsWithProvider reads the parts of one message at paths, in that
-// order: with one read where the provider can, else one read per part.
-func messagePartsWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, paths [][]int) ([]*message.Entity, error) {
+// order, as they are stored: each one's MIME header and body, its transfer
+// encoding not undone. With one read where the provider can, else one read
+// per part.
+func messagePartsWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, paths [][]int) (headers, bodies [][]byte, err error) {
 	type partsReader interface {
-		GetMessageParts(mailbox string, id provider.MessageID, paths [][]int) ([]*message.Entity, error)
+		GetMessagePartsRaw(mailbox string, id provider.MessageID, paths [][]int) ([][]byte, [][]byte, error)
 	}
 	if r, ok := p.(partsReader); ok {
-		return r.GetMessageParts(mailbox, uid, paths)
+		return r.GetMessagePartsRaw(mailbox, uid, paths)
 	}
-	parts := make([]*message.Entity, len(paths))
+	headers, bodies = make([][]byte, len(paths)), make([][]byte, len(paths))
 	for i, path := range paths {
-		_, entity, _, _, err := p.GetMessagePartWithData(mailbox, uid, path)
+		_, header, body, err := p.GetMessagePartRaw(mailbox, uid, path, 0)
 		if err != nil {
-			return nil, fmt.Errorf("part %s: %w", formatPartPath(path), err)
+			return nil, nil, fmt.Errorf("part %s: %w", formatPartPath(path), err)
 		}
-		parts[i] = entity
+		headers[i], bodies[i] = header, body
 	}
-	return parts, nil
+	return headers, bodies, nil
 }
 
 // markMessageAnsweredWithProvider marks a message as answered using the provider

@@ -2,6 +2,8 @@ package maildir
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -22,10 +24,25 @@ func (p *Provider) GetStore() (provider.Store, error) {
 	}, nil
 }
 
+// openRoot opens the maildir the store's file is in, which the file is read
+// and written beneath, as the mail is (see box): a settings file linked out of
+// the maildir is neither read nor written.
+func (s *Store) openRoot() (*os.Root, error) {
+	return os.OpenRoot(filepath.Dir(s.path))
+}
+
 func (s *Store) readData() (map[string]interface{}, error) {
 	data := make(map[string]interface{})
 
-	content, err := os.ReadFile(s.path)
+	root, err := s.openRoot()
+	if errors.Is(err, fs.ErrNotExist) {
+		return data, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	content, err := root.ReadFile(filepath.Base(s.path))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return data, nil
@@ -85,11 +102,17 @@ func (s *Store) Put(key string, v interface{}) error {
 		return err
 	}
 
+	root, err := s.openRoot()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
 	// Write to temporary file first then rename to avoid corruption
-	tmpPath := s.path + ".tmp"
-	if err := os.WriteFile(tmpPath, b, 0600); err != nil {
+	name := filepath.Base(s.path)
+	if err := root.WriteFile(name+".tmp", b, 0600); err != nil {
 		return err
 	}
 
-	return os.Rename(tmpPath, s.path)
+	return root.Rename(name+".tmp", name)
 }
