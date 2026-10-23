@@ -569,3 +569,79 @@ func TestIdle_TellsOfOneInAndOneOutAfterAnIdleThatHeardNews(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// An arrival the last IDLE told of is not told again when a job has had the
+// connection in another mailbox since: the UIDNEXT the comparison goes by
+// is brought up to date when news was heard, not left at the one the Inbox
+// was selected with. Told again, every page dropped what it held of the
+// Inbox for nothing.
+func TestIdle_AnArrivalToldIsNotToldAgainAfterAJobElsewhere(t *testing.T) {
+	p, user := idleAccount(t, idleCaps)
+	h := listen(p)
+	stop := make(chan struct{})
+	began := make(chan struct{})
+	done := make(chan error, 1)
+	go func() { done <- p.Idle("INBOX", stop, func() { close(began) }) }()
+	awaitBegun(t, began)
+	deliverTo(t, user, "INBOX")
+	h.await(t)
+	close(stop)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := p.ensureMailboxSelected("Sent"); err != nil { // the Sent lookup
+		t.Fatal(err)
+	}
+	again := make(chan struct{})
+	go func() { done <- p.Idle("INBOX", again, nil) }()
+	select {
+	case <-h.came:
+		t.Errorf("the arrival the last IDLE told of was told again (the last IDLE ended at %+v; selected at UIDNEXT %v)", p.idled, p.selectedUIDNext)
+	case <-time.After(500 * time.Millisecond):
+	}
+	close(again)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Nor an arrival told of during background work in the Inbox, between two
+// IDLEs.
+func TestIdle_AnArrivalToldBetweenIdlesIsNotToldAgainAfterAJobElsewhere(t *testing.T) {
+	p, user := idleAccount(t, idleCaps)
+	h := listen(p)
+	stop := make(chan struct{})
+	done := make(chan error, 1)
+	go func() { done <- p.Idle("INBOX", stop, func() { close(stop) }) }()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	// A job in the Inbox, on which the server tells of the arrival.
+	deliverTo(t, user, "INBOX")
+	if err := p.client.Noop().Wait(); err != nil {
+		t.Fatal(err)
+	}
+	h.await(t)
+	stop = make(chan struct{})
+	go func() { done <- p.Idle("INBOX", stop, func() { close(stop) }) }()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := p.ensureMailboxSelected("Sent"); err != nil {
+		t.Fatal(err)
+	}
+	again := make(chan struct{})
+	go func() { done <- p.Idle("INBOX", again, nil) }()
+	select {
+	case <-h.came:
+		t.Errorf("the arrival told of between IDLEs was told again (the last IDLE ended at %+v; selected at UIDNEXT %v)", p.idled, p.selectedUIDNext)
+	case <-time.After(500 * time.Millisecond):
+	}
+	close(again)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}

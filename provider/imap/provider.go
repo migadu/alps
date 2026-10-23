@@ -66,6 +66,9 @@ type IMAPProvider struct {
 	// on was as it ended (see Idle).
 	news  *mailboxNews
 	idled idledMailbox
+	// selects counts the mailboxes selected, to tell whether the one
+	// selected now was selected again since the last IDLE (see Idle).
+	selects uint64
 	// responseTimeout bounds the wait for the server's answer to DONE.
 	responseTimeout time.Duration
 }
@@ -424,6 +427,7 @@ func (p *IMAPProvider) EmptyMailbox(name string) (int, error) {
 	}
 	p.selectedUIDValidity = data.UIDValidity
 	p.selectedUIDNext = data.UIDNext
+	p.selects++
 
 	if data.NumMessages == 0 {
 		return 0, nil
@@ -475,6 +479,7 @@ func (p *IMAPProvider) ensureMailboxSelected(mboxName string) error {
 		}
 		p.selectedUIDValidity = data.UIDValidity
 		p.selectedUIDNext = data.UIDNext
+		p.selects++
 	}
 	return nil
 }
