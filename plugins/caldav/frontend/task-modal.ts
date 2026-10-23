@@ -295,7 +295,7 @@ export class TaskModal extends LitElement {
 
         return html`
             <ui-modal
-                title=${task ? t('tasks.editTask') : t('tasks.newTask')}
+                heading=${task ? t('tasks.editTask') : t('tasks.newTask')}
                 width="460px"
                 ?dismissible=${!this.saving}
                 @cancel=${this.close}
@@ -483,7 +483,7 @@ export class TaskModal extends LitElement {
 
             ${this.askNotify ? html`
                 <ui-confirm
-                    title=${t('invitations.notifyTitle')}
+                    heading=${t('invitations.notifyTitle')}
                     message=${t('tasks.notifyChanges')}
                     confirmText=${t('invitations.send')}
                     secondaryText=${t('invitations.dontSend')}

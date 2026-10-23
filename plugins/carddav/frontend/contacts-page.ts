@@ -1390,7 +1390,7 @@ export class ContactsPage extends LitElement {
     return html`
       ${this.showDeleteConfirm ? html`
         <ui-confirm
-          title="${this.i18nStore?.t('contacts.deleteContact')}"
+          heading="${this.i18nStore?.t('contacts.deleteContact')}"
           message="${this.i18nStore?.t('contacts.deleteContactConfirm')}"
           confirmText="${this.i18nStore?.t('contacts.delete')}"
           isDanger
@@ -1533,7 +1533,7 @@ export class ContactsPage extends LitElement {
       
       ${this.showCreatePrompt ? html`
         <ui-prompt
-          title="${this.i18nStore?.t('contacts.createCategory')}"
+          heading="${this.i18nStore?.t('contacts.createCategory')}"
           confirmText="${this.i18nStore?.t('contacts.create')}"
           .fields=${[{ id: 'name', label: this.i18nStore?.t('contacts.categoryName'), autofocus: true }]}
           @submit=${this.handleCreateCategorySubmit}
@@ -1543,7 +1543,7 @@ export class ContactsPage extends LitElement {
 
       ${this.categoryToRename !== null ? html`
         <ui-prompt
-          title="${this.i18nStore?.t('contacts.renameCategory')}"
+          heading="${this.i18nStore?.t('contacts.renameCategory')}"
           confirmText="${this.i18nStore?.t('contacts.rename')}"
           .fields=${[{ id: 'name', label: this.i18nStore?.t('contacts.categoryName'), value: this.categoryToRename, autofocus: true }]}
           @submit=${this.handleRenameCategorySubmit}
@@ -1553,7 +1553,7 @@ export class ContactsPage extends LitElement {
 
       ${this.categoryToDelete !== null ? html`
         <ui-confirm
-          title="${this.i18nStore?.t('contacts.deleteCategory')}"
+          heading="${this.i18nStore?.t('contacts.deleteCategory')}"
           message="${this.i18nStore?.t('contacts.deleteCategoryConfirm', { category: this.categoryToDelete })}"
           confirmText="${this.i18nStore?.t('contacts.delete')}"
           isDanger

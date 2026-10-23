@@ -2589,7 +2589,7 @@ export class MailboxPage extends LitElement {
       </div>
       ${this.showDeleteConfirm ? html`
         <ui-confirm
-          title=${this.deleteDialogWords.title}
+          heading=${this.deleteDialogWords.title}
           message=${this.deleteDialogWords.message}
           confirmText=${this.deleteDialogWords.confirm}
           cancelText=${this.i18nStore?.t('general.cancel')}

@@ -303,7 +303,7 @@ export class AlpsWebauthnSettings extends LitElement {
         return html`
             ${this.showNamePrompt ? html`
                 <ui-prompt 
-                    title=${this.i18nStore?.t('webauthn.name_key_title')}
+                    heading=${this.i18nStore?.t('webauthn.name_key_title')}
                     confirmText=${this.i18nStore?.t('general.save')}
                     cancelText=${this.i18nStore?.t('general.cancel')}
                     .fields=${[
@@ -321,7 +321,7 @@ export class AlpsWebauthnSettings extends LitElement {
 
             ${this.showTrustPrompt ? html`
                 <ui-prompt
-                    title=${this.i18nStore?.t('webauthn.trust_linked_checkbox')}
+                    heading=${this.i18nStore?.t('webauthn.trust_linked_checkbox')}
                     confirmText=${this.i18nStore?.t('general.save')}
                     cancelText=${this.i18nStore?.t('general.cancel')}
                     .fields=${[
@@ -339,7 +339,7 @@ export class AlpsWebauthnSettings extends LitElement {
 
             ${this.error ? html`
                 <ui-modal 
-                    title="${this.i18nStore?.t('general.error') || 'Error'}" 
+                    heading="${this.i18nStore?.t('general.error') || 'Error'}" 
                     .isDanger=${true} 
                     .dismissible=${true}
                     @cancel=${() => this.error = ''}>
@@ -355,7 +355,7 @@ export class AlpsWebauthnSettings extends LitElement {
 
             ${this.pendingDeleteId ? html`
                 <ui-prompt
-                    title="${this.t('webauthn.confirm_remove')}"
+                    heading="${this.t('webauthn.confirm_remove')}"
                     confirmText="${this.t('webauthn.settings.remove_btn')}"
                     cancelText="${this.t('general.cancel')}"
                     .isDanger=${true}

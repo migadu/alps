@@ -316,7 +316,7 @@ export class CalendarEventModal extends LitElement {
 
         return html`
             <ui-modal 
-                title="${this.event ? (this.i18nStore?.t('calendar.editEvent')) : (this.i18nStore?.t('calendar.newEvent'))}" 
+                heading="${this.event ? (this.i18nStore?.t('calendar.editEvent')) : (this.i18nStore?.t('calendar.newEvent'))}" 
                 width="450px"
                 ?dismissible=${!this.isSaving}
                 @cancel=${this.handleCancel}
@@ -462,7 +462,7 @@ export class CalendarEventModal extends LitElement {
 
             ${this.askNotify ? html`
                 <ui-confirm
-                    title=${this.i18nStore?.t('invitations.notifyTitle')}
+                    heading=${this.i18nStore?.t('invitations.notifyTitle')}
                     message=${this.i18nStore?.t('invitations.notifyChanges')}
                     confirmText=${this.i18nStore?.t('invitations.send')}
                     secondaryText=${this.i18nStore?.t('invitations.dontSend')}

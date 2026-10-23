@@ -180,7 +180,7 @@ export class AlpsHeader extends LitElement {
     return html`
       ${this.unsavedDraftsFailure ? html`
         <ui-confirm
-          title=${this.i18nStore?.t('userMenu.unsavedDraftsTitle')}
+          heading=${this.i18nStore?.t('userMenu.unsavedDraftsTitle')}
           message=${this.i18nStore?.t('userMenu.unsavedDraftsMessage')}
           confirmText=${this.i18nStore?.t('userMenu.signOutAnyway')}
           cancelText=${this.i18nStore?.t('general.cancel')}

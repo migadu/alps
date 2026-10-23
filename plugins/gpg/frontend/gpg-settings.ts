@@ -320,7 +320,7 @@ export class AlpsGpgSettings extends LitElement {
 
             ${this.showPassphrasePrompt ? html`
                 <ui-prompt
-                    title="${this.passphrasePromptMode === 'unlock' ? this.i18nStore?.t('gpg.passphraseRequired') : this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.passphraseConfirmTitle') : this.i18nStore?.t('gpg.passphraseSetTitle')}"
+                    heading="${this.passphrasePromptMode === 'unlock' ? this.i18nStore?.t('gpg.passphraseRequired') : this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.passphraseConfirmTitle') : this.i18nStore?.t('gpg.passphraseSetTitle')}"
                     confirmText="${this.passphrasePromptMode === 'unlock' ? this.i18nStore?.t('gpg.unlock') : this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.confirm') : this.i18nStore?.t('gpg.lock')}"
                     cancelText="${this.i18nStore?.t('general.cancel')}"
                     .fields=${[
@@ -341,7 +341,7 @@ export class AlpsGpgSettings extends LitElement {
                 ></ui-prompt>
             ` : ''}
             ${this.importError ? html`
-                <ui-modal title="${this.i18nStore?.t('gpg.importFailedTitle')}" @cancel=${this.clearError}>
+                <ui-modal heading="${this.i18nStore?.t('gpg.importFailedTitle')}" @cancel=${this.clearError}>
                     <div style="padding: 16px; white-space: pre-wrap; font-family: monospace; font-size: 13px;">${this.importError}</div>
                     <alps-button slot="actions" @click=${this.clearError}>${this.i18nStore?.t('attachment.close')}</alps-button>
                 </ui-modal>
@@ -349,7 +349,7 @@ export class AlpsGpgSettings extends LitElement {
 
             ${this.showPurgeConfirm ? html`
                 <ui-confirm
-                    title="${this.i18nStore?.t('gpg.purgeKeys')}"
+                    heading="${this.i18nStore?.t('gpg.purgeKeys')}"
                     message="${this.i18nStore?.t('gpg.purgeConfirm')}"
                     confirmText="${this.i18nStore?.t('gpg.purgeKeys')}"
                     cancelText="${this.i18nStore?.t('general.cancel')}"
