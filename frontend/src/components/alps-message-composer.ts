@@ -27,7 +27,7 @@ import { readUserSettings, settingsContext } from '../store/settings-store';
 import type { SettingsStore } from '../store/settings-store';
 import type { QuoteSource } from '../store/compose-store';
 import { QUOTE_ATTRIBUTE } from '../utils/email-quote';
-import { escapeHtml, sanitizeMessageHTML, sanitizeQuotedHTML, stripCssUrls } from '../utils/html-sanitizer';
+import { escapeHtml, sanitizeMessageHTML, sanitizeQuotedHTML, stripCssUrls, withoutCidReferences } from '../utils/html-sanitizer';
 import type { SanitizeOptions } from '../utils/html-sanitizer';
 import { applyThemeToIframe, htmlToPlainText, setupIframeSizing } from '../utils/reader-utils';
 import {
@@ -647,6 +647,11 @@ export class AlpsMessageComposer extends LitElement {
   @property({ type: String }) format: 'html' | 'text' = 'text';
   /** The text the message opened with, as the compose window keeps it. */
   @property({ attribute: false }) initialText = '';
+  /**
+   * The Content-IDs of the quote's images whose parts are gone, which a
+   * plain-text save let go: taken out of the quote (see _dropGoneImages).
+   */
+  @property({ attribute: false }) goneImages: string[] = [];
 
   /**
    * The plain text the editor's content stands for, while the textarea holds
@@ -840,6 +845,7 @@ export class AlpsMessageComposer extends LitElement {
       // message is assembled for sending. See GitHub issue #6.
       this.editor.setEditable(!this.isSending, false);
     }
+    if (changedProperties.has('goneImages') && this.goneImages.length) this._dropGoneImages();
     if (changedProperties.has('format')) {
       const oldFormat = changedProperties.get('format');
       if (oldFormat === 'text' && this.format === 'html') {
@@ -879,6 +885,39 @@ export class AlpsMessageComposer extends LitElement {
         }
       }
     }
+  }
+
+  /**
+   * Takes the images whose parts are gone out of the quote blocks. A
+   * plain-text save leaves the quote's images out, and once it has landed the
+   * compose window lets go of them: every later save reads its parts from the
+   * draft that save stored, which holds none of them. The quote, kept whole
+   * by the switch back to HTML, went on naming them, and the next save and
+   * the send named images no part backed. Their bytes cannot be had again:
+   * they were the original's, and the draft now stands in for it.
+   */
+  private _dropGoneImages() {
+    const editor = this.editor;
+    if (!editor || editor.isDestroyed) return;
+    const gone = new Set(this.goneImages);
+    const { tr } = editor.state;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name !== QuotedMessage.name) return true;
+      const html = withoutCidReferences(node.attrs.html, gone);
+      if (html !== node.attrs.html) tr.setNodeMarkup(pos, undefined, { ...node.attrs, html });
+      return false;
+    });
+    if (!tr.docChanged) return;
+    // In HTML the editor's update announces the new HTML part, as an edit:
+    // what the draft stored is not what the quote now shows.
+    editor.view.dispatch(tr);
+    if (this.format === 'html') return;
+    this.htmlText = serializeEditorHtml(editor);
+    this.dispatchEvent(new CustomEvent('text-changed', {
+      detail: { text: this.text, html: this.htmlText },
+      bubbles: true,
+      composed: true
+    }));
   }
 
   /**

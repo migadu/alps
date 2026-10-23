@@ -80,7 +80,10 @@ export const reconcileSavedAttachments = (latest: any[], sent: any[], stored: an
   }
   return latest.map(a => {
     const key = sourceKey(a);
-    return (key && sentKeys.has(key) && storedFrom.get(key)) || a;
+    const part = key && sentKeys.has(key) && storedFrom.get(key);
+    if (!part) return a;
+    // What the quote names an inline part by, which the answer does not say.
+    return a.contentId ? { ...part, contentId: a.contentId } : part;
   });
 };
 
@@ -106,6 +109,19 @@ export const keptAfterSave = (attachments: any[], saved: ComposerInstance): any[
   const posted = postedAttachments(saved);
   const leftOut = (saved.attachments || []).filter(a => !posted.includes(a));
   return leftOut.length ? attachments.filter(a => !leftOut.includes(a)) : attachments;
+};
+
+/**
+ * The Content-IDs of the quote's images whose parts are gone once a save of
+ * `saved` has landed, or undefined when it let none go: those the composer
+ * held when the save left them out (see keptAfterSave), added to the ones
+ * already gone. The quote names them still, and the switch back to HTML kept
+ * it whole: the next save and the send named images no part backed.
+ */
+export const quoteImagesGoneAfterSave = (saved: ComposerInstance, latest: ComposerInstance): string[] | undefined => {
+  const posted = postedAttachments(saved);
+  const ids = (saved.attachments || []).filter(a => !posted.includes(a) && a.contentId).map(a => a.contentId as string);
+  return ids.length ? [...new Set([...(latest.quoteImagesGone || []), ...ids])] : undefined;
 };
 
 /**
@@ -165,6 +181,12 @@ export interface ComposerInstance {
   zIndex?: number;
   attachments?: any[];
   quoteSource?: QuoteSource;
+  /**
+   * The Content-IDs of the quote's images whose parts a plain-text save let
+   * go (see quoteImagesGoneAfterSave), which the composer takes out of its
+   * quote.
+   */
+  quoteImagesGone?: string[];
   dirty?: boolean;
   draftUid?: string;
   draftMailbox?: string;
@@ -680,11 +702,13 @@ export class ComposeStore extends EventTarget {
             // Nor the quote's images a plain-text save left out: see keptAfterSave.
             if (attachments) attachments = keptAfterSave(attachments, composer);
             const quoteSource = quoteSourceAfterSave(composer, saved);
+            const quoteImagesGone = quoteImagesGoneAfterSave(composer, current);
             this.updateComposer(id, {
               draftUid: saved.uid,
               draftMailbox: saved.mailbox,
               ...(attachments !== current.attachments && { attachments }),
               ...(quoteSource && { quoteSource }),
+              ...(quoteImagesGone && { quoteImagesGone }),
             });
             failed = true;
             continue;

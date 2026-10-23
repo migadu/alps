@@ -81,32 +81,63 @@ export function cidReferencesOf(html: string): Set<string> {
   const ids = new Set<string>();
   if (!html) return ids;
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  const urlAttributes: Record<string, string[]> = {
-    img: ['src', 'srcset'], source: ['src', 'srcset'],
-    audio: ['src'], video: ['src', 'poster'], track: ['src'],
-    a: ['href'], area: ['href'],
-    body: ['background'], table: ['background'], thead: ['background'],
-    tbody: ['background'], tfoot: ['background'], tr: ['background'],
-    td: ['background'], th: ['background'],
-  };
   for (const el of Array.from(doc.querySelectorAll('*'))) {
-    const tag = el.localName.toLowerCase();
-    const attributes = new Set(urlAttributes[tag] ?? []);
-    if (el.namespaceURI === 'http://www.w3.org/2000/svg' && ['a', 'image', 'use', 'feimage'].includes(tag)) {
-      attributes.add('href');
-      attributes.add('xlink:href');
-    }
-    if (tag === 'input' && el.getAttribute('type')?.toLowerCase() === 'image') attributes.add('src');
-    for (const name of attributes) {
-      const value = el.getAttribute(name);
-      if (value === null) continue;
-      const urls = name === 'srcset' ? parseSrcset(value).map((c) => c.url) : [value];
-      for (const url of urls) {
-        if (isCidUrl(url)) ids.add(cidOf(url).replace(/^<|>$/g, ''));
-      }
-    }
+    for (const { ids: named } of cidAttributesOf(el)) named.forEach((id) => ids.add(id));
   }
   return ids;
+}
+
+const CID_URL_ATTRIBUTES: Record<string, string[]> = {
+  img: ['src', 'srcset'], source: ['src', 'srcset'],
+  audio: ['src'], video: ['src', 'poster'], track: ['src'],
+  a: ['href'], area: ['href'],
+  body: ['background'], table: ['background'], thead: ['background'],
+  tbody: ['background'], tfoot: ['background'], tr: ['background'],
+  td: ['background'], th: ['background'],
+};
+
+/** The attributes of `el` that it uses as a URL and that name parts by `cid:`, with the Content-IDs each names. */
+function cidAttributesOf(el: Element): { name: string; ids: string[] }[] {
+  const tag = el.localName.toLowerCase();
+  const attributes = new Set(CID_URL_ATTRIBUTES[tag] ?? []);
+  if (el.namespaceURI === 'http://www.w3.org/2000/svg' && ['a', 'image', 'use', 'feimage'].includes(tag)) {
+    attributes.add('href');
+    attributes.add('xlink:href');
+  }
+  if (tag === 'input' && el.getAttribute('type')?.toLowerCase() === 'image') attributes.add('src');
+  const found: { name: string; ids: string[] }[] = [];
+  for (const name of attributes) {
+    const value = el.getAttribute(name);
+    if (value === null) continue;
+    const urls = name === 'srcset' ? parseSrcset(value).map((c) => c.url) : [value];
+    const ids = urls.filter(isCidUrl).map((url) => cidOf(url).replace(/^<|>$/g, ''));
+    if (ids.length) found.push({ name, ids });
+  }
+  return found;
+}
+
+/**
+ * The markup without what names a part of `ids` by `cid:`: an image or other
+ * media element goes, and another element loses the attribute. For a quote
+ * whose images' parts are gone, which would otherwise go out naming parts no
+ * message holds.
+ */
+export function withoutCidReferences(html: string, ids: ReadonlySet<string>): string {
+  if (!html || !ids.size) return html;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  let changed = false;
+  for (const el of Array.from(doc.querySelectorAll('*'))) {
+    for (const { name, ids: named } of cidAttributesOf(el)) {
+      if (!named.some((id) => ids.has(id))) continue;
+      changed = true;
+      if (['img', 'source', 'input', 'video', 'audio', 'track', 'image'].includes(el.localName.toLowerCase())) {
+        el.remove();
+        break;
+      }
+      el.removeAttribute(name);
+    }
+  }
+  return changed ? doc.body.innerHTML : html;
 }
 
 /**

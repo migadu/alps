@@ -2,8 +2,8 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import {
-  bareAddress, composeContext, draftContentKey, keptAfterSave, postedAttachments, quoteSourceAfterSave, recipientField,
-  reconcileSavedAttachments, uploadGone,
+  bareAddress, composeContext, draftContentKey, keptAfterSave, postedAttachments, quoteImagesGoneAfterSave, quoteSourceAfterSave,
+  recipientField, reconcileSavedAttachments, uploadGone,
 } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
@@ -27,6 +27,9 @@ import { Logger } from '../utils/logger';
 import { appendReplyFields } from '../utils/reply-context';
 import { registry } from '../plugin-registry';
 const UNDO_TOAST_TIMEOUT_MS = 5000;
+
+/** One list for a composer with no quote images gone, so it is not handed a new one on each render. */
+const NO_IMAGES_GONE: string[] = [];
 
 @customElement('alps-floating-composer')
 export class AlpsFloatingComposer extends LitElement {
@@ -383,6 +386,8 @@ export class AlpsFloatingComposer extends LitElement {
         // The quote of a draft being edited follows the draft: see quoteSourceAfterSave.
         const quoteSource = quoteSourceAfterSave(currentInstance, result);
         if (quoteSource) updates.quoteSource = quoteSource;
+        const quoteImagesGone = quoteImagesGoneAfterSave(currentInstance, latest);
+        if (quoteImagesGone) updates.quoteImagesGone = quoteImagesGone;
         this.composeStore.updateComposer(this.instance.id, updates);
 
         // If the composer became dirty while saving, or new attachments were added, schedule another save
@@ -1758,6 +1763,7 @@ export class AlpsFloatingComposer extends LitElement {
               .htmlText=${this.instance.html || ''}
               .format=${this.instance.format || 'html'}
               .initialText=${this.instance.initialText || ''}
+              .goneImages=${this.instance.quoteImagesGone ?? NO_IMAGES_GONE}
               .quoteSource=${this.instance.quoteSource}
               @text-changed=${(e: CustomEvent) => this.composeStore.updateComposer(
                 this.instance.id,
