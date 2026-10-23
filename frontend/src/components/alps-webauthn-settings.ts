@@ -345,8 +345,9 @@ export class AlpsWebauthnSettings extends LitElement {
                     @cancel=${() => this.error = ''}>
                     <div>${this.error}</div>
                     <div slot="actions">
+                        <!-- Close: an error has nothing to cancel. -->
                         <alps-button variant="normal" @click=${() => this.error = ''}>
-                            ${this.i18nStore?.t('general.cancel') || 'Close'}
+                            ${this.i18nStore?.t('attachment.close') || 'Close'}
                         </alps-button>
                     </div>
                 </ui-modal>
