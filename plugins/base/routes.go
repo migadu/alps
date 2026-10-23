@@ -299,9 +299,9 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 
 	// What the cached copies said about \Seen BEFORE this change. The unseen
 	// count may only move when the message really goes from unseen to seen or
-	// back: reading a message adds \Seen twice (the body fetch sets it, and
-	// so does the reader's mark-as-read), and a count that dropped on both
-	// fell by two for one message.
+	// back: adding \Seen to a message that already has it changes nothing on
+	// the server, and a count that dropped on every add fell by two for one
+	// message marked read twice.
 	var cachedSeen, cachedUnseen bool
 	noteSeen := func(flags []provider.Flag) {
 		if slices.Contains(flags, provider.Flag(imap.FlagSeen)) {
@@ -378,6 +378,35 @@ func applyFlagsToCache(cache *alps.Cache, debugf func(string, ...interface{}), m
 			debugf("Updated flags for message %s in individual cache", uidStr)
 			messageUpdated = true
 		}
+	}
+
+	// The parts read of the message (handleGetPart) are cached with the
+	// message as the read found it, flags included, and a reopened message is
+	// answered from them. A read leaves \Seen as it is, so an unread message
+	// is cached unread, and the reader's own mark-as-read is the change that
+	// has to reach them: without it the message reopened unread. They follow
+	// the change but are not asked what the message was before it. That is
+	// the listing's to say: a part is not read again when the listing is, and
+	// one cached before another client changed the message would move the
+	// count for a change that changed nothing.
+	partPrefix := fmt.Sprintf("message:%s:%s:", mailbox, uidStr)
+	for _, key := range cache.GetKeysWithPrefix(partPrefix) {
+		// The part path, as in "[2]:limit0". A mailbox whose name goes on
+		// from this one's with a colon has keys under the prefix too.
+		if key == msgKey || !strings.HasPrefix(key[len(partPrefix):], "[") {
+			continue
+		}
+		cached, ok := cache.Get(key)
+		if !ok {
+			continue
+		}
+		part, ok := cached.(CachedMessagePart)
+		if !ok || part.Message == nil || part.Mailbox != mailbox {
+			continue
+		}
+		part.Message.Flags = updateFlags(part.Message.Flags)
+		cache.Set(key, part)
+		debugf("Updated flags for message %s in cached part %s", uidStr, key)
 	}
 
 	patchCachedConversations(cache, debugf, mailbox, uidStr, addFlags, removeFlags)
@@ -1468,6 +1497,9 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			// Full message cached - convert from provider type to IMAP type
 			imapMsg := providerMessageToIMAP(*cachedData.Message)
 			if tempMsg != nil {
+				// Read from the server just now, where the cached part has the
+				// flags of the read that cached it.
+				imapMsg.Flags = tempMsg.Flags
 				imapMsg.HasBimiPotential = tempMsg.HasBimiPotential
 				imapMsg.HasBimiFailed = tempMsg.HasBimiFailed
 				if len(imapMsg.References) == 0 && len(tempMsg.References) > 0 {
@@ -1523,9 +1555,6 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 				}
 			}
 			msg = &imapMsg
-
-			// Fetching body without Peek marks message as \Seen, so update the cached flags
-			updateCachedMessageFlags(ctx, mbox.Name(), uid, []imap.Flag{imap.FlagSeen}, nil)
 		}
 	} else {
 		// Nothing cached, fetch everything
@@ -1580,9 +1609,6 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 			}
 		}
 		msg = &imapMsg
-
-		// Fetching body without Peek marks message as \Seen, so update the cached flags
-		updateCachedMessageFlags(ctx, mbox.Name(), uid, []imap.Flag{imap.FlagSeen}, nil)
 	}
 
 	// Note: We no longer need selected mailbox info from IMAP
