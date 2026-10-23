@@ -3,6 +3,7 @@ package managesieve
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"testing"
@@ -94,6 +95,44 @@ func TestDeleteScriptActiveIsRefused(t *testing.T) {
 
 	if err := c.DeleteScript("catchall"); err == nil {
 		t.Fatal("expected the server's refusal to be returned")
+	}
+}
+
+// A script goes up as a literal, and a line break after the literal ends the
+// command (RFC 5804 §2.6). PutScript left that line break out whenever the
+// script itself ended in one, an empty script included: the server, still
+// waiting for the end of the command, did not answer, and the save failed
+// when alps stopped waiting.
+func TestPutScriptEndsTheCommandAfterTheScript(t *testing.T) {
+	for _, content := range []string{"keep;\n", "keep;\r\n", ""} {
+		client, server := net.Pipe()
+		c := &MSClient{conn: client, r: bufio.NewReader(client), capabilities: make(map[string]string)}
+
+		received := make(chan string, 1)
+		go func() {
+			r := bufio.NewReader(server)
+			line, _ := r.ReadString('\n')
+			var name string
+			var size int
+			fmt.Sscanf(line, "PUTSCRIPT %q {%d+}", &name, &size)
+			script := make([]byte, size)
+			io.ReadFull(r, script)
+			server.SetReadDeadline(time.Now().Add(time.Second))
+			end, _ := r.ReadString('\n')
+			received <- string(script) + "|" + end
+			server.Write([]byte("OK\r\n"))
+		}()
+
+		err := c.PutScript("alps-filters", content)
+		got := <-received
+		client.Close()
+		server.Close()
+		if err != nil {
+			t.Errorf("%q: %v", content, err)
+		}
+		if want := content + "|\r\n"; got != want {
+			t.Errorf("%q: the server read %q, want the script and then the line break that ends the command", content, got)
+		}
 	}
 }
 

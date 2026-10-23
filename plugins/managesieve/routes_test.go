@@ -2,6 +2,7 @@ package managesieve
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,7 +13,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/fernet/fernet-go"
@@ -181,5 +184,194 @@ func TestGetScriptNamesTheServersExtensions(t *testing.T) {
 				t.Errorf("extensions = %q, want %q", *got.Extensions, tc.extensions)
 			}
 		})
+	}
+}
+
+// sieveAccount is a scripted ManageSieve server that holds several scripts, at
+// most one of them active, as RFC 5804 has it. It knows LISTSCRIPTS,
+// GETSCRIPT, PUTSCRIPT and SETACTIVE, and a test reads afterwards what it
+// holds.
+type sieveAccount struct {
+	mu      sync.Mutex
+	names   []string // in the order they were first stored
+	scripts map[string]string
+	active  string
+}
+
+// store keeps a script as another client would upload it, switched off.
+func (a *sieveAccount) store(name, content string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.put(name, content)
+}
+
+// put is PUTSCRIPT, with a.mu held.
+func (a *sieveAccount) put(name, content string) {
+	if a.scripts == nil {
+		a.scripts = make(map[string]string)
+	}
+	if _, ok := a.scripts[name]; !ok {
+		a.names = append(a.names, name)
+	}
+	a.scripts[name] = content
+}
+
+// held answers what the account holds: each script's content, and the name
+// of the active one.
+func (a *sieveAccount) held() (map[string]string, string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	scripts := make(map[string]string, len(a.scripts))
+	for name, content := range a.scripts {
+		scripts[name] = content
+	}
+	return scripts, a.active
+}
+
+// listen starts the server and returns its address.
+func (a *sieveAccount) listen(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go a.serve(conn)
+		}
+	}()
+	return ln.Addr().String()
+}
+
+func (a *sieveAccount) serve(conn net.Conn) {
+	defer conn.Close()
+	r, w := bufio.NewReader(conn), bufio.NewWriter(conn)
+	fmt.Fprint(w, "\"IMPLEMENTATION\" \"fake\"\r\n\"SASL\" \"PLAIN\"\r\n\"SIEVE\" \"fileinto\"\r\nOK \"ready\"\r\n")
+	w.Flush()
+	for {
+		line, err := r.ReadString('\n')
+		if err != nil {
+			return
+		}
+		command, args, _ := strings.Cut(strings.TrimRight(line, "\r\n"), " ")
+		name := ""
+		if quoted, err := strconv.QuotedPrefix(args); err == nil {
+			name, _ = strconv.Unquote(quoted)
+		}
+		a.mu.Lock()
+		switch strings.ToUpper(command) {
+		case "AUTHENTICATE":
+			fmt.Fprint(w, "OK \"signed in\"\r\n")
+		case "LISTSCRIPTS":
+			for _, n := range a.names {
+				if n == a.active {
+					fmt.Fprintf(w, "%q ACTIVE\r\n", n)
+				} else {
+					fmt.Fprintf(w, "%q\r\n", n)
+				}
+			}
+			fmt.Fprint(w, "OK\r\n")
+		case "GETSCRIPT":
+			if content, ok := a.scripts[name]; ok {
+				fmt.Fprintf(w, "{%d}\r\n%s\r\nOK\r\n", len(content), content)
+			} else {
+				fmt.Fprint(w, "NO (NONEXISTENT) \"no such script\"\r\n")
+			}
+		case "PUTSCRIPT":
+			var size int
+			fmt.Sscanf(args[strings.LastIndex(args, "{"):], "{%d+}", &size)
+			content := make([]byte, size)
+			io.ReadFull(r, content)
+			r.ReadString('\n') // the line break that ends the command
+			a.put(name, string(content))
+			fmt.Fprint(w, "OK\r\n")
+		case "SETACTIVE":
+			if _, ok := a.scripts[name]; ok || name == "" {
+				a.active = name
+				fmt.Fprint(w, "OK\r\n")
+			} else {
+				fmt.Fprint(w, "NO (NONEXISTENT) \"no such script\"\r\n")
+			}
+		case "LOGOUT":
+			fmt.Fprint(w, "OK\r\n")
+			w.Flush()
+			a.mu.Unlock()
+			return
+		default:
+			fmt.Fprint(w, "NO \"not scripted\"\r\n")
+		}
+		a.mu.Unlock()
+		w.Flush()
+	}
+}
+
+// saveFilters saves content as the Filters page does.
+func saveFilters(t *testing.T, client *http.Client, url, content string) {
+	t.Helper()
+	body, _ := json.Marshal(ScriptPayload{Content: content})
+	req, _ := http.NewRequest(http.MethodPut, url+"/managesieve/script", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", url)
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(res.Body)
+		t.Fatalf("saving %q: status %d: %s", content, res.StatusCode, raw)
+	}
+}
+
+const (
+	invoiceRule = "require \"fileinto\";\nif header :contains \"Subject\" \"invoice\" {\n\tfileinto \"Archive\";\n}\n"
+	receiptRule = "require \"fileinto\";\nif header :contains \"Subject\" \"receipt\" {\n\tfileinto \"Archive\";\n}\n"
+)
+
+// Filters switched off from another client, or by an administrator, leave
+// alps-filters stored with nothing active. The page shows no rules then, as it
+// reads only the active script, and a rule added there was saved over
+// alps-filters: the switched-off rules were replaced by it, unseen. They are
+// kept now, still switched off, and the rules saved go into a script of their
+// own, which is the one switched on.
+func TestSaveKeepsSwitchedOffFiltersItDidNotShow(t *testing.T) {
+	account := &sieveAccount{}
+	account.store(defaultScriptName, invoiceRule)
+	client, url := signedIn(t, account.listen(t))
+
+	saveFilters(t, client, url, receiptRule)
+
+	scripts, active := account.held()
+	if got := scripts[defaultScriptName]; got != invoiceRule {
+		t.Errorf("%s holds %q after the save, want the switched-off rules it held: %q", defaultScriptName, got, invoiceRule)
+	}
+	if active == "" || active == defaultScriptName || scripts[active] != receiptRule {
+		t.Errorf("the active script is %q, holding %q; want another script, holding the rules saved", active, scripts[active])
+	}
+}
+
+// Removing every rule switches the script off and empties it, so that what
+// is left is not taken for rules switched off elsewhere: rules saved after
+// that go back into the same script, not into a new one each time.
+func TestSaveAfterRemovingEveryRuleReusesTheScript(t *testing.T) {
+	account := &sieveAccount{}
+	client, url := signedIn(t, account.listen(t))
+
+	saveFilters(t, client, url, invoiceRule)
+	saveFilters(t, client, url, "")
+	scripts, active := account.held()
+	if active != "" || scripts[defaultScriptName] != "" {
+		t.Errorf("with every rule removed, %q is active and %s holds %q; want nothing active, and nothing in it", active, defaultScriptName, scripts[defaultScriptName])
+	}
+
+	saveFilters(t, client, url, receiptRule)
+	scripts, active = account.held()
+	if len(scripts) != 1 || active != defaultScriptName || scripts[active] != receiptRule {
+		t.Errorf("after rules were saved again, the account holds %q with %q active; want only %s, active, holding them", scripts, active, defaultScriptName)
 	}
 }
