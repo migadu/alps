@@ -55,9 +55,15 @@ function settingsStore(extra: Record<string, unknown> = {}) {
   return Object.assign(new EventTarget(), { getState: () => state });
 }
 
-const server: { thread: any[]; flagWrites: { mailbox: string; uids: string[]; flags: string[]; action: string }[] } = {
+const server: {
+  thread: any[];
+  flagWrites: { mailbox: string; uids: string[]; flags: string[]; action: string }[];
+  /** What a flag write is answered with. */
+  flagStatus: number;
+} = {
   thread: [],
   flagWrites: [],
+  flagStatus: 200,
 };
 
 function json(body: unknown) {
@@ -71,12 +77,16 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   server.thread = [];
   server.flagWrites = [];
+  server.flagStatus = 200;
   vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
     const u = String(url);
     const flag = /^\/mailboxes\/([^/]+)\/messages\/flag$/.exec(u);
     if (flag) {
       const body = JSON.parse(String(init.body));
       server.flagWrites.push({ mailbox: decodeURIComponent(flag[1]), ...body });
+      if (server.flagStatus !== 200) {
+        return new Response(JSON.stringify({ error: 'internal error' }), { status: server.flagStatus, headers: { 'Content-Type': 'application/json' } });
+      }
       return json({ ok: true });
     }
     if (/\/messages\/\d+\/thread$/.test(u)) return json({ Messages: server.thread });
@@ -484,6 +494,177 @@ describe('reading a conversation', () => {
 
     expect(card(el, 'Sent', '7').item.message.Flags).toContain(SEEN);
     expect(readWrites()).toHaveLength(1);
+  });
+
+  describe('when the server refuses the write', () => {
+    // A refused mark-read put the card back to unread, and the next render
+    // found an expanded unread card and marked it read again: with the default
+    // "at once", a write on every tick, hundreds a second, each one turning
+    // the list's row bold and back, until the conversation was closed.
+    const refusals = () => record<CustomEvent>(window, 'show-toast');
+    const said = (toasts: CustomEvent[]) => toasts.map(t => t.detail.message);
+
+    it('sends it once, leaves the card unread, and says so', async () => {
+      server.flagStatus = 500;
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await settle(40);
+
+      expect(readWrites()).toEqual([{ mailbox: 'INBOX', uids: ['5'], flags: [SEEN], action: 'add' }]);
+      expect(card(el, 'INBOX', '5').item.message.Flags).not.toContain(SEEN);
+      expect(said(toasts)).toEqual(['toast.flagChangeFailed']);
+    });
+
+    it('says so once for every unread card of the conversation', async () => {
+      server.flagStatus = 500;
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply([]), newer()] });
+      await settle(40);
+
+      // One write per folder, as for a write that lands.
+      expect(readWrites()).toEqual([
+        { mailbox: 'INBOX', uids: ['5'], flags: [SEEN], action: 'add' },
+        { mailbox: 'Sent', uids: ['7'], flags: [SEEN], action: 'add' },
+      ]);
+      expect(card(el, 'INBOX', '5').item.message.Flags).not.toContain(SEEN);
+      expect(card(el, 'Sent', '7').item.message.Flags).not.toContain(SEEN);
+      expect(said(toasts)).toEqual(['toast.flagChangeFailed']);
+    });
+
+    it('says a fresh refusal after another message was opened in between', async () => {
+      server.flagStatus = 500;
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await settle(20);
+      expect(said(toasts)).toEqual(['toast.flagChangeFailed']);
+
+      const other = { ...newer(), UID: '19' };
+      server.thread = [other];
+      await update(el, { messages: [other], message: other });
+      await settle(20);
+      expect(readWrites()).toHaveLength(1);
+
+      const members = [older([]), reply(), newer()];
+      server.thread = members;
+      await update(el, { messages: [{ ...members[0], SubMessages: [members[2]] }], message: members[2] });
+      await settle(20);
+
+      expect(readWrites()).toHaveLength(2);
+      expect(said(toasts)).toEqual(['toast.flagChangeFailed', 'toast.flagChangeFailed']);
+    });
+
+    it("does not say a departed conversation's late refusal for the current message", async () => {
+      let release!: (response: Response) => void;
+      const fetchNormally = fetch;
+      vi.stubGlobal('fetch', vi.fn((url: string, init: RequestInit = {}) => {
+        if (String(url) === '/mailboxes/INBOX/messages/flag') {
+          const body = JSON.parse(String(init.body));
+          if (body.uids.includes('5')) {
+            server.flagWrites.push({ mailbox: 'INBOX', ...body });
+            return new Promise<Response>(resolve => { release = resolve; });
+          }
+        }
+        return fetchNormally(url, init);
+      }));
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await waitFor(() => !!release, "the first conversation's held flag write");
+
+      // Open a different conversation while that write is out. Its automatic
+      // read waits until after the older failure, so both refusals are observed.
+      el.settingsStore.getState().markReadTimeout = -1;
+      const members = [{ ...older([]), UID: '15' }, { ...newer(), UID: '19' }];
+      server.thread = members;
+      await update(el, { messages: [{ ...members[0], SubMessages: [members[1]] }], message: members[1] });
+      await settle(20);
+      release(new Response('{}', { status: 500 }));
+      await settle(20);
+      expect.soft(said(toasts)).toEqual([]);
+      const beforeCurrentRefusal = toasts.length;
+
+      server.flagStatus = 500;
+      el.settingsStore.getState().markReadTimeout = 0;
+      el.requestUpdate();
+      await settle(20);
+      expect(readWrites().map(write => write.uids)).toEqual([['5'], ['15']]);
+      expect(said(toasts).slice(beforeCurrentRefusal)).toEqual(['toast.flagChangeFailed']);
+    });
+
+    it('does not announce a held refusal after the reader has left the page', async () => {
+      let release!: (response: Response) => void;
+      const fetchNormally = fetch;
+      vi.stubGlobal('fetch', vi.fn((url: string, init: RequestInit = {}) => {
+        if (String(url) === '/mailboxes/INBOX/messages/flag') {
+          const body = JSON.parse(String(init.body));
+          server.flagWrites.push({ mailbox: 'INBOX', ...body });
+          return new Promise<Response>(resolve => { release = resolve; });
+        }
+        return fetchNormally(url, init);
+      }));
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await waitFor(() => !!release, 'the held flag write');
+      el.remove();
+
+      release(new Response('{}', { status: 500 }));
+      await settle(20);
+
+      expect(readWrites()).toHaveLength(1);
+      expect(said(toasts)).toEqual([]);
+    });
+
+    it('waits the set delay once, and does not try again after it', async () => {
+      server.flagStatus = 500;
+      const el = await openConversation({ members: [older([]), reply(), newer()], settings: { markReadTimeout: 1 } });
+      await new Promise(resolve => setTimeout(resolve, 1100));
+      await settle();
+      expect(readWrites()).toHaveLength(1);
+
+      await new Promise(resolve => setTimeout(resolve, 1100));
+      await settle();
+      expect(readWrites()).toHaveLength(1);
+      expect(card(el, 'INBOX', '5').item.message.Flags).not.toContain(SEEN);
+    });
+
+    it('is still marked read from the card\'s menu, which says again when refused', async () => {
+      server.flagStatus = 500;
+      const toasts = refusals();
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await settle(20);
+      const first = card(el, 'INBOX', '5');
+
+      first.dispatchEvent(new CustomEvent('action-for-item', { detail: { action: 'markRead', item: first.item } }));
+      await settle(20);
+      expect(readWrites()).toHaveLength(2);
+      expect(said(toasts)).toEqual(['toast.flagChangeFailed', 'toast.flagChangeFailed']);
+
+      server.flagStatus = 200;
+      const again = card(el, 'INBOX', '5');
+      again.dispatchEvent(new CustomEvent('action-for-item', { detail: { action: 'markRead', item: again.item } }));
+      await settle(20);
+      expect(readWrites()).toHaveLength(3);
+      expect(card(el, 'INBOX', '5').item.message.Flags).toContain(SEEN);
+    });
+
+    it('tries again when the card is opened again', async () => {
+      server.flagStatus = 500;
+      const el = await openConversation({ members: [older([]), reply(), newer()] });
+      await settle(20);
+      expect(readWrites()).toHaveLength(1);
+
+      server.flagStatus = 200;
+      const toggle = () => {
+        const c = card(el, 'INBOX', '5');
+        c.dispatchEvent(new CustomEvent('toggle-expansion', { detail: { item: c.item } }));
+      };
+      toggle();
+      await settle();
+      toggle();
+      await settle(20);
+
+      expect(readWrites()).toHaveLength(2);
+      expect(card(el, 'INBOX', '5').item.message.Flags).toContain(SEEN);
+    });
   });
 
   it('starts at the first unread message when that is not the open one', async () => {

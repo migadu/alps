@@ -31,7 +31,7 @@ import { composeContext, ComposeStore } from '../store/compose-store';
 import { Logger } from '../utils/logger';
 import { mailboxOf, messageKey } from '../utils/message-key';
 import { registry } from '../plugin-registry';
-import { messageOperations } from '../services/message-operations';
+import { messageOperations, type FlagResult } from '../services/message-operations';
 import { applyThemeToIframe as sharedApplyTheme, setupIframeSizing as sharedSetupSizing, htmlToPlainText } from '../utils/reader-utils';
 import './alps-thread-card';
 
@@ -420,6 +420,23 @@ export class MessageReader extends LitElement {
    */
   private readDueAt = new Map<string, number>();
   private readTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * The cards whose mark-read the server refused, by key, which are not marked
+   * again on their own while they stay open. A refusal paints the card unread
+   * again, and the next render found an expanded unread card and asked again:
+   * with "at once", a write on every tick, hundreds a second. Asked again
+   * when the card is next opened, or by hand from its menu or the toolbar.
+   */
+  private readRefused = new Set<string>();
+  /** Refusals and their notice belong to this opening, including its requests. */
+  private readGeneration = 0;
+  private readRefusalSaid = false;
+
+  private resetReadRefusals() {
+    this.readGeneration++;
+    this.readRefused.clear();
+    this.readRefusalSaid = false;
+  }
 
   private keyOf(msg: any): string {
     return messageKey(this.mailboxOfMessage(msg), msg?.UID);
@@ -469,6 +486,7 @@ export class MessageReader extends LitElement {
     // A timer that outlived the element would mark mail read for a reader
     // nobody is looking at.
     this.readDueAt.clear();
+    this.resetReadRefusals();
     // Nor does a reader that has left the page go on reading bodies nobody
     // asked for. The queue is drained one at a time (see queueItemBody), so
     // what is left of it would keep a connection to the mail server busy for a
@@ -995,6 +1013,7 @@ export class MessageReader extends LitElement {
       const oldMailbox = changedProperties.has('mailbox') ? changedProperties.get('mailbox') : this.mailbox;
 
       if (!this.message) {
+        this.resetReadRefusals();
         this.localPreferredView = null;
         this.content = '';
         this.mimeType = '';
@@ -1013,6 +1032,7 @@ export class MessageReader extends LitElement {
         const isNewMessage = !oldMessage || this.keyOf(oldMessage) !== this.keyOf(this.message) || oldMailbox !== this.mailbox;
 
         if (isNewMessage) {
+          this.resetReadRefusals();
           this.localPreferredView = null;
           this.fetchMessageBody(this.message, this.message._isAutosaveUpdate);
         } else {
@@ -1063,14 +1083,22 @@ export class MessageReader extends LitElement {
    * message would be two writes and two owners.
    */
   private syncReadTimers() {
+    // A late flag rollback can still request a render after disconnection.
+    if (!this.isConnected) return;
     const delaySec = this.settingsStore?.getState()?.markReadTimeout ?? 0;
     const isBulk = this.selectedCount > 0;
+    // A refused card closed, or gone with another message opened, is asked
+    // about afresh when it is next opened.
+    for (const key of [...this.readRefused]) {
+      if (!this.threadItems.some(item => item.expanded && this.itemKey(item) === key)) this.readRefused.delete(key);
+    }
     const wanted = new Set<string>();
     // `< 0` is the setting's "never mark as read automatically".
     if (delaySec >= 0 && this.threadItems.length > 1 && !isBulk) {
       for (const item of this.threadItems) {
         if (!item.message || !item.expanded || this.isOpenItem(item)) continue;
         if (item.message.Flags?.includes(FLAG_SEEN) || isUnsent(item.message)) continue;
+        if (this.readRefused.has(this.itemKey(item))) continue;
         wanted.add(this.itemKey(item));
       }
     }
@@ -1110,7 +1138,7 @@ export class MessageReader extends LitElement {
       const item = this.threadItems.find((i) => this.itemKey(i) === key);
       return !!item && item.expanded && !item.message?.Flags?.includes(FLAG_SEEN);
     });
-    if (keys.length > 0) void this.markMembersRead(keys);
+    if (keys.length > 0) void this.markMembersRead(keys, false);
     this.armReadTimer();
   }
 
@@ -1160,8 +1188,12 @@ export class MessageReader extends LitElement {
    * toolbar's "Mark as read", one for a card's own, and whichever have been read
    * for long enough (see {@link syncReadTimers}). One write per folder, since a
    * UID means nothing outside its own.
+   *
+   * A refused write leaves its cards unread, and is said: each time for a mark
+   * asked for by hand, once per open message for the reader's own.
    */
-  private async markMembersRead(keys: string[]) {
+  private async markMembersRead(keys: string[], byHand = true) {
+    const generation = this.readGeneration;
     const named = new Set(keys);
     const byMailbox = new Map<string, string[]>();
     for (const item of this.threadItems) {
@@ -1194,15 +1226,40 @@ export class MessageReader extends LitElement {
       }
     };
 
+    let refused = false;
     await Promise.all([...byMailbox].map(async ([mailbox, uids]) => {
       paint(mailbox, uids, 'add');
-      let ok = false;
+      let result: FlagResult = { ok: false };
       try {
-        ok = (await messageOperations.setFlag(mailbox, uids, [FLAG_SEEN], 'add')).ok;
+        result = await messageOperations.setFlag(mailbox, uids, [FLAG_SEEN], 'add');
       } catch (err) {
         Logger.error('Failed to mark conversation messages read', err);
       }
-      if (!ok) paint(mailbox, uids, 'remove');
+      // A response from a previous opening still rolls its own flags back,
+      // but must not suppress this opening's attempts or failure notice.
+      if (generation === this.readGeneration) {
+        for (const uid of uids) {
+          const key = messageKey(mailbox, uid);
+          if (result.ok) this.readRefused.delete(key);
+          else this.readRefused.add(key);
+        }
+      }
+      if (result.ok) return;
+      paint(mailbox, uids, 'remove');
+      // A session that ended is said by the sign-in screen it goes to.
+      if (result.reason !== 'auth') refused = true;
+    }));
+    if (refused) this.sayReadRefused(byHand, generation);
+  }
+
+  private sayReadRefused(byHand: boolean, generation: number) {
+    if (!this.isConnected || generation !== this.readGeneration) return;
+    if (!byHand) {
+      if (this.readRefusalSaid) return;
+      this.readRefusalSaid = true;
+    }
+    window.dispatchEvent(new CustomEvent('show-toast', {
+      detail: { message: this.i18nStore?.t('toast.flagChangeFailed') || 'Could not update the messages', duration: 4000 },
     }));
   }
 
