@@ -147,6 +147,47 @@ describe('editing and removing', () => {
     expect(inputOf(el).value).toBe('not an address');
   });
 
+  it('commits it as the field is left, not 150ms later', async () => {
+    // Later, it raced whatever the press that took the focus away did next:
+    // Close saved the draft without it, and Send was still disabled.
+    vi.useFakeTimers();
+    const el = await mount<AddressInput>('alps-address-input');
+    const changes = record<CustomEvent>(el, 'addresses-changed');
+    await typeText(el, 'ada@example.com');
+    inputOf(el).dispatchEvent(new FocusEvent('blur'));
+
+    expect(el.addresses).toEqual(['ada@example.com']);
+    expect(changes.map((e) => e.detail.addresses)).toEqual([['ada@example.com']]);
+  });
+
+  it('commits nothing after it has been taken off the page', async () => {
+    vi.useFakeTimers();
+    const el = await mount<AddressInput>('alps-address-input');
+    await typeText(el, 'ada@example.com');
+    inputOf(el).dispatchEvent(new FocusEvent('blur'));
+    el.remove();
+    const late = record<CustomEvent>(el, 'addresses-changed');
+    await vi.advanceTimersByTimeAsync(150);
+
+    expect(late).toHaveLength(0);
+  });
+
+  it('takes what is typed when asked, and leaves what is not an address', async () => {
+    const el = await mount<AddressInput & { commitPending(): void }>('alps-address-input', { addresses: ['ada@example.com'] });
+    const changes = record<CustomEvent>(el, 'addresses-changed');
+    await typeText(el, 'bob');
+    el.commitPending();
+    expect(el.addresses).toEqual(['ada@example.com']);
+    expect(changes).toHaveLength(0);
+
+    await typeText(el, 'bob@example.com');
+    el.commitPending();
+    expect(el.addresses).toEqual(['ada@example.com', 'bob@example.com']);
+    expect(changes.map((e) => e.detail.addresses)).toEqual([['ada@example.com', 'bob@example.com']]);
+    await el.updateComplete;
+    expect(inputOf(el).value).toBe('');
+  });
+
   it('disables the field and the remove buttons', async () => {
     const el = await mount<AddressInput>('alps-address-input', { addresses: ['ada@example.com'] });
     await update(el, { disabled: true });
