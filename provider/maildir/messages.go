@@ -253,7 +253,10 @@ func countUnseen(msgs []*maildir.Message) int {
 }
 
 func (p *Provider) ListMessages(mailbox string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
-	dir := p.getDir(mailbox)
+	dir, err := p.getDir(mailbox)
+	if err != nil {
+		return nil, provider.PageInfo{}, err
+	}
 	msgs, err := getAllMessages(dir)
 	if err != nil {
 		return nil, provider.PageInfo{}, err
@@ -337,7 +340,11 @@ func messageContains(m *maildir.Message, query string) bool {
 // newest first, and nothing about them: what an action on a whole folder is
 // applied to. An empty query is the whole mailbox.
 func (p *Provider) SearchMessageIDs(mailbox, query string) ([]provider.MessageID, error) {
-	msgs, err := getAllMessages(p.getDir(mailbox))
+	dir, err := p.getDir(mailbox)
+	if err != nil {
+		return nil, err
+	}
+	msgs, err := getAllMessages(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +369,10 @@ func (p *Provider) SearchMessageIDs(mailbox, query string) ([]provider.MessageID
 }
 
 func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page, pageSize int) ([]provider.Message, provider.PageInfo, error) {
-	dir := p.getDir(mailbox)
+	dir, err := p.getDir(mailbox)
+	if err != nil {
+		return nil, provider.PageInfo{}, err
+	}
 	msgs, err := getAllMessages(dir)
 	if err != nil {
 		return nil, provider.PageInfo{}, err
@@ -417,6 +427,9 @@ func (p *Provider) SearchMessages(mailbox, query string, sortOrder string, page,
 // lookup can say it: a flag change renames the file, so one that vanishes
 // before the open was not necessarily deleted.
 func messageByKey(dir maildir.Dir, key string) (*maildir.Message, error) {
+	if !messageKey(key) {
+		return nil, refused("not a Maildir message key: %q", key)
+	}
 	m, err := dir.MessageByKey(key)
 	var keyErr *maildir.KeyError
 	if (errors.As(err, &keyErr) && keyErr.N == 0) || errors.Is(err, fs.ErrNotExist) {
@@ -427,7 +440,10 @@ func messageByKey(dir maildir.Dir, key string) (*maildir.Message, error) {
 
 func (p *Provider) GetMessageMetadata(mailbox string, id provider.MessageID) (*provider.Message, error) {
 	key := id.String()
-	dir := p.getDir(mailbox)
+	dir, err := p.getDir(mailbox)
+	if err != nil {
+		return nil, err
+	}
 	m, err := messageByKey(dir, key)
 	if err != nil {
 		return nil, err
@@ -523,7 +539,10 @@ func traversePart(part storedPart, partPath []int) (storedPart, error) {
 // header, parsed and in its bytes, and its body, of which at most limit bytes
 // when limit is above 0.
 func (p *Provider) readPart(mailbox string, key string, partPath []int, limit int64) (*provider.Message, textproto.Header, []byte, []byte, error) {
-	dir := p.getDir(mailbox)
+	dir, err := p.getDir(mailbox)
+	if err != nil {
+		return nil, textproto.Header{}, nil, nil, err
+	}
 	m, err := messageByKey(dir, key)
 	if err != nil {
 		return nil, textproto.Header{}, nil, nil, err
@@ -610,7 +629,10 @@ func (p *Provider) GetMessagePartWithData(mailbox string, id provider.MessageID,
 }
 
 func (p *Provider) SetMessagesFlags(mailbox string, ids []provider.MessageID, op provider.FlagOperation) error {
-	dir := p.getDir(mailbox)
+	dir, err := p.getDir(mailbox)
+	if err != nil {
+		return err
+	}
 
 	for _, id := range ids {
 		key := id.String()
@@ -687,7 +709,10 @@ func (p *Provider) AppendMessage(mailbox string, msg provider.OutgoingMessageWri
 		}
 	}
 
-	dir := p.getDir(mailbox)
+	dir, err := p.getDir(mailbox)
+	if err != nil {
+		return nil, nil, 0, err
+	}
 	// Ensure the destination maildir exists (creates tmp/new/cur); a Sent or
 	// Drafts folder may not have been created yet.
 	if err := dir.Init(); err != nil {
@@ -736,7 +761,10 @@ func abandon(stored *maildir.Message, w io.WriteCloser) {
 // The messages are removed one by one, so those before and after one that
 // fails are removed all the same.
 func (p *Provider) DeleteMessages(mailbox string, ids []provider.MessageID) error {
-	dir := p.getDir(mailbox)
+	dir, err := p.getDir(mailbox)
+	if err != nil {
+		return err
+	}
 	var errs []error
 	for _, id := range ids {
 		m, err := messageByKey(dir, id.String())
@@ -758,8 +786,10 @@ func (p *Provider) DeleteMessages(mailbox string, ids []provider.MessageID) erro
 // stays where it was: reported as moved, it would be looked for in a folder
 // that does not have it.
 func (p *Provider) MoveMessages(sourceMailbox, destMailbox string, ids []provider.MessageID) (map[provider.MessageID]provider.MessageID, error) {
-	src := p.getDir(sourceMailbox)
-	dst := p.getDir(destMailbox)
+	src, dst, err := p.getDirs(sourceMailbox, destMailbox)
+	if err != nil {
+		return nil, err
+	}
 	res := make(map[provider.MessageID]provider.MessageID)
 
 	var errs []error
@@ -802,8 +832,10 @@ func copyMessageTo(message *maildir.Message, target maildir.Dir) (*maildir.Messa
 // CopyMessages copies the messages, and answers the ID of each copy, as
 // MoveMessages does.
 func (p *Provider) CopyMessages(sourceMailbox, destMailbox string, ids []provider.MessageID) (map[provider.MessageID]provider.MessageID, error) {
-	src := p.getDir(sourceMailbox)
-	dst := p.getDir(destMailbox)
+	src, dst, err := p.getDirs(sourceMailbox, destMailbox)
+	if err != nil {
+		return nil, err
+	}
 	res := make(map[provider.MessageID]provider.MessageID)
 
 	var errs []error
