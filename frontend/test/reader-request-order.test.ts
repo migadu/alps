@@ -123,12 +123,12 @@ beforeEach(() => {
   }));
 });
 
-async function settleReaderReads() {
+async function settleReaderReads(clearAccount = true) {
   // Disconnect before releasing: no more queued members may start. A released
   // metadata response can still decode and ask for /raw; keep this test's fetch
   // stub installed until those reads and their follow-on conversation settle.
   cleanup();
-  MessageCache.clear();
+  if (clearAccount) MessageCache.clear();
   for (const resolve of release.values()) resolve();
   while (pendingReads.size) await Promise.allSettled([...pendingReads]);
 }
@@ -243,7 +243,7 @@ describe('opening a conversation', () => {
   });
 });
 
-it('waits for released metadata to finish decoding before teardown restores the fetch stub', async () => {
+it.each([false, true])('waits for released metadata before teardown restores fetch (clear account: %s)', async (clearAccount) => {
   const fetch = vi.mocked(globalThis.fetch).getMockImplementation()!;
   let finishMetadata!: () => void;
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
@@ -264,7 +264,9 @@ it('waits for released metadata to finish decoding before teardown restores the 
   await waitFor(() => !!finishMetadata, 'the pending metadata decode');
 
   let settled = false;
-  const settling = settleReaderReads().then(() => { settled = true; });
+  // A live account finishes its raw request under this stub; a cleared
+  // account cancels that follow-up. Both must finish before restoring fetch.
+  const settling = settleReaderReads(clearAccount).then(() => { settled = true; });
   try {
     await Promise.resolve();
     expect(settled).toBe(false);
@@ -276,9 +278,9 @@ it('waits for released metadata to finish decoding before teardown restores the 
     while (pendingReads.size) await Promise.allSettled([...pendingReads]);
   }
 
-  // The old stub served the final raw request. It cannot enter the next
-  // test's recorder and turn that test's metadata/raw pair into three reads.
-  expect(asked.filter(url => url.includes('/messages/1/raw'))).toHaveLength(1);
+  // The live account uses this stub; the cleared account makes no raw read.
+  // Neither may enter the next test’s recorder.
+  expect(asked.filter(url => url.includes('/messages/1/raw'))).toHaveLength(clearAccount ? 0 : 1);
   expect(pendingReads.size).toBe(0);
 });
 
