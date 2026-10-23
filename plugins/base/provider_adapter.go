@@ -188,6 +188,29 @@ func getMailboxStatusWithProvider(p provider.MailProvider, name string) (*Mailbo
 	return providerStatusToMailboxStatus(status), nil
 }
 
+// getMailboxStatusesWithProvider gets the status of each of names, in one round
+// trip where the provider can ask for them together. Where errs holds an
+// error, that mailbox's status could not be read.
+func getMailboxStatusesWithProvider(p provider.MailProvider, names []string) ([]*MailboxStatus, []error) {
+	statuses := make([]*MailboxStatus, len(names))
+	errs := make([]error, len(names))
+	if batcher, ok := p.(provider.MailboxStatusBatcher); ok {
+		got, gotErrs := batcher.GetMailboxStatuses(names)
+		for i := range names {
+			if gotErrs[i] != nil {
+				errs[i] = gotErrs[i]
+				continue
+			}
+			statuses[i] = providerStatusToMailboxStatus(got[i])
+		}
+		return statuses, errs
+	}
+	for i, name := range names {
+		statuses[i], errs[i] = getMailboxStatusWithProvider(p, name)
+	}
+	return statuses, errs
+}
+
 // readerPartWithProvider reads the part of a message the reader shows, with
 // the verdict and References it shows beside it: in one read where the
 // provider can, else as the part and then the message's metadata.

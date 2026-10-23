@@ -279,6 +279,16 @@ type AuthVerdictProvider interface {
 	AuthVerdicts(mailbox string, ids []MessageID) (verdicts map[string]AuthVerdict, scope string, err error)
 }
 
+// MailboxStatusBatcher is implemented by a provider that can ask for several
+// mailboxes' status in one round trip. A provider without it is asked one
+// mailbox at a time.
+type MailboxStatusBatcher interface {
+	// GetMailboxStatuses returns the status of each of names, in the same
+	// order. Where errs holds an error, that mailbox's status could not be
+	// read and its entry in statuses is nil.
+	GetMailboxStatuses(names []string) (statuses []*MailboxStatus, errs []error)
+}
+
 // ServiceRouter is implemented by provider Options that resolve backends per
 // login. A provider that routes the mail store by domain can route everything
 // else the same way, so a user does not read from one host while sending,

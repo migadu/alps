@@ -209,17 +209,41 @@ func (p *IMAPProvider) listMailboxes(options *imap.ListOptions) ([]provider.Mail
 	return mailboxes, nil
 }
 
+// mailboxStatusItems is what a STATUS asks for. The client only reads it.
+var mailboxStatusItems = &imap.StatusOptions{
+	NumMessages: true,
+	UIDValidity: true,
+	UIDNext:     true,
+	NumUnseen:   true,
+}
+
 // GetMailboxStatus returns status for a specific mailbox
 //
 // UIDNEXT costs nothing more in the same STATUS, and it tells a message that
 // arrived as another went from no change at all, which the two counts cannot.
 func (p *IMAPProvider) GetMailboxStatus(name string) (*provider.MailboxStatus, error) {
-	status, err := p.client.Status(name, &imap.StatusOptions{
-		NumMessages: true,
-		UIDValidity: true,
-		UIDNext:     true,
-		NumUnseen:   true,
-	}).Wait()
+	return mailboxStatusOf(p.client.Status(name, mailboxStatusItems))
+}
+
+// GetMailboxStatuses asks for several mailboxes' status at once. Every STATUS
+// is sent before the first answer is awaited, so the answers arrive in one
+// round trip rather than one each: on a server without LIST-STATUS, that is
+// what the folder list's counts cost.
+func (p *IMAPProvider) GetMailboxStatuses(names []string) ([]*provider.MailboxStatus, []error) {
+	cmds := make([]*imapclient.StatusCommand, len(names))
+	for i, name := range names {
+		cmds[i] = p.client.Status(name, mailboxStatusItems)
+	}
+	statuses := make([]*provider.MailboxStatus, len(names))
+	errs := make([]error, len(names))
+	for i, cmd := range cmds {
+		statuses[i], errs[i] = mailboxStatusOf(cmd)
+	}
+	return statuses, errs
+}
+
+func mailboxStatusOf(cmd *imapclient.StatusCommand) (*provider.MailboxStatus, error) {
+	status, err := cmd.Wait()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mailbox status: %v", err)
 	}
