@@ -727,7 +727,7 @@ describe('the news', () => {
 
     svc.folderChanged('Archive');
     await settle();
-    expect(urls()).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Archive/status', '/mailboxes/Archive?page=0']);
+    expect(urls()).toEqual(['/mailboxes/Archive/status?with=INBOX', '/mailboxes/Archive?page=0']);
     expect(background).toEqual([true]);
   });
 
@@ -768,7 +768,7 @@ describe('the news', () => {
     answer();
     await settle();
     expect(urls().filter((url) => url.includes('/status')).sort()).toEqual([
-      '/mailboxes/Archive/status', '/mailboxes/INBOX/status', '/mailboxes/INBOX/status', '/mailboxes/Lists/status']);
+      '/mailboxes/Archive/status?with=INBOX', '/mailboxes/INBOX/status', '/mailboxes/Lists/status']);
   });
 
   it('forgets the views of a folder kept in memory, which it has made old', async () => {
@@ -790,7 +790,30 @@ describe('the news', () => {
     await landed(svc, 'Archive');
     svc.foldersWatched(true);
     await settle();
-    expect(urls()).toContain('/mailboxes/Archive/status');
+    expect(urls()).toContain('/mailboxes/Archive/status?with=INBOX');
+  });
+
+  it('invalidates the canonical folder version only after pushed counts change it', async () => {
+    let version = 'v1';
+    fetchMock.mockImplementation(async (url: string) => url.includes('/status')
+      ? new Response(JSON.stringify(inbox))
+      : new Response(JSON.stringify({ Messages: [], Total: 0, MailboxesVersion: version, Mailboxes: [
+        { Name: 'INBOX', Total: 2, Unseen: 1 }, { Name: 'Archive', Total: inbox.total, Unseen: inbox.unseen }] })));
+    const svc = new MessageSyncService();
+    await landed(svc);
+    // Unchanged counts retain the optimization.
+    svc.folderChanged('Archive');
+    await settle();
+    await svc.fetch('INBOX', 1, '', false, true);
+    expect(urls().at(-1)).toBe('/mailboxes/INBOX?page=1&mailboxes=v1');
+    inbox = { total: 3, unseen: 2 };
+    svc.folderChanged('Archive');
+    await settle();
+    version = 'v2';
+    await svc.fetch('INBOX', 2, '', false, true);
+    expect(urls().at(-1)).toBe('/mailboxes/INBOX?page=2');
+    await svc.fetch('INBOX', 3, '', false, true);
+    expect(urls().at(-1)).toBe('/mailboxes/INBOX?page=3&mailboxes=v2');
   });
 
   it('of the folders pushed spaces the poll out to every third round, and once they are not, back', async () => {

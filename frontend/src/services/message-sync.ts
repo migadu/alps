@@ -137,6 +137,8 @@ export class MessageSyncService extends EventTarget {
   /** The folders are pushed, and the rounds of the poll passed over since it last ran (see {@link foldersWatched}). */
   private foldersPushed = false;
   private roundsPassed = 0;
+  /** Keep the previous pushed cadence until a successful poll lets followers renew. */
+  private peerPollSpacing = 1;
   /** This tab holds the poll lock; `releaseLead` gives it up. */
   private leading = false;
   private releaseLead: (() => void) | null = null;
@@ -484,6 +486,7 @@ export class MessageSyncService extends EventTarget {
       if (generation !== this.timerGeneration || ok === null) return;
       // Its pace again once one gets through: the timer set as it started
       // still waited as long as the failures before it asked.
+      if (ok) this.peerPollSpacing = this.foldersPushed ? PUSHED_POLL_SPACING : 1;
       const failed = this.pollFailures;
       this.pollFailures = ok ? 0 : failed + 1;
       if (ok && failed === 0) return;
@@ -632,7 +635,7 @@ export class MessageSyncService extends EventTarget {
         ? pollDelay(this.pollMinutes * 60_000, this.pollFailures, 1)
         : this.pollMinutes * 60_000;
       const peers = [...this.peers.values()].filter((peer) => peer.visible && peer.username === username
-        && Date.now() - peer.seen <= Math.max(peerInterval * (this.foldersPushed ? PUSHED_POLL_SPACING : 1) * 3, 180_000));
+        && Date.now() - peer.seen <= Math.max(peerInterval * this.peerPollSpacing * 3, 180_000));
       const mailbox = this.currentMailbox;
       const fetchId = this.currentFetchId;
       // In one request: a request each waited its turn on the connection.
@@ -875,6 +878,7 @@ export class MessageSyncService extends EventTarget {
    */
   foldersWatched(on: boolean) {
     this.foldersPushed = on;
+    if (on) this.peerPollSpacing = PUSHED_POLL_SPACING;
     if (on && this.currentMailbox !== FOLDER_INBOX && this.currentMailbox !== ALL_MAILBOXES) {
       this.folderChanged(this.currentMailbox);
     }
