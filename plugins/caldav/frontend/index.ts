@@ -1,7 +1,7 @@
 import { html } from 'lit';
 import { registry } from '../../../frontend/src/plugin-registry';
-import './calendar-page';
-import './tasks-page';
+// The pages load when first shown (see Route.load). The banner stays static:
+// the mail reader shows it.
 import './calendar-invitation-banner';
 import { hasCalendarPart } from './invitation-service';
 
@@ -10,7 +10,8 @@ registry.registerRoute({
     component: 'calendar-page',
     // Without this the nav tab vanished when caldav was disabled but
     // `#/calendar/...` still resolved to the page behind it.
-    pluginId: 'caldav'
+    pluginId: 'caldav',
+    load: () => import('./calendar-page'),
 });
 
 registry.registerNavTab({
@@ -26,7 +27,8 @@ registry.registerNavTab({
 registry.registerRoute({
     path: '/tasks/*',
     component: 'tasks-page',
-    pluginId: 'caldav'
+    pluginId: 'caldav',
+    load: () => import('./tasks-page'),
 });
 
 registry.registerNavTab({

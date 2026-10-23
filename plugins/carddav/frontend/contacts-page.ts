@@ -16,6 +16,7 @@ import '../../../frontend/src/components/alps-popup';
 import '../../../frontend/src/components/alps-create-button';
 import './contacts-categories';
 import './contacts-list';
+import './contact-view';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { MailboxPage } from '../../../frontend/src/pages/mailbox-page';
 import { MessageList } from '../../../frontend/src/components/message-list';

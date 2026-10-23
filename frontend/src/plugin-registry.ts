@@ -1,3 +1,5 @@
+import { Logger } from './utils/logger';
+
 export interface NavTab {
     id: string;
     pluginId?: string;
@@ -12,6 +14,8 @@ export interface SettingsTab {
     labelKey: string; // The i18n translation key for the tab label
     icon: string;     // The icon name for the sidebar
     component: string; // The HTML custom element tag name, e.g. 'alps-password-settings'
+    /** Fetches the module that defines `component`; see {@link Route.load}. */
+    load?: () => Promise<unknown>;
 }
 
 export interface Route {
@@ -27,6 +31,64 @@ export interface Route {
      * `#/calendar` typed into the address bar reaches it without one.
      */
     pluginId?: string;
+    /**
+     * Fetches the module that defines `component`, the first time the page is
+     * shown.
+     *
+     * Every plugin's `index.ts` is imported eagerly, so a page it imports
+     * statically ships in the first download: Calendar, Tasks, Contacts and the
+     * plugins' settings panes were a third of it, for a user who opened the
+     * inbox. A plugin passes `() => import('./its-page')` here instead, and
+     * keeps static only what the mail view itself shows (a reader banner, a
+     * hook's service).
+     */
+    load?: () => Promise<unknown>;
+}
+
+export const PLUGIN_LOAD_FAILED_EVENT = 'plugin-load-failed';
+
+const loadingComponents = new Set<string>();
+const announcedFailures = new Set<string>();
+
+/** A navigation can revisit a failed page after its notice was dismissed. */
+export function resetComponentLoadFailures(): void {
+    announcedFailures.clear();
+}
+
+/**
+ * Starts the fetch of a route's or settings tab's page module, if its tag is
+ * not defined yet.
+ *
+ * Nothing waits on it: the shell creates the element by tag straight away, and
+ * an element created before its definition is upgraded in place when the
+ * module calls `customElements.define`. Concurrent renders share a load.
+ * Later renders may invoke a failed loader again, but browsers can retain a
+ * failed module import until reload. The shell explains that recovery without
+ * reloading over an open composer; app-update keeps its existing busy guard.
+ */
+export function loadComponent(entry: { component: string; load?: () => Promise<unknown> }): void {
+    const { component, load } = entry;
+    if (!load || customElements.get(component) || loadingComponents.has(component)) return;
+    loadingComponents.add(component);
+    const failed = (error: unknown) => {
+        if (customElements.get(component) || announcedFailures.has(component)) return;
+        announcedFailures.add(component);
+        Logger.error(`Failed to load <${component}>`, error);
+        window.dispatchEvent(new CustomEvent(PLUGIN_LOAD_FAILED_EVENT, { detail: { component } }));
+    };
+    let pending: Promise<unknown>;
+    try {
+        pending = load.call(entry);
+    } catch (error) {
+        failed(error);
+        loadingComponents.delete(component);
+        return;
+    }
+    void Promise.resolve(pending).then(() => {
+        // Vite resolves after a handled preloadError, even if no module arrived.
+        if (!customElements.get(component)) throw new Error(`The module did not define <${component}>`);
+        announcedFailures.delete(component);
+    }).catch(failed).finally(() => loadingComponents.delete(component));
 }
 
 /** Set equality, so a re-read of /session that changed nothing announces

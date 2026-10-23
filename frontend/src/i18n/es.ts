@@ -548,6 +548,8 @@ export const es = {
     reload: 'Recargar'
   },
   general: {
+    pageLoadFailed: "No se pudo cargar esta página. Guarda y cierra las ventanas de redacción y luego recarga la página.",
+    backToMail: "Volver al correo",
     error: 'Error',
     cancel: 'Cancelar',
     save: 'Guardar',

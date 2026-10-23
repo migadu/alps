@@ -550,6 +550,8 @@ export const de: TranslationDictionary = {
     reload: 'Neu laden'
   },
   general: {
+    pageLoadFailed: "Diese Seite konnte nicht geladen werden. Speichern und schließen Sie die Nachrichtenfenster und laden Sie dann die Seite neu.",
+    backToMail: "Zurück zu Mail",
     error: 'Fehler',
     cancel: 'Abbrechen',
     save: 'Speichern',
