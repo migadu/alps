@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/components/message-reader';
 import {
-  cleanup, click, installMatchMedia, installResizeObserver, installScrollIntoView, mount, record, shadow, shadowAll, text, update, waitFor,
+  cleanup, click, flush, installMatchMedia, installResizeObserver, installScrollIntoView, mount, record, shadow, shadowAll, text, update, waitFor,
 } from './helpers/dom';
 import { MessageCache } from '../src/utils/message-cache';
 
@@ -68,6 +68,9 @@ let bodyStatus: Record<string, number>;
 let conversation: boolean;
 let textPart: boolean;
 let bodyReads: string[];
+/** A mailbox whose next body request is held until the test answers it. */
+let holdNext: string | null;
+let release: ((response: Response) => void) | null;
 const attachments = [{ Filename: 'figures.csv', MIMEType: 'text/csv', Size: 120, Path: [2] }];
 
 beforeEach(() => {
@@ -79,6 +82,8 @@ beforeEach(() => {
   conversation = false;
   textPart = true;
   bodyReads = [];
+  holdNext = null;
+  release = null;
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const u = String(url);
     if (u.startsWith('/mailboxes/INBOX/messages/7/thread')) {
@@ -87,6 +92,10 @@ beforeEach(() => {
     const raw = /^\/mailboxes\/(\w+)\/messages\/\d+\/raw/.exec(u);
     if (raw) {
       bodyReads.push(raw[1]);
+      if (holdNext === raw[1]) {
+        holdNext = null;
+        return new Promise<Response>((resolve) => { release = resolve; });
+      }
       const status = bodyStatus[raw[1]];
       return status === 200 ? new Response(`the ${raw[1]} body`, { status }) : new Response('Bad Gateway', { status });
     }
@@ -287,6 +296,54 @@ describe('an answer to a message whose body failed to load', () => {
   }
 });
 
+// An answer or Edit draft waits for the body it reads again. The reader it
+// was asked of could leave the page meanwhile, the account could change, or
+// the message be closed and opened again: the body read for the old intent
+// then opened a composer for it all the same, with the old message's text,
+// source and files.
+describe('an answer or a draft waiting for its body to be read again', () => {
+  const actions = {
+    'Forward from the toolbar': { msg: () => message, run: (el: El) => el._handleAction('forward') },
+    'Forward from its card': { msg: () => message, run: (el: El) => el._handleActionForItem('forward', el.threadItems[0]) },
+    'Edit draft from the banner': { msg: () => draft, run: (el: El) => el._handleEditDraft() },
+    'Edit draft from its card': { msg: () => draft, run: (el: El) => el._handleEditDraft(el.threadItems[0]) },
+  };
+  const transitions = {
+    'the reader leaves the page': async (el: El) => { el.remove(); },
+    'the account changes': async () => { MessageCache.clear(); },
+    'the message is closed and opened again': async (el: El, msg: any) => {
+      el.message = null;
+      await el.updateComplete;
+      el.message = msg;
+      await el.updateComplete;
+    },
+  };
+
+  for (const [name, action] of Object.entries(actions)) {
+    for (const [transition, happen] of Object.entries(transitions)) {
+      it(`${name} opens nothing once ${transition}`, async () => {
+        const msg = action.msg();
+        bodyStatus[msg.Mailbox] = 500;
+        const composeStore = { openComposer: vi.fn() };
+        const el = await open(msg, composeStore);
+        const toasts = record<CustomEvent>(window, 'show-toast');
+
+        holdNext = msg.Mailbox;
+        const waiting = action.run(el);
+        await waitFor(() => release !== null, 'the body read again');
+        bodyStatus[msg.Mailbox] = 200;
+        await happen(el, msg);
+        release!(new Response(`the old ${msg.Mailbox} body`, { status: 200 }));
+        await waiting;
+        await flush();
+
+        expect(composeStore.openComposer).not.toHaveBeenCalled();
+        expect(toasts).toEqual([]);
+        if (transition === 'the account changes') expect(el.content).not.toBe(`the old ${msg.Mailbox} body`);
+      });
+    }
+  }
+});
 
 describe('a body action awaiting a retry belongs to its opening and account', () => {
   const actions = {
