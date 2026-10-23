@@ -103,7 +103,12 @@ func (p *IMAPProvider) selectedStatus(name string) (*provider.MailboxStatus, boo
 type selectedCheck struct {
 	kept    *keptStatus
 	noop    *imapclient.Command
-	changed *imapclient.FetchCommand
+	changed <-chan selectedDelta
+}
+
+type selectedDelta struct {
+	changed bool
+	err     error
 }
 
 // sendSelectedCheck sends the NOOP and the FETCH that ask whether anything
@@ -116,12 +121,19 @@ func (p *IMAPProvider) sendSelectedCheck(name string) *selectedCheck {
 		!p.isSelected(name) || p.news.told.Load() != kept.told {
 		return nil
 	}
-	return &selectedCheck{
-		kept: kept,
-		noop: p.client.Noop(),
-		changed: p.client.Fetch(imap.UIDSet{imap.UIDRange{Start: 1, Stop: 0}},
-			&imap.FetchOptions{UID: true, Flags: true, ChangedSince: kept.status.HighestModSeq}),
-	}
+	noop := p.client.Noop()
+	fetch := p.client.Fetch(imap.UIDSet{imap.UIDRange{Start: 1, Stop: 0}},
+		&imap.FetchOptions{UID: true, Flags: true, ChangedSince: kept.status.HighestModSeq})
+	changed := make(chan selectedDelta, 1)
+	// Drain immediately: a server may send FETCH data before an earlier
+	// STATUS or NOOP completes. Waiting for either first fills the client's
+	// bounded FETCH queue and blocks its reader before that earlier reply.
+	// Only existence matters; Close discards all remaining fields/messages.
+	go func() {
+		any := fetch.Next() != nil
+		changed <- selectedDelta{changed: any, err: fetch.Close()}
+	}()
+	return &selectedCheck{kept: kept, noop: noop, changed: changed}
 }
 
 // waitSelectedCheck waits for the answers to what sendSelectedCheck sent, and
@@ -129,8 +141,8 @@ func (p *IMAPProvider) sendSelectedCheck(name string) *selectedCheck {
 func (p *IMAPProvider) waitSelectedCheck(check *selectedCheck) (*provider.MailboxStatus, bool) {
 	kept := check.kept
 	noopErr := check.noop.Wait()
-	msgs, fetchErr := check.changed.Collect()
-	if noopErr != nil || fetchErr != nil || len(msgs) > 0 {
+	delta := <-check.changed
+	if noopErr != nil || delta.err != nil || delta.changed {
 		return nil, false
 	}
 	if mbox := p.selectedMailbox(); mbox == nil || mbox.Name != kept.mailbox || mbox.NumMessages != kept.status.NumMessages ||
