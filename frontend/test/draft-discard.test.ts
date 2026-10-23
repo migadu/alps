@@ -652,4 +652,26 @@ describe('the mail page, when a draft is saved', () => {
     expect(el.messages[0].SubMessages[0]).toMatchObject({ UID: '8', Envelope: listedRecipients });
     expect(el.selectedMessage).toMatchObject({ UID: '8', Envelope: listedRecipients });
   });
+  it('keeps literal apostrophes in saved recipient names when the row is edited again', async () => {
+    const row = toBob();
+    const el = await translatedPage('Drafts', [row], row);
+    saved({ oldUid: '7', oldMailbox: 'Drafts', newUid: '8',
+      to: ["'t Hooft <gerard@example.com>"], cc: ["Miles' <miles@example.com>"] });
+    expect(el.messages[0].Envelope).toMatchObject({
+      To: [{ Name: "'t Hooft", Mailbox: 'gerard', Host: 'example.com' }],
+      Cc: [{ Name: "Miles'", Mailbox: 'miles', Host: 'example.com' }],
+    });
+    expect(await addressees(el)).toEqual(["'t Hooft, Miles'"]);
+    const composeStore = { openComposer: vi.fn() };
+    const reader = await mount<El>('alps-message-reader', {
+      settingsStore: settingsStore(), i18nStore, composeStore,
+      mailbox: 'Drafts', mailboxes: [{ Name: 'Drafts', Attrs: ['\\Drafts'] }],
+      messages: el.messages, message: el.selectedMessage,
+    });
+    await reader._handleEditDraft();
+    expect(composeStore.openComposer).toHaveBeenCalledWith(expect.objectContaining({
+      to: ["'t Hooft <gerard@example.com>"], cc: ["Miles' <miles@example.com>"],
+    }));
+  });
+
 });
