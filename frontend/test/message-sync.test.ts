@@ -1021,6 +1021,123 @@ describe('polling', () => {
     expect(listingsAsked()).toEqual(['/mailboxes/Work?page=0&query=ada']);
   });
 
+  /** A server that numbers its changes: its listing and its check carry the latest one's number. */
+  function numberingServer(counts: { total: number; unseen: number; modseq: number }) {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/status')) {
+        return new Response(JSON.stringify(withOthers(url, { total: counts.total, unseen: counts.unseen, highestmodseq: counts.modseq }, () => ({ total: counts.total, unseen: counts.unseen, highestmodseq: counts.modseq }))), { status: 200 });
+      }
+      const status = { NumMessages: counts.total, NumUnseen: counts.unseen, HighestModSeq: counts.modseq };
+      return new Response(JSON.stringify({ Messages: [], Total: counts.total, Mailbox: status, Inbox: status }), { status: 200 });
+    });
+  }
+
+  it('reads the listing again when only the change number moved, as a star in another client moves it', async () => {
+    const counts = { total: 2, unseen: 1, modseq: 7 };
+    numberingServer(counts);
+    const svc = service();
+    await landed(svc, 'Work');
+    fetchMock.mockClear();
+
+    svc.start(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toEqual([]);
+
+    counts.modseq = 8;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toEqual(['/mailboxes/Work?page=0']);
+  });
+
+  it('detects adjacent legal MODSEQ values above the JavaScript integer limit', async () => {
+    let modseq = '9007199254740992';
+    fetchMock.mockImplementation(async (url: string) => {
+      const status = { NumMessages: 2, NumUnseen: 1, HighestModSeq: '$MODSEQ' };
+      const body = url.includes('/status')
+        ? withOthers(url, { total: 2, unseen: 1, highestmodseq: '$MODSEQ' }, () => ({ total: 2, unseen: 1, highestmodseq: '$MODSEQ' }))
+        : { Messages: [], Total: 2, Mailbox: status, Inbox: status };
+      // The server keeps the opaque63-bit version as decimal text.
+      return new Response(JSON.stringify(body).replaceAll('$MODSEQ', modseq), { status: 200 });
+    });
+    const svc = service();
+    await landed(svc, 'Work');
+    fetchMock.mockClear();
+    svc.start(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toEqual([]);
+    modseq = '9007199254740993';
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toEqual(['/mailboxes/Work?page=0']);
+  });
+
+  it('detects an exact MODSEQ change in a batched Inbox answer while Work stays unchanged', async () => {
+    let inboxModseq = '9007199254740992';
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/status')) return new Response(JSON.stringify(withOthers(url,
+        { total: 2, unseen: 1, highestmodseq: '7' },
+        () => ({ total: 2, unseen: 1, highestmodseq: inboxModseq }))), { status: 200 });
+      return new Response(JSON.stringify({ Messages: [], Total: 2,
+        Mailbox: { NumMessages: 2, NumUnseen: 1, HighestModSeq: '7' },
+        Inbox: { NumMessages: 2, NumUnseen: 1, HighestModSeq: inboxModseq } }), { status: 200 });
+    });
+    const svc = service();
+    await landed(svc, 'Work');
+    fetchMock.mockClear();
+    svc.start(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toEqual([]);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/Work/status?with=INBOX']);
+    inboxModseq = '9007199254740993';
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toEqual(['/mailboxes/Work?page=0']);
+  });
+
+  for (const value of [9007199254740992, -1, 1.5, null, true, '7x', '01', '', '9223372036854775808']) {
+    it(`re-lists when MODSEQ is unsafe or malformed (${JSON.stringify(value)})`, async () => {
+      fetchMock.mockImplementation(async (url: string) => {
+        const status = { NumMessages: 2, NumUnseen: 1, HighestModSeq: value };
+        return new Response(JSON.stringify(url.includes('/status')
+          ? withOthers(url, { total: 2, unseen: 1, highestmodseq: value }, () => ({ total: 2, unseen: 1, highestmodseq: value }))
+          : { Messages: [], Total: 2, Mailbox: status, Inbox: status }), { status: 200 });
+      });
+      const svc = service();
+      await landed(svc, 'Work');
+      fetchMock.mockClear();
+      svc.start(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(listingsAsked()).toEqual(['/mailboxes/Work?page=0']);
+    });
+  }
+
+  for (const [listed, checked] of [[7, '7'], ['9223372036854775807', '9223372036854775807'], ['0', undefined]]) {
+    it(`keeps equal exact or legacy-safe MODSEQ values (${listed}/${checked})`, async () => {
+      fetchMock.mockImplementation(async (url: string) => new Response(JSON.stringify(url.includes('/status')
+        ? withOthers(url, { total: 2, unseen: 1, highestmodseq: checked }, () => ({ total: 2, unseen: 1, highestmodseq: checked }))
+        : { Messages: [], Total: 2, Mailbox: { NumMessages: 2, NumUnseen: 1, HighestModSeq: listed },
+          Inbox: { NumMessages: 2, NumUnseen: 1, HighestModSeq: listed } }), { status: 200 }));
+      const svc = service();
+      await landed(svc, 'Work');
+      fetchMock.mockClear();
+      svc.start(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(listingsAsked()).toEqual([]);
+    });
+  }
+
+  it('takes a listing that numbers no change and a check that names none for the same counts', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/status')) return new Response(JSON.stringify(withOthers(url, { total: 2, unseen: 1 }, () => ({ total: 2, unseen: 1 }))), { status: 200 });
+      const status = { NumMessages: 2, NumUnseen: 1, HighestModSeq: 0 };
+      return new Response(JSON.stringify({ Messages: [], Total: 2, Mailbox: status, Inbox: status }), { status: 200 });
+    });
+    const svc = service();
+    await landed(svc, 'Work');
+    fetchMock.mockClear();
+
+    svc.start(1);
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    expect(listingsAsked()).toEqual([]);
+  });
+
   it('polls from the one tab that holds the poll lock, and from the next once that one stops', async () => {
     installLocks();
     server({ total: 2, unseen: 1 });

@@ -105,6 +105,21 @@ type MailProvider interface {
 	CopyMessages(sourceMailbox, destMailbox string, ids []MessageID) (map[MessageID]MessageID, error)
 }
 
+// ChangeTracker is a MailProvider whose mail server numbers the changes to a
+// mailbox's messages (IMAP CONDSTORE, RFC 7162), so that what changed since a
+// listing was read can be asked for rather than the listing read again.
+type ChangeTracker interface {
+	// TrackChanges has the mail server number the changes from now on, where
+	// it can, and reports whether it does. It is called once, before the
+	// connection is first used: IMAP takes ENABLE only before a mailbox is
+	// selected (RFC 5161). An error says that the connection failed.
+	TrackChanges() (bool, error)
+	// ChangedFlags answers the messages among ids whose flags changed after
+	// the change numbered since, each with its ID and its flags now. A
+	// message not answered has the flags it had then, or is gone.
+	ChangedFlags(mailbox string, ids []MessageID, since uint64) ([]Message, error)
+}
+
 // Idler is a MailProvider whose mail server can tell it, unasked, of changes
 // to a mailbox as they happen (IMAP IDLE, RFC 2177).
 type Idler interface {
@@ -163,11 +178,13 @@ type Mailbox struct {
 	Attributes []string
 	Total      int
 	Unseen     int
-	// UIDValidity and UIDNext come with Total and Unseen where the listing
-	// carries each folder's status (see MailboxStatus), and are 0 otherwise.
-	UIDValidity uint32
-	UIDNext     uint32
-	Subscribed  bool
+	// UIDValidity, UIDNext and HighestModSeq come with Total and Unseen where
+	// the listing carries each folder's status (see MailboxStatus), and are 0
+	// otherwise.
+	UIDValidity   uint32
+	UIDNext       uint32
+	HighestModSeq uint64
+	Subscribed    bool
 }
 
 // MailboxStatus contains mailbox metadata
@@ -181,6 +198,11 @@ type MailboxStatus struct {
 	// when another goes at the same time and leaves both counts as they were.
 	UIDNext        uint32
 	PermanentFlags []Flag
+	// HighestModSeq numbers the latest change to the mailbox's messages: a
+	// flag set or cleared, a message stored or taken out (IMAP CONDSTORE,
+	// RFC 7162). It is 0 where the provider does not track changes (see
+	// ChangeTracker).
+	HighestModSeq uint64
 }
 
 // Message represents an email message

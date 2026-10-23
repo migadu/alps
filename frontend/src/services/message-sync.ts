@@ -21,22 +21,22 @@ export interface MailboxData {
    */
   ListedMailbox?: string;
   /** The counts the listing was read at, of the mailbox and of the Inbox. */
-  Mailbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number; HighestModSeq?: number } | null;
-  Inbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number; HighestModSeq?: number } | null;
+  Mailbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number; HighestModSeq?: string | number } | null;
+  Inbox?: { NumMessages?: number; NumUnseen?: number; UIDNext?: number; UIDValidity?: number; HighestModSeq?: string | number } | null;
 }
 
-/** A folder's counts, as a status check answers them. */
+/**
+ * A folder's counts, as a status check answers them. `highestmodseq` is the
+ * number of the latest change to its messages, where the mail server numbers
+ * them (the server's `condstore` option): a flag changed in another client,
+ * which may leave every count as it was, moves it.
+ */
 interface Counts {
   total: number;
   unseen: number;
   uidnext?: number;
   uidvalidity?: number;
-  /**
-   * The folder's HIGHESTMODSEQ, where the server says it (#124): it moves
-   * when a flag changes in another client, which the counts and UIDNEXT do
-   * not show. Compared only where both answers carry it.
-   */
-  highestmodseq?: number;
+  highestmodseq?: string | null;
 }
 
 /**
@@ -1346,7 +1346,7 @@ function newPollToken(): string {
 function countsOf(status: MailboxData['Mailbox']): Counts | null {
   if (typeof status?.NumMessages !== 'number' || typeof status?.NumUnseen !== 'number') return null;
   return { total: status.NumMessages, unseen: status.NumUnseen, uidnext: status.UIDNext, uidvalidity: status.UIDValidity,
-    highestmodseq: knownModSeq(status.HighestModSeq) };
+    highestmodseq: changeNumber(status.HighestModSeq) };
 }
 
 /** The one request for several folders' counts: the first's, and the others' under `with`. */
@@ -1357,27 +1357,38 @@ function statusURL(names: string[]): string | null {
   return others.length > 0 ? url + '?' + others.map((name) => `with=${encodeURIComponent(name)}`).join('&') : url;
 }
 
-/** A HIGHESTMODSEQ, or undefined for none: 0 is a server that keeps none. */
-function knownModSeq(value: unknown): number | undefined {
-  return typeof value === 'number' && value > 0 ? value : undefined;
-}
-
 /** Validate messages from another tab as strictly as HTTP status answers. */
 function checkedCounts(body: any): Counts | null {
   if (typeof body?.total !== 'number' || typeof body?.unseen !== 'number') return null;
   return { total: body.total, unseen: body.unseen,
     uidnext: typeof body.uidnext === 'number' ? body.uidnext : undefined,
     uidvalidity: typeof body.uidvalidity === 'number' ? body.uidvalidity : undefined,
-    highestmodseq: knownModSeq(body.highestmodseq) };
+    highestmodseq: changeNumber(body.highestmodseq) };
+}
+
+/**
+ * A change number, or undefined where there is none. A listing says 0 where
+ * the mail server numbers no changes, and the status check leaves it out:
+ * the two are the same answer. null means an unusable version, which always
+ * requires a listing read. Decimal strings keep all 63 bits of a MODSEQ.
+ */
+function changeNumber(value: unknown): string | null | undefined {
+  if (value === undefined || value === 0 || value === '0') return undefined;
+  // Legacy safe numeric replies still compare with the exact string form.
+  // Unsafe or malformed values remain uncertain: two unknown versions must
+  // never count as equal and suppress a listing read.
+  if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0 ? String(value) : null;
+  if (typeof value === 'string' && /^[1-9]\d{0,18}$/.test(value)
+    && (value.length < 19 || value <= '9223372036854775807')) return value;
+  return null;
 }
 
 /** Whether a check's answer is the counts held; neither unknown. */
 function sameCounts(answer: Counts | null, held: Counts | null): boolean {
-  return !!answer && !!held && answer.total === held.total && answer.unseen === held.unseen
+  return !!answer && !!held && answer.highestmodseq !== null && held.highestmodseq !== null
+    && answer.total === held.total && answer.unseen === held.unseen
     && answer.uidnext === held.uidnext && answer.uidvalidity === held.uidvalidity
-    // Where both say it: the server says it once #124 has it ask.
-    && (answer.highestmodseq === undefined || held.highestmodseq === undefined
-      || answer.highestmodseq === held.highestmodseq);
+    && answer.highestmodseq === held.highestmodseq;
 }
 
 /** Sets or clears a flag on the messages of a listing that `keys` names. */

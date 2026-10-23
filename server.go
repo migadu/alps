@@ -81,6 +81,7 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 	if options.PushNewMail && !s.Sessions.pushNewMail {
 		logger.Printf("push_new_mail needs background_connection, which is off: new mail is not pushed")
 	}
+	s.Sessions.trackChanges = options.CondStore
 	s.Sessions.pushFolders = options.PushSubscribedFolders && s.Sessions.pushNewMail
 	if options.PushSubscribedFolders && !options.PushNewMail {
 		logger.Printf("push_subscribed_folders needs push_new_mail, which is off: no news of the folders is pushed")
@@ -405,6 +406,11 @@ type Options struct {
 	// event stream open, and tells the page as the news comes: see
 	// Session.WatchInbox. Off when DisableBackgroundConnection is set.
 	PushNewMail bool
+	// If true, each mail connection has the server number the changes to
+	// the mailboxes' messages, where the server can (IMAP CONDSTORE), so that
+	// a listing whose messages are all still there has only its flags read
+	// again: see SessionManager.connectProvider.
+	CondStore bool
 	// If true, with PushNewMail, the session waits for the news of the
 	// subscribed folders as well, where the mail server can tell of them
 	// (IMAP NOTIFY): see Session.WatchInbox.

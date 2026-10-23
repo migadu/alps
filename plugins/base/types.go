@@ -70,6 +70,12 @@ type IMAPMessage struct {
 	ThreadCount      int           `json:"ThreadCount,omitempty"`
 	ThreadUIDs       []string      `json:"ThreadUIDs,omitempty"`
 	SubMessages      []IMAPMessage `json:"SubMessages,omitempty"`
+	// UIDValidity is the UIDVALIDITY of Mailbox the message was read under,
+	// where the provider said; 0 where it is not known. It is set on the
+	// messages of a conversation the session keeps (handleGetThread), which
+	// are kept by UID, and a UID names another message once the folder's
+	// UIDVALIDITY has moved.
+	UIDValidity uint32 `json:"-"`
 }
 
 func (msg *IMAPMessage) URL() *url.URL {

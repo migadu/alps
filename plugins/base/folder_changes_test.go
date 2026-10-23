@@ -50,6 +50,13 @@ func (w *imapWire) String() string {
 // account for another client.
 func newIMAPAccountServer(t *testing.T, caps imap.CapSet, messages ...string) (*testServer, *imapWire, func() *imapclient.Client) {
 	t.Helper()
+	return newIMAPAccountServerWith(t, caps, nil, messages...)
+}
+
+// newIMAPAccountServerWith is newIMAPAccountServer with alps's options as
+// adjust leaves them.
+func newIMAPAccountServerWith(t *testing.T, caps imap.CapSet, adjust func(*alps.Options), messages ...string) (*testServer, *imapWire, func() *imapclient.Client) {
+	t.Helper()
 	ctx := context.Background()
 	user := imapmemserver.NewUser(testUser, testPassword)
 	if err := user.Create(ctx, "INBOX", nil); err != nil {
@@ -99,13 +106,17 @@ func newIMAPAccountServer(t *testing.T, caps imap.CapSet, messages ...string) (*
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := alps.New(alps.NewLogger(), &alps.Options{
+	options := &alps.Options{
 		Provider:     popt,
 		SMTP:         alps.SMTPOptions{Server: "smtp://127.0.0.1:1"},
 		LoginKey:     &key,
 		CacheEnabled: true,
 		CacheTTL:     time.Minute,
-	})
+	}
+	if adjust != nil {
+		adjust(options)
+	}
+	srv, err := alps.New(alps.NewLogger(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
