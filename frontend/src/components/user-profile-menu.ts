@@ -266,16 +266,24 @@ export class UserProfileMenu extends LitElement {
             `;
           })()}
           
-          <button class="dropdown-item ${this.currentTab === 'messages' ? 'active' : ''}" @click="${() => this._handleTabChange('messages')}">
-            ${renderIcon('envelopeSimple')} <span class="item-text">${this.i18nStore?.t('navigation.messages')}</span>
-          </button>
-          ${registry.getNavTabs().map(tab => html`
-            <button class="dropdown-item ${this.currentTab === tab.id ? 'active' : ''}" @click="${() => this._handleTabChange(tab.id)}">
-              ${renderIcon(tab.icon || 'star')} <span class="item-text">${this.i18nStore?.t(tab.labelKey)}</span>
+          <!-- The pages, on a PHONE only. A desktop's header switches between
+               Messages, Contacts, Calendar and Tasks itself, and the menu does
+               not repeat it; a phone's header has no room for the tabs, and
+               this menu is then the only way between them. -->
+          ${this.isMobile ? html`
+            <button class="dropdown-item ${this.currentTab === 'messages' ? 'active' : ''}" @click="${() => this._handleTabChange('messages')}">
+              ${renderIcon('envelopeSimple')} <span class="item-text">${this.i18nStore?.t('navigation.messages')}</span>
             </button>
-          `)}
-          <div class="dropdown-divider"></div>
-          <button class="dropdown-item ${this.currentTab === 'settings' ? 'active' : ''}" @click="${this._handleSettings}">
+            ${registry.getNavTabs().map(tab => html`
+              <button class="dropdown-item ${this.currentTab === tab.id ? 'active' : ''}" @click="${() => this._handleTabChange(tab.id)}">
+                ${renderIcon(tab.icon || 'star')} <span class="item-text">${this.i18nStore?.t(tab.labelKey)}</span>
+              </button>
+            `)}
+            <div class="dropdown-divider"></div>
+          ` : ''}
+          <!-- Never the current item: Settings is a window over the page, and
+               the page's tab stays the current one. -->
+          <button class="dropdown-item" @click="${this._handleSettings}">
             ${renderIcon('gear')} <span class="item-text">${this.i18nStore?.t('userMenu.settings')}</span>
           </button>
           <div class="dropdown-divider"></div>

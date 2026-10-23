@@ -183,6 +183,8 @@ test("on a phone, the account menu opens Settings, and Close returns to the mail
   const mailbox = page.url();
 
   await page.locator('user-profile-menu alps-icon-btn[title="Profile options"]').click();
+  // The header has no tabs on a phone, so the menu carries the pages.
+  await expect(page.locator("user-profile-menu").getByRole("button", { name: "Messages", exact: true })).toBeVisible();
   await page.locator("user-profile-menu").getByRole("button", { name: "Settings", exact: true }).click();
   await expect(win(page)).toBeVisible();
   await expect(sections(page)).toBeVisible();
@@ -200,6 +202,19 @@ test("on a phone, the account menu opens Settings, and Close returns to the mail
   await closeButton(page).click();
   await expect(win(page)).toHaveCount(0);
   expect(page.url()).toBe(mailbox);
+});
+
+test("on a desktop, the account menu offers Settings, not the pages its header has", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await login(page);
+  await page.locator('user-profile-menu alps-icon-btn[title="Profile options"]').click();
+  const menu = page.locator("user-profile-menu");
+  await expect(menu.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
+  for (const name of ["Messages", "Contacts", "Calendar", "Tasks"]) {
+    await expect(menu.getByRole("button", { name, exact: true })).toHaveCount(0);
+  }
+  await menu.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(win(page)).toBeVisible();
 });
 
 test("on a phone, Back closes Settings, from a section too", async ({ page }) => {
