@@ -243,7 +243,27 @@ func replyHeaders(inReplyTo, references string) (string, []string) {
 	return parent, refs
 }
 
+// WriteTo writes the message as it is sent, and as its copy in Sent is
+// stored: without its Bcc, which the recipients must not see. The Bcc
+// recipients have it from the SMTP envelope (see sendMessage).
 func (msg *OutgoingMessage) WriteTo(w io.Writer) (int64, error) {
+	return msg.write(w, false)
+}
+
+// asDraft is the message as Drafts stores it: with its Bcc. Stored without
+// it, a draft reopened from Drafts, on another device or after a reload,
+// had none, and was sent without the Bcc recipients the user had added.
+func (msg *OutgoingMessage) asDraft() provider.OutgoingMessageWriter {
+	return draftMessage{msg}
+}
+
+type draftMessage struct{ msg *OutgoingMessage }
+
+func (d draftMessage) WriteTo(w io.Writer) (int64, error) {
+	return d.msg.write(w, true)
+}
+
+func (msg *OutgoingMessage) write(w io.Writer, withBcc bool) (int64, error) {
 	fromAddr, err := mail.ParseAddress(msg.From)
 	if err != nil {
 		return 0, err
@@ -265,6 +285,13 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) (int64, error) {
 	h.SetAddressList("From", from)
 	h.SetAddressList("To", to)
 	h.SetAddressList("Cc", cc)
+	if withBcc {
+		bcc, err := prepareAddressList(msg.Bcc)
+		if err != nil {
+			return 0, err
+		}
+		h.SetAddressList("Bcc", bcc)
+	}
 	if msg.Subject != "" {
 		h.SetText("Subject", msg.Subject)
 	}

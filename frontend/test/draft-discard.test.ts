@@ -402,6 +402,34 @@ describe('the reader', () => {
       quoteSource: expect.objectContaining({ mailbox: 'Drafts', uid: '7' }),
     }));
   });
+
+  it('reopens a draft with the Bcc its envelope names', async () => {
+    // A draft is stored with its Bcc, and listed and read with it in its
+    // envelope. Reopened without it, it was sent without those recipients.
+    const stored: any = draft('7');
+    stored.Envelope = {
+      ...stored.Envelope,
+      To: [{ Name: '', Mailbox: 'charles', Host: 'example.com' }],
+      Bcc: [{ Name: 'Hopper, Grace', Mailbox: 'grace', Host: 'example.com' }, { Name: '', Mailbox: 'hidden', Host: 'example.com' }],
+    };
+    const composeStore = { openComposer: vi.fn() };
+    const el = await mount<El>('alps-message-reader', {
+      settingsStore: settingsStore(),
+      i18nStore,
+      composeStore,
+      mailbox: '*',
+      mailboxes: [],
+      messages: [stored],
+      message: stored,
+    });
+
+    await el._handleEditDraft();
+
+    expect(composeStore.openComposer).toHaveBeenCalledWith(expect.objectContaining({
+      to: ['charles@example.com'],
+      bcc: ['"Hopper, Grace" <grace@example.com>', 'hidden@example.com'],
+    }));
+  });
 });
 
 describe('the mail page, when a draft is saved', () => {

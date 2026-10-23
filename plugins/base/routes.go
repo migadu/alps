@@ -2389,8 +2389,9 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	// A field that does not read as addresses is refused here, for what it
-	// is, rather than as a failure to send or to store the draft. A draft
-	// does not carry Bcc, so Bcc does not stop one being saved.
+	// is, rather than as a failure to send or to store the draft. A Bcc that
+	// does not read so is refused only when the message is sent: a draft is
+	// still saved, as it always was, and stored without it.
 	recipients := map[string][]string{}
 	for _, field := range []string{"to", "cc", "bcc"} {
 		list, err := parseAddressList(ctx.FormValue(field))
@@ -2620,7 +2621,7 @@ func handleComposeNew(ctx *alps.Context) error {
 
 		err := doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 			var err error
-			drafts, uid, size, err = appendMessageWithProvider(p, msg, provider.MailboxTypeDrafts)
+			drafts, uid, size, err = appendMessageWithProvider(p, msg.asDraft(), provider.MailboxTypeDrafts)
 			if err != nil {
 				return err
 			}

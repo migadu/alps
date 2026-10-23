@@ -121,6 +121,26 @@ func TestOutgoingMessage_Headers(t *testing.T) {
 	}
 }
 
+// A draft names its Bcc, so that it is sent to them once it is reopened. The
+// message written for sending, above, still does not.
+func TestOutgoingMessage_ADraftNamesItsBcc(t *testing.T) {
+	var buf bytes.Buffer
+	if _, err := outgoing().asDraft().WriteTo(&buf); err != nil {
+		t.Fatal(err)
+	}
+	r, err := mail.CreateReader(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bcc, err := r.Header.AddressList("Bcc")
+	if err != nil || len(bcc) != 1 || bcc[0].Address != "hidden@example.com" {
+		t.Errorf("the draft's Bcc is %v (%v)", bcc, err)
+	}
+	if to, _ := r.Header.AddressList("To"); len(to) != 1 || to[0].Address != "charles@example.com" {
+		t.Errorf("the draft's To is %v", to)
+	}
+}
+
 func TestOutgoingMessage_ReplyHeaders(t *testing.T) {
 	msg := outgoing()
 	msg.ReplyTo = "team@example.com"
