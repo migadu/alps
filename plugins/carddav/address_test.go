@@ -80,6 +80,28 @@ func TestSaveKeepsTheAddressItDidNotChange(t *testing.T) {
 	expectAddresses(t, saveAddress(t, withAddresses(home(), work()), nil), home(), work())
 }
 
+func TestLaterAutosaveKeepsTheOtherAddressAfterClearing(t *testing.T) {
+	h := newHarness(t)
+	p := testBook + "grace.vcf"
+	h.dav.save(p, withAddresses(home(), work()))
+	c := h.opened(p)
+	c.Address = ""
+	for i, fields := range [][]string{{"address"}, {"note"}, {}} {
+		c.Note = fmt.Sprintf("Autosave %d", i)
+		r := h.do("POST", "/contacts/"+pathParam(p)+"/edit", struct {
+			ContactData
+			ChangedFields []string `json:"changed_fields"`
+		}{c, fields})
+		h.expect(r, http.StatusOK)
+		var saved struct {
+			ETag string `json:"etag"`
+		}
+		h.decode(r, &saved)
+		c.ETag = saved.ETag
+		expectAddresses(t, h.dav.get(t, p).Card[vcard.FieldAddress], work())
+	}
+}
+
 // An edit that keeps the line's shape, one part per part the card holds,
 // changes those parts, and the address keeps its type; the other addresses
 // stay.

@@ -2,6 +2,7 @@ package alpscarddav
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -365,6 +366,30 @@ func setAddress(card vcard.Card, f *vcard.Field, line string) {
 	delete(f.Params, "GEO")
 }
 
+// A changed key can use a different representation from the old value. Keep
+// identity and preference parameters, but make the value's encoding match it.
+// v3 binary keys stay binary when their edited value is still valid base64;
+// otherwise v3 uses text. v4 distinguishes a URI (including data:) from text.
+func setKeyRepresentation(card vcard.Card, f *vcard.Field, value string) {
+	if f.Params == nil {
+		f.Params = make(vcard.Params)
+	}
+	delete(f.Params, "MEDIATYPE") // describes the previous value's data
+	if card.Value(vcard.FieldVersion) == "3.0" && strings.EqualFold(f.Params.Get("ENCODING"), "b") {
+		if _, err := base64.StdEncoding.DecodeString(value); err == nil {
+			f.Params.Set("ENCODING", "b")
+			delete(f.Params, "VALUE") // binary is v3's default
+			return
+		}
+	}
+	delete(f.Params, "ENCODING")
+	if uri, err := url.Parse(value); card.Value(vcard.FieldVersion) != "3.0" && err == nil && uri.IsAbs() {
+		f.Params.Set("VALUE", "uri")
+	} else {
+		f.Params.Set("VALUE", "text")
+	}
+}
+
 func touchRevision(card vcard.Card) {
 	card[vcard.FieldRevision] = []*vcard.Field{{Value: time.Now().UTC().Format("20060102T150405Z")}}
 }
@@ -448,9 +473,25 @@ func registerRoutes(p *plugin) {
 	})
 
 	updateContact := func(ctx *alps.Context) error {
-		var req ContactData
+		var req struct {
+			ContactData
+			// Nil retains the whole-form contract for older clients. An empty
+			// list means that none of the displayed single-copy fields changed.
+			ChangedFields []string `json:"changed_fields"`
+		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
+		}
+		changed := func(field string) bool {
+			if req.ChangedFields == nil {
+				return true
+			}
+			for _, name := range req.ChangedFields {
+				if name == field {
+					return true
+				}
+			}
+			return false
 		}
 
 		// The empty case is /contacts/create, where there is no {path} at all and
@@ -579,17 +620,25 @@ func registerRoutes(p *plugin) {
 		// one copy of: the preferred one, as extractContactData gives it.
 		// Sent back as the page was given it, the field is left as stored.
 		// Changed, the new value takes that copy's place and keeps its
-		// parameters; cleared, that copy goes. The other copies stay either
+		// parameters (except a key's changed representation); cleared, that
+		// copy goes. The other copies stay either
 		// way. Through setSimpleField, a save kept one bare copy of each of
 		// these fields: a second URL or key was dropped, and so were the
 		// types and languages of the rest, whatever had been edited.
-		setShownField := func(field string, val string) {
+		setShownField := func(field, name, val string) {
+			if !changed(name) {
+				return
+			}
 			val = strings.TrimSpace(val)
 			f := card.Preferred(field)
 			switch {
 			case f == nil:
 				if val != "" {
-					card.Add(field, &vcard.Field{Value: val})
+					added := &vcard.Field{Value: val}
+					if field == vcard.FieldKey {
+						setKeyRepresentation(card, added, val)
+					}
+					card.Add(field, added)
 				}
 			case strings.TrimSpace(f.Value) == val:
 			case val == "":
@@ -605,6 +654,9 @@ func registerRoutes(p *plugin) {
 					card[field] = kept
 				}
 			default:
+				if field == vcard.FieldKey {
+					setKeyRepresentation(card, f, val)
+				}
 				f.Value = val
 			}
 		}
@@ -654,8 +706,8 @@ func registerRoutes(p *plugin) {
 
 		updateMultiField(vcard.FieldEmail, req.Emails, req.Email)
 		updateMultiField(vcard.FieldTelephone, req.Phones, req.Phone)
-		setShownField(vcard.FieldOrganization, req.Organization)
-		setShownField(vcard.FieldTitle, req.Title)
+		setShownField(vcard.FieldOrganization, "organization", req.Organization)
+		setShownField(vcard.FieldTitle, "title", req.Title)
 		// A birthday sent back as the page was given it is left as stored, its
 		// parameters with it: written bare, Apple's birthday without a year
 		// became one in 1604, in Apple's own apps too, after any edit here.
@@ -672,10 +724,10 @@ func registerRoutes(p *plugin) {
 				setSimpleField(vcard.FieldBirthday, req.Birthday)
 			}
 		}
-		setShownField(vcard.FieldNote, req.Note)
-		setShownField(vcard.FieldURL, req.URL)
-		setShownField(vcard.FieldNickname, req.Nickname)
-		setShownField(vcard.FieldKey, req.PublicKey)
+		setShownField(vcard.FieldNote, "note", req.Note)
+		setShownField(vcard.FieldURL, "url", req.URL)
+		setShownField(vcard.FieldNickname, "nickname", req.Nickname)
+		setShownField(vcard.FieldKey, "public_key", req.PublicKey)
 
 		setCategories(card, req.Categories)
 
@@ -683,8 +735,10 @@ func registerRoutes(p *plugin) {
 		// Written back as the page's one line on every save, the city,
 		// region, postal code and country became part of the street, and the
 		// address lost its type and the card its other addresses.
-		if f := card.Preferred(vcard.FieldAddress); f == nil || strings.TrimSpace(addressLine(f)) != strings.TrimSpace(req.Address) {
-			setAddress(card, f, req.Address)
+		if changed("address") {
+			if f := card.Preferred(vcard.FieldAddress); f == nil || strings.TrimSpace(addressLine(f)) != strings.TrimSpace(req.Address) {
+				setAddress(card, f, req.Address)
+			}
 		}
 
 		id := uuid.New()

@@ -270,6 +270,33 @@ describe('login-webauthn-page', () => {
       }
     });
 
+    // The options are decoded on the way to the browser. A challenge or a
+    // credential id that was missing failed with the decoder's own English
+    // sentence, "base64url is null or undefined"; one that was not base64url
+    // failed in atob, and read as a general error.
+    it.each([
+      ['without a challenge', { allowCredentials: [] }],
+      ['with a credential that has no id', { challenge: 'AAAA', allowCredentials: [{ type: 'public-key' }] }],
+      ['with a challenge that is not base64url', { challenge: '!!!' }],
+      ['with only whitespace for a challenge', { challenge: ' \t\n' }],
+      ['with whitespace inside a challenge', { challenge: 'AA AA' }],
+      ['with only whitespace for a credential id', { challenge: 'AAAA', allowCredentials: [{ type: 'public-key', id: ' \t' }] }],
+      ['with a plus sign in a challenge', { challenge: 'AA+_' }],
+      ['with a slash in a credential id', { challenge: 'AAAA', allowCredentials: [{ type: 'public-key', id: '/w' }] }],
+    ])('says the options cannot be used, in the user\'s language, when they come %s', async (_, publicKey) => {
+      const get = vi.fn(async () => null);
+      Object.defineProperty(navigator, 'credentials', { value: { get }, configurable: true });
+      const { el, key } = await verify(() => answer(200, { publicKey }));
+      key.mockRestore();
+      try {
+        await said(el, 'webauthn.errors.invalid_options');
+        expect(get).not.toHaveBeenCalled();
+      } finally {
+        el.remove();
+        delete (navigator as any).credentials;
+      }
+    });
+
     it('goes back to the password, and says why, when the pending sign-in is gone', async () => {
       sessionStorage.setItem('pending_2fa_username', 'ada@example.com');
       const { el } = await verify(options, () => answer(401, { error: 'no pending 2FA session' }));
@@ -280,6 +307,93 @@ describe('login-webauthn-page', () => {
       } finally {
         el.remove();
       }
+    });
+  });
+
+  /**
+   * The page starts the ceremony by itself 300 ms after it is attached. A
+   * second ceremony replaces the challenge the server keeps for the session,
+   * so the first one's assertion is checked against the wrong challenge, and
+   * the browser shows only one of the two prompts.
+   */
+  describe('one ceremony at a time', () => {
+    let begins = 0;
+    let get: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      begins = 0;
+      // The browser's prompt stays up until a test says otherwise.
+      get = vi.fn(() => new Promise(() => {}));
+      Object.defineProperty(navigator, 'credentials', { value: { get }, configurable: true });
+      vi.spyOn(webauthnUtils, 'isWebAuthnSupported').mockReturnValue(true);
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        if (String(url).endsWith('/webauthn/verify/begin')) begins++;
+        return { ok: true, status: 200, json: async () => ({ publicKey: { challenge: 'AAAA' } }) } as any;
+      });
+    });
+
+    afterEach(() => {
+      document.body.innerHTML = '';
+      vi.useRealTimers();
+      delete (navigator as any).credentials;
+    });
+
+    async function page() {
+      const el = document.createElement('login-webauthn-page') as LoginWebAuthnPage & Record<string, any>;
+      el.i18nStore = { t: (k: string) => k, addEventListener() {}, removeEventListener() {} };
+      document.body.appendChild(el);
+      await el.updateComplete;
+      return el;
+    }
+
+    const verifyButton = (el: HTMLElement) => el.shadowRoot!.querySelector('alps-button[variant="primary"]') as HTMLElement;
+
+    it('starts no second ceremony when Verify is clicked before the automatic one', async () => {
+      const el = await page();
+      verifyButton(el).click();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(begins).toBe(1);
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not start the automatic ceremony after one the user started has ended', async () => {
+      get.mockRejectedValue(new DOMException('The operation was not allowed.', 'NotAllowedError'));
+      const el = await page();
+      verifyButton(el).click();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(begins).toBe(1);
+      expect(el.statusMessage).toBe('webauthn.errors.cancelled');
+    });
+
+    it('starts no second ceremony when Verify is clicked while one runs', async () => {
+      const el = await page();
+      await vi.advanceTimersByTimeAsync(300);
+      expect(get).toHaveBeenCalledTimes(1);
+      verifyButton(el).click();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(begins).toBe(1);
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts nothing once the page is left before the automatic ceremony', async () => {
+      const el = await page();
+      el.remove();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(begins).toBe(0);
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it('still starts the ceremony by itself, and Verify runs it again once it has ended', async () => {
+      get.mockRejectedValue(new DOMException('The operation was not allowed.', 'NotAllowedError'));
+      const el = await page();
+      await vi.advanceTimersByTimeAsync(300);
+      expect(begins).toBe(1);
+      await vi.waitFor(() => expect(el.statusMessage).toBe('webauthn.errors.cancelled'));
+      verifyButton(el).click();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(begins).toBe(2);
+      expect(get).toHaveBeenCalledTimes(2);
     });
   });
 });

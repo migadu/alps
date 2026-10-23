@@ -22,6 +22,8 @@ export interface ContactPayload {
   path?: string;
   /** The version the card was opened at; see ContactsService.updateContact. */
   etag?: string;
+  /** Single-copy fields changed since the last successful form save. */
+  changed_fields?: string[];
   [key: string]: any;
 }
 

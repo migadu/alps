@@ -3,6 +3,7 @@ package alpscarddav
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/emersion/go-vcard"
@@ -103,4 +104,65 @@ func TestSaveClearsTheShownCopyAndAddsANewField(t *testing.T) {
 	want = grace("+1 555 0100")
 	want[vcard.FieldTitle] = []*vcard.Field{{Value: "Commodore"}}
 	expectFields(t, stored, want, vcard.FieldTitle)
+}
+
+func TestLaterAutosaveKeepsOtherCopiesAfterClearing(t *testing.T) {
+	h := newHarness(t)
+	p := testBook + "grace.vcf"
+	h.dav.save(p, withFields())
+	c := h.opened(p)
+	c.URL, c.PublicKey = "", ""
+	for _, fields := range [][]string{{"url", "public_key"}, {"note"}, {}} {
+		c.Note = "Later unrelated edit"
+		r := h.do("POST", "/contacts/"+pathParam(p)+"/edit", struct {
+			ContactData
+			ChangedFields []string `json:"changed_fields"`
+		}{c, fields})
+		h.expect(r, http.StatusOK)
+		var saved struct {
+			ETag string `json:"etag"`
+		}
+		h.decode(r, &saved)
+		c.ETag = saved.ETag
+		want := withFields()
+		want[vcard.FieldURL] = want[vcard.FieldURL][1:]
+		want[vcard.FieldKey] = want[vcard.FieldKey][1:]
+		expectFields(t, h.dav.get(t, p).Card, want, vcard.FieldURL, vcard.FieldKey)
+	}
+}
+
+func TestChangedKeyRepresentationKeepsIdentityAndOtherKeys(t *testing.T) {
+	const armor = "-----BEGIN PGP PUBLIC KEY BLOCK-----\nnew\n-----END PGP PUBLIC KEY BLOCK-----"
+	for _, tc := range []struct {
+		name, version, old, value, oldType, oldEncoding, wantType, wantEncoding string
+	}{
+		{"v3 binary to armor", "3.0", "aGVsbG8=", armor, "binary", "b", "text", ""},
+		{"v3 binary edit", "3.0", "aGVsbG8=", "d29ybGQ=", "binary", "b", "", "b"},
+		{"v3 text edit", "3.0", "old text", armor, "text", "", "text", ""},
+		{"v4 text to URI", "4.0", "old text", "data:application/pgp-keys;base64,aGVsbG8=", "text", "", "uri", ""},
+		{"v4 URI to armor", "4.0", "https://example.test/old.asc", armor, "uri", "", "text", ""},
+		{"v4 URI edit", "4.0", "https://example.test/old.asc", "https://example.test/new.asc", "uri", "", "uri", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			card := withFields()
+			card.SetValue(vcard.FieldVersion, tc.version)
+			f := card[vcard.FieldKey][0]
+			f.Group, f.Value = "item1", tc.old
+			f.Params = vcard.Params{"TYPE": {"PGP"}, "PREF": {"1"}, "X-OWNER": {"Ada"}, "VALUE": {tc.oldType}, "MEDIATYPE": {"application/pgp-keys"}}
+			if tc.oldEncoding != "" {
+				f.Params.Set("ENCODING", tc.oldEncoding)
+			}
+			stored := saveFields(t, card, func(c *ContactData) { c.PublicKey = tc.value })
+			got := stored[vcard.FieldKey][0]
+			if got.Value != tc.value || got.Params.Get("VALUE") != tc.wantType || got.Params.Get("ENCODING") != tc.wantEncoding || got.Params.Get("MEDIATYPE") != "" {
+				t.Fatalf("value %q params %v", got.Value, got.Params)
+			}
+			if got.Group != "item1" || got.Params.Get("TYPE") != "PGP" || got.Params.Get("PREF") != "1" || got.Params.Get("X-OWNER") != "Ada" {
+				t.Fatalf("key identity changed: %#v", got)
+			}
+			if len(stored[vcard.FieldKey]) != 2 || !reflect.DeepEqual(stored[vcard.FieldKey][1], card[vcard.FieldKey][1]) {
+				t.Fatal("hidden key changed")
+			}
+		})
+	}
 }
