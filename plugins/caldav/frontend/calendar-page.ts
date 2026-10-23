@@ -828,8 +828,13 @@ export class CalendarPage extends LitElement {
                 const next = new Set(this.activeCalendars);
                 next.delete(calendar.path);
                 this.activeCalendars = next;
-                await this.fetchData();
             }
+            // Read again whether or not its box was checked. A read already in
+            // flight, a periodic refresh say, can still list the calendar, and
+            // as the latest read it put an unchecked calendar back in the
+            // sidebar after its delete. The new read makes that one stale and
+            // ends the loading it leaves set.
+            await this.fetchData();
         } catch (err) {
             console.error('Failed to delete calendar', err);
             this.reportFailure('calendar.deleteCalendarFailed');
