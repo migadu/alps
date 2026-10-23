@@ -124,6 +124,10 @@ type Session struct {
 	// for: see DoBackgroundMail.
 	background backgroundConnection
 
+	// The watches of the Inbox its pages hold, and the IDLE that serves them:
+	// see WatchInbox.
+	push inboxPush
+
 	// How many connections the session has given up on that are not closed
 	// yet: see giveUpConnection.
 	givenUp atomic.Int32
@@ -669,6 +673,10 @@ func (s *Session) SetHTTPBasicAuth(req *http.Request) {
 // leaked their attachments and permanently inflated the global budget.
 func (s *Session) teardown() {
 	s.teardownOnce.Do(func() {
+		// First, so that the pages' event streams end with the session, not
+		// once the work in flight on its connection has returned.
+		s.push.end()
+
 		s.attachmentsLocker.Lock()
 		for _, f := range s.attachments {
 			f.Form.RemoveAll()
@@ -1053,6 +1061,14 @@ type SessionManager struct {
 	backgroundConnections bool
 	backgroundIdle        time.Duration
 
+	// Whether sessions wait on that connection for the mail server's news of
+	// the Inbox while a page watches it, and the pauses of that wait. See
+	// Session.WatchInbox.
+	pushNewMail bool
+	pushRestart time.Duration
+	pushResume  time.Duration
+	pushRetry   time.Duration
+
 	locker       sync.RWMutex
 	sessions     map[string]*Session // token -> Session, protected by locker
 	userSessions map[string][]string // username -> []token, protected by locker
@@ -1098,6 +1114,9 @@ func newSessionManager(connectProviderFunc provider.AuthenticatedProviderFactory
 		now:                      time.Now,
 		backgroundIdle:           backgroundIdleTimeout,
 		abandonedWait:            abandonedOperationWait,
+		pushRestart:              pushRestartAfter,
+		pushResume:               pushResumeAfter,
+		pushRetry:                pushRetryAfter,
 	}
 }
 
@@ -1610,13 +1629,28 @@ func (sm *SessionManager) SwitchAccount(currentSession *Session, targetUsername 
 
 // UpdatePassword reconnects the session with a new password and updates the session state if successful.
 func (sm *SessionManager) UpdatePassword(s *Session, newPassword string) error {
+	return sm.UpdatePasswordContext(context.Background(), s, newPassword)
+}
+
+// UpdatePasswordContext is UpdatePassword for a request: it gives up, and
+// changes nothing, when ctx is done before the background connection is
+// free.
+func (sm *SessionManager) UpdatePasswordContext(ctx context.Context, s *Session, newPassword string) error {
 	// The background connection is closed first, once the operation running
 	// on it has returned: while the new password is checked the session holds
 	// its own connection and the new one, and no background connection beside
 	// them. The next background operation opens one with the password the
-	// session has then.
-	s.background.jobs.Lock()
+	// session has then. An IDLE on it ends for this, as for any background
+	// operation.
+	s.push.want()
+	defer s.push.done()
+	if err := s.background.jobs.LockContext(ctx); err != nil {
+		return fmt.Errorf("context cancelled: %w", err)
+	}
 	defer s.background.jobs.Unlock()
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("context cancelled: %w", err)
+	}
 	s.letGoOfBackground(false)
 
 	s.providerLocker.Lock()

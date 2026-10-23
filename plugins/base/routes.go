@@ -58,6 +58,9 @@ func registerRoutes(p *alps.GoPlugin) {
 	p.POST("/attachments", handleComposeAttachment)
 	p.DELETE("/attachments/{uuid}", handleCancelAttachment)
 
+	// News of new mail, pushed: see handleEvents
+	p.GET("/events", handleEvents)
+
 	// Session
 	p.POST("/session", handleLogin)
 	p.GET("/session", handleGetSession)
@@ -4139,6 +4142,8 @@ func handleSettings(ctx *alps.Context) error {
 		"MaxAttachmentMiB":     maxAttachmentMiB,
 		"HasThreadCapability":  hasThreadCapability,
 		"HasESearchCapability": hasESearchCapability,
+		// Whether the pages are to open the event stream (see handleEvents).
+		"PushNewMail": ctx.Server.Sessions.PushNewMail(),
 	})
 }
 

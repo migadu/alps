@@ -122,6 +122,7 @@ type ServerConfig struct {
 	IMAPTimeoutSec          int             `toml:"imap_timeout_sec"`           // IMAP operation timeout in seconds (default: 30)
 	SMTPTimeoutSec          int             `toml:"smtp_timeout_sec"`           // SMTP operation timeout in seconds (default: 30)
 	BackgroundConnection    *bool           `toml:"background_connection"`      // A second mail connection per session for background work (default: true)
+	PushNewMail             bool            `toml:"push_new_mail"`              // Wait on that connection for news of the Inbox (IMAP IDLE) and push it to the pages (default: false)
 }
 
 type RateLimitConfig struct {
@@ -497,6 +498,7 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	// On unless the config turns it off, so a pointer: leaving it out is not
 	// saying false.
 	options.DisableBackgroundConnection = c.Server.BackgroundConnection != nil && !*c.Server.BackgroundConnection
+	options.PushNewMail = c.Server.PushNewMail
 
 	// Override rate limiting config from config file
 	if c.Server.RateLimit.Enabled != nil && !*c.Server.RateLimit.Enabled {

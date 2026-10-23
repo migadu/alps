@@ -152,8 +152,47 @@ max_sessions_per_user = 10
 # mail_max_userip_connections = 10), and every session comes from ALPS's address.
 # A server that will not open the second connection costs nothing but the speed:
 # the work then waits its turn on the session's own connection, and the session is
-# not ended. Set to false to keep one connection per session.
+# not ended. With push_new_mail on, though, the second connection stays open
+# while a mail page is (see below). A session whose own connection is refused at
+# the limit carries on with its background connection when the server says why
+# with [LIMIT] (RFC 5530), as Sora does; a bare NO ends the session.
+# Set to false to keep one connection per session.
 # background_connection = true
+
+# Push new mail (default: false)
+# Pages learn of new mail by checking for it every few minutes (the user's
+# check-mail interval). With this on, a session also waits on its background
+# connection for the mail server's news of the Inbox (IMAP IDLE) while a mail
+# page is open, and pushes it to the page over an event stream (GET /events),
+# which then checks at once. Pushed are messages that arrive in the Inbox or
+# leave it; flags and the other folders come with the checks, which go on as
+# before. A browser holds one stream, whatever the number of its tabs. Needs
+# background_connection, a mail server with IDLE, and a browser in a secure
+# context (HTTPS, or localhost): the tab that holds the stream is chosen with
+# navigator.locks, which browsers offer only there, so a deployment served
+# over plain HTTP gets no push.
+# The cost is on the mail server. Every session with a mail page open holds two
+# connections for as long as it is open, its own and the background one in
+# IDLE; without push the second closes after a minute. Every session comes from
+# ALPS's one address, and Sora's example configuration allows
+# max_connections_per_user_per_ip = 5 (8 through its proxy), and
+# max_connections_per_ip = 200, about 100 open mail pages across all users
+# since all of them come from ALPS's address. With the per-user limit, a user
+# with mail open in two browsers holds four, a third signs in on the fifth
+# without push, and a sign-in from a fourth is refused. ALPS gives way within a
+# session, not across the sessions of an account. And the server watches the
+# Inbox of each: Sora re-checks a mailbox in IDLE every 15 seconds
+# (idlePollInterval in server/imap/idle.go), which is more work for each open
+# session than one check every 5 minutes. A failed IDLE never signs anyone
+# out; it is tried again after a minute, then twice as long after each
+# failure in a row, up to about half an hour.
+# The event stream is an HTTP request that stays open for as long as the page.
+# A reverse proxy must not buffer it (ALPS sends X-Accel-Buffering: no, which
+# nginx honours) and must let it stay open: ALPS writes a heartbeat every
+# 20 seconds, within the usual proxy idle timeouts (nginx proxy_read_timeout,
+# HAProxy timeout server). In a cluster the stream must reach the node that
+# holds the session, as every request of the session already must.
+# push_new_mail = false
 
 # Max attachment size per composer in MiB (default: 32)
 # Limits the size of a single email being composed
