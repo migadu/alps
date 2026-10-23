@@ -22,10 +22,10 @@ export default {
       "autoReplyOn": "Automatski odgovor je uključen. Isključite ga pod Automatski odgovor pre nego što filteri pošalju sopstveni."
     },
     "visual": {
-      "newRule": "Novo Pravilo",
+      "newRule": "Novo pravilo",
       "noRules": "Nema definisanih pravila.",
-      "saveFilters": "Sačuvaj Pravila",
-      "deleteRule": "Obriši Pravilo",
+      "saveFilters": "Sačuvaj pravila",
+      "deleteRule": "Obriši pravilo",
       "remove": "Ukloni",
       "add": "Dodaj",
       "if": "AKO SE",
@@ -35,7 +35,7 @@ export default {
       "then": "ONDA",
       "actions": {
         "fileinto": "Premesti u fasciklu",
-        "discard": "Odbaci (Obriši)",
+        "discard": "Odbaci (obriši)",
         "redirect": "Prosledi na e-poštu",
         "stop": "Prestani sa procenom pravila"
       },
