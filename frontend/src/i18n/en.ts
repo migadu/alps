@@ -155,6 +155,7 @@ export const en = {
       begin_failed: 'Failed to initiate authentication.',
       invalid_options: 'Invalid authentication options received.',
       verification_failed: 'Verification failed. Please try again.',
+      cancelled: 'The security key was not used. Click "Verify Identity" to try again.',
       unavailable: 'The server could not check your security key just now. Please try again in a moment.',
       register_failed: 'There was an error registering your security key. Please try again.',
       remove_failed: 'Failed to remove the security key.',
@@ -420,7 +421,9 @@ export const en = {
     verifiedSender: 'Verified Sender',
     unverifiedSender: 'Unverified Sender',
     senderUnverifiedWarning: 'Your mail server could not verify this sender. The message may not be from who it claims to be, so be careful with its links and attachments.',
-    clickToExpand: 'Click to expand message content'
+    clickToExpand: 'Click to expand message content',
+    loadError: 'Could not load this message.',
+    loadErrorRetry: 'Try again'
   },
   address: {
     directionalControl: 'hidden direction marks',

@@ -38,10 +38,6 @@ export class AlpsSidebarCalendar extends LitElement {
             font-weight: 500;
             font-size: 14px;
         }
-
-        alps-icon-btn {
-            --btn-padding: 4px;
-        }
     `;
 
     updated(changedProperties: Map<string, any>) {

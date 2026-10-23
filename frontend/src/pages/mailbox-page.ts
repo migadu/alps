@@ -2351,7 +2351,6 @@ export class MailboxPage extends LitElement {
             icon="folderPlus"
             title="${this.i18nStore?.t('folderList.createFolder')}"
             @click=${this.openFolderPrompt}
-            style="--btn-padding: 8px; --icon-size: 20px;"
           ></alps-icon-btn>
         </alps-sidebar>
         <div class="main-view">

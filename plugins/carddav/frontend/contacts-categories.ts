@@ -150,9 +150,6 @@ export class AlpsContactsCategories extends LitElement {
       height: 18px;
       fill: currentColor;
     }
-    .kebab-btn {
-      --btn-padding: 8px;
-    }
   `];
 
   private selectCategory(category: string) {

@@ -1,4 +1,4 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, nothing } from 'lit';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { consume } from '@lit/context';
 import { customElement, property, state } from 'lit/decorators.js';
@@ -19,6 +19,14 @@ export class AlpsInput extends LitElement {
   @property({ type: Boolean }) required = false;
   @property({ type: String }) autocomplete = '';
   @property({ type: String }) inputId = '';
+  /**
+   * The field's accessible name, given to the input as its aria-label.
+   *
+   * A `<label for>` outside this element cannot name the input: `for` looks
+   * for the id in the label's own tree, and the input is in this shadow root.
+   * So a form passes the text of its label here as well.
+   */
+  @property({ type: String }) label = '';
   @property({ type: String }) icon = '';
   @property({ type: Boolean }) clearable = false;
   @property({ type: Boolean }) autofocus = false;
@@ -192,6 +200,7 @@ export class AlpsInput extends LitElement {
           type=${currentType} 
           .value=${this.value}
           placeholder=${this.placeholder}
+          aria-label=${this.label || nothing}
           ?required=${this.required}
           ?autofocus=${this.autofocus}
           autocomplete=${this.autocomplete}

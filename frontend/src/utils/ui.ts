@@ -79,6 +79,18 @@ export function formatFullDate(dateInput: string | Date, dateFormatStr: string =
   return `${datePart} ${timePart}`;
 }
 
+/**
+ * A day of the year with no year to it, such as a birthday whose year the
+ * card does not give: the date format without its year.
+ */
+export function formatDayMonth(month: number, day: number, dateFormatStr: string = 'YYYY-MM-DD'): string {
+  const m = String(month).padStart(2, '0');
+  const d = String(day).padStart(2, '0');
+  if (dateFormatStr === 'MM/DD/YYYY') return `${m}/${d}`;
+  if (dateFormatStr === 'DD.MM.YYYY') return `${d}.${m}.`;
+  return `${m}-${d}`;
+}
+
 /** The caption of each special folder, by its role. A \All folder has none:
  * the sidebar draws it under its own name. */
 const ROLE_CAPTIONS: Partial<Record<MailboxRole, string>> = {

@@ -385,7 +385,9 @@ export const sr = {
     verifiedSender: 'Verifikovan pošiljalac',
     unverifiedSender: 'Neverifikovan pošiljalac',
     senderUnverifiedWarning: 'Vaš server pošte nije mogao da verifikuje ovog pošiljaoca. Poruka možda nije od onoga za koga se predstavlja, zato budite oprezni sa vezama i prilozima.',
-    clickToExpand: 'Kliknite da proširite sadržaj poruke'
+    clickToExpand: 'Kliknite da proširite sadržaj poruke',
+    loadError: 'Nije moguće učitati ovu poruku.',
+    loadErrorRetry: 'Pokušajte ponovo'
   },
   address: {
     directionalControl: 'skrivene oznake smera',
@@ -588,6 +590,7 @@ export const sr = {
       begin_failed: 'Nije uspelo pokretanje autentifikacije.',
       invalid_options: 'Primljene su nevažeće opcije autentifikacije.',
       verification_failed: 'Verifikacija nije uspela. Pokušajte ponovo.',
+      cancelled: 'Bezbednosni ključ nije upotrebljen. Kliknite na "Potvrdi identitet" da biste pokušali ponovo.',
       unavailable: 'Server trenutno nije mogao da proveri vaš bezbednosni ključ. Pokušajte ponovo za trenutak.',
       register_failed: 'Došlo je do greške prilikom registracije bezbednosnog ključa. Pokušajte ponovo.',
       remove_failed: 'Nije uspelo uklanjanje bezbednosnog ključa.',

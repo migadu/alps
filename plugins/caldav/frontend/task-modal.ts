@@ -303,6 +303,7 @@ export class TaskModal extends LitElement {
                 <div class="form-group">
                     <label>${t('tasks.titleField')}</label>
                     <alps-input
+                        label=${t('tasks.titleField')}
                         class="title-input"
                         .value=${this.title}
                         placeholder=${t('tasks.titlePlaceholder')}
@@ -326,6 +327,7 @@ export class TaskModal extends LitElement {
                     <div class="form-group">
                         <label>${t('tasks.due')}</label>
                         <alps-input
+                            label=${t('tasks.due')}
                             class="due-date"
                             type="date"
                             .value=${this.dueDate}
@@ -336,6 +338,7 @@ export class TaskModal extends LitElement {
                         <div class="form-group">
                             <label>${t('tasks.time')}</label>
                             <alps-input
+                                label=${t('tasks.time')}
                                 class="due-time"
                                 type="time"
                                 .value=${this.dueTime}

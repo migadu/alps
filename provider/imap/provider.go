@@ -47,7 +47,11 @@ type IMAPProvider struct {
 	// threadFallbacks names the mailboxes already reported as listing flat,
 	// so a server that refuses THREAD is logged once per session per mailbox.
 	threadFallbacks map[string]bool
-	cacheLock       sync.RWMutex
+	// listReturnRefused records that the server answered LIST's RETURN form
+	// with BAD although it advertises it, so later listings go straight to a
+	// plain LIST instead of paying for the refusal each time.
+	listReturnRefused bool
+	cacheLock         sync.RWMutex
 }
 
 func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
@@ -84,26 +88,73 @@ func (p *IMAPProvider) Close() error {
 
 // ListMailboxes returns all mailboxes
 func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
-	var options imap.ListOptions
-	options.ReturnSubscribed = true
-	if p.client.Caps().Has(imap.CapListStatus) {
-		options.ReturnStatus = &imap.StatusOptions{
-			NumMessages: true,
-			UIDValidity: true,
-			NumUnseen:   true,
+	// RETURN is LIST-EXTENDED syntax (RFC 5258), which IMAP4rev2 includes and
+	// CapSet.Has counts for it. LIST-STATUS (RFC 5819) is a RETURN option, so
+	// a server that offers it takes the RETURN form too, even where it does
+	// not advertise LIST-EXTENDED on its own. To an IMAP4rev1 server with
+	// neither, RETURN is two extra arguments to a two-argument command
+	// (RFC 3501 §6.3.8), which it may answer with BAD, so such a server is
+	// asked a plain LIST.
+	caps := p.client.Caps()
+	var options *imap.ListOptions
+	if (caps.Has(imap.CapListExtended) || caps.Has(imap.CapListStatus)) && !p.refusedListReturn() {
+		options = &imap.ListOptions{ReturnSubscribed: true}
+		if caps.Has(imap.CapListStatus) {
+			options.ReturnStatus = &imap.StatusOptions{
+				NumMessages: true,
+				UIDValidity: true,
+				NumUnseen:   true,
+			}
 		}
 	}
 
+	mailboxes, err := p.listMailboxes(options)
+	var imapErr *imap.Error
+	if options != nil && errors.As(err, &imapErr) && imapErr.Type == imap.StatusResponseTypeBad {
+		// A server that advertises the RETURN form and still refuses it is
+		// asked once more without it, rather than leaving the user with no
+		// folders at all, and is not asked for it again in this session.
+		log.Printf("alps/provider: IMAP server refused LIST with RETURN options, listing without them from now on: %v", err)
+		p.noteListReturnRefused()
+		mailboxes, err = p.listMailboxes(nil)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to list mailboxes: %v", err)
+	}
+	return mailboxes, nil
+}
+
+func (p *IMAPProvider) refusedListReturn() bool {
+	p.cacheLock.RLock()
+	defer p.cacheLock.RUnlock()
+	return p.listReturnRefused
+}
+
+func (p *IMAPProvider) noteListReturnRefused() {
+	p.cacheLock.Lock()
+	defer p.cacheLock.Unlock()
+	p.listReturnRefused = true
+}
+
+// listMailboxes lists every folder with one LIST "" "*", sending the given
+// RETURN options or, when they are nil, a plain LIST.
+func (p *IMAPProvider) listMailboxes(options *imap.ListOptions) ([]provider.Mailbox, error) {
 	var mailboxes []provider.Mailbox
-	list := p.client.List("", "*", &options)
+	list := p.client.List("", "*", options)
 	for {
 		data := list.Next()
 		if data == nil {
 			break
 		}
 
-		// Check if mailbox has \Subscribed attribute
-		subscribed := false
+		// A plain LIST says nothing about subscriptions. LSUB would (RFC 3501
+		// §6.3.9), but the client library cannot send it, so on such a server
+		// every folder counts as subscribed. Counting none would hide no more
+		// in the sidebar, which ignores a listing with nothing subscribed, but
+		// it would cost the sidebar every folder's unread count, read only
+		// for subscribed folders, and a rename would no longer carry a
+		// folder's subscription over to its new name.
+		subscribed := options == nil
 		for _, attr := range data.Attrs {
 			if string(attr) == "\\Subscribed" {
 				subscribed = true
@@ -129,7 +180,7 @@ func (p *IMAPProvider) ListMailboxes() ([]provider.Mailbox, error) {
 		mailboxes = append(mailboxes, mbox)
 	}
 	if err := list.Close(); err != nil {
-		return nil, fmt.Errorf("failed to list mailboxes: %v", err)
+		return nil, err
 	}
 
 	sort.Slice(mailboxes, func(i, j int) bool {
@@ -1026,6 +1077,31 @@ func (p *IMAPProvider) GetMessagePartRaw(mailbox string, id provider.MessageID, 
 	return &converted, headerBuf, bodyBuf, nil
 }
 
+// GetMessagePartForReader reads a part of a message with what the reader
+// shows beside it, in one FETCH: the envelope, flags and structure, the
+// part's MIME header, and the Authentication-Results and References fields.
+//
+// A listing row has the structure to choose the part from, but not the two
+// fields, so a listed message opens with this one read. Without it the
+// reader read the message twice: its metadata, for those fields and the
+// structure, and then the part.
+func (p *IMAPProvider) GetMessagePartForReader(mailbox string, id provider.MessageID, partPath []int) (*provider.Message, []byte, []byte, error) {
+	uid := id.(IMAPUID)
+	references := &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"References"},
+		Peek:         true,
+	}
+	msg, headerBuf, bodyBuf, err := p.getMessagePartRaw(mailbox, imap.UID(uid), partPath, 0, authResultsSection(), references)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	// The verdict and the References are read out of the fields here, as for
+	// any FETCH that carries them.
+	converted := p.convertIMAPMessage(msg, mailbox)
+	return &converted, headerBuf, bodyBuf, nil
+}
+
 // GetMessagePartWithData fetches a message part with both entity and raw data
 func (p *IMAPProvider) GetMessagePartWithData(mailbox string, id provider.MessageID, partPath []int) (*provider.Message, *message.Entity, []byte, []byte, error) {
 	uid := id.(IMAPUID)
@@ -1037,7 +1113,9 @@ func (p *IMAPProvider) GetMessagePartWithData(mailbox string, id provider.Messag
 	return &converted, part, headerBuf, bodyBuf, nil
 }
 
-func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath []int, limit int64) (*imapclient.FetchMessageBuffer, []byte, []byte, error) {
+// getMessagePartRaw fetches a part and its MIME header, and any extra
+// sections asked for beside them in the same FETCH.
+func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath []int, limit int64, extra ...*imap.FetchItemBodySection) (*imapclient.FetchMessageBuffer, []byte, []byte, error) {
 	if err := p.ensureMailboxSelected(mailbox); err != nil {
 		return nil, nil, nil, err
 	}
@@ -1052,7 +1130,14 @@ func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath 
 		headerItem.Specifier = imap.PartSpecifierHeader
 	}
 
+	// PEEK, like the header: a plain BODY[] fetch sets \Seen on the server as
+	// a side effect (RFC 3501, 6.4.5). A read of a message goes through here
+	// or through getMessagePartWithData — the reader opening it, an inline
+	// image, an attachment, a printout — and none of them is the user saying
+	// the message was read. The client sets \Seen itself, when the "Mark as
+	// read" setting says to.
 	bodyItem := &imap.FetchItemBodySection{
+		Peek: true,
 		Part: partPath,
 	}
 	if len(partPath) > 0 {
@@ -1070,7 +1155,7 @@ func (p *IMAPProvider) getMessagePartRaw(mailbox string, uid imap.UID, partPath 
 		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
 		Flags:         true,
 		RFC822Size:    true,
-		BodySection:   []*imap.FetchItemBodySection{headerItem, bodyItem},
+		BodySection:   append([]*imap.FetchItemBodySection{headerItem, bodyItem}, extra...),
 	}
 
 	msgs, err := p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
@@ -1114,7 +1199,9 @@ func (p *IMAPProvider) getMessagePartWithData(mailbox string, uid imap.UID, part
 		headerItem.Specifier = imap.PartSpecifierHeader
 	}
 
+	// PEEK, for the reason getMessagePartRaw gives.
 	bodyItem := &imap.FetchItemBodySection{
+		Peek: true,
 		Part: partPath,
 	}
 	if len(partPath) > 0 {
