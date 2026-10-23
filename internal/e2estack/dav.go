@@ -16,12 +16,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-vcard"
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/emersion/go-webdav/carddav"
+	"golang.org/x/text/unicode/norm"
 )
 
 // The DAV server gives every account a calendar and an address book, at
@@ -841,10 +843,9 @@ func matchProp(prop carddav.PropFilter, card vcard.Card) (bool, error) {
 	return false, nil
 }
 
-// matchText compares as i;unicode-casemap, the default collation, does: in
-// any case.
+// matchText compares using CardDAV's default i;unicode-casemap collation.
 func matchText(txt carddav.TextMatch, value string) (bool, error) {
-	text, value := strings.ToLower(txt.Text), strings.ToLower(value)
+	text, value := unicodeCasemap(txt.Text), unicodeCasemap(value)
 	var ok bool
 	switch txt.MatchType {
 	case carddav.MatchEquals:
@@ -859,6 +860,15 @@ func matchText(txt carddav.TextMatch, value string) (bool, error) {
 		return false, fmt.Errorf("unknown text-match type %q", txt.MatchType)
 	}
 	return ok != txt.NegateCondition, nil
+}
+
+// RFC 5051 prepares each code point by titlecasing then compatibility
+// decomposition. Invalid UTF-8 falls back to the original octets.
+func unicodeCasemap(value string) string {
+	if !utf8.ValidString(value) {
+		return value
+	}
+	return norm.NFKD.String(strings.ToTitle(value))
 }
 
 // allOfTest reads a filter's test: any of its parts, the default, or all.
