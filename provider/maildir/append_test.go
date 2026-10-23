@@ -93,7 +93,7 @@ func TestAppendMessageStoresNothingItCouldNotWrite(t *testing.T) {
 		t.Fatal("AppendMessage stored a message it could not write")
 	}
 	for _, sub := range []string{"tmp", "new", "cur"} {
-		entries, err := os.ReadDir(filepath.Join(string(p.getDir("INBOX")), sub))
+		entries, err := os.ReadDir(filepath.Join(string(mustDir(t, p, "INBOX")), sub))
 		if err != nil || len(entries) != 0 {
 			t.Errorf("%s holds %d files (%v)", sub, len(entries), err)
 		}

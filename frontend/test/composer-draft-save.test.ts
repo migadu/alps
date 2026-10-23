@@ -12,6 +12,7 @@ import { ComposeStore } from '../src/store/compose-store';
 import { DraftFlushError } from '../src/utils/draft-flush-error';
 import { messageOperations } from '../src/services/message-operations';
 import { generateQuote } from '../src/utils/email-quote';
+import { MessageCache } from '../src/utils/message-cache';
 import '../src/components/alps-floating-composer';
 
 // See floating-composer-send.test.ts: the picker builds its grid on connect.
@@ -110,6 +111,54 @@ describe('files picked together', () => {
     // And only once: the timer the earlier uploads armed finds it stored.
     await vi.advanceTimersByTimeAsync(10_000);
     expect(saveDraft).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a save outlived by its account or window', () => {
+  it.each(['session end', 'account cache reset', 'closed window'])('does not announce the old draft after %s', async transition => {
+    let finish!: (result: any) => void;
+    vi.spyOn(messageOperations, 'saveDraft').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const { store, instance } = composerIn({ draftUid: '7', draftMailbox: 'Drafts', dirty: true });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const news = record<CustomEvent>(window, 'draft-autosaved');
+    const saving = el._saveDraft();
+    await waitFor(() => !!finish, 'the save request');
+    if (transition === 'session end') window.dispatchEvent(new CustomEvent('session-cleared'));
+    else if (transition === 'account cache reset') MessageCache.clear();
+    else el.remove();
+    finish({ uid: '8', mailbox: 'Drafts' });
+    await saving;
+    expect(news).toHaveLength(0);
+  });
+
+  it.each([false, true])('announces a successful same-session save, including a remounted window (%s)', async remount => {
+    let finish!: (result: any) => void;
+    vi.spyOn(messageOperations, 'saveDraft').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const { store, instance, id } = composerIn({ draftUid: '7', draftMailbox: 'Drafts', dirty: true });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const news = record<CustomEvent>(window, 'draft-autosaved');
+    const saving = el._saveDraft();
+    await waitFor(() => !!finish, 'the save request');
+    if (remount) { el.remove(); document.body.append(el); }
+    finish({ uid: '8', mailbox: 'Drafts' });
+    expect(await saving).toBe(true);
+    expect(news).toHaveLength(1);
+    expect(store.getComposer(id)?.draftUid).toBe('8');
+  });
+
+  it('announces Save & close before closing its current window, and announces no refused save', async () => {
+    const save = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ uid: '8', mailbox: 'Drafts' });
+    const { store, instance, id } = composerIn({ draftUid: '7', draftMailbox: 'Drafts', dirty: true });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const news = record<CustomEvent>(window, 'draft-autosaved');
+    await el._handleCloseClick();
+    expect(news).toHaveLength(0);
+    expect(store.getComposer(id)).toBeDefined();
+    await el._handleCloseClick();
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(news).toHaveLength(1);
+    expect(store.getComposer(id)).toBeUndefined();
   });
 });
 
@@ -587,6 +636,66 @@ describe('a draft reopened and saved again', () => {
     expect(await el._saveDraft()).toBe(true);
 
     expect(store.getComposer(id)?.quoteSource).toEqual(answered);
+  });
+});
+
+describe("the quote's images", () => {
+  // The composer carries the parts its quote shows as inline, whatever their
+  // disposition: Outlook and Apple Mail file their inline images as
+  // attachments. A save or a send named them by path alone, and the server,
+  // reading the disposition, took such an image for a file: it went out
+  // beside the body, and the draft saved answered with it as a file, which
+  // the composer then showed as a chip. Each save and send now names them.
+  const file = { name: 'ledger.txt', size: 16, type: 'text/plain', partPath: '3' };
+  const image = { name: 'logo.png', size: 9, type: 'image/png', partPath: '2', inline: true };
+  const answer = (format: 'html' | 'text') => composerIn({
+    subject: 'Re: Logo', text: 'Nice.', html: '<p>Nice.</p><img src="cid:logo@remote.test">', format, dirty: true,
+    attachments: [file, image],
+  });
+
+  it('are named as the body\'s in a save', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const { store, instance } = answer('html');
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(sentForm(0).get('prev_attachments')).toBe('3,2');
+    expect(sentForm(0).get('inline_attachments')).toBe('2');
+  });
+
+  it('are named as the body\'s in a send', async () => {
+    const sendDraft = vi.spyOn(messageOperations, 'sendDraft').mockResolvedValue(true);
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const { store, instance } = answer('html');
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    const sending = el._handleSend();
+    await waitFor(() => toasts.length > 0, 'the undo toast');
+    toasts[0].detail.dismissFn();
+    await sending;
+
+    expect((sendDraft.mock.calls[0][0] as FormData).get('inline_attachments')).toBe('2');
+  });
+
+  it('are named as the body\'s by the sign-out flush', async () => {
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const { store } = answer('html');
+
+    await store.saveAllDirtyDrafts();
+
+    expect((saveDraft.mock.calls[0][0] as FormData).get('inline_attachments')).toBe('2');
+  });
+
+  it('are named nowhere in plain text, which carries none of them', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const { store, instance } = answer('text');
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(sentForm(0).get('prev_attachments')).toBe('3');
+    expect(sentForm(0).has('inline_attachments')).toBe(false);
   });
 });
 

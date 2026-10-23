@@ -2,8 +2,8 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import {
-  bareAddress, composeContext, draftContentKey, keptAfterSave, postedAttachments, quoteSourceAfterSave, recipientField,
-  reconcileSavedAttachments, uploadGone,
+  bareAddress, composeContext, draftContentKey, inlinePartPaths, keptAfterSave, postedAttachments, quoteSourceAfterSave,
+  recipientField, reconcileSavedAttachments, uploadGone,
 } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
@@ -26,6 +26,7 @@ import { settingsContext, SettingsStore } from '../store/settings-store';
 import { Logger } from '../utils/logger';
 import { appendReplyFields } from '../utils/reply-context';
 import { registry } from '../plugin-registry';
+import { MessageCache } from '../utils/message-cache';
 const UNDO_TOAST_TIMEOUT_MS = 5000;
 
 @customElement('alps-floating-composer')
@@ -276,6 +277,7 @@ export class AlpsFloatingComposer extends LitElement {
 
   private async _doSaveDraft(): Promise<boolean> {
     const id = this.instance.id;
+    const generation = MessageCache.generation();
     const currentInstance = this.composeStore.getComposer(id) || this.instance;
     // `isSaving` in the store is the sign-out flush saving this draft, which a
     // second save beside it would race.
@@ -319,6 +321,12 @@ export class AlpsFloatingComposer extends LitElement {
       // out may still have been stored by the server, under a new UID.
       this.storedDraft = null;
       const result = await messageOperations.saveDraft(formData);
+
+      // A save can finish after sign-out/account switching, or after its
+      // window left. Its old mailbox/UID must not renumber another account's
+      // reader or rows. A remounted window still owned by this session can
+      // accept its answer normally.
+      if (generation !== MessageCache.generation() || !this.isConnected || !this.composeStore.getComposer(id)) return !!result;
 
       if (result) {
         const oldUid = this.instance.draftUid;
@@ -452,6 +460,10 @@ export class AlpsFloatingComposer extends LitElement {
     const prev = attachments.map(a => a.partPath).filter(Boolean).join(',');
     if (prev) {
       formData.append('prev_attachments', prev);
+    }
+    const inline = inlinePartPaths(attachments);
+    if (inline) {
+      formData.append('inline_attachments', inline);
     }
 
     if (currentInstance.draftMailbox) {
