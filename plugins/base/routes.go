@@ -1818,6 +1818,15 @@ func handleGetThread(ctx *alps.Context) error {
 		msgs[i] = providerMessageToIMAP(m)
 	}
 
+	// A conversation without the user's replies, as the failed look left it,
+	// is answered and not kept: kept, it went on without them once Sent could
+	// be read again, until it was dropped.
+	if lookErr != nil {
+		return ctx.JSON(http.StatusOK, map[string]interface{}{
+			"Messages": msgs,
+		})
+	}
+
 	// Under the message asked for, and under every member of the conversation
 	// that lives in this mailbox: reading a long conversation means opening one
 	// member after another, and they are all this one answer.
@@ -3075,10 +3084,11 @@ func handleMove(ctx *alps.Context) error {
 		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
 			mapping, err := moveMessagesWithProvider(p, mboxName, to, batch)
 			if err != nil {
-				// What did move is forgotten below all the same.
-				for id := range mapping {
-					movedIDs = append(movedIDs, id)
-				}
+				// What may have moved is forgotten below all the same: the
+				// whole batch, as a delete forgets it. A MOVE whose reply was
+				// lost has moved its messages and named none of them, and
+				// they went on opening from the parts cached here.
+				movedIDs = append(movedIDs, batch...)
 				// Wrapped, here as for a copy and a delete, so that the kind
 				// of failure the provider names is answered as such: a
 				// message that is gone is a 404, as when it is read.
@@ -3297,6 +3307,14 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 		discarded, err = p.EmptyMailbox(mboxName)
 		return err
 	})
+	// Invalidate cache for the mailbox, and every message it held: after an
+	// emptying that failed too, unless it was refused here. The server may
+	// have expunged the messages before it failed, and the folder went on
+	// listing them.
+	if !errors.Is(err, errEmptyNotAllowed) {
+		invalidateMailboxCache(ctx, mboxName)
+		ctx.Session.Cache().DeletePrefix("message:" + mboxName + ":")
+	}
 	if err != nil {
 		// A refusal is the user asking for something this endpoint does not do,
 		// not a server fault. It used to come back as a 500 whose body repeated
@@ -3307,10 +3325,6 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 		}
 		return respondMailboxError(ctx, "empty mailbox", err)
 	}
-
-	// Invalidate cache for the mailbox, and every message it held.
-	invalidateMailboxCache(ctx, mboxName)
-	ctx.Session.Cache().DeletePrefix("message:" + mboxName + ":")
 
 	// How many went, so the client can tell an emptied folder from one that had
 	// nothing in it. The two are the same 200 otherwise, and "Mailbox emptied"
@@ -3505,6 +3519,14 @@ func handleSetFlags(ctx *alps.Context) error {
 		})
 	})
 	if err != nil {
+		// A change refused after its first batch has been made to that batch,
+		// and one whose answer was lost may have been made: the copies the
+		// session holds of the messages say nothing reliable now. They go, and
+		// the folder is read again, as after a change to the whole folder.
+		if len(alpsMsgIDs) > 0 {
+			invalidateMailboxCache(ctx, mboxName)
+			forgetMessages(ctx.Session.Cache(), mboxName, idStrings(alpsMsgIDs)...)
+		}
 		return err
 	}
 

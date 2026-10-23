@@ -9,6 +9,8 @@ package alpsbase
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -119,6 +121,37 @@ func TestHTTP_ARefreshDropsTheAssembledConversation(t *testing.T) {
 
 	if got := len(threadOf(t, s, "INBOX", uid).Messages); got != 2 {
 		t.Errorf("after a refresh the conversation holds %d messages, want it read again with the reply", got)
+	}
+}
+
+// A conversation whose look in Sent failed is answered without the user's
+// replies, and was kept that way: opened again once Sent could be read, it
+// still had none of them until it was dropped.
+func TestHTTP_AConversationWhoseLookInSentFailedIsNotKept(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
+	uid := uidOfSubject(t, s, "Engines")
+	fileSentReply(t, s, "engines@remote.test")
+
+	sent := filepath.Join(s.dir, ".Sent", "cur")
+	info, err := os.Stat(sent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sent, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(sent, info.Mode().Perm()) })
+
+	if got := len(threadOf(t, s, "INBOX", uid).Messages); got != 1 {
+		t.Fatalf("with Sent unreadable, the conversation holds %d messages, want the message alone", got)
+	}
+	if err := os.Chmod(sent, info.Mode().Perm()); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := len(threadOf(t, s, "INBOX", uid).Messages); got != 2 {
+		t.Errorf("with Sent readable again, the conversation holds %d messages, want the reply too", got)
 	}
 }
 
