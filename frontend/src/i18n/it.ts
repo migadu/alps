@@ -5,7 +5,7 @@ export const it = {
     categories: {
       general: 'Generale',
       identity: 'Identità',
-      reading: 'Lettura e Composizione',
+      reading: 'Lettura e composizione',
       appearance: 'Aspetto',
 
       localization: 'Localizzazione',
@@ -80,10 +80,10 @@ export const it = {
       listDensityDesc: 'Regola la spaziatura e la compattezza dell\'elenco dei messaggi.',
       light: 'Chiaro',
       dark: 'Scuro',
-      systemAuto: 'Auto (Sistema)',
+      systemAuto: 'Auto (sistema)',
       vertical: 'Verticale (3 riquadri)',
-      horizontal: 'Orizzontale (Sopra/Sotto)',
-      fullScreen: 'Schermo intero (Nascondi l\'elenco durante la lettura)',
+      horizontal: 'Orizzontale (sopra/sotto)',
+      fullScreen: 'Schermo intero (nascondi l\'elenco durante la lettura)',
       loose: 'Largo',
       normal: 'Normale',
       compact: 'Compatto',
@@ -129,7 +129,7 @@ export const it = {
   },
     login: {
     subtitle: 'Accedi alla tua webmail.',
-    emailPlaceholder: 'Indirizzo Email',
+    emailPlaceholder: 'Indirizzo email',
     passwordPlaceholder: 'Password',
     keepMeSignedIn: 'Resta collegato',
     signIn: 'Accedi',
@@ -361,8 +361,8 @@ export const it = {
     downloadAllAttachments: 'Scarica tutti gli allegati',
     unknownAttachment: 'Allegato sconosciuto',
     archive: 'Archivia',
-    reportSpam: 'Segnala Spam',
-    notSpam: 'Non Spam',
+    reportSpam: 'Segnala spam',
+    notSpam: 'Non spam',
     delete: 'Elimina',
     deleteThread: 'Elimina conversazione',
     deleteConfirmSingle: 'Sei sicuro di voler eliminare definitivamente questo messaggio? L\'azione non può essere annullata.',
@@ -370,7 +370,7 @@ export const it = {
     markUnread: 'Segna come non letto',
     markRead: 'Segna come letto',
     star: 'Speciale',
-    moveTo: 'Copia/Sposta in...',
+    moveTo: 'Copia/sposta in...',
     print: 'Stampa',
     showPlaintext: 'Mostra testo semplice',
     showHtml: 'Mostra HTML',
@@ -397,7 +397,7 @@ export const it = {
     loading: 'Caricamento messaggio originale...',
     errorMissingParams: 'Parametri mailbox o uid mancanti',
     errorFailedToFetch: 'Impossibile recuperare il messaggio originale',
-    messageId: 'ID Messaggio',
+    messageId: 'ID messaggio',
     createdAt: 'Creato il',
     from: 'Da',
     to: 'A',
@@ -440,6 +440,15 @@ export const it = {
     errorLoading: 'Impossibile caricare l’anteprima',
     close: 'Chiudi',
     uploadProgress: '{percent}% di {size}'
+  },
+
+  sizeUnits: {
+    bytes: 'B',
+    kilobytes: 'KB',
+    megabytes: 'MB',
+    gigabytes: 'GB',
+    terabytes: 'TB',
+    petabytes: 'PB'
   },
 
   navigation: {
@@ -541,6 +550,7 @@ export const it = {
   general: {
     pageLoadFailed: 'Impossibile caricare questa pagina.',
     pageLoadFailedHint: 'Controlla la connessione, poi ricarica. I messaggi che stai scrivendo vengono conservati.',
+    backToMail: "Torna alla posta",
     error: 'Errore',
     cancel: 'Annulla',
     save: 'Salva',

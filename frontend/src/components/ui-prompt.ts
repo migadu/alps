@@ -30,7 +30,8 @@ export class UIPrompt extends LitElement {
   @consume({ context: i18nContext })
   i18nStore!: I18nStore;
 
-  @property({ type: String }) title: string = 'Prompt';
+  /** The heading, passed on to ui-modal; not HTML's `title` (see there). */
+  @property({ type: String }) heading: string = 'Prompt';
   @property({ type: Array }) fields: PromptField[] = [];
   @property({ type: String }) confirmText: string = '';
   @property({ type: String }) cancelText: string = '';
@@ -195,7 +196,7 @@ export class UIPrompt extends LitElement {
   render() {
     return html`
       <ui-modal 
-        .title=${this.title}
+        .heading=${this.heading}
         .isDanger=${this.isDanger}
         .dismissible=${!this.busy}
         @cancel=${this._handleCancel}>

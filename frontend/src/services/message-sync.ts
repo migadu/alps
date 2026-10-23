@@ -162,6 +162,7 @@ export class MessageSyncService extends EventTarget {
       this.currentFetchId++;
       this.currentLabelsId++;
       this.listed = false;
+      this.newsPending = false;
       this.heard = null;
       this.forgetListings();
       this.latestMailboxes = null;
@@ -173,6 +174,7 @@ export class MessageSyncService extends EventTarget {
       this.currentFetchId++;
       this.currentLabelsId++;
       this.listed = false;
+      this.newsPending = false;
       this.heard = null;
       this.forgetListings();
       this.latestMailboxes = null;
@@ -444,7 +446,13 @@ export class MessageSyncService extends EventTarget {
   private handleShown = () => {
     this.tellView();
     if (this.shownCheck || document.hidden || !this.listed || !this.heard) return;
-    if (Date.now() - this.heard.at < STALE_ON_SHOW_MS) return;
+    if (Date.now() - this.heard.at < STALE_ON_SHOW_MS) {
+      // News pushed while the tab was hidden (see inboxChanged).
+      this.checkPendingNews();
+      return;
+    }
+    // The check made here covers the news as well.
+    this.newsPending = false;
     this.shownCheck = this.backgroundSync({ announce: this.announces })
       .finally(() => { this.shownCheck = null; });
   };
@@ -685,6 +693,85 @@ export class MessageSyncService extends EventTarget {
     }
   }
 
+  /** The check {@link inboxChanged} started, while it is out, and whether news came during it. */
+  private newsCheck: Promise<void> | null = null;
+  private newsAgain = false;
+  /** News came that this tab could not check yet: see {@link inboxChanged}. */
+  private newsPending = false;
+
+  /**
+   * The server says a message arrived in the Inbox or went from it, or that
+   * it has begun to watch the Inbox (see mail-push.ts), and the tab checks.
+   *
+   * What it checks costs the mail server as little as tells the page what
+   * changed. Only a tab showing the Inbox's own listing makes the check a
+   * poll makes, and reads the listing again when the counts moved. A search,
+   * of the Inbox or of every folder, is not run again: each costs the mail
+   * server a search, which it allows only so many of a minute, and the poll
+   * runs it in its turn. Another folder is not read again either. Those
+   * views ask for the Inbox's counts alone, which the sidebar shows, and an
+   * arrival there is announced as a poll's would be (`inbox-counts`).
+   *
+   * News is not let go when it cannot be checked at once. Over a view whose
+   * read is out, the read may have been answered before the news, and one
+   * that failed shows the rows of a view no read has confirmed: the news is
+   * checked once a read lands. A hidden tab that does not poll checks once
+   * it is shown, as it would for its own staleness; the tab that polls
+   * checks at once, hidden or not, since the chime and the notification come
+   * from it. News that comes while a check is out has one more check made
+   * after it, not one each.
+   */
+  inboxChanged() {
+    // The views of the Inbox kept in memory are older than the news.
+    this.forgetListings((listed) => listed === FOLDER_INBOX || listed === ALL_MAILBOXES);
+    if (!this.listed || (typeof document !== 'undefined' && document.hidden && !this.announces)) {
+      this.newsPending = true;
+      return;
+    }
+    this.newsPending = false;
+    if (this.newsCheck) {
+      this.newsAgain = true;
+      return;
+    }
+    this.newsCheck = this.checkNews().finally(() => {
+      this.newsCheck = null;
+      if (this.newsAgain) {
+        this.newsAgain = false;
+        this.inboxChanged();
+      }
+    });
+  }
+
+  /** News held for a check that can be made now (see {@link inboxChanged}). */
+  private checkPendingNews() {
+    if (this.newsPending) this.inboxChanged();
+  }
+
+  private async checkNews(): Promise<void> {
+    if (this.currentMailbox === FOLDER_INBOX && !this.currentQuery) {
+      // A check-for-new-mail press this one took the place of waits for an
+      // end, as `check` gives it.
+      if (!await this.backgroundSync({ announce: this.announces })) {
+        this.dispatchEvent(new CustomEvent('sync-error', { detail: { error: null, background: true } }));
+      }
+      return;
+    }
+    // No ticket: the view's own reads are not taken over. A listing that
+    // lands meanwhile carries counts read after these, and the session may
+    // have changed hands: the answer is let go of then.
+    const heard = this.heard;
+    const counts = await this.askCounts(FOLDER_INBOX).catch(() => null);
+    if (!counts || this.heard !== heard) return;
+    if (heard && sameCounts(counts, heard.inbox)) return;
+    if (heard) heard.inbox = counts;
+    // The views shown from memory are shown with the latest folder list.
+    if (this.latestMailboxes) {
+      this.latestMailboxes = this.latestMailboxes.map((mb: any) =>
+        (String(mb?.Name ?? mb?.Mailbox).toUpperCase() === FOLDER_INBOX ? { ...mb, Total: counts.total, Unseen: counts.unseen } : mb));
+    }
+    this.dispatchEvent(new CustomEvent('inbox-counts', { detail: { counts, announce: this.announces } }));
+  }
+
   private currentFetchId: number = 0;
   private currentLabelsId: number = 0;
 
@@ -802,6 +889,7 @@ export class MessageSyncService extends EventTarget {
       const changed = this.replayChanges(data, sentAt);
       if (response.ok && !changed) this.keepListing(mailbox, page, query, data);
       this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: false, quiet } }));
+      this.checkPendingNews();
     } catch (err) {
       if (this.currentFetchId !== fetchId) return;
       Logger.error('Failed to fetch mailbox data', err);
@@ -939,7 +1027,11 @@ export class MessageSyncService extends EventTarget {
         inbox = await this.askCounts(FOLDER_INBOX).catch(() => null);
       }
       if (superseded()) return true;
-      const counts = shared ? shared.mailbox : await this.askCounts(mailbox);
+      // A search of all mailboxes is of no one mailbox: the server has no
+      // counts of `*`, and answered the question with a 500. Without counts
+      // the listing below is read, as it always was.
+      const counts = shared ? shared.mailbox
+        : mailbox === ALL_MAILBOXES ? null : await this.askCounts(mailbox);
       if (superseded()) return true;
 
       // The listing is read again only when the counts moved since it was
@@ -995,11 +1087,15 @@ export class MessageSyncService extends EventTarget {
 
       const data: MailboxData = await response.json();
       if (superseded()) return true;
+      // The view is listed now, whatever became of the read before: after a
+      // failed one, the rows a poll brings back are this view's.
+      this.listed = true;
       data.ListedMailbox = mailbox;
       this.hear(mailbox, page, query, data);
       const changed = this.replayChanges(data, sentAt);
       if (response.ok && !changed) this.keepListing(mailbox, page, query, data);
       this.dispatchEvent(new CustomEvent('sync-success', { detail: { data, background: true, announce: announce && this.announces } }));
+      this.checkPendingNews();
 
       return true;
     } catch (err) {

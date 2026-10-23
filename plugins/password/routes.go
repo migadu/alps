@@ -160,7 +160,7 @@ func handlePasswordChange(ctx *alps.Context) error {
 	}
 
 	// Update the session password
-	err = ctx.Server.Sessions.UpdatePassword(ctx.Session, req.Password)
+	err = ctx.Server.Sessions.UpdatePasswordContext(ctx.Request.Context(), ctx.Session, req.Password)
 	if err != nil {
 		ctx.Server.Logger().Errorf("Failed to update session password: %v", err)
 		return ctx.JSON(http.StatusOK, map[string]string{"message": "Password changed, but please log in again"})

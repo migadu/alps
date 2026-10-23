@@ -444,6 +444,15 @@ export const de: TranslationDictionary = {
     uploadProgress: '{percent}\u00a0% von {size}'
   },
 
+  sizeUnits: {
+    bytes: 'B',
+    kilobytes: 'KB',
+    megabytes: 'MB',
+    gigabytes: 'GB',
+    terabytes: 'TB',
+    petabytes: 'PB'
+  },
+
   navigation: {
     messages: 'Nachrichten',
     contacts: 'Kontakte',
@@ -543,6 +552,7 @@ export const de: TranslationDictionary = {
   general: {
     pageLoadFailed: 'Diese Seite konnte nicht geladen werden.',
     pageLoadFailedHint: 'Prüfen Sie Ihre Verbindung und laden Sie dann neu. Nachrichten, die Sie gerade schreiben, bleiben erhalten.',
+    backToMail: "Zurück zu Mail",
     error: 'Fehler',
     cancel: 'Abbrechen',
     save: 'Speichern',

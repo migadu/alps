@@ -82,6 +82,18 @@ describe('signing in', () => {
     expect(changed).toHaveLength(1);
   });
 
+  it('takes push for off once the push service has found it so', async () => {
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { PushNewMail: true, Settings: { language: 'en' } }),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(store.getState().pushNewMail).toBe(true));
+    window.dispatchEvent(new CustomEvent('mail-push-off'));
+    expect(store.getState().pushNewMail).toBe(false);
+  });
+
   it('turns threading off when the server cannot thread', async () => {
     signedIn();
     serve({
@@ -857,6 +869,63 @@ describe('local records', () => {
     signedIn();
     clearSessionSettings(false);
     expect(document.cookie).toContain('alps_logged_in=1');
+  });
+});
+
+// In Auto the app follows the operating system between light and dark. The
+// store applied a switch of the system and told no one, so nothing painted
+// in the theme outside the app's own stylesheet followed: a message's frame,
+// themed for the app's dark colours, stayed as it was until reopened.
+describe('a switch of the system between light and dark', () => {
+  /** The system, light or dark as the test switches it, as the browser reports it. */
+  function system(dark: boolean) {
+    const watchers: (() => void)[] = [];
+    vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
+      media: query,
+      get matches() { return dark && query === '(prefers-color-scheme: dark)'; },
+      onchange: null,
+      addEventListener: (_type: string, watcher: () => void) => { watchers.push(watcher); },
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }) as unknown as MediaQueryList);
+    return {
+      switchTo(next: 'light' | 'dark') {
+        dark = next === 'dark';
+        watchers.forEach((watcher) => watcher());
+      },
+    };
+  }
+
+  function changesOf(store: SettingsStore) {
+    const seen: Event[] = [];
+    store.addEventListener('change', (e) => seen.push(e));
+    return seen;
+  }
+
+  it('is applied and announced in Auto', () => {
+    const os = system(false);
+    localStorage.setItem('alps_settings', JSON.stringify({ themeMode: 'auto' }));
+    const store = new SettingsStore();
+    const changes = changesOf(store);
+
+    os.switchTo('dark');
+
+    expect(document.body.classList.contains('theme-dark')).toBe(true);
+    expect(changes).toHaveLength(1);
+  });
+
+  it('changes nothing, and announces nothing, under a theme of its own', () => {
+    const os = system(false);
+    localStorage.setItem('alps_settings', JSON.stringify({ themeMode: 'light' }));
+    const store = new SettingsStore();
+    const changes = changesOf(store);
+
+    os.switchTo('dark');
+
+    expect(document.body.classList.contains('theme-dark')).toBe(false);
+    expect(changes).toHaveLength(0);
   });
 });
 

@@ -62,6 +62,8 @@ export interface SettingsState {
   showSenderAvatars: boolean;
   hasThreadCapability?: boolean;
   hasESearchCapability?: boolean;
+  /** The server pushes news of new mail to the mail page (see services/mail-push). */
+  pushNewMail?: boolean;
   customMailboxOrder?: string[];
   /**
    * The folders unsubscribed from here, oldest first, which the sidebar puts
@@ -280,10 +282,13 @@ export class SettingsStore extends EventTarget {
     this.state = this.loadSettings();
     this.applyTheme();
 
-    // Watch for system theme changes if set to auto
+    // Watch for system theme changes if set to auto. Announced, as every
+    // theme the store applies is: what paints itself in the theme outside the
+    // app's stylesheet, a message's frame, follows only what it is told.
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (this.state.themeMode === 'auto') {
         this.applyTheme();
+        this.notify();
       }
     });
 
@@ -306,6 +311,12 @@ export class SettingsStore extends EventTarget {
       this.cancelRetry();
       this.failures = 0;
       this.initializeSession(username);
+    });
+
+    // The push service found push turned off since the settings were read
+    // (see services/mail-push).
+    window.addEventListener('mail-push-off', () => {
+      if (this.state.pushNewMail) void this.updateSettings({ pushNewMail: false });
     });
 
     // Back online is the best moment there is to retry: whatever the back-off
@@ -655,6 +666,10 @@ export class SettingsStore extends EventTarget {
 
         if (data.HasESearchCapability !== undefined) {
           updates.hasESearchCapability = data.HasESearchCapability;
+        }
+
+        if (data.PushNewMail !== undefined) {
+          updates.pushNewMail = data.PushNewMail === true;
         }
 
         if (data && data.Settings) {

@@ -294,11 +294,13 @@ export class AlpsGpgSettings extends LitElement {
                     <alps-setting-group description="${this.i18nStore?.t('gpg.importUnencryptedDesc')}" style="margin-bottom: 24px;"></alps-setting-group>
                     
                     <alps-setting-group label="${this.i18nStore?.t('gpg.publicKeyBlock')}" style="margin-bottom: 24px;">
-                        <textarea .value=${this.pubKeyInput} @input=${(e: any) => this.pubKeyInput = e.target.value}></textarea>
+                        <!-- Each box named by the label above it, which is in
+                             alps-setting-group's shadow root and cannot reach it. -->
+                        <textarea aria-label=${this.i18nStore?.t('gpg.publicKeyBlock') ?? ''} .value=${this.pubKeyInput} @input=${(e: any) => this.pubKeyInput = e.target.value}></textarea>
                     </alps-setting-group>
 
                     <alps-setting-group label="${this.i18nStore?.t('gpg.privateKeyBlock')}" style="margin-bottom: 24px;">
-                        <textarea .value=${this.privKeyInput} @input=${(e: any) => this.privKeyInput = e.target.value}></textarea>
+                        <textarea aria-label=${this.i18nStore?.t('gpg.privateKeyBlock') ?? ''} .value=${this.privKeyInput} @input=${(e: any) => this.privKeyInput = e.target.value}></textarea>
                     </alps-setting-group>
 
                     <div class="actions">
@@ -318,7 +320,7 @@ export class AlpsGpgSettings extends LitElement {
 
             ${this.showPassphrasePrompt ? html`
                 <ui-prompt
-                    title="${this.passphrasePromptMode === 'unlock' ? this.i18nStore?.t('gpg.passphraseRequired') : this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.passphraseConfirmTitle') : this.i18nStore?.t('gpg.passphraseSetTitle')}"
+                    heading="${this.passphrasePromptMode === 'unlock' ? this.i18nStore?.t('gpg.passphraseRequired') : this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.passphraseConfirmTitle') : this.i18nStore?.t('gpg.passphraseSetTitle')}"
                     confirmText="${this.passphrasePromptMode === 'unlock' ? this.i18nStore?.t('gpg.unlock') : this.passphrasePromptMode === 'confirm' ? this.i18nStore?.t('gpg.confirm') : this.i18nStore?.t('gpg.lock')}"
                     cancelText="${this.i18nStore?.t('general.cancel')}"
                     .fields=${[
@@ -339,15 +341,15 @@ export class AlpsGpgSettings extends LitElement {
                 ></ui-prompt>
             ` : ''}
             ${this.importError ? html`
-                <ui-modal title="${this.i18nStore?.t('gpg.importFailedTitle')}" @cancel=${this.clearError}>
+                <ui-modal heading="${this.i18nStore?.t('gpg.importFailedTitle')}" @cancel=${this.clearError}>
                     <div style="padding: 16px; white-space: pre-wrap; font-family: monospace; font-size: 13px;">${this.importError}</div>
-                    <alps-button slot="actions" @click=${this.clearError}>OK</alps-button>
+                    <alps-button slot="actions" @click=${this.clearError}>${this.i18nStore?.t('attachment.close')}</alps-button>
                 </ui-modal>
             ` : ''}
 
             ${this.showPurgeConfirm ? html`
                 <ui-confirm
-                    title="${this.i18nStore?.t('gpg.purgeKeys')}"
+                    heading="${this.i18nStore?.t('gpg.purgeKeys')}"
                     message="${this.i18nStore?.t('gpg.purgeConfirm')}"
                     confirmText="${this.i18nStore?.t('gpg.purgeKeys')}"
                     cancelText="${this.i18nStore?.t('general.cancel')}"

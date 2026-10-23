@@ -215,7 +215,7 @@ describe('the folder it names', () => {
 
     await click(deleteAll(el), el);
     const dialog = shadow(el, 'ui-confirm');
-    const asked = `${dialog.getAttribute('title')} ${dialog.getAttribute('message')}`;
+    const asked = `${dialog.getAttribute('heading')} ${dialog.getAttribute('message')}`;
     expect(asked).toContain('all 2 messages in Trash');
     expect(asked).not.toContain('INBOX.');
     expect(`${banner} ${asked}`).not.toContain('Bin');

@@ -59,6 +59,16 @@ const inboxNamesake = (uid: string) => ({
   Envelope: envelope('Engines', '2026-09-01T10:00:00Z'),
 });
 
+/**
+ * Answers the reader's read of a message with a text body. Edit draft opens
+ * a draft only from its body, and refuses one it could not read.
+ */
+function answerBodies() {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => (/\/messages\/\d+\?view=/.test(String(url))
+    ? new Response(JSON.stringify({ Part: { Path: [1], MIMEType: 'text/plain' }, Body: 'Notes', HasText: true }), { status: 200 })
+    : new Response('{}', { status: 404 }))));
+}
+
 const discarded = (mailbox: string, uid: string) =>
   window.dispatchEvent(new CustomEvent('draft-discarded', { detail: { mailbox, uid } }));
 
@@ -183,7 +193,7 @@ describe('the composer', () => {
     const seen = record<CustomEvent>(window, 'draft-autosaved');
     const composeStore = realStore();
     composeStore.openComposer({
-      to: ['ada@example.com'], subject: 'Engines', text: 'Notes', format: 'text', draftUid: '7', draftMailbox: 'Drafts',
+      to: ['ada@example.com'], bcc: ['saved@example.com'], subject: 'Engines', text: 'Notes', format: 'text', draftUid: '7', draftMailbox: 'Drafts',
     });
     const [instance] = composeStore.getState().activeComposers;
     const el = await mount<El>('alps-floating-composer', { instance, composeStore, i18nStore });
@@ -200,11 +210,25 @@ describe('the composer', () => {
     await saving;
 
     expect(seen[0].detail).toMatchObject({
-      newUid: '8', subject: 'Engines', to: ['ada@example.com'], cc: [], bcc: [], hasAttachments: false,
+      newUid: '8', subject: 'Engines', to: ['ada@example.com'], cc: [], bcc: ['saved@example.com'], hasAttachments: false,
     });
     // What changed meanwhile is still to be saved, and that save brings the
     // row up to date.
     expect(composeStore.getComposer(instance.id)).toMatchObject({ draftUid: '8', dirty: true });
+  });
+
+  it('describes the BCC myself address posted with the saved draft', async () => {
+    localStorage.setItem('alps_active_user', 'ada');
+    localStorage.setItem('alps_settings_ada', JSON.stringify({ loginUsername: 'ada', loginAddress: 'ada@example.com', bccMyself: true }));
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const seen = record<CustomEvent>(window, 'draft-autosaved');
+    const instance: ComposerInstance = { id: 'c1', bcc: ['hidden@example.com'], subject: 'Engines', text: 'Notes', format: 'text' };
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: storeFor(instance), i18nStore });
+
+    await el._saveDraft();
+
+    expect((vi.mocked(messageOperations.saveDraft).mock.calls[0][0] as FormData).get('bcc')).toBe('hidden@example.com, ada@example.com');
+    expect(seen[0].detail.bcc).toEqual(['hidden@example.com', 'ada@example.com']);
   });
 
   it('marks the row as having attachments only for a file the save carried', async () => {
@@ -383,6 +407,7 @@ describe('the reader', () => {
   it('edits a draft found by a search of all mailboxes in its own mailbox', async () => {
     // `*` is the view, not a mailbox: saving over it, or discarding from it,
     // asked the server to delete from a mailbox that does not exist.
+    answerBodies();
     const composeStore = { openComposer: vi.fn() };
     const el = await mount<El>('alps-message-reader', {
       settingsStore: settingsStore(),
@@ -400,6 +425,35 @@ describe('the reader', () => {
       draftUid: '7',
       draftMailbox: 'Drafts',
       quoteSource: expect.objectContaining({ mailbox: 'Drafts', uid: '7' }),
+    }));
+  });
+
+  it('reopens a draft with the Bcc its envelope names', async () => {
+    // A draft is stored with its Bcc, and listed and read with it in its
+    // envelope. Reopened without it, it was sent without those recipients.
+    answerBodies();
+    const stored: any = draft('7');
+    stored.Envelope = {
+      ...stored.Envelope,
+      To: [{ Name: '', Mailbox: 'charles', Host: 'example.com' }],
+      Bcc: [{ Name: 'Hopper, Grace', Mailbox: 'grace', Host: 'example.com' }, { Name: '', Mailbox: 'hidden', Host: 'example.com' }],
+    };
+    const composeStore = { openComposer: vi.fn() };
+    const el = await mount<El>('alps-message-reader', {
+      settingsStore: settingsStore(),
+      i18nStore,
+      composeStore,
+      mailbox: '*',
+      mailboxes: [],
+      messages: [stored],
+      message: stored,
+    });
+
+    await el._handleEditDraft();
+
+    expect(composeStore.openComposer).toHaveBeenCalledWith(expect.objectContaining({
+      to: ['charles@example.com'],
+      bcc: ['"Hopper, Grace" <grace@example.com>', 'hidden@example.com'],
     }));
   });
 });
@@ -540,6 +594,7 @@ describe('the mail page, when a draft is saved', () => {
     const el = await page('Drafts', [row], row);
     saved({ oldUid: '7', oldMailbox: 'Drafts', newUid: '8', subject: '' });
 
+    answerBodies();
     const composeStore = { openComposer: vi.fn() };
     const reader = await mount<El>('alps-message-reader', {
       settingsStore: settingsStore(),
@@ -554,4 +609,192 @@ describe('the mail page, when a draft is saved', () => {
 
     expect(composeStore.openComposer).toHaveBeenCalledWith(expect.objectContaining({ draftUid: '8', subject: '' }));
   });
+
+  /** The recipients the save stored, as the composer holds them. */
+  const recipients = {
+    to: ['"Babbage, Charles" <charles@example.com>'],
+    cc: ['dora@bücher.example'],
+    bcc: ['eve@example.com'],
+  };
+
+  /** Those recipients as a listing of Drafts names them, including its private Bcc. */
+  const listedRecipients = {
+    To: [{ Name: 'Babbage, Charles', Mailbox: 'charles', Host: 'example.com' }],
+    Cc: [{ Name: '', Mailbox: 'dora', Host: 'xn--bcher-kva.example' }],
+    Bcc: [{ Name: '', Mailbox: 'eve', Host: 'example.com' }],
+  };
+
+  /** A draft addressed to Bob, as Drafts listed it. */
+  const toBob = () => {
+    const row: any = { ...draft('7'), Mailbox: undefined };
+    row.Envelope = { ...row.Envelope, To: [{ Name: 'Bob', Mailbox: 'bob', Host: 'example.com' }] };
+    return row;
+  };
+
+  /** Who each row is shown as being to, as the user reads it. */
+  async function addressees(el: El): Promise<(string | undefined)[]> {
+    await el.updateComplete;
+    const list = el.shadowRoot!.querySelector<El>('alps-message-list')!;
+    await list.updateComplete;
+    return shadowAll(list, '.message-item .message-sender').map(node => node.textContent?.replace(/\s+/g, ' ').trim());
+  }
+
+  it('gives the row the recipients the draft now has, as a listing names them', async () => {
+    // The save's event carries them, and the row kept the ones it was listed
+    // with, in the list and in the reader, until the list was read again.
+    const row = toBob();
+    const el = await translatedPage('Drafts', [row], row);
+    expect(await addressees(el)).toEqual(['Bob']);
+
+    saved({ oldUid: '7', oldMailbox: 'Drafts', newUid: '8', ...recipients });
+
+    expect(el.messages[0].Envelope).toMatchObject(listedRecipients);
+    expect(el.messages[0].Envelope.Bcc).toEqual(listedRecipients.Bcc);
+    expect(el.selectedMessage.Envelope).toMatchObject(listedRecipients);
+    expect(await addressees(el)).toEqual(['Babbage, Charles, dora@bücher.example']);
+  });
+
+  it('puts in a new draft under the recipients it was saved for, not under the sender', async () => {
+    // Put in with no To at all, the row fell back to the sender, and showed
+    // the user's own name.
+    const el = await translatedPage('Drafts', [], null);
+
+    saved({ oldUid: null, oldMailbox: null, newUid: '31', ...recipients });
+
+    expect(el.messages[0].Envelope).toMatchObject(listedRecipients);
+    expect(await addressees(el)).toEqual(['Babbage, Charles, dora@bücher.example']);
+  });
+
+  it('edits the draft again from the reader with the recipients it now has', async () => {
+    // The reader edits the draft as the row has it: Edit Draft brought the
+    // old recipients back into the composer, and its next save stored them.
+    const row = toBob();
+    const el = await page('Drafts', [row], row);
+    saved({ oldUid: '7', oldMailbox: 'Drafts', newUid: '8', ...recipients });
+
+    answerBodies();
+    const composeStore = { openComposer: vi.fn() };
+    const reader = await mount<El>('alps-message-reader', {
+      settingsStore: settingsStore(),
+      i18nStore,
+      composeStore,
+      mailbox: 'Drafts',
+      mailboxes: [{ Name: 'Drafts', Attrs: ['\\Drafts'] }],
+      messages: el.messages,
+      message: el.selectedMessage,
+    });
+    await reader._handleEditDraft();
+
+    expect(composeStore.openComposer).toHaveBeenCalledWith(expect.objectContaining({
+      draftUid: '8',
+      to: ['"Babbage, Charles" <charles@example.com>'],
+      cc: ['dora@xn--bcher-kva.example'],
+      bcc: ['eve@example.com'],
+    }));
+  });
+
+  it('gives a reply draft in a conversation its recipients, and leaves the message it answers as it was', async () => {
+    const answered = {
+      UID: '5',
+      Mailbox: 'INBOX',
+      Flags: ['\\Seen'],
+      Envelope: { ...envelope('Engines', '2026-09-01T10:00:00Z'), From: [{ Name: 'Bob', Mailbox: 'bob', Host: 'example.com' }] },
+    };
+    const reply = { ...toBob(), Mailbox: 'Drafts' };
+    const thread = { ...answered, SubMessages: [reply] };
+    const el = await page('*', [thread], reply);
+
+    saved({ oldUid: '7', oldMailbox: 'Drafts', newUid: '8', ...recipients });
+
+    expect(el.messages[0].Envelope).toBe(answered.Envelope);
+    expect(el.messages[0].SubMessages[0]).toMatchObject({ UID: '8', Envelope: listedRecipients });
+    expect(el.selectedMessage).toMatchObject({ UID: '8', Envelope: listedRecipients });
+  });
+  it.each(['row', 'conversation', 'off-page'])('clears the previous Bcc from the selected %s when the save has none', async (view) => {
+    answerBodies();
+    const row = toBob();
+    row.Envelope.Bcc = [{ Name: 'Old hidden', Mailbox: 'old', Host: 'example.com' }];
+    const selected = view === 'conversation' ? { ...row, Mailbox: 'Drafts' } : row;
+    const messages = view === 'row' ? [row] : view === 'conversation' ? [{ ...inboxNamesake('5'), SubMessages: [selected] }] : [];
+    const el = await page(view === 'conversation' ? '*' : 'Drafts', messages, selected);
+
+    saved({ oldUid: '7', oldMailbox: 'Drafts', newUid: '8', bcc: [] });
+
+    expect(el.selectedMessage.Envelope.Bcc).toEqual([]);
+    if (view === 'row') expect(el.messages[0].Envelope.Bcc).toEqual([]);
+    if (view === 'conversation') expect(el.messages[0].SubMessages[0].Envelope.Bcc).toEqual([]);
+    const composeStore = { openComposer: vi.fn() };
+    const reader = await mount<El>('alps-message-reader', {
+      settingsStore: settingsStore(), i18nStore, composeStore,
+      mailbox: view === 'conversation' ? '*' : 'Drafts', mailboxes: [{ Name: 'Drafts', Attrs: ['\\Drafts'] }],
+      messages: el.messages, message: el.selectedMessage,
+    });
+    await reader._handleEditDraft();
+    expect(composeStore.openComposer).toHaveBeenCalledWith(expect.objectContaining({ draftUid: '8', bcc: [] }));
+  });
+
+  it('updates the row and reader with each Bcc snapshot when recipients change during a save', async () => {
+    const row = toBob();
+    const el = await page('Drafts', [row], row);
+    const composeStore = realStore();
+    composeStore.openComposer({ draftUid: '7', draftMailbox: 'Drafts', subject: 'Engines', text: 'Notes', format: 'text', bcc: ['saved@example.com'] });
+    const [instance] = composeStore.getState().activeComposers;
+    const composer = await mount<El>('alps-floating-composer', { instance, composeStore, i18nStore });
+    let land!: (answer: any) => void;
+    const save = vi.spyOn(messageOperations, 'saveDraft').mockImplementationOnce(() => new Promise(resolve => { land = resolve; }));
+
+    const saving = composer._saveDraft();
+    composeStore.updateComposer(instance.id, { bcc: ['later@example.com'] });
+    land({ uid: '8', mailbox: 'Drafts' });
+    await saving;
+
+    expect(el.messages[0].Envelope.Bcc).toEqual([{ Name: '', Mailbox: 'saved', Host: 'example.com' }]);
+    expect(el.selectedMessage.Envelope.Bcc).toEqual(el.messages[0].Envelope.Bcc);
+    expect(composeStore.getComposer(instance.id)).toMatchObject({ dirty: true, bcc: ['later@example.com'] });
+    await update(composer, { instance: composeStore.getComposer(instance.id) });
+    save.mockResolvedValue({ uid: '9', mailbox: 'Drafts' });
+    await composer._saveDraft();
+
+    expect((save.mock.calls[1][0] as FormData).get('bcc')).toBe('later@example.com');
+    expect(el.messages[0].Envelope.Bcc).toEqual([{ Name: '', Mailbox: 'later', Host: 'example.com' }]);
+    expect(el.selectedMessage.Envelope.Bcc).toEqual(el.messages[0].Envelope.Bcc);
+  });
+
+  it('uses the server-confirmed empty Bcc for a draft saved with an unreadable field, leaving the window intact', async () => {
+    const el = await page('Drafts', [], null);
+    const composeStore = realStore();
+    composeStore.openComposer({ subject: 'Engines', text: 'Notes', format: 'text', bcc: ['hidden@remote.test;'] });
+    const [instance] = composeStore.getState().activeComposers;
+    const composer = await mount<El>('alps-floating-composer', { instance, composeStore, i18nStore });
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts', bcc: [] } as any);
+
+    await composer._saveDraft();
+
+    expect(el.messages[0].Envelope.Bcc).toEqual([]);
+    expect(composeStore.getComposer(instance.id)?.bcc).toEqual(['hidden@remote.test;']);
+  });
+
+  it('keeps literal apostrophes in saved recipient names when the row is edited again', async () => {
+    const row = toBob();
+    const el = await translatedPage('Drafts', [row], row);
+    saved({ oldUid: '7', oldMailbox: 'Drafts', newUid: '8',
+      to: ["'t Hooft <gerard@example.com>"], cc: ["Miles' <miles@example.com>"] });
+    expect(el.messages[0].Envelope).toMatchObject({
+      To: [{ Name: "'t Hooft", Mailbox: 'gerard', Host: 'example.com' }],
+      Cc: [{ Name: "Miles'", Mailbox: 'miles', Host: 'example.com' }],
+    });
+    expect(await addressees(el)).toEqual(["'t Hooft, Miles'"]);
+    answerBodies();
+    const composeStore = { openComposer: vi.fn() };
+    const reader = await mount<El>('alps-message-reader', {
+      settingsStore: settingsStore(), i18nStore, composeStore,
+      mailbox: 'Drafts', mailboxes: [{ Name: 'Drafts', Attrs: ['\\Drafts'] }],
+      messages: el.messages, message: el.selectedMessage,
+    });
+    await reader._handleEditDraft();
+    expect(composeStore.openComposer).toHaveBeenCalledWith(expect.objectContaining({
+      to: ["'t Hooft <gerard@example.com>"], cc: ["Miles' <miles@example.com>"],
+    }));
+  });
+
 });

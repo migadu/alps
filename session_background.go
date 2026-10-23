@@ -57,8 +57,10 @@ type backgroundConnection struct {
 	// jobs is held while an operation runs on the connection, so that they run
 	// one at a time, as on the session's own. Where both are held, it is taken
 	// before providerLocker (see UpdatePassword), and an operation that falls
-	// back to the session's own connection lets go of it first.
-	jobs sync.Mutex
+	// back to the session's own connection lets go of it first. Work done
+	// for a request waits for it no longer than the request does (see
+	// jobLock).
+	jobs jobLock
 
 	// mu guards the fields below. It is held only to read or change them,
 	// never while waiting for the mail server or for another lock.
@@ -74,6 +76,40 @@ type backgroundConnection struct {
 	// once its operation returns, when the session has no connection of its
 	// own and the mail server will not open one (see reclaimBackground).
 	claim chan provider.MailProvider
+}
+
+// jobLock is a mutex that can be waited for until a context is done. The IDLE
+// that serves a session's pages holds the background connection's for as
+// long as it waits, and ends that wait for whoever asks; the server may still
+// be slow to answer (see provider.Idler.Idle), and work for a request that
+// has gone gives up then rather than wait on for nobody.
+type jobLock struct {
+	once sync.Once
+	ch   chan struct{}
+}
+
+func (l *jobLock) init() {
+	l.once.Do(func() { l.ch = make(chan struct{}, 1) })
+}
+
+func (l *jobLock) Lock() {
+	l.init()
+	l.ch <- struct{}{}
+}
+
+// LockContext takes the lock, or answers ctx's error once ctx is done first.
+func (l *jobLock) LockContext(ctx context.Context) error {
+	l.init()
+	select {
+	case l.ch <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (l *jobLock) Unlock() {
+	<-l.ch
 }
 
 // stopIdle stops the timer that would close the connection. The caller holds
@@ -121,7 +157,13 @@ func (s *Session) DoBackgroundMail(ctx context.Context, f func(provider.MailProv
 // then, whose retry covers a server that has dropped it.
 func (s *Session) doBackgroundMail(ctx context.Context, f func(provider.MailProvider) error) (ran bool, err error) {
 	bg := &s.background
-	bg.jobs.Lock()
+	// An IDLE waiting on the connection ends for f, and begins again once the
+	// connection has gone unused for a moment (see inboxPush).
+	s.push.want()
+	defer s.push.done()
+	if err := bg.jobs.LockContext(ctx); err != nil {
+		return true, fmt.Errorf("context cancelled: %w", err)
+	}
 	defer bg.jobs.Unlock()
 
 	if err := ctx.Err(); err != nil {
@@ -229,7 +271,9 @@ func (s *Session) doneWithBackground() {
 		bg.mu.Unlock()
 		return
 	}
-	if !bg.ended && !bg.retire && bg.answerClaim(p) {
+	// Readied for the session's own use only when it is handed over: the
+	// news is switched off then, not after every operation.
+	if !bg.ended && !bg.retire && bg.claim != nil && bg.answerClaim(ownUse(p)) {
 		// The session's own connection from now on.
 		bg.p = nil
 		bg.mu.Unlock()
@@ -288,6 +332,16 @@ func (s *Session) takeIdleBackground() provider.MailProvider {
 	bg.stopIdle()
 	p := bg.p
 	bg.p = nil
+	return ownUse(p)
+}
+
+// ownUse readies a background connection for the session's own use: what the
+// mail server says unasked on it is no news for the pages from now on (see
+// WatchInbox), of the session's own moves out of the Inbox least of all.
+func ownUse(p provider.MailProvider) provider.MailProvider {
+	if idler, ok := p.(provider.Idler); ok {
+		idler.OnMailboxNews(nil)
+	}
 	return p
 }
 
@@ -318,11 +372,13 @@ func (s *Session) reclaimBackground(ctx context.Context) (provider.MailProvider,
 		p := bg.p
 		bg.p = nil
 		bg.mu.Unlock()
-		return p, nil
+		return ownUse(p), nil
 	}
 	claim := make(chan provider.MailProvider, 1)
 	bg.claim = claim
 	bg.mu.Unlock()
+	// An IDLE is never done of itself: it ends for this.
+	s.push.interrupt()
 
 	select {
 	case p := <-claim:
@@ -389,6 +445,9 @@ func (s *Session) giveUpConnection(p provider.MailProvider, done <-chan error) {
 		return
 	}
 	s.givenUp.Add(1)
+	// An IDLE on the background connection ends, so that the connection is
+	// closed, as the one of any background operation running now is.
+	s.push.interrupt()
 	go func() {
 		<-done
 		p.Close()

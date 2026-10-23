@@ -214,7 +214,7 @@ export const sr = {
     filterUnread: 'Filtriraj po nepročitanim',
     noMessages: 'Nema poruka',
     loadError: 'Nije moguće učitati ovu fasciklu.',
-    loadErrorRetry: 'Pokušaj ponovo',
+    loadErrorRetry: 'Pokušajte ponovo',
     loading: 'Učitavanje...',
     unknownSender: 'Nepoznat pošiljalac',
     unknown: 'Nepoznato',
@@ -453,6 +453,15 @@ export const sr = {
     uploadProgress: '{percent}% od {size}'
   },
 
+  sizeUnits: {
+    bytes: 'B',
+    kilobytes: 'KB',
+    megabytes: 'MB',
+    gigabytes: 'GB',
+    terabytes: 'TB',
+    petabytes: 'PB'
+  },
+
   navigation: {
     messages: 'Poruke',
     contacts: 'Kontakti',
@@ -559,6 +568,7 @@ export const sr = {
   general: {
     pageLoadFailed: 'Ova stranica nije mogla da se učita.',
     pageLoadFailedHint: 'Proverite vezu, pa ponovo učitajte. Poruke koje pišete ostaju sačuvane.',
+    backToMail: "Nazad na poštu",
     error: 'Greška',
     cancel: 'Otkaži',
     save: 'Sačuvaj',

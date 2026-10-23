@@ -3,7 +3,7 @@ import { renderIcon } from '../utils/ui';
 import { customElement, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { Router } from '../router';
-import { loadComponent, registry } from '../plugin-registry';
+import { loadComponent, PLUGIN_LOAD_FAILED_EVENT, registry, resetComponentLoadFailures } from '../plugin-registry';
 import './alps-page-load-error';
 
 // Import pages
@@ -166,6 +166,7 @@ export class AppRoot extends LitElement {
     window.addEventListener('dragover', this._handleGlobalDragOver);
     window.addEventListener('drop', this._handleGlobalDrop);
     window.addEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
+    window.addEventListener(PLUGIN_LOAD_FAILED_EVENT, this._handlePluginLoadFailed);
     window.addEventListener('open-attachment-preview', this._handleOpenAttachmentPreview as EventListener);
     window.addEventListener(UPDATE_AVAILABLE_EVENT, this._handleUpdateAvailable);
     // A reload waits while a composer is open. Asked of this element because
@@ -221,6 +222,7 @@ export class AppRoot extends LitElement {
     window.removeEventListener('dragover', this._handleGlobalDragOver);
     window.removeEventListener('drop', this._handleGlobalDrop);
     window.removeEventListener('plugins-updated', this._handlePluginsUpdated as EventListener);
+    window.removeEventListener(PLUGIN_LOAD_FAILED_EVENT, this._handlePluginLoadFailed);
     window.removeEventListener(UPDATE_AVAILABLE_EVENT, this._handleUpdateAvailable);
     registerBusyProbe(null);
     this._stopOfflineCountdown();
@@ -347,7 +349,7 @@ export class AppRoot extends LitElement {
       actionLabel: e.detail.actionLabel || '',
       actionFn: e.detail.actionFn,
       dismissFn: e.detail.dismissFn,
-      timeout: e.detail.duration || DEFAULT_TOAST_TIMEOUT_MS,
+      timeout: e.detail.duration ?? DEFAULT_TOAST_TIMEOUT_MS,
       show: false,
     };
     
@@ -406,6 +408,18 @@ export class AppRoot extends LitElement {
       window.setTimeout(prefetch, COMPOSER_PREFETCH_DELAY_MS);
     }
   }
+
+  private _handlePluginLoadFailed = () => {
+    this._handleShowToast(new CustomEvent('show-toast', {
+      detail: {
+        i18nKey: 'general.pageLoadFailed',
+        actionLabel: this.i18nStore.t('general.backToMail'),
+        actionFn: () => { window.location.hash = '#/mailbox/INBOX'; },
+        // Stay until dismissed: the failed page contains no navigation of its own.
+        duration: 0,
+      },
+    }));
+  };
 
   /**
    * The composer window's module, fetched at most once.
@@ -532,10 +546,18 @@ export class AppRoot extends LitElement {
     return baseRoutes;
   }
 
+  private loadFailurePath: string | null = null;
   private router = new Router(
     this.getRoutes(),
     () => html`<div>404 — ${this.i18nStore.t('general.notFound')}</div>`,
-    () => this.requestUpdate()
+    () => {
+      const path = this.router.currentPath;
+      if (path !== this.loadFailurePath) {
+        this.loadFailurePath = path;
+        resetComponentLoadFailures();
+      }
+      this.requestUpdate();
+    }
   );
 
   render() {
@@ -593,7 +615,7 @@ export class AppRoot extends LitElement {
       ` : ''}
 
       ${this.isOffline ? html`
-        <ui-modal title=${this.i18nStore.t('offline.title')} .dismissible=${false} width="400px">
+        <ui-modal heading=${this.i18nStore.t('offline.title')} .dismissible=${false} width="400px">
           <div style="text-align: center; padding: 16px 0;">
             <div class="offline-icon">${renderIcon('wifiSlash')}</div>
             <div style="font-weight: 500; font-size: 16px; margin-bottom: 8px; color: var(--text-primary, #111827);">

@@ -56,3 +56,43 @@ test("a page that could not be fetched says so, keeps the composer, and opens af
   await expect(page.locator("alps-page-load-error")).toHaveCount(0);
   await expect(composerOf(page).getByPlaceholder("Subject")).toHaveValue(subject);
 });
+
+test("Reload keeps the live draft when recovery storage is full, and retries after storage recovers", async ({ page }) => {
+  allowConsoleErrors(page, /status of 503|Failed to load <calendar-page>|dynamically imported module|Failed to save compose drafts to localStorage|QuotaExceededError/);
+  await login(page);
+  await page.locator("alps-folder-list alps-create-button").click();
+  const composer = composerOf(page);
+  const subject = `Only live draft ${Date.now()}`;
+  await composer.getByPlaceholder("Subject").fill(subject);
+  let requests = 0;
+  await page.route(/\/assets\/calendar-page-[^/]+\.js(\?.*)?$/, route =>
+    requests++ === 0 ? route.fulfill({ status: 503, body: "" }) : route.continue());
+  await page.goto('/#/calendar');
+  const notice = page.locator('alps-page-load-error');
+  await expect(notice).toContainText('This page could not be loaded.');
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    (window as any).restoreRecoveryStorage = () => { Storage.prototype.setItem = original; };
+    (window as any).recoveryDocument = 'unchanged';
+    Storage.prototype.setItem = function(key, value) {
+      if (key.startsWith('alps_compose_drafts_')) throw new DOMException('Storage is full', 'QuotaExceededError');
+      original.call(this, key, value);
+    };
+  });
+  const text = 'This latest body must survive a refused reload.';
+  await composer.locator('.ProseMirror').fill(text);
+  await notice.getByRole('button', { name: 'Reload', exact: true }).click();
+  await expect(notice.locator('.persist-error')).toContainText('Could not save this draft');
+  await expect(composer.getByPlaceholder('Subject')).toHaveValue(subject);
+  await expect(composer.locator('.ProseMirror')).toContainText(text);
+  expect(await page.evaluate(() => (window as any).recoveryDocument)).toBe('unchanged');
+  expect(requests).toBe(1);
+
+  await page.evaluate(() => (window as any).restoreRecoveryStorage());
+  await notice.getByRole('button', { name: 'Reload', exact: true }).click();
+  await expect(page.locator('calendar-month-view')).toBeVisible({ timeout: 15_000 });
+  expect(requests).toBe(2);
+  expect(await page.evaluate(() => (window as any).recoveryDocument)).toBeUndefined();
+  await expect(composerOf(page).getByPlaceholder('Subject')).toHaveValue(subject);
+  await expect(composerOf(page).locator('.ProseMirror')).toContainText(text);
+});

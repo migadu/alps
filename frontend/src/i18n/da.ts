@@ -490,6 +490,15 @@ export const da: TranslationDictionary = {
     uploadProgress: '{percent}\u00a0% af {size}'
   },
 
+  sizeUnits: {
+    bytes: 'B',
+    kilobytes: 'KB',
+    megabytes: 'MB',
+    gigabytes: 'GB',
+    terabytes: 'TB',
+    petabytes: 'PB'
+  },
+
   navigation: {
     messages: 'Beskeder',
     contacts: 'Kontakter',
@@ -589,6 +598,7 @@ export const da: TranslationDictionary = {
   general: {
     pageLoadFailed: 'Siden kunne ikke indlæses.',
     pageLoadFailedHint: 'Tjek din forbindelse, og genindlæs derefter. Beskeder, du er ved at skrive, bevares.',
+    backToMail: "Tilbage til mail",
     error: 'Fejl',
     cancel: 'Annuller',
     save: 'Gem',

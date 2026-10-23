@@ -12,6 +12,7 @@ import { closeSidebarPeek } from '../components/alps-sidebar';
 import { consume } from '@lit/context';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import { messageSync, type MailboxData } from '../services/message-sync';
+import { mailPush } from '../services/mail-push';
 import { messageOperations, type FlagResult, type MatchingScope, type MoveResult } from '../services/message-operations';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -23,6 +24,7 @@ import { Logger } from '../utils/logger';
 import { MessageCache } from '../utils/message-cache';
 import { getDestinationLabel, getFlexContainerMinWidth } from '../utils/ui';
 import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/message-key';
+import { canonicalRecipient, parseWrittenAddress } from '../utils/address-display';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
@@ -47,6 +49,19 @@ function sameListing(shown: any[], answer: any[]): boolean {
   if (shown === answer) return true;
   if (!shown || shown.length !== answer.length) return false;
   return JSON.stringify(shown) === JSON.stringify(answer);
+}
+
+/**
+ * A field's recipient pills as a listing names the addresses a draft save
+ * stored: the name as it reads, and the address split at its last `@`, its
+ * domain in the A-label form the save posts (see canonicalRecipient).
+ */
+function listedAddresses(pills: string[] | undefined): { Name: string; Mailbox: string; Host: string }[] {
+  return (pills || []).map(pill => {
+    const { name, email } = parseWrittenAddress(canonicalRecipient(pill));
+    const at = email.lastIndexOf('@');
+    return { Name: name, Mailbox: at === -1 ? email : email.slice(0, at), Host: at === -1 ? '' : email.slice(at + 1) };
+  });
 }
 
 /** A Delete waiting on the question whether to delete for good. */
@@ -674,6 +689,7 @@ export class MailboxPage extends LitElement {
     messageSync.addEventListener('sync-success', this.handleSyncSuccess);
     messageSync.addEventListener('sync-error', this.handleSyncError);
     messageSync.addEventListener('sync-unchanged', this.handleSyncUnchanged);
+    messageSync.addEventListener('inbox-counts', this.handleInboxCounts);
     messageSync.addEventListener('labels-success', this.handleLabelsSuccess);
     messageSync.addEventListener('mailbox-not-found', this.handleMailboxNotFound as EventListener);
 
@@ -705,10 +721,12 @@ export class MailboxPage extends LitElement {
     messageSync.removeEventListener('sync-success', this.handleSyncSuccess);
     messageSync.removeEventListener('sync-error', this.handleSyncError);
     messageSync.removeEventListener('sync-unchanged', this.handleSyncUnchanged);
+    messageSync.removeEventListener('inbox-counts', this.handleInboxCounts);
     messageSync.removeEventListener('labels-success', this.handleLabelsSuccess);
     messageSync.removeEventListener('mailbox-not-found', this.handleMailboxNotFound as EventListener);
     window.removeEventListener('draft-autosaved', this.handleDraftAutosaved as EventListener);
     messageSync.stop();
+    mailPush.stop();
   }
 
   protected updated(changedProperties: Map<string | number | symbol, unknown>): void {
@@ -732,7 +750,7 @@ export class MailboxPage extends LitElement {
   }
 
   private handleDraftAutosaved = (e: CustomEvent) => {
-    const { oldUid, oldMailbox, newUid, mailbox, subject, hasAttachments, size } = e.detail;
+    const { oldUid, oldMailbox, newUid, mailbox, subject, to, cc, bcc, hasAttachments, size } = e.detail;
     if (!this.messages) return;
     // A string, as the listing sends every UID. A number here made the reader,
     // which compares UIDs as they are, take the same draft for a different
@@ -752,6 +770,14 @@ export class MailboxPage extends LitElement {
     // Matched on mailbox AND UID: a UID is unique only within its mailbox, and
     // a search of all mailboxes lists several.
     const oldKey = oldUid ? messageKey(oldMailbox || mailbox, oldUid) : null;
+    // The recipients the save stored, which a row in Drafts shows in place of
+    // its sender, and Edit Draft opens the composer with. Left out, a row kept
+    // the ones it was listed with, and a new one fell back to the sender, the
+    // user's own name. A draft keeps Bcc too: its row and selected message
+    // must carry the stored recipients so Edit Draft reopens them unchanged.
+    const To = listedAddresses(to);
+    const Cc = listedAddresses(cc);
+    const Bcc = listedAddresses(bcc);
     const replaced = (m: any) => ({
       ...m,
       UID: nextUid,
@@ -768,7 +794,10 @@ export class MailboxPage extends LitElement {
       // "(No subject)" was written in as if it were the subject.
       Envelope: {
         ...m.Envelope,
-        Subject: subject
+        Subject: subject,
+        To,
+        Cc,
+        Bcc
       }
     });
 
@@ -841,7 +870,10 @@ export class MailboxPage extends LitElement {
         Envelope: {
           Subject: subject,
           Date: new Date().toISOString(),
-          From: [{ Name: draftName, Mailbox: draftMailboxStr, Host: draftHostStr }]
+          From: [{ Name: draftName, Mailbox: draftMailboxStr, Host: draftHostStr }],
+          To,
+          Cc,
+          Bcc
         }
       };
       // Also remove any existing draft with the same oldUid if it exists but wasn't caught
@@ -890,6 +922,13 @@ export class MailboxPage extends LitElement {
     if (state.checkMailInterval !== undefined) {
       messageSync.start(state.checkMailInterval);
     }
+    // And listen for the news the server pushes, when it does: the poll
+    // goes on beside it.
+    if (state.pushNewMail) {
+      mailPush.start();
+    } else {
+      mailPush.stop();
+    }
   }
 
   /**
@@ -919,31 +958,19 @@ export class MailboxPage extends LitElement {
     }
   };
 
-  private handleSyncSuccess = (e: Event) => {
-    this.isSyncing = false;
-    this.listLoadFailed = false;
-    const { data, background } = (e as CustomEvent).detail;
-    // A check made in a tab that does not poll: the tab that polls has chimed,
-    // or will chime, for the same arrival.
-    const announce = (e as CustomEvent).detail.announce !== false;
-
-    if (data.Username) {
-      this.username = data.Username;
-      const state = this.settingsStore.getState();
-      // The address too: a bare login is not the address it stands for.
-      const address = data.Address || undefined;
-      if (state.loginUsername !== data.Username || state.loginAddress !== address) {
-        this.settingsStore.updateSettings({ loginUsername: data.Username, loginAddress: address });
-      }
-    }
-
+  /**
+   * The folder list an answer carries, with the counts it brings, and an
+   * arrival in them announced: the chime, the notification, and the toast
+   * that offers the Inbox from elsewhere.
+   */
+  private takeMailboxes(mailboxes: any[] | undefined, background: boolean, announce: boolean) {
     let isInitialLoad = this.mailboxes.length === 0;
     let soundTriggered = false;
     let notificationTriggered = false;
     let totalNewInboxMessages = 0;
 
-    if (data.Mailboxes) {
-      for (const mb of data.Mailboxes) {
+    if (mailboxes) {
+      for (const mb of mailboxes) {
         const mbName = mb.Name || mb.Mailbox;
         const oldMb = this.mailboxes.find((m: any) => (m.Name || m.Mailbox) === mbName);
         // New mail is BOTH counts rising: the total and the unseen. Either alone is a
@@ -966,7 +993,7 @@ export class MailboxPage extends LitElement {
           }
         }
       }
-      this.mailboxes = data.Mailboxes;
+      this.mailboxes = mailboxes;
     }
 
     if (announce && soundTriggered && this.settingsStore.getState().soundNotifications) {
@@ -1020,6 +1047,40 @@ export class MailboxPage extends LitElement {
         5000
       );
     }
+  }
+
+  /**
+   * The Inbox's counts alone, read on news of it pushed while another folder
+   * or a search is on screen (see messageSync.inboxChanged): the sidebar
+   * shows them, and an arrival is announced as a poll's would be.
+   */
+  private handleInboxCounts = (e: Event) => {
+    const { counts, announce } = (e as CustomEvent).detail;
+    const isInbox = (mb: any) => String(mb.Name || mb.Mailbox).toUpperCase() === 'INBOX';
+    if (!this.mailboxes.some(isInbox)) return;
+    const mailboxes = this.mailboxes.map((mb: any) => (isInbox(mb) ? { ...mb, Total: counts.total, Unseen: counts.unseen } : mb));
+    this.takeMailboxes(mailboxes, true, announce !== false);
+  };
+
+  private handleSyncSuccess = (e: Event) => {
+    this.isSyncing = false;
+    this.listLoadFailed = false;
+    const { data, background } = (e as CustomEvent).detail;
+    // A check made in a tab that does not poll: the tab that polls has chimed,
+    // or will chime, for the same arrival.
+    const announce = (e as CustomEvent).detail.announce !== false;
+
+    if (data.Username) {
+      this.username = data.Username;
+      const state = this.settingsStore.getState();
+      // The address too: a bare login is not the address it stands for.
+      const address = data.Address || undefined;
+      if (state.loginUsername !== data.Username || state.loginAddress !== address) {
+        this.settingsStore.updateSettings({ loginUsername: data.Username, loginAddress: address });
+      }
+    }
+
+    this.takeMailboxes(data.Mailboxes, background, announce);
 
     if (background && this.currentPage > 0) {
       if (data.Total !== undefined && data.Total !== this.totalMessages) {
@@ -2561,7 +2622,7 @@ export class MailboxPage extends LitElement {
       </div>
       ${this.showDeleteConfirm ? html`
         <ui-confirm
-          title=${this.deleteDialogWords.title}
+          heading=${this.deleteDialogWords.title}
           message=${this.deleteDialogWords.message}
           confirmText=${this.deleteDialogWords.confirm}
           cancelText=${this.i18nStore?.t('general.cancel')}

@@ -170,7 +170,7 @@ export class MessageReader extends LitElement {
       );
 
       // A forward carries the original's attachments; a reply does not. Both
-      // carry its inline parts, which the quote's images name: see inlinePartsOf.
+      // carry the inline parts the quote shows: see inlinePartsOf.
       const forwarded = action === 'forward' ? this.attachments.map(a => ({
         name: a.Filename || 'attachment',
         size: a.Size || 0,
@@ -179,7 +179,7 @@ export class MessageReader extends LitElement {
       })) : [];
       const attachments = [
         ...forwarded,
-        ...inlinePartsOf(this.message.BodyStructure).filter(part => !forwarded.some(a => a.partPath === part.partPath)),
+        ...inlinePartsOf(this.message.BodyStructure, quotedHtml).filter(part => !forwarded.some(a => a.partPath === part.partPath)),
       ];
 
       const reply = action === 'reply' || action === 'replyAll' ? replyContext(this.message, this.message.Mailbox || this.mailbox) : {};
@@ -2043,7 +2043,7 @@ export class MessageReader extends LitElement {
       );
 
       // A forward carries the original's attachments; a reply does not. Both
-      // carry its inline parts, which the quote's images name: see inlinePartsOf.
+      // carry the inline parts the quote shows: see inlinePartsOf.
       const forwarded = action === 'forward' ? item.attachments.map(a => ({
         name: a.Filename || 'attachment',
         size: a.Size || 0,
@@ -2052,7 +2052,7 @@ export class MessageReader extends LitElement {
       })) : [];
       const attachments = [
         ...forwarded,
-        ...inlinePartsOf(item.message.BodyStructure).filter(part => !forwarded.some(a => a.partPath === part.partPath)),
+        ...inlinePartsOf(item.message.BodyStructure, quotedHtml).filter(part => !forwarded.some(a => a.partPath === part.partPath)),
       ];
 
       const reply = action === 'reply' || action === 'replyAll' ? replyContext(item.message, item.mailbox) : {};
@@ -2154,13 +2154,15 @@ export class MessageReader extends LitElement {
     const mailbox = isItem ? item.mailbox : this.mailboxOfMessage(msg);
     if (!msg) return;
 
-    // If we're editing a specific thread item, make sure its body has been loaded
-    if (isItem && item && !item.content && !item.loading) {
-      item.loading = true;
-      this.updateThreadItemReference(item);
-      await this.fetchItemBody(item);
-    }
     const key = isItem ? this.itemKey(item) : this.keyOf(msg);
+    // The draft is opened from its body, which is read first when the card has
+    // none: never read, or read and failed. A failed read used to be opened as
+    // it stood, empty, under the stored draft's UID, and the composer's first
+    // save replaced the draft, its text and its files, with what was typed.
+    const card = isItem ? item : this.threadItems.find(i => this.itemKey(i) === key);
+    if (card && !card.loading && (card.loadFailed || (isItem && !card.content))) {
+      void this.retryItemBody(card);
+    }
     if (this.bodyLoads.has(key)) {
       const loaded = await this.loadedItem(key);
       if (!loaded) return;
@@ -2172,6 +2174,14 @@ export class MessageReader extends LitElement {
     // no References, and a reply's draft edited from that row was saved and
     // sent without them.
     msg = isItem ? item.message : this.message;
+    // Still not read: said, as the reader says it over the body, and nothing
+    // is opened that could be saved over the draft.
+    if (isItem ? item.loadFailed : this.loadFailed) {
+      window.dispatchEvent(new CustomEvent('show-toast', {
+        detail: { message: this.i18nStore?.t('messageReader.loadError') },
+      }));
+      return;
+    }
 
     const content = isItem && item ? item.content : this.content;
     const mimeType = isItem && item ? item.mimeType : this.mimeType;
@@ -2601,7 +2611,7 @@ export class MessageReader extends LitElement {
               </div>
               <div class="desktop-date-container">
                 <div class="reader-date desktop-date">${dateStr}</div>
-                ${msg.RFC822Size ? html`<div class="reader-size desktop-only">${formatSize(msg.RFC822Size)}</div>` : ''}
+                ${msg.RFC822Size ? html`<div class="reader-size desktop-only">${formatSize(msg.RFC822Size, this.i18nStore)}</div>` : ''}
               </div>
             </div>
             
@@ -2628,7 +2638,7 @@ export class MessageReader extends LitElement {
                 <span class="reader-recipients-label">${this.i18nStore?.t('messageReader.date') || 'Date:'}</span>
                 <div class="reader-recipients-list mobile-date-container" style="flex-direction: row; align-items: baseline; gap: 8px; margin-top: 0;">
                   <span class="reader-date mobile-date" style="color: var(--text-primary);">${dateStr}</span>
-                  ${msg.RFC822Size ? html`<span class="reader-size mobile-size">(${formatSize(msg.RFC822Size)})</span>` : ''}
+                  ${msg.RFC822Size ? html`<span class="reader-size mobile-size">(${formatSize(msg.RFC822Size, this.i18nStore)})</span>` : ''}
                 </div>
               </div>
             </div>

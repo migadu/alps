@@ -11,6 +11,7 @@ import { cleanup, mount, record, text, waitFor } from './helpers/dom';
 import { ComposeStore } from '../src/store/compose-store';
 import { DraftFlushError } from '../src/utils/draft-flush-error';
 import { messageOperations } from '../src/services/message-operations';
+import { generateQuote } from '../src/utils/email-quote';
 import '../src/components/alps-floating-composer';
 
 // See floating-composer-send.test.ts: the picker builds its grid on connect.
@@ -462,6 +463,81 @@ describe('a plain-text draft opened in HTML', () => {
 
     expect(saveDraft).not.toHaveBeenCalled();
     expect(store.getComposer(id)).toBeUndefined();
+  });
+});
+
+describe('a reply or a forward left untouched', () => {
+  // The editor takes the keyboard as the window opens, and on that first
+  // transaction adds an empty paragraph after a quote that ends the message,
+  // for the user to write below it. That reached the store as a change of
+  // the HTML, which marks a composer unsaved, and the autosave filed an
+  // answer the user had not touched as a draft.
+  const original = {
+    UID: 4,
+    Envelope: { Subject: 'Engines', Date: '2026-09-02T10:00:00Z', From: [{ Name: 'Ada', Mailbox: 'ada', Host: 'example.com' }], To: [], Cc: [] },
+  };
+  function answer(type: 'reply' | 'forward', html: string | null) {
+    const quote = generateQuote(type, original, 'The figures.', html, !!html);
+    return { subject: quote.subject, to: quote.to, text: quote.quotedText, html: quote.quotedHtml, format: 'html' as const };
+  }
+  const untouched = [
+    ['a reply to an HTML message', () => answer('reply', '<p>The <b>figures</b>.</p>')],
+    ['a reply to a plain-text message', () => answer('reply', null)],
+    ['a forward', () => answer('forward', '<p>The <b>figures</b>.</p>')],
+    ['a reply reopened from Drafts', () => ({ ...answer('reply', '<p>The <b>figures</b>.</p>'), draftUid: '7', draftMailbox: 'Drafts' })],
+  ] as const;
+
+  /** The window, once its editor has opened and taken the keyboard. */
+  async function open(initial: Record<string, unknown>) {
+    const { store, instance, id } = composerIn(initial);
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const body = el.shadowRoot!.querySelector('alps-message-composer') as El;
+    await body.updateComplete;
+    await vi.advanceTimersByTimeAsync(0);
+    return { store, id, el, body };
+  }
+
+  it.each(untouched)('%s is not saved, and closes without a save', async (_, make) => {
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft');
+    vi.useFakeTimers();
+    const { store, id, el } = await open(make());
+
+    // The editor's paragraph is in the HTML, which the store holds as it is
+    // without counting it as an edit.
+    expect(store.getComposer(id)?.html).toMatch(/<p dir="auto"><\/p>$/);
+    expect(store.getComposer(id)?.dirty).toBe(false);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(saveDraft).not.toHaveBeenCalled();
+
+    await el._handleCloseClick();
+    expect(saveDraft).not.toHaveBeenCalled();
+    expect(store.getComposer(id)).toBeUndefined();
+  });
+
+  it('is saved once something is typed', async () => {
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    vi.useFakeTimers();
+    const { store, id, body } = await open(answer('reply', '<p>The <b>figures</b>.</p>'));
+
+    body.editor.chain().insertContentAt(1, 'Sounds good.').run();
+    expect(store.getComposer(id)?.dirty).toBe(true);
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(saveDraft).toHaveBeenCalledTimes(1);
+    expect(sentForm(0).get('html')).toContain('Sounds good.');
+  });
+
+  it('nor is a new message with a signature saved for being opened', async () => {
+    localStorage.setItem('alps_active_user', 'ada@example.com');
+    localStorage.setItem('alps_settings_ada@example.com', JSON.stringify({ signature: 'Grace' }));
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft');
+    vi.useFakeTimers();
+    const { store, id } = await open({ to: [], subject: '', text: '', format: 'html' });
+
+    expect(store.getComposer(id)?.html).toContain('alps-signature');
+    expect(store.getComposer(id)?.dirty).toBe(false);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(saveDraft).not.toHaveBeenCalled();
   });
 });
 

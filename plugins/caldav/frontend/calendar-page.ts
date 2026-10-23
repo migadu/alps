@@ -716,6 +716,12 @@ export class CalendarPage extends LitElement {
         this.initialDate = date;
         this.initialAllDay = allDay;
         this.modalOpen = true;
+        // Add event is in the sidebar, which on a phone is a drawer: shut it,
+        // as New task and Compose do, instead of leaving it over the calendar
+        // once the editor is gone.
+        if (this.isMobile) {
+            this.mobileSidebarOpen = false;
+        }
     }
 
     private openEditModal(event: EventData) {
@@ -1244,7 +1250,7 @@ export class CalendarPage extends LitElement {
 
             ${this.promptOpen ? html`
                 <ui-prompt 
-                    title="${this.promptMode === 'add' ? (this.i18nStore?.t('calendar.addCalendar')) : (this.i18nStore?.t('calendar.renameCalendar'))}" 
+                    heading="${this.promptMode === 'add' ? (this.i18nStore?.t('calendar.addCalendar')) : (this.i18nStore?.t('calendar.renameCalendar'))}" 
                     .fields=${this.promptFields}
                     @submit=${this.handlePromptSubmit} 
                     @cancel=${this.handlePromptCancel}
@@ -1253,7 +1259,7 @@ export class CalendarPage extends LitElement {
 
             ${this.calendarToDelete ? html`
                 <ui-confirm
-                    title="${this.i18nStore?.t('calendar.deleteCalendar')}"
+                    heading="${this.i18nStore?.t('calendar.deleteCalendar')}"
                     .message=${this.i18nStore?.t('calendar.deleteCalendarConfirm', { name: this.calendarToDelete.name }) ?? ''}
                     confirmText="${this.i18nStore?.t('calendar.delete')}"
                     isDanger
@@ -1265,7 +1271,7 @@ export class CalendarPage extends LitElement {
             ${this.eventToDelete && (this.eventToDelete.task ? taskTellsSomeone(this.eventToDelete.task, this.scheduling) : tellsSomeone(this.eventToDelete, this.scheduling)) ? html`
                 <ui-confirm
                     class="delete-meeting"
-                    title="${this.i18nStore?.t(this.eventToDelete.task ? 'tasks.deleteTask' : 'calendar.deleteEvent')}"
+                    heading="${this.i18nStore?.t(this.eventToDelete.task ? 'tasks.deleteTask' : 'calendar.deleteEvent')}"
                     message="${this.i18nStore?.t(this.eventToDelete.task
                         ? (this.eventToDelete.task.role === 'organizer' ? 'tasks.deleteTellAssignees' : 'tasks.deleteTellAssigner')
                         : (this.eventToDelete.role === 'organizer' ? 'invitations.deleteTellGuests' : 'invitations.deleteTellOrganizer'))}"
@@ -1278,7 +1284,7 @@ export class CalendarPage extends LitElement {
                 ></ui-confirm>
             ` : this.eventToDelete ? html`
                 <ui-confirm
-                    title="${this.i18nStore?.t(this.eventToDelete.task ? 'tasks.deleteTask' : 'calendar.deleteEvent')}"
+                    heading="${this.i18nStore?.t(this.eventToDelete.task ? 'tasks.deleteTask' : 'calendar.deleteEvent')}"
                     .message=${this.i18nStore?.t(this.eventToDelete.task ? 'tasks.deleteTaskConfirm' : 'calendar.deleteEventConfirm') ?? ''}
                     confirmText="${this.i18nStore?.t('calendar.delete')}"
                     isDanger

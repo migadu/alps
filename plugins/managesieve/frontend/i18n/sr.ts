@@ -9,7 +9,7 @@ export default {
     "title": "Filteri",
     "description": "Dodajte prilagođena pravila o tome kako se poruke obrađuju i odlažu.",
     "loadError": "Filteri nisu mogli da se učitaju.",
-    "loadErrorRetry": "Pokušaj ponovo",
+    "loadErrorRetry": "Pokušajte ponovo",
     "tabs": {
       "switchToRaw": "Sirov uređivač"
     },
@@ -61,7 +61,8 @@ export default {
     },
     "raw": {
       "validate": "Validiraj",
-      "save": "Sačuvaj"
+      "save": "Sačuvaj",
+      "script": "Skripta filtera"
     },
     "autoReply": {
       "title": "Automatski odgovor",

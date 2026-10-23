@@ -201,8 +201,19 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+	return newHarnessWrapping(t, nil)
+}
+
+// newHarnessWrapping is newHarness with the CardDAV server's handler passed
+// through wrap, for a test that answers some requests itself.
+func newHarnessWrapping(t *testing.T, wrap func(http.Handler) http.Handler) *harness {
+	t.Helper()
 	dav := &memBooks{objects: map[string]carddav.AddressObject{}}
-	davServer := httptest.NewServer(&carddav.Handler{Backend: dav})
+	var handler http.Handler = &carddav.Handler{Backend: dav}
+	if wrap != nil {
+		handler = wrap(handler)
+	}
+	davServer := httptest.NewServer(handler)
 	t.Cleanup(davServer.Close)
 
 	base := t.TempDir()

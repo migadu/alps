@@ -56,6 +56,8 @@ let requests: Request[] = [];
 let moveMapping: (uids: string[]) => Record<string, string> = (uids) =>
   Object.fromEntries(uids.map(uid => [uid, String(Number(uid) + 100)]));
 let moveStatus = 200;
+/** What the next flag write answers. */
+let flagStatus = 200;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -68,6 +70,7 @@ beforeEach(() => {
   vi.spyOn(messageSync, 'sync').mockImplementation(() => {});
   requests = [];
   moveStatus = 200;
+  flagStatus = 200;
   moveMapping = (uids) => Object.fromEntries(uids.map(uid => [uid, String(Number(uid) + 100)]));
   history.replaceState(null, '', '/#/mailbox/INBOX');
   vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
@@ -78,7 +81,7 @@ beforeEach(() => {
     if (u.endsWith('/messages/move')) {
       return moveStatus === 200 ? json({ uidMapping: moveMapping(body.uids) }) : json({ error: 'nope' }, moveStatus);
     }
-    if (u.endsWith('/messages/flag')) return json({ ok: true });
+    if (u.endsWith('/messages/flag')) return flagStatus === 200 ? json({ ok: true }) : json({ error: 'nope' }, flagStatus);
     if (method === 'DELETE') return json({ ok: true });
     return new Response('{}', { status: 404 });
   }));
@@ -325,12 +328,12 @@ describe('a card\'s own verbs', () => {
       await trash.updateComplete;
 
       const asked = el.shadowRoot!.querySelector('ui-confirm')!;
-      expect(asked.getAttribute('title')).toBe('floatingComposer.discardDraftTitle');
+      expect(asked.getAttribute('heading')).toBe('floatingComposer.discardDraftTitle');
       expect(asked.getAttribute('message')).toBe('floatingComposer.discardDraftMessage');
       expect(asked.getAttribute('confirmText')).toBe('floatingComposer.discard');
       // Trash keeps its own words: what it holds is mail, deleted for good.
       const fromTrash = trash.shadowRoot!.querySelector('ui-confirm')!;
-      expect(fromTrash.getAttribute('title')).toBe('mailboxPage.permanentlyDelete');
+      expect(fromTrash.getAttribute('heading')).toBe('mailboxPage.permanentlyDelete');
       expect(fromTrash.getAttribute('confirmText')).toBe('mailboxPage.deletePermanently');
 
       await el._confirmDelete();
@@ -345,7 +348,7 @@ describe('a card\'s own verbs', () => {
       await el.updateComplete;
 
       const asked = el.shadowRoot!.querySelector('ui-confirm')!;
-      expect(asked.getAttribute('title')).toBe('mailboxPage.discardDraftsTitle');
+      expect(asked.getAttribute('heading')).toBe('mailboxPage.discardDraftsTitle');
       expect(asked.getAttribute('message')).toBe('mailboxPage.discardDraftsMessage');
       expect(asked.getAttribute('confirmText')).toBe('floatingComposer.discard');
     });
@@ -418,16 +421,18 @@ describe('the star on a list row', () => {
   });
 
   it('puts the star back, and says why, when the server refuses', async () => {
-    vi.mocked(fetch).mockImplementation(async (url: any, init: RequestInit = {}) => {
-      requests.push({ url: String(url), method: init.method || 'GET', body: typeof init.body === 'string' ? JSON.parse(init.body) : undefined });
-      return json({ error: 'nope' }, 500);
-    });
+    // The flag write alone is refused. A 500 for every request also failed
+    // the page's own first listing, and that failure, held back 200ms so a
+    // dim can be seen, emptied the rows the test had set whenever the test
+    // took longer than that.
+    flagStatus = 500;
     const toasts = record<CustomEvent>(window, 'show-toast');
 
     const el = await pressed({ row: [SEEN], under: [SEEN, FLAGGED] });
 
+    expect(flagWrites()).toEqual([{ uids: ['9'], action: 'remove', flags: [FLAGGED] }]);
     expect(el.messages[0].SubMessages[0].Flags).toContain(FLAGGED);
-    expect(toasts.length).toBeGreaterThan(0);
+    expect(toasts.map(t => t.detail.message)).toContain('toast.flagChangeFailed');
   });
 });
 

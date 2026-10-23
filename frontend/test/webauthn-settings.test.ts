@@ -14,6 +14,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, mount, shadow, shadowAll, waitFor } from './helpers/dom';
 import '../src/components/alps-webauthn-settings';
+import { I18nStore } from '../src/store/i18n-store';
 
 type Pane = HTMLElement & { updateComplete: Promise<boolean>; requestUpdate(): void };
 type Prompt = HTMLElement & {
@@ -94,7 +95,7 @@ describe('removing a security key asks for the password', () => {
     expect(host.fields).toEqual([
       expect.objectContaining({ id: 'password', type: 'password', autocomplete: 'current-password' }),
     ]);
-    expect(host.getAttribute('title')).toBe('webauthn.confirm_remove');
+    expect(host.getAttribute('heading')).toBe('webauthn.confirm_remove');
     expect(el.shadowRoot?.querySelector('ui-confirm')).toBeNull();
     // The confirm button is the danger one.
     expect(shadowAll(host, 'alps-button').at(-1)!.getAttribute('variant')).toBe('danger');
@@ -227,5 +228,21 @@ describe('removing a security key asks for the password', () => {
 
     const again = await openRemove(el);
     expect(again.errors).toEqual({});
+  });
+});
+
+describe('the error dialog', () => {
+  it('closes with Close, not Cancel: there is nothing to cancel', async () => {
+    const i18nStore = new I18nStore();
+    await i18nStore.setLanguage('de');
+    fetchMock.mockImplementation(async () => json(500, {}));
+    const el = await mount<Pane>('alps-webauthn-settings', { i18nStore });
+    await waitFor(() => !!el.shadowRoot?.querySelector('ui-modal'), 'the error');
+
+    const buttons = shadowAll<HTMLElement>(el, 'ui-modal alps-button');
+    expect(buttons.map((b) => b.textContent?.trim())).toEqual(['Schließen']);
+    buttons[0].click();
+    await el.updateComplete;
+    expect(el.shadowRoot!.querySelector('ui-modal')).toBeNull();
   });
 });

@@ -42,6 +42,10 @@ export class AlpsAddressInput extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
+    // A field taken away, with the composer it was in, has nothing to
+    // suggest to: a lookup still waiting out its pause would ask the plugins
+    // all the same.
+    this._cancelSuggestions();
   }
 
   private _handleI18nChange = () => this.requestUpdate();

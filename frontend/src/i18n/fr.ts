@@ -5,7 +5,7 @@ export const fr = {
     categories: {
       general: 'Général',
       identity: 'Identité',
-      reading: 'Lecture et Rédaction',
+      reading: 'Lecture et rédaction',
       appearance: 'Apparence',
 
       localization: 'Localisation',
@@ -14,7 +14,7 @@ export const fr = {
       webauthn: '2FA / WebAuthn'
     },
     loading: 'Chargement...',
-    placeholderName: 'Votre Nom',
+    placeholderName: 'Votre nom',
     placeholderReplyTo: 'reponse@exemple.example',
     general: {
       checkMailInterval: 'Intervalle de vérification du courrier',
@@ -80,10 +80,10 @@ export const fr = {
       listDensityDesc: 'Ajustez l\'espacement et la compacité de la liste des messages.',
       light: 'Clair',
       dark: 'Sombre',
-      systemAuto: 'Auto (Système)',
+      systemAuto: 'Auto (système)',
       vertical: 'Vertical (3 panneaux)',
-      horizontal: 'Horizontal (Haut/Bas)',
-      fullScreen: 'Plein écran (Masquer la liste lors de la lecture)',
+      horizontal: 'Horizontal (haut/bas)',
+      fullScreen: 'Plein écran (masquer la liste lors de la lecture)',
       loose: 'Large',
       normal: 'Normal',
       compact: 'Compact',
@@ -218,7 +218,7 @@ export const fr = {
     hasAttachments: 'Contient des pièces jointes',
     replied: 'Répondu',
     forwarded: 'Transféré',
-    searchResultsFor: 'Résultats de recherche pour:',
+    searchResultsFor: 'Résultats de recherche pour :',
     clearSearch: 'Effacer la recherche',
     searchAllMailboxes: 'Tout rechercher',
     totalMessagesIn: {
@@ -361,8 +361,8 @@ export const fr = {
     downloadAllAttachments: 'Télécharger toutes les pièces jointes',
     unknownAttachment: 'Pièce jointe inconnue',
     archive: 'Archiver',
-    reportSpam: 'Signaler comme Spam',
-    notSpam: 'Non Spam',
+    reportSpam: 'Signaler comme spam',
+    notSpam: 'Non spam',
     delete: 'Supprimer',
     deleteThread: 'Supprimer la conversation',
     deleteConfirmSingle: 'Êtes-vous sûr de vouloir supprimer définitivement ce message ? Cette action est irréversible.',
@@ -370,7 +370,7 @@ export const fr = {
     markUnread: 'Marquer comme non lu',
     markRead: 'Marquer comme lu',
     star: 'Ajouter aux favoris',
-    moveTo: 'Copier/Déplacer vers...',
+    moveTo: 'Copier/déplacer vers...',
     print: 'Imprimer',
     showPlaintext: 'Afficher en texte brut',
     showHtml: 'Afficher en HTML',
@@ -440,6 +440,15 @@ export const fr = {
     errorLoading: 'Échec du chargement de l’aperçu',
     close: 'Fermer',
     uploadProgress: '{percent}\u00a0% de {size}'
+  },
+
+  sizeUnits: {
+    bytes: 'o',
+    kilobytes: 'Ko',
+    megabytes: 'Mo',
+    gigabytes: 'Go',
+    terabytes: 'To',
+    petabytes: 'Po'
   },
 
   navigation: {
@@ -541,6 +550,7 @@ export const fr = {
   general: {
     pageLoadFailed: 'Impossible de charger cette page.',
     pageLoadFailedHint: 'Vérifiez votre connexion, puis rechargez. Les messages en cours de rédaction sont conservés.',
+    backToMail: "Retour au courrier",
     error: 'Erreur',
     cancel: 'Annuler',
     save: 'Enregistrer',

@@ -77,7 +77,7 @@ describe('Sign Out with a draft the server refused', () => {
     const el = await header(store);
 
     const asked = el.shadowRoot!.querySelector('ui-confirm');
-    expect(asked?.getAttribute('title')).toBe('userMenu.unsavedDraftsTitle');
+    expect(asked?.getAttribute('heading')).toBe('userMenu.unsavedDraftsTitle');
     expect(asked?.getAttribute('confirmText')).toBe('userMenu.signOutAnyway');
 
     asked!.dispatchEvent(new CustomEvent('cancel'));

@@ -121,6 +121,26 @@ func TestOutgoingMessage_Headers(t *testing.T) {
 	}
 }
 
+// A draft names its Bcc, so that it is sent to them once it is reopened. The
+// message written for sending, above, still does not.
+func TestOutgoingMessage_ADraftNamesItsBcc(t *testing.T) {
+	var buf bytes.Buffer
+	if _, err := outgoing().asDraft().WriteTo(&buf); err != nil {
+		t.Fatal(err)
+	}
+	r, err := mail.CreateReader(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bcc, err := r.Header.AddressList("Bcc")
+	if err != nil || len(bcc) != 1 || bcc[0].Address != "hidden@example.com" {
+		t.Errorf("the draft's Bcc is %v (%v)", bcc, err)
+	}
+	if to, _ := r.Header.AddressList("To"); len(to) != 1 || to[0].Address != "charles@example.com" {
+		t.Errorf("the draft's To is %v", to)
+	}
+}
+
 func TestOutgoingMessage_ReplyHeaders(t *testing.T) {
 	msg := outgoing()
 	msg.ReplyTo = "team@example.com"
@@ -303,12 +323,17 @@ func (s *smtpSession) Rcpt(_ context.Context, to string, _ *smtp.RcptOptions) er
 	return nil
 }
 
+// Data keeps a message only once it has arrived whole: one that ends before
+// the final "." is not delivered.
 func (s *smtpSession) Data(_ context.Context, r io.Reader) error {
 	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
 	s.b.mu.Lock()
 	defer s.b.mu.Unlock()
 	s.b.data = string(data)
-	return err
+	return nil
 }
 
 func (s *smtpSession) Reset()        {}
@@ -377,6 +402,32 @@ func TestSendMessage_ReportsTheRefusedRecipient(t *testing.T) {
 	var smtpErr *smtp.SMTPError
 	if err == nil || !strings.Contains(err.Error(), "refused@example.com") || !errors.As(err, &smtpErr) && !strings.Contains(err.Error(), "550") {
 		t.Errorf("got %v, want the server's refusal naming the address", err)
+	}
+}
+
+// unreadableAttachment is a file that cannot be opened when the message is
+// written.
+type unreadableAttachment struct{ memAttachment }
+
+func (unreadableAttachment) Open() (io.ReadCloser, error) {
+	return nil, errors.New("the file is gone")
+}
+
+// A message that cannot be written whole is not sent. Its DATA used to be
+// ended with the final "." all the same, and the server delivered what had
+// been written, cut off at the attachment, while the user was told the
+// message had not gone.
+func TestSendMessage_AMessageThatCannotBeWrittenIsNotSent(t *testing.T) {
+	c, rec := dialRecorder(t)
+	msg := outgoing()
+	msg.Attachments = []Attachment{unreadableAttachment{memAttachment{name: "notes.txt", mimeType: "text/plain"}}}
+	if err := sendMessage(c, msg); err == nil || !strings.Contains(err.Error(), "the file is gone") {
+		t.Fatalf("got %v, want the attachment's failure", err)
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if rec.data != "" {
+		t.Errorf("the server accepted %d bytes of a message that was not written whole:\n%s", len(rec.data), rec.data)
 	}
 }
 

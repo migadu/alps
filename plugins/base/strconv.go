@@ -77,3 +77,55 @@ func parseAddressList(s string) ([]string, error) {
 	}
 	return ret, nil
 }
+
+// readableAddresses is what can be read of a recipient field that
+// parseAddressList refuses: each entry that reads as an address, in order,
+// formatted as parseAddressList formats it. The rest are left out. An entry
+// is what lies between two commas that are not inside a quoted string, a
+// comment or angle brackets, so a comma in a quoted name stays in it.
+func readableAddresses(s string) []string {
+	ret := []string{}
+	for _, entry := range splitAddressList(s) {
+		if list, err := parseAddressList(entry); err == nil {
+			ret = append(ret, list...)
+		}
+	}
+	return ret
+}
+
+// splitAddressList splits a recipient field at the commas that separate its
+// entries, and nowhere else.
+func splitAddressList(s string) []string {
+	var entries []string
+	var quoted, escaped, angle bool
+	comment, start := 0, 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case escaped:
+			escaped = false
+		case c == '\\' && (quoted || comment > 0):
+			escaped = true
+		case quoted:
+			quoted = c != '"'
+		case comment > 0:
+			if c == '(' {
+				comment++
+			} else if c == ')' {
+				comment--
+			}
+		case c == '"':
+			quoted = true
+		case c == '(':
+			comment++
+		case c == '<':
+			angle = true
+		case c == '>':
+			angle = false
+		case c == ',' && !angle:
+			entries = append(entries, s[start:i])
+			start = i + 1
+		}
+	}
+	return append(entries, s[start:])
+}

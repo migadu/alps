@@ -58,6 +58,9 @@ func registerRoutes(p *alps.GoPlugin) {
 	p.POST("/attachments", handleComposeAttachment)
 	p.DELETE("/attachments/{uuid}", handleCancelAttachment)
 
+	// News of new mail, pushed: see handleEvents
+	p.GET("/events", handleEvents)
+
 	// Session
 	p.POST("/session", handleLogin)
 	p.GET("/session", handleGetSession)
@@ -486,7 +489,6 @@ func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.Me
 // Finding them all walks no more of the cache than finding this folder's
 // did: the cache goes through every key it holds for any prefix.
 func patchCachedConversations(cache *alps.Cache, debugf func(string, ...interface{}), mailbox, uidStr string, addFlags, removeFlags []imap.Flag) {
-	ownPrefix := threadCacheKey(mailbox, "")
 	for _, key := range cache.GetKeysWithPrefix("thread:") {
 		patched := false
 		cache.Update(key, func(cached interface{}) interface{} {
@@ -499,13 +501,10 @@ func patchCachedConversations(cache *alps.Cache, debugf func(string, ...interfac
 				// own: a UID under IMAP, a file name under maildir. It names a
 				// message only within its folder, and the conversations walked are
 				// every folder's, each holding that folder's messages and the
-				// user's own from Sent. A member that names no folder is taken, as
-				// handleGetThread takes it, for one of the folder its conversation
-				// is kept under.
-				if msgs[i].AlpsUID != uidStr {
-					continue
-				}
-				if msgs[i].Mailbox != mailbox && (msgs[i].Mailbox != "" || !strings.HasPrefix(key, ownPrefix)) {
+				// user's own from Sent. Every member names its folder (namedIn).
+				// The key is not asked: it names only the folder the conversation
+				// was opened from, and Work's begins the keys of Work:Sub too.
+				if msgs[i].AlpsUID != uidStr || msgs[i].Mailbox != mailbox {
 					continue
 				}
 				// A reader may be encoding the old conversation now. Its slice,
@@ -1808,7 +1807,7 @@ func handleGetThread(ctx *alps.Context) error {
 	for _, m := range msgs {
 		// Members from Sent are keyed under their own mailbox by the read that
 		// asks for them there, which is a different conversation to assemble.
-		if m.AlpsUID == "" || (m.Mailbox != "" && m.Mailbox != mboxName) {
+		if m.AlpsUID == "" || m.Mailbox != mboxName {
 			continue
 		}
 		cache.Set(threadCacheKey(mboxName, m.AlpsUID), msgs)
@@ -2389,12 +2388,18 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	// A field that does not read as addresses is refused here, for what it
-	// is, rather than as a failure to send or to store the draft. A draft
-	// does not carry Bcc, so Bcc does not stop one being saved.
+	// is, rather than as a failure to send or to store the draft. A Bcc that
+	// does not read so is refused only when the message is sent: a draft is
+	// still saved, with each Bcc entry that does read. Saved without the
+	// field, it lost every Bcc recipient over one that did not, the ones
+	// written correctly too.
 	recipients := map[string][]string{}
 	for _, field := range []string{"to", "cc", "bcc"} {
 		list, err := parseAddressList(ctx.FormValue(field))
-		if err != nil && !(saveAsDraft && field == "bcc") {
+		if err != nil && saveAsDraft && field == "bcc" {
+			list, err = readableAddresses(ctx.FormValue(field)), nil
+		}
+		if err != nil {
 			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid %s address: %v", field, err)})
 		}
 		recipients[field] = list
@@ -2602,6 +2607,18 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	if saveAsDraft {
+		// The Bcc actually written, not the field the browser posted: a Bcc
+		// entry that does not read is omitted from a draft. Name and Address
+		// stay separate so the browser need not decode MIME display names.
+		storedBcc, err := prepareAddressList(msg.Bcc)
+		if err != nil {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid bcc address: " + err.Error()})
+		}
+		for _, addr := range storedBcc {
+			// Keep quoting required by a local part such as "a;b", while
+			// leaving the display name plain for the browser to format.
+			addr.Address = mailboxAddress(addr)
+		}
 		var drafts *MailboxInfo
 		var uid provider.MessageID
 		var size uint32
@@ -2618,9 +2635,9 @@ func handleComposeNew(ctx *alps.Context) error {
 			sourceAt[path] = sources[i]
 		}
 
-		err := doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+		err = doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 			var err error
-			drafts, uid, size, err = appendMessageWithProvider(p, msg, provider.MailboxTypeDrafts)
+			drafts, uid, size, err = appendMessageWithProvider(p, msg.asDraft(), provider.MailboxTypeDrafts)
 			if err != nil {
 				return err
 			}
@@ -2692,6 +2709,7 @@ func handleComposeNew(ctx *alps.Context) error {
 			"draft_uid":     uid.String(),
 			"draft_mailbox": drafts.Name(),
 			"draft_size":    size,
+			"draft_bcc":     storedBcc,
 			"attachments":   respAttachments,
 		})
 	}
@@ -2705,6 +2723,11 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
+		// A temporary refusal may outlast the browser's wait. Each new
+		// attempt checks again before MAIL, while nothing has been sent.
+		if err := ctx.Request.Context().Err(); err != nil {
+			return fmt.Errorf("message not sent: %v", err)
+		}
 		return sendMessage(c, msg)
 	})
 	if err != nil {
@@ -2950,6 +2973,18 @@ const maxScopeBatch = 500
 // undo is worth, and the client says so instead.
 const maxReportedMapping = 1000
 
+// filedCount is how many messages of batch a move or a copy filed: those the
+// provider names in its answer. A message gone since the page listed it is
+// passed over by an IMAP server without an error, and was counted all the
+// same. A server that names none, as one without UIDPLUS does, has said
+// nothing either way, and the batch counts as asked.
+func filedCount(mapping map[provider.MessageID]provider.MessageID, batch []provider.MessageID) int {
+	if len(mapping) == 0 {
+		return len(batch)
+	}
+	return len(mapping)
+}
+
 // inBatches runs fn over the ids, at most maxScopeBatch at a time.
 func inBatches(ids []provider.MessageID, fn func([]provider.MessageID) error) error {
 	for start := 0; start < len(ids); start += maxScopeBatch {
@@ -3013,7 +3048,7 @@ func handleMove(ctx *alps.Context) error {
 	moved := 0
 	var movedIDs []provider.MessageID
 	uidMapping := make(map[string]string)
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
 			return err
@@ -3022,9 +3057,16 @@ func handleMove(ctx *alps.Context) error {
 		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
 			mapping, err := moveMessagesWithProvider(p, mboxName, to, batch)
 			if err != nil {
-				return fmt.Errorf("failed to move messages: %v", err)
+				// What did move is forgotten below all the same.
+				for id := range mapping {
+					movedIDs = append(movedIDs, id)
+				}
+				// Wrapped, here as for a copy and a delete, so that the kind
+				// of failure the provider names is answered as such: a
+				// message that is gone is a 404, as when it is read.
+				return fmt.Errorf("failed to move messages: %w", err)
 			}
-			moved += len(batch)
+			moved += filedCount(mapping, batch)
 			movedIDs = append(movedIDs, batch...)
 			if !withMapping {
 				return nil
@@ -3035,13 +3077,14 @@ func handleMove(ctx *alps.Context) error {
 			return nil
 		})
 	})
+	// The folders are read again after a move that failed too: it may have
+	// moved some of the messages first, in an earlier batch, or one by one as
+	// the maildir provider moves them. They went on listing what had left.
+	invalidateMailboxCache(ctx, mboxName, to)
+	forgetMessages(ctx.Session.Cache(), mboxName, idStrings(movedIDs)...)
 	if err != nil {
 		return err
 	}
-
-	// Invalidate cache for affected mailboxes
-	invalidateMailboxCache(ctx, mboxName, to)
-	forgetMessages(ctx.Session.Cache(), mboxName, idStrings(movedIDs)...)
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"ok":         true,
@@ -3091,7 +3134,7 @@ func handleCopy(ctx *alps.Context) error {
 
 	copied := 0
 	uidMapping := make(map[string]string)
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
 			return err
@@ -3100,9 +3143,9 @@ func handleCopy(ctx *alps.Context) error {
 		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
 			mapping, err := copyMessagesWithProvider(p, mboxName, to, batch)
 			if err != nil {
-				return fmt.Errorf("failed to copy messages: %v", err)
+				return fmt.Errorf("failed to copy messages: %w", err)
 			}
-			copied += len(batch)
+			copied += filedCount(mapping, batch)
 			if !withMapping {
 				return nil
 			}
@@ -3112,12 +3155,12 @@ func handleCopy(ctx *alps.Context) error {
 			return nil
 		})
 	})
+	// The destination is read again after a copy that failed too: it may hold
+	// some of the copies (see handleMove).
+	invalidateMailboxCache(ctx, to)
 	if err != nil {
 		return err
 	}
-
-	// Invalidate cache for affected mailboxes
-	invalidateMailboxCache(ctx, to)
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"ok":         true,
@@ -3155,27 +3198,31 @@ func handleDelete(ctx *alps.Context) error {
 
 	deleted := 0
 	var deletedIDs []provider.MessageID
-	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
+	err = ctx.Session.DoMailOnceWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		alpsMsgIDs, err := scope.resolve(p, mboxName)
 		if err != nil {
 			return err
 		}
 		return inBatches(alpsMsgIDs, func(batch []provider.MessageID) error {
-			if err := deleteMessagesWithProvider(p, mboxName, batch); err != nil {
-				return fmt.Errorf("failed to delete messages: %v", err)
+			err := deleteMessagesWithProvider(p, mboxName, batch)
+			// A batch that failed may have deleted some of its messages:
+			// what the session holds of any of them is forgotten.
+			deletedIDs = append(deletedIDs, batch...)
+			if err != nil {
+				return fmt.Errorf("failed to delete messages: %w", err)
 			}
 			deleted += len(batch)
-			deletedIDs = append(deletedIDs, batch...)
 			return nil
 		})
 	})
+
+	// The folder is read again after a delete that failed too (see
+	// handleMove).
+	invalidateMailboxCache(ctx, mboxName)
+	forgetMessages(ctx.Session.Cache(), mboxName, idStrings(deletedIDs)...)
 	if err != nil {
 		return err
 	}
-
-	// Invalidate cache for the mailbox
-	invalidateMailboxCache(ctx, mboxName)
-	forgetMessages(ctx.Session.Cache(), mboxName, idStrings(deletedIDs)...)
 
 	return ctx.JSON(http.StatusOK, map[string]any{"ok": "true", "count": deleted})
 }
@@ -4095,6 +4142,8 @@ func handleSettings(ctx *alps.Context) error {
 		"MaxAttachmentMiB":     maxAttachmentMiB,
 		"HasThreadCapability":  hasThreadCapability,
 		"HasESearchCapability": hasESearchCapability,
+		// Whether the pages are to open the event stream (see handleEvents).
+		"PushNewMail": ctx.Server.Sessions.PushNewMail(),
 	})
 }
 

@@ -13,7 +13,7 @@ import { modalButtonStyles } from '../../../frontend/src/components/ui-modal';
 import { dueOf, tasksService } from './tasks-service';
 import { addressOfPerson, personFromAddress, taskTellsSomeone } from './calendar-service';
 import { statusKey } from './calendar-invitation-banner';
-import { isolatedCaption } from '../../../frontend/src/utils/bidi';
+import { isolatedCaption, isolatedSentence } from '../../../frontend/src/utils/bidi';
 import type { TaskData, TaskInput, TaskList, TaskStatus } from './tasks-service';
 
 const PRESETS = ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as const;
@@ -295,7 +295,7 @@ export class TaskModal extends LitElement {
 
         return html`
             <ui-modal
-                title=${task ? t('tasks.editTask') : t('tasks.newTask')}
+                heading=${task ? t('tasks.editTask') : t('tasks.newTask')}
                 width="460px"
                 ?dismissible=${!this.saving}
                 @cancel=${this.close}
@@ -445,7 +445,7 @@ export class TaskModal extends LitElement {
 
                 ${this.assignedToUser ? html`
                     <div class="assigned">
-                        <div><span class="label">${t('tasks.assignedBy')}:</span> ${task?.organizer ? isolatedCaption(task.organizer.name, task.organizer.email) : ''}</div>
+                        <div><span class="label">${t('tasks.assignedBy')}</span> ${task?.organizer ? isolatedCaption(task.organizer.name, task.organizer.email) : ''}</div>
                     </div>
                 ` : html`
                     <div class="form-group">
@@ -459,7 +459,7 @@ export class TaskModal extends LitElement {
                     </div>
                     ${task?.role === 'organizer' && task.attendees?.length ? html`
                         <div class="assigned answers">
-                            ${task.attendees.map(a => html`<div>${isolatedCaption(a.name, a.email)}: ${t(`invitations.statuses.${statusKey(a.status)}`)}</div>`)}
+                            ${task.attendees.map(a => html`<div>${isolatedSentence(this.i18nStore, 'tasks.assigneeAnswer', { name: isolatedCaption(a.name, a.email), status: t(`invitations.statuses.${statusKey(a.status)}`) })}</div>`)}
                         </div>
                     ` : ''}
                 `}
@@ -483,7 +483,7 @@ export class TaskModal extends LitElement {
 
             ${this.askNotify ? html`
                 <ui-confirm
-                    title=${t('invitations.notifyTitle')}
+                    heading=${t('invitations.notifyTitle')}
                     message=${t('tasks.notifyChanges')}
                     confirmText=${t('invitations.send')}
                     secondaryText=${t('invitations.dontSend')}

@@ -111,6 +111,16 @@ export class AlpsContactsCategories extends LitElement {
         display: none;
       }
     }
+    /* A touch screen has no hover, and a tap leaves no :focus-visible, so
+       neither the rule above nor the keyboard's below ever showed a menu
+       there, and a category could not be renamed or deleted. The selected
+       category shows its menu, as the folder list's open folder does on a
+       phone: a tap selects the category, a second opens its menu. */
+    @media (hover: none) {
+      .category-item.active .category-actions {
+        display: flex;
+      }
+    }
     .category-actions:focus-within,
     .category-actions.popup-open {
       display: flex;

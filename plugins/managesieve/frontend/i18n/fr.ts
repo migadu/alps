@@ -11,7 +11,7 @@ export default {
     "loadError": "Impossible de charger les filtres.",
     "loadErrorRetry": "Réessayer",
     "tabs": {
-      "switchToRaw": "Éditeur Brut"
+      "switchToRaw": "Éditeur brut"
     },
     "warningRawSwitchTitle": "Passer en mode brut",
     "warningRawSwitchConfirm": "Passer",
@@ -24,10 +24,10 @@ export default {
       "autoReplyOn": "La réponse automatique est activée. Désactivez-la dans Réponse automatique avant que les filtres n'envoient la leur."
     },
     "visual": {
-      "newRule": "Nouvelle Règle",
+      "newRule": "Nouvelle règle",
       "noRules": "Aucune règle définie.",
-      "saveFilters": "Enregistrer les Règles",
-      "deleteRule": "Supprimer la Règle",
+      "saveFilters": "Enregistrer les règles",
+      "deleteRule": "Supprimer la règle",
       "remove": "Supprimer",
       "add": "Ajouter",
       "if": "SI",
@@ -38,7 +38,7 @@ export default {
       "value": "Valeur",
       "actions": {
         "fileinto": "Déplacer vers le dossier",
-        "discard": "Rejeter (Supprimer)",
+        "discard": "Rejeter (supprimer)",
         "redirect": "Rediriger vers l'e-mail",
         "stop": "Arrêter d'évaluer les règles"
       },
@@ -61,7 +61,8 @@ export default {
     },
     "raw": {
       "validate": "Valider",
-      "save": "Enregistrer"
+      "save": "Enregistrer",
+      "script": "Script des filtres"
     },
     "autoReply": {
       "title": "Réponse automatique",

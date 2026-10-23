@@ -62,6 +62,7 @@ export class AlpsToast extends LitElement {
   static styles = css`
     :host {
       display: block;
+      max-width: calc(100vw - 48px);
       transform: translateY(20px);
       opacity: 0;
       pointer-events: none;
@@ -80,7 +81,7 @@ export class AlpsToast extends LitElement {
       border: 1px solid var(--toast-border, rgba(255, 255, 255, 0.1));
       border-radius: 6px;
       padding: 0 4px 0 16px;
-      height: 36px;
+      min-height: 36px;
       box-sizing: border-box;
       font-size: 13px;
       font-weight: 500;
@@ -88,9 +89,20 @@ export class AlpsToast extends LitElement {
       display: flex;
       align-items: center;
       gap: 8px;
-      white-space: nowrap;
+      white-space: normal;
       backdrop-filter: blur(4px);
       -webkit-backdrop-filter: blur(4px);
+    }
+
+    .toast-container > span {
+      min-width: 0;
+      padding: 6px 0;
+      overflow-wrap: anywhere;
+    }
+
+    .toast-container > alps-button,
+    .toast-container > alps-icon-btn {
+      flex-shrink: 0;
     }
 
     /* Action button is now an alps-button and styled via custom properties inline */

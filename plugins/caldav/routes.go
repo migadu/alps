@@ -5,9 +5,11 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -63,6 +65,72 @@ func xmlEscape(s string) string {
 	// xml.EscapeText only fails if the writer fails; a bytes.Buffer never does.
 	_ = xml.EscapeText(&b, []byte(s))
 	return b.String()
+}
+
+// renameMultiStatus is what a 207 answer to a rename says, as far as the
+// rename goes: a status for each property, or one for the calendar as a whole.
+type renameMultiStatus struct {
+	Responses []struct {
+		Status    string `xml:"DAV: status"`
+		Propstats []struct {
+			Prop struct {
+				DisplayName *struct{} `xml:"DAV: displayname"`
+			} `xml:"DAV: prop"`
+			Status string `xml:"DAV: status"`
+		} `xml:"DAV: propstat"`
+	} `xml:"DAV: response"`
+}
+
+// renameAnswered reads the server's answer to a rename sent with method. A
+// 2xx is a rename done, except a 207 Multi-Status: that answers property by
+// property (RFC 4918 section 9.2), and a server that will not take the name,
+// with a 403 or a 409, says so in there and not in the status line. So a 207
+// is a rename done only when the display name's propstat is 2xx, or, with no
+// propstat for it, the calendar's own status is.
+func renameAnswered(resp *http.Response, method string) error {
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("failed to rename calendar via %s: %s", method, resp.Status)
+	}
+	if resp.StatusCode != http.StatusMultiStatus {
+		return nil
+	}
+	var ms renameMultiStatus
+	if err := xml.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&ms); err != nil {
+		return fmt.Errorf("failed to rename calendar via %s: unreadable answer: %v", method, err)
+	}
+	var named, whole string
+	for _, r := range ms.Responses {
+		if r.Status != "" {
+			whole = r.Status
+		}
+		for _, ps := range r.Propstats {
+			if ps.Prop.DisplayName != nil {
+				named = ps.Status
+			}
+		}
+	}
+	status := named
+	if status == "" {
+		status = whole
+	}
+	if status == "" {
+		return fmt.Errorf("failed to rename calendar via %s: no status for the name", method)
+	}
+	if code := statusLineCode(status); code/100 != 2 {
+		return fmt.Errorf("failed to rename calendar via %s: %s", method, status)
+	}
+	return nil
+}
+
+// statusLineCode is the code in an HTTP status line such as
+// "HTTP/1.1 403 Forbidden", or 0.
+func statusLineCode(line string) int {
+	fields := strings.Fields(line)
+	if len(fields) < 2 {
+		return 0
+	}
+	code, _ := strconv.Atoi(fields[1])
+	return code
 }
 
 type CalendarData struct {
@@ -287,7 +355,8 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		var calDatas []CalendarData
+		// An empty home is listed as [], not null, which the page cannot filter.
+		calDatas := []CalendarData{}
 		for _, calendar := range calendars {
 			calDatas = append(calDatas, CalendarData{
 				Name:        calendar.Name,
@@ -340,6 +409,12 @@ func registerRoutes(p *plugin) {
 				// path ends in a slash, and path.Dir of that is the calendar
 				// itself, which put the new calendar inside it.
 				homeSet = path.Dir(strings.TrimSuffix(calendars[0].Path, "/"))
+			} else if ok {
+				// An empty home set href, with no calendar in it yet. The
+				// calendars were listed where go-webdav resolves that href,
+				// the endpoint itself, and the first one is made there: at
+				// its path, or at the root when it has none.
+				homeSet = path.Join("/", resolveDAVPath(p.urlFor(ctx.Session.Username()), homeSet))
 			} else {
 				return fmt.Errorf("failed to determine calendar home set")
 			}
@@ -417,7 +492,15 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		_, _, err = p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		_, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		// One of the user's calendars, as for a delete. The PROPPATCH below
+		// sets the display name of whatever the path names: the principal,
+		// the home set, an event.
+		calPath, err = requireCalendarPath(calPath, calendars)
 		if err != nil {
 			return err
 		}
@@ -467,11 +550,11 @@ func registerRoutes(p *plugin) {
 				return err
 			}
 			defer resp2.Body.Close()
-			if resp2.StatusCode/100 != 2 && resp2.StatusCode != 207 {
-				return fmt.Errorf("failed to rename calendar via POST: %s", resp2.Status)
+			if err := renameAnswered(resp2, "POST"); err != nil {
+				return err
 			}
-		} else if resp.StatusCode/100 != 2 && resp.StatusCode != 207 {
-			return fmt.Errorf("failed to rename calendar via PROPPATCH: %s", resp.Status)
+		} else if err := renameAnswered(resp, "PROPPATCH"); err != nil {
+			return err
 		}
 
 		return ctx.JSON(http.StatusOK, map[string]string{"ok": "true"})

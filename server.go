@@ -76,6 +76,11 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 	}
 	s.Sessions.broadcaster = options.ClusterBroadcaster
 	s.Sessions.backgroundConnections = !options.DisableBackgroundConnection
+	// Push waits on the background connection, and needs it.
+	s.Sessions.pushNewMail = options.PushNewMail && s.Sessions.backgroundConnections
+	if options.PushNewMail && !s.Sessions.pushNewMail {
+		logger.Printf("push_new_mail needs background_connection, which is off: new mail is not pushed")
+	}
 
 	// Initialize rate limiter if enabled
 	if options.RateLimitEnabled {
@@ -122,6 +127,13 @@ func cleanupTempAttachments() error {
 		}
 	}
 	return nil
+}
+
+// EndEventStreams ends the pages' event streams, which would otherwise hold a
+// graceful shutdown of the HTTP server for as long as it waits: register it
+// with http.Server.RegisterOnShutdown. The sessions go on until Close.
+func (s *Server) EndEventStreams() {
+	s.Sessions.endInboxWatches()
 }
 
 func (s *Server) Close() {
@@ -364,6 +376,11 @@ type Options struct {
 	// default a session opens a second one, when it is first needed, for the
 	// work the user is not waiting for: see Session.DoBackgroundMail.
 	DisableBackgroundConnection bool
+	// If true, a session waits on its background connection for the mail
+	// server's news of the Inbox (IMAP IDLE) while one of its pages holds an
+	// event stream open, and tells the page as the news comes: see
+	// Session.WatchInbox. Off when DisableBackgroundConnection is set.
+	PushNewMail bool
 }
 
 type SMTPOptions struct {
@@ -518,8 +535,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // sanitizeError returns a safe error message for client consumption.
 // Full error details are logged server-side only.
 func sanitizeError(err error, code int) string {
-	// For HTTPError, use the internal message if available
-	if he, ok := err.(*HTTPError); ok {
+	// For HTTPError, use the internal message if available. One a route has
+	// wrapped, to say what it was doing, is the route's answer all the same.
+	var he *HTTPError
+	if errors.As(err, &he) {
 		if he.Message != nil {
 			if msg, ok := he.Message.(string); ok && msg != "" {
 				return msg
@@ -590,7 +609,8 @@ func (s *Server) handleError(err error, ctx *Context) {
 	}
 
 	code := http.StatusInternalServerError
-	if he, ok := err.(*HTTPError); ok {
+	var he *HTTPError
+	if errors.As(err, &he) {
 		code = he.Code
 	}
 
