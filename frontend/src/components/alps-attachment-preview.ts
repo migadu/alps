@@ -534,7 +534,7 @@ export class AttachmentPreview extends LitElement {
             <div class="file-details">
               <span class="file-title" id="preview-title" title="${name}">${name}</span>
               <span class="file-sub">
-                <span>${formatSize(size)}</span>
+                <span>${formatSize(size, this.i18nStore)}</span>
                 ${total > 1 ? html`<span>•</span><span>${this.activeIndex + 1} / ${total}</span>` : ''}
               </span>
             </div>
@@ -648,7 +648,7 @@ export class AttachmentPreview extends LitElement {
       <div class="fallback-card">
         <div class="card-icon">${renderIcon(info.icon)}</div>
         <div class="card-title">${name}</div>
-        <div class="card-desc">${t('attachment.cannotPreview')} (${formatSize(size)})</div>
+        <div class="card-desc">${t('attachment.cannotPreview')} (${formatSize(size, this.i18nStore)})</div>
         ${url ? html`
           <button class="action-btn download" @click=${this.download}>
             ${renderIcon('downloadSimple')}

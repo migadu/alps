@@ -212,10 +212,10 @@ test.describe("with a security key", () => {
    * protocol: a platform key that is always present and always verifies the
    * user, so a registration completes without anyone touching anything.
    */
-  async function withAuthenticator(page: Page): Promise<void> {
+  async function withAuthenticator(page: Page) {
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("WebAuthn.enable");
-    await cdp.send("WebAuthn.addVirtualAuthenticator", {
+    const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
       options: {
         protocol: "ctap2",
         transport: "internal",
@@ -225,6 +225,7 @@ test.describe("with a security key", () => {
         automaticPresenceSimulation: true,
       },
     });
+    return { cdp, authenticatorId };
   }
 
   /** Registers a key under `name` from the WebAuthn pane, and waits for it to be listed. */
@@ -296,5 +297,82 @@ test.describe("with a security key", () => {
     // It was the last key, so the second factor is off: a browser that has
     // never seen the account signs in with the password alone.
     expect(await signInStatus(browser, address, PASSWORD)).toBe(200);
+  });
+
+  test("a click on Verify as the key page appears signs in with one ceremony", async ({ page }) => {
+    const address = await freshAccount(page, "verify");
+    await withAuthenticator(page);
+    await page.goto("/#/settings/webauthn");
+    await addKey(page, "Laptop");
+
+    // Signed out, with a key: the password leads to the key page, which
+    // starts the ceremony by itself 300 ms after it appears. The reload asks
+    // for a session that is gone, a 401 the page handles.
+    await page.context().clearCookies();
+    allowConsoleErrors(page, /status of 401/);
+    const begins: string[] = [];
+    page.on("request", (r) => {
+      if (new URL(r.url()).pathname === "/webauthn/verify/begin") begins.push(r.url());
+    });
+    // Reloaded in the same tab, which keeps the authenticator and its key.
+    await page.goto("/#/login");
+    await page.reload();
+    await page.locator("login-page #username").fill(address);
+    await page.locator("login-page #password").fill(PASSWORD);
+    await page.locator("login-page button[type=submit]").click();
+
+    // Clicked the moment it is there, without waiting for it to be enabled:
+    // a ceremony already running has disabled it, and the click is then lost
+    // as a user's would be.
+    const verify = action(page.locator("login-webauthn-page"), "Verify Identity");
+    await verify.evaluate((button: HTMLButtonElement) => button.click());
+
+    await page.waitForURL(/#\/mailbox/, { timeout: 15_000 });
+    expect(begins, "the sign-in ran more than one ceremony").toHaveLength(1);
+  });
+
+  test("Back to login cancels the native key prompt and a later sign-in still works", async ({ page }) => {
+    const address = await freshAccount(page, "leave-key");
+    const { cdp, authenticatorId } = await withAuthenticator(page);
+    await page.goto("/#/settings/webauthn");
+    await addKey(page, "Laptop");
+    await cdp.send("WebAuthn.setAutomaticPresenceSimulation", { authenticatorId, enabled: false });
+    await page.context().clearCookies();
+    allowConsoleErrors(page, /status of 401/);
+    await page.goto("/#/login");
+    await page.reload();
+    await page.evaluate(() => {
+      const state = window as any;
+      state.keyPromptEvents = [];
+      const get = navigator.credentials.get.bind(navigator.credentials);
+      navigator.credentials.get = async options => {
+        state.keyPromptEvents.push('started');
+        try {
+          return await get(options);
+        } catch (error: any) {
+          state.keyPromptEvents.push(error.name);
+          throw error;
+        }
+      };
+    });
+    const finishes: string[] = [];
+    page.on("request", request => {
+      if (new URL(request.url()).pathname === '/webauthn/verify/finish') finishes.push(request.url());
+    });
+    const passwordSignIn = async () => {
+      await page.locator("login-page #username").fill(address);
+      await page.locator("login-page #password").fill(PASSWORD);
+      await page.locator("login-page button[type=submit]").click();
+    };
+    await passwordSignIn();
+    await expect.poll(() => page.evaluate(() => (window as any).keyPromptEvents)).toEqual(['started']);
+    await page.locator("login-webauthn-page").getByRole("button", { name: /Back to Login/ }).click();
+    await expect(page.locator("login-page #username")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window as any).keyPromptEvents)).toEqual(['started', 'AbortError']);
+    expect(finishes).toHaveLength(0);
+    await cdp.send("WebAuthn.setAutomaticPresenceSimulation", { authenticatorId, enabled: true });
+    await passwordSignIn();
+    await page.waitForURL(/#\/mailbox/, { timeout: 15_000 });
+    expect(finishes).toHaveLength(1);
   });
 });

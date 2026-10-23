@@ -178,6 +178,19 @@ describe('saving and sending', () => {
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST', body: form });
   });
 
+  it('reads the stored Bcc back as pills, preserving names and an explicitly empty field', async () => {
+    fetchMock.mockResolvedValueOnce(json(200, { draft_uid: '7', draft_mailbox: 'Drafts', draft_bcc: [
+      { Name: 'Hopper, Grace', Address: 'grace@example.com' },
+      { Name: 'Chloé', Address: 'chloe@example.com' },
+      { Name: '', Address: '"a;b"@example.com' },
+    ] }));
+    expect(await ops.saveDraft(new FormData())).toMatchObject({
+      bcc: ['"Hopper, Grace" <grace@example.com>', 'Chloé <chloe@example.com>', '"a;b"@example.com'],
+    });
+    fetchMock.mockResolvedValueOnce(json(200, { draft_uid: '8', draft_mailbox: 'Drafts', draft_bcc: [] }));
+    expect(await ops.saveDraft(new FormData())).toMatchObject({ bcc: [] });
+  });
+
   it('answers null for a draft that was not saved, for whatever reason', async () => {
     fetchMock.mockResolvedValueOnce(json(401)).mockResolvedValueOnce(json(500, {})).mockRejectedValueOnce(new TypeError('offline'));
     expect(await ops.saveDraft(new FormData())).toBeNull();

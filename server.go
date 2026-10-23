@@ -518,8 +518,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // sanitizeError returns a safe error message for client consumption.
 // Full error details are logged server-side only.
 func sanitizeError(err error, code int) string {
-	// For HTTPError, use the internal message if available
-	if he, ok := err.(*HTTPError); ok {
+	// For HTTPError, use the internal message if available. One a route has
+	// wrapped, to say what it was doing, is the route's answer all the same.
+	var he *HTTPError
+	if errors.As(err, &he) {
 		if he.Message != nil {
 			if msg, ok := he.Message.(string); ok && msg != "" {
 				return msg
@@ -590,7 +592,8 @@ func (s *Server) handleError(err error, ctx *Context) {
 	}
 
 	code := http.StatusInternalServerError
-	if he, ok := err.(*HTTPError); ok {
+	var he *HTTPError
+	if errors.As(err, &he) {
 		code = he.Code
 	}
 

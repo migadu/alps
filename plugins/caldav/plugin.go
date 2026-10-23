@@ -110,6 +110,16 @@ func (p *plugin) httpClient(session *alps.Session) *http.Client {
 	return &http.Client{Transport: &authRoundTripper{server: http.DefaultTransport, session: session, debug: p.debug}}
 }
 
+// clientWithCalendars is a client for the session's server, with the
+// calendars in the user's calendar home set, whose path it keeps in
+// homeSetCache.
+//
+// No calendars is an answer, not an error. A home set is empty where a server
+// leaves an account to make its own first calendar, and once the last one is
+// deleted. Refused as "no calendars found", an empty home could be neither
+// listed nor given its first calendar. A route that needs a calendar looks for
+// one itself: a new event, task or invitation copy with none to go into is
+// refused with a conflict, and a path is checked against the calendars listed.
 func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session) (*caldav.Client, []caldav.Calendar, error) {
 	c, err := p.client(ctx, session)
 	if err != nil {
@@ -143,9 +153,6 @@ func (p *plugin) clientWithCalendars(ctx context.Context, session *alps.Session)
 	calendars, err := c.FindCalendars(ctx, homeSet)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to query CalDAV calendars: %v", err)
-	}
-	if len(calendars) == 0 {
-		return nil, nil, fmt.Errorf("no calendars found")
 	}
 
 	return c, calendars, nil

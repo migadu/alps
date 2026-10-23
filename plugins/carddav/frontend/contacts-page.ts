@@ -645,7 +645,7 @@ export class ContactsPage extends LitElement {
       }
     } catch (err) {
       console.error('Failed to toggle star:', err);
-      this.reportFailure('contacts.starFailed');
+      this.reportFailure('contacts.starOneFailed');
       // Revert by putting the card's own categories back into the list. This
       // used to edit `contact`, the object the optimistic update had already
       // replaced in `this.contacts`, so the refused star stayed painted; and for
@@ -992,6 +992,9 @@ export class ContactsPage extends LitElement {
   }
 
   private async saveOnce(payload: any) {
+    // Keep the successful form snapshot independent of edits made while the
+    // request is in flight. The queued form is compared to this snapshot next.
+    payload = { ...payload };
     const editing = !!this.selectedContact && !this.selectedContact.isTemporary;
     // After a refusal every autosave would be refused the same way, one error
     // per keystroke. Nothing is sent until the edit is cancelled, which shows
@@ -1009,7 +1012,12 @@ export class ContactsPage extends LitElement {
       if (editing) {
         // The page's version, not the form's: the form copied the card when
         // editing began, and each save since has moved it on.
-        data = await contactsService.updateContact(this.selectedContact.path!, { ...payload, etag: this.selectedContact.etag });
+        // Clearing one displayed copy must not clear the next hidden copy on
+        // every later autosave. Only fields changed since our last successful
+        // form save express a new editing gesture.
+        const changed_fields = ['organization', 'title', 'note', 'url', 'nickname', 'public_key', 'address']
+          .filter(field => String(payload[field] || '').trim() !== String(this.selectedContact[field] || '').trim());
+        data = await contactsService.updateContact(this.selectedContact.path!, { ...payload, changed_fields, etag: this.selectedContact.etag });
       } else {
         data = await contactsService.createContact(payload);
       }
@@ -1099,11 +1107,13 @@ export class ContactsPage extends LitElement {
           // Some cards took the change, and the snapshot would un-star them.
           this.fetchContacts();
         }
-        this.reportFailure('contacts.starFailed', { failed, total });
+        this.reportRefusals('contacts.starFailed', 'contacts.starOneFailed', { count: failed, total });
       }
     } catch (e) {
       console.error('Error toggling star', e);
-      this.reportFailure('contacts.starFailed');
+      // As for a category update: nothing reported an outcome, so every card
+      // tried counts as failed.
+      this.reportRefusals('contacts.starFailed', 'contacts.starOneFailed', { count: pathsToUpdate.length, total: pathsToUpdate.length });
     } finally {
       this.saving = false;
     }

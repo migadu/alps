@@ -289,7 +289,7 @@ func TestHTTP_ASendGivenUpOnBeforeItsRetryIsNotSent(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the cancelled send was not finished")
 	}
-	if mails, complete := relay.counts(); mails != 1 || complete != 0 {
+	if _, mails, complete := relay.counts(); mails != 1 || complete != 0 {
 		t.Errorf("the cancelled send made %d transactions and completed %d messages, want 1 and 0", mails, complete)
 	}
 	if n := dataCommands.Load(); n != 0 {

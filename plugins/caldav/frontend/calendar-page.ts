@@ -716,6 +716,12 @@ export class CalendarPage extends LitElement {
         this.initialDate = date;
         this.initialAllDay = allDay;
         this.modalOpen = true;
+        // Add event is in the sidebar, which on a phone is a drawer: shut it,
+        // as New task and Compose do, instead of leaving it over the calendar
+        // once the editor is gone.
+        if (this.isMobile) {
+            this.mobileSidebarOpen = false;
+        }
     }
 
     private openEditModal(event: EventData) {

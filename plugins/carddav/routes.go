@@ -2,11 +2,13 @@ package alpscarddav
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -133,31 +135,12 @@ func extractContactData(card vcard.Card, path string) ContactData {
 	}
 	birthday := ""
 	if f := card.Preferred(vcard.FieldBirthday); f != nil {
-		birthday = f.Value
+		birthday = birthdayOf(f)
 	}
 
 	addrStr := ""
-	if addr := card.Address(); addr != nil {
-		var parts []string
-		if addr.StreetAddress != "" {
-			parts = append(parts, addr.StreetAddress)
-		}
-		if addr.ExtendedAddress != "" {
-			parts = append(parts, addr.ExtendedAddress)
-		}
-		if addr.Locality != "" {
-			parts = append(parts, addr.Locality)
-		}
-		if addr.Region != "" {
-			parts = append(parts, addr.Region)
-		}
-		if addr.PostalCode != "" {
-			parts = append(parts, addr.PostalCode)
-		}
-		if addr.Country != "" {
-			parts = append(parts, addr.Country)
-		}
-		addrStr = strings.Join(parts, ", ")
+	if f := card.Preferred(vcard.FieldAddress); f != nil {
+		addrStr = addressLine(f)
 	}
 
 	var categories []string
@@ -200,6 +183,28 @@ func extractContactData(card vcard.Card, path string) ContactData {
 		PublicKey:    publicKey,
 		Path:         path,
 	}
+}
+
+// appleDate is a date in the form Apple's apps write a birthday in, extended
+// or basic, with whatever follows the day left out.
+var appleDate = regexp.MustCompile(`^(\d{4})-?(\d{2})-?(\d{2})`)
+
+// yearlessDate is a date without a year as the page writes it, `--1031`
+// (RFC 6350), or `--10-31`.
+var yearlessDate = regexp.MustCompile(`^--(\d{2})-?(\d{2})$`)
+
+// birthdayOf is a BDAY field's value as the page is given it. Apple's apps
+// write a birthday without a year as one in 1604 and name that year in a
+// parameter, `BDAY;X-APPLE-OMIT-YEAR=1604:1604-10-31`. Such a birthday is
+// given in the vCard form of a date without a year, `--1031`, which the page
+// shows as a day and a month; passed on as it was, it read as a date in 1604.
+func birthdayOf(f *vcard.Field) string {
+	if omitted := f.Params.Get("X-APPLE-OMIT-YEAR"); omitted != "" {
+		if m := appleDate.FindStringSubmatch(strings.TrimSpace(f.Value)); m != nil && m[1] == omitted {
+			return "--" + m[2] + m[3]
+		}
+	}
+	return f.Value
 }
 
 func parseObjectPath(s string) (string, error) {
@@ -279,6 +284,112 @@ func setCategories(card vcard.Card, categories []string) {
 	card[vcard.FieldCategories] = []*vcard.Field{{Value: strings.Join(valid, ",")}}
 }
 
+// addressShown is the order the page shows an address's parts in, as
+// indexes into an ADR value's seven: the street, the extended address, the
+// locality, the region, the postal code and the country. The post office
+// box, the first, is not shown.
+var addressShown = []int{2, 1, 3, 4, 5, 6}
+
+// addressComponents is an ADR value's seven components.
+func addressComponents(value string) []string {
+	components := strings.Split(value, ";")
+	for len(components) < 7 {
+		components = append(components, "")
+	}
+	return components
+}
+
+// addressLine is an address as the page shows it: its parts on one line.
+func addressLine(f *vcard.Field) string {
+	components := addressComponents(f.Value)
+	var parts []string
+	for _, i := range addressShown {
+		if components[i] != "" {
+			parts = append(parts, components[i])
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// setAddress writes the line the page sent in place of the address it
+// showed, f, or as the card's address when it had none; an empty line
+// removes f. The card's other addresses stay.
+//
+// The line is split back into the parts it was made of while it still has
+// one part per part of f and none of those parts holds a comma, which the
+// line's own commas could not be told from: an edit of the city is an edit
+// of the city. A line of another shape cannot be split reliably, so it is
+// the street, as the page gives no other way to say which part is which.
+// The address keeps its parameters, its type among them, but for a label
+// and a position, which describe the address it was.
+func setAddress(card vcard.Card, f *vcard.Field, line string) {
+	line = strings.TrimSpace(strings.ReplaceAll(line, ";", ","))
+	if f == nil {
+		if line != "" {
+			card.Add(vcard.FieldAddress, &vcard.Field{Value: ";;" + line + ";;;;"})
+		}
+		return
+	}
+	if line == "" {
+		var kept []*vcard.Field
+		for _, other := range card[vcard.FieldAddress] {
+			if other != f {
+				kept = append(kept, other)
+			}
+		}
+		if len(kept) == 0 {
+			delete(card, vcard.FieldAddress)
+		} else {
+			card[vcard.FieldAddress] = kept
+		}
+		return
+	}
+
+	old := addressComponents(f.Value)
+	var shown []int
+	splittable := true
+	for _, i := range addressShown {
+		if old[i] != "" {
+			shown = append(shown, i)
+			splittable = splittable && !strings.Contains(old[i], ",")
+		}
+	}
+	components := []string{"", "", line, "", "", "", ""}
+	if parts := strings.Split(line, ","); splittable && len(parts) == len(shown) {
+		components = append([]string(nil), old[:7]...)
+		for k, i := range shown {
+			components[i] = strings.TrimSpace(parts[k])
+		}
+	}
+	f.Value = strings.Join(components, ";")
+	delete(f.Params, "LABEL")
+	delete(f.Params, "GEO")
+}
+
+// A changed key can use a different representation from the old value. Keep
+// identity and preference parameters, but make the value's encoding match it.
+// v3 binary keys stay binary when their edited value is still valid base64;
+// otherwise v3 uses text. v4 distinguishes a URI (including data:) from text.
+func setKeyRepresentation(card vcard.Card, f *vcard.Field, value string) {
+	if f.Params == nil {
+		f.Params = make(vcard.Params)
+	}
+	delete(f.Params, "MEDIATYPE") // describes the previous value's data
+	if card.Value(vcard.FieldVersion) == "3.0" && strings.EqualFold(f.Params.Get("ENCODING"), "b") {
+		if _, err := base64.StdEncoding.DecodeString(value); err == nil {
+			f.Params.Set("ENCODING", "b")
+			delete(f.Params, "VALUE") // binary is v3's default
+			return
+		}
+	}
+	delete(f.Params, "ENCODING")
+	if uri, err := url.Parse(value); card.Value(vcard.FieldVersion) != "3.0" && err == nil && uri.IsAbs() {
+		f.Params.Set("VALUE", "uri")
+	} else {
+		f.Params.Set("VALUE", "text")
+	}
+}
+
 func touchRevision(card vcard.Card) {
 	card[vcard.FieldRevision] = []*vcard.Field{{Value: time.Now().UTC().Format("20060102T150405Z")}}
 }
@@ -292,15 +403,15 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
+		// The whole card, which an empty address-data request asks for. The
+		// listing is read for more than its rows' names and addresses: the
+		// sidebar's categories and Favorites, the rows' photos, nicknames,
+		// organisations and dates, and the key the composer encrypts to. It
+		// asked for FN, EMAIL, TEL and UID only, and a server that answers
+		// with just the properties asked for (RFC 6352, 10.4), as go-webdav's
+		// does, gave every card without the rest.
 		query := carddav.AddressBookQuery{
-			DataRequest: carddav.AddressDataRequest{
-				Props: []string{
-					vcard.FieldFormattedName,
-					vcard.FieldEmail,
-					vcard.FieldTelephone,
-					vcard.FieldUID,
-				},
-			},
+			DataRequest: carddav.AddressDataRequest{},
 			PropFilters: []carddav.PropFilter{{
 				Name: vcard.FieldFormattedName,
 			}},
@@ -362,9 +473,25 @@ func registerRoutes(p *plugin) {
 	})
 
 	updateContact := func(ctx *alps.Context) error {
-		var req ContactData
+		var req struct {
+			ContactData
+			// Nil retains the whole-form contract for older clients. An empty
+			// list means that none of the displayed single-copy fields changed.
+			ChangedFields []string `json:"changed_fields"`
+		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
+		}
+		changed := func(field string) bool {
+			if req.ChangedFields == nil {
+				return true
+			}
+			for _, name := range req.ChangedFields {
+				if name == field {
+					return true
+				}
+			}
+			return false
 		}
 
 		// The empty case is /contacts/create, where there is no {path} at all and
@@ -489,6 +616,51 @@ func registerRoutes(p *plugin) {
 			}
 		}
 
+		// setShownField writes the value the page sent for a field it shows
+		// one copy of: the preferred one, as extractContactData gives it.
+		// Sent back as the page was given it, the field is left as stored.
+		// Changed, the new value takes that copy's place and keeps its
+		// parameters (except a key's changed representation); cleared, that
+		// copy goes. The other copies stay either
+		// way. Through setSimpleField, a save kept one bare copy of each of
+		// these fields: a second URL or key was dropped, and so were the
+		// types and languages of the rest, whatever had been edited.
+		setShownField := func(field, name, val string) {
+			if !changed(name) {
+				return
+			}
+			val = strings.TrimSpace(val)
+			f := card.Preferred(field)
+			switch {
+			case f == nil:
+				if val != "" {
+					added := &vcard.Field{Value: val}
+					if field == vcard.FieldKey {
+						setKeyRepresentation(card, added, val)
+					}
+					card.Add(field, added)
+				}
+			case strings.TrimSpace(f.Value) == val:
+			case val == "":
+				var kept []*vcard.Field
+				for _, other := range card[field] {
+					if other != f {
+						kept = append(kept, other)
+					}
+				}
+				if len(kept) == 0 {
+					delete(card, field)
+				} else {
+					card[field] = kept
+				}
+			default:
+				if field == vcard.FieldKey {
+					setKeyRepresentation(card, f, val)
+				}
+				f.Value = val
+			}
+		}
+
 		updateMultiField := func(field string, explicitProps []ContactProperty, fallbackVal string) {
 			if explicitProps != nil {
 				var fields []*vcard.Field
@@ -534,28 +706,39 @@ func registerRoutes(p *plugin) {
 
 		updateMultiField(vcard.FieldEmail, req.Emails, req.Email)
 		updateMultiField(vcard.FieldTelephone, req.Phones, req.Phone)
-		setSimpleField(vcard.FieldOrganization, req.Organization)
-		setSimpleField(vcard.FieldTitle, req.Title)
-		setSimpleField(vcard.FieldBirthday, req.Birthday)
-		setSimpleField(vcard.FieldNote, req.Note)
-		setSimpleField(vcard.FieldURL, req.URL)
-		setSimpleField(vcard.FieldNickname, req.Nickname)
-
-		if strings.TrimSpace(req.PublicKey) == "" {
-			delete(card, vcard.FieldKey)
-		} else {
-			// RFC 6350 specifies KEY can be a URI, text, etc. We will prefix with data:application/pgp-keys if not present to ensure compliance, or just store it as text if it's already a full block.
-			val := strings.TrimSpace(req.PublicKey)
-			card[vcard.FieldKey] = []*vcard.Field{{Value: val}}
+		setShownField(vcard.FieldOrganization, "organization", req.Organization)
+		setShownField(vcard.FieldTitle, "title", req.Title)
+		// A birthday sent back as the page was given it is left as stored, its
+		// parameters with it: written bare, Apple's birthday without a year
+		// became one in 1604, in Apple's own apps too, after any edit here.
+		if f := card.Preferred(vcard.FieldBirthday); f == nil || strings.TrimSpace(birthdayOf(f)) != strings.TrimSpace(req.Birthday) {
+			// vCard 3.0 has no form for a date without a year (RFC 2426 takes
+			// a complete date), so one goes into a 3.0 card as Apple's apps
+			// write it, which birthdayOf reads back as a day and a month.
+			if m := yearlessDate.FindStringSubmatch(strings.TrimSpace(req.Birthday)); m != nil && card.Value(vcard.FieldVersion) == "3.0" {
+				card[vcard.FieldBirthday] = []*vcard.Field{{
+					Value:  "1604-" + m[1] + "-" + m[2],
+					Params: vcard.Params{"X-APPLE-OMIT-YEAR": []string{"1604"}},
+				}}
+			} else {
+				setSimpleField(vcard.FieldBirthday, req.Birthday)
+			}
 		}
+		setShownField(vcard.FieldNote, "note", req.Note)
+		setShownField(vcard.FieldURL, "url", req.URL)
+		setShownField(vcard.FieldNickname, "nickname", req.Nickname)
+		setShownField(vcard.FieldKey, "public_key", req.PublicKey)
 
 		setCategories(card, req.Categories)
 
-		if strings.TrimSpace(req.Address) == "" {
-			delete(card, vcard.FieldAddress)
-		} else {
-			safeAddr := strings.ReplaceAll(req.Address, ";", ",")
-			card[vcard.FieldAddress] = []*vcard.Field{{Value: ";;" + safeAddr + ";;;;"}}
+		// An address sent back as the page was given it is left as stored.
+		// Written back as the page's one line on every save, the city,
+		// region, postal code and country became part of the street, and the
+		// address lost its type and the card its other addresses.
+		if changed("address") {
+			if f := card.Preferred(vcard.FieldAddress); f == nil || strings.TrimSpace(addressLine(f)) != strings.TrimSpace(req.Address) {
+				setAddress(card, f, req.Address)
+			}
 		}
 
 		id := uuid.New()

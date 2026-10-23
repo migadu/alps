@@ -15,9 +15,10 @@ import (
 const hangUp = "(hang up)"
 
 // scriptedSMTP is an SMTP server whose replies the test chooses. reply is
-// asked for each one, with the connection's number, from 1, and the command
-// answered: "MAIL", "RCPT", "DATA", "." for the end of the message, "QUIT".
-// It answers with the reply line, hangUp, or "" for the usual reply.
+// asked for each one, with the connection's number, from 1, and what is
+// answered: "greeting", "EHLO", "AUTH", "MAIL", "RCPT", "DATA", "." for the
+// end of the message, "QUIT". It answers with the reply line, hangUp, or ""
+// for the usual reply.
 type scriptedSMTP struct {
 	reply func(conn int, cmd string) string
 
@@ -67,7 +68,7 @@ func (s *scriptedSMTP) serve(c net.Conn, n int) {
 		_, err := io.WriteString(c, line+"\r\n")
 		return err == nil
 	}
-	if _, err := io.WriteString(c, "220 localhost ESMTP\r\n"); err != nil {
+	if !answer("greeting", "220 localhost ESMTP") {
 		return
 	}
 	for {
@@ -118,10 +119,10 @@ func (s *scriptedSMTP) serve(c net.Conn, n int) {
 	}
 }
 
-func (s *scriptedSMTP) counts() (mails, messages int) {
+func (s *scriptedSMTP) counts() (conns, mails, messages int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.mails, s.messages
+	return s.conns, s.mails, s.messages
 }
 
 func sendForm() url.Values {
@@ -146,7 +147,7 @@ func TestHTTP_ARefusedRecipientIsAskedForOnce(t *testing.T) {
 	if !strings.Contains(string(r.body), "550") {
 		t.Errorf("the failure says %s", r.body)
 	}
-	if mails, _ := smtpServer.counts(); mails != 1 {
+	if _, mails, _ := smtpServer.counts(); mails != 1 {
 		t.Errorf("the send was made %d times, want once", mails)
 	}
 }
@@ -166,7 +167,7 @@ func TestHTTP_AMessageTheServerTookIsSentOnce(t *testing.T) {
 	s.login()
 
 	r := s.do("POST", "/messages", sendForm())
-	if _, messages := smtpServer.counts(); messages != 1 {
+	if _, _, messages := smtpServer.counts(); messages != 1 {
 		t.Errorf("%d copies delivered, want 1", messages)
 	}
 	s.expect(r, http.StatusOK)
@@ -186,17 +187,21 @@ func TestHTTP_AMessageTheServerMayHaveIsNotSentAgain(t *testing.T) {
 	s.login()
 
 	s.expect(s.do("POST", "/messages", sendForm()), http.StatusInternalServerError)
-	if _, messages := smtpServer.counts(); messages != 1 {
+	if _, _, messages := smtpServer.counts(); messages != 1 {
 		t.Errorf("%d copies delivered, want 1", messages)
 	}
 }
 
 // What may pass is still tried again: a temporary refusal, and a connection
-// lost before the message.
+// lost before the message. A busy server's greeting, and a connection lost
+// before AUTH, used to be taken for refused credentials: they were not tried
+// again, and the composer said "Forbidden".
 func TestHTTP_ASendThatMayPassIsMadeAgain(t *testing.T) {
 	for name, first := range map[string]struct{ cmd, reply string }{
-		"a temporary refusal": {"RCPT", "451 4.3.0 Try again later"},
-		"a lost connection":   {"MAIL", hangUp},
+		"a temporary refusal":       {"RCPT", "451 4.3.0 Try again later"},
+		"a lost connection":         {"MAIL", hangUp},
+		"a busy server's greeting":  {"greeting", "421 4.3.2 Service not available"},
+		"a connection lost at EHLO": {"EHLO", hangUp},
 	} {
 		t.Run(name, func(t *testing.T) {
 			addr, smtpServer := listenScripted(t, func(conn int, cmd string) string {
@@ -209,9 +214,27 @@ func TestHTTP_ASendThatMayPassIsMadeAgain(t *testing.T) {
 			s.login()
 
 			s.expect(s.do("POST", "/messages", sendForm()), http.StatusOK)
-			if mails, messages := smtpServer.counts(); mails != 2 || messages != 1 {
-				t.Errorf("%d attempts and %d copies delivered, want 2 and 1", mails, messages)
+			if conns, _, messages := smtpServer.counts(); conns != 2 || messages != 1 {
+				t.Errorf("%d attempts and %d copies delivered, want 2 and 1", conns, messages)
 			}
 		})
+	}
+}
+
+// The server's refusal of the credentials is a refused login, as it was: not
+// tried again, and answered as forbidden.
+func TestHTTP_RefusedCredentialsAreNotTriedAgain(t *testing.T) {
+	addr, smtpServer := listenScripted(t, func(_ int, cmd string) string {
+		if cmd == "AUTH" {
+			return "535 5.7.8 Authentication credentials invalid"
+		}
+		return ""
+	})
+	s := newTestServerWithSMTP(t, addr)
+	s.login()
+
+	s.expect(s.do("POST", "/messages", sendForm()), http.StatusForbidden)
+	if conns, _, _ := smtpServer.counts(); conns != 1 {
+		t.Errorf("the login was tried %d times, want once", conns)
 	}
 }

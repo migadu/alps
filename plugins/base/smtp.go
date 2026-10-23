@@ -216,6 +216,14 @@ func prepareAddressList(addresses []string) ([]*mail.Address, error) {
 	return l, nil
 }
 
+// mailboxAddress formats an addr-spec without a display name or surrounding
+// angle brackets. ParseAddress's Address is unquoted, but a local part holding
+// spaces or specials still needs a quoted string in the SMTP envelope.
+func mailboxAddress(addr *mail.Address) string {
+	formatted := (&mail.Address{Address: addr.Address}).String()
+	return strings.TrimSuffix(strings.TrimPrefix(formatted, "<"), ">")
+}
+
 // maxReferences bounds the References a reply carries. RFC 5322 lets a long
 // chain be shortened; the first ID, the conversation's root, is kept.
 const maxReferences = 20
@@ -244,7 +252,27 @@ func replyHeaders(inReplyTo, references string) (string, []string) {
 	return parent, refs
 }
 
+// WriteTo writes the message as it is sent, and as its copy in Sent is
+// stored: without its Bcc, which the recipients must not see. The Bcc
+// recipients have it from the SMTP envelope (see sendMessage).
 func (msg *OutgoingMessage) WriteTo(w io.Writer) (int64, error) {
+	return msg.write(w, false)
+}
+
+// asDraft is the message as Drafts stores it: with its Bcc. Stored without
+// it, a draft reopened from Drafts, on another device or after a reload,
+// had none, and was sent without the Bcc recipients the user had added.
+func (msg *OutgoingMessage) asDraft() provider.OutgoingMessageWriter {
+	return draftMessage{msg}
+}
+
+type draftMessage struct{ msg *OutgoingMessage }
+
+func (d draftMessage) WriteTo(w io.Writer) (int64, error) {
+	return d.msg.write(w, true)
+}
+
+func (msg *OutgoingMessage) write(w io.Writer, withBcc bool) (int64, error) {
 	fromAddr, err := mail.ParseAddress(msg.From)
 	if err != nil {
 		return 0, err
@@ -266,6 +294,13 @@ func (msg *OutgoingMessage) WriteTo(w io.Writer) (int64, error) {
 	h.SetAddressList("From", from)
 	h.SetAddressList("To", to)
 	h.SetAddressList("Cc", cc)
+	if withBcc {
+		bcc, err := prepareAddressList(msg.Bcc)
+		if err != nil {
+			return 0, err
+		}
+		h.SetAddressList("Bcc", bcc)
+	}
 	if msg.Subject != "" {
 		h.SetText("Subject", msg.Subject)
 	}
@@ -557,7 +592,7 @@ func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
 
 	// Until the message is written, the server's replies and a failed
 	// connection are wrapped: DoSMTP tries a send again when one may pass.
-	if err := c.Mail(addr.Address, nil); err != nil {
+	if err := c.Mail(mailboxAddress(addr), nil); err != nil {
 		return fmt.Errorf("MAIL FROM failed: %w", err)
 	}
 
@@ -567,7 +602,7 @@ func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
 			return fmt.Errorf("parsing address %q failed: %v", to, err)
 		}
 
-		if err := c.Rcpt(addr.Address, nil); err != nil {
+		if err := c.Rcpt(mailboxAddress(addr), nil); err != nil {
 			return fmt.Errorf("RCPT TO failed: %w (%s)", err, addr.Address)
 		}
 	}

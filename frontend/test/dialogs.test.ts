@@ -3,7 +3,9 @@
  *
  * They sit in front of every destructive or naming action in the app, so what
  * they must get right is which answer was given, exactly once, and — for the
- * prompt — that what the user typed survives the owner re-rendering.
+ * prompt — that what the user typed survives the owner re-rendering. Each is
+ * named by its title, and a confirmation described by its question, so that a
+ * screen reader says which dialog opened (browser test: e2e/folders.spec.ts).
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, mount, record, shadow, shadowAll, text, update } from './helpers/dom';
@@ -15,6 +17,33 @@ import '../src/components/ui-prompt';
 afterEach(cleanup);
 
 const dialogOf = (modal: HTMLElement) => shadow<HTMLDialogElement>(modal, 'dialog');
+
+/** The text a node shows, through its shadow root and the nodes slotted into it. */
+function shownText(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
+  if (node instanceof HTMLSlotElement) {
+    const assigned = node.assignedNodes({ flatten: true });
+    return (assigned.length ? assigned : [...node.childNodes]).map(shownText).join('');
+  }
+  const host = node as Element;
+  return [...(host.shadowRoot ?? host).childNodes].map(shownText).join('');
+}
+
+/** What the elements an ARIA reference names show, found in the dialog's own root. */
+function referenced(dialog: HTMLElement, attribute: string): string | null {
+  const ids = dialog.getAttribute(attribute);
+  if (!ids) return null;
+  const root = dialog.getRootNode() as ShadowRoot;
+  return ids.split(/\s+/).map((id) => {
+    const target = root.getElementById(id);
+    expect(target, `#${id}, named by ${attribute}`).not.toBeNull();
+    return shownText(target!).replace(/\s+/g, ' ').trim();
+  }).join(' ');
+}
+
+/** The dialog's accessible name: what aria-labelledby points at, else aria-label. */
+const nameOf = (dialog: HTMLElement) => referenced(dialog, 'aria-labelledby') ?? dialog.getAttribute('aria-label');
+const descriptionOf = (dialog: HTMLElement) => referenced(dialog, 'aria-describedby');
 
 describe('ui-modal', () => {
   it('opens itself modally on first render', async () => {
@@ -29,6 +58,26 @@ describe('ui-modal', () => {
     expect(shadow(modal, '.modal-card').getAttribute('style')).toContain('width: 520px');
     await update(modal, { title: '' });
     expect(modal.shadowRoot!.querySelector('h3')).toBeNull();
+  });
+
+  it('is named by its title', async () => {
+    const modal = await mount('ui-modal', { title: 'Delete folder' });
+    expect(nameOf(dialogOf(modal))).toBe('Delete folder');
+    // Nothing describes it unless asked: an editor's body is a form.
+    expect(descriptionOf(dialogOf(modal))).toBeNull();
+    await update(modal, { title: '' });
+    expect(nameOf(dialogOf(modal))).toBeNull();
+  });
+
+  it('is named by its title when a header of the caller\'s replaces the heading', async () => {
+    const modal = document.createElement('ui-modal') as HTMLElement & { title: string };
+    modal.title = 'Security key';
+    modal.innerHTML = '<div slot="header">A drawn header</div>';
+    document.body.append(modal);
+    await (modal as any).updateComplete;
+    await (modal as any).updateComplete;
+    expect(nameOf(dialogOf(modal))).toBe('Security key');
+    modal.remove();
   });
 
   it('refuses Escape unless it is dismissible', async () => {
@@ -91,6 +140,13 @@ describe('ui-confirm', () => {
     expect(buttons(el).map((b) => b.textContent?.trim())).toEqual(['Keep', 'Save draft', 'Discard']);
   });
 
+  it('is named by its title and described by its message', async () => {
+    const el = await mount('ui-confirm', { title: 'Discard?', message: 'Your draft is lost.', confirmText: 'Discard', cancelText: 'Keep' });
+    const dialog = dialogOf(shadow(el, 'ui-modal'));
+    expect(nameOf(dialog)).toBe('Discard?');
+    expect(descriptionOf(dialog)).toBe('Your draft is lost.');
+  });
+
   it('styles the confirm button as dangerous when asked', async () => {
     const el = await mount('ui-confirm', { isDanger: true });
     expect(buttons(el).at(-1)!.getAttribute('variant')).toBe('danger');
@@ -130,6 +186,13 @@ describe('ui-prompt', () => {
     input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
     await (el as any).updateComplete;
   }
+
+  it('is named by its title, and its form is no description', async () => {
+    const el = await mount('ui-prompt', { fields: folderField(), title: 'New folder' });
+    const dialog = dialogOf(shadow(el, 'ui-modal'));
+    expect(nameOf(dialog)).toBe('New folder');
+    expect(descriptionOf(dialog)).toBeNull();
+  });
 
   it('renders a labelled input per field, seeded from its value', async () => {
     const el = await mount('ui-prompt', { fields: [...folderField(), { id: 'parent', label: 'Parent' }] });

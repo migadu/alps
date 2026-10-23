@@ -2,8 +2,11 @@ package managesieve
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"net"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -97,6 +100,44 @@ func TestDeleteScriptActiveIsRefused(t *testing.T) {
 	}
 }
 
+// A script goes up as a literal, and a line break after the literal ends the
+// command (RFC 5804 §2.6). PutScript left that line break out whenever the
+// script itself ended in one, an empty script included: the server, still
+// waiting for the end of the command, did not answer, and the save failed
+// when alps stopped waiting.
+func TestPutScriptEndsTheCommandAfterTheScript(t *testing.T) {
+	for _, content := range []string{"keep;\n", "keep;\r\n", ""} {
+		client, server := net.Pipe()
+		c := &MSClient{conn: client, r: bufio.NewReader(client), capabilities: make(map[string]string)}
+
+		received := make(chan string, 1)
+		go func() {
+			r := bufio.NewReader(server)
+			line, _ := r.ReadString('\n')
+			var name string
+			var size int
+			fmt.Sscanf(line, "PUTSCRIPT %q {%d+}", &name, &size)
+			script := make([]byte, size)
+			io.ReadFull(r, script)
+			server.SetReadDeadline(time.Now().Add(time.Second))
+			end, _ := r.ReadString('\n')
+			received <- string(script) + "|" + end
+			server.Write([]byte("OK\r\n"))
+		}()
+
+		err := c.PutScript("alps-filters", content)
+		got := <-received
+		client.Close()
+		server.Close()
+		if err != nil {
+			t.Errorf("%q: %v", content, err)
+		}
+		if want := content + "|\r\n"; got != want {
+			t.Errorf("%q: the server read %q, want the script and then the line break that ends the command", content, got)
+		}
+	}
+}
+
 func TestListScriptsEmpty(t *testing.T) {
 	c, cleanup := newTestClient(t, "OK \"Listscripts completed.\"\r\n")
 	defer cleanup()
@@ -173,6 +214,63 @@ func TestGetScriptReadsALiteral(t *testing.T) {
 	}
 }
 
+// A script may come back as a quoted string rather than a literal (RFC 5804
+// §4). In one, a quote and a backslash are escaped with a backslash, and the
+// quotes around it are not part of it. GetScript left the escapes in and
+// stripped every quote at either end, the script's own last quote included.
+func TestGetScriptReadsAQuotedString(t *testing.T) {
+	c, cleanup := newTestClient(t, `"keep; # \"a\\b\""`+"\r\nOK\r\n")
+	defer cleanup()
+
+	got, err := c.GetScript("alps-filters")
+	if want := `keep; # "a\b"`; err != nil || got != want {
+		t.Errorf("read %q, %v; want %q", got, err, want)
+	}
+
+	// A string that is not closed is not a script: saved back from the
+	// page, it would replace the one stored.
+	c, cleanup = newTestClient(t, `"keep; # \"a\"`+"\r\nOK\r\n")
+	defer cleanup()
+	if got, err := c.GetScript("alps-filters"); err == nil {
+		t.Errorf("an unclosed string was read as the script %q", got)
+	}
+}
+
+// Script names in LISTSCRIPTS are strings too, and a quote or a backslash in
+// one is escaped. The name was cut at its first escaped quote, and the rest
+// of the line read as further words, so the script could not be asked for
+// by its name.
+func TestListScriptsReadsEscapesInAName(t *testing.T) {
+	c, cleanup := newTestClient(t, `"my \"own\" rules" ACTIVE`+"\r\n"+`"back\\slash"`+"\r\nOK\r\n")
+	defer cleanup()
+
+	scripts, err := c.ListScripts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Script{{Name: `my "own" rules`, Active: true}, {Name: `back\slash`}}
+	if !reflect.DeepEqual(scripts, want) {
+		t.Errorf("listed %+v, want %+v", scripts, want)
+	}
+}
+
+// A capability's value is a string as well, such as the server's own name
+// under IMPLEMENTATION.
+func TestACapabilityValueIsUnescaped(t *testing.T) {
+	c, cleanup := newTestClient(t, `"IMPLEMENTATION" "Example \"Sieve\" 1.0"`+"\r\n"+`"SIEVE" "fileinto"`+"\r\nOK\r\n")
+	defer cleanup()
+
+	if err := c.readResponse(); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := c.capabilities["IMPLEMENTATION"], `Example "Sieve" 1.0`; got != want {
+		t.Errorf("IMPLEMENTATION is %q, want %q", got, want)
+	}
+	if got := c.capabilities["SIEVE"]; got != "fileinto" {
+		t.Errorf("SIEVE is %q, want fileinto", got)
+	}
+}
+
 // A literal in a list of strings, as in a capability or a script name, takes
 // the same checks. A header without its closing brace panicked, for a slice
 // that ended before it began.
@@ -193,5 +291,59 @@ func TestALiteralInAResponseIsChecked(t *testing.T) {
 	}
 	if c.capabilities["IMPLEMENTATION"] != "hello" || c.capabilities["SIEVE"] != "fileinto" {
 		t.Errorf("read %v", c.capabilities)
+	}
+}
+
+// scriptedConn hands out its reads in turn: data, or an error for one read,
+// as a read that timed out returns before the server's late answer arrives.
+// Writes are taken and dropped.
+type scriptedConn struct {
+	net.Conn // nil: only the methods below are called
+	reads    []any
+}
+
+func (s *scriptedConn) Read(p []byte) (int, error) {
+	if len(s.reads) == 0 {
+		return 0, io.EOF
+	}
+	switch r := s.reads[0].(type) {
+	case error:
+		s.reads = s.reads[1:]
+		return 0, r
+	default:
+		data := r.(string)
+		n := copy(p, data)
+		if n == len(data) {
+			s.reads = s.reads[1:]
+		} else {
+			s.reads[0] = data[n:]
+		}
+		return n, nil
+	}
+}
+
+func (s *scriptedConn) Write(p []byte) (int, error)      { return len(p), nil }
+func (s *scriptedConn) SetReadDeadline(time.Time) error  { return nil }
+func (s *scriptedConn) SetWriteDeadline(time.Time) error { return nil }
+
+// After a literal, the rest of its line is read, and a failure there was
+// dropped: the line was taken for an empty one, and the response read on.
+// A read that timed out, after which the server's answer came late, gave a
+// listing or a capability read as complete, out of step with the server.
+func TestAFailedReadAfterALiteralFailsTheResponse(t *testing.T) {
+	timedOut := errors.New("i/o timeout")
+	client := func(reads ...any) *MSClient {
+		conn := &scriptedConn{reads: reads}
+		return &MSClient{conn: conn, r: bufio.NewReader(conn), capabilities: make(map[string]string)}
+	}
+
+	c := client("{5}\r\nhello", timedOut, " ACTIVE\r\nOK\r\n")
+	if scripts, err := c.ListScripts(); !errors.Is(err, timedOut) {
+		t.Errorf("listed %+v, %v; want the failed read's error", scripts, err)
+	}
+
+	c = client("\"IMPLEMENTATION\" {5}\r\nhello", timedOut, "\r\nOK\r\n")
+	if err := c.readResponse(); !errors.Is(err, timedOut) {
+		t.Errorf("read capabilities %v, %v; want the failed read's error", c.capabilities, err)
 	}
 }

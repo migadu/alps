@@ -334,7 +334,7 @@ describe('the settings', () => {
 });
 
 describe('the contact editor', () => {
-  it('names the birthday field, whose date input shows no placeholder', async () => {
+  it("names the birthday's day, month and year, and the group they make", async () => {
     const el = await mount<El>('alps-contact-view', {
       i18nStore,
       settingsStore: { getState: () => ({ dateFormat: 'YYYY-MM-DD' }) },
@@ -342,12 +342,15 @@ describe('the contact editor', () => {
       isEditing: true,
     });
     await el.updateComplete;
-    const fields = shadowAll<El>(el, 'alps-input');
-    await Promise.all(fields.map(f => f.updateComplete));
-    const birthday = fields.find(f => inner(f).type === 'date');
-    expect(birthday, 'the birthday field').toBeDefined();
+    const group = shadow<HTMLElement>(el, '[role="group"]');
+    const caption = el.shadowRoot!.getElementById(group.getAttribute('aria-labelledby')!);
+    expect(caption?.textContent?.trim()).toBe('contacts.birthday');
 
-    expect(accessibleName(inner(birthday!))).toBe('contacts.birthday');
+    const fields = Array.from(group.querySelectorAll<El>(FIELDS.join(', ')));
+    await Promise.all(fields.map(f => f.updateComplete));
+    expect(fields.map(f => accessibleName(inner(f))).sort()).toEqual([
+      'contacts.birthdayDay', 'contacts.birthdayMonth', 'contacts.birthdayYear',
+    ]);
   });
 });
 

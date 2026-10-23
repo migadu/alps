@@ -197,7 +197,10 @@ describe('the quote header', () => {
 });
 
 describe('people in calendar events, tasks and contacts', () => {
-  const i18nStore = { t: (key: string) => key, getLanguage: () => 'en', getIntlLanguage: () => 'en' };
+  // The key, then what fills its placeholders: a sentence built with
+  // isolatedSentence keeps its isolates.
+  const t = (key: string, params?: Record<string, unknown>) => [key, ...Object.values(params ?? {})].join(' ');
+  const i18nStore = { t, getLanguage: () => 'en', getIntlLanguage: () => 'en' };
   const pairs = (root: ParentNode) => [...root.querySelectorAll('bdi')].map((node) => [node.textContent, node.getAttribute('dir')]);
 
   it("isolates an event's organizer and each attendee before their answer", async () => {
@@ -296,6 +299,29 @@ describe('names in invitation sentences', () => {
     const el = await banner(view({ organizer: { email: 'grace@example.org', name: OVERRIDE } }));
     expect(pairs(shadow(el, '.organizer'))).toEqual([[OVERRIDE, null]]);
     expect(text(el, '.organizer')).toBe(`Organizer: ${OVERRIDE}`);
+  });
+
+  it('isolates each event the invitation clashes with', async () => {
+    // The summaries come from the user's calendars, which also hold events
+    // other people's invitations put there.
+    const hebrew = 'פגישה weekly';
+    const el = await banner(view({
+      clashes: [{ summary: OVERRIDE, allDay: false }, { summary: hebrew, allDay: false }, { summary: '', allDay: false }],
+    }));
+    expect(pairs(shadow(el, '.clashes'))).toEqual([[OVERRIDE, null], [hebrew, null], ['(No title)', null]]);
+    expect(text(el, '.clashes')).toBe(`Conflicts with ${OVERRIDE}, ${hebrew}, (No title)`);
+  });
+
+  it.each(['da', 'de', 'en', 'es', 'fr', 'it', 'pt', 'rs', 'sr'])('keeps the clashes where %s puts them in its sentence', async (lang) => {
+    const store = new I18nStore();
+    await store.setLanguage(lang);
+    vi.spyOn(invitationService, 'fetchInvitation').mockResolvedValue(view({
+      clashes: [{ summary: 'Dentist', allDay: false }, { summary: 'Standup', allDay: false }],
+    }));
+    const el = await mount<HTMLElement>('calendar-invitation-banner', { i18nStore: store, mailbox: 'INBOX', uid: '42' });
+    await waitFor(() => !!el.shadowRoot?.querySelector('.clashes'), 'the clashes');
+    expect(pairs(shadow(el, '.clashes'))).toEqual([['Dentist', null], ['Standup', null]]);
+    expect(text(el, '.clashes')).toBe(store.t('invitations.conflictsWith', { names: 'Dentist, Standup' }));
   });
 
   it('isolates the sender a warning names, left to right, from the rest of the warning', async () => {

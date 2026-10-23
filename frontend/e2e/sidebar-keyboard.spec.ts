@@ -177,3 +177,26 @@ test("a calendar is hidden and shown, its menu reached, and a day picked, from t
   await expect(page.locator("alps-sidebar-calendar .mini-header span")).toHaveText("July 2026");
   await expect.poll(() => hasFocus(july), { message: "the focus stays on 1 July" }).toBe(true);
 });
+
+test("a settings category is opened from the keyboard", async ({ page }) => {
+  await login(page);
+  await page.goto("/#/settings/general");
+  const sidebar = page.locator("settings-page alps-sidebar");
+  const general = sidebar.getByRole("button", { name: "General", exact: true });
+  await expect(general).toHaveAttribute("aria-current", "true");
+
+  // From the top of the page, Tab reaches the categories; Enter opens one.
+  const appearance = sidebar.getByRole("button", { name: "Appearance", exact: true });
+  await tabTo(page, appearance, "the Appearance category");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#\/settings\/appearance$/);
+  await expect(appearance).toHaveAttribute("aria-current", "true");
+  await expect(general).not.toHaveAttribute("aria-current", "true");
+
+  // The next category is the next stop, and Space opens it.
+  await page.keyboard.press("Tab");
+  const localization = sidebar.getByRole("button", { name: "Localization", exact: true });
+  expect(await hasFocus(localization), "Tab from Appearance reaches Localization").toBe(true);
+  await page.keyboard.press("Space");
+  await expect(page).toHaveURL(/#\/settings\/localization$/);
+});

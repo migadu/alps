@@ -368,6 +368,26 @@ func TestPatchCachedConversationsLeavesOtherFoldersMessagesAlone(t *testing.T) {
 	}
 }
 
+// A member that names no folder is not taken for one of the folder whose
+// prefix its key begins with. Work:Sub keeps its conversations under keys that
+// begin with Work's, and taken for Work's, UID 7 of Work:Sub was starred with
+// UID 7 of Work.
+func TestPatchCachedConversationsDoesNotNameAMembersFolderByItsKey(t *testing.T) {
+	cache := alps.NewCache(time.Minute)
+	defer cache.Close()
+
+	nameless := IMAPMessage{FetchMessageBuffer: &imapclient.FetchMessageBuffer{}, AlpsUID: "7"}
+	cache.Set(threadCacheKey("Work:Sub", "9"), []IMAPMessage{nameless})
+
+	patchCachedConversations(cache, noDebug, "Work", "7", []imap.Flag{imap.FlagFlagged}, nil)
+
+	if held, ok := cache.Get(threadCacheKey("Work:Sub", "9")); ok {
+		if flags := held.([]IMAPMessage)[0].Flags; len(flags) != 0 {
+			t.Errorf("UID 7 of Work:Sub, named by no folder, carries %v, want it left as it was", flags)
+		}
+	}
+}
+
 // A conversation opened from the Inbox holds the user's reply from Sent, and
 // is kept under the Inbox's keys. A star given to the reply in Sent patched
 // only the conversations kept under Sent's, and reopened from the Inbox, the
@@ -400,7 +420,7 @@ func TestHTTP_AStarInSentReachesTheInboxConversation(t *testing.T) {
 // A change reaches the conversations of every folder, by the folder and the
 // UID of the message changed. The Inbox's conversation holds UID 7 of Sent,
 // and UID 7 of the Inbox is another message, in it and in a conversation of
-// its own; a member that names no folder is one of its conversation's folder.
+// its own, and so is a member that names no folder.
 func TestPatchCachedConversationsReachesEveryFoldersConversations(t *testing.T) {
 	cache := alps.NewCache(time.Minute)
 	defer cache.Close()
@@ -427,7 +447,7 @@ func TestPatchCachedConversationsReachesEveryFoldersConversations(t *testing.T) 
 	}
 	held, _ := cache.Get(threadCacheKey("INBOX", "9"))
 	if flags := held.([]IMAPMessage)[0].Flags; len(flags) != 0 {
-		t.Errorf("UID 7 of the Inbox, named by no folder, carries %v, want it left as it was", flags)
+		t.Errorf("UID 7, named by no folder, carries %v, want it left as it was", flags)
 	}
 }
 
