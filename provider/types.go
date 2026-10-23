@@ -82,6 +82,27 @@ type MailProvider interface {
 	CopyMessages(sourceMailbox, destMailbox string, ids []MessageID) (map[MessageID]MessageID, error)
 }
 
+// Idler is a MailProvider whose mail server can tell it, unasked, of changes
+// to a mailbox as they happen (IMAP IDLE, RFC 2177).
+type Idler interface {
+	// CanIdle reports whether the mail server can. An error says that it
+	// could not be asked, which is no answer either way.
+	CanIdle() (bool, error)
+	// OnMailboxNews has news called, with the mailbox's name, whenever the
+	// mail server says unasked that a message arrived in the mailbox
+	// selected on the connection, or went from it; nil stops the news. It is
+	// called from the connection's reader, and must neither block nor use
+	// the connection.
+	OnMailboxNews(news func(mailbox string))
+	// Idle selects mailbox and waits for the mail server's news of it until
+	// stop is closed or the connection fails. It then ends the wait, and
+	// returns once the server has answered, with the connection free for
+	// other commands; when the server does not answer in time, the
+	// connection is closed and the error is a network error. started is
+	// called once the server has begun to wait.
+	Idle(mailbox string, stop <-chan struct{}, started func()) error
+}
+
 // OutgoingMessageWriter is an interface for messages being sent
 type OutgoingMessageWriter interface {
 	WriteTo(w io.Writer) (int64, error)

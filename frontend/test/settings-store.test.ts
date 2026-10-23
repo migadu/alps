@@ -82,6 +82,18 @@ describe('signing in', () => {
     expect(changed).toHaveLength(1);
   });
 
+  it('takes push for off once the push service has found it so', async () => {
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { PushNewMail: true, Settings: { language: 'en' } }),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(store.getState().pushNewMail).toBe(true));
+    window.dispatchEvent(new CustomEvent('mail-push-off'));
+    expect(store.getState().pushNewMail).toBe(false);
+  });
+
   it('turns threading off when the server cannot thread', async () => {
     signedIn();
     serve({

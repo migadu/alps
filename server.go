@@ -76,6 +76,11 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 	}
 	s.Sessions.broadcaster = options.ClusterBroadcaster
 	s.Sessions.backgroundConnections = !options.DisableBackgroundConnection
+	// Push waits on the background connection, and needs it.
+	s.Sessions.pushNewMail = options.PushNewMail && s.Sessions.backgroundConnections
+	if options.PushNewMail && !s.Sessions.pushNewMail {
+		logger.Printf("push_new_mail needs background_connection, which is off: new mail is not pushed")
+	}
 
 	// Initialize rate limiter if enabled
 	if options.RateLimitEnabled {
@@ -122,6 +127,13 @@ func cleanupTempAttachments() error {
 		}
 	}
 	return nil
+}
+
+// EndEventStreams ends the pages' event streams, which would otherwise hold a
+// graceful shutdown of the HTTP server for as long as it waits: register it
+// with http.Server.RegisterOnShutdown. The sessions go on until Close.
+func (s *Server) EndEventStreams() {
+	s.Sessions.endInboxWatches()
 }
 
 func (s *Server) Close() {
@@ -364,6 +376,11 @@ type Options struct {
 	// default a session opens a second one, when it is first needed, for the
 	// work the user is not waiting for: see Session.DoBackgroundMail.
 	DisableBackgroundConnection bool
+	// If true, a session waits on its background connection for the mail
+	// server's news of the Inbox (IMAP IDLE) while one of its pages holds an
+	// event stream open, and tells the page as the news comes: see
+	// Session.WatchInbox. Off when DisableBackgroundConnection is set.
+	PushNewMail bool
 }
 
 type SMTPOptions struct {

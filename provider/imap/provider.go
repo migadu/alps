@@ -60,6 +60,14 @@ type IMAPProvider struct {
 	// plain LIST instead of paying for the refusal each time.
 	listReturnRefused bool
 	cacheLock         sync.RWMutex
+
+	// news passes on what the server says unasked; nil for a connection made
+	// without it (see Idle). idled is what the mailbox the last IDLE waited
+	// on was as it ended (see Idle).
+	news  *mailboxNews
+	idled idledMailbox
+	// responseTimeout bounds the wait for the server's answer to DONE.
+	responseTimeout time.Duration
 }
 
 func NewIMAPProvider(client *imapclient.Client, debug bool) *IMAPProvider {
