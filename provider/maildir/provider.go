@@ -138,7 +138,7 @@ func (p *Provider) FindMailboxByType(mboxType provider.MailboxType) (*provider.M
 		}
 	}
 
-	return nil, fmt.Errorf("mailbox not found")
+	return nil, nil
 }
 
 func (p *Provider) CreateMailbox(name string) error {

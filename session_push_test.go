@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -971,5 +972,149 @@ func TestUpdatePasswordContext_AlreadyCancelledDoesNotChangeTheSession(t *testin
 		if !errors.Is(err, context.Canceled) || server.dialled() != before || session.password != "p" {
 			t.Fatalf("cancelled update iter%d: err=%v dials=%d->%d password=%q", i, err, before, server.dialled(), session.password)
 		}
+	}
+}
+
+// A watch begun while the IDLE's connection is gone is not told that the
+// IDLE is up: it is told once one has begun again. Each case has the IDLE
+// wait to resume (pushResume), the window in which a page opening its
+// stream was told of an IDLE that no connection held.
+func TestWatchInbox_NotToldOfAnIdleWhoseConnectionIsGone(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		gone func(t *testing.T, s *Session, srv *idlingServer, idling *idlingConnection)
+	}{
+		{"dropped under background work", func(t *testing.T, s *Session, srv *idlingServer, idling *idlingConnection) {
+			err := s.DoBackgroundMail(context.Background(), func(p provider.MailProvider) error {
+				if p == provider.MailProvider(idling) {
+					return errors.New("read tcp: connection reset by peer")
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"closed for a password change", func(t *testing.T, s *Session, srv *idlingServer, idling *idlingConnection) {
+			if err := s.manager.UpdatePassword(s, "new"); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"taken over by the session's own work", func(t *testing.T, s *Session, srv *idlingServer, idling *idlingConnection) {
+			// Background work first, so that the IDLE waits to resume.
+			if err := s.DoBackgroundMail(context.Background(), work); err != nil {
+				t.Fatal(err)
+			}
+			// The session's own connection gone, as one given up on is.
+			s.providerLocker.Lock()
+			s.provider.Close()
+			s.provider = nil
+			s.providerLocker.Unlock()
+			var ranOn provider.MailProvider
+			if err := s.DoMail(func(p provider.MailProvider) error { ranOn = p; return nil }); err != nil {
+				t.Fatal(err)
+			}
+			if ranOn != provider.MailProvider(idling) {
+				t.Fatal("the session's own work did not take the background connection over")
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var srv idlingServer
+			s := newPushSession(t, &srv)
+			s.manager.pushResume = 2 * time.Second
+			first := s.WatchInbox()
+			defer first.Stop()
+			next(t, first)
+			idling := srv.idling()
+
+			tc.gone(t, s, &srv, idling)
+			eventually(t, "the IDLE to end", func() bool { return srv.idling() == nil })
+			later := s.WatchInbox()
+			defer later.Stop()
+			quiet(t, later, "a watch begun while the IDLE's connection is gone")
+		})
+	}
+}
+
+// Removing a connection and clearing its last IDLE announcement use separate
+// locks. A new watch can get the watch lock between those two steps.
+func TestWatchInbox_ConnectionDroppedWhileANewWatchBegins(t *testing.T) {
+	previous := runtime.GOMAXPROCS(1)
+	defer runtime.GOMAXPROCS(previous)
+	p := new(provider.MockProvider)
+	s := &Session{manager: &SessionManager{pushNewMail: true}}
+	s.background.p = p
+	s.push.running = true // This test controls the transition without an IDLE worker.
+	s.push.watching = p
+
+	s.push.mu.Lock()
+	dropped := make(chan struct{})
+	go func() {
+		s.background.jobs.Lock()
+		defer s.background.jobs.Unlock()
+		s.dropBackground()
+		close(dropped)
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		s.background.mu.Lock()
+		gone := s.background.p == nil
+		s.background.mu.Unlock()
+		if gone {
+			break
+		}
+		if time.Now().After(deadline) {
+			s.push.mu.Unlock()
+			<-dropped
+			t.Fatal("the background connection was not dropped")
+		}
+		runtime.Gosched()
+	}
+	// With one runnable thread, this watch can take the mutex before the
+	// dropper wakes to clear watching. Ownership must be checked as well.
+	s.push.mu.Unlock()
+	watch := s.WatchInbox()
+	defer watch.Stop()
+	select {
+	case ev := <-watch.C:
+		t.Errorf("a watch begun after the connection was dropped heard %v", ev)
+	default:
+	}
+	<-dropped
+}
+
+func TestWatchInbox_InitialAnnouncementRequiresTheSameBackgroundConnection(t *testing.T) {
+	p, replacement := new(provider.MockProvider), new(provider.MockProvider)
+	for _, tc := range []struct {
+		name        string
+		background  provider.MailProvider
+		wantWatched bool
+	}{
+		{"still owned", p, true},
+		{"already dropped", nil, false},
+		{"already replaced", replacement, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &Session{manager: &SessionManager{pushNewMail: true}}
+			s.background.p = tc.background
+			s.push.running = true
+			s.push.watching = p
+			watch := s.WatchInbox()
+			defer watch.Stop()
+			select {
+			case ev := <-watch.C:
+				if !tc.wantWatched || ev != InboxWatched {
+					t.Errorf("the watch heard %v, want watched=%v", ev, tc.wantWatched)
+				}
+			default:
+				if tc.wantWatched {
+					t.Error("the watch was not told of the owned connection's IDLE")
+				}
+			}
+			if !tc.wantWatched && s.push.watching != nil {
+				t.Error("the stale IDLE announcement was kept")
+			}
+		})
 	}
 }

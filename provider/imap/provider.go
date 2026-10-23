@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -66,6 +67,9 @@ type IMAPProvider struct {
 	// on was as it ended (see Idle).
 	news  *mailboxNews
 	idled idledMailbox
+	// selects counts the mailboxes selected, to tell whether the one
+	// selected now was selected again since the last IDLE (see Idle).
+	selects uint64
 	// responseTimeout bounds the wait for the server's answer to DONE.
 	responseTimeout time.Duration
 }
@@ -424,6 +428,7 @@ func (p *IMAPProvider) EmptyMailbox(name string) (int, error) {
 	}
 	p.selectedUIDValidity = data.UIDValidity
 	p.selectedUIDNext = data.UIDNext
+	p.selects++
 
 	if data.NumMessages == 0 {
 		return 0, nil
@@ -475,6 +480,7 @@ func (p *IMAPProvider) ensureMailboxSelected(mboxName string) error {
 		}
 		p.selectedUIDValidity = data.UIDValidity
 		p.selectedUIDNext = data.UIDNext
+		p.selects++
 	}
 	return nil
 }
@@ -1729,18 +1735,23 @@ func (p *IMAPProvider) MarkAnswered(mailbox string, id provider.MessageID) error
 func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessageWriter, mboxType provider.MailboxType) (*provider.Mailbox, provider.MessageID, uint32, error) {
 	mbox, remembered, err := p.findMailboxByType(mboxType)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
 	}
 	if mbox == nil {
-		return nil, nil, 0, fmt.Errorf("unable to resolve mailbox")
+		return nil, nil, 0, fmt.Errorf("%w: unable to resolve mailbox", provider.ErrAppendNotStarted)
 	}
 
 	// IMAP needs to know in advance the final size of the message
 	var buf bytes.Buffer
 	if _, err := msg.WriteTo(&buf); err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
 	}
 	size := uint32(buf.Len())
+	select {
+	case <-p.client.Closed():
+		return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, net.ErrClosed)
+	default:
+	}
 
 	flags := []imap.Flag{imap.FlagSeen}
 	if mboxType == provider.MailboxTypeDrafts {
@@ -1758,7 +1769,7 @@ func (p *IMAPProvider) AppendMessage(mailbox string, msg provider.OutgoingMessag
 			err = fmt.Errorf("unable to resolve mailbox")
 		}
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, 0, fmt.Errorf("%w: %w", provider.ErrAppendNotStarted, err)
 		}
 		uidNext = p.uidNextWithoutUIDPlus(mbox.Name)
 		appendData, err = p.appendTo(mbox.Name, buf.Bytes(), &options)
