@@ -116,6 +116,14 @@ async function getPrivateKey(openpgp: any, i18nStore?: any): Promise<any> {
     }
 }
 
+/** Whether `address` is one of a card's addresses, the first or another, compared bare and in any case. */
+function cardHasAddress(card: { email?: string; emails?: { value?: string }[] }, address: string): boolean {
+    const bare = (value: string) => (parseWrittenAddress(value).email || value).trim().toLowerCase();
+    const wanted = bare(address);
+    return [card.email, ...(card.emails ?? []).map((e) => e.value)]
+        .some((value) => !!value && bare(value) === wanted);
+}
+
 export async function handlePresend(payload: any) {
     const { instance, formData, composer } = payload;
     if (!instance.encryptGpg) return formData; // Do nothing if not encrypting
@@ -184,11 +192,16 @@ export async function handlePresend(payload: any) {
                 continue;
             }
 
+            // The search matches text anywhere in a card's name or addresses,
+            // so its answer holds every card that CONTAINS the address. The
+            // first of those with a key was taken: a message to
+            // bob@example.com was encrypted to superbob@example.com, whom the
+            // recipient is not. Only a card the address is one of qualifies.
             const result = await contactsService.fetchContacts(cleanEmail);
             const contactsList = result.contacts || [];
             let keyFound = false;
             for (const c of contactsList) {
-                if (c.public_key) {
+                if (c.public_key && cardHasAddress(c, cleanEmail)) {
                     const key = await openpgp.readKey({ armoredKey: c.public_key });
                     publicKeys.push(key);
                     keyFound = true;
