@@ -582,7 +582,8 @@ export const sr = {
     expand: "Proširi",
     collapse: "Skupi",
     moreOptions: "Više opcija",
-    notFound: "Stranica nije pronađena"
+    notFound: "Stranica nije pronađena",
+    close: "Zatvori"
   },
   webauthn: {
     title: 'Verifikacija bezbednosnog ključa',

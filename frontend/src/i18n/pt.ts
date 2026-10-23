@@ -611,7 +611,8 @@ export const pt = {
     expand: "Expandir",
     collapse: "Recolher",
     moreOptions: "Mais opções",
-    notFound: "Página não encontrada"
+    notFound: "Página não encontrada",
+    close: "Fechar"
   }
 };
 

@@ -1,4 +1,4 @@
-import { html, css, LitElement } from 'lit';
+import { html, css, LitElement, nothing } from 'lit';
 import { renderIcon } from '../utils/ui';
 import { customElement, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
@@ -9,7 +9,6 @@ import './alps-page-load-error';
 // Import pages
 import '../pages/login-page';
 import '../pages/mailbox-page';
-import '../pages/settings-page';
 import '../pages/original-message-page';
 import '../pages/print-page';
 import '../pages/login-webauthn-page';
@@ -22,6 +21,7 @@ import { provide } from '@lit/context';
 // once the app goes idle so that first compose does not wait on the network.
 import './toast-notification';
 import './ui-modal';
+import './settings-window';
 import './alps-attachment-preview';
 import { composeContext, ComposeStore } from '../store/compose-store';
 import type { ComposerInstance } from '../store/compose-store';
@@ -34,6 +34,8 @@ import { setLoginNotice } from '../utils/login-notice';
 import { signedOutOnPurpose } from '../utils/signed-out';
 import { applyUpdate, registerBusyProbe, reloadMissingPageWhenIdle, UPDATE_AVAILABLE_EVENT } from '../services/app-update';
 import { Logger } from '../utils/logger';
+import { isSettingsHash, settingsCategoryOf, settingsHash } from '../utils/routes';
+import { nextSettingsEntry, settingsEntry, stampSettingsEntry, type SettingsEntry } from '../utils/settings-history';
 
 const DEFAULT_TOAST_TIMEOUT_MS = 3000;
 /** Long enough to be read and acted on; the automatic paths catch a missed one. */
@@ -42,6 +44,18 @@ const UPDATE_TOAST_MS = 15000;
 const COMPOSER_PREFETCH_TIMEOUT_MS = 3000;
 /** What the browsers without requestIdleCallback wait instead. */
 const COMPOSER_PREFETCH_DELAY_MS = 1500;
+
+/**
+ * The route-table keys that are never the page beneath the Settings window:
+ * the screens before a session, the pages opened in a tab of their own, and
+ * Settings itself. A history entry naming one of them draws the mailbox.
+ */
+const NEVER_BENEATH = new Set(['/login', '/login/webauthn', '/settings', '/settings/*', '/original', '/print']);
+
+/** The route path of a hash: no `#`, no query, `/` for none. */
+function routePath(hash: string): string {
+  return (hash.replace(/^#/, '') || '/').split('?')[0];
+}
 
 interface ToastItem {
   id: number;
@@ -100,6 +114,22 @@ export class AppRoot extends LitElement {
       height: 100vh;
       height: 100dvh;
       width: 100vw;
+    }
+
+    /* The routed page's wrapper: no box of its own, so every page lays out
+       exactly as it did as the host's child. Beneath the Settings window it
+       takes one, to be a stacking context at 0: everything the page stacks,
+       its header at 20000 included, then sits under the window (900) and the
+       composers above that. Only then, because outside Settings a docked
+       composer must stay under the page's own header. */
+    .route-view {
+      display: contents;
+    }
+    .route-view.behind-window {
+      display: block;
+      position: relative;
+      z-index: 0;
+      height: 100%;
     }
 
     .toast-stack {
@@ -517,13 +547,10 @@ export class AppRoot extends LitElement {
       '/': () => this.getMailboxPage(),
       '/login': () => html`<login-page></login-page>`,
       '/mailbox/*': () => this.getMailboxPage(),
-      '/settings': () => html`<settings-page category="general"></settings-page>`,
-      '/settings/*': () => {
-         const hash = window.location.hash;
-         const match = hash.match(/^#\/settings\/?(.*)$/);
-         const category = match && match[1] ? match[1].split('?')[0] : 'general';
-         return html`<settings-page .category=${category}></settings-page>`;
-      },
+      // Settings is a window over the page it was opened from (see
+      // `settingsWindow`), so its routes render THAT page.
+      '/settings': () => this.backgroundView(),
+      '/settings/*': () => this.backgroundView(),
       '/original': () => html`<original-message-page></original-message-page>`,
       '/print': () => html`<print-page></print-page>`,
       '/login/webauthn': () => html`<login-webauthn-page></login-webauthn-page>`,
@@ -558,9 +585,98 @@ export class AppRoot extends LitElement {
         this.loadFailurePath = path;
         resetComponentLoadFailures();
       }
+      this.trackSettingsEntry();
       this.requestUpdate();
     }
   );
+
+  /**
+   * The page beneath the Settings window: the one its history entry says it
+   * was opened from (`utils/settings-history`), through the same route table
+   * and so the same element (the kept mailbox page, a plugin page's cached
+   * element) the page already had, which is what keeps its state. The mailbox
+   * when there is none to draw: a direct load, or a page that is never beneath.
+   */
+  private backgroundView() {
+    const background = settingsEntry()?.background ?? null;
+    if (background !== null) {
+      const path = routePath(background);
+      const key = this.router.matchKey(path);
+      if (key !== null && !NEVER_BENEATH.has(key)) return this.router.render(path);
+    }
+    return this.getMailboxPage();
+  }
+
+  /** The hash the shell last routed, for `trackSettingsEntry`; null until the
+   * first route. */
+  private lastHash: string | null = null;
+  /** The stamp of the Settings entry last routed, or null if it was a page. */
+  private lastSettingsEntry: SettingsEntry | null = null;
+
+  /**
+   * The history bookkeeping a navigation INTO Settings needs, run on every
+   * route: a freshly pushed Settings entry is stamped with the page it was
+   * opened over and its depth (`nextSettingsEntry`). An entry reached by Back
+   * or Forward already carries its own, which the browser restored with it.
+   * Before the re-render, which draws the page from the stamp.
+   *
+   * The first route only notes where the shell starts: a Settings URL loaded
+   * directly has no page behind it, and a reloaded entry keeps its stamp.
+   */
+  private trackSettingsEntry() {
+    const hash = window.location.hash;
+    const previous = this.lastHash;
+    this.lastHash = hash;
+    if (!isSettingsHash(hash)) {
+      this.lastSettingsEntry = null;
+      return;
+    }
+    let entry = settingsEntry();
+    if (!entry && previous !== null) {
+      entry = nextSettingsEntry(previous, this.lastSettingsEntry);
+      stampSettingsEntry(entry);
+    }
+    this.lastSettingsEntry = entry;
+  }
+
+  /**
+   * A section chosen in the Settings window: the entry is REPLACED, stamp and
+   * all, so Back closes the window rather than walking back through every
+   * section visited. `replaceState` fires no `hashchange`, so the re-render is
+   * asked for here.
+   */
+  private _handleSettingsCategory = (e: CustomEvent<{ category: string }>) => {
+    history.replaceState(history.state, '', settingsHash(e.detail.category));
+    this.lastHash = window.location.hash;
+    this.requestUpdate();
+  };
+
+  /**
+   * Close, or Escape: back to the page beneath, the way Back would go. A
+   * stamped entry walks back over its depth, and the page sees its own URL
+   * again, unchanged. A direct load has no entry behind it, and is replaced
+   * with the Inbox's, whose `hashchange` re-routes.
+   */
+  private _closeSettings = () => {
+    const entry = settingsEntry();
+    if (entry?.background && entry.depth > 0) {
+      history.go(-entry.depth);
+      return;
+    }
+    window.location.replace('#/');
+  };
+
+  /** The Settings window, while the URL names it. */
+  private settingsWindow() {
+    if (!isSettingsHash(window.location.hash)) return nothing;
+    return html`
+      <settings-window
+        .category=${settingsCategoryOf(window.location.hash)}
+        @settings-category=${this._handleSettingsCategory}
+        @settings-close=${this._closeSettings}
+      ></settings-window>
+    `;
+  }
 
   render() {
     const totalOpen = this.activeComposers.filter(c => !c.minimized).length;
@@ -568,9 +684,17 @@ export class AppRoot extends LitElement {
     let openIndex = 0;
     let minimizedIndex = 0;
 
+    // Settings, over the page: the page stays the same element, dimmed (the
+    // window's backdrop) and inert, in a stacking context of its own at 0, so
+    // its header (20000 inside it) is under the window and the composers.
+    const view = this.router.render();
+    const settings = this.settingsWindow();
+    const behind = settings !== nothing;
+
     return html`
-      ${this.router.render()}
-      
+      <div class="route-view ${behind ? 'behind-window' : ''}" ?inert=${behind}>${view}</div>
+      ${settings}
+
       <!-- Keyed by composer: a window's element is that composer's for its
            whole life. By position, closing the first of three handed the
            second window's element to the third composer, and a send counting

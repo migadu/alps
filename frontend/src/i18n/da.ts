@@ -613,7 +613,8 @@ export const da: TranslationDictionary = {
     expand: 'Udvid',
     collapse: 'Skjul',
     moreOptions: 'Flere muligheder',
-    notFound: 'Siden blev ikke fundet'
+    notFound: 'Siden blev ikke fundet',
+    close: 'Luk'
   }
 };
 

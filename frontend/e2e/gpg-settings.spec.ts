@@ -15,7 +15,7 @@ test('GPG passphrase confirmation, cancellation and mismatch retry can reach one
   await signInAs(page, address, password);
   await page.goto('/#/settings/localization');
   const savedLanguage = page.waitForResponse(r => new URL(r.url()).pathname === '/settings' && r.request().method() === 'PUT');
-  await page.locator('settings-page select:has(option[value="de"])').selectOption('de');
+  await page.locator('settings-window select:has(option[value="de"])').selectOption('de');
   expect((await savedLanguage).ok()).toBe(true);
   await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('de');
 

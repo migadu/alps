@@ -32,6 +32,7 @@ import '../../../frontend/src/components/ui-confirm';
 import { isVersionConflict } from '../../../frontend/src/utils/fetch-utils';
 import '../../../frontend/src/components/alps-popup';
 import { renderIcon } from '../../../frontend/src/utils/ui';
+import { isSettingsHash } from '../../../frontend/src/utils/routes';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
 
 type ViewMode = 'day' | 'week' | 'month' | 'year';
@@ -559,8 +560,12 @@ export class CalendarPage extends LitElement {
 
     /** Goes to a view. Another view, date or search is the user's own move, so
      * it is a history entry, the one Back returns from; completing a bare
-     * address is not (see parseHash). */
+     * address is not (see parseHash).
+     *
+     * Not while the Settings window is open over the page: the URL is the
+     * window's, and assigning it would close the window. */
     private navigate(mode: ViewMode, date: Date, query: string = '') {
+        if (isSettingsHash(window.location.hash)) return;
         const hash = this.hashFor(mode, date, query);
         if (window.location.hash !== hash) {
             window.location.hash = hash;

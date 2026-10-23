@@ -6,107 +6,201 @@ import type { SettingsState } from '../store/settings-store';
 import { themeFamily } from '../store/themes';
 import { i18nContext, I18nStore, intlTag } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
-import { closeSidebarPeek, sidebarLayoutStyles } from '../components/alps-sidebar';
-import '../components/alps-header';
-import '../components/alps-sidebar';
-import '../components/alps-sidebar-strip';
-import '../components/alps-category-item';
-import '../components/settings-accounts';
-import '../components/alps-webauthn-settings';
+import { deepActiveElement } from '../utils/active-element';
+import './alps-category-item';
+import './alps-icon-btn';
+import './alps-input';
+import './alps-select';
+import './alps-setting-group';
+import './settings-accounts';
+import './alps-webauthn-settings';
 
 import { loadComponent, registry } from '../plugin-registry';
-import '../components/alps-page-load-error';
+import './alps-page-load-error';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
-import { Logger } from '../utils/logger';
 
-@customElement('settings-page')
-export class SettingsPage extends LitElement {
+/**
+ * The window's z-index: under every composer, whose own start at 1000
+ * (compose-store), and over the page it was opened from, which the shell puts
+ * in a stacking context of its own at 0 while the window is open (so the
+ * page's header, at 20000 inside it, is covered too). A composer opened over
+ * Settings therefore floats above it, as it floated over the Settings page.
+ */
+export const SETTINGS_WINDOW_Z = 900;
+
+/** The phone layout's width, the one the rest of the app switches at. */
+const MOBILE_MAX_WIDTH = 768;
+
+/**
+ * Settings: a window over the page it was opened from.
+ *
+ * The composer's frame and title bar, as one large centred window over a
+ * dimmed app, with two columns: the section list and the section. It replaced
+ * a full-screen page whose Back button went to the Inbox whatever the user had
+ * been reading; the page beneath now stays mounted, dimmed and inert, and
+ * closing the window shows it as it was.
+ *
+ * NOT MODAL. Composers float above it, as they floated over the page, so a
+ * draft half-written when the user went to fix their signature is still there
+ * to finish. That is why this is a positioned window rather than a
+ * `showModal()` dialog, which would put it above them and make them inert.
+ *
+ * THE URL IS THE SHELL'S. The section is a property `app-root` reads off
+ * `#/settings/<section>`, and this window asks for another one, or to close,
+ * by event (`settings-category`, `settings-close`). Only the shell knows the
+ * history entry the window is on (`utils/settings-history`): choosing a
+ * section replaces it, so Back closes the window rather than walking back
+ * through every section visited.
+ *
+ * Every setting applies as it changes, which is what lets the Appearance
+ * section restyle the mail behind the window live; the sections whose forms
+ * write to the server (the filters, the auto-reply) keep their own Save.
+ */
+@customElement('settings-window')
+export class SettingsWindow extends LitElement {
   @consume({ context: settingsContext })
   settingsStore!: SettingsStore;
 
   @consume({ context: i18nContext })
   i18nStore!: I18nStore;
 
-  @property({ type: String }) category = 'general';
+  /** The section the URL names; '' for none, which is the section list on a
+   *  phone and General on a desktop. */
+  @property({ type: String }) category = '';
   @state() private settingsState!: SettingsState;
-  @state() private isMobile = window.innerWidth <= 768;
-  @state() private mobileSidebarOpen = false;
-  @state() private username = '';
-  @state() private isScrolled = false;
-  @state() private sidebarWidth = 250;
-  @state() private sidebarCollapsed = false;
-  @state() private isSidebarDragging = false;
+  @state() private isMobile = window.innerWidth <= MOBILE_MAX_WIDTH;
 
-  static styles = [
-    sidebarLayoutStyles,
-    css`
+  static styles = css`
     :host {
-      /* The collapsed strip's slide (sidebarLayoutStyles): a section's icon
-         sits 28px in (alps-category-item's 12px margin and 16px padding, with
-         no content padding), so 20px brings it 8px inside the strip. */
-      --strip-slide: 20px;
+      position: fixed;
+      inset: 0;
+      z-index: ${SETTINGS_WINDOW_Z};
       display: flex;
-      flex-direction: column;
-      height: 100vh;
-      width: 100vw;
-      background-color: var(--bg-primary);
-      color: var(--text-primary);
-      overflow: hidden;
-      /* Not a scroll container: see the mailbox page's host. */
-      overflow: clip;
-      font-size: 14px;
+      align-items: center;
+      justify-content: center;
     }
 
-    .settings-title {
-      font-family: var(--font-heading);
+    /* The composer's backdrop when it is expanded: the page beneath, dimmed. */
+    .backdrop {
+      position: absolute;
+      inset: 0;
+      background: var(--modal-backdrop, rgba(255, 255, 255, 0.8));
+    }
+
+    /* The composer's frame, rounded on all four corners as an expanded one is. */
+    .window-frame {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+      width: min(960px, calc(100vw - 48px));
+      height: min(860px, calc(100vh - 48px));
+      height: min(860px, calc(100dvh - 48px));
+      background: var(--bg-primary);
+      border-radius: 8px;
+      box-shadow: rgba(95, 95, 95, 0.15) 0 4px 12px 0px;
+      border: 1px solid var(--border-color);
+      overflow: hidden;
+    }
+
+    /* The composer's title bar, without its Minimize and Expand. */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 6px 6px 10px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-color);
+    }
+
+    .header-title {
       font-weight: 500;
-      font-size: 16px;
-      color: var(--text-primary);
+      font-size: 14px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      text-align: center;
-    }
-
-    .app-container.collapsed .main-view {
-      box-shadow: rgba(95, 95, 95, 0.1) -4px 0 4px -2px;
-      z-index: 25;
-      border-left: 1px solid var(--border-color);
-      position: relative;
-    }
-
-    .sidebar-wrapper.collapsed alps-category-item {
-      border-radius: 6px 0 0 6px;
-    }
-
-    .sidebar-content {
       flex: 1;
+    }
+
+    .settings-layout {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      color: var(--text-primary);
+      font-size: 14px;
+    }
+
+    .sections {
+      flex: 0 0 220px;
+      box-sizing: border-box;
       overflow-y: auto;
       overflow-x: hidden;
       padding: 8px 0;
-    }
-
-    alps-sidebar::part(sidebar) {
-      padding-top: 0;
+      border-right: 1px solid var(--border-color);
     }
 
     .main-view {
       flex: 1;
+      min-width: 0;
       overflow-y: auto;
-      padding: 16px;
+      padding: 24px 32px;
       background: var(--bg-primary);
     }
 
-    select {
-      width: 100%;
-      box-sizing: border-box;
-      padding: var(--input-padding, 8px 12px);
-      border: 1px solid var(--border-color);
-      border-radius: var(--input-radius, 6px);
-      background-color: var(--bg-primary);
+    .settings-content-wrapper {
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    .category-title {
+      margin: 0 0 24px;
+      font-family: var(--font-heading);
+      font-size: 18px;
+      font-weight: 600;
       color: var(--text-primary);
-      font-size: var(--input-font-size, 14px);
-      outline: none;
+    }
+
+    .back-to-sections {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0 0 12px;
+      padding: 4px 8px 4px 4px;
+      border: none;
+      border-radius: 6px;
+      background: none;
+      color: var(--text-primary);
+      font: inherit;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .back-to-sections:hover {
+      background: var(--hover-color);
+    }
+    .back-to-sections svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
+    /* A phone shows the whole screen, one column at a time: the list, or one
+       section. */
+    @media (max-width: ${MOBILE_MAX_WIDTH}px) {
+      .window-frame {
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        border: none;
+        border-radius: 0;
+      }
+      .sections {
+        flex: 1;
+        border-right: none;
+      }
+      .main-view {
+        padding: 16px;
+      }
     }
 
     select:focus, input:focus, textarea:focus {
@@ -114,7 +208,7 @@ export class SettingsPage extends LitElement {
       box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
     }
 
-    input[type="text"], input[type="password"], input[type="number"], textarea {
+    textarea {
       width: 100%;
       box-sizing: border-box;
       padding: var(--input-padding, 8px 12px);
@@ -125,9 +219,6 @@ export class SettingsPage extends LitElement {
       font-size: var(--input-font-size, 14px);
       outline: none;
       font-family: var(--font-base);
-    }
-
-    textarea {
       min-height: 80px;
       resize: vertical;
     }
@@ -146,77 +237,84 @@ export class SettingsPage extends LitElement {
       height: 16px;
       cursor: pointer;
     }
+  `;
 
-    svg.icon {
-      width: 20px;
-      height: 20px;
-      fill: currentColor;
-    }
-
-    .header-icon-btn {
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      padding: 4px;
-    }
-    
-    .header-icon-btn svg {
-      width: 20px;
-      height: 20px;
-      fill: currentColor;
-    }
-
-    .header-left {
-      display: flex;
-      align-items: center;
-    }
-
-    .back-btn {
-      gap: 6px;
-      font-weight: 500;
-      color: var(--text-primary);
-      transition: color 0.2s;
-    }
-  `];
+  /** Where focus was when the window opened, to give back when it closes. */
+  private previouslyFocused: Element | null = null;
 
   private _handleResize = () => {
-    this.isMobile = window.innerWidth <= 768;
-    if (!this.isMobile) {
-      this.mobileSidebarOpen = false;
+    this.isMobile = window.innerWidth <= MOBILE_MAX_WIDTH;
+  };
+
+  /**
+   * Escape closes the window, unless the key is somebody else's.
+   *
+   * On the DOCUMENT, not the window, because focus is not always inside it:
+   * a click on the dimmed page leaves it on the body. What is excluded is
+   * what Escape already means something to: an open dialog or menu anywhere
+   * on the key's path (a confirm, a dropdown: one press closes THAT, and must
+   * not take the window with it), and a composer floating above this window.
+   */
+  private onDocumentKeydown = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    for (const node of e.composedPath()) {
+      if (node instanceof HTMLDialogElement && node.open) return;
+      if (node instanceof HTMLElement && node.localName === 'alps-floating-composer') return;
     }
+    e.preventDefault();
+    this.requestClose();
   };
 
-  private _handleScroll = (e: Event) => {
-    const target = e.target as HTMLElement;
-    this.isScrolled = target.scrollTop > 0;
+  /** Which sections exist is the session's answer: a direct #/settings load
+   * draws before app-root has read which plugins are enabled. */
+  private handlePluginsUpdated = () => {
+    this.requestUpdate();
   };
 
-  async connectedCallback() {
+  /** The section to show: the one asked for, or General on a desktop when
+   * none is. */
+  private get shownCategory(): string {
+    return this.category || (this.isMobile ? '' : 'general');
+  }
+
+  connectedCallback() {
     super.connectedCallback();
+    // Before anything here can move it.
+    this.previouslyFocused = deepActiveElement();
+    document.addEventListener('keydown', this.onDocumentKeydown);
     this.settingsStore.addEventListener('change', this._handleSettingsChange);
     this.i18nStore?.addEventListener('change', this._handleI18nChange);
     window.addEventListener('resize', this._handleResize);
+    window.addEventListener('plugins-updated', this.handlePluginsUpdated);
     this._syncState();
-
-    try {
-      const response = await fetch('/session');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.Username) this.username = data.Username;
-      }
-    } catch (e) {
-      Logger.error('Failed to fetch username in settings', e);
-    }
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    document.removeEventListener('keydown', this.onDocumentKeydown);
     this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
     window.removeEventListener('resize', this._handleResize);
+    window.removeEventListener('plugins-updated', this.handlePluginsUpdated);
+    // Cleared first: this element can be re-connected, and a stale target from
+    // a previous open is worse than none.
+    const target = this.previouslyFocused as HTMLElement | null;
+    this.previouslyFocused = null;
+    if (target?.isConnected) target.focus?.();
+  }
+
+  /**
+   * Focus moves in, onto the current section (or the way back to the list,
+   * on a phone showing one section), so the keyboard starts where the eye
+   * does. Unless it is already inside: a click that landed first wins.
+   */
+  protected firstUpdated() {
+    const root = this.shadowRoot!;
+    if (root.activeElement) return;
+    const target = root.querySelector('alps-category-item[active]')
+      ?? root.querySelector('.back-to-sections')
+      ?? root.querySelector('alps-category-item');
+    (target as HTMLElement | null)?.focus();
   }
 
   private _handleSettingsChange = () => {
@@ -229,7 +327,6 @@ export class SettingsPage extends LitElement {
 
   private _syncState() {
     this.settingsState = { ...this.settingsStore.getState() };
-    this.sidebarCollapsed = this.settingsState.sidebarCollapsed || false;
   }
 
   private getCategoryLabel(category: string) {
@@ -241,7 +338,7 @@ export class SettingsPage extends LitElement {
       case 'reading': return this.i18nStore?.t('settings.categories.reading');
       case 'appearance': return this.i18nStore?.t('settings.categories.appearance');
       case 'localization': return this.i18nStore?.t('settings.categories.localization');
-      default: 
+      default:
         const pluginTab = registry.getSettingsTabs().find(t => t.id === category);
         if (pluginTab) {
           return this.i18nStore?.t(pluginTab.labelKey);
@@ -250,12 +347,33 @@ export class SettingsPage extends LitElement {
     }
   }
 
+  /** Asks the shell for `category`; '' is the section list on a phone. The
+   * section already open is no move at all. */
   private selectCategory(category: string) {
-    window.location.hash = `/settings/${category}`;
-    if (this.isMobile) {
-      this.mobileSidebarOpen = false;
+    if (category === this.shownCategory) return;
+    this.leave(() => this.dispatchEvent(new CustomEvent('settings-category', {
+      detail: { category },
+      bubbles: true,
+      composed: true,
+    })));
+  }
+
+  private requestClose() {
+    this.leave(() => this.dispatchEvent(new CustomEvent('settings-close', { bubbles: true, composed: true })));
+  }
+
+  /**
+   * Leaves the open section, by `action`, committing the field being typed in
+   * first. The signature, the display name and the reply-to save on `change`,
+   * which a field fires as it loses focus; Escape would otherwise remove it
+   * while it still had focus, and the last thing typed into it would be gone.
+   */
+  private leave(action: () => void) {
+    const active = deepActiveElement();
+    if (active instanceof HTMLElement && (active.localName === 'input' || active.localName === 'textarea' || active.isContentEditable)) {
+      active.blur();
     }
-    closeSidebarPeek(this.renderRoot);
+    action();
   }
 
   private async handleUpdate(e: Event, key: keyof SettingsState) {
@@ -264,7 +382,7 @@ export class SettingsPage extends LitElement {
 
     if (target.type === 'checkbox') {
       val = (target as HTMLInputElement).checked;
-      
+
       if (key === 'desktopNotifications' && val === true) {
         if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
           const permission = await Notification.requestPermission();
@@ -286,134 +404,83 @@ export class SettingsPage extends LitElement {
     this.settingsStore.updateSettings({ [key]: val } as any);
   }
 
-  render() {
+  private renderSection(id: string, icon: string, label: string | undefined, category: string) {
     return html`
-      <alps-header 
-        .username=${this.username}
-        .isMobile=${this.isMobile}
-        .scrolled=${this.isScrolled}
-        currentTab="settings"
-        @toggle-sidebar=${() => this.mobileSidebarOpen = !this.mobileSidebarOpen}
-      >
-        <div slot="left" class="header-left">
-          ${!this.isMobile ? html`
-            <button class="header-icon-btn back-btn" @click=${() => window.location.hash = ''} title=${this.i18nStore?.t('messageReader.back')}>
-              ${renderIcon('arrowLeft')} ${this.i18nStore?.t('messageReader.back')}
-            </button>
-          ` : ''}
+      <alps-category-item
+        ?active=${category === id}
+        @click=${() => this.selectCategory(id)}
+        .icon=${icon}
+      >${label}</alps-category-item>`;
+  }
+
+  private renderSections(category: string) {
+    const t = (key: string) => this.i18nStore?.t(key);
+    return html`
+      <nav class="sections">
+        ${this.renderSection('general', 'gear', t('settings.categories.general'), category)}
+        ${this.renderSection('reading', 'bookOpen', t('settings.categories.reading'), category)}
+        ${this.renderSection('appearance', 'palette', t('settings.categories.appearance'), category)}
+        ${this.renderSection('localization', 'globe', t('settings.categories.localization'), category)}
+        ${this.renderSection('identity', 'user', t('settings.categories.identity'), category)}
+        ${this.renderSection('accounts', 'users', t('settings.categories.accounts'), category)}
+        ${this.renderSection('webauthn', 'fingerprint', t('settings.categories.webauthn'), category)}
+        ${registry.getSettingsTabs().map(tab => this.renderSection(tab.id, tab.icon, t(tab.labelKey), category))}
+      </nav>
+    `;
+  }
+
+  private renderContent(category: string) {
+    if (!this.settingsState) return html`<div>${this.i18nStore?.t('settings.loading')}</div>`;
+    return html`
+      ${category === 'general' ? this.renderGeneral() : ''}
+      ${category === 'identity' ? this.renderIdentity() : ''}
+      ${category === 'accounts' ? html`<settings-accounts></settings-accounts>` : ''}
+      ${category === 'webauthn' ? html`<alps-webauthn-settings></alps-webauthn-settings>` : ''}
+      ${category === 'reading' ? this.renderReading() : ''}
+      ${category === 'appearance' ? this.renderAppearance() : ''}
+      ${category === 'localization' ? this.renderLocalization() : ''}
+      ${registry.getSettingsTabs()
+          .filter(tab => tab.id === category)
+          .map(tab => loadComponent(tab, () => this.requestUpdate())
+            ? html`${unsafeHTML(`<${tab.component}></${tab.component}>`)}`
+            : html`<alps-page-load-error></alps-page-load-error>`)
+      }
+    `;
+  }
+
+  render() {
+    const category = this.shownCategory;
+    // A phone shows one column: the list until a section is chosen, then the
+    // section with a way back to the list.
+    const showSections = !this.isMobile || category === '';
+    const showContent = category !== '';
+    const t = (key: string) => this.i18nStore?.t(key) ?? '';
+    const title = t('settings.title');
+    return html`
+      <div class="backdrop"></div>
+      <div class="window-frame" role="dialog" aria-label=${title}>
+        <div class="header">
+          <div class="header-title">${title}</div>
+          <alps-icon-btn
+            class="close-btn"
+            title=${t('general.close')}
+            icon="x"
+            @click=${() => this.requestClose()}
+          ></alps-icon-btn>
         </div>
-        <div slot="center" class="settings-title">${this.i18nStore?.t('settings.title')} / ${this.getCategoryLabel(this.category)}</div>
-      </alps-header>
-      <div class="app-container ${this.sidebarCollapsed && !this.isMobile ? 'collapsed' : ''} ${this.isSidebarDragging ? 'dragging' : ''}" style="${!this.sidebarCollapsed && !this.isMobile ? `--sidebar-width: ${this.sidebarWidth}px;` : ''}">
-        <alps-sidebar
-          class="${this.isMobile ? 'mobile-sidebar' : 'desktop-sidebar'} ${this.mobileSidebarOpen ? 'open' : ''}"
-          .isMobile=${this.isMobile}
-          .isOpen=${this.mobileSidebarOpen}
-          .width=${this.sidebarWidth}
-          .hideFooterDivider=${true}
-          .showMobileBack=${true}
-          .collapsed=${this.sidebarCollapsed && !this.isMobile}
-          @sidebar-resize=${(e: CustomEvent) => {
-            const newWidth = e.detail.newWidth;
-            if (newWidth < 120) {
-              if (!this.sidebarCollapsed) this.settingsStore.updateSettings({ sidebarCollapsed: true });
-              this.sidebarWidth = 250;
-            } else {
-              if (this.sidebarCollapsed) this.settingsStore.updateSettings({ sidebarCollapsed: false });
-              this.sidebarWidth = Math.min(Math.max(newWidth, 150), 500);
-            }
-          }}
-          @drag-start=${() => this.isSidebarDragging = true}
-          @drag-end=${() => this.isSidebarDragging = false}
-          @toggle-collapse=${() => this.settingsStore.updateSettings({ sidebarCollapsed: !this.sidebarCollapsed })}
-          @close-sidebar=${() => this.mobileSidebarOpen = false}
-        >
-          <!-- Frame and content follow the strip state alps-sidebar
-               provides: collapsed, they keep everything, dimmed, inert and
-               behind the main view. -->
-          <alps-sidebar-frame class="sidebar-wrapper">
-            <alps-sidebar-content class="sidebar-content">
-              <div class="sidebar-scroll-content">
-                <alps-category-item 
-            ?active=${this.category === 'general'}
-            @click=${() => this.selectCategory('general')}
-            icon="gear"
-          >
-            ${this.i18nStore?.t('settings.categories.general')}
-          </alps-category-item>
-          <alps-category-item 
-            ?active=${this.category === 'reading'}
-            @click=${() => this.selectCategory('reading')}
-            icon="bookOpen"
-          >
-            ${this.i18nStore?.t('settings.categories.reading')}
-          </alps-category-item>
-          <alps-category-item 
-            ?active=${this.category === 'appearance'}
-            @click=${() => this.selectCategory('appearance')}
-            icon="palette"
-          >
-            ${this.i18nStore?.t('settings.categories.appearance')}
-          </alps-category-item>
-          <alps-category-item 
-            ?active=${this.category === 'localization'}
-            @click=${() => this.selectCategory('localization')}
-            icon="globe"
-          >
-            ${this.i18nStore?.t('settings.categories.localization')}
-          </alps-category-item>
-          <alps-category-item 
-            ?active=${this.category === 'identity'}
-            @click=${() => this.selectCategory('identity')}
-            icon="user"
-          >
-            ${this.i18nStore?.t('settings.categories.identity')}
-          </alps-category-item>
-          <alps-category-item 
-            ?active=${this.category === 'accounts'}
-            @click=${() => this.selectCategory('accounts')}
-            icon="users"
-          >
-            ${this.i18nStore?.t('settings.categories.accounts')}
-          </alps-category-item>
-          <alps-category-item 
-            ?active=${this.category === 'webauthn'}
-            @click=${() => this.selectCategory('webauthn')}
-            icon="fingerprint"
-          >
-            ${this.i18nStore?.t('settings.categories.webauthn')}
-          </alps-category-item>
-          ${registry.getSettingsTabs()
-            .map(tab => html`
-            <alps-category-item 
-              ?active=${this.category === tab.id}
-              @click=${() => this.selectCategory(tab.id)}
-              .icon=${tab.icon}
-            >
-              ${this.i18nStore?.t(tab.labelKey)}
-            </alps-category-item>
-          `)}
+        <div class="settings-layout">
+          ${showSections ? this.renderSections(category) : ''}
+          ${showContent ? html`
+            <main class="main-view">
+              <div class="settings-content-wrapper">
+                ${this.isMobile ? html`
+                  <button class="back-to-sections" @click=${() => this.selectCategory('')}>
+                    ${renderIcon('arrowLeft')} ${title}
+                  </button>` : ''}
+                <h1 class="category-title">${this.getCategoryLabel(category)}</h1>
+                ${this.renderContent(category)}
               </div>
-            </alps-sidebar-content>
-          </alps-sidebar-frame>
-        </alps-sidebar>
-        
-        <div class="main-view" @scroll=${this._handleScroll}>
-          ${!this.settingsState ? html`<div>${this.i18nStore?.t('settings.loading')}</div>` : html`
-            ${this.category === 'general' ? this.renderGeneral() : ''}
-            ${this.category === 'identity' ? this.renderIdentity() : ''}
-            ${this.category === 'accounts' ? html`<settings-accounts></settings-accounts>` : ''}
-            ${this.category === 'webauthn' ? html`<alps-webauthn-settings></alps-webauthn-settings>` : ''}
-            ${this.category === 'reading' ? this.renderReading() : ''}
-            ${this.category === 'appearance' ? this.renderAppearance() : ''}
-            ${this.category === 'localization' ? this.renderLocalization() : ''}
-            ${registry.getSettingsTabs()
-                .filter(tab => tab.id === this.category)
-                .map(tab => loadComponent(tab, () => this.requestUpdate())
-                  ? html`${unsafeHTML(`<${tab.component}></${tab.component}>`)}`
-                  : html`<alps-page-load-error></alps-page-load-error>`)
-            }
-          `}
+            </main>` : ''}
         </div>
       </div>
     `;

@@ -566,7 +566,8 @@ export const de: TranslationDictionary = {
     expand: "Aufklappen",
     collapse: "Zuklappen",
     moreOptions: "Weitere Optionen",
-    notFound: "Seite nicht gefunden"
+    notFound: "Seite nicht gefunden",
+    close: "Schließen"
   },
   webauthn: {
     title: 'Sicherheitsschlüssel-Überprüfung',

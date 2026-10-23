@@ -564,7 +564,8 @@ export const es = {
     expand: "Expandir",
     collapse: "Contraer",
     moreOptions: "Más opciones",
-    notFound: "Página no encontrada"
+    notFound: "Página no encontrada",
+    close: "Cerrar"
   },
   webauthn: {
     title: 'Verificación de clave de seguridad',

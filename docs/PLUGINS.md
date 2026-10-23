@@ -115,6 +115,8 @@ registry.registerSettingsTab({
 });
 ```
 
+A settings tab is a section of the Settings window, at `#/settings/<id>`. The window opens over the page the user was on, which stays mounted beneath it, and Close, Escape and the browser's Back all return to that page as it was.
+
 ### Adding Navigation Tabs & Routes
 
 If your plugin provides a full-page view (like CalDAV or CardDAV), you must register both a Route and a NavTab:
@@ -136,6 +138,17 @@ registry.registerNavTab({
     icon: 'extension',
     order: 50 // Determines position in the sidebar
 });
+```
+
+A page that reads or writes its own URL must leave the Settings window's alone. While Settings is open the page stays mounted beneath it, and the URL is `#/settings/<section>`: a page that reads that as its own resets itself, and one that writes its URL over it (after a save, a sync, a live update) closes the window. Ask first:
+
+```typescript
+import { isSettingsHash } from '../../../frontend/src/utils/routes';
+
+private handleHashChange = () => {
+    if (isSettingsHash(window.location.hash)) return;
+    // ...read the page's view from the URL
+};
 ```
 
 ### Creating Web Components

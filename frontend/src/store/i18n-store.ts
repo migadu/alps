@@ -41,7 +41,7 @@ export const en = combinedEn as TranslationDictionary;
  * from here.
  *
  * The two Serbian codes are alps's OWN, and they are the opposite way round
- * from what the tag names suggest: settings-page offers `rs` under the label
+ * from what the tag names suggest: settings-window offers `rs` under the label
  * `serbian` ("Српски (ћирилица)") and `sr` under `serbianLatin` ("Srpski
  * (latinica)"), and the dictionaries match: rs.ts is Cyrillic, sr.ts Latin.
  * Mapped the other way, `sr-Latn` would be stamped on the Cyrillic dictionary

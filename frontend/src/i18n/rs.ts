@@ -582,7 +582,8 @@ export const rs = {
     expand: "Прошири",
     collapse: "Скупи",
     moreOptions: "Више опција",
-    notFound: "Страница није пронађена"
+    notFound: "Страница није пронађена",
+    close: "Затвори"
   },
   webauthn: {
     title: 'Верификација безбедносног кључа',

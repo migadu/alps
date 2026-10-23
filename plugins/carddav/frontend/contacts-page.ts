@@ -22,6 +22,7 @@ import { MailboxPage } from '../../../frontend/src/pages/mailbox-page';
 import { MessageList } from '../../../frontend/src/components/message-list';
 import { contactsService } from './contacts-service';
 import { isVersionConflict, outcomeUnknown } from '../../../frontend/src/utils/fetch-utils';
+import { isSettingsHash } from '../../../frontend/src/utils/routes';
 
 /** Where the categories this user created, with no one filed into them yet, are kept. */
 const categoriesKeyFor = (username: string) => `alps_contacts_categories_${username}`;
@@ -358,6 +359,10 @@ export class ContactsPage extends LitElement {
   }
 
   private _handleHashChange = () => {
+    // The Settings window, opened over this page: the URL is the window's.
+    // Read as an address naming no card, it closed the card being read, and
+    // an edit with it.
+    if (isSettingsHash(window.location.hash)) return;
     // Remove any existing temporary contacts
     this.contacts = this.contacts.filter((c: any) => !c.isTemporary);
 
@@ -418,6 +423,9 @@ export class ContactsPage extends LitElement {
    * event did after the assignment it replaces.
    */
   private writeHash(hash: string, entry: HashEntry) {
+    // Nothing while the Settings window is open over the page: the URL is the
+    // window's, and a rewrite would replace it and close the window.
+    if (isSettingsHash(window.location.hash)) return;
     if (window.location.hash === hash) return;
     if (entry === 'push') {
       window.location.hash = hash;

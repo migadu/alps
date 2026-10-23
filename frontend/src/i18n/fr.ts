@@ -564,7 +564,8 @@ export const fr = {
     expand: "Développer",
     collapse: "Réduire",
     moreOptions: "Plus d\u2019options",
-    notFound: "Page introuvable"
+    notFound: "Page introuvable",
+    close: "Fermer"
   },
   webauthn: {
     title: 'Vérification de la clé de sécurité',

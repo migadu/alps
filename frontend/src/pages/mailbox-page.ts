@@ -25,6 +25,7 @@ import { MessageCache } from '../utils/message-cache';
 import { getDestinationLabel, getFlexContainerMinWidth } from '../utils/ui';
 import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/message-key';
 import { canonicalRecipient, parseWrittenAddress } from '../utils/address-display';
+import { isSettingsHash } from '../utils/routes';
 
 const UNDO_TOAST_TIMEOUT_MS = 10000;
 
@@ -663,8 +664,10 @@ export class MailboxPage extends LitElement {
     // The Messages tab sends a return to `#/`, which names the Inbox. Coming
     // back, that means "the mail", not "the Inbox": put the URL back on the
     // folder, page, search and message that were on screen. A link naming a
-    // mailbox of its own is followed as it stands.
-    if (returning && !window.location.hash.startsWith('#/mailbox/')) {
+    // mailbox of its own is followed as it stands. Not under the Settings
+    // window, whose URL this is not: see `updateUrl`.
+    const hash = window.location.hash;
+    if (returning && !hash.startsWith('#/mailbox/') && !isSettingsHash(hash)) {
       window.history.replaceState(null, '', this.hashFor(this.currentMailbox, this.currentPage, this.targetUid, this.filterQuery, this.targetMailbox));
     }
     const heldView = [this.currentMailbox, this.currentPage, this.filterQuery].join('\n');
@@ -751,7 +754,9 @@ export class MailboxPage extends LitElement {
     this.targetMailbox = mailbox !== this.currentMailbox ? mailbox : null;
 
     // Rewritten without a hashchange, so a reload opens the new draft and
-    // nothing is fetched again now.
+    // nothing is fetched again now. Not under the Settings window: see
+    // `updateUrl`.
+    if (isSettingsHash(window.location.hash)) return;
     window.history.replaceState(null, '', this.hashFor(this.currentMailbox, this.currentPage, this.targetUid, this.filterQuery, this.targetMailbox));
   }
 
@@ -1126,7 +1131,10 @@ export class MailboxPage extends LitElement {
       const perPage = data.MessagesPerPage || this.messagesPerPage;
       const last = Math.max(0, Math.ceil(data.Total / perPage) - 1);
       this.currentPage = last;
-      window.history.replaceState(null, '', this.hashFor(this.currentMailbox, last, this.targetUid, this.filterQuery, this.targetMailbox));
+      // Not under the Settings window: see `updateUrl`.
+      if (!isSettingsHash(window.location.hash)) {
+        window.history.replaceState(null, '', this.hashFor(this.currentMailbox, last, this.targetUid, this.filterQuery, this.targetMailbox));
+      }
       messageSync.fetch(this.currentMailbox, last, this.filterQuery, false, true);
       return;
     } else {
@@ -1228,6 +1236,10 @@ export class MailboxPage extends LitElement {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     if (this.showDeleteConfirm) return;
+    // The Settings window is over this page. A click on its dimmed backdrop
+    // leaves focus on the body, and an arrow from there moved the message
+    // list nobody could see.
+    if (isSettingsHash(window.location.hash)) return;
     // The composed path, because the list, the sidebar and every popup are
     // shadow roots that `closest()` cannot see out of.
     const path = e.composedPath().filter((n): n is HTMLElement => n instanceof HTMLElement);
@@ -1248,6 +1260,11 @@ export class MailboxPage extends LitElement {
   };
 
   private handleHashChange = () => {
+    // The Settings window, opened over this page: the URL is the window's, and
+    // this page is still the one beneath it. Read as a URL naming no folder it
+    // was the Inbox, which dropped the open message and the search the window
+    // closes back onto.
+    if (isSettingsHash(window.location.hash)) return;
     const oldMailbox = this.currentMailbox;
     const oldPage = this.currentPage;
     const oldUid = this.targetUid;
@@ -1326,6 +1343,13 @@ export class MailboxPage extends LitElement {
    * and the same UID can be in each of them.
    */
   private updateUrl(mailbox: string, page: number, uid: string | null, filterQuery: string | null = this.filterQuery, uidMailbox: string | null = null) {
+    // Nothing while the Settings window is open over the page: the URL is the
+    // window's, and assigning it would close the window. A sync still lands
+    // beneath it (a folder deleted elsewhere, a message gone), and the same
+    // holds for the silent rewrites (`followAutosavedSelection`, a page past
+    // the last), which would also drop the history entry's record of where
+    // the window closes to.
+    if (isSettingsHash(window.location.hash)) return;
     window.location.hash = this.hashFor(mailbox, page, uid, filterQuery, uidMailbox);
   }
 

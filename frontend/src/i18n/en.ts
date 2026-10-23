@@ -611,7 +611,8 @@ export const en = {
     expand: "Expand",
     collapse: "Collapse",
     moreOptions: "More options",
-    notFound: "Page not found"
+    notFound: "Page not found",
+    close: "Close"
   }
 };
 

@@ -14,6 +14,7 @@ import '../../../frontend/src/components/ui-prompt';
 import '../../../frontend/src/components/ui-confirm';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { isSessionExpiry } from '../../../frontend/src/utils/fetch-utils';
+import { isSettingsHash } from '../../../frontend/src/utils/routes';
 import { taskTellsSomeone, calendarService, getCalendarColor } from './calendar-service';
 import { formatDue, inSmartList, intlLocale, isClosed, scopeOf, tasksService } from './tasks-service';
 import type { SmartList, TaskData, TaskList, TaskScope } from './tasks-service';
@@ -297,8 +298,11 @@ export class TasksPage extends LitElement {
     }
 
     /** Goes to a view. The user's own move, so a history entry; completing a
-     * bare address is not (see parseHash). */
+     * bare address is not (see parseHash). Not while the Settings window is
+     * open over the page: the URL is the window's, and assigning it would
+     * close the window. */
     navigate(list: SmartList, calendar = this.selectedCalendar, query = this.searchQuery) {
+        if (isSettingsHash(window.location.hash)) return;
         const hash = this.hashFor(list, calendar, query);
         if (window.location.hash !== hash) window.location.hash = hash;
     }
