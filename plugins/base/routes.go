@@ -3194,10 +3194,11 @@ const maxReportedMapping = 1000
 // filedCount is how many messages of batch a move or a copy filed: those the
 // provider names in its answer. A message gone since the page listed it is
 // passed over by an IMAP server without an error, and was counted all the
-// same. A server that names none, as one without UIDPLUS does, has said
-// nothing either way, and the batch counts as asked.
+// same. A nil answer, from a server that does not name its copies, says
+// nothing either way, and the batch counts as asked; an empty one is a batch
+// that had all gone (see provider.MailProvider).
 func filedCount(mapping map[provider.MessageID]provider.MessageID, batch []provider.MessageID) int {
-	if len(mapping) == 0 {
+	if mapping == nil {
 		return len(batch)
 	}
 	return len(mapping)
