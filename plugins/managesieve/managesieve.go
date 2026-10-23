@@ -263,6 +263,7 @@ func (c *MSClient) GetScript(name string) (string, error) {
 				return "", err
 			}
 			if content.Len()+size > maxLiteralBytes {
+				c.conn.Close()
 				return "", fmt.Errorf("script exceeds the %d-byte limit", maxLiteralBytes)
 			}
 			lit := make([]byte, size)
@@ -279,6 +280,10 @@ func (c *MSClient) GetScript(name string) (string, error) {
 			script, _, ok := readQuoted(line)
 			if !ok {
 				return "", fmt.Errorf("GETSCRIPT answered with an unclosed string: %q", line)
+			}
+			if content.Len()+len(script) > maxLiteralBytes {
+				c.conn.Close()
+				return "", fmt.Errorf("script exceeds the %d-byte limit", maxLiteralBytes)
 			}
 			content.WriteString(script)
 			foundScript = true
@@ -375,10 +380,10 @@ func (c *MSClient) readLine() (string, error) {
 // back.
 const maxLiteralBytes = maxScriptBytes
 
-// maxLineBytes is the longest line the client reads, its line break included.
-// The longest a server has reason to send is a script as a quoted string,
-// which is held to the bound of one sent as a literal.
-const maxLineBytes = maxLiteralBytes
+// maxLineBytes includes the worst-case quoted form of a maximum-size
+// script: every byte escaped, plus its quotes and CRLF. GetScript separately
+// bounds decoded content so quoting does not change the script's limit.
+const maxLineBytes = 2*maxLiteralBytes + 4
 
 // parseLiteralSize reads the size from a literal's header, "{size}" or
 // "{size+}", which ends the line. A header that is not one, or a size past
