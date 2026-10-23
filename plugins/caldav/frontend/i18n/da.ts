@@ -18,6 +18,8 @@ export default {
         rename: 'Omdøb',
         delete: 'Slet',
         addCalendar: 'Tilføj kalender',
+        previousMonth: 'Forrige måned',
+        nextMonth: 'Næste måned',
         renameCalendar: 'Omdøb kalender',
         deleteCalendar: 'Slet kalender',
         deleteCalendarConfirm: 'Er du sikker på, at du vil slette kalenderen "{name}"?',

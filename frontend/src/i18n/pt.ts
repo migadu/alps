@@ -592,6 +592,7 @@ export const pt = {
     next: "Próximo",
     expand: "Expandir",
     collapse: "Recolher",
+    moreOptions: "Mais opções",
     notFound: "Página não encontrada"
   }
 };

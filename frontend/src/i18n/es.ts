@@ -546,6 +546,7 @@ export const es = {
     next: "Siguiente",
     expand: "Expandir",
     collapse: "Contraer",
+    moreOptions: "Más opciones",
     notFound: "Página no encontrada"
   },
   webauthn: {

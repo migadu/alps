@@ -563,6 +563,7 @@ export const rs = {
     next: "Напред",
     expand: "Прошири",
     collapse: "Скупи",
+    moreOptions: "Више опција",
     notFound: "Страница није пронађена"
   },
   webauthn: {

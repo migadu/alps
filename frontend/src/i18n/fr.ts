@@ -546,6 +546,7 @@ export const fr = {
     next: "Suivant",
     expand: "Développer",
     collapse: "Réduire",
+    moreOptions: "Plus d\u2019options",
     notFound: "Page introuvable"
   },
   webauthn: {

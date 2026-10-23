@@ -1,4 +1,4 @@
-import { LitElement, html, css, type TemplateResult } from 'lit';
+import { LitElement, html, css, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { renderIcon } from '../utils/ui';
@@ -346,6 +346,22 @@ export class FolderList extends LitElement {
 
     .folder-actions:focus-within ~ .folder-badge,
     .folder-actions.popup-open ~ .folder-badge {
+      display: none;
+    }
+
+    /* The menu is shown while the keyboard is in its row, so that Tab
+       reaches it from the folder's name: a button inside display: none is no
+       Tab stop, and so it could never take the focus that shows it. Not
+       while a click has put the focus on the name, or on the expander, whose
+       button a click focuses too: a click leaves the row as it was. Keyed on
+       :focus-within, which holds while the focus moves from the name to the
+       menu; keyed on the name's :focus-visible alone, the menu was hidden
+       again before Tab reached it. */
+    .folder-item:focus-within:not(:has(.folder-name:focus:not(:focus-visible), .folder-toggle-btn:focus)) .folder-actions {
+      display: flex;
+    }
+
+    .folder-item.has-actions:focus-within:not(:has(.folder-name:focus:not(:focus-visible), .folder-toggle-btn:focus)) .folder-badge {
       display: none;
     }
 
@@ -1037,6 +1053,19 @@ export class FolderList extends LitElement {
             this.selectMailbox(node.fullName);
           }
         };
+        // The folder's name is its button, answering Enter and Space as a
+        // <button> does, and Space once while it is held. Not the whole row,
+        // which also holds the expander and the folder's menu: a button may
+        // not contain other controls. A placeholder with nothing below it does
+        // nothing, and is no button; one with folders below it says whether
+        // they are shown.
+        const isControl = !isNoSelect || hasChildren;
+        const handleKeyDown = (e: KeyboardEvent) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          if (e.key === ' ' && e.repeat) return;
+          handleClick(e);
+        };
 
 
         return html`
@@ -1051,8 +1080,9 @@ export class FolderList extends LitElement {
           >
             <alps-icon-btn 
               class="folder-toggle-btn" 
+              title=${this.i18nStore?.t(isExpanded ? 'general.collapse' : 'general.expand')}
               icon=${isExpanded ? 'caretDown' : 'caretRight'}
-              style="visibility: ${hasChildren ? 'visible' : 'hidden'};" 
+              style="visibility: ${hasChildren ? 'visible' : 'hidden'};"
               @click=${(e: Event) => {
             e.stopPropagation();
             if (hasChildren) this.toggleFolder(e, node.fullName);
@@ -1060,7 +1090,13 @@ export class FolderList extends LitElement {
             ></alps-icon-btn>
             
             <div class="folder-icon">${icon}</div>
-            <div class="folder-name">${label}</div>
+            <div class="folder-name"
+              role=${isControl ? 'button' : nothing}
+              tabindex=${isControl ? '0' : nothing}
+              aria-current=${isActive ? 'true' : nothing}
+              aria-expanded=${isNoSelect && hasChildren ? String(isExpanded) : nothing}
+              @keydown=${isControl ? handleKeyDown : nothing}
+            >${label}</div>
             
             ${hasActions ? html`
               <div class="folder-actions ${this.activeKebabMenu === node.fullName ? 'popup-open' : ''}" @click=${(e: Event) => e.stopPropagation()}>
@@ -1070,7 +1106,7 @@ export class FolderList extends LitElement {
                   @popup-open=${() => { this.activeKebabMenu = node.fullName; }}
                   @popup-close=${() => { if (this.activeKebabMenu === node.fullName) this.activeKebabMenu = null; }}
                 >
-                  <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical"></alps-icon-btn>
+                  <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" title=${this.i18nStore?.t('general.moreOptions')}></alps-icon-btn>
                   <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
