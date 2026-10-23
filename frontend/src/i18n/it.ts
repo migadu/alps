@@ -375,7 +375,9 @@ export const it = {
     verifiedSender: 'Mittente verificato',
     unverifiedSender: 'Mittente non verificato',
     senderUnverifiedWarning: 'Il tuo server di posta non è riuscito a verificare questo mittente. Il messaggio potrebbe non provenire da chi dichiara, quindi fai attenzione a link e allegati.',
-    clickToExpand: 'Clicca per espandere il contenuto del messaggio'
+    clickToExpand: 'Clicca per espandere il contenuto del messaggio',
+    loadError: 'Impossibile caricare questo messaggio.',
+    loadErrorRetry: 'Riprova'
   },
   address: {
     directionalControl: 'marcatori di direzione nascosti',

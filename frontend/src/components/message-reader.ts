@@ -51,6 +51,8 @@ interface ThreadMessageItem {
   isSent: boolean;
   mailbox: string;
   expanded: boolean;
+  /** The last read of its body failed: shown as an error with Try again. */
+  loadFailed?: boolean;
 }
 
 /** A message that has not been sent: a draft. */
@@ -208,9 +210,10 @@ export class MessageReader extends LitElement {
       // ends when they have been. It re-opened the message instead, without
       // waiting: the conversation collapsed to the open card and was asked for
       // again, and a read in the old view could land after the new one. A card
-      // never expanded has no body to switch.
+      // never expanded has no body to switch; one whose read failed is read
+      // again, in the new view.
       await Promise.all(this.threadItems
-        .filter(item => item.content || item.loading)
+        .filter(item => item.content || item.loading || item.loadFailed)
         .map(item => this.fetchItemBody(item)));
       return;
     }
@@ -390,6 +393,8 @@ export class MessageReader extends LitElement {
   @state() private content = '';
   @state() private mimeType = '';
   @state() private loading = false;
+  /** The open message's body could not be read. See fetchItemBody. */
+  @state() private loadFailed = false;
   @state() private activeBanners: any[] = [];
   @state() private attachments: any[] = [];
   @state() private allowRemoteResources = false;
@@ -835,6 +840,16 @@ export class MessageReader extends LitElement {
       padding: 24px;
     }
 
+    .reader-load-error {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
     /* A plain-text body has no markup to say which way it runs. Each
        paragraph takes the direction of its own first letter, so a Hebrew or
        Arabic line reads right to left beside English ones. */
@@ -985,6 +1000,7 @@ export class MessageReader extends LitElement {
         this.mimeType = '';
         this.rawMessageHtml = '';
         this.loading = false;
+        this.loadFailed = false;
         this.allowRemoteResources = false;
         this.hasRemoteResources = false;
         this.hasHtml = false;
@@ -1376,6 +1392,7 @@ export class MessageReader extends LitElement {
       this.mimeType = '';
       this.rawMessageHtml = '';
       this.loading = true;
+      this.loadFailed = false;
       this.activeBanners = [];
       this.allowRemoteResources = this.settingsStore?.getState().showRemoteContent === 'always';
       this.hasRemoteResources = false;
@@ -1550,6 +1567,8 @@ export class MessageReader extends LitElement {
     try {
       const cached = MessageCache.get(mailbox, msg.UID.toString(), preferredView);
       let read: Omit<CachedMessage, 'timestamp'>;
+      // The body part could not be read, though the message's metadata was.
+      let bodyFailed = false;
       if (cached) {
         read = cached;
       } else {
@@ -1568,17 +1587,25 @@ export class MessageReader extends LitElement {
         const part = data.Part;
         if (part) {
           const partPathStr = Array.isArray(part.Path) ? part.Path.join('.') : part.Path;
-          const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`);
+          const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`)
+            .catch((e: unknown) => { Logger.error('Failed to fetch message body:', e); return null; });
           if (!current()) return;
-          if (rawRes.status === 401) {
+          if (rawRes?.status === 401) {
             window.location.hash = '/login';
             return;
           }
-          if (rawRes.ok) {
+          if (rawRes?.ok) {
             const raw = await rawRes.text();
             if (!current()) return;
             if ((part.MIMEType || part.MimeType || 'text/plain').toLowerCase() === 'text/html') rawHtml = raw;
             else rawText = raw;
+          } else {
+            // A failure, not a message without text. Skipped, it was shown as
+            // one and cached as one, and every reopen for the next half hour
+            // was served that empty body without asking the server again.
+            // What the metadata said (the attachments, the flags) still holds.
+            if (rawRes) Logger.error('Failed to fetch message body:', rawRes.status);
+            bodyFailed = true;
           }
         }
         read = {
@@ -1611,7 +1638,7 @@ export class MessageReader extends LitElement {
         onRemoteResourceBlocked: () => { hasRemoteResources = true; }
       });
 
-      if (read.Part) {
+      if (read.Part && !bodyFailed) {
         mimeType = read.Part.MIMEType || read.Part.MimeType || 'text/plain';
         if (read.RawHtml !== undefined) {
           // Recomputed for THIS body: the sanitizer below is what raises it.
@@ -1645,7 +1672,7 @@ export class MessageReader extends LitElement {
         }
       }
 
-      if (!cached && MessageCache.generation() === cacheGeneration) {
+      if (!cached && !bodyFailed && MessageCache.generation() === cacheGeneration) {
         MessageCache.set(mailbox, msg.UID.toString(), preferredView, { ...read, HasHTML: hasHtml, HasText: hasText });
       }
 
@@ -1658,10 +1685,11 @@ export class MessageReader extends LitElement {
       item.rawMessageHtml = rawMessageHtml;
       item.activeBanners = activeBanners;
       item.hasRemoteResources = hasRemoteResources;
+      item.loadFailed = bodyFailed;
     } catch (e) {
       if (!current()) return;
       Logger.error('Failed to fetch message:', e);
-      item.content = 'Error loading message.';
+      item.loadFailed = true;
     } finally {
       // A read that was overtaken paints nothing and leaves the card list
       // alone: the newer read does both when it lands.
@@ -1677,6 +1705,7 @@ export class MessageReader extends LitElement {
           this.activeBanners = item.activeBanners;
           this.allowRemoteResources = item.allowRemoteResources;
           this.hasRemoteResources = item.hasRemoteResources;
+          this.loadFailed = !!item.loadFailed;
           this.loading = false;
           this.message = { ...this.message, ...item.message };
         }
@@ -1719,6 +1748,22 @@ export class MessageReader extends LitElement {
       this.updateThreadItemReference(item);
       await this.fetchItemBody(item);
     }
+  }
+
+  /**
+   * Reads a body again whose read failed. Nothing of the failed read was
+   * cached, so this asks the server.
+   */
+  private async retryItemBody(item: ThreadMessageItem | undefined) {
+    if (!item || item.loading) return;
+    item.loading = true;
+    item.loadFailed = false;
+    this.updateThreadItemReference(item);
+    if (this.isOpenItem(item)) {
+      this.loading = true;
+      this.loadFailed = false;
+    }
+    await this.fetchItemBody(item);
   }
 
   private loadRemoteResourcesForItem(item: ThreadMessageItem) {
@@ -2170,6 +2215,7 @@ export class MessageReader extends LitElement {
         .showSenderAvatars=${this.showSenderAvatars}
         @toggle-expansion=${(e: CustomEvent) => this.toggleItemExpansion(e.detail.item)}
         @load-remote-resources=${(e: CustomEvent) => this.loadRemoteResourcesForItem(e.detail.item)}
+        @retry-body=${(e: CustomEvent) => this.retryItemBody(e.detail.item)}
         @toggle-star=${(e: CustomEvent) => this.toggleItemStar(e.detail.item)}
         @delete-item=${(e: CustomEvent) => this.deleteItem(e.detail.item)}
         @action-for-item=${(e: CustomEvent) => this._handleActionForItem(e.detail.action, e.detail.item)}
@@ -2552,7 +2598,14 @@ export class MessageReader extends LitElement {
           ` : ''}
           
           <div class="reader-content-wrapper">
-            ${this.mimeType?.toLowerCase() === 'text/html' ? html`
+            ${this.loadFailed ? html`
+              <div class="reader-load-error">
+                <div>${this.i18nStore?.t('messageReader.loadError')}</div>
+                <alps-button variant="normal" @click=${() => this.retryItemBody(this.threadItems.find(item => this.isOpenItem(item)))}>
+                  ${this.i18nStore?.t('messageReader.loadErrorRetry')}
+                </alps-button>
+              </div>
+            ` : this.mimeType?.toLowerCase() === 'text/html' ? html`
               <iframe 
                 class="reader-iframe"
                 sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"

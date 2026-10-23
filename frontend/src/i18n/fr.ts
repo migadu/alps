@@ -375,7 +375,9 @@ export const fr = {
     verifiedSender: 'Expéditeur vérifié',
     unverifiedSender: 'Expéditeur non vérifié',
     senderUnverifiedWarning: 'Votre serveur de messagerie n\'a pas pu vérifier cet expéditeur. Le message ne vient peut-être pas de qui il prétend être, soyez donc prudent avec ses liens et ses pièces jointes.',
-    clickToExpand: 'Cliquer pour développer le contenu du message'
+    clickToExpand: 'Cliquer pour développer le contenu du message',
+    loadError: 'Impossible de charger ce message.',
+    loadErrorRetry: 'Réessayer'
   },
   address: {
     directionalControl: 'marques de direction invisibles',

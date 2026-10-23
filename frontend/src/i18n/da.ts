@@ -423,7 +423,9 @@ export const da: TranslationDictionary = {
     verifiedSender: 'Bekræftet afsender',
     unverifiedSender: 'Ubekræftet afsender',
     senderUnverifiedWarning: 'Din mailserver kunne ikke bekræfte afsenderen. Beskeden er muligvis ikke fra den, den udgiver sig for at være, så vær forsigtig med links og vedhæftede filer.',
-    clickToExpand: 'Klik for at udvide beskedindholdet'
+    clickToExpand: 'Klik for at udvide beskedindholdet',
+    loadError: 'Beskeden kunne ikke indlæses.',
+    loadErrorRetry: 'Prøv igen'
   },
   address: {
     directionalControl: 'skjulte retningstegn',

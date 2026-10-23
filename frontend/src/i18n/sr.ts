@@ -385,7 +385,9 @@ export const sr = {
     verifiedSender: 'Verifikovan pošiljalac',
     unverifiedSender: 'Neverifikovan pošiljalac',
     senderUnverifiedWarning: 'Vaš server pošte nije mogao da verifikuje ovog pošiljaoca. Poruka možda nije od onoga za koga se predstavlja, zato budite oprezni sa vezama i prilozima.',
-    clickToExpand: 'Kliknite da proširite sadržaj poruke'
+    clickToExpand: 'Kliknite da proširite sadržaj poruke',
+    loadError: 'Nije moguće učitati ovu poruku.',
+    loadErrorRetry: 'Pokušajte ponovo'
   },
   address: {
     directionalControl: 'skrivene oznake smera',
