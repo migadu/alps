@@ -1,9 +1,10 @@
 import { LitElement, html, css, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { consume } from '@lit/context';
+import { consume, provide } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
 import './alps-icon-btn';
+import { sidebarStripContext } from './alps-sidebar-strip';
 
 export const sidebarLayoutStyles = css`
   .app-container {
@@ -36,7 +37,14 @@ export const sidebarLayoutStyles = css`
     overflow: hidden;
     background-color: transparent;
   }
-  .sidebar-wrapper.collapsed .sidebar-content {
+  /* The content follows the strip state alps-sidebar provides
+     (alps-sidebar-strip.ts): in the strip it stays exactly as it is, dimmed,
+     behind the main view and inert. */
+  alps-sidebar-content {
+    display: block;
+    transition: opacity 0.2s ease;
+  }
+  alps-sidebar-content[strip] {
     opacity: 0.5;
     overflow-y: hidden;
     pointer-events: none;
@@ -47,8 +55,7 @@ export const sidebarLayoutStyles = css`
     background-color: transparent;
     z-index: 10;
   }
-  .sidebar-wrapper.collapsed .sidebar-header,
-  :host([collapsed]) .sidebar-header {
+  .sidebar-wrapper.collapsed .sidebar-header {
     padding: 0 14px !important;
     justify-content: flex-start;
   }
@@ -98,9 +105,9 @@ export function closeSidebarPeek(root: ParentNode | null | undefined): void {
  * the pointer inside a sidebar that the copies still counted as hovered, so it
  * collapsed straight into its full-width overlay. Now only a fresh pointer
  * entry, held for PEEK_OPEN_DELAY_MS, opens the overlay; collapsing never does.
- * Pages pass `collapsed` in, listen for `peek-change` (`detail.peeking`) to
- * render their content expanded or as the strip, and call closePeek() when a
- * choice made in the overlay should shut it.
+ * Pages pass `collapsed` in and call closePeek() when a choice made in the
+ * overlay should shut it. What the content needs to know about the strip it
+ * reads from `sidebarStripContext`, so no page tracks the peek.
  */
 @customElement('alps-sidebar')
 export class AlpsSidebar extends LitElement {
@@ -111,8 +118,15 @@ export class AlpsSidebar extends LitElement {
   @property({ type: Boolean }) isOpen = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
   /** Whether the collapsed sidebar is open as its hover overlay. The sidebar
-   *  owns this: read it, or listen for `peek-change`, but do not set it. */
+   *  owns this: read it (or `strip`, which is what the contents read), but do
+   *  not set it. */
   @property({ type: Boolean, reflect: true }) peeking = false;
+
+  /** Whether this is the collapsed strip right now, for everything beneath
+   *  it: collapsed, not peeking, not mobile. Worked out here and nowhere
+   *  else; see alps-sidebar-strip.ts for who reads it. */
+  @provide({ context: sidebarStripContext })
+  strip = false;
   @property({ type: Number }) width = 250;
   @property({ type: Boolean }) hideFooterDivider = false;
 
@@ -340,12 +354,7 @@ export class AlpsSidebar extends LitElement {
       this.clearPeekTimers();
       this.peeking = false;
     }
-  }
-
-  protected updated(changed: PropertyValues<this>) {
-    if (changed.has('peeking') && changed.get('peeking') !== undefined) {
-      this.dispatchEvent(new CustomEvent('peek-change', { detail: { peeking: this.peeking } }));
-    }
+    this.strip = this.collapsed && !this.peeking && !this.isMobile;
   }
 
   private onPointerEnter = () => {

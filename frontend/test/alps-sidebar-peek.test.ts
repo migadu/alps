@@ -23,7 +23,8 @@
  *  - on mobile there is no strip and no overlay.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, mount, record, shadow, shadowAll, update, waitFor } from './helpers/dom';
+import { cleanup, mount, shadow, shadowAll, update, waitFor } from './helpers/dom';
+import { settleSidebar } from './helpers/sidebar';
 import { readSources } from './helpers/sources';
 import { PEEK_CLOSE_DELAY_MS, PEEK_OPEN_DELAY_MS, type AlpsSidebar } from '../src/components/alps-sidebar';
 import '../src/pages/mailbox-page';
@@ -69,17 +70,17 @@ describe('the sidebar', () => {
   describe('peek on hover', () => {
     it('opens only after the hover-intent delay', async () => {
       const el = await sidebar();
-      const changes = record<CustomEvent>(el, 'peek-change');
-
       enter(el);
       await wait(el, PEEK_OPEN_DELAY_MS - 1);
       expect(el.peeking).toBe(false);
       expect(el.hasAttribute('peeking')).toBe(false);
+      expect(el.strip).toBe(true);
 
       await wait(el, 1);
       expect(el.peeking).toBe(true);
       expect(el.hasAttribute('peeking')).toBe(true);
-      expect(changes.map((e) => e.detail.peeking)).toEqual([true]);
+      // What the contents read: open, it is no longer the strip.
+      expect(el.strip).toBe(false);
     });
 
     it('opens nothing when the pointer only passes over the strip', async () => {
@@ -93,7 +94,6 @@ describe('the sidebar', () => {
 
     it('closes after a grace once the pointer leaves, and re-entry keeps it open', async () => {
       const el = await sidebar();
-      const changes = record<CustomEvent>(el, 'peek-change');
       enter(el);
       await wait(el, PEEK_OPEN_DELAY_MS);
       expect(el.peeking).toBe(true);
@@ -108,7 +108,7 @@ describe('the sidebar', () => {
       leave(el);
       await wait(el, PEEK_CLOSE_DELAY_MS);
       expect(el.peeking).toBe(false);
-      expect(changes.map((e) => e.detail.peeking)).toEqual([true, false]);
+      expect(el.strip).toBe(true);
     });
 
     it('never peeks while expanded', async () => {
@@ -193,9 +193,10 @@ describe('the sidebar', () => {
 });
 
 describe('one implementation', () => {
-  // Source pin: the pages pass `collapsed` in and hear `peek-change`; none of
-  // them keeps a hover timer or listens for the pointer itself again.
-  const pages = Object.entries(readSources()).filter(([, source]) => source.includes('<alps-sidebar'));
+  // Source pin: the pages pass `collapsed` in, and their contents read the
+  // strip from the sidebar; none of them keeps a hover timer or listens for
+  // the pointer itself again.
+  const pages = Object.entries(readSources()).filter(([, source]) => /<alps-sidebar[\s>]/.test(source));
   const sidebarContents = Object.entries(readSources()).filter(([path]) => path.endsWith('contacts-categories.ts'));
 
   it('covers the five pages with a sidebar', () => {
@@ -237,12 +238,17 @@ describe('the pages', () => {
     });
   }
 
-  /** Opens the overlay the way the sidebar's hover timer does, and lets the page hear it. */
+  /** Lets the page render and the sidebar's strip state reach its content. */
+  async function settle(page: El): Promise<void> {
+    await page.updateComplete;
+    await settleSidebar(shadow<AlpsSidebar>(page, 'alps-sidebar'));
+  }
+
+  /** Opens the overlay the way the sidebar's hover timer does, and lets the content follow. */
   async function peek(page: El): Promise<AlpsSidebar> {
     const bar = shadow<AlpsSidebar>(page, 'alps-sidebar');
     bar.peeking = true;
-    await bar.updateComplete;
-    await page.updateComplete;
+    await settle(page);
     return bar;
   }
 
@@ -275,30 +281,30 @@ describe('the pages', () => {
     const el = await mount<El>('mailbox-page', { i18nStore, settingsStore: settingsStore(), composeStore: new EventTarget() });
     await waitFor(() => !!el.shadowRoot?.querySelector('alps-folder-list'), 'the folder list');
     const folders = shadow<El>(el, 'alps-folder-list');
-    expect(folders.hasAttribute('collapsed')).toBe(true);
+    await settle(el);
+    expect(strip(folders)).toBe(true);
 
     const bar = await peek(el);
-    expect(folders.hasAttribute('collapsed')).toBe(false);
+    expect(strip(folders)).toBe(false);
 
     folders.dispatchEvent(new CustomEvent('select-mailbox', { detail: { name: 'Archive' } }));
-    await bar.updateComplete;
-    await el.updateComplete;
+    await settle(el);
     expect(bar.peeking).toBe(false);
     // The folder list used to stay expanded, undimmed and clickable in the
     // strip until the pointer left.
-    expect(folders.hasAttribute('collapsed')).toBe(true);
+    expect(strip(folders)).toBe(true);
   });
 
   it('settings: picking a section shuts the overlay', async () => {
     const el = await mount<El>('settings-page', { i18nStore, settingsStore: settingsStore() });
+    await settle(el);
     expect(strip(el)).toBe(true);
 
     const bar = await peek(el);
     expect(strip(el)).toBe(false);
 
     el.selectCategory('reading');
-    await bar.updateComplete;
-    await el.updateComplete;
+    await settle(el);
     expect(bar.peeking).toBe(false);
     expect(strip(el)).toBe(true);
   });
@@ -307,17 +313,14 @@ describe('the pages', () => {
     vi.spyOn(contactsService, 'fetchContacts').mockResolvedValue({ contacts: [] } as never);
     const el = await mount<El>('contacts-page', { i18nStore, settingsStore: settingsStore() });
     const categories = shadow<El>(el, 'alps-contacts-categories');
-    await categories.updateComplete;
+    await settle(el);
     expect(strip(categories)).toBe(true);
 
     const bar = await peek(el);
-    await categories.updateComplete;
     expect(strip(categories)).toBe(false);
 
     categories.dispatchEvent(new CustomEvent('select-category', { detail: { category: 'Family' } }));
-    await bar.updateComplete;
-    await el.updateComplete;
-    await categories.updateComplete;
+    await settle(el);
     expect(bar.peeking).toBe(false);
     expect(strip(categories)).toBe(true);
   });
@@ -326,14 +329,14 @@ describe('the pages', () => {
     window.location.hash = '#/tasks';
     vi.spyOn(tasksService, 'fetchTasks').mockResolvedValue({ tasks: [], calendars: [], failedCalendars: 0 });
     const el = await mount<El>('tasks-page', { i18nStore, settingsStore: settingsStore() });
+    await settle(el);
     expect(strip(el)).toBe(true);
 
     const bar = await peek(el);
     expect(strip(el)).toBe(false);
 
     shadow(el, '.smart-list[data-list="today"]').click();
-    await bar.updateComplete;
-    await el.updateComplete;
+    await settle(el);
     expect(bar.peeking).toBe(false);
     expect(strip(el)).toBe(true);
   });
@@ -346,6 +349,7 @@ describe('the pages', () => {
       vi.spyOn(tasksService, 'fetchTasks').mockResolvedValue({ tasks: [], calendars: [], failedCalendars: 0 });
       const el = await mount<El>('calendar-page', { i18nStore, settingsStore: settingsStore() });
       await waitFor(() => el.loading === false, 'the calendar to load');
+      await settle(el);
       return el;
     }
 
@@ -356,8 +360,7 @@ describe('the pages', () => {
         .find((cell) => !cell.style.opacity && cell.textContent?.trim() === '17');
       expect(day, 'the 17th in the mini calendar').toBeDefined();
       day!.click();
-      await el.updateComplete;
-      await shadow<AlpsSidebar>(el, 'alps-sidebar').updateComplete;
+      await settle(el);
     }
 
     it('shuts the overlay', async () => {

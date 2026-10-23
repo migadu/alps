@@ -59,8 +59,6 @@ export class ContactsPage extends LitElement {
   @state() private sidebarWidth = 250;
   @state() private listWidth = 380;
   @state() private sidebarCollapsed = false;
-  /** Mirrors the sidebar's own hover overlay (`peek-change`). */
-  @state() private sidebarPeeking = false;
   @state() private isMobile = window.innerWidth <= 768;
   @state() private mobileSidebarOpen = false;
   @state() private isSidebarDragging = false;
@@ -1353,16 +1351,12 @@ export class ContactsPage extends LitElement {
           @drag-end=${() => this.isSidebarDragging = false}
           @toggle-collapse=${() => this.settingsStore?.updateSettings({ sidebarCollapsed: !this.sidebarCollapsed })}
           @close-sidebar=${() => this.mobileSidebarOpen = false}
-          @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
         >
           <alps-contacts-categories
             .contacts=${this.allContacts}
             .uniqueCategories=${this.uniqueCategories}
             .selectedCategory=${this.selectedCategory}
             .filterQuery=${this.filterQuery}
-            .sidebarCollapsed=${this.sidebarCollapsed}
-            .sidebarPeeking=${this.sidebarPeeking}
-            .isMobile=${this.isMobile}
             @create-contact=${this.handleCreateNew}
             @select-category=${(e: CustomEvent) => {
         this.clearSearch();

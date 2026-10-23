@@ -19,6 +19,8 @@ import { popupStyles } from './alps-popup';
 import './alps-icon-btn';
 import './alps-create-button';
 import { sidebarLayoutStyles } from './alps-sidebar';
+import { sidebarStripContext } from './alps-sidebar-strip';
+import { sectionHeadingStyles } from './alps-sidebar-heading';
 import './alps-popup';
 
 @customElement('alps-folder-list')
@@ -37,7 +39,9 @@ export class FolderList extends LitElement {
   @property({ type: Object }) expandedFolders = new Set<string>();
   @property({ type: String }) layoutMode = 'vertical';
   @property({ type: Boolean }) syncing = false;
-  @property({ type: Boolean, reflect: true }) collapsed = false;
+  /** Whether the sidebar above is the collapsed strip, which takes no drop. */
+  @consume({ context: sidebarStripContext, subscribe: true })
+  @state() private strip = false;
   @state() private isScrolled = false;
 
   @state() private showCreatePrompt = false;
@@ -175,6 +179,7 @@ export class FolderList extends LitElement {
   static styles = [
     popupStyles,
     sidebarLayoutStyles,
+    sectionHeadingStyles,
     css`
     :host {
       display: flex;
@@ -203,10 +208,6 @@ export class FolderList extends LitElement {
       overflow-y: auto;
       overflow-x: hidden;
       padding: 12px 8px;
-    }
-
-    :host([collapsed]) .sidebar-content {
-      transition: opacity 0.2s ease;
     }
 
     .sidebar-wrapper.collapsed .folder-item {
@@ -380,19 +381,6 @@ export class FolderList extends LitElement {
       .folder-item.active .folder-badge {
         display: block; /* keep badge visible alongside actions on mobile */
       }
-    }
-
-    .sidebar-header-title {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 14px 4px 14px;
-      font-family: var(--font-label);
-      font-size: 12px;
-      text-transform: uppercase;
-      font-weight: 600;
-      color: var(--text-muted);
-      letter-spacing: 0.5px;
     }
 
     .folder-separator {
@@ -742,7 +730,7 @@ export class FolderList extends LitElement {
    * nothing, being inert.
    */
   private takesDrop(e: DragEvent, mb: any): boolean {
-    return !this.collapsed && carriesMessages(e.dataTransfer) && acceptsDroppedMessages(mb, this.mailboxes, this.currentMailbox);
+    return !this.strip && carriesMessages(e.dataTransfer) && acceptsDroppedMessages(mb, this.mailboxes, this.currentMailbox);
   }
 
   /**
@@ -1262,29 +1250,28 @@ export class FolderList extends LitElement {
     };
 
     return html`
-      <div class="sidebar-wrapper ${this.collapsed ? 'collapsed' : ''}">
+      <!-- Frame and content follow the strip state alps-sidebar provides.
+           In the strip the content is inert, not only dimmed:
+           sidebarLayoutStyles gives it pointer-events: none, which keeps the
+           mouse out; inert keeps the keyboard out too, so Tab cannot walk
+           into folder carets clipped past the strip's edge. Compose, above,
+           stays live. -->
+      <alps-sidebar-frame class="sidebar-wrapper">
         <alps-toolbar class="sidebar-header" ?scrolled=${this.isScrolled}>
           <alps-create-button 
             icon="pen"
             ?disabled=${(this.composeStore?.getState()?.activeComposers?.length || 0) >= 3}
             title=${this.i18nStore?.t('folderList.compose')}
-            ?collapsed=${this.hasAttribute('collapsed')}
             @click=${() => this.dispatchEvent(new CustomEvent('compose'))}
           >${this.i18nStore?.t('folderList.compose')}</alps-create-button>
         </alps-toolbar>
-        <!-- Inert in the strip, not only dimmed. sidebarLayoutStyles gives the
-             dimmed content pointer-events: none, which keeps the mouse out;
-             inert keeps the keyboard out too, so Tab cannot walk into folder
-             carets clipped past the strip's edge. Compose, above, stays live. -->
-        <div class="sidebar-content" ?inert=${this.collapsed} @scroll=${this.handleScroll}>
+        <alps-sidebar-content class="sidebar-content" @scroll=${this.handleScroll}>
           <div class="sidebar-scroll-content">
             ${renderTree(standardNodes)}
             ${standardNodes.length > 0 && customNodes.length > 0 ? html`
               <div class="folder-separator"></div>
             ` : ''}
-            <div class="sidebar-header-title">
-              <span>${this.i18nStore?.t('folderList.title')}</span>
-            </div>
+            <alps-sidebar-heading heading=${this.i18nStore?.t('folderList.title') ?? ''}></alps-sidebar-heading>
             ${renderTree(subscribedNodes)}
             ${unsubscribedNodes.length > 0 ? html`
               <button
@@ -1301,8 +1288,8 @@ export class FolderList extends LitElement {
               ${unsubscribedOpen ? renderTree(unsubscribedNodes) : ''}
             ` : ''}
           </div>
-        </div>
-      </div>
+        </alps-sidebar-content>
+      </alps-sidebar-frame>
 
       ${this.showCreatePrompt ? html`
         <ui-prompt

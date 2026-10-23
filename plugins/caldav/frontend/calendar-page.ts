@@ -8,6 +8,8 @@ import { tasksService, type TaskData } from './tasks-service';
 import type { CalendarData, EventData } from './calendar-service';
 import { closeSidebarPeek, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar';
+import '../../../frontend/src/components/alps-sidebar-strip';
+import { sectionHeadingStyles } from '../../../frontend/src/components/alps-sidebar-heading';
 import '../../../frontend/src/components/alps-toggle';
 import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-toolbar';
@@ -86,8 +88,6 @@ export class CalendarPage extends LitElement {
 
     @state() private sidebarWidth = 250;
     @state() private sidebarCollapsed = false;
-    /** Mirrors the sidebar's own hover overlay (`peek-change`). */
-    @state() private sidebarPeeking = false;
     @state() private isMobile = window.innerWidth <= 768;
     @state() private mobileSidebarOpen = false;
     @state() private promptOpen = false;
@@ -114,6 +114,7 @@ export class CalendarPage extends LitElement {
 
     static styles = [
         sidebarLayoutStyles,
+        sectionHeadingStyles,
         popupStyles,
         css`
         :host {
@@ -157,14 +158,6 @@ export class CalendarPage extends LitElement {
         .calendars-list {
             flex: 1;
             overflow-y: auto;
-        }
-
-        .calendars-list h3 {
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-muted, #6b7280);
-            margin: 0 0 12px 0;
         }
 
         .calendar-item {
@@ -1025,22 +1018,22 @@ export class CalendarPage extends LitElement {
                         @drag-start=${() => this.isSidebarDragging = true}
                         @drag-end=${() => this.isSidebarDragging = false}
                         @close-sidebar=${() => this.mobileSidebarOpen = false}
-                        @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
                     >
-                    <div class="sidebar-wrapper ${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile ? 'collapsed' : ''}">
+                    <!-- Frame and content follow the strip state alps-sidebar
+                         provides: collapsed, they keep everything (the
+                         calendars, their menus, the mini-month), dimmed,
+                         inert and behind the main view. -->
+                    <alps-sidebar-frame class="sidebar-wrapper">
                         <alps-toolbar class="sidebar-header">
                             <alps-create-button 
                                 icon="calendarPlus" 
-                                ?collapsed=${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile}
                                 @click=${() => this.openCreateModal()}
                             >${this.i18nStore?.t('calendar.addEvent')}</alps-create-button>
                         </alps-toolbar>
-                        <!-- Inert in the strip, as it is dimmed there: the
-                             calendars, their menus and the mini-month. -->
-                        <div class="sidebar-content" ?inert=${this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile}>
+                        <alps-sidebar-content class="sidebar-content">
                             <div class="sidebar-scroll-content">
                                 <div class="calendars-list">
-                                    <h3>${this.i18nStore?.t('calendar.myCalendars')}</h3>
+                                    <alps-sidebar-heading heading=${this.i18nStore?.t('calendar.myCalendars') ?? ''}></alps-sidebar-heading>
                                     ${this.calendars.map(c => html`
                                         <div class="calendar-item" @click=${() => this.toggleCalendar(c.path)}>
                                             <!-- The calendar's checkbox: one Tab stop, named by
@@ -1108,8 +1101,8 @@ export class CalendarPage extends LitElement {
                                     @date-selected=${(e: CustomEvent) => this.handleDateSelected(e.detail.date)}
                                 ></alps-sidebar-calendar>
                             </div>
-                        </div>
-                    </div>
+                        </alps-sidebar-content>
+                    </alps-sidebar-frame>
                     <alps-icon-btn slot="footer-actions" icon="calendarPlus" title=${this.i18nStore?.t('calendar.addCalendar')} @click=${this.handleAddCalendar}></alps-icon-btn>
                 </alps-sidebar>
 
