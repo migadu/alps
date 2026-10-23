@@ -256,10 +256,15 @@ describe('after a send of a message the autosave had stored', () => {
     toasts[0].detail.dismissFn();
     await waitFor(() => composeStore.closeComposer.mock.calls.length > 0, 'the composer to close after sending');
 
-    // What the next refresh, or the next poll, lists.
+    // What the next refresh, or the next poll, lists. A write's sync first
+    // probes the counts, so wait for its listing rather than inspecting the
+    // requests synchronously while only that status probe has started.
+    const synced = new Promise<CustomEvent>((resolve) => {
+      messageSync.addEventListener('sync-success', (e) => resolve(e as CustomEvent), { once: true });
+    });
     messageSync.sync();
+    expect((await synced).detail.data.ListedMailbox).toBe('INBOX');
     const listed = fetchMock.mock.calls.map(call => String((call as unknown[])[0]));
-    expect(listed.filter(url => url.startsWith('/mailboxes/Drafts'))).toEqual([]);
-    expect(listed.at(-1)).toMatch(/^\/mailboxes\/INBOX\?/);
+    expect(listed).toEqual(['/mailboxes/INBOX/status', '/mailboxes/INBOX?page=0']);
   });
 });
