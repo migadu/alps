@@ -58,6 +58,13 @@ func newTestServerWithSMTP(t *testing.T, smtpServer string) *testServer {
 // the server logs.
 func newTestServerWithLogger(t *testing.T, smtpServer string, logger alps.Logger) *testServer {
 	t.Helper()
+	return newTestServerWithOptions(t, smtpServer, logger, nil)
+}
+
+// newTestServerWithOptions is newTestServerWithLogger for a test that sets
+// options of its own, such as the attachment budgets, through adjust.
+func newTestServerWithOptions(t *testing.T, smtpServer string, logger alps.Logger, adjust func(*alps.Options)) *testServer {
+	t.Helper()
 	base := t.TempDir()
 	passwd := filepath.Join(base, "passwd")
 	if err := os.WriteFile(passwd, []byte(testUser+":{PLAIN}"+testPassword+"\n"), 0o600); err != nil {
@@ -95,6 +102,9 @@ func newTestServerWithLogger(t *testing.T, smtpServer string, logger alps.Logger
 		SMTP:         alps.SMTPOptions{Server: smtpServer},
 		LoginKey:     &key,
 		CacheEnabled: true,
+	}
+	if adjust != nil {
+		adjust(opts)
 	}
 
 	srv, err := alps.New(logger, opts)

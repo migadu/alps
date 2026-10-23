@@ -174,6 +174,43 @@ type Attachment struct {
 	File       *multipart.FileHeader
 	Form       *multipart.Form
 	CreatedAt  time.Time
+
+	// The upload request the file came in, whose files Go keeps in one file
+	// on disk (ReadForm writes every file part of a form to one temporary
+	// file). Removing it with the first attachment of the request to go took
+	// the bytes of all the others, which the session went on holding: a
+	// message then failed to send for want of a file the user had not
+	// removed. It is removed when the last of them goes.
+	upload  *upload
+	removed atomic.Bool
+}
+
+// upload is one upload request's form, and how many hold its files: each of
+// its attachments the session keeps, and the request while it stores them.
+type upload struct {
+	form *multipart.Form
+	held atomic.Int64
+}
+
+func (u *upload) release() {
+	if u.held.Add(-1) == 0 {
+		u.form.RemoveAll()
+	}
+}
+
+// Remove removes the attachment's bytes from disk, once no other attachment
+// from the same upload request holds them. A second call does nothing.
+func (a *Attachment) Remove() {
+	if !a.removed.CompareAndSwap(false, true) {
+		return
+	}
+	if a.upload == nil {
+		if a.Form != nil {
+			a.Form.RemoveAll()
+		}
+		return
+	}
+	a.upload.release()
 }
 
 func (s *Session) ping() {
@@ -679,7 +716,7 @@ func (s *Session) teardown() {
 
 		s.attachmentsLocker.Lock()
 		for _, f := range s.attachments {
-			f.Form.RemoveAll()
+			f.Remove()
 			s.manager.globalAttachmentSize.Add(-f.File.Size)
 		}
 		s.attachments = make(map[string]*Attachment)
@@ -729,8 +766,54 @@ func (sm *SessionManager) MaxAttachmentSize() int64 {
 }
 
 // Puts an attachment and returns a generated UUID
+//
+// form holds the one file in; a request of several files is stored with
+// PutAttachments, so that its files are removed only when the last goes.
 func (s *Session) PutAttachment(composerID string, in *multipart.FileHeader,
 	form *multipart.Form) (string, error) {
+	ids, err := s.putAttachments(composerID, []*multipart.FileHeader{in}, form)
+	if err != nil {
+		return "", err
+	}
+	return ids[0], nil
+}
+
+// PutAttachments keeps the files of one upload request, form's
+// "attachments", and answers their ids in the same order.
+//
+// The request is stored whole or not at all. The ids of the files stored
+// before one was refused are never answered, so nothing would remove them,
+// and they went on counting against the budget, their bytes removed with
+// the refused request's.
+func (s *Session) PutAttachments(composerID string, form *multipart.Form) ([]string, error) {
+	return s.putAttachments(composerID, form.File["attachments"], form)
+}
+
+func (s *Session) putAttachments(composerID string, files []*multipart.FileHeader, form *multipart.Form) ([]string, error) {
+	up := &upload{form: form}
+	// The request's own hold, while it stores the files: an attachment of it
+	// evicted meanwhile does not take the bytes the next one is stored with.
+	up.held.Store(1)
+	defer up.release()
+
+	ids := make([]string, 0, len(files))
+	for _, fh := range files {
+		id, err := s.putAttachment(composerID, fh, form, up)
+		if err != nil {
+			for _, stored := range ids {
+				if a := s.PopAttachment(stored); a != nil {
+					a.Remove()
+				}
+			}
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func (s *Session) putAttachment(composerID string, in *multipart.FileHeader,
+	form *multipart.Form, up *upload) (string, error) {
 
 	// Try to reserve global budget
 	for {
@@ -749,6 +832,16 @@ func (s *Session) PutAttachment(composerID string, in *multipart.FileHeader,
 	id := uuid.New()
 	s.attachmentsLocker.Lock()
 	defer s.attachmentsLocker.Unlock()
+
+	// The upload streamed to disk before it got here, outside this lock, and
+	// the session may have ended meanwhile. Kept, it would be held by a
+	// session nobody can use, its file on disk and its size counted against
+	// every session's budget for good: teardown has already run. Its file is
+	// removed with the request's hold.
+	if s.attachmentsGone {
+		s.manager.globalAttachmentSize.Add(-in.Size) // rollback global reservation
+		return "", ErrSessionExpired
+	}
 
 	var composerSize int64
 	var sessionSize int64
@@ -778,7 +871,7 @@ func (s *Session) PutAttachment(composerID string, in *multipart.FileHeader,
 			if oldestID != "" {
 				a := s.attachments[oldestID]
 				delete(s.attachments, oldestID)
-				a.Form.RemoveAll()
+				a.Remove()
 				s.manager.globalAttachmentSize.Add(-a.File.Size)
 				continue
 			} else {
@@ -790,11 +883,13 @@ func (s *Session) PutAttachment(composerID string, in *multipart.FileHeader,
 		break
 	}
 
+	up.held.Add(1)
 	s.attachments[id.String()] = &Attachment{
 		ComposerID: composerID,
 		File:       in,
 		Form:       form,
 		CreatedAt:  time.Now(),
+		upload:     up,
 	}
 	return id.String(), nil
 }
@@ -823,7 +918,7 @@ func (s *Session) ReturnAttachment(uuid string, a *Attachment) {
 	s.attachmentsLocker.Lock()
 	defer s.attachmentsLocker.Unlock()
 	if s.attachmentsGone {
-		a.Form.RemoveAll()
+		a.Remove()
 		return
 	}
 	s.attachments[uuid] = a
@@ -1369,7 +1464,7 @@ func (sm *SessionManager) evictOldestAttachment() bool {
 
 	if oldestSession != nil {
 		if a := oldestSession.PopAttachment(oldestID); a != nil {
-			a.Form.RemoveAll()
+			a.Remove()
 			return true
 		}
 	}
