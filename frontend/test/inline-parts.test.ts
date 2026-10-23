@@ -25,7 +25,7 @@ describe('inlinePartsOf', () => {
       ],
     };
     expect(inlinePartsOf(structure)).toEqual([
-      { name: 'chart.png', size: 300, type: 'image/png', partPath: '2', inline: true },
+      { name: 'chart.png', size: 291, type: 'image/png', partPath: '2', inline: true },
     ]);
   });
 
@@ -39,8 +39,33 @@ describe('inlinePartsOf', () => {
     // Outlook and Apple Mail give an inline image an attachment disposition.
     const filed = image({ Params: {}, Extended: { Disposition: { Value: 'attachment', Params: { filename: 'logo.png' } } } });
     expect(inlinePartsOf({ Children: [{ Type: 'text', Subtype: 'html' }, filed] })).toEqual([
-      { name: 'logo.png', size: 300, type: 'image/png', partPath: '2', inline: true },
+      { name: 'logo.png', size: 291, type: 'image/png', partPath: '2', inline: true },
     ]);
+  });
+
+  it("reads a base64 part's size without its line breaks", () => {
+    // The structure reports the encoded size, which counts the CRLF ending
+    // every 76-character line; those are not data. A 128 KiB image read as
+    // 131 KiB. The last line may end in a CRLF or not: the server leaves out
+    // the one before the next boundary, which belongs to the boundary. Up to
+    // two bytes over is the padding a size cannot tell apart.
+    const sizes = [128 * 1024, 1000, 57 * 20, ...Array.from({ length: 301 }, (_, i) => i)];
+    for (const bytes of sizes) {
+      const lines = Buffer.alloc(bytes, 7).toString('base64').match(/.{1,76}/g) ?? [];
+      const framings = {
+        'as written': lines.join('\r\n'),
+        'with a CRLF on its last line': lines.map((line) => `${line}\r\n`).join(''),
+      };
+      for (const [framing, encoded] of Object.entries(framings)) {
+        const [part] = inlinePartsOf(image({ Size: encoded.length }));
+        const label = `${bytes} bytes ${framing}, in ${encoded.length} octets`;
+        expect(part.size, label).toBeGreaterThanOrEqual(bytes);
+        expect(part.size, label).toBeLessThanOrEqual(bytes + 2);
+      }
+    }
+    // 57 bytes a line, twenty lines, each with its CRLF: 1560 octets, an exact
+    // number of 78-octet lines.
+    expect(inlinePartsOf(image({ Size: 1560 }))[0].size).toBe(1140);
   });
 
   it('carries nothing for a message with no such part, or no structure', () => {

@@ -80,10 +80,10 @@ export const sr = {
       listDensityDesc: 'Prilagodite razmak i gustinu liste poruka.',
       light: 'Svetla',
       dark: 'Tamna',
-      systemAuto: 'Automatski (Sistem)',
+      systemAuto: 'Automatski (sistem)',
       vertical: 'Vertikalno (3 okna)',
-      horizontal: 'Horizontalno (Gore/Dole)',
-      fullScreen: 'Preko celog ekrana (Sakrij listu pri čitanju)',
+      horizontal: 'Horizontalno (gore/dole)',
+      fullScreen: 'Preko celog ekrana (sakrij listu pri čitanju)',
       loose: 'Široko',
       normal: 'Normalno',
       compact: 'Kompaktno',
@@ -252,9 +252,9 @@ export const sr = {
       few: 'Uključene su i {count} poruke koje ste označili.',
       other: 'Uključeno je i {count} poruka koje ste označili.'
     },
-    emptyingMailbox: 'Pražnjenje sandučeta...',
-    mailboxEmptied: 'Sanduče je uspešno ispražnjeno.',
-    emptyMailboxFailed: 'Nije moguće isprazniti sanduče. Proverite da li je Otpad ili Nepoželjno.',
+    emptyingMailbox: 'Pražnjenje fascikle {folder}...',
+    mailboxEmptied: 'Fascikla {folder} je ispražnjena.',
+    emptyMailboxFailed: 'Nije moguće isprazniti fasciklu {folder}.',
     mailboxAlreadyEmpty: '{folder} je već bio prazan, pa ništa nije obrisano.',
     emptyMailboxSlow: 'Pražnjenje fascikle {folder} je još u toku. Server i dalje radi; proverite ponovo za trenutak.'
   },
@@ -376,7 +376,7 @@ export const sr = {
     markUnread: 'Označi kao nepročitano',
     markRead: 'Označi kao pročitano',
     star: 'Označi zvezdicom',
-    moveTo: 'Kopiraj/Premesti u...',
+    moveTo: 'Kopiraj/premesti u...',
     print: 'Štampaj',
     showPlaintext: 'Prikaži običan tekst',
     showHtml: 'Prikaži HTML',
@@ -443,7 +443,8 @@ export const sr = {
     cannotPreview: 'Pregled nije dostupan za ovaj tip datoteke',
     loadingPreview: 'Učitavanje pregleda...',
     errorLoading: 'Greška pri učitavanju pregleda',
-    close: 'Zatvori'
+    close: 'Zatvori',
+    uploadProgress: '{percent}% od {size}'
   },
 
   navigation: {

@@ -367,6 +367,17 @@ export async function seedContact(opts: { uid: string; name: string; email: stri
   );
 }
 
+/** Deletes a contact from the address book behind alps's back, as another device would. */
+export async function removeContact(uid: string): Promise<void> {
+  await checked(
+    await fetch(`${DAV_URL}/carddav/${USER.address}/contacts/default/${uid}.vcf`, {
+      method: "DELETE",
+      headers: { Authorization: davAuth() },
+    }),
+    "remove contact",
+  );
+}
+
 /**
  * Creates a THROWAWAY account in sora. For the tests that sign in as someone
  * else or delete what they signed into — never {@link USER}, whom every other

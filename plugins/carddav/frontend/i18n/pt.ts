@@ -1,21 +1,25 @@
 export default {
   contacts: {
     deleteFailed: {
-      one: 'Não foi possível eliminar {failed} de {count} contacto.',
-      other: 'Não foi possível eliminar {failed} de {count} contactos.'
+      one: 'Não foi possível eliminar {count} de {total} contactos.',
+      other: 'Não foi possível eliminar {count} de {total} contactos.'
     },
     categoryRenameFailed: {
-      one: 'Não foi possível atualizar {failed} de {count} contacto, a categoria foi renomeada apenas parcialmente.',
-      other: 'Não foi possível atualizar {failed} de {count} contactos, a categoria foi renomeada apenas parcialmente.'
+      one: 'Não foi possível atualizar {count} de {total} contactos, a categoria foi renomeada apenas parcialmente.',
+      other: 'Não foi possível atualizar {count} de {total} contactos, a categoria foi renomeada apenas parcialmente.'
     },
     categoryDeleteFailed: {
-      one: 'Não foi possível atualizar {failed} de {count} contacto, a categoria foi removida apenas parcialmente.',
-      other: 'Não foi possível atualizar {failed} de {count} contactos, a categoria foi removida apenas parcialmente.'
+      one: 'Não foi possível atualizar {count} de {total} contactos, a categoria foi removida apenas parcialmente.',
+      other: 'Não foi possível atualizar {count} de {total} contactos, a categoria foi removida apenas parcialmente.'
     },
     categoryUpdateFailed: {
-      one: 'Não foi possível atualizar {failed} de {count} contacto.',
-      other: 'Não foi possível atualizar {failed} de {count} contactos.'
+      one: 'Não foi possível atualizar {count} de {total} contactos.',
+      other: 'Não foi possível atualizar {count} de {total} contactos.'
     },
+    deleteOneFailed: 'Não foi possível eliminar o contacto.',
+    categoryRenameOneFailed: 'Não foi possível atualizar um contacto, a categoria foi renomeada apenas parcialmente.',
+    categoryDeleteOneFailed: 'Não foi possível atualizar um contacto, a categoria foi removida apenas parcialmente.',
+    categoryUpdateOneFailed: 'Não foi possível atualizar o contacto.',
     saveFailed: 'Não foi possível guardar o contacto.',
     saveConflict: 'O contacto foi alterado noutro dispositivo, por isso a sua alteração não foi guardada. Cancele a edição para ver a versão mais recente.',
     starFailed: 'Não foi possível atualizar o contacto.',

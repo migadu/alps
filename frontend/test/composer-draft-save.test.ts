@@ -112,7 +112,8 @@ describe('a save with nothing new to store', () => {
     // The timer an upload's progress armed fired after the upload's own save
     // had stored everything, and rewrote the same draft again.
     const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({
-      uid: '8', mailbox: 'Drafts', attachments: [{ name: 'a.bin', size: 16, type: 'application/octet-stream', partPath: '2' }],
+      uid: '8', mailbox: 'Drafts',
+      attachments: [{ name: 'a.bin', size: 16, type: 'application/octet-stream', partPath: '2', source: { uuid: 'u1' } }],
     });
     const { store, instance, id } = composerIn({});
     const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
@@ -180,6 +181,86 @@ describe('a save with nothing new to store', () => {
     saveDraft.mockResolvedValueOnce({ uid: '9', mailbox: 'Drafts' });
     expect(await el._saveDraft()).toBe(true);
     expect(saveDraft).toHaveBeenCalledTimes(3);
+    expect(store.getComposer(id)).toMatchObject({ draftUid: '9', dirty: false });
+  });
+});
+
+/** A save that answers when the test says so. */
+function heldSave() {
+  let land!: (answer: unknown) => void;
+  vi.spyOn(messageOperations, 'saveDraft').mockImplementationOnce(() => new Promise(resolve => { land = resolve; }) as any);
+  return (answer: unknown) => land(answer);
+}
+
+/** The part a save answers with, and the upload or earlier part it came from. */
+const storedPart = (name: string, partPath: string, source: { uuid: string } | { partPath: string }) =>
+  ({ name, size: 16, type: 'application/octet-stream', partPath, source });
+
+describe('the answer to a save', () => {
+  it('turns each entry the save carried into its stored part, where the composer lists it', async () => {
+    // The answer lists the new draft's parts in its own order, and the draft
+    // numbers them afresh: the earlier part 2 is now part 3.
+    const land = heldSave();
+    const { store, instance, id } = composerIn({
+      draftUid: '7', draftMailbox: 'Drafts',
+      attachments: [
+        { filename: 'notes.txt', size: 16, uuid: 'u1' },
+        { name: 'ledger.txt', size: 16, type: 'text/plain', partPath: '2' },
+      ],
+    });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    const saving = el._saveDraft();
+    land({
+      uid: '8', mailbox: 'Drafts',
+      attachments: [storedPart('ledger.txt', '3', { partPath: '2' }), storedPart('notes.txt', '2', { uuid: 'u1' })],
+    });
+    await saving;
+
+    expect(store.getComposer(id)?.attachments?.map(a => a.name)).toEqual(['notes.txt', 'ledger.txt']);
+    expect(store.getComposer(id)?.attachments).toEqual([
+      { name: 'notes.txt', size: 16, type: 'application/octet-stream', partPath: '2' },
+      { name: 'ledger.txt', size: 16, type: 'application/octet-stream', partPath: '3' },
+    ]);
+    expect(store.getComposer(id)).toMatchObject({ draftUid: '8', dirty: false });
+  });
+
+  it('keeps out an attachment removed while the save was out, and the next save stores the draft without it', async () => {
+    // The saved draft holds it, and rebuilt from the answer the list had it
+    // back: the next save carried it again, and so did the send.
+    const land = heldSave();
+    const { store, instance, id } = composerIn({
+      draftUid: '7', draftMailbox: 'Drafts', dirty: true,
+      attachments: [
+        { name: 'ledger.txt', size: 16, type: 'text/plain', partPath: '2' },
+        { filename: 'notes.txt', size: 16, uuid: 'u1' },
+      ],
+    });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    const saving = el._saveDraft();
+    await el.updateComplete;
+    el._removeAttachment(0);
+    land({
+      uid: '8', mailbox: 'Drafts',
+      attachments: [storedPart('notes.txt', '2', { uuid: 'u1' }), storedPart('ledger.txt', '3', { partPath: '2' })],
+    });
+    await saving;
+
+    expect(store.getComposer(id)?.attachments?.map(a => a.name)).toEqual(['notes.txt']);
+    expect(store.getComposer(id)?.attachments).toEqual([
+      { name: 'notes.txt', size: 16, type: 'application/octet-stream', partPath: '2' },
+    ]);
+    expect(store.getComposer(id)).toMatchObject({ draftUid: '8', dirty: true });
+
+    const saveDraft = vi.mocked(messageOperations.saveDraft).mockResolvedValue({
+      uid: '9', mailbox: 'Drafts', attachments: [storedPart('notes.txt', '2', { partPath: '2' })],
+    });
+    expect(await el._saveDraft()).toBe(true);
+    expect(saveDraft).toHaveBeenCalledTimes(2);
+    expect(sentForm(1).get('prev_attachments')).toBe('2');
+    expect(sentForm(1).get('draft_uid')).toBe('8');
+    expect(sentForm(1).has('attachment-uuids')).toBe(false);
     expect(store.getComposer(id)).toMatchObject({ draftUid: '9', dirty: false });
   });
 });

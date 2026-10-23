@@ -1,21 +1,25 @@
 export default {
   contacts: {
     deleteFailed: {
-      one: '{failed} of {count} contact could not be deleted.',
-      other: '{failed} of {count} contacts could not be deleted.'
+      one: '{count} of {total} contacts could not be deleted.',
+      other: '{count} of {total} contacts could not be deleted.'
     },
     categoryRenameFailed: {
-      one: '{failed} of {count} contact could not be updated, so the category was only partly renamed.',
-      other: '{failed} of {count} contacts could not be updated, so the category was only partly renamed.'
+      one: '{count} of {total} contacts could not be updated, so the category was only partly renamed.',
+      other: '{count} of {total} contacts could not be updated, so the category was only partly renamed.'
     },
     categoryDeleteFailed: {
-      one: '{failed} of {count} contact could not be updated, so the category was only partly removed.',
-      other: '{failed} of {count} contacts could not be updated, so the category was only partly removed.'
+      one: '{count} of {total} contacts could not be updated, so the category was only partly removed.',
+      other: '{count} of {total} contacts could not be updated, so the category was only partly removed.'
     },
     categoryUpdateFailed: {
-      one: '{failed} of {count} contact could not be updated.',
-      other: '{failed} of {count} contacts could not be updated.'
+      one: '{count} of {total} contacts could not be updated.',
+      other: '{count} of {total} contacts could not be updated.'
     },
+    deleteOneFailed: 'The contact could not be deleted.',
+    categoryRenameOneFailed: 'A contact could not be updated, so the category was only partly renamed.',
+    categoryDeleteOneFailed: 'A contact could not be updated, so the category was only partly removed.',
+    categoryUpdateOneFailed: 'The contact could not be updated.',
     saveFailed: 'The contact could not be saved.',
     saveConflict: 'This contact was changed on another device, so your edit was not saved. Cancel the edit to see the latest version.',
     starFailed: 'The contact could not be updated.',

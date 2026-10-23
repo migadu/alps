@@ -781,7 +781,8 @@ export class ContactsPage extends LitElement {
       contactsToUpdate = await this.cardsCarrying(oldName);
     } catch (e) {
       console.error('Could not read the address book for a category change', e);
-      this.reportFailure('contacts.categoryRenameFailed', { failed: 1, count: 1 });
+      // No card was read, so there is nothing to count.
+      this.reportFailure('contacts.categoryRenameOneFailed');
       return;
     }
     if (contactsToUpdate.length > 0) {
@@ -794,11 +795,13 @@ export class ContactsPage extends LitElement {
         const { total, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
         this.fetchContacts();
-        if (failed > 0) this.reportFailure('contacts.categoryRenameFailed', { failed, count: total });
+        if (failed > 0) this.reportRefusals('contacts.categoryRenameFailed', 'contacts.categoryRenameOneFailed', { count: failed, total });
       } catch (e) {
         console.error('Error renaming category', e);
         this.fetchContacts();
-        this.reportFailure('contacts.categoryRenameFailed', { failed: 1, count: 1 });
+        // Thrown before any outcome came back, so none of the cards counts as done.
+        const tried = contactsToUpdate.length;
+        this.reportRefusals('contacts.categoryRenameFailed', 'contacts.categoryRenameOneFailed', { count: tried, total: tried });
       } finally {
         this.saving = false;
       }
@@ -826,7 +829,8 @@ export class ContactsPage extends LitElement {
       contactsToUpdate = await this.cardsCarrying(oldName);
     } catch (e) {
       console.error('Could not read the address book for a category change', e);
-      this.reportFailure('contacts.categoryDeleteFailed', { failed: 1, count: 1 });
+      // No card was read, so there is nothing to count.
+      this.reportFailure('contacts.categoryDeleteOneFailed');
       return;
     }
     if (contactsToUpdate.length > 0) {
@@ -839,11 +843,13 @@ export class ContactsPage extends LitElement {
         const { total, failed, etags } = await contactsService.bulkUpdateCategories(contactsToModify);
         this.applyETags(etags);
         this.fetchContacts();
-        if (failed > 0) this.reportFailure('contacts.categoryDeleteFailed', { failed, count: total });
+        if (failed > 0) this.reportRefusals('contacts.categoryDeleteFailed', 'contacts.categoryDeleteOneFailed', { count: failed, total });
       } catch (e) {
         console.error('Error deleting category', e);
         this.fetchContacts();
-        this.reportFailure('contacts.categoryDeleteFailed', { failed: 1, count: 1 });
+        // Thrown before any outcome came back, so none of the cards counts as done.
+        const tried = contactsToUpdate.length;
+        this.reportRefusals('contacts.categoryDeleteFailed', 'contacts.categoryDeleteOneFailed', { count: tried, total: tried });
       } finally {
         this.saving = false;
       }
@@ -1062,6 +1068,20 @@ export class ContactsPage extends LitElement {
     }));
   }
 
+  /**
+   * Says that `count` of the `total` cards a write was aimed at refused it.
+   *
+   * The counted sentence agrees with `count`, since the cards that failed are
+   * its subject. Picked by the total, the German toast for one card of five
+   * put its verb in the plural ("konnten"). A write aimed at a single card is
+   * told in a sentence of its own, where the counted one read "1 of 1 contact
+   * could not be deleted."
+   */
+  private reportRefusals(counted: string, single: string, params: { count: number; total: number }) {
+    if (params.total === 1) this.reportFailure(single);
+    else this.reportFailure(counted, params);
+  }
+
   private handleDelete() {
     this.showDeleteConfirm = true;
   }
@@ -1075,8 +1095,8 @@ export class ContactsPage extends LitElement {
     const open = this.selectedContact?.path;
     const openedHash = window.location.hash;
     const selection = this.selectedContacts;
+    const pathsToDelete = this.gestureTargets;
     try {
-      const pathsToDelete = this.gestureTargets;
       const { total, done, failed, uncertain, deletedPaths = [] } = await contactsService.bulkDeleteContacts(pathsToDelete);
 
       // Only when something went, and the list is re-read. A delete that
@@ -1116,12 +1136,13 @@ export class ContactsPage extends LitElement {
         }
       }
       if (failed > 0) {
-        this.reportFailure('contacts.deleteFailed', { failed, count: total });
+        this.reportRefusals('contacts.deleteFailed', 'contacts.deleteOneFailed', { count: failed, total });
       }
     } catch (e) {
       console.error('Error deleting contacts', e);
       this.fetchContacts();
-      this.reportFailure('contacts.deleteFailed', { failed: 1, count: 1 });
+      // Thrown before any outcome came back, so none of the cards counts as deleted.
+      this.reportRefusals('contacts.deleteFailed', 'contacts.deleteOneFailed', { count: pathsToDelete.length, total: pathsToDelete.length });
     } finally {
       this.saving = false;
     }
@@ -1172,7 +1193,7 @@ export class ContactsPage extends LitElement {
       this.applyETags(etags);
       if (failed > 0) {
         this.fetchContacts();
-        this.reportFailure('contacts.categoryUpdateFailed', { failed, count: total });
+        this.reportRefusals('contacts.categoryUpdateFailed', 'contacts.categoryUpdateOneFailed', { count: failed, total });
       }
 
       if (this.selectedContact && this.selectedContacts.size <= 1 && this.selectedCategory !== '') {
@@ -1196,7 +1217,7 @@ export class ContactsPage extends LitElement {
       // The bulk update threw before reporting any outcome, so none of the
       // cards can be counted as done. Without numbers the toast showed its
       // own "{failed} of {total}" placeholders.
-      this.reportFailure('contacts.categoryUpdateFailed', { failed: pathsToUpdate.length, count: pathsToUpdate.length });
+      this.reportRefusals('contacts.categoryUpdateFailed', 'contacts.categoryUpdateOneFailed', { count: pathsToUpdate.length, total: pathsToUpdate.length });
     } finally {
       this.saving = false;
     }

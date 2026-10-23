@@ -296,9 +296,9 @@ export const en = {
       one: 'This includes the message you have checked.',
       other: 'This includes the {count} messages you have checked.'
     },
-    emptyingMailbox: 'Emptying mailbox...',
-    mailboxEmptied: 'Mailbox emptied successfully.',
-    emptyMailboxFailed: 'Failed to empty mailbox. Make sure it is Trash or Junk.',
+    emptyingMailbox: 'Emptying {folder}...',
+    mailboxEmptied: '{folder} emptied.',
+    emptyMailboxFailed: 'Failed to empty {folder}.',
     mailboxAlreadyEmpty: '{folder} was already empty — nothing was deleted.',
     emptyMailboxSlow: 'Still emptying {folder}. The server is working on it — check the folder again in a moment.'
   },
@@ -479,7 +479,8 @@ export const en = {
     cannotPreview: 'No preview available for this file type',
     loadingPreview: 'Loading preview...',
     errorLoading: 'Failed to load preview',
-    close: 'Close'
+    close: 'Close',
+    uploadProgress: '{percent}% of {size}'
   },
 
   navigation: {

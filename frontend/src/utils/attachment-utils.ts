@@ -187,6 +187,21 @@ export interface CarriedPart {
 }
 
 /**
+ * The size of the data in a base64 body of `encoded` octets, as the server
+ * estimates an attachment's. The encoded size counts the CRLF that ends each
+ * line of 76 characters (RFC 2045): counted as data, the line breaks read a
+ * file 2.6% larger than it is. Each full line of 78 octets holds one; the last
+ * line may end in one or not, and as base64 comes in groups of four
+ * characters, the count that leaves a multiple of four is the one that fits.
+ * The result is the file's size, or up to two bytes more for padding.
+ */
+function base64DecodedSize(encoded: number): number {
+  let chars = encoded - 2 * Math.floor(encoded / 78);
+  if (chars % 4 !== 0) chars = Math.max(0, encoded - 2 * Math.ceil(encoded / 78));
+  return Math.floor((chars * 3) / 4);
+}
+
+/**
  * The original's inline parts, for a reply or forward to carry.
  *
  * The quote keeps the original's `cid:` images, as every mail client's does,
@@ -206,7 +221,7 @@ export function inlinePartsOf(structure: any): CarriedPart[] {
       parts.push({
         name: node.Extended?.Disposition?.Params?.filename || node.Params?.name || 'image',
         // The structure reports the encoded size, and these parts are base64.
-        size: String(node.Encoding).toLowerCase() === 'base64' ? Math.floor((encoded * 3) / 4) : encoded,
+        size: String(node.Encoding).toLowerCase() === 'base64' ? base64DecodedSize(encoded) : encoded,
         type: node.Type && node.Subtype ? `${node.Type}/${node.Subtype}`.toLowerCase() : 'application/octet-stream',
         partPath: path || '1',
         inline: true,
