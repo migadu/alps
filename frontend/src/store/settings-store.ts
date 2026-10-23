@@ -373,7 +373,7 @@ export class SettingsStore extends EventTarget {
               Logger.error('Failed to record the active user', e);
             }
             const userSettings = this.loadSettings(username);
-            this.state = { ...this.state, ...userSettings, loginUsername: username, ...(address ? { loginAddress: address } : {}) };
+            this.state = { ...this.state, ...userSettings, loginUsername: username, loginAddress: address };
             this.adoptUnsaved(username);
             this.applyTheme();
             this.notify();
@@ -508,7 +508,9 @@ export class SettingsStore extends EventTarget {
       showSenderAvatars: userSettings.showSenderAvatars ?? globalSettings.showSenderAvatars ?? DEFAULT_SETTINGS.showSenderAvatars,
       customMailboxOrder: userSettings.customMailboxOrder ?? globalSettings.customMailboxOrder ?? DEFAULT_SETTINGS.customMailboxOrder,
       language: userSettings.language ?? globalSettings.language ?? DEFAULT_SETTINGS.language,
-      loginUsername: username
+      loginUsername: username,
+      // Optional account data must also overwrite the previous user's value.
+      loginAddress: userSettings.loginAddress
     };
 
     // Merge other user settings that might exist in userSettings

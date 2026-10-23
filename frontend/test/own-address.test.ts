@@ -87,6 +87,81 @@ describe('the address the server gives', () => {
     expect(ownAddress(store.getState())).toBe(ADDRESS);
   });
 
+  it.each([undefined, 'bob@example.net'])(
+    'uses only the new account address after login, with cached address %s', async (cachedAddress) => {
+      document.cookie = 'alps_logged_in=1; path=/';
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => json(url === '/session'
+        ? { Username: LOGIN, Address: ADDRESS }
+        : { Settings: { language: 'en' } })));
+      const store = new SettingsStore();
+      await vi.waitFor(() => expect(store.recordRead).toBe(true));
+      expect(ownAddress(store.getState())).toBe(ADDRESS);
+      if (cachedAddress) {
+        localStorage.setItem('alps_settings_bob', JSON.stringify({ loginAddress: cachedAddress }));
+      }
+
+      window.dispatchEvent(new CustomEvent('user-logged-in', { detail: { username: 'bob' } }));
+
+      expect(store.getState().loginUsername).toBe('bob');
+      expect(ownAddress(store.getState())).toBe(cachedAddress ?? 'bob');
+      await vi.waitFor(() => expect(store.recordRead).toBe(true));
+      expect(JSON.parse(localStorage.getItem('alps_settings_bob')!).loginAddress).toBe(cachedAddress);
+    },
+  );
+
+  it('clears the address when a different username is applied without one', async () => {
+    const store = new SettingsStore();
+    await store.updateSettings({ loginUsername: LOGIN, loginAddress: ADDRESS });
+
+    await store.updateSettings({ loginUsername: 'bob' });
+
+    expect(store.getState().loginAddress).toBeUndefined();
+    expect(ownAddress(store.getState())).toBe('bob');
+    expect(JSON.parse(localStorage.getItem('alps_settings_bob')!).loginAddress).toBeUndefined();
+  });
+
+  it('clears a cached resolved address when a session reply omits Address', async () => {
+    document.cookie = 'alps_logged_in=1; path=/';
+    localStorage.setItem('alps_settings_bob', JSON.stringify({ loginAddress: 'obsolete@example.net' }));
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => json(url === '/session'
+      ? { Username: 'bob' }
+      : { Settings: { language: 'en' } })));
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(store.recordRead).toBe(true));
+
+    expect(store.getState().loginAddress).toBeUndefined();
+    expect(ownAddress(store.getState())).toBe('bob');
+    expect(JSON.parse(localStorage.getItem('alps_settings_bob')!).loginAddress).toBeUndefined();
+  });
+
+  it('clears the previous address when a new session names only its login', async () => {
+    document.cookie = 'alps_logged_in=1; path=/';
+    let session: Record<string, string> = { Username: LOGIN, Address: ADDRESS };
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => json(url === '/session'
+      ? session : { Settings: { language: 'en' } })));
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect(store.recordRead).toBe(true));
+    expect(ownAddress(store.getState())).toBe(ADDRESS);
+    session = { Username: 'bob' };
+
+    window.dispatchEvent(new CustomEvent('user-logged-in'));
+
+    await vi.waitFor(() => expect(store.getState().loginUsername).toBe('bob'));
+    expect(store.getState().loginAddress).toBeUndefined();
+    expect(ownAddress(store.getState())).toBe('bob');
+  });
+
+  it('clears a previously resolved address when a folder reply omits Address', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => (String(url).startsWith('/mailboxes/') && !String(url).includes('/verdicts')
+      ? json({ Username: LOGIN, Page: 0, Total: 0, MessagesPerPage: 50, Mailboxes: [{ Name: 'INBOX', Total: 0, Unseen: 0 }], Messages: [] })
+      : new Response('{}', { status: 404 }))));
+    const store = settingsStore({ layoutMode: 'vertical', densityMode: 'compact', sortOrder: 'desc', messagesPerPage: 50, checkMailInterval: 0, loginUsername: LOGIN, loginAddress: ADDRESS });
+    await mount<El>('mailbox-page', { i18nStore, settingsStore: store, composeStore: new EventTarget() });
+
+    await waitFor(() => store.getState().loginAddress === undefined, 'the login fallback from the listing');
+    expect(ownAddress(store.getState())).toBe(LOGIN);
+  });
+
   it('is kept when a folder listing names the user', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => (String(url).startsWith('/mailboxes/') && !String(url).includes('/verdicts')
       ? json({ Username: LOGIN, Address: ADDRESS, Page: 0, Total: 0, MessagesPerPage: 50, Mailboxes: [{ Name: 'INBOX', Total: 0, Unseen: 0 }], Messages: [] })

@@ -922,8 +922,8 @@ export class MailboxPage extends LitElement {
       const state = this.settingsStore.getState();
       // The address too: a bare login is not the address it stands for.
       const address = data.Address || undefined;
-      if (state.loginUsername !== data.Username || (address && state.loginAddress !== address)) {
-        this.settingsStore.updateSettings({ loginUsername: data.Username, ...(address ? { loginAddress: address } : {}) });
+      if (state.loginUsername !== data.Username || state.loginAddress !== address) {
+        this.settingsStore.updateSettings({ loginUsername: data.Username, loginAddress: address });
       }
     }
 
