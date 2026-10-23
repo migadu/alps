@@ -1972,7 +1972,7 @@ export class MessageList extends LitElement {
       ` : ''}
       ${this.showEmptyConfirm ? html`
         <ui-confirm
-          title=${this.i18nStore?.t('messageList.emptyMailboxTitle', { folder: this.folderTitle }) || `Empty ${this.folderTitle}`}
+          heading=${this.i18nStore?.t('messageList.emptyMailboxTitle', { folder: this.folderTitle }) || `Empty ${this.folderTitle}`}
           message=${this.emptyConfirmMessage}
           confirmText=${this.i18nStore?.t('messageList.deleteAllNow') || 'Delete All Now'}
           .isDanger=${true}

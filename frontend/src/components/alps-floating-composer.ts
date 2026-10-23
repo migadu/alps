@@ -1594,7 +1594,7 @@ export class AlpsFloatingComposer extends LitElement {
       
       ${this.showDiscardConfirm ? html`
         <ui-confirm
-          title=${this.i18nStore?.t('floatingComposer.discardDraftTitle')}
+          heading=${this.i18nStore?.t('floatingComposer.discardDraftTitle')}
           message=${this.i18nStore?.t('floatingComposer.discardDraftMessage')}
           confirmText=${this.i18nStore?.t('floatingComposer.discard')}
           cancelText=${this.i18nStore?.t('general.cancel')}

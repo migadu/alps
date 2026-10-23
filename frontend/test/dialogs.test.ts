@@ -4,11 +4,17 @@
  * They sit in front of every destructive or naming action in the app, so what
  * they must get right is which answer was given, exactly once, and — for the
  * prompt — that what the user typed survives the owner re-rendering. Each is
- * named by its title, and a confirmation described by its question, so that a
+ * named by its heading, and a confirmation described by its question, so that a
  * screen reader says which dialog opened (browser test: e2e/folders.spec.ts).
+ *
+ * The heading was the element's `title`, which is also HTML's global
+ * attribute: advisory text for everything inside the element that has none
+ * of its own, so the browser showed it as a tooltip wherever the pointer
+ * rested on the dialog. It is now `heading`, and no caller sets `title`.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, mount, record, shadow, shadowAll, text, update } from './helpers/dom';
+import { readSources } from './helpers/sources';
 import { I18nStore } from '../src/store/i18n-store';
 import '../src/components/ui-modal';
 import '../src/components/ui-confirm';
@@ -51,27 +57,27 @@ describe('ui-modal', () => {
     expect(dialogOf(modal).open).toBe(true);
   });
 
-  it('shows a title, marks it dangerous when asked, and omits the heading without one', async () => {
-    const modal = await mount('ui-modal', { title: 'Delete folder', isDanger: true, width: '520px' });
+  it('shows a heading, marks it dangerous when asked, and omits it without one', async () => {
+    const modal = await mount('ui-modal', { heading: 'Delete folder', isDanger: true, width: '520px' });
     expect(text(modal, 'h3')).toBe('Delete folder');
     expect(shadow(modal, 'h3').classList.contains('danger')).toBe(true);
     expect(shadow(modal, '.modal-card').getAttribute('style')).toContain('width: 520px');
-    await update(modal, { title: '' });
+    await update(modal, { heading: '' });
     expect(modal.shadowRoot!.querySelector('h3')).toBeNull();
   });
 
-  it('is named by its title', async () => {
-    const modal = await mount('ui-modal', { title: 'Delete folder' });
+  it('is named by its heading', async () => {
+    const modal = await mount('ui-modal', { heading: 'Delete folder' });
     expect(nameOf(dialogOf(modal))).toBe('Delete folder');
     // Nothing describes it unless asked: an editor's body is a form.
     expect(descriptionOf(dialogOf(modal))).toBeNull();
-    await update(modal, { title: '' });
+    await update(modal, { heading: '' });
     expect(nameOf(dialogOf(modal))).toBeNull();
   });
 
-  it('is named by its title when a header of the caller\'s replaces the heading', async () => {
-    const modal = document.createElement('ui-modal') as HTMLElement & { title: string };
-    modal.title = 'Security key';
+  it('is named by its heading when a header of the caller\'s replaces it', async () => {
+    const modal = document.createElement('ui-modal') as HTMLElement & { heading: string };
+    modal.heading = 'Security key';
     modal.innerHTML = '<div slot="header">A drawn header</div>';
     document.body.append(modal);
     await (modal as any).updateComplete;
@@ -134,14 +140,14 @@ describe('ui-confirm', () => {
   });
 
   it('uses the wording it is given, and offers a secondary answer only when named', async () => {
-    const el = await mount('ui-confirm', { title: 'Discard?', message: 'Your draft is lost.', confirmText: 'Discard', cancelText: 'Keep' });
+    const el = await mount('ui-confirm', { heading: 'Discard?', message: 'Your draft is lost.', confirmText: 'Discard', cancelText: 'Keep' });
     expect(buttons(el).map((b) => b.textContent?.trim())).toEqual(['Keep', 'Discard']);
     await update(el, { secondaryText: 'Save draft' });
     expect(buttons(el).map((b) => b.textContent?.trim())).toEqual(['Keep', 'Save draft', 'Discard']);
   });
 
-  it('is named by its title and described by its message', async () => {
-    const el = await mount('ui-confirm', { title: 'Discard?', message: 'Your draft is lost.', confirmText: 'Discard', cancelText: 'Keep' });
+  it('is named by its heading and described by its message', async () => {
+    const el = await mount('ui-confirm', { heading: 'Discard?', message: 'Your draft is lost.', confirmText: 'Discard', cancelText: 'Keep' });
     const dialog = dialogOf(shadow(el, 'ui-modal'));
     expect(nameOf(dialog)).toBe('Discard?');
     expect(descriptionOf(dialog)).toBe('Your draft is lost.');
@@ -187,8 +193,8 @@ describe('ui-prompt', () => {
     await (el as any).updateComplete;
   }
 
-  it('is named by its title, and its form is no description', async () => {
-    const el = await mount('ui-prompt', { fields: folderField(), title: 'New folder' });
+  it('is named by its heading, and its form is no description', async () => {
+    const el = await mount('ui-prompt', { fields: folderField(), heading: 'New folder' });
     const dialog = dialogOf(shadow(el, 'ui-modal'));
     expect(nameOf(dialog)).toBe('New folder');
     expect(descriptionOf(dialog)).toBeNull();
@@ -323,7 +329,7 @@ describe('ui-prompt', () => {
   });
 
   it('styles a destructive prompt as ui-confirm does', async () => {
-    const el = await mount('ui-prompt', { fields: folderField(), title: 'Remove key', isDanger: true });
+    const el = await mount('ui-prompt', { fields: folderField(), heading: 'Remove key', isDanger: true });
     expect(shadow(shadow(el, 'ui-modal'), 'h3').classList.contains('danger')).toBe(true);
     expect(buttons(el)[1].getAttribute('variant')).toBe('danger');
     await update(el, { isDanger: false });
@@ -335,5 +341,50 @@ describe('ui-prompt', () => {
     const submits = record<CustomEvent>(el, 'submit');
     buttons(el)[1].click();
     expect(submits[0].detail).toEqual({});
+  });
+});
+
+describe('a dialog\'s heading', () => {
+  /** The opening tag that starts at `start`, its `${…}` bindings and all. */
+  function openingTag(source: string, start: number): string {
+    let depth = 0;
+    for (let i = start; i < source.length; i++) {
+      if (source.startsWith('${', i)) {
+        depth++;
+        i++;
+      } else if (depth > 0) {
+        if (source[i] === '{') depth++;
+        else if (source[i] === '}') depth--;
+      } else if (source[i] === '>') {
+        return source.slice(start, i + 1);
+      }
+    }
+    return source.slice(start);
+  }
+
+  it.each(['ui-modal', 'ui-confirm', 'ui-prompt'])('is no title of HTML\'s on %s, and still names it', async (tag) => {
+    // As the callers write it, an attribute in the template.
+    const host = document.createElement(tag) as HTMLElement & { updateComplete: Promise<unknown> };
+    host.setAttribute('heading', 'Delete folder');
+    document.body.append(host);
+    await host.updateComplete;
+    const modal = tag === 'ui-modal' ? host : shadow<HTMLElement & { updateComplete: Promise<unknown> }>(host, 'ui-modal');
+    await modal.updateComplete;
+
+    expect(host.hasAttribute('title')).toBe(false);
+    expect(modal.hasAttribute('title')).toBe(false);
+    expect(nameOf(dialogOf(modal))).toBe('Delete folder');
+    host.remove();
+  });
+
+  it('is what every caller sets, and none sets a title', () => {
+    const tags = Object.entries(readSources())
+      .filter(([path]) => !path.includes('/i18n/'))
+      .flatMap(([path, source]) => [...source.matchAll(/<(ui-modal|ui-confirm|ui-prompt)\b/g)]
+        .map((m) => [`${path}:${source.slice(0, m.index).split('\n').length}`, openingTag(source, m.index!)] as const));
+    // Every one of them, so that an empty scan cannot pass.
+    expect(tags.length).toBeGreaterThanOrEqual(34);
+    expect(tags.filter(([, tag]) => /\s\.?title=/.test(tag)).map(([where]) => where)).toEqual([]);
+    expect(tags.filter(([, tag]) => !/\s\.?heading=/.test(tag)).map(([where]) => where)).toEqual([]);
   });
 });
