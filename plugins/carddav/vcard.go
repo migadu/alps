@@ -74,6 +74,11 @@ func formatLine(key string, f *vcard.Field) string {
 			s += ";" + name + "=" + formatParamValue(v)
 		}
 	}
+	if heldAsWritten(key) {
+		// Held as written, its escapes in place: escaped again, every
+		// separator became part of one element.
+		return s + ":" + strings.ReplaceAll(f.Value, "\n", `\n`)
+	}
 	return s + ":" + valueEscaper.Replace(f.Value)
 }
 

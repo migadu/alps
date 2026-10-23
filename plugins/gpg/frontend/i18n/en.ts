@@ -38,6 +38,7 @@ export default {
     importMissing: 'Both public and private blocks are required for import.',
     generateFailed: 'Failed to generate keys: {error}',
     importFailed: 'Import failed: {error}',
+    purgeFailed: 'Failed to purge keys: {error}',
     importFailedTitle: 'Import Failed',
     passphraseMismatch: 'Passphrases do not match. Please try again.',
     missingPublicKeys: 'Cannot encrypt: Missing public keys for:\n{keys}',

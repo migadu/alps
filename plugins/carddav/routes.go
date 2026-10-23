@@ -153,7 +153,7 @@ func extractContactData(card vcard.Card, path string) ContactData {
 	}
 	nickname := ""
 	if f := card.Preferred(vcard.FieldNickname); f != nil {
-		nickname = f.Value
+		nickname = shownListValue(f.Value)
 	}
 	avatar := ""
 	if f := card.Preferred(vcard.FieldPhoto); f != nil {
@@ -177,13 +177,8 @@ func extractContactData(card vcard.Card, path string) ContactData {
 	}
 
 	var categories []string
-	if f := card.Preferred(vcard.FieldCategories); f != nil && f.Value != "" {
-		for _, cat := range strings.Split(f.Value, ",") {
-			cat = strings.TrimSpace(cat)
-			if cat != "" {
-				categories = append(categories, cat)
-			}
-		}
+	if f := card.Preferred(vcard.FieldCategories); f != nil {
+		categories = listElements(f.Value)
 	}
 
 	revision := ""
@@ -314,7 +309,7 @@ func setCategories(card vcard.Card, categories []string) {
 		delete(card, vcard.FieldCategories)
 		return
 	}
-	card[vcard.FieldCategories] = []*vcard.Field{{Value: strings.Join(valid, ",")}}
+	card[vcard.FieldCategories] = []*vcard.Field{{Value: listValue(valid)}}
 }
 
 // addressShown is the order the page shows an address's parts in, as
@@ -323,25 +318,53 @@ func setCategories(card vcard.Card, categories []string) {
 // box, the first, is not shown.
 var addressShown = []int{2, 1, 3, 4, 5, 6}
 
-// addressComponents is an ADR value's seven components.
+// addressComponents is an ADR value's seven components, as written: an ADR
+// is held with its escapes in place (see structuredProperties).
 func addressComponents(value string) []string {
-	components := strings.Split(value, ";")
+	components := splitAt(value, ';')
 	for len(components) < 7 {
 		components = append(components, "")
 	}
 	return components
 }
 
-// addressLine is an address as the page shows it: its parts on one line.
+// addressLine is an address as the page shows it: its parts on one line,
+// their escapes undone.
 func addressLine(f *vcard.Field) string {
 	components := addressComponents(f.Value)
 	var parts []string
 	for _, i := range addressShown {
 		if components[i] != "" {
-			parts = append(parts, components[i])
+			parts = append(parts, unescapeText(components[i]))
 		}
 	}
 	return strings.Join(parts, ", ")
+}
+
+// componentValue is a component written for text the page sent: one value,
+// a comma in it escaped.
+var componentValue = strings.NewReplacer(`\`, `\\`, "\n", `\n`, ",", `\,`, ";", `\;`).Replace
+
+// addShown adds f to a field the page shows one copy of, as the copy it
+// shows from then on: the page reads the preferred copy, so f goes first and
+// is marked preferred when another copy is. Appended, a value typed in place
+// of a cleared copy was not the one the page read back, and the next edit of
+// it changed another copy.
+func addShown(card vcard.Card, field string, f *vcard.Field) {
+	for _, other := range card[field] {
+		if other.Params.Get(vcard.ParamPreferred) != "" {
+			if f.Params == nil {
+				f.Params = vcard.Params{}
+			}
+			f.Params.Set(vcard.ParamPreferred, "1")
+		} else if other.Params.HasType("pref") && !f.Params.HasType("pref") {
+			if f.Params == nil {
+				f.Params = vcard.Params{}
+			}
+			f.Params.Add(vcard.ParamType, "pref")
+		}
+	}
+	card[field] = append([]*vcard.Field{f}, card[field]...)
 }
 
 // setAddress writes the line the page sent in place of the address it
@@ -356,10 +379,10 @@ func addressLine(f *vcard.Field) string {
 // The address keeps its parameters, its type among them, but for a label
 // and a position, which describe the address it was.
 func setAddress(card vcard.Card, f *vcard.Field, line string) {
-	line = strings.TrimSpace(strings.ReplaceAll(line, ";", ","))
+	line = strings.TrimSpace(line)
 	if f == nil {
 		if line != "" {
-			card.Add(vcard.FieldAddress, &vcard.Field{Value: ";;" + line + ";;;;"})
+			addShown(card, vcard.FieldAddress, &vcard.Field{Value: ";;" + componentValue(line) + ";;;;"})
 		}
 		return
 	}
@@ -387,11 +410,11 @@ func setAddress(card vcard.Card, f *vcard.Field, line string) {
 			splittable = splittable && !strings.Contains(old[i], ",")
 		}
 	}
-	components := []string{"", "", line, "", "", "", ""}
+	components := []string{"", "", componentValue(line), "", "", "", ""}
 	if parts := strings.Split(line, ","); splittable && len(parts) == len(shown) {
 		components = append([]string(nil), old[:7]...)
 		for k, i := range shown {
-			components[i] = strings.TrimSpace(parts[k])
+			components[i] = componentValue(strings.TrimSpace(parts[k]))
 		}
 	}
 	f.Value = strings.Join(components, ";")
@@ -508,9 +531,21 @@ func registerRoutes(p *plugin) {
 	updateContact := func(ctx *alps.Context) error {
 		var req struct {
 			ContactData
+			// What the page last held for each field in ChangedFields.
+			// Clearing the copy the page shows makes the server's next copy
+			// the preferred one, which the page never showed; a value typed
+			// into the empty field is then a new copy, not that one's
+			// replacement.
+			ChangedFrom map[string]string `json:"changed_from"`
 			// Nil retains the whole-form contract for older clients. An empty
 			// list means that none of the displayed single-copy fields changed.
 			ChangedFields []string `json:"changed_fields"`
+			// A create that wants the card it describes, whoever else has its
+			// address: the contact editor's. Without it a create of an address
+			// the book already holds leaves that card alone and answers with
+			// its path, which suits the composer saving each recipient but not
+			// a contact the user is typing in.
+			AllowDuplicate bool `json:"allow_duplicate"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
@@ -525,6 +560,13 @@ func registerRoutes(p *plugin) {
 				}
 			}
 			return false
+		}
+		// unseen reports whether the copy the server would change for the
+		// field the page calls name is one the page did not show: its value,
+		// as the page reads it, is not the one the page last held.
+		unseen := func(name, shown string) bool {
+			from, ok := req.ChangedFrom[name]
+			return ok && strings.TrimSpace(from) != strings.TrimSpace(shown)
 		}
 
 		// The empty case is /contacts/create, where there is no {path} at all and
@@ -580,7 +622,7 @@ func registerRoutes(p *plugin) {
 			}
 		}
 
-		if addressObjectPath == "" && len(candidateEmails) > 0 {
+		if addressObjectPath == "" && !req.AllowDuplicate && len(candidateEmails) > 0 {
 			query := carddav.AddressBookQuery{
 				DataRequest: carddav.AddressDataRequest{
 					Props: []string{vcard.FieldEmail},
@@ -663,17 +705,29 @@ func registerRoutes(p *plugin) {
 				return
 			}
 			val = strings.TrimSpace(val)
+			// A list property is held as written (see listProperties), and the
+			// page shows and sends it as one line of text.
+			shown, written := func(f *vcard.Field) string { return f.Value }, val
+			if listProperties[field] {
+				shown, written = func(f *vcard.Field) string { return shownListValue(f.Value) }, writtenListValue(val)
+			}
 			f := card.Preferred(field)
+			if f != nil && name != "" && unseen(name, shown(f)) {
+				f = nil
+				if val == "" {
+					return
+				}
+			}
 			switch {
 			case f == nil:
 				if val != "" {
-					added := &vcard.Field{Value: val}
+					added := &vcard.Field{Value: written}
 					if field == vcard.FieldKey {
 						setKeyRepresentation(card, added, val)
 					}
-					card.Add(field, added)
+					addShown(card, field, added)
 				}
-			case strings.TrimSpace(f.Value) == val:
+			case strings.TrimSpace(shown(f)) == val:
 			case val == "":
 				var kept []*vcard.Field
 				for _, other := range card[field] {
@@ -690,7 +744,7 @@ func registerRoutes(p *plugin) {
 				if field == vcard.FieldKey {
 					setKeyRepresentation(card, f, val)
 				}
-				f.Value = val
+				f.Value = written
 			}
 		}
 
@@ -827,14 +881,21 @@ func registerRoutes(p *plugin) {
 		setShownField(vcard.FieldNickname, "nickname", req.Nickname)
 		setShownField(vcard.FieldKey, "public_key", req.PublicKey)
 
-		setCategories(card, req.Categories)
+		// A save that sends no categories leaves them as stored. The editor
+		// sends none: the toolbar writes them on its own, and the form's copy,
+		// sent back, undid a star made while editing.
+		if req.Categories != nil {
+			setCategories(card, req.Categories)
+		}
 
 		// An address sent back as the page was given it is left as stored.
 		// Written back as the page's one line on every save, the city,
 		// region, postal code and country became part of the street, and the
 		// address lost its type and the card its other addresses.
 		if changed("address") {
-			if f := card.Preferred(vcard.FieldAddress); f == nil || strings.TrimSpace(addressLine(f)) != strings.TrimSpace(req.Address) {
+			if f := card.Preferred(vcard.FieldAddress); f != nil && unseen("address", addressLine(f)) {
+				setAddress(card, nil, req.Address)
+			} else if f == nil || strings.TrimSpace(addressLine(f)) != strings.TrimSpace(req.Address) {
 				setAddress(card, f, req.Address)
 			}
 		}
