@@ -53,3 +53,44 @@ test("an edit started before the card is read keeps the card's other fields", as
   expect(card).toContain("BDAY:1906-12-09");
   expect(card).toMatch(/^ADR/m);
 });
+
+test("a new contact keeps what was typed during its first save, beside a card with its address", async ({ page }) => {
+  // The first autosave of a new contact creates it. The editor filled its
+  // form again when the path came back, losing what was typed meanwhile; and
+  // a create of an address another card held answered with that card, so the
+  // next autosaves edited it without a version and were refused.
+  const address = `ada.${run}@example.test`;
+  const uid = `e2e-ada-${run}`;
+  await seedContact({ uid, name: `Ada Known ${run}`, email: address });
+  await login(page);
+
+  // The create is held until the name has been typed.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let sent!: () => void;
+  const creating = new Promise<void>((resolve) => {
+    sent = resolve;
+  });
+  await page.route(/\/contacts\/create$/, async (route) => {
+    sent();
+    await held;
+    await route.continue();
+  });
+
+  await page.goto("/#/contacts");
+  await page.locator("alps-contacts-categories alps-create-button").click();
+  const view = page.locator("alps-contact-view");
+  await view.locator('input[placeholder="Email"]').fill(address);
+  await creating;
+  const name = view.locator('input[placeholder="Name"]');
+  await name.fill(`Ada New ${run}`);
+  const edited = page.waitForResponse((r) => r.request().method() === "POST" && /\/contacts\/.+\/edit/.test(r.url()));
+  release();
+
+  expect((await edited).status()).toBe(200);
+  await expect(name).toHaveValue(`Ada New ${run}`);
+  await expect(page.locator("alps-contacts-list .contact-item", { hasText: `Ada New ${run}` })).toBeVisible();
+  expect(await readContact(uid)).toContain(`FN:Ada Known ${run}`);
+});

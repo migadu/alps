@@ -511,6 +511,12 @@ func registerRoutes(p *plugin) {
 			// Nil retains the whole-form contract for older clients. An empty
 			// list means that none of the displayed single-copy fields changed.
 			ChangedFields []string `json:"changed_fields"`
+			// A create that wants the card it describes, whoever else has its
+			// address: the contact editor's. Without it a create of an address
+			// the book already holds leaves that card alone and answers with
+			// its path, which suits the composer saving each recipient but not
+			// a contact the user is typing in.
+			AllowDuplicate bool `json:"allow_duplicate"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
@@ -580,7 +586,7 @@ func registerRoutes(p *plugin) {
 			}
 		}
 
-		if addressObjectPath == "" && len(candidateEmails) > 0 {
+		if addressObjectPath == "" && !req.AllowDuplicate && len(candidateEmails) > 0 {
 			query := carddav.AddressBookQuery{
 				DataRequest: carddav.AddressDataRequest{
 					Props: []string{vcard.FieldEmail},
