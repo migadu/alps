@@ -11,6 +11,7 @@ import {
   getMailboxLabel,
 } from '../src/utils/ui';
 import { readSources } from './helpers/sources';
+import { I18nStore } from '../src/store/i18n-store';
 
 describe('formatSize', () => {
   it('reads a non-positive, NaN or infinite count as 0 B', () => {
@@ -44,6 +45,39 @@ describe('formatSize', () => {
 
   it('stays on the largest unit past it, rather than printing "undefined"', () => {
     expect(formatSize(5000 * 1024 ** 5)).toBe('5000 PB');
+  });
+
+  /** Each language's symbols, from bytes to petabytes. */
+  const UNITS: Record<string, string[]> = {
+    en: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
+    da: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
+    de: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
+    es: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
+    it: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
+    pt: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
+    fr: ['o', 'Ko', 'Mo', 'Go', 'To', 'Po'],
+    rs: ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ', 'ПБ'],
+    sr: ['B', 'KB', 'MB', 'GB', 'TB', 'PB'],
+  };
+
+  it.each(Object.keys(UNITS))('writes every unit as %s writes it', async (code) => {
+    // The units were English in every language: French read "768 KB" for
+    // "768 Ko", and Cyrillic Serbian a Latin "KB" inside Cyrillic text.
+    const i18nStore = new I18nStore();
+    await i18nStore.setLanguage(code);
+    const sizes = [0, 768, 768 * 1024, 768 * 1024 ** 2, 768 * 1024 ** 3, 768 * 1024 ** 4, 768 * 1024 ** 5];
+    const want = ['0', '768', '768', '768', '768', '768', '768'].map((n, i) => `${n} ${UNITS[code][Math.max(i - 1, 0)]}`);
+    expect(sizes.map((bytes) => formatSize(bytes, i18nStore))).toEqual(want);
+  });
+
+  it('is handed the store wherever a size is shown', () => {
+    // Every caller has a store; one that left it out would show English units.
+    const sources = readSources();
+    const calls = Object.entries(sources)
+      .filter(([path]) => path !== 'src/utils/ui.ts')
+      .flatMap(([path, text]) => [...text.matchAll(/\bformatSize\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g)].map((m) => `${path}: ${m[1]}`));
+    expect(calls.length).toBeGreaterThanOrEqual(8);
+    expect(calls.filter((call) => !/,\s*this\.i18nStore\s*$/.test(call))).toEqual([]);
   });
 });
 

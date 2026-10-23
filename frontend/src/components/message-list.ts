@@ -1543,7 +1543,7 @@ export class MessageList extends LitElement {
     const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
     const dateStr = msg.Envelope?.Date ? formatDateList(msg.Envelope.Date, dateFormat, hourFormat) : '';
     const msgSize = msg.RFC822Size || msg.Size;
-    const sizeStr = msgSize ? formatSize(msgSize) : '';
+    const sizeStr = msgSize ? formatSize(msgSize, this.i18nStore) : '';
 
     const hasSubMessages = msg.SubMessages && msg.SubMessages.length > 0;
     const expanded = this.isThreadExpanded(String(msg.UID));

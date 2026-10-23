@@ -26,7 +26,12 @@ export default {
     categoryUpdateOneFailed: 'Контакт није могао бити ажуриран.',
     saveFailed: 'Контакт није могао бити сачуван.',
     saveConflict: 'Контакт је измењен на другом уређају, па ваша измена није сачувана. Откажите измену да бисте видели најновију верзију.',
-    starFailed: 'Контакт није могао бити ажуриран.',
+    starFailed: {
+      one: 'Није било могуће ажурирати {count} контакт од укупно {total}.',
+      few: 'Није било могуће ажурирати {count} контакта од укупно {total}.',
+      other: 'Није било могуће ажурирати {count} контаката од укупно {total}.'
+    },
+    starOneFailed: 'Контакт није могао бити ажуриран.',
     unnamedContact: 'Неименовани контакт',
     title: 'Контакти',
     allContacts: 'Сви контакти',
@@ -75,6 +80,9 @@ export default {
     address: 'Адреса',
     url: 'URL',
     birthday: 'Рођендан',
+    birthdayDay: 'Дан',
+    birthdayMonth: 'Месец',
+    birthdayYear: 'Година',
     back: 'Назад',
     toggleStar: 'Укључи/искључи омиљено',
     publicKey: 'Јавни кључ',

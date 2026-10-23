@@ -299,8 +299,12 @@ export class CalendarInvitationBanner extends LitElement {
         if (!v.clashes.length) {
             return html`<div class="muted clashes">${this.t('invitations.noConflicts')}</div>`;
         }
-        const names = v.clashes.map(c => c.summary || this.t('calendar.noTitle')).join(', ');
-        return html`<div class="clash clashes">${this.t('invitations.conflictsWith', { names })}</div>`;
+        // Each name in an isolate, and the sentence built around them. A
+        // summary is whatever the event's author wrote; given to t() as text,
+        // an override or a right-to-left title in one reordered "Conflicts
+        // with" and the names after it.
+        const names = html`${v.clashes.map((c, i) => html`${i ? ', ' : ''}<bdi>${c.summary || this.t('calendar.noTitle')}</bdi>`)}`;
+        return html`<div class="clash clashes">${isolatedSentence(this.i18nStore, 'invitations.conflictsWith', { names })}</div>`;
     }
 
     /** Only where the sender is who may change the calendar: a first invitation, an update, a cancellation, a reply. */

@@ -18,6 +18,8 @@
 //  4. A script written by another Sieve client is shown as it is and edited in
 //     place, never hidden behind "No rules defined." or replaced by a second
 //     script.
+//  5. Rules switched off from another client, which the page does not show,
+//     are not replaced by a rule saved there: they are kept, switched off.
 //
 // Selector note: buttons are addressed by ROLE + accessible name. `alps-button`
 // renders a real `<button>` in its shadow root, so a role locator lands on the
@@ -27,7 +29,7 @@
 
 import type { Locator, Page } from "@playwright/test";
 import { allowConsoleErrors, deliver, expect, login, resetSieve, test, toast } from "./fixtures";
-import { storeActiveScript, storedScripts } from "./sieve-server";
+import { storeActiveScript, storeSwitchedOffScript, storedScripts } from "./sieve-server";
 
 let counter = 0;
 const uniqueMarker = () => `filter-${Date.now()}-${String(counter++).padStart(2, "0")}`;
@@ -243,6 +245,9 @@ test("removing every rule turns filtering off", async ({ page }) => {
   const scripts = await storedScripts();
   expect(scripts.length).toBeGreaterThan(0);
   expect(scripts.filter((s) => s.active)).toEqual([]);
+  // Emptied too, so that it is not taken for rules switched off elsewhere,
+  // which a later save keeps.
+  expect(scripts.map((s) => s.content)).toEqual([""]);
 
   // And filtering really is off: mail the rule would have filed stays put.
   const subject = `${marker} stays`;
@@ -253,6 +258,40 @@ test("removing every rule turns filtering off", async ({ page }) => {
   await page.goto("/#/settings/managesieve");
   await expect(emptyState(page)).toBeVisible();
   await expect(rules(page)).toHaveCount(0);
+});
+
+// Filters paused from another client, or by an administrator, leave their
+// script stored with none active. The page reads only the active script, so it
+// shows no rules, and a rule saved there replaced the paused ones unseen.
+test("rules switched off elsewhere are kept when a rule is saved", async ({ page }) => {
+  const paused = uniqueMarker();
+  const added = uniqueMarker();
+  const written = [
+    'require ["fileinto"];',
+    `if header :contains "Subject" "${paused}" {`,
+    '\tfileinto "Junk";',
+    "}",
+    "",
+  ].join("\n");
+  await storeSwitchedOffScript("alps-filters", written);
+
+  await openFilters(page);
+  await expect(emptyState(page)).toBeVisible();
+  await addRule(page, added);
+  await saveRules(page);
+
+  // The paused rules are as they were, and still switched off.
+  const scripts = await storedScripts();
+  expect(scripts.find((s) => s.name === "alps-filters")).toEqual({
+    name: "alps-filters",
+    active: false,
+    content: written,
+  });
+  // The rule saved is in a script of its own, the one switched on.
+  const active = scripts.filter((s) => s.active);
+  expect(active).toHaveLength(1);
+  expect(active[0].content).toContain(`"${added}"`);
+  expect(active[0].content).not.toContain(`"${paused}"`);
 });
 
 test("switching to the raw editor asks first, then shows the script the rules compile to", async ({ page }) => {
@@ -324,6 +363,32 @@ test("a script written by another client is opened as it is and edited in place"
   expect(response.status()).toBe(200);
 
   // Saved into THAT script: still the only one, still active, now edited.
+  expect(await storedScripts()).toEqual([{ name, active: true, content: edited }]);
+});
+
+// A script name is a quoted string in the server's answers, with a quote or a
+// backslash in it escaped. Such a name was read cut short at its first escaped
+// quote, and the script could not be read by it: the page offered no editor.
+test("a script whose name holds a quote and a backslash is opened and edited in place", async ({ page }) => {
+  const marker = uniqueMarker();
+  const name = 'Kept "by hand" \\ here';
+  const written = [
+    'require ["fileinto"];',
+    `if address :is "from" "${marker}@remote.test" {`,
+    '\tfileinto "Junk";',
+    "}",
+    "",
+  ].join("\n");
+  await storeActiveScript(name, written);
+
+  await openFilters(page);
+  await expect(script(page)).toHaveValue(written);
+
+  const edited = written.replace('fileinto "Junk"', `fileinto "${FOLDER}"`);
+  await script(page).fill(edited);
+  const response = await clickAndAwaitSave(page, saveScriptBtn(page));
+  expect(response.status()).toBe(200);
+
   expect(await storedScripts()).toEqual([{ name, active: true, content: edited }]);
 });
 
