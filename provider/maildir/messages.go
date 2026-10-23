@@ -1,6 +1,7 @@
 package maildir
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/emersion/go-maildir"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
+	"github.com/emersion/go-message/textproto"
 	"github.com/migadu/alps/provider"
 	imapprovider "github.com/migadu/alps/provider/imap"
 )
@@ -139,7 +141,9 @@ func envelopeOf(h mail.Header) *imap.Envelope {
 // Helper to convert maildir.Message to provider.Message
 func (p *Provider) parseMessage(mailbox string, key string, r io.Reader, mdFlags []maildir.Flag) (*provider.Message, error) {
 	msg, err := message.Read(r)
-	if err != nil {
+	// Metadata and raw downloads do not require decoding the body. The
+	// library still returns a usable entity for unsupported encodings.
+	if err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
 		return nil, err
 	}
 
@@ -437,165 +441,172 @@ func (p *Provider) GetMessageMetadata(mailbox string, id provider.MessageID) (*p
 	return p.parseMessage(mailbox, key, f, m.Flags())
 }
 
-// messagePart finds the part of the message e at partPath, numbered as IMAP
+// storedPart is a part of a message as it is stored: its header, and its
+// body with its transfer encoding and charset, as IMAP's BODY[n.MIME] and
+// BODY[n] give them. A message read with message.Read has its parts' bodies
+// decoded, and their bytes then no longer match their headers.
+type storedPart struct {
+	header textproto.Header
+	body   io.Reader
+}
+
+func (part storedPart) contentType() (string, map[string]string) {
+	h := message.Header{Header: part.header}
+	mediaType, params, _ := h.ContentType()
+	return mediaType, params
+}
+
+// readStoredMessage reads the header of the message r holds, and leaves its
+// body to be read.
+func readStoredMessage(r io.Reader) (storedPart, error) {
+	br := bufio.NewReader(r)
+	h, err := textproto.ReadHeader(br)
+	if err != nil {
+		return storedPart{}, err
+	}
+	return storedPart{header: h, body: br}, nil
+}
+
+// messagePart finds the part of the message m at partPath, numbered as IMAP
 // numbers a message's parts (RFC 3501, section 6.4.5): a message that is not
 // multipart has one part, its body, which is part 1. The reader asks for it
 // by that number. Below it are the parts of the message the body may hold.
-func messagePart(e *message.Entity, partPath []int) (*message.Entity, error) {
-	if len(partPath) > 0 && partPath[0] == 1 && e.MultipartReader() == nil {
-		return traverseEntity(e, partPath[1:])
+func messagePart(m storedPart, partPath []int) (storedPart, error) {
+	if mediaType, _ := m.contentType(); len(partPath) > 0 && partPath[0] == 1 && !strings.HasPrefix(mediaType, "multipart/") {
+		return traversePart(m, partPath[1:])
 	}
-	return traverseEntity(e, partPath)
+	return traversePart(m, partPath)
 }
 
-func traverseEntity(e *message.Entity, partPath []int) (*message.Entity, error) {
+func traversePart(part storedPart, partPath []int) (storedPart, error) {
 	if len(partPath) == 0 {
-		return e, nil
+		return part, nil
 	}
+	mediaType, params := part.contentType()
 
 	// The parts of an attached message are numbered within it, as a
-	// message's own are: 2.1 is the first part of the message at 2.
-	if isAttachedMessage(e) {
-		inner, err := message.Read(e.Body)
+	// message's own are: 2.1 is the first part of the message at 2. The
+	// message is the part's body, once its transfer encoding is undone.
+	if mediaType == "message/rfc822" {
+		decoded, err := message.New(message.Header{Header: part.header}, part.body)
 		if err != nil {
-			return nil, err
+			return storedPart{}, err
+		}
+		inner, err := readStoredMessage(decoded.Body)
+		if err != nil {
+			return storedPart{}, err
 		}
 		return messagePart(inner, partPath)
 	}
 
-	idx := partPath[0]
-	mr := e.MultipartReader()
-	if mr == nil {
-		return nil, fmt.Errorf("entity is not multipart")
+	if !strings.HasPrefix(mediaType, "multipart/") {
+		return storedPart{}, fmt.Errorf("entity is not multipart")
 	}
-
-	var part *message.Entity
+	idx := partPath[0]
+	mr := textproto.NewMultipartReader(part.body, params["boundary"])
 	for i := 1; i <= idx; i++ {
 		p, err := mr.NextPart()
-		if err != nil {
-			return nil, err
-		}
-		if i == idx {
-			part = p
+		if err == io.EOF {
 			break
 		}
+		if err != nil {
+			return storedPart{}, err
+		}
+		if i == idx {
+			return traversePart(storedPart{header: p.Header, body: p}, partPath[1:])
+		}
 	}
-
-	if part == nil {
-		return nil, fmt.Errorf("part %d not found", idx)
-	}
-
-	return traverseEntity(part, partPath[1:])
+	return storedPart{}, fmt.Errorf("part %d not found", idx)
 }
 
-func extractEntityData(e *message.Entity, limit int64) ([]byte, []byte, error) {
-	var headerBuf bytes.Buffer
-	for fields := e.Header.Fields(); fields.Next(); {
-		headerBuf.WriteString(fmt.Sprintf("%s: %s\r\n", fields.Key(), fields.Value()))
-	}
-	headerBuf.WriteString("\r\n")
-
-	var bodyReader io.Reader = e.Body
-	if limit > 0 {
-		bodyReader = io.LimitReader(bodyReader, limit)
-	}
-
-	bodyBuf, err := io.ReadAll(bodyReader)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return headerBuf.Bytes(), bodyBuf, nil
-}
-
-func (p *Provider) getMessagePartEntity(mailbox string, key string, partPath []int) (*provider.Message, *message.Entity, io.ReadCloser, error) {
+// readPart reads the part at partPath of a message as it is stored: its
+// header, parsed and in its bytes, and its body, of which at most limit bytes
+// when limit is above 0.
+func (p *Provider) readPart(mailbox string, key string, partPath []int, limit int64) (*provider.Message, textproto.Header, []byte, []byte, error) {
 	dir := p.getDir(mailbox)
 	m, err := messageByKey(dir, key)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, textproto.Header{}, nil, nil, err
 	}
 	f, err := m.Open()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, textproto.Header{}, nil, nil, err
 	}
+	defer f.Close()
 
 	seeker, ok := f.(io.Seeker)
 	if !ok {
-		f.Close()
-		return nil, nil, nil, fmt.Errorf("underlying file is not seekable")
+		return nil, textproto.Header{}, nil, nil, fmt.Errorf("underlying file is not seekable")
 	}
 
 	msgMeta, err := p.parseMessage(mailbox, key, f, m.Flags())
 	if err != nil {
-		f.Close()
-		return nil, nil, nil, err
+		return nil, textproto.Header{}, nil, nil, err
 	}
 
 	if _, err := seeker.Seek(0, io.SeekStart); err != nil {
-		f.Close()
-		return nil, nil, nil, err
+		return nil, textproto.Header{}, nil, nil, err
 	}
 
-	e, err := message.Read(f)
+	stored, err := readStoredMessage(f)
 	if err != nil {
-		f.Close()
-		return nil, nil, nil, err
+		return nil, textproto.Header{}, nil, nil, err
 	}
-
-	part, err := messagePart(e, partPath)
+	part, err := messagePart(stored, partPath)
 	if err != nil {
-		f.Close()
-		return nil, nil, nil, err
+		return nil, textproto.Header{}, nil, nil, err
 	}
 
-	return msgMeta, part, f, nil
+	var header bytes.Buffer
+	if err := textproto.WriteHeader(&header, part.header); err != nil {
+		return nil, textproto.Header{}, nil, nil, err
+	}
+	body := part.body
+	if limit > 0 {
+		body = io.LimitReader(body, limit)
+	}
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return nil, textproto.Header{}, nil, nil, err
+	}
+	return msgMeta, part.header, header.Bytes(), data, nil
 }
 
+// GetMessagePart answers the part as an entity, its body decoded.
 func (p *Provider) GetMessagePart(mailbox string, id provider.MessageID, partPath []int) (*provider.Message, *message.Entity, error) {
-	msgMeta, part, f, err := p.getMessagePartEntity(mailbox, id.String(), partPath)
+	msgMeta, h, _, body, err := p.readPart(mailbox, id.String(), partPath, 0)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	_, bodyBuf, err := extractEntityData(part, 0)
-	f.Close()
+	part, err := message.New(message.Header{Header: h}, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, err
 	}
-
-	part.Body = bytes.NewReader(bodyBuf)
 	return msgMeta, part, nil
 }
 
+// GetMessagePartRaw answers the part's header and body as they are stored.
 func (p *Provider) GetMessagePartRaw(mailbox string, id provider.MessageID, partPath []int, limit int64) (*provider.Message, []byte, []byte, error) {
-	msgMeta, part, f, err := p.getMessagePartEntity(mailbox, id.String(), partPath)
+	msgMeta, _, header, body, err := p.readPart(mailbox, id.String(), partPath, limit)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	defer f.Close()
-
-	headerBuf, bodyBuf, err := extractEntityData(part, limit)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	return msgMeta, headerBuf, bodyBuf, nil
+	return msgMeta, header, body, nil
 }
 
+// GetMessagePartWithData answers both: the part as an entity, its body
+// decoded, and its header and body as they are stored, as the IMAP provider
+// does.
 func (p *Provider) GetMessagePartWithData(mailbox string, id provider.MessageID, partPath []int) (*provider.Message, *message.Entity, []byte, []byte, error) {
-	msgMeta, part, f, err := p.getMessagePartEntity(mailbox, id.String(), partPath)
+	msgMeta, h, header, body, err := p.readPart(mailbox, id.String(), partPath, 0)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	defer f.Close()
-
-	headerBuf, bodyBuf, err := extractEntityData(part, 0)
+	part, err := message.New(message.Header{Header: h}, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-
-	part.Body = bytes.NewReader(bodyBuf)
-	return msgMeta, part, headerBuf, bodyBuf, nil
+	return msgMeta, part, header, body, nil
 }
 
 func (p *Provider) SetMessagesFlags(mailbox string, ids []provider.MessageID, op provider.FlagOperation) error {
