@@ -40,6 +40,8 @@ const MOBILE_MAX_WIDTH = 768;
  */
 export interface UnsavedChanges {
   readonly hasUnsavedChanges: boolean;
+  /** An explicit Discard must also clear any edit kept for a later visit. */
+  discardUnsavedChanges?(): void;
 }
 
 /**
@@ -427,6 +429,12 @@ export class SettingsWindow extends LitElement {
   private confirmLeave = () => {
     const action = this.pendingLeave;
     this.pendingLeave = null;
+    if (action) {
+      const wrapper = this.shadowRoot?.querySelector('.settings-content-wrapper');
+      for (const section of wrapper?.children ?? []) {
+        (section as Partial<UnsavedChanges>).discardUnsavedChanges?.();
+      }
+    }
     action?.();
   };
 
