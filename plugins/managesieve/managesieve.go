@@ -201,8 +201,12 @@ func (c *MSClient) ListScripts() ([]Script, error) {
 	}
 }
 
+// PutScript stores a script under name (RFC 5804 PUTSCRIPT). The line break
+// after the literal is written here, always: sendCommand adds one only to a
+// command that does not end in one already, and a script that ends in a line
+// break, or an empty one, left the command unended.
 func (c *MSClient) PutScript(name, content string) error {
-	cmd := fmt.Sprintf("PUTSCRIPT %q {%d+}\r\n%s", name, len(content), content)
+	cmd := fmt.Sprintf("PUTSCRIPT %q {%d+}\r\n%s\r\n", name, len(content), content)
 	if err := c.sendCommand(cmd); err != nil {
 		return err
 	}
