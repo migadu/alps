@@ -324,7 +324,8 @@ func copyMessagesWithProvider(p provider.MailProvider, srcMailbox, dstMailbox st
 
 // messageThreadWithProvider gets a message's thread in its mailbox. `known`
 // names the members when the caller already has them, in which case they are
-// read directly instead of threaded for.
+// read directly instead of threaded for. Every member names its folder (see
+// namedIn).
 func messageThreadWithProvider(p provider.MailProvider, mailbox string, uid provider.MessageID, known []provider.MessageID) ([]provider.Message, error) {
 	type memberCapable interface {
 		GetThreadMembers(mailbox string, uids []provider.MessageID) ([]provider.Message, error)
@@ -334,24 +335,44 @@ func messageThreadWithProvider(p provider.MailProvider, mailbox string, uid prov
 		// expunged since can make the read come back short or fail. Threading
 		// from scratch is the answer to that, not an error to the reader.
 		if msgs, err := mc.GetThreadMembers(mailbox, known); err == nil && len(msgs) == len(known) {
-			return msgs, nil
+			return namedIn(msgs, mailbox), nil
 		}
 	}
 	type threadCapable interface {
 		GetMessageThread(mailbox string, targetUID provider.MessageID) ([]provider.Message, error)
 	}
 	if tc, ok := p.(threadCapable); ok {
-		return tc.GetMessageThread(mailbox, uid)
+		msgs, err := tc.GetMessageThread(mailbox, uid)
+		return namedIn(msgs, mailbox), err
 	}
 	msg, err := p.GetMessageMetadata(mailbox, uid)
 	if err != nil {
 		return nil, err
 	}
-	return []provider.Message{*msg}, nil
+	return namedIn([]provider.Message{*msg}, mailbox), nil
+}
+
+// namedIn names mailbox as the folder of the messages that name none, which a
+// provider need not do.
+//
+// A conversation holds the messages of two folders, the one it is opened from
+// and Sent, under ids that name a message only within their own. A member
+// that named no folder was taken for one of the folder the conversation was
+// opened from, a reply from Sent among them, and the cache could only guess
+// that folder from the key it kept the conversation under: Work's begins the
+// keys of Work:Sub too. Named where they are read, members are told apart by
+// their names alone.
+func namedIn(msgs []provider.Message, mailbox string) []provider.Message {
+	for i := range msgs {
+		if msgs[i].Mailbox == "" {
+			msgs[i].Mailbox = mailbox
+		}
+	}
+	return msgs
 }
 
 // sentOfConversation finds the messages of a thread's conversation in Sent,
-// unless the thread is in Sent already.
+// unless the thread is in Sent already. Every one names Sent (see namedIn).
 func sentOfConversation(p provider.MailProvider, mailbox string, thread []provider.Message, sentName string) ([]provider.Message, error) {
 	finder, ok := p.(provider.ReferenceFinder)
 	if !ok {
@@ -372,7 +393,8 @@ func sentOfConversation(p provider.MailProvider, mailbox string, thread []provid
 	if sentName == mailbox {
 		return nil, nil
 	}
-	return finder.FindByReferences(sentName, ids)
+	sent, err := finder.FindByReferences(sentName, ids)
+	return namedIn(sent, sentName), err
 }
 
 // mergeConversation adds the sent messages a thread lacks, and orders them all

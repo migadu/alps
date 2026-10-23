@@ -486,7 +486,6 @@ func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.Me
 // Finding them all walks no more of the cache than finding this folder's
 // did: the cache goes through every key it holds for any prefix.
 func patchCachedConversations(cache *alps.Cache, debugf func(string, ...interface{}), mailbox, uidStr string, addFlags, removeFlags []imap.Flag) {
-	ownPrefix := threadCacheKey(mailbox, "")
 	for _, key := range cache.GetKeysWithPrefix("thread:") {
 		patched := false
 		cache.Update(key, func(cached interface{}) interface{} {
@@ -499,13 +498,10 @@ func patchCachedConversations(cache *alps.Cache, debugf func(string, ...interfac
 				// own: a UID under IMAP, a file name under maildir. It names a
 				// message only within its folder, and the conversations walked are
 				// every folder's, each holding that folder's messages and the
-				// user's own from Sent. A member that names no folder is taken, as
-				// handleGetThread takes it, for one of the folder its conversation
-				// is kept under.
-				if msgs[i].AlpsUID != uidStr {
-					continue
-				}
-				if msgs[i].Mailbox != mailbox && (msgs[i].Mailbox != "" || !strings.HasPrefix(key, ownPrefix)) {
+				// user's own from Sent. Every member names its folder (namedIn).
+				// The key is not asked: it names only the folder the conversation
+				// was opened from, and Work's begins the keys of Work:Sub too.
+				if msgs[i].AlpsUID != uidStr || msgs[i].Mailbox != mailbox {
 					continue
 				}
 				// A reader may be encoding the old conversation now. Its slice,
@@ -1808,7 +1804,7 @@ func handleGetThread(ctx *alps.Context) error {
 	for _, m := range msgs {
 		// Members from Sent are keyed under their own mailbox by the read that
 		// asks for them there, which is a different conversation to assemble.
-		if m.AlpsUID == "" || (m.Mailbox != "" && m.Mailbox != mboxName) {
+		if m.AlpsUID == "" || m.Mailbox != mboxName {
 			continue
 		}
 		cache.Set(threadCacheKey(mboxName, m.AlpsUID), msgs)
