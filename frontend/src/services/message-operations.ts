@@ -3,6 +3,7 @@ import { fetchWithTimeout } from '../utils/fetch-utils';
 import { FLAG_SEEN } from '../utils/flags';
 import { encodeMailboxPath } from '../utils/folders';
 import { Logger } from '../utils/logger';
+import { writtenAddress } from '../utils/address-display';
 
 /**
  * The largest UID list a single request may carry.
@@ -382,7 +383,7 @@ export class MessageOperationsService {
    * {@link MissingUploadsError} for one refused over uploads the server no
    * longer holds, which the caller can save again without them.
    */
-  async saveDraft(formData: FormData): Promise<{ uid: string; mailbox: string; size?: number; attachments?: any[] } | null> {
+  async saveDraft(formData: FormData): Promise<{ uid: string; mailbox: string; size?: number; attachments?: any[]; bcc?: string[] } | null> {
     try {
       const res = await fetchWithTimeout('/messages', {
         method: 'POST',
@@ -394,7 +395,14 @@ export class MessageOperationsService {
       }
       if (res.ok) {
         const data = await res.json();
-        return { uid: data.draft_uid, mailbox: data.draft_mailbox, size: data.draft_size, attachments: data.attachments };
+        return {
+          uid: data.draft_uid, mailbox: data.draft_mailbox, size: data.draft_size, attachments: data.attachments,
+          // Absent on older servers. An explicit empty list means Bcc was
+          // empty or unreadable and was stored without recipients.
+          ...(Array.isArray(data.draft_bcc) ? {
+            bcc: data.draft_bcc.map((a: { Name: string; Address: string }) => writtenAddress(a.Name, a.Address)),
+          } : {}),
+        };
       }
       const body = await readErrorBody(res);
       const missing = missingUploads(res, body);

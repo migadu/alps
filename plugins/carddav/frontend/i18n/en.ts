@@ -22,7 +22,11 @@ export default {
     categoryUpdateOneFailed: 'The contact could not be updated.',
     saveFailed: 'The contact could not be saved.',
     saveConflict: 'This contact was changed on another device, so your edit was not saved. Cancel the edit to see the latest version.',
-    starFailed: 'The contact could not be updated.',
+    starFailed: {
+      one: '{count} of {total} contacts could not be updated.',
+      other: '{count} of {total} contacts could not be updated.'
+    },
+    starOneFailed: 'The contact could not be updated.',
     unnamedContact: 'Unnamed Contact',
     title: 'Contacts',
     allContacts: 'All Contacts',
@@ -70,6 +74,9 @@ export default {
     address: 'Address',
     url: 'URL',
     birthday: 'Birthday',
+    birthdayDay: 'Day',
+    birthdayMonth: 'Month',
+    birthdayYear: 'Year',
     back: 'Back',
     toggleStar: 'Toggle Star',
     publicKey: 'Public Key',

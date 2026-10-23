@@ -170,10 +170,24 @@ export function getDestinationLabel(name: string, i18nStore?: I18nStore, mailbox
   return roleCaption(name, i18nStore, mailboxes) ?? name;
 }
 
-const SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+/**
+ * Each unit's dictionary key, beside the English symbol a caller without a
+ * store gets. The symbols are the dictionaries' because they differ by
+ * language: French counts in octets ("768 Ko"), and Cyrillic Serbian writes
+ * "КБ" where a Latin "KB" would stand out inside its text. The browser's own
+ * unit formatting does not cover this: it prints "kB" in Serbian Cyrillic too.
+ */
+const SIZE_UNITS: [key: string, symbol: string][] = [
+  ['sizeUnits.bytes', 'B'],
+  ['sizeUnits.kilobytes', 'KB'],
+  ['sizeUnits.megabytes', 'MB'],
+  ['sizeUnits.gigabytes', 'GB'],
+  ['sizeUnits.terabytes', 'TB'],
+  ['sizeUnits.petabytes', 'PB'],
+];
 
 /**
- * A byte count as a short human string.
+ * A byte count as a short human string, in the units of the store's language.
  *
  * The unit list used to stop at `GB` and the index was used unclamped, so
  * anything at or above a terabyte read `1 undefined` — reachable on a quota
@@ -185,8 +199,9 @@ const SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
  * rounds to 1024 — printed as `1024 KB` rather than `1 MB`. Re-stepping after
  * the rounding is what keeps the mantissa under 1024.
  */
-export function formatSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+export function formatSize(bytes: number, i18nStore?: I18nStore): string {
+  const unit = (i: number) => (i18nStore ? i18nStore.t(SIZE_UNITS[i][0]) : SIZE_UNITS[i][1]);
+  if (!Number.isFinite(bytes) || bytes <= 0) return `0 ${unit(0)}`;
   const k = 1024;
   const raw = Math.floor(Math.log(bytes) / Math.log(k));
   let i = Math.min(Math.max(raw, 0), SIZE_UNITS.length - 1);
@@ -195,7 +210,7 @@ export function formatSize(bytes: number): string {
     value = Math.round(value / k);
     i++;
   }
-  return `${value} ${SIZE_UNITS[i]}`;
+  return `${value} ${unit(i)}`;
 }
 
 export const freemailDomains = new Set([

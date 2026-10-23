@@ -2389,12 +2389,18 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	// A field that does not read as addresses is refused here, for what it
-	// is, rather than as a failure to send or to store the draft. A draft
-	// does not carry Bcc, so Bcc does not stop one being saved.
+	// is, rather than as a failure to send or to store the draft. A Bcc that
+	// does not read so is refused only when the message is sent: a draft is
+	// still saved, with each Bcc entry that does read. Saved without the
+	// field, it lost every Bcc recipient over one that did not, the ones
+	// written correctly too.
 	recipients := map[string][]string{}
 	for _, field := range []string{"to", "cc", "bcc"} {
 		list, err := parseAddressList(ctx.FormValue(field))
-		if err != nil && !(saveAsDraft && field == "bcc") {
+		if err != nil && saveAsDraft && field == "bcc" {
+			list, err = readableAddresses(ctx.FormValue(field)), nil
+		}
+		if err != nil {
 			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid %s address: %v", field, err)})
 		}
 		recipients[field] = list
@@ -2602,6 +2608,18 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	if saveAsDraft {
+		// The Bcc actually written, not the field the browser posted: a Bcc
+		// entry that does not read is omitted from a draft. Name and Address
+		// stay separate so the browser need not decode MIME display names.
+		storedBcc, err := prepareAddressList(msg.Bcc)
+		if err != nil {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid bcc address: " + err.Error()})
+		}
+		for _, addr := range storedBcc {
+			// Keep quoting required by a local part such as "a;b", while
+			// leaving the display name plain for the browser to format.
+			addr.Address = mailboxAddress(addr)
+		}
 		var drafts *MailboxInfo
 		var uid provider.MessageID
 		var size uint32
@@ -2618,9 +2636,9 @@ func handleComposeNew(ctx *alps.Context) error {
 			sourceAt[path] = sources[i]
 		}
 
-		err := doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
+		err = doMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 			var err error
-			drafts, uid, size, err = appendMessageWithProvider(p, msg, provider.MailboxTypeDrafts)
+			drafts, uid, size, err = appendMessageWithProvider(p, msg.asDraft(), provider.MailboxTypeDrafts)
 			if err != nil {
 				return err
 			}
@@ -2692,6 +2710,7 @@ func handleComposeNew(ctx *alps.Context) error {
 			"draft_uid":     uid.String(),
 			"draft_mailbox": drafts.Name(),
 			"draft_size":    size,
+			"draft_bcc":     storedBcc,
 			"attachments":   respAttachments,
 		})
 	}
@@ -2705,6 +2724,11 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
+		// A temporary refusal may outlast the browser's wait. Each new
+		// attempt checks again before MAIL, while nothing has been sent.
+		if err := ctx.Request.Context().Err(); err != nil {
+			return fmt.Errorf("message not sent: %v", err)
+		}
 		return sendMessage(c, msg)
 	})
 	if err != nil {

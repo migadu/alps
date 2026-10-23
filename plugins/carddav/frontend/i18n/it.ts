@@ -22,7 +22,11 @@ export default {
     categoryUpdateOneFailed: 'Non è stato possibile aggiornare il contatto.',
     saveFailed: 'Non è stato possibile salvare il contatto.',
     saveConflict: 'Il contatto è stato modificato su un altro dispositivo, quindi la modifica non è stata salvata. Annulla la modifica per vedere l\'ultima versione.',
-    starFailed: 'Non è stato possibile aggiornare il contatto.',
+    starFailed: {
+      one: 'Non è stato possibile aggiornare {count} contatto su {total}.',
+      other: 'Non è stato possibile aggiornare {count} contatti su {total}.'
+    },
+    starOneFailed: 'Non è stato possibile aggiornare il contatto.',
     unnamedContact: 'Contatto senza nome',
     title: 'Contatti',
     allContacts: 'Tutti i contatti',
@@ -70,6 +74,9 @@ export default {
     address: 'Indirizzo',
     url: 'URL',
     birthday: 'Compleanno',
+    birthdayDay: 'Giorno',
+    birthdayMonth: 'Mese',
+    birthdayYear: 'Anno',
     back: 'Indietro',
     toggleStar: 'Attiva/disattiva preferito',
     publicKey: 'Chiave pubblica',
