@@ -122,6 +122,59 @@ func TestHTTP_ARefreshDropsTheAssembledConversation(t *testing.T) {
 	}
 }
 
+// A conversation opened from the Inbox holds the user's reply from Sent, and
+// is kept under the Inbox's keys. A write in Sent that took the reply away, or
+// changed the flags of the whole folder, dropped only the conversations kept
+// under Sent's, and reopened from the Inbox, the reply was shown as it had
+// been: there after it was deleted or moved, unread after Sent was read.
+func TestHTTP_AWriteInSentReachesTheInboxConversation(t *testing.T) {
+	opened := func(t *testing.T) (s *testServer, uid, reply string) {
+		t.Helper()
+		s = newTestServer(t)
+		s.login()
+		uid = uidOfSubject(t, s, "Engines")
+		fileSentReply(t, s, "engines@remote.test")
+		page := threadOf(t, s, "INBOX", uid)
+		if len(page.Messages) != 2 || page.Messages[1].Mailbox != "Sent" || contains(page.Messages[1].Flags, `\Seen`) {
+			t.Fatalf("the conversation holds %+v, want the message and the unread reply from Sent", page.Messages)
+		}
+		return s, uid, page.Messages[1].UID
+	}
+
+	for _, write := range []struct {
+		name string
+		do   func(s *testServer, reply string) response
+	}{
+		{"deleted", func(s *testServer, reply string) response {
+			return s.do("DELETE", "/mailboxes/Sent/messages", map[string]any{"uids": []string{reply}})
+		}},
+		{"moved", func(s *testServer, reply string) response {
+			return s.do("PUT", "/mailboxes/Sent/messages/move", map[string]any{"uids": []string{reply}, "to": "Archive"})
+		}},
+	} {
+		t.Run("the reply "+write.name, func(t *testing.T) {
+			s, uid, reply := opened(t)
+			s.expect(write.do(s, reply), http.StatusOK)
+
+			if got := threadOf(t, s, "INBOX", uid).Messages; len(got) != 1 {
+				t.Errorf("with the reply %s from Sent, the Inbox's conversation holds %+v, want the message alone", write.name, got)
+			}
+		})
+	}
+
+	t.Run("Sent marked read", func(t *testing.T) {
+		s, uid, _ := opened(t)
+		s.expect(s.do("PUT", "/mailboxes/Sent/messages/flag", map[string]any{
+			"all": true, "flags": []string{`\Seen`}, "action": "add",
+		}), http.StatusOK)
+
+		got := threadOf(t, s, "INBOX", uid).Messages
+		if len(got) != 2 || !contains(got[1].Flags, `\Seen`) {
+			t.Errorf("with the whole of Sent marked read, the Inbox's conversation holds %+v, want the reply read", got)
+		}
+	})
+}
+
 type testUID string
 
 func (u testUID) String() string   { return string(u) }
@@ -221,6 +274,38 @@ func TestPatchCachedConversations(t *testing.T) {
 	patchCachedConversations(cache, quiet, "INBOX", "9", []imap.Flag{imap.FlagSeen}, nil)
 	if _, ok := cache.Get(threadCacheKey("INBOX", "9")); ok {
 		t.Error("an entry that could not be patched was kept")
+	}
+}
+
+// A folder's listings go with every conversation that holds one of its
+// messages, whichever folder's keys it is kept under: a conversation of the
+// Inbox, or of Archive, holds the user's replies from Sent. One that holds
+// none of Sent's stays, and so does one that holds a message of a folder whose
+// name goes on from Sent's with a colon, which is not Sent's.
+func TestDropMailboxListingsReachesOtherFoldersConversations(t *testing.T) {
+	cache := alps.NewCache(time.Minute)
+	defer cache.Close()
+
+	member := func(mailbox, uid string) IMAPMessage {
+		return IMAPMessage{FetchMessageBuffer: &imapclient.FetchMessageBuffer{}, AlpsUID: uid, Mailbox: mailbox}
+	}
+	cache.Set(threadCacheKey("Sent", "7"), []IMAPMessage{member("Sent", "7")})
+	cache.Set(threadCacheKey("INBOX", "5"), []IMAPMessage{member("INBOX", "5"), member("Sent", "7")})
+	cache.Set(threadCacheKey("Archive", "2"), []IMAPMessage{member("Archive", "2"), member("Sent", "3")})
+	cache.Set(threadCacheKey("INBOX", "6"), []IMAPMessage{member("INBOX", "6")})
+	cache.Set(threadCacheKey("INBOX", "8"), []IMAPMessage{member("INBOX", "8"), member("Sent:Old", "7")})
+
+	dropMailboxListings(cache, "Sent")
+
+	for _, key := range []string{threadCacheKey("Sent", "7"), threadCacheKey("INBOX", "5"), threadCacheKey("Archive", "2")} {
+		if _, ok := cache.Get(key); ok {
+			t.Errorf("the conversation kept under %s holds a message of Sent, and was kept", key)
+		}
+	}
+	for _, key := range []string{threadCacheKey("INBOX", "6"), threadCacheKey("INBOX", "8")} {
+		if _, ok := cache.Get(key); !ok {
+			t.Errorf("the conversation kept under %s holds no message of Sent, and was dropped", key)
+		}
 	}
 }
 
