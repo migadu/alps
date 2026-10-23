@@ -22,7 +22,11 @@ export default {
     categoryUpdateOneFailed: 'Der Kontakt konnte nicht aktualisiert werden.',
     saveFailed: 'Der Kontakt konnte nicht gespeichert werden.',
     saveConflict: 'Der Kontakt wurde auf einem anderen Gerät geändert, daher wurde Ihre Änderung nicht gespeichert. Brechen Sie die Bearbeitung ab, um die neueste Version zu sehen.',
-    starFailed: 'Der Kontakt konnte nicht aktualisiert werden.',
+    starFailed: {
+      one: '{count} von {total} Kontakten konnte nicht aktualisiert werden.',
+      other: '{count} von {total} Kontakten konnten nicht aktualisiert werden.'
+    },
+    starOneFailed: 'Der Kontakt konnte nicht aktualisiert werden.',
     unnamedContact: 'Unbenannter Kontakt',
     title: 'Kontakte',
     allContacts: 'Alle Kontakte',

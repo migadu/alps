@@ -400,6 +400,35 @@ describe('the refusal toast', () => {
     expect(shown).toEqual(['A contact could not be updated, so the category was only partly renamed.']);
   });
 
+  it('counts the contacts a star across a selection could not update', async () => {
+    // The page passed the numbers, but the message was the one-contact
+    // sentence in every language.
+    const outcome = vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 5, done: 3, failed: 2 });
+    expect(await toastFrom('en', (el) => el.handleToggleStarEvent(), five())).toEqual(['2 of 5 contacts could not be updated.']);
+    outcome.mockResolvedValue({ total: 5, done: 4, failed: 1 });
+    expect(await toastFrom('de', (el) => el.handleToggleStarEvent(), five())).toEqual(['1 von 5 Kontakten konnte nicht aktualisiert werden.']);
+    outcome.mockResolvedValue({ total: 5, done: 3, failed: 2 });
+    expect(await toastFrom('sr', (el) => el.handleToggleStarEvent(), five())).toEqual(['Nije bilo moguće ažurirati 2 kontakta od ukupno 5.']);
+  });
+
+  it('says a star the one card it was aimed at refused without "1 of 1"', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 0, failed: 1 });
+    vi.spyOn(contactsService, 'updateCategories').mockRejectedValue(new HttpStatusError(412, 'changed elsewhere'));
+    const shown = [
+      ...await toastFrom('en', (el) => el.handleToggleStarEvent(), [card('a')]),
+      // The star on a row of the list.
+      ...await toastFrom('en', (el) => el.handleToggleStar(new Event('click'), el.contacts[0]), [card('a')]),
+    ];
+    expect(shown).toEqual(['The contact could not be updated.', 'The contact could not be updated.']);
+  });
+
+  it('names the numbers when a star across a selection fails outright', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(contactsService, 'bulkUpdateCategories').mockRejectedValue(new Error('offline'));
+    expect(await toastFrom('en', (el) => el.handleToggleStarEvent())).toEqual(['2 of 2 contacts could not be updated.']);
+  });
+
   it('names the numbers when a category change fails outright', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(contactsService, 'bulkUpdateCategories').mockRejectedValue(new Error('offline'));
