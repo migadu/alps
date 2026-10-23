@@ -388,7 +388,7 @@ export class AttachmentPreview extends LitElement {
       overflow: auto;
       padding: 16px;
       box-sizing: border-box;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: var(--font-mono);
       font-size: 13px;
       line-height: 1.6;
       color: var(--text-primary);

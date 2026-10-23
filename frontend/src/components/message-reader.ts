@@ -593,6 +593,7 @@ export class MessageReader extends LitElement {
     }
 
     .reader-subject {
+      font-family: var(--font-heading);
       font-size: 20px;
       font-weight: 600;
       margin-bottom: 20px;
@@ -701,6 +702,7 @@ export class MessageReader extends LitElement {
     }
 
     .reader-date {
+      font-family: var(--font-label);
       font-size: 13px;
       color: var(--text-muted);
     }
@@ -713,6 +715,7 @@ export class MessageReader extends LitElement {
     }
 
     .reader-size {
+      font-family: var(--font-label);
       font-size: 11px;
       color: var(--text-muted);
       white-space: nowrap;

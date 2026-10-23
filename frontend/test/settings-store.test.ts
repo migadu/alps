@@ -859,3 +859,28 @@ describe('local records', () => {
     expect(document.cookie).toContain('alps_logged_in=1');
   });
 });
+
+describe('colour themes', () => {
+  afterEach(() => document.documentElement.removeAttribute('style'));
+
+  it('takes away what the last theme set beyond the colours', async () => {
+    signedIn();
+    serve({
+      'GET /session': () => json(200, { Username: USER }),
+      'GET /settings': () => json(200, { Settings: { language: 'en', ui: { themeMode: 'light' } } }),
+      'PUT /settings': () => json(200, {}),
+    });
+    const store = new SettingsStore();
+    await vi.waitFor(() => expect((store as any).initialFetchCompleted).toBe(true));
+    const root = document.documentElement.style;
+
+    await store.updateSettings({ colorFamily: 'migadu' });
+    expect(root.getPropertyValue('--bg-primary')).toBe('#f5f9ff');
+    expect(root.getPropertyValue('--font-heading')).toContain('Source Serif 4');
+
+    await store.updateSettings({ colorFamily: 'nord' });
+    expect(root.getPropertyValue('--bg-primary')).toBe('#eceff4');
+    expect(root.getPropertyValue('--font-heading')).toBe('');
+    expect(root.getPropertyValue('--accent-contrast')).toBe('');
+  });
+});

@@ -53,6 +53,7 @@ export class SettingsPage extends LitElement {
     }
 
     .settings-title {
+      font-family: var(--font-heading);
       font-weight: 500;
       font-size: 16px;
       color: var(--text-primary);
@@ -562,6 +563,7 @@ export class SettingsPage extends LitElement {
           <alps-select @change=${(e: Event) => this.handleUpdate(e, 'colorFamily')} .value=${this.settingsState.colorFamily}
             .options=${[
             {value: "default", label: "Alps"},
+            {value: "migadu", label: "Migadu"},
             {value: "nord", label: "Nord"},
             {value: "ocean", label: "Ocean"}
           ]}>

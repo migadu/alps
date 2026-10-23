@@ -145,7 +145,7 @@ export class LoginPage extends LitElement {
       margin-top: 4px;
       gap: 8px;
       background-color: var(--accent-color, #3b82f6);
-      color: #ffffff;
+      color: var(--accent-contrast, #ffffff);
       border: 1px solid transparent;
       border-radius: var(--btn-radius, 4px);
       font-family: inherit;
