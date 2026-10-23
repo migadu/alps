@@ -781,11 +781,146 @@ describe('Serbian terms, titles and twins', () => {
   });
 });
 
+/**
+ * Serbian capitalises a sentence's first word and proper names, where an
+ * English title capitalises every word. The GPG plugin's titles, labels and
+ * buttons had taken the English habit throughout ("Uvezi Postojeći GPG Par
+ * Ključeva", "Lozinka (Obavezno)"), and so had the filter editor's "Novo
+ * Pravilo".
+ *
+ * A word that does not open its sentence is written in lower case, unless it
+ * is a name: an acronym in capitals (GPG), a name with a capital inside it
+ * (WebAuthn, OpenPGP), one on the list below, or a folder's name. A sentence
+ * opens after . ! ? : ; or … followed by whitespace, or after a line break,
+ * not after a parenthesis or a slash. Quoted text and {placeholders} are not
+ * the string's own words and are dropped first, and rs is read
+ * transliterated, case kept, so one rule reads both scripts.
+ */
+const SERBIAN_NAMES = new Set([
+  // The composer's Bcc field, by the name the identity settings give it.
+  'Bcc',
+]);
+
+/**
+ * The dictionaries capitalise a folder's name as a proper name, and Serbian
+ * declines it ("u Nacrtima", "u Prijemnom sandučetu"). So a folder's name is
+ * spared in the case forms its own ending takes, and only those: "Nacrt", a
+ * draft rather than the Drafts folder, is not one, nor "Poslati" or
+ * "Arhiviraj".
+ */
+const SERBIAN_DECLENSIONS: [ending: RegExp, endings: string[]][] = [
+  // Prijemno, Poslato, Nepoželjno: the neuter adjective.
+  [/o$/, ['o', 'og', 'oga', 'om', 'ome']],
+  // Nacrti: a masculine plural.
+  [/i$/, ['i', 'a', 'e', 'ima']],
+  // Arhiva: a feminine noun.
+  [/a$/, ['a', 'e', 'i', 'u', 'om']],
+  // Otpad, Spam: a masculine noun, its name the stem.
+  [/$/, ['', 'a', 'u', 'om', 'e']],
+];
+const SERBIAN_FOLDER_FORMS = new Set(['inbox', 'drafts', 'sent', 'archive', 'spam', 'junk', 'trash'].flatMap((key) => {
+  const name = String(lookup(sr, `folderList.${key}`)).split(/\s+/)[0];
+  const [ending, endings] = SERBIAN_DECLENSIONS.find(([pattern]) => pattern.test(name))!;
+  return endings.map((form) => name.replace(ending, '') + form);
+}));
+
+/** The words of one Serbian string capitalised where Serbian writes them in lower case. */
+function titleCased(text: string): string[] {
+  const plain = transliterate(text).replace(/\{[^}]*\}/g, ' ').replace(/"[^"]*"|„[^“”]*[“”]/g, ' ');
+  return plain.split(/(?<=[.!?:;…])\s+|\n/).flatMap((sentence) =>
+    [...sentence.matchAll(/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*/gu)].slice(1).map(([word]) => word)
+      .filter((word) => /^\p{Lu}/u.test(word) && !/\p{Lu}/u.test(word.slice(1)))
+      .filter((word) => !SERBIAN_NAMES.has(word) && !SERBIAN_FOLDER_FORMS.has(word)));
+}
+
+describe('Serbian capitals', () => {
+  it('has a rule that catches English title case and spares names, folders and new sentences', () => {
+    expect(titleCased('Uvezi Postojeći GPG Par Ključeva')).toEqual(['Postojeći', 'Par', 'Ključeva']);
+    expect(titleCased('Увоз Није Успео')).toEqual(['Nije', 'Uspeo']);
+    expect(titleCased('Lozinka (Obavezno)')).toEqual(['Obavezno']);
+    expect(titleCased('Kopiraj/Premesti u...')).toEqual(['Premesti']);
+    // Spelt like a folder, but not one of its forms.
+    expect(titleCased('Odbaci Nacrt')).toEqual(['Nacrt']);
+    expect(titleCased('Nije moguće Poslati ni Arhivirati')).toEqual(['Poslati', 'Arhivirati']);
+    for (const text of [
+      'Uvezi postojeći GPG par ključeva', 'Ваш GPG кључ', '2FA / WebAuthn', 'Kriptovano pomoću OpenPGP-a',
+      'Uvek dodaj mene u Bcc', 'Nove poruke u Prijemnom sandučetu', 'Нацрт је још увек у Нацртима.', 'Premesti u Otpad ili Arhivu?',
+      'Pogrešna lozinka. Pokušajte ponovo.', 'Nije moguće kriptovati poruku: Nedostaju ključevi za:\n{keys}',
+      'Fascikla "Moji Računi" je prazna.', 'Uvoz nije uspeo: {error}',
+    ]) {
+      expect(titleCased(text), text).toEqual([]);
+    }
+  });
+
+  it.each(['rs', 'sr'])('%s capitalises only a sentence\'s first word and names', (code) => {
+    const slips = stringsOf(code)
+      .map(([where, text]) => [where, text, titleCased(text)] as const)
+      .filter(([, , words]) => words.length > 0)
+      .map(([where, text, words]) => `${where}="${text}": ${words.join(' ')}`);
+    expect(slips).toEqual([]);
+  });
+
+  it('allows only names a Serbian string still uses, so the list cannot go stale', () => {
+    const texts = [...stringsOf('rs'), ...stringsOf('sr')].map(([, text]) => transliterate(text));
+    const unused = [...SERBIAN_NAMES].filter((name) => !texts.some((text) => new RegExp(`(?<!\\p{L})${name}(?!\\p{L})`, 'u').test(text)));
+    expect(unused).toEqual([]);
+  });
+});
+
 describe('terms within one locale', () => {
   it('fr calls calendars "calendrier", the calendar feature\'s own name', () => {
     // French names the feature "Calendrier" on its tab and throughout its
     // plugin; the load error alone called the same calendar an "agenda".
     expect(stringsOf('fr').filter(([, text]) => /(?<!\p{L})agendas?(?!\p{L})/iu.test(text))).toEqual([]);
     expect(lookup(fr, 'navigation.calendar')).toBe('Calendrier');
+  });
+
+  it('pt names an attachment without a file name in sentence case, as en does', () => {
+    // "Anexo Desconhecido" took the English habit of a capital on every word.
+    expect(lookup(pt, 'messageReader.unknownAttachment')).toBe('Anexo desconhecido');
+  });
+});
+
+/**
+ * A folder's name has the gender and number of whatever word it is: French
+ * "Corbeille" is singular and "Indésirables" plural, Spanish "Papelera" is
+ * feminine and "Spam" masculine, Serbian "Otpad" is masculine and
+ * "Nepoželjno" neuter, and a folder the user named can be any of them. In
+ * these languages a sentence agrees with its subject, so one whose subject is
+ * the name fits some folders and misreads the rest: "{folder} ya estaba vacía"
+ * said "Spam ya estaba vacía". After the word for folder ("la carpeta
+ * {folder}", "fascikla {folder}") the name stands in apposition, and the
+ * sentence agrees with the noun, whatever the folder is called.
+ */
+const AGREEING_LOCALES = ['es', 'fr', 'it', 'pt', 'rs', 'sr'];
+
+/**
+ * Whether a sentence of `text` opens on a folder's name and goes on to say
+ * something of it. The name may be quoted, French guillemets with their inner
+ * (non-breaking) space included, and a Spanish question or exclamation opens
+ * on ¿ or ¡.
+ */
+const opensOnFolder = (text: string) =>
+  /(?:^|[.!?:;–—…]\s+|[¿¡])["«“„]?\s?\{folder\}\s?["»”]?\s+\p{L}/u.test(text);
+
+describe("a folder's name in a sentence", () => {
+  it('has a rule that catches the name as a subject and spares it after a noun or a verb', () => {
+    for (const text of [
+      '{folder} ya estaba vacía: no se eliminó nada.', 'Terminé. {folder} está vacía.', 'Terminé… {folder} está vacía.',
+      '¿{folder} ya estaba vacía?', '¡{folder} está vacía!', '«{folder}» était déjà vide.',
+      '«\u00a0{folder}\u00a0» était déjà vide.', '« {folder} » était déjà vide.',
+    ]) {
+      expect(opensOnFolder(text), text).toBe(true);
+    }
+    for (const text of [
+      'La carpeta {folder} ya estaba vacía.', 'Fascikla {folder} je već bila prazna.', 'Se ha vaciado {folder}.',
+      'Vidage du dossier {folder}...', '¿Mover "{folder}" a la Papelera?', '¿Vaciar {folder}?', '{folder}: {count}',
+    ]) {
+      expect(opensOnFolder(text), text).toBe(false);
+    }
+  });
+
+  it.each(AGREEING_LOCALES)("%s never opens a sentence on a folder's name", (code) => {
+    expect(stringsOf(code).filter(([, text]) => opensOnFolder(text))).toEqual([]);
   });
 });

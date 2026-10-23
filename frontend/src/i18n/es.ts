@@ -243,10 +243,10 @@ export const es = {
       one: 'Esto incluye el mensaje que has seleccionado.',
       other: 'Esto incluye los {count} mensajes que has seleccionado.'
     },
-    emptyingMailbox: 'Vaciando buzón...',
-    mailboxEmptied: 'Buzón vaciado correctamente.',
-    emptyMailboxFailed: 'No se pudo vaciar el buzón. Asegúrate de que sea Papelera o Correo no deseado.',
-    mailboxAlreadyEmpty: '{folder} ya estaba vacía: no se eliminó nada.',
+    emptyingMailbox: 'Vaciando {folder}...',
+    mailboxEmptied: 'Se ha vaciado {folder}.',
+    emptyMailboxFailed: 'No se pudo vaciar {folder}.',
+    mailboxAlreadyEmpty: 'La carpeta {folder} ya estaba vacía: no se eliminó nada.',
     emptyMailboxSlow: 'Todavía se está vaciando {folder}. El servidor sigue trabajando: vuelve a comprobarlo en un momento.'
   },
   composer: {
@@ -375,7 +375,9 @@ export const es = {
     verifiedSender: 'Remitente verificado',
     unverifiedSender: 'Remitente no verificado',
     senderUnverifiedWarning: 'Tu servidor de correo no pudo verificar este remitente. Puede que el mensaje no sea de quien dice ser, así que ten cuidado con sus enlaces y archivos adjuntos.',
-    clickToExpand: 'Clic para expandir el contenido del mensaje'
+    clickToExpand: 'Clic para expandir el contenido del mensaje',
+    loadError: 'No se pudo cargar este mensaje.',
+    loadErrorRetry: 'Reintentar'
   },
   address: {
     directionalControl: 'marcas de dirección ocultas',
@@ -431,7 +433,8 @@ export const es = {
     cannotPreview: 'No hay vista previa disponible para este tipo de archivo',
     loadingPreview: 'Cargando vista previa...',
     errorLoading: 'Error al cargar la vista previa',
-    close: 'Cerrar'
+    close: 'Cerrar',
+    uploadProgress: '{percent}\u00a0% de {size}'
   },
 
   navigation: {
@@ -543,6 +546,7 @@ export const es = {
     next: "Siguiente",
     expand: "Expandir",
     collapse: "Contraer",
+    moreOptions: "Más opciones",
     notFound: "Página no encontrada"
   },
   webauthn: {
@@ -570,6 +574,7 @@ export const es = {
       begin_failed: 'Error al iniciar la autenticación.',
       invalid_options: 'Se recibieron opciones de autenticación no válidas.',
       verification_failed: 'Error en la verificación. Por favor, inténtalo de nuevo.',
+      cancelled: 'No se ha usado la clave de seguridad. Haz clic en "Verificar identidad" para volver a intentarlo.',
       unavailable: 'El servidor no ha podido comprobar tu clave de seguridad ahora mismo. Inténtalo de nuevo dentro de un momento.',
       register_failed: 'Hubo un error al registrar su clave de seguridad. Por favor, inténtelo de nuevo.',
       remove_failed: 'Error al eliminar la clave de seguridad.',

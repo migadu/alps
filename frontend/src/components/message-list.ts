@@ -7,7 +7,7 @@ import { mailboxOperations } from '../services/mailbox-operations';
 import { fetchAuthVerdicts, VERDICT_BATCH, type AuthVerdict } from '../services/auth-verdicts';
 import { mailboxOf, messageKey } from '../utils/message-key';
 import { addressText, addressWarning, displayAddress, mixedScriptStyles } from '../utils/address-display';
-import { ALL_MAILBOXES } from '../utils/folders';
+import { ALL_MAILBOXES, specialMailboxName } from '../utils/folders';
 import { MESSAGE_DRAG_TYPE, type MessageDrag } from '../utils/message-drag';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
@@ -1286,8 +1286,10 @@ export class MessageList extends LitElement {
     this.emptying = true;
     const folder = this.currentMailbox;
     // Named now: the user may be in another folder by the time this answers.
+    // Every report names it, from the first to the last: these said "mailbox",
+    // which to a user is the whole account, not the Trash they just emptied.
     const title = this.folderTitle;
-    this.toast('info', this.i18nStore?.t('messageList.emptyingMailbox') || 'Emptying mailbox...');
+    this.toast('info', this.i18nStore?.t('messageList.emptyingMailbox', { folder: title }) || `Emptying ${title}...`);
 
     try {
       const outcome = await mailboxOperations.emptyMailbox(folder);
@@ -1296,7 +1298,7 @@ export class MessageList extends LitElement {
         this.toast('info', this.i18nStore?.t('messageList.mailboxAlreadyEmpty', { folder: title })
           || `${title} was already empty — nothing was deleted.`);
       } else if (outcome.ok) {
-        this.toast('success', this.i18nStore?.t('messageList.mailboxEmptied') || 'Mailbox emptied successfully.');
+        this.toast('success', this.i18nStore?.t('messageList.mailboxEmptied', { folder: title }) || `${title} emptied.`);
       } else if (outcome.reason === 'timeout') {
         this.toast('error', this.i18nStore?.t('messageList.emptyMailboxSlow', { folder: title })
           || `Still emptying ${title}. The server is working on it — check the folder again in a moment.`);
@@ -1304,7 +1306,7 @@ export class MessageList extends LitElement {
         // `auth` is silent: the session has ended, the shell says so, and a
         // second notice beside it sends the user looking for a fault they
         // do not have.
-        this.toast('error', this.i18nStore?.t('messageList.emptyMailboxFailed') || 'Failed to empty mailbox. Make sure it is Trash or Junk.');
+        this.toast('error', this.i18nStore?.t('messageList.emptyMailboxFailed', { folder: title }) || `Failed to empty ${title}.`);
       }
     } finally {
       this.emptying = false;
@@ -1340,9 +1342,19 @@ export class MessageList extends LitElement {
    * attributes, and that fallback lives in one place — `mailboxRoleByName`, which
    * only guesses a role by name when the server has not assigned it. A second
    * name test here would re-open the override it now prevents.
+   *
+   * Only the Trash or the Junk the sidebar draws as one, though. Of two folders
+   * with the role (an Exchange "Deleted Items" and a "Trash" on a server
+   * without special-use attributes, two folders marked \Junk), the other is
+   * drawn as an ordinary folder under its own name, and it offered to delete
+   * everything in it for good all the same. Its role is still handed down as
+   * it is: a second \Sent folder holds sent mail, and its rows name the
+   * recipients.
    */
   private get isDiscardableFolder(): boolean {
-    return this.currentMailboxRole === 'trash' || this.currentMailboxRole === 'junk';
+    const role = this.currentMailboxRole;
+    if (role !== 'trash' && role !== 'junk') return false;
+    return (specialMailboxName(role, this.mailboxes) ?? this.currentMailbox) === this.currentMailbox;
   }
 
   /**

@@ -40,6 +40,28 @@ export function isolatedMailboxes(mailboxes: { name?: string | null; email: stri
   return mailboxes.map((mailbox, i) => html`${i ? ', ' : ''}${isolatedMailbox(mailbox)}`);
 }
 
+/** Just enough of the i18n store to word a sentence. */
+interface Translator {
+  t(key: string, params?: Record<string, unknown>): string;
+}
+
+/**
+ * A translated sentence with an isolated name or address in its placeholders.
+ *
+ * t() puts a parameter into its sentence as text, and text holds no isolate:
+ * a name passed to it ran on into the words after it, so an override in it
+ * reversed them, and after an attendee named `Bob<U+202E>` the answer
+ * " accepted." read backwards. Here t() is asked for the sentence with each
+ * placeholder standing for itself, which leaves it where the language puts
+ * it, and each of `parts` (an {@link isolatedCaption} or an
+ * {@link isolatedEmail}) takes its place.
+ */
+export function isolatedSentence(i18n: Translator | undefined, key: string, parts: Record<string, TemplateResult | string>) {
+  const placeholders = Object.fromEntries(Object.keys(parts).map((name) => [name, `{${name}}`]));
+  const sentence = i18n?.t(key, placeholders) ?? key;
+  return sentence.split(/\{(\w+)\}/).map((piece, i) => (i % 2 === 0 ? piece : parts[piece] ?? `{${piece}}`));
+}
+
 /**
  * The text with its explicit direction controls removed, for a name or an
  * address that goes into plain text, where no isolate can contain them.

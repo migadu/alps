@@ -13,6 +13,7 @@ import {
   deliver,
   expect,
   login,
+  removeContact,
   resetDav,
   seedContact,
   seedEvent,
@@ -94,6 +95,28 @@ test("a seeded contact is listed", async ({ page }) => {
 
   await page.goto("/#/contacts");
   await expect(page.locator("alps-contacts-list .contact-item", { hasText: name })).toBeVisible({ timeout: 15_000 });
+});
+
+test("deleting a contact already deleted elsewhere succeeds", async ({ page }) => {
+  // Deleted on another device, or in another tab, while this page still
+  // lists it. The CardDAV server answers 404, which alps passed on as 500:
+  // the page said "1 of 1 contact could not be deleted."
+  const name = `Babbage E2E ${run}`;
+  const uid = `e2e-babbage-${run}`;
+  await seedContact({ uid, name, email: `babbage.${run}@example.test` });
+  await login(page);
+  await page.goto("/#/contacts");
+  const row = page.locator("alps-contacts-list .contact-item", { hasText: name });
+  await row.click();
+  await expect(page.locator("alps-contact-view")).toContainText(name);
+
+  await removeContact(uid);
+  await page.locator('alps-contact-view alps-icon-btn[title="Delete"]').click();
+  const deleted = page.waitForResponse((r) => r.request().method() === "DELETE" && r.url().includes("/contacts/"));
+  await page.locator("contacts-page ui-confirm").getByRole("button", { name: "Delete", exact: true }).click();
+
+  expect((await deleted).status()).toBe(200);
+  await expect(row).toHaveCount(0, { timeout: 15_000 });
 });
 
 test("contacts feed the composer's recipient autocomplete", async ({ page }) => {

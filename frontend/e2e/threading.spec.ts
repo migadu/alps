@@ -364,6 +364,9 @@ test("opening a conversation shows all three messages, oldest first", async ({ p
   const chain = await deliverChain();
 
   await login(page);
+  // One row first: a listing that came back unthreaded fails here, saying so,
+  // and not in the click on a subject that three rows then carry.
+  await expect(rows(page, chain.subject)).toHaveCount(1);
   await openRow(rows(page, chain.subject));
 
   // One row was clicked and three messages are shown.
@@ -405,6 +408,7 @@ test("each message in a conversation can be expanded and read", async ({ page })
   const chain = await deliverChain();
 
   await login(page);
+  await expect(rows(page, chain.subject)).toHaveCount(1);
   await openRow(rows(page, chain.subject));
   await expect(cards(page)).toHaveCount(3);
 

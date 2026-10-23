@@ -55,12 +55,12 @@ describe('toasts from the mail page', () => {
       const shown = record<CustomEvent>(window, 'show-toast');
 
       el.shadowRoot!.querySelector(list)!.dispatchEvent(new CustomEvent('toast', {
-        detail: { type: 'success', message: 'Mailbox emptied successfully.' },
+        detail: { type: 'success', message: 'Trash emptied.' },
         bubbles: true,
         composed: true,
       }));
 
-      expect(shown.map(e => e.detail.message)).toEqual(['Mailbox emptied successfully.']);
+      expect(shown.map(e => e.detail.message)).toEqual(['Trash emptied.']);
     });
   }
 });

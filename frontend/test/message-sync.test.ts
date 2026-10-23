@@ -135,6 +135,19 @@ describe('fetch', () => {
     expect(seen.filter((e) => e.type !== 'sync-start').map((e) => e.type)).toEqual(['mailbox-not-found', 'sync-error']);
     expect(authErrors.length).toBeGreaterThan(0);
   });
+
+  it('reports a server error as a failure, not as an empty folder', async () => {
+    // A 500 with a JSON body, as the server answers when its IMAP connection
+    // fails. Announced as data, it had no Messages, and the page emptied the
+    // folder on screen.
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: 'failed to list messages' }), { status: 500, headers: { 'Content-Type': 'application/json' } }));
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    const failing = svc.fetch('INBOX', 0);
+    await vi.runAllTimersAsync();
+    await failing;
+    expect(seen.filter((e) => e.type !== 'sync-start').map((e) => e.type)).toEqual(['sync-error']);
+  });
 });
 
 describe('the background poll', () => {
@@ -184,6 +197,20 @@ describe('the background poll', () => {
     releaseListing(listing('Work'));
     await poll;
     expect(seen.find((e) => e.type === 'sync-success')!.detail.data.ListedMailbox).toBe('Work');
+  });
+
+  it('leaves the rows on screen when the server answers with an error', async () => {
+    fetchMock.mockImplementation(async (url: string) => (url.includes('/status')
+      ? new Response('{}', { status: 200 })
+      : new Response(JSON.stringify({ error: 'failed to list messages' }), { status: 502, headers: { 'Content-Type': 'application/json' } })));
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    svc.setContext('INBOX', 0);
+    // A 502 is retried after a pause before it counts.
+    const poll = (svc as any).backgroundSync();
+    await vi.runAllTimersAsync();
+    expect(await poll).toBe(false);
+    expect(seen.map((e) => e.type)).toEqual([]);
   });
 
   it('reports a folder that disappeared instead of failing quietly', async () => {

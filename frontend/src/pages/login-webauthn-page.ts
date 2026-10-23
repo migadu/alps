@@ -217,7 +217,18 @@ export class LoginWebAuthnPage extends LitElement {
         throw new Error(this.i18nStore?.t('webauthn.errors.verification_failed'));
       }
     } catch (err: any) {
-      this.statusMessage = err.message || this.i18nStore?.t('webauthn.errors.general');
+      // The browser's words are English whatever the language here (Chrome's
+      // for a cancelled prompt even link to the WebAuthn specification). A
+      // prompt cancelled or timed out is a key that was not used, and Verify
+      // asks for it again; any other browser error is told as a general
+      // error, in the user's language.
+      if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') {
+        this.statusMessage = this.i18nStore?.t('webauthn.errors.cancelled');
+      } else if (err instanceof DOMException) {
+        this.statusMessage = this.i18nStore?.t('webauthn.errors.general');
+      } else {
+        this.statusMessage = err.message || this.i18nStore?.t('webauthn.errors.general');
+      }
       this.statusType = 'error';
     } finally {
       this.isLoading = false;

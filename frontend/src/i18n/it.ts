@@ -243,10 +243,10 @@ export const it = {
       one: 'È incluso anche il messaggio selezionato.',
       other: 'Sono inclusi anche i {count} messaggi selezionati.'
     },
-    emptyingMailbox: 'Svuotamento casella di posta...',
-    mailboxEmptied: 'Casella di posta svuotata con successo.',
-    emptyMailboxFailed: 'Impossibile svuotare la casella di posta. Assicurati che sia Cestino o Posta indesiderata.',
-    mailboxAlreadyEmpty: '{folder} era già vuota: non è stato eliminato nulla.',
+    emptyingMailbox: 'Svuotamento di {folder}...',
+    mailboxEmptied: 'Svuotamento di {folder} completato.',
+    emptyMailboxFailed: 'Impossibile svuotare {folder}.',
+    mailboxAlreadyEmpty: 'La cartella {folder} era già vuota: non è stato eliminato nulla.',
     emptyMailboxSlow: 'Svuotamento di {folder} ancora in corso. Il server ci sta lavorando: ricontrolla tra un momento.'
   },
   composer: {
@@ -375,7 +375,9 @@ export const it = {
     verifiedSender: 'Mittente verificato',
     unverifiedSender: 'Mittente non verificato',
     senderUnverifiedWarning: 'Il tuo server di posta non è riuscito a verificare questo mittente. Il messaggio potrebbe non provenire da chi dichiara, quindi fai attenzione a link e allegati.',
-    clickToExpand: 'Clicca per espandere il contenuto del messaggio'
+    clickToExpand: 'Clicca per espandere il contenuto del messaggio',
+    loadError: 'Impossibile caricare questo messaggio.',
+    loadErrorRetry: 'Riprova'
   },
   address: {
     directionalControl: 'marcatori di direzione nascosti',
@@ -431,7 +433,8 @@ export const it = {
     cannotPreview: 'Nessuna anteprima disponibile per questo tipo di file',
     loadingPreview: 'Caricamento anteprima...',
     errorLoading: 'Impossibile caricare l’anteprima',
-    close: 'Chiudi'
+    close: 'Chiudi',
+    uploadProgress: '{percent}% di {size}'
   },
 
   navigation: {
@@ -543,6 +546,7 @@ export const it = {
     next: "Successivo",
     expand: "Espandi",
     collapse: "Comprimi",
+    moreOptions: "Altre opzioni",
     notFound: "Pagina non trovata"
   },
   webauthn: {
@@ -570,6 +574,7 @@ export const it = {
       begin_failed: 'Impossibile avviare l\'autenticazione.',
       invalid_options: 'Opzioni di autenticazione non valide ricevute.',
       verification_failed: 'Verifica non riuscita. Per favore riprova.',
+      cancelled: 'La chiave di sicurezza non è stata usata. Fai clic su "Verifica identità" per riprovare.',
       unavailable: 'Il server non è riuscito a verificare la tua chiave di sicurezza in questo momento. Riprova tra poco.',
       register_failed: 'Si è verificato un errore durante la registrazione della chiave di sicurezza. Riprova.',
       remove_failed: 'Impossibile rimuovere la chiave di sicurezza.',

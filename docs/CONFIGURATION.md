@@ -230,7 +230,7 @@ Common properties:
 | `base` | Core email functionality. | `enabled=true` |
 | `caldav` | Calendar support. | `upstream`, `default_view` |
 | `carddav` | Contacts support. | `upstream`, `default_view` |
-| `managesieve` | Email filtering support. | `upstream` |
+| `managesieve` | Email filters and the auto-reply (Sieve `vacation`). | `upstream` |
 | `gpg` | End-to-End Encryption. | `enabled=true` |
 
 ### Password Plugin (`[plugin.password]`)
