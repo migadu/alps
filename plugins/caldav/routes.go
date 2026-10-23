@@ -417,7 +417,15 @@ func registerRoutes(p *plugin) {
 			return err
 		}
 
-		_, _, err = p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		_, calendars, err := p.clientWithCalendars(ctx.Request.Context(), ctx.Session)
+		if err != nil {
+			return err
+		}
+
+		// One of the user's calendars, as for a delete. The PROPPATCH below
+		// sets the display name of whatever the path names: the principal,
+		// the home set, an event.
+		calPath, err = requireCalendarPath(calPath, calendars)
 		if err != nil {
 			return err
 		}
