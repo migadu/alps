@@ -340,6 +340,24 @@ func handleUnauthenticated(next HandlerFunc, ctx *Context) error {
 	}
 }
 
+// DefaultCacheMaxPartKiB is the largest message part the session cache keeps
+// when the config does not say: 1 MiB, above the text and the inline images
+// of most messages, below most attachments.
+const DefaultCacheMaxPartKiB = 1024
+
+// CacheMaxPartBytes is the largest message part, its header and body as they
+// are stored, that the session cache keeps. The cache has no limit of its own,
+// and every part read was kept for the life of its entry, attachments of any
+// size among them, so a few large attachments opened in one session held their
+// whole bytes in the server's memory. A larger part is read again when it is
+// asked for again; the browser's copy, revalidated with a 304, saves that.
+func (o *Options) CacheMaxPartBytes() int64 {
+	if o == nil || o.CacheMaxPartKiB <= 0 {
+		return DefaultCacheMaxPartKiB << 10
+	}
+	return int64(o.CacheMaxPartKiB) << 10
+}
+
 type Options struct {
 	SMTP               SMTPOptions // SMTP configuration
 	Debug              bool
@@ -347,6 +365,7 @@ type Options struct {
 	EnabledPlugins     []string      // If empty, all plugins are enabled
 	CacheTTL           time.Duration // Cache TTL, 0 means use default (10 minutes)
 	CacheEnabled       bool          // If false, caching is disabled
+	CacheMaxPartKiB    int           // Largest message part the session cache keeps, in KiB; 0 means the default (see CacheMaxPartBytes)
 	SessionDuration    time.Duration // Session timeout, 0 means use default (30 minutes)
 	MaxSessionDuration time.Duration // Maximum session duration users can set, 0 means no limit
 	// How long a session may live no matter how much it is used. 0 means use

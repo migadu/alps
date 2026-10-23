@@ -2207,16 +2207,21 @@ func handleGetPart(ctx *alps.Context, raw bool) error {
 				}
 			}
 
-			// Cache the raw bytes using provider type so we can recreate fresh readers
-			cache.Set(msgCacheKey, CachedMessagePart{
-				Message:      providerMsg,
-				HeaderData:   headerData,
-				BodyData:     bodyData,
-				Mailbox:      mbox.Name(),
-				ReaderFields: reading,
-				UIDValidity:  partValidity,
-			})
-			ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched and cached", mbox.Name(), uidStr, partPath)
+			// Cache the raw bytes using provider type so we can recreate fresh
+			// readers, unless the part is above the session cache's limit.
+			if int64(len(headerData)+len(bodyData)) <= ctx.Server.Options.CacheMaxPartBytes() {
+				cache.Set(msgCacheKey, CachedMessagePart{
+					Message:      providerMsg,
+					HeaderData:   headerData,
+					BodyData:     bodyData,
+					Mailbox:      mbox.Name(),
+					ReaderFields: reading,
+					UIDValidity:  partValidity,
+				})
+				ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched and cached", mbox.Name(), uidStr, partPath)
+			} else {
+				ctx.Server.Logger().Debugf("Cache MISS for message %s/%s part %v, fetched, %d bytes, too large to cache", mbox.Name(), uidStr, partPath, len(headerData)+len(bodyData))
+			}
 			return nil
 		})
 		if err != nil {

@@ -98,6 +98,13 @@ func newPartsServer(t *testing.T, usernames ...string) *partsServer {
 // newPartsServerWith is newPartsServer on a server that advertises caps.
 func newPartsServerWith(t *testing.T, caps imap.CapSet, usernames ...string) *partsServer {
 	t.Helper()
+	return newPartsServerWithOptions(t, caps, nil, usernames...)
+}
+
+// newPartsServerWithOptions is newPartsServerWith with alps's options set
+// by adjust, as a test needs them.
+func newPartsServerWithOptions(t *testing.T, caps imap.CapSet, adjust func(*alps.Options), usernames ...string) *partsServer {
+	t.Helper()
 	ps := &partsServer{commands: &partIMAPCommands{counts: map[string]int{}}, users: map[string]*imapmemserver.User{}}
 	mem := imapmemserver.New()
 	for _, name := range usernames {
@@ -131,13 +138,17 @@ func newPartsServerWith(t *testing.T, caps imap.CapSet, usernames ...string) *pa
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := alps.New(alps.NewLogger(), &alps.Options{
+	opts := &alps.Options{
 		Provider:     popt,
 		SMTP:         alps.SMTPOptions{Server: "smtp://127.0.0.1:1"},
 		LoginKey:     &key,
 		CacheEnabled: true,
 		CacheTTL:     partsCacheTTL,
-	})
+	}
+	if adjust != nil {
+		adjust(opts)
+	}
+	srv, err := alps.New(alps.NewLogger(), opts)
 	if err != nil {
 		t.Fatal(err)
 	}

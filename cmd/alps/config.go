@@ -137,6 +137,9 @@ type RateLimitConfig struct {
 
 type CacheConfig struct {
 	TTLMinutes int `toml:"ttl_minutes"`
+	// The largest message part, in KiB, the session cache keeps (default
+	// 1024). See alps.Options.CacheMaxPartBytes.
+	MaxPartKiB int `toml:"max_part_kib"`
 	// A pointer so that leaving it out is not the same as saying false: the
 	// session cache is on unless a config turns it off.
 	Enabled *bool `toml:"enabled"`
@@ -448,6 +451,7 @@ func (c *Config) ToOptions() (alps.Options, error) {
 	if c.Cache.TTLMinutes > 0 {
 		options.CacheTTL = time.Duration(c.Cache.TTLMinutes) * time.Minute
 	}
+	options.CacheMaxPartKiB = c.Cache.MaxPartKiB
 
 	// Set session duration config
 	if c.Server.SessionMinutes > 0 {

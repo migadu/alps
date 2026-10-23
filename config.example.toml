@@ -271,6 +271,13 @@ ttl_minutes = 10
 # Set to false to disable all caching (not recommended)
 enabled = true
 
+# The largest message part kept in the cache, in KiB (default: 1024)
+# A part above it, a large attachment most often, is read from the mail server
+# again each time it is asked for, rather than held in memory for the life of
+# the cache entry. The browser keeps its own copy, which it revalidates
+# without the part being read again.
+# max_part_kib = 1024
+
 [logging]
 # Log output destination
 # Options:

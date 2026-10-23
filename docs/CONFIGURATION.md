@@ -81,6 +81,7 @@ Controls the application-level data cache.
 | :--- | :--- | :--- | :--- |
 | `enabled` | Boolean | `true` | Enables or disables caching. |
 | `ttl_minutes` | Integer | `10` | Time-to-live for cached items before they expire. |
+| `max_part_kib` | Integer | `1024` | The largest message part, in KiB, kept in the cache. A larger part (a large attachment, most often) is read from the mail server again each time it is asked for, rather than held in memory. The browser keeps its own copy, which it revalidates without the part being read again. |
 
 ---
 
