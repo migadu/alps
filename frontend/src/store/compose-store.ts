@@ -204,8 +204,28 @@ export class ComposeStore extends EventTarget {
     // nothing else re-ran this until a page reload.
     window.addEventListener('user-logged-in', this.adoptSession);
     window.addEventListener('alps-active-user-changed', this.adoptSession);
+    window.addEventListener('pagehide', this.flushOnPageHide);
     this.adoptSession();
   }
+
+  /**
+   * Writes the change still waiting for the debounced write, as the page
+   * goes: a reload, a closed tab, a link followed. The write comes half a
+   * second after the last change, and leaving within it took that much of
+   * what was typed with it.
+   *
+   * Only a write that is waiting, which is what would have been written had
+   * the page stayed: the login screen clears the windows from memory alone,
+   * and a sign-out cancels the waiting write as it erases the disk copy, so
+   * writing the composers as they are would put an emptied list over the
+   * drafts on disk, or bring an erased one back.
+   */
+  private flushOnPageHide = () => {
+    if (this.saveTimeout === null) return;
+    window.clearTimeout(this.saveTimeout);
+    this.saveTimeout = null;
+    this.saveDrafts();
+  };
 
   /**
    * Loads the signed-in user's drafts, and carries across anything opened

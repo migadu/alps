@@ -378,13 +378,27 @@ export class AppRoot extends LitElement {
     }
   };
 
-  /** A newer build is served: offered through the same toast as everything else. */
+  /**
+   * A newer build is served: offered through the same toast as everything
+   * else. Its Reload writes the composers to disk first, so that what was
+   * typed in the half second before it opens again with them; when they
+   * cannot be written, the page stays, and says so, as the missing-page
+   * notice does.
+   */
   private _handleUpdateAvailable = () => {
     this._handleShowToast(new CustomEvent('show-toast', {
       detail: {
         i18nKey: 'update.available',
         actionLabel: this.i18nStore?.t('update.reload'),
-        actionFn: applyUpdate,
+        actionFn: () => {
+          if (!this.composeStore.persistNow()) {
+            this._handleShowToast(new CustomEvent('show-toast', {
+              detail: { i18nKey: 'composer.draftSaveFailedKeepOpen', duration: 6000 },
+            }));
+            return;
+          }
+          applyUpdate();
+        },
         duration: UPDATE_TOAST_MS,
       },
     }));
