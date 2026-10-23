@@ -13,6 +13,7 @@ import {
   deliver,
   expect,
   login,
+  readContact,
   removeContact,
   resetDav,
   seedContact,
@@ -117,6 +118,36 @@ test("deleting a contact already deleted elsewhere succeeds", async ({ page }) =
 
   expect((await deleted).status()).toBe(200);
   await expect(row).toHaveCount(0, { timeout: 15_000 });
+});
+
+test("an Apple birthday without a year stays without one through an edit", async ({ page }) => {
+  // Apple's apps write a birthday entered without a year as one in 1604 and
+  // name that year in a parameter. The card showed the year 1604, the
+  // editor's date field was empty, and any save wrote the date back without
+  // the parameter, so Apple's apps showed 1604 too.
+  const name = `Lovelace E2E ${run}`;
+  const uid = `e2e-lovelace-${run}`;
+  await seedContact({ uid, name, email: `lovelace.${run}@example.test`, lines: ["BDAY;X-APPLE-OMIT-YEAR=1604:1604-12-10"] });
+  await login(page);
+  await page.goto("/#/contacts");
+  await page.locator("alps-contacts-list .contact-item", { hasText: name }).click();
+  const view = page.locator("alps-contact-view");
+  await expect(view).toContainText(/12-10|12\/10|10\.12\./);
+  await expect(view).not.toContainText("1604");
+
+  await view.locator('alps-icon-btn[title="Edit Contact"]').click();
+  const birthday = view.getByRole("group", { name: "Birthday" });
+  await expect(birthday.getByRole("combobox", { name: "Day" })).toHaveValue("10");
+  await expect(birthday.getByRole("combobox", { name: "Month" })).toHaveValue("12");
+  await expect(birthday.getByRole("textbox", { name: "Year" })).toHaveValue("");
+
+  // Another field's edit saves the card, birthday and all.
+  const saved = page.waitForResponse((r) => r.request().method() === "POST" && /\/contacts\/.+\/edit/.test(r.url()));
+  await view.getByPlaceholder("Notes").fill("Wrote the first program");
+  expect((await saved).status()).toBe(200);
+  const card = (await readContact(uid)) ?? "";
+  expect(card).toContain("Wrote the first program");
+  expect(card).toMatch(/^BDAY;X-APPLE-OMIT-YEAR=1604:1604-12-10\r?$/m);
 });
 
 test("contacts feed the composer's recipient autocomplete", async ({ page }) => {
