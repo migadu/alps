@@ -32,6 +32,9 @@ const defaultResponseTimeout = 30 * time.Second
 type mailboxNews struct {
 	client atomic.Pointer[imapclient.Client]
 	news   atomic.Pointer[func(mailbox string)]
+	// heard says that the server has told of a message that arrived or went
+	// since the last IDLE ended (see Idle).
+	heard atomic.Bool
 }
 
 func (n *mailboxNews) handler() *imapclient.UnilateralDataHandler {
@@ -40,10 +43,14 @@ func (n *mailboxNews) handler() *imapclient.UnilateralDataHandler {
 			// EXISTS. A changed list of flags the mailbox knows is no news of
 			// its messages.
 			if data.NumMessages != nil {
+				n.heard.Store(true)
 				n.tell()
 			}
 		},
-		Expunge: func(uint32) { n.tell() },
+		Expunge: func(uint32) {
+			n.heard.Store(true)
+			n.tell()
+		},
 	}
 }
 
@@ -61,14 +68,15 @@ func (n *mailboxNews) tell() {
 }
 
 // idledMailbox is what a mailbox was as the last IDLE on it ended: how many
-// messages it held, and the UIDVALIDITY and UIDNEXT it was last selected
-// with.
+// messages it held, its UIDVALIDITY and UIDNEXT, and which select of it that
+// was (see IMAPProvider.selects).
 type idledMailbox struct {
 	known       bool
 	mailbox     string
 	count       uint32
 	uidValidity uint32
 	uidNext     imap.UID
+	selects     uint64
 }
 
 // CanIdle reports whether the mail server can tell of changes to a mailbox as
@@ -104,12 +112,18 @@ func (p *IMAPProvider) OnMailboxNews(news func(mailbox string)) {
 // What changed while no IDLE ran was not always told. While the connection
 // was in another mailbox, the server said nothing of this one, and a SELECT
 // of it, the IDLE's own or a background job's, tells only what it holds now.
-// So the IDLE compares that with what the mailbox was as the last IDLE on it
-// ended: another count, UIDVALIDITY or UIDNEXT is news. UIDNEXT tells of a
-// message that came as another went, which leaves the count as it was. It is
-// the one the mailbox was last selected with, and an arrival the last IDLE
-// heard leaves it behind the server's: selected again, the mailbox is told of
-// once more then, which costs its pages a status check.
+// So an IDLE that selected the mailbox again, or found it selected again
+// since the last IDLE on it ended, compares what it holds now with what it
+// held then: another count, UIDVALIDITY or UIDNEXT is news. UIDNEXT tells of a
+// message that came as another went, which leaves the count as it was. While
+// the mailbox stayed selected the server told of every change, and nothing is
+// compared.
+//
+// The UIDNEXT recorded is the server's. The one the mailbox was selected with
+// falls behind once an arrival has been told of, and selected again, the
+// mailbox read as changed for that arrival, told of already: every page
+// dropped what it held of the Inbox for nothing. So an IDLE that ends after
+// news asks the server for the mailbox's UIDNEXT (STATUS).
 //
 // Neither the server's continuation to IDLE nor its answer to DONE is waited
 // for longer than the connection's response timeout. The client waits for
@@ -154,16 +168,61 @@ func (p *IMAPProvider) Idle(mailbox string, stop <-chan struct{}, started func()
 		return err
 	}
 
-	if mbox := p.client.Mailbox(); mbox != nil {
-		p.idled = idledMailbox{
-			known:       true,
-			mailbox:     mbox.Name,
-			count:       mbox.NumMessages,
-			uidValidity: p.selectedUIDValidity,
-			uidNext:     p.selectedUIDNext,
-		}
+	if rememberErr := p.rememberIdled(err == nil); err == nil {
+		err = rememberErr
 	}
 	return p.lostIf(err)
+}
+
+// rememberIdled records what the selected mailbox is as an IDLE on it ends
+// (see Idle). With ask, the server may be asked for its UIDNEXT.
+func (p *IMAPProvider) rememberIdled(ask bool) error {
+	mbox := p.client.Mailbox()
+	if mbox == nil {
+		return nil
+	}
+	uidNext := p.selectedUIDNext
+	if was := p.idled; was.known && was.mailbox == mbox.Name && was.selects == p.selects {
+		// The same select: what was learnt of it then still stands.
+		uidNext = was.uidNext
+	}
+	if p.news != nil && p.news.heard.Swap(false) && ask {
+		var status *imap.StatusData
+		err := p.answeredWithin("STATUS", func() (err error) {
+			status, err = p.client.Status(mbox.Name, &imap.StatusOptions{UIDNext: true}).Wait()
+			return err
+		})
+		if err != nil {
+			// A tagged refusal keeps the conservative selected UIDNEXT. A
+			// half-open or lost connection must free the session's background
+			// slot, as an unanswered IDLE or DONE does.
+			var refused *imap.Error
+			if !errors.As(err, &refused) || (refused.Type != imap.StatusResponseTypeNo && refused.Type != imap.StatusResponseTypeBad) {
+				// A failed command can be released before the reader closes
+				// its Closed channel. Finish closing before classifying it.
+				p.client.Close()
+				return p.lostIf(err)
+			}
+		} else if status.UIDNext != 0 {
+			uidNext = status.UIDNext
+		}
+	}
+	// STATUS can receive another EXISTS or EXPUNGE before its answer. The
+	// handler already told of it; record that newer count with the UIDNEXT
+	// learnt above rather than announcing the same change after a reselect.
+	mbox = p.client.Mailbox()
+	if mbox == nil {
+		return nil
+	}
+	p.idled = idledMailbox{
+		known:       true,
+		mailbox:     mbox.Name,
+		count:       mbox.NumMessages,
+		uidValidity: p.selectedUIDValidity,
+		uidNext:     uidNext,
+		selects:     p.selects,
+	}
+	return nil
 }
 
 // errUnanswered marks a command the server left unanswered (see Idle).
@@ -213,7 +272,7 @@ func (p *IMAPProvider) lostIf(err error) error {
 // on it ended. See Idle.
 func (p *IMAPProvider) tellWhatChangedMeanwhile(mailbox string) {
 	was, now := p.idled, p.client.Mailbox()
-	if p.news == nil || now == nil || !was.known || was.mailbox != mailbox {
+	if p.news == nil || now == nil || !was.known || was.mailbox != mailbox || was.selects == p.selects {
 		return
 	}
 	if now.NumMessages != was.count || p.selectedUIDValidity != was.uidValidity || p.selectedUIDNext != was.uidNext {

@@ -49,13 +49,14 @@ function promptForPassphrase(errorMsg?: string, i18nStore?: any): Promise<string
 // storage, nullifying the passphrase protection on the at-rest key.
 let cachedPrivateKey: any = null;
 
-// Moves when the session ends. A key read, or unlocked, for the session that
-// ended is not kept for the next one.
+// Moves when the key is forgotten or the session ends. A read or unlock
+// already underway must not restore the key that was just discarded.
 let keyEpoch = 0;
 
 // clearCachedPrivateKey forgets the in-memory decrypted key (used by "purge"
 // and lock actions). Also drops any legacy value persisted by older versions.
 export function clearCachedPrivateKey(): void {
+    keyEpoch++;
     cachedPrivateKey = null;
     try {
         sessionStorage.removeItem('gpg_private_key');
@@ -67,7 +68,6 @@ export function clearCachedPrivateKey(): void {
 // the previous user's key and encrypted to it as well, and their reader
 // decrypted with it. Their own key is asked for, and unlocked, afresh.
 window.addEventListener('session-cleared', () => {
-    keyEpoch++;
     clearCachedPrivateKey();
 });
 
@@ -84,9 +84,9 @@ async function getPrivateKey(openpgp: any, i18nStore?: any): Promise<any> {
     const res = await fetchWithTimeout('/gpg/keys');
     if (!res.ok) throw new Error('Failed to fetch GPG keyring.');
     const keyring = await res.json();
-    // The keyring of a session that has since ended: not to be unlocked, let
-    // alone kept, for whoever is signed in now.
-    if (epoch !== keyEpoch) throw new Error('The session ended.');
+    // A keyring replaced or read for a session that has since ended is not
+    // unlocked or kept for a later operation.
+    if (epoch !== keyEpoch) throw new Error('The keyring changed.');
     
     if (!keyring.encrypted_private_key) {
         throw new Error('No private key found on server. Please generate one in Settings.');
