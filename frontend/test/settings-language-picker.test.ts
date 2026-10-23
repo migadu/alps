@@ -10,7 +10,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { render } from 'lit';
 import '../src/components/alps-select';
-import '../src/pages/settings-page';
+import '../src/components/settings-window';
 import { I18nStore, intlTag } from '../src/store/i18n-store';
 import { cleanup, mount } from './helpers/dom';
 
@@ -41,7 +41,7 @@ describe('the language picker', () => {
   it('tags every language with its own, Serbian by script', async () => {
     const i18nStore = new I18nStore();
     await i18nStore.setLanguage('en');
-    const page = document.createElement('settings-page') as El;
+    const page = document.createElement('settings-window') as El;
     Object.assign(page, { i18nStore, settingsState: { language: 'en' } });
     host = document.createElement('div');
     document.body.appendChild(host);

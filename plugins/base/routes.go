@@ -2650,6 +2650,11 @@ func handleComposeNew(ctx *alps.Context) error {
 		var uid provider.MessageID
 		var size uint32
 		var respAttachments []map[string]interface{}
+		// The new draft's structure, as a read of it gives one. A composer
+		// editing a draft shows the quote's images from the draft by their
+		// Content-IDs, and this save replaces it: without the new draft's
+		// structure, its quote named the parts of a draft that is gone.
+		var storedStructure imap.BodyStructure
 		// Whether the answer can say which stored part each upload became.
 		// Without it the composer still names them by id, so they are kept for
 		// its next save.
@@ -2678,6 +2683,7 @@ func handleComposeNew(ctx *alps.Context) error {
 			} else if newMsg != nil {
 				readBack = true
 				msgIMAP := providerMessageToIMAP(*newMsg)
+				storedStructure = msgIMAP.BodyStructure
 				stored := func(a IMAPPartNode) map[string]interface{} {
 					path := formatPartPath(a.Path)
 					part := map[string]interface{}{
@@ -2731,14 +2737,18 @@ func handleComposeNew(ctx *alps.Context) error {
 			forgetMessages(ctx.Session.Cache(), draftPath.Mailbox, draftPath.Uid)
 		}
 
-		return ctx.JSON(http.StatusOK, map[string]interface{}{
+		answer := map[string]interface{}{
 			"ok":            true,
 			"draft_uid":     uid.String(),
 			"draft_mailbox": drafts.Name(),
 			"draft_size":    size,
 			"draft_bcc":     storedBcc,
 			"attachments":   respAttachments,
-		})
+		}
+		if storedStructure != nil {
+			answer["draft_structure"] = storedStructure
+		}
+		return ctx.JSON(http.StatusOK, answer)
 	}
 
 	// A send the browser has given up on before the message goes is not

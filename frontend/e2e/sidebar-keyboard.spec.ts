@@ -181,11 +181,12 @@ test("a calendar is hidden and shown, its menu reached, and a day picked, from t
 test("a settings category is opened from the keyboard", async ({ page }) => {
   await login(page);
   await page.goto("/#/settings/general");
-  const sidebar = page.locator("settings-page alps-sidebar");
+  const sidebar = page.locator("settings-window nav.sections");
   const general = sidebar.getByRole("button", { name: "General", exact: true });
   await expect(general).toHaveAttribute("aria-current", "true");
 
-  // From the top of the page, Tab reaches the categories; Enter opens one.
+  // From the category the window opens on, Tab reaches the others; Enter
+  // opens one.
   const appearance = sidebar.getByRole("button", { name: "Appearance", exact: true });
   await tabTo(page, appearance, "the Appearance category");
   await page.keyboard.press("Enter");

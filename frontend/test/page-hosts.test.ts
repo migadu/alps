@@ -25,7 +25,6 @@ function hostRule(path: string): string {
 describe('page hosts', () => {
   it.each([
     'src/pages/mailbox-page.ts',
-    'src/pages/settings-page.ts',
     'plugins/carddav/frontend/contacts-page.ts',
   ])('%s clips its overflow rather than hiding it', (path) => {
     const rule = hostRule(path).replace(/\/\*[\s\S]*?\*\//g, '');
