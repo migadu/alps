@@ -38,6 +38,7 @@ export default {
     importMissing: 'Se requieren tanto el bloque público como el privado para la importación.',
     generateFailed: 'Error al generar claves: {error}',
     importFailed: 'Importación fallida: {error}',
+    purgeFailed: 'Error al purgar claves: {error}',
     importFailedTitle: 'Importación fallida',
     passphraseMismatch: 'Las contraseñas no coinciden. Por favor, inténtalo de nuevo.',
     missingPublicKeys: 'No se puede cifrar: faltan claves públicas para:\n{keys}',

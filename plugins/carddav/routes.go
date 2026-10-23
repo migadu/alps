@@ -344,6 +344,28 @@ func addressLine(f *vcard.Field) string {
 	return strings.Join(parts, ", ")
 }
 
+// addShown adds f to a field the page shows one copy of, as the copy it
+// shows from then on: the page reads the preferred copy, so f goes first and
+// is marked preferred when another copy is. Appended, a value typed in place
+// of a cleared copy was not the one the page read back, and the next edit of
+// it changed another copy.
+func addShown(card vcard.Card, field string, f *vcard.Field) {
+	for _, other := range card[field] {
+		if other.Params.Get(vcard.ParamPreferred) != "" {
+			if f.Params == nil {
+				f.Params = vcard.Params{}
+			}
+			f.Params.Set(vcard.ParamPreferred, "1")
+		} else if other.Params.HasType("pref") && !f.Params.HasType("pref") {
+			if f.Params == nil {
+				f.Params = vcard.Params{}
+			}
+			f.Params.Add(vcard.ParamType, "pref")
+		}
+	}
+	card[field] = append([]*vcard.Field{f}, card[field]...)
+}
+
 // setAddress writes the line the page sent in place of the address it
 // showed, f, or as the card's address when it had none; an empty line
 // removes f. The card's other addresses stay.
@@ -359,7 +381,7 @@ func setAddress(card vcard.Card, f *vcard.Field, line string) {
 	line = strings.TrimSpace(strings.ReplaceAll(line, ";", ","))
 	if f == nil {
 		if line != "" {
-			card.Add(vcard.FieldAddress, &vcard.Field{Value: ";;" + line + ";;;;"})
+			addShown(card, vcard.FieldAddress, &vcard.Field{Value: ";;" + line + ";;;;"})
 		}
 		return
 	}
@@ -508,9 +530,21 @@ func registerRoutes(p *plugin) {
 	updateContact := func(ctx *alps.Context) error {
 		var req struct {
 			ContactData
+			// What the page last held for each field in ChangedFields.
+			// Clearing the copy the page shows makes the server's next copy
+			// the preferred one, which the page never showed; a value typed
+			// into the empty field is then a new copy, not that one's
+			// replacement.
+			ChangedFrom map[string]string `json:"changed_from"`
 			// Nil retains the whole-form contract for older clients. An empty
 			// list means that none of the displayed single-copy fields changed.
 			ChangedFields []string `json:"changed_fields"`
+			// A create that wants the card it describes, whoever else has its
+			// address: the contact editor's. Without it a create of an address
+			// the book already holds leaves that card alone and answers with
+			// its path, which suits the composer saving each recipient but not
+			// a contact the user is typing in.
+			AllowDuplicate bool `json:"allow_duplicate"`
 		}
 		if err := ctx.BindJSON(&req); err != nil {
 			return ctx.RespondBindError(err)
@@ -525,6 +559,13 @@ func registerRoutes(p *plugin) {
 				}
 			}
 			return false
+		}
+		// unseen reports whether the copy the server would change for the
+		// field the page calls name is one the page did not show: its value,
+		// as the page reads it, is not the one the page last held.
+		unseen := func(name, shown string) bool {
+			from, ok := req.ChangedFrom[name]
+			return ok && strings.TrimSpace(from) != strings.TrimSpace(shown)
 		}
 
 		// The empty case is /contacts/create, where there is no {path} at all and
@@ -580,7 +621,7 @@ func registerRoutes(p *plugin) {
 			}
 		}
 
-		if addressObjectPath == "" && len(candidateEmails) > 0 {
+		if addressObjectPath == "" && !req.AllowDuplicate && len(candidateEmails) > 0 {
 			query := carddav.AddressBookQuery{
 				DataRequest: carddav.AddressDataRequest{
 					Props: []string{vcard.FieldEmail},
@@ -664,6 +705,12 @@ func registerRoutes(p *plugin) {
 			}
 			val = strings.TrimSpace(val)
 			f := card.Preferred(field)
+			if f != nil && name != "" && unseen(name, f.Value) {
+				f = nil
+				if val == "" {
+					return
+				}
+			}
 			switch {
 			case f == nil:
 				if val != "" {
@@ -671,7 +718,7 @@ func registerRoutes(p *plugin) {
 					if field == vcard.FieldKey {
 						setKeyRepresentation(card, added, val)
 					}
-					card.Add(field, added)
+					addShown(card, field, added)
 				}
 			case strings.TrimSpace(f.Value) == val:
 			case val == "":
@@ -827,14 +874,21 @@ func registerRoutes(p *plugin) {
 		setShownField(vcard.FieldNickname, "nickname", req.Nickname)
 		setShownField(vcard.FieldKey, "public_key", req.PublicKey)
 
-		setCategories(card, req.Categories)
+		// A save that sends no categories leaves them as stored. The editor
+		// sends none: the toolbar writes them on its own, and the form's copy,
+		// sent back, undid a star made while editing.
+		if req.Categories != nil {
+			setCategories(card, req.Categories)
+		}
 
 		// An address sent back as the page was given it is left as stored.
 		// Written back as the page's one line on every save, the city,
 		// region, postal code and country became part of the street, and the
 		// address lost its type and the card its other addresses.
 		if changed("address") {
-			if f := card.Preferred(vcard.FieldAddress); f == nil || strings.TrimSpace(addressLine(f)) != strings.TrimSpace(req.Address) {
+			if f := card.Preferred(vcard.FieldAddress); f != nil && unseen("address", addressLine(f)) {
+				setAddress(card, nil, req.Address)
+			} else if f == nil || strings.TrimSpace(addressLine(f)) != strings.TrimSpace(req.Address) {
 				setAddress(card, f, req.Address)
 			}
 		}
