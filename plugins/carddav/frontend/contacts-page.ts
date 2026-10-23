@@ -36,6 +36,15 @@ const CONTACTS_ROUTE = /^#\/contacts\/?([^\/]*)\/?(.*)$/;
 /** How an address write lands in the session history; see writeHash. */
 type HashEntry = 'push' | 'replace';
 
+type ContactSaveTarget = {
+  contact: any;
+  original: any;
+  generation: number;
+  lifetime: number;
+  username: string;
+  conflicted: boolean;
+};
+
 @customElement('contacts-page')
 export class ContactsPage extends LitElement {
   @consume({ context: i18nContext })
@@ -300,10 +309,11 @@ export class ContactsPage extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this.restoringHash = true;
+    this.saveActive = true;
     this.showInitialLoader = !(window as any).alpsAppLoaded;
     this.classList.add('density-compact');
     this.loadAddedCategories();
-    window.addEventListener('alps-active-user-changed', this.loadAddedCategories);
+    window.addEventListener('alps-active-user-changed', this.handleSaveOwnerChange);
     this.fetchContacts();
     window.addEventListener('resize', this._handleWindowResize);
     window.addEventListener('hashchange', this._handleHashChange);
@@ -323,7 +333,11 @@ export class ContactsPage extends LitElement {
     this.stopResize?.();
     window.removeEventListener('resize', this._handleWindowResize);
     window.removeEventListener('hashchange', this._handleHashChange);
-    window.removeEventListener('alps-active-user-changed', this.loadAddedCategories);
+    window.removeEventListener('alps-active-user-changed', this.handleSaveOwnerChange);
+    this.saveActive = false;
+    this.saveLifetime++;
+    this.queuedSaves = [];
+    this.saveTargets = new WeakMap();
     if (this.settingsStore) {
       this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     }
@@ -603,6 +617,7 @@ export class ContactsPage extends LitElement {
 
     // Set immediately for instant UI feedback (prevents flashing)
     this.cardGeneration++;
+    this.saving = false;
     this.selectedContact = { ...contact };
     this.wholeCardPath = null;
     this.isEditing = false;
@@ -786,6 +801,8 @@ export class ContactsPage extends LitElement {
   }
 
   private handleCreateNew() {
+    this.cardGeneration++;
+    this.saving = false;
     this.selectedContacts = new Set();
     const newContact = {
       name: this.i18nStore?.t('contacts.unnamedContact'),
@@ -995,6 +1012,7 @@ export class ContactsPage extends LitElement {
   private handleCancelEdit() {
     this.isEditing = false;
     if (this.selectedContact?.isTemporary) {
+      this.cardGeneration++;
       this.selectedContact = null;
       this.contacts = this.contacts.filter((c: any) => !c.isTemporary);
 
@@ -1041,8 +1059,26 @@ export class ContactsPage extends LitElement {
     }
   }
 
-  /** The newest form state waiting for the save in flight; see handleSave. */
-  private queuedSave: any = null;
+  /** Coalesced per card, so a second card cannot replace the first card's queued edits. */
+  private queuedSaves: { payload: any; target: ContactSaveTarget }[] = [];
+  private saveTargets = new WeakMap<object, ContactSaveTarget>();
+  private saveActive = true;
+  private saveLifetime = 0;
+  private handleSaveOwnerChange = () => {
+    this.saveLifetime++;
+    this.queuedSaves = [];
+    this.saveTargets = new WeakMap();
+    this.loadAddedCategories();
+  };
+
+  private ownsSave(target: ContactSaveTarget): boolean {
+    return target.lifetime === this.saveLifetime && target.username === (activeUsername() ?? this.username);
+  }
+
+  private showingSave(target: ContactSaveTarget): boolean {
+    return this.ownsSave(target) && target.generation === this.cardGeneration && !!this.selectedContact
+      && (this.selectedContact === target.original || this.selectedContact.path === target.contact.path);
+  }
   private saveRunning = false;
   /** The card whose save was refused as changed elsewhere, until the edit is cancelled. */
   private conflictedPath: string | null = null;
@@ -1054,36 +1090,49 @@ export class ContactsPage extends LitElement {
    * used to overlap. Once versions are checked, an overlap is a refusal: the
    * second save carries the version the first is about to replace. (For a new
    * contact, an overlap made two contacts.) So a save now waits for the one in
-   * flight, and only the newest form state queued behind it is sent.
+   * flight, and only the newest form state queued for each card is sent.
    */
-  private async handleSave(payload: any) {
-    this.queuedSave = payload;
+  private async handleSave(payload: any, source = this.selectedContact) {
+    if (!source || !this.saveActive) return;
+    let target = this.saveTargets.get(source);
+    if (!target || !this.ownsSave(target)) {
+      const showing = this.selectedContact && (this.selectedContact === source || (source.path && source.path === this.selectedContact.path));
+      target = {
+        contact: { ...(showing ? this.selectedContact : source) }, original: source,
+        generation: showing ? this.cardGeneration : -1, lifetime: this.saveLifetime,
+        username: activeUsername() ?? this.username, conflicted: false,
+      };
+      this.saveTargets.set(source, target);
+    }
+    if (!this.saveRunning && this.showingSave(target)) target.contact = { ...this.selectedContact };
+    // Capture the form when it was submitted, including when it has to wait.
+    payload = { ...payload };
+    for (const field of ['emails', 'phones']) {
+      if (Array.isArray(payload[field])) payload[field] = payload[field].map((p: any) => ({ ...p }));
+    }
+    const waiting = this.queuedSaves.find(job => job.target === target);
+    if (waiting) waiting.payload = payload;
+    else this.queuedSaves.push({ payload, target });
     if (this.saveRunning) return;
     this.saveRunning = true;
     try {
-      while (this.queuedSave) {
-        const next = this.queuedSave;
-        this.queuedSave = null;
-        await this.saveOnce(next);
+      while (this.queuedSaves.length) {
+        const next = this.queuedSaves.shift()!;
+        if (this.ownsSave(next.target)) await this.saveOnce(next.payload, next.target);
       }
     } finally {
       this.saveRunning = false;
     }
   }
 
-  private async saveOnce(payload: any) {
-    // Keep the successful form snapshot independent of edits made while the
-    // request is in flight. The queued form is compared to this snapshot next.
-    payload = { ...payload };
-    for (const field of ['emails', 'phones']) {
-      if (Array.isArray(payload[field])) payload[field] = payload[field].map((p: any) => ({ ...p }));
-    }
-    const editing = !!this.selectedContact && !this.selectedContact.isTemporary;
+  private async saveOnce(payload: any, target: ContactSaveTarget) {
+    const before = target.contact;
+    const editing = !before.isTemporary;
     // After a refusal every autosave would be refused the same way, one error
     // per keystroke. Nothing is sent until the edit is cancelled, which shows
     // the stored card (handleCancelEdit).
-    if (editing && this.conflictedPath === this.selectedContact.path) return;
-    this.saving = true;
+    if (target.conflicted || (editing && this.conflictedPath === before.path)) return;
+    if (this.showingSave(target)) this.saving = true;
     try {
       if (payload.categories && typeof payload.categories === 'string') {
         payload.categories = payload.categories.split(',').map((c: string) => c.trim()).filter((c: string) => c);
@@ -1099,54 +1148,62 @@ export class ContactsPage extends LitElement {
         // every later autosave. Only fields changed since our last successful
         // form save express a new editing gesture.
         const changed_fields = ['organization', 'title', 'note', 'url', 'nickname', 'public_key', 'address']
-          .filter(field => String(payload[field] || '').trim() !== String(this.selectedContact[field] || '').trim());
-        const request = { ...payload, changed_fields, etag: this.selectedContact.etag };
+          .filter(field => String(payload[field] || '').trim() !== String(before[field] || '').trim());
+        const request = { ...payload, changed_fields, etag: before.etag };
         for (const field of ['emails', 'phones']) {
           const props = payload[field];
           if (!Array.isArray(props) || props.some((p: any) => !p.id)) continue;
           const fallback = field === 'emails' ? 'email' : 'phone';
-          const before = (this.selectedContact[field] || (this.selectedContact[fallback] ? [{ value: this.selectedContact[fallback] }] : []))
+          const propertiesBefore = (before[field] || (before[fallback] ? [{ value: before[fallback] }] : []))
             .filter((p: any) => String(p.value || '').trim());
           request[field] = props.map((p: any) => ({
             value: p.value, type: p.type,
-            source_index: before.findIndex((old: any, i: number) => (old.id || `${field}:${i}`) === p.id),
+            source_index: propertiesBefore.findIndex((old: any, i: number) => (old.id || `${field}:${i}`) === p.id),
           }));
         }
-        data = await contactsService.updateContact(this.selectedContact.path!, request);
+        data = await contactsService.updateContact(before.path!, request);
       } else {
-        data = await contactsService.createContact(payload);
+        // The contact the user is typing in, even when another card has
+        // its address: answered with that card's path, the editor went on to
+        // edit the other card, without its version or fields.
+        data = await contactsService.createContact({ ...payload, allow_duplicate: true });
       }
 
-      const savedContact = { ...payload, path: data.path || (editing ? this.selectedContact.path : ''), etag: data.etag };
-
-      const contactIndex = this.contacts.findIndex((c: any) => this.selectedContact && (c.path === this.selectedContact.path || (c.isTemporary && this.selectedContact.isTemporary)));
+      const savedContact = { ...before, ...payload, path: data.path || (editing ? before.path : ''), etag: data.etag };
+      delete savedContact.isTemporary;
+      // Advance only this card's successful snapshot. A queued form uses its
+      // new ETag and property positions even when another card is open now.
+      const showing = this.showingSave(target);
+      target.contact = savedContact;
+      if (!this.ownsSave(target)) return;
+      const contactIndex = this.contacts.findIndex((c: any) => editing ? c.path === before.path : c === target.original);
       if (contactIndex > -1) {
-        this.contacts[contactIndex] = { ...this.contacts[contactIndex], ...savedContact };
-        delete this.contacts[contactIndex].isTemporary;
-        this.contacts = [...this.contacts];
+        this.contacts = this.contacts.map((c, i) => i === contactIndex ? savedContact : c);
       } else {
         this.contacts = [savedContact, ...this.contacts];
       }
-
-      this.selectedContact = { ...this.selectedContact, ...savedContact };
-      delete this.selectedContact.isTemporary;
-      // Written whole from the editor's form, so held whole.
-      this.wholeCardPath = this.selectedContact.path;
+      if (showing) {
+        this.selectedContact = savedContact;
+        this.wholeCardPath = savedContact.path;
+      }
     } catch (e) {
       console.error('Error saving contact', e);
+      if (!this.ownsSave(target)) return;
       if (editing && isVersionConflict(e)) {
-        this.conflictedPath = this.selectedContact.path;
+        target.conflicted = true;
+        if (this.showingSave(target)) this.conflictedPath = before.path;
         this.reportFailure('contacts.saveConflict');
       } else {
         this.reportFailure('contacts.saveFailed');
       }
     } finally {
-      this.saving = false;
+      if (this.showingSave(target)) this.saving = false;
     }
   }
 
-  private handleSaveEvent(e: CustomEvent) {
-    this.handleSave(e.detail);
+  private handleSaveEvent(e: CustomEvent & { sourceContact?: any; sourceUsername?: string }) {
+    if (e.sourceUsername !== undefined && e.sourceUsername !== (activeUsername() ?? this.username)) return;
+    this.handleSave(e.detail, e.sourceContact);
   }
 
   private async handleToggleStarEvent() {
