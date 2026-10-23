@@ -860,6 +860,25 @@ describe('reading a conversation', () => {
     });
   });
 
+  it('takes no flags for a card the list says has none, and keeps those it leaves out', async () => {
+    // The server writes a message with no flags as `Flags: null`, which was
+    // taken for flags not given: the card kept those it had, after another
+    // client had cleared them.
+    const el = await openConversation({ members: [older([SEEN, '\\Flagged']), reply(), newer()] });
+
+    await update(el, { messages: [{ ...older(null as any), SubMessages: [newer()] }] });
+    await settle();
+    expect(card(el, 'INBOX', '5').item.message.Flags).toEqual([]);
+
+    const unsaid = older([SEEN]) as any;
+    delete unsaid.Flags;
+    await update(el, { messages: [{ ...older([SEEN]), SubMessages: [newer()] }] });
+    await settle();
+    await update(el, { messages: [{ ...unsaid, SubMessages: [newer()] }] });
+    await settle();
+    expect(card(el, 'INBOX', '5').item.message.Flags).toEqual([SEEN]);
+  });
+
   it('starts at the first unread message when that is not the open one', async () => {
     const scrolled: string[] = [];
     const original = Element.prototype.scrollIntoView;

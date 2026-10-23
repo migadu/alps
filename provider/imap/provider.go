@@ -1703,25 +1703,32 @@ func (p *IMAPProvider) getMessagePartWithData(mailbox string, uid imap.UID, part
 		return nil, nil, nil, nil, fmt.Errorf("failed to read part header: %v", err)
 	}
 
-	part, err := message.New(message.Header{Header: h}, bytes.NewReader(bodyBuf))
-	if err != nil {
+	// A charset alps does not know leaves the part's text as it is stored,
+	// its transfer encoding undone: as it must be kept by a draft that
+	// carries the part forward, and as good as can be had for any other read.
+	part, err := provider.DecodePart(message.Header{Header: h}, bodyBuf)
+	if err != nil && !message.IsUnknownCharset(err) {
 		return nil, nil, nil, nil, fmt.Errorf("failed to create message reader: %v", err)
 	}
 
 	return msg, part, headerBuf, bodyBuf, nil
 }
 
-// GetMessageParts reads several parts of one message, each with its MIME
-// header, in one FETCH, and returns them in the order of paths.
+// GetMessagePartsRaw reads several parts of one message as they are stored,
+// each with its MIME header, in one FETCH, and returns the headers and the
+// bodies in the order of paths.
 //
 // A draft save carries the parts of the message it forwards, or of the draft
 // saved before it, and reads them all on every save. Read one at a time with
 // GetMessagePartWithData, that was a round trip per part, and each one also
 // fetched the message's envelope and structure, which the save does not use.
 // The parts are peeked at, so reading them does not mark the message seen.
-func (p *IMAPProvider) GetMessageParts(mailbox string, id provider.MessageID, paths [][]int) ([]*message.Entity, error) {
+//
+// As stored, not decoded: the caller decodes them, and needs to know whether
+// a text was converted to UTF-8, which a part decoded here left it to guess.
+func (p *IMAPProvider) GetMessagePartsRaw(mailbox string, id provider.MessageID, paths [][]int) (headers, bodies [][]byte, err error) {
 	if err := p.ensureMailboxSelected(mailbox); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	uid := imap.UID(id.(IMAPUID))
 
@@ -1742,7 +1749,7 @@ func (p *IMAPProvider) GetMessageParts(mailbox string, id provider.MessageID, pa
 
 	msgs, err := p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch message parts: %v", err)
+		return nil, nil, fmt.Errorf("failed to fetch message parts: %v", err)
 	} else if len(msgs) == 0 {
 		// As in GetMessageMetadata, for a message the session may not have
 		// been told about yet.
@@ -1750,32 +1757,25 @@ func (p *IMAPProvider) GetMessageParts(mailbox string, id provider.MessageID, pa
 			if err := p.client.Noop().Wait(); err == nil {
 				msgs, err = p.client.Fetch(imap.UIDSetNum(uid), &options).Collect()
 				if err != nil {
-					return nil, fmt.Errorf("failed to fetch message parts after NOOP: %v", err)
+					return nil, nil, fmt.Errorf("failed to fetch message parts after NOOP: %v", err)
 				}
 			}
 		}
 		if len(msgs) == 0 {
-			return nil, fmt.Errorf("UID %d: %w", uid, provider.ErrMessageNotFound)
+			return nil, nil, fmt.Errorf("UID %d: %w", uid, provider.ErrMessageNotFound)
 		}
 	}
 	msg := msgs[0]
 
-	parts := make([]*message.Entity, len(paths))
+	headers, bodies = make([][]byte, len(paths)), make([][]byte, len(paths))
 	for i, item := range items {
-		headerBuf := msg.FindBodySection(item.header)
-		bodyBuf := msg.FindBodySection(item.body)
-		if headerBuf == nil || bodyBuf == nil {
-			return nil, fmt.Errorf("server didn't return header and body of part %v", paths[i])
-		}
-		h, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(headerBuf)))
-		if err != nil {
-			return nil, fmt.Errorf("failed to read header of part %v: %v", paths[i], err)
-		}
-		if parts[i], err = message.New(message.Header{Header: h}, bytes.NewReader(bodyBuf)); err != nil {
-			return nil, fmt.Errorf("failed to create reader for part %v: %v", paths[i], err)
+		headers[i] = msg.FindBodySection(item.header)
+		bodies[i] = msg.FindBodySection(item.body)
+		if headers[i] == nil || bodies[i] == nil {
+			return nil, nil, fmt.Errorf("server didn't return header and body of part %v", paths[i])
 		}
 	}
-	return parts, nil
+	return headers, bodies, nil
 }
 
 // SetMessagesFlags sets flags for multiple messages

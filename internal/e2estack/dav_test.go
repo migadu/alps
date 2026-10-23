@@ -7,12 +7,16 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/emersion/go-vcard"
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
+	"github.com/emersion/go-webdav/carddav"
 )
 
 // The browser tests rely on these answers to see alps handle a conflicting
@@ -348,4 +352,82 @@ func TestResetDropsTheCalendarsMade(t *testing.T) {
 		"Calendar [VEVENT VTODO] " + calendarHome(b) + "default/",
 		"Trips [VEVENT VTODO] " + calendarHome(b) + "trips/",
 	})
+}
+
+// vcardBody is a contact with a name and any number of addresses.
+func vcardBody(uid, name string, emails ...string) string {
+	body := "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:" + uid + "\r\nFN:" + name + "\r\n"
+	for _, email := range emails {
+		body += "EMAIL:" + email + "\r\n"
+	}
+	return body + "END:VCARD\r\n"
+}
+
+// alps's contacts search asks for the cards whose name or any address holds
+// the text, and a CardDAV server compares text in any case unless the query
+// names another collation (RFC 6352, section 8.3). The stack compared the
+// first address alone, case by case, so a card was found by its second
+// address only when its name held the text too.
+func TestAddressBookQueryMatchesEveryAddressInAnyCase(t *testing.T) {
+	srv, _ := davTestServer(t)
+	const user = "a@example.test"
+	book := cardDAVPrefix + "/" + user + "/contacts/default/"
+	for uid, card := range map[string]string{
+		"other":    vcardBody("other", "Other Person", "other@remote.test", "Bob@Remote.Test"),
+		"superbob": vcardBody("superbob", "Super", "superbob@remote.test"),
+		"ada":      vcardBody("ada", "Ada Lovelace", "ada@example.test"),
+	} {
+		if got := davDo(t, srv, user, http.MethodPut, book+uid+".vcf", "text/vcard", card); got != http.StatusCreated {
+			t.Fatalf("PUT %s: got %d, want 201", uid, got)
+		}
+	}
+	c, err := carddav.NewClient(webdav.HTTPClientWithBasicAuth(srv.Client(), user, davTestPasswords[user]), srv.URL+cardDAVPrefix+"/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := func(query *carddav.AddressBookQuery) []string {
+		t.Helper()
+		aos, err := c.QueryAddressBook(context.Background(), book, query)
+		if err != nil {
+			t.Fatalf("QueryAddressBook: %v", err)
+		}
+		var uids []string
+		for _, ao := range aos {
+			uids = append(uids, strings.TrimSuffix(path.Base(ao.Path), ".vcf"))
+		}
+		sort.Strings(uids)
+		return uids
+	}
+	// What alps's search sends: the name or any address holding the text.
+	search := func(text string, match carddav.MatchType) *carddav.AddressBookQuery {
+		return &carddav.AddressBookQuery{PropFilters: []carddav.PropFilter{
+			{Name: vcard.FieldFormattedName, TextMatches: []carddav.TextMatch{{Text: text, MatchType: match}}},
+			{Name: vcard.FieldEmail, TextMatches: []carddav.TextMatch{{Text: text, MatchType: match}}},
+		}}
+	}
+
+	sameLines(t, "a second address, in another case", found(search("bob@remote.test", "")), []string{"other", "superbob"})
+	sameLines(t, "a name, in another case", found(search("LOVELACE", "")), []string{"ada"})
+	sameLines(t, "a whole address, in another case", found(search("BOB@remote.test", carddav.MatchEquals)), []string{"other"})
+
+	// What alps's duplicate check sends: every card with an address, its
+	// addresses alone, every one of them.
+	aos, err := c.QueryAddressBook(context.Background(), book, &carddav.AddressBookQuery{
+		DataRequest: carddav.AddressDataRequest{Props: []string{vcard.FieldEmail}},
+		PropFilters: []carddav.PropFilter{{Name: vcard.FieldEmail}},
+	})
+	if err != nil {
+		t.Fatalf("QueryAddressBook: %v", err)
+	}
+	var addresses []string
+	for _, ao := range aos {
+		if ao.Card.Value(vcard.FieldFormattedName) != "" {
+			t.Errorf("%s: the name came back, asked for its addresses alone", ao.Path)
+		}
+		for _, field := range ao.Card[vcard.FieldEmail] {
+			addresses = append(addresses, field.Value)
+		}
+	}
+	sort.Strings(addresses)
+	sameLines(t, "the addresses", addresses, []string{"Bob@Remote.Test", "ada@example.test", "other@remote.test", "superbob@remote.test"})
 }

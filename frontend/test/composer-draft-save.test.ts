@@ -563,6 +563,20 @@ describe('a reply or a forward left untouched', () => {
     expect(store.getComposer(id)).toBeUndefined();
   });
 
+  it.each(untouched)('%s keeps, as its opening text, the text its editor holds', async (_, make) => {
+    // The window opens an answer with its text as the quote's `> ` lines,
+    // and the editor's own text has none. Taken from the editor as no edit,
+    // the text no longer matched the opening text, and every test of an
+    // answer still as it opened, whitespace typed and taken away included,
+    // found it changed.
+    vi.useFakeTimers();
+    const { store, id } = await open(make());
+
+    const composer = store.getComposer(id)!;
+    expect(composer.initialText).toBe(composer.text);
+    expect(composer.initialHtml).toBe(composer.html);
+  });
+
   it('is saved once something is typed', async () => {
     const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
     vi.useFakeTimers();
@@ -622,6 +636,66 @@ describe('a draft reopened and saved again', () => {
     expect(await el._saveDraft()).toBe(true);
 
     expect(store.getComposer(id)?.quoteSource).toEqual(answered);
+  });
+});
+
+describe("the quote's images", () => {
+  // The composer carries the parts its quote shows as inline, whatever their
+  // disposition: Outlook and Apple Mail file their inline images as
+  // attachments. A save or a send named them by path alone, and the server,
+  // reading the disposition, took such an image for a file: it went out
+  // beside the body, and the draft saved answered with it as a file, which
+  // the composer then showed as a chip. Each save and send now names them.
+  const file = { name: 'ledger.txt', size: 16, type: 'text/plain', partPath: '3' };
+  const image = { name: 'logo.png', size: 9, type: 'image/png', partPath: '2', inline: true };
+  const answer = (format: 'html' | 'text') => composerIn({
+    subject: 'Re: Logo', text: 'Nice.', html: '<p>Nice.</p><img src="cid:logo@remote.test">', format, dirty: true,
+    attachments: [file, image],
+  });
+
+  it('are named as the body\'s in a save', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const { store, instance } = answer('html');
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(sentForm(0).get('prev_attachments')).toBe('3,2');
+    expect(sentForm(0).get('inline_attachments')).toBe('2');
+  });
+
+  it('are named as the body\'s in a send', async () => {
+    const sendDraft = vi.spyOn(messageOperations, 'sendDraft').mockResolvedValue(true);
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const { store, instance } = answer('html');
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    const sending = el._handleSend();
+    await waitFor(() => toasts.length > 0, 'the undo toast');
+    toasts[0].detail.dismissFn();
+    await sending;
+
+    expect((sendDraft.mock.calls[0][0] as FormData).get('inline_attachments')).toBe('2');
+  });
+
+  it('are named as the body\'s by the sign-out flush', async () => {
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const { store } = answer('html');
+
+    await store.saveAllDirtyDrafts();
+
+    expect((saveDraft.mock.calls[0][0] as FormData).get('inline_attachments')).toBe('2');
+  });
+
+  it('are named nowhere in plain text, which carries none of them', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const { store, instance } = answer('text');
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(sentForm(0).get('prev_attachments')).toBe('3');
+    expect(sentForm(0).has('inline_attachments')).toBe(false);
   });
 });
 
@@ -967,3 +1041,207 @@ describe('an upload the server no longer holds', () => {
     expect(store.getComposer(id)?.attachments).toMatchObject([{ filename: 'big.bin', size, uploading: true }]);
   });
 });
+
+
+describe('a rich quote after a committed plain-text save', () => {
+  const original = { Envelope: { Subject: 'Chart', Date: '2026-09-01T10:00:00Z', From: [{ Mailbox: 'ada', Host: 'remote.test' }] } };
+  const quote = generateQuote('reply', original, 'Chart follows.', '<table><tr><td>Figures</td></tr></table><img src="cid:chart@remote.test">', true);
+  async function open() {
+    const { store, instance, id } = composerIn({
+      text: quote.quotedText, html: quote.quotedHtml, format: 'text',
+      attachments: [{ name: 'chart.png', type: 'image/png', partPath: '2', inline: true }],
+      quoteSource: { mailbox: 'INBOX', uid: '5', structure: { Children: [{ Type: 'text', Subtype: 'html' }, { ID: '<chart@remote.test>' }] } },
+    });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const body = el.shadowRoot!.querySelector('alps-message-composer') as El;
+    await body.updateComplete;
+    const sync = async () => {
+      el.instance = store.getComposer(id);
+      await el.updateComplete;
+      await body.updateComplete;
+    };
+    store.updateComposer(id, { text: 'Agreed.' + quote.quotedText });
+    await sync();
+    return { store, el, body, id, sync };
+  }
+
+  it('does not restore discarded CID references when switched after the save', async () => {
+    const save = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    const { store, el, body, id, sync } = await open();
+    expect(await el._saveDraft()).toBe(true);
+    expect(store.getComposer(id)!.attachments).toEqual([]);
+    await sync();
+    store.updateComposer(id, { format: 'html' });
+    await sync();
+    expect(body.messageHtml).toContain('<td>Figures</td>');
+    expect(body.messageHtml).not.toContain('cid:chart@remote.test');
+    expect(body.editor.getText()).toContain('Agreed.');
+    expect(await el._saveDraft()).toBe(true);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(sentForm(1).get('html')).not.toContain('cid:chart@remote.test');
+  });
+
+  it('keeps HTML typed and its selection when a pending text save discards the quote image', async () => {
+    const finish = heldSave();
+    const { store, el, body, id, sync } = await open();
+    const saving = el._saveDraft();
+    store.updateComposer(id, { format: 'html' });
+    await sync();
+    body.editor.chain().insertContentAt(1, '<strong>New rich words.</strong>').setTextSelection(5).run();
+    const selection = body.editor.state.selection.toJSON();
+    finish({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    expect(await saving).toBe(true);
+    await sync();
+
+    expect(store.getComposer(id)).toMatchObject({ dirty: true, draftUid: '8', attachments: [] });
+    expect(body.messageHtml).toContain('<strong>New rich words.</strong>');
+    expect(body.messageHtml).toContain('<td>Figures</td>');
+    expect(body.messageHtml).not.toContain('cid:chart@remote.test');
+    expect(body.editor.state.selection.toJSON()).toEqual(selection);
+    expect(store.getComposer(id)!.html).not.toContain('cid:chart@remote.test');
+    // Undo belongs to the user's typing, never to the save reconciliation.
+    body.editor.commands.undo();
+    expect(body.messageHtml).not.toContain('New rich words.');
+    expect(body.messageHtml).not.toContain('cid:chart@remote.test');
+  });
+
+  it('keeps newer HTML when a sign-out text flush is canceled by that edit', async () => {
+    const finish = heldSave();
+    const { store, body, id, sync } = await open();
+    const flushing = store.saveAllDirtyDrafts();
+    const refused = expect(flushing).rejects.toBeInstanceOf(DraftFlushError);
+    store.updateComposer(id, { format: 'html' });
+    await sync();
+    body.editor.chain().insertContentAt(1, '<strong>Keep editing.</strong>').run();
+    finish({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    await refused;
+    await sync();
+
+    expect(store.getComposer(id)).toMatchObject({ dirty: true, draftUid: '8', attachments: [] });
+    expect(body.messageHtml).toContain('<strong>Keep editing.</strong>');
+    expect(body.messageHtml).not.toContain('cid:chart@remote.test');
+  });
+
+  it('retains every inline part and reference until a text save succeeds', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue(null);
+    const { store, el, body, id, sync } = await open();
+    expect(await el._saveDraft()).toBe(false);
+    store.updateComposer(id, { format: 'html' });
+    await sync();
+    expect(store.getComposer(id)!.attachments).toHaveLength(1);
+    expect(body.messageHtml).toContain('cid:chart@remote.test');
+    expect(body.messageHtml).toContain('<td>Figures</td>');
+  });
+
+  it.each(['disconnect', 'account reset'])('does not prune a composer after %s while its save waits', async departure => {
+    const finish = heldSave();
+    const { store, el, id } = await open();
+    const saving = el._saveDraft();
+    if (departure === 'disconnect') el.remove();
+    else MessageCache.clear();
+    finish({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    await saving;
+    expect(store.getComposer(id)!.html).toContain('cid:chart@remote.test');
+    expect(store.getComposer(id)!.discardedInlineIds).toBeUndefined();
+  });
+});
+
+describe("an answer's quote images after a plain-text save", () => {
+  // A plain-text save leaves the quote's images out, and once it has landed
+  // the composer lets go of them: the server reads every later save's parts
+  // from the draft it stored, which holds none of them. The switch back to
+  // HTML kept the quote block whole, its cid: images and all, and the next
+  // save and the send named images that no part backed.
+  const original = { UID: 4, Envelope: { Subject: 'Engines', Date: '2026-09-02T10:00:00Z', From: [{ Name: 'Ada', Mailbox: 'ada', Host: 'example.com' }], To: [], Cc: [] } };
+  const quote = generateQuote('reply', original, 'Chart below.', '<p>Chart below.</p><img src="cid:chart@remote.test" alt="chart">', true);
+  const chart = { name: 'chart.png', size: 9, type: 'image/png', partPath: '2', inline: true, contentId: 'chart@remote.test' };
+  const plainAnswer = () => composerIn({
+    subject: quote.subject, to: quote.to, text: quote.quotedText, html: quote.quotedHtml, format: 'text', attachments: [chart],
+  });
+
+  async function open() {
+    const { store, instance, id } = plainAnswer();
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const body = el.shadowRoot!.querySelector('alps-message-composer') as El;
+    await body.updateComplete;
+    store.updateComposer(id, { text: `Agreed.${quote.quotedText}` });
+    return { store, id, el, body };
+  }
+  async function toHtml(store: ComposeStore, id: string, el: El, body: El) {
+    store.updateComposer(id, { format: 'html' });
+    await el.updateComplete;
+    await body.updateComplete;
+  }
+
+  it('are not named by the save after a switch back to HTML', async () => {
+    vi.spyOn(messageOperations, 'saveDraft')
+      .mockResolvedValueOnce({ uid: '8', mailbox: 'Drafts', attachments: [] })
+      .mockResolvedValueOnce({ uid: '9', mailbox: 'Drafts' });
+    const { store, id, el, body } = await open();
+    expect(await el._saveDraft()).toBe(true);
+    expect(sentForm(0).has('prev_attachments')).toBe(false);
+
+    await toHtml(store, id, el, body);
+    expect(await el._saveDraft()).toBe(true);
+
+    const html = String(sentForm(1).get('html'));
+    expect(html).toContain('Agreed.');
+    expect(html).not.toContain('cid:chart@remote.test');
+    expect(sentForm(1).has('prev_attachments')).toBe(false);
+  });
+
+  it('are not named either when the switch came while that save was out', async () => {
+    const land = heldSave();
+    const { store, id, el, body } = await open();
+    const saving = el._saveDraft();
+    await waitFor(() => vi.mocked(messageOperations.saveDraft).mock.calls.length === 1, 'the plain-text save');
+
+    await toHtml(store, id, el, body);
+    land({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    await saving;
+    await body.updateComplete;
+    vi.mocked(messageOperations.saveDraft).mockResolvedValueOnce({ uid: '9', mailbox: 'Drafts' });
+    expect(await el._saveDraft()).toBe(true);
+
+    const html = String(sentForm(1).get('html'));
+    expect(html).toContain('Agreed.');
+    expect(html).not.toContain('cid:chart@remote.test');
+  });
+
+  it('are not named either after an HTML save stored them first', async () => {
+    // Stored as the draft's own parts, they are named by where it holds
+    // them, and still by the Content-IDs the quote names them by.
+    vi.spyOn(messageOperations, 'saveDraft')
+      .mockResolvedValueOnce({ uid: '8', mailbox: 'Drafts', attachments: [
+        { name: 'chart.png', size: 9, type: 'image/png', partPath: '1.2', inline: true, source: { partPath: '2' } },
+      ] })
+      .mockResolvedValueOnce({ uid: '9', mailbox: 'Drafts', attachments: [] })
+      .mockResolvedValueOnce({ uid: '10', mailbox: 'Drafts' });
+    const { store, id, el, body } = await open();
+    await toHtml(store, id, el, body);
+    expect(await el._saveDraft()).toBe(true);
+    expect(store.getComposer(id)?.attachments).toEqual([expect.objectContaining({ partPath: '1.2', contentId: 'chart@remote.test' })]);
+
+    store.updateComposer(id, { format: 'text' });
+    await el.updateComplete;
+    await body.updateComplete;
+    expect(await el._saveDraft()).toBe(true);
+    await toHtml(store, id, el, body);
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(String(sentForm(2).get('html'))).not.toContain('cid:chart@remote.test');
+    expect(sentForm(2).has('prev_attachments')).toBe(false);
+  });
+
+  it('are kept by a switch back to HTML before any save', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const { store, id, el, body } = await open();
+
+    await toHtml(store, id, el, body);
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(String(sentForm(0).get('html'))).toContain('cid:chart@remote.test');
+    expect(sentForm(0).get('prev_attachments')).toBe('2');
+  });
+});
+

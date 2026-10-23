@@ -2,6 +2,7 @@ import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { renderIcon } from '../utils/ui';
+import { focusOnLabelClick } from '../utils/label-focus';
 import { addressText, addressWarning, displayAddress, mixedScriptStyles, parseWrittenAddress, writtenAddress } from '../utils/address-display';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { registry } from '../plugin-registry';
@@ -36,14 +37,20 @@ export class AlpsAddressInput extends LitElement {
     }
   }
 
+  /** Stops the watch for a click on this field's label (see focusOnLabelClick). */
+  private stopLabelWatch: (() => void) | null = null;
+
   connectedCallback() {
     super.connectedCallback();
     this.i18nStore?.addEventListener('change', this._handleI18nChange);
+    this.stopLabelWatch = focusOnLabelClick(this);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this.i18nStore?.removeEventListener('change', this._handleI18nChange);
+    this.stopLabelWatch?.();
+    this.stopLabelWatch = null;
     // A field taken away, with the composer it was in, has nothing to
     // suggest to: a lookup still waiting out its pause would ask the plugins
     // all the same.

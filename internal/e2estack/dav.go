@@ -16,12 +16,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-vcard"
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/emersion/go-webdav/carddav"
+	"golang.org/x/text/unicode/norm"
 )
 
 // The DAV server gives every account a calendar and an address book, at
@@ -760,7 +762,124 @@ func (b *addressBookBackend) QueryAddressObjects(ctx context.Context, p string, 
 	if err != nil {
 		return nil, err
 	}
-	return carddav.Filter(query, all)
+	// Matched here, not by carddav.Filter, which compares a property's first
+	// value alone, and case by case. A CardDAV server compares every value of
+	// a repeated property, as EMAIL is, and in any case unless the query names
+	// another collation (RFC 6352, sections 8.3 and 10.5): alps's search found
+	// a card by its second address only when its name held the text too.
+	var matched []carddav.AddressObject
+	for _, ao := range all {
+		ok, err := matchCard(query, ao.Card)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			matched = append(matched, ao)
+		}
+	}
+	// carddav.Filter still gives each card the properties asked for, and
+	// keeps to the limit: with no filter left, every card meets all of them.
+	return carddav.Filter(&carddav.AddressBookQuery{
+		DataRequest: query.DataRequest,
+		FilterTest:  carddav.FilterAllOf,
+		Limit:       query.Limit,
+	}, matched)
+}
+
+// matchCard reports whether card meets any of the query's property filters,
+// or all of them, as the query says.
+func matchCard(query *carddav.AddressBookQuery, card vcard.Card) (bool, error) {
+	allOf, err := allOfTest(query.FilterTest)
+	if err != nil {
+		return false, err
+	}
+	for _, prop := range query.PropFilters {
+		ok, err := matchProp(prop, card)
+		if err != nil {
+			return false, err
+		}
+		// Settled by the first filter met, for any of them, or missed, for all.
+		if ok != allOf {
+			return ok, nil
+		}
+	}
+	return allOf, nil
+}
+
+// matchProp reports whether card meets one property filter. A property can
+// be repeated, and the filter is met when any of its values meets it.
+// Parameter filters are not looked at, as go-webdav does not; alps sends none.
+func matchProp(prop carddav.PropFilter, card vcard.Card) (bool, error) {
+	fields := card[strings.ToUpper(prop.Name)]
+	if len(fields) == 0 {
+		return prop.IsNotDefined, nil
+	}
+	if prop.IsNotDefined {
+		return false, nil
+	}
+	if len(prop.TextMatches) == 0 {
+		return true, nil
+	}
+	allOf, err := allOfTest(prop.Test)
+	if err != nil {
+		return false, err
+	}
+	for _, field := range fields {
+		met := allOf
+		for _, txt := range prop.TextMatches {
+			ok, err := matchText(txt, field.Value)
+			if err != nil {
+				return false, err
+			}
+			if ok != allOf {
+				met = ok
+				break
+			}
+		}
+		if met {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// matchText compares using CardDAV's default i;unicode-casemap collation.
+func matchText(txt carddav.TextMatch, value string) (bool, error) {
+	text, value := unicodeCasemap(txt.Text), unicodeCasemap(value)
+	var ok bool
+	switch txt.MatchType {
+	case carddav.MatchEquals:
+		ok = value == text
+	case carddav.MatchContains, "":
+		ok = strings.Contains(value, text)
+	case carddav.MatchStartsWith:
+		ok = strings.HasPrefix(value, text)
+	case carddav.MatchEndsWith:
+		ok = strings.HasSuffix(value, text)
+	default:
+		return false, fmt.Errorf("unknown text-match type %q", txt.MatchType)
+	}
+	return ok != txt.NegateCondition, nil
+}
+
+// RFC 5051 prepares each code point by titlecasing then compatibility
+// decomposition. Invalid UTF-8 falls back to the original octets.
+func unicodeCasemap(value string) string {
+	if !utf8.ValidString(value) {
+		return value
+	}
+	return norm.NFKD.String(strings.ToTitle(value))
+}
+
+// allOfTest reads a filter's test: any of its parts, the default, or all.
+func allOfTest(test carddav.FilterTest) (bool, error) {
+	switch test {
+	case carddav.FilterAnyOf, "":
+		return false, nil
+	case carddav.FilterAllOf:
+		return true, nil
+	}
+	return false, fmt.Errorf("unknown filter test %q", test)
 }
 
 func (b *addressBookBackend) PutAddressObject(ctx context.Context, p string, card vcard.Card, opts *carddav.PutAddressObjectOptions) (*carddav.AddressObject, error) {
