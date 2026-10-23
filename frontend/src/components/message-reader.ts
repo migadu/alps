@@ -4,7 +4,7 @@ import { live } from 'lit/directives/live.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName, getRemovableTags } from '../utils/flags';
 import { FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
-import { fetchWithTimeout } from '../utils/fetch-utils';
+import { BACKGROUND_REQUEST, fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
 import { activeUsername, settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
@@ -51,6 +51,8 @@ interface ThreadMessageItem {
   isSent: boolean;
   mailbox: string;
   expanded: boolean;
+  /** The last read of its body failed: shown as an error with Try again. */
+  loadFailed?: boolean;
 }
 
 /** A message that has not been sent: a draft. */
@@ -136,25 +138,21 @@ export class MessageReader extends LitElement {
     if (action === 'reply' || action === 'replyAll' || action === 'forward') {
       if (!this.message) return;
       this._closePopup();
+      const key = this.keyOf(this.message);
+      if (this.bodyLoads.has(key)) {
+        await this.loadedItem(key);
+        // Another message was opened while this one's body was coming.
+        if (!this.message || this.keyOf(this.message) !== key) return;
+      }
 
+      // From the body on screen. An HTML message used to be asked for again in
+      // its text view first, for a `RawText` that answer never carries: the
+      // composer waited on a round trip whose result was always thrown away.
       let textBody = '';
       if (this.mimeType === 'text/plain') {
         textBody = this.content;
-      } else {
-        try {
-          const textRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(this.mailboxOfMessage(this.message))}/messages/${this.message.UID}?view=text`);
-          if (textRes.ok) {
-            const textData = await textRes.json();
-            if (textData.Part && textData.RawText) {
-              textBody = textData.RawText;
-            }
-          }
-        } catch (e) {
-          Logger.error('Failed to fetch text body for quote', e);
-        }
-        if (!textBody && this.rawMessageHtml) {
-          textBody = htmlToPlainText(this.rawMessageHtml);
-        }
+      } else if (this.rawMessageHtml) {
+        textBody = htmlToPlainText(this.rawMessageHtml);
       }
 
       const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
@@ -208,9 +206,10 @@ export class MessageReader extends LitElement {
       // ends when they have been. It re-opened the message instead, without
       // waiting: the conversation collapsed to the open card and was asked for
       // again, and a read in the old view could land after the new one. A card
-      // never expanded has no body to switch.
+      // never expanded has no body to switch; one whose read failed is read
+      // again, in the new view.
       await Promise.all(this.threadItems
-        .filter(item => item.content || item.loading)
+        .filter(item => item.content || item.loading || item.loadFailed)
         .map(item => this.fetchItemBody(item)));
       return;
     }
@@ -390,6 +389,8 @@ export class MessageReader extends LitElement {
   @state() private content = '';
   @state() private mimeType = '';
   @state() private loading = false;
+  /** The open message's body could not be read. See fetchItemBody. */
+  @state() private loadFailed = false;
   @state() private activeBanners: any[] = [];
   @state() private attachments: any[] = [];
   @state() private allowRemoteResources = false;
@@ -470,10 +471,11 @@ export class MessageReader extends LitElement {
     this.readDueAt.clear();
     // Nor does a reader that has left the page go on reading bodies nobody
     // asked for. The queue is drained one at a time (see queueItemBody), so
-    // what is left of it would keep taking the session's one connection for a
-    // conversation that is no longer on screen — the same competition the
-    // drop-on-open exists to prevent, for an element that cannot even show
-    // what it reads.
+    // what is left of it would keep a connection to the mail server busy for a
+    // conversation that is no longer on screen. For a session without a
+    // background connection (turned off, or refused by the mail server), that
+    // is the session's own: the same competition the drop-on-open exists to
+    // prevent, for an element that cannot even show what it reads.
     this.prefetchQueue = [];
     if (this.readTimer) clearTimeout(this.readTimer);
     this.readTimer = null;
@@ -593,6 +595,7 @@ export class MessageReader extends LitElement {
     }
 
     .reader-subject {
+      font-family: var(--font-heading);
       font-size: 20px;
       font-weight: 600;
       margin-bottom: 20px;
@@ -701,6 +704,7 @@ export class MessageReader extends LitElement {
     }
 
     .reader-date {
+      font-family: var(--font-label);
       font-size: 13px;
       color: var(--text-muted);
     }
@@ -713,6 +717,7 @@ export class MessageReader extends LitElement {
     }
 
     .reader-size {
+      font-family: var(--font-label);
       font-size: 11px;
       color: var(--text-muted);
       white-space: nowrap;
@@ -750,6 +755,12 @@ export class MessageReader extends LitElement {
       align-items: center;
       justify-content: center;
       color: var(--text-muted);
+    }
+
+    /* Decoration, drawn as alps-icon-btn draws its icon, without the button. */
+    .selection-icon {
+      display: flex;
+      padding: 6px;
     }
 
     .bulk-spinner-container {
@@ -827,6 +838,16 @@ export class MessageReader extends LitElement {
 
     .reader-text-wrapper {
       padding: 24px;
+    }
+
+    .reader-load-error {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-muted);
+      text-align: center;
     }
 
     /* A plain-text body has no markup to say which way it runs. Each
@@ -979,6 +1000,7 @@ export class MessageReader extends LitElement {
         this.mimeType = '';
         this.rawMessageHtml = '';
         this.loading = false;
+        this.loadFailed = false;
         this.allowRemoteResources = false;
         this.hasRemoteResources = false;
         this.hasHtml = false;
@@ -1370,6 +1392,7 @@ export class MessageReader extends LitElement {
       this.mimeType = '';
       this.rawMessageHtml = '';
       this.loading = true;
+      this.loadFailed = false;
       this.activeBanners = [];
       this.allowRemoteResources = this.settingsStore?.getState().showRemoteContent === 'always';
       this.hasRemoteResources = false;
@@ -1460,7 +1483,7 @@ export class MessageReader extends LitElement {
         // It may have been fetched since — by the user expanding it, or by a
         // re-resolve carrying the content over.
         if (item.content) continue;
-        await this.fetchItemBody(item);
+        await this.fetchItemBody(item, true);
       }
     } finally {
       this.prefetching = false;
@@ -1500,6 +1523,22 @@ export class MessageReader extends LitElement {
     if (opening && this.message && this.keyOf(this.message) === key) this.settleOpenedConversation();
   }
 
+  /**
+   * The flags a card holds now. A flag change replaces the card in the card
+   * list rather than editing it, so a read that started before the change
+   * still holds the card as it was: the one in the card list is looked up by
+   * key.
+   *
+   * Null is an answer, not a gap: the server sends a message with no flags as
+   * `Flags: null`, and read as unknown it let the read's own, older flags back
+   * in. Undefined only when the card carries no flags at all.
+   */
+  private liveFlags(key: string, item: ThreadMessageItem): string[] | undefined {
+    const live = this.threadItems.find(i => this.itemKey(i) === key) ?? item;
+    if (!live.message || !('Flags' in live.message)) return undefined;
+    return live.message.Flags ?? [];
+  }
+
   private updateThreadItemReference(item: ThreadMessageItem) {
     if (!item.message) return;
     // The card list is what Lit renders from, so replacing its reference IS a
@@ -1527,7 +1566,51 @@ export class MessageReader extends LitElement {
    */
   private bodyReads = new Map<string, number>();
 
-  private async fetchItemBody(item: ThreadMessageItem) {
+  /** The body read out for each card, by message key, until it lands. */
+  private bodyLoads = new Map<string, Promise<void>>();
+
+  /**
+   * Waits for the card's body when a read of it is out, and answers the card
+   * as it is then.
+   *
+   * Reply, Reply all, Forward and Edit draft are on screen while a body is
+   * still being read, and they take their text and attachments from the body
+   * the reader holds. Taken at once, a click before the body landed quoted
+   * nothing, a forward lost the original's attachments, and an edited draft
+   * opened empty, to be saved over the draft. The card is looked up again
+   * after the wait: a read that lands puts a new copy of it in the list.
+   */
+  private async loadedItem(key: string): Promise<ThreadMessageItem | undefined> {
+    let read: Promise<void> | undefined;
+    // The latest read, should another start while this one is awaited.
+    while ((read = this.bodyLoads.get(key))) await read;
+    return this.threadItems.find(item => this.itemKey(item) === key);
+  }
+
+  /**
+   * Reads the card at once when it shows its loader with no read of it out.
+   *
+   * That is one of the unread a conversation opens expanded, still waiting
+   * its turn: it is marked loading when it is queued, and read only once the
+   * queue comes to it (see queueItemBody). Reply, Reply all and Forward on
+   * it found no read to wait for: the quote was empty, and a forward lost
+   * the original's attachments. Asked for, it is read now, as a card the
+   * user expands is, and the queue does not read it again.
+   */
+  private readWaitingCard(key: string) {
+    if (this.bodyLoads.has(key)) return;
+    const card = this.threadItems.find(item => this.itemKey(item) === key);
+    if (!card?.loading || card.content) return;
+    this.prefetchQueue = this.prefetchQueue.filter(item => this.itemKey(item) !== key);
+    void this.fetchItemBody(card);
+  }
+
+  /**
+   * Reads a card's body. `ahead` is a read nobody asked for (see
+   * queueItemBody), which the server does on the session's background
+   * connection, so the message the user opens next does not wait behind it.
+   */
+  private async fetchItemBody(item: ThreadMessageItem, ahead = false) {
     if (!item.message) return;
     const msg = item.message;
     const mailbox = item.mailbox;
@@ -1535,6 +1618,9 @@ export class MessageReader extends LitElement {
     const seq = (this.bodyReads.get(key) ?? 0) + 1;
     this.bodyReads.set(key, seq);
     const current = () => this.bodyReads.get(key) === seq;
+    let landed!: () => void;
+    const inFlight = new Promise<void>(resolve => { landed = resolve; });
+    this.bodyLoads.set(key, inFlight);
 
     const preferredView = this.localPreferredView || this.settingsStore?.getState()?.preferredView || 'html';
     // Taken before asking: a body that answers after its user has signed out
@@ -1544,10 +1630,13 @@ export class MessageReader extends LitElement {
     try {
       const cached = MessageCache.get(mailbox, msg.UID.toString(), preferredView);
       let read: Omit<CachedMessage, 'timestamp'>;
+      // The body part could not be read, though the message's metadata was.
+      let bodyFailed = false;
       if (cached) {
         read = cached;
       } else {
-        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}?view=${preferredView}`);
+        const request = ahead ? BACKGROUND_REQUEST : {};
+        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}?view=${preferredView}`, request);
         if (!current()) return;
         if (metadataRes.status === 401) {
           window.location.hash = '/login';
@@ -1560,19 +1649,34 @@ export class MessageReader extends LitElement {
         let rawHtml: string | undefined;
         let rawText: string | undefined;
         const part = data.Part;
-        if (part) {
+        // The answer carries the part's text. It was asked for again with
+        // /raw, and the server answers a session's requests one at a time,
+        // so the body waited for a second turn behind whatever else was
+        // queued. /raw is still asked when the server could not decode it.
+        if (part && typeof data.Body === 'string') {
+          if ((part.MIMEType || part.MimeType || 'text/plain').toLowerCase() === 'text/html') rawHtml = data.Body;
+          else rawText = data.Body;
+        } else if (part) {
           const partPathStr = Array.isArray(part.Path) ? part.Path.join('.') : part.Path;
-          const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`);
+          const rawRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/raw?part=${partPathStr}`, request)
+            .catch((e: unknown) => { Logger.error('Failed to fetch message body:', e); return null; });
           if (!current()) return;
-          if (rawRes.status === 401) {
+          if (rawRes?.status === 401) {
             window.location.hash = '/login';
             return;
           }
-          if (rawRes.ok) {
+          if (rawRes?.ok) {
             const raw = await rawRes.text();
             if (!current()) return;
             if ((part.MIMEType || part.MimeType || 'text/plain').toLowerCase() === 'text/html') rawHtml = raw;
             else rawText = raw;
+          } else {
+            // A failure, not a message without text. Skipped, it was shown as
+            // one and cached as one, and every reopen for the next half hour
+            // was served that empty body without asking the server again.
+            // What the metadata said (the attachments, the flags) still holds.
+            if (rawRes) Logger.error('Failed to fetch message body:', rawRes.status);
+            bodyFailed = true;
           }
         }
         read = {
@@ -1605,7 +1709,7 @@ export class MessageReader extends LitElement {
         onRemoteResourceBlocked: () => { hasRemoteResources = true; }
       });
 
-      if (read.Part) {
+      if (read.Part && !bodyFailed) {
         mimeType = read.Part.MIMEType || read.Part.MimeType || 'text/plain';
         if (read.RawHtml !== undefined) {
           // Recomputed for THIS body: the sanitizer below is what raises it.
@@ -1639,24 +1743,37 @@ export class MessageReader extends LitElement {
         }
       }
 
-      if (!cached && MessageCache.generation() === cacheGeneration) {
+      if (!cached && !bodyFailed && MessageCache.generation() === cacheGeneration) {
         MessageCache.set(mailbox, msg.UID.toString(), preferredView, { ...read, HasHTML: hasHtml, HasText: hasText });
       }
 
       item.attachments = read.Attachments || [];
       item.hasHtml = hasHtml;
       item.hasText = hasText;
-      item.message = message;
+      // Everything the read says about the message except its flags. Those are
+      // what the server had when it answered, and a cached read is up to half an
+      // hour old; the flags the card holds now are kept current by the message
+      // list and by every flag change since, including one made while this read
+      // was out. Reading a body leaves \Seen alone on the server, so its
+      // flags can also predate the page's own mark-as-read. The read's flags
+      // count only for a card that carries none.
+      item.message = { ...message, Flags: this.liveFlags(key, item) ?? message.Flags };
       item.mimeType = mimeType;
       item.content = content;
       item.rawMessageHtml = rawMessageHtml;
       item.activeBanners = activeBanners;
       item.hasRemoteResources = hasRemoteResources;
+      item.loadFailed = bodyFailed;
     } catch (e) {
       if (!current()) return;
       Logger.error('Failed to fetch message:', e);
-      item.content = 'Error loading message.';
+      item.loadFailed = true;
     } finally {
+      // Signalled first, so that nothing below can leave a waiter hanging.
+      // The waiter resumes once this block has run, with the card and the
+      // reader filled in (see loadedItem).
+      if (this.bodyLoads.get(key) === inFlight) this.bodyLoads.delete(key);
+      landed();
       // A read that was overtaken paints nothing and leaves the card list
       // alone: the newer read does both when it lands.
       if (current()) {
@@ -1671,6 +1788,7 @@ export class MessageReader extends LitElement {
           this.activeBanners = item.activeBanners;
           this.allowRemoteResources = item.allowRemoteResources;
           this.hasRemoteResources = item.hasRemoteResources;
+          this.loadFailed = !!item.loadFailed;
           this.loading = false;
           this.message = { ...this.message, ...item.message };
         }
@@ -1713,6 +1831,22 @@ export class MessageReader extends LitElement {
       this.updateThreadItemReference(item);
       await this.fetchItemBody(item);
     }
+  }
+
+  /**
+   * Reads a body again whose read failed. Nothing of the failed read was
+   * cached, so this asks the server.
+   */
+  private async retryItemBody(item: ThreadMessageItem | undefined) {
+    if (!item || item.loading) return;
+    item.loading = true;
+    item.loadFailed = false;
+    this.updateThreadItemReference(item);
+    if (this.isOpenItem(item)) {
+      this.loading = true;
+      this.loadFailed = false;
+    }
+    await this.fetchItemBody(item);
   }
 
   private loadRemoteResourcesForItem(item: ThreadMessageItem) {
@@ -1878,24 +2012,20 @@ export class MessageReader extends LitElement {
 
   private async _handleActionForItem(action: string, item: ThreadMessageItem) {
     if (action === 'reply' || action === 'replyAll' || action === 'forward') {
+      const key = this.itemKey(item);
+      this.readWaitingCard(key);
+      if (this.bodyLoads.has(key)) {
+        const loaded = await this.loadedItem(key);
+        // The card has left the conversation while its body was coming.
+        if (!loaded) return;
+        item = loaded;
+      }
+      // From the card's body, as the toolbar's reply is (see _handleAction).
       let textBody = '';
       if (item.mimeType === 'text/plain') {
         textBody = item.content;
-      } else {
-        try {
-          const textRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(item.mailbox)}/messages/${item.message.UID}?view=text`);
-          if (textRes.ok) {
-            const textData = await textRes.json();
-            if (textData.Part && textData.RawText) {
-              textBody = textData.RawText;
-            }
-          }
-        } catch (e) {
-          Logger.error('Failed to fetch text body for quote', e);
-        }
-        if (!textBody && item.rawMessageHtml) {
-          textBody = htmlToPlainText(item.rawMessageHtml);
-        }
+      } else if (item.rawMessageHtml) {
+        textBody = htmlToPlainText(item.rawMessageHtml);
       }
 
       const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
@@ -2016,7 +2146,7 @@ export class MessageReader extends LitElement {
    */
   private async _handleEditDraft(item?: any) {
     const isItem = item && !(item instanceof Event);
-    const msg = isItem ? item.message : this.message;
+    let msg = isItem ? item.message : this.message;
     // The message's own mailbox, as its card has it. The one being viewed is
     // `*` in a search of all mailboxes, which is no mailbox at all: every save
     // of the draft failed on deleting the one it replaced, after storing a new
@@ -2030,31 +2160,30 @@ export class MessageReader extends LitElement {
       this.updateThreadItemReference(item);
       await this.fetchItemBody(item);
     }
+    const key = isItem ? this.itemKey(item) : this.keyOf(msg);
+    if (this.bodyLoads.has(key)) {
+      const loaded = await this.loadedItem(key);
+      if (!loaded) return;
+      if (isItem) item = loaded;
+      // Another message was opened while this draft's body was coming.
+      else if (!this.message || this.keyOf(this.message) !== key) return;
+    }
+    // The message as its read left it. The list's row it was opened from has
+    // no References, and a reply's draft edited from that row was saved and
+    // sent without them.
+    msg = isItem ? item.message : this.message;
 
     const content = isItem && item ? item.content : this.content;
     const mimeType = isItem && item ? item.mimeType : this.mimeType;
     const rawMessageHtml = isItem && item ? item.rawMessageHtml : this.rawMessageHtml;
     const itemAttachments = isItem && item ? item.attachments : this.attachments;
 
+    // From the draft on screen, as a reply is (see _handleAction).
     let textBody = '';
     if (mimeType === 'text/plain') {
       textBody = content;
     } else {
-      try {
-        const textRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}?view=text`);
-        if (textRes.ok) {
-          const textData = await textRes.json();
-          if (textData.Part && textData.RawText) {
-            textBody = textData.RawText;
-          }
-        }
-      } catch (e) {
-        Logger.error('Failed to fetch text body for draft', e);
-      }
-
-      if (!textBody) {
-        textBody = htmlToPlainText(rawMessageHtml);
-      }
+      textBody = htmlToPlainText(rawMessageHtml);
     }
 
     const attachments = (itemAttachments || []).map((a: any) => ({
@@ -2164,6 +2293,7 @@ export class MessageReader extends LitElement {
         .showSenderAvatars=${this.showSenderAvatars}
         @toggle-expansion=${(e: CustomEvent) => this.toggleItemExpansion(e.detail.item)}
         @load-remote-resources=${(e: CustomEvent) => this.loadRemoteResourcesForItem(e.detail.item)}
+        @retry-body=${(e: CustomEvent) => this.retryItemBody(e.detail.item)}
         @toggle-star=${(e: CustomEvent) => this.toggleItemStar(e.detail.item)}
         @delete-item=${(e: CustomEvent) => this.deleteItem(e.detail.item)}
         @action-for-item=${(e: CustomEvent) => this._handleActionForItem(e.detail.action, e.detail.item)}
@@ -2406,7 +2536,7 @@ export class MessageReader extends LitElement {
                 <alps-loader></alps-loader>
               </div>
             ` : html`
-              <alps-icon-btn icon="envelopeSimple" style="pointer-events: none;"></alps-icon-btn>
+              <div class="selection-icon">${renderIcon('envelopeSimple')}</div>
             `}
             <!-- One sentence with the number inside it. The number followed by
                  a bare "messages selected" read "1 messages selected", and a
@@ -2546,7 +2676,14 @@ export class MessageReader extends LitElement {
           ` : ''}
           
           <div class="reader-content-wrapper">
-            ${this.mimeType?.toLowerCase() === 'text/html' ? html`
+            ${this.loadFailed ? html`
+              <div class="reader-load-error">
+                <div>${this.i18nStore?.t('messageReader.loadError')}</div>
+                <alps-button variant="normal" @click=${() => this.retryItemBody(this.threadItems.find(item => this.isOpenItem(item)))}>
+                  ${this.i18nStore?.t('messageReader.loadErrorRetry')}
+                </alps-button>
+              </div>
+            ` : this.mimeType?.toLowerCase() === 'text/html' ? html`
               <iframe 
                 class="reader-iframe"
                 sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"

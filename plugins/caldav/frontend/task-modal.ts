@@ -303,6 +303,7 @@ export class TaskModal extends LitElement {
                 <div class="form-group">
                     <label>${t('tasks.titleField')}</label>
                     <alps-input
+                        label=${t('tasks.titleField')}
                         class="title-input"
                         .value=${this.title}
                         placeholder=${t('tasks.titlePlaceholder')}
@@ -315,6 +316,7 @@ export class TaskModal extends LitElement {
                         <label>${t('tasks.list')}</label>
                         <alps-select
                             class="list-select"
+                            label=${t('tasks.list')}
                             .value=${this.calendarPath}
                             .options=${this.lists.map(list => ({ value: list.path, label: list.name }))}
                             @change=${(e: Event) => { this.calendarPath = (e.target as HTMLSelectElement).value; }}
@@ -326,6 +328,7 @@ export class TaskModal extends LitElement {
                     <div class="form-group">
                         <label>${t('tasks.due')}</label>
                         <alps-input
+                            label=${t('tasks.due')}
                             class="due-date"
                             type="date"
                             .value=${this.dueDate}
@@ -336,6 +339,7 @@ export class TaskModal extends LitElement {
                         <div class="form-group">
                             <label>${t('tasks.time')}</label>
                             <alps-input
+                                label=${t('tasks.time')}
                                 class="due-time"
                                 type="time"
                                 .value=${this.dueTime}
@@ -365,6 +369,7 @@ export class TaskModal extends LitElement {
                             <label>${t('tasks.status')}</label>
                             <alps-select
                                 class="status-select"
+                                label=${t('tasks.status')}
                                 .value=${this.status}
                                 .options=${[
                                     { value: 'needs-action', label: t('tasks.statuses.needsAction') },
@@ -380,6 +385,7 @@ export class TaskModal extends LitElement {
                         <label>${t('tasks.priority')}</label>
                         <alps-select
                             class="priority-select"
+                            label=${t('tasks.priority')}
                             .value=${String(this.priority)}
                             .options=${this.priorityOptions()}
                             @change=${(e: Event) => { this.priority = Number((e.target as HTMLSelectElement).value); }}
@@ -412,6 +418,7 @@ export class TaskModal extends LitElement {
                         ${hasDue ? html`
                             <alps-select
                                 class="repeat-select"
+                                label=${t('tasks.repeat')}
                                 .value=${this.repeat}
                                 .options=${[
                                     { value: '', label: t('calendar.repeatNone') },
@@ -445,6 +452,7 @@ export class TaskModal extends LitElement {
                         <label>${t('tasks.assignTo')}</label>
                         <alps-address-input
                             class="assignees"
+                            label=${t('tasks.assignTo')}
                             .addresses=${this.attendees}
                             @addresses-changed=${(e: CustomEvent) => { this.attendees = e.detail.addresses; }}
                         ></alps-address-input>

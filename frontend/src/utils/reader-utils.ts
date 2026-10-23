@@ -1,4 +1,5 @@
 import { autoLogoutService } from '../services/auto-logout';
+import { showColorScheme } from './html-sanitizer';
 
 export function applyThemeToIframe(iframe: HTMLIFrameElement, themeIframeContent: boolean): void {
   if (!iframe.contentDocument || !iframe.contentDocument.body) return;
@@ -8,11 +9,13 @@ export function applyThemeToIframe(iframe: HTMLIFrameElement, themeIframeContent
     existing.remove();
   }
 
-  if (!themeIframeContent) {
-    return;
-  }
+  // The message is shown in the scheme of the colours it is painted in: its
+  // dark ones under the override below, its light ones on the sanitizer's
+  // white. The frame cannot tell from its own media queries, which follow the
+  // operating system.
+  const isDark = themeIframeContent && document.body.classList.contains('theme-dark');
+  showColorScheme(iframe.contentDocument, isDark ? 'dark' : 'light');
 
-  const isDark = document.body.classList.contains('theme-dark');
   if (isDark) {
     const bgPrimary = window.getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim() || '#1f2937';
     const textPrimary = window.getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#f9fafb';
@@ -22,9 +25,6 @@ export function applyThemeToIframe(iframe: HTMLIFrameElement, themeIframeContent
     const style = iframe.contentDocument.createElement('style');
     style.id = 'dark-mode-override';
     style.textContent = `
-      html {
-        color-scheme: dark !important;
-      }
       body {
         background-color: ${bgPrimary} !important;
         color: ${textPrimary} !important;

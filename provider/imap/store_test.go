@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"regexp"
 	"testing"
 
 	"github.com/emersion/go-imap/v2"
@@ -194,5 +195,57 @@ func TestStoreFreshReadSeesAnotherClientsWrite(t *testing.T) {
 	}
 	if err := mine.Get("base.settings", &got); !errors.Is(err, provider.ErrNoStoreEntry) {
 		t.Errorf("a removed entry read from the cache after a fresh read: %v", err)
+	}
+}
+
+// metadataReads matches a GETMETADATA command sent to the server.
+var metadataReads = regexp.MustCompile(`(?m)^\S+ GETMETADATA `)
+
+// An account that has never saved its settings has no entry for them, and
+// every page listed reads them, on the connection the listing holds. The store
+// remembered an entry it had read, but not that there was none, and so asked
+// the server again for each page.
+func TestStoreRemembersThatAnEntryIsNotThere(t *testing.T) {
+	s := &memServer{caps: imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapMetadata: {}, imap.Cap("THREAD=REFERENCES"): {}}}
+	p := memIMAP(t, s, "From: Ada <ada@example.test>\r\nSubject: Engines\r\n\r\nHello\r\n")
+
+	for page := 0; page < 3; page++ {
+		if _, _, err := p.ListMessages("INBOX", "desc", 0, 50); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := p.SearchMessages("INBOX", "", "desc", 0, 50); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := len(metadataReads.FindAllString(s.traffic.String(), -1)); n != 1 {
+		t.Errorf("six listings of an account without settings asked for them %d times, want once", n)
+	}
+
+	// What the connection removes, it knows is gone.
+	if err := p.store.Put("gone", storedSettings{Language: "de"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.store.Put("gone", nil); err != nil {
+		t.Fatal(err)
+	}
+	before := len(s.traffic.String())
+	var got storedSettings
+	if err := p.store.Get("gone", &got); !errors.Is(err, provider.ErrNoStoreEntry) {
+		t.Errorf("a removed entry reads %+v, %v", got, err)
+	}
+	if metadataReads.MatchString(s.traffic.String()[before:]) {
+		t.Error("a removed entry was asked for again")
+	}
+
+	// A fresh read still asks, and finds what another client wrote since.
+	other, err := newIMAPStore(p.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Put("base.settings", storedSettings{Language: "fr"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.GetFresh(p.store, "base.settings", &got); err != nil || got.Language != "fr" {
+		t.Errorf("read fresh, the entry another client wrote is %+v, %v", got, err)
 	}
 }

@@ -5,12 +5,13 @@
  * neither may throw or leak markup — and the preview has to produce SOMETHING,
  * because a blank line is indistinguishable from a rendering failure.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // The module bridges iframe activity into auto-logout; not under test here.
 vi.mock('../src/services/auto-logout', () => ({ autoLogoutService: { trackIframe: () => {} } }));
 
-import { extractSnippet, htmlToPlainText } from '../src/utils/reader-utils';
+import { applyThemeToIframe, extractSnippet, htmlToPlainText } from '../src/utils/reader-utils';
+import { sanitizeMessageHTML } from '../src/utils/html-sanitizer';
 
 const STORED = "the server's own snippet";
 const PROMPT = 'Click to expand';
@@ -135,5 +136,74 @@ describe('extractSnippet', () => {
     it('measures the text, not the markup around it', () => {
       expect(snippet(`<div class="${'c'.repeat(300)}"><p>Hello</p></div>`, 'text/html')).toBe('Hello');
     });
+  });
+});
+
+// The reader's dark theme for message content paints a frame dark, and the
+// frame's own media queries follow the system, not that paint: a message
+// styled for both schemes has to be switched to its dark colours with it, and
+// back to its light ones on the sanitizer's white.
+describe('applyThemeToIframe', () => {
+  afterEach(() => {
+    document.body.className = '';
+    document.body.replaceChildren();
+  });
+
+  /** A frame holding a sanitized message whose sheet and picture ask for a scheme. */
+  function frame(): HTMLIFrameElement {
+    const iframe = document.createElement('iframe');
+    document.body.appendChild(iframe);
+    const html = sanitizeMessageHTML(
+      '<style>@media (prefers-color-scheme: dark) { p { color: #fff !important } }</style>' +
+      '<picture><source media="(prefers-color-scheme: dark)" srcset="cid:white-logo"><img src="cid:dark-logo"></picture><p>hi</p>',
+      { mailbox: 'INBOX', messageUid: '42', allowRemoteResources: false },
+    );
+    const doc = iframe.contentDocument!;
+    doc.replaceChild(doc.importNode(new DOMParser().parseFromString(html, 'text/html').documentElement, true), doc.documentElement);
+    return iframe;
+  }
+
+  /** The scheme the frame's document is in, the message's query as its sheet shows it, and its picture's. */
+  const scheme = (iframe: HTMLIFrameElement) => {
+    const doc = iframe.contentDocument!;
+    return {
+      colorScheme: doc.documentElement.style.getPropertyValue('color-scheme'),
+      sheet: /@media\s*([^{]+?)\s*\{/.exec(doc.querySelector('style[data-alps-css-light]')?.textContent ?? '')?.[1],
+      source: doc.querySelector('picture source')?.getAttribute('media'),
+      override: !!doc.getElementById('dark-mode-override'),
+    };
+  };
+  const LIGHT = { colorScheme: 'light', sheet: '(width < 0)', source: '(width < 0)', override: false };
+  const DARK = { colorScheme: 'dark', sheet: '(width >= 0)', source: '(width >= 0)', override: true };
+
+  it('shows the message in its dark colours when it paints the frame dark', () => {
+    document.body.classList.add('theme-dark');
+    const iframe = frame();
+    applyThemeToIframe(iframe, true);
+    expect(scheme(iframe)).toEqual(DARK);
+  });
+
+  it('keeps the light colours on white: in the light theme, or once message content is no longer themed', () => {
+    const iframe = frame();
+    applyThemeToIframe(iframe, true);
+    expect(scheme(iframe)).toEqual(LIGHT);
+    // Turned off while the frame is dark: back on white, and back to light.
+    document.body.classList.add('theme-dark');
+    applyThemeToIframe(iframe, true);
+    expect(scheme(iframe)).toEqual(DARK);
+    applyThemeToIframe(iframe, false);
+    expect(scheme(iframe)).toEqual(LIGHT);
+  });
+
+  it('switches back and forth with the theme', () => {
+    const iframe = frame();
+    document.body.classList.add('theme-dark');
+    applyThemeToIframe(iframe, true);
+    document.body.classList.remove('theme-dark');
+    applyThemeToIframe(iframe, true);
+    expect(scheme(iframe)).toEqual(LIGHT);
+    document.body.classList.add('theme-dark');
+    applyThemeToIframe(iframe, true);
+    expect(scheme(iframe)).toEqual(DARK);
   });
 });

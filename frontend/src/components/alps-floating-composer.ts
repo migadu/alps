@@ -6,7 +6,6 @@ import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
 import { messageOperations, MissingUploadsError } from '../services/message-operations';
 import { readUserSettings } from '../store/settings-store';
-import { messageSync } from '../services/message-sync';
 import './alps-address-input.js';
 import './alps-message-composer.js';
 import './alps-button.js';
@@ -320,12 +319,19 @@ export class AlpsFloatingComposer extends LitElement {
             oldMailbox: this.instance.draftMailbox,
             newUid: result.uid,
             mailbox: result.mailbox,
-            subject: this.instance.subject,
-            to: this.instance.to,
-            cc: this.instance.cc,
-            bcc: this.instance.bcc,
+            // The draft the request stored, as it posted it. The window as it
+            // is now may hold edits made while the save was out, which are not
+            // in this draft; they leave the composer dirty, and the next save
+            // brings the row up to date. The recipients come from the same
+            // snapshot, so the event describes one draft.
+            subject: (currentInstance.subject || '').trim(),
+            to: currentInstance.to,
+            cc: currentInstance.cc,
+            bcc: currentInstance.bcc,
             size: result.size,
-            hasAttachments: (this.instance.attachments && this.instance.attachments.length > 0)
+            // A file the request carried: an upload still in flight is not in
+            // this draft, and the quote's own images are not files.
+            hasAttachments: (currentInstance.attachments || []).some(a => !a.inline && (a.uuid || a.partPath))
           }
         }));
       }
@@ -928,12 +934,24 @@ export class AlpsFloatingComposer extends LitElement {
         return;
       }
 
-      registry.invokeHook('composer:send', { recipients: allTo });
-
-      if (currentInstance.draftMailbox) {
-        messageSync.fetch(currentInstance.draftMailbox, 0, '', false);
+      // The server deleted the draft this message was saved as. The re-sync
+      // takes its row off the list, but a reader showing it, on its own or as
+      // a card in a conversation, is told as a discard tells it
+      // (alps-message-reader's `_handleDraftDiscarded`): it stayed open on the
+      // deleted draft, still offering Edit Draft.
+      if (currentInstance.draftUid && currentInstance.draftMailbox) {
+        window.dispatchEvent(new CustomEvent('draft-discarded', {
+          detail: { mailbox: currentInstance.draftMailbox, uid: String(currentInstance.draftUid) }
+        }));
       }
 
+      registry.invokeHook('composer:send', { recipients: allTo });
+
+      // Drafts is not read again for the draft the send deleted: the sync
+      // sendDraft started re-reads the folder on screen, which is Drafts when
+      // Drafts is open. A read of Drafts made here took the listing there, so
+      // Drafts' rows went up under whatever folder was open, and polling read
+      // Drafts after it.
       this.composeStore.closeComposer(id);
     } catch (err: any) {
       if (err instanceof MissingUploadsError) {
@@ -1605,6 +1623,7 @@ export class AlpsFloatingComposer extends LitElement {
             <span class="field-label">${this.i18nStore?.t('floatingComposer.to')}</span>
             <alps-address-input 
               class="address-input"
+              label=${this.i18nStore?.t('floatingComposer.to')}
               .addresses=${this.instance.to || []}
               @addresses-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { to: e.detail.addresses })}
               ?disabled=${this.instance.isSending}
@@ -1622,6 +1641,7 @@ export class AlpsFloatingComposer extends LitElement {
               <span class="field-label">${this.i18nStore?.t('floatingComposer.cc')}</span>
               <alps-address-input 
                 class="address-input"
+                label=${this.i18nStore?.t('floatingComposer.cc')}
                 .addresses=${this.instance.cc || []}
                 @addresses-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { cc: e.detail.addresses })}
                 ?disabled=${this.instance.isSending}
@@ -1634,6 +1654,7 @@ export class AlpsFloatingComposer extends LitElement {
               <span class="field-label">${this.i18nStore?.t('floatingComposer.bcc')}</span>
               <alps-address-input 
                 class="address-input"
+                label=${this.i18nStore?.t('floatingComposer.bcc')}
                 .addresses=${this.instance.bcc || []}
                 @addresses-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { bcc: e.detail.addresses })}
                 ?disabled=${this.instance.isSending}
@@ -1699,8 +1720,9 @@ export class AlpsFloatingComposer extends LitElement {
                   <div class="popup-form" @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._handleLinkSubmit(); }}>
                     ${this.linkPromptFields.map(f => html`
                       <div class="field-group">
-                        <label for=${f.id}>${f.label}</label>
-                        <alps-input inputId=${f.id} type="text" placeholder=${f.placeholder}></alps-input>
+                        <!-- A label's "for" cannot reach the input inside alps-input's shadow root, so a click on the label focuses the field here. -->
+                        <label @click=${() => this._linkPromptFieldElements().find(field => field.inputId === f.id)?.focus()}>${f.label}</label>
+                        <alps-input inputId=${f.id} label=${f.label} type="text" placeholder=${f.placeholder}></alps-input>
                       </div>
                     `)}
                     <div class="popup-actions">

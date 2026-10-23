@@ -315,7 +315,7 @@ test.describe.serial("emptying the discard folders", () => {
     await discardBanner(page).getByRole("button", { name: "Delete All Now" }).click();
     await page.locator("alps-message-list ui-confirm").getByRole("button", { name: "Delete All Now" }).click();
 
-    await expect(toast(page, "Mailbox emptied successfully.")).toBeVisible();
+    await expect(toast(page, "Trash emptied.")).toBeVisible();
     await expect(page.locator("alps-message-list .empty-state")).toHaveText("No messages");
   });
 });

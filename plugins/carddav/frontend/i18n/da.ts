@@ -1,21 +1,25 @@
 export default {
   contacts: {
     deleteFailed: {
-      one: '{failed} af {count} kontakt kunne ikke slettes.',
-      other: '{failed} af {count} kontakter kunne ikke slettes.'
+      one: '{count} af {total} kontakter kunne ikke slettes.',
+      other: '{count} af {total} kontakter kunne ikke slettes.'
     },
     categoryRenameFailed: {
-      one: '{failed} af {count} kontakt kunne ikke opdateres, så kategorien blev kun delvist omdøbt.',
-      other: '{failed} af {count} kontakter kunne ikke opdateres, så kategorien blev kun delvist omdøbt.'
+      one: '{count} af {total} kontakter kunne ikke opdateres, så kategorien blev kun delvist omdøbt.',
+      other: '{count} af {total} kontakter kunne ikke opdateres, så kategorien blev kun delvist omdøbt.'
     },
     categoryDeleteFailed: {
-      one: '{failed} af {count} kontakt kunne ikke opdateres, så kategorien blev kun delvist fjernet.',
-      other: '{failed} af {count} kontakter kunne ikke opdateres, så kategorien blev kun delvist fjernet.'
+      one: '{count} af {total} kontakter kunne ikke opdateres, så kategorien blev kun delvist fjernet.',
+      other: '{count} af {total} kontakter kunne ikke opdateres, så kategorien blev kun delvist fjernet.'
     },
     categoryUpdateFailed: {
-      one: '{failed} af {count} kontakt kunne ikke opdateres.',
-      other: '{failed} af {count} kontakter kunne ikke opdateres.'
+      one: '{count} af {total} kontakter kunne ikke opdateres.',
+      other: '{count} af {total} kontakter kunne ikke opdateres.'
     },
+    deleteOneFailed: 'Kontakten kunne ikke slettes.',
+    categoryRenameOneFailed: 'En kontakt kunne ikke opdateres, så kategorien blev kun delvist omdøbt.',
+    categoryDeleteOneFailed: 'En kontakt kunne ikke opdateres, så kategorien blev kun delvist fjernet.',
+    categoryUpdateOneFailed: 'Kontakten kunne ikke opdateres.',
     saveFailed: 'Kontakten kunne ikke gemmes.',
     saveConflict: 'Kontakten er blevet ændret på en anden enhed, så din ændring blev ikke gemt. Annuller redigeringen for at se den nyeste version.',
     starFailed: 'Kontakten kunne ikke opdateres.',

@@ -148,6 +148,7 @@ export const pt = {
       begin_failed: 'Falha ao iniciar autenticação.',
       invalid_options: 'Opções de autenticação inválidas recebidas.',
       verification_failed: 'Falha na verificação. Por favor, tente novamente.',
+      cancelled: 'A chave de segurança não foi usada. É possível tentar novamente com "Verificar Identidade".',
       unavailable: 'O servidor não conseguiu verificar a chave de segurança neste momento. Tente novamente daqui a pouco.',
       register_failed: 'Ocorreu um erro ao registar a sua chave de segurança. Por favor, tente novamente.',
       remove_failed: 'Falha ao remover a chave de segurança.',
@@ -288,10 +289,10 @@ export const pt = {
       one: 'Isso inclui a mensagem que você selecionou.',
       other: 'Isso inclui as {count} mensagens que você selecionou.'
     },
-    emptyingMailbox: 'Esvaziando a caixa de correio...',
-    mailboxEmptied: 'Caixa de correio esvaziada com sucesso.',
-    emptyMailboxFailed: 'Falha ao esvaziar a caixa de correio. Certifique-se de que é Lixeira ou Lixo Eletrônico.',
-    mailboxAlreadyEmpty: '{folder} já estava vazia — nada foi excluído.',
+    emptyingMailbox: 'Esvaziando {folder}...',
+    mailboxEmptied: 'Esvaziamento de {folder} concluído.',
+    emptyMailboxFailed: 'Falha ao esvaziar {folder}.',
+    mailboxAlreadyEmpty: 'A pasta {folder} já estava vazia — nada foi excluído.',
     emptyMailboxSlow: 'Ainda esvaziando {folder}. O servidor está trabalhando nisso — verifique novamente em instantes.'
   },
   composer: {
@@ -404,7 +405,7 @@ export const pt = {
     noReadableText: 'Esta mensagem não contém texto legível, apenas anexos.',
     attachments: 'Anexos',
     downloadAllAttachments: 'Baixar todos os anexos',
-    unknownAttachment: 'Anexo Desconhecido',
+    unknownAttachment: 'Anexo desconhecido',
     archive: 'Arquivar',
     reportSpam: 'Denunciar Spam',
     notSpam: 'Não é Spam',
@@ -424,7 +425,9 @@ export const pt = {
     verifiedSender: 'Remetente Verificado',
     unverifiedSender: 'Remetente Não Verificado',
     senderUnverifiedWarning: 'O seu servidor de correio não conseguiu verificar este remetente. A mensagem pode não ser de quem diz ser, por isso tenha cuidado com os links e os anexos.',
-    clickToExpand: 'Clique para expandir o conteúdo da mensagem'
+    clickToExpand: 'Clique para expandir o conteúdo da mensagem',
+    loadError: 'Não foi possível carregar esta mensagem.',
+    loadErrorRetry: 'Tentar novamente'
   },
   address: {
     directionalControl: 'marcas de direção ocultas',
@@ -481,7 +484,8 @@ export const pt = {
     cannotPreview: 'Nenhuma pré-visualização disponível para este tipo de arquivo',
     loadingPreview: 'Carregando pré-visualização...',
     errorLoading: 'Falha ao carregar pré-visualização',
-    close: 'Fechar'
+    close: 'Fechar',
+    uploadProgress: '{percent}% de {size}'
   },
 
   navigation: {
@@ -593,6 +597,7 @@ export const pt = {
     next: "Próximo",
     expand: "Expandir",
     collapse: "Recolher",
+    moreOptions: "Mais opções",
     notFound: "Página não encontrada"
   }
 };

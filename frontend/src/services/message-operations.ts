@@ -261,8 +261,11 @@ export class MessageOperationsService {
         if (!res.ok) {
           Logger.error('Failed to delete messages', res.status, await readErrorBody(res));
           // A mid-walk failure follows chunks that ALREADY committed, so the
-          // list on screen is wrong either way and has to be re-read.
-          if (deleted > 0) messageSync.sync();
+          // list on screen is wrong either way and has to be re-read. In full,
+          // here and on the other failures below: what the refused or
+          // abandoned request did is unknown, and the server dropped nothing
+          // for it.
+          if (deleted > 0) messageSync.sync({ refresh: true });
           return { ok: false, reason: 'failed' };
         }
         deleted += chunk.length;
@@ -271,7 +274,7 @@ export class MessageOperationsService {
       return { ok: true };
     } catch (err) {
       Logger.error('Failed to delete messages', err);
-      if (deleted > 0) messageSync.sync();
+      if (deleted > 0) messageSync.sync({ refresh: true });
       return { ok: false, reason: 'failed' };
     }
   }
@@ -305,7 +308,7 @@ export class MessageOperationsService {
         if (this.isAuthError(res)) return { success: false, reason: 'auth' };
         if (!res.ok) {
           Logger.error('Failed to move messages', res.status, await readErrorBody(res));
-          if (moved > 0) messageSync.sync();
+          if (moved > 0) messageSync.sync({ refresh: true });
           return { success: false, reason: 'failed' };
         }
         // Read the body BEFORE the sync. The sync used to be kicked off first,
@@ -319,7 +322,7 @@ export class MessageOperationsService {
       return { success: true, uidMapping };
     } catch (err) {
       Logger.error('Failed to move messages', err);
-      if (moved > 0) messageSync.sync();
+      if (moved > 0) messageSync.sync({ refresh: true });
       return { success: false, reason: 'failed' };
     }
   }
@@ -340,7 +343,7 @@ export class MessageOperationsService {
         if (this.isAuthError(res)) return { success: false, reason: 'auth' };
         if (!res.ok) {
           Logger.error('Failed to copy messages', res.status, await readErrorBody(res));
-          if (copied > 0) messageSync.sync();
+          if (copied > 0) messageSync.sync({ refresh: true });
           return { success: false, reason: 'failed' };
         }
         copied += chunk.length;
@@ -349,7 +352,7 @@ export class MessageOperationsService {
       return { success: true };
     } catch (err) {
       Logger.error('Failed to copy messages', err);
-      if (copied > 0) messageSync.sync();
+      if (copied > 0) messageSync.sync({ refresh: true });
       return { success: false, reason: 'failed' };
     }
   }

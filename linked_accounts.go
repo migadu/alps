@@ -72,9 +72,16 @@ func (s *Session) DecryptPassword(encrypted string) (string, error) {
 var ErrReverseLinkNotCleared = errors.New("linked account removed, but the credential stored in the other account could not be cleared")
 
 // GetLinkedAccounts retrieves all linked accounts from METADATA.
+//
+// They are read as the server holds them now, not from what this session's
+// connection last saw. Linking another account to this one writes the link
+// through a session of this account opened for the purpose (see
+// AddLinkedAccount). Read from the copy, the list went on without that link:
+// the next account linked from here was written over it, and a password
+// change left this account's old password stored in the account that made it.
 func (s *Session) GetLinkedAccounts() (*LinkedAccounts, error) {
 	var accounts LinkedAccounts
-	err := s.Store().Get(linkedAccountsStoreKey, &accounts)
+	err := provider.GetFresh(s.Store(), linkedAccountsStoreKey, &accounts)
 	if err != nil {
 		if errors.Is(err, provider.ErrNoStoreEntry) {
 			return &LinkedAccounts{Accounts: []LinkedAccount{}}, nil
