@@ -3016,7 +3016,7 @@ func (scope messageScope) resolve(p provider.MailProvider, mboxName string) ([]p
 		for i, uidStr := range scope.Uids {
 			uid, err := p.ParseMessageID(uidStr)
 			if err != nil {
-				return nil, err
+				return nil, alps.NewHTTPError(http.StatusBadRequest, err)
 			}
 			ids[i] = uid
 		}

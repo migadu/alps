@@ -17,7 +17,7 @@ func TestCopyMessagesFailureDoesNotPublishDestination(t *testing.T) {
 	if err := p.CreateMailbox("Archive"); err != nil {
 		t.Fatal(err)
 	}
-	source, err := p.getDir("INBOX").MessageByKey(ids[0].String())
+	source, err := mustDir(t, p, "INBOX").MessageByKey(ids[0].String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestCopyMessagesFailureDoesNotPublishDestination(t *testing.T) {
 		t.Fatalf("copy failure lost: %v %v", mapping, err)
 	}
 	for _, sub := range []string{"tmp", "cur", "new"} {
-		files, err := os.ReadDir(filepath.Join(string(p.getDir("Archive")), sub))
+		files, err := os.ReadDir(filepath.Join(string(mustDir(t, p, "Archive")), sub))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -48,7 +48,7 @@ func TestCopyMessagesPreservesFlagsAndSource(t *testing.T) {
 	if err := p.CreateMailbox("Archive"); err != nil {
 		t.Fatal(err)
 	}
-	m, err := p.getDir("INBOX").MessageByKey(ids[0].String())
+	m, err := mustDir(t, p, "INBOX").MessageByKey(ids[0].String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestDeleteMessagesContinuesAfterErrorAndJoinsErrors(t *testing.T) {
 	p := NewProvider(t.TempDir(), "ada@example.com")
 	ids := putMessages(t, p, "Bad1", "Good", "Bad2")
 	for _, i := range []int{0, 2} {
-		m, err := p.getDir("INBOX").MessageByKey(ids[i].String())
+		m, err := mustDir(t, p, "INBOX").MessageByKey(ids[i].String())
 		if err != nil {
 			t.Fatal(err)
 		}
