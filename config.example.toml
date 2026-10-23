@@ -207,9 +207,10 @@ max_sessions_per_user = 10
 # the page's messages (CHANGEDSINCE), and laid over the page; the pages notice
 # the new number at their next check. A server that does not list CONDSTORE is
 # used as before. QRESYNC is not turned on, even where the server lists it.
-# The folder selected on the connection a check runs on is asked with a NOOP
-# and that FETCH instead of a STATUS, as RFC 9051 asks, while nothing changed
-# in it; a change is then asked with STATUS as before.
+# Direct single-folder provider reads can reuse the selected folder's status
+# with a NOOP and that FETCH while nothing changed in it. The HTTP status
+# endpoint batches its checks and still sends STATUS for each folder, including
+# the selected one (follow-up #571).
 # It costs a round trip as each connection signs in. And a change made in ALPS
 # moves the number too, so the check after it reads the page again: from the
 # session, with that one FETCH.
