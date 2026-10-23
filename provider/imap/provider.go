@@ -1849,7 +1849,8 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 		}
 
 		uidMapping := make(map[provider.MessageID]provider.MessageID)
-		if moveData != nil && moveData.SourceUIDs != nil && moveData.DestUIDs != nil {
+		sawCopyUID := moveData != nil && moveData.SourceUIDs != nil && moveData.DestUIDs != nil
+		if sawCopyUID {
 			if srcUidSet, ok1 := moveData.SourceUIDs.(imap.UIDSet); ok1 {
 				if dstUidSet, ok2 := moveData.DestUIDs.(imap.UIDSet); ok2 {
 					srcNums, _ := srcUidSet.Nums()
@@ -1881,7 +1882,7 @@ func (p *IMAPProvider) MoveMessages(sourceMailbox, destMailbox string, ids []pro
 			_ = p.DeleteMessages(sourceMailbox, remainingIDs)
 		}
 
-		return uidMapping, nil
+		return p.unnamedCopies(sawCopyUID), nil
 	}
 
 	// Fallback: copy then delete
@@ -1913,7 +1914,8 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 	}
 
 	uidMapping := make(map[provider.MessageID]provider.MessageID)
-	if copyData != nil && len(copyData.SourceUIDs) > 0 && len(copyData.DestUIDs) > 0 {
+	sawCopyUID := copyData != nil && len(copyData.SourceUIDs) > 0 && len(copyData.DestUIDs) > 0
+	if sawCopyUID {
 		srcNums, _ := copyData.SourceUIDs.Nums()
 		dstNums, _ := copyData.DestUIDs.Nums()
 		if len(srcNums) == len(dstNums) {
@@ -1922,8 +1924,23 @@ func (p *IMAPProvider) CopyMessages(sourceMailbox, destMailbox string, ids []pro
 			}
 		}
 	}
+	if len(uidMapping) == 0 {
+		return p.unnamedCopies(sawCopyUID), nil
+	}
 
 	return uidMapping, nil
+}
+
+// unnamedCopies is the answer of a move or a copy whose answer named no copy.
+// A server with UIDPLUS names every copy it makes (RFC 4315), so one that
+// named none made none: the answer is empty, and a move of messages that had
+// all gone counts nothing. A server without UIDPLUS, or a COPYUID that could
+// not be read, has said nothing either way: the answer is nil.
+func (p *IMAPProvider) unnamedCopies(sawCopyUID bool) map[provider.MessageID]provider.MessageID {
+	if sawCopyUID || !p.client.Caps().Has(imap.CapUIDPlus) {
+		return nil
+	}
+	return map[provider.MessageID]provider.MessageID{}
 }
 
 // authResultsSection fetches the Authentication-Results fields.

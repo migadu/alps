@@ -46,6 +46,50 @@ func TestHTTP_AMoveCountsWhatMoved(t *testing.T) {
 	}
 }
 
+// A move or a copy of messages that are all gone, on a server with UIDPLUS,
+// moved or copied nothing, and says so. The server names nothing then, as one
+// without UIDPLUS names nothing, and the two were taken for one: the batch
+// was counted as asked, and the page said a message had moved that had gone
+// long before.
+func TestHTTP_AMoveOfMessagesThatAreGoneCountsNothing(t *testing.T) {
+	for _, verb := range []string{"move", "copy"} {
+		t.Run(verb, func(t *testing.T) {
+			// Without MOVE, so that a move is a copy and a delete: the
+			// in-memory server answers a MOVE of nothing with a COPYUID that
+			// names nothing, which no client can read.
+			caps := imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapUIDPlus: {}}
+			s := newIMAPTestServerWith(t, caps, func(inner imapserver.Session) imapserver.Session {
+				return copyUIDOnlyForCopies{inner}
+			}, plainMessage("Engines"))
+			s.login()
+			s.expect(s.do("POST", "/mailboxes", url.Values{"name": {"Archive"}}), http.StatusOK)
+
+			r := s.do("PUT", "/mailboxes/INBOX/messages/"+verb, map[string]any{"uids": []string{"999"}, "to": "Archive"})
+			s.expect(r, http.StatusOK)
+			var answer struct{ Count int }
+			r.json(t, &answer)
+			if answer.Count != 0 {
+				t.Errorf("the %s answered %s, want a count of 0", verb, r.body)
+			}
+			if got := s.mailbox("Archive").Total; got != 0 {
+				t.Errorf("Archive holds %d messages", got)
+			}
+		})
+	}
+}
+
+// copyUIDOnlyForCopies answers COPYUID, as a server with UIDPLUS does, only
+// when it copied something.
+type copyUIDOnlyForCopies struct{ imapserver.Session }
+
+func (s copyUIDOnlyForCopies) Copy(ctx context.Context, numSet imap.NumSet, dest string) (*imap.CopyData, error) {
+	data, err := s.Session.Copy(ctx, numSet, dest)
+	if data != nil && len(data.SourceUIDs) == 0 {
+		return nil, err
+	}
+	return data, err
+}
+
 // noCopyUID is a mail server without UIDPLUS: it copies, and names none of
 // the copies.
 type noCopyUID struct{ imapserver.Session }
