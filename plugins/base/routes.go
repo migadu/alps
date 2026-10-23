@@ -265,10 +265,38 @@ func idStrings(ids []provider.MessageID) []string {
 // The two go together. A cached conversation is named by the same membership
 // the pages carry (see listedThreadUIDs), so a page kept past a change it does
 // not show is one thing, and a conversation kept past it would be that same
-// staleness served to the reader under its own name.
+// staleness served to the reader under its own name. The conversations of
+// other folders that hold the mailbox's messages go with them too
+// (dropConversationsHolding).
 func dropMailboxListings(cache *alps.Cache, mailbox string) {
 	cache.DeletePrefix("messages:" + mailbox + ":")
 	cache.DeletePrefix("thread:" + mailbox + ":")
+	dropConversationsHolding(cache, mailbox)
+}
+
+// dropConversationsHolding drops the conversations the session holds, under
+// any folder's keys, that hold a message of mailbox.
+//
+// A conversation is kept under the folder it was opened from, and one opened
+// from the Inbox holds the user's own replies from Sent. Dropped with Sent's
+// own alone, it went on showing a reply that had been deleted or moved, and
+// one with the flags it had before the whole of Sent was marked read.
+//
+// By the folder each member names, not by the key, which names only the
+// folder the conversation was opened from; and not by a prefix of the folder's
+// name, as a folder whose name goes on from this one's with a colon is
+// another. A conversation that holds none of this mailbox's messages stays.
+func dropConversationsHolding(cache *alps.Cache, mailbox string) {
+	for _, key := range cache.GetKeysWithPrefix("thread:") {
+		cached, ok := cache.Get(key)
+		if !ok {
+			continue
+		}
+		msgs, ok := cached.([]IMAPMessage)
+		if ok && slices.ContainsFunc(msgs, func(m IMAPMessage) bool { return m.Mailbox == mailbox }) {
+			cache.Delete(key)
+		}
+	}
 }
 
 // dropRenumberedMailbox forgets everything this session holds about a
@@ -450,50 +478,65 @@ func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.Me
 // member of that same conversation. A conversation that does not hold the
 // message is left alone — it is not affected by the change — but one whose
 // members cannot be told apart from it is dropped rather than guessed at.
+//
+// Every folder's conversations are looked through, not only this one's: a
+// conversation is kept under the folder it was opened from, and one opened
+// from the Inbox holds the user's own replies from Sent. Patched under Sent's
+// keys alone, a reply starred in Sent was shown unstarred in the Inbox's.
+// Finding them all walks no more of the cache than finding this folder's
+// did: the cache goes through every key it holds for any prefix.
 func patchCachedConversations(cache *alps.Cache, debugf func(string, ...interface{}), mailbox, uidStr string, addFlags, removeFlags []imap.Flag) {
-	keys := cache.GetKeysWithPrefix("thread:" + mailbox + ":")
-	if len(keys) == 0 {
-		return
-	}
-
-	for _, key := range keys {
-		cached, ok := cache.Get(key)
-		if !ok {
-			continue
-		}
-		msgs, ok := cached.([]IMAPMessage)
-		if !ok {
-			cache.Delete(key)
-			continue
-		}
-		for i := range msgs {
-			// By the id the reader names messages with, which is the provider's
-			// own: a UID under IMAP, a file name under maildir. It names a
-			// message only within its folder, and members of other folders
-			// are found under this prefix too: the conversations of a folder
-			// whose name goes on from this one's with a colon, and the user's
-			// own messages that a conversation holds from Sent.
-			if msgs[i].AlpsUID != uidStr || (msgs[i].Mailbox != "" && msgs[i].Mailbox != mailbox) {
-				continue
+	ownPrefix := threadCacheKey(mailbox, "")
+	for _, key := range cache.GetKeysWithPrefix("thread:") {
+		patched := false
+		cache.Update(key, func(cached interface{}) interface{} {
+			msgs, ok := cached.([]IMAPMessage)
+			if !ok {
+				return nil
 			}
-			flags := msgs[i].Flags
-			for _, flag := range addFlags {
-				if !slices.Contains(flags, flag) {
-					flags = append(flags, flag)
+			for i := range msgs {
+				// By the id the reader names messages with, which is the provider's
+				// own: a UID under IMAP, a file name under maildir. It names a
+				// message only within its folder, and the conversations walked are
+				// every folder's, each holding that folder's messages and the
+				// user's own from Sent. A member that names no folder is taken, as
+				// handleGetThread takes it, for one of the folder its conversation
+				// is kept under.
+				if msgs[i].AlpsUID != uidStr {
+					continue
 				}
-			}
-			for _, flag := range removeFlags {
-				for j := len(flags) - 1; j >= 0; j-- {
-					if flags[j] == flag {
-						flags = append(flags[:j], flags[j+1:]...)
-						break
+				if msgs[i].Mailbox != mailbox && (msgs[i].Mailbox != "" || !strings.HasPrefix(key, ownPrefix)) {
+					continue
+				}
+				// A reader may be encoding the old conversation now. Its slice,
+				// message buffer and flag storage must all stay unchanged. Update
+				// publishes the new snapshot atomically, so another flag change
+				// cannot overwrite it and an invalidation cannot be undone.
+				updated := slices.Clone(msgs)
+				message := *msgs[i].FetchMessageBuffer
+				flags := slices.Clone(message.Flags)
+				for _, flag := range addFlags {
+					if !slices.Contains(flags, flag) {
+						flags = append(flags, flag)
 					}
 				}
+				for _, flag := range removeFlags {
+					for j := len(flags) - 1; j >= 0; j-- {
+						if flags[j] == flag {
+							flags = append(flags[:j], flags[j+1:]...)
+							break
+						}
+					}
+				}
+				message.Flags = flags
+				updated[i].FetchMessageBuffer = &message
+				patched = true
+				return updated
 			}
-			msgs[i].Flags = flags
-			cache.Set(key, msgs)
+			return msgs
+		})
+		if patched {
 			debugf("Updated flags for message %s in conversation %s", uidStr, key)
-			break
 		}
 	}
 }

@@ -336,6 +336,57 @@ describe('a close', () => {
     expect(saveDraft).not.toHaveBeenCalled();
     expect(store.getComposer(id)).toBeUndefined();
   });
+
+  it('saves a stored draft emptied to blank, so Drafts no longer holds what was taken out', async () => {
+    // Blank was taken for nothing to lose, whether or not a draft was
+    // stored: the window closed without a save, and Drafts kept the
+    // recipients, the subject and the text the user had removed.
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValueOnce({ uid: '8', mailbox: 'Drafts' });
+    const { store, instance, id } = composerIn({ text: '' });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    store.updateComposer(id, { text: 'Notes' });
+    expect(await el._saveDraft()).toBe(true);
+
+    store.updateComposer(id, { to: [], subject: '', text: '' });
+    saveDraft.mockResolvedValueOnce({ uid: '9', mailbox: 'Drafts' });
+    await el._handleCloseClick();
+
+    expect(saveDraft).toHaveBeenCalledTimes(2);
+    expect(sentForm(1).get('draft_uid')).toBe('8');
+    expect(['to', 'subject', 'text'].map(field => sentForm(1).get(field))).toEqual(['', '', '']);
+    expect(store.getComposer(id)).toBeUndefined();
+  });
+});
+
+describe('a stored draft emptied to blank', () => {
+  it('is autosaved as it is, and what is written next replaces it', async () => {
+    // Emptying the text before writing it again is an edit like any other:
+    // the draft is stored empty, not deleted, and the next save replaces it.
+    // The autosave took blank for nothing to lose, and the draft in Drafts
+    // kept what had been taken out, the composer marked unsaved for good.
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValueOnce({ uid: '8', mailbox: 'Drafts' });
+    const { store, instance, id } = composerIn({ text: '' });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    store.updateComposer(id, { text: 'Notes' });
+    expect(await el._saveDraft()).toBe(true);
+    vi.useFakeTimers();
+
+    store.updateComposer(id, { to: [], subject: '', text: '' });
+    saveDraft.mockResolvedValueOnce({ uid: '9', mailbox: 'Drafts' });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(saveDraft).toHaveBeenCalledTimes(2);
+    expect(sentForm(1).get('draft_uid')).toBe('8');
+    expect(['to', 'subject', 'text'].map(field => sentForm(1).get(field))).toEqual(['', '', '']);
+    expect(store.getComposer(id)).toMatchObject({ draftUid: '9', dirty: false });
+
+    store.updateComposer(id, { text: 'Fresh notes' });
+    saveDraft.mockResolvedValueOnce({ uid: '10', mailbox: 'Drafts' });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(saveDraft).toHaveBeenCalledTimes(3);
+    expect(sentForm(2).get('draft_uid')).toBe('9');
+    expect(sentForm(2).get('text')).toBe('Fresh notes');
+    expect(store.getComposer(id)).toMatchObject({ draftUid: '10', dirty: false });
+  });
 });
 
 describe('an upload the server no longer holds', () => {
