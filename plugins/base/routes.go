@@ -3367,7 +3367,7 @@ func handleEmptyMailbox(ctx *alps.Context) error {
 	// listing them.
 	if !errors.Is(err, errEmptyNotAllowed) {
 		invalidateMailboxCache(ctx, mboxName)
-		ctx.Session.Cache().DeletePrefix("message:" + mboxName + ":")
+		deleteFolderEntries(ctx.Session.Cache(), "message", mboxName)
 	}
 	if err != nil {
 		// A refusal is the user asking for something this endpoint does not do,
