@@ -254,6 +254,10 @@ export const it = {
     attachmentsTooLarge: 'Gli allegati superano la dimensione massima consentita.',
     draftSaveFailedKeepOpen: 'Impossibile salvare questa bozza — la finestra resta aperta per non perdere nulla',
     attachmentsWait: 'Attendi il caricamento degli allegati prima di inviare.',
+    attachmentsGone: {
+      one: '{count} allegato va aggiunto di nuovo: il server non ha più il file caricato.',
+      other: '{count} allegati vanno aggiunti di nuovo: il server non ha più i file caricati.'
+    },
     sending: 'Invio messaggio in corso...',
     undo: 'Annulla',
     sendError: 'Errore durante l\'invio del messaggio: {error}',
@@ -419,6 +423,7 @@ export const it = {
   },
   attachment: {
     remove: 'Rimuovi',
+    addAgain: 'Da aggiungere di nuovo',
     preview: 'Anteprima',
     download: 'Scarica',
     zoomIn: 'Ingrandisci',

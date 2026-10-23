@@ -87,6 +87,7 @@ var (
 type Session struct {
 	manager            *SessionManager
 	username, password string
+	address            string // see Address
 	token              string
 	id                 string    // names the session in the log, see sessionLogID
 	created            time.Time // when the password was accepted
@@ -136,6 +137,7 @@ type Session struct {
 
 	attachmentsLocker sync.Mutex
 	attachments       map[string]*Attachment // protected by attachmentsLocker
+	attachmentsGone   bool                   // set by teardown; protected by attachmentsLocker
 
 	// Cache for mail data (mailbox lists, statuses, etc.)
 	cache *Cache
@@ -192,6 +194,18 @@ func (s *Session) UpdateDuration(d time.Duration) {
 // Username returns the session's username.
 func (s *Session) Username() string {
 	return s.username
+}
+
+// Address returns the user's email address, worked out once, at sign-in. A
+// login with an "@" is its own address. One without is a user name, which
+// some IMAP servers sign users in with and which the multi provider completes
+// with its default_domain to choose a backend: the provider names the address
+// it stands for when it can. Otherwise the login is all there is.
+func (s *Session) Address() string {
+	if s.address == "" {
+		return s.username
+	}
+	return s.address
 }
 
 // Password returns the session's password.
@@ -616,6 +630,7 @@ func (s *Session) teardown() {
 			s.manager.globalAttachmentSize.Add(-f.File.Size)
 		}
 		s.attachments = make(map[string]*Attachment)
+		s.attachmentsGone = true
 		s.attachmentsLocker.Unlock()
 
 		s.providerLocker.Lock()
@@ -745,6 +760,21 @@ func (s *Session) PopAttachment(uuid string) *Attachment {
 	s.manager.globalAttachmentSize.Add(-a.File.Size)
 
 	return a
+}
+
+// ReturnAttachment gives back, under its id, an attachment a request took
+// with PopAttachment and did not use up, as when the message it was for could
+// not be stored or sent: it is there for the next try. If the session has
+// ended meanwhile, its file is removed instead, as the session's own were.
+func (s *Session) ReturnAttachment(uuid string, a *Attachment) {
+	s.attachmentsLocker.Lock()
+	defer s.attachmentsLocker.Unlock()
+	if s.attachmentsGone {
+		a.Form.RemoveAll()
+		return
+	}
+	s.attachments[uuid] = a
+	s.manager.globalAttachmentSize.Add(a.File.Size)
 }
 
 // GetAttachment returns an attachment from the session without removing it.
@@ -968,6 +998,10 @@ type SessionManager struct {
 	// node is alone. See RequireSecondFactor.
 	broadcaster ClusterBroadcaster
 
+	// addresses completes a login that is not an address, or is nil when the
+	// provider cannot. See Session.Address.
+	addresses provider.AddressResolver
+
 	// Whether sessions do the mail work the user is not waiting for on a
 	// background connection, and how long one may go unused before it is
 	// closed. See DoBackgroundMail.
@@ -1140,6 +1174,18 @@ func (sm *SessionManager) connectProvider(username, password string) (provider.M
 	return sm.connectProviderFunc(username, password)
 }
 
+// addressOf is the email address of the user who signs in as username: see
+// Session.Address.
+func (sm *SessionManager) addressOf(username string) string {
+	if strings.Contains(username, "@") || sm.addresses == nil {
+		return username
+	}
+	if addr := sm.addresses.AddressOf(username); addr != "" {
+		return addr
+	}
+	return username
+}
+
 func (sm *SessionManager) get(token string) (*Session, error) {
 	sm.locker.RLock()
 	defer sm.locker.RUnlock()
@@ -1294,6 +1340,7 @@ func (sm *SessionManager) Put(username, password string) (*Session, error) {
 		provider:       p,
 		username:       username,
 		password:       password,
+		address:        sm.addressOf(username),
 		attachments:    make(map[string]*Attachment),
 		cache:          cache,
 		duration:       sm.sessionDuration, // updated from user settings below

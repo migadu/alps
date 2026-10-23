@@ -49,6 +49,12 @@ export interface SettingsState {
   sortOrder: 'asc' | 'desc';
   messageSortCriteria: 'uid' | 'date';
   loginUsername?: string;
+  /**
+   * The user's email address, as the server works it out at sign-in. It is
+   * the login unless that is a bare user name, which is no address to send
+   * from or to recognise as the user's: see {@link ownAddress}.
+   */
+  loginAddress?: string;
   maxAttachmentMiB: number;
   enableThreading: boolean;
   themeIframeContent: boolean;
@@ -354,6 +360,7 @@ export class SettingsStore extends EventTarget {
           const data = await response.json();
           if (epoch !== this.epoch) return;
           const username = data.Username || data.username;
+          const address: string | undefined = data.Address || undefined;
           if (username) {
             this.state.loginUsername = username;
             try {
@@ -366,7 +373,7 @@ export class SettingsStore extends EventTarget {
               Logger.error('Failed to record the active user', e);
             }
             const userSettings = this.loadSettings(username);
-            this.state = { ...this.state, ...userSettings, loginUsername: username };
+            this.state = { ...this.state, ...userSettings, loginUsername: username, loginAddress: address };
             this.adoptUnsaved(username);
             this.applyTheme();
             this.notify();
@@ -501,7 +508,9 @@ export class SettingsStore extends EventTarget {
       showSenderAvatars: userSettings.showSenderAvatars ?? globalSettings.showSenderAvatars ?? DEFAULT_SETTINGS.showSenderAvatars,
       customMailboxOrder: userSettings.customMailboxOrder ?? globalSettings.customMailboxOrder ?? DEFAULT_SETTINGS.customMailboxOrder,
       language: userSettings.language ?? globalSettings.language ?? DEFAULT_SETTINGS.language,
-      loginUsername: username
+      loginUsername: username,
+      // Optional account data must also overwrite the previous user's value.
+      loginAddress: userSettings.loginAddress
     };
 
     // Merge other user settings that might exist in userSettings
@@ -987,6 +996,15 @@ export function activeUsername(): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The user's own email address: the one the server gave, or the login until
+ * it has. A login can be a bare user name, and "BCC myself" or telling the
+ * user's own address apart in a reply needs the address it stands for.
+ */
+export function ownAddress(state: Partial<Pick<SettingsState, 'loginAddress' | 'loginUsername'>> | null | undefined): string {
+  return state?.loginAddress || state?.loginUsername || '';
 }
 
 /**

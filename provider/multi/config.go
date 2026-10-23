@@ -541,6 +541,21 @@ func (o *Options) splitUsername(username string) (user, domain string, err error
 	return user, domain, nil
 }
 
+// AddressOf implements provider.AddressResolver. A bare login is completed
+// with DefaultDomain, as splitUsername completes it to choose the backend, so
+// a user signing in as "jdoe" sends from jdoe@ that domain rather than from a
+// name that is no address. With no DefaultDomain there is nothing to add.
+func (o *Options) AddressOf(username string) string {
+	if o == nil || strings.Contains(username, "@") {
+		return ""
+	}
+	user, domain, err := o.splitUsername(username)
+	if err != nil || user == "" || domain == "" {
+		return ""
+	}
+	return user + "@" + domain
+}
+
 // resolveServices finds the backend a login belongs to and returns what it
 // names. found is false when no explicit rule matched, in which case the
 // default backend answers.

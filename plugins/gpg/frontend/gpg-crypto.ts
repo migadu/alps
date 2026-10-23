@@ -2,7 +2,7 @@ import { html } from 'lit';
 import { renderIcon } from '../../../frontend/src/utils/ui';
 import { contactsService } from '../../carddav/frontend/contacts-service';
 import { fetchWithTimeout } from '../../../frontend/src/utils/fetch-utils';
-import { readUserSettings } from '../../../frontend/src/store/settings-store';
+import { ownAddress, readUserSettings } from '../../../frontend/src/store/settings-store';
 import { parseWrittenAddress } from '../../../frontend/src/utils/address-display';
 import '../../../frontend/src/components/ui-prompt';
 
@@ -168,9 +168,9 @@ export async function handlePresend(payload: any) {
         // pointing it at the right key would not have made it produce anything.
         // Linked accounts are NOT that feature: they are separate logins to
         // switch between, not alternate sending identities for one session.
-        const userEmails: string[] = [];
-        const ownSettings = readUserSettings();
-        if (ownSettings.loginUsername) userEmails.push(ownSettings.loginUsername);
+        // A bare login is not the full address resolved by the server. Match
+        // its address with the same case normalization as other self checks.
+        const ownEmail = ownAddress(readUserSettings()).trim().toLowerCase();
 
         for (const email of recipients) {
             // The address of a pill like `Name <email@host.com>` is in its LAST
@@ -179,7 +179,7 @@ export async function handlePresend(payload: any) {
             // "Countess", which has no key, so the send was refused.
             const cleanEmail = parseWrittenAddress(email).email || email.trim();
             
-            if (userEmails.includes(cleanEmail)) {
+            if (ownEmail && ownEmail === cleanEmail.toLowerCase()) {
                 // We encrypt to ourselves anyway below, so we can skip CardDAV lookup
                 continue;
             }

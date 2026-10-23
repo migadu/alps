@@ -1,6 +1,6 @@
 import { createContext } from '@lit/context';
-import { messageOperations } from '../services/message-operations';
-import { activeUsername, readUserSettings } from './settings-store';
+import { messageOperations, MissingUploadsError } from '../services/message-operations';
+import { activeUsername, ownAddress, readUserSettings } from './settings-store';
 import { abortUploads } from '../utils/attachment-utils';
 import { Logger } from '../utils/logger';
 import { appendReplyFields } from '../utils/reply-context';
@@ -52,6 +52,37 @@ export const draftContentKey = (c: ComposerInstance): string => JSON.stringify([
   c.subject, c.to, c.cc, c.bcc, c.text, c.format, c.html,
   (c.attachments || []).map(a => [a._tempId, a.uuid, a.partPath, a.filename]),
 ]);
+
+/**
+ * An attachment whose upload the server no longer holds, as one the user has
+ * to add again: shown with its name, and sent with nothing, so a save or a
+ * send no longer names an upload that is gone.
+ */
+export const uploadGone = (att: any): any => {
+  const gone = { ...att, missing: true };
+  delete gone.uuid;
+  return gone;
+};
+
+/**
+ * Apply a save's source mapping to the attachments still in the composer.
+ * Uploads are consumed and old part paths are replaced on every save, even
+ * when edits made during the request leave the composer open and dirty.
+ * Keep additions and removals made while the request was out.
+ */
+export const reconcileSavedAttachments = (latest: any[], sent: any[], stored: any[]): any[] => {
+  const sourceKey = (a: any): string | undefined => a.uuid ? `uuid:${a.uuid}` : a.partPath ? `part:${a.partPath}` : undefined;
+  const sentKeys = new Set(sent.map(sourceKey));
+  const storedFrom = new Map<string, any>();
+  for (const { source, ...part } of stored) {
+    const key = source && sourceKey(source);
+    if (key) storedFrom.set(key, part);
+  }
+  return latest.map(a => {
+    const key = sourceKey(a);
+    return (key && sentKeys.has(key) && storedFrom.get(key)) || a;
+  });
+};
 
 const isBlockedAddress = (addr: string): boolean => {
   const lowerEmail = bareAddress(addr);
@@ -237,8 +268,15 @@ export class ComposeStore extends EventTarget {
             // An upload the tab went away in never finished. One already in the
             // stored draft (a part path, as each save answers) is kept: dropped
             // here, the next save, which carries only what the window lists,
-            // stored the draft without it.
-            attachments: draft.attachments?.filter(att => !att.uploading && (att.uuid || att.partPath)) || [],
+            // stored the draft without it. One uploaded but not yet saved was
+            // kept by the session it was uploaded in, and this may be another,
+            // after the session expired: kept, it made every save and the send
+            // fail. So it is listed as one to add again; so is one that was
+            // being added again when the tab went away.
+            attachments: (draft.attachments || [])
+              .map(att => (att.uploading && att._replaces ? att._replaces : att))
+              .filter(att => !att.uploading && (att.uuid || att.partPath || att.missing))
+              .map(att => (att.uuid ? uploadGone(att) : att)),
             isSending: false,
             // A save or a deferred close the tab or the session went away in.
             // Kept, it would refuse every later save, or hide the window.
@@ -485,7 +523,10 @@ export class ComposeStore extends EventTarget {
         if (this.username !== username) throw new DraftFlushError();
         const composer = this.getComposer(id);
         if (!composer) continue;
-        if (composer.isSending || composer.isSaving || composer.closing || composer.attachments?.some(a => a.uploading)) {
+        if (composer.isSending || composer.isSaving || composer.closing || composer.attachments?.some(a => a.uploading || a.missing)) {
+          // Missing placeholders exist only here and in localStorage, never
+          // in the saved MIME draft. Even a clean autosaved composer must
+          // retain them until the user adds the files again or removes them.
           failed = true;
           continue;
         }
@@ -506,7 +547,22 @@ export class ComposeStore extends EventTarget {
         const contentKey = draftContentKey(composer);
         this.updateComposer(id, { isSaving: true });
         try {
-          const saved = await messageOperations.saveDraft(this.draftForm(composer));
+          let saved: Awaited<ReturnType<typeof messageOperations.saveDraft>>;
+          try {
+            saved = await messageOperations.saveDraft(this.draftForm(composer));
+          } catch (error) {
+            if (!(error instanceof MissingUploadsError)) throw error;
+            // Kept open, listing those files as ones to add again, so the
+            // window's next save stores the rest without them.
+            const gone = new Set(error.uuids);
+            const current = this.getComposer(id);
+            if (current) {
+              this.updateComposer(id, {
+                attachments: (current.attachments || []).map(a => (a.uuid && gone.has(a.uuid) ? uploadGone(a) : a)),
+              });
+            }
+            saved = null;
+          }
           if (this.username !== username) throw new DraftFlushError();
           if (!saved) {
             failed = true;
@@ -516,7 +572,13 @@ export class ComposeStore extends EventTarget {
           if (current && draftContentKey(current) !== contentKey) {
             // Stored, but not as it is now: record the stored draft, so the
             // next save replaces it, without marking the newer edit clean.
-            this.updateComposer(id, { draftUid: saved.uid, draftMailbox: saved.mailbox });
+            this.updateComposer(id, {
+              draftUid: saved.uid,
+              draftMailbox: saved.mailbox,
+              ...(saved.attachments && {
+                attachments: reconcileSavedAttachments(current.attachments || [], composer.attachments || [], saved.attachments),
+              }),
+            });
             failed = true;
             continue;
           }
@@ -565,7 +627,8 @@ export class ComposeStore extends EventTarget {
       // in `alps_settings`, so "BCC myself" and a custom Reply-To silently
       // did nothing on every message sent.
       const sendSettings = readUserSettings();
-      const self = sendSettings.loginUsername;
+      // The address, not the login: see ownAddress.
+      const self = ownAddress(sendSettings);
       if (sendSettings.bccMyself && self && !bcc.some(addr => bareAddress(addr) === bareAddress(self))) {
         bcc.push(self);
       }

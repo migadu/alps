@@ -254,6 +254,10 @@ export const es = {
     attachmentsTooLarge: 'Los archivos adjuntos superan el tamaño máximo permitido.',
     draftSaveFailedKeepOpen: 'No se pudo guardar este borrador: la ventana permanece abierta para no perder nada',
     attachmentsWait: 'Espera a que los archivos adjuntos terminen de cargarse antes de enviar.',
+    attachmentsGone: {
+      one: 'Hay que volver a adjuntar {count} archivo: el servidor ya no conserva lo que se subió.',
+      other: 'Hay que volver a adjuntar {count} archivos: el servidor ya no conserva lo que se subió.'
+    },
     sending: 'Enviando mensaje...',
     undo: 'Deshacer',
     sendError: 'Error al enviar el mensaje: {error}',
@@ -419,6 +423,7 @@ export const es = {
   },
   attachment: {
     remove: 'Eliminar',
+    addAgain: 'Volver a adjuntar',
     preview: 'Vista previa',
     download: 'Descargar',
     zoomIn: 'Acercar',

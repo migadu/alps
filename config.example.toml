@@ -468,7 +468,9 @@ server = "imaps://imap.migadu.com:993"
 # match and the next one is tried. A rule that DOES match and then fails
 # returns its error rather than quietly handing the user to another backend.
 # [provider.multi]
-# Default domain assumed if a user logs in with a bare username (without @domain)
+# Default domain assumed if a user logs in with a bare username (without @domain).
+# The user still signs in as the bare username; username@default_domain is the
+# address messages are sent from and meetings are organized from.
 # default_domain = "example.com"
 #
 # Server URL template with %d (domain), %u (local part), and %n (full username)

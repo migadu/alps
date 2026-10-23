@@ -1371,6 +1371,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Title":           title,
 		"Username":        ctx.Session.Username(),
+		"Address":         ctx.Session.Address(),
 		"Mailboxes":       ibase.Mailboxes,
 		"Mailbox":         ibase.Mailbox,
 		"Inbox":           ibase.Inbox,
@@ -2312,23 +2313,37 @@ func handleComposeNew(ctx *alps.Context) error {
 
 	fromAddr := ctx.FormValue("from")
 	if fromAddr == "" {
-		fromAddr = ctx.Session.Username()
+		// The user's address, not the login: a login can be a bare user
+		// name, which is no address to send from (see Session.Address).
+		fromAddr = ctx.Session.Address()
 		if settings, err := readSettings(ctx); err == nil {
 			// The display name is free text, so it is formatted as an address
 			// rather than pasted in front of one. Written bare, a comma in it
 			// ("Doe, Jane") read as two addresses, the first with none, and
 			// every send and draft save failed; quotes in it were lost.
 			if name := strings.TrimSpace(settings.From); name != "" {
-				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Username()}).String()
+				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Address()}).String()
 			}
 		}
 	}
 
+	// A field that does not read as addresses is refused here, for what it
+	// is, rather than as a failure to send or to store the draft. A draft
+	// does not carry Bcc, so Bcc does not stop one being saved.
+	recipients := map[string][]string{}
+	for _, field := range []string{"to", "cc", "bcc"} {
+		list, err := parseAddressList(ctx.FormValue(field))
+		if err != nil && !(saveAsDraft && field == "bcc") {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid %s address: %v", field, err)})
+		}
+		recipients[field] = list
+	}
+
 	msg := &OutgoingMessage{
 		From:       fromAddr,
-		To:         parseAddressList(ctx.FormValue("to")),
-		Cc:         parseAddressList(ctx.FormValue("cc")),
-		Bcc:        parseAddressList(ctx.FormValue("bcc")),
+		To:         recipients["to"],
+		Cc:         recipients["cc"],
+		Bcc:        recipients["bcc"],
 		Subject:    ctx.FormValue("subject"),
 		Text:       ctx.FormValue("text"),
 		HTML:       ctx.FormValue("html"),
@@ -2350,20 +2365,61 @@ func handleComposeNew(ctx *alps.Context) error {
 	// it, so the composer can tell which stored part each of its entries became.
 	var sources []map[string]string
 
-	uuids := ctx.FormValue("attachment-uuids")
-	for _, uuid := range strings.Split(uuids, ",") {
+	// Every id the session does not hold (it ended, or the attachment budget
+	// let the upload go) is refused before anything is taken, all of them
+	// named, so the composer can ask for those files again and save the rest.
+	var ids, missing []string
+	for _, uuid := range strings.Split(ctx.FormValue("attachment-uuids"), ",") {
 		uuid = strings.TrimSpace(uuid)
 		if uuid == "" {
 			continue
 		}
+		if ctx.Session.GetAttachment(uuid) == nil {
+			missing = append(missing, uuid)
+			continue
+		}
+		ids = append(ids, uuid)
+	}
+	refuseMissing := func(missing []string) error {
+		return ctx.JSON(http.StatusConflict, map[string]interface{}{
+			"error":               "unable to retrieve message attachment " + strings.Join(missing, ", "),
+			"missing_attachments": missing,
+		})
+	}
+	if len(missing) > 0 {
+		return refuseMissing(missing)
+	}
 
+	// Then the uploads are the request's: taken out of the session, so that
+	// nothing else removes their files while the message is written (the
+	// user's Remove, the session's end, room made for another upload). Once
+	// the message holds them they are removed; otherwise they are given back,
+	// for the next try. They used to be removed when the request ended,
+	// whether the message was stored or not.
+	type takenUpload struct {
+		uuid       string
+		attachment *alps.Attachment
+	}
+	var taken []takenUpload
+	inMessage := false
+	defer func() {
+		for _, u := range taken {
+			if inMessage {
+				u.attachment.Form.RemoveAll()
+			} else {
+				ctx.Session.ReturnAttachment(u.uuid, u.attachment)
+			}
+		}
+	}()
+	for _, uuid := range ids {
 		attachment := ctx.Session.PopAttachment(uuid)
 		if attachment == nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "unable to retrieve message attachment " + uuid})
+			// Removed since the pass above.
+			return refuseMissing([]string{uuid})
 		}
+		taken = append(taken, takenUpload{uuid, attachment})
 		msg.Attachments = append(msg.Attachments, &formAttachment{attachment.File})
 		sources = append(sources, map[string]string{"uuid": uuid})
-		defer attachment.Form.RemoveAll()
 	}
 
 	var draftPath *messagePath
@@ -2489,6 +2545,10 @@ func handleComposeNew(ctx *alps.Context) error {
 		var uid provider.MessageID
 		var size uint32
 		var respAttachments []map[string]interface{}
+		// Whether the answer can say which stored part each upload became.
+		// Without it the composer still names them by id, so they are kept for
+		// its next save.
+		readBack := false
 
 		// The source of each attachment, by the part path WriteTo gives it
 		// (see partPaths).
@@ -2511,6 +2571,7 @@ func handleComposeNew(ctx *alps.Context) error {
 			if err != nil {
 				ctx.Server.Logger().Errorf("Failed to fetch new attachments for draft %v: %v", uid, err)
 			} else if newMsg != nil {
+				readBack = true
 				msgIMAP := providerMessageToIMAP(*newMsg)
 				stored := func(a IMAPPartNode) map[string]interface{} {
 					path := formatPartPath(a.Path)
@@ -2554,6 +2615,7 @@ func handleComposeNew(ctx *alps.Context) error {
 		if err != nil {
 			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
+		inMessage = readBack
 
 		mailboxesToInvalidate := []string{drafts.Name()}
 		if draftPath != nil && draftPath.Mailbox != drafts.Name() {
@@ -2591,6 +2653,9 @@ func handleComposeNew(ctx *alps.Context) error {
 		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to send message: " + err.Error()})
 	}
+	// Sent. The copy in Sent below still reads them, and they are removed
+	// when the request ends, whether that copy is written or not.
+	inMessage = true
 
 	// The message has gone. What is left of sending it, the mark on the
 	// message it answers, the copy in Sent and the removal of its draft, is
@@ -3146,6 +3211,7 @@ func handleGetSession(ctx *alps.Context) error {
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Username":              ctx.Session.Username(),
+		"Address":               ctx.Session.Address(),
 		"PasswordChangeEnabled": passwordChangeEnabled,
 		"EnabledPlugins":        enabledPlugins,
 		"MaxAttachmentMiB":      maxAttachmentMiB,
