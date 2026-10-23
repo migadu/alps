@@ -363,15 +363,21 @@ export class ComposeStore extends EventTarget {
    * Writes the composers to disk now, not when the debounced write comes
    * round: before a reload the user asked for, which would otherwise take the
    * last half second of typing with it. They open again after the reload.
+   *
+   * With no window open there is nothing to write, and nothing a reload can
+   * lose, so the disk is left as it is. The login screen clears the windows
+   * from memory and keeps their copy there for the next sign-in, and the
+   * update offer's Reload, pressed there, wrote the empty list over it.
    */
   persistNow(): boolean {
     if (this.saveTimeout !== null) {
       window.clearTimeout(this.saveTimeout);
       this.saveTimeout = null;
     }
-    // With no live windows there is nothing a reload can lose. Otherwise the
-    // caller must keep this document open when its recovery copy cannot be written.
-    return this.saveDrafts() || this.state.activeComposers.length === 0;
+    if (this.state.activeComposers.length === 0) return true;
+    // Otherwise the caller must keep this document open when its recovery
+    // copy cannot be written.
+    return this.saveDrafts();
   }
 
   private notify() {
@@ -554,9 +560,19 @@ export class ComposeStore extends EventTarget {
    * page calls this as it connects, inside the shell's render, and the
    * change it announced regardless had the shell render the login screen a
    * second time.
+   *
+   * A write still waiting for the debounce is made first, from the windows it
+   * was armed for. Left armed, it wrote the emptied list half a second later,
+   * and so did the write as the page went (flushOnPageHide), over the drafts
+   * this keeps.
    */
   clearAllComposers() {
     if (this.state.activeComposers.length === 0) return;
+    if (this.saveTimeout !== null) {
+      window.clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+      this.saveDrafts();
+    }
     this.state = { ...this.state, activeComposers: [] };
     this.notify();
   }

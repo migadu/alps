@@ -161,6 +161,35 @@ describe('leaving', () => {
     expect(storedDrafts('ada')).toHaveLength(1);
   });
 
+  it('keeps on disk an edit waiting as the login screen clears the windows, however the page then goes', async () => {
+    // The clear left the waiting write armed: it wrote the emptied list half
+    // a second later, and so did the write as the page went, over the drafts
+    // the clear means to keep.
+    vi.useFakeTimers();
+    signIn('ada');
+    const store = makeStore();
+    store.openComposer({ subject: 'Engines' });
+    store.updateComposer(composers(store)[0].id, { subject: 'Engines and looms' });
+
+    store.clearAllComposers();
+    await vi.advanceTimersByTimeAsync(1000);
+    window.dispatchEvent(new Event('pagehide'));
+
+    expect(storedDrafts('ada').map((c: any) => c.subject)).toEqual(['Engines and looms']);
+  });
+
+  it('leaves the drafts on disk alone when it is asked to write with no window open', () => {
+    // As the update offer's Reload asks on the login screen, after the
+    // windows were cleared from memory: it wrote the empty list over them.
+    signIn('ada');
+    const store = makeStore();
+    store.openComposer({ subject: 'keep me' });
+    store.clearAllComposers();
+
+    expect(store.persistNow()).toBe(true);
+    expect(storedDrafts('ada').map((c: any) => c.subject)).toEqual(['keep me']);
+  });
+
   it('writes an edit not yet saved as the page goes', () => {
     // The store writes half a second after the last change, and a reload or
     // a closed tab within it took that much of what was typed with it.
