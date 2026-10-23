@@ -79,3 +79,29 @@ func TestAttachedMessageUnderAnUnknownEncodingIsRead(t *testing.T) {
 		t.Fatalf("the attached message's text read as %q %v", body, err)
 	}
 }
+
+// A part in a charset alps does not know, under a transfer encoding it does
+// not know either, is refused by the reads that decode it, as one under the
+// unknown encoding alone is. go-message reports only the charset of the two,
+// and the reads that accept an unknown charset took the part with its
+// transfer encoding never undone. Its bytes as stored are still read raw.
+func TestDecodedReadsRefuseAnUnknownEncodingBesideAnUnknownCharset(t *testing.T) {
+	p := NewProvider(t.TempDir(), "ada@example.com")
+	if e := p.CreateMailbox("INBOX"); e != nil {
+		t.Fatal(e)
+	}
+	head := "Content-Type: text/plain; charset=x-unknown-charset\r\nContent-Transfer-Encoding: x-unknown\r\n"
+	_, id, _, e := p.AppendMessage("INBOX", &mockMessage{content: []byte("From: person@example.com\r\n" + head + "\r\nstored-bytes")}, 0)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, _, err := p.GetMessagePart("INBOX", id, []int{1}); err == nil {
+		t.Error("GetMessagePart took a part whose transfer encoding it could not undo")
+	}
+	if _, _, _, _, err := p.GetMessagePartWithData("INBOX", id, []int{1}); err == nil {
+		t.Error("GetMessagePartWithData took a part whose transfer encoding it could not undo")
+	}
+	if _, _, body, err := p.GetMessagePartRaw("INBOX", id, []int{1}, 0); err != nil || string(body) != "stored-bytes" {
+		t.Errorf("raw read %q %v, want the bytes as stored", body, err)
+	}
+}
