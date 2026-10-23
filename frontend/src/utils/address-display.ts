@@ -67,9 +67,10 @@ export function parseWrittenAddress(pill: string): { name: string; email: string
       let name = trimmed.slice(0, lt).trim();
       // In a quoted name a backslash escapes the character after it, as
       // {@link writtenAddress} writes a quote or a backslash.
+      // Apostrophes are literal name characters, not quoting syntax.
       name = /^".*"$/s.test(name)
         ? name.slice(1, -1).replace(/\\(.)/gs, '$1').trim()
-        : name.replace(/^["']|["']$/g, '').trim();
+        : name.replace(/^"|"$/g, '').trim();
       return { name, email };
     }
   }
