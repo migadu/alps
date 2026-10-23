@@ -24,7 +24,7 @@ export default {
     generateNewKeypair: 'Generar nuevo par de claves',
     enableEncryptionDesc: 'Para habilitar el cifrado de extremo a extremo entre los contactos que lo admiten, necesitará un par de claves GPG.',
     noKeyPresent: 'No hay ninguna clave presente',
-    passphraseRequiredLabel: 'Contraseña (Obligatorio)',
+    passphraseRequiredLabel: 'Contraseña (obligatoria)',
     generateKeysBtn: 'Generar claves',
     importExistingKeys: 'Importar par de claves GPG existente',
     publicKeyBlock: 'Bloque de clave pública',
@@ -39,7 +39,7 @@ export default {
     importFailed: 'Importación fallida: {error}',
     importFailedTitle: 'Importación fallida',
     passphraseMismatch: 'Las contraseñas no coinciden. Por favor, inténtelo de nuevo.',
-    missingPublicKeys: 'No se puede cifrar: Faltan claves públicas para:\n{keys}',
+    missingPublicKeys: 'No se puede cifrar: faltan claves públicas para:\n{keys}',
     attachmentsNotEncryptable: 'Los archivos adjuntos no se pueden cifrar con PGP en línea y se enviarían sin cifrar. Elimine los archivos adjuntos o desactive el cifrado para enviarlos.'
   }
 };
