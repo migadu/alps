@@ -263,6 +263,11 @@ export const sr = {
     attachmentsTooLarge: 'Prilozi prelaze maksimalnu dozvoljenu veličinu.',
     draftSaveFailedKeepOpen: 'Nije moguće sačuvati ovaj nacrt, pa prozor ostaje otvoren da se ništa ne izgubi',
     attachmentsWait: 'Molimo sačekajte da se prilozi učitaju pre slanja.',
+    attachmentsGone: {
+      one: '{count} prilog treba ponovo priložiti: server ga više nema.',
+      few: '{count} priloga treba ponovo priložiti: server ih više nema.',
+      other: '{count} priloga treba ponovo priložiti: server ih više nema.'
+    },
     sending: 'Slanje poruke...',
     undo: 'Opozovi',
     sendError: 'Greška pri slanju poruke: {error}',
@@ -429,6 +434,7 @@ export const sr = {
   },
   attachment: {
     remove: 'Ukloni',
+    addAgain: 'Treba ponovo priložiti',
     preview: 'Pregled',
     download: 'Preuzmi',
     zoomIn: 'Uvećaj',

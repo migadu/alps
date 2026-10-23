@@ -307,6 +307,10 @@ export const en = {
     attachmentsTooLarge: 'Attachments exceed the maximum allowed size.',
     draftSaveFailedKeepOpen: 'Could not save this draft — the window stays open so nothing is lost',
     attachmentsWait: 'Please wait for attachments to finish uploading before sending.',
+    attachmentsGone: {
+      one: '{count} attachment has to be added again: the server no longer has its upload.',
+      other: '{count} attachments have to be added again: the server no longer has their uploads.'
+    },
     sending: 'Message is being sent...',
     undo: 'Undo',
     sendError: 'Failed to send message: {error}',
@@ -465,6 +469,7 @@ export const en = {
   },
   attachment: {
     remove: 'Remove',
+    addAgain: 'Add again',
     preview: 'Preview',
     download: 'Download',
     zoomIn: 'Zoom in',

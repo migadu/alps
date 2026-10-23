@@ -256,6 +256,10 @@ export const de: TranslationDictionary = {
     attachmentsTooLarge: 'Die Anhänge überschreiten die maximal zulässige Größe.',
     draftSaveFailedKeepOpen: 'Entwurf konnte nicht gespeichert werden — das Fenster bleibt offen, damit nichts verloren geht',
     attachmentsWait: 'Bitte warten Sie, bis die Anhänge hochgeladen sind, bevor Sie senden.',
+    attachmentsGone: {
+      one: '{count} Anhang muss erneut angehängt werden: Der Server hat die hochgeladene Datei nicht mehr.',
+      other: '{count} Anhänge müssen erneut angehängt werden: Der Server hat die hochgeladenen Dateien nicht mehr.'
+    },
     sending: 'Nachricht wird gesendet...',
     undo: 'Rückgängig',
     sendError: 'Nachricht konnte nicht gesendet werden: {error}',
@@ -421,6 +425,7 @@ export const de: TranslationDictionary = {
   },
   attachment: {
     remove: 'Entfernen',
+    addAgain: 'Erneut anhängen',
     preview: 'Vorschau',
     download: 'Herunterladen',
     zoomIn: 'Vergrößern',

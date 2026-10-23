@@ -14,6 +14,7 @@ import '../../../frontend/src/components/alps-toolbar';
 import '../../../frontend/src/components/alps-popup';
 import { popupStyles } from '../../../frontend/src/components/alps-popup';
 import { isolatedCaption } from '../../../frontend/src/utils/bidi';
+import { writtenAddress } from '../../../frontend/src/utils/address-display';
 
 @customElement('alps-contact-view')
 export class AlpsContactView extends LitElement {
@@ -370,7 +371,7 @@ export class AlpsContactView extends LitElement {
     if (isEmail || label === 'Email Address' || label === 'Email' || label.endsWith('Email') || label.endsWith(this.i18nStore?.t('contacts.email') || 'Email')) {
       content = html`<a href="mailto:${value}" @click=${(e: Event) => {
         e.preventDefault();
-        const formattedEmail = this.contact?.name ? `"${this.contact.name}" <${value}>` : value;
+        const formattedEmail = writtenAddress(this.contact?.name, value);
         this.composeStore?.openComposer({ to: [formattedEmail] });
       }}>${value}</a>`;
     } else if (isPhone || label === 'Phone' || label.endsWith('Phone') || label.endsWith(this.i18nStore?.t('contacts.phone') || 'Phone')) {
