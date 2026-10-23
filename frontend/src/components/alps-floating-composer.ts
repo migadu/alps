@@ -9,6 +9,7 @@ import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '.
 import { messageOperations, MissingUploadsError } from '../services/message-operations';
 import { ownAddress, readUserSettings } from '../store/settings-store';
 import './alps-address-input.js';
+import type { AlpsAddressInput } from './alps-address-input.js';
 import './alps-message-composer.js';
 import './alps-button.js';
 import './alps-attachment-list';
@@ -46,6 +47,9 @@ export class AlpsFloatingComposer extends LitElement {
 
   @state() private showCc = false;
   @state() private showBcc = false;
+  /** An address is typed in To, Cc or Bcc and not yet a pill: Send can be
+   * pressed for it, and takes it (see _takeTypedRecipients). */
+  @state() private typedRecipient = false;
   @state() private showDiscardConfirm = false;
   @state() private pendingDiscardType: 'close' | 'delete' | null = null;
   @state() private windowWidth = window.innerWidth;
@@ -544,7 +548,31 @@ export class AlpsFloatingComposer extends LitElement {
     return true;
   }
 
+  private _recipientFields(): AlpsAddressInput[] {
+    return Array.from(this.shadowRoot?.querySelectorAll<AlpsAddressInput>('alps-address-input') ?? []);
+  }
+
+  private _noteTypedRecipient = () => {
+    this.typedRecipient = this._recipientFields().some(field => field.hasPendingAddress);
+  };
+
+  private _recipientsChanged(field: 'to' | 'cc' | 'bcc', e: CustomEvent) {
+    this.composeStore.updateComposer(this.instance.id, { [field]: e.detail.addresses });
+    this._noteTypedRecipient();
+  }
+
+  /**
+   * Makes the addresses typed in To, Cc and Bcc, and not yet pills, pills,
+   * before Close or Send reads the composer. Each field does so when it loses
+   * the focus, but Close and Send must not depend on the press having taken
+   * it: what is typed is what the user means to save or send.
+   */
+  private _takeTypedRecipients() {
+    for (const field of this._recipientFields()) field.commitPending();
+  }
+
   private async _handleCloseClick() {
+    this._takeTypedRecipients();
     const hasUploading = (this.instance.attachments || []).some(a => a.uploading);
     if (hasUploading) {
       this.composeStore.updateComposer(this.instance.id, { closing: true } as any);
@@ -829,7 +857,11 @@ export class AlpsFloatingComposer extends LitElement {
     // Captured once: the window may be gone, and its property with it, by the
     // time the countdown ends.
     const id = this.instance.id;
-    const hasUploading = (this.instance.attachments || []).some(a => a.uploading);
+    this._takeTypedRecipients();
+    // The store's composer, which a recipient just taken is already in: the
+    // rendered property lags it.
+    const composer = this.composeStore.getComposer(id) ?? this.instance;
+    const hasUploading = (composer.attachments || []).some(a => a.uploading);
     if (hasUploading) {
       window.dispatchEvent(new CustomEvent('show-toast', {
         detail: {
@@ -841,16 +873,16 @@ export class AlpsFloatingComposer extends LitElement {
     }
     // A file whose upload the server no longer holds would not go with the
     // message. It is added again, or removed to send without it.
-    const gone = (this.instance.attachments || []).filter(a => a.missing).length;
+    const gone = (composer.attachments || []).filter(a => a.missing).length;
     if (gone > 0) {
       this._toastUploadsGone(gone);
       return;
     }
 
-    const text = this.instance.text || '';
-    const to = this.instance.to || [];
-    const cc = this.instance.cc || [];
-    const bcc = this.instance.bcc || [];
+    const text = composer.text || '';
+    const to = composer.to || [];
+    const cc = composer.cc || [];
+    const bcc = composer.bcc || [];
     const allTo = [...to, ...cc, ...bcc];
 
     // No subject check. A message without one is valid mail, the server omits
@@ -1502,7 +1534,7 @@ export class AlpsFloatingComposer extends LitElement {
     }
 
     const hasRecipient = (this.instance.to?.length || 0) > 0 || (this.instance.cc?.length || 0) > 0 || (this.instance.bcc?.length || 0) > 0;
-    const canSend = hasRecipient && (this.instance.text?.trim().length || 0) > 0;
+    const canSend = (hasRecipient || this.typedRecipient) && (this.instance.text?.trim().length || 0) > 0;
 
     const minimizeWidth = 260;
     const gap = 16;
@@ -1663,7 +1695,8 @@ export class AlpsFloatingComposer extends LitElement {
               class="address-input"
               label=${this.i18nStore?.t('floatingComposer.to')}
               .addresses=${this.instance.to || []}
-              @addresses-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { to: e.detail.addresses })}
+              @addresses-changed=${(e: CustomEvent) => this._recipientsChanged('to', e)}
+              @input=${this._noteTypedRecipient}
               ?disabled=${this.instance.isSending}
             ></alps-address-input>
             ${!this.showCc || !this.showBcc ? html`
@@ -1681,7 +1714,8 @@ export class AlpsFloatingComposer extends LitElement {
                 class="address-input"
                 label=${this.i18nStore?.t('floatingComposer.cc')}
                 .addresses=${this.instance.cc || []}
-                @addresses-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { cc: e.detail.addresses })}
+                @addresses-changed=${(e: CustomEvent) => this._recipientsChanged('cc', e)}
+                @input=${this._noteTypedRecipient}
                 ?disabled=${this.instance.isSending}
               ></alps-address-input>
             </div>
@@ -1694,7 +1728,8 @@ export class AlpsFloatingComposer extends LitElement {
                 class="address-input"
                 label=${this.i18nStore?.t('floatingComposer.bcc')}
                 .addresses=${this.instance.bcc || []}
-                @addresses-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { bcc: e.detail.addresses })}
+                @addresses-changed=${(e: CustomEvent) => this._recipientsChanged('bcc', e)}
+                @input=${this._noteTypedRecipient}
                 ?disabled=${this.instance.isSending}
               ></alps-address-input>
             </div>

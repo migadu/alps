@@ -8,6 +8,7 @@ import '../../../frontend/src/components/alps-input';
 import '../../../frontend/src/components/alps-select';
 import '../../../frontend/src/components/alps-button';
 import '../../../frontend/src/components/alps-address-input';
+import type { AlpsAddressInput } from '../../../frontend/src/components/alps-address-input';
 import '../../../frontend/src/components/ui-confirm';
 import { modalButtonStyles } from '../../../frontend/src/components/ui-modal';
 import { dueOf, tasksService } from './tasks-service';
@@ -223,6 +224,9 @@ export class TaskModal extends LitElement {
     }
 
     async handleSave() {
+        // As in the event editor: an assignee typed and not yet a pill is
+        // saved with the task, wherever the focus is.
+        this.shadowRoot?.querySelector<AlpsAddressInput>('alps-address-input.assignees')?.commitPending();
         if (this.saving || !this.title.trim() || !this.calendarPath) return;
         // As in the event editor: a change to a task already assigned is the
         // assignees' to hear about or not; a new assignment is sent.
