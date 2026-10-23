@@ -523,7 +523,8 @@ for (const attribute of ['data-note', 'src']) {
       .replace('Content-Type: text/plain; charset=utf-8', 'Content-Type: text/html; charset=utf-8');
     await deliver({ subject, raw });
     await login(page);
-    await openMessage(page, subject, body);
+    await page.locator('alps-message-list .message-subject', { hasText: subject }).first().click();
+    await expect.poll(async () => (await frameLayout(readerFrame(page))).text).toContain(body);
     await expect(page.locator('alps-message-reader alps-attachment-list.desktop-attachments')).toContainText(filename);
     await replyButton(page).click();
     await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
