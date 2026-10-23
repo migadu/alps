@@ -83,6 +83,51 @@ afterEach(async () => {
 });
 
 describe('shared polling counts', () => {
+  it('keeps a continuously visible follower subscribed across a failed-poll backoff', async () => {
+    const leader = service(), follower = service();
+    await land(leader); await land(follower, 'Work');
+    const second = successes(follower);
+    leader.start(1); follower.start(1);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const normal = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async () => new Response('{}', { status: 500 }));
+    // Failed polls at one and three minutes. The next one waits four:
+    // longer than the old three-interval peer lease.
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    fetchMock.mockImplementation(normal);
+    state.Work = { ...state.Work, total: 3, unseen: 1, uidnext: 4 };
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
+
+    expect(second.at(-1)?.data.Total).toBe(3);
+    for (const total of [4, 5]) {
+      state.Work = { ...state.Work, total, uidnext: total + 1 };
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(second.at(-1)?.data.Total).toBe(total);
+    }
+  });
+
+  it.each(['stopped', 'crashed'])('expires a %s follower after backoff recovery', async (gone) => {
+    const leader = service(), follower = service();
+    await land(leader); await land(follower, 'Work');
+    leader.start(1); follower.start(1);
+    await vi.advanceTimersByTimeAsync(0);
+    const normal = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async () => new Response('{}', { status: 500 }));
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+
+    if (gone === 'stopped') follower.stop();
+    else (follower as any).channel.close(); // No leave/renewal from a crashed tab.
+    await vi.advanceTimersByTimeAsync(0);
+    fetchMock.mockImplementation(normal);
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
+    if (gone === 'stopped') expect(statusRequests().at(-1)).toBe('/mailboxes/INBOX/status');
+    // Once healthy, the ordinary lease applies again to a tab that cannot
+    // renew it. Extending the outage lease never keeps dead peers for good.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(statusRequests().at(-1)).toBe('/mailboxes/INBOX/status');
+  });
+
   it('updates a continuously visible follower across many ticks with one status probe per mailbox and one announcer', async () => {
     const leader = service(), follower = service();
     await land(leader); await land(follower);

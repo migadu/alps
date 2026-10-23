@@ -602,8 +602,14 @@ export class MessageSyncService extends EventTarget {
       }
       const generation = this.pollGeneration;
       const username = this.username;
+      // Followers renew their watch when counts arrive. A failed poll may
+      // wait longer than three base intervals, so those live tabs must stay
+      // watched through the backoff, including its longest jittered wait.
+      const peerInterval = this.pollFailures > 0
+        ? pollDelay(this.pollMinutes * 60_000, this.pollFailures, 1)
+        : this.pollMinutes * 60_000;
       const peers = [...this.peers.values()].filter((peer) => peer.visible && peer.username === username
-        && Date.now() - peer.seen <= Math.max(this.pollMinutes * 3 * 60_000, 180_000));
+        && Date.now() - peer.seen <= Math.max(peerInterval * 3, 180_000));
       const mailbox = this.currentMailbox;
       const fetchId = this.currentFetchId;
       // In one request: a request each waited its turn on the connection.
