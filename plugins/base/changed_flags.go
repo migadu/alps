@@ -42,6 +42,8 @@ func reflaggedPage(ctx *alps.Context, key string, page CachedMessages, counts ma
 		}
 	}
 
+	cache := ctx.Session.Cache()
+	copies := cachedFlagCopies(cache, page.Mailbox)
 	var changed []provider.Message
 	err := ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		tracker, ok := p.(provider.ChangeTracker)
@@ -73,7 +75,6 @@ func reflaggedPage(ctx *alps.Context, key string, page CachedMessages, counts ma
 	page.Counts = counts
 
 	kept := false
-	cache := ctx.Session.Cache()
 	cache.Update(key, func(cached interface{}) interface{} {
 		held, ok := cached.(CachedMessages)
 		if !ok || held.Counts != read || !sameRows(held.Messages, rows) {
@@ -83,7 +84,7 @@ func reflaggedPage(ctx *alps.Context, key string, page CachedMessages, counts ma
 		return page
 	})
 	if kept {
-		layChangedFlags(cache, page.Mailbox, flags)
+		layChangedFlags(cache, page.Mailbox, flags, copies)
 	}
 	return page, nil
 }
@@ -125,11 +126,38 @@ func sameRows(a, b []provider.Message) bool {
 	return len(a) == len(b) && (len(a) == 0 || &a[0] == &b[0])
 }
 
+// flagCopies names the immutable copies held before a delta read. A newer
+// write can change another copy before reaching the page itself, so the page's
+// row-identity check cannot protect that copy from the older full flag set.
+type flagCopies struct {
+	messages map[string]*provider.Message
+	threads  map[string][]IMAPMessage
+}
+
+func cachedFlagCopies(cache *alps.Cache, mailbox string) flagCopies {
+	copies := flagCopies{messages: make(map[string]*provider.Message), threads: make(map[string][]IMAPMessage)}
+	for _, key := range cache.GetKeysWithPrefix("message:" + mailbox + ":") {
+		if value, ok := cache.Get(key); ok {
+			if part, ok := value.(CachedMessagePart); ok && part.Mailbox == mailbox {
+				copies.messages[key] = part.Message
+			}
+		}
+	}
+	for _, key := range cache.GetKeysWithPrefix("thread:") {
+		if value, ok := cache.Get(key); ok {
+			if rows, ok := value.([]IMAPMessage); ok {
+				copies.threads[key] = rows
+			}
+		}
+	}
+	return copies
+}
+
 // layChangedFlags lays flags the mail server answered for messages of mailbox
 // over the session's other copies of them: each message's own entry and the
 // parts read with it (handleGetPart), and the conversations that hold it
 // (handleGetThread).
-func layChangedFlags(cache *alps.Cache, mailbox string, flags map[string][]provider.Flag) {
+func layChangedFlags(cache *alps.Cache, mailbox string, flags map[string][]provider.Flag, copies flagCopies) {
 	if len(flags) == 0 {
 		return
 	}
@@ -147,6 +175,11 @@ func layChangedFlags(cache *alps.Cache, mailbox string, flags map[string][]provi
 			part, ok := cached.(CachedMessagePart)
 			if !ok || part.Message == nil || part.Mailbox != mailbox {
 				return cached
+			}
+			// A changed or newly read copy may be newer than this FETCH.
+			// Drop it rather than overwrite it or guess which flags to merge.
+			if before, held := copies.messages[key]; !held || before != part.Message {
+				return nil
 			}
 			message := *part.Message
 			message.Flags = slices.Clone(f)
@@ -168,6 +201,10 @@ func layChangedFlags(cache *alps.Cache, mailbox string, flags map[string][]provi
 					continue
 				}
 				if updated == nil {
+					before := copies.threads[key]
+					if len(before) != len(msgs) || len(before) == 0 || &before[0] != &msgs[0] {
+						return nil
+					}
 					updated = slices.Clone(msgs)
 				}
 				message := *msgs[i].FetchMessageBuffer
