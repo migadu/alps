@@ -3,7 +3,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { live } from 'lit/directives/live.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName, getRemovableTags } from '../utils/flags';
-import { FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
+import { ALL_MAILBOXES, FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
 import { BACKGROUND_REQUEST, fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
 import { activeUsername, ownAddress, settingsContext, SettingsStore } from '../store/settings-store';
@@ -91,8 +91,11 @@ export interface ReaderActionDetail {
   uid?: string;
   mailbox?: string;
   /** For a card's Delete of the OPEN message: a message of the conversation,
-   * in the viewed folder, to stay on once it is gone. */
+   * in the viewed folder (in any, in a search of every folder), to stay on
+   * once it is gone. */
   nextUid?: string;
+  /** The folder `nextUid` is in. */
+  nextMailbox?: string;
   /** Told whether a card's Delete happened, so the card goes only if it did.
    * Called once, and not at all when the user cancels a confirmation. */
   done?: (ok: boolean) => void;
@@ -428,6 +431,15 @@ export class MessageReader extends LitElement {
    * when the card is next opened, or by hand from its menu or the toolbar.
    */
   private readRefused = new Set<string>();
+  /**
+   * The messages of this conversation a card's Delete took away, by key. The
+   * list holds them until it is read again, and every list change before
+   * then put their cards back (see resolveThread).
+   */
+  private droppedKeys = new Set<string>();
+  /** The card the page is about to open in place of the open one, which its
+   * Delete took away (see stayOnCard). */
+  private stayingOn: string | null = null;
   /** Refusals and their notice belong to this opening, including its requests. */
   private readGeneration = 0;
   private readRefusalSaid = false;
@@ -527,6 +539,7 @@ export class MessageReader extends LitElement {
     if (!this.threadItems || this.threadItems.length === 0) return;
 
     const named = new Set<string>(keys);
+    for (const key of named) this.patchConversationFlag(key, flag, action);
     let updated = false;
     for (let i = 0; i < this.threadItems.length; i++) {
       const item = this.threadItems[i];
@@ -1013,6 +1026,7 @@ export class MessageReader extends LitElement {
       const oldMailbox = changedProperties.has('mailbox') ? changedProperties.get('mailbox') : this.mailbox;
 
       if (!this.message) {
+        this.stayingOn = null;
         this.resetReadRefusals();
         this.localPreferredView = null;
         this.content = '';
@@ -1031,7 +1045,13 @@ export class MessageReader extends LitElement {
         // several folders, and moving between two of them kept the first body.
         const isNewMessage = !oldMessage || this.keyOf(oldMessage) !== this.keyOf(this.message) || oldMailbox !== this.mailbox;
 
-        if (isNewMessage) {
+        // Asked about once, by the next message opened.
+        const stayingOn = isNewMessage ? this.stayingOn : null;
+        if (isNewMessage) this.stayingOn = null;
+        if (stayingOn && stayingOn === this.keyOf(this.message) && oldMailbox === this.mailbox &&
+            this.threadItems.some(item => this.itemKey(item) === stayingOn)) {
+          this.stayOnCard(this.message);
+        } else if (isNewMessage) {
           this.resetReadRefusals();
           this.localPreferredView = null;
           this.fetchMessageBody(this.message, this.message._isAutosaveUpdate);
@@ -1153,6 +1173,25 @@ export class MessageReader extends LitElement {
    * flags the next time the list moved — and a card marked read went back to
    * unread, due to be marked read again.
    */
+  /**
+   * Sets or clears a flag on one message of the conversation the server
+   * returned. The cards are rebuilt from it on every list change, and those
+   * the list does not hold (replies from Sent, members on other pages) took
+   * their flags from it: a change made on the card alone went back.
+   */
+  private patchConversationFlag(key: string, flag: string, action: 'add' | 'remove') {
+    if (!this._conversation) return;
+    this._conversation = {
+      ...this._conversation,
+      messages: this._conversation.messages.map(m => {
+        if (this.keyOf(m) !== key) return m;
+        const flags: string[] = m.Flags || [];
+        if ((action === 'add') === flags.includes(flag)) return m;
+        return { ...m, Flags: action === 'add' ? [...flags, flag] : flags.filter((f: string) => f !== flag) };
+      }),
+    };
+  }
+
   private patchMemberFlag(key: string, flag: string, action: 'add' | 'remove') {
     const apply = (msg: any) => {
       const flags: string[] = msg?.Flags || [];
@@ -1169,12 +1208,7 @@ export class MessageReader extends LitElement {
         this.threadItems = [...this.threadItems];
       }
     }
-    if (this._conversation) {
-      this._conversation = {
-        ...this._conversation,
-        messages: this._conversation.messages.map(m => (this.keyOf(m) === key ? apply(m) : m)),
-      };
-    }
+    this.patchConversationFlag(key, flag, action);
     // In place, as the card's star does: the page owns this object, and a new
     // one assigned here would be the open message changing under it.
     if (this.message && this.keyOf(this.message) === key) {
@@ -1386,6 +1420,12 @@ export class MessageReader extends LitElement {
       threadMessages = loaded ?? [msg];
     }
 
+    // Not the messages a card's Delete took away, which the list still holds
+    // until it is read again.
+    if (this.droppedKeys.size > 0) {
+      threadMessages = threadMessages.filter(m => !this.droppedKeys.has(this.keyOf(m)));
+    }
+
     if (enableThreading && this._conversation?.key === this.keyOf(msg)) {
       const have = new Set(threadMessages.map(m => this.keyOf(m)));
       const extra = this._conversation.messages.filter(m => !have.has(this.keyOf(m)));
@@ -1455,6 +1495,7 @@ export class MessageReader extends LitElement {
       this.hasRemoteResources = false;
       this.threadItems = [];
       this._conversation = null;
+      this.droppedKeys.clear();
     }
 
     this.resolveThread(msg);
@@ -1835,20 +1876,7 @@ export class MessageReader extends LitElement {
       // alone: the newer read does both when it lands.
       if (current()) {
         item.loading = false;
-        if (this.isConnected && !this._deferPropertySync && this.isOpenItem(item)) {
-          this.content = item.content;
-          this.mimeType = item.mimeType;
-          this.rawMessageHtml = item.rawMessageHtml;
-          this.attachments = item.attachments;
-          this.hasHtml = item.hasHtml;
-          this.hasText = item.hasText;
-          this.activeBanners = item.activeBanners;
-          this.allowRemoteResources = item.allowRemoteResources;
-          this.hasRemoteResources = item.hasRemoteResources;
-          this.loadFailed = !!item.loadFailed;
-          this.loading = false;
-          this.message = { ...this.message, ...item.message };
-        }
+        if (this.isConnected && !this._deferPropertySync && this.isOpenItem(item)) this.showOpenItem(item);
         this.updateThreadItemReference(item);
       }
     }
@@ -1944,6 +1972,11 @@ export class MessageReader extends LitElement {
       item.message.Flags = [...(item.message.Flags || []), FLAG_FLAGGED];
     }
     this.updateThreadItemReference(item);
+    // Where the cards are rebuilt from as well, or the star went back with
+    // the next list change.
+    const key = this.itemKey(item);
+    this.patchConversationFlag(key, FLAG_FLAGGED, op);
+    const undo = isStarred ? 'add' : 'remove';
 
     // Only a listed message is news to the list: a card from Sent is not one of its rows.
     const listed = this.listedKeys().has(this.itemKey(item));
@@ -1973,9 +2006,10 @@ export class MessageReader extends LitElement {
           item.message.Flags = item.message.Flags.filter((f: string) => f !== FLAG_FLAGGED);
         }
         this.updateThreadItemReference(item);
+        this.patchConversationFlag(key, FLAG_FLAGGED, undo);
 
         // Revert parent view on failure
-        tellList(isStarred ? 'add' : 'remove');
+        tellList(undo);
       } else {
         if (this.isOpenItem(item)) {
           this.message.Flags = item.message.Flags;
@@ -1990,9 +2024,10 @@ export class MessageReader extends LitElement {
         item.message.Flags = item.message.Flags.filter((f: string) => f !== FLAG_FLAGGED);
       }
       this.updateThreadItemReference(item);
+      this.patchConversationFlag(key, FLAG_FLAGGED, undo);
 
       // Revert parent view on failure
-      tellList(isStarred ? 'add' : 'remove');
+      tellList(undo);
     }
   }
 
@@ -2018,9 +2053,13 @@ export class MessageReader extends LitElement {
     const key = this.itemKey(item);
     const isOpen = this.isOpenItem(item);
     // Where to stay if this is the message being read: the newest other message
-    // of the conversation that the page can open, i.e. one in this folder.
+    // of the conversation that the page can open, i.e. one in this folder, or
+    // in any folder for a search of every folder, which is no one folder.
+    const openable = this.mailbox === ALL_MAILBOXES
+      ? this.threadItems.filter(other => other.message)
+      : this.conversationItems;
     const next = isOpen
-      ? [...this.conversationItems].reverse().find(other => this.itemKey(other) !== key)
+      ? [...openable].reverse().find(other => this.itemKey(other) !== key)
       : undefined;
     this.dispatchEvent(new CustomEvent<ReaderActionDetail>('action', {
       detail: {
@@ -2028,13 +2067,63 @@ export class MessageReader extends LitElement {
         uid: String(item.message.UID),
         mailbox: item.mailbox,
         nextUid: next ? String(next.message.UID) : undefined,
-        done: (ok: boolean) => { if (ok) this.dropCard(key); },
+        nextMailbox: next?.mailbox,
+        done: (ok: boolean) => {
+          if (!ok) return;
+          this.dropCard(key);
+          if (next) this.stayingOn = this.itemKey(next);
+        },
       },
     }));
   }
 
+  /**
+   * Opens another card of this conversation in place of the open one, which
+   * that card's Delete took away: the page has opened the message it was told
+   * to stay on. Opened as a new message, the conversation was thrown away and
+   * read again, and the deleted card came back from the list, which holds it
+   * until it is read again. The cards stay as they are, with what they have
+   * read, and the conversation the server returned now answers for this one.
+   */
+  private stayOnCard(msg: any) {
+    const key = this.keyOf(msg);
+    if (this._conversation) this._conversation = { ...this._conversation, key };
+    this.resolveThread(msg);
+    const item = this.threadItems.find(i => this.itemKey(i) === key);
+    if (!item) return;
+    item.expanded = true;
+    if (item.loading || this.bodyLoads.has(key)) {
+      // Its read is out, and shows here when it lands.
+      this.loading = true;
+    } else if (item.content) {
+      this.showOpenItem(item);
+    } else {
+      item.loading = true;
+      this.loading = true;
+      void this.fetchItemBody(item);
+    }
+    this.updateThreadItemReference(item);
+  }
+
+  /** Shows the open card's body as the open message's. */
+  private showOpenItem(item: ThreadMessageItem) {
+    this.content = item.content;
+    this.mimeType = item.mimeType;
+    this.rawMessageHtml = item.rawMessageHtml;
+    this.attachments = item.attachments;
+    this.hasHtml = item.hasHtml;
+    this.hasText = item.hasText;
+    this.activeBanners = item.activeBanners;
+    this.allowRemoteResources = item.allowRemoteResources;
+    this.hasRemoteResources = item.hasRemoteResources;
+    this.loadFailed = !!item.loadFailed;
+    this.loading = false;
+    this.message = { ...this.message, ...item.message };
+  }
+
   /** Takes a deleted message's card off the conversation. */
   private dropCard(key: string) {
+    this.droppedKeys.add(key);
     this.threadItems = this.threadItems.filter(i => this.itemKey(i) !== key);
     if (this._conversation) {
       this._conversation = {

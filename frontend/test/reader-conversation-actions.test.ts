@@ -25,6 +25,7 @@ import { messageKey } from '../src/utils/message-key';
 type El = HTMLElement & Record<string, any>;
 
 const SEEN = '\\Seen';
+const FLAGGED = '\\Flagged';
 const DRAFT = '\\Draft';
 
 const envelope = (subject: string, date: string, from: string, id: string) => ({
@@ -370,6 +371,55 @@ describe('a card\'s own menu', () => {
       expect(seen[0].detail).toMatchObject({ action: 'delete', uid: '9', mailbox: 'INBOX', nextUid: '5' });
     });
 
+    describe('of the message being read', () => {
+      /** Deletes the open card, the page agrees, and opens the message it was
+       * told to stay on, from the list as it still stands: the list is read
+       * again only after the delete. */
+      async function deleteOpenCard(el: El, open: { mailbox: string; uid: string }) {
+        const seen = actions(el);
+        const doomed = card(el, open.mailbox, open.uid);
+        doomed.dispatchEvent(new CustomEvent('delete-item', { detail: { item: doomed.item } }));
+        const detail = seen[0].detail;
+        detail.done!(true);
+        return detail;
+      }
+      const threadReads = () => vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/thread')).length;
+
+      it('stays on the rest of the conversation, without the card it deleted', async () => {
+        // The page opens the message to stay on, and the reader took that for
+        // a new conversation: it threw the cards away, read the conversation
+        // again, and drew the deleted message back from the list, which still
+        // held it.
+        const el = await openConversation();
+        const reads = threadReads();
+        const detail = await deleteOpenCard(el, { mailbox: 'INBOX', uid: '9' });
+        expect(detail.nextUid).toBe('5');
+
+        await update(el, { message: el.messages[0] });
+        await settle();
+
+        expect(cards(el).map(c => `${c.item.mailbox}/${c.item.message.UID}`)).toEqual(['INBOX/5', 'Sent/7']);
+        expect(card(el, 'INBOX', '5').item.expanded).toBe(true);
+        expect(card(el, 'INBOX', '5').item.content).toBe('the body');
+        expect(threadReads()).toBe(reads);
+
+        // And when the list moves before it is read again.
+        await update(el, { messages: [{ ...older(), SubMessages: [newer()] }] });
+        await settle();
+        expect(cards(el).map(c => `${c.item.mailbox}/${c.item.message.UID}`)).toEqual(['INBOX/5', 'Sent/7']);
+      });
+
+      it('in a search of every folder, stays on the newest other card, in its own folder', async () => {
+        // Only the cards in the folder being viewed were candidates, and a
+        // search of every folder is no one folder: there were none, and the
+        // reader closed with the rest of the conversation still there.
+        const el = await openConversation({ mailbox: '*', listed: [{ ...newer(), SubMessages: [older(), reply()] }] });
+        const detail = await deleteOpenCard(el, { mailbox: 'INBOX', uid: '9' });
+
+        expect(detail).toMatchObject({ nextUid: '7', nextMailbox: 'Sent' });
+      });
+    });
+
     it('never deletes on its own, and never asks the browser to confirm', async () => {
       const confirm = vi.spyOn(window, 'confirm');
       const el = await openConversation();
@@ -494,6 +544,41 @@ describe('reading a conversation', () => {
 
     expect(card(el, 'Sent', '7').item.message.Flags).toContain(SEEN);
     expect(readWrites()).toHaveLength(1);
+  });
+
+  describe('a flag on a card the list does not hold', () => {
+    // The reply from Sent is no row of the list, so the cards rebuilt on a
+    // list change take it from the conversation the server returned, which
+    // still had its old flags.
+    it('stays when it was starred on its card', async () => {
+      const el = await openConversation();
+      // Once the list has moved, the card holds its own copy of the message.
+      await update(el, { messages: [{ ...older(), SubMessages: [newer()] }] });
+      await settle();
+      const sent = card(el, 'Sent', '7');
+      sent.dispatchEvent(new CustomEvent('toggle-star', { detail: { item: sent.item } }));
+      await settle();
+      expect(card(el, 'Sent', '7').item.message.Flags).toContain(FLAGGED);
+
+      await update(el, { messages: [{ ...older(), SubMessages: [newer()] }] });
+      await settle();
+
+      expect(card(el, 'Sent', '7').item.message.Flags).toContain(FLAGGED);
+    });
+
+    it('stays when the page changed it', async () => {
+      const el = await openConversation();
+      window.dispatchEvent(new CustomEvent('external-message-flags-changed', {
+        detail: { keys: [messageKey('Sent', '7')], flag: FLAGGED, action: 'add' },
+      }));
+      await settle();
+      expect(card(el, 'Sent', '7').item.message.Flags).toContain(FLAGGED);
+
+      await update(el, { messages: [{ ...older(), SubMessages: [newer()] }] });
+      await settle();
+
+      expect(card(el, 'Sent', '7').item.message.Flags).toContain(FLAGGED);
+    });
   });
 
   describe('when the server refuses the write', () => {
