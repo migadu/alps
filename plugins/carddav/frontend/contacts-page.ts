@@ -338,6 +338,7 @@ export class ContactsPage extends LitElement {
     this.saveLifetime++;
     this.queuedSaves = [];
     this.saveTargets = new WeakMap();
+    this.toolbarVersions.clear();
     if (this.settingsStore) {
       this.settingsStore.removeEventListener('change', this._handleSettingsChange);
     }
@@ -1050,8 +1051,11 @@ export class ContactsPage extends LitElement {
    * a contact, then edit it, and the edit would report a change made "on
    * another device".
    */
+  private toolbarVersions = new Map<string, { etag: string }>();
+
   private applyETags(etags?: Record<string, string>) {
     if (!etags || Object.keys(etags).length === 0) return;
+    for (const [path, etag] of Object.entries(etags)) this.toolbarVersions.set(path, { etag });
     this.contacts = this.contacts.map((c: any) => etags[c.path] ? { ...c, etag: etags[c.path] } : c);
     const open = this.selectedContact?.path;
     if (open && etags[open]) {
@@ -1068,6 +1072,7 @@ export class ContactsPage extends LitElement {
     this.saveLifetime++;
     this.queuedSaves = [];
     this.saveTargets = new WeakMap();
+    this.toolbarVersions.clear();
     this.loadAddedCategories();
   };
 
@@ -1127,6 +1132,7 @@ export class ContactsPage extends LitElement {
 
   private async saveOnce(payload: any, target: ContactSaveTarget) {
     const before = target.contact;
+    const toolbarVersion = this.toolbarVersions.get(before.path);
     const editing = !before.isTemporary;
     // After a refusal every autosave would be refused the same way, one error
     // per keystroke. Nothing is sent until the edit is cancelled, which shows
@@ -1182,6 +1188,15 @@ export class ContactsPage extends LitElement {
 
       const savedContact = { ...before, ...payload, path: data.path || (editing ? before.path : ''), etag: data.etag };
       delete savedContact.isTemporary;
+      if (editing) {
+        // The form says nothing about toolbar categories. A toolbar write
+        // acknowledged while this response waited is newer than this edit:
+        // both succeeded with If-Match, so the edit committed first.
+        const current = this.findContact(before.path);
+        savedContact.categories = current?.categories ?? before.categories;
+        const written = this.toolbarVersions.get(before.path);
+        if (written && written !== toolbarVersion) savedContact.etag = written.etag;
+      }
       // Advance only this card's successful snapshot. A queued form uses its
       // new ETag and property positions even when another card is open now.
       const showing = this.showingSave(target);
