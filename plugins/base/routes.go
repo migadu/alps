@@ -2705,6 +2705,11 @@ func handleComposeNew(ctx *alps.Context) error {
 	}
 
 	err := ctx.Session.DoSMTP(func(c *smtp.Client) error {
+		// A temporary refusal may outlast the browser's wait. Each new
+		// attempt checks again before MAIL, while nothing has been sent.
+		if err := ctx.Request.Context().Err(); err != nil {
+			return fmt.Errorf("message not sent: %v", err)
+		}
 		return sendMessage(c, msg)
 	})
 	if err != nil {
