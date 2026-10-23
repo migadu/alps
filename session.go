@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -116,6 +117,14 @@ type Session struct {
 
 	providerLocker sync.Mutex
 	provider       provider.MailProvider // protected by locker, can be nil
+
+	// The store entries the session's connection has read or written, as the
+	// JSON the store holds them in, and nil for one it found missing, when the
+	// connection's store keeps such copies itself: see sessionStore. Changed
+	// only with providerLocker held as well, so that they change in the order
+	// the connection read and wrote them.
+	storeEntriesLocker sync.RWMutex
+	storeEntries       map[string]json.RawMessage // protected by storeEntriesLocker
 
 	attachmentsLocker sync.Mutex
 	attachments       map[string]*Attachment // protected by attachmentsLocker
@@ -328,6 +337,7 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 	if s.provider == nil {
 		var err error
 		s.provider, err = s.manager.connectProvider(s.username, s.password)
+		s.forgetStoreEntries()
 		if err != nil {
 			s.CloseWithReason("mail-server-unavailable")
 			// Wrap with %w so errors.As can still recover an AuthError (bad
@@ -368,6 +378,7 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 
 		var reErr error
 		s.provider, reErr = s.manager.connectProvider(s.username, s.password)
+		s.forgetStoreEntries()
 		if reErr != nil {
 			s.CloseWithReason("mail-server-unavailable")
 			return fmt.Errorf("failed to re-connect to mail provider: %w", errors.Join(ErrMailProviderUnavailable, reErr))
@@ -649,28 +660,73 @@ func (s *Session) PopNotice() string {
 	return n
 }
 
+// sessionStore is the store of the session's account, read and written on the
+// session's connection. When the connection's store keeps a copy of each entry
+// it has read or written, as the IMAP store does, the session keeps the same
+// copy, and Get answers from it without the connection.
+//
+// Every listing and every message opened reads the settings. Each read waited
+// for the connection, behind whatever it was doing, such as building a
+// conversation, searching across folders or saving a draft, and opened a new
+// one if it had been closed, only for the connection to answer from its own
+// copy.
+//
+// What the session keeps changes with the connection's own copy of the entry,
+// and lasts until the session connects again, when the new connection starts
+// without one: GetFresh reads past both, a read that fails leaves neither, and
+// both change with every write the connection makes. An entry found missing is
+// kept as missing for as long, so a read that must see what another session
+// wrote since reads fresh. A store that keeps no copy, such as the maildir
+// store, which reads its file every time, is read on the connection every
+// time, as before.
 type sessionStore struct {
 	session *Session
 }
 
 func (ss *sessionStore) Get(key string, out interface{}) error {
-	return ss.session.DoMailWithContext(context.Background(), func(p provider.MailProvider) error {
-		store, err := p.GetStore()
-		if err != nil {
-			return err
-		}
-		return store.Get(key, out)
-	})
+	if raw, ok := ss.session.storeEntry(key); ok {
+		return decodeStoreEntry(key, raw, out)
+	}
+	return ss.read(key, out, provider.Store.Get)
 }
 
 func (ss *sessionStore) GetFresh(key string, out interface{}) error {
-	return ss.session.DoMailWithContext(context.Background(), func(p provider.MailProvider) error {
+	return ss.read(key, out, provider.GetFresh)
+}
+
+// read reads key from the connection's store with get into out. From a store
+// that keeps copies, the entry is read whole, as the JSON the store holds,
+// whatever part of it out has room for, and kept: the next reader may want
+// another part of it.
+func (ss *sessionStore) read(key string, out interface{}, get func(provider.Store, string, interface{}) error) error {
+	var raw json.RawMessage
+	kept := false
+	err := ss.session.DoMailWithContext(context.Background(), func(p provider.MailProvider) error {
 		store, err := p.GetStore()
 		if err != nil {
 			return err
 		}
-		return provider.GetFresh(store, key, out)
+		if !keepsCopies(store) {
+			return get(store, key, out)
+		}
+		kept = true
+		err = get(store, key, &raw)
+		switch {
+		case err == nil:
+			ss.session.keepStoreEntry(key, raw)
+		case errors.Is(err, provider.ErrNoStoreEntry):
+			ss.session.keepStoreEntry(key, nil)
+		default:
+			// The connection's store may have dropped its own copy, as a fresh
+			// read does before it asks, and will ask again; so does the session.
+			ss.session.forgetStoreEntry(key)
+		}
+		return err
 	})
+	if err != nil || !kept {
+		return err
+	}
+	return decodeStoreEntry(key, raw, out)
 }
 
 func (ss *sessionStore) Put(key string, v interface{}) error {
@@ -679,8 +735,82 @@ func (ss *sessionStore) Put(key string, v interface{}) error {
 		if err != nil {
 			return err
 		}
-		return store.Put(key, v)
+		if err := store.Put(key, v); err != nil {
+			// Whether the server took it is not known; the next read asks.
+			ss.session.forgetStoreEntry(key)
+			return err
+		}
+		if !keepsCopies(store) {
+			return nil
+		}
+		if v == nil {
+			ss.session.keepStoreEntry(key, nil)
+		} else if raw, err := json.Marshal(v); err == nil {
+			ss.session.keepStoreEntry(key, raw)
+		} else {
+			ss.session.forgetStoreEntry(key)
+		}
+		return nil
 	})
+}
+
+// keepsCopies reports whether store keeps a copy of each entry it has read or
+// written, for as long as its connection lasts: a store that can read past its
+// copy has one. Only such a store's entries are kept by the session. Any other
+// is read where the entries are kept, every time, and a copy of what it read
+// would be older than what it reads next.
+func keepsCopies(store provider.Store) bool {
+	_, ok := store.(provider.FreshStore)
+	return ok
+}
+
+// decodeStoreEntry decodes an entry the store holds as raw into out. A nil raw
+// is an entry that is not there.
+func decodeStoreEntry(key string, raw json.RawMessage, out interface{}) error {
+	if raw == nil {
+		return provider.ErrNoStoreEntry
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("failed to decode store entry %q: %w", key, err)
+	}
+	return nil
+}
+
+// storeEntry returns the session's copy of the store entry key, and whether it
+// has one; a nil copy is an entry that is not there.
+func (s *Session) storeEntry(key string) (json.RawMessage, bool) {
+	s.storeEntriesLocker.RLock()
+	defer s.storeEntriesLocker.RUnlock()
+	raw, ok := s.storeEntries[key]
+	return raw, ok
+}
+
+// keepStoreEntry keeps raw as the session's copy of the store entry key, nil
+// for one that is not there. The caller holds providerLocker.
+func (s *Session) keepStoreEntry(key string, raw json.RawMessage) {
+	s.storeEntriesLocker.Lock()
+	defer s.storeEntriesLocker.Unlock()
+	if s.storeEntries == nil {
+		s.storeEntries = make(map[string]json.RawMessage)
+	}
+	s.storeEntries[key] = raw
+}
+
+// forgetStoreEntry drops the session's copy of the store entry key. The
+// caller holds providerLocker.
+func (s *Session) forgetStoreEntry(key string) {
+	s.storeEntriesLocker.Lock()
+	defer s.storeEntriesLocker.Unlock()
+	delete(s.storeEntries, key)
+}
+
+// forgetStoreEntries drops every copy the session keeps, when it connects
+// again: the new connection's store has read nothing yet. The caller holds
+// providerLocker.
+func (s *Session) forgetStoreEntries() {
+	s.storeEntriesLocker.Lock()
+	defer s.storeEntriesLocker.Unlock()
+	s.storeEntries = nil
 }
 
 // Store returns a store suitable for storing persistent user data.
@@ -1281,6 +1411,7 @@ func (sm *SessionManager) UpdatePassword(s *Session, newPassword string) error {
 
 	// Update session state
 	s.provider = provider
+	s.forgetStoreEntries()
 	s.password = newPassword
 
 	return nil
