@@ -2601,7 +2601,7 @@ export class MessageReader extends LitElement {
               </div>
               <div class="desktop-date-container">
                 <div class="reader-date desktop-date">${dateStr}</div>
-                ${msg.RFC822Size ? html`<div class="reader-size desktop-only">${formatSize(msg.RFC822Size)}</div>` : ''}
+                ${msg.RFC822Size ? html`<div class="reader-size desktop-only">${formatSize(msg.RFC822Size, this.i18nStore)}</div>` : ''}
               </div>
             </div>
             
@@ -2628,7 +2628,7 @@ export class MessageReader extends LitElement {
                 <span class="reader-recipients-label">${this.i18nStore?.t('messageReader.date') || 'Date:'}</span>
                 <div class="reader-recipients-list mobile-date-container" style="flex-direction: row; align-items: baseline; gap: 8px; margin-top: 0;">
                   <span class="reader-date mobile-date" style="color: var(--text-primary);">${dateStr}</span>
-                  ${msg.RFC822Size ? html`<span class="reader-size mobile-size">(${formatSize(msg.RFC822Size)})</span>` : ''}
+                  ${msg.RFC822Size ? html`<span class="reader-size mobile-size">(${formatSize(msg.RFC822Size, this.i18nStore)})</span>` : ''}
                 </div>
               </div>
             </div>

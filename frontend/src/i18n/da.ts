@@ -490,6 +490,15 @@ export const da: TranslationDictionary = {
     uploadProgress: '{percent}\u00a0% af {size}'
   },
 
+  sizeUnits: {
+    bytes: 'B',
+    kilobytes: 'KB',
+    megabytes: 'MB',
+    gigabytes: 'GB',
+    terabytes: 'TB',
+    petabytes: 'PB'
+  },
+
   navigation: {
     messages: 'Beskeder',
     contacts: 'Kontakter',
