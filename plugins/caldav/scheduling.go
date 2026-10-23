@@ -99,12 +99,16 @@ const schedulingTTL = 10 * time.Minute
 type schedulingAccount struct {
 	// server reports that the calendar server schedules on its own.
 	server bool
-	// addresses are the user's own calendar addresses, lower-cased: the login,
-	// and those the principal lists in calendar-user-address-set (RFC 6638
-	// §2.4.1), which is how a server says which aliases are the user's.
+	// addresses are the user's own calendar addresses, lower-cased: the
+	// user's address, and those the principal lists in
+	// calendar-user-address-set (RFC 6638 §2.4.1), which is how a server says
+	// which aliases are the user's.
 	addresses []string
 	// email is the address the user organizes from and alps sends as: the
-	// login, which the submission server always accepts.
+	// user's address as worked out at sign-in (see alps.Session.Address),
+	// which for a login that is an address is the login, the one the
+	// submission server always accepts. Where that is still a bare user name,
+	// it is the first address the principal lists, if it lists one.
 	email string
 	// name is the name the user sends mail under, from the mail settings.
 	name    string
@@ -146,9 +150,9 @@ func (p *plugin) scheduling(ctx *alps.Context, c *caldav.Client) *schedulingAcco
 	homeSet := p.homeSetCache[username]
 	p.cacheMutex.RUnlock()
 
-	acct := &schedulingAccount{email: strings.ToLower(username), fetched: time.Now()}
+	acct := &schedulingAccount{email: strings.ToLower(ctx.Session.Address()), fetched: time.Now()}
 	if cached != nil && time.Since(cached.fetched) < schedulingTTL {
-		acct.server, acct.addresses, acct.fetched = cached.server, cached.addresses, cached.fetched
+		acct.server, acct.addresses, acct.email, acct.fetched = cached.server, cached.addresses, cached.email, cached.fetched
 	} else {
 		hc := p.httpClient(ctx.Session)
 		if homeSet != "" {
@@ -161,6 +165,12 @@ func (p *plugin) scheduling(ctx *alps.Context, c *caldav.Client) *schedulingAcco
 					acct.addresses = append(acct.addresses, addr)
 				}
 			}
+		}
+		// The calendar server's address for the user, where the address
+		// worked out at sign-in is still a bare name: ORGANIZER:mailto:jdoe
+		// is one no guest's answer can reach.
+		if !strings.Contains(acct.email, "@") && len(acct.addresses) > 1 {
+			acct.email = acct.addresses[1]
 		}
 		p.cacheMutex.Lock()
 		if len(p.accounts) > 1000 {

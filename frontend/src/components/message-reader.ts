@@ -6,7 +6,7 @@ import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTa
 import { FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
 import { BACKGROUND_REQUEST, fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
-import { activeUsername, settingsContext, SettingsStore } from '../store/settings-store';
+import { activeUsername, ownAddress, settingsContext, SettingsStore } from '../store/settings-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon, formatFullDate, formatSize, bimiAvatarUrlFor } from '../utils/ui';
 import './alps-recipient-pill';
@@ -113,7 +113,7 @@ export class MessageReader extends LitElement {
    * Reply-To it asks answers to go to. */
   private ownAddresses(): string[] {
     const state = this.settingsStore?.getState();
-    return [state?.loginUsername || activeUsername() || '', state?.replyTo || ''].filter(Boolean);
+    return [ownAddress(state) || activeUsername() || '', state?.replyTo || ''].filter(Boolean);
   }
 
   /**

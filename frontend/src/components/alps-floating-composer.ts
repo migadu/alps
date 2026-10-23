@@ -5,7 +5,7 @@ import { bareAddress, composeContext, draftContentKey, recipientField } from '..
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
 import { messageOperations } from '../services/message-operations';
-import { readUserSettings } from '../store/settings-store';
+import { ownAddress, readUserSettings } from '../store/settings-store';
 import './alps-address-input.js';
 import './alps-message-composer.js';
 import './alps-button.js';
@@ -352,7 +352,8 @@ export class AlpsFloatingComposer extends LitElement {
     // `replyTo` were all undefined here and both settings were inert.
     {
       const parsed = readUserSettings();
-      const self = parsed.loginUsername;
+      // The address, not the login: a bare login in Bcc stopped every send.
+      const self = ownAddress(parsed);
       // Compared as addresses: a pill can hold `"Me" <me@…>` or another case, and
       // an exact string match added the sender to Bcc a second time.
       const mine = self ? bareAddress(self) : '';

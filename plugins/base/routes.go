@@ -1367,6 +1367,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Title":           title,
 		"Username":        ctx.Session.Username(),
+		"Address":         ctx.Session.Address(),
 		"Mailboxes":       ibase.Mailboxes,
 		"Mailbox":         ibase.Mailbox,
 		"Inbox":           ibase.Inbox,
@@ -2289,14 +2290,16 @@ func handleComposeNew(ctx *alps.Context) error {
 
 	fromAddr := ctx.FormValue("from")
 	if fromAddr == "" {
-		fromAddr = ctx.Session.Username()
+		// The user's address, not the login: a login can be a bare user
+		// name, which is no address to send from (see Session.Address).
+		fromAddr = ctx.Session.Address()
 		if settings, err := readSettings(ctx); err == nil {
 			// The display name is free text, so it is formatted as an address
 			// rather than pasted in front of one. Written bare, a comma in it
 			// ("Doe, Jane") read as two addresses, the first with none, and
 			// every send and draft save failed; quotes in it were lost.
 			if name := strings.TrimSpace(settings.From); name != "" {
-				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Username()}).String()
+				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Address()}).String()
 			}
 		}
 	}
@@ -3135,6 +3138,7 @@ func handleGetSession(ctx *alps.Context) error {
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Username":              ctx.Session.Username(),
+		"Address":               ctx.Session.Address(),
 		"PasswordChangeEnabled": passwordChangeEnabled,
 		"EnabledPlugins":        enabledPlugins,
 		"MaxAttachmentMiB":      maxAttachmentMiB,
