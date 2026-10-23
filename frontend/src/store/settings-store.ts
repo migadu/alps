@@ -280,10 +280,13 @@ export class SettingsStore extends EventTarget {
     this.state = this.loadSettings();
     this.applyTheme();
 
-    // Watch for system theme changes if set to auto
+    // Watch for system theme changes if set to auto. Announced, as every
+    // theme the store applies is: what paints itself in the theme outside the
+    // app's stylesheet, a message's frame, follows only what it is told.
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (this.state.themeMode === 'auto') {
         this.applyTheme();
+        this.notify();
       }
     });
 
