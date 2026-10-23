@@ -1005,8 +1005,8 @@ type sortCache struct {
 // Date headers, which never change, so only another message moves the order.
 // One order is kept per mailbox: a page in the other sorts again. The UIDs are
 // shared: callers must not change them.
-func (p *IMAPProvider) sortedMailboxUIDs(mailbox string, reverse bool) ([]imap.UID, error) {
-	shape, shapeErr := p.currentShape(false)
+func (p *IMAPProvider) sortedMailboxUIDs(mailbox string, reverse, fresh bool) ([]imap.UID, error) {
+	shape, shapeErr := p.currentShape(fresh)
 	if shapeErr == nil {
 		p.cacheLock.Lock()
 		entry := p.sorts[mailbox]
@@ -1423,7 +1423,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 	if isMailboxMassive(mbox) && query == "" {
 		// Fast path for massive mailboxes without a search query.
 		// Avoid the massive IMAP SORT response by falling back to sequential listing.
-		return p.ListMessages(mailbox, sortOrder, page, pageSize)
+		return p.listByNumber(mailbox, sortOrder, page, pageSize)
 	}
 
 	searchCriteria := prepareIMAPSearch(query)
@@ -1446,7 +1446,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 	}
 
 	if enableThreading && p.HasThreadCapability() {
-		msgs, total, err := p.threadedPage(mailbox, searchCriteria, query == "", false, sortOrder, page, pageSize)
+		msgs, total, err := p.threadedPage(mailbox, searchCriteria, query == "", true, sortOrder, page, pageSize)
 		if err == nil {
 			return msgs, provider.PageInfo{Total: total, Threaded: true}, nil
 		}
@@ -1472,19 +1472,10 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 	// costs at most the date order, not the folder. A search with a query has
 	// no such answer, since only the server knows what matches, and fails as
 	// before.
-	// fresh says a NOOP has just been answered for the mailbox, as one is
-	// before the whole folder's order is looked up (see sortedMailboxUIDs).
-	byNumber := func(command string, refusal error, fresh bool) ([]provider.Message, provider.PageInfo, error) {
+	// The initial NOOP has already brought the selected mailbox up to date.
+	byNumber := func(command string, refusal error) ([]provider.Message, provider.PageInfo, error) {
 		if p.debug {
 			fmt.Printf("flat list: %s refused, listing by number instead: %v\n", command, refusal)
-		}
-		// The NOOP ListMessages starts with, for mail that arrived since the
-		// mailbox was selected: the page is cut from the message count, and a
-		// refused command need not have brought news of it.
-		if !fresh {
-			if err := p.client.Noop().Wait(); err != nil {
-				return nil, provider.PageInfo{}, err
-			}
 		}
 		return p.listByNumber(mailbox, sortOrder, page, pageSize)
 	}
@@ -1495,7 +1486,7 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 		data, err := p.client.UIDSearch(searchCriteria, nil).Wait()
 		if err != nil {
 			if query == "" && refusedByServer(err) {
-				return byNumber("SEARCH", err, false)
+				return byNumber("SEARCH", err)
 			}
 			return nil, provider.PageInfo{}, fmt.Errorf("SEARCH failed: %v", err)
 		}
@@ -1508,10 +1499,10 @@ func (p *IMAPProvider) SearchMessages(mailbox, query string, sortOrder string, p
 	} else if query == "" {
 		// The whole folder: its order is kept (see sortedMailboxUIDs).
 		var err error
-		uids, err = p.sortedMailboxUIDs(mailbox, reverse)
+		uids, err = p.sortedMailboxUIDs(mailbox, reverse, true)
 		if err != nil {
 			if refusedByServer(err) {
-				return byNumber("SORT", err, true)
+				return byNumber("SORT", err)
 			}
 			return nil, provider.PageInfo{}, fmt.Errorf("SORT failed: %v", err)
 		}
