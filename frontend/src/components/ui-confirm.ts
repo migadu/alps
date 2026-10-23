@@ -45,6 +45,7 @@ export class UIConfirm extends LitElement {
         .title=${this.title}
         .isDanger=${this.isDanger}
         .dismissible=${this.dismissible}
+        .bodyDescribes=${true}
         @cancel=${this._handleCancel}
       >
         <slot>${this.message}</slot>

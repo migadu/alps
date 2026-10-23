@@ -197,7 +197,10 @@ describe('the quote header', () => {
 });
 
 describe('people in calendar events, tasks and contacts', () => {
-  const i18nStore = { t: (key: string) => key, getLanguage: () => 'en', getIntlLanguage: () => 'en' };
+  // The key, then what fills its placeholders: a sentence built with
+  // isolatedSentence keeps its isolates.
+  const t = (key: string, params?: Record<string, unknown>) => [key, ...Object.values(params ?? {})].join(' ');
+  const i18nStore = { t, getLanguage: () => 'en', getIntlLanguage: () => 'en' };
   const pairs = (root: ParentNode) => [...root.querySelectorAll('bdi')].map((node) => [node.textContent, node.getAttribute('dir')]);
 
   it("isolates an event's organizer and each attendee before their answer", async () => {

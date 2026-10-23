@@ -1,18 +1,20 @@
 /**
  * The sidebars can be used from the keyboard.
  *
- * A mail folder, a calendar, the Tasks toggle and a day of the mini calendar
- * were each a <div> with a click handler: no Tab stop, no role, no key. A
- * keyboard could not open a folder, show or hide a calendar, or pick a day.
+ * A mail folder, a calendar, the Tasks toggle, a day of the mini calendar and
+ * a Settings category were each an element with a click handler: no Tab stop,
+ * no role, no key. A keyboard could not open a folder, show or hide a
+ * calendar, pick a day or leave the Settings category it opened on.
  * The icon buttons beside them (a folder's expander, the menu of a folder,
  * calendar or contacts category, the mini calendar's arrows, Add Calendar)
  * had no names.
  *
  * Each row's name is now its control, as a contacts category's is: a button
- * for a folder, a checkbox for a calendar and for Tasks, one Tab stop per
- * month for the mini calendar, whose arrow keys move between its days. The
- * menus beside them are shown while their row has focus, so Tab reaches them
- * (browser test: e2e/sidebar-keyboard.spec.ts); here, that they are named.
+ * for a folder and for a Settings category, a checkbox for a calendar and for
+ * Tasks, one Tab stop per month for the mini calendar, whose arrow keys move
+ * between its days. The menus beside them are shown while their row has
+ * focus, so Tab reaches them (browser test: e2e/sidebar-keyboard.spec.ts);
+ * here, that they are named.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/components/folder-list';
@@ -20,9 +22,11 @@ import '../../plugins/carddav/frontend/contacts-categories';
 import '../../plugins/caldav/frontend/calendar-page';
 import '../../plugins/caldav/frontend/alps-sidebar-calendar';
 import '../../plugins/caldav/frontend/calendar-mini-month';
+import '../src/pages/settings-page';
+import { SettingsStore } from '../src/store/settings-store';
 import { calendarService } from '../../plugins/caldav/frontend/calendar-service';
 import { tasksService } from '../../plugins/caldav/frontend/tasks-service';
-import { cleanup, installMatchMedia, installResizeObserver, installScrollIntoView, mount, record, shadow, shadowAll, waitFor } from './helpers/dom';
+import { cleanup, installMatchMedia, installResizeObserver, installScrollIntoView, mount, record, shadow, shadowAll, update, waitFor } from './helpers/dom';
 
 type El = HTMLElement & Record<string, any>;
 
@@ -180,6 +184,66 @@ describe("a contacts category's menu button", () => {
       i18nStore, contacts: [{ uid: '1', categories: ['Work'] }], uniqueCategories: ['Work'],
     });
     expect(await buttonName(shadow(el, '.category-item .kebab-btn'))).toBe('general.moreOptions');
+  });
+});
+
+describe('a settings category', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function settings(category: string): Promise<El> {
+    const state = { ...new SettingsStore().getState(), checkMailInterval: 0, loginUsername: 'ada@example.com' };
+    const store = Object.assign(new EventTarget(), { getState: () => state, updateSettings: async () => {} });
+    return mount<El>('settings-page', { i18nStore, settingsStore: store, category });
+  }
+
+  const categories = (el: El) => shadowAll<HTMLElement>(el, 'alps-category-item');
+  const named = (el: El, name: string) => categories(el).find(item => item.textContent?.trim() === name)!;
+
+  it('is a button, named by the category, and the one shown is the current one', async () => {
+    const el = await settings('reading');
+    expect(categories(el).map(item => [item.textContent?.trim(), item.getAttribute('role'), item.tabIndex, item.getAttribute('aria-current')])).toEqual([
+      ['settings.categories.general', 'button', 0, null],
+      ['settings.categories.reading', 'button', 0, 'true'],
+      ['settings.categories.appearance', 'button', 0, null],
+      ['settings.categories.localization', 'button', 0, null],
+      ['settings.categories.identity', 'button', 0, null],
+      ['settings.categories.accounts', 'button', 0, null],
+      ['settings.categories.webauthn', 'button', 0, null],
+    ]);
+
+    await update(el, { category: 'appearance' });
+    await Promise.all(categories(el).map(item => (item as El).updateComplete));
+    expect(categories(el).filter(item => item.getAttribute('aria-current') === 'true').map(item => item.textContent?.trim()))
+      .toEqual(['settings.categories.appearance']);
+  });
+
+  it.each(['Enter', ' '])('opens its category with %j', async (name) => {
+    const el = await settings('general');
+    const event = key(named(el, 'settings.categories.localization'), name);
+    expect(window.location.hash).toBe('#/settings/localization');
+    // Space would otherwise also scroll the sidebar.
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('opens its category once while Space is held, and leaves other keys alone', async () => {
+    const el = await settings('general');
+    const item = named(el, 'settings.categories.identity');
+    const clicks = record(item, 'click');
+    key(item, ' ');
+    const repeat = key(item, ' ', { repeat: true });
+    expect(clicks).toHaveLength(1);
+    expect(repeat.defaultPrevented).toBe(true);
+
+    const other = key(item, 'ArrowDown');
+    key(item, 'a');
+    expect(clicks).toHaveLength(1);
+    expect(other.defaultPrevented).toBe(false);
   });
 });
 

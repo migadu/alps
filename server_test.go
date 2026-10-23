@@ -2,6 +2,7 @@ package alps
 
 import (
 	"errors"
+	"fmt"
 	"github.com/migadu/alps/provider"
 	"net/http"
 	"net/http/httptest"
@@ -115,6 +116,9 @@ func TestSanitizeError(t *testing.T) {
 	// HTTPError instances should expose their message
 	httpErr := NewHTTPError(http.StatusForbidden, "Custom forbidden message")
 	assert.Equal(t, "Custom forbidden message", sanitizeError(httpErr, http.StatusForbidden))
+	// ...wrapped too: the wrapping says what failed, and is not shown.
+	wrapped := fmt.Errorf("sharing the calendar: %w", httpErr)
+	assert.Equal(t, "Custom forbidden message", sanitizeError(wrapped, http.StatusForbidden))
 }
 
 func TestIsPublic(t *testing.T) {

@@ -25,8 +25,11 @@ func requireCalendarPath(raw string, calendars []caldav.Calendar) (string, error
 	if raw == "" {
 		return "", alps.NewHTTPError(http.StatusBadRequest, "missing calendar path")
 	}
+	// With no calendar listed, no path is one of them. That is refused as
+	// any other path that is not, and not as an internal error: an account
+	// with no calendar is a state the server can be in.
 	if len(calendars) == 0 {
-		return "", alps.NewHTTPError(http.StatusInternalServerError, "calendars not resolved")
+		return "", alps.NewHTTPError(http.StatusForbidden, "path is not one of your calendars")
 	}
 
 	cleaned := normalizeDAVPath(raw)
@@ -49,8 +52,9 @@ func requireCalendarObjectPath(raw string, calendars []caldav.Calendar) (string,
 	if raw == "" {
 		return "", alps.NewHTTPError(http.StatusBadRequest, "missing object path")
 	}
+	// As in requireCalendarPath: with no calendar, every path is outside them.
 	if len(calendars) == 0 {
-		return "", alps.NewHTTPError(http.StatusInternalServerError, "calendars not resolved")
+		return "", alps.NewHTTPError(http.StatusForbidden, "path is outside your calendars")
 	}
 
 	cleaned := normalizeDAVPath(raw)

@@ -992,6 +992,12 @@ export class ContactsPage extends LitElement {
   }
 
   private async saveOnce(payload: any) {
+    // Keep the successful form snapshot independent of edits made while the
+    // request is in flight. The queued form is compared to this snapshot next.
+    payload = { ...payload };
+    for (const field of ['emails', 'phones']) {
+      if (Array.isArray(payload[field])) payload[field] = payload[field].map((p: any) => ({ ...p }));
+    }
     const editing = !!this.selectedContact && !this.selectedContact.isTemporary;
     // After a refusal every autosave would be refused the same way, one error
     // per keystroke. Nothing is sent until the edit is cancelled, which shows
@@ -1009,7 +1015,24 @@ export class ContactsPage extends LitElement {
       if (editing) {
         // The page's version, not the form's: the form copied the card when
         // editing began, and each save since has moved it on.
-        data = await contactsService.updateContact(this.selectedContact.path!, { ...payload, etag: this.selectedContact.etag });
+        // Clearing one displayed copy must not clear the next hidden copy on
+        // every later autosave. Only fields changed since our last successful
+        // form save express a new editing gesture.
+        const changed_fields = ['organization', 'title', 'note', 'url', 'nickname', 'public_key', 'address']
+          .filter(field => String(payload[field] || '').trim() !== String(this.selectedContact[field] || '').trim());
+        const request = { ...payload, changed_fields, etag: this.selectedContact.etag };
+        for (const field of ['emails', 'phones']) {
+          const props = payload[field];
+          if (!Array.isArray(props) || props.some((p: any) => !p.id)) continue;
+          const fallback = field === 'emails' ? 'email' : 'phone';
+          const before = (this.selectedContact[field] || (this.selectedContact[fallback] ? [{ value: this.selectedContact[fallback] }] : []))
+            .filter((p: any) => String(p.value || '').trim());
+          request[field] = props.map((p: any) => ({
+            value: p.value, type: p.type,
+            source_index: before.findIndex((old: any, i: number) => (old.id || `${field}:${i}`) === p.id),
+          }));
+        }
+        data = await contactsService.updateContact(this.selectedContact.path!, request);
       } else {
         data = await contactsService.createContact(payload);
       }
