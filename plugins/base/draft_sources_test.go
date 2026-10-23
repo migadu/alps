@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -250,5 +251,62 @@ func TestOutgoingMessage_PartPathsAreWhereTheAttachmentsAre(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The structure part paths are read from, in the JSON a message read answers
+// with: each node's Content-ID, and its children in order.
+type structureNode struct {
+	ID       string          `json:"ID"`
+	Children []structureNode `json:"Children"`
+}
+
+// pathOfContentID is where the structure holds the part with this Content-ID,
+// numbered as IMAP numbers parts, or "" when it holds none.
+func pathOfContentID(node structureNode, id, path string) string {
+	if node.ID == id {
+		if path == "" {
+			return "1"
+		}
+		return path
+	}
+	for i, child := range node.Children {
+		next := strconv.Itoa(i + 1)
+		if path != "" {
+			next = path + "." + next
+		}
+		if found := pathOfContentID(child, id, next); found != "" {
+			return found
+		}
+	}
+	return ""
+}
+
+// A draft save answers with the stored draft's structure too. A composer
+// editing a draft shows the quote's images from the draft by their
+// Content-IDs, and each save replaces the draft: without the new draft's
+// structure, its quote went on naming the parts of one that is gone.
+func TestHTTP_ADraftSaveAnswersWithTheStoredDraftsStructure(t *testing.T) {
+	s := newIMAPTestServer(t, figuresMessage)
+	s.login()
+	s.expect(s.do("POST", "/mailboxes", url.Values{"name": {"Drafts"}}), http.StatusOK)
+	uid := s.mailbox("INBOX").Messages[0].UID
+
+	form := forwardForm(uid)
+	form.Set("save_as_draft", "1")
+	r := s.do("POST", "/messages", form)
+	s.expect(r, http.StatusOK)
+	var saved struct {
+		savedDraft
+		Structure *structureNode `json:"draft_structure"`
+	}
+	r.json(s.t, &saved)
+
+	if saved.Structure == nil {
+		t.Fatalf("the answer has no structure: %s", r.body)
+	}
+	chart := byName(t, saved.Attachments)["chart.png"]
+	if got := pathOfContentID(*saved.Structure, "<chart@remote.test>", ""); got == "" || got != chart.PartPath {
+		t.Errorf("the structure holds the chart at %q, the answer stores it at %q", got, chart.PartPath)
 	}
 }

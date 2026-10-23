@@ -162,6 +162,16 @@ export class AutoReplyPage extends LitElement {
 	}
 
 	/**
+	 * What the Settings window asks before a Close, an Escape or another
+	 * section would unmount this form (its `UnsavedChanges`): the draft
+	 * measured against the reply as read or last saved, so an edit put back is
+	 * no edit and a refused save stays unsaved.
+	 */
+	get hasUnsavedChanges(): boolean {
+		return !this.loading && !this.loadFailed && this.dirty;
+	}
+
+	/**
 	 * The account's own address: what the reply comes from, and the address it
 	 * answers for. A login can be a bare user name, so the address the server
 	 * gave for it, `loginAddress`, comes first when the settings hold one. The

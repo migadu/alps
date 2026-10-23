@@ -22,7 +22,7 @@ import '../../plugins/carddav/frontend/contacts-categories';
 import '../../plugins/caldav/frontend/calendar-page';
 import '../../plugins/caldav/frontend/alps-sidebar-calendar';
 import '../../plugins/caldav/frontend/calendar-mini-month';
-import '../src/pages/settings-page';
+import '../src/components/settings-window';
 import { SettingsStore } from '../src/store/settings-store';
 import { calendarService } from '../../plugins/caldav/frontend/calendar-service';
 import { tasksService } from '../../plugins/caldav/frontend/tasks-service';
@@ -199,7 +199,7 @@ describe('a settings category', () => {
   async function settings(category: string): Promise<El> {
     const state = { ...new SettingsStore().getState(), checkMailInterval: 0, loginUsername: 'ada@example.com' };
     const store = Object.assign(new EventTarget(), { getState: () => state, updateSettings: async () => {} });
-    return mount<El>('settings-page', { i18nStore, settingsStore: store, category });
+    return mount<El>('settings-window', { i18nStore, settingsStore: store, category });
   }
 
   const categories = (el: El) => shadowAll<HTMLElement>(el, 'alps-category-item');
@@ -224,9 +224,11 @@ describe('a settings category', () => {
   });
 
   it.each(['Enter', ' '])('opens its category with %j', async (name) => {
+    // The Settings window asks the shell for the category, which owns the URL.
     const el = await settings('general');
+    const asked = record<CustomEvent>(el, 'settings-category');
     const event = key(named(el, 'settings.categories.localization'), name);
-    expect(window.location.hash).toBe('#/settings/localization');
+    expect(asked.map(e => e.detail.category)).toEqual(['localization']);
     // Space would otherwise also scroll the sidebar.
     expect(event.defaultPrevented).toBe(true);
   });

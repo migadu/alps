@@ -87,9 +87,10 @@ describe('a header tab clicked on its own page', () => {
   });
 });
 
+// The menu carries the pages on a phone, whose header has no tabs.
 describe('a user menu entry chosen on its own page', () => {
   it('leaves an open plugin page alone', async () => {
-    const el = await on('#/calendar/month/2026-10', 'user-profile-menu', { username: 'ada@example.com', currentTab: 'calendar' });
+    const el = await on('#/calendar/month/2026-10', 'user-profile-menu', { username: 'ada@example.com', currentTab: 'calendar', isMobile: true });
     const before = history.length;
 
     await choose(menuEntry(el, 'calendar'));
@@ -99,7 +100,7 @@ describe('a user menu entry chosen on its own page', () => {
   });
 
   it("still goes to another tab's page", async () => {
-    const el = await on('#/calendar/month/2026-10', 'user-profile-menu', { username: 'ada@example.com', currentTab: 'calendar' });
+    const el = await on('#/calendar/month/2026-10', 'user-profile-menu', { username: 'ada@example.com', currentTab: 'calendar', isMobile: true });
 
     await choose(menuEntry(el, 'contacts'));
 

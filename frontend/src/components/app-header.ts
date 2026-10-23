@@ -5,6 +5,7 @@ import { i18nContext, I18nStore } from '../store/i18n-store';
 import { registry } from '../plugin-registry';
 import { getMailboxLabel } from '../utils/ui';
 import { matchesTabRoute } from '../utils/routes';
+import { pageHash } from '../utils/settings-history';
 import { logoStyles, renderLogo } from '../utils/branding';
 import './alps-header';
 import './alps-input';
@@ -48,11 +49,14 @@ export class AppHeader extends LitElement {
   };
 
   private _handleHashChange = () => {
-    const hash = window.location.hash;
+    // The page this header belongs to. Settings is a window OVER a page, not a
+    // tab: under it the hash is the window's, and the page is the one it was
+    // opened from. Unknown under a direct load of Settings, which draws the
+    // mailbox, and so the tab stays what it was.
+    const hash = pageHash();
+    if (hash === null) return;
     if (hash.startsWith('#/contacts')) {
       this.currentTab = 'contacts';
-    } else if (hash.startsWith('#/settings')) {
-      this.currentTab = 'settings';
     } else {
       const pluginTab = registry.getNavTabs().find(tab => hash.startsWith(`#/${tab.id}`));
       if (pluginTab) {

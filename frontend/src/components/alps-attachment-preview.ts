@@ -6,17 +6,11 @@ import { renderIcon, formatSize } from '../utils/ui';
 import { fetchWithTimeout } from '../utils/fetch-utils';
 import { attachmentPartUrl } from '../utils/attachment-url';
 import { getAttachmentTypeInfo, type AttachmentTypeInfo } from '../utils/attachment-type';
+import { deepActiveElement } from '../utils/active-element';
 
 /** Text past this size is offered as a download instead of being fetched whole
  * and drawn line by line. */
 export const MAX_TEXT_PREVIEW_BYTES = 2 * 1024 * 1024;
-
-/** The focused element, looking inside shadow roots. */
-function deepActiveElement(): Element | null {
-  let el: Element | null = document.activeElement;
-  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
-  return el;
-}
 
 /**
  * A full-window preview of a message's attachments: images with zoom and
