@@ -96,8 +96,10 @@ func isAttachedMessage(e *message.Entity) bool {
 // BODYSTRUCTURE does (RFC 3501, section 7.4.2): by its envelope, which names
 // it, and its own parts.
 func attachedMessage(e *message.Entity) *imap.BodyStructureMessageRFC822 {
+	// Only the attached message's header and structure are read, which a
+	// charset or a transfer encoding alps does not know leaves readable.
 	inner, err := message.Read(e.Body)
-	if err != nil {
+	if err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
 		return nil
 	}
 	return &imap.BodyStructureMessageRFC822{
@@ -488,8 +490,10 @@ func traversePart(part storedPart, partPath []int) (storedPart, error) {
 	// message's own are: 2.1 is the first part of the message at 2. The
 	// message is the part's body, once its transfer encoding is undone.
 	if mediaType == "message/rfc822" {
+		// Under a transfer encoding alps does not know, the body is left as
+		// it is stored, which can only be the message.
 		decoded, err := message.New(message.Header{Header: part.header}, part.body)
-		if err != nil {
+		if err != nil && !message.IsUnknownEncoding(err) && !message.IsUnknownCharset(err) {
 			return storedPart{}, err
 		}
 		inner, err := readStoredMessage(decoded.Body)
@@ -578,8 +582,10 @@ func (p *Provider) GetMessagePart(mailbox string, id provider.MessageID, partPat
 	if err != nil {
 		return nil, nil, err
 	}
+	// In a charset alps does not know, the text is left as it is stored, as
+	// a draft that carries the part forward must keep it.
 	part, err := message.New(message.Header{Header: h}, bytes.NewReader(body))
-	if err != nil {
+	if err != nil && !message.IsUnknownCharset(err) {
 		return nil, nil, err
 	}
 	return msgMeta, part, nil
@@ -602,8 +608,9 @@ func (p *Provider) GetMessagePartWithData(mailbox string, id provider.MessageID,
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
+	// As GetMessagePart, for a charset alps does not know.
 	part, err := message.New(message.Header{Header: h}, bytes.NewReader(body))
-	if err != nil {
+	if err != nil && !message.IsUnknownCharset(err) {
 		return nil, nil, nil, nil, err
 	}
 	return msgMeta, part, header, body, nil

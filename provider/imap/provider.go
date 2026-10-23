@@ -1604,8 +1604,11 @@ func (p *IMAPProvider) getMessagePartWithData(mailbox string, uid imap.UID, part
 		return nil, nil, nil, nil, fmt.Errorf("failed to read part header: %v", err)
 	}
 
+	// A charset alps does not know leaves the part's text as it is stored,
+	// its transfer encoding undone: as it must be kept by a draft that
+	// carries the part forward, and as good as can be had for any other read.
 	part, err := message.New(message.Header{Header: h}, bytes.NewReader(bodyBuf))
-	if err != nil {
+	if err != nil && !message.IsUnknownCharset(err) {
 		return nil, nil, nil, nil, fmt.Errorf("failed to create message reader: %v", err)
 	}
 
@@ -1672,7 +1675,9 @@ func (p *IMAPProvider) GetMessageParts(mailbox string, id provider.MessageID, pa
 		if err != nil {
 			return nil, fmt.Errorf("failed to read header of part %v: %v", paths[i], err)
 		}
-		if parts[i], err = message.New(message.Header{Header: h}, bytes.NewReader(bodyBuf)); err != nil {
+		// In a charset alps does not know, the part is carried as it is
+		// stored; see getMessagePartWithData.
+		if parts[i], err = message.New(message.Header{Header: h}, bytes.NewReader(bodyBuf)); err != nil && !message.IsUnknownCharset(err) {
 			return nil, fmt.Errorf("failed to create reader for part %v: %v", paths[i], err)
 		}
 	}
