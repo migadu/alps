@@ -153,7 +153,7 @@ func extractContactData(card vcard.Card, path string) ContactData {
 	}
 	nickname := ""
 	if f := card.Preferred(vcard.FieldNickname); f != nil {
-		nickname = f.Value
+		nickname = shownListValue(f.Value)
 	}
 	avatar := ""
 	if f := card.Preferred(vcard.FieldPhoto); f != nil {
@@ -177,13 +177,8 @@ func extractContactData(card vcard.Card, path string) ContactData {
 	}
 
 	var categories []string
-	if f := card.Preferred(vcard.FieldCategories); f != nil && f.Value != "" {
-		for _, cat := range strings.Split(f.Value, ",") {
-			cat = strings.TrimSpace(cat)
-			if cat != "" {
-				categories = append(categories, cat)
-			}
-		}
+	if f := card.Preferred(vcard.FieldCategories); f != nil {
+		categories = listElements(f.Value)
 	}
 
 	revision := ""
@@ -314,7 +309,7 @@ func setCategories(card vcard.Card, categories []string) {
 		delete(card, vcard.FieldCategories)
 		return
 	}
-	card[vcard.FieldCategories] = []*vcard.Field{{Value: strings.Join(valid, ",")}}
+	card[vcard.FieldCategories] = []*vcard.Field{{Value: listValue(valid)}}
 }
 
 // addressShown is the order the page shows an address's parts in, as
@@ -698,8 +693,14 @@ func registerRoutes(p *plugin) {
 				return
 			}
 			val = strings.TrimSpace(val)
+			// A list property is held as written (see listProperties), and the
+			// page shows and sends it as one line of text.
+			shown, written := func(f *vcard.Field) string { return f.Value }, val
+			if listProperties[field] {
+				shown, written = func(f *vcard.Field) string { return shownListValue(f.Value) }, writtenListValue(val)
+			}
 			f := card.Preferred(field)
-			if f != nil && name != "" && unseen(name, f.Value) {
+			if f != nil && name != "" && unseen(name, shown(f)) {
 				f = nil
 				if val == "" {
 					return
@@ -708,13 +709,13 @@ func registerRoutes(p *plugin) {
 			switch {
 			case f == nil:
 				if val != "" {
-					added := &vcard.Field{Value: val}
+					added := &vcard.Field{Value: written}
 					if field == vcard.FieldKey {
 						setKeyRepresentation(card, added, val)
 					}
 					addShown(card, field, added)
 				}
-			case strings.TrimSpace(f.Value) == val:
+			case strings.TrimSpace(shown(f)) == val:
 			case val == "":
 				var kept []*vcard.Field
 				for _, other := range card[field] {
@@ -731,7 +732,7 @@ func registerRoutes(p *plugin) {
 				if field == vcard.FieldKey {
 					setKeyRepresentation(card, f, val)
 				}
-				f.Value = val
+				f.Value = written
 			}
 		}
 
