@@ -1802,7 +1802,8 @@ func handleLogout(ctx *alps.Context) error {
 // the mailbox's listings are (see dropMailboxListings), which is every write
 // that changes what the mailbox holds, every count change and every explicit
 // refresh, and by a reply to one of its messages, which adds a member in Sent
-// (handleComposeNew).
+// (handleComposeNew). And served only while each folder it holds messages of
+// is held at the UIDVALIDITY they were read under (renumberedConversation).
 func threadCacheKey(mailbox, uid string) string {
 	return "thread:" + mailbox + ":" + uid
 }
@@ -1815,11 +1816,14 @@ func handleGetThread(ctx *alps.Context) error {
 
 	cache := ctx.Session.Cache()
 	if cached, ok := cache.Get(threadCacheKey(mboxName, uidStr)); ok {
-		if msgs, ok := cached.([]IMAPMessage); ok {
+		if msgs, ok := cached.([]IMAPMessage); ok && !renumberedConversation(cache, msgs) {
 			return ctx.JSON(http.StatusOK, map[string]interface{}{"Messages": msgs})
 		}
 	}
 
+	// The UIDVALIDITY of each folder the conversation holds messages of, as
+	// they are read.
+	validities := make(map[string]uint32)
 	var thread []provider.Message
 	err = ctx.Session.DoMailWithContext(ctx.Request.Context(), func(p provider.MailProvider) error {
 		uid, parseErr := p.ParseMessageID(uidStr)
@@ -1828,6 +1832,9 @@ func handleGetThread(ctx *alps.Context) error {
 		}
 		var threadErr error
 		thread, threadErr = messageThreadWithProvider(p, mboxName, uid, listedThreadUIDs(p, cache, mboxName, uidStr))
+		if threadErr == nil {
+			validities[mboxName] = partUIDValidity(ctx, p, mboxName, 0)
+		}
 		return threadErr
 	})
 	if err != nil {
@@ -1844,6 +1851,11 @@ func handleGetThread(ctx *alps.Context) error {
 	var lookErr error
 	err = ctx.Session.DoBackgroundMail(ctx.Request.Context(), func(p provider.MailProvider) error {
 		sent, lookErr = sentOfConversation(p, mboxName, thread, cachedSentMailbox(cache))
+		for _, m := range sent {
+			if _, read := validities[m.Mailbox]; !read && lookErr == nil {
+				validities[m.Mailbox] = partUIDValidity(ctx, p, m.Mailbox, 0)
+			}
+		}
 		return lookErr
 	})
 	// Not the look's own failure but the connection's, or a request given up
@@ -1860,6 +1872,7 @@ func handleGetThread(ctx *alps.Context) error {
 	msgs := make([]IMAPMessage, len(conversation))
 	for i, m := range conversation {
 		msgs[i] = providerMessageToIMAP(m)
+		msgs[i].UIDValidity = validities[msgs[i].Mailbox]
 	}
 
 	// A conversation without the user's replies, as the failed look left it,
@@ -1887,6 +1900,40 @@ func handleGetThread(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Messages": msgs,
 	})
+}
+
+// renumberedConversation reports whether a conversation the session keeps
+// holds a message read under another UIDVALIDITY than one the session now
+// holds of its folder, and drops what the session holds of such a folder.
+//
+// The conversation is kept by UID, and a folder deleted and made again
+// elsewhere gives its UIDs to other messages. A check for new mail or a
+// listing that sees the new UIDVALIDITY drops the conversations with the
+// folder's pages (dropRenumberedMailbox), but the folder list reads every
+// folder's counts again without looking at what the session holds of each, and
+// the conversation was then served as it was read: the reader showed the old
+// folder's message beside the new one's body, which is read by its UID under
+// the new UIDVALIDITY (handleGetPart).
+//
+// Which of the two is the newer is not known here, so everything the session
+// holds of the folder by UID goes, its pages among them: a page read under the
+// old UIDVALIDITY would give the conversation read again its old members
+// (listedThreadUIDs). A message whose UIDVALIDITY was not known is not asked.
+func renumberedConversation(cache *alps.Cache, msgs []IMAPMessage) bool {
+	// Asked once a folder: a conversation's messages are of one or two.
+	asked := make(map[string]uint32)
+	renumbered := false
+	for _, m := range msgs {
+		if m.UIDValidity == 0 || m.Mailbox == "" || asked[m.Mailbox] == m.UIDValidity {
+			continue
+		}
+		asked[m.Mailbox] = m.UIDValidity
+		if renumberedSince(heldUIDValidities(cache, m.Mailbox), m.UIDValidity) {
+			dropRenumberedMailbox(cache, m.Mailbox)
+			renumbered = true
+		}
+	}
+	return renumbered
 }
 
 // listedThreadUIDs answers which UIDs the conversation holds in this mailbox,
