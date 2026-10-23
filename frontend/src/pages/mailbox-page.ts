@@ -20,6 +20,7 @@ import { FOLDER_INBOX, FOLDER_ARCHIVE, FOLDER_JUNK, FOLDER_TRASH, encodeMailboxP
 import type { LayoutMode, DensityMode } from '../store/settings-store';
 import '../components/alps-initial-loader';
 import { Logger } from '../utils/logger';
+import { MessageCache } from '../utils/message-cache';
 import { getDestinationLabel, getFlexContainerMinWidth } from '../utils/ui';
 import { mailboxOf, messageKey, parseMessageKey, uidsByMailbox } from '../utils/message-key';
 
@@ -1311,13 +1312,42 @@ export class MailboxPage extends LitElement {
 
     // If the message is not on the current page (e.g. it shifted or we changed pages),
     // fetch its metadata directly from the backend so the reader can still display it.
+    //
+    // Asked for the view the reader shows, and kept where the reader looks
+    // first: the answer carries what the reader's own read of it would have,
+    // the part's text included, so the reader does not read the message
+    // again. Asked without the view and kept nowhere, the reader asked for
+    // the same message again the moment it was given it.
     if (!msg && this.messages.length > 0) {
       try {
-        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${currentTargetUid}`);
+        const view = this.settingsStore?.getState()?.preferredView || 'html';
+        // Taken before asking, as the reader takes it: an answer that lands
+        // after its user signed out is not kept for the next one.
+        const cacheGeneration = MessageCache.generation();
+        const metadataRes = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${currentTargetUid}?view=${view}`);
         if (metadataRes.ok) {
           const data = await metadataRes.json();
           if (data.Message) {
             msg = { ...data.Message, Mailbox: data.Message.Mailbox || mailbox };
+            // Kept as the reader keeps its own read, in the entry
+            // fetchItemBody in message-reader.ts writes; a change to the one
+            // belongs in the other. An answer whose part comes without its
+            // text, which the server leaves out when it cannot decode it, is
+            // not kept: the reader reads that message as it reads any other.
+            // A message with no text part has no text to wait for, and is.
+            const part = data.Part;
+            if ((!part || typeof data.Body === 'string') && MessageCache.generation() === cacheGeneration) {
+              const isHtml = !!part && (part.MIMEType || part.MimeType || 'text/plain').toLowerCase() === 'text/html';
+              MessageCache.set(msg.Mailbox, String(msg.UID), view, {
+                Message: data.Message,
+                Part: part,
+                Attachments: data.Attachments,
+                RawHtml: part && isHtml ? data.Body : undefined,
+                RawText: part && !isHtml ? data.Body : undefined,
+                HasHTML: !!data.HasHTML,
+                HasText: !!data.HasText,
+              });
+            }
           }
         }
       } catch (err) {
