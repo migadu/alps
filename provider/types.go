@@ -108,6 +108,20 @@ type Idler interface {
 	Idle(mailbox string, stop <-chan struct{}, started func()) error
 }
 
+// FolderWatcher is an Idler whose mail server can also tell it of the
+// mailboxes other than the one selected (IMAP NOTIFY, RFC 5465).
+type FolderWatcher interface {
+	// WatchFolders has the mail server tell, from now on, of the messages
+	// that arrive in the subscribed mailboxes or go from them, as of those of
+	// the mailbox selected, through OnMailboxNews; a flag changed is no news.
+	// It reports whether the server does: not when it cannot, or refused,
+	// which the error then says. begun says that it began to now: what
+	// changed before went unheard. The server may stop telling (Idle then
+	// returns), and the next call asks again. Any other error is the
+	// connection's, as Idle's.
+	WatchFolders() (watched, begun bool, err error)
+}
+
 // OutgoingMessageWriter is an interface for messages being sent
 type OutgoingMessageWriter interface {
 	WriteTo(w io.Writer) (int64, error)
