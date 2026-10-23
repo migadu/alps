@@ -31,6 +31,21 @@ const partsCacheTTL = time.Hour
 type partIMAPCommands struct {
 	mu     sync.Mutex
 	counts map[string]int
+	lines  []string // every command line, for a test that reads what was asked
+}
+
+// linesSince is the command lines sent after the first n.
+func (c *partIMAPCommands) linesSince(n int) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.lines[n:]...)
+}
+
+// lineCount is how many command lines have been sent.
+func (c *partIMAPCommands) lineCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.lines)
 }
 
 // snapshot is what has been counted so far.
@@ -67,6 +82,7 @@ func (l *commandLines) ClientBytes(p []byte) {
 		if end < 0 {
 			return
 		}
+		l.all.lines = append(l.all.lines, string(l.pending[:end]))
 		fields := strings.Fields(string(l.pending[:end]))
 		l.pending = l.pending[end+2:]
 		if len(fields) < 2 {
