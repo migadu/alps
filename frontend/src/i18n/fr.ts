@@ -254,6 +254,7 @@ export const fr = {
     emptyMailboxSlow: 'Vidage du dossier {folder} toujours en cours. Le serveur y travaille – revenez voir dans un instant.'
   },
   composer: {
+    windowLoadFailed: 'Impossible de charger la fenêtre du message.',
     discardFailed: 'Le brouillon n’a pas pu être supprimé du serveur et se trouve toujours dans les brouillons.',
     attachmentsTooLarge: 'Les pièces jointes dépassent la taille maximale autorisée.',
     draftSaveFailedKeepOpen: 'Impossible d’enregistrer ce brouillon — la fenêtre reste ouverte pour ne rien perdre',
