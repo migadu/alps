@@ -84,6 +84,38 @@ async function typeNickname(el: El, saved: ReturnType<typeof vi.spyOn>): Promise
 }
 
 describe('Edit pressed before the open card has been read', () => {
+  it('ignores an older read after switching away and reopening the same card', async () => {
+    const reads: Array<(card: any) => void> = [];
+    const el = await page(() => new Promise((resolve) => { reads.push(resolve); }));
+    const other = { path: '/book/ada.vcf', uid: 'uA', name: 'Ada', etag: 'v1' };
+    void el.selectContact(row, false); await settle(el);
+    void el.selectContact(other, false); await settle(el);
+    void el.selectContact(row, false); await settle(el);
+    reads[0]({ ...full, note: 'Old read', etag: 'v0' }); await settle(el);
+    await pressEdit(el);
+    expect(el.isEditing).toBe(false);
+    reads[2]({ ...full, note: 'Current read', etag: 'v2' }); await settle(el);
+    expect(el.isEditing).toBe(true);
+    expect(view(el).editForm.note).toBe('Current read');
+    reads[1](other); await settle(el);
+    expect(el.selectedContact.etag).toBe('v2');
+  });
+
+  it('does not carry an old Edit gesture into a reopened card', async () => {
+    const reads: Array<(card: any) => void> = [];
+    const el = await page(() => new Promise((resolve) => { reads.push(resolve); }));
+    const other = { path: '/book/ada.vcf', uid: 'uA', name: 'Ada', etag: 'v1' };
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    void el.selectContact(row, false); await settle(el); await pressEdit(el);
+    void el.selectContact(other, false); await settle(el);
+    void el.selectContact(row, false); await settle(el);
+    reads[0](full); await settle(el);
+    reads[2]({ ...full, etag: 'v2' }); await settle(el);
+    expect(el.isEditing).toBe(false);
+    expect(toasts).toHaveLength(0);
+    reads[1](other); await settle(el);
+  });
+
   it('opens the editor on the card as read, and saves all of it', async () => {
     let answer!: (card: any) => void;
     const el = await page(() => new Promise((resolve) => { answer = resolve; }));
