@@ -25,6 +25,7 @@ export default {
     categoryDeleteOneFailed: 'Jedan kontakt nije mogao biti ažuriran, pa je kategorija samo delimično uklonjena.',
     categoryUpdateOneFailed: 'Kontakt nije mogao biti ažuriran.',
     saveFailed: 'Kontakt nije mogao biti sačuvan.',
+    loadFailed: 'Kontakt nije mogao biti učitan, pa se još ne može urediti.',
     saveConflict: 'Kontakt je izmenjen na drugom uređaju, pa vaša izmena nije sačuvana. Otkažite izmenu da biste videli najnoviju verziju.',
     starFailed: {
       one: 'Nije bilo moguće ažurirati {count} kontakt od ukupno {total}.',

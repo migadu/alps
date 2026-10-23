@@ -21,6 +21,7 @@ export default {
     categoryDeleteOneFailed: 'En kontakt kunne ikke opdateres, så kategorien blev kun delvist fjernet.',
     categoryUpdateOneFailed: 'Kontakten kunne ikke opdateres.',
     saveFailed: 'Kontakten kunne ikke gemmes.',
+    loadFailed: 'Kontakten kunne ikke indlæses, så den kan ikke redigeres endnu.',
     saveConflict: 'Kontakten er blevet ændret på en anden enhed, så din ændring blev ikke gemt. Annuller redigeringen for at se den nyeste version.',
     starFailed: {
       one: '{count} af {total} kontakter kunne ikke opdateres.',
