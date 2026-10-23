@@ -19,15 +19,21 @@ type selectingServer struct {
 
 	mu       sync.Mutex
 	selected string // on the last connection
+	countFor func(string) string
 }
 
 func newSelectingServer(t *testing.T) *selectingServer {
+	t.Helper()
+	return newSelectingServerWithCounts(t, nil)
+}
+
+func newSelectingServerWithCounts(t *testing.T, countFor func(string) string) *selectingServer {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := &selectingServer{ln: ln}
+	srv := &selectingServer{ln: ln, countFor: countFor}
 	var conns []net.Conn
 	var connsMu sync.Mutex
 	go func() {
@@ -90,7 +96,11 @@ func (srv *selectingServer) serve(c net.Conn) {
 			srv.mu.Lock()
 			srv.selected = name
 			srv.mu.Unlock()
-			say("* " + mbox.count + " EXISTS")
+			count := mbox.count
+			if srv.countFor != nil {
+				count = srv.countFor(name)
+			}
+			say("* " + count + " EXISTS")
 			say("* OK [UIDVALIDITY " + mbox.validity + "] ok")
 			say("* OK [UIDNEXT 100] ok")
 			say(tag + " OK [READ-WRITE] selected")
@@ -197,5 +207,29 @@ func TestIdle_NewsOfWhatChangedMeanwhileNamesTheMailboxSelected(t *testing.T) {
 	p.tellWhatChangedMeanwhile("INBOX")
 	if news := h.await(t); len(news) != 1 || news[0] != "INBOX" {
 		t.Fatalf("the news named %v, want INBOX", news)
+	}
+}
+
+// A fresh SELECT of the same named mailbox can replace an older snapshot
+// with another count before go-imap publishes that snapshot.
+func TestSelectedMailbox_AReselectUsesItsOwnFreshCount(t *testing.T) {
+	var next int
+	srv := newSelectingServerWithCounts(t, func(string) string {
+		next++
+		if next%2 == 0 {
+			return "0"
+		}
+		return "3"
+	})
+	p := srv.dial(t)
+	for i := 0; i < 60000; i++ {
+		data, err := p.selectMailbox("INBOX")
+		if err != nil {
+			t.Fatal(err)
+		}
+		selected := p.selectedMailbox()
+		if selected == nil || selected.NumMessages != data.NumMessages {
+			t.Fatalf("reselect %d: fresh count %d, selected snapshot %+v", i, data.NumMessages, selected)
+		}
 	}
 }

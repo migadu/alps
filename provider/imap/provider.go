@@ -535,6 +535,16 @@ func (p *IMAPProvider) selectMailbox(mailbox string) (*imap.SelectData, error) {
 	p.selectedUIDValidity = data.UIDValidity
 	p.selectedUIDNext = data.UIDNext
 	p.selects++
+	// A reselect of the same name can leave an older count in the client
+	// until its reader finishes publishing this SELECT. Names alone cannot
+	// distinguish those snapshots. A following command's answer is a
+	// barrier; only this ambiguous disagreement needs the extra round trip.
+	if current := p.client.Mailbox(); current != nil && current.Name == mailbox && current.NumMessages != data.NumMessages {
+		if err := p.answeredWithin("mailbox state after SELECT", func() error { return p.client.Noop().Wait() }); err != nil {
+			p.selected = nil
+			return nil, err
+		}
+	}
 	return data, nil
 }
 
