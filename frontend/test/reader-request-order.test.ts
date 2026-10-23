@@ -67,6 +67,8 @@ let asked: string[];
 let background: string[];
 /** Body reads held open, so what the reader does NEXT is visible. */
 let release: Map<string, () => void>;
+/** Test-owned reads, including conversation work a completed body starts. */
+let pendingReads: Set<Promise<unknown>>;
 
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -85,6 +87,18 @@ beforeEach(() => {
   asked = [];
   background = [];
   release = new Map();
+  pendingReads = new Set();
+  const prototype = customElements.get('alps-message-reader')!.prototype as El;
+  for (const method of ['fetchItemBody', 'loadConversation']) {
+    const read = prototype[method];
+    vi.spyOn(prototype, method).mockImplementation(function (this: El, ...args: any[]) {
+      const running = read.apply(this, args) as Promise<unknown>;
+      pendingReads.add(running);
+      const finished = () => { pendingReads.delete(running); };
+      void running.then(finished, finished);
+      return running;
+    });
+  }
 
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url);
@@ -109,10 +123,18 @@ beforeEach(() => {
   }));
 });
 
-afterEach(() => {
-  for (const resolve of release.values()) resolve();
+async function settleReaderReads() {
+  // Disconnect before releasing: no more queued members may start. A released
+  // metadata response can still decode and ask for /raw; keep this test's fetch
+  // stub installed until those reads and their follow-on conversation settle.
   cleanup();
   MessageCache.clear();
+  for (const resolve of release.values()) resolve();
+  while (pendingReads.size) await Promise.allSettled([...pendingReads]);
+}
+
+afterEach(async () => {
+  await settleReaderReads();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -219,6 +241,45 @@ describe('opening a conversation', () => {
     // one leaked and it failed, on timing, about once in three runs.
     expect(members()).toEqual(readSoFar);
   });
+});
+
+it('waits for released metadata to finish decoding before teardown restores the fetch stub', async () => {
+  const fetch = vi.mocked(globalThis.fetch).getMockImplementation()!;
+  let finishMetadata!: () => void;
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    const response = await fetch(url, init);
+    if (String(url).includes('/messages/1?view=')) {
+      const parse = response.json.bind(response);
+      response.json = () => new Promise((resolve, reject) => {
+        finishMetadata = () => { void parse().then(resolve, reject); };
+      });
+    }
+    return response;
+  }));
+  await openConversation();
+  await waitFor(() => release.has('10'), 'the open message');
+  release.get('10')!();
+  await waitFor(() => release.has('1'), 'the first member');
+  release.get('1')!();
+  await waitFor(() => !!finishMetadata, 'the pending metadata decode');
+
+  let settled = false;
+  const settling = settleReaderReads().then(() => { settled = true; });
+  try {
+    await Promise.resolve();
+    expect(settled).toBe(false);
+  } finally {
+    finishMetadata();
+    await settling;
+    // Release the held response even when the assertion fails, so this
+    // regression's own teardown cannot hang or leak into another test.
+    while (pendingReads.size) await Promise.allSettled([...pendingReads]);
+  }
+
+  // The old stub served the final raw request. It cannot enter the next
+  // test's recorder and turn that test's metadata/raw pair into three reads.
+  expect(asked.filter(url => url.includes('/messages/1/raw'))).toHaveLength(1);
+  expect(pendingReads.size).toBe(0);
 });
 
 describe('an answer that lands after the reader has gone', () => {
