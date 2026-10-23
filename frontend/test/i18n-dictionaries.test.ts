@@ -969,18 +969,19 @@ const NAMES_IN_SENTENCES: Record<string, string[]> = {
   it: ['Posta in arrivo', 'Cestino', 'Risposta automatica', 'Filtri', 'Rispondi a', 'Ccn', 'Internet', 'A-Z', 'Z-A'],
   fr: ['Réponse automatique', 'Filtres', 'Reply-To', 'Cci', 'Internet', 'Ko', 'A-Z', 'Z-A'],
   es: ['Bandeja de entrada', 'Borradores', 'Papelera', 'Respuesta automática', 'Filtros', 'Reply-To', 'Internet', 'A-Z', 'Z-A'],
+  // The Drafts folder only after "em": elsewhere "rascunhos" is the plural of a draft.
+  pt: ['Lixeira', 'em Rascunhos', 'Resposta automática', 'Filtros', 'Cco', 'Internet', 'A-Z', 'Z-A'],
 };
 
 const nameIn = (name: string) => new RegExp(`(?<![\\p{L}-])${name}(?![\\p{L}-])`, 'gu');
 
 /**
  * The words of a string that take a capital in English title case only.
- * Italian, French and Spanish capitalise a title or a button on its first
- * word, as the rest of alps's Italian, French and Spanish do ("Rispondi a
- * tutti", "Répondre à tous", "Responder a todos"), and go on in small letters
- * after a colon; an acronym such as GPG keeps its capitals, and so does a
- * name. A name stands in as a word of small letters, so the word after it is
- * still read as the sentence's second.
+ * Italian, French, Spanish and Portuguese capitalise a title or a button on
+ * its first word ("Rispondi a tutti", "Répondre à tous", "Responder a
+ * todos"), and go on in small letters after a colon; an acronym such as GPG
+ * keeps its capitals, and so does a name. A name stands in as a word of small
+ * letters, so the word after it is still read as the sentence's second.
  */
 function titleCaseSlips(text: string, names: string[]): string[] {
   let plain = text.replace(/\{[^}]*\}/g, ' ').replace(/"[^"]*"/g, ' ');
@@ -990,7 +991,7 @@ function titleCaseSlips(text: string, names: string[]): string[] {
       .filter((word) => /^\p{Lu}/u.test(word) && !/\p{Lu}/u.test(word.slice(1))));
 }
 
-describe('capitals in Italian, French and Spanish', () => {
+describe('capitals in Italian, French, Spanish and Portuguese', () => {
   it('has a rule that catches English title case and spares acronyms, names and new sentences', () => {
     const italian = (text: string) => titleCaseSlips(text, NAMES_IN_SENTENCES.it);
     expect(italian('Genera Nuova Coppia di Chiavi')).toEqual(['Nuova', 'Coppia', 'Chiavi']);
@@ -1029,12 +1030,25 @@ describe('capitals in Italian, French and Spanish', () => {
     ]) {
       expect(spanish(text), text).toEqual([]);
     }
+
+    const portuguese = (text: string) => titleCaseSlips(text, NAMES_IN_SENTENCES.pt);
+    expect(portuguese('Gerar Novo Par de Chaves')).toEqual(['Novo', 'Par', 'Chaves']);
+    expect(portuguese('Endereço de E-mail')).toEqual(['E']);
+    expect(portuguese('Descartar Rascunhos?')).toEqual(['Rascunhos']);
+    expect(portuguese('Não é possível criptografar: Chaves públicas ausentes para:\n{keys}')).toEqual(['Chaves']);
+    for (const text of [
+      'Tem certeza de que deseja mover "{folder}" para a Lixeira?', 'Sempre me enviar Cco em e-mails enviados',
+      'Não foi possível excluir o rascunho do servidor e ele ainda está em Rascunhos.', 'Classificar A-Z',
+    ]) {
+      expect(portuguese(text), text).toEqual([]);
+    }
   });
 
   it.each(Object.keys(NAMES_IN_SENTENCES))('%s capitalises only a sentence\'s first word and names, in every dictionary', (code) => {
     // Each took the English habit of a capital on every word of a title or a
     // button: "Importa Coppia di Chiavi GPG Esistente" in the GPG plugin,
-    // "Nouvelle Règle" in the filters, "Nuevo Mensaje" in the composer.
+    // "Nouvelle Règle" in the filters, "Nuevo Mensaje" in the composer,
+    // "Mudar Senha" in the password settings.
     const slips = stringsOf(code)
       .map(([where, text]) => [where, text, titleCaseSlips(text, NAMES_IN_SENTENCES[code])] as const)
       .filter(([, , words]) => words.length > 0)
