@@ -223,7 +223,18 @@ func (s *Session) WatchInbox() *InboxWatch {
 		}
 		w.watchers[ch] = struct{}{}
 		if w.watching != nil {
-			ch <- InboxWatched
+			// A background transition removes its connection before taking
+			// w.mu to clear watching. Check ownership while announcing it,
+			// including that gap. The lock order is w.mu then bg.mu;
+			// background transitions release bg.mu before connectionGone.
+			bg := &s.background
+			bg.mu.Lock()
+			if bg.p == w.watching {
+				ch <- InboxWatched
+			} else {
+				w.watching = nil
+			}
+			bg.mu.Unlock()
 		}
 		if !w.running {
 			if w.kick == nil {
@@ -246,8 +257,27 @@ func (s *Session) unwatchInbox(ch chan InboxEvent) {
 	delete(w.watchers, ch)
 	close(ch)
 	if len(w.watchers) == 0 {
+		// Nobody waits for the news from now on, though the IDLE has yet to
+		// end: a watch begun next is told once an IDLE has begun for it.
+		w.watching = nil
 		w.interruptLocked()
 		w.kickLocked()
+	}
+}
+
+// connectionGone says that p is no longer the session's background
+// connection: dropped, closed, or handed over to the session's own work. A
+// watch begun after is not told that the IDLE is up (InboxWatched) until one
+// has begun again, on another connection: told of p's, a page would take
+// news to come that nothing waited for.
+func (w *inboxPush) connectionGone(p provider.MailProvider) {
+	if p == nil {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.watching == p {
+		w.watching = nil
 	}
 }
 

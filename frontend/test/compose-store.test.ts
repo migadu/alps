@@ -40,6 +40,7 @@ afterEach(() => {
     window.removeEventListener('session-cleared', s.handleSessionCleared);
     window.removeEventListener('user-logged-in', s.adoptSession);
     window.removeEventListener('alps-active-user-changed', s.adoptSession);
+    window.removeEventListener('pagehide', s.flushOnPageHide);
     if (s.saveTimeout !== null) window.clearTimeout(s.saveTimeout);
   }
   localStorage.clear();
@@ -158,6 +159,65 @@ describe('leaving', () => {
     store.clearAllComposers();
     expect(composers(store)).toEqual([]);
     expect(storedDrafts('ada')).toHaveLength(1);
+  });
+
+  it('writes an edit not yet saved as the page goes', () => {
+    // The store writes half a second after the last change, and a reload or
+    // a closed tab within it took that much of what was typed with it.
+    signIn('ada');
+    const store = makeStore();
+    store.openComposer({ subject: 'Engines' });
+    store.updateComposer(composers(store)[0].id, { subject: 'Engines and looms' });
+
+    window.dispatchEvent(new Event('pagehide'));
+
+    expect(storedDrafts('ada').map((c: any) => c.subject)).toEqual(['Engines and looms']);
+  });
+
+  it('keeps the pending edit when the login screen clears the composers before departure', () => {
+    vi.useFakeTimers();
+    signIn('ada');
+    const store = makeStore();
+    store.openComposer({ subject: 'Engines' });
+    store.updateComposer(composers(store)[0].id, { subject: 'Engines and looms' });
+
+    store.clearAllComposers();
+    window.dispatchEvent(new Event('pagehide'));
+    vi.advanceTimersByTime(501);
+
+    expect(composers(store)).toEqual([]);
+    expect(storedDrafts('ada').map((c: any) => c.subject)).toEqual(['Engines and looms']);
+  });
+
+  it('a reload with no composers on the login screen leaves the stored drafts alone', () => {
+    signIn('ada');
+    const store = makeStore();
+    store.openComposer({ subject: 'keep me' });
+    store.clearAllComposers();
+
+    expect(store.persistNow()).toBe(true);
+
+    expect(storedDrafts('ada').map((c: any) => c.subject)).toEqual(['keep me']);
+  });
+
+  it('writes nothing as the page goes when no save is pending', () => {
+    // The login screen clears the windows from memory only, and a sign-out
+    // erases the disk copy: written as the page went, the emptied list would
+    // have replaced the drafts on disk, and an erased draft come back.
+    signIn('ada');
+    const store = makeStore();
+    store.openComposer({ subject: 'keep me' });
+    store.clearAllComposers();
+    window.dispatchEvent(new Event('pagehide'));
+    expect(storedDrafts('ada').map((c: any) => c.subject)).toEqual(['keep me']);
+
+    signIn('grace');
+    const other = makeStore();
+    other.openComposer({ subject: 'first' });
+    other.updateComposer(composers(other)[0].id, { subject: 'edited' });
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    window.dispatchEvent(new Event('pagehide'));
+    expect(localStorage.getItem('alps_compose_drafts_grace')).toBeNull();
   });
 });
 
@@ -435,6 +495,27 @@ describe('saving everything at sign-out', () => {
     await expect(store.saveAllDirtyDrafts()).rejects.toBeInstanceOf(DraftFlushError);
 
     expect(composers(store)[0]).toMatchObject({ text: 'first draft, and more', dirty: true, draftUid: '8', draftMailbox: 'Drafts' });
+  });
+
+  it('keeps open a reopened draft edited while its save was out, its quote shown from the draft it stored', async () => {
+    // Its quote's images are read from the draft, which the save replaced.
+    signIn('ada@example.com');
+    const store = makeStore();
+    const structure = { Children: [{ Type: 'text', Subtype: 'html' }, { ID: '<chart@remote.test>' }] };
+    store.openComposer({
+      subject: 'Engines', to: ['charles@example.com'], text: 'first', draftUid: '7', draftMailbox: 'Drafts',
+      quoteSource: { mailbox: 'Drafts', uid: '7', structure: {} },
+    });
+    const id = composers(store)[0].id;
+    store.updateComposer(id, { text: 'first draft' });
+    vi.spyOn(messageOperations, 'saveDraft').mockImplementationOnce(async () => {
+      store.updateComposer(id, { text: 'first draft, and more' });
+      return { uid: '8', mailbox: 'Drafts', structure } as any;
+    });
+
+    await expect(store.saveAllDirtyDrafts()).rejects.toBeInstanceOf(DraftFlushError);
+
+    expect(composers(store)[0]).toMatchObject({ draftUid: '8', quoteSource: { mailbox: 'Drafts', uid: '8', structure } });
   });
 
   it('keeps the unsaved drafts on disk through a sign-out it was told to keep them for', async () => {

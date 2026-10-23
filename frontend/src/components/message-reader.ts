@@ -2291,12 +2291,21 @@ export class MessageReader extends LitElement {
       textBody = htmlToPlainText(rawMessageHtml);
     }
 
-    const attachments = (itemAttachments || []).map((a: any) => ({
+    const files = (itemAttachments || []).map((a: any) => ({
       name: a.Filename || 'attachment',
       size: a.Size || 0,
       type: a.MIMEType || 'application/octet-stream',
       partPath: a.Path ? a.Path.join('.') : undefined
     }));
+    // And the draft's own images, which the server's attachment list leaves
+    // out as the body's: the parts its HTML shows, by the draft's paths, as a
+    // reply carries the ones its quote shows (see inlinePartsOf). Left out,
+    // the next save, which builds the new draft's parts from this one, stored
+    // the draft without them, and a send delivered it with broken images.
+    const attachments = [
+      ...files,
+      ...inlinePartsOf(msg.BodyStructure, rawMessageHtml || '').filter(part => !files.some((f: any) => f.partPath === part.partPath)),
+    ];
 
     this.composeStore.openComposer({
       draftUid: msg.UID.toString(),

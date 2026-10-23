@@ -3,6 +3,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/components/app-root';
+import * as appUpdate from '../src/services/app-update';
 import { cleanup, mount, waitFor } from './helpers/dom';
 
 // See floating-composer-send.test.ts: the picker builds its grid on connect.
@@ -102,5 +103,99 @@ describe('the composer warmed while the app is idle', () => {
     idle.forEach(callback => callback());
 
     expect(load).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the update offer', () => {
+  it('writes what was just typed to disk before its Reload', async () => {
+    // The store writes half a second after the last change, and Reload,
+    // pressed within it, took that much of what was typed with it.
+    localStorage.setItem('alps_active_user', 'ada@example.com');
+    let onDisk: string | null = null;
+    const reload = vi.spyOn(appUpdate, 'applyUpdate').mockImplementation(() => {
+      onDisk = localStorage.getItem('alps_compose_drafts_ada@example.com');
+    });
+    const root = await mount<El>('app-root');
+    const store = root.composeStore;
+    store.openComposer({ subject: 'Engines' });
+    store.updateComposer(store.getState().activeComposers[0].id, { subject: 'Engines and looms' });
+
+    window.dispatchEvent(new CustomEvent(appUpdate.UPDATE_AVAILABLE_EVENT));
+    await waitFor(() => !!root.shadowRoot!.querySelector('alps-toast'), 'the offer');
+    const offer = root.shadowRoot!.querySelector('alps-toast') as El;
+    await offer.updateComplete;
+    (offer.shadowRoot!.querySelector('alps-button') as HTMLElement).click();
+
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(onDisk!).map((c: any) => c.subject)).toEqual(['Engines and looms']);
+  });
+
+  it('Reload on the login screen leaves its preserved local drafts intact', async () => {
+    document.cookie = 'alps_logged_in=1; path=/';
+    history.replaceState(null, '', '#/mailbox/INBOX');
+    localStorage.setItem('alps_active_user', 'ada@example.com');
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(
+      url === '/session' ? { Username: 'ada@example.com', EnabledPlugins: [] }
+        : url === '/settings' ? { Settings: { language: 'en' } }
+        : { Messages: [], Total: 0, Mailboxes: [] },
+    )));
+    let onDisk: string | null = null;
+    const reload = vi.spyOn(appUpdate, 'applyUpdate').mockImplementation(() => {
+      onDisk = localStorage.getItem('alps_compose_drafts_ada@example.com');
+    });
+    try {
+      const root = await mount<El>('app-root');
+      const store = root.composeStore;
+      store.openComposer({ subject: 'Keep this draft' });
+      window.location.hash = '#/login';
+      await waitFor(() => !!root.shadowRoot!.querySelector('login-page') && !store.getState().activeComposers.length, 'the login screen to clear the windows');
+      expect(JSON.parse(localStorage.getItem('alps_compose_drafts_ada@example.com')!).map((c: any) => c.subject)).toEqual(['Keep this draft']);
+
+      window.dispatchEvent(new CustomEvent(appUpdate.UPDATE_AVAILABLE_EVENT));
+      await waitFor(() => !!root.shadowRoot!.querySelector('alps-toast'), 'the offer');
+      const offer = root.shadowRoot!.querySelector('alps-toast') as El;
+      await offer.updateComplete;
+      (offer.shadowRoot!.querySelector('alps-button') as HTMLElement).click();
+      window.dispatchEvent(new Event('pagehide'));
+
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(onDisk!).map((c: any) => c.subject)).toEqual(['Keep this draft']);
+      expect(JSON.parse(localStorage.getItem('alps_compose_drafts_ada@example.com')!).map((c: any) => c.subject)).toEqual(['Keep this draft']);
+    } finally {
+      document.cookie = 'alps_logged_in=; path=/; max-age=0';
+      history.replaceState(null, '', '#/');
+    }
+  });
+
+  it('keeps the page when the composers cannot be written, and says so', async () => {
+    // Reloaded all the same, they would open again from what the disk held
+    // before, or not at all.
+    localStorage.setItem('alps_active_user', 'ada@example.com');
+    const reload = vi.spyOn(appUpdate, 'applyUpdate').mockImplementation(() => {});
+    const root = await mount<El>('app-root');
+    const store = root.composeStore;
+    store.openComposer({ subject: 'Engines' });
+    store.updateComposer(store.getState().activeComposers[0].id, { subject: 'Engines and looms' });
+    const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Quota exceeded', 'QuotaExceededError'); });
+
+    window.dispatchEvent(new CustomEvent(appUpdate.UPDATE_AVAILABLE_EVENT));
+    await waitFor(() => !!root.shadowRoot!.querySelector('alps-toast'), 'the offer');
+    const offer = root.shadowRoot!.querySelector('alps-toast') as El;
+    await offer.updateComplete;
+    await waitFor(() => offer.show, 'the visible offer');
+    (offer.shadowRoot!.querySelector('alps-button') as HTMLElement).click();
+
+    expect(reload).not.toHaveBeenCalled();
+    await waitFor(() => (Array.from(root.shadowRoot!.querySelectorAll('alps-toast')) as El[])
+      .some(t => t.message === 'Could not save this draft — the window stays open so nothing is lost'), 'the word that it stays');
+    await root.updateComplete;
+    await offer.updateComplete;
+    expect(offer.show).toBe(true);
+
+    // The same real button is still available once storage can accept the copy.
+    storage.mockRestore();
+    (offer.shadowRoot!.querySelector('alps-button') as HTMLElement).click();
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem('alps_compose_drafts_ada@example.com')!).map((c: any) => c.subject)).toEqual(['Engines and looms']);
   });
 });
