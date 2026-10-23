@@ -474,6 +474,7 @@ export class MessageReader extends LitElement {
     super.connectedCallback();
     window.addEventListener('external-message-flags-changed', this._handleExternalFlagsChanged);
     window.addEventListener('draft-discarded', this._handleDraftDiscarded);
+    window.addEventListener('draft-autosaved', this._handleDraftAutosaved);
     this.updateComplete.then(() => {
       if (!this.isConnected) return;
       this.settingsStore?.addEventListener('change', this._handleSettingsChange);
@@ -500,6 +501,7 @@ export class MessageReader extends LitElement {
     if (this.scrollTimer) clearTimeout(this.scrollTimer);
     this.scrollTimer = null;
     window.removeEventListener('draft-discarded', this._handleDraftDiscarded);
+    window.removeEventListener('draft-autosaved', this._handleDraftAutosaved);
     super.disconnectedCallback();
   }
 
@@ -518,6 +520,42 @@ export class MessageReader extends LitElement {
     const key = messageKey(detail.mailbox, detail.uid);
     if (this.threadItems.some(item => this.itemKey(item) === key)) this.dropCard(key);
     if (this.keyOf(this.message) === key) this.dispatchEvent(new CustomEvent('close'));
+  };
+
+  /**
+   * A draft on screen here was saved again, which stores it under a new UID
+   * and deletes the old one.
+   *
+   * The page follows the save in its list and in the open message, but the
+   * conversation the server named and the cards drawn from it kept the old
+   * UID. With the draft open, the conversation no longer matched it and
+   * collapsed to the draft alone, the draft's card emptied until it was read
+   * again; with another message open, the old draft came back as a second card
+   * beside the list's new one; and a discard, named by the new UID, left the
+   * card on screen. The draft is renumbered here, before the page's update
+   * arrives, its card keeping what it has loaded.
+   */
+  private _handleDraftAutosaved = (e: Event) => {
+    const detail = (e as CustomEvent<{ oldUid?: string; oldMailbox?: string; newUid?: string | number; mailbox?: string }>).detail;
+    if (!detail?.oldUid || detail.newUid == null || !detail.mailbox) return;
+    const mailbox = detail.mailbox;
+    const uid = String(detail.newUid);
+    const from = messageKey(detail.oldMailbox || mailbox, detail.oldUid);
+    const to = messageKey(mailbox, uid);
+    if (from === to) return;
+    const renumbered = (m: any) => ({ ...m, UID: uid, Mailbox: mailbox });
+
+    if (this._conversation && (this._conversation.key === from || this._conversation.messages.some(m => this.keyOf(m) === from))) {
+      this._conversation = {
+        key: this._conversation.key === from ? to : this._conversation.key,
+        messages: this._conversation.messages.map(m => (this.keyOf(m) === from ? renumbered(m) : m)),
+      };
+    }
+    if (this.threadItems.some(item => this.itemKey(item) === from)) {
+      this.threadItems = this.threadItems.map(item =>
+        this.itemKey(item) === from ? { ...item, mailbox, message: renumbered(item.message) } : item);
+    }
+    if (this.scrolledToKey === from) this.scrolledToKey = to;
   };
 
   private _handleExternalFlagsChanged = (e: Event) => {
