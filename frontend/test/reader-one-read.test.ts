@@ -121,4 +121,18 @@ describe('opening a message', () => {
     expect(el.content).toBe('read again with /raw');
     expect(rawReads()).toEqual(['/mailboxes/INBOX/messages/5/raw?part=1']);
   });
+
+  it.each([[null], [[]]])('asks for the one part of a single-part message as part 1, when the answer gives it the path %j', async (Path) => {
+    // The server names the whole message, with no path, when its one part is
+    // not the text it looks for first. The reader asked /raw for "part=null"
+    // or "part=", which is refused, and showed no text.
+    answer = {
+      Message: message, Part: { Path, MIMEType: 'text/plain' }, Attachments: [],
+      HasHTML: false, HasText: true,
+    };
+    const el = await openMessage('text');
+
+    expect(el.content).toBe('read again with /raw');
+    expect(rawReads()).toEqual(['/mailboxes/INBOX/messages/5/raw?part=1']);
+  });
 });

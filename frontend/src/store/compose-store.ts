@@ -1,10 +1,10 @@
 import { createContext } from '@lit/context';
 import { messageOperations, MissingUploadsError } from '../services/message-operations';
 import { activeUsername, ownAddress, readUserSettings } from './settings-store';
-import { abortUploads } from '../utils/attachment-utils';
+import { abortUploads, inlinePartsOf } from '../utils/attachment-utils';
 import { Logger } from '../utils/logger';
 import { appendReplyFields } from '../utils/reply-context';
-import { escapeHtml } from '../utils/html-sanitizer';
+import { cidReferencesOf, escapeHtml, withoutCidReferences } from '../utils/html-sanitizer';
 import { DraftFlushError } from '../utils/draft-flush-error';
 import { canonicalRecipient } from '../utils/address-display';
 
@@ -80,7 +80,8 @@ export const reconcileSavedAttachments = (latest: any[], sent: any[], stored: an
   }
   return latest.map(a => {
     const key = sourceKey(a);
-    return (key && sentKeys.has(key) && storedFrom.get(key)) || a;
+    const stored = key && sentKeys.has(key) && storedFrom.get(key);
+    return stored ? { ...stored, ...(a.contentId && { contentId: a.contentId }) } : a;
   });
 };
 
@@ -109,6 +110,41 @@ export const keptAfterSave = (attachments: any[], saved: ComposerInstance): any[
 };
 
 /**
+ * A successful text save discarded its inline parts. The retained rich quote
+ * must stop naming them too, including while the user has switched back and
+ * typed in HTML during the save. Keep those edits and every other resource.
+ */
+export const discardedInlineAfterSave = (
+  latest: ComposerInstance, saved: ComposerInstance, stored: { structure?: unknown } = {},
+): Partial<ComposerInstance> => {
+  if (saved.format !== 'text') return {};
+  const omitted = (saved.attachments || []).filter(a => a.inline);
+  if (!omitted.length) return {};
+  const lost = new Set<string>(omitted.map(a => a.contentId).filter(Boolean));
+  if (omitted.some(a => !a.contentId)) {
+    // Older local drafts predate stable Content-ID metadata. The new draft's
+    // structure says which references still have a part, including a normal
+    // forwarded file linked by CID, which the plain-text save kept.
+    if (stored.structure) {
+      const kept = new Set(inlinePartsOf(stored.structure, saved.html || '').map(a => a.contentId));
+      for (const id of cidReferencesOf(saved.html || '')) if (!kept.has(id)) lost.add(id);
+    } else if (!saved.draftUid || (saved.quoteSource?.uid === saved.draftUid && saved.quoteSource?.mailbox === saved.draftMailbox)) {
+      // The original/current source still uses these paths. Never guess from
+      // an old original after earlier saves have renumbered the attachments.
+      const paths = new Set(omitted.filter(a => !a.contentId).map(a => a.partPath));
+      for (const part of inlinePartsOf(saved.quoteSource?.structure, saved.html || '')) {
+        if (paths.has(part.partPath) && part.contentId) lost.add(part.contentId);
+      }
+    }
+  }
+  if (!lost.size) return {};
+  return {
+    html: withoutCidReferences(latest.html || '', lost),
+    discardedInlineIds: [...new Set([...(latest.discardedInlineIds || []), ...lost])],
+  };
+};
+
+/**
  * Where the quote's images are shown from once a save of `saved` has stored
  * a new draft, or undefined where that does not change. A composer editing a
  * draft shows them from that draft, which the save has replaced: the source
@@ -125,6 +161,15 @@ export const quoteSourceAfterSave = (
   if (!source || !saved.draftUid || source.uid !== saved.draftUid || source.mailbox !== saved.draftMailbox) return undefined;
   return { mailbox: stored.mailbox, uid: stored.uid, structure: stored.structure ?? source.structure };
 };
+
+/**
+ * The paths of the parts a save or a send posts as the body's own, its
+ * quote's images, for the server to write into the body: it took a part
+ * filed as an attachment, as Outlook and Apple Mail file their inline images,
+ * for a file by that disposition, and wrote it beside the body.
+ */
+export const inlinePartPaths = (posted: any[]): string =>
+  posted.filter(a => a.inline && a.partPath).map(a => a.partPath).join(',');
 
 const isBlockedAddress = (addr: string): boolean => {
   const lowerEmail = bareAddress(addr);
@@ -165,6 +210,8 @@ export interface ComposerInstance {
   zIndex?: number;
   attachments?: any[];
   quoteSource?: QuoteSource;
+  /** Inline resources a committed text save deliberately left out. */
+  discardedInlineIds?: string[];
   dirty?: boolean;
   draftUid?: string;
   draftMailbox?: string;
@@ -535,7 +582,16 @@ export class ComposeStore extends EventTarget {
           (updates.html || '') !== (c.html || '')) isDirtyUpdate = true;
 
       const newDirty = 'dirty' in updates ? updates.dirty : (edit && isDirtyUpdate ? true : c.dirty);
-      return { ...c, ...updates, dirty: newDirty };
+      // Content the composer made itself is the message as it opened, while
+      // the text is still the opening text: the opening text moves with it.
+      // An answer opens with its text as the quote's `> ` lines, which the
+      // editor's own text, taken as no edit, does not have; left behind,
+      // every later test of a message still as it opened found it changed.
+      const opening = !edit && (c.text || '') === (c.initialText || '') ? {
+        ...('text' in updates && { initialText: updates.text }),
+        ...('html' in updates && { initialHtml: updates.html }),
+      } : {};
+      return { ...c, ...updates, ...opening, dirty: newDirty };
     });
     this.state = { ...this.state, activeComposers: composers };
     this.debouncedSaveDrafts();
@@ -676,6 +732,7 @@ export class ComposeStore extends EventTarget {
               draftMailbox: saved.mailbox,
               ...(attachments !== current.attachments && { attachments }),
               ...(quoteSource && { quoteSource }),
+              ...discardedInlineAfterSave(current, composer, saved),
             });
             failed = true;
             continue;
@@ -754,6 +811,8 @@ export class ComposeStore extends EventTarget {
 
     const prev = attachments.map(a => a.partPath).filter(Boolean).join(',');
     if (prev) formData.append('prev_attachments', prev);
+    const inline = inlinePartPaths(attachments);
+    if (inline) formData.append('inline_attachments', inline);
 
     if (composer.draftMailbox) formData.append('draft_mailbox', composer.draftMailbox);
     if (composer.draftUid) formData.append('draft_uid', composer.draftUid);

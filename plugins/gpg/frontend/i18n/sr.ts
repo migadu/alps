@@ -38,6 +38,7 @@ export default {
     importMissing: 'I javni i privatni blokovi su obavezni za uvoz.',
     generateFailed: 'Generisanje ključeva nije uspelo: {error}',
     importFailed: 'Uvoz nije uspeo: {error}',
+    purgeFailed: 'Brisanje ključeva nije uspelo: {error}',
     importFailedTitle: 'Uvoz nije uspeo',
     passphraseMismatch: 'Lozinke se ne poklapaju. Pokušajte ponovo.',
     missingPublicKeys: 'Nije moguće kriptovati poruku: Nedostaju javni ključevi za:\n{keys}',

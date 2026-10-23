@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/components/message-reader';
 import {
-  cleanup, click, installMatchMedia, installResizeObserver, installScrollIntoView, mount, record, shadow, shadowAll, text, waitFor,
+  cleanup, click, flush, installMatchMedia, installResizeObserver, installScrollIntoView, mount, record, shadow, shadowAll, text, update, waitFor,
 } from './helpers/dom';
 import { MessageCache } from '../src/utils/message-cache';
 
@@ -68,6 +68,9 @@ let bodyStatus: Record<string, number>;
 let conversation: boolean;
 let textPart: boolean;
 let bodyReads: string[];
+/** A mailbox whose next body request is held until the test answers it. */
+let holdNext: string | null;
+let release: ((response: Response) => void) | null;
 const attachments = [{ Filename: 'figures.csv', MIMEType: 'text/csv', Size: 120, Path: [2] }];
 
 beforeEach(() => {
@@ -79,6 +82,8 @@ beforeEach(() => {
   conversation = false;
   textPart = true;
   bodyReads = [];
+  holdNext = null;
+  release = null;
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const u = String(url);
     if (u.startsWith('/mailboxes/INBOX/messages/7/thread')) {
@@ -87,6 +92,10 @@ beforeEach(() => {
     const raw = /^\/mailboxes\/(\w+)\/messages\/\d+\/raw/.exec(u);
     if (raw) {
       bodyReads.push(raw[1]);
+      if (holdNext === raw[1]) {
+        holdNext = null;
+        return new Promise<Response>((resolve) => { release = resolve; });
+      }
       const status = bodyStatus[raw[1]];
       return status === 200 ? new Response(`the ${raw[1]} body`, { status }) : new Response('Bad Gateway', { status });
     }
@@ -243,5 +252,134 @@ describe('Edit draft on a draft whose body failed to load', () => {
       await el.updateComplete;
       expect(shadowAll(el, '.reader-load-error')).toHaveLength(1);
     });
+  }
+});
+
+// Reply, Reply All and Forward stay on screen above the load error too, and
+// took the body the reader held, none: a reply quoted nothing, and a forward
+// went out without the original's text.
+describe('an answer to a message whose body failed to load', () => {
+  const answerFrom = {
+    'the toolbar': (el: El, action: string) => el._handleAction(action),
+    'its card': (el: El, action: string) => el._handleActionForItem(action, el.threadItems[0]),
+  };
+
+  for (const [from, answer] of Object.entries(answerFrom)) {
+    for (const action of ['reply', 'replyAll', 'forward']) {
+      it(`${action} from ${from} reads the body again and quotes it`, async () => {
+        const composeStore = { openComposer: vi.fn() };
+        const el = await open(message, composeStore);
+        expect(shadowAll(el, '.reader-load-error')).toHaveLength(1);
+
+        bodyStatus.INBOX = 200;
+        await answer(el, action);
+
+        expect(composeStore.openComposer).toHaveBeenCalledTimes(1);
+        const opened = composeStore.openComposer.mock.calls[0][0];
+        expect(opened.text).toContain('the INBOX body');
+        if (action === 'forward') expect(opened.attachments).toEqual([expect.objectContaining({ name: 'figures.csv', partPath: '2' })]);
+        expect(bodyReads).toEqual(['INBOX', 'INBOX']);
+      });
+    }
+
+    it(`from ${from}, says so and opens no composer when the body still cannot be read`, async () => {
+      const composeStore = { openComposer: vi.fn() };
+      const el = await open(message, composeStore);
+      const toasts = record<CustomEvent>(window, 'show-toast');
+
+      await answer(el, 'reply');
+
+      expect(composeStore.openComposer).not.toHaveBeenCalled();
+      expect(bodyReads).toEqual(['INBOX', 'INBOX']);
+      expect(toasts.map(e => e.detail.message)).toEqual(['messageReader.loadError']);
+    });
+  }
+});
+
+// An answer or Edit draft waits for the body it reads again. The reader it
+// was asked of could leave the page meanwhile, the account could change, or
+// the message be closed and opened again: the body read for the old intent
+// then opened a composer for it all the same, with the old message's text,
+// source and files.
+describe('an answer or a draft waiting for its body to be read again', () => {
+  const actions = {
+    'Forward from the toolbar': { msg: () => message, run: (el: El) => el._handleAction('forward') },
+    'Forward from its card': { msg: () => message, run: (el: El) => el._handleActionForItem('forward', el.threadItems[0]) },
+    'Edit draft from the banner': { msg: () => draft, run: (el: El) => el._handleEditDraft() },
+    'Edit draft from its card': { msg: () => draft, run: (el: El) => el._handleEditDraft(el.threadItems[0]) },
+  };
+  const transitions = {
+    'the reader leaves the page': async (el: El) => { el.remove(); },
+    'the account changes': async () => { MessageCache.clear(); },
+    'the message is closed and opened again': async (el: El, msg: any) => {
+      el.message = null;
+      await el.updateComplete;
+      el.message = msg;
+      await el.updateComplete;
+    },
+  };
+
+  for (const [name, action] of Object.entries(actions)) {
+    for (const [transition, happen] of Object.entries(transitions)) {
+      it(`${name} opens nothing once ${transition}`, async () => {
+        const msg = action.msg();
+        bodyStatus[msg.Mailbox] = 500;
+        const composeStore = { openComposer: vi.fn() };
+        const el = await open(msg, composeStore);
+        const toasts = record<CustomEvent>(window, 'show-toast');
+
+        holdNext = msg.Mailbox;
+        const waiting = action.run(el);
+        await waitFor(() => release !== null, 'the body read again');
+        bodyStatus[msg.Mailbox] = 200;
+        await happen(el, msg);
+        release!(new Response(`the old ${msg.Mailbox} body`, { status: 200 }));
+        await waiting;
+        await flush();
+
+        expect(composeStore.openComposer).not.toHaveBeenCalled();
+        expect(toasts).toEqual([]);
+        if (transition === 'the account changes') expect(el.content).not.toBe(`the old ${msg.Mailbox} body`);
+      });
+    }
+  }
+});
+
+describe('a body action awaiting a retry belongs to its opening and account', () => {
+  const actions = {
+    'toolbar forward': { draft: false, run: (el: El) => el._handleAction('forward') },
+    'card forward': { draft: false, run: (el: El) => el._handleActionForItem('forward', el.threadItems[0]) },
+    'banner Edit Draft': { draft: true, run: (el: El) => el._handleEditDraft() },
+    'card Edit Draft': { draft: true, run: (el: El) => el._handleEditDraft(el.threadItems[0]) },
+  };
+  for (const [name, action] of Object.entries(actions)) {
+    for (const departure of ['disconnected', 'account cleared', 'closed and reopened'] as const) {
+      it(`${name} does not open a composer after ${departure}`, async () => {
+        const source = action.draft ? draft : message;
+        bodyStatus[source.Mailbox] = 500;
+        const composeStore = { openComposer: vi.fn() };
+        const el = await open(source, composeStore);
+        const normal = fetch;
+        let answer!: (value: Response) => void;
+        vi.stubGlobal('fetch', vi.fn((input: any, init?: any) =>
+          String(input).startsWith(`/mailboxes/${source.Mailbox}/messages/${source.UID}/raw`)
+            ? new Promise<Response>(resolve => { answer = resolve; }) : normal(input, init)));
+        const pending = action.run(el);
+        await waitFor(() => !!answer, 'the retried body');
+        if (departure === 'disconnected') el.remove();
+        else if (departure === 'account cleared') MessageCache.clear();
+        else {
+          await update(el, { message: null });
+          await update(el, { message: source });
+        }
+        answer(new Response('old opening body', { status: 200 }));
+        await pending;
+        expect(composeStore.openComposer).not.toHaveBeenCalled();
+        if (departure === 'account cleared') {
+          expect(el.content).not.toContain('old opening body');
+          expect(MessageCache.get(source.Mailbox, source.UID, 'text')).toBeNull();
+        }
+      });
+    }
   }
 });
