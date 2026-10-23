@@ -796,6 +796,29 @@ func (s *Session) putAttachments(composerID string, files []*multipart.FileHeade
 	up.held.Store(1)
 	defer up.release()
 
+	// Refuse a request whose session has already ended before making room
+	// for it in the shared cache. putAttachment checks again under the
+	// lock in case teardown runs while the upload is being stored.
+	s.attachmentsLocker.Lock()
+	gone := s.attachmentsGone
+	s.attachmentsLocker.Unlock()
+	if gone {
+		return nil, ErrSessionExpired
+	}
+
+	// All files must fit together. Otherwise storing a later file can
+	// evict an earlier one from this request and answer an unusable UUID.
+	// Subtraction also avoids overflowing the total for an oversized batch.
+	var total int64
+	for _, fh := range files {
+		for _, limit := range []int64{s.manager.maxAttachmentSize, s.manager.maxSessionAttachmentSize, s.manager.maxGlobalAttachmentSize} {
+			if fh.Size > limit-total {
+				return nil, ErrAttachmentCacheSize
+			}
+		}
+		total += fh.Size
+	}
+
 	ids := make([]string, 0, len(files))
 	for _, fh := range files {
 		id, err := s.putAttachment(composerID, fh, form, up)

@@ -105,3 +105,28 @@ func TestHTTP_ARefusedUploadOfSeveralFilesLeavesNoneBehind(t *testing.T) {
 		t.Fatalf("the next upload answered %d %v, as though the refused one had left a file behind", status, ids)
 	}
 }
+
+func TestHTTP_AnUploadCannotReturnFilesItEvictedFromItsOwnBatch(t *testing.T) {
+	for _, limit := range []string{"session", "global"} {
+		t.Run(limit, func(t *testing.T) {
+			s := newTestServerWithOptions(t, "smtp://127.0.0.1:1", alps.NewLogger(), func(o *alps.Options) {
+				o.MaxAttachmentMiB = 2
+				if limit == "session" {
+					o.MaxSessionAttachmentMiB = 1
+				} else {
+					o.MaxGlobalAttachmentMiB = 1
+				}
+			})
+			s.login()
+			big := strings.Repeat("x", 700<<10)
+			status, ids := s.uploadTogether([2]string{"first.bin", big}, [2]string{"second.bin", big})
+			if status != http.StatusBadRequest || len(ids) != 0 {
+				t.Fatalf("impossible batch answered %d %v", status, ids)
+			}
+			status, ids = s.uploadTogether([2]string{"fits.bin", big})
+			if status != http.StatusOK || len(ids) != 1 {
+				t.Fatalf("next fitting upload answered %d %v", status, ids)
+			}
+		})
+	}
+}
