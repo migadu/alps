@@ -389,6 +389,82 @@ describe('a stored draft emptied to blank', () => {
   });
 });
 
+describe('a plain-text draft opened in HTML', () => {
+  // A draft saved as plain text has no HTML part, and the composer makes one
+  // of its text as it opens in HTML. Until an edit nothing did, and a save or
+  // a send carried the text/plain part alone. The part made is no edit of the
+  // user's: counted as one, opening the draft stored it again, under a new
+  // UID, with nothing changed.
+
+  /** The window, once its composer has opened and made the HTML part. */
+  async function open() {
+    const { store, instance, id } = composerIn({ draftUid: '7', draftMailbox: 'Drafts', text: 'Hi Ada', html: '', format: 'html' });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    const body = el.shadowRoot!.querySelector('alps-message-composer') as El;
+    await body.updateComplete;
+    return { store, id, el, body };
+  }
+
+  it('has its HTML part, and is not saved again for being opened', async () => {
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft');
+    vi.useFakeTimers();
+    const { store, id } = await open();
+
+    expect(store.getComposer(id)?.html).toContain('>Hi Ada</p>');
+    expect(store.getComposer(id)?.dirty).toBe(false);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(saveDraft).not.toHaveBeenCalled();
+  });
+
+  it('is sent with its HTML part straight away', async () => {
+    const sendDraft = vi.spyOn(messageOperations, 'sendDraft').mockResolvedValue(true);
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const { el } = await open();
+
+    const sending = el._handleSend();
+    await waitFor(() => toasts.length > 0, 'the undo toast');
+    toasts[0].detail.dismissFn();
+    await sending;
+
+    const form = sendDraft.mock.calls[0][0] as FormData;
+    expect(form.get('html')).toEqual(expect.stringContaining('>Hi Ada</p>'));
+    expect(form.get('text')).toBe('Hi Ada');
+  });
+
+  it('is saved with its HTML part once it is edited', async () => {
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const { store, id, el, body } = await open();
+
+    body.editor.chain().insertContentAt(body.editor.state.doc.content.size, '<p>See you</p>').run();
+    expect(store.getComposer(id)?.dirty).toBe(true);
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(saveDraft).toHaveBeenCalledTimes(1);
+    expect(sentForm(0).get('html')).toContain('>Hi Ada</p>');
+    expect(sentForm(0).get('html')).toContain('>See you</p>');
+  });
+
+  it('closes without a save', async () => {
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft');
+    const { store, id, el } = await open();
+
+    await el._handleCloseClick();
+
+    expect(saveDraft).not.toHaveBeenCalled();
+    expect(store.getComposer(id)).toBeUndefined();
+  });
+
+  it('is not saved by the sign-out flush', async () => {
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft');
+    const { store, id } = await open();
+
+    await store.saveAllDirtyDrafts();
+
+    expect(saveDraft).not.toHaveBeenCalled();
+    expect(store.getComposer(id)).toBeUndefined();
+  });
+});
+
 describe('an upload the server no longer holds', () => {
   const answer = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
