@@ -754,6 +754,28 @@ func (p *Provider) MoveMessages(sourceMailbox, destMailbox string, ids []provide
 	return res, errors.Join(errs...)
 }
 
+// copyMessageTo publishes a copy only after both reading and writing finish.
+func copyMessageTo(message *maildir.Message, target maildir.Dir) (*maildir.Message, error) {
+	src, err := message.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+	stored, w, err := target.Create(message.Flags())
+	if err != nil {
+		return nil, err
+	}
+	if _, err := io.Copy(w, src); err != nil {
+		abandon(stored, w)
+		return nil, err
+	}
+	if err := w.Close(); err != nil {
+		abandon(stored, w)
+		return nil, err
+	}
+	return stored, nil
+}
+
 // CopyMessages copies the messages, and answers the ID of each copy, as
 // MoveMessages does.
 func (p *Provider) CopyMessages(sourceMailbox, destMailbox string, ids []provider.MessageID) (map[provider.MessageID]provider.MessageID, error) {
@@ -766,7 +788,9 @@ func (p *Provider) CopyMessages(sourceMailbox, destMailbox string, ids []provide
 		m, err := messageByKey(src, id.String())
 		var copied *maildir.Message
 		if err == nil {
-			copied, err = m.CopyTo(dst)
+			// CopyTo closes its writer even after a read error, publishing
+			// an empty or partial copy. Only a completed copy may reach cur.
+			copied, err = copyMessageTo(m, dst)
 		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("copying %s: %w", id, err))
