@@ -619,6 +619,7 @@ export const sr = {
       no_security_key: 'Prvo dodajte bezbednosni ključ.',
       trust_failed: 'Podešavanje nije moguće promeniti. Pokušajte ponovo.',
       remove_unavailable: 'Bezbednosni ključ trenutno nije moguće ukloniti. Pokušajte ponovo za trenutak.',
+      load_failed: 'Podešavanja bezbednosnih ključeva nije moguće učitati.',
       general: 'Došlo je do greške.',
     },
     settings: {

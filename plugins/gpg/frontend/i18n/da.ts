@@ -22,6 +22,7 @@ export default {
     publicKey: 'Offentlig nøgle',
     purgeKeys: 'Slet nøglepar',
     generateNewKeypair: 'Generér nyt nøglepar',
+    generating: 'Genererer nøglepar...',
     enableEncryptionDesc: 'For at bruge end-to-end-kryptering med kontakter, der understøtter det, skal du have et GPG-nøglepar.',
     noKeyPresent: 'Ingen nøgle',
     passphraseRequiredLabel: 'Adgangssætning (påkrævet)',

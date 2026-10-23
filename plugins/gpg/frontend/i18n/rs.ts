@@ -22,6 +22,7 @@ export default {
     publicKey: 'Јавни кључ',
     purgeKeys: 'Обриши пар кључева',
     generateNewKeypair: 'Генериши нови пар кључева',
+    generating: 'Генерисање пара кључева...',
     enableEncryptionDesc: 'Да бисте омогућили енд-то-енд крипцију са контактима који је подржавају, потребан вам је GPG пар кључева.',
     noKeyPresent: 'Нема кључева',
     passphraseRequiredLabel: 'Лозинка (обавезно)',

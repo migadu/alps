@@ -22,6 +22,7 @@ export default {
     publicKey: 'Public Key',
     purgeKeys: 'Purge Keypair',
     generateNewKeypair: 'Generate New Keypair',
+    generating: 'Generating keypair...',
     enableEncryptionDesc: "To enable end-to-end encryption between contacts that support it, you'll need a GPG keypair.",
     noKeyPresent: 'No key present',
     passphraseRequiredLabel: 'Passphrase (Required)',

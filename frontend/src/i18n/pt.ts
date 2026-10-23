@@ -159,6 +159,7 @@ export const pt = {
       no_security_key: 'Adicione primeiro uma chave de segurança.',
       trust_failed: 'Não foi possível alterar a configuração. Tente novamente.',
       remove_unavailable: 'Não foi possível remover a chave de segurança neste momento. Tente novamente daqui a pouco.',
+      load_failed: 'Não foi possível carregar as configurações das chaves de segurança.',
       general: 'Ocorreu um erro.',
     },
     settings: {

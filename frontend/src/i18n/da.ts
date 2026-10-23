@@ -168,6 +168,7 @@ export const da: TranslationDictionary = {
       no_security_key: 'Tilføj først en sikkerhedsnøgle.',
       trust_failed: 'Indstillingen kunne ikke ændres. Prøv igen.',
       remove_unavailable: 'Sikkerhedsnøglen kunne ikke fjernes lige nu. Prøv igen om et øjeblik.',
+      load_failed: 'Indstillingerne for sikkerhedsnøgler kunne ikke indlæses.',
       general: 'Der opstod en fejl.',
     },
     settings: {

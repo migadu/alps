@@ -22,6 +22,7 @@ export default {
     publicKey: 'Chave pública',
     purgeKeys: 'Limpar par de chaves',
     generateNewKeypair: 'Gerar novo par de chaves',
+    generating: 'Gerando o par de chaves...',
     enableEncryptionDesc: 'Para habilitar a criptografia de ponta a ponta entre contatos que a suportam, você precisará de um par de chaves GPG.',
     noKeyPresent: 'Nenhuma chave presente',
     passphraseRequiredLabel: 'Senha (obrigatório)',

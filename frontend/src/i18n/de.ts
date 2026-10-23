@@ -603,6 +603,7 @@ export const de: TranslationDictionary = {
       no_security_key: 'Fügen Sie zuerst einen Sicherheitsschlüssel hinzu.',
       trust_failed: 'Die Einstellung konnte nicht geändert werden. Bitte versuchen Sie es erneut.',
       remove_unavailable: 'Der Sicherheitsschlüssel konnte gerade nicht entfernt werden. Bitte versuchen Sie es gleich noch einmal.',
+      load_failed: 'Die Einstellungen für Sicherheitsschlüssel konnten nicht geladen werden.',
       general: 'Ein Fehler ist aufgetreten.',
     },
     settings: {
