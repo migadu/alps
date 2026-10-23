@@ -269,7 +269,8 @@ export const THEME_BUNDLES: Record<string, ThemeBundle> = {
     tokens: {
       ...MIGADU_TOKENS,
       'accent-fill': '#2563eb',
-      'accent-fill-hover': '#3b82f6',
+      // Darken on hover so the button's white text keeps 4.5:1 contrast.
+      'accent-fill-hover': '#1d4ed8',
       'bg-unread': '#38bdf80d',
       'bg-unread-hover': '#38bdf817',
       'scrollbar-thumb': '#254380',
