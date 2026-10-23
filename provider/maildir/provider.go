@@ -403,8 +403,13 @@ func (p *Provider) ParseMessageID(id string) (provider.MessageID, error) {
 
 // A key identifies one entry, before the Maildir flag suffix. Refuse path
 // components even when an internal caller constructs an ID directly.
+//
+// A backslash is not refused where it is no path separator: a delivery writes
+// a "/" or ":" in its host's name as \057 or \072, as go-maildir does, and a
+// key with one was listed and could not be opened. ":" is refused as the
+// separator of the key from the flags.
 func messageKey(key string) bool {
-	return key != "" && key != "." && key != ".." && !strings.ContainsAny(key, "/\\:\x00")
+	return key != "" && key != "." && key != ".." && !strings.ContainsAny(key, "/:\x00"+string(os.PathSeparator))
 }
 
 // Map maildir flags to provider flags
