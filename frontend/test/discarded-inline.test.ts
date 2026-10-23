@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cidReferencesOf, withoutCidReferences } from '../src/utils/html-sanitizer';
-import { discardedInlineAfterSave } from '../src/store/compose-store';
+import { discardedInlineAfterSave, reconcileSavedAttachments } from '../src/store/compose-store';
 
 describe('inline resources discarded by a text save', () => {
   it('removes only the discarded URLs across supported resource and link attributes', () => {
@@ -25,10 +25,46 @@ describe('inline resources discarded by a text save', () => {
   });
 
   it('does not remove new resources or references after HTML saves', () => {
-    const saved = { id: 'a', format: 'text' as const, html: '<img src="cid:old">', attachments: [{ partPath: '2', inline: true }] };
+    const saved = { id: 'a', format: 'text' as const, html: '<img src="cid:old">', attachments: [{ partPath: '2', inline: true, contentId: 'old' }] };
     const latest = { ...saved, format: 'html' as const, html: '<b>new words</b><img src="cid:old"><img src="cid:new">' };
     expect(discardedInlineAfterSave(latest, saved)).toEqual({ html: '<b>new words</b><img><img src="cid:new">', discardedInlineIds: ['old'] });
     expect(discardedInlineAfterSave(latest, { ...saved, format: 'html' })).toEqual({});
     expect(discardedInlineAfterSave(latest, { ...saved, attachments: [] })).toEqual({});
+  });
+});
+
+
+describe('the identities of discarded inline parts', () => {
+  const html = '<img src="cid:image"><a href="cid:file">Download report</a>';
+  const file = { name: 'report.txt', partPath: '3' };
+  const image = { name: 'chart.png', partPath: '2', inline: true, contentId: 'image' };
+  const saved = { id: 'a', format: 'text' as const, html, attachments: [file, image] };
+
+  it('keeps a retained normal attachment link when an inline image was omitted', () => {
+    expect(discardedInlineAfterSave(saved, saved)).toEqual({
+      html: '<img><a href="cid:file">Download report</a>', discardedInlineIds: ['image'],
+    });
+  });
+
+  it('carries the stable Content-ID through draft part-path renumbering', () => {
+    const mapped = reconcileSavedAttachments([image], [image], [{ name: 'chart.png', inline: true, partPath: '1.2', source: { partPath: '2' } }]);
+    expect(mapped).toEqual([{ name: 'chart.png', inline: true, partPath: '1.2', contentId: 'image' }]);
+  });
+
+  it('uses readback structure to distinguish kept files in legacy descriptors', () => {
+    const legacy = { ...saved, attachments: [file, { ...image, contentId: undefined }] };
+    expect(discardedInlineAfterSave(legacy, legacy, { structure: { Children: [{ Type: 'text', Subtype: 'plain' }, { ID: '<file>' }] } })).toEqual({
+      html: '<img><a href="cid:file">Download report</a>', discardedInlineIds: ['image'],
+    });
+  });
+
+  it('uses original paths for a legacy composer that has never been saved', () => {
+    const legacy = { ...saved, attachments: [file, { ...image, contentId: undefined }], quoteSource: { mailbox: 'INBOX', uid: '1', structure: { Children: [{}, { ID: '<image>' }, { ID: '<file>' }] } } };
+    expect(discardedInlineAfterSave(legacy, legacy)).toMatchObject({ discardedInlineIds: ['image'] });
+  });
+
+  it('does not guess CID identity from renumbered legacy paths after readback failure', () => {
+    const legacy = { ...saved, draftUid: '9', draftMailbox: 'Drafts', attachments: [file, { ...image, partPath: '1.2', contentId: undefined }], quoteSource: { mailbox: 'INBOX', uid: '1', structure: { Children: [{ ID: '<file>' }] } } };
+    expect(discardedInlineAfterSave(legacy, legacy)).toEqual({});
   });
 });

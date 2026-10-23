@@ -185,6 +185,8 @@ export interface CarriedPart {
   type: string;
   partPath: string;
   inline?: boolean;
+  /** Stable across draft saves, whose part paths are renumbered. */
+  contentId?: string;
 }
 
 /**
@@ -235,6 +237,7 @@ export function inlinePartsOf(structure: any, quote: string): CarriedPart[] {
         type: node.Type && node.Subtype ? `${node.Type}/${node.Subtype}`.toLowerCase() : 'application/octet-stream',
         partPath: path || '1',
         inline: true,
+        contentId: String(node.ID).replace(/^<|>$/g, ''),
       });
     }
     if (Array.isArray(node.Children)) {

@@ -391,7 +391,7 @@ export class AlpsFloatingComposer extends LitElement {
         // The quote of a draft being edited follows the draft: see quoteSourceAfterSave.
         const quoteSource = quoteSourceAfterSave(currentInstance, result);
         if (quoteSource) updates.quoteSource = quoteSource;
-        Object.assign(updates, discardedInlineAfterSave(latest, currentInstance));
+        Object.assign(updates, discardedInlineAfterSave(latest, currentInstance, result));
         this.composeStore.updateComposer(this.instance.id, updates);
 
         // If the composer became dirty while saving, or new attachments were added, schedule another save

@@ -1242,3 +1242,37 @@ test('Edit Draft reads and preserves HTML while both preferred formats are plain
   expect(sent.data).toContain('cell A');
   expect((await page.request.put('/settings', { headers: origin, data: { compose_format: 'html', preferred_view: 'html' } })).ok()).toBe(true);
 });
+
+for (const savedAsHtml of [false, true]) {
+  test(`a retained file's CID link survives a text save that drops its inline image (prior HTML save: ${savedAsHtml})`, async ({ page }) => {
+    const subject = `File link and image ${Date.now()}`;
+    const file = { filename: 'manual.txt', contents: `manual bytes ${unique()}` };
+    const raw = htmlMail(subject, file)
+      .replace('</body>', '<a href="cid:manual@remote.test">Open manual</a></body>')
+      .replace('Content-Disposition: attachment; filename="manual.txt"', 'Content-Disposition: attachment; filename="manual.txt"\r\nContent-ID: <manual@remote.test>');
+    await deliver({ subject, raw });
+    await login(page);
+    await openHtmlMessage(page, subject);
+    await chooseFromMoreMenu(page, 'Forward');
+    await addTo(page, USER.address);
+    if (savedAsHtml) {
+      const editor = composer(page).locator('.ProseMirror');
+      await editor.locator('p').first().click();
+      await editor.pressSequentially('Rich first. ');
+      await savedAgain(page, undefined);
+    }
+    const previousUid = await composer(page).evaluate(el => (el as HTMLElement & { instance: { draftUid?: string } }).instance.draftUid);
+    await composer(page).getByRole('button', { name: 'Toggle Formatting Options', exact: true }).click();
+    const textarea = composer(page).locator('alps-message-composer textarea');
+    await textarea.press('ControlOrMeta+Home');
+    await textarea.pressSequentially('Text saved. ');
+    await savedAgain(page, previousUid);
+    await composer(page).getByRole('button', { name: 'Toggle Formatting Options', exact: true }).click();
+    await sendNow(page);
+    const sent = await sentWithSubject(`Fwd: ${subject}`);
+    expect(htmlPart(sent)).toContain('href="cid:manual@remote.test"');
+    expect(htmlPart(sent)).not.toContain('cid:chart@remote.test');
+    expect(mimeOutline(sent.data)).toContain('Content-Id: <manual@remote.test>');
+    expect(sent.data).toContain(Buffer.from(file.contents).toString('base64'));
+  });
+}

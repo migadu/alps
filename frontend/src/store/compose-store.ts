@@ -1,7 +1,7 @@
 import { createContext } from '@lit/context';
 import { messageOperations, MissingUploadsError } from '../services/message-operations';
 import { activeUsername, ownAddress, readUserSettings } from './settings-store';
-import { abortUploads } from '../utils/attachment-utils';
+import { abortUploads, inlinePartsOf } from '../utils/attachment-utils';
 import { Logger } from '../utils/logger';
 import { appendReplyFields } from '../utils/reply-context';
 import { cidReferencesOf, escapeHtml, withoutCidReferences } from '../utils/html-sanitizer';
@@ -80,7 +80,8 @@ export const reconcileSavedAttachments = (latest: any[], sent: any[], stored: an
   }
   return latest.map(a => {
     const key = sourceKey(a);
-    return (key && sentKeys.has(key) && storedFrom.get(key)) || a;
+    const stored = key && sentKeys.has(key) && storedFrom.get(key);
+    return stored ? { ...stored, ...(a.contentId && { contentId: a.contentId }) } : a;
   });
 };
 
@@ -113,9 +114,29 @@ export const keptAfterSave = (attachments: any[], saved: ComposerInstance): any[
  * must stop naming them too, including while the user has switched back and
  * typed in HTML during the save. Keep those edits and every other resource.
  */
-export const discardedInlineAfterSave = (latest: ComposerInstance, saved: ComposerInstance): Partial<ComposerInstance> => {
-  if (saved.format !== 'text' || !saved.attachments?.some(a => a.inline)) return {};
-  const lost = cidReferencesOf(saved.html || '');
+export const discardedInlineAfterSave = (
+  latest: ComposerInstance, saved: ComposerInstance, stored: { structure?: unknown } = {},
+): Partial<ComposerInstance> => {
+  if (saved.format !== 'text') return {};
+  const omitted = (saved.attachments || []).filter(a => a.inline);
+  if (!omitted.length) return {};
+  const lost = new Set<string>(omitted.map(a => a.contentId).filter(Boolean));
+  if (omitted.some(a => !a.contentId)) {
+    // Older local drafts predate stable Content-ID metadata. The new draft's
+    // structure says which references still have a part, including a normal
+    // forwarded file linked by CID, which the plain-text save kept.
+    if (stored.structure) {
+      const kept = new Set(inlinePartsOf(stored.structure, saved.html || '').map(a => a.contentId));
+      for (const id of cidReferencesOf(saved.html || '')) if (!kept.has(id)) lost.add(id);
+    } else if (!saved.draftUid || (saved.quoteSource?.uid === saved.draftUid && saved.quoteSource?.mailbox === saved.draftMailbox)) {
+      // The original/current source still uses these paths. Never guess from
+      // an old original after earlier saves have renumbered the attachments.
+      const paths = new Set(omitted.filter(a => !a.contentId).map(a => a.partPath));
+      for (const part of inlinePartsOf(saved.quoteSource?.structure, saved.html || '')) {
+        if (paths.has(part.partPath) && part.contentId) lost.add(part.contentId);
+      }
+    }
+  }
   if (!lost.size) return {};
   return {
     html: withoutCidReferences(latest.html || '', lost),
@@ -711,7 +732,7 @@ export class ComposeStore extends EventTarget {
               draftMailbox: saved.mailbox,
               ...(attachments !== current.attachments && { attachments }),
               ...(quoteSource && { quoteSource }),
-              ...discardedInlineAfterSave(current, composer),
+              ...discardedInlineAfterSave(current, composer, saved),
             });
             failed = true;
             continue;
