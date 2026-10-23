@@ -113,9 +113,16 @@ func (s *imapStore) key(key string) string {
 // over it, so an entry that one version of alps could not read was replaced
 // with defaults. A decode error keeps the json error for errors.As; for a
 // value of the wrong type, encoding/json has still filled in the rest.
+//
+// An entry that is not there is cached too, as an empty one. An account that
+// never saved its settings has none, and every page listed reads them: each
+// read was a GETMETADATA.
 func (s *imapStore) Get(key string, out interface{}) error {
 	var cached json.RawMessage
 	if err := s.cache.Get(key, &cached); err == nil {
+		if len(cached) == 0 {
+			return provider.ErrNoStoreEntry
+		}
 		return decodeStoreEntry(key, cached, out)
 	} else if !errors.Is(err, provider.ErrNoStoreEntry) {
 		return err
@@ -128,6 +135,9 @@ func (s *imapStore) Get(key string, out interface{}) error {
 	entries := data.Entries
 	v, ok := entries[s.key(key)]
 	if !ok || v == nil || len(*v) == 0 || string(*v) == "NIL" {
+		if err := s.cache.Put(key, json.RawMessage{}); err != nil {
+			return err
+		}
 		return provider.ErrNoStoreEntry
 	}
 	raw := bytes.Clone(*v)
@@ -171,7 +181,7 @@ func (s *imapStore) Put(key string, v interface{}) error {
 	}
 
 	if bPtr == nil {
-		return s.cache.Put(key, nil)
+		return s.cache.Put(key, json.RawMessage{})
 	}
 	return s.cache.Put(key, json.RawMessage(*bPtr))
 }

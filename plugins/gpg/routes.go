@@ -20,8 +20,11 @@ func registerRoutes(p *alps.GoPlugin) {
 			return alps.NewHTTPError(http.StatusUnauthorized, "not logged in")
 		}
 
+		// Read as the server holds it now: a keyring saved from another
+		// session since this one first looked is the one to show, and the one
+		// a client that saves the whole keyring back must start from.
 		var keyring Keyring
-		err := ctx.Session.Store().Get("gpg_keys", &keyring)
+		err := provider.GetFresh(ctx.Session.Store(), "gpg_keys", &keyring)
 		if errors.Is(err, provider.ErrNoStoreEntry) {
 			// Return empty 200 OK if no keys are found
 			return ctx.JSON(http.StatusOK, Keyring{})

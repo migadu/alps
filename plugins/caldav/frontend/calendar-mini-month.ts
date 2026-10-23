@@ -1,5 +1,5 @@
-import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { LitElement, html, css, nothing, type PropertyValues } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { isAllDayEvent } from './calendar-service';
@@ -21,6 +21,13 @@ export class CalendarMiniMonth extends LitElement {
     
     // An optional date to treat as the "current" selection
     @property({ type: Object }) currentDate?: Date;
+
+    /** The day the arrow keys last moved to, or the one last picked, which
+     * holds the month's one Tab stop while it is on the grid. */
+    @state() private focusDay: Date | null = null;
+
+    /** Whether one of the days had the focus when this update began. */
+    private dayHadFocus = false;
 
     static styles = css`
         :host {
@@ -146,11 +153,72 @@ export class CalendarMiniMonth extends LitElement {
     }
 
     private handleDateClick(d: Date) {
+        this.focusDay = d;
         this.dispatchEvent(new CustomEvent('date-selected', {
             detail: { date: d },
             bubbles: true,
             composed: true
         }));
+    }
+
+    /**
+     * The day that is the month's one Tab stop: the one the arrow keys moved
+     * to or the one last picked, else the day selected, else today, else the
+     * 1st. Every day a Tab stop would be some forty in the sidebar, and some
+     * five hundred in the year view, before the keyboard got past them.
+     */
+    private tabStop(grid: Date[]): Date {
+        const onGrid = (d: Date | null | undefined) => !!d && grid.some(g => g.getTime() === d.getTime());
+        if (onGrid(this.focusDay)) return this.focusDay!;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        for (const d of [this.currentDate, today]) {
+            if (d && d.getFullYear() === this.year && d.getMonth() === this.month) {
+                return new Date(this.year, this.month, d.getDate());
+            }
+        }
+        return new Date(this.year, this.month, 1);
+    }
+
+    /** A day answers Enter and Space as a button does, Space once while it
+     * is held; the arrow keys move to the day before or after, or a week up
+     * or down. */
+    private handleDayKeyDown(e: KeyboardEvent, d: Date, grid: Date[]) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (e.key === ' ' && e.repeat) return;
+            this.handleDateClick(d);
+            return;
+        }
+        const step = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' ? -7 : e.key === 'ArrowDown' ? 7 : 0;
+        if (!step) return;
+        e.preventDefault();
+        const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + step);
+        if (!grid.some(g => g.getTime() === next.getTime())) return;
+        this.focusDay = next;
+        void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>('.mini-day[tabindex="0"]')?.focus());
+    }
+
+    willUpdate(changed: PropertyValues<this>) {
+        // Another month, or another day selected, puts the Tab stop on the day
+        // selected again, not on the day the arrows last reached.
+        const previous = changed.get('currentDate') as Date | undefined;
+        if (changed.has('year') || changed.has('month')
+            || (changed.has('currentDate') && previous?.getTime() !== this.currentDate?.getTime())) {
+            this.focusDay = null;
+        }
+        this.dayHadFocus = !!(this.renderRoot as ShadowRoot | undefined)?.activeElement?.classList.contains('mini-day');
+    }
+
+    updated(changed: PropertyValues<this>) {
+        // The days are drawn by position. When another month is shown, the day
+        // that had the focus shows another date and is no Tab stop, or is gone
+        // where the new month has fewer weeks. That happens when a day is
+        // picked from the next or previous month's edge, and the view follows
+        // it there: the focus goes to the Tab stop, which is that day.
+        if (this.dayHadFocus && (changed.has('year') || changed.has('month'))) {
+            this.renderRoot.querySelector<HTMLElement>('.mini-day[tabindex="0"]')?.focus();
+        }
     }
 
     render() {
@@ -162,6 +230,8 @@ export class CalendarMiniMonth extends LitElement {
         });
         const today = new Date();
         today.setHours(0,0,0,0);
+        const tabStop = this.tabStop(grid).getTime();
+        const fullDate = new Intl.DateTimeFormat(this.i18nStore?.getIntlLanguage?.(), { dateStyle: 'full' });
 
         // Optional title if showTitle is true
         const monthName = this.i18nStore?.t(`calendar.months.${this.month}`);
@@ -180,7 +250,12 @@ export class CalendarMiniMonth extends LitElement {
                         <div 
                             class="mini-day ${isToday ? 'today' : ''} ${hasEvent ? 'has-event' : ''} ${isWeekend ? 'weekend' : ''}" 
                             style="${isOtherMonth ? 'opacity: 0.3' : ''}"
+                            role="button"
+                            tabindex=${d.getTime() === tabStop ? '0' : '-1'}
+                            aria-label=${fullDate.format(d)}
+                            aria-current=${isToday ? 'date' : nothing}
                             @click=${() => this.handleDateClick(d)}
+                            @keydown=${(e: KeyboardEvent) => this.handleDayKeyDown(e, d, grid)}
                         >
                             <span class="day-num">${d.getDate()}</span>
                         </div>

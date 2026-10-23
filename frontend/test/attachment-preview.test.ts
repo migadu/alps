@@ -173,6 +173,20 @@ describe('alps-attachment-preview', () => {
     expect(text(el, '.file-title')).toBe('first.docx');
   });
 
+  it('opens as a modal dialog, named by the file', async () => {
+    // Modal, so the page behind it is inert and Tab cannot walk out of it.
+    const showModal = vi.spyOn(HTMLDialogElement.prototype, 'showModal');
+    try {
+      const el = await preview({ attachments: [part({ Filename: 'document.pdf' })] });
+      const dialog = shadow<HTMLDialogElement>(el, 'dialog');
+      expect(showModal).toHaveBeenCalledTimes(1);
+      expect(dialog.open).toBe(true);
+      expect(el.shadowRoot!.getElementById(dialog.getAttribute('aria-labelledby') ?? '')?.textContent).toBe('document.pdf');
+    } finally {
+      showModal.mockRestore();
+    }
+  });
+
   it('closes from the close button, from Escape and from the backdrop', async () => {
     const el = await preview({ attachments: [part({ Filename: 'a.docx', MIMEType: '' })] });
     const closes = record<CustomEvent>(el, 'close');

@@ -12,12 +12,12 @@ import (
 // inside `collection`, and returns it cleaned.
 //
 // The path arrives from the browser, is decoded twice on the way in, and used to
-// go straight to GetAddressObject / RemoveAll. The DAV server's own ACLs are the
+// go straight to GetAddressObject / a DELETE. The DAV server's own ACLs are the
 // real boundary — the client authenticates as the signed-in user — but this
 // endpoint should not be a general instrument for addressing whatever that user
 // can reach, for two reasons:
 //
-//   - `RemoveAll` removes a resource AND ITS CHILDREN. Point the "delete one
+//   - A DELETE removes a resource AND ITS CHILDREN. Point the "delete one
 //     contact" route at the address-book collection itself and it deletes every
 //     contact in it. Nothing here stopped that.
 //   - Dot segments. `path.Clean` resolves `..` before the comparison, so a path

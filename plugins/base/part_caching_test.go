@@ -26,22 +26,22 @@ import (
 // what the server has forgotten (see forget).
 const partsCacheTTL = time.Hour
 
-// imapCommands counts, by name, the commands an IMAP server is sent over
+// partIMAPCommands counts, by name, the commands an IMAP server is sent over
 // all its connections.
-type imapCommands struct {
+type partIMAPCommands struct {
 	mu     sync.Mutex
 	counts map[string]int
 }
 
 // snapshot is what has been counted so far.
-func (c *imapCommands) snapshot() map[string]int {
+func (c *partIMAPCommands) snapshot() map[string]int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return maps.Clone(c.counts)
 }
 
 // since is what has been sent after the counts in before.
-func (c *imapCommands) since(before map[string]int) map[string]int {
+func (c *partIMAPCommands) since(before map[string]int) map[string]int {
 	sent := map[string]int{}
 	for name, n := range c.snapshot() {
 		if n > before[name] {
@@ -54,7 +54,7 @@ func (c *imapCommands) since(before map[string]int) map[string]int {
 // commandLines records one connection: it cuts what the client sends into
 // lines, and counts each by its command's name, a UID FETCH as a FETCH.
 type commandLines struct {
-	all     *imapCommands
+	all     *partIMAPCommands
 	pending []byte
 }
 
@@ -84,7 +84,7 @@ func (l *commandLines) ServerBytes([]byte) {}
 
 type partsServer struct {
 	*testServer
-	commands *imapCommands
+	commands *partIMAPCommands
 	users    map[string]*imapmemserver.User
 }
 
@@ -92,7 +92,7 @@ type partsServer struct {
 // given accounts, each with INBOX, and counts the commands it is sent.
 func newPartsServer(t *testing.T, usernames ...string) *partsServer {
 	t.Helper()
-	ps := &partsServer{commands: &imapCommands{counts: map[string]int{}}, users: map[string]*imapmemserver.User{}}
+	ps := &partsServer{commands: &partIMAPCommands{counts: map[string]int{}}, users: map[string]*imapmemserver.User{}}
 	mem := imapmemserver.New()
 	for _, name := range usernames {
 		user := imapmemserver.NewUser(name, testPassword)

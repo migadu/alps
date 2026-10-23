@@ -304,6 +304,13 @@ func (r *Router) StaticFS(prefix string, hfs http.FileSystem) {
 	r.mux.Handle(pattern, http.StripPrefix(prefix, fileServer))
 }
 
+// Frontend serves the built frontend in fsys from the root, with the caching
+// headers and compression that StaticFS lacks. Unlike StaticFS, it assumes
+// fsys does not change while the server runs.
+func (r *Router) Frontend(fsys fs.FS) {
+	r.mux.Handle("GET /", newFrontendFiles(fsys))
+}
+
 // wrapHandler converts our HandlerFunc to http.HandlerFunc and applies middleware.
 func (r *Router) wrapHandler(h HandlerFunc) http.HandlerFunc {
 	// Apply middlewares in reverse order
@@ -357,12 +364,12 @@ func frontendBuild(fsys fs.FS) string {
 
 // setSecurityHeaders applies baseline security headers to every response.
 // It runs here, at the single request choke point, rather than as Use/Pre
-// middleware because static file handlers (StaticFS/Static) are registered
-// directly on the mux and bypass the middleware chain — so the SPA shell and
-// all JS/CSS bundles would otherwise be served with no CSP at all. Handlers may
-// still override these with a stricter policy after dispatch (e.g. the BIMI and
-// /proxy endpoints set `default-src 'none'`); Set() replaces, so the stricter
-// value wins.
+// middleware because static file handlers (Frontend, StaticFS, Static) are
+// registered directly on the mux and bypass the middleware chain — so the SPA
+// shell and all JS/CSS bundles would otherwise be served with no CSP at all.
+// Handlers may still override these with a stricter policy after dispatch
+// (e.g. the BIMI and /proxy endpoints set `default-src 'none'`); Set()
+// replaces, so the stricter value wins.
 func setSecurityHeaders(h http.Header) {
 	// `style-src 'unsafe-inline'` is required for e-mails with embedded stylesheets.
 	// `img-src`/`font-src data:` are required for placeholder resources in sandboxed iframes.

@@ -6,7 +6,6 @@ import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
 import { messageOperations } from '../services/message-operations';
 import { readUserSettings } from '../store/settings-store';
-import { messageSync } from '../services/message-sync';
 import './alps-address-input.js';
 import './alps-message-composer.js';
 import './alps-button.js';
@@ -55,6 +54,13 @@ export class AlpsFloatingComposer extends LitElement {
   private autoSaveTimer: number | null = null;
   /** The save on the wire, for a close or a discard to wait out. */
   private savingPromise: Promise<boolean> | null = null;
+  /**
+   * The draft the last save stored, by its UID and its content key as the
+   * composer holds it once the answer is applied. `null` when that is not
+   * known, as before the first save from this window, or after one that left
+   * edits unsaved.
+   */
+  private storedDraft: { uid: string; key: string } | null = null;
   /** Set once a discard is under way: no save may store the draft again. */
   private discarding = false;
   /** The undo window of a send, and how to end it as Undo does. */
@@ -102,6 +108,10 @@ export class AlpsFloatingComposer extends LitElement {
    */
   private _handleStoreChange = () => {
     const next = this.composeStore.getComposer(this.instance.id);
+    // Saved by someone else, the sign-out flush: whether or not this window
+    // hears how that save went, the server may hold a newer draft than the
+    // one this window last stored, under a new UID.
+    if (next?.isSaving && !this.isSaving) this.storedDraft = null;
     if (next && next !== this.instance) this.instance = next;
   };
 
@@ -223,15 +233,29 @@ export class AlpsFloatingComposer extends LitElement {
       return true; // nothing to lose
     }
 
+    // Already stored as it is. Each save rewrites the whole message on the
+    // server, reading back every part the draft holds, so one that stores
+    // nothing new is all cost: the timer an upload's progress armed fired
+    // after that upload's own save, and stored the same draft again.
+    const contentKey = draftContentKey(currentInstance);
+    if (this.storedDraft && this.storedDraft.uid === currentInstance.draftUid && this.storedDraft.key === contentKey) {
+      // An edit undone leaves the composer marked unsaved, with nothing to save.
+      if (currentInstance.dirty) this.composeStore.updateComposer(id, { dirty: false });
+      return true;
+    }
+
     this.isSaving = true;
     // In the store too, so the sign-out flush leaves this draft to this save.
     this.composeStore.updateComposer(id, { isSaving: true });
     try {
       const sentUuids = (currentInstance.attachments || []).map(a => a.uuid).filter(Boolean);
-      const contentKey = draftContentKey(currentInstance);
+      const sentParts = (currentInstance.attachments || []).map(a => a.partPath).filter(Boolean);
       const formData = this._buildFormData(currentInstance);
       formData.append('save_as_draft', '1');
 
+      // Not known again until this save is answered: one that fails or times
+      // out may still have been stored by the server, under a new UID.
+      this.storedDraft = null;
       const result = await messageOperations.saveDraft(formData);
 
       if (result) {
@@ -245,12 +269,19 @@ export class AlpsFloatingComposer extends LitElement {
             oldMailbox: this.instance.draftMailbox,
             newUid: result.uid,
             mailbox: result.mailbox,
-            subject: this.instance.subject,
-            to: this.instance.to,
-            cc: this.instance.cc,
-            bcc: this.instance.bcc,
+            // The draft the request stored, as it posted it. The window as it
+            // is now may hold edits made while the save was out, which are not
+            // in this draft; they leave the composer dirty, and the next save
+            // brings the row up to date. The recipients come from the same
+            // snapshot, so the event describes one draft.
+            subject: (currentInstance.subject || '').trim(),
+            to: currentInstance.to,
+            cc: currentInstance.cc,
+            bcc: currentInstance.bcc,
             size: result.size,
-            hasAttachments: (this.instance.attachments && this.instance.attachments.length > 0)
+            // A file the request carried: an upload still in flight is not in
+            // this draft, and the quote's own images are not files.
+            hasAttachments: (currentInstance.attachments || []).some(a => !a.inline && (a.uuid || a.partPath))
           }
         }));
       }
@@ -272,19 +303,31 @@ export class AlpsFloatingComposer extends LitElement {
           draftMailbox: result.mailbox
         };
         if (result.attachments) {
-          // From the composer as it is now: one picked during the save is in
-          // neither the snapshot nor the server's answer.
-          const unsavedAttachments = (latest.attachments || []).filter(a => {
-            if (a._tempId) return true; // Still uploading
-            if (a.uuid && !sentUuids.includes(a.uuid)) return true; // Uploaded but not included in this save
-            return false;
+          // Entry by entry, from the composer as it is now. Each entry this
+          // save carried becomes the part it is stored as, which the answer
+          // names by the upload or the earlier part it came from; one picked
+          // during the save is kept as it is. One removed during the save
+          // stays removed, and leaves the composer unsaved, so the next save
+          // stores the draft without it. Rebuilt from the answer, the list
+          // had it back, and the next save and the send carried it again.
+          const storedFrom = new Map<string, any>();
+          for (const { source, ...part } of result.attachments) {
+            if (source?.uuid) storedFrom.set(`uuid:${source.uuid}`, part);
+            else if (source?.partPath) storedFrom.set(`part:${source.partPath}`, part);
+          }
+          updates.attachments = (latest.attachments || []).map(a => {
+            const sent = a.uuid && sentUuids.includes(a.uuid) ? `uuid:${a.uuid}`
+              : a.partPath && sentParts.includes(a.partPath) ? `part:${a.partPath}` : null;
+            return (sent && storedFrom.get(sent)) || a;
           });
-          updates.attachments = [...result.attachments, ...unsavedAttachments];
         }
         this.composeStore.updateComposer(this.instance.id, updates);
 
         // If the composer became dirty while saving, or new attachments were added, schedule another save
         const latestComposer = this.composeStore.getComposer(this.instance.id);
+        this.storedDraft = latestComposer && !latestComposer.dirty
+          ? { uid: result.uid, key: draftContentKey(latestComposer) }
+          : null;
         const hasUnsavedAttachments = (latestComposer?.attachments || []).some(a => a.uuid && !sentUuids.includes(a.uuid));
         if (latestComposer?.dirty || hasUnsavedAttachments) {
           this._scheduleAutoSave();
@@ -823,12 +866,24 @@ export class AlpsFloatingComposer extends LitElement {
         return;
       }
 
-      registry.invokeHook('composer:send', { recipients: allTo });
-
-      if (currentInstance.draftMailbox) {
-        messageSync.fetch(currentInstance.draftMailbox, 0, '', false);
+      // The server deleted the draft this message was saved as. The re-sync
+      // takes its row off the list, but a reader showing it, on its own or as
+      // a card in a conversation, is told as a discard tells it
+      // (alps-message-reader's `_handleDraftDiscarded`): it stayed open on the
+      // deleted draft, still offering Edit Draft.
+      if (currentInstance.draftUid && currentInstance.draftMailbox) {
+        window.dispatchEvent(new CustomEvent('draft-discarded', {
+          detail: { mailbox: currentInstance.draftMailbox, uid: String(currentInstance.draftUid) }
+        }));
       }
 
+      registry.invokeHook('composer:send', { recipients: allTo });
+
+      // Drafts is not read again for the draft the send deleted: the sync
+      // sendDraft started re-reads the folder on screen, which is Drafts when
+      // Drafts is open. A read of Drafts made here took the listing there, so
+      // Drafts' rows went up under whatever folder was open, and polling read
+      // Drafts after it.
       this.composeStore.closeComposer(id);
     } catch (err: any) {
       Logger.error('Failed to send message:', err);
@@ -940,7 +995,13 @@ export class AlpsFloatingComposer extends LitElement {
 
           const latestComposer = this.composeStore.getComposer(this.instance.id);
           const stillUploading = (latestComposer?.attachments || []).some(a => a.uploading);
-          if (latestComposer?.closing && !stillUploading) {
+          // Saved once the last of the files picked together is in, as the
+          // close waits for. A save per finished upload rewrote the whole
+          // draft once per file, each time larger. The others' progress keeps
+          // re-arming the autosave timer, so the draft is saved here, and the
+          // timer saves it first only if the remaining uploads stall or fail.
+          if (stillUploading) return;
+          if (latestComposer?.closing) {
             void this._finishDeferredClose();
           } else {
             this._saveDraft();
@@ -1468,6 +1529,7 @@ export class AlpsFloatingComposer extends LitElement {
             <span class="field-label">${this.i18nStore?.t('floatingComposer.to')}</span>
             <alps-address-input 
               class="address-input"
+              label=${this.i18nStore?.t('floatingComposer.to')}
               .addresses=${this.instance.to || []}
               @addresses-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { to: e.detail.addresses })}
               ?disabled=${this.instance.isSending}
@@ -1485,6 +1547,7 @@ export class AlpsFloatingComposer extends LitElement {
               <span class="field-label">${this.i18nStore?.t('floatingComposer.cc')}</span>
               <alps-address-input 
                 class="address-input"
+                label=${this.i18nStore?.t('floatingComposer.cc')}
                 .addresses=${this.instance.cc || []}
                 @addresses-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { cc: e.detail.addresses })}
                 ?disabled=${this.instance.isSending}
@@ -1497,6 +1560,7 @@ export class AlpsFloatingComposer extends LitElement {
               <span class="field-label">${this.i18nStore?.t('floatingComposer.bcc')}</span>
               <alps-address-input 
                 class="address-input"
+                label=${this.i18nStore?.t('floatingComposer.bcc')}
                 .addresses=${this.instance.bcc || []}
                 @addresses-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { bcc: e.detail.addresses })}
                 ?disabled=${this.instance.isSending}
@@ -1562,8 +1626,9 @@ export class AlpsFloatingComposer extends LitElement {
                   <div class="popup-form" @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') this._handleLinkSubmit(); }}>
                     ${this.linkPromptFields.map(f => html`
                       <div class="field-group">
-                        <label for=${f.id}>${f.label}</label>
-                        <alps-input inputId=${f.id} type="text" placeholder=${f.placeholder}></alps-input>
+                        <!-- A label's "for" cannot reach the input inside alps-input's shadow root, so a click on the label focuses the field here. -->
+                        <label @click=${() => this._linkPromptFieldElements().find(field => field.inputId === f.id)?.focus()}>${f.label}</label>
+                        <alps-input inputId=${f.id} label=${f.label} type="text" placeholder=${f.placeholder}></alps-input>
                       </div>
                     `)}
                     <div class="popup-actions">
