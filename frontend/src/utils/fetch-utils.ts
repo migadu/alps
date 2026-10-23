@@ -69,6 +69,13 @@ export function isSessionExpiry(error: unknown): boolean {
 }
 
 /**
+ * Options for a request nobody is waiting for, such as a body the reader reads
+ * ahead of the user. The server does its mail work on the session's second
+ * connection, so that what the user opens meanwhile does not wait behind it.
+ */
+export const BACKGROUND_REQUEST: RequestInit = { headers: { 'X-Alps-Background': '1' } };
+
+/**
  * Upstream answers worth another attempt: the backend saying "not now" rather
  * than "no". A deploy rolling or an upstream connection being re-established
  * produces exactly these, briefly, and without a retry that blip reached the

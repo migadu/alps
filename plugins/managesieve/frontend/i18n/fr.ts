@@ -8,6 +8,8 @@ export default {
   "managesieve": {
     "title": "Filtres",
     "description": "Ajoutez des règles personnalisées sur la façon dont les messages sont traités et classés.",
+    "loadError": "Impossible de charger les filtres.",
+    "loadErrorRetry": "Réessayer",
     "tabs": {
       "switchToRaw": "Éditeur Brut"
     },
@@ -33,6 +35,7 @@ export default {
       "any": "N'IMPORTE QUELLE",
       "ofTheFollowing": "des conditions suivantes sont remplies",
       "then": "ALORS",
+      "value": "Valeur",
       "actions": {
         "fileinto": "Déplacer vers le dossier",
         "discard": "Rejeter (Supprimer)",

@@ -109,10 +109,12 @@ export class AlpsToast extends LitElement {
             ${this.actionLabel}
           </alps-button>
         ` : ''}
+        <!-- Named by its title, which alps-icon-btn passes on to its button; an
+             aria-label would stay on this element, which is no control. -->
         <alps-icon-btn 
           class="dismiss-btn" 
           icon="x" 
-          aria-label="${this.i18nStore?.t('toast.dismiss')}" 
+          title="${this.i18nStore?.t('toast.dismiss')}" 
           @click=${this.dismiss}
           style="--btn-color: var(--toast-fg, rgba(255, 255, 255, 0.7)); --btn-hover-bg: rgba(255, 255, 255, 0.15); --text-primary: var(--toast-fg, #fff); --btn-icon-size: 16px;"
         ></alps-icon-btn>

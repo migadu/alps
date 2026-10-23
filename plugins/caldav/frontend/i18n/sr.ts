@@ -18,6 +18,8 @@ export default {
         rename: 'Preimenuj',
         delete: 'Obriši',
         addCalendar: 'Dodaj kalendar',
+        previousMonth: 'Prethodni mesec',
+        nextMonth: 'Sledeći mesec',
         renameCalendar: 'Preimenuj kalendar',
         deleteCalendar: 'Obriši kalendar',
         deleteCalendarConfirm: 'Da li ste sigurni da želite da obrišete kalendar "{name}"?',
