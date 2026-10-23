@@ -2861,6 +2861,11 @@ func handleComposeNew(ctx *alps.Context) error {
 		if err != nil {
 			// A draft stored before the save failed is in Drafts: the folder
 			// is read again for it, as after a save that succeeded.
+			// Cleanup may also have removed the old draft before failing.
+			if draftPath != nil {
+				invalidateMailboxCache(ctx, draftPath.Mailbox)
+				forgetMessages(ctx.Session.Cache(), draftPath.Mailbox, draftPath.Uid)
+			}
 			if drafts != nil {
 				invalidateMailboxCache(ctx, drafts.Name())
 			} else if heldIn != "" {
@@ -2983,6 +2988,11 @@ func handleComposeNew(ctx *alps.Context) error {
 	})
 	if err != nil {
 		// A copy filed before the filing failed is in Sent.
+		// Cleanup may have removed its old draft before returning an error.
+		if draftPath != nil {
+			invalidateMailboxCache(ctx, draftPath.Mailbox)
+			forgetMessages(ctx.Session.Cache(), draftPath.Mailbox, draftPath.Uid)
+		}
 		if sentName != "" {
 			invalidateMailboxCache(ctx, sentName)
 		} else if tried {
