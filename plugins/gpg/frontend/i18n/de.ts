@@ -38,6 +38,7 @@ export default {
     importMissing: 'Sowohl öffentliche als auch private Blöcke sind für den Import erforderlich.',
     generateFailed: 'Fehler beim Generieren der Schlüssel: {error}',
     importFailed: 'Import fehlgeschlagen: {error}',
+    purgeFailed: 'Fehler beim Löschen der Schlüssel: {error}',
     importFailedTitle: 'Import fehlgeschlagen',
     passphraseMismatch: 'Passphrasen stimmen nicht überein. Bitte versuchen Sie es erneut.',
     missingPublicKeys: 'Verschlüsseln nicht möglich: Fehlende öffentliche Schlüssel für:\n{keys}',
