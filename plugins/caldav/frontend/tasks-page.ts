@@ -5,6 +5,8 @@ import { i18nContext, I18nStore } from '../../../frontend/src/store/i18n-store';
 import { settingsContext, SettingsStore } from '../../../frontend/src/store/settings-store';
 import { closeSidebarPeek, sidebarLayoutStyles } from '../../../frontend/src/components/alps-sidebar';
 import '../../../frontend/src/components/alps-sidebar';
+import '../../../frontend/src/components/alps-sidebar-strip';
+import { sectionHeadingStyles } from '../../../frontend/src/components/alps-sidebar-heading';
 import '../../../frontend/src/components/alps-toolbar';
 import '../../../frontend/src/components/alps-create-button';
 import '../../../frontend/src/components/alps-icon-btn';
@@ -67,8 +69,6 @@ export class TasksPage extends LitElement {
     @state() private listPromptOpen = false;
     @state() private sidebarWidth = SIDEBAR_WIDTH_DEFAULT;
     @state() private sidebarCollapsed = false;
-    /** Mirrors the sidebar's own hover overlay (`peek-change`). */
-    @state() private sidebarPeeking = false;
     @state() private isSidebarDragging = false;
     @state() private isMobile = window.innerWidth <= 768;
     @state() private mobileSidebarOpen = false;
@@ -81,6 +81,7 @@ export class TasksPage extends LitElement {
 
     static styles = [
         sidebarLayoutStyles,
+        sectionHeadingStyles,
         css`
             :host {
                 display: flex;
@@ -115,19 +116,6 @@ export class TasksPage extends LitElement {
                 padding: 16px;
                 box-sizing: border-box;
                 overflow-y: auto;
-            }
-            .sidebar-wrapper.collapsed .label,
-            .sidebar-wrapper.collapsed .count,
-            .sidebar-wrapper.collapsed h3,
-            .sidebar-wrapper.collapsed .calendar-lists {
-                display: none;
-            }
-            h3 {
-                margin: 0 0 12px 0;
-                font-size: 12px;
-                letter-spacing: 0.05em;
-                text-transform: uppercase;
-                color: var(--text-muted, #6b7280);
             }
             .nav-item {
                 display: flex;
@@ -509,7 +497,6 @@ export class TasksPage extends LitElement {
 
     render() {
         const t = (key: string) => this.i18nStore?.t(key) ?? key;
-        const collapsed = this.sidebarCollapsed && !this.sidebarPeeking && !this.isMobile;
         const current = SMART_LISTS.find(list => list.id === this.selectedList) ?? SMART_LISTS[0];
         const calendarName = this.lists.find(list => list.path === this.selectedCalendar)?.name ?? '';
         const defaultList = this.selectedCalendar || this.lists[0]?.path || '';
@@ -542,19 +529,20 @@ export class TasksPage extends LitElement {
                         @drag-start=${() => { this.isSidebarDragging = true; }}
                         @drag-end=${() => { this.isSidebarDragging = false; }}
                         @close-sidebar=${() => { this.mobileSidebarOpen = false; }}
-                        @peek-change=${(e: CustomEvent<{ peeking: boolean }>) => { this.sidebarPeeking = e.detail.peeking; }}
                     >
-                        <div class="sidebar-wrapper ${collapsed ? 'collapsed' : ''}">
+                        <!-- Frame and content follow the strip state
+                             alps-sidebar provides: collapsed, they keep the
+                             smart lists and the lists, dimmed, inert and
+                             behind the main view. -->
+                        <alps-sidebar-frame class="sidebar-wrapper">
                             <alps-toolbar class="sidebar-header">
                                 <alps-create-button
                                     icon="plusBold"
-                                    ?collapsed=${collapsed}
                                     ?disabled=${this.lists.length === 0}
                                     @click=${() => this.openCreate()}
                                 >${t('tasks.addTask')}</alps-create-button>
                             </alps-toolbar>
-                            <!-- Inert in the strip, as it is dimmed there. -->
-                            <div class="sidebar-content" ?inert=${collapsed}>
+                            <alps-sidebar-content class="sidebar-content">
                                 <div class="sidebar-scroll-content">
                                     <nav class="smart-lists">
                                         ${SMART_LISTS.map(list => {
@@ -575,7 +563,7 @@ export class TasksPage extends LitElement {
                                     </nav>
                                     ${this.lists.length > 0 ? html`
                                         <div class="calendar-lists">
-                                            <h3>${t('tasks.lists')}</h3>
+                                            <alps-sidebar-heading heading=${t('tasks.lists')}></alps-sidebar-heading>
                                             ${this.lists.map(list => html`
                                                 <button
                                                     class="nav-item task-list ${list.path === this.selectedCalendar ? 'active' : ''}"
@@ -589,8 +577,8 @@ export class TasksPage extends LitElement {
                                         </div>
                                     ` : ''}
                                 </div>
-                            </div>
-                        </div>
+                            </alps-sidebar-content>
+                        </alps-sidebar-frame>
                         <alps-icon-btn
                             slot="footer-actions"
                             icon="folderPlus"
