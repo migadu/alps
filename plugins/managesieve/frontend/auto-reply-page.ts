@@ -289,13 +289,16 @@ export class AutoReplyPage extends LitElement {
 				${this.renderState()}
 			`)}
 
+			<!-- Each field named by its label: the setting's is in
+			     alps-setting-group's shadow root, and a date's outside
+			     alps-input's, so neither reaches the control. -->
 			<alps-setting-group label=${this.t('managesieve.autoReply.subject')} description=${this.t('managesieve.autoReply.subjectDesc')}>
-				<alps-input class="subject" .value=${draft.subject} placeholder=${this.t('managesieve.autoReply.subjectPlaceholder')}
+				<alps-input class="subject" label=${this.t('managesieve.autoReply.subject')} .value=${draft.subject} placeholder=${this.t('managesieve.autoReply.subjectPlaceholder')}
 					@input=${(e: Event) => this.edit({ subject: (e.target as HTMLInputElement).value })}></alps-input>
 			</alps-setting-group>
 
 			<alps-setting-group label=${this.t('managesieve.autoReply.message')} description=${this.t('managesieve.autoReply.messageDesc')}>
-				<textarea dir="auto" .value=${draft.message} placeholder=${this.t('managesieve.autoReply.messagePlaceholder')}
+				<textarea dir="auto" aria-label=${this.t('managesieve.autoReply.message')} .value=${draft.message} placeholder=${this.t('managesieve.autoReply.messagePlaceholder')}
 					@input=${(e: Event) => this.edit({ message: (e.target as HTMLTextAreaElement).value })}></textarea>
 			</alps-setting-group>
 
@@ -304,12 +307,12 @@ export class AutoReplyPage extends LitElement {
 					<div class="dates">
 						<label>
 							<span class="field-label">${this.t('managesieve.autoReply.startDate')}</span>
-							<alps-input class="start" type="date" .value=${draft.start}
+							<alps-input class="start" type="date" label=${this.t('managesieve.autoReply.startDate')} .value=${draft.start}
 								@input=${(e: Event) => this.edit({ start: (e.target as HTMLInputElement).value })}></alps-input>
 						</label>
 						<label>
 							<span class="field-label">${this.t('managesieve.autoReply.endDate')}</span>
-							<alps-input class="end" type="date" .value=${draft.end}
+							<alps-input class="end" type="date" label=${this.t('managesieve.autoReply.endDate')} .value=${draft.end}
 								@input=${(e: Event) => this.edit({ end: (e.target as HTMLInputElement).value })}></alps-input>
 						</label>
 					</div>
@@ -317,7 +320,7 @@ export class AutoReplyPage extends LitElement {
 			` : nothing}
 
 			<alps-setting-group label=${this.t('managesieve.autoReply.interval')} description=${this.t('managesieve.autoReply.intervalDesc')}>
-				<alps-select .value=${String(draft.days)}
+				<alps-select label=${this.t('managesieve.autoReply.interval')} .value=${String(draft.days)}
 					.options=${intervals.map(days => ({ value: String(days), label: this.t('managesieve.autoReply.days', { count: days }) }))}
 					@change=${(e: Event) => this.edit({ days: Number((e.target as HTMLSelectElement).value) })}></alps-select>
 			</alps-setting-group>
