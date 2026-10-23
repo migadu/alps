@@ -631,7 +631,7 @@ export class TasksPage extends LitElement {
 
             ${this.listPromptOpen ? html`
                 <ui-prompt
-                    title=${t('tasks.newList')}
+                    heading=${t('tasks.newList')}
                     .fields=${[{ id: 'name', label: t('tasks.listName'), autofocus: true }]}
                     @submit=${this.handleListPromptSubmit}
                     @cancel=${() => { this.listPromptOpen = false; }}
@@ -641,7 +641,7 @@ export class TasksPage extends LitElement {
             ${this.taskToDelete && taskTellsSomeone(this.taskToDelete, this.scheduling) ? html`
                 <ui-confirm
                     class="delete-assigned"
-                    title=${t('tasks.deleteTask')}
+                    heading=${t('tasks.deleteTask')}
                     message=${t(this.taskToDelete.role === 'organizer' ? 'tasks.deleteTellAssignees' : 'tasks.deleteTellAssigner')}
                     confirmText=${t('invitations.deleteAndTell')}
                     secondaryText=${t('invitations.deleteOnly')}
@@ -652,7 +652,7 @@ export class TasksPage extends LitElement {
                 ></ui-confirm>
             ` : this.taskToDelete ? html`
                 <ui-confirm
-                    title=${t('tasks.deleteTask')}
+                    heading=${t('tasks.deleteTask')}
                     message=${t('tasks.deleteTaskConfirm')}
                     confirmText=${t('tasks.delete')}
                     isDanger

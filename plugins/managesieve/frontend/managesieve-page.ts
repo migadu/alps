@@ -181,7 +181,7 @@ export class ManageSievePage extends LitElement {
 
 			${this.showSwitchRawConfirm ? html`
 				<ui-confirm
-					title=${this.i18nStore.t('managesieve.warningRawSwitchTitle')}
+					heading=${this.i18nStore.t('managesieve.warningRawSwitchTitle')}
 					message="${this.i18nStore.t('managesieve.warningRawSwitch')}"
 					confirmText=${this.i18nStore.t('managesieve.warningRawSwitchConfirm')}
 					isDanger=${true}

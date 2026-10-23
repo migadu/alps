@@ -42,7 +42,10 @@ export const modalButtonStyles = css`
 
 @customElement('ui-modal')
 export class UIModal extends LitElement {
-  @property({ type: String }) title: string = '';
+  /** The dialog's heading, and its name. Not `title`: that is HTML's global
+   * attribute, advisory text for everything inside the element, so the
+   * browser showed it as a tooltip wherever the pointer rested on the dialog. */
+  @property({ type: String }) heading: string = '';
   @property({ type: Boolean }) isDanger: boolean = false;
   @property({ type: Boolean }) dismissible: boolean = false;
   @property({ type: String }) width: string = '400px';
@@ -154,19 +157,19 @@ export class UIModal extends LitElement {
   }
 
   render() {
-    // Named by its title. The dialog had no name, so a screen reader
+    // Named by its heading. The dialog had no name, so a screen reader
     // announced every confirmation, prompt and editor as a bare "dialog". The
-    // heading names it where it is drawn; where a header of the caller's own
-    // replaces the heading, the title is the dialog's label.
+    // <h3> names it where it is drawn; where a header of the caller's own
+    // replaces the <h3>, the heading is the dialog's label.
     return html`
       <dialog class="modal-dialog"
-        aria-labelledby=${this.title && !this.ownHeader ? 'modal-title' : nothing}
-        aria-label=${this.title && this.ownHeader ? this.title : nothing}
+        aria-labelledby=${this.heading && !this.ownHeader ? 'modal-title' : nothing}
+        aria-label=${this.heading && this.ownHeader ? this.heading : nothing}
         aria-describedby=${this.bodyDescribes ? 'modal-body' : nothing}
         @pointerdown=${this._handleOverlayClick} @cancel=${this._handleEscape} @close=${this._handleDialogClose}>
         <div class="modal-card" style="width: ${this.width};" @pointerdown=${(e: Event) => e.stopPropagation()}>
           <slot name="header" @slotchange=${this._handleHeaderChange}>
-            ${this.title ? html`<h3 id="modal-title" class="modal-title ${this.isDanger ? 'danger' : ''}">${this.title}</h3>` : ''}
+            ${this.heading ? html`<h3 id="modal-title" class="modal-title ${this.isDanger ? 'danger' : ''}">${this.heading}</h3>` : ''}
           </slot>
           <div class="modal-body" id="modal-body">
             <slot></slot>

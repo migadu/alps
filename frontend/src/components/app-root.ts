@@ -587,7 +587,7 @@ export class AppRoot extends LitElement {
       ` : ''}
 
       ${this.isOffline ? html`
-        <ui-modal title=${this.i18nStore.t('offline.title')} .dismissible=${false} width="400px">
+        <ui-modal heading=${this.i18nStore.t('offline.title')} .dismissible=${false} width="400px">
           <div style="text-align: center; padding: 16px 0;">
             <div class="offline-icon">${renderIcon('wifiSlash')}</div>
             <div style="font-weight: 500; font-size: 16px; margin-bottom: 8px; color: var(--text-primary, #111827);">

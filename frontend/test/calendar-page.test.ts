@@ -220,7 +220,7 @@ describe('the delete confirmations', () => {
   async function shown(el: any) {
     const confirm = shadow<any>(el, 'ui-confirm');
     await confirm.updateComplete;
-    return { title: confirm.title, message: confirm.shadowRoot.querySelector('slot:not([name])').textContent.trim() };
+    return { heading: confirm.heading, message: confirm.shadowRoot.querySelector('slot:not([name])').textContent.trim() };
   }
 
   it('asks before deleting a calendar, naming it exactly as typed', async () => {
@@ -228,7 +228,7 @@ describe('the delete confirmations', () => {
     call(el, 'handleDeleteCalendar', { name: 'Q&A <team> "x"', path: '/cal/work/' });
     await el.updateComplete;
     expect(await shown(el)).toEqual({
-      title: 'Kalender löschen',
+      heading: 'Kalender löschen',
       message: 'Möchten Sie den Kalender "Q&A <team> "x"" wirklich löschen?',
     });
   });
@@ -237,11 +237,11 @@ describe('the delete confirmations', () => {
     const el = await germanPage();
     el.eventToDelete = { uid: 'e', summary: 'Review', start: '2026-09-16T08:00:00Z', end: '2026-09-16T09:00:00Z', path: '/cal/work/e.ics' };
     await el.updateComplete;
-    expect(await shown(el)).toEqual({ title: 'Ereignis löschen', message: 'Möchten Sie dieses Ereignis wirklich löschen?' });
+    expect(await shown(el)).toEqual({ heading: 'Ereignis löschen', message: 'Möchten Sie dieses Ereignis wirklich löschen?' });
 
     const task = { uid: 't', summary: 'Report', path: '/cal/work/t.ics' };
     el.eventToDelete = { ...task, task };
     await el.updateComplete;
-    expect(await shown(el)).toEqual({ title: 'Aufgabe löschen', message: 'Möchten Sie diese Aufgabe wirklich löschen?' });
+    expect(await shown(el)).toEqual({ heading: 'Aufgabe löschen', message: 'Möchten Sie diese Aufgabe wirklich löschen?' });
   });
 });

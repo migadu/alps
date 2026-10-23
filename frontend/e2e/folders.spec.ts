@@ -403,6 +403,9 @@ test("the folder dialogs are named by their titles, and a confirmation by its qu
   await page.locator('mailbox-page alps-icon-btn[title="Create Folder"]').click();
   await expect(page.getByRole("dialog", { name: "Create Folder" })).toBeVisible();
   const prompt = page.locator("alps-folder-list ui-prompt");
+  // Its heading is no title of HTML's, which the browser showed as a tooltip
+  // over the whole dialog.
+  await expect(prompt).not.toHaveAttribute("title");
   await prompt.locator("input").fill(name);
   litter.add(name);
   await prompt.getByRole("button", { name: "Create Folder", exact: true }).click();
@@ -412,6 +415,7 @@ test("the folder dialogs are named by their titles, and a confirmation by its qu
   await menuItem(item, "Delete").click();
   const dialog = page.getByRole("dialog", { name: "Move to Trash" });
   await expect(dialog).toHaveAccessibleDescription(`Are you sure you want to move "${name}" to the Trash?`);
+  await expect(page.locator("alps-folder-list ui-confirm")).not.toHaveAttribute("title");
   await page.locator("alps-folder-list ui-confirm").getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog).toHaveCount(0);
 });

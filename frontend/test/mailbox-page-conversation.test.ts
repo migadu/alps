@@ -325,12 +325,12 @@ describe('a card\'s own verbs', () => {
       await trash.updateComplete;
 
       const asked = el.shadowRoot!.querySelector('ui-confirm')!;
-      expect(asked.getAttribute('title')).toBe('floatingComposer.discardDraftTitle');
+      expect(asked.getAttribute('heading')).toBe('floatingComposer.discardDraftTitle');
       expect(asked.getAttribute('message')).toBe('floatingComposer.discardDraftMessage');
       expect(asked.getAttribute('confirmText')).toBe('floatingComposer.discard');
       // Trash keeps its own words: what it holds is mail, deleted for good.
       const fromTrash = trash.shadowRoot!.querySelector('ui-confirm')!;
-      expect(fromTrash.getAttribute('title')).toBe('mailboxPage.permanentlyDelete');
+      expect(fromTrash.getAttribute('heading')).toBe('mailboxPage.permanentlyDelete');
       expect(fromTrash.getAttribute('confirmText')).toBe('mailboxPage.deletePermanently');
 
       await el._confirmDelete();
@@ -345,7 +345,7 @@ describe('a card\'s own verbs', () => {
       await el.updateComplete;
 
       const asked = el.shadowRoot!.querySelector('ui-confirm')!;
-      expect(asked.getAttribute('title')).toBe('mailboxPage.discardDraftsTitle');
+      expect(asked.getAttribute('heading')).toBe('mailboxPage.discardDraftsTitle');
       expect(asked.getAttribute('message')).toBe('mailboxPage.discardDraftsMessage');
       expect(asked.getAttribute('confirmText')).toBe('floatingComposer.discard');
     });

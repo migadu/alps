@@ -94,7 +94,7 @@ describe('removing a security key asks for the password', () => {
     expect(host.fields).toEqual([
       expect.objectContaining({ id: 'password', type: 'password', autocomplete: 'current-password' }),
     ]);
-    expect(host.getAttribute('title')).toBe('webauthn.confirm_remove');
+    expect(host.getAttribute('heading')).toBe('webauthn.confirm_remove');
     expect(el.shadowRoot?.querySelector('ui-confirm')).toBeNull();
     // The confirm button is the danger one.
     expect(shadowAll(host, 'alps-button').at(-1)!.getAttribute('variant')).toBe('danger');
