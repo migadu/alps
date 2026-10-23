@@ -7,7 +7,7 @@
  * so one tab holds it and tells the others what it hears.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MailPushService, mailPush } from '../src/services/mail-push';
+import { type FolderNews, MailPushService, mailPush } from '../src/services/mail-push';
 import { MessageSyncService, messageSync } from '../src/services/message-sync';
 import { noteSignOut } from '../src/utils/signed-out';
 import '../src/pages/mailbox-page';
@@ -87,9 +87,9 @@ function installLocks() {
 
 const started: MailPushService[] = [];
 
-/** A tab's push service, telling `news` what it hears. */
-function tab(news: () => void = () => {}): MailPushService {
-  const svc = new MailPushService(news);
+/** A tab's push service, telling `news` what it hears, and `folders` what it hears of the other folders. */
+function tab(news: () => void = () => {}, folders: FolderNews = {}): MailPushService {
+  const svc = new MailPushService(news, folders);
   started.push(svc);
   return svc;
 }
@@ -164,6 +164,35 @@ describe('the event stream', () => {
     stream.emit('watching');
     await settle();
     expect(heard.map((news) => news.mock.calls.length)).toEqual([2, 2, 2]);
+  });
+
+  it('tells every tab of a folder that changed, where the server pushes the folders too', async () => {
+    const heard = [vi.fn(), vi.fn()];
+    heard.forEach((folder) => tab(() => {}, { folder }).start());
+    await settle();
+    FakeEventSource.open()[0].emit('folder', 'Archive');
+    await settle();
+    expect(heard.map((folder) => folder.mock.calls)).toEqual([[['Archive']], [['Archive']]]);
+  });
+
+  it('tells every tab that the folders are pushed as the stream comes up so, and that they are not once it ends', async () => {
+    const told = [vi.fn(), vi.fn()];
+    told.forEach((folders) => tab(() => {}, { folders }).start());
+    await settle();
+    const [stream] = FakeEventSource.open();
+
+    stream.emit('watching', 'SUBSCRIBED');
+    await settle();
+    expect(told.map((folders) => folders.mock.calls)).toEqual([[[true]], [[true]]]);
+    stream.emit('error');
+    await settle();
+    expect(told.map((folders) => folders.mock.calls)).toEqual([[[true], [false]], [[true], [false]]]);
+
+    // Up again for the Inbox alone: nothing more to say.
+    await vi.advanceTimersByTimeAsync(2_000);
+    FakeEventSource.open()[0].emit('watching', 'INBOX');
+    await settle();
+    expect(told[0].mock.calls).toEqual([[true], [false]]);
   });
 
   it('tells a tab started twice once: the mail page starts it on every settings change', async () => {
@@ -678,10 +707,132 @@ describe('the news', () => {
 
   it('reaches the mail page\'s listing from the app\'s stream', async () => {
     const check = vi.spyOn(messageSync, 'inboxChanged').mockImplementation(() => {});
+    const folder = vi.spyOn(messageSync, 'folderChanged').mockImplementation(() => {});
+    const folders = vi.spyOn(messageSync, 'foldersWatched').mockImplementation(() => {});
     mailPush.start();
     await settle();
     FakeEventSource.open()[0].emit('inbox');
     expect(check).toHaveBeenCalledTimes(1);
+    FakeEventSource.open()[0].emit('watching', 'SUBSCRIBED');
+    FakeEventSource.open()[0].emit('folder', 'Archive');
+    expect(folders.mock.calls).toEqual([[true]]);
+    expect(folder.mock.calls).toEqual([['Archive']]);
+  });
+
+  it('of a folder on screen has the tab run the check a poll runs', async () => {
+    const svc = new MessageSyncService();
+    await landed(svc, 'Archive');
+    const background: unknown[] = [];
+    svc.addEventListener('sync-success', (e) => background.push((e as CustomEvent).detail.background));
+
+    svc.folderChanged('Archive');
+    await settle();
+    expect(urls()).toEqual(['/mailboxes/Archive/status?with=INBOX', '/mailboxes/Archive?page=0']);
+    expect(background).toEqual([true]);
+  });
+
+  it('of a folder not on screen asks for its counts alone, and gives the page those that moved', async () => {
+    fetchMock.mockImplementation(async (url: string) => (url.includes('/status')
+      ? new Response(JSON.stringify(inbox), { status: 200 })
+      : new Response(JSON.stringify({ Messages: [], Total: 0, Mailboxes: [
+        { Name: 'INBOX', Total: 2, Unseen: 1 }, { Name: 'Archive', Total: 0, Unseen: 0 }] }), { status: 200 })));
+    const svc = new MessageSyncService();
+    await landed(svc, 'INBOX');
+    const told: any[] = [];
+    svc.addEventListener('folder-counts', (e) => told.push((e as CustomEvent).detail));
+
+    inbox = { total: 1, unseen: 1 };
+    svc.folderChanged('Archive');
+    await settle();
+    expect(urls()).toEqual(['/mailboxes/Archive/status']);
+    expect(told).toEqual([{ mailbox: 'Archive', counts: { total: 1, unseen: 1 }, announce: true }]);
+
+    svc.folderChanged('Archive');
+    await settle();
+    expect(told).toHaveLength(1);
+  });
+
+  it('of folders and the Inbox together has one check made after the one out, for all of them', async () => {
+    const svc = new MessageSyncService();
+    await landed(svc, 'Archive');
+    let answer!: () => void;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => {
+      answer = () => resolve(new Response(JSON.stringify(inbox), { status: 200 }));
+    }));
+
+    svc.folderChanged('Archive');
+    svc.folderChanged('Lists');
+    svc.inboxChanged();
+    svc.folderChanged('Lists');
+    await settle();
+    answer();
+    await settle();
+    expect(urls().filter((url) => url.includes('/status')).sort()).toEqual([
+      '/mailboxes/Archive/status?with=INBOX', '/mailboxes/INBOX/status', '/mailboxes/Lists/status']);
+  });
+
+  it('forgets the views of a folder kept in memory, which it has made old', async () => {
+    const svc = new MessageSyncService();
+    await landed(svc, 'Archive');
+    await landed(svc, 'INBOX');
+    svc.folderChanged('Archive');
+    await settle();
+    const kept: boolean[] = [];
+    svc.addEventListener('sync-success', (e) => kept.push(!!(e as CustomEvent).detail.kept));
+    const back = svc.fetch('Archive', 0);
+    await vi.advanceTimersByTimeAsync(500);
+    await back;
+    expect(kept).toEqual([false]);
+  });
+
+  it('that the folders are pushed has the folder on screen checked, as the Inbox is', async () => {
+    const svc = new MessageSyncService();
+    await landed(svc, 'Archive');
+    svc.foldersWatched(true);
+    await settle();
+    expect(urls()).toContain('/mailboxes/Archive/status?with=INBOX');
+  });
+
+  it('invalidates the canonical folder version only after pushed counts change it', async () => {
+    let version = 'v1';
+    fetchMock.mockImplementation(async (url: string) => url.includes('/status')
+      ? new Response(JSON.stringify(inbox))
+      : new Response(JSON.stringify({ Messages: [], Total: 0, MailboxesVersion: version, Mailboxes: [
+        { Name: 'INBOX', Total: 2, Unseen: 1 }, { Name: 'Archive', Total: inbox.total, Unseen: inbox.unseen }] })));
+    const svc = new MessageSyncService();
+    await landed(svc);
+    // Unchanged counts retain the optimization.
+    svc.folderChanged('Archive');
+    await settle();
+    await svc.fetch('INBOX', 1, '', false, true);
+    expect(urls().at(-1)).toBe('/mailboxes/INBOX?page=1&mailboxes=v1');
+    inbox = { total: 3, unseen: 2 };
+    svc.folderChanged('Archive');
+    await settle();
+    version = 'v2';
+    await svc.fetch('INBOX', 2, '', false, true);
+    expect(urls().at(-1)).toBe('/mailboxes/INBOX?page=2');
+    await svc.fetch('INBOX', 3, '', false, true);
+    expect(urls().at(-1)).toBe('/mailboxes/INBOX?page=3&mailboxes=v2');
+  });
+
+  it('of the folders pushed spaces the poll out to every third round, and once they are not, back', async () => {
+    const svc = new MessageSyncService();
+    await landed(svc);
+    svc.start(1);
+    await settle();
+    svc.foldersWatched(true);
+    const polls = () => urls().filter((url) => url.includes('/status')).length;
+
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    expect(polls()).toBe(0);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(polls()).toBe(1);
+
+    svc.foldersWatched(false);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(polls()).toBe(2);
+    svc.stop();
   });
 });
 
@@ -727,6 +878,19 @@ describe('the mail page', () => {
     messageSync.dispatchEvent(new CustomEvent('inbox-counts', { detail: { counts: { total: 3, unseen: 2 }, announce: false } }));
     const inbox = el.mailboxes.find((m: any) => m.Name === 'INBOX');
     expect([inbox?.Total, inbox?.Unseen]).toEqual([3, 2]);
+  });
+
+  it('shows the counts of another folder that pushed news brought', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      Messages: [], Total: 0, Mailboxes: [{ Name: 'INBOX', Total: 2, Unseen: 1 }, { Name: 'Archive', Total: 0, Unseen: 0 }],
+    }), { status: 200 })));
+    const el = await mount<HTMLElement & Record<string, any>>('mailbox-page', { i18nStore, settingsStore: settingsStore(true), composeStore: new EventTarget() });
+    await vi.advanceTimersByTimeAsync(500);
+    messageSync.dispatchEvent(new CustomEvent('folder-counts', { detail: { mailbox: 'Archive', counts: { total: 3, unseen: 2 }, announce: false } }));
+    const archive = el.mailboxes.find((m: any) => m.Name === 'Archive');
+    expect([archive?.Total, archive?.Unseen]).toEqual([3, 2]);
+    const inbox = el.mailboxes.find((m: any) => m.Name === 'INBOX');
+    expect([inbox?.Total, inbox?.Unseen]).toEqual([2, 1]);
   });
 
   it('does not when the server does not', async () => {

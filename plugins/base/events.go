@@ -3,6 +3,7 @@ package alpsbase
 import (
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,16 +22,21 @@ var eventStreamHeartbeat = 20 * time.Second
 // at once rather than at its next poll. See alps.Session.WatchInbox. Push is
 // off by default ([server] push_new_mail), and the stream is not found then.
 //
-// It sends, each with the mailbox's name as its data:
+// It sends:
 //
-//   - watching: the session waits for the mail server's news from now on.
-//     What arrived before went unheard, so the page checks once.
-//   - inbox: a message arrived in the Inbox or went from it. The session's
-//     pages of the Inbox are dropped first, so that the check the page makes
-//     reads them again. A flag changed elsewhere is no news (see
+//   - watching: the session waits for the mail server's news from now on, of
+//     the Inbox alone (data INBOX), or of the subscribed folders as well
+//     (data SUBSCRIBED, [server] push_subscribed_folders with a mail server
+//     that has NOTIFY). What arrived before went unheard, so the page checks
+//     once.
+//   - inbox, data INBOX: a message arrived in the Inbox or went from it. The
+//     session's pages of the Inbox are dropped first, so that the check the
+//     page makes reads them again. A flag changed elsewhere is no news (see
 //     provider.Idler).
-//   - unavailable: the mail server cannot tell of changes. The stream ends,
-//     and the page polls as without push.
+//   - folder, with the folder's name: the same for another folder, while the
+//     folders are watched.
+//   - unavailable, data INBOX: the mail server cannot tell of changes. The
+//     stream ends, and the page polls as without push.
 //
 // It ends with the session (a sign-out, an expiry) and with the request.
 func handleEvents(ctx *alps.Context) error {
@@ -82,12 +88,26 @@ func handleEvents(ctx *alps.Context) error {
 			switch ev {
 			case alps.InboxWatched:
 				frame = "event: watching\ndata: INBOX\n\n"
+			case alps.FoldersWatched:
+				frame = "event: watching\ndata: SUBSCRIBED\n\n"
 			case alps.InboxChanged:
 				forgetInbox(ctx.Session.Cache())
 				frame = "event: inbox\ndata: INBOX\n\n"
 			case alps.InboxUnwatchable:
 				frame = "event: unavailable\ndata: INBOX\n\n"
-			default:
+			}
+			// After any event: one that told of them may have found the
+			// watch's buffer full (see alps.InboxWatch.Folders).
+			for _, name := range watch.Folders() {
+				// A line break would end the event's data. No mail server
+				// names a folder so; one that did is left to the poll.
+				if strings.ContainsAny(name, "\r\n") {
+					continue
+				}
+				dropMailboxListings(ctx.Session.Cache(), name)
+				frame += "event: folder\ndata: " + name + "\n\n"
+			}
+			if frame == "" {
 				continue
 			}
 		}

@@ -107,6 +107,65 @@ describe('shared polling counts', () => {
     }
   });
 
+  it('keeps a pushed follower through backoff recovery and subsequent healthy rounds', async () => {
+    const leader = service(), follower = service();
+    await land(leader); await land(follower, 'Work');
+    leader.start(1); follower.start(1);
+    leader.foldersWatched(true); follower.foldersWatched(true);
+    await vi.advanceTimersByTimeAsync(0);
+    const second = successes(follower);
+    const normal = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async () => new Response('{}', { status: 500 }));
+    // Pushed polling at three then nine minutes; the next check is at 21.
+    await vi.advanceTimersByTimeAsync(9 * 60_000);
+    fetchMock.mockImplementation(normal);
+    state.Work = { ...state.Work, total: 3, unseen: 1, uidnext: 4 };
+    await vi.advanceTimersByTimeAsync(12 * 60_000);
+    expect(second.at(-1)?.data.Total).toBe(3);
+    for (const total of [4, 5]) {
+      state.Work = { ...state.Work, total, uidnext: total + 1 };
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
+      expect(second.at(-1)?.data.Total).toBe(total);
+    }
+  });
+
+  it('keeps a live follower when a jittered pushed wait ends as the stream drops', async () => {
+    vi.mocked(Math.random).mockReturnValue(1);
+    const leader = service(), follower = service();
+    await land(leader); await land(follower, 'Work');
+    leader.start(1); follower.start(1);
+    leader.foldersWatched(true); follower.foldersWatched(true);
+    await vi.advanceTimersByTimeAsync(0);
+    const second = successes(follower);
+    await vi.advanceTimersByTimeAsync(6.5 * 60_000);
+    leader.foldersWatched(false); follower.foldersWatched(false);
+    state.Work = { ...state.Work, total: 3, unseen: 1, uidnext: 4 };
+    await vi.advanceTimersByTimeAsync(0.1 * 60_000);
+    expect(second.at(-1)?.data.Total).toBe(3);
+    for (const total of [4, 5]) {
+      state.Work = { ...state.Work, total, uidnext: total + 1 };
+      await vi.advanceTimersByTimeAsync(1.1 * 60_000);
+      expect(second.at(-1)?.data.Total).toBe(total);
+    }
+  });
+
+  it.each(['stopped', 'crashed'])('expires a %s pushed follower after returning to normal polling', async (gone) => {
+    vi.mocked(Math.random).mockReturnValue(1);
+    const leader = service(), follower = service();
+    await land(leader); await land(follower, 'Work');
+    leader.start(1); follower.start(1);
+    leader.foldersWatched(true); follower.foldersWatched(true);
+    await vi.advanceTimersByTimeAsync(3.3 * 60_000);
+    if (gone === 'stopped') follower.stop();
+    else (follower as any).channel.close();
+    await vi.advanceTimersByTimeAsync(3.2 * 60_000);
+    leader.foldersWatched(false);
+    await vi.advanceTimersByTimeAsync(0.1 * 60_000);
+    if (gone === 'stopped') expect(statusRequests().at(-1)).toBe('/mailboxes/INBOX/status');
+    await vi.advanceTimersByTimeAsync(1.1 * 60_000);
+    expect(statusRequests().at(-1)).toBe('/mailboxes/INBOX/status');
+  });
+
   it.each(['stopped', 'crashed'])('expires a %s follower after backoff recovery', async (gone) => {
     const leader = service(), follower = service();
     await land(leader); await land(follower, 'Work');

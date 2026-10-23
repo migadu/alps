@@ -539,6 +539,18 @@ func (p *IMAPProvider) ensureMailboxSelected(mboxName string) error {
 // a SELECT the server refused leaves no mailbox selected (RFC 3501 §6.3.1):
 // it goes on showing the one before.
 func (p *IMAPProvider) selectMailbox(mailbox string) (*imap.SelectData, error) {
+	if was := p.selectedMailbox(); was != nil && was.Name != mailbox && p.news != nil {
+		uidNext := p.selectedUIDNext
+		if snapshot := p.idled; snapshot.known && snapshot.mailbox == was.Name && snapshot.selects == p.selects {
+			uidNext = snapshot.uidNext
+		}
+		// Unsolicited selected changes can advance UIDNEXT beyond either
+		// snapshot. Do not mistake the first later STATUS for a baseline.
+		if p.news.heard.Load() {
+			uidNext = 0
+		}
+		p.news.folders.left(was.Name, was.NumMessages, p.selectedUIDValidity, uidNext)
+	}
 	data, err := p.client.Select(mailbox, nil).Wait()
 	if err != nil {
 		p.selected = nil

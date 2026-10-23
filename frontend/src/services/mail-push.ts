@@ -26,6 +26,14 @@ const RETRY_FIRST_MS = 2_000;
 const RETRY_MAX_MS = 5 * 60_000;
 const RETRY_JITTER = 0.2;
 
+/** What a tab is told besides the news of the Inbox (see {@link MailPushService}). */
+export interface FolderNews {
+  /** A message arrived in a folder other than the Inbox, or went from it. */
+  folder?: (mailbox: string) => void;
+  /** The server pushes the news of the subscribed folders too (true), or no longer does (false). */
+  folders?: (on: boolean) => void;
+}
+
 /**
  * News of new mail, pushed by the server (`GET /events`) while it waits on
  * the mail server's IDLE for news of the Inbox. Push is off unless the server
@@ -37,6 +45,13 @@ const RETRY_JITTER = 0.2;
  * `onNews` is the check (see messageSync.inboxChanged). The poll goes on as
  * before: it covers the folders other than the Inbox, flags, and the times
  * the stream is down.
+ *
+ * Where the server pushes the news of the subscribed folders too (`[server]
+ * push_subscribed_folders`, with a mail server that has NOTIFY), the stream
+ * says so as it comes up (`watching` SUBSCRIBED), and every tab is told
+ * (`folders`), and told of each folder that changed (`folder`); the poll is
+ * left with the rest. A tab opened later hears whether the folders are pushed
+ * when the stream next comes up, and polls as without them until then.
  *
  * A browser without `navigator.locks` opens no stream, rather than one per
  * tab, and polls as without push. Browsers have it only in a secure context,
@@ -58,9 +73,13 @@ export class MailPushService {
   /** The server cannot push (its mail server has no IDLE): not asked again. */
   private unavailable = false;
   private onNews: () => void;
+  private onFolders: FolderNews;
+  /** This tab's stream said the folders are pushed, and has not ended since. */
+  private foldersOn = false;
 
-  constructor(onNews: () => void) {
+  constructor(onNews: () => void, onFolders: FolderNews = {}) {
     this.onNews = onNews;
+    this.onFolders = onFolders;
     // The stream ends with the session on the server; opened again, it
     // would be refused.
     window.addEventListener('session-cleared', () => this.stop());
@@ -80,6 +99,8 @@ export class MailPushService {
       this.channel = new BroadcastChannel(PUSH_CHANNEL);
       this.channel.onmessage = (e: MessageEvent) => {
         if (e.data?.type === 'news') this.onNews();
+        if (e.data?.type === 'folder' && typeof e.data.mailbox === 'string') this.onFolders.folder?.(e.data.mailbox);
+        if (e.data?.type === 'folders') this.onFolders.folders?.(e.data.on === true);
       };
     }
     // A tab the browser freezes, or keeps in its back-forward cache, keeps
@@ -159,12 +180,20 @@ export class MailPushService {
     // Whether the server waits for the mail server's news on this stream:
     // a stream accepted and cut at once is not one that was up.
     let up = false;
-    source.addEventListener('watching', () => {
+    source.addEventListener('watching', (e: Event) => {
       up = true;
       this.retryDelay = RETRY_FIRST_MS;
       this.news();
+      const folders = (e as MessageEvent).data === 'SUBSCRIBED';
+      if (folders || this.foldersOn) this.tellFolders(folders);
     });
     source.addEventListener('inbox', () => this.news());
+    source.addEventListener('folder', (e: Event) => {
+      const mailbox = (e as MessageEvent).data;
+      if (typeof mailbox !== 'string' || !mailbox) return;
+      this.onFolders.folder?.(mailbox);
+      this.channel?.postMessage({ type: 'folder', mailbox });
+    });
     source.addEventListener('unavailable', () => {
       this.unavailable = true;
       this.close();
@@ -227,6 +256,16 @@ export class MailPushService {
   private close() {
     this.source?.close();
     this.source = null;
+    // The poll the tabs space out while the folders are pushed runs as
+    // often as before again.
+    if (this.foldersOn) this.tellFolders(false);
+  }
+
+  /** Whether the folders are pushed, for this tab and the others. */
+  private tellFolders(on: boolean) {
+    this.foldersOn = on;
+    this.onFolders.folders?.(on);
+    this.channel?.postMessage({ type: 'folders', on });
   }
 
   /** What the stream says, for this tab and the others. */
@@ -236,4 +275,7 @@ export class MailPushService {
   }
 }
 
-export const mailPush = new MailPushService(() => messageSync.inboxChanged());
+export const mailPush = new MailPushService(() => messageSync.inboxChanged(), {
+  folder: (mailbox) => messageSync.folderChanged(mailbox),
+  folders: (on) => messageSync.foldersWatched(on),
+});
