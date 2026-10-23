@@ -34,8 +34,8 @@ func noDebug(string, ...interface{}) {}
 
 var seen = []imap.Flag{imap.FlagSeen}
 
-// Opening an unread message adds \Seen twice: the body fetch sets it, and the
-// reader marks the message read. The count is one message lower, not two.
+// A message marked read twice is one message read: the count is one lower,
+// not two.
 func TestReadingAMessageLowersTheUnseenCountOnce(t *testing.T) {
 	uid := provider.MockMessageID{ID: "7"}
 	cache := flagCache(t, 3, map[string][]provider.Message{
