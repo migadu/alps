@@ -1716,8 +1716,9 @@ export class AlpsFloatingComposer extends LitElement {
               @text-changed=${(e: CustomEvent) => this.composeStore.updateComposer(
                 this.instance.id,
                 { text: e.detail.text, html: e.detail.html },
-                // An `initial` HTML part is the composer's own, made as a
-                // plain-text draft opens in HTML, and not an edit.
+                // An `initial` change is the composer's own, made as it opens:
+                // the HTML part of a plain-text draft, or the paragraph the
+                // editor adds after a quote. Neither is an edit.
                 { edit: !e.detail.initial },
               )}
             ></alps-message-composer>

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -562,18 +563,19 @@ const smtpMaxAttempts = 3
 // DoSMTP executes an SMTP operation on this session. The SMTP client can only
 // be used from inside f.
 //
-// Each attempt uses a fresh connection, so f must be safe to call more than
-// once. Authentication failures are not retried, since re-dialing will not fix
-// bad credentials.
+// A failed attempt is made again, on a fresh connection, only when its
+// failure may pass: a failed connection, or a temporary (4xx) reply. Any
+// other failure is returned at once, as another attempt would meet it again:
+// bad credentials, a permanent (5xx) reply, or an error of f's own, such as an
+// address it cannot parse. DoSMTP sees only what f wraps (with %w) of a
+// failure, so f must not wrap a failed connection once the server may have
+// what f sent: sent again, it would arrive twice. f must be safe to call more
+// than once.
 func (s *Session) DoSMTP(f func(*smtp.Client) error) error {
 	var err error
 	for attempt := 1; attempt <= smtpMaxAttempts; attempt++ {
 		err = s.doSMTP(f)
-		if err == nil {
-			return nil
-		}
-		var authErr provider.AuthError
-		if errors.As(err, &authErr) {
+		if err == nil || !smtpMayPass(err) {
 			return err
 		}
 
@@ -582,6 +584,21 @@ func (s *Session) DoSMTP(f func(*smtp.Client) error) error {
 		}
 	}
 	return fmt.Errorf("SMTP operation failed after %d attempts: %v", smtpMaxAttempts, err)
+}
+
+// smtpMayPass reports whether a failed SMTP attempt may pass when it is made
+// again. Re-dialing will not fix bad credentials, whatever the reply to them.
+func smtpMayPass(err error) bool {
+	var authErr provider.AuthError
+	if errors.As(err, &authErr) {
+		return false
+	}
+	var smtpErr *smtp.SMTPError
+	if errors.As(err, &smtpErr) {
+		return smtpErr.Temporary()
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 // doSMTP performs a single SMTP attempt: dial, authenticate, run f, quit.
@@ -601,8 +618,11 @@ func (s *Session) doSMTP(f func(*smtp.Client) error) error {
 		return err
 	}
 
+	// f has done what it came for: a message it sent, the server has taken.
+	// A QUIT that fails changes nothing of that; reported as a failure, it
+	// would have the message sent again.
 	if err := c.Quit(); err != nil {
-		return fmt.Errorf("QUIT failed: %v", err)
+		s.manager.logger.Debugf("SMTP QUIT failed after the operation succeeded: %v", err)
 	}
 
 	return nil

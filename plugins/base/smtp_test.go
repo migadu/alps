@@ -323,12 +323,17 @@ func (s *smtpSession) Rcpt(_ context.Context, to string, _ *smtp.RcptOptions) er
 	return nil
 }
 
+// Data keeps a message only once it has arrived whole: one that ends before
+// the final "." is not delivered.
 func (s *smtpSession) Data(_ context.Context, r io.Reader) error {
 	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
 	s.b.mu.Lock()
 	defer s.b.mu.Unlock()
 	s.b.data = string(data)
-	return err
+	return nil
 }
 
 func (s *smtpSession) Reset()        {}
@@ -397,6 +402,32 @@ func TestSendMessage_ReportsTheRefusedRecipient(t *testing.T) {
 	var smtpErr *smtp.SMTPError
 	if err == nil || !strings.Contains(err.Error(), "refused@example.com") || !errors.As(err, &smtpErr) && !strings.Contains(err.Error(), "550") {
 		t.Errorf("got %v, want the server's refusal naming the address", err)
+	}
+}
+
+// unreadableAttachment is a file that cannot be opened when the message is
+// written.
+type unreadableAttachment struct{ memAttachment }
+
+func (unreadableAttachment) Open() (io.ReadCloser, error) {
+	return nil, errors.New("the file is gone")
+}
+
+// A message that cannot be written whole is not sent. Its DATA used to be
+// ended with the final "." all the same, and the server delivered what had
+// been written, cut off at the attachment, while the user was told the
+// message had not gone.
+func TestSendMessage_AMessageThatCannotBeWrittenIsNotSent(t *testing.T) {
+	c, rec := dialRecorder(t)
+	msg := outgoing()
+	msg.Attachments = []Attachment{unreadableAttachment{memAttachment{name: "notes.txt", mimeType: "text/plain"}}}
+	if err := sendMessage(c, msg); err == nil || !strings.Contains(err.Error(), "the file is gone") {
+		t.Fatalf("got %v, want the attachment's failure", err)
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if rec.data != "" {
+		t.Errorf("the server accepted %d bytes of a message that was not written whole:\n%s", len(rec.data), rec.data)
 	}
 }
 
