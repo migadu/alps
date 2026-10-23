@@ -71,6 +71,9 @@ func TestMalformedMessageKeysAreRefusedAtBothBoundaries(t *testing.T) {
 // backslash. Refused with the characters that leave a folder, such a message
 // was listed and could not be opened, flagged or moved.
 func TestAKeyWithAnEscapedHostNameIsUsable(t *testing.T) {
+	if os.PathSeparator == '\\' {
+		t.Skip("literal backslashes are filename characters only on Unix")
+	}
 	for _, key := range []string{`1700000000.M1P2.mail\057relay`, `1700000000.M3P4.mail\072993`} {
 		t.Run(key, func(t *testing.T) {
 			base := t.TempDir()
