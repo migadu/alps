@@ -389,7 +389,15 @@ func (s *Session) DoMail(f func(provider.MailProvider) error) error {
 // SMTP server has taken, is not the request's to give up: it runs with
 // FinishMail.
 func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailProvider) error) error {
-	return s.doMail(ctx, f, true)
+	return s.doMail(ctx, f, true, true)
+}
+
+// DoMailOnceWithContext is DoMailWithContext without retrying f after a
+// connection error. A mutation may have succeeded before its reply was lost;
+// repeating a copy, for example, would file another copy. The failed connection
+// is still closed, so the next operation can establish a fresh one.
+func (s *Session) DoMailOnceWithContext(ctx context.Context, f func(provider.MailProvider) error) error {
+	return s.doMail(ctx, f, true, false)
 }
 
 // FinishMail is DoMailWithContext for mail work that finishes something
@@ -402,12 +410,12 @@ func (s *Session) DoMailWithContext(ctx context.Context, f func(provider.MailPro
 // longer answers would hold every request of the session for good, where the
 // browser giving up used to let that connection go.
 func (s *Session) FinishMail(ctx context.Context, f func(provider.MailProvider) error) error {
-	return s.doMail(ctx, f, false)
+	return s.doMail(ctx, f, false, true)
 }
 
 // doMail runs f on the session's connection for DoMailWithContext, and for
-// FinishMail when mayGiveUp is false.
-func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) error, mayGiveUp bool) error {
+// FinishMail when mayGiveUp is false. mayRetry permits replay after a network error.
+func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) error, mayGiveUp, mayRetry bool) error {
 	s.providerLocker.Lock()
 	defer s.providerLocker.Unlock()
 
@@ -454,12 +462,14 @@ func (s *Session) doMail(ctx context.Context, f func(provider.MailProvider) erro
 
 	err := s.runMail(ctx, f, "IMAP operation")
 
-	// If we get a connection error, try once more with a fresh connection
+	// A failed connection is closed. Replay is allowed only for operations
+	// whose caller permits it.
 	if err != nil && isNetworkError(err) {
 		s.provider.Close()
 		s.provider = nil
-		// No one is waiting for the retry; the next request connects.
-		if ctx.Err() != nil && mayGiveUp {
+		// A mutation is not replayed, nor work whose request is gone.
+		// The next request can connect.
+		if !mayRetry || (ctx.Err() != nil && mayGiveUp) {
 			return err
 		}
 
