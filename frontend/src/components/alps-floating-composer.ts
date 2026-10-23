@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
-import { bareAddress, composeContext, draftContentKey, recipientField, uploadGone } from '../store/compose-store';
+import { bareAddress, composeContext, draftContentKey, recipientField, reconcileSavedAttachments, uploadGone } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
 import { messageOperations, MissingUploadsError } from '../services/message-operations';
@@ -299,7 +299,6 @@ export class AlpsFloatingComposer extends LitElement {
     this.composeStore.updateComposer(id, { isSaving: true });
     try {
       const sentUuids = (currentInstance.attachments || []).map(a => a.uuid).filter(Boolean);
-      const sentParts = (currentInstance.attachments || []).map(a => a.partPath).filter(Boolean);
       const formData = this._buildFormData(currentInstance);
       formData.append('save_as_draft', '1');
 
@@ -360,16 +359,7 @@ export class AlpsFloatingComposer extends LitElement {
           // stays removed, and leaves the composer unsaved, so the next save
           // stores the draft without it. Rebuilt from the answer, the list
           // had it back, and the next save and the send carried it again.
-          const storedFrom = new Map<string, any>();
-          for (const { source, ...part } of result.attachments) {
-            if (source?.uuid) storedFrom.set(`uuid:${source.uuid}`, part);
-            else if (source?.partPath) storedFrom.set(`part:${source.partPath}`, part);
-          }
-          updates.attachments = (latest.attachments || []).map(a => {
-            const sent = a.uuid && sentUuids.includes(a.uuid) ? `uuid:${a.uuid}`
-              : a.partPath && sentParts.includes(a.partPath) ? `part:${a.partPath}` : null;
-            return (sent && storedFrom.get(sent)) || a;
-          });
+          updates.attachments = reconcileSavedAttachments(latest.attachments || [], currentInstance.attachments || [], result.attachments);
         }
         this.composeStore.updateComposer(this.instance.id, updates);
 
@@ -506,7 +496,9 @@ export class AlpsFloatingComposer extends LitElement {
    */
   private async _finishDeferredClose() {
     await this.savingPromise?.catch(() => false);
+    if (this._keepOpenForMissingUploads()) return;
     if (await this._saveDraft()) {
+      if (this._keepOpenForMissingUploads(false)) return;
       this.composeStore.closeComposer(this.instance.id);
       return;
     }
@@ -520,6 +512,20 @@ export class AlpsFloatingComposer extends LitElement {
         duration: 6000
       }
     }));
+  }
+
+  /**
+   * A saved draft cannot store the Add again markers. Closing would remove
+   * the only reminder that the message still needs a file, even after a
+   * successful autosave of everything else.
+   */
+  private _keepOpenForMissingUploads(notify = true): boolean {
+    const current = this.composeStore.getComposer(this.instance.id);
+    const count = (current?.attachments || []).filter(a => a.missing).length;
+    if (!count) return false;
+    this.composeStore.updateComposer(this.instance.id, { closing: false, minimized: false });
+    if (notify) this._toastUploadsGone(count);
+    return true;
   }
 
   private async _handleCloseClick() {
@@ -544,6 +550,7 @@ export class AlpsFloatingComposer extends LitElement {
     // Then the store's answer, not the rendered property's, which lags it: a
     // save that has just landed may have left the composer dirty.
     await this.savingPromise?.catch(() => false);
+    if (this._keepOpenForMissingUploads()) return;
     const current = this.composeStore.getComposer(this.instance.id) || this.instance;
     if (current.dirty) {
       const saved = await this._saveDraft();
@@ -558,6 +565,7 @@ export class AlpsFloatingComposer extends LitElement {
         return;
       }
     }
+    if (this._keepOpenForMissingUploads(false)) return;
     this.composeStore.closeComposer(this.instance.id);
   }
 

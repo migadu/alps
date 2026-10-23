@@ -64,6 +64,26 @@ export const uploadGone = (att: any): any => {
   return gone;
 };
 
+/**
+ * Apply a save's source mapping to the attachments still in the composer.
+ * Uploads are consumed and old part paths are replaced on every save, even
+ * when edits made during the request leave the composer open and dirty.
+ * Keep additions and removals made while the request was out.
+ */
+export const reconcileSavedAttachments = (latest: any[], sent: any[], stored: any[]): any[] => {
+  const sourceKey = (a: any): string | undefined => a.uuid ? `uuid:${a.uuid}` : a.partPath ? `part:${a.partPath}` : undefined;
+  const sentKeys = new Set(sent.map(sourceKey));
+  const storedFrom = new Map<string, any>();
+  for (const { source, ...part } of stored) {
+    const key = source && sourceKey(source);
+    if (key) storedFrom.set(key, part);
+  }
+  return latest.map(a => {
+    const key = sourceKey(a);
+    return (key && sentKeys.has(key) && storedFrom.get(key)) || a;
+  });
+};
+
 const isBlockedAddress = (addr: string): boolean => {
   const lowerEmail = bareAddress(addr);
   return lowerEmail.startsWith('noreply') || 
@@ -503,7 +523,10 @@ export class ComposeStore extends EventTarget {
         if (this.username !== username) throw new DraftFlushError();
         const composer = this.getComposer(id);
         if (!composer) continue;
-        if (composer.isSending || composer.isSaving || composer.closing || composer.attachments?.some(a => a.uploading)) {
+        if (composer.isSending || composer.isSaving || composer.closing || composer.attachments?.some(a => a.uploading || a.missing)) {
+          // Missing placeholders exist only here and in localStorage, never
+          // in the saved MIME draft. Even a clean autosaved composer must
+          // retain them until the user adds the files again or removes them.
           failed = true;
           continue;
         }
@@ -549,7 +572,13 @@ export class ComposeStore extends EventTarget {
           if (current && draftContentKey(current) !== contentKey) {
             // Stored, but not as it is now: record the stored draft, so the
             // next save replaces it, without marking the newer edit clean.
-            this.updateComposer(id, { draftUid: saved.uid, draftMailbox: saved.mailbox });
+            this.updateComposer(id, {
+              draftUid: saved.uid,
+              draftMailbox: saved.mailbox,
+              ...(saved.attachments && {
+                attachments: reconcileSavedAttachments(current.attachments || [], composer.attachments || [], saved.attachments),
+              }),
+            });
             failed = true;
             continue;
           }

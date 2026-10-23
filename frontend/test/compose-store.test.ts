@@ -346,6 +346,62 @@ describe('saving everything at sign-out', () => {
     expect(composers(store).map(c => c.subject)).toEqual(['sending', 'uploading']);
   });
 
+  it.each([false, true])('retains a missing-file reminder through sign-out recovery with dirty=%s', async (dirty) => {
+    signIn('ada@example.com');
+    const store = makeStore();
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    store.openComposer({ draftUid: '7', subject: 'Notes', dirty, attachments: [{ filename: 'notes.txt', size: 16, missing: true }] });
+
+    const failure = await store.saveAllDirtyDrafts().catch((e: DraftFlushError) => e);
+
+    expect(failure).toBeInstanceOf(DraftFlushError);
+    expect(saveDraft).not.toHaveBeenCalled();
+    expect(composers(store)).toHaveLength(1);
+    (failure as DraftFlushError).keepRecoveryCopy();
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    expect(composers(store)).toEqual([]);
+    announceUser();
+    expect(composers(store)[0]).toMatchObject({ dirty, attachments: [{ filename: 'notes.txt', size: 16, missing: true }] });
+  });
+
+  it('uses saved attachment sources after a concurrent edit cancels sign-out, preserving later additions and removals', async () => {
+    signIn('ada@example.com');
+    const store = makeStore();
+    store.openComposer({ draftUid: '7', draftMailbox: 'Drafts', subject: 'Notes', dirty: true, attachments: [
+      { filename: 'notes.txt', size: 16, uuid: 'u1' },
+      { name: 'ledger.txt', size: 16, partPath: '2' },
+      { filename: 'removed.txt', size: 16, uuid: 'u2' },
+    ] });
+    const id = composers(store)[0].id;
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockImplementationOnce(async () => {
+      store.updateComposer(id, { text: 'More notes', attachments: [
+        ...store.getComposer(id)!.attachments!.slice(0, 2),
+        { filename: 'added.txt', size: 16, uuid: 'u3' },
+      ] });
+      return { uid: '8', mailbox: 'Drafts', attachments: [
+        { name: 'notes.txt', size: 16, partPath: '2', source: { uuid: 'u1' } },
+        { name: 'ledger.txt', size: 16, partPath: '3', source: { partPath: '2' } },
+        { name: 'removed.txt', size: 16, partPath: '4', source: { uuid: 'u2' } },
+      ] };
+    });
+
+    await expect(store.saveAllDirtyDrafts()).rejects.toBeInstanceOf(DraftFlushError);
+    expect(store.getComposer(id)).toMatchObject({ draftUid: '8', dirty: true, text: 'More notes', attachments: [
+      { name: 'notes.txt', partPath: '2' },
+      { name: 'ledger.txt', partPath: '3' },
+      { filename: 'added.txt', uuid: 'u3' },
+    ] });
+    expect(store.getComposer(id)?.attachments?.map(a => a.uuid)).toEqual([undefined, undefined, 'u3']);
+
+    saveDraft.mockResolvedValueOnce({ uid: '9', mailbox: 'Drafts' });
+    await store.saveAllDirtyDrafts();
+    const form = saveDraft.mock.calls[1][0] as FormData;
+    expect(form.get('draft_uid')).toBe('8');
+    expect(form.get('prev_attachments')).toBe('2,3');
+    expect(form.get('attachment-uuids')).toBe('u3');
+    expect(composers(store)).toEqual([]);
+  });
+
   it('keeps open a composer edited while its save was out, knowing the draft it stored', async () => {
     signIn('ada@example.com');
     const store = makeStore();

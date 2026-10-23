@@ -319,6 +319,107 @@ describe('an upload the server no longer holds', () => {
     expect(text(pill, '.attachment-size')).toBe('attachment.addAgain');
   });
 
+  it('keeps a close open when its save discovers a missing upload, including its persisted reminder', async () => {
+    localStorage.setItem('alps_active_user', 'ada@example.com');
+    const { posted } = server(gone('u1'), answer(200, { draft_uid: '8', draft_mailbox: 'Drafts', attachments: [] }));
+    const { store, instance, id } = composerIn({ dirty: true, attachments: [{ filename: 'notes.txt', size: 16, uuid: 'u1' }] });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+    vi.useFakeTimers();
+
+    await el._handleCloseClick();
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(posted).toHaveLength(2);
+    expect(store.getComposer(id)).toMatchObject({
+      draftUid: '8', dirty: false, closing: false,
+      attachments: [{ filename: 'notes.txt', size: 16, missing: true }],
+    });
+    expect(JSON.parse(localStorage.getItem('alps_compose_drafts_ada@example.com')!)).toEqual([
+      expect.objectContaining({ id, attachments: [{ filename: 'notes.txt', size: 16, missing: true }] }),
+    ]);
+  });
+
+  it('keeps a close open when the autosave it awaited discovers a missing upload', async () => {
+    let finish!: (response: Response) => void;
+    const fetch = vi.fn().mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve; }))
+      .mockResolvedValueOnce(answer(200, { draft_uid: '8', draft_mailbox: 'Drafts', attachments: [] }));
+    vi.stubGlobal('fetch', fetch);
+    const { store, instance, id } = composerIn({ dirty: true, attachments: [{ filename: 'notes.txt', size: 16, uuid: 'u1' }] });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    const saving = el._saveDraft();
+    const closing = el._handleCloseClick();
+    finish(gone('u1'));
+    await saving;
+    await closing;
+
+    expect(store.getComposer(id)).toMatchObject({ dirty: false, closing: false, attachments: [{ missing: true }] });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a deferred close open when its save discovers a missing upload', async () => {
+    const { posted } = server(gone('u1'), answer(200, {
+      draft_uid: '8', draft_mailbox: 'Drafts', attachments: [storedPart('ledger.txt', '2', { uuid: 'u2' })],
+    }));
+    const { store, instance, id } = composerIn({ dirty: true, attachments: [{ filename: 'notes.txt', size: 16, uuid: 'u1' }] });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    el._startUpload([file('ledger.txt')]);
+    await el._handleCloseClick();
+    expect(store.getComposer(id)?.closing).toBe(true);
+    HeldUpload.all[0].finish('u2');
+    await waitFor(() => store.getComposer(id)?.closing === false, 'the missing-file reminder to reopen the window');
+
+    expect(posted).toHaveLength(2);
+    expect(store.getComposer(id)).toMatchObject({ dirty: false, attachments: [{ missing: true }, { partPath: '2' }] });
+  });
+
+  it('keeps a deferred close open when adding a missing file again fails', async () => {
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    const { store, instance, id } = composerIn({ attachments: [{ filename: 'notes.txt', size: 16, missing: true }] });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    el._startUpload([file('notes.txt')]);
+    await el._handleCloseClick();
+    HeldUpload.all[0].fail();
+    await waitFor(() => store.getComposer(id)?.closing === false, 'the failed replacement to reopen the window');
+
+    expect(store.getComposer(id)?.attachments).toEqual([{ filename: 'notes.txt', size: 16, missing: true }]);
+    expect(saveDraft).not.toHaveBeenCalled();
+  });
+
+  it('keeps a clean autosaved missing-file reminder open, until the user explicitly removes the file', async () => {
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts', attachments: [] });
+    const { store, instance, id } = composerIn({ dirty: true, attachments: [{ filename: 'notes.txt', size: 16, missing: true }] });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    expect(await el._saveDraft()).toBe(true);
+    expect(store.getComposer(id)?.dirty).toBe(false);
+    await el._handleCloseClick();
+    expect(store.getComposer(id)?.attachments).toMatchObject([{ missing: true }]);
+    expect(saveDraft).toHaveBeenCalledTimes(1);
+
+    await el.updateComplete;
+    el._removeAttachment(0);
+    await el._handleCloseClick();
+    expect(saveDraft).toHaveBeenCalledTimes(2);
+    expect(store.getComposer(id)).toBeUndefined();
+  });
+
+  it('finishes a deferred close after the missing file is successfully added again', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({
+      uid: '8', mailbox: 'Drafts', attachments: [storedPart('notes.txt', '2', { uuid: 'u9' })],
+    });
+    const { store, instance, id } = composerIn({ attachments: [{ filename: 'notes.txt', size: 16, missing: true }] });
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    el._startUpload([file('notes.txt')]);
+    await el._handleCloseClick();
+    HeldUpload.all[0].finish('u9');
+    await waitFor(() => !store.getComposer(id), 'the replaced attachment to be saved before closing');
+    expect(sentForm(0).get('attachment-uuids')).toBe('u9');
+  });
+
   it('stops a send, which brings the window back with the file to add again, and sends nothing without it', async () => {
     const { fetch } = server(gone('u1'));
     const toasts = record<CustomEvent>(window, 'show-toast');
