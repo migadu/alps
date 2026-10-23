@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,g as r,h as i,m as a,v as o}from"./lit-Br1cDwGJ.js";import{$ as s,W as c,ft as l}from"./index-DYUhv63Z.js";import{i as u,n as d,r as f,t as p}from"./managesieve-service-CHPBIjX8.js";function m(){let e=new Date,t=e=>String(e).padStart(2,`0`);return`${e.getFullYear()}-${t(e.getMonth()+1)}-${t(e.getDate())}`}var h=class extends i{constructor(...e){super(...e),this.loading=!0,this.loadFailed=!1,this.extensions=[],this.ownVacation=!1,this.stored=u,this.draft=u,this.saving=!1,this.error=``}static{this.styles=e`
+import{b as e,c as t,f as n,g as r,h as i,m as a,v as o}from"./lit-Br1cDwGJ.js";import{$ as s,W as c,ft as l}from"./index-B2VHUdAX.js";import{i as u,n as d,r as f,t as p}from"./managesieve-service-DA9KDIJI.js";function m(){let e=new Date,t=e=>String(e).padStart(2,`0`);return`${e.getFullYear()}-${t(e.getMonth()+1)}-${t(e.getDate())}`}var h=class extends i{constructor(...e){super(...e),this.loading=!0,this.loadFailed=!1,this.extensions=[],this.ownVacation=!1,this.stored=u,this.draft=u,this.saving=!1,this.error=``}static{this.styles=e`
 		.loading {
 			display: flex;
 			justify-content: center;
