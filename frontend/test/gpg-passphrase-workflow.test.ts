@@ -8,9 +8,12 @@ const pgp = vi.hoisted(() => ({
   readPrivateKey: vi.fn(),
   decryptKey: vi.fn(),
   encryptKey: vi.fn(),
+  readMessage: vi.fn(),
+  decrypt: vi.fn(),
 }));
 vi.mock('openpgp', () => pgp);
 import '../../plugins/gpg/frontend/gpg-settings';
+import { handleReaderContent } from '../../plugins/gpg/frontend/gpg-crypto';
 
 type El = HTMLElement & Record<string, any>;
 let saves: string[];
@@ -22,7 +25,8 @@ beforeEach(() => {
   pgp.readKey.mockResolvedValue({});
   pgp.readPrivateKey.mockResolvedValue({ isDecrypted: () => false });
   pgp.decryptKey.mockRejectedValueOnce(new Error('wrong passphrase')).mockResolvedValue({ isDecrypted: () => true });
-  pgp.encryptKey.mockResolvedValue('new encrypted armour');
+  // OpenPGP.encryptKey returns a PrivateKey object; the transport needs its armor.
+  pgp.encryptKey.mockResolvedValue({ armor: () => 'new encrypted armour' });
   vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
     if (init?.method === 'POST') saves.push(String(init.body));
     return new Response('{}');
@@ -178,5 +182,224 @@ describe('GPG passphrase steps', () => {
     expect(pgp.decryptKey).toHaveBeenCalledTimes(2);
     expect(pgp.encryptKey).not.toHaveBeenCalled();
     expect(saves).toHaveLength(0);
+  });
+});
+
+/**
+ * A keypair generated or imported is saved to the server, and replaces the
+ * one the page holds unlocked. Neither save looked at the answer: a refused
+ * import cleared the pasted keys and said nothing, and a refused generation
+ * went back to the pane as though it had worked. Nor did either forget the
+ * unlocked key, so the page went on reading, and signing, with the old one.
+ */
+describe('saving a keypair', () => {
+  const encrypted = '-----BEGIN PGP MESSAGE-----\nxyz\n-----END PGP MESSAGE-----';
+  /** Opens an encrypted message, and answers which key opened it. */
+  const read = async () => String(await handleReaderContent({ content: encrypted, banners: [], i18nStore: { t: (k: string) => k } }));
+
+  let stored: string;
+  let refuse: boolean;
+  let alerts: string[];
+
+  beforeEach(() => {
+    stored = 'OLD-KEY';
+    refuse = false;
+    alerts = [];
+    vi.stubGlobal('alert', (message: string) => { alerts.push(message); });
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        saves.push(String(init.body));
+        if (refuse) return new Response('{"error":"An internal error occurred"}', { status: 500, statusText: 'Internal Server Error' });
+        stored = JSON.parse(String(init.body)).encrypted_private_key;
+        return new Response('{"success":true}');
+      }
+      return new Response(JSON.stringify({ public_key: 'public armour', encrypted_private_key: stored }));
+    }));
+    pgp.readPrivateKey.mockImplementation(async ({ armoredKey }: { armoredKey: string }) => ({ armoredKey, isDecrypted: () => true }));
+    pgp.readMessage.mockResolvedValue({});
+    pgp.decrypt.mockImplementation(async ({ decryptionKeys }: { decryptionKeys: { armoredKey: string } }) => ({ data: `opened with ${decryptionKeys.armoredKey}` }));
+  });
+
+  afterEach(() => {
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+  });
+
+  async function generate(el: El) {
+    const finished = el.generateKeys();
+    const first = await prompt(el);
+    await submit(first, 'new secret');
+    await submit(await prompt(el, first), 'new secret');
+    await finished;
+  }
+
+  async function importPasted(el: El) {
+    el.viewState = 'import';
+    el.pubKeyInput = 'public armour';
+    el.privKeyInput = 'private armour';
+    const finished = el.importKeys();
+    const first = await prompt(el);
+    await submit(first, 'new secret');
+    await submit(await prompt(el, first), 'new secret');
+    await finished;
+  }
+
+  it('reads with a generated keypair once it is saved, not with the one unlocked before', async () => {
+    expect(await read()).toContain('opened with OLD-KEY');
+    await generate(await pane());
+    expect(stored).toBe('encrypted armour');
+    expect(await read()).toContain('opened with encrypted armour');
+  });
+
+  it('reads with an imported keypair once it is saved, not with the one unlocked before', async () => {
+    expect(await read()).toContain('opened with OLD-KEY');
+    await importPasted(await pane());
+    expect(stored).toBe('new encrypted armour');
+    expect(await read()).toContain('opened with new encrypted armour');
+  });
+
+  it('saves an imported encrypted PrivateKey as armored text', async () => {
+    await importPasted(await pane());
+    expect(saves).toHaveLength(1);
+    expect(JSON.parse(saves[0]).encrypted_private_key).toBe('new encrypted armour');
+  });
+
+  it.each([['generate', false], ['import', false], ['generate', true], ['import', true]] as const)('pending key read after %s, refused=%s, keeps the accepted key', async (method, refused) => {
+    let release!: () => void;
+    let entered!: () => void;
+    const pendingKey = new Promise<void>(resolve => { release = resolve; });
+    const parsing = new Promise<void>(resolve => { entered = resolve; });
+    pgp.readPrivateKey.mockImplementationOnce(async ({ armoredKey }: { armoredKey: string }) => {
+      entered();
+      await pendingKey;
+      return { armoredKey, isDecrypted: () => true };
+    });
+    const earlier = read();
+    await parsing;
+    try {
+      refuse = refused;
+      if (method === 'generate') await generate(await pane());
+      else await importPasted(await pane());
+    } finally {
+      release();
+    }
+    // The read already underway may use its old key, but must not restore it
+    // as the key future reads/signatures use after the replacement succeeded.
+    expect(await earlier).toContain('opened with OLD-KEY');
+    const expected = refused ? 'OLD-KEY' : method === 'generate' ? 'encrypted armour' : 'new encrypted armour';
+    const parses = pgp.readPrivateKey.mock.calls.length;
+    expect(await read()).toContain(`opened with ${expected}`);
+    expect(pgp.readPrivateKey).toHaveBeenCalledTimes(parses + (refused ? 0 : 1));
+  });
+
+  it('says so when the server refuses a generated keypair, and keeps the key it has', async () => {
+    expect(await read()).toContain('opened with OLD-KEY');
+    refuse = true;
+    await generate(await pane());
+    expect(saves).toHaveLength(1);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatch(/^Failed to generate keys: /);
+    expect(await read()).toContain('opened with OLD-KEY');
+  });
+
+  it('says so when the server refuses an import, and keeps the pasted keys', async () => {
+    refuse = true;
+    const el = await pane();
+    await importPasted(el);
+    expect(saves).toHaveLength(1);
+    expect(el.importError).toMatch(/^Import failed: /);
+    expect(el.viewState).toBe('import');
+    expect([el.pubKeyInput, el.privKeyInput]).toEqual(['public armour', 'private armour']);
+  });
+});
+
+/**
+ * Purging the keypair deletes it from the server, and only then from the
+ * page. The page cleared its keys and forgot the unlocked one whatever the
+ * server answered: a refused delete showed no keypair, the keypair came back
+ * on the next visit, and in the meantime this tab could no longer open
+ * encrypted mail.
+ */
+describe('purging the keypair', () => {
+  const encrypted = '-----BEGIN PGP MESSAGE-----\nxyz\n-----END PGP MESSAGE-----';
+  const read = async () => String(await handleReaderContent({ content: encrypted, banners: [], i18nStore: { t: (k: string) => k } }));
+
+  /** How the server answers the delete: 'ok', a refusal, or no answer at all. */
+  let answer: 'ok' | 'refused' | 'offline';
+  let keyring: Record<string, string>;
+  let alerts: string[];
+
+  beforeEach(() => {
+    answer = 'ok';
+    keyring = { public_key: 'public armour', encrypted_private_key: 'OLD-KEY' };
+    alerts = [];
+    vi.stubGlobal('alert', (message: string) => { alerts.push(message); });
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        if (answer === 'offline') throw new TypeError('Failed to fetch');
+        if (answer === 'refused') return new Response('{"error":"An internal error occurred"}', { status: 500, statusText: 'Internal Server Error' });
+        keyring = {};
+        return new Response('{"success":true}');
+      }
+      return new Response(JSON.stringify(keyring));
+    }));
+    pgp.readPrivateKey.mockImplementation(async ({ armoredKey }: { armoredKey: string }) => ({ armoredKey, isDecrypted: () => true }));
+    pgp.readMessage.mockResolvedValue({});
+    pgp.decrypt.mockImplementation(async ({ decryptionKeys }: { decryptionKeys: { armoredKey: string } }) => ({ data: `opened with ${decryptionKeys.armoredKey}` }));
+  });
+
+  afterEach(() => {
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+  });
+
+  it.each(['ok', 'refused', 'offline'] as const)('a pending old key read respects a purge answered %s', async (how) => {
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const parsing = new Promise<void>(resolve => { entered = resolve; });
+    pgp.readPrivateKey.mockImplementationOnce(async ({ armoredKey }: { armoredKey: string }) => {
+      entered();
+      await gate;
+      return { armoredKey, isDecrypted: () => true };
+    });
+    const earlier = read();
+    await parsing;
+    const el = await pane();
+    answer = how;
+    try { await el.purgeKeys(); } finally { release(); }
+    expect(await earlier).toContain('opened with OLD-KEY');
+    if (how === 'ok') {
+      expect(el.keyring).toBeNull();
+      expect(await read()).not.toContain('opened with OLD-KEY');
+    } else {
+      expect(el.keyring).toEqual(keyring);
+      const parses = pgp.readPrivateKey.mock.calls.length;
+      expect(await read()).toContain('opened with OLD-KEY');
+      expect(pgp.readPrivateKey).toHaveBeenCalledTimes(parses);
+    }
+  });
+
+  it('clears the keypair and the unlocked key once the server has deleted them', async () => {
+    expect(await read()).toContain('opened with OLD-KEY');
+    const el = await pane();
+    expect(el.keyring).not.toBeNull();
+    await el.purgeKeys();
+    expect(el.keyring).toBeNull();
+    expect(alerts).toEqual([]);
+    // The unlocked key is gone with it: the next message reads the keyring
+    // again, and finds none.
+    expect(await read()).not.toContain('opened with OLD-KEY');
+  });
+
+  it.each(['refused', 'offline'] as const)('keeps both, and says so, when the delete is %s', async (how) => {
+    expect(await read()).toContain('opened with OLD-KEY');
+    const el = await pane();
+    answer = how;
+    await el.purgeKeys();
+    await el.updateComplete;
+    expect(el.loading).toBe(false);
+    expect(el.keyring).toEqual(keyring);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatch(/^Failed to purge keys: /);
+    expect(await read()).toContain('opened with OLD-KEY');
   });
 });

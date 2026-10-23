@@ -57,12 +57,12 @@ afterEach(() => {
 });
 
 /** Sends a text message to `to` with encryption on, and answers what would go out. */
-async function send(recipients: string[], field: 'to' | 'cc' | 'bcc' = 'to') {
+async function send(recipients: string[], field: 'to' | 'cc' | 'bcc' = 'to', t = i18nStore) {
   const formData = new FormData();
   formData.set('text', 'Hello');
   formData.set('html', '');
   const instance = { encryptGpg: true, to: [], cc: [], bcc: [], format: 'text', [field]: recipients };
-  return handlePresend({ instance, formData, composer: { i18nStore } });
+  return handlePresend({ instance, formData, composer: { i18nStore: t } });
 }
 
 describe('an encrypted message to a recipient', () => {
@@ -84,6 +84,69 @@ describe('an encrypted message to a recipient', () => {
   });
 });
 
+
+/**
+ * The contact search the key is looked up through matches text anywhere in a
+ * card's name or addresses, as CardDAV's text-match does. Its answer holds
+ * every card that contains the address, and the first of them with a key was
+ * taken: a message to bob@example.com was encrypted to superbob@example.com.
+ */
+describe('an encrypted message to an address that other contacts contain', () => {
+  type Card = { name?: string; email?: string; emails?: { value: string }[]; public_key?: string };
+
+  /** Answers a contact search with every card whose name or an address contains the text. */
+  function addressBook(cards: Card[]) {
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+      const url = new URL(String(input), 'http://alps.test');
+      if (url.pathname === '/gpg/keys') {
+        return new Response(JSON.stringify({ encrypted_private_key: 'MY-KEY' }), { status: 200 });
+      }
+      if (url.pathname === '/contacts') {
+        const query = url.searchParams.get('query') ?? '';
+        queries.push(query);
+        const contacts = cards.filter((c) =>
+          [c.name, c.email, ...(c.emails ?? []).map((e) => e.value)].some((v) => v?.toLowerCase().includes(query.toLowerCase())));
+        return new Response(JSON.stringify({ contacts }), { status: 200 });
+      }
+      return new Response('{}', { status: 404 });
+    }));
+  }
+
+  /** Names the addresses without a key, as the dictionaries' template does. */
+  const missing = { t: (key: string) => (key === 'gpg.missingPublicKeys' ? 'missing:\n{keys}' : key) };
+
+  beforeEach(() => {
+    openpgp.encrypt.mockClear();
+  });
+
+  it('does not encrypt to a contact whose address only contains the recipient\'s', async () => {
+    addressBook([{ name: 'Super Bob', email: 'superbob@example.com', public_key: 'SUPERBOB-KEY' }]);
+
+    expect(await send(['bob@example.com'], 'to', missing)).toBe(false);
+    expect(alerts).toEqual(['missing:\nbob@example.com']);
+    expect(openpgp.encrypt).not.toHaveBeenCalled();
+  });
+
+  it('does not encrypt to a contact whose name holds the recipient\'s address', async () => {
+    addressBook([{ name: 'Carol (was bob@example.com)', email: 'carol@example.com', public_key: 'CAROL-KEY' }]);
+
+    expect(await send(['Bob <bob@example.com>'], 'to', missing)).toBe(false);
+    expect(alerts).toEqual(['missing:\nBob <bob@example.com>']);
+    expect(openpgp.encrypt).not.toHaveBeenCalled();
+  });
+
+  it('encrypts to the contact the address belongs to, past one that only contains it, in any case', async () => {
+    addressBook([
+      { name: 'Super Bob', email: 'superbob@example.com', public_key: 'SUPERBOB-KEY' },
+      { name: 'Bob', email: 'bob.work@example.org', emails: [{ value: 'bob.work@example.org' }, { value: 'Bob@Example.com' }], public_key: 'BOB-KEY' },
+    ]);
+
+    const sent = await send(['Bob <bob@example.com>']);
+
+    expect(alerts).toEqual([]);
+    expect((sent as FormData).get('text')).toBe('encrypted for BOB-KEY, MY-KEY-public');
+  });
+});
 
 describe('an encrypted message to the user', () => {
   it.each(['to', 'cc', 'bcc'] as const)('uses the users own public key for their resolved address in %s', async (field) => {
