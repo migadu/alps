@@ -33,6 +33,7 @@ export default {
       "any": "BILO KOJI",
       "ofTheFollowing": "od sledećih uslova podudaraju",
       "then": "ONDA",
+      "value": "Vrednost",
       "actions": {
         "fileinto": "Premesti u fasciklu",
         "discard": "Odbaci (obriši)",

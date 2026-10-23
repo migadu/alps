@@ -33,6 +33,7 @@ export default {
       "any": "NOGEN",
       "ofTheFollowing": "af følgende betingelser er opfyldt",
       "then": "SÅ",
+      "value": "Værdi",
       "actions": {
         "fileinto": "Flyt til mappe",
         "discard": "Kassér (slet)",

@@ -268,7 +268,7 @@ export class VisualEditor extends LitElement {
 									]}
 									@change=${(e: Event) => this.updateCondition(rIdx, cIdx, { operator: (e.target as HTMLSelectElement).value as any })}>
 								</alps-select>
-								<alps-input class="flex-1" .value=${cond.value} @input=${(e: Event) => this.updateCondition(rIdx, cIdx, { value: (e.target as any).value })}></alps-input>
+								<alps-input class="flex-1" label=${this.i18nStore.t('managesieve.visual.value')} .value=${cond.value} @input=${(e: Event) => this.updateCondition(rIdx, cIdx, { value: (e.target as any).value })}></alps-input>
 								${rule.conditions.length > 1 ? html`<alps-icon-btn icon="minus-square" title=${this.i18nStore.t('managesieve.visual.remove')} @click=${() => this.deleteCondition(rIdx, cIdx)}></alps-icon-btn>` : ''}
 								<alps-icon-btn icon="plus-square" title=${this.i18nStore.t('managesieve.visual.add')} @click=${() => this.addCondition(rIdx, cIdx + 1)}></alps-icon-btn>
 							</div>

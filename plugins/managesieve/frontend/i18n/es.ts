@@ -33,6 +33,7 @@ export default {
       "any": "CUALQUIERA",
       "ofTheFollowing": "de las siguientes condiciones coinciden",
       "then": "ENTONCES",
+      "value": "Valor",
       "actions": {
         "fileinto": "Mover a la carpeta",
         "discard": "Descartar (Eliminar)",

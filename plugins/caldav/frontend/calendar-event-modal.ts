@@ -335,6 +335,7 @@ export class CalendarEventModal extends LitElement {
                     <div class="form-group">
                         <label>${this.i18nStore?.t('calendar.calendar')}</label>
                         <alps-select
+                            label=${this.i18nStore?.t('calendar.calendar')}
                             .value=${this.calendarPath}
                             .options=${this.calendars.map(c => ({ value: c.path, label: c.name }))}
                             @change=${(e: Event) => { this.calendarPath = (e.target as HTMLSelectElement).value; }}
@@ -354,6 +355,7 @@ export class CalendarEventModal extends LitElement {
                         <label>${this.i18nStore?.t('invitations.guests')}</label>
                         <alps-address-input
                             class="guests"
+                            label=${this.i18nStore?.t('invitations.guests')}
                             .addresses=${this.attendees}
                             @addresses-changed=${(e: CustomEvent) => { this.attendees = e.detail.addresses; }}
                         ></alps-address-input>
@@ -415,6 +417,7 @@ export class CalendarEventModal extends LitElement {
                 <div class="form-group">
                     <label>${this.i18nStore?.t('calendar.repeat')}</label>
                     <alps-select
+                        label=${this.i18nStore?.t('calendar.repeat')}
                         .value=${this.rruleFreq}
                         .options=${[
                             { value: '', label: this.i18nStore?.t('calendar.repeatNone') },

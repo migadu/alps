@@ -33,6 +33,7 @@ export default {
       "any": "EINE",
       "ofTheFollowing": "der folgenden Bedingungen erfüllt sind",
       "then": "DANN",
+      "value": "Wert",
       "actions": {
         "fileinto": "In Ordner verschieben",
         "discard": "Verwerfen (Löschen)",
