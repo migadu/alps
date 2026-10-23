@@ -670,12 +670,17 @@ export class CalendarPage extends LitElement {
                 color: ev.color || getCalendarColor(ev.calendarPath || ev.path)
             }));
 
+            const listedNone = this.calendars.length === 0;
             this.calendars = calRes.calendars.filter(holdsEvents).map((c: any) => ({
                 ...c,
                 color: c.color || getCalendarColor(c.path)
             }));
 
-            if (this.activeCalendars.size === 0 && this.calendars.length > 0) {
+            // Every calendar is checked when the page lists its first ones: on
+            // the first read, or after every calendar was deleted. Not whenever
+            // none is checked, which is also what a user who unchecked every
+            // calendar leaves behind: the next read checked them all again.
+            if (listedNone && this.calendars.length > 0) {
                 this.activeCalendars = new Set(this.calendars.map(c => c.path));
             }
         } catch (e) {
