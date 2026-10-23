@@ -245,9 +245,9 @@ export const de: TranslationDictionary = {
       one: 'Die markierte Nachricht ist darin enthalten.',
       other: 'Die {count} markierten Nachrichten sind darin enthalten.'
     },
-    emptyingMailbox: 'Postfach wird geleert...',
-    mailboxEmptied: 'Postfach erfolgreich geleert.',
-    emptyMailboxFailed: 'Postfach konnte nicht geleert werden. Stellen Sie sicher, dass es sich um Papierkorb oder Spam handelt.',
+    emptyingMailbox: '{folder} wird geleert...',
+    mailboxEmptied: '{folder} wurde geleert.',
+    emptyMailboxFailed: '{folder} konnte nicht geleert werden.',
     mailboxAlreadyEmpty: '{folder} war bereits leer – es wurde nichts gelöscht.',
     emptyMailboxSlow: '{folder} wird noch geleert. Der Server arbeitet daran – sehen Sie gleich noch einmal nach.'
   },

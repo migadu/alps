@@ -243,9 +243,9 @@ export const it = {
       one: 'È incluso anche il messaggio selezionato.',
       other: 'Sono inclusi anche i {count} messaggi selezionati.'
     },
-    emptyingMailbox: 'Svuotamento casella di posta...',
-    mailboxEmptied: 'Casella di posta svuotata con successo.',
-    emptyMailboxFailed: 'Impossibile svuotare la casella di posta. Assicurati che sia Cestino o Posta indesiderata.',
+    emptyingMailbox: 'Svuotamento di {folder}...',
+    mailboxEmptied: 'Svuotamento di {folder} completato.',
+    emptyMailboxFailed: 'Impossibile svuotare {folder}.',
     mailboxAlreadyEmpty: '{folder} era già vuota: non è stato eliminato nulla.',
     emptyMailboxSlow: 'Svuotamento di {folder} ancora in corso. Il server ci sta lavorando: ricontrolla tra un momento.'
   },

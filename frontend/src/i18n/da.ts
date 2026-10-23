@@ -298,9 +298,9 @@ export const da: TranslationDictionary = {
       one: 'Den markerede besked er inkluderet.',
       other: 'De {count} markerede beskeder er inkluderet.'
     },
-    emptyingMailbox: 'Tømmer postkasse...',
-    mailboxEmptied: 'Postkasse tømt.',
-    emptyMailboxFailed: 'Kunne ikke tømme postkassen. Den skal være Papirkurv eller Uønsket.',
+    emptyingMailbox: 'Tømmer {folder}...',
+    mailboxEmptied: '{folder} er tømt.',
+    emptyMailboxFailed: 'Kunne ikke tømme {folder}.',
     mailboxAlreadyEmpty: '{folder} var allerede tom – intet blev slettet.',
     emptyMailboxSlow: 'Tømmer stadig {folder}. Serveren arbejder på det – se efter igen om et øjeblik.'
   },

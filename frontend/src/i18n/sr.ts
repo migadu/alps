@@ -252,9 +252,9 @@ export const sr = {
       few: 'Uključene su i {count} poruke koje ste označili.',
       other: 'Uključeno je i {count} poruka koje ste označili.'
     },
-    emptyingMailbox: 'Pražnjenje sandučeta...',
-    mailboxEmptied: 'Sanduče je uspešno ispražnjeno.',
-    emptyMailboxFailed: 'Nije moguće isprazniti sanduče. Proverite da li je Otpad ili Nepoželjno.',
+    emptyingMailbox: 'Pražnjenje fascikle {folder}...',
+    mailboxEmptied: 'Fascikla {folder} je ispražnjena.',
+    emptyMailboxFailed: 'Nije moguće isprazniti fasciklu {folder}.',
     mailboxAlreadyEmpty: '{folder} je već bio prazan, pa ništa nije obrisano.',
     emptyMailboxSlow: 'Pražnjenje fascikle {folder} je još u toku. Server i dalje radi; proverite ponovo za trenutak.'
   },

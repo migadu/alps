@@ -252,9 +252,9 @@ export const rs = {
       few: 'Укључене су и {count} поруке које сте означили.',
       other: 'Укључено је и {count} порука које сте означили.'
     },
-    emptyingMailbox: 'Пражњење сандучета...',
-    mailboxEmptied: 'Сандуче је успешно испражњено.',
-    emptyMailboxFailed: 'Није могуће испразнити сандуче. Проверите да ли је Отпад или Непожељно.',
+    emptyingMailbox: 'Пражњење фасцикле {folder}...',
+    mailboxEmptied: 'Фасцикла {folder} је испражњена.',
+    emptyMailboxFailed: 'Није могуће испразнити фасциклу {folder}.',
     mailboxAlreadyEmpty: '{folder} је већ био празан, па ништа није обрисано.',
     emptyMailboxSlow: 'Пражњење фасцикле {folder} је још у току. Сервер и даље ради; проверите поново за тренутак.'
   },
