@@ -146,3 +146,19 @@ it('keeps a toolbar star and its newer version when an earlier edit response arr
   expect(edit.mock.calls[1][1]).toMatchObject({ etag: 'v3', note: 'Next edit' });
   expect(edit.mock.calls[1][1]).not.toHaveProperty('categories');
 });
+
+it('uses a toolbar version acknowledged while another card holds the save queue', async () => {
+  let finish!: (answer: any) => void;
+  vi.spyOn(contactsService, 'createContact').mockReturnValue(new Promise(resolve => { finish = resolve; }) as any);
+  const edit = vi.spyOn(contactsService, 'updateContact').mockResolvedValue({ ok: 'true', path: card.path, etag: 'v4' });
+  vi.spyOn(contactsService, 'bulkUpdateCategories').mockResolvedValue({ total: 1, done: 1, failed: 0, uncertain: 0, etags: { [card.path]: 'v3' } } as any);
+  const el = await contactsPage();
+  el.handleCreateNew(); await settle(el);
+  const creating = el.handleSave({ ...el.selectedContact, name: 'Ada' });
+  await el.selectContact(card, false); await settle(el);
+  await el.handleSave({ ...el.selectedContact, nickname: 'Queued Grace' });
+  await el.handleToggleStarEvent(); await settle(el);
+  finish({ ok: 'true', path: '/book/ada.vcf', etag: 'a1' });
+  await creating;
+  expect(edit.mock.calls[0][1]).toMatchObject({ nickname: 'Queued Grace', etag: 'v3' });
+});

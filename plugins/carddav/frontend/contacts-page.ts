@@ -43,6 +43,7 @@ type ContactSaveTarget = {
   lifetime: number;
   username: string;
   conflicted: boolean;
+  toolbarVersion?: { etag: string };
 };
 
 @customElement('contacts-page')
@@ -1106,10 +1107,14 @@ export class ContactsPage extends LitElement {
         contact: { ...(showing ? this.selectedContact : source) }, original: source,
         generation: showing ? this.cardGeneration : -1, lifetime: this.saveLifetime,
         username: this.username, conflicted: false,
+        toolbarVersion: this.toolbarVersions.get(source.path),
       };
       this.saveTargets.set(source, target);
     }
-    if (!this.saveRunning && this.showingSave(target)) target.contact = { ...this.selectedContact };
+    if (!this.saveRunning && this.showingSave(target)) {
+      target.contact = { ...this.selectedContact };
+      target.toolbarVersion = this.toolbarVersions.get(target.contact.path);
+    }
     // Capture the form when it was submitted, including when it has to wait.
     payload = { ...payload };
     for (const field of ['emails', 'phones']) {
@@ -1131,8 +1136,15 @@ export class ContactsPage extends LitElement {
   }
 
   private async saveOnce(payload: any, target: ContactSaveTarget) {
+    // Another card can hold the queue while this card's toolbar completes a
+    // write. Advance to that acknowledged version before sending its form.
+    const latest = this.toolbarVersions.get(target.contact.path);
+    if (latest && latest !== target.toolbarVersion) {
+      target.contact = { ...target.contact, etag: latest.etag };
+      target.toolbarVersion = latest;
+    }
     const before = target.contact;
-    const toolbarVersion = this.toolbarVersions.get(before.path);
+    const toolbarVersion = target.toolbarVersion;
     const editing = !before.isTemporary;
     // After a refusal every autosave would be refused the same way, one error
     // per keystroke. Nothing is sent until the edit is cancelled, which shows
@@ -1201,6 +1213,7 @@ export class ContactsPage extends LitElement {
       // new ETag and property positions even when another card is open now.
       const showing = this.showingSave(target);
       target.contact = savedContact;
+      target.toolbarVersion = this.toolbarVersions.get(savedContact.path);
       if (!this.ownsSave(target)) return;
       const contactIndex = this.contacts.findIndex((c: any) => editing ? c.path === before.path : c === target.original);
       if (contactIndex > -1) {
