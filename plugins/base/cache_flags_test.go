@@ -1,6 +1,7 @@
 package alpsbase
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ func flagCache(t *testing.T, unseen uint32, pages map[string][]provider.Message)
 	cache := alps.NewCache(time.Minute)
 	t.Cleanup(cache.Close)
 	for key, msgs := range pages {
-		cache.Set(key, CachedMessages{Messages: msgs, Total: len(msgs)})
+		cache.Set(key, CachedMessages{Mailbox: "INBOX", Messages: msgs, Total: len(msgs)})
 	}
 	cache.Set("status:INBOX", &MailboxStatus{StatusData: &imap.StatusData{Mailbox: "INBOX", NumUnseen: &unseen}})
 	return cache
@@ -57,7 +58,7 @@ func TestReadingAListedMessageLowersTheCount(t *testing.T) {
 	uid := provider.MockMessageID{ID: "7"}
 	msgs := []provider.Message{{ID: uid}, {ID: provider.MockMessageID{ID: "8"}}}
 	cache := flagCache(t, 3, nil)
-	cache.Set("messages:INBOX:0", CachedMessages{Messages: msgs, Total: len(msgs)})
+	cache.Set("messages:INBOX:0", CachedMessages{Mailbox: "INBOX", Messages: msgs, Total: len(msgs)})
 	cache.Set("message:INBOX:7:[]", CachedMessagePart{Message: &msgs[0], Mailbox: "INBOX"})
 
 	applyFlagsToCache(cache, noDebug, "INBOX", uid, seen, nil)
@@ -141,11 +142,11 @@ func TestReadingAMessageMovesThePagesWithTheCount(t *testing.T) {
 	uid := provider.MockMessageID{ID: "7"}
 	at := mailboxCounts{Known: true, Messages: 5, Unseen: 3}
 	cache := flagCache(t, 3, nil)
-	cache.Set("messages:INBOX:page0", CachedMessages{Messages: []provider.Message{{ID: uid}}, Counts: at})
+	cache.Set("messages:INBOX:page0", CachedMessages{Mailbox: "INBOX", Messages: []provider.Message{{ID: uid}}, Counts: at})
 	// Another page, which does not list the message but counts it all the same.
-	cache.Set("messages:INBOX:page1", CachedMessages{Messages: []provider.Message{{ID: provider.MockMessageID{ID: "8"}}}, Counts: at})
+	cache.Set("messages:INBOX:page1", CachedMessages{Mailbox: "INBOX", Messages: []provider.Message{{ID: provider.MockMessageID{ID: "8"}}}, Counts: at})
 	// Another folder's page is not this count's.
-	cache.Set("messages:INBOX2:page0", CachedMessages{Counts: at})
+	cache.Set("messages:INBOX2:page0", CachedMessages{Mailbox: "INBOX2", Counts: at})
 
 	applyFlagsToCache(cache, noDebug, "INBOX", uid, seen, nil)
 	applyFlagsToCache(cache, noDebug, "INBOX", uid, seen, nil)
@@ -174,7 +175,7 @@ func TestReadingAMessageMovesThePagesWithTheCount(t *testing.T) {
 func TestAnUnknownPreviousStateLeavesThePagesAtTheirCount(t *testing.T) {
 	at := mailboxCounts{Known: true, Messages: 5, Unseen: 3}
 	cache := flagCache(t, 3, nil)
-	cache.Set("messages:INBOX:page0", CachedMessages{Messages: []provider.Message{{ID: provider.MockMessageID{ID: "8"}}}, Counts: at})
+	cache.Set("messages:INBOX:page0", CachedMessages{Mailbox: "INBOX", Messages: []provider.Message{{ID: provider.MockMessageID{ID: "8"}}}, Counts: at})
 
 	applyFlagsToCache(cache, noDebug, "INBOX", provider.MockMessageID{ID: "7"}, seen, nil)
 
@@ -249,7 +250,7 @@ func TestMarkingAThreadedMessageMovesThePagesCopyOfIt(t *testing.T) {
 			conversation := provider.Message{ID: provider.MockMessageID{ID: "8"}, SubMessages: []provider.Message{member}}
 			at := mailboxCounts{Known: true, Messages: 2, Unseen: 2}
 			cache := flagCache(t, 2, nil)
-			cache.Set("messages:INBOX:page0", CachedMessages{Messages: []provider.Message{conversation}, Counts: at})
+			cache.Set("messages:INBOX:page0", CachedMessages{Mailbox: "INBOX", Messages: []provider.Message{conversation}, Counts: at})
 			cache.Set("message:INBOX:8:[]", CachedMessagePart{Message: &conversation, Mailbox: "INBOX"})
 			if withRow {
 				opened := member
@@ -276,6 +277,60 @@ func TestMarkingAThreadedMessageMovesThePagesCopyOfIt(t *testing.T) {
 			check("marked read", true, 1)
 			applyFlagsToCache(cache, noDebug, "INBOX", member.ID, nil, seen)
 			check("marked unread", false, 2)
+		})
+	}
+}
+
+// A UID names a different message in each folder, and the pages of Work:Sub
+// have keys under Work's prefix (see CachedMessages.Mailbox). Starring and
+// reading UID 7 of Work starred UID 7 of Work:Sub in its page as well. Read
+// there, it was taken for Work's message read already, and Work's unread count
+// was dropped instead of lowered; unread there, it was marked read, and the
+// page of Work:Sub was moved to an unread count Work:Sub did not have.
+func TestAFlagChangeLeavesAFolderNamedLikeAnotherAlone(t *testing.T) {
+	for _, subSeen := range []bool{true, false} {
+		name := "unread in Work:Sub"
+		if subSeen {
+			name = "read in Work:Sub"
+		}
+		t.Run(name, func(t *testing.T) {
+			uid := provider.MockMessageID{ID: "7"}
+			sibling := func() CachedMessages {
+				var flags []provider.Flag
+				if subSeen {
+					flags = []provider.Flag{provider.Flag(imap.FlagSeen)}
+				}
+				return CachedMessages{
+					Mailbox:  "Work:Sub",
+					Messages: []provider.Message{{ID: uid, Flags: flags}, {ID: provider.MockMessageID{ID: "8"}}},
+					Counts:   mailboxCounts{Known: true, Messages: 2, Unseen: uint32(2 - len(flags))},
+				}
+			}
+			unseen := uint32(1)
+			cache := alps.NewCache(time.Minute)
+			t.Cleanup(cache.Close)
+			cache.Set("status:Work", &MailboxStatus{StatusData: &imap.StatusData{Mailbox: "Work", NumUnseen: &unseen}})
+			cache.Set("messages:Work:page0", CachedMessages{
+				Mailbox:  "Work",
+				Messages: []provider.Message{{ID: uid}},
+				Counts:   mailboxCounts{Known: true, Messages: 1, Unseen: 1},
+			})
+			cache.Set("messages:Work:Sub:page0", sibling())
+
+			applyFlagsToCache(cache, noDebug, "Work", uid, []imap.Flag{imap.FlagSeen, imap.FlagFlagged}, nil)
+
+			cached, _ := cache.Get("messages:Work:Sub:page0")
+			if got, want := cached.(CachedMessages), sibling(); !reflect.DeepEqual(got, want) {
+				t.Errorf("the page of Work:Sub took Work's change: UID 7 there carries %v, at %d unread, want %v, at %d",
+					got.Messages[0].Flags, got.Counts.Unseen, want.Messages[0].Flags, want.Counts.Unseen)
+			}
+			cached, ok := cache.Get("status:Work")
+			if !ok {
+				t.Fatal("Work's unread count was dropped, want it lowered")
+			}
+			if got := *cached.(*MailboxStatus).NumUnseen; got != 0 {
+				t.Errorf("Work counts %d unread, want 0", got)
+			}
 		})
 	}
 }

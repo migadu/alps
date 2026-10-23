@@ -221,3 +221,62 @@ func TestPatchCachedConversations(t *testing.T) {
 		t.Error("an entry that could not be patched was kept")
 	}
 }
+
+// The pages of Work:Sub have keys under Work's prefix (see
+// CachedMessages.Mailbox), and their rows name Work:Sub's messages. A
+// conversation of UIDs 3 and 7 there is not one of Work's: taken for Work's,
+// opening UID 7 of Work read UIDs 3 and 7 of Work as its conversation.
+func TestListedThreadUIDsDoesNotUseColonSibling(t *testing.T) {
+	cache := alps.NewCache(time.Minute)
+	defer cache.Close()
+	p := &provider.MockProvider{}
+
+	cache.Set("messages:Work:Sub:page0", CachedMessages{
+		Mailbox:  "Work:Sub",
+		Messages: []provider.Message{{ID: testUID("7"), ThreadUIDs: []string{"3", "7"}}},
+	})
+	if got := listedThreadUIDs(p, cache, "Work", "7"); got != nil {
+		t.Errorf("the conversation of UID 7 in Work is %v, read from the page of Work:Sub", got)
+	}
+
+	cache.Set("messages:Work:page0", CachedMessages{
+		Mailbox:  "Work",
+		Messages: []provider.Message{{ID: testUID("7"), ThreadUIDs: []string{"7", "9"}}},
+	})
+	got := listedThreadUIDs(p, cache, "Work", "7")
+	if len(got) != 2 || got[0].String() != "7" || got[1].String() != "9" {
+		t.Errorf("the conversation of UID 7 in Work is %v, want 7 and 9 from Work's own page", got)
+	}
+}
+
+// A conversation is patched where its member is the message changed: the
+// same UID, in the same folder. The conversations of Work:Sub are kept under
+// keys that begin with Work's prefix, and a conversation of Work carries the
+// user's own messages from Sent under their UIDs in Sent. Starring UID 7 of
+// Work starred UID 7 of Work:Sub, and in a conversation the user began, the
+// message they sent, UID 7 in Sent, in place of the answer in Work.
+func TestPatchCachedConversationsLeavesOtherFoldersMessagesAlone(t *testing.T) {
+	cache := alps.NewCache(time.Minute)
+	defer cache.Close()
+
+	member := func(mailbox string) IMAPMessage {
+		return IMAPMessage{FetchMessageBuffer: &imapclient.FetchMessageBuffer{}, AlpsUID: "7", Mailbox: mailbox}
+	}
+	cache.Set(threadCacheKey("Work", "7"), []IMAPMessage{member("Sent"), member("Work")})
+	cache.Set(threadCacheKey("Work:Sub", "7"), []IMAPMessage{member("Work:Sub")})
+
+	patchCachedConversations(cache, noDebug, "Work", "7", []imap.Flag{imap.FlagFlagged}, nil)
+
+	held, _ := cache.Get(threadCacheKey("Work", "7"))
+	work := held.([]IMAPMessage)
+	if len(work[0].Flags) != 0 {
+		t.Errorf("the message from Sent, UID 7 there, carries %v, want it left as it was", work[0].Flags)
+	}
+	if !slices.Contains(work[1].Flags, imap.FlagFlagged) {
+		t.Errorf("UID 7 of Work carries %v in its conversation, want it starred", work[1].Flags)
+	}
+	held, _ = cache.Get(threadCacheKey("Work:Sub", "7"))
+	if flags := held.([]IMAPMessage)[0].Flags; len(flags) != 0 {
+		t.Errorf("UID 7 of Work:Sub carries %v in its conversation, want it left as it was", flags)
+	}
+}
