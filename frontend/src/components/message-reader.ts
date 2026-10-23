@@ -2,7 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { live } from 'lit/directives/live.js';
 import { repeat } from 'lit/directives/repeat.js';
-import { FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName, getRemovableTags } from '../utils/flags';
+import { FLAG_ANSWERED, FLAG_SEEN, FLAG_FLAGGED, FLAG_DRAFT, getMessageTags, getTagColor, getTagName, getRemovableTags } from '../utils/flags';
 import { ALL_MAILBOXES, FOLDER_INBOX, FOLDER_SENT, encodeMailboxPath, mailboxRoleByName } from '../utils/folders';
 import { BACKGROUND_REQUEST, fetchWithTimeout } from '../utils/fetch-utils';
 import { consume } from '@lit/context';
@@ -1720,6 +1720,11 @@ export class MessageReader extends LitElement {
       && cacheGeneration === MessageCache.generation() && !!this.message
       && this.keyOf(this.message) === pending.key;
     const mailbox = msg.Mailbox || this.mailbox;
+    if (opening && !this.mayHaveConversation(msg)) {
+      this.conversationReads.delete(pending);
+      if (current()) this.settleOpenedConversation();
+      return;
+    }
     try {
       const res = await fetchWithTimeout(`/mailboxes/${encodeMailboxPath(mailbox)}/messages/${msg.UID}/thread`);
       if (res.ok) {
@@ -1743,6 +1748,27 @@ export class MessageReader extends LitElement {
     // With or without the server's answer: the cards the list gave are a
     // conversation too, and their unread should open all the same.
     if (opening && current()) this.settleOpenedConversation();
+  }
+
+  /**
+   * Whether an opened message can have other members to read. Each one opened
+   * asked for its conversation once its body had come, a THREAD over the
+   * folder and a search through Sent, which its inline images waited behind.
+   * One the listing threaded alone, which the user has not answered (the
+   * answer would be in Sent) and which answers no other (its parent can be
+   * anywhere), has no one else to find. Any other is asked for, and so is one
+   * the listing did not thread. Its read, which brings References a row does
+   * not carry, counts where it has landed: on the open message.
+   */
+  private mayHaveConversation(msg: any): boolean {
+    // A failed read has not established the References a listing omits.
+    // Keep the conversation available even when its opened body is unreadable.
+    if (this.loadFailed) return true;
+    const read = this.message && this.keyOf(this.message) === this.keyOf(msg) ? this.message : msg;
+    if ((msg.ThreadCount ?? 0) !== 1) return true;
+    if ((read.Flags ?? msg.Flags ?? []).includes(FLAG_ANSWERED)) return true;
+    if (read.Envelope?.InReplyTo || msg.Envelope?.InReplyTo) return true;
+    return Array.isArray(read.References) && read.References.length > 0;
   }
 
   /**

@@ -24,11 +24,19 @@ function events(svc: MessageSyncService) {
 
 const context = (svc: MessageSyncService) => ({ mailbox: (svc as any).currentMailbox, page: (svc as any).currentPage });
 
+/** A status answer for the folder a URL names, with the folders its `with` names under `with`. */
+function withOthers(url: string, counts: object, of: (name: string) => object) {
+  const others = new URL(url, 'http://alps.test').searchParams.getAll('with');
+  return others.length ? { ...counts, with: Object.fromEntries(others.map((name) => [name, of(name)])) } : counts;
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
   vi.spyOn(console, 'error').mockImplementation(() => {});
+  // The poll's jitter at its middle, which is none: tests about it set their own.
+  vi.spyOn(Math, 'random').mockReturnValue(0.5);
 });
 
 afterEach(() => {
@@ -158,7 +166,7 @@ describe('the background poll', () => {
     const seen = events(svc);
     svc.setContext('Work', 1, 'ada');
     await (svc as any).backgroundSync();
-    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Work/status', '/mailboxes/Work?page=1&query=ada']);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/Work/status?with=INBOX', '/mailboxes/Work?page=1&query=ada']);
     expect(seen.map((e) => e.type)).toEqual(['sync-success']);
     expect(seen[0].detail.background).toBe(true);
   });
@@ -420,7 +428,7 @@ describe('the check-for-new-mail button', () => {
     await landed(svc, 'Work');
     quiet();
     await svc.check('Work', 0);
-    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Work/status', '/mailboxes/Work?page=0']);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/Work/status?with=INBOX', '/mailboxes/Work?page=0']);
   });
 
   it('asks no counts of a search of all mailboxes, of which the server has none', async () => {
@@ -534,7 +542,7 @@ describe('the re-read after a write', () => {
 
     // The counts first, as the poll asks them: a refresh also caught mail that
     // arrived meanwhile, and a folder whose counts moved is read again.
-    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Work/status', '/mailboxes/Work?page=2&query=ada']);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/Work/status?with=INBOX', '/mailboxes/Work?page=2&query=ada']);
     expect(seen.map((e) => e.type)).toEqual(['sync-start', 'sync-success']);
     expect(seen.every((e) => e.detail.quiet === true && e.detail.background === false)).toBe(true);
   });
@@ -578,7 +586,7 @@ describe('the re-read after a write', () => {
     finish();
     expect(await gesture).toBe('filed');
     await vi.runAllTimersAsync();
-    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Work/status', '/mailboxes/Work?page=0']);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/Work/status?with=INBOX', '/mailboxes/Work?page=0']);
   });
 
   it('is not made for writes that asked for none, and is made when one fails', async () => {
@@ -866,11 +874,82 @@ describe('listings kept in memory', () => {
  * mail server, and every poll read the listing again, a search included,
  * whatever the counts it had just asked for said.
  */
+describe('the folder list', () => {
+  // Every listing carried the whole folder list, nearly always the one held.
+  // The server names its list by a version now, and leaves it out when the
+  // version sent back is the list's.
+  const answer = (body: Record<string, unknown>) =>
+    new Response(JSON.stringify({ Messages: [], Total: 0, ...body }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  const held = [{ Name: 'INBOX', Total: 2, Unseen: 1 }, { Name: 'Archive', Total: 5, Unseen: 0 }];
+  const asked = () => fetchMock.mock.calls.map((c) => String(c[0]));
+
+  async function read(svc: MessageSyncService, mailbox: string, body: Record<string, unknown>, refresh = false) {
+    fetchMock.mockResolvedValueOnce(answer(body));
+    const pending = svc.fetch(mailbox, 0, '', refresh);
+    await vi.runAllTimersAsync();
+    await pending;
+  }
+
+  it('is asked for by the version held, and handed out as held when the answer leaves it out', async () => {
+    const svc = new MessageSyncService();
+    const seen = events(svc);
+    await read(svc, 'INBOX', { Mailboxes: held, MailboxesVersion: 'v1' });
+    await read(svc, 'Archive', { MailboxesVersion: 'v1' });
+
+    expect(asked()).toEqual(['/mailboxes/INBOX?page=0', '/mailboxes/Archive?page=0&mailboxes=v1']);
+    const shown = seen.filter((e) => e.type === 'sync-success').map((e) => e.detail.data.Mailboxes);
+    expect(shown).toEqual([held, held]);
+  });
+
+  it('is asked for by the version held in the poll\'s listing too', async () => {
+    const svc = new MessageSyncService();
+    await read(svc, 'INBOX', { Mailboxes: held, MailboxesVersion: 'v1' });
+    fetchMock.mockImplementation(async (url: string) => (url.includes('/status')
+      ? new Response(JSON.stringify({ total: 3, unseen: 2 }), { status: 200 })
+      : answer({ MailboxesVersion: 'v1' })));
+
+    svc.start(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    svc.stop();
+
+    expect(asked().filter((url) => url.includes('?page='))).toEqual(['/mailboxes/INBOX?page=0', '/mailboxes/INBOX?page=0&mailboxes=v1']);
+  });
+
+  it('is asked for by the version the folder list alone came with', async () => {
+    const svc = new MessageSyncService();
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ Mailboxes: held, MailboxesVersion: 'v2' }), { status: 200 }));
+    await svc.syncLabels();
+    await read(svc, 'Archive', { MailboxesVersion: 'v2' });
+
+    expect(asked()).toEqual(['/mailboxes', '/mailboxes/Archive?page=0&mailboxes=v2']);
+  });
+
+  it('is asked for whole on a refresh, after a sign-out, and once its counts were changed here', async () => {
+    const svc = new MessageSyncService();
+    await read(svc, 'INBOX', { Mailboxes: held, MailboxesVersion: 'v1' });
+    await read(svc, 'Archive', { Mailboxes: held, MailboxesVersion: 'v1' }, true);
+    expect(asked().at(-1)).toBe('/mailboxes/Archive?page=0&refresh=true');
+
+    // News of the Inbox, with Archive on screen: its counts in the list held
+    // are changed here, so the list held is no longer the version's.
+    await read(svc, 'Archive', { Mailboxes: held, MailboxesVersion: 'v1', Inbox: { NumMessages: 2, NumUnseen: 1 } });
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ total: 3, unseen: 2 }), { status: 200 }));
+    svc.inboxChanged();
+    await vi.runAllTimersAsync();
+    await read(svc, 'Trash', { Mailboxes: held, MailboxesVersion: 'v3' });
+    expect(asked().at(-1)).toBe('/mailboxes/Trash?page=0');
+
+    window.dispatchEvent(new CustomEvent('session-cleared'));
+    await read(svc, 'INBOX', { Mailboxes: held, MailboxesVersion: 'v3' });
+    expect(asked().at(-1)).toBe('/mailboxes/INBOX?page=0');
+  });
+});
+
 describe('polling', () => {
   /** A server whose folders hold `counts`, listed at them. */
   function server(counts: { total: number; unseen: number }) {
     fetchMock.mockImplementation(async (url: string) => {
-      if (url.includes('/status')) return new Response(JSON.stringify(counts), { status: 200 });
+      if (url.includes('/status')) return new Response(JSON.stringify(withOthers(url, counts, () => counts)), { status: 200 });
       const status = { NumMessages: counts.total, NumUnseen: counts.unseen };
       return new Response(JSON.stringify({ Messages: [], Total: counts.total, Mailbox: status, Inbox: status }), { status: 200 });
     });
@@ -935,7 +1014,7 @@ describe('polling', () => {
 
     svc.start(1);
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Work/status']);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/Work/status?with=INBOX']);
 
     server({ total: 3, unseen: 2 });
     await vi.advanceTimersByTimeAsync(60_000);
@@ -1138,7 +1217,7 @@ describe('polling', () => {
       const status = { NumMessages: 2, NumUnseen: 1 };
       if (url.includes('/status')) {
         await new Promise((resolve) => setTimeout(resolve, 50));
-        return new Response(JSON.stringify({ total: 2, unseen: 1 }), { status: 200 });
+        return new Response(JSON.stringify(withOthers(url, { total: 2, unseen: 1 }, () => ({ total: 2, unseen: 1 }))), { status: 200 });
       }
       await new Promise((resolve) => setTimeout(resolve, 400));
       return new Response(JSON.stringify({ Messages: [], Mailbox: status, Inbox: status }), { status: 200 });
@@ -1206,12 +1285,202 @@ describe('polling', () => {
     }
   });
 
+  describe('the poll\'s timing', () => {
+    // Every tab polled on a fixed interval: tabs and clients started
+    // together stayed in step, and a server that failed was asked again at
+    // the same pace, failure after failure.
+    const pollsAsked = () => fetchMock.mock.calls.filter((c) => String(c[0]).includes('/status')).length;
+    async function failing(svc: MessageSyncService) {
+      fetchMock.mockImplementation(async () => new Response('{"error":"down"}', { status: 500 }));
+      return svc;
+    }
+
+    it('waits twice as long after each poll that failed, and its interval again after one that did not', async () => {
+      server({ total: 1, unseen: 0 });
+      const svc = service();
+      await landed(svc, 'INBOX');
+      await failing(svc);
+      fetchMock.mockClear();
+      svc.start(1);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(pollsAsked()).toBe(1);
+      await vi.advanceTimersByTimeAsync(119_000);
+      expect(pollsAsked()).toBe(1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(pollsAsked()).toBe(2);
+      await vi.advanceTimersByTimeAsync(239_000);
+      expect(pollsAsked()).toBe(2);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(pollsAsked()).toBe(3);
+
+      server({ total: 1, unseen: 0 });
+      await vi.advanceTimersByTimeAsync(480_000);
+      expect(pollsAsked()).toBe(4);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(pollsAsked()).toBe(5);
+    });
+
+    it('waits no more than half an hour, however many polls failed', async () => {
+      server({ total: 1, unseen: 0 });
+      const svc = service();
+      await landed(svc, 'INBOX');
+      await failing(svc);
+      fetchMock.mockClear();
+      svc.start(10);
+
+      // 10, then 20, then 30 minutes, not 40.
+      await vi.advanceTimersByTimeAsync((10 + 20 + 30) * 60_000);
+      expect(pollsAsked()).toBe(3);
+      await vi.advanceTimersByTimeAsync(30 * 60_000);
+      expect(pollsAsked()).toBe(4);
+    });
+
+    it('spreads its polls by up to a tenth of the interval either way', async () => {
+      server({ total: 1, unseen: 0 });
+      const svc = service();
+      await landed(svc, 'INBOX');
+      fetchMock.mockClear();
+      vi.mocked(Math.random).mockReturnValue(0);
+      svc.start(1);
+      await vi.advanceTimersByTimeAsync(53_999);
+      expect(pollsAsked()).toBe(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(pollsAsked()).toBe(1);
+
+      svc.stop();
+      fetchMock.mockClear();
+      vi.mocked(Math.random).mockReturnValue(1);
+      svc.start(1);
+      await vi.advanceTimersByTimeAsync(65_999);
+      expect(pollsAsked()).toBe(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(pollsAsked()).toBe(1);
+    });
+  });
+
+  it('reads the listing again when only the folder\'s HIGHESTMODSEQ moved, where the server says it', async () => {
+    // Counts and UIDNEXT stay as they were when a flag changes in another
+    // client; the folder's HIGHESTMODSEQ moves (#124 has the server say it).
+    let modseq = 5;
+    fetchMock.mockImplementation(async (url: string) => {
+      const counts = { total: 2, unseen: 1, uidnext: 3, uidvalidity: 7, highestmodseq: modseq };
+      if (url.includes('/status')) return new Response(JSON.stringify(withOthers(url, counts, () => counts)), { status: 200 });
+      const status = { NumMessages: 2, NumUnseen: 1, UIDNext: 3, UIDValidity: 7, HighestModSeq: 5 };
+      return new Response(JSON.stringify({ Messages: [], Total: 2, Mailbox: status, Inbox: status }), { status: 200 });
+    });
+    const svc = service();
+    await landed(svc, 'INBOX');
+    fetchMock.mockClear();
+    svc.start(1);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toEqual([]);
+
+    modseq = 6;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(listingsAsked()).toEqual(['/mailboxes/INBOX?page=0']);
+  });
+
+  describe('the one listing out at a time', () => {
+    // The poll's listing, and the check-for-new-mail button's, were sent
+    // whatever else was out, and a foreground listing asked for while theirs
+    // was out was sent beside it: the server reads a session's listings one
+    // after another, so it only waited there, and one asked for after it was
+    // sent too, where the newest would have done.
+    const held = () => {
+      let answer!: () => void;
+      const waiting = new Promise<void>((resolve) => { answer = resolve; });
+      return { waiting, answer };
+    };
+    /** Counts that move on every check, so every poll reads the listing; and a listing that can be held. */
+    function movingServer(hold: { listing?: Promise<void> } = {}) {
+      let total = 1;
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes('/status')) {
+          total++;
+          return new Response(JSON.stringify(withOthers(url, { total, unseen: 1 }, () => ({ total, unseen: 1 }))), { status: 200 });
+        }
+        if (hold.listing) {
+          const wait = hold.listing;
+          hold.listing = undefined;
+          await wait;
+        }
+        const status = { NumMessages: total, NumUnseen: 1 };
+        return new Response(JSON.stringify({ Messages: [], Total: total, Mailbox: status, Inbox: status }), { status: 200 });
+      });
+    }
+
+    it('keeps a listing asked for while the poll\'s is out waiting, and only the newest is sent', async () => {
+      const hold: { listing?: Promise<void> } = {};
+      movingServer(hold);
+      const svc = service();
+      await landed(svc, 'INBOX');
+      const poll = held();
+      hold.listing = poll.waiting;
+      svc.start(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(listingsAsked()).toEqual(['/mailboxes/INBOX?page=0', '/mailboxes/INBOX?page=0']);
+
+      const reads = [svc.fetch('Archive', 0), svc.fetch('Trash', 0)];
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listingsAsked()).toHaveLength(2);
+
+      poll.answer();
+      await vi.advanceTimersByTimeAsync(500);
+      await Promise.all(reads);
+      expect(listingsAsked()).toEqual(['/mailboxes/INBOX?page=0', '/mailboxes/INBOX?page=0', '/mailboxes/Trash?page=0']);
+    });
+
+    it('keeps a listing asked for while the check-for-new-mail button\'s is out waiting', async () => {
+      const hold: { listing?: Promise<void> } = {};
+      movingServer(hold);
+      const svc = service();
+      await landed(svc, 'INBOX');
+      const check = held();
+      hold.listing = check.waiting;
+      const checking = svc.check('INBOX', 0);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listingsAsked()).toHaveLength(2);
+
+      const read = svc.fetch('Archive', 0);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listingsAsked()).toHaveLength(2);
+
+      check.answer();
+      await vi.advanceTimersByTimeAsync(500);
+      await Promise.all([checking, read]);
+      expect(listingsAsked()).toEqual(['/mailboxes/INBOX?page=0', '/mailboxes/INBOX?page=0', '/mailboxes/Archive?page=0']);
+    });
+
+    it('sends the poll\'s listing only once the listing out has come back', async () => {
+      const hold: { listing?: Promise<void> } = {};
+      movingServer(hold);
+      const svc = service();
+      await landed(svc, 'INBOX');
+      const foreground = held();
+      hold.listing = foreground.waiting;
+      const read = svc.fetch('INBOX', 0);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listingsAsked()).toHaveLength(2);
+
+      svc.start(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(listingsAsked()).toHaveLength(2);
+
+      foreground.answer();
+      await vi.advanceTimersByTimeAsync(500);
+      await read;
+      expect(listingsAsked()).toHaveLength(3);
+    });
+  });
+
   it('reads the listing when only the Inbox moved, with another folder on screen', async () => {
     let inbox = { total: 2, unseen: 1 };
     const work = { total: 5, unseen: 0 };
     fetchMock.mockImplementation(async (url: string) => {
       if (url === '/mailboxes/INBOX/status') return new Response(JSON.stringify(inbox), { status: 200 });
-      if (url.includes('/status')) return new Response(JSON.stringify(work), { status: 200 });
+      if (url.includes('/status')) return new Response(JSON.stringify(withOthers(url, work, (name) => (name === 'INBOX' ? inbox : work))), { status: 200 });
       return new Response(JSON.stringify({
         Messages: [],
         Mailbox: { NumMessages: work.total, NumUnseen: work.unseen },
@@ -1230,7 +1499,7 @@ describe('polling', () => {
 
   it('runs a search across every folder again on every poll, as it has no counts to go by', async () => {
     fetchMock.mockImplementation(async (url: string) => {
-      if (url.includes('/status')) return new Response(JSON.stringify({ total: 2, unseen: 1 }), { status: 200 });
+      if (url.includes('/status')) return new Response(JSON.stringify(withOthers(url, { total: 2, unseen: 1 }, () => ({ total: 2, unseen: 1 }))), { status: 200 });
       return new Response(JSON.stringify({
         Messages: [],
         Mailbox: { Mailbox: '*' },
@@ -1259,7 +1528,7 @@ describe('polling', () => {
     document.dispatchEvent(new Event('visibilitychange'));
     window.dispatchEvent(new Event('focus'));
     await vi.advanceTimersByTimeAsync(1000);
-    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/INBOX/status', '/mailboxes/Work/status']);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/mailboxes/Work/status?with=INBOX']);
   });
 
   it('does not announce what the check-for-new-mail button finds in a tab that does not poll', async () => {

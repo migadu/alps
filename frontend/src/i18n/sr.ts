@@ -219,6 +219,7 @@ export const sr = {
     noMessages: 'Nema poruka',
     loadError: 'Nije moguće učitati ovu fasciklu.',
     loadErrorRetry: 'Pokušajte ponovo',
+    searchLimited: 'Server pošte trenutno ograničava pretrage. Pokušajte ponovo za trenutak.',
     loading: 'Učitavanje...',
     unknownSender: 'Nepoznat pošiljalac',
     unknown: 'Nepoznato',

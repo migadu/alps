@@ -217,6 +217,7 @@ export const de: TranslationDictionary = {
     noMessages: 'Keine Nachrichten',
     loadError: 'Dieser Ordner konnte nicht geladen werden.',
     loadErrorRetry: 'Erneut versuchen',
+    searchLimited: 'Der Mailserver begrenzt gerade die Suchanfragen. Versuchen Sie es gleich noch einmal.',
     loading: 'Wird geladen...',
     unknownSender: 'Unbekannter Absender',
     unknown: 'Unbekannt',
