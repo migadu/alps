@@ -762,9 +762,13 @@ export class MailboxPage extends LitElement {
       RFC822Size: size || m.RFC822Size,
       HasAttachments: hasAttachments,
       _isAutosaveUpdate: true,
+      // The subject the save stored, empty when it has none, which the list
+      // and the reader show as their own translated placeholder. Falling back
+      // to the row's subject kept one the user had cleared, and the English
+      // "(No subject)" was written in as if it were the subject.
       Envelope: {
         ...m.Envelope,
-        Subject: subject || m.Envelope?.Subject || '(No subject)'
+        Subject: subject
       }
     });
 
@@ -835,7 +839,7 @@ export class MailboxPage extends LitElement {
         Flags: [FLAG_SEEN, FLAG_DRAFT],
         _isAutosaveUpdate: true,
         Envelope: {
-          Subject: subject || '(No subject)',
+          Subject: subject,
           Date: new Date().toISOString(),
           From: [{ Name: draftName, Mailbox: draftMailboxStr, Host: draftHostStr }]
         }
