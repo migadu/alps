@@ -1,6 +1,7 @@
 package alps
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
@@ -181,5 +182,106 @@ func TestCacheReplaceKeepsTheExpiry(t *testing.T) {
 	time.Sleep(120 * time.Millisecond)
 	if _, ok := c.Get("list"); ok {
 		t.Error("the replaced entry outlived the one it replaced")
+	}
+}
+
+// A patch is no fresher than the entry it read, and cannot restore an entry
+// invalidated while a caller was enumerating cache keys.
+func TestCacheUpdateKeepsExpiryAndMissingEntriesAbsent(t *testing.T) {
+	c := NewCache(time.Minute)
+	defer c.Close()
+	c.Set("live", 1)
+	c.mu.RLock()
+	expires := c.entries["live"].Expiration
+	c.mu.RUnlock()
+	if !c.Update("live", func(value interface{}) interface{} { return value.(int) + 1 }) {
+		t.Fatal("a live entry was not updated")
+	}
+	if value, ok := c.Get("live"); !ok || value != 2 {
+		t.Fatalf("updated value = %v, live = %v; want 2", value, ok)
+	}
+	c.mu.RLock()
+	updatedExpiry := c.entries["live"].Expiration
+	c.mu.RUnlock()
+	if !updatedExpiry.Equal(expires) {
+		t.Errorf("update moved expiry from %s to %s", expires, updatedExpiry)
+	}
+
+	c.Set("deleted", 1)
+	c.Delete("deleted")
+	c.Set("expired", 1)
+	c.mu.Lock()
+	c.entries["expired"].Expiration = time.Now().Add(-time.Second)
+	c.mu.Unlock()
+	for _, key := range []string{"missing", "deleted", "expired"} {
+		called := false
+		if c.Update(key, func(interface{}) interface{} { called = true; return 2 }) || called {
+			t.Errorf("update called its callback for %s", key)
+		}
+		if _, ok := c.Get(key); ok {
+			t.Errorf("update restored %s", key)
+		}
+	}
+	if !c.Update("live", func(interface{}) interface{} { return nil }) {
+		t.Fatal("the live entry could not be dropped")
+	}
+	if _, ok := c.Get("live"); ok {
+		t.Error("the callback's nil result did not drop the entry")
+	}
+}
+
+// Independent concurrent patches must all reach the published value.
+func TestCacheUpdateDoesNotLoseConcurrentChanges(t *testing.T) {
+	c := NewCache(time.Minute)
+	defer c.Close()
+	c.Set("count", 0)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for range 20 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for range 100 {
+				c.Update("count", func(value interface{}) interface{} { return value.(int) + 1 })
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if got, _ := c.Get("count"); got != 2000 {
+		t.Errorf("concurrent patches left %v, want 2000", got)
+	}
+}
+
+// Delete must win over a patch whose callback is already running: publishing
+// the old value after Delete would resurrect a stale cache entry.
+func TestCacheUpdateCannotUndoConcurrentInvalidation(t *testing.T) {
+	c := NewCache(time.Minute)
+	defer c.Close()
+	c.Set("thread", "old")
+	entered, release := make(chan struct{}), make(chan struct{})
+	updated, deleted := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(updated)
+		c.Update("thread", func(interface{}) interface{} {
+			close(entered)
+			<-release
+			return "patched"
+		})
+	}()
+	<-entered
+	deleting := make(chan struct{})
+	go func() {
+		close(deleting)
+		c.Delete("thread")
+		close(deleted)
+	}()
+	<-deleting
+	close(release)
+	<-updated
+	<-deleted
+	if _, ok := c.Get("thread"); ok {
+		t.Error("the patch restored an invalidated conversation")
 	}
 }

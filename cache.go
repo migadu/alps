@@ -167,6 +167,28 @@ func (c *Cache) Replace(key string, value interface{}) bool {
 	return true
 }
 
+// Update atomically transforms a live entry, keeping its original expiry.
+// Missing or expired entries stay absent and do not call update. Returning nil
+// deletes the entry. The callback runs under the cache lock: it must not call
+// cache methods or mutate its input, which readers may still be using. Update
+// reports whether a live entry was found.
+func (c *Cache) Update(key string, update func(interface{}) interface{}) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	entry, exists := c.entries[key]
+	if !exists || time.Now().After(entry.Expiration) {
+		return false
+	}
+	value := update(entry.Value)
+	if value == nil {
+		delete(c.entries, key)
+	} else {
+		c.entries[key] = &CacheEntry{Value: value, Expiration: entry.Expiration}
+	}
+	return true
+}
+
 // Delete removes a value from the cache.
 func (c *Cache) Delete(key string) {
 	c.mu.Lock()

@@ -13,6 +13,7 @@ type conversationPage struct {
 	Messages []struct {
 		UID      string
 		Mailbox  string
+		Flags    []string
 		Envelope struct {
 			Subject string
 		}
