@@ -585,6 +585,8 @@ export const pt = {
     reload: 'Recarregar'
   },
   general: {
+    pageLoadFailed: 'Não foi possível carregar esta página.',
+    pageLoadFailedHint: 'É possível recarregar quando a conexão voltar. As mensagens em escrita são mantidas.',
     error: 'Erro',
     cancel: 'Cancelar',
     save: 'Salvar',

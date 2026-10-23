@@ -539,6 +539,8 @@ export const it = {
     reload: 'Ricarica'
   },
   general: {
+    pageLoadFailed: 'Impossibile caricare questa pagina.',
+    pageLoadFailedHint: 'Controlla la connessione, poi ricarica. I messaggi che stai scrivendo vengono conservati.',
     error: 'Errore',
     cancel: 'Annulla',
     save: 'Salva',

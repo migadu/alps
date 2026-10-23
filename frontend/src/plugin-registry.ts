@@ -45,19 +45,46 @@ export interface Route {
     load?: () => Promise<unknown>;
 }
 
+/** The page modules that failed to load in this document, by tag. */
+const failedComponents = new Set<string>();
+
 /**
  * Starts the fetch of a route's or settings tab's page module, if its tag is
- * not defined yet.
+ * not defined yet, and answers whether the page can be shown: false once its
+ * module has failed to load, when the caller shows that instead (see
+ * alps-page-load-error). `onFailure` is told when it fails.
  *
  * Nothing waits on it: the shell creates the element by tag straight away, and
  * an element created before its definition is upgraded in place when the
- * module calls `customElements.define`. Called on every render, so a fetch
- * that failed is tried again the next time the page is shown. A chunk that is
- * gone because the server was upgraded is app-update's to handle.
+ * module calls `customElements.define`.
+ *
+ * A load fails when it rejects, and when it settles without defining the tag:
+ * in a build, Vite's preload helper resolves the import with nothing once
+ * app-update has handled the error event it raises for it.
+ *
+ * A module that failed is not imported again. The browser keeps a failed
+ * import in the document's module map, and importing it again rejects at
+ * once without a request, so trying again each time the page was shown
+ * fetched nothing, and left the page blank. Only a new document fetches it
+ * anew: a reload, which app-update makes by itself when nothing would be lost,
+ * and the failure notice offers otherwise.
  */
-export function loadComponent(entry: { component: string; load?: () => Promise<unknown> }): void {
-    if (!entry.load || customElements.get(entry.component)) return;
-    entry.load().catch(err => Logger.error(`Failed to load <${entry.component}>`, err));
+export function loadComponent(
+    entry: { component: string; load?: () => Promise<unknown> },
+    onFailure?: () => void,
+): boolean {
+    if (!entry.load || customElements.get(entry.component)) return true;
+    if (failedComponents.has(entry.component)) return false;
+    const fail = (err: unknown) => {
+        if (failedComponents.has(entry.component)) return;
+        Logger.error(`Failed to load <${entry.component}>`, err);
+        failedComponents.add(entry.component);
+        onFailure?.();
+    };
+    entry.load().then(() => {
+        if (!customElements.get(entry.component)) fail(new Error('its module did not define it'));
+    }, fail);
+    return true;
 }
 
 /** Set equality, so a re-read of /session that changed nothing announces

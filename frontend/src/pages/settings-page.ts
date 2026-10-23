@@ -15,6 +15,7 @@ import '../components/settings-accounts';
 import '../components/alps-webauthn-settings';
 
 import { loadComponent, registry } from '../plugin-registry';
+import '../components/alps-page-load-error';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { Logger } from '../utils/logger';
 
@@ -408,10 +409,9 @@ export class SettingsPage extends LitElement {
             ${this.category === 'localization' ? this.renderLocalization() : ''}
             ${registry.getSettingsTabs()
                 .filter(tab => tab.id === this.category)
-                .map(tab => {
-                  loadComponent(tab);
-                  return html`${unsafeHTML(`<${tab.component}></${tab.component}>`)}`;
-                })
+                .map(tab => loadComponent(tab, () => this.requestUpdate())
+                  ? html`${unsafeHTML(`<${tab.component}></${tab.component}>`)}`
+                  : html`<alps-page-load-error></alps-page-load-error>`)
             }
           `}
         </div>

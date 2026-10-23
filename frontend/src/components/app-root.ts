@@ -4,6 +4,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { Router } from '../router';
 import { loadComponent, registry } from '../plugin-registry';
+import './alps-page-load-error';
 
 // Import pages
 import '../pages/login-page';
@@ -514,7 +515,11 @@ export class AppRoot extends LitElement {
 
     registry.getRoutes().forEach(route => {
       baseRoutes[route.path] = () => {
-        loadComponent(route);
+        // A page whose module could not be fetched says so, rather than
+        // leaving its undefined element on screen, blank.
+        if (!loadComponent(route, () => this.requestUpdate())) {
+          return html`<alps-page-load-error></alps-page-load-error>`;
+        }
         let cachedEl = this.pluginPages.get(route.path);
         if (!cachedEl) {
           cachedEl = document.createElement(route.component);

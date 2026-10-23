@@ -313,6 +313,19 @@ export class ComposeStore extends EventTarget {
     }, 500);
   }
 
+  /**
+   * Writes the composers to disk now, not when the debounced write comes
+   * round: before a reload the user asked for, which would otherwise take the
+   * last half second of typing with it. They open again after the reload.
+   */
+  persistNow() {
+    if (this.saveTimeout !== null) {
+      window.clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    this.saveDrafts();
+  }
+
   private notify() {
     this.dispatchEvent(new CustomEvent('change'));
   }

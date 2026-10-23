@@ -541,6 +541,8 @@ export const de: TranslationDictionary = {
     reload: 'Neu laden'
   },
   general: {
+    pageLoadFailed: 'Diese Seite konnte nicht geladen werden.',
+    pageLoadFailedHint: 'Prüfen Sie Ihre Verbindung und laden Sie dann neu. Nachrichten, die Sie gerade schreiben, bleiben erhalten.',
     error: 'Fehler',
     cancel: 'Abbrechen',
     save: 'Speichern',

@@ -587,6 +587,8 @@ export const da: TranslationDictionary = {
     reload: 'Genindlæs'
   },
   general: {
+    pageLoadFailed: 'Siden kunne ikke indlæses.',
+    pageLoadFailedHint: 'Tjek din forbindelse, og genindlæs derefter. Beskeder, du er ved at skrive, bevares.',
     error: 'Fejl',
     cancel: 'Annuller',
     save: 'Gem',

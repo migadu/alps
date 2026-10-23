@@ -585,6 +585,8 @@ export const en = {
     reload: 'Reload'
   },
   general: {
+    pageLoadFailed: 'This page could not be loaded.',
+    pageLoadFailedHint: 'Check your connection, then reload. Messages you are writing are kept.',
     error: 'Error',
     cancel: 'Cancel',
     save: 'Save',

@@ -557,6 +557,8 @@ export const rs = {
     reload: 'Освежи'
   },
   general: {
+    pageLoadFailed: 'Ова страница није могла да се учита.',
+    pageLoadFailedHint: 'Проверите везу, па поново учитајте. Поруке које пишете остају сачуване.',
     error: 'Грешка',
     cancel: 'Откажи',
     save: 'Сачувај',

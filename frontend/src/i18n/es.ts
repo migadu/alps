@@ -539,6 +539,8 @@ export const es = {
     reload: 'Recargar'
   },
   general: {
+    pageLoadFailed: 'No se ha podido cargar esta página.',
+    pageLoadFailedHint: 'Comprueba tu conexión y vuelve a cargar. Los mensajes que estás escribiendo se conservan.',
     error: 'Error',
     cancel: 'Cancelar',
     save: 'Guardar',
