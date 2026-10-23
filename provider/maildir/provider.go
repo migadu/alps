@@ -1,11 +1,14 @@
 package maildir
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-maildir"
 	"github.com/migadu/alps/provider"
 )
@@ -26,22 +29,78 @@ func (p *Provider) Close() error {
 	return nil
 }
 
-func (p *Provider) getDir(name string) maildir.Dir {
+// getDir is the maildir of the mailbox name: the user's maildir itself for
+// INBOX, and a Maildir++ folder in it for any other, its name after a dot
+// (Archive.2024 is .Archive.2024).
+//
+// A name that is not a folder's is refused before anything touches the file
+// system. Joined to the maildir as it came, "." named the maildir itself, so
+// deleting it deleted every folder the user had; ".." and a path through it
+// named directories outside, another user's maildir among them.
+func (p *Provider) getDir(name string) (maildir.Dir, error) {
 	if name == "INBOX" {
-		return maildir.Dir(p.basePath)
+		return maildir.Dir(p.basePath), nil
 	}
-	// Maildir++ subfolders
-	if !strings.HasPrefix(name, ".") {
-		name = "." + name
+	if !folderName(name) {
+		return "", refused("not a folder name: %q", name)
 	}
-	return maildir.Dir(filepath.Join(p.basePath, name))
+	return maildir.Dir(filepath.Join(p.basePath, "."+name)), nil
+}
+
+// folderName reports whether name names a Maildir++ folder: one or more
+// names joined by the delimiter, none of them empty, and no path separator
+// or NUL. With that, "." and its name stay one entry of the maildir.
+func folderName(name string) bool {
+	if name == "" || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") || strings.Contains(name, "..") {
+		return false
+	}
+	return !strings.ContainsAny(name, "/\\\x00")
+}
+
+// The mailbox verbs answer as an IMAP server does, with the response codes
+// the mail routes tell the page from (see mailboxErrorStatus).
+func refused(format string, args ...any) error {
+	return &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeCannot, Text: fmt.Sprintf(format, args...)}
+}
+
+func nonexistent(name string) error {
+	return &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeNonExistent, Text: fmt.Sprintf("no folder %q", name)}
+}
+
+func alreadyExists(name string) error {
+	return &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeAlreadyExists, Text: fmt.Sprintf("folder %q exists", name)}
+}
+
+// getDirs is getDir for the two mailboxes of a move or a copy.
+func (p *Provider) getDirs(source, dest string) (maildir.Dir, maildir.Dir, error) {
+	src, err := p.getDir(source)
+	if err != nil {
+		return "", "", err
+	}
+	dst, err := p.getDir(dest)
+	if err != nil {
+		return "", "", err
+	}
+	return src, dst, nil
+}
+
+// isFolder reports whether dir is there, as a directory.
+func isFolder(dir maildir.Dir) (bool, error) {
+	info, err := os.Lstat(string(dir))
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return info.IsDir(), nil
 }
 
 func (p *Provider) ListMailboxes() ([]provider.Mailbox, error) {
 	var mailboxes []provider.Mailbox
 
 	// Add INBOX
-	inbox := p.getDir("INBOX")
+	inbox, _ := p.getDir("INBOX")
 	inboxMsgs, _ := getAllMessages(inbox)
 	mailboxes = append(mailboxes, provider.Mailbox{
 		Name:       "INBOX",
@@ -66,12 +125,16 @@ func (p *Provider) ListMailboxes() ([]provider.Mailbox, error) {
 			continue
 		}
 
-		folderName := strings.TrimPrefix(entry.Name(), ".")
-		dir := p.getDir(folderName)
+		name := strings.TrimPrefix(entry.Name(), ".")
+		dir, err := p.getDir(name)
+		if err != nil {
+			// A directory alps could not name, and so could not open.
+			continue
+		}
 		msgs, _ := getAllMessages(dir)
 
 		mailboxes = append(mailboxes, provider.Mailbox{
-			Name:       folderName,
+			Name:       name,
 			Delimiter:  '.',
 			Total:      len(msgs),
 			Unseen:     countUnseen(msgs),
@@ -83,7 +146,10 @@ func (p *Provider) ListMailboxes() ([]provider.Mailbox, error) {
 }
 
 func (p *Provider) GetMailboxStatus(name string) (*provider.MailboxStatus, error) {
-	dir := p.getDir(name)
+	dir, err := p.getDir(name)
+	if err != nil {
+		return nil, err
+	}
 	msgs, err := getAllMessages(dir)
 	if err != nil {
 		return nil, err
@@ -138,25 +204,90 @@ func (p *Provider) FindMailboxByType(mboxType provider.MailboxType) (*provider.M
 		}
 	}
 
-	return nil, fmt.Errorf("mailbox not found")
+	// No such folder is answered as none, not as a failure, as the IMAP
+	// provider answers it. A conversation read in an account without Sent has
+	// no replies to look for there, and was taken for one whose look in Sent
+	// had failed.
+	return nil, nil
 }
 
+// CreateMailbox makes the folder, and says so when it is there already.
+// INBOX is the maildir, which is there from the start.
 func (p *Provider) CreateMailbox(name string) error {
-	dir := p.getDir(name)
+	dir, err := p.getDir(name)
+	if err != nil {
+		return err
+	}
+	if name == "INBOX" {
+		// Provider setup may initialize a never-delivered INBOX. Once its
+		// cur directory exists, creating it again is an existing mailbox.
+		if _, err := os.Stat(filepath.Join(p.basePath, "cur")); err == nil {
+			return alreadyExists(name)
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		if err := os.MkdirAll(p.basePath, 0o700); err != nil {
+			return err
+		}
+		return dir.Init()
+	}
+	// An account may have no physical INBOX before its first delivery. The
+	// configured root must exist before creating its first Maildir++ folder.
+	if err := os.MkdirAll(p.basePath, 0o700); err != nil {
+		return err
+	}
+	if err := maildir.Dir(p.basePath).Init(); err != nil {
+		return err
+	}
+	// The folder itself first, alone, so that one that exists is told
+	// from one made now.
+	if err := os.Mkdir(string(dir), 0o700); errors.Is(err, fs.ErrExist) {
+		return alreadyExists(name)
+	} else if err != nil {
+		return err
+	}
 	return dir.Init()
 }
 
+// RenameMailbox renames a folder, which must be there, to a name no folder
+// has.
 func (p *Provider) RenameMailbox(oldName, newName string) error {
-	oldDir := p.getDir(oldName)
-	newDir := p.getDir(newName)
+	oldDir, err := p.getDir(oldName)
+	if err != nil {
+		return err
+	}
+	newDir, err := p.getDir(newName)
+	if err != nil {
+		return err
+	}
+	if ok, err := isFolder(oldDir); err != nil {
+		return err
+	} else if !ok {
+		return nonexistent(oldName)
+	}
+	if _, err := os.Lstat(string(newDir)); err == nil {
+		return alreadyExists(newName)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
 	return os.Rename(string(oldDir), string(newDir))
 }
 
+// DeleteMailbox removes a folder and everything in it. A folder that is not
+// there is said to be missing, as an IMAP server says it.
 func (p *Provider) DeleteMailbox(name string) error {
 	if name == "INBOX" {
 		return fmt.Errorf("cannot delete INBOX")
 	}
-	dir := p.getDir(name)
+	dir, err := p.getDir(name)
+	if err != nil {
+		return err
+	}
+	if ok, err := isFolder(dir); err != nil {
+		return err
+	} else if !ok {
+		return nonexistent(name)
+	}
 	return os.RemoveAll(string(dir))
 }
 
@@ -165,7 +296,10 @@ func (p *Provider) DeleteMailbox(name string) error {
 // empty. A removal that fails is not counted and is reported: the folder is
 // then still holding mail the user was told had gone.
 func (p *Provider) EmptyMailbox(name string) (int, error) {
-	dir := p.getDir(name)
+	dir, err := p.getDir(name)
+	if err != nil {
+		return 0, err
+	}
 	messages, err := getAllMessages(dir)
 	if err != nil {
 		return 0, err
@@ -201,10 +335,16 @@ func (id MaildirMessageID) Provider() string {
 }
 
 func (p *Provider) ParseMessageID(id string) (provider.MessageID, error) {
-	if id == "" {
-		return nil, fmt.Errorf("invalid Maildir message ID: empty string")
+	if !messageKey(id) {
+		return nil, refused("not a Maildir message key: %q", id)
 	}
 	return MaildirMessageID(id), nil
+}
+
+// A key identifies one entry, before the Maildir flag suffix. Refuse path
+// components even when an internal caller constructs an ID directly.
+func messageKey(key string) bool {
+	return key != "" && key != "." && key != ".." && !strings.ContainsAny(key, "/\\:\x00")
 }
 
 // Map maildir flags to provider flags
