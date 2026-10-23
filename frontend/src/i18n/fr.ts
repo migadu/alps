@@ -442,6 +442,15 @@ export const fr = {
     uploadProgress: '{percent}\u00a0% de {size}'
   },
 
+  sizeUnits: {
+    bytes: 'o',
+    kilobytes: 'Ko',
+    megabytes: 'Mo',
+    gigabytes: 'Go',
+    terabytes: 'To',
+    petabytes: 'Po'
+  },
+
   navigation: {
     messages: 'Messages',
     contacts: 'Contacts',

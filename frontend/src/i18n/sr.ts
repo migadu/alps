@@ -214,7 +214,7 @@ export const sr = {
     filterUnread: 'Filtriraj po nepročitanim',
     noMessages: 'Nema poruka',
     loadError: 'Nije moguće učitati ovu fasciklu.',
-    loadErrorRetry: 'Pokušaj ponovo',
+    loadErrorRetry: 'Pokušajte ponovo',
     loading: 'Učitavanje...',
     unknownSender: 'Nepoznat pošiljalac',
     unknown: 'Nepoznato',
@@ -451,6 +451,15 @@ export const sr = {
     errorLoading: 'Greška pri učitavanju pregleda',
     close: 'Zatvori',
     uploadProgress: '{percent}% od {size}'
+  },
+
+  sizeUnits: {
+    bytes: 'B',
+    kilobytes: 'KB',
+    megabytes: 'MB',
+    gigabytes: 'GB',
+    terabytes: 'TB',
+    petabytes: 'PB'
   },
 
   navigation: {

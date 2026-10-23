@@ -401,8 +401,9 @@ const LATIN_IN_CYRILLIC = new Set([
   'ID',
   // What the user types or copies: example addresses, a URL, a command.
   'odgovor@primer.example', 'https://example.com', 'gpg --armor --export-secret-keys',
-  // A unit symbol and the 12-hour clock's markers, which the browser prints in Latin too.
-  '64KB', 'AM/PM',
+  // The 12-hour clock's markers, which the browser prints in Latin too. A size's
+  // unit is not one of these: rs writes "КБ", as formatSize prints it.
+  'AM/PM',
   // A product, by its own name.
   'YubiKey',
   // The language picker names each language in its own words.
@@ -536,16 +537,24 @@ const SERBIAN_FAMILIAR: { familiar: string; formal: string; marker: RegExp; caug
   {
     familiar: 'Pokušaj ponovo',
     formal: 'Pokušajte ponovo',
-    marker: serbianCommand('pokušaj ponovo'),
-    caught: ['Došlo je do greške na mreži. Pokušaj ponovo.', 'Дошло је до грешке на мрежи. Покушај поново.'],
-    spared: ['Došlo je do greške na mreži. Pokušajte ponovo.', 'Дошло је до грешке на мрежи. Покушајте поново.'],
+    // On its own too. The button under a folder or a filter list that failed
+    // to load asks the user to try again, as the reader's button already did
+    // in the plural; it is not a command the user gives the app.
+    marker: /(?:^|(?<=[.!?:;]\s+))pokušaj ponovo(?!\p{L})/iu,
+    caught: [
+      'Došlo je do greške na mreži. Pokušaj ponovo.', 'Дошло је до грешке на мрежи. Покушај поново.',
+      'Pokušaj ponovo', 'Покушај поново',
+    ],
+    spared: [
+      'Došlo je do greške na mreži. Pokušajte ponovo.', 'Дошло је до грешке на мрежи. Покушајте поново.',
+      'Pokušajte ponovo', 'Покушајте поново',
+    ],
   },
 ];
 
 /** Spelt like a familiar form, but a command the user gives, a noun or a possessive. */
 const SERBIAN_NOT_FAMILIAR = [
   'Sačuvaj i zatvori', 'Сачувај и затвори',
-  'Pokušaj ponovo', 'Покушај поново',
   'Novi pokušaj za {count} sekundi...', 'Нови покушај за {count} секунди...',
   'Vaš odgovor', 'Ваш одговор',
   'Nikada ne označavaj automatski', 'Никада не означавај аутоматски',
@@ -864,6 +873,44 @@ describe('Serbian capitals', () => {
     const texts = [...stringsOf('rs'), ...stringsOf('sr')].map(([, text]) => transliterate(text));
     const unused = [...SERBIAN_NAMES].filter((name) => !texts.some((text) => new RegExp(`(?<!\\p{L})${name}(?!\\p{L})`, 'u').test(text)));
     expect(unused).toEqual([]);
+  });
+});
+
+/**
+ * The words of an Italian string that take a capital in English title case
+ * only. Italian capitalises a title or a button on its first word, as the rest
+ * of alps's Italian does ("Rispondi a tutti", "Crea categoria"), and goes on in
+ * small letters after a colon; an acronym such as GPG keeps its capitals.
+ */
+function italianTitleCased(text: string): string[] {
+  const plain = text.replace(/\{[^}]*\}/g, ' ').replace(/"[^"]*"/g, ' ');
+  return plain.split(/(?<=[.!?…])\s+|\n/).flatMap((sentence) =>
+    [...sentence.matchAll(/\p{L}+/gu)].slice(1).map(([word]) => word)
+      .filter((word) => /^\p{Lu}/u.test(word) && !/\p{Lu}/u.test(word.slice(1))));
+}
+
+describe('Italian capitals', () => {
+  it('has a rule that catches English title case and spares acronyms and new sentences', () => {
+    expect(italianTitleCased('Genera Nuova Coppia di Chiavi')).toEqual(['Nuova', 'Coppia', 'Chiavi']);
+    expect(italianTitleCased('Passphrase (Richiesta)')).toEqual(['Richiesta']);
+    expect(italianTitleCased('Attiva/Disattiva crittografia GPG')).toEqual(['Disattiva']);
+    expect(italianTitleCased('Impossibile crittografare: Chiavi pubbliche mancanti per:\n{keys}')).toEqual(['Chiavi']);
+    for (const text of [
+      'Importa coppia di chiavi GPG esistente', 'Passphrase errata per la chiave privata. Riprova.',
+      'Incolla i blocchi, ad es. da "gpg --armor --export-secret-keys". Se la chiave è protetta, ti verrà chiesta.',
+    ]) {
+      expect(italianTitleCased(text), text).toEqual([]);
+    }
+  });
+
+  it('gpg/it capitalises only a sentence\'s first word', () => {
+    // The GPG plugin's Italian took the English habit of a capital on every
+    // word of a title or a button: "Importa Coppia di Chiavi GPG Esistente".
+    const slips = leaves(byPlugin.get('gpg')!.get('it')!)
+      .map(([key, text]) => [key, text, italianTitleCased(String(text))] as const)
+      .filter(([, , words]) => words.length > 0)
+      .map(([key, text, words]) => `${key}="${text}": ${words.join(' ')}`);
+    expect(slips).toEqual([]);
   });
 });
 

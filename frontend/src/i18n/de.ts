@@ -444,6 +444,15 @@ export const de: TranslationDictionary = {
     uploadProgress: '{percent}\u00a0% von {size}'
   },
 
+  sizeUnits: {
+    bytes: 'B',
+    kilobytes: 'KB',
+    megabytes: 'MB',
+    gigabytes: 'GB',
+    terabytes: 'TB',
+    petabytes: 'PB'
+  },
+
   navigation: {
     messages: 'Nachrichten',
     contacts: 'Kontakte',
