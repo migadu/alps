@@ -280,3 +280,66 @@ func TestPatchCachedConversationsLeavesOtherFoldersMessagesAlone(t *testing.T) {
 		t.Errorf("UID 7 of Work:Sub carries %v in its conversation, want it left as it was", flags)
 	}
 }
+
+// A conversation opened from the Inbox holds the user's reply from Sent, and
+// is kept under the Inbox's keys. A star given to the reply in Sent patched
+// only the conversations kept under Sent's, and reopened from the Inbox, the
+// reply was shown unstarred until the conversation was dropped.
+func TestHTTP_AStarInSentReachesTheInboxConversation(t *testing.T) {
+	s := newTestServer(t)
+	s.login()
+	uid := uidOfSubject(t, s, "Engines")
+	fileSentReply(t, s, "engines@remote.test")
+
+	page := threadOf(t, s, "INBOX", uid)
+	if len(page.Messages) != 2 || page.Messages[1].Mailbox != "Sent" {
+		t.Fatalf("the conversation holds %+v, want the message and the reply from Sent", page.Messages)
+	}
+	reply := page.Messages[1].UID
+
+	s.expect(s.do("PUT", "/mailboxes/Sent/messages/flag", map[string]any{
+		"uids": []string{reply}, "flags": []string{`\Flagged`}, "action": "add",
+	}), http.StatusOK)
+
+	page = threadOf(t, s, "INBOX", uid)
+	if got := page.Messages[1].Flags; !contains(got, `\Flagged`) {
+		t.Errorf("the reply carries %v in the Inbox's conversation, want it starred", got)
+	}
+	if got := page.Messages[0].Flags; contains(got, `\Flagged`) {
+		t.Errorf("the message answered carries %v, want it left as it was", got)
+	}
+}
+
+// A change reaches the conversations of every folder, by the folder and the
+// UID of the message changed. The Inbox's conversation holds UID 7 of Sent,
+// and UID 7 of the Inbox is another message, in it and in a conversation of
+// its own; a member that names no folder is one of its conversation's folder.
+func TestPatchCachedConversationsReachesEveryFoldersConversations(t *testing.T) {
+	cache := alps.NewCache(time.Minute)
+	defer cache.Close()
+
+	member := func(mailbox, uid string) IMAPMessage {
+		return IMAPMessage{FetchMessageBuffer: &imapclient.FetchMessageBuffer{}, AlpsUID: uid, Mailbox: mailbox}
+	}
+	conversation := []IMAPMessage{member("INBOX", "5"), member("Sent", "7"), member("INBOX", "7")}
+	cache.Set(threadCacheKey("INBOX", "5"), conversation)
+	cache.Set(threadCacheKey("INBOX", "7"), conversation)
+	cache.Set(threadCacheKey("INBOX", "9"), []IMAPMessage{member("", "7")})
+
+	patchCachedConversations(cache, noDebug, "Sent", "7", []imap.Flag{imap.FlagFlagged}, nil)
+
+	for _, uid := range []string{"5", "7"} {
+		held, _ := cache.Get(threadCacheKey("INBOX", uid))
+		got := held.([]IMAPMessage)
+		if !slices.Contains(got[1].Flags, imap.FlagFlagged) {
+			t.Errorf("UID 7 of Sent carries %v in the conversation kept under INBOX:%s, want it starred", got[1].Flags, uid)
+		}
+		if len(got[0].Flags) != 0 || len(got[2].Flags) != 0 {
+			t.Errorf("the Inbox's own messages carry %v and %v, want them left as they were", got[0].Flags, got[2].Flags)
+		}
+	}
+	held, _ := cache.Get(threadCacheKey("INBOX", "9"))
+	if flags := held.([]IMAPMessage)[0].Flags; len(flags) != 0 {
+		t.Errorf("UID 7 of the Inbox, named by no folder, carries %v, want it left as it was", flags)
+	}
+}

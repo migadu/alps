@@ -450,13 +450,16 @@ func updateCachedMessageFlags(ctx *alps.Context, mailbox string, uid provider.Me
 // member of that same conversation. A conversation that does not hold the
 // message is left alone — it is not affected by the change — but one whose
 // members cannot be told apart from it is dropped rather than guessed at.
+//
+// Every folder's conversations are looked through, not only this one's: a
+// conversation is kept under the folder it was opened from, and one opened
+// from the Inbox holds the user's own replies from Sent. Patched under Sent's
+// keys alone, a reply starred in Sent was shown unstarred in the Inbox's.
+// Finding them all walks no more of the cache than finding this folder's
+// did: the cache goes through every key it holds for any prefix.
 func patchCachedConversations(cache *alps.Cache, debugf func(string, ...interface{}), mailbox, uidStr string, addFlags, removeFlags []imap.Flag) {
-	keys := cache.GetKeysWithPrefix("thread:" + mailbox + ":")
-	if len(keys) == 0 {
-		return
-	}
-
-	for _, key := range keys {
+	ownPrefix := threadCacheKey(mailbox, "")
+	for _, key := range cache.GetKeysWithPrefix("thread:") {
 		cached, ok := cache.Get(key)
 		if !ok {
 			continue
@@ -469,11 +472,15 @@ func patchCachedConversations(cache *alps.Cache, debugf func(string, ...interfac
 		for i := range msgs {
 			// By the id the reader names messages with, which is the provider's
 			// own: a UID under IMAP, a file name under maildir. It names a
-			// message only within its folder, and members of other folders
-			// are found under this prefix too: the conversations of a folder
-			// whose name goes on from this one's with a colon, and the user's
-			// own messages that a conversation holds from Sent.
-			if msgs[i].AlpsUID != uidStr || (msgs[i].Mailbox != "" && msgs[i].Mailbox != mailbox) {
+			// message only within its folder, and the conversations walked are
+			// every folder's, each holding that folder's messages and the
+			// user's own from Sent. A member that names no folder is taken, as
+			// handleGetThread takes it, for one of the folder its conversation
+			// is kept under.
+			if msgs[i].AlpsUID != uidStr {
+				continue
+			}
+			if msgs[i].Mailbox != mailbox && (msgs[i].Mailbox != "" || !strings.HasPrefix(key, ownPrefix)) {
 				continue
 			}
 			flags := msgs[i].Flags
