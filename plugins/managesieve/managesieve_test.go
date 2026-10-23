@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -170,6 +171,63 @@ func TestGetScriptReadsALiteral(t *testing.T) {
 		if err != nil || got != "keep;\r\nstop;" {
 			t.Errorf("%s: read %q, %v", header, got, err)
 		}
+	}
+}
+
+// A script may come back as a quoted string rather than a literal (RFC 5804
+// §4). In one, a quote and a backslash are escaped with a backslash, and the
+// quotes around it are not part of it. GetScript left the escapes in and
+// stripped every quote at either end, the script's own last quote included.
+func TestGetScriptReadsAQuotedString(t *testing.T) {
+	c, cleanup := newTestClient(t, `"keep; # \"a\\b\""`+"\r\nOK\r\n")
+	defer cleanup()
+
+	got, err := c.GetScript("alps-filters")
+	if want := `keep; # "a\b"`; err != nil || got != want {
+		t.Errorf("read %q, %v; want %q", got, err, want)
+	}
+
+	// A string that is not closed is not a script: saved back from the
+	// page, it would replace the one stored.
+	c, cleanup = newTestClient(t, `"keep; # \"a\"`+"\r\nOK\r\n")
+	defer cleanup()
+	if got, err := c.GetScript("alps-filters"); err == nil {
+		t.Errorf("an unclosed string was read as the script %q", got)
+	}
+}
+
+// Script names in LISTSCRIPTS are strings too, and a quote or a backslash in
+// one is escaped. The name was cut at its first escaped quote, and the rest
+// of the line read as further words, so the script could not be asked for
+// by its name.
+func TestListScriptsReadsEscapesInAName(t *testing.T) {
+	c, cleanup := newTestClient(t, `"my \"own\" rules" ACTIVE`+"\r\n"+`"back\\slash"`+"\r\nOK\r\n")
+	defer cleanup()
+
+	scripts, err := c.ListScripts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Script{{Name: `my "own" rules`, Active: true}, {Name: `back\slash`}}
+	if !reflect.DeepEqual(scripts, want) {
+		t.Errorf("listed %+v, want %+v", scripts, want)
+	}
+}
+
+// A capability's value is a string as well, such as the server's own name
+// under IMPLEMENTATION.
+func TestACapabilityValueIsUnescaped(t *testing.T) {
+	c, cleanup := newTestClient(t, `"IMPLEMENTATION" "Example \"Sieve\" 1.0"`+"\r\n"+`"SIEVE" "fileinto"`+"\r\nOK\r\n")
+	defer cleanup()
+
+	if err := c.readResponse(); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := c.capabilities["IMPLEMENTATION"], `Example "Sieve" 1.0`; got != want {
+		t.Errorf("IMPLEMENTATION is %q, want %q", got, want)
+	}
+	if got := c.capabilities["SIEVE"]; got != "fileinto" {
+		t.Errorf("SIEVE is %q, want fileinto", got)
 	}
 }
 

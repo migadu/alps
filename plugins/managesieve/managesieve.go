@@ -272,7 +272,11 @@ func (c *MSClient) GetScript(name string) (string, error) {
 			content.Write(lit)
 			foundScript = true
 		} else if strings.HasPrefix(line, "\"") {
-			content.WriteString(strings.Trim(line, "\""))
+			script, _, ok := readQuoted(line)
+			if !ok {
+				return "", fmt.Errorf("GETSCRIPT answered with an unclosed string: %q", line)
+			}
+			content.WriteString(script)
 			foundScript = true
 		}
 	}
@@ -372,6 +376,28 @@ func parseLiteralSize(header string) (int, error) {
 	return size, nil
 }
 
+// readQuoted reads the quoted string that s starts with (RFC 5804 §4): what
+// is between its quotes, with each escape undone, and what follows it on the
+// line. The grammar escapes only a quote and a backslash, each with a
+// backslash; whatever else a backslash comes before is taken as it is. ok is
+// false for a string that is not closed on the line.
+func readQuoted(s string) (value, rest string, ok bool) {
+	var b strings.Builder
+	for i := 1; i < len(s); i++ {
+		switch s[i] {
+		case '\\':
+			if i++; i < len(s) {
+				b.WriteByte(s[i])
+			}
+		case '"':
+			return b.String(), s[i+1:], true
+		default:
+			b.WriteByte(s[i])
+		}
+	}
+	return "", "", false
+}
+
 // parseStringList reads the strings on a response line. Its error is a
 // literal that could not be read, which leaves the client out of step with
 // the server: the callers end the exchange on one, rather than read on into
@@ -383,12 +409,12 @@ func (c *MSClient) parseStringList(line string) ([]string, error) {
 	line = strings.TrimSpace(line)
 	for len(line) > 0 {
 		if strings.HasPrefix(line, "\"") {
-			idx := strings.Index(line[1:], "\"")
-			if idx == -1 {
+			value, rest, ok := readQuoted(line)
+			if !ok {
 				return out, nil
 			}
-			out = append(out, line[1:idx+1])
-			line = strings.TrimSpace(line[idx+2:])
+			out = append(out, value)
+			line = strings.TrimSpace(rest)
 		} else if strings.HasPrefix(line, "{") {
 			// Literal in capabilities? Rare but possible.
 			// Format: {size}\r\n

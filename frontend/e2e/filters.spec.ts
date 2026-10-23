@@ -327,6 +327,32 @@ test("a script written by another client is opened as it is and edited in place"
   expect(await storedScripts()).toEqual([{ name, active: true, content: edited }]);
 });
 
+// A script name is a quoted string in the server's answers, with a quote or a
+// backslash in it escaped. Such a name was read cut short at its first escaped
+// quote, and the script could not be read by it: the page offered no editor.
+test("a script whose name holds a quote and a backslash is opened and edited in place", async ({ page }) => {
+  const marker = uniqueMarker();
+  const name = 'Kept "by hand" \\ here';
+  const written = [
+    'require ["fileinto"];',
+    `if address :is "from" "${marker}@remote.test" {`,
+    '\tfileinto "Junk";',
+    "}",
+    "",
+  ].join("\n");
+  await storeActiveScript(name, written);
+
+  await openFilters(page);
+  await expect(script(page)).toHaveValue(written);
+
+  const edited = written.replace('fileinto "Junk"', `fileinto "${FOLDER}"`);
+  await script(page).fill(edited);
+  const response = await clickAndAwaitSave(page, saveScriptBtn(page));
+  expect(response.status()).toBe(200);
+
+  expect(await storedScripts()).toEqual([{ name, active: true, content: edited }]);
+});
+
 test("an invalid script is reported with its line and column", async ({ page }) => {
   await openRawEditor(page);
   await script(page).fill(INVALID);
