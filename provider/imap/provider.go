@@ -288,15 +288,38 @@ func (p *IMAPProvider) GetMailboxStatus(name string) (*provider.MailboxStatus, e
 // is sent before the first answer is awaited, so the answers arrive in one
 // round trip rather than one each: on a server without LIST-STATUS, that is
 // what the folder list's counts cost.
+//
+// The mailbox selected on the connection is asked as GetMailboxStatus asks
+// it: where changes are numbered, with a NOOP and a FETCH while nothing
+// changed in it, sent with the others' STATUS, and with a STATUS kept for the
+// next check otherwise. The check for new mail asks for its folders this way,
+// the Inbox on screen among them.
 func (p *IMAPProvider) GetMailboxStatuses(names []string) ([]*provider.MailboxStatus, []error) {
-	cmds := make([]*imapclient.StatusCommand, len(names))
+	var check *selectedCheck
+	checked := -1
+	sent := make([]*sentStatus, len(names))
 	for i, name := range names {
-		cmds[i] = p.client.Status(name, p.statusItems())
+		if check == nil {
+			if check = p.sendSelectedCheck(name); check != nil {
+				checked = i
+				continue
+			}
+		}
+		sent[i] = p.sendStatus(name)
 	}
 	statuses := make([]*provider.MailboxStatus, len(names))
 	errs := make([]error, len(names))
-	for i, cmd := range cmds {
-		statuses[i], errs[i] = mailboxStatusOf(cmd)
+	for i, name := range names {
+		if i != checked {
+			statuses[i], errs[i] = p.waitStatus(sent[i])
+			continue
+		}
+		var ok bool
+		if statuses[i], ok = p.waitSelectedCheck(check); !ok {
+			// Something changed, or the check could not tell: a STATUS, as
+			// GetMailboxStatus sends then, behind the others still out.
+			statuses[i], errs[i] = p.statusOf(name)
+		}
 	}
 	return statuses, errs
 }
