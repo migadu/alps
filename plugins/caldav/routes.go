@@ -409,6 +409,12 @@ func registerRoutes(p *plugin) {
 				// path ends in a slash, and path.Dir of that is the calendar
 				// itself, which put the new calendar inside it.
 				homeSet = path.Dir(strings.TrimSuffix(calendars[0].Path, "/"))
+			} else if ok {
+				// An empty home set href, with no calendar in it yet. The
+				// calendars were listed where go-webdav resolves that href,
+				// the endpoint itself, and the first one is made there: at
+				// its path, or at the root when it has none.
+				homeSet = path.Join("/", resolveDAVPath(p.urlFor(ctx.Session.Username()), homeSet))
 			} else {
 				return fmt.Errorf("failed to determine calendar home set")
 			}

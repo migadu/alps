@@ -76,3 +76,75 @@ func TestTheFirstCalendarIsMadeInAnEmptyHome(t *testing.T) {
 		t.Errorf("the create answered %q, but the calendar was asked for at %q", created.Path, targets[0])
 	}
 }
+
+// deletesCounted stands in front of the CalDAV server as one that takes every
+// DELETE and PROPPATCH, and counts them.
+func deletesCounted(mu *sync.Mutex, sent *int) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodDelete || r.Method == "PROPPATCH" {
+				mu.Lock()
+				*sent++
+				mu.Unlock()
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// With no calendar listed, no path is one of the user's calendars, or inside
+// one, and a delete or a rename is refused as for any path that is not: 403,
+// with nothing sent. The guards answered 500, "calendars not resolved", for an
+// account that simply has no calendar, and logged it as an internal error.
+func TestWithNoCalendarAPathIsRefusedAsNotTheUsers(t *testing.T) {
+	var mu sync.Mutex
+	var sent int
+	h := startHarness(t, harnessOptions{wrap: deletesCounted(&mu, &sent)})
+	h.dav.calendars = []caldav.Calendar{}
+
+	for what, route := range deleteRoutes {
+		if r := h.do("DELETE", route, nil); r.status != http.StatusForbidden {
+			t.Errorf("deleting the %s with no calendar listed: status %d, want 403: %s", what, r.status, r.body)
+		}
+	}
+	if r := h.do("PATCH", "/calendar/calendars/"+pathParam(testCalendar), map[string]string{"name": "Projects"}); r.status != http.StatusForbidden {
+		t.Errorf("renaming a calendar with none listed: status %d, want 403: %s", r.status, r.body)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if sent != 0 {
+		t.Errorf("%d DELETE or PROPPATCH requests sent with no calendar listed", sent)
+	}
+}
+
+// A principal may name an empty calendar home set. The calendars are then
+// listed at the endpoint itself, where go-webdav resolves the empty href, and
+// a new calendar went beside the first one listed. With none listed, the
+// create gave up with "failed to determine calendar home set", so such an
+// account could not make its first calendar. It goes where the calendars are
+// listed.
+func TestTheFirstCalendarIsMadeWhereAnEmptyHomeSetIsListed(t *testing.T) {
+	var mu sync.Mutex
+	var targets []string
+	h := startHarness(t, harnessOptions{wrap: withoutHomeSet(&mu, &targets)})
+	h.dav.calendars = []caldav.Calendar{}
+
+	r := h.do("POST", "/calendar/calendars", map[string]any{"name": "First"})
+	h.expect(r, http.StatusOK)
+	var created struct{ Path string }
+	h.decode(r, &created)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(targets) != 1 {
+		t.Fatalf("%d MKCALENDAR requests, want 1: %q", len(targets), targets)
+	}
+	if parent := path.Dir(strings.TrimSuffix(targets[0], "/")); parent != "/" {
+		t.Errorf("the calendar was asked for at %s, in %s, not at the endpoint, where the calendars are listed", targets[0], parent)
+	}
+	if created.Path != targets[0] {
+		t.Errorf("the create answered %q, but the calendar was asked for at %q", created.Path, targets[0])
+	}
+}
