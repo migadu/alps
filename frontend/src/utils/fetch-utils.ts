@@ -88,7 +88,55 @@ const RETRY_DELAYS_MS = [250, 1000];
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-export async function fetchWithTimeout(url: RequestInfo | URL, options: RequestInit = {}, timeoutMs: number = 25000): Promise<Response> {
+/**
+ * How many requests made without `background` are open: the ones somebody is
+ * waiting on. The server runs a session's mail requests one at a time, on its
+ * one connection to the mail server, so a request nobody is waiting for that
+ * is sent meanwhile (the list's sender verdicts) is one more for them to wait
+ * behind. Such requests ask {@link foregroundSettled} before they go.
+ */
+let foreground = 0;
+let settledWaiters: (() => void)[] = [];
+
+function foregroundEnded() {
+  foreground--;
+  if (foreground > 0 || settledWaiters.length === 0) return;
+  // A moment later, and only if nothing has started since: the answer to one
+  // request often leads straight to the next (a message, then its body).
+  setTimeout(() => {
+    if (foreground > 0) return;
+    const waiters = settledWaiters;
+    settledWaiters = [];
+    waiters.forEach(resolve => resolve());
+  }, 0);
+}
+
+/** Resolves once no request made without `background` is open. */
+export function foregroundSettled(): Promise<void> {
+  if (foreground === 0) return Promise.resolve();
+  return new Promise(resolve => settledWaiters.push(resolve));
+}
+
+/**
+ * `background` marks a request nobody is waiting on, which
+ * {@link foregroundSettled} does not wait for.
+ */
+export async function fetchWithTimeout(
+  url: RequestInfo | URL,
+  options: RequestInit = {},
+  timeoutMs: number = 25000,
+  { background = false }: { background?: boolean } = {},
+): Promise<Response> {
+  if (background) return fetchAttempts(url, options, timeoutMs);
+  foreground++;
+  try {
+    return await fetchAttempts(url, options, timeoutMs);
+  } finally {
+    foregroundEnded();
+  }
+}
+
+async function fetchAttempts(url: RequestInfo | URL, options: RequestInit, timeoutMs: number): Promise<Response> {
   // Only a GET is replayed. It is the one method here with no side effect; a
   // replayed POST could send a message or apply a move twice.
   const method = (options.method ?? (url instanceof Request ? url.method : 'GET')).toUpperCase();

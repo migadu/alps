@@ -188,7 +188,7 @@ func (s *Session) useBackground() provider.MailProvider {
 		return nil
 	}
 
-	p, err := s.manager.connectProvider(s.username, s.password)
+	p, err := s.connect()
 	if err != nil {
 		bg.mu.Lock()
 		bg.refused = s.manager.now()
