@@ -1,6 +1,6 @@
 import { html, type TemplateResult } from 'lit';
 import type { I18nStore } from '../store/i18n-store';
-import { ALL_MAILBOXES, FOLDER_SPAM, mailboxDelimiter, mailboxRoleByName, type MailboxRole } from './folders';
+import { ALL_MAILBOXES, FOLDER_SPAM, mailboxDelimiter, specialMailboxRole, type MailboxRole } from './folders';
 
 export function renderIcon(name: string): TemplateResult {
   return html`
@@ -79,6 +79,18 @@ export function formatFullDate(dateInput: string | Date, dateFormatStr: string =
   return `${datePart} ${timePart}`;
 }
 
+/**
+ * A day of the year with no year to it, such as a birthday whose year the
+ * card does not give: the date format without its year.
+ */
+export function formatDayMonth(month: number, day: number, dateFormatStr: string = 'YYYY-MM-DD'): string {
+  const m = String(month).padStart(2, '0');
+  const d = String(day).padStart(2, '0');
+  if (dateFormatStr === 'MM/DD/YYYY') return `${m}/${d}`;
+  if (dateFormatStr === 'DD.MM.YYYY') return `${d}.${m}.`;
+  return `${m}-${d}`;
+}
+
 /** The caption of each special folder, by its role. A \All folder has none:
  * the sidebar draws it under its own name. */
 const ROLE_CAPTIONS: Partial<Record<MailboxRole, string>> = {
@@ -90,11 +102,23 @@ const ROLE_CAPTIONS: Partial<Record<MailboxRole, string>> = {
   trash: 'folderList.trash',
 };
 
-/** A special folder's caption, by its role; null for a folder without one. */
+/**
+ * A special folder's caption, by its role; null for a folder without one, and
+ * for a second folder of a role, which the sidebar draws under its own name.
+ * A junk folder whose own name is Spam keeps that word, as its row does, below
+ * the top level too ([Gmail]/Spam).
+ */
 function roleCaption(name: string, i18nStore: I18nStore | undefined, mailboxes: any[]): string | null {
-  const role = mailboxRoleByName(name, mailboxes);
-  const key = role === 'junk' && name === FOLDER_SPAM ? 'folderList.spam' : role ? ROLE_CAPTIONS[role] : undefined;
+  const role = specialMailboxRole(name, mailboxes);
+  const key = role === 'junk' && leafName(name, mailboxes) === FOLDER_SPAM ? 'folderList.spam' : role ? ROLE_CAPTIONS[role] : undefined;
   return (key && i18nStore?.t(key)) || null;
+}
+
+/** A folder's own name, its last level; see getMailboxLabel for the split. */
+function leafName(name: string, mailboxes: any[]): string {
+  const delimiter = mailboxDelimiter(name, mailboxes);
+  const parts = delimiter ? name.split(delimiter) : name.split(/[.\/]/);
+  return parts[parts.length - 1] || name;
 }
 
 /**
@@ -106,8 +130,11 @@ function roleCaption(name: string, i18nStore: I18nStore | undefined, mailboxes: 
  * keeps its own name, even one that spells a special folder's. This used to
  * read the name alone, so beside a \Trash called "Papierkorb" the user's own
  * folder called "Trash" was captioned as the Trash, while the sidebar drew it
- * as the ordinary folder it is and Delete filed mail into Papierkorb. A junk
- * folder that is literally called Spam keeps that word, as its sidebar row does.
+ * as the ordinary folder it is and Delete filed mail into Papierkorb. Of two
+ * folders with one role, only the one the sidebar draws as the special folder
+ * is named by the role (specialMailboxName); the other keeps its own name, as
+ * its row does. A junk folder that is literally called Spam keeps that word,
+ * as its sidebar row does.
  *
  * `mailboxes` is the folder list the name belongs to; its entry gives both the
  * role and the delimiter. Before a list has loaded, a well-known English name
@@ -129,9 +156,7 @@ export function getMailboxLabel(name: string, i18nStore?: I18nStore, mailboxes: 
   // to "2" in the header and the search placeholder: the same folder, two
   // different names, in the same app. The loose split stays as the fallback
   // for a name the list does not hold.
-  const delimiter = mailboxDelimiter(name, mailboxes);
-  const parts = delimiter ? name.split(delimiter) : name.split(/[.\/]/);
-  return parts[parts.length - 1] || name;
+  return leafName(name, mailboxes);
 }
 
 /**

@@ -1,5 +1,5 @@
 import * as cssParser from 'css';
-import { cssUrls, loadsResource, withoutDeclarations } from './css-syntax';
+import { asciiLower, cssTokens, cssUrls, loadsResource, withoutDeclarations } from './css-syntax';
 import { encodeMailboxPath } from './folders';
 import { applyAutoDirections, AUTO_DIRECTION_STYLES, getAuthoredDirection } from './content-direction';
 
@@ -268,6 +268,120 @@ function findPartPathByCID(structure: any, cid: string, currentPath: string = ''
   return null;
 }
 
+/** The colour scheme a message is shown in: the one its frame is painted in. */
+export type ColorScheme = 'light' | 'dark';
+
+/**
+ * The media queries of a sheet or a `media` attribute as they read in
+ * `scheme`, whatever the system's: asking for that scheme matches everything,
+ * and asking for the other matches nothing.
+ *
+ * The frame a message is shown in answers `prefers-color-scheme` from the
+ * operating system, not from the colours alps paints it in or from alps's
+ * theme. A sender who supports dark mode recolours the text in an `@media
+ * (prefers-color-scheme: dark)` block and leaves the dark canvas to the
+ * client, so on a dark system the text turned white on the white alps paints.
+ * A message is therefore shown in the scheme of the paint behind it: on white
+ * in its light colours, the way a light system shows it, and under the
+ * reader's dark theme for message content in its dark ones. A picture's
+ * source goes the same way, so a white logo is not put on white.
+ *
+ * The feature is found in the tokens, as a browser reads it: written with
+ * escapes or with comments between its parts, never inside a string, and
+ * closed by the end of the text when its parenthesis is not. It is replaced
+ * with a condition on the width, which a viewport always meets or never
+ * does, so a query around the feature, `screen and …` or `not …`, still
+ * reads as it did. The text comes back as it was when it asks for neither
+ * scheme.
+ */
+function inScheme(css: string, scheme: ColorScheme): string {
+  // The name is spelled out, in any case, or written with escapes; a sheet
+  // with neither is not read at all.
+  if (!css.includes('\\') && !/prefers-color-scheme/i.test(css)) return css;
+  const tokens = cssTokens(css).filter((token) => token.type !== 'whitespace');
+  let out = '';
+  let from = 0;
+  for (let k = 0; k + 3 < tokens.length; k++) {
+    if (tokens[k].type !== '(') continue;
+    const [name, colon, value] = [tokens[k + 1], tokens[k + 2], tokens[k + 3]];
+    const close = tokens[k + 4];
+    const asked = asciiLower(value.value);
+    if (name.type !== 'ident' || asciiLower(name.value) !== 'prefers-color-scheme' || colon.type !== ':'
+      || value.type !== 'ident' || (asked !== 'light' && asked !== 'dark') || (close && close.type !== ')')) continue;
+    out += css.slice(from, tokens[k].start) + (asked === scheme ? '(width >= 0)' : '(width < 0)');
+    from = close ? close.end : value.end;
+    k += 4;
+  }
+  return out + css.slice(from);
+}
+
+/** Does this declaration set `color-scheme`? Its name is read decoded, as a browser reads it. */
+function setsColorScheme(declaration: string): boolean {
+  const name = cssTokens(declaration).find((token) => token.type !== 'whitespace');
+  return name?.type === 'ident' && asciiLower(name.value) === 'color-scheme';
+}
+
+/**
+ * A sheet without its `color-scheme` declarations, found in the tokens: the
+ * name, a colon, and the value up to the `;` or `}` that ends it at its own
+ * depth. For a sheet the parser cannot read; one it can loses them rule by
+ * rule (see processCSS).
+ */
+function withoutColorSchemes(css: string): string {
+  const tokens = cssTokens(css);
+  let out = '';
+  let from = 0;
+  for (let k = 0; k < tokens.length; k++) {
+    if (tokens[k].type !== 'ident' || asciiLower(tokens[k].value) !== 'color-scheme') continue;
+    let j = k + 1;
+    while (tokens[j]?.type === 'whitespace') j++;
+    if (tokens[j]?.type !== ':') continue;
+    let depth = 0;
+    for (j++; j < tokens.length; j++) {
+      const type = tokens[j].type;
+      if (type === '(' || type === '[' || type === '{' || type === 'function') depth++;
+      else if (depth > 0 && (type === ')' || type === ']' || type === '}')) depth--;
+      else if (depth === 0 && (type === ';' || type === '}')) break;
+    }
+    out += css.slice(from, tokens[k].start);
+    from = tokens[j]?.type === ';' ? tokens[j].end : (tokens[j]?.start ?? css.length);
+    k = j - 1;
+  }
+  return out + css.slice(from);
+}
+
+/**
+ * Where a sheet keeps its text, and an element the `media` it takes, in each
+ * scheme; an empty `media` is none.
+ */
+const SCHEME_CSS = { light: 'data-alps-css-light', dark: 'data-alps-css-dark' } as const;
+const SCHEME_MEDIA = { light: 'data-alps-media-light', dark: 'data-alps-media-dark' } as const;
+const SCHEME_MARKERS = [...Object.values(SCHEME_CSS), ...Object.values(SCHEME_MEDIA)];
+
+/**
+ * Shows a message that sanitizeMessageHTML prepared in `scheme`. Each sheet
+ * that asks for a colour scheme takes the text written for it, and each sheet
+ * and picture source the media, and the document is put in that scheme:
+ * inline and important on its root, which every element inherits, as the
+ * sanitizer removed the sender's own `color-scheme` declarations. Its
+ * `light-dark()` colours and the system colours follow.
+ *
+ * The sanitizer shows a message in the light scheme, as it paints the frame
+ * white; whatever paints the frame dark shows it in the dark one with it.
+ */
+export function showColorScheme(doc: Document, scheme: ColorScheme): void {
+  doc.documentElement.style.setProperty('color-scheme', scheme, 'important');
+  doc.querySelectorAll(`style[${SCHEME_CSS[scheme]}]`).forEach(sheet => {
+    const css = sheet.getAttribute(SCHEME_CSS[scheme]) ?? '';
+    if (sheet.textContent !== css) sheet.textContent = css;
+  });
+  doc.querySelectorAll(`[${SCHEME_MEDIA[scheme]}]`).forEach(el => {
+    const media = el.getAttribute(SCHEME_MEDIA[scheme]);
+    if (media) el.setAttribute('media', media);
+    else el.removeAttribute('media');
+  });
+}
+
 function processCSS(cssText: string, options: SanitizeOptions): string {
   if (!cssText) return cssText;
 
@@ -350,6 +464,11 @@ function processCSS(cssText: string, options: SanitizeOptions): string {
             for (let d = rule.declarations.length - 1; d >= 0; d--) {
               const dec = rule.declarations[d];
               if (dec.type !== 'declaration' || !dec.value) continue;
+              // The scheme is the frame's to decide (see showColorScheme).
+              if (setsColorScheme(dec.property ?? '')) {
+                rule.declarations.splice(d, 1);
+                continue;
+              }
               if (dec.value.match(urlRegex)) {
                 dec.value = replaceUrl(dec.value);
               }
@@ -378,7 +497,7 @@ function processCSS(cssText: string, options: SanitizeOptions): string {
     console.warn('AST CSS parsing failed, falling back to regex sanitizer', err);
   }
 
-  let modified = cssText;
+  let modified = withoutColorSchemes(cssText);
   const importRegex = REMOTE_IMPORT_IN_CSS();
   const urlRegex = REMOTE_URL_IN_CSS();
 
@@ -614,11 +733,49 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
     anchor.setAttribute('rel', 'noopener noreferrer');
   });
 
-  const styleTags = doc.querySelectorAll('style');
-  styleTags.forEach(styleTag => {
-    if (styleTag.textContent) {
-      styleTag.textContent = processCSS(styleTag.textContent, options);
+  // Each sheet and `media` attribute that asks for a colour scheme is written
+  // out for both schemes (see inScheme), from the sender's text, before any
+  // check here reads it; each version of a sheet then goes through every
+  // check, whole. The sheet keeps both texts and is shown in the light one
+  // (see showColorScheme below), as the frame is painted white. It stays one
+  // element, so a selector that counts siblings matches as the sender wrote
+  // it. Markers the sender wrote would choose what a change of scheme
+  // switches, and go first.
+  doc.querySelectorAll(SCHEME_MARKERS.map((name) => `[${name}]`).join(', ')).forEach(el => {
+    for (const name of SCHEME_MARKERS) el.removeAttribute(name);
+  });
+  // A `media` attribute holds media queries too: a sheet's, or the one that
+  // picks a picture's source.
+  doc.querySelectorAll('[media]').forEach(el => {
+    const media = el.getAttribute('media') ?? '';
+    const light = inScheme(media, 'light');
+    if (light === media) return;
+    el.setAttribute(SCHEME_MEDIA.light, light);
+    el.setAttribute(SCHEME_MEDIA.dark, inScheme(media, 'dark'));
+  });
+  doc.querySelectorAll('style').forEach(sheet => {
+    const css = sheet.textContent;
+    if (!css) return;
+    const light = inScheme(css, 'light');
+    if (light === css) {
+      sheet.textContent = processCSS(css, options);
+      return;
     }
+    const shown = processCSS(light, options);
+    sheet.setAttribute(SCHEME_CSS.light, shown);
+    sheet.setAttribute(SCHEME_CSS.dark, processCSS(inScheme(css, 'dark'), options));
+    sheet.textContent = shown;
+  });
+
+  // The scheme is the frame's to decide, and a `color-scheme` the sender set
+  // on an element would let the system decide it for everything inside. Those
+  // in sheets go in processCSS.
+  doc.querySelectorAll('[style]').forEach(el => {
+    const style = el.getAttribute('style') ?? '';
+    const kept = withoutDeclarations(style, setsColorScheme);
+    if (kept === style) return;
+    if (kept) el.setAttribute('style', kept);
+    else el.removeAttribute('style');
   });
 
   doc.querySelectorAll('[style]').forEach(el => {
@@ -648,6 +805,7 @@ export function sanitizeMessageHTML(rawHtml: string, options: SanitizeOptions): 
     }
   });
 
+  showColorScheme(doc, 'light');
   applyAutoDirections(doc);
   return doc.documentElement.outerHTML;
 }

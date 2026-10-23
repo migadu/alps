@@ -18,8 +18,12 @@ import '../../plugins/caldav/frontend/calendar-event-preview';
 import '../../plugins/caldav/frontend/task-modal';
 import '../../plugins/caldav/frontend/tasks-list';
 import '../../plugins/carddav/frontend/contact-view';
-import { cleanup, mount, shadow, shadowAll, text, update } from './helpers/dom';
+import '../../plugins/caldav/frontend/calendar-invitation-banner';
+import '../../plugins/caldav/frontend/calendar-event-modal';
+import { cleanup, mount, shadow, shadowAll, text, update, waitFor } from './helpers/dom';
 import { generateQuote } from '../src/utils/email-quote';
+import { I18nStore } from '../src/store/i18n-store';
+import { invitationService, type InvitationView } from '../../plugins/caldav/frontend/invitation-service';
 
 const OVERRIDE = 'Pay‮ments';
 
@@ -246,3 +250,85 @@ describe('people in calendar events, tasks and contacts', () => {
   });
 });
 
+/** A name inside a translated sentence, where an override reversed the words after it. */
+describe('names in invitation sentences', () => {
+  const i18nStore = new I18nStore();
+  const pairs = (root: ParentNode) => [...root.querySelectorAll('bdi')].map((node) => [node.textContent, node.getAttribute('dir')]);
+
+  const view = (overrides: Partial<InvitationView>): InvitationView => ({
+    method: 'request', kind: 'event', uid: 'review@example.org', summary: 'Review',
+    start: '2026-09-16T08:00:00Z', end: '2026-09-16T09:00:00Z', allDay: false,
+    organizer: { email: 'grace@example.org', name: 'Grace' },
+    attendees: [{ email: 'ada@example.com', status: 'needs-action' }],
+    me: 'ada@example.com', status: 'needs-action', state: 'answer', autoApply: false,
+    sender: 'grace@example.org', senderVerified: true, ended: false, scheduling: 'email',
+    clashes: [], calendars: [{ name: 'Work', path: '/cal/work/' }],
+    ...overrides,
+  });
+
+  async function banner(v: InvitationView) {
+    vi.spyOn(invitationService, 'fetchInvitation').mockResolvedValue(v);
+    const el = await mount<HTMLElement>('calendar-invitation-banner', { i18nStore, mailbox: 'INBOX', uid: '42' });
+    await waitFor(() => !!el.shadowRoot?.querySelector('.card'), 'the banner to render');
+    return el;
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('isolates who answered from their answer', async () => {
+    const named = await banner(view({
+      method: 'reply', state: 'replied', replier: { email: 'bob@example.org', name: 'Bob\u202e', status: 'accepted' },
+    }));
+    expect(pairs(shadow(named, '.replier'))).toEqual([['Bob\u202e', null]]);
+    expect(text(named, '.replier')).toBe('Bob\u202e accepted.');
+    cleanup();
+
+    const unnamed = await banner(view({
+      method: 'reply', state: 'replied', replier: { email: 'שלום@example.com', status: 'declined' },
+    }));
+    expect(pairs(shadow(unnamed, '.replier'))).toEqual([['שלום@example.com', 'ltr']]);
+    expect(text(unnamed, '.replier')).toBe('שלום@example.com declined.');
+  });
+
+  it('isolates the organizer of an invitation', async () => {
+    const el = await banner(view({ organizer: { email: 'grace@example.org', name: OVERRIDE } }));
+    expect(pairs(shadow(el, '.organizer'))).toEqual([[OVERRIDE, null]]);
+    expect(text(el, '.organizer')).toBe(`Organizer: ${OVERRIDE}`);
+  });
+
+  it('isolates the sender a warning names, left to right, from the rest of the warning', async () => {
+    const sender = 'pay\u202ements@example.net';
+    const update = await banner(view({ state: 'update', senderVerified: false, sender }));
+    expect(pairs(shadow(update, '.sender'))).toEqual([[sender, 'ltr']]);
+    expect(text(update, '.sender')).toBe(`Sent from ${sender}, who is not the organizer.`);
+    cleanup();
+
+    const reply = await banner(view({
+      method: 'reply', state: 'reply', senderVerified: false, sender,
+      replier: { email: 'bob@example.org', name: 'Bob', status: 'accepted' },
+    }));
+    expect(pairs(shadow(reply, '.sender'))).toEqual([[sender, 'ltr']]);
+    expect(text(reply, '.sender')).toBe(`Sent from ${sender}, not by the guest who answered.`);
+  });
+
+  it('isolates the organizer the event editor names', async () => {
+    const event = {
+      uid: 'review', summary: 'Review', start: '2026-09-16T08:00:00Z', end: '2026-09-16T09:00:00Z',
+      path: '/cal/work/review.ics', calendarPath: '/cal/work/', etag: 'v1', role: 'attendee', status: 'accepted',
+      organizer: { email: 'grace@example.org', name: OVERRIDE }, attendees: [],
+    };
+    const calendars = [{ name: 'Work', description: '', path: '/cal/work/' }];
+    const named = await mount<HTMLElement>('calendar-event-modal', { i18nStore, calendars, open: true, event });
+    expect(pairs(shadow(named, '.organized-by'))).toEqual([[OVERRIDE, null]]);
+    expect(text(named, '.organized-by')).toBe(`Organized by ${OVERRIDE}`);
+    cleanup();
+
+    const unnamed = await mount<HTMLElement>('calendar-event-modal', {
+      i18nStore, calendars, open: true, event: { ...event, organizer: { email: 'שלום@example.com' } },
+    });
+    expect(pairs(shadow(unnamed, '.organized-by'))).toEqual([['שלום@example.com', 'ltr']]);
+    expect(text(unnamed, '.organized-by')).toBe('Organized by שלום@example.com');
+  });
+});

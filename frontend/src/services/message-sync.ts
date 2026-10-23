@@ -231,6 +231,11 @@ export class MessageSyncService extends EventTarget {
         return;
       }
 
+      // Any other refusal is a failure. The server's errors are JSON too, and
+      // announced as data an `{"error": …}` answer had no Messages: the page
+      // took it for an empty folder and cleared the rows on screen.
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
       const data: MailboxData = await response.json();
       if (this.currentFetchId !== fetchId) return; // Re-check after json parsing
 
@@ -331,6 +336,10 @@ export class MessageSyncService extends EventTarget {
         this.dispatchEvent(new CustomEvent('mailbox-not-found'));
         return true;
       }
+
+      // As in the foreground: an error answer is not a listing. Taken for one,
+      // a single failed poll emptied the folder on screen until the next.
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const data: MailboxData = await response.json();
       if (this.currentFetchId !== fetchId) return true;

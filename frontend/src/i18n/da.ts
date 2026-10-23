@@ -157,6 +157,7 @@ export const da: TranslationDictionary = {
       begin_failed: 'Kunne ikke starte godkendelse.',
       invalid_options: 'Ugyldige godkendelsesindstillinger modtaget.',
       verification_failed: 'Bekræftelse mislykkedes. Prøv igen.',
+      cancelled: 'Sikkerhedsnøglen blev ikke brugt. Klik på "Bekræft identitet" for at prøve igen.',
       unavailable: 'Serveren kunne ikke kontrollere din sikkerhedsnøgle lige nu. Prøv igen om et øjeblik.',
       register_failed: 'Der opstod en fejl under registrering af din sikkerhedsnøgle. Prøv igen.',
       remove_failed: 'Kunne ikke fjerne sikkerhedsnøglen.',
@@ -297,9 +298,9 @@ export const da: TranslationDictionary = {
       one: 'Den markerede besked er inkluderet.',
       other: 'De {count} markerede beskeder er inkluderet.'
     },
-    emptyingMailbox: 'Tømmer postkasse...',
-    mailboxEmptied: 'Postkasse tømt.',
-    emptyMailboxFailed: 'Kunne ikke tømme postkassen. Den skal være Papirkurv eller Uønsket.',
+    emptyingMailbox: 'Tømmer {folder}...',
+    mailboxEmptied: '{folder} er tømt.',
+    emptyMailboxFailed: 'Kunne ikke tømme {folder}.',
     mailboxAlreadyEmpty: '{folder} var allerede tom – intet blev slettet.',
     emptyMailboxSlow: 'Tømmer stadig {folder}. Serveren arbejder på det – se efter igen om et øjeblik.'
   },
@@ -422,7 +423,9 @@ export const da: TranslationDictionary = {
     verifiedSender: 'Bekræftet afsender',
     unverifiedSender: 'Ubekræftet afsender',
     senderUnverifiedWarning: 'Din mailserver kunne ikke bekræfte afsenderen. Beskeden er muligvis ikke fra den, den udgiver sig for at være, så vær forsigtig med links og vedhæftede filer.',
-    clickToExpand: 'Klik for at udvide beskedindholdet'
+    clickToExpand: 'Klik for at udvide beskedindholdet',
+    loadError: 'Beskeden kunne ikke indlæses.',
+    loadErrorRetry: 'Prøv igen'
   },
   address: {
     directionalControl: 'skjulte retningstegn',
@@ -478,7 +481,8 @@ export const da: TranslationDictionary = {
     cannotPreview: 'Ingen forhåndsvisning tilgængelig for denne filtype',
     loadingPreview: 'Indlæser forhåndsvisning...',
     errorLoading: 'Forhåndsvisningen kunne ikke indlæses',
-    close: 'Luk'
+    close: 'Luk',
+    uploadProgress: '{percent}\u00a0% af {size}'
   },
 
   navigation: {
@@ -590,6 +594,7 @@ export const da: TranslationDictionary = {
     next: 'Næste',
     expand: 'Udvid',
     collapse: 'Skjul',
+    moreOptions: 'Flere muligheder',
     notFound: 'Siden blev ikke fundet'
   }
 };

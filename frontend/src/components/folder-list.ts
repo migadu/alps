@@ -1,4 +1,4 @@
-import { LitElement, html, css, type TemplateResult } from 'lit';
+import { LitElement, html, css, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import { renderIcon } from '../utils/ui';
@@ -6,7 +6,7 @@ import { composeContext } from '../store/compose-store';
 import type { ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { mailboxOperations } from '../services/mailbox-operations';
-import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels, acceptsDroppedMessages, advertisedRoles, mailboxRole, reportsSubscriptions } from '../utils/folders';
+import { FOLDER_INBOX, FOLDER_DRAFTS, FOLDER_SENT, FOLDER_ARCHIVE, FOLDER_ARCHIVES, FOLDER_SPAM, FOLDER_JUNK, FOLDER_TRASH, mailboxRoleByName, findMailboxNameByRole, isSelfOrDescendantMailbox, delimiterOf, mailboxLevels, acceptsDroppedMessages, advertisedRoles, mailboxRole, reportsSubscriptions, specialMailboxName, type MailboxRole } from '../utils/folders';
 import { carriesMessages, dropCopies, readMessageDrag } from '../utils/message-drag';
 import { settingsContext, SettingsStore } from '../store/settings-store';
 import { confirmUnsubscribed, forgetUnsubscribedTree, renameUnsubscribedTree, settleUnsubscribedFolders, withUnsubscribedFolder, withoutUnsubscribedFolder } from '../utils/unsubscribed-folders';
@@ -349,6 +349,22 @@ export class FolderList extends LitElement {
       display: none;
     }
 
+    /* The menu is shown while the keyboard is in its row, so that Tab
+       reaches it from the folder's name: a button inside display: none is no
+       Tab stop, and so it could never take the focus that shows it. Not
+       while a click has put the focus on the name, or on the expander, whose
+       button a click focuses too: a click leaves the row as it was. Keyed on
+       :focus-within, which holds while the focus moves from the name to the
+       menu; keyed on the name's :focus-visible alone, the menu was hidden
+       again before Tab reached it. */
+    .folder-item:focus-within:not(:has(.folder-name:focus:not(:focus-visible), .folder-toggle-btn:focus)) .folder-actions {
+      display: flex;
+    }
+
+    .folder-item.has-actions:focus-within:not(:has(.folder-name:focus:not(:focus-visible), .folder-toggle-btn:focus)) .folder-badge {
+      display: none;
+    }
+
     @media (max-width: 768px) {
       .folder-item.active .folder-actions {
         display: flex;
@@ -407,15 +423,6 @@ export class FolderList extends LitElement {
       display: flex;
       align-items: center;
     }
-
-    /* Standard icon colors */
-    .icon-inbox { color: var(--icon-inbox, #3b82f6); }
-    .icon-sent { color: var(--icon-sent, #10b981); }
-    .icon-drafts { color: var(--icon-drafts, #f59e0b); }
-    .icon-spam { color: var(--icon-spam, #ef4444); }
-    .icon-trash { color: var(--icon-trash, #6b7280); }
-    .icon-archive { color: var(--icon-archive, #8b5cf6); }
-    .icon-default { color: var(--icon-default, #9ca3af); }
 
     /* Submenu trigger styling inside popup trigger slot */
     .dropdown-item.submenu-trigger {
@@ -803,30 +810,31 @@ export class FolderList extends LitElement {
 
 
   render() {
-    // A special-mailbox "slot" can be claimed by an IMAP special-use attribute
+    // A special-mailbox "slot" is claimed by a mailbox with that role, decided
+    // by mailboxRole as every action decides it: by IMAP special-use attribute
     // (authoritative) or, as a fallback, by a well-known name. Several names map
     // to the same slot (Archive/Archives, Spam/Junk); each slot is collapsed to a
     // single primary entry below so the same special mailbox is never shown twice.
-    const specialSlots: { attr: string; names: string[]; display: { icon: string; colorClass: string; label: string } }[] = [
-      { attr: '\\inbox', names: [FOLDER_INBOX], display: { icon: 'tray', colorClass: 'icon-inbox', label: this.i18nStore?.t('folderList.inbox') } },
-      { attr: '\\drafts', names: [FOLDER_DRAFTS], display: { icon: 'fileText', colorClass: 'icon-drafts', label: this.i18nStore?.t('folderList.drafts') } },
-      { attr: '\\sent', names: [FOLDER_SENT], display: { icon: 'paperPlaneTilt', colorClass: 'icon-sent', label: this.i18nStore?.t('folderList.sent') } },
-      { attr: '\\archive', names: [FOLDER_ARCHIVE, FOLDER_ARCHIVES], display: { icon: 'archiveBox', colorClass: 'icon-archive', label: this.i18nStore?.t('folderList.archive') } },
-      { attr: '\\junk', names: [FOLDER_JUNK, FOLDER_SPAM], display: { icon: 'warningDiamond', colorClass: 'icon-spam', label: this.i18nStore?.t('folderList.junk') } },
-      { attr: '\\trash', names: [FOLDER_TRASH], display: { icon: 'trash', colorClass: 'icon-trash', label: this.i18nStore?.t('folderList.trash') } },
+    const specialSlots: { role: MailboxRole; names: string[]; display: { icon: string; label: string } }[] = [
+      { role: 'inbox', names: [FOLDER_INBOX], display: { icon: 'tray', label: this.i18nStore?.t('folderList.inbox') } },
+      { role: 'drafts', names: [FOLDER_DRAFTS], display: { icon: 'fileText', label: this.i18nStore?.t('folderList.drafts') } },
+      { role: 'sent', names: [FOLDER_SENT], display: { icon: 'paperPlaneTilt', label: this.i18nStore?.t('folderList.sent') } },
+      { role: 'archive', names: [FOLDER_ARCHIVE, FOLDER_ARCHIVES], display: { icon: 'archiveBox', label: this.i18nStore?.t('folderList.archive') } },
+      { role: 'junk', names: [FOLDER_JUNK, FOLDER_SPAM], display: { icon: 'warningDiamond', label: this.i18nStore?.t('folderList.junk') } },
+      { role: 'trash', names: [FOLDER_TRASH], display: { icon: 'trash', label: this.i18nStore?.t('folderList.trash') } },
     ];
-    const stdMap: Record<string, { icon: string, colorClass: string, label: string }> = {
-      [FOLDER_INBOX]: { icon: 'tray', colorClass: 'icon-inbox', label: this.i18nStore?.t('folderList.inbox') },
-      [FOLDER_DRAFTS]: { icon: 'fileText', colorClass: 'icon-drafts', label: this.i18nStore?.t('folderList.drafts') },
-      [FOLDER_SENT]: { icon: 'paperPlaneTilt', colorClass: 'icon-sent', label: this.i18nStore?.t('folderList.sent') },
-      [FOLDER_ARCHIVE]: { icon: 'archiveBox', colorClass: 'icon-archive', label: this.i18nStore?.t('folderList.archive') },
-      [FOLDER_ARCHIVES]: { icon: 'archiveBox', colorClass: 'icon-archive', label: this.i18nStore?.t('folderList.archive') },
-      [FOLDER_SPAM]: { icon: 'warningDiamond', colorClass: 'icon-spam', label: this.i18nStore?.t('folderList.spam') },
-      [FOLDER_JUNK]: { icon: 'warningDiamond', colorClass: 'icon-spam', label: this.i18nStore?.t('folderList.junk') },
-      [FOLDER_TRASH]: { icon: 'trash', colorClass: 'icon-trash', label: this.i18nStore?.t('folderList.trash') }
+    const stdMap: Record<string, { icon: string, label: string }> = {
+      [FOLDER_INBOX]: { icon: 'tray', label: this.i18nStore?.t('folderList.inbox') },
+      [FOLDER_DRAFTS]: { icon: 'fileText', label: this.i18nStore?.t('folderList.drafts') },
+      [FOLDER_SENT]: { icon: 'paperPlaneTilt', label: this.i18nStore?.t('folderList.sent') },
+      [FOLDER_ARCHIVE]: { icon: 'archiveBox', label: this.i18nStore?.t('folderList.archive') },
+      [FOLDER_ARCHIVES]: { icon: 'archiveBox', label: this.i18nStore?.t('folderList.archive') },
+      [FOLDER_SPAM]: { icon: 'warningDiamond', label: this.i18nStore?.t('folderList.spam') },
+      [FOLDER_JUNK]: { icon: 'warningDiamond', label: this.i18nStore?.t('folderList.junk') },
+      [FOLDER_TRASH]: { icon: 'trash', label: this.i18nStore?.t('folderList.trash') }
     };
 
-    type TreeNode = { name: string; fullName: string; mb?: any; children: Record<string, TreeNode>; primary?: { icon: string; colorClass: string; label: string } };
+    type TreeNode = { name: string; fullName: string; mb?: any; children: Record<string, TreeNode>; primary?: { icon: string; label: string } };
     // Keyed by name, so without a prototype. On a plain object a folder called
     // "constructor" or "toString" found an inherited function where its node
     // should be and was never drawn, and one called "__proto__" was written onto
@@ -860,79 +868,60 @@ export class FolderList extends LitElement {
       }
     });
 
-    const normalizedAttrs = (node: TreeNode): string[] =>
-      (node.mb?.Attrs || []).map((a: any) => (typeof a === 'string' ? a.toLowerCase() : ''));
-    // Tolerate both single- (\Sent) and double-escaped (\\Sent) attribute forms.
-    const hasSlotAttr = (node: TreeNode, attr: string): boolean => {
-      const attrs = normalizedAttrs(node);
-      return attrs.includes(attr) || attrs.includes('\\' + attr);
-    };
-    const slotIndexForNode = (node: TreeNode): number => {
-      const attrs = normalizedAttrs(node);
-      // Special-use attribute is authoritative.
-      for (let i = 0; i < specialSlots.length; i++) {
-        const s = specialSlots[i];
-        if (attrs.includes(s.attr) || attrs.includes('\\' + s.attr)) return i;
-      }
-      // Name fallback only for real, selectable mailboxes — never for synthetic
-      // parents (e.g. "Archives" when only "Archives/2025" exists) or \Noselect
-      // placeholders, which must not masquerade as a primary special mailbox.
-      const selectable = !!node.mb && !attrs.includes('\\noselect') && !attrs.includes('\\nonexistent');
-      if (selectable) {
-        for (let i = 0; i < specialSlots.length; i++) {
-          if (specialSlots[i].names.includes(node.name)) return i;
-        }
-      }
-      return -1;
-    };
+    // The roles the server assigns itself: a name stands only for a role no
+    // folder carries.
+    const advertised = advertisedRoles(this.mailboxes);
+    // Each role's special folder, the one the header and the toasts name by
+    // the role too: specialMailboxName. Two can claim a role, and the other is
+    // a regular folder, drawn under its own name rather than duplicating the
+    // first. Beside a "Deleted Items" listed first, a folder called "Trash" is
+    // not the Trash Delete uses, and is not drawn as it. The role is the one
+    // the actions act on (mailboxRole): this matched names itself, exactly and
+    // case included, and knew no Exchange "Deleted Items", so Delete filed
+    // mail into a folder called "trash" that the sidebar listed as an ordinary
+    // folder, under its raw name. A synthetic parent (e.g. "Archives" when only
+    // "Archives/2025" exists) or a \Noselect placeholder has no role and must
+    // not masquerade as a primary special mailbox; a \All folder has a role
+    // but no slot.
+    const specialSlotOf = new Map<string, number>();
+    specialSlots.forEach((slot, i) => {
+      const name = specialMailboxName(slot.role, this.mailboxes);
+      if (name !== null) specialSlotOf.set(name, i);
+    });
 
     const standardBySlot = new Map<number, TreeNode>();
     const customNodes: TreeNode[] = [];
 
     Object.values(root).forEach(node => {
-      const idx = slotIndexForNode(node);
-      if (idx < 0) {
-        customNodes.push(node);
-        return;
-      }
-      const existing = standardBySlot.get(idx);
-      if (!existing) {
-        standardBySlot.set(idx, node);
-        return;
-      }
-      // Two mailboxes claim the same slot: keep the one carrying the real
-      // special-use attribute, else the higher-priority name. The loser is
-      // demoted to a regular folder rather than duplicating the primary.
-      const slotDef = specialSlots[idx];
-      const nodeAttr = hasSlotAttr(node, slotDef.attr);
-      const existingAttr = hasSlotAttr(existing, slotDef.attr);
-      const nodeRank = slotDef.names.indexOf(node.name);
-      const existingRank = slotDef.names.indexOf(existing.name);
-      const nodeWins =
-        (nodeAttr && !existingAttr) ||
-        (nodeAttr === existingAttr &&
-          nodeRank !== -1 &&
-          (existingRank === -1 || nodeRank < existingRank));
-      if (nodeWins) {
-        standardBySlot.set(idx, node);
-        customNodes.push(existing);
-      } else {
-        customNodes.push(node);
-      }
+      const idx = node.mb ? specialSlotOf.get(node.fullName) : undefined;
+      if (idx === undefined) customNodes.push(node);
+      else standardBySlot.set(idx, node);
     });
+
+    // How a folder in slot `i` is drawn: the name's own entry only when the
+    // name is one of this slot's, which is how a \Junk called Spam keeps that
+    // word. Looked up by any name, a \Trash called "constructor" found
+    // Object's function in the table and drew a row with no caption and no icon.
+    const slotDisplay = (node: TreeNode, i: number) =>
+      (specialSlots[i].names.includes(node.name) && stdMap[node.name]) || specialSlots[i].display;
 
     const standardNodes: TreeNode[] = [];
     for (let i = 0; i < specialSlots.length; i++) {
       const node = standardBySlot.get(i);
       if (!node) continue;
-      // The name's own entry only when the name is one of this slot's, which
-      // is how a \Junk called Spam keeps that word. Looked up by any name, a
-      // \Trash called "constructor" found Object's function in the table and
-      // drew a row with no caption and no icon.
-      node.primary = (specialSlots[i].names.includes(node.name) && stdMap[node.name]) || specialSlots[i].display;
+      node.primary = slotDisplay(node, i);
       standardNodes.push(node);
     }
     this.primaryFullNames = new Set(standardNodes.map(n => n.fullName));
+
+    // Below the top level, too, one folder per role is drawn as special: for
+    // each role no top-level folder holds, the one the actions use. Two can
+    // carry the same attribute (Dovecot's stock INBOX.Sent and INBOX.Sent
+    // Messages are both \Sent), and drawn alike they could not be told apart,
+    // though the actions file into only one. Every other folder of the role
+    // keeps its own name. Only nested folders are found here: a role a
+    // top-level folder has is a slot held above.
+    const nestedSlots = new Map([...specialSlotOf].filter(([, i]) => !standardBySlot.has(i)));
 
     const customOrder = this.settingsStore?.getState()?.customMailboxOrder || [];
 
@@ -980,7 +969,6 @@ export class FolderList extends LitElement {
      * taking the current row away would read as having lost it.
      */
     const unsubscribedHere = new Set(this.unsubscribedHere);
-    const advertised = advertisedRoles(this.mailboxes);
     const holdsSpecialUse = (node: TreeNode): boolean =>
       mailboxRole(node.mb, advertised) !== null || Object.values(node.children).some(holdsSpecialUse);
     const behindMore = (node: TreeNode): boolean =>
@@ -1034,14 +1022,21 @@ export class FolderList extends LitElement {
           isLast = index === -1 || index === siblings.length - 1;
         }
 
+        // A special folder below the top level, such as Gmail's [Gmail]/Sent
+        // Mail or INBOX.Trash on a server that keeps every folder under the
+        // Inbox, stays under its parent but is drawn as the folder it is. Only
+        // top-level folders were asked for a role, so it had the folder icon
+        // and the server's name for it, whatever alps's language, while the
+        // actions filed mail into it by its role.
+        const slot = nestedSlots.get(node.fullName);
+        const display = node.primary ?? (slot !== undefined ? slotDisplay(node, slot) : undefined);
+
         let icon = renderIcon('folder');
-        let colorClass = 'icon-default';
         let label = node.name;
 
-        if (node.primary) {
-          icon = renderIcon(node.primary.icon);
-          colorClass = node.primary.colorClass;
-          label = node.primary.label;
+        if (display) {
+          icon = renderIcon(display.icon);
+          label = display.label;
         }
 
         const unseenCount = node.mb?.Unseen || 0;
@@ -1058,6 +1053,19 @@ export class FolderList extends LitElement {
             this.selectMailbox(node.fullName);
           }
         };
+        // The folder's name is its button, answering Enter and Space as a
+        // <button> does, and Space once while it is held. Not the whole row,
+        // which also holds the expander and the folder's menu: a button may
+        // not contain other controls. A placeholder with nothing below it does
+        // nothing, and is no button; one with folders below it says whether
+        // they are shown.
+        const isControl = !isNoSelect || hasChildren;
+        const handleKeyDown = (e: KeyboardEvent) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          if (e.key === ' ' && e.repeat) return;
+          handleClick(e);
+        };
 
 
         return html`
@@ -1072,16 +1080,23 @@ export class FolderList extends LitElement {
           >
             <alps-icon-btn 
               class="folder-toggle-btn" 
+              title=${this.i18nStore?.t(isExpanded ? 'general.collapse' : 'general.expand')}
               icon=${isExpanded ? 'caretDown' : 'caretRight'}
-              style="visibility: ${hasChildren ? 'visible' : 'hidden'}; --btn-padding: 2px;" 
+              style="visibility: ${hasChildren ? 'visible' : 'hidden'};"
               @click=${(e: Event) => {
             e.stopPropagation();
             if (hasChildren) this.toggleFolder(e, node.fullName);
           }}
             ></alps-icon-btn>
             
-            <div class="folder-icon ${colorClass}">${icon}</div>
-            <div class="folder-name">${label}</div>
+            <div class="folder-icon">${icon}</div>
+            <div class="folder-name"
+              role=${isControl ? 'button' : nothing}
+              tabindex=${isControl ? '0' : nothing}
+              aria-current=${isActive ? 'true' : nothing}
+              aria-expanded=${isNoSelect && hasChildren ? String(isExpanded) : nothing}
+              @keydown=${isControl ? handleKeyDown : nothing}
+            >${label}</div>
             
             ${hasActions ? html`
               <div class="folder-actions ${this.activeKebabMenu === node.fullName ? 'popup-open' : ''}" @click=${(e: Event) => e.stopPropagation()}>
@@ -1091,7 +1106,7 @@ export class FolderList extends LitElement {
                   @popup-open=${() => { this.activeKebabMenu = node.fullName; }}
                   @popup-close=${() => { if (this.activeKebabMenu === node.fullName) this.activeKebabMenu = null; }}
                 >
-                  <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" style="--btn-padding: 8px;"></alps-icon-btn>
+                  <alps-icon-btn slot="trigger" class="kebab-btn" icon="dotsThreeCircleVertical" title=${this.i18nStore?.t('general.moreOptions')}></alps-icon-btn>
                   <button class="dropdown-item" @click=${(e: Event) => {
               const popup = (e.target as HTMLElement).closest('alps-popup') as any;
               if (popup) popup.close();
@@ -1274,7 +1289,7 @@ export class FolderList extends LitElement {
                 @click=${() => { this.showUnsubscribed = !unsubscribedOpen; }}
               >
                 <div class="more-caret">${renderIcon(unsubscribedOpen ? 'caretDown' : 'caretRight')}</div>
-                <div class="folder-icon icon-default">${renderIcon('eyeSlash')}</div>
+                <div class="folder-icon">${renderIcon('eyeSlash')}</div>
                 <div class="folder-name">${unsubscribedOpen ? this.i18nStore?.t('folderList.less') : this.i18nStore?.t('folderList.more')}</div>
               </button>
               ${unsubscribedOpen ? renderTree(unsubscribedNodes) : ''}

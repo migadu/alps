@@ -5,9 +5,10 @@ import { FLAG_SEEN, FLAG_FLAGGED, FLAG_ANSWERED, FLAG_FORWARDED, getMessageTags 
 import { messageSync } from '../services/message-sync';
 import { mailboxOperations } from '../services/mailbox-operations';
 import { fetchAuthVerdicts, VERDICT_BATCH, type AuthVerdict } from '../services/auth-verdicts';
+import { foregroundSettled } from '../utils/fetch-utils';
 import { mailboxOf, messageKey } from '../utils/message-key';
 import { addressText, addressWarning, displayAddress, mixedScriptStyles } from '../utils/address-display';
-import { ALL_MAILBOXES } from '../utils/folders';
+import { ALL_MAILBOXES, specialMailboxName } from '../utils/folders';
 import { MESSAGE_DRAG_TYPE, type MessageDrag } from '../utils/message-drag';
 import { consume } from '@lit/context';
 import { settingsContext, SettingsStore } from '../store/settings-store';
@@ -24,6 +25,30 @@ import { repeat } from 'lit/directives/repeat.js';
 
 /** The filter bar's own toggles, which narrow a FOLDER rather than search it. */
 const FILTER_TOGGLES = new Set(['is:starred', 'is:unread']);
+
+/** How many sender verdicts the list keeps across folder switches; a switch
+ * past it starts over. */
+const MAX_KEPT_VERDICTS = 5000;
+
+/**
+ * Moves whenever the account signed in may have changed, and the list's
+ * verdicts with it: they are keyed by mailbox and UID and no account, and
+ * INBOX and UID 1 are in every account. On `user-logged-in` as well as on
+ * `session-cleared`: a switch to a linked account that asks for its second
+ * factor ends nothing, and the sign-in its "Back to Login" leads to comes
+ * back to the same mail page. That page is off the document meanwhile, so the
+ * list could not hear either event itself.
+ */
+let signIns = 0;
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('session-cleared', () => {
+    signIns++;
+  });
+  window.addEventListener('user-logged-in', () => {
+    signIns++;
+  });
+}
 
 @customElement('alps-message-list')
 export class MessageList extends LitElement {
@@ -111,9 +136,17 @@ export class MessageList extends LitElement {
   // logo, and once each: a reload asks only about messages not asked about.
   // A new scope means the mailbox's UIDs name other messages, and that
   // mailbox's answers are dropped.
+  //
+  // The answers outlive a folder switch, in memory only: a message's headers
+  // never change, and going back to a folder asked about every row again. They
+  // are drawn again once an answer in that folder has shown its scope is still
+  // the one they were answered under (verdictsConfirmed).
   @state() private verdicts = new Map<string, AuthVerdict>();
   private verdictScopes = new Map<string, string>();
   private verdictsAsked = new Set<string>();
+  private verdictsConfirmed = new Set<string>();
+  /** The sign-in the verdicts were answered in (see signIns). */
+  private verdictsSignIn = signIns;
   private verdictGeneration = 0;
   private verdictsRunning = false;
   private verdictsRerun = false;
@@ -708,12 +741,33 @@ export class MessageList extends LitElement {
     return list;
   }
 
-  /** Drops every verdict, and stops any request still asking for them. */
-  private resetVerdicts() {
-    this.verdicts = new Map();
-    this.verdictsAsked = new Set();
-    this.verdictScopes = new Map();
+  /**
+   * Another folder is shown: stops any request still asking for verdicts, and
+   * keeps the answers, undrawn until each folder's scope is confirmed again.
+   * What was asked and not answered is asked again on the way back.
+   */
+  private leaveVerdicts() {
     this.verdictGeneration++;
+    this.verdictsConfirmed = new Set();
+    if (this.verdicts.size > MAX_KEPT_VERDICTS) {
+      this.verdicts = new Map();
+      this.verdictScopes = new Map();
+    }
+    this.verdictsAsked = new Set([...this.verdictsAsked].filter((key) => this.verdicts.has(key)));
+  }
+
+  /**
+   * Another sign-in since the verdicts were answered: drops every one of them,
+   * and stops any request still asking, whose answer is about the messages of
+   * the account signed in when it was asked.
+   */
+  private forgetVerdicts() {
+    this.verdictGeneration++;
+    this.verdictsSignIn = signIns;
+    this.verdicts = new Map();
+    this.verdictScopes = new Map();
+    this.verdictsAsked = new Set();
+    this.verdictsConfirmed = new Set();
   }
 
   /** The mailbox a listed message is in: its own, since a search across mailboxes lists several. */
@@ -752,19 +806,27 @@ export class MessageList extends LitElement {
     const shown = this.currentMailbox;
     if (!shown || !this.drawsAvatars) return;
     const generation = this.verdictGeneration;
-    const current = () => shown === this.currentMailbox && generation === this.verdictGeneration;
+    const signIn = signIns;
+    const current = () => shown === this.currentMailbox && generation === this.verdictGeneration && signIn === signIns;
 
     // Each message is asked about in its own mailbox. A row from another
     // mailbox than the one shown belongs to the previous folder, still on
     // screen until the new folder's list arrives, and asking the new folder
     // about its UID would answer for a different message.
     const byMailbox = new Map<string, string[]>();
+    // A message per mailbox whose kept answer can confirm the scope, for a
+    // mailbox with nothing new to ask about.
+    const confirmers = new Map<string, string>();
     const consider = (msg: any) => {
       const uid = msg?.UID == null ? '' : String(msg.UID);
       const mailbox = this.mailboxOf(msg);
       if (!uid || (shown !== '*' && mailbox !== shown)) return;
       const key = messageKey(mailbox, uid);
-      if (this.verdictsAsked.has(key) || !mayShowBimiLogo(msg)) return;
+      if (!mayShowBimiLogo(msg)) return;
+      if (this.verdictsAsked.has(key)) {
+        if (!this.verdictsConfirmed.has(mailbox) && this.verdicts.has(key) && !confirmers.has(mailbox)) confirmers.set(mailbox, uid);
+        return;
+      }
       this.verdictsAsked.add(key);
       if (!byMailbox.has(mailbox)) byMailbox.set(mailbox, []);
       byMailbox.get(mailbox)!.push(uid);
@@ -772,6 +834,11 @@ export class MessageList extends LitElement {
     for (const msg of this.messages || []) {
       consider(msg);
       if (msg?.SubMessages?.length && this.isThreadExpanded(String(msg.UID))) msg.SubMessages.forEach(consider);
+    }
+    // One message asked again is enough to learn whether the kept answers
+    // still stand: the scope comes with every answer.
+    for (const [mailbox, uid] of confirmers) {
+      if (!byMailbox.has(mailbox)) byMailbox.set(mailbox, [uid]);
     }
 
     const queue: { mailbox: string; uid: string }[] = [];
@@ -782,6 +849,11 @@ export class MessageList extends LitElement {
 
     let i = 0;
     while (i < queue.length) {
+      // Nothing is sent while a request the user waits on is out either, a
+      // message being opened above all: on the session's one connection to
+      // the mail server, it would wait behind the batch.
+      await foregroundSettled();
+      if (!current()) return;
       // A folder's list is loading. Its request waits behind every verdict
       // request sent before it, so nothing more is sent until the list has
       // arrived; the rest is asked for then.
@@ -818,6 +890,7 @@ export class MessageList extends LitElement {
         startOver = true;
       }
       if (answer.scope) this.verdictScopes.set(mailbox, answer.scope);
+      this.verdictsConfirmed.add(mailbox);
       for (const [uid, verdict] of answer.verdicts) next.set(messageKey(mailbox, uid), verdict);
       this.verdicts = next;
       if (startOver) {
@@ -828,9 +901,11 @@ export class MessageList extends LitElement {
     }
   }
 
-  /** msg with the verdict answered for it, if one has arrived. */
+  /** msg with the verdict answered for it, if one has arrived under its mailbox's current scope. */
   private withVerdict(msg: any): any {
-    const verdict = this.verdicts.get(messageKey(this.mailboxOf(msg), String(msg?.UID)));
+    const mailbox = this.mailboxOf(msg);
+    if (!this.verdictsConfirmed.has(mailbox)) return msg;
+    const verdict = this.verdicts.get(messageKey(mailbox, String(msg?.UID)));
     return verdict ? { ...msg, ...verdict } : msg;
   }
 
@@ -973,8 +1048,10 @@ export class MessageList extends LitElement {
 
   willUpdate(changedProperties: Map<string, any>) {
     super.willUpdate(changedProperties);
-    if (changedProperties.has('currentMailbox')) {
-      this.resetVerdicts();
+    if (this.verdictsSignIn !== signIns) {
+      this.forgetVerdicts();
+    } else if (changedProperties.has('currentMailbox')) {
+      this.leaveVerdicts();
     }
     if (changedProperties.has('currentMailbox') ||
       changedProperties.has('currentPage') ||
@@ -1284,8 +1361,10 @@ export class MessageList extends LitElement {
     this.emptying = true;
     const folder = this.currentMailbox;
     // Named now: the user may be in another folder by the time this answers.
+    // Every report names it, from the first to the last: these said "mailbox",
+    // which to a user is the whole account, not the Trash they just emptied.
     const title = this.folderTitle;
-    this.toast('info', this.i18nStore?.t('messageList.emptyingMailbox') || 'Emptying mailbox...');
+    this.toast('info', this.i18nStore?.t('messageList.emptyingMailbox', { folder: title }) || `Emptying ${title}...`);
 
     try {
       const outcome = await mailboxOperations.emptyMailbox(folder);
@@ -1294,7 +1373,7 @@ export class MessageList extends LitElement {
         this.toast('info', this.i18nStore?.t('messageList.mailboxAlreadyEmpty', { folder: title })
           || `${title} was already empty — nothing was deleted.`);
       } else if (outcome.ok) {
-        this.toast('success', this.i18nStore?.t('messageList.mailboxEmptied') || 'Mailbox emptied successfully.');
+        this.toast('success', this.i18nStore?.t('messageList.mailboxEmptied', { folder: title }) || `${title} emptied.`);
       } else if (outcome.reason === 'timeout') {
         this.toast('error', this.i18nStore?.t('messageList.emptyMailboxSlow', { folder: title })
           || `Still emptying ${title}. The server is working on it — check the folder again in a moment.`);
@@ -1302,7 +1381,7 @@ export class MessageList extends LitElement {
         // `auth` is silent: the session has ended, the shell says so, and a
         // second notice beside it sends the user looking for a fault they
         // do not have.
-        this.toast('error', this.i18nStore?.t('messageList.emptyMailboxFailed') || 'Failed to empty mailbox. Make sure it is Trash or Junk.');
+        this.toast('error', this.i18nStore?.t('messageList.emptyMailboxFailed', { folder: title }) || `Failed to empty ${title}.`);
       }
     } finally {
       this.emptying = false;
@@ -1338,9 +1417,19 @@ export class MessageList extends LitElement {
    * attributes, and that fallback lives in one place — `mailboxRoleByName`, which
    * only guesses a role by name when the server has not assigned it. A second
    * name test here would re-open the override it now prevents.
+   *
+   * Only the Trash or the Junk the sidebar draws as one, though. Of two folders
+   * with the role (an Exchange "Deleted Items" and a "Trash" on a server
+   * without special-use attributes, two folders marked \Junk), the other is
+   * drawn as an ordinary folder under its own name, and it offered to delete
+   * everything in it for good all the same. Its role is still handed down as
+   * it is: a second \Sent folder holds sent mail, and its rows name the
+   * recipients.
    */
   private get isDiscardableFolder(): boolean {
-    return this.currentMailboxRole === 'trash' || this.currentMailboxRole === 'junk';
+    const role = this.currentMailboxRole;
+    if (role !== 'trash' && role !== 'junk') return false;
+    return (specialMailboxName(role, this.mailboxes) ?? this.currentMailbox) === this.currentMailbox;
   }
 
   /**
