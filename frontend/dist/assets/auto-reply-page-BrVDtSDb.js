@@ -1,4 +1,4 @@
-import{b as e,c as t,f as n,g as r,h as i,m as a,v as o}from"./lit-Br1cDwGJ.js";import{K as s,mt as c,tt as l}from"./index-CNqDyrpU.js";import{a as u,i as d,n as f,r as p,t as m}from"./unsaved-CF-cwXVH.js";var h=new m;function g(){let e=new Date,t=e=>String(e).padStart(2,`0`);return`${e.getFullYear()}-${t(e.getMonth()+1)}-${t(e.getDate())}`}var _=class extends i{constructor(...e){super(...e),this.loading=!0,this.loadFailed=!1,this.extensions=[],this.ownVacation=!1,this.stored=u,this.draft=u,this.saving=!1,this.error=``,this.visit=h.visit(),this.retainEdit=!0,this.loadRequest=0}static{this.styles=e`
+import{b as e,c as t,f as n,g as r,h as i,m as a,v as o}from"./lit-Br1cDwGJ.js";import{K as s,mt as c,tt as l}from"./index-BMn78PHV.js";import{a as u,i as d,n as f,r as p,t as m}from"./unsaved-CR4OVKKT.js";var h=new m;function g(){let e=new Date,t=e=>String(e).padStart(2,`0`);return`${e.getFullYear()}-${t(e.getMonth()+1)}-${t(e.getDate())}`}var _=class extends i{constructor(...e){super(...e),this.loading=!0,this.loadFailed=!1,this.extensions=[],this.ownVacation=!1,this.stored=u,this.draft=u,this.saving=!1,this.error=``,this.visit=h.visit(),this.retainEdit=!0,this.loadRequest=0}static{this.styles=e`
 		.loading {
 			display: flex;
 			justify-content: center;
@@ -88,13 +88,16 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,v as o}from"./lit-Br1cDwGJ.js";
 				${this.renderState()}
 			`)}
 
+			<!-- Each field named by its label: the setting's is in
+			     alps-setting-group's shadow root, and a date's outside
+			     alps-input's, so neither reaches the control. -->
 			<alps-setting-group label=${this.t(`managesieve.autoReply.subject`)} description=${this.t(`managesieve.autoReply.subjectDesc`)}>
-				<alps-input class="subject" .value=${e.subject} placeholder=${this.t(`managesieve.autoReply.subjectPlaceholder`)}
+				<alps-input class="subject" label=${this.t(`managesieve.autoReply.subject`)} .value=${e.subject} placeholder=${this.t(`managesieve.autoReply.subjectPlaceholder`)}
 					@input=${e=>this.edit({subject:e.target.value})}></alps-input>
 			</alps-setting-group>
 
 			<alps-setting-group label=${this.t(`managesieve.autoReply.message`)} description=${this.t(`managesieve.autoReply.messageDesc`)}>
-				<textarea dir="auto" .value=${e.message} placeholder=${this.t(`managesieve.autoReply.messagePlaceholder`)}
+				<textarea dir="auto" aria-label=${this.t(`managesieve.autoReply.message`)} .value=${e.message} placeholder=${this.t(`managesieve.autoReply.messagePlaceholder`)}
 					@input=${e=>this.edit({message:e.target.value})}></textarea>
 			</alps-setting-group>
 
@@ -103,12 +106,12 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,v as o}from"./lit-Br1cDwGJ.js";
 					<div class="dates">
 						<label>
 							<span class="field-label">${this.t(`managesieve.autoReply.startDate`)}</span>
-							<alps-input class="start" type="date" .value=${e.start}
+							<alps-input class="start" type="date" label=${this.t(`managesieve.autoReply.startDate`)} .value=${e.start}
 								@input=${e=>this.edit({start:e.target.value})}></alps-input>
 						</label>
 						<label>
 							<span class="field-label">${this.t(`managesieve.autoReply.endDate`)}</span>
-							<alps-input class="end" type="date" .value=${e.end}
+							<alps-input class="end" type="date" label=${this.t(`managesieve.autoReply.endDate`)} .value=${e.end}
 								@input=${e=>this.edit({end:e.target.value})}></alps-input>
 						</label>
 					</div>
@@ -116,7 +119,7 @@ import{b as e,c as t,f as n,g as r,h as i,m as a,v as o}from"./lit-Br1cDwGJ.js";
 			`:r}
 
 			<alps-setting-group label=${this.t(`managesieve.autoReply.interval`)} description=${this.t(`managesieve.autoReply.intervalDesc`)}>
-				<alps-select .value=${String(e.days)}
+				<alps-select label=${this.t(`managesieve.autoReply.interval`)} .value=${String(e.days)}
 					.options=${t.map(e=>({value:String(e),label:this.t(`managesieve.autoReply.days`,{count:e})}))}
 					@change=${e=>this.edit({days:Number(e.target.value)})}></alps-select>
 			</alps-setting-group>

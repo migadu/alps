@@ -70,6 +70,12 @@ let asked: string[];
 let answers: Record<string, Record<string, unknown>>;
 /** Holds the next answer for message 42 until it resolves. */
 let holdNextRead: Promise<void> | null;
+/** The Inbox's first page, as the next listing answers it. */
+let listing: () => any[];
+/** Whether a read of message 42 is refused. */
+let refuseReads: boolean;
+/** The listings asked for. */
+const listings = () => asked.filter((url) => url.startsWith('/mailboxes/INBOX?'));
 
 /** The requests for message 42 itself: its conversation and its parts are other questions. */
 const readsOfTheMessage = () => asked.filter((url) => /^\/mailboxes\/INBOX\/messages\/42(\?|$)/.test(url));
@@ -79,6 +85,8 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   asked = [];
   holdNextRead = null;
+  listing = () => [row(9), row(8)];
+  refuseReads = false;
   answers = {
     html: {
       Message: linked, Part: { Path: [2], MIMEType: 'text/html' }, Attachments: [],
@@ -96,6 +104,7 @@ beforeEach(() => {
     if (u.includes('/thread')) return json({ Messages: [linked] });
     if (u.includes('/raw')) return new Response('read again with /raw', { status: 200 });
     if (u.startsWith('/mailboxes/INBOX/messages/42')) {
+      if (refuseReads) return new Response(JSON.stringify({ error: 'internal error' }), { status: 500 });
       const held = holdNextRead;
       holdNextRead = null;
       if (held) await held;
@@ -106,7 +115,7 @@ beforeEach(() => {
       return json({
         Username: 'ada@example.com', Page: 0, Total: 2, MessagesPerPage: 50,
         Mailboxes: [{ Name: 'INBOX', Total: 3, Unseen: 0, Attributes: [] }],
-        Messages: [row(9), row(8)],
+        Messages: listing(),
       });
     }
     return new Response('{}', { status: 404 });
@@ -194,5 +203,111 @@ describe('a message the address names, not on the page', () => {
     await opened;
 
     expect(readsOfTheMessage()).toEqual(['/mailboxes/INBOX/messages/42?view=html', '/mailboxes/INBOX/messages/42?view=html']);
+  });
+});
+
+/** Reads the Inbox again, as the user's next move does, and waits for it. */
+async function readTheListAgain(el: El) {
+  const before = listings().length;
+  messageSync.fetch('INBOX', 0, '', false);
+  await waitFor(() => listings().length > before && !el.loadingMessages && !el.isSyncing, 'the list read again', 1000);
+  // The page's own read of an open message, when it makes one, follows the listing.
+  for (let i = 0; i < 20; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+describe('a message already open when the list is read again', () => {
+  it('is not read again, when the address named it from outside the page', async () => {
+    // Every read of the list in the foreground asked the server for it again,
+    // only to find it was the one open, and drop the answer.
+    const reader = await openedFromTheLink('text');
+    const el = reader.getRootNode().host as El;
+    expect(readsOfTheMessage()).toHaveLength(1);
+
+    await readTheListAgain(el);
+    await readTheListAgain(el);
+
+    expect(readsOfTheMessage()).toHaveLength(1);
+    expect(el.selectedMessage?.UID).toBe('42');
+  });
+
+  it('stays open when a foreground listing is now empty', async () => {
+    const reader = await openedFromTheLink('text');
+    const el = reader.getRootNode().host as El;
+    const reads = readsOfTheMessage().length;
+    listing = () => [];
+    refuseReads = true;
+    await readTheListAgain(el);
+    expect(el.messages).toEqual([]);
+    expect(el.selectedMessage?.UID).toBe('42');
+    expect(readsOfTheMessage()).toHaveLength(reads);
+    expect(reader.content).toBe('The engine runs.');
+  });
+
+  it('stays open when a read of it again would have failed', async () => {
+    // And when that read failed, the page took the message for gone, closed
+    // the reader and took it out of the address.
+    const reader = await openedFromTheLink('text');
+    const el = reader.getRootNode().host as El;
+    refuseReads = true;
+
+    await readTheListAgain(el);
+
+    expect(el.selectedMessage?.UID).toBe('42');
+    expect(location.hash).toBe('#/mailbox/INBOX?uid=42');
+  });
+});
+
+describe('a message the list holds under a thread\'s row', () => {
+  const threaded = (flags: string[] | null) => [{ ...row(9), SubMessages: [{ ...linked, Flags: flags }] }, row(8)];
+
+  it('is opened as the list holds it, and not read again with the list', async () => {
+    // Only the rows themselves were looked through, so a message under a
+    // thread's row was taken for one off the page: asked for again on every
+    // read of the list, and closed when one of those reads failed.
+    listing = () => threaded(['\\Seen']);
+    const reader = await openedFromTheLink('text');
+    const el = reader.getRootNode().host as El;
+    const reads = readsOfTheMessage().length;
+    expect(el.selectedMessage).toBe(el.messages[0].SubMessages[0]);
+
+    refuseReads = true;
+    await readTheListAgain(el);
+
+    expect(readsOfTheMessage()).toHaveLength(reads);
+    expect(el.selectedMessage?.UID).toBe('42');
+  });
+
+  for (const cleared of [[], null] as const) {
+    it(`clears the open sub-message flags when the new listing answers ${cleared === null ? 'null' : 'an empty array'}`, async () => {
+      listing = () => threaded(['\\Seen', '\\Flagged']);
+      const reader = await openedFromTheLink('text');
+      const el = reader.getRootNode().host as El;
+      expect(el.selectedMessage.Flags).toContain('\\Flagged');
+      listing = () => threaded(cleared as string[] | null);
+      await readTheListAgain(el);
+      expect(el.selectedMessage.Flags ?? []).toEqual([]);
+      expect(reader.message.Flags ?? []).toEqual([]);
+    });
+  }
+
+  it('keeps known flags when the new listing omits the Flags field', async () => {
+    listing = () => threaded(['\\Seen', '\\Flagged']);
+    const reader = await openedFromTheLink('text');
+    const el = reader.getRootNode().host as El;
+    listing = () => [{ ...row(9), SubMessages: [{ ...linked, Flags: undefined }] }];
+    await readTheListAgain(el);
+    expect(el.selectedMessage.Flags).toEqual(['\\Seen', '\\Flagged']);
+    expect(reader.message.Flags).toEqual(['\\Seen', '\\Flagged']);
+  });
+
+  it('takes its flags from the list read again', async () => {
+    listing = () => threaded(['\\Seen']);
+    const reader = await openedFromTheLink('text');
+    const el = reader.getRootNode().host as El;
+
+    listing = () => threaded(['\\Seen', '\\Flagged']);
+    await readTheListAgain(el);
+
+    expect(el.selectedMessage.Flags).toContain('\\Flagged');
   });
 });

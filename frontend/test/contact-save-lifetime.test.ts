@@ -16,7 +16,7 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   history.replaceState(null, '', '#/contacts/all');
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); history.replaceState(null, '', '#/'); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.removeItem('alps_active_user'); history.replaceState(null, '', '#/'); });
 afterAll(() => new Promise<void>((resolve) => setTimeout(resolve, 150)));
 async function settle(el: El) { for (let i = 0; i < 8; i++) { await flush(); await el.updateComplete; } }
 async function page(): Promise<El> {
@@ -97,7 +97,7 @@ it('sends a previous editor\'s pending debounce to its own card', async () => {
   expect(el.selectedContact).toMatchObject(bob);
 });
 
-it('does not send an old editor\'s pending debounce under another account', async () => {
+it.each(['context event', 'stored identity'])('does not send an old editor\'s pending debounce under another account (%s)', async mode => {
   const create = vi.spyOn(contactsService, 'createContact').mockResolvedValue({ ok: 'true', path: '/book/ada.vcf', etag: 'a1' });
   const el = await page();
   let username = 'ada@example.test';
@@ -106,8 +106,28 @@ it('does not send an old editor\'s pending debounce under another account', asyn
   const view = el.shadowRoot!.querySelector('alps-contact-view') as El;
   view.settingsStore = settings;
   el.handleCreateNew(); await settle(el); await type(el, 'Ada');
-  username = 'bob@example.test';
-  window.dispatchEvent(new Event('alps-active-user-changed'));
+  if (mode === 'context event') {
+    username = 'bob@example.test';
+    window.dispatchEvent(new Event('alps-active-user-changed'));
+  } else localStorage.setItem('alps_active_user', 'bob@example.test');
   await new Promise(resolve => setTimeout(resolve, 600));
   expect(create).not.toHaveBeenCalled();
+});
+
+it('shows the successful stored-card save after the edit pen is closed', async () => {
+  let finish!: (answer: any) => void;
+  const edit = vi.spyOn(contactsService, 'updateContact')
+    .mockReturnValueOnce(new Promise(resolve => { finish = resolve; }))
+    .mockResolvedValue({ ok: 'true', path: bob.path, etag: 'b3' });
+  const el = await page();
+  await el.selectContact(bob, false); await el.handleEdit(); await settle(el);
+  await type(el, 'Robert');
+  await waitFor(() => edit.mock.calls.length === 1, 'first stored-card save', 2000);
+  const view = el.shadowRoot!.querySelector('alps-contact-view') as El;
+  const done = Array.from(view.shadowRoot!.querySelectorAll('alps-icon-btn')).find((button) => (button as El).title === 'contacts.cancel') as El;
+  done.click(); await settle(el);
+  expect(el.isEditing).toBe(false);
+  finish({ ok: 'true', path: bob.path, etag: 'b2' });
+  await waitFor(() => !el.saveRunning, 'completed save queue'); await settle(el);
+  expect(el.selectedContact).toMatchObject({ path: bob.path, name: 'Robert', etag: 'b3' });
 });
