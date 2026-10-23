@@ -973,3 +973,65 @@ func TestUpdatePasswordContext_AlreadyCancelledDoesNotChangeTheSession(t *testin
 		}
 	}
 }
+
+// A watch begun while the IDLE's connection is gone is not told that the
+// IDLE is up: it is told once one has begun again. Each case has the IDLE
+// wait to resume (pushResume), the window in which a page opening its
+// stream was told of an IDLE that no connection held.
+func TestWatchInbox_NotToldOfAnIdleWhoseConnectionIsGone(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		gone func(t *testing.T, s *Session, srv *idlingServer, idling *idlingConnection)
+	}{
+		{"dropped under background work", func(t *testing.T, s *Session, srv *idlingServer, idling *idlingConnection) {
+			err := s.DoBackgroundMail(context.Background(), func(p provider.MailProvider) error {
+				if p == provider.MailProvider(idling) {
+					return errors.New("read tcp: connection reset by peer")
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"closed for a password change", func(t *testing.T, s *Session, srv *idlingServer, idling *idlingConnection) {
+			if err := s.manager.UpdatePassword(s, "new"); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"taken over by the session's own work", func(t *testing.T, s *Session, srv *idlingServer, idling *idlingConnection) {
+			// Background work first, so that the IDLE waits to resume.
+			if err := s.DoBackgroundMail(context.Background(), work); err != nil {
+				t.Fatal(err)
+			}
+			// The session's own connection gone, as one given up on is.
+			s.providerLocker.Lock()
+			s.provider.Close()
+			s.provider = nil
+			s.providerLocker.Unlock()
+			var ranOn provider.MailProvider
+			if err := s.DoMail(func(p provider.MailProvider) error { ranOn = p; return nil }); err != nil {
+				t.Fatal(err)
+			}
+			if ranOn != provider.MailProvider(idling) {
+				t.Fatal("the session's own work did not take the background connection over")
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var srv idlingServer
+			s := newPushSession(t, &srv)
+			s.manager.pushResume = 2 * time.Second
+			first := s.WatchInbox()
+			defer first.Stop()
+			next(t, first)
+			idling := srv.idling()
+
+			tc.gone(t, s, &srv, idling)
+			eventually(t, "the IDLE to end", func() bool { return srv.idling() == nil })
+			later := s.WatchInbox()
+			defer later.Stop()
+			quiet(t, later, "a watch begun while the IDLE's connection is gone")
+		})
+	}
+}
