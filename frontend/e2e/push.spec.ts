@@ -59,19 +59,19 @@ async function streamSaid(page: Page, what: string) {
   await expect.poll(() => page.evaluate(() => (window as any).__streamSaid ?? []), { timeout: 20_000 }).toContain(what);
 }
 
-/** Files the message called subject from the Inbox into folder, from another session of the account. */
-async function fileElsewhere(page: Page, subject: string, folder: string) {
+/** Files the message called subject from a folder (the Inbox) into another, from another session of the account. */
+async function fileElsewhere(page: Page, subject: string, folder: string, from = "INBOX") {
   const other = await page.context().browser()!.newContext();
   try {
     const elsewhere = await other.newPage();
     await login(elsewhere);
-    const response = await elsewhere.request.get("/mailboxes/INBOX?page=0&refresh=true");
+    const response = await elsewhere.request.get(`/mailboxes/${encodeURIComponent(from)}?page=0&refresh=true`);
     expect(response.ok()).toBe(true);
     const data = await response.json();
     const found = (data.Messages ?? []).flatMap((m: any) => [m, ...(m.SubMessages ?? [])])
       .find((m: any) => m.Envelope?.Subject === subject);
-    expect(found, `"${subject}" is in the Inbox`).toBeTruthy();
-    const moved = await elsewhere.request.put("/mailboxes/INBOX/messages/move", {
+    expect(found, `"${subject}" is in ${from}`).toBeTruthy();
+    const moved = await elsewhere.request.put(`/mailboxes/${encodeURIComponent(from)}/messages/move`, {
       headers: asPage(elsewhere), data: { uids: [String(found.UID)], to: folder },
     });
     expect(moved.ok(), "the message is filed").toBe(true);
@@ -181,7 +181,12 @@ test("mail filed into a subscribed folder elsewhere counts in the sidebar while 
   test.setTimeout(120_000);
   await mailboxElsewhere("subscribe", "Archive");
   const subject = `Filed unread ${Date.now()}`;
+  // Filed from a folder of its own, not from the Inbox: news of the Inbox
+  // has the page read every folder's counts again, Archive's among them.
+  const holding = `Holding ${Date.now()}`;
+  await mailboxElsewhere("create", holding);
   await deliver({ subject, body: "Filed by another program, unread." });
+  await fileElsewhere(page, subject, holding);
   await recordStream(page);
   await login(page);
   await page.request.put("/settings", { headers: asPage(page), data: { check_mail_interval: 60 } });
@@ -191,7 +196,7 @@ test("mail filed into a subscribed folder elsewhere counts in the sidebar while 
   const badge = sidebar(page).locator(".folder-badge");
   const before = Number((await badge.count()) ? await badge.textContent() : 0);
 
-  await fileElsewhere(page, subject, "Archive");
+  await fileElsewhere(page, subject, "Archive", holding);
   await streamSaid(page, "folder Archive");
   await expect(badge).toHaveText(String(before + 1), NEWS);
 });
