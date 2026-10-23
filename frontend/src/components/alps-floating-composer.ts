@@ -2,8 +2,8 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { consume } from '@lit/context';
 import {
-  bareAddress, composeContext, draftContentKey, keptAfterSave, postedAttachments, quoteSourceAfterSave, recipientField,
-  reconcileSavedAttachments, uploadGone,
+  bareAddress, composeContext, draftContentKey, inlinePartPaths, keptAfterSave, postedAttachments, quoteSourceAfterSave,
+  recipientField, reconcileSavedAttachments, uploadGone,
 } from '../store/compose-store';
 import type { ComposerInstance, ComposeStore } from '../store/compose-store';
 import { handleAttachClick, abortUpload, deleteAttachment, uploadFiles } from '../utils/attachment-utils';
@@ -460,6 +460,10 @@ export class AlpsFloatingComposer extends LitElement {
     const prev = attachments.map(a => a.partPath).filter(Boolean).join(',');
     if (prev) {
       formData.append('prev_attachments', prev);
+    }
+    const inline = inlinePartPaths(attachments);
+    if (inline) {
+      formData.append('inline_attachments', inline);
     }
 
     if (currentInstance.draftMailbox) {

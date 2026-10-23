@@ -625,6 +625,66 @@ describe('a draft reopened and saved again', () => {
   });
 });
 
+describe("the quote's images", () => {
+  // The composer carries the parts its quote shows as inline, whatever their
+  // disposition: Outlook and Apple Mail file their inline images as
+  // attachments. A save or a send named them by path alone, and the server,
+  // reading the disposition, took such an image for a file: it went out
+  // beside the body, and the draft saved answered with it as a file, which
+  // the composer then showed as a chip. Each save and send now names them.
+  const file = { name: 'ledger.txt', size: 16, type: 'text/plain', partPath: '3' };
+  const image = { name: 'logo.png', size: 9, type: 'image/png', partPath: '2', inline: true };
+  const answer = (format: 'html' | 'text') => composerIn({
+    subject: 'Re: Logo', text: 'Nice.', html: '<p>Nice.</p><img src="cid:logo@remote.test">', format, dirty: true,
+    attachments: [file, image],
+  });
+
+  it('are named as the body\'s in a save', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const { store, instance } = answer('html');
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(sentForm(0).get('prev_attachments')).toBe('3,2');
+    expect(sentForm(0).get('inline_attachments')).toBe('2');
+  });
+
+  it('are named as the body\'s in a send', async () => {
+    const sendDraft = vi.spyOn(messageOperations, 'sendDraft').mockResolvedValue(true);
+    const toasts = record<CustomEvent>(window, 'show-toast');
+    const { store, instance } = answer('html');
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    const sending = el._handleSend();
+    await waitFor(() => toasts.length > 0, 'the undo toast');
+    toasts[0].detail.dismissFn();
+    await sending;
+
+    expect((sendDraft.mock.calls[0][0] as FormData).get('inline_attachments')).toBe('2');
+  });
+
+  it('are named as the body\'s by the sign-out flush', async () => {
+    const saveDraft = vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const { store } = answer('html');
+
+    await store.saveAllDirtyDrafts();
+
+    expect((saveDraft.mock.calls[0][0] as FormData).get('inline_attachments')).toBe('2');
+  });
+
+  it('are named nowhere in plain text, which carries none of them', async () => {
+    vi.spyOn(messageOperations, 'saveDraft').mockResolvedValue({ uid: '8', mailbox: 'Drafts' });
+    const { store, instance } = answer('text');
+    const el = await mount<El>('alps-floating-composer', { instance, composeStore: store, i18nStore });
+
+    expect(await el._saveDraft()).toBe(true);
+
+    expect(sentForm(0).get('prev_attachments')).toBe('3');
+    expect(sentForm(0).has('inline_attachments')).toBe(false);
+  });
+});
+
 describe('an answer in plain text', () => {
   // A reply or a forward carries the quote's images as inline parts, which
   // the composer shows no chip for. Nothing in a text/plain message shows

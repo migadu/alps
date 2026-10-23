@@ -850,6 +850,64 @@ for (const kind of ["a reply", "a forward with a file"] as const) {
   });
 }
 
+/** An HTML message showing an image filed as an attachment, as Outlook and Apple Mail file theirs. */
+function filedImageMail(subject: string): string {
+  const boundary = "alps-e2e-filed-image-boundary";
+  return [
+    `From: ${SENDER}`,
+    `To: ${USER.address}`,
+    `Subject: ${subject}`,
+    `Message-ID: <${unique()}@remote.test>`,
+    `Date: ${new Date().toUTCString()}`,
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/related; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    "Content-Type: text/html; charset=utf-8",
+    "",
+    '<html><body><p>Our new logo:</p><table><tr><td>cell A</td><td>cell B</td></tr></table><img src="cid:logo@remote.test" alt="logo"></body></html>',
+    "",
+    `--${boundary}`,
+    'Content-Type: image/png; name="logo.png"',
+    'Content-Disposition: attachment; filename="logo.png"',
+    "Content-ID: <logo@remote.test>",
+    "Content-Transfer-Encoding: base64",
+    "",
+    PIXEL_PNG,
+    "",
+    `--${boundary}--`,
+    "",
+  ].join("\r\n");
+}
+
+// The reply carries the quote's image unseen, as the body's. Named to the
+// server by its path alone, it was taken for a file by its disposition: the
+// draft saved held it as an attachment, which the composer then showed as a
+// chip three seconds into the reply, and the reply went out with the image
+// beside the body.
+test("a reply quoting an image filed as an attachment keeps it in the body, saved and sent", async ({ page }) => {
+  const subject = `Filed logo ${Date.now()}`;
+  await deliver({ subject, raw: filedImageMail(subject) });
+  await login(page);
+  await openHtmlMessage(page, subject);
+  await replyButton(page).click();
+  await expect(composerSubject(page)).toHaveValue(`Re: ${subject}`);
+
+  const editor = composer(page).locator(".ProseMirror");
+  await editor.locator("p").first().click();
+  await editor.pressSequentially("Looks good.");
+  await savedAgain(page, undefined);
+  await expect(composerAttachments(page)).toHaveCount(0);
+  const stored = mimeOutline(await storedDraftOf(page));
+  expect(stored, "the draft").toContain('Content-Disposition: inline; filename=logo.png');
+
+  await sendNow(page);
+  const sent = await sentWithSubject(`Re: ${subject}`);
+  const outline = mimeOutline(sent.data);
+  expect(outline[0], "what was sent").toMatch(/^Content-Type: multipart\/related/);
+  expect(outline).toContain('Content-Disposition: inline; filename=logo.png');
+});
+
 /** The text/html part of a submission, its quoted-printable undone. */
 function htmlPart(message: SentMessage): string {
   const start = message.data.search(/Content-Type:\s*text\/html/i);
