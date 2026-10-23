@@ -222,8 +222,28 @@ export class ComposeStore extends EventTarget {
     // nothing else re-ran this until a page reload.
     window.addEventListener('user-logged-in', this.adoptSession);
     window.addEventListener('alps-active-user-changed', this.adoptSession);
+    window.addEventListener('pagehide', this.flushOnPageHide);
     this.adoptSession();
   }
+
+  /**
+   * Writes the change still waiting for the debounced write, as the page
+   * goes: a reload, a closed tab, a link followed. The write comes half a
+   * second after the last change, and leaving within it took that much of
+   * what was typed with it.
+   *
+   * Only a write that is waiting, which is what would have been written had
+   * the page stayed: the login screen clears the windows from memory alone,
+   * and a sign-out cancels the waiting write as it erases the disk copy, so
+   * writing the composers as they are would put an emptied list over the
+   * drafts on disk, or bring an erased one back.
+   */
+  private flushOnPageHide = () => {
+    if (this.saveTimeout === null) return;
+    window.clearTimeout(this.saveTimeout);
+    this.saveTimeout = null;
+    this.saveDrafts();
+  };
 
   /**
    * Loads the signed-in user's drafts, and carries across anything opened
@@ -367,9 +387,10 @@ export class ComposeStore extends EventTarget {
       window.clearTimeout(this.saveTimeout);
       this.saveTimeout = null;
     }
-    // With no live windows there is nothing a reload can lose. Otherwise the
-    // caller must keep this document open when its recovery copy cannot be written.
-    return this.saveDrafts() || this.state.activeComposers.length === 0;
+    // The login screen clears only the live windows. Writing that empty list
+    // would erase its preserved recovery copy during an update-offer reload.
+    if (this.state.activeComposers.length === 0) return true;
+    return this.saveDrafts();
   }
 
   private notify() {
@@ -531,7 +552,7 @@ export class ComposeStore extends EventTarget {
   }
 
   /**
-   * Takes the composer windows off the screen WITHOUT touching what is on disk.
+   * Takes the composer windows off the screen, preserving their disk copy.
    *
    * The only caller is `login-page`'s connectedCallback, which runs every time
    * the login screen mounts — including on an ordinary boot redirect, when
@@ -546,7 +567,8 @@ export class ComposeStore extends EventTarget {
    *
    * Persisting is the sign-out path's job, and it already does it properly —
    * `handleSessionCleared` removes the key outright, after aborting uploads.
-   * Here, memory only.
+   * Here, settle any pending edit before clearing memory, so neither its timer
+   * nor pagehide writes the emptied list over that recovery copy.
    *
    * With nothing open it does nothing, not even announce a change. The login
    * page calls this as it connects, inside the shell's render, and the
@@ -554,6 +576,7 @@ export class ComposeStore extends EventTarget {
    * second time.
    */
   clearAllComposers() {
+    if (this.saveTimeout !== null) this.persistNow();
     if (this.state.activeComposers.length === 0) return;
     this.state = { ...this.state, activeComposers: [] };
     this.notify();
