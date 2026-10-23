@@ -339,6 +339,30 @@ describe('the Filters page, left with an edit unsaved', () => {
     expect(puts).toEqual([]);
   });
 
+  it('keeps restored visual rules if the page leaves before its editor baseline updates', async () => {
+    stored = RULES;
+    const left = await openFilters();
+    const editor = shadow<El>(left, 'alps-visual-editor');
+    await editor.updateComplete;
+    editor.dispatchEvent(new CustomEvent('state-changed', { detail: { state: { rules: [] } } }));
+    await left.updateComplete;
+    const root = left.parentElement!;
+    left.remove();
+    const visiting = document.createElement('alps-managesieve-page') as El;
+    root.appendChild(visiting);
+    await visiting.updateComplete;
+    let rendered!: () => void;
+    const gate = new Promise<boolean>(resolve => { rendered = () => resolve(true); });
+    const update = vi.spyOn(visiting, 'updateComplete', 'get').mockReturnValue(gate);
+    await waitFor(() => !visiting.isLoading && visiting.visualState.rules.length === 0, 'the retained state to be applied');
+    visiting.remove();
+    rendered();
+    update.mockRestore();
+    const back = await openFilters();
+    expect(back.visualState).toEqual({ rules: [] });
+    expect(back.hasUnsavedChanges).toBe(true);
+  });
+
   for (const visual of [false, true]) {
     it(`does not restore ${visual ? 'visual' : 'raw'} edits over an unrelated server change`, async () => {
       stored = visual ? RULES : FILTERS;

@@ -32,6 +32,7 @@ export class ManageSievePage extends LitElement {
 	/** The script as the server holds it: what the raw editor measures edits against. */
 	@state() private storedScript = '';
 	@state() private visualState: VisualState = { rules: [] };
+	private storedVisualSnapshot = JSON.stringify(this.visualState);
 	@state() folders: string[] = [];
 
 	@state() private isLoading = true;
@@ -99,8 +100,9 @@ export class ManageSievePage extends LitElement {
 			const editor = this.shadowRoot?.querySelector('alps-raw-editor') as { hasUnsavedChanges?: boolean } | null;
 			return this.script !== this.storedScript || editor?.hasUnsavedChanges === true;
 		}
-		const editor = this.shadowRoot?.querySelector('alps-visual-editor') as { isDirty?: boolean } | null;
-		return editor?.isDirty === true || this.isSaving;
+		// Retention cannot depend on the child's first render/markClean: Back
+		// may remove it while a restored editor is still publishing that state.
+		return JSON.stringify(this.visualState) !== this.storedVisualSnapshot || this.isSaving;
 	}
 
 	/**
@@ -114,12 +116,15 @@ export class ManageSievePage extends LitElement {
 		if (this.loadFailed || !this.isConnected) return;
 		const kept = unsavedFilters.take(this.storedScript, this.visit);
 		if (!kept) return;
-		const saved = JSON.stringify(this.visualState);
+		const saved = this.storedVisualSnapshot;
+		const visit = this.visit;
+		const request = this.loadRequest;
 		this.mode = kept.mode;
 		this.script = kept.script;
 		this.visualState = kept.visualState;
 		if (kept.mode !== 'visual') return;
 		await this.updateComplete;
+		if (!this.isConnected || this.visit !== visit || this.loadRequest !== request || !unsavedFilters.current(visit)) return;
 		const editor = this.shadowRoot?.querySelector('alps-visual-editor') as { markClean?: (snapshot: string) => void } | null;
 		editor?.markClean?.(saved);
 	}
@@ -149,6 +154,7 @@ export class ManageSievePage extends LitElement {
 					this.mode = 'raw';
 				}
 			}
+			this.storedVisualSnapshot = JSON.stringify(this.visualState);
 		} catch (e) {
 			if (!current()) return;
 			console.error('Failed to fetch Sieve script', e);
@@ -214,6 +220,7 @@ export class ManageSievePage extends LitElement {
 			unsavedFilters.savedAs(base, compiled, visit);
 			if (this.visit !== visit) return;
 			this.storedScript = compiled;
+			this.storedVisualSnapshot = sentSnapshot;
 			// Without rules the script is switched off, unless an auto-reply that
 			// is on goes on running in it.
 			const msgKey = compiled.trim() === '' && !autoReplyOn ? 'managesieve.toast.deactivated' : 'managesieve.toast.saved';
