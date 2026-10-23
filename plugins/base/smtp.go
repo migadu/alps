@@ -216,6 +216,14 @@ func prepareAddressList(addresses []string) ([]*mail.Address, error) {
 	return l, nil
 }
 
+// mailboxAddress formats an addr-spec without a display name or surrounding
+// angle brackets. ParseAddress's Address is unquoted, but a local part holding
+// spaces or specials still needs a quoted string in the SMTP envelope.
+func mailboxAddress(addr *mail.Address) string {
+	formatted := (&mail.Address{Address: addr.Address}).String()
+	return strings.TrimSuffix(strings.TrimPrefix(formatted, "<"), ">")
+}
+
 // maxReferences bounds the References a reply carries. RFC 5322 lets a long
 // chain be shortened; the first ID, the conversation's root, is kept.
 const maxReferences = 20
@@ -584,7 +592,7 @@ func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
 
 	// Until the message is written, the server's replies and a failed
 	// connection are wrapped: DoSMTP tries a send again when one may pass.
-	if err := c.Mail(addr.Address, nil); err != nil {
+	if err := c.Mail(mailboxAddress(addr), nil); err != nil {
 		return fmt.Errorf("MAIL FROM failed: %w", err)
 	}
 
@@ -594,7 +602,7 @@ func sendMessage(c *smtp.Client, msg *OutgoingMessage) error {
 			return fmt.Errorf("parsing address %q failed: %v", to, err)
 		}
 
-		if err := c.Rcpt(addr.Address, nil); err != nil {
+		if err := c.Rcpt(mailboxAddress(addr), nil); err != nil {
 			return fmt.Errorf("RCPT TO failed: %w (%s)", err, addr.Address)
 		}
 	}
