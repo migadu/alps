@@ -1,4 +1,5 @@
 import { encodePathParam, fetchWithTimeout, HttpStatusError } from '../../../frontend/src/utils/fetch-utils';
+import { parseWrittenAddress } from '../../../frontend/src/utils/address-display';
 import { dueOf, isClosed, type TaskData } from './tasks-service';
 import type { InvitationPerson, SavedInvitation } from './invitation-service';
 
@@ -76,21 +77,29 @@ export interface CalendarListing {
     scheduling?: 'server' | 'email';
 }
 
-/** A guest as the address field spells one: `"Name" <address>` or a bare address. */
+/**
+ * A guest as the address field spells one: `"Name" <address>` or a bare
+ * address. The name is read as the pill reads it, a quoted one unescaped: a
+ * guest picked from the suggestions has a quote or a backslash in the name
+ * escaped, and the escapes were saved into the invitation.
+ */
 export function personFromAddress(address: string): InvitationPerson | null {
     const trimmed = address.trim();
     const angled = /^(.*)<([^<>\s]+@[^<>\s]+)>$/.exec(trimmed);
     if (angled) {
-        const name = angled[1].trim().replace(/^"(.*)"$/, '$1').trim();
+        const { name } = parseWrittenAddress(trimmed);
         return name ? { email: angled[2], name } : { email: angled[2] };
     }
     return /^[^\s@<>]+@[^\s@<>]+$/.test(trimmed) ? { email: trimmed } : null;
 }
 
-/** The address field's spelling of a guest. */
+/**
+ * The address field's spelling of a guest. A backslash in the name is
+ * escaped, as a quoted name is read back with its escapes undone.
+ */
 export function addressOfPerson(person: InvitationPerson): string {
     const name = person.name?.replace(/"/g, '').trim();
-    return name ? `"${name}" <${person.email}>` : person.email;
+    return name ? `"${name.replace(/\\/g, '\\\\')}" <${person.email}>` : person.email;
 }
 
 /** Whether saving or removing a task emails anyone; see tellsSomeone. */

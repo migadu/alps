@@ -31,6 +31,7 @@ let queries: string[];
 let alerts: string[];
 
 beforeEach(() => {
+  localStorage.clear();
   queries = [];
   alerts = [];
   vi.stubGlobal('alert', (message: string) => { alerts.push(message); });
@@ -51,15 +52,16 @@ beforeEach(() => {
 
 afterEach(() => {
   window.dispatchEvent(new CustomEvent('session-cleared'));
+  localStorage.clear();
   vi.unstubAllGlobals();
 });
 
 /** Sends a text message to `to` with encryption on, and answers what would go out. */
-async function send(to: string[]) {
+async function send(recipients: string[], field: 'to' | 'cc' | 'bcc' = 'to') {
   const formData = new FormData();
   formData.set('text', 'Hello');
   formData.set('html', '');
-  const instance = { encryptGpg: true, to, cc: [], bcc: [], format: 'text' };
+  const instance = { encryptGpg: true, to: [], cc: [], bcc: [], format: 'text', [field]: recipients };
   return handlePresend({ instance, formData, composer: { i18nStore } });
 }
 
@@ -79,5 +81,29 @@ describe('an encrypted message to a recipient', () => {
 
     expect(alerts).toEqual([]);
     expect(queries).toEqual(['ada@example.com', 'ada@example.com']);
+  });
+});
+
+
+describe('an encrypted message to the user', () => {
+  it.each(['to', 'cc', 'bcc'] as const)('uses the users own public key for their resolved address in %s', async (field) => {
+    localStorage.setItem('alps_active_user', 'me');
+    localStorage.setItem('alps_settings_me', JSON.stringify({ loginUsername: 'me', loginAddress: 'Me@Example.net' }));
+
+    const sent = await send(['"My name" <me@example.NET>'], field);
+
+    expect(queries).toEqual([]);
+    expect(alerts).toEqual([]);
+    expect(sent).toBeInstanceOf(FormData);
+    expect((sent as FormData).get('text')).toBe('encrypted for MY-KEY-public');
+  });
+
+  it('falls back to an address used as the login before the server resolves it', async () => {
+    localStorage.setItem('alps_active_user', 'me@example.net');
+    localStorage.setItem('alps_settings_me@example.net', JSON.stringify({ loginUsername: 'me@example.net' }));
+
+    expect(await send(['me@example.net'])).toBeInstanceOf(FormData);
+    expect(queries).toEqual([]);
+    expect(alerts).toEqual([]);
   });
 });

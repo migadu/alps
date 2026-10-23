@@ -1367,6 +1367,7 @@ func handleGetMailbox(ctx *alps.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Title":           title,
 		"Username":        ctx.Session.Username(),
+		"Address":         ctx.Session.Address(),
 		"Mailboxes":       ibase.Mailboxes,
 		"Mailbox":         ibase.Mailbox,
 		"Inbox":           ibase.Inbox,
@@ -2289,23 +2290,37 @@ func handleComposeNew(ctx *alps.Context) error {
 
 	fromAddr := ctx.FormValue("from")
 	if fromAddr == "" {
-		fromAddr = ctx.Session.Username()
+		// The user's address, not the login: a login can be a bare user
+		// name, which is no address to send from (see Session.Address).
+		fromAddr = ctx.Session.Address()
 		if settings, err := readSettings(ctx); err == nil {
 			// The display name is free text, so it is formatted as an address
 			// rather than pasted in front of one. Written bare, a comma in it
 			// ("Doe, Jane") read as two addresses, the first with none, and
 			// every send and draft save failed; quotes in it were lost.
 			if name := strings.TrimSpace(settings.From); name != "" {
-				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Username()}).String()
+				fromAddr = (&mail.Address{Name: name, Address: ctx.Session.Address()}).String()
 			}
 		}
 	}
 
+	// A field that does not read as addresses is refused here, for what it
+	// is, rather than as a failure to send or to store the draft. A draft
+	// does not carry Bcc, so Bcc does not stop one being saved.
+	recipients := map[string][]string{}
+	for _, field := range []string{"to", "cc", "bcc"} {
+		list, err := parseAddressList(ctx.FormValue(field))
+		if err != nil && !(saveAsDraft && field == "bcc") {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid %s address: %v", field, err)})
+		}
+		recipients[field] = list
+	}
+
 	msg := &OutgoingMessage{
 		From:       fromAddr,
-		To:         parseAddressList(ctx.FormValue("to")),
-		Cc:         parseAddressList(ctx.FormValue("cc")),
-		Bcc:        parseAddressList(ctx.FormValue("bcc")),
+		To:         recipients["to"],
+		Cc:         recipients["cc"],
+		Bcc:        recipients["bcc"],
 		Subject:    ctx.FormValue("subject"),
 		Text:       ctx.FormValue("text"),
 		HTML:       ctx.FormValue("html"),
@@ -3173,6 +3188,7 @@ func handleGetSession(ctx *alps.Context) error {
 
 	return ctx.JSON(http.StatusOK, map[string]interface{}{
 		"Username":              ctx.Session.Username(),
+		"Address":               ctx.Session.Address(),
 		"PasswordChangeEnabled": passwordChangeEnabled,
 		"EnabledPlugins":        enabledPlugins,
 		"MaxAttachmentMiB":      maxAttachmentMiB,

@@ -754,3 +754,19 @@ func TestMultiConfig_ServiceOptionsRouting(t *testing.T) {
 func TestMultiOptionsImplementsServiceRouter(t *testing.T) {
 	var _ provider.ServiceRouter = (*Options)(nil)
 }
+
+// A bare login is the user name of an address in DefaultDomain, the domain
+// it is routed by. A login that is an address is left alone, and with no
+// DefaultDomain there is no address to make.
+func TestMultiOptionsAddressOf(t *testing.T) {
+	var _ provider.AddressResolver = (*Options)(nil)
+
+	opts := &Options{DefaultDomain: "example.com"}
+	assert.Equal(t, "jdoe@example.com", opts.AddressOf("jdoe"))
+	assert.Equal(t, "", opts.AddressOf("jdoe@elsewhere.example"))
+	assert.Equal(t, "", opts.AddressOf(""))
+	assert.Equal(t, "", (&Options{}).AddressOf("jdoe"))
+
+	var nilOpts *Options
+	assert.Equal(t, "", nilOpts.AddressOf("jdoe"))
+}
