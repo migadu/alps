@@ -315,3 +315,19 @@ describe('a change to a view shown from memory, while it is read again', () => {
     expect(subjects(el)).toEqual(['INBOX 8']);
   });
 });
+
+it('passes the accepted listing UIDVALIDITY to its message list', async () => {
+  history.replaceState(null, '', '#/mailbox/INBOX');
+  const el = await mount<El>('mailbox-page', { i18nStore, settingsStore: settingsStore(), composeStore: new EventTarget() });
+  await waitFor(() => subjects(el).length === 2 && !el.isSyncing, 'the initial listing');
+  const listing = (validity?: number) => ({
+    Page: 0, ListedMailbox: 'INBOX', Total: 2, Messages: [...server.INBOX],
+    Mailbox: validity === undefined ? undefined : { UIDValidity: validity },
+  });
+  for (const validity of [41, 42, undefined]) {
+    messageSync.dispatchEvent(new CustomEvent('sync-success', { detail: { data: listing(validity), background: false } }));
+    await flush();
+    const list = el.shadowRoot!.querySelector('alps-message-list') as El;
+    expect(list.listedUIDValidity).toBe(validity ?? 0);
+  }
+});

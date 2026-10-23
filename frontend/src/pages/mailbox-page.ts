@@ -362,6 +362,7 @@ export class MailboxPage extends LitElement {
    * came from. '' until anything has been listed.
    */
   @state() private listedMailbox = '';
+  @state() private listedUIDValidity = 0;
   /** The search the rows were read under, trailing `filterQuery` the same way. */
   private listedQuery = '';
   @state() private totalMessages = 0;
@@ -1156,6 +1157,7 @@ export class MailboxPage extends LitElement {
       if (data.Page !== undefined) this.currentPage = data.Page;
       this.listedPage = data.Page !== undefined ? data.Page : this.currentPage;
       this.listedMailbox = data.ListedMailbox || this.currentMailbox;
+      this.listedUIDValidity = data.Mailbox?.UIDValidity ?? 0;
       this.listedQuery = this.filterQuery;
       if (data.Total !== undefined) this.totalMessages = data.Total;
       if (data.MessagesPerPage !== undefined) this.messagesPerPage = data.MessagesPerPage;
@@ -2576,6 +2578,7 @@ export class MailboxPage extends LitElement {
               .currentMailbox=${this.currentMailbox}
               .currentMailboxRole=${mailboxRoleByName(this.currentMailbox, this.mailboxes) || ''}
               .listedMailbox=${this.listedMailbox}
+              .listedUIDValidity=${this.listedUIDValidity}
               .listedMailboxRole=${mailboxRoleByName(this.listedMailbox, this.mailboxes) || ''}
               .mailboxes=${this.mailboxes}
               .sidebarCollapsed=${this.sidebarCollapsed && !this.isMobile}
