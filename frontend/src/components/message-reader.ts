@@ -1530,7 +1530,9 @@ export class MessageReader extends LitElement {
       const existing = oldItems.find(item => this.itemKey(item) === this.keyOf(m));
 
       if (existing) {
-        const mergedMessage = { ...m, Flags: m.Flags || existing.message.Flags || [] };
+        // Null is an answer, the server's for a message with no flags, as
+        // liveFlags reads it; only flags not given at all keep the card's.
+        const mergedMessage = { ...m, Flags: m.Flags !== undefined ? (m.Flags ?? []) : (existing.message.Flags ?? []) };
         if (existing.message.HasBimiPotential) mergedMessage.HasBimiPotential = true;
         if (existing.message.HasBimiFailed) mergedMessage.HasBimiFailed = true;
         return {
