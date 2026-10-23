@@ -115,6 +115,9 @@ let seenBuild: string | null = null;
 /** A newer build is live and has not been picked up yet. */
 let pending = false;
 
+/** A chunk failed while the shell was busy, and still needs a new document. */
+let missingPagePending = false;
+
 /**
  * A build CHANGE was actually seen. A missing chunk sets {@link pending} too,
  * but a failed fetch must never grow into an offer, so only this makes one.
@@ -254,7 +257,13 @@ function onPreloadError(event: Event): void {
   event.preventDefault();
   Logger.warn('A lazily loaded chunk is missing; the server was likely upgraded.');
   pending = true;
-  if (busy() || within(CHUNK_RELOAD_KEY, CHUNK_RELOAD_COOLDOWN_MS)) return;
+  missingPagePending = true;
+  reloadMissingPageWhenIdle();
+}
+
+/** Recheck a deferred chunk reload when the last composer closes. */
+export function reloadMissingPageWhenIdle(): void {
+  if (!missingPagePending || busy() || within(CHUNK_RELOAD_KEY, CHUNK_RELOAD_COOLDOWN_MS)) return;
   writeSession(CHUNK_RELOAD_KEY, Date.now());
   reload();
 }

@@ -32,7 +32,7 @@ import { autoLogoutService } from '../services/auto-logout';
 import { clearSessionSettings } from '../store/settings-store';
 import { setLoginNotice } from '../utils/login-notice';
 import { signedOutOnPurpose } from '../utils/signed-out';
-import { applyUpdate, registerBusyProbe, UPDATE_AVAILABLE_EVENT } from '../services/app-update';
+import { applyUpdate, registerBusyProbe, reloadMissingPageWhenIdle, UPDATE_AVAILABLE_EVENT } from '../services/app-update';
 import { Logger } from '../utils/logger';
 
 const DEFAULT_TOAST_TIMEOUT_MS = 3000;
@@ -474,6 +474,8 @@ export class AppRoot extends LitElement {
     const composers = this.composeStore.getState().activeComposers;
     if (composers.length > 0) {
       void this.ensureComposerLoaded();
+    } else {
+      reloadMissingPageWhenIdle();
     }
     if (this._hasStructuralComposeChange(this.activeComposers, composers)) {
       this.activeComposers = composers;

@@ -273,6 +273,30 @@ describe('a chunk the server no longer has', () => {
     expect(reload).not.toHaveBeenCalled();
     expect(mod.updatePending()).toBe(true);
   });
+
+  it('rechecks the deferred chunk reload after the last composer closes, once', async () => {
+    const mod = await load();
+    mod.installAppUpdate();
+    let busy = true;
+    mod.registerBusyProbe(() => busy);
+    chunkFails();
+    mod.reloadMissingPageWhenIdle();
+    expect(reload).not.toHaveBeenCalled();
+    busy = false;
+    mod.reloadMissingPageWhenIdle();
+    expect(reload).toHaveBeenCalledTimes(1);
+    mod.reloadMissingPageWhenIdle();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not turn an ordinary update offer into a chunk reload when a composer closes', async () => {
+    const mod = await load();
+    mod.noteVersion(answer({ build: 'before' }));
+    mod.noteVersion(answer({ build: 'after' }));
+    mod.registerBusyProbe(() => false);
+    mod.reloadMissingPageWhenIdle();
+    expect(reload).not.toHaveBeenCalled();
+  });
 });
 
 describe('the offer', () => {
