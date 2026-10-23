@@ -881,7 +881,7 @@ describe('colour themes', () => {
     await store.updateSettings({ colorFamily: 'nord' });
     expect(root.getPropertyValue('--bg-primary')).toBe('#eceff4');
     expect(root.getPropertyValue('--font-heading')).toBe('');
-    expect(root.getPropertyValue('--accent-contrast')).toBe('');
+    expect(root.getPropertyValue('--accent-fill')).toBe('');
   });
 
   describe('with a default theme from the server', () => {

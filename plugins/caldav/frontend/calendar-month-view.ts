@@ -91,7 +91,7 @@ export class CalendarMonthView extends LitElement {
         }
 
         .event-chip {
-            background-color: var(--accent-color, #2563eb);
+            background-color: var(--accent-fill, #2563eb);
             color: #ffffff;
             font-size: 11px;
             padding: 2px 6px;

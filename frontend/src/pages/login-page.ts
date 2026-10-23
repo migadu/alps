@@ -5,7 +5,6 @@ import { composeContext, ComposeStore } from '../store/compose-store';
 import { i18nContext, I18nStore } from '../store/i18n-store';
 import { renderIcon } from '../utils/ui';
 import { takeLoginNotice, type LoginNotice } from '../utils/login-notice';
-import { loginLogo, loginLogoBuiltin, loginLogoDark } from '../utils/branding';
 
 import '../components/alps-auth-card';
 import '../components/alps-input';
@@ -145,9 +144,9 @@ export class LoginPage extends LitElement {
       height: 36px;
       margin-top: 4px;
       gap: 8px;
-      background-color: var(--accent-color, #3b82f6);
-      color: var(--accent-contrast, #ffffff);
-      border: 1px solid transparent;
+      background-color: var(--accent-fill, #3b82f6);
+      color: #ffffff;
+      border: 1px solid var(--accent-fill-border, transparent);
       border-radius: var(--btn-radius, 4px);
       font-family: inherit;
       font-size: var(--btn-font-size, 14px);
@@ -159,7 +158,7 @@ export class LoginPage extends LitElement {
     }
 
     .submit-btn:hover:not(:disabled) {
-      background-color: var(--accent-hover, #2563eb);
+      background-color: var(--accent-fill-hover, #2563eb);
     }
 
     .submit-btn:disabled {
@@ -347,11 +346,7 @@ export class LoginPage extends LitElement {
   render() {
     return html`
       <alps-auth-card
-        icon="edelweiss"
-        .builtinLogo=${loginLogoBuiltin() ?? ''}
-        .logo=${loginLogo() ?? ''}
-        .logoDark=${loginLogoDark() ?? ''}
-        title="Alps"
+        branded
         subtitle="${this.i18nStore?.t('login.subtitle')}">
 
         ${this.notice && !this.error ? html`

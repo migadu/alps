@@ -124,8 +124,8 @@ export class TasksList extends LitElement {
             cursor: progress;
         }
         .row.done .check {
-            background: var(--accent-color, #2563eb);
-            border-color: var(--accent-color, #2563eb);
+            background: var(--accent-fill, #2563eb);
+            border-color: var(--accent-fill, #2563eb);
         }
         .check svg {
             width: 12px;

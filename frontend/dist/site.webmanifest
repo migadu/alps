@@ -1,6 +1,6 @@
 {
-  "name": "Alps Webmail",
-  "short_name": "Alps",
+  "name": "Webmail",
+  "short_name": "Webmail",
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",

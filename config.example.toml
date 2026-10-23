@@ -299,16 +299,15 @@ level = "info"
 # "nord" or "ocean". A theme picked in Settings stays that user's.
 # default_theme = "alps"
 
-# The logo on the sign-in page, in place of the edelweiss. A logo alps ships,
-# by name: "migadu", or "alps" for the edelweiss; these take the theme's
-# colours in light and dark. Or an SVG, PNG, WebP or JPEG file (at most
-# 1 MiB), read at start-up. Defaults to the default theme's own logo, so
+# The logo in the edelweiss's place, on the sign-in page and in the header,
+# and the icon of the browser tab and the home screen. A logo alps ships, by
+# name: "migadu" (the Migadu mammoth, in the theme's colours), or "alps" for
+# the edelweiss. Or a folder holding a favicon package, the files
+# RealFaviconGenerator writes: favicon.svg, favicon-96x96.png, favicon.ico,
+# apple-touch-icon.png, web-app-manifest-192x192.png and
+# web-app-manifest-512x512.png. Defaults to the default theme's own logo, so
 # default_theme = "migadu" brings the Migadu logo.
-# login_logo = "migadu"
-
-# For a login_logo file that would not show on a dark background: the image
-# for the dark modes.
-# login_logo_dark = "/etc/alps/logo-dark.svg"
+# logo = "migadu"
 
 
 [tls]
