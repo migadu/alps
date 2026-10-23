@@ -51,6 +51,9 @@ export class AutoReplyPage extends LitElement {
 	@state() private draft: AutoReply = DEFAULT_AUTO_REPLY;
 	@state() private saving = false;
 	@state() private error = '';
+	private visit = unsavedReply.visit();
+	private retainEdit = true;
+	private loadRequest = 0;
 
 	static styles = css`
 		.loading {
@@ -132,20 +135,37 @@ export class AutoReplyPage extends LitElement {
 
 	connectedCallback() {
 		super.connectedCallback();
+		this.visit = unsavedReply.visit();
+		this.retainEdit = true;
 		this.load();
 	}
 
 	disconnectedCallback() {
 		super.disconnectedCallback();
 		// A page still reading leaves what an earlier visit kept as it is.
-		if (this.loading || this.loadFailed) return;
-		if (this.dirty) unsavedReply.keep(JSON.stringify(this.stored), this.draft);
-		else unsavedReply.forget();
+		if (!this.retainEdit || this.loading || this.loadFailed) return;
+		if (this.dirty || this.saving) unsavedReply.keep(JSON.stringify(this.stored), this.draft, this.visit);
+		else unsavedReply.forget(this.visit);
 	}
 
-	private async load() {
+	discardUnsavedChanges() {
+		this.retainEdit = false;
+		unsavedReply.forget(this.visit);
+	}
+
+	private async load(): Promise<void> {
+		const visit = this.visit;
+		const revision = unsavedReply.revision;
+		const request = ++this.loadRequest;
+		const current = () => this.visit === visit && request === this.loadRequest && unsavedReply.current(visit);
+		this.loading = true;
+		this.loadFailed = false;
 		try {
 			const { reply, extensions, ownVacation } = await managesieveService.fetchAutoReply();
+			if (!current()) return;
+			// A save completed after this read began; its older answer cannot
+			// decide whether the retained draft conflicts with the server.
+			if (revision !== unsavedReply.revision) return this.load();
 			this.extensions = extensions;
 			this.ownVacation = ownVacation;
 			this.stored = reply ?? DEFAULT_AUTO_REPLY;
@@ -155,13 +175,14 @@ export class AutoReplyPage extends LitElement {
 			this.draft = this.offersDates ? this.stored : { ...this.stored, start: '', end: '' };
 			// Taken only by a page still on screen: one left before the read
 			// answered would take the edit away with it.
-			const kept = this.isConnected ? unsavedReply.take(JSON.stringify(this.stored)) : null;
+			const kept = this.isConnected ? unsavedReply.take(JSON.stringify(this.stored), visit) : null;
 			if (kept) this.draft = kept;
 		} catch (e) {
+			if (!current()) return;
 			console.error('Failed to fetch the auto-reply', e);
 			this.loadFailed = true;
 		} finally {
-			this.loading = false;
+			if (current()) this.loading = false;
 		}
 	}
 
@@ -184,7 +205,7 @@ export class AutoReplyPage extends LitElement {
 	 * no edit and a refused save stays unsaved.
 	 */
 	get hasUnsavedChanges(): boolean {
-		return !this.loading && !this.loadFailed && this.dirty;
+		return !this.loading && !this.loadFailed && (this.dirty || this.saving);
 	}
 
 	/**
@@ -216,6 +237,8 @@ export class AutoReplyPage extends LitElement {
 	private async save() {
 		if (this.saving) return;
 		const reply = this.draft;
+		const visit = this.visit;
+		const base = JSON.stringify(this.stored);
 		const problem = this.problem(reply);
 		if (problem) {
 			this.error = this.t(problem);
@@ -227,12 +250,16 @@ export class AutoReplyPage extends LitElement {
 		const turnedOff = this.stored.enabled && !reply.enabled;
 		try {
 			await managesieveService.saveAutoReply(reply, this.address);
+			if (!unsavedReply.current(visit)) return;
+			unsavedReply.savedAs(base, JSON.stringify(reply), visit);
+			if (this.visit !== visit) return;
 			// What was SENT is what is stored now; an edit made while the save was
 			// in flight still reads as unsaved.
 			this.stored = reply;
 			const message = this.t(turnedOff ? 'managesieve.autoReply.turnedOff' : 'managesieve.autoReply.saved');
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, duration: 3000 } }));
 		} catch (e) {
+			if (this.visit !== visit || !unsavedReply.current(visit)) return;
 			if (e instanceof TwoVacationsError) {
 				// The filters gained a vacation of their own since the page
 				// opened. Nothing was written; the page says what it says on
@@ -243,7 +270,7 @@ export class AutoReplyPage extends LitElement {
 			console.error('Failed to save the auto-reply', e);
 			window.dispatchEvent(new CustomEvent('show-toast', { detail: { message: this.t('managesieve.autoReply.errors.saveError'), duration: 5000, type: 'error' } }));
 		} finally {
-			this.saving = false;
+			if (this.visit === visit) this.saving = false;
 		}
 	}
 
