@@ -1380,16 +1380,18 @@ func (p *IMAPProvider) DeleteMessages(mailbox string, ids []provider.MessageID) 
 		return err
 	}
 
-	err = p.client.Expunge().Close()
-	if err != nil {
-		return err
+	// A plain EXPUNGE removes every message in the mailbox flagged \Deleted,
+	// including those another client marked for deletion and has not
+	// expunged, which its user can still undelete there. UID EXPUNGE (RFC
+	// 4315, part of IMAP4rev2) removes only the messages named. A server
+	// without it has only the plain EXPUNGE.
+	//
+	// Either way the server's EXPUNGE responses bring the client's view of
+	// the mailbox up to date, so no NOOP is needed after it.
+	if p.client.Caps().Has(imap.CapUIDPlus) {
+		return p.client.UIDExpunge(uidSet).Close()
 	}
-
-	// Force synchronization of mailbox state if the current mailbox is selected
-	if mbox := p.client.Mailbox(); mbox != nil && mbox.Name == mailbox {
-		p.client.Noop().Wait()
-	}
-	return nil
+	return p.client.Expunge().Close()
 }
 
 // MoveMessages moves multiple messages between mailboxes
