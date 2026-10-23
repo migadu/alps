@@ -176,10 +176,7 @@ func extractContactData(card vcard.Card, path string) ContactData {
 		addrStr = addressLine(f)
 	}
 
-	var categories []string
-	if f := card.Preferred(vcard.FieldCategories); f != nil {
-		categories = listElements(f.Value)
-	}
+	categories := cardCategories(card)
 
 	revision := ""
 	if f := card.Preferred(vcard.FieldRevision); f != nil {
@@ -295,21 +292,126 @@ func (p *plugin) putCard(ctx *alps.Context, c *carddav.Client, objectPath string
 	return newETag, nil
 }
 
-// setCategories replaces a card's CATEGORIES, dropping blank names, and the
-// property itself when none are left.
+// cardCategories is every category of a card: RFC 6350 allows several
+// CATEGORIES lines, and each counts. Read from the preferred line alone, the
+// others' categories were not shown, and the next write dropped them.
+func cardCategories(card vcard.Card) []string {
+	var categories []string
+	seen := make(map[string]bool)
+	for _, f := range categoryFields(card) {
+		for _, cat := range listElements(f.Value) {
+			if !seen[cat] {
+				seen[cat] = true
+				categories = append(categories, cat)
+			}
+		}
+	}
+	return categories
+}
+
+// categoryFields are a card's CATEGORIES lines, the preferred one first.
+func categoryFields(card vcard.Card) []*vcard.Field {
+	first := card.Preferred(vcard.FieldCategories)
+	if first == nil {
+		return nil
+	}
+	fields := []*vcard.Field{first}
+	for _, f := range card[vcard.FieldCategories] {
+		if f != first {
+			fields = append(fields, f)
+		}
+	}
+	return fields
+}
+
+// setCategories gives a card the categories the page sent, blank names
+// dropped, and drops the property when none are left.
+//
+// The stored lines are changed in place, as setShownField changes a field
+// the page shows: replaced by one bare CATEGORIES, they lost Apple's group,
+// which ties the property to its label, their parameters, and every line but
+// one. A line other than the preferred one keeps what it holds but the
+// categories removed, and goes when none are left; the preferred line holds
+// the rest, a category added among them, and is left as written when they
+// are the ones it held.
 func setCategories(card vcard.Card, categories []string) {
+	wanted := make(map[string]bool)
 	var valid []string
 	for _, cat := range categories {
 		cat = strings.TrimSpace(cat)
-		if cat != "" {
+		if cat != "" && !wanted[cat] {
+			wanted[cat] = true
 			valid = append(valid, cat)
 		}
 	}
-	if len(valid) == 0 {
+	fields := categoryFields(card)
+	if len(fields) == 0 {
+		if len(valid) > 0 {
+			card.Add(vcard.FieldCategories, &vcard.Field{Value: listValue(valid)})
+		}
+		return
+	}
+
+	held := make(map[string]bool)
+	dropped := make(map[*vcard.Field]bool)
+	for _, f := range fields[1:] {
+		elements := listElements(f.Value)
+		var still []string
+		for _, cat := range elements {
+			if wanted[cat] {
+				still = append(still, cat)
+				held[cat] = true
+			}
+		}
+		if len(still) == 0 {
+			dropped[f] = true
+		} else if len(still) < len(elements) {
+			f.Value = listValue(still)
+		}
+	}
+
+	var rest []string
+	for _, cat := range valid {
+		if !held[cat] {
+			rest = append(rest, cat)
+		}
+	}
+	first := fields[0]
+	if len(rest) == 0 {
+		dropped[first] = true
+	} else if !sameSet(listElements(first.Value), rest) {
+		first.Value = listValue(rest)
+	}
+
+	var kept []*vcard.Field
+	for _, f := range card[vcard.FieldCategories] {
+		if !dropped[f] {
+			kept = append(kept, f)
+		}
+	}
+	if len(kept) == 0 {
 		delete(card, vcard.FieldCategories)
 		return
 	}
-	card[vcard.FieldCategories] = []*vcard.Field{{Value: listValue(valid)}}
+	card[vcard.FieldCategories] = kept
+}
+
+// sameSet reports whether a and b hold the same strings, in any order.
+func sameSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	in := make(map[string]int)
+	for _, s := range a {
+		in[s]++
+	}
+	for _, s := range b {
+		if in[s] == 0 {
+			return false
+		}
+		in[s]--
+	}
+	return true
 }
 
 // addressShown is the order the page shows an address's parts in, as
