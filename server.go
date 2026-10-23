@@ -70,6 +70,7 @@ func newServer(logger Logger, options *Options) (*Server, error) {
 		s.Sessions.absoluteSessionDuration = options.AbsoluteSessionDuration
 	}
 	s.Sessions.broadcaster = options.ClusterBroadcaster
+	s.Sessions.backgroundConnections = !options.DisableBackgroundConnection
 
 	// Initialize rate limiter if enabled
 	if options.RateLimitEnabled {
@@ -348,6 +349,10 @@ type Options struct {
 	Plugins                 map[string]PluginConfig // Generic plugin configuration
 	Provider                provider.Options        // Mail provider configuration
 	ClusterBroadcaster      ClusterBroadcaster      // Optional interface for cluster message broadcasting
+	// If true, each session does all its mail work on one connection. By
+	// default a session opens a second one, when it is first needed, for the
+	// work the user is not waiting for: see Session.DoBackgroundMail.
+	DisableBackgroundConnection bool
 }
 
 type SMTPOptions struct {

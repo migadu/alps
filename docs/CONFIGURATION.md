@@ -36,6 +36,7 @@ Controls the maximum concurrent sessions to prevent memory exhaustion and abuse.
 | :--- | :--- | :--- | :--- |
 | `max_sessions` | Integer | `10000` | Global max concurrent sessions across all users. `0` means unlimited. |
 | `max_sessions_per_user` | Integer | `10` | Max concurrent sessions allowed per user. `0` means unlimited. |
+| `background_connection` | Boolean | `true` | Each session opens a second mail connection, when first needed, for work the user is not waiting for (checks for new mail, sender verdicts, the search of Sent for a conversation's replies, draft saves, messages a conversation reads ahead), and closes it after a minute unused; the next such work opens it again and waits for its sign-in. A session opens no more than this one beside its own. A connection it gave up on mid-command (the browser went away) stays open until that command returns, as before; meanwhile the session opens no background connection, but its own work does not wait for a busy one and opens its own connection beside it. If the mail server refuses the second one, for instance at its per-user connection limit, the work runs on the session's own connection and the session goes on. `false` keeps one connection per session. |
 
 ### 1.3 Attachment Limits
 | Option | Type | Default | Description |
