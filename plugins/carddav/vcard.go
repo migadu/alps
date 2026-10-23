@@ -9,10 +9,16 @@ import (
 	"github.com/emersion/go-vcard"
 )
 
-// listParams are the parameters whose value is a list (RFC 6350, 5): a comma
-// in one separates its values. In any other parameter a comma is part of the
-// value.
-var listParams = map[string]bool{"TYPE": true, "PID": true, "SORT-AS": true}
+// Only known scalar parameters can safely be rejoined after go-vcard split
+// their quoted commas. Generic parameters may be lists too (RFC 6350, 3.3);
+// joining an unknown list would turn several values into one. The decoder
+// loses that distinction for unknown quoted values, so keep their prior
+// multi-value representation rather than inventing new cardinality.
+var scalarParams = map[string]bool{
+	"LANGUAGE": true, "VALUE": true, "PREF": true, "ALTID": true,
+	"MEDIATYPE": true, "CALSCALE": true, "GEO": true, "TZ": true, "LABEL": true,
+	"ENCODING": true, "CHARSET": true, "X-APPLE-OMIT-YEAR": true,
+}
 
 // encodeCard writes card as go-vcard's encoder does, but for its parameters.
 //
@@ -60,7 +66,7 @@ func formatLine(key string, f *vcard.Field) string {
 	sort.Strings(names)
 	for _, name := range names {
 		values := f.Params[name]
-		if !listParams[strings.ToUpper(name)] {
+		if scalarParams[strings.ToUpper(name)] {
 			// One value, which the decoder may have split at its commas.
 			values = []string{strings.Join(values, ",")}
 		}
