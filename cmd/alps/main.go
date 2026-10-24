@@ -292,9 +292,16 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
+	// SIGHUP is what newsyslog sends after rotating the log file: reopen it
+	// and keep serving. Anything else shuts down.
 	for sig := range sigs {
-		if sig == syscall.SIGINT || sig == syscall.SIGTERM || sig == syscall.SIGHUP {
+		if sig != syscall.SIGHUP {
 			break
+		}
+		if err := logger.Reopen(); err != nil {
+			logger.Errorf("SIGHUP: %v", err)
+		} else {
+			logger.Info("SIGHUP: log file reopened")
 		}
 	}
 
