@@ -58,6 +58,9 @@ export class AlpsFloatingComposer extends LitElement {
   @state() private windowHeight = window.innerHeight;
   @state() private isSaving = false;
   @state() private isDragOver = false;
+  /** How tall the attachment tray wants to be (its `tray-height`): the window
+   * grows by this much, so attachments add room rather than take the body's. */
+  @state() private trayHeight = 0;
 
   private autoSaveTimer: number | null = null;
   /** The save on the wire, for a close or a discard to wait out. */
@@ -1091,28 +1094,27 @@ export class AlpsFloatingComposer extends LitElement {
     return (this.instance.attachments || []).reduce((sum, a) => sum + (a.missing ? 0 : (a.size || 0)), 0);
   }
 
-  private _handleAttachClick() {
-    const maxBytes = (this.settingsStore?.getState()?.maxAttachmentMiB || 32) * 1024 * 1024;
-    const currentBytes = this._attachedBytes();
+  /** What the composer's files may take in all: the server's limit. */
+  private _maxAttachmentBytes(): number {
+    return (this.settingsStore?.getState()?.maxAttachmentMiB || 32) * 1024 * 1024;
+  }
 
+  private _handleAttachClick() {
     handleAttachClick(
       this.instance.id,
-      maxBytes,
-      currentBytes,
+      this._maxAttachmentBytes(),
+      this._attachedBytes(),
       ...this._getUploadCallbacks(),
       this._attachmentsTooLarge()
     );
   }
 
   private _startUpload(files: File[]) {
-    const maxBytes = (this.settingsStore?.getState()?.maxAttachmentMiB || 32) * 1024 * 1024;
-    const currentBytes = this._attachedBytes();
-    
     uploadFiles(
       files,
       this.instance.id,
-      maxBytes,
-      currentBytes,
+      this._maxAttachmentBytes(),
+      this._attachedBytes(),
       ...this._getUploadCallbacks(),
       this._attachmentsTooLarge()
     );
@@ -1524,11 +1526,16 @@ export class AlpsFloatingComposer extends LitElement {
       align-self: center;
     }
 
+    /* The body keeps a usable floor. The window first grows by the attachment
+       tray's height; where the viewport cannot fit both, the tray gives way and
+       scrolls. Without a floor the tray squeezed the body to nothing, and the
+       formatting toolbar spilled over the tray's header. A percentage too, so
+       a very short window still has room for its send row. */
     .composer-wrapper {
       flex: 1;
       display: flex;
       flex-direction: column;
-      min-height: 0;
+      min-height: min(200px, 45%);
     }
 
     @media (max-width: 768px) {
@@ -1580,6 +1587,14 @@ export class AlpsFloatingComposer extends LitElement {
       }
     }
 
+    // The window grows by the attachment tray's height, up to what the viewport
+    // allows: docked, it stops 160px short of the top, which leaves the app
+    // header and a strip of the page in view; expanded, 24px from both edges.
+    const dockedBase = 500;
+    const dockedHeight = Math.min(dockedBase + this.trayHeight, Math.max(dockedBase, this.windowHeight - bottomOffset - 160));
+    const expandedBase = this.windowHeight * 0.8;
+    const expandedHeight = Math.min(expandedBase + this.trayHeight, Math.max(expandedBase, this.windowHeight - 48));
+
     let topPx, leftPx, widthPx, heightPx;
     const isMobile = this.windowWidth <= 768;
 
@@ -1594,13 +1609,13 @@ export class AlpsFloatingComposer extends LitElement {
         this.removeAttribute('expanded');
       } else if (this.instance.expanded) {
         widthPx = Math.min(this.windowWidth * 0.85, 800);
-        heightPx = this.windowHeight * 0.8;
+        heightPx = expandedHeight;
         leftPx = (this.windowWidth - widthPx) / 2;
         topPx = (this.windowHeight - heightPx) / 2;
         this.setAttribute('expanded', '');
       } else {
         widthPx = this.instance.minimized ? minimizeWidth : composerWidth;
-        heightPx = this.instance.minimized ? 40 : 500;
+        heightPx = this.instance.minimized ? 40 : dockedHeight;
         leftPx = this.windowWidth - rightOffset - widthPx;
         topPx = this.windowHeight - bottomOffset - heightPx;
         this.removeAttribute('expanded');
@@ -1614,7 +1629,7 @@ export class AlpsFloatingComposer extends LitElement {
       this.removeAttribute('expanded');
     } else if (this.instance.expanded) {
       widthPx = Math.min(this.windowWidth * 0.85, 800);
-      heightPx = this.windowHeight * 0.8;
+      heightPx = expandedHeight;
       leftPx = (this.windowWidth - widthPx) / 2;
       topPx = (this.windowHeight - heightPx) / 2;
 
@@ -1622,7 +1637,7 @@ export class AlpsFloatingComposer extends LitElement {
       this.setAttribute('expanded', '');
     } else {
       widthPx = this.instance.minimized ? minimizeWidth : composerWidth;
-      heightPx = this.instance.minimized ? 40 : 500;
+      heightPx = this.instance.minimized ? 40 : dockedHeight;
       leftPx = this.windowWidth - rightOffset - widthPx;
       topPx = this.windowHeight - bottomOffset - heightPx;
 
@@ -1798,10 +1813,13 @@ export class AlpsFloatingComposer extends LitElement {
             }
             .removable=${true}
             .composerMode=${true}
+            .totalBytes=${this._attachedBytes()}
+            .maxBytes=${this._maxAttachmentBytes()}
             @remove-attachment=${(e: CustomEvent) => {
         const idx = (this.instance.attachments || []).indexOf(e.detail.attachment);
         if (idx !== -1) this._removeAttachment(idx);
       }}
+            @tray-height=${(e: CustomEvent<{ height: number }>) => { this.trayHeight = e.detail.height; }}
           ></alps-attachment-list>
 
           <div class="send-row">
